@@ -265,6 +265,34 @@ it.effect("cancelling the first opener keeps one shared read alive for the other
   ).pipe(Effect.provide(TestClock.layer())),
 );
 
+it.effect("a new opener joins the shared usage read after its original caller cancels", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const { usage, reads, settle } = yield* harness({
+        check: () =>
+          Deferred.succeed(started, undefined).pipe(
+            Effect.andThen(Deferred.await(release)),
+            Effect.as([claude({ usedPercent: 55 })]),
+          ),
+      });
+      const opener = yield* Effect.forkChild(usage.refresh);
+      yield* Deferred.await(started);
+      yield* Fiber.interrupt(opener);
+      const follower = yield* Effect.forkChild(usage.refresh);
+      yield* settle;
+      assert.deepEqual(reads, ["known", "asked"]);
+
+      yield* Deferred.succeed(release, undefined);
+      const refreshed = yield* Fiber.join(follower);
+      assert.strictEqual(refreshed.providers?.[0]?.usageLimits?.windows[0]?.usedPercent, 55);
+      yield* usage.refresh;
+      assert.deepEqual(reads, ["known", "asked"]);
+    }),
+  ),
+);
+
 it.effect("closing the usage owner interrupts an outstanding shared read", () =>
   Effect.scoped(
     Effect.gen(function* () {

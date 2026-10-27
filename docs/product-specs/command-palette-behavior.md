@@ -303,7 +303,7 @@ Metadata matches highlight title, project/Chats context, cwd, branch, and previe
 - `Tab` / `Shift+Tab` in the search field cycles forward/backward through available scopes, wrapping at either end and preserving the query.
 - Unmodified `F6` moves from search to the first Files/Text search option, Filter in Pages, or the active scope tab elsewhere. From the options or scope tabs it returns to search. Composition and modified/default-prevented events do not trigger this transfer.
 - The scope row uses tablist semantics. `ArrowLeft` / `ArrowRight` moves between scope tabs and activates them; `Home` / `End` selects the first or last scope. Keyboard scope navigation retains focus on the tabs and preserves the query.
-- `Escape` first dismisses an open options popover or nested Theme page, then closes the palette, including with a non-empty query.
+- `Escape` dismisses the topmost open Tooltip, options popover, directory chooser, or nested Theme page before closing the palette, including with a non-empty query. Dismissing the directory chooser returns focus to the folder control and keeps the palette open.
 - IME composition prevents palette keyboard commands from executing or closing the palette while text is being composed.
 
 ## Result Limits

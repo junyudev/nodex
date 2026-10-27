@@ -247,8 +247,9 @@ describe("UserAttachmentStrip", () => {
     );
 
     try {
+      const preview = await view.findByRole("button", { name: "Open image preview" });
       await act(async () => {
-        fireEvent.click(await view.findByRole("button", { name: "Open image preview" }));
+        fireEvent.click(preview);
       });
       expect(view.getByRole("dialog", { name: "Image preview" })).toBeTruthy();
       expect(opened).toEqual([]);

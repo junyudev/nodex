@@ -22,6 +22,13 @@ The release system has one deep repository-owned Release Module under
   accepts an exact source SHA and version and applies the same validation,
   Distribution, and promotion logic idempotently.
 
+Nightly admission queries the latest `Main CI` push run for the checked-out
+protected-main SHA. Missing or unfinished CI defers publication; a completed
+unsuccessful run fails Nightly resolution and links the blocking run in its
+summary. A green scheduled run that defers publication is not a new build:
+actual publication requires the distribution, assembly, and promotion jobs to
+succeed and the matching immutable prerelease and Nightly feed to exist.
+
 The important seam is the Release Bundle, not a YAML artifact convention.
 The Apple silicon build emits an `architecture-build.json` that binds its
 source commit/tree, Release Identity, runtime locks, prepared-build generation,
@@ -634,6 +641,14 @@ The remote verifier needs only `release-bundle.json` and `SHA256SUMS` locally.
 It reconstructs the exact asset allowlist from those files, then downloads every
 published asset once into a temporary directory and verifies its byte length and
 SHA-256 digest before removing the temporary copy.
+
+GitHub may expose published immutable assets before their signed release
+attestation is readable. Remote verification retries only the exact
+`gh release verify` missing-attestation response for that tag, up to 12 attempts
+with ten seconds between attempts and a 30-second limit per command. Publication
+still requires successful cryptographic verification. Signature, digest,
+authorization, timeout, and asset failures stop immediately; exhaustion fails
+publication before any update feed is promoted.
 
 The 0.2.1 baseline must contain zero deltas because 0.2.0 and earlier are not
 compatible history. Also verify the stable Apple silicon DMG URL, a clean Apple Silicon

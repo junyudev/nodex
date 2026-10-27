@@ -44,13 +44,19 @@ vi.mock("./toggle-list-icon", () => ({
 
 const apiMock: {
   invokeImplementation: (...args: unknown[]) => Promise<unknown>;
+  searchPages: ReturnType<typeof vi.fn<typeof import("../../lib/api").searchPages>>;
 } = vi.hoisted(() => ({
   invokeImplementation: async () => [],
+  searchPages: vi.fn<typeof import("../../lib/api").searchPages>(async () => ({
+    libraryId: "palette-test-library",
+    storeEpoch: "palette-test-epoch",
+    commitSeq: 0,
+    results: [],
+  })),
 }));
 
 vi.mock("../../lib/api", () => ({
-  searchPages: (input: unknown) =>
-    apiMock.invokeImplementation("pages:search", "test-request", input),
+  searchPages: apiMock.searchPages,
   subscribeLibraryChanges: () => () => undefined,
 }));
 
@@ -1512,26 +1518,25 @@ describe("CommandPaletteSurface", () => {
   test("deduplicates only concurrent Page requests and keeps no renderer result cache", async () => {
     const { searchCommandPalettePages } = await import("../../lib/command-palette-page-results");
     const searchedQueries: string[] = [];
-    apiMock.invokeImplementation = async (channel: unknown, ...args: unknown[]) => {
-      if (channel === "pages:search") {
-        const input = args[1];
-        const query =
-          typeof input === "object" && input !== null && "query" in input
-            ? String((input as { query?: unknown }).query ?? "")
-            : "";
-        searchedQueries.push(query);
-        return [];
-      }
-      return [];
-    };
-    await Promise.all([
-      searchCommandPalettePages({ projectIds: ["default"], query: "page cache" }),
-      searchCommandPalettePages({ projectIds: ["default"], query: "page cache" }),
-    ]);
-    await searchCommandPalettePages({ projectIds: ["default"], query: "page cache" });
-
-    expect(searchedQueries).toEqual(["page cache", "page cache"]);
-    apiMock.invokeImplementation = async () => [];
+    await apiMock.searchPages.withImplementation(
+      async (input) => {
+        searchedQueries.push(input.query);
+        return {
+          libraryId: "palette-test-library",
+          storeEpoch: "palette-test-epoch",
+          commitSeq: 0,
+          results: [],
+        };
+      },
+      async () => {
+        await Promise.all([
+          searchCommandPalettePages({ projectIds: ["default"], query: "page cache" }),
+          searchCommandPalettePages({ projectIds: ["default"], query: "page cache" }),
+        ]);
+        await searchCommandPalettePages({ projectIds: ["default"], query: "page cache" });
+        expect(searchedQueries).toEqual(["page cache", "page cache"]);
+      },
+    );
   });
 
   test("skips disabled commands and updates aria-activedescendant during keyboard navigation", async () => {
@@ -2078,8 +2083,9 @@ test("choosing the current Project folder remains an explicit boundary until con
     await view.findByRole("option", { name: /file.ts/ });
     expect(metadata).toHaveBeenCalledOnce();
     await openNodexMenu(view.getByRole("button", { name: "Search folder" }));
+    const chooseFolder = await view.findByRole("menuitem", { name: "Choose folder" });
     await act(async () => {
-      fireEvent.click(await view.findByRole("menuitem", { name: "Choose folder" }));
+      fireEvent.click(chooseFolder);
       await Promise.resolve();
     });
     const current = await view.findByRole("button", { name: "Select current folder" });
@@ -2102,13 +2108,14 @@ test("choosing the current Project folder remains an explicit boundary until con
       "/outside/file.ts",
     );
     await openNodexMenu(view.getByRole("button", { name: "Search folder" }));
+    const projectFolder = await view.findByRole("menuitem", { name: "Folder: project" });
     await act(async () => {
-      fireEvent.click(await view.findByRole("menuitem", { name: "Folder: project" }));
+      fireEvent.click(projectFolder);
       await Promise.resolve();
     });
     await view.findByRole("option", { name: /file.ts/ });
     expect(metadata).toHaveBeenCalledTimes(2);
-    expect(view.getByText("Folder: project")).toBeTruthy();
+    expect(view.getByRole("button", { name: "Search folder" }).textContent).toBe("Folder: project");
   } finally {
     view.unmount();
     apiMock.invokeImplementation = previousQuery;

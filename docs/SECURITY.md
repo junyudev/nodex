@@ -137,7 +137,9 @@ read through the authenticated Profile and exact execution identity boundary.
   mapped only onto the steps that need them, and the temporary Apple API key is
   removed in an always-run cleanup step.
 - Scheduled Nightly resolution remains read-only and accepts only the exact
-  protected-main HEAD whose latest CI run succeeded. Nightly distribution uses
+  protected-main HEAD whose latest `Main CI` push run for that SHA succeeded.
+  Unrelated commits and manual workflow runs cannot supply this admission.
+  Nightly distribution uses
   the same Developer ID, notarization, Sparkle key, macOS arm64 Bundle,
   and immutable-asset verification chain as Stable, but its promotion path has
   no Homebrew or official Agent Skills credential. The landing credential can

@@ -73,17 +73,55 @@ const verifyChecksumAllowlist = (
   return checksumPath;
 };
 
-const gh = (args: readonly string[], options?: { readonly allowFailure?: boolean }): string => {
+const gh = (
+  args: readonly string[],
+  options?: { readonly allowFailure?: boolean; readonly timeoutMs?: number },
+): string => {
   try {
     return execFileSync("gh", [...args], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", options?.allowFailure ? "ignore" : "pipe"],
+      timeout: options?.timeoutMs,
     }).trim();
   } catch (error) {
     if (options?.allowFailure) return "";
     throw error;
   }
 };
+
+const isMissingReleaseAttestation = (error: unknown, tag: string): boolean => {
+  if (!(error instanceof Error) || !("status" in error) || error.status !== 1) return false;
+  if (!("stderr" in error)) return false;
+  const stderr = error.stderr;
+  if (typeof stderr !== "string" && !Buffer.isBuffer(stderr)) return false;
+  const missing = /^no attestations for tag (.+) \(sha1:[a-f0-9]{40}\)$/u.exec(
+    stderr.toString().trim(),
+  );
+  return missing?.[1] === tag;
+};
+
+/** GitHub can publish immutable assets before its signed attestation becomes readable. */
+export async function verifyReleaseAttestation(repo: string, tag: string): Promise<void> {
+  const attempts = 12;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      gh(["release", "verify", tag, "--repo", repo], { timeoutMs: 30_000 });
+      return;
+    } catch (error) {
+      if (!isMissingReleaseAttestation(error, tag)) throw error;
+      if (attempt === attempts) {
+        throw new Error(
+          `Release attestation for ${tag} remained unavailable after ${attempts} verification attempts.`,
+          { cause: error },
+        );
+      }
+      process.stderr.write(
+        `Release attestation for ${tag} is not visible yet; retrying verification (${attempt + 1}/${attempts}) in 10 seconds.\n`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+    }
+  }
+}
 
 export const releaseAssetPaths = (bundlePath: string): readonly string[] => {
   const { bundle, resolvedBundle, root } = readBundle(bundlePath);
@@ -427,11 +465,11 @@ export function publishGitHubRelease(options: {
   return plan;
 }
 
-export function verifyRemoteRelease(options: {
+export async function verifyRemoteRelease(options: {
   readonly bundlePath: string;
   readonly repo: string;
   readonly requireImmutable?: boolean;
-}): void {
+}): Promise<void> {
   const bundlePath = resolve(options.bundlePath);
   const bundle = parseReleaseBundleManifest(JSON.parse(readFileSync(bundlePath, "utf8")));
   const release = readRelease(options.repo, bundle.tag);
@@ -459,7 +497,7 @@ export function verifyRemoteRelease(options: {
   if (prerelease && latest.tag_name === bundle.tag) {
     throw new Error("Nightly release must not be GitHub Latest.");
   }
-  gh(["release", "verify", bundle.tag, "--repo", options.repo]);
+  await verifyReleaseAttestation(options.repo, bundle.tag);
 
   const downloadRoot = mkdtempSync(join(tmpdir(), "nodex-release-redownload-"));
   try {

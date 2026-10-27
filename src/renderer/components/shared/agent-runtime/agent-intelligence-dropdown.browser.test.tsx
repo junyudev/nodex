@@ -83,9 +83,8 @@ test("selects effort with the pointer after a model change commits", async () =>
   );
   const trigger = view.getByRole("button", { name: "Select model" });
   await act(async () => userEvent.click(trigger));
-  await act(async () =>
-    userEvent.click(await view.findByRole("option", { name: "Claude Sonnet 5.5" })),
-  );
+  const nextModel = await view.findByRole("option", { name: "Claude Sonnet 5.5" });
+  await act(async () => userEvent.click(nextModel));
   await waitFor(() => expect(view.queryByRole("listbox")).toBeNull());
   // The chat keeps its committed model until the change lands.
   expect(trigger.textContent).toContain("Claude Opus 5");

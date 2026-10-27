@@ -141,8 +141,9 @@ describe("SpaceHome", () => {
       fireEvent.click(screen.getByRole("button", { name: "New" }));
       await Promise.resolve();
     });
+    const newPage = await screen.findByRole("menuitem", { name: "Page" });
     await act(async () => {
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Page" }));
+      fireEvent.click(newPage);
       await Promise.resolve();
     });
     expect(onOpenTarget).toHaveBeenCalledWith(createdPage);

@@ -415,7 +415,7 @@ test("records only the latest query and mask when leaving the mounted Text scope
   expect(commit.mock.calls).toEqual([["word", "*.md"]]);
 });
 
-test("Escape and Cancel dismiss only nested controls and restore their owning focus", async () => {
+test("Escape dismisses one focused layer at a time and Cancel restores owning focus", async () => {
   mocks.directory.mockResolvedValue({ directoryPath: "workspace", parentPath: "", entries: [] });
   const closePalette = vi.fn();
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -469,10 +469,20 @@ test("Escape and Cancel dismiss only nested controls and restore their owning fo
     await Promise.resolve();
   });
   const picker = await view.findByRole("dialog", { name: "Choose search folder" });
+  const path = within(picker).getByRole("combobox", { name: "Selected folder path" });
+  // Dialog mount precedes its scheduled initial focus and the focused path hint.
+  await waitFor(() => expect(document.activeElement).toBe(path));
+  await view.findByRole("tooltip", { name: "/workspace" });
   await act(async () => {
-    fireEvent.keyDown(within(picker).getByRole("combobox", { name: "Selected folder path" }), {
-      key: "Escape",
-    });
+    fireEvent.keyDown(path, { key: "Escape" });
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(view.queryByRole("tooltip")).toBeNull());
+  expect(view.getByRole("dialog", { name: "Choose search folder" })).toBe(picker);
+  expect(document.activeElement).toBe(path);
+  expect(closePalette).not.toHaveBeenCalled();
+  await act(async () => {
+    fireEvent.keyDown(path, { key: "Escape" });
     await Promise.resolve();
   });
   await waitFor(() =>
@@ -492,6 +502,9 @@ test("Escape and Cancel dismiss only nested controls and restore their owning fo
     await Promise.resolve();
   });
   const pickerAgain = await view.findByRole("dialog", { name: "Choose search folder" });
+  const pathAgain = within(pickerAgain).getByRole("combobox", { name: "Selected folder path" });
+  await waitFor(() => expect(document.activeElement).toBe(pathAgain));
+  await view.findByRole("tooltip", { name: "/workspace" });
   await act(async () => {
     fireEvent.click(within(pickerAgain).getByRole("button", { name: "Cancel" }));
     await Promise.resolve();

@@ -378,8 +378,9 @@ describe("InboxTriage", () => {
     const agents = inboxAgentsFixture();
     const commands = renderTriage({ agents });
     await click("Choose the model for this chat");
+    const model = await screen.findByRole("option", { name: /Opus 5\.5/ });
     await act(async () => {
-      fireEvent.click(await screen.findByRole("option", { name: /Opus 5\.5/ }));
+      fireEvent.click(model);
       await Promise.resolve();
     });
     // A choice that differs from the Inbox's own stays on the decision.
@@ -752,8 +753,9 @@ describe("Importance", () => {
       />,
     );
     await openNodexMenu(screen.getByRole("button", { name: "Message actions" }));
+    const action = await screen.findByRole("menuitem", { name });
     await act(async () => {
-      fireEvent.click(await screen.findByRole("menuitem", { name }));
+      fireEvent.click(action);
       await Promise.resolve();
     });
     return onSetImportant;

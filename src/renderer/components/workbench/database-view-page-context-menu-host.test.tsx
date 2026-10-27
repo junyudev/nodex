@@ -62,8 +62,9 @@ describe("DatabaseViewPageContextMenuHost", () => {
       });
       await Promise.resolve();
     });
+    const openIn = await view.findByRole("menuitem", { name: "Open in" });
     await act(async () => {
-      fireEvent.pointerMove(await view.findByRole("menuitem", { name: "Open in" }), {
+      fireEvent.pointerMove(openIn, {
         pointerType: "mouse",
       });
       await Promise.resolve();

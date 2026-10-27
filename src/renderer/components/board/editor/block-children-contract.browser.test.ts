@@ -2,9 +2,12 @@ import { BlockNoteEditor } from "@blocknote/core";
 import type { PartialBlock } from "@blocknote/core";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
+import { applyRendererThemeForTest, installRendererThemeFixture } from "@/test/renderer-theme";
 import { nfmSchema } from "./nfm-schema";
 import { createNfmEditorPlaceholders } from "./nfm-editor-placeholders";
 import "../../../globals.css";
+
+installRendererThemeFixture();
 
 const mountedEditors: BlockNoteEditor<any, any, any>[] = [];
 
@@ -56,50 +59,54 @@ describe("Block children contract in Chromium", () => {
     expect(editor.canNestBlock()).toBe(true);
   });
 
-  test("guards low-level replacement and exposes live outer semantic attributes", () => {
-    const { editor, host } = mountEditor([
-      {
-        id: "callout",
-        type: "callout",
-        content: "Callout",
-        children: [{ id: "inside", type: "paragraph", content: "Inside" }],
-      },
-      {
-        id: "quote",
-        type: "quote",
-        content: "Quote",
-        children: [{ id: "quoted", type: "paragraph", content: "Quoted child" }],
-      },
-      { id: "atomic", type: "divider" },
-    ]);
-
-    const callout = host.querySelector<HTMLElement>('.bn-block[data-id="callout"]');
-    const calloutChild = host.querySelector<HTMLElement>('.bn-block[data-id="inside"]');
-    expect(callout?.dataset.contentType).toBe("callout");
-    expect(callout?.dataset.childrenLayout).toBe("enclosed");
-    expect(callout?.dataset.acceptsChildren).toBe("true");
-    expect(callout?.contains(calloutChild ?? null)).toBe(true);
-    expect(getComputedStyle(callout!).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
-
-    const quote = host.querySelector<HTMLElement>('.bn-block[data-id="quote"]');
-    const quotedChild = host.querySelector<HTMLElement>('.bn-block[data-id="quoted"]');
-    expect(quote?.dataset.childrenLayout).toBe("enclosed");
-    expect(quote?.contains(quotedChild ?? null)).toBe(true);
-    expect(getComputedStyle(quote!, "::before").width).toBe("3px");
-
-    editor.replaceBlocks(
-      ["atomic"],
-      [
+  test.each(["light", "dark"] as const)(
+    "guards replacement and encloses children in %s",
+    (theme) => {
+      applyRendererThemeForTest(theme);
+      const { editor, host } = mountEditor([
         {
-          id: "atomic",
-          type: "divider",
-          children: [{ id: "forbidden", type: "paragraph", content: "Forbidden" }],
+          id: "callout",
+          type: "callout",
+          content: "Callout",
+          children: [{ id: "inside", type: "paragraph", content: "Inside" }],
         },
-      ],
-    );
-    expect(editor.getBlock("forbidden")).toBeUndefined();
-    expect(editor.getBlock("atomic")?.children).toHaveLength(0);
-  });
+        {
+          id: "quote",
+          type: "quote",
+          content: "Quote",
+          children: [{ id: "quoted", type: "paragraph", content: "Quoted child" }],
+        },
+        { id: "atomic", type: "divider" },
+      ]);
+
+      const callout = host.querySelector<HTMLElement>('.bn-block[data-id="callout"]');
+      const calloutChild = host.querySelector<HTMLElement>('.bn-block[data-id="inside"]');
+      expect(callout?.dataset.contentType).toBe("callout");
+      expect(callout?.dataset.childrenLayout).toBe("enclosed");
+      expect(callout?.dataset.acceptsChildren).toBe("true");
+      expect(callout?.contains(calloutChild ?? null)).toBe(true);
+      expect(getComputedStyle(callout!).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+
+      const quote = host.querySelector<HTMLElement>('.bn-block[data-id="quote"]');
+      const quotedChild = host.querySelector<HTMLElement>('.bn-block[data-id="quoted"]');
+      expect(quote?.dataset.childrenLayout).toBe("enclosed");
+      expect(quote?.contains(quotedChild ?? null)).toBe(true);
+      expect(getComputedStyle(quote!, "::before").width).toBe("3px");
+
+      editor.replaceBlocks(
+        ["atomic"],
+        [
+          {
+            id: "atomic",
+            type: "divider",
+            children: [{ id: "forbidden", type: "paragraph", content: "Forbidden" }],
+          },
+        ],
+      );
+      expect(editor.getBlock("forbidden")).toBeUndefined();
+      expect(editor.getBlock("atomic")?.children).toHaveLength(0);
+    },
+  );
 
   test("matches the quote rhythm while keeping its rule coupled to text color", () => {
     const { host } = mountEditor([
