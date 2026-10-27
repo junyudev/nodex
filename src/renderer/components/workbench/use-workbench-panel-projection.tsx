@@ -73,7 +73,7 @@ import {
 } from "../../../shared/browser-sidebar";
 import { listWorkbenchPanelLeaves } from "../../../shared/workbench-panel-layout";
 import type { AppShellTabItem } from "./app-shell-tabs";
-import { buildAutomationsPath } from "./workbench-automations-routes";
+import { buildAutomationsPath } from "@/lib/workbench-automations-routes";
 import {
   BackgroundAgentSessionTab,
   SideChatSessionTab,

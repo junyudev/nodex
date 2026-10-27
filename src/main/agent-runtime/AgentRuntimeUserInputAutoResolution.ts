@@ -84,6 +84,7 @@ export const make = Effect.fn("AgentRuntimeUserInputAutoResolution.make")(functi
         if (!lease || typeof timeout.requestId !== "string") return;
         const snapshot = yield* lease.connection.request("thread.control", {
           threadId: timeout.conversationId,
+          requestId: timeout.requestId,
         });
         if (leases.get(lease.connection.identity) !== lease) return;
         const request = snapshot.projection.runtimeRequests.find(
@@ -91,11 +92,13 @@ export const make = Effect.fn("AgentRuntimeUserInputAutoResolution.make")(functi
         );
         if (!request) return;
         yield* lease.connection.request("command.dispatch", {
-          type: "runtime-request.respond",
-          commandId: `auto-user-input:${request.id}`,
-          threadId: timeout.conversationId,
-          requestId: request.id,
-          answers: {},
+          command: {
+            type: "runtime-request.respond",
+            commandId: `auto-user-input:${request.id}`,
+            threadId: timeout.conversationId,
+            requestId: request.id,
+            answers: {},
+          },
         });
       }).pipe(Effect.catch(warn("resolve"))),
     ),

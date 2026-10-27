@@ -256,6 +256,10 @@ export function selectHistory(input: {
   };
 }
 
+/** The same recovery contract appears in bounded summaries and handoff delivery. */
+export const taskHistoryRecoveryInstructions =
+  'Recover omitted history with task_read({view:"activity",limit:20,maxCharsPerItem:4000}) without taskId. Pass page.nextCursor as cursor for older items; pass item.content.nextCursor as cursor for that exact long text or JSON, retaining the page cursor separately. Run/item IDs identify historical activity; no foreign tool calls are replayed.';
+
 export function handoffCoverage(input: {
   /** Source conversation; recovery text never exposes it to the Agent. */
   readonly threadId: string;
@@ -266,6 +270,6 @@ export function handoffCoverage(input: {
   return [
     `Provider context handoff. Covered app runs: ${input.coveredRunOrdinals.from}-${input.coveredRunOrdinals.to}.`,
     `Source item range: ${input.sourceItemRange?.first ?? input.items?.at(0)?.id ?? "none"} through ${input.sourceItemRange?.last ?? input.items?.at(-1)?.id ?? "none"}.`,
-    `Recover omitted history using task_read({view:"activity",limit:20,maxCharsPerItem:4000}); paginate with afterPosition=nextPosition. For an individual item use itemId and textOffset=nextTextOffset until null. Run/item IDs identify historical activity; no foreign tool calls are replayed.`,
+    taskHistoryRecoveryInstructions,
   ].join("\n");
 }

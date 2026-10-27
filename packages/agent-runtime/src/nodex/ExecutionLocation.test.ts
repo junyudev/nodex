@@ -16,6 +16,7 @@ import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Statement from "effect/sql/Statement";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
@@ -163,16 +164,7 @@ it.effect(
       yield* sql`INSERT INTO orchestration_v2_projection_subagents
         (subagent_id,thread_id,run_id,parent_node_id,provider,provider_thread_id,child_thread_id,origin,status,started_at,completed_at,updated_at,payload_json)
         VALUES ('cold-retirement-task',${threadId},${plannedRun.id},${plannedRun.rootNodeId},'codex',NULL,NULL,'app_owned','completed',NULL,NULL,'2026-10-15T00:00:00.000Z','{broken')`;
-      const streamingPlan = yield* sql<{
-        detail: string;
-      }>`EXPLAIN QUERY PLAN UPDATE orchestration_v2_projection_turn_items
-        SET updated_at = updated_at WHERE thread_id = ${threadId} AND run_id = ${plannedRun.id}
-          AND CASE WHEN json_valid(payload_json) THEN json_extract(payload_json,'$.streaming') END = 1`;
-      assert.isTrue(
-        streamingPlan.some((row) =>
-          row.detail.includes("orchestration_v2_execution_streaming_items_idx"),
-        ),
-      );
+      const streamingStatements: Array<readonly [string, ReadonlyArray<unknown>]> = [];
       const hydrated: string[] = [];
       const parse = JSON.parse;
       const trace = vi.spyOn(JSON, "parse").mockImplementation((value, reviver) => {
@@ -181,10 +173,33 @@ it.effect(
         return parse(value, reviver);
       });
       try {
-        yield* restarted.quiesce({ threadId, operationId: "move:1" });
+        yield* restarted.quiesce({ threadId, operationId: "move:1" }).pipe(
+          Effect.provideService(Statement.CurrentTransformer, (statement) =>
+            Effect.sync(() => {
+              const compiled = statement.compile();
+              if (
+                compiled[0].trimStart().startsWith("UPDATE") &&
+                compiled[0].includes("orchestration_v2_projection_turn_items") &&
+                compiled[0].includes("'$.streaming'")
+              )
+                streamingStatements.push(compiled);
+              return statement;
+            }),
+          ),
+        );
         assert.deepEqual(hydrated, []);
       } finally {
         trace.mockRestore();
+      }
+      assert.lengthOf(streamingStatements, 1);
+      for (const [text, parameters] of streamingStatements) {
+        const plan = yield* sql.unsafe<{ detail: string }>(
+          `EXPLAIN QUERY PLAN ${text}`,
+          parameters,
+        );
+        assert.isTrue(
+          plan.some((row) => row.detail.includes("orchestration_v2_execution_streaming_items_idx")),
+        );
       }
       yield* sql`DELETE FROM orchestration_v2_projection_turn_items WHERE thread_id = ${threadId} AND turn_item_id LIKE 'cold-retirement-item:%'`;
       yield* sql`DELETE FROM orchestration_v2_projection_subagents WHERE subagent_id = 'cold-retirement-task'`;

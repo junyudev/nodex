@@ -7,7 +7,11 @@ import {
   ToolSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { APP_TOOLS_CALL_TIMEOUT_MS } from "./manifest";
+import {
+  APP_TOOLS_CALL_TIMEOUT_MS,
+  APP_TOOLS_PIPE_REPLY_GRACE_MS,
+  appToolsHostCallTimeoutMs,
+} from "./manifest";
 import type { AppToolsHost } from "./server";
 
 export { APP_TOOLS_CALL_TIMEOUT_MS } from "./manifest";
@@ -137,7 +141,11 @@ export const listenAppToolsPipe = async (
       if (pending.has(message.id) || pending.size >= MAX_PENDING) return void socket.destroy();
       const controller = new AbortController();
       pending.set(message.id, controller);
-      const timer = setTimeout(() => controller.abort(), APP_TOOLS_CALL_TIMEOUT_MS);
+      const timeoutMs =
+        message.method === "tools/list"
+          ? APP_TOOLS_CALL_TIMEOUT_MS
+          : appToolsHostCallTimeoutMs(message.params.name, message.params.arguments);
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       const clearCallTimer = () => clearTimeout(timer);
       controller.signal.addEventListener("abort", clearCallTimer, { once: true });
       try {
@@ -299,7 +307,11 @@ export const connectAppToolsPipe = async (
         }
         reject(new Error("Application tool call cancelled"));
       };
-      const timer = setTimeout(cancel, APP_TOOLS_CALL_TIMEOUT_MS);
+      const timeoutMs =
+        input.method === "tools/list"
+          ? APP_TOOLS_CALL_TIMEOUT_MS
+          : appToolsHostCallTimeoutMs(input.params.name, input.params.arguments);
+      const timer = setTimeout(cancel, timeoutMs + APP_TOOLS_PIPE_REPLY_GRACE_MS);
       pending.set(id, {
         accept: (value) => {
           finish();

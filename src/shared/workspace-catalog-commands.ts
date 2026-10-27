@@ -110,6 +110,8 @@ export type ProjectSessionPinnedOrderCommandInput =
   OperationIdentifiedCommand<ProjectSessionPinnedOrderCommandPayload>;
 export type ProjectSessionArchiveCommandInput =
   OperationIdentifiedCommand<ProjectSessionIdentityPayload>;
+export type ProjectSessionOpenedCommandInput =
+  OperationIdentifiedCommand<ProjectSessionIdentityPayload>;
 export type ProjectSessionUnreadCommandInput =
   OperationIdentifiedCommand<ProjectSessionUnreadCommandPayload>;
 

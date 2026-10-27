@@ -245,6 +245,7 @@ pub(super) fn apply(
                     if matches!(
                         intent.as_ref(),
                         ProjectWorkspaceIntent::CreateAgentRuntimeSession { .. }
+                            | ProjectWorkspaceIntent::AdoptNativeSessionExecution { .. }
                             | ProjectWorkspaceIntent::AdmitSessionHandoff { .. }
                     ) =>
                 {
@@ -814,6 +815,16 @@ pub(super) fn apply(
                     runtime_id,
                     runtime_thread_id,
                     launch_request_id,
+                    "create_agent_runtime_session",
+                    None,
+                ),
+                ProjectWorkspaceIntent::AdoptNativeSessionExecution {
+                    session_id,project_id,expected_native_thread_id,expected_native_host_id,
+                    runtime_id,runtime_thread_id,launch_request_id,
+                } => super::agent_runtime_binding::adopt_native_session(
+                    transaction,&library_id,&context,&store_epoch,&request.operation_id,&request_hash,
+                    session_id,project_id.as_deref(),expected_native_thread_id,expected_native_host_id,
+                    runtime_id,runtime_thread_id,launch_request_id,
                 ),
                 ProjectWorkspaceIntent::CreateSessionInSidebarSection {
                     session_id,

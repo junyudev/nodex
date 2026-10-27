@@ -1,6 +1,16 @@
 import {
+  ImportChatAttachmentsInput,
+  importChatAttachments,
+} from "../assets/ImportChatAttachments.ts";
+import { ChatAttachment } from "@t3tools/contracts";
+import { runtimeHistoryContent } from "./RuntimeHistoryContent.ts";
+import * as OrchestratorMcp from "../mcp/OrchestratorMcpService.ts";
+import { EnvironmentId } from "@t3tools/contracts";
+import {
   CommandId,
   ChatAttachmentId,
+  OrchestrationMessageContext,
+  ProviderInteractionMode,
   ModelSelection,
   MessageId,
   OrchestrationV2Command,
@@ -9,6 +19,7 @@ import {
   OrchestrationV2ThreadShellSnapshot,
   OrchestrationV2ThreadStreamItem,
   OrchestrationV2TurnItem,
+  OrchestrationV2ProjectedTurnItem,
   ProjectId,
   ThreadId,
   TurnItemId,
@@ -26,6 +37,7 @@ import {
   OrchestrationV2ExecutionLocation,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -42,17 +54,24 @@ import * as NetAddress from "effect/net/NetAddress";
 import { HttpServer } from "effect/http";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import {
+  DispatchModeLimit,
+  DispatchModeLimitSchema,
+} from "../orchestration-v2/DispatchModeLimit.ts";
+import {
   ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION,
   ProjectionStoreV2,
 } from "../orchestration-v2/ProjectionStore.ts";
 import * as Projects from "../project/ProjectService.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
+import { readExecution, waitExecution, readExecutionItemIds } from "./ExecutionRead.ts";
 import { EffectOutboxV2 } from "../orchestration-v2/EffectOutbox.ts";
 import { HostBridge } from "./HostBridge.ts";
 import * as Authority from "./Authority.ts";
 import * as NativeInteraction from "./NativeInteraction.ts";
 import * as ExecutionLocation from "./ExecutionLocation.ts";
 import * as NativeImport from "./NativeImport.ts";
+import * as NativeMessageReceipts from "./NativeMessageReceipts.ts";
+import * as RuntimeMessageReceipts from "./RuntimeMessageReceipts.ts";
 import * as NativeRuntimePolicy from "../orchestration-v2/RuntimePolicy.ts";
 import { TextGeneration } from "../textGeneration/TextGeneration.ts";
 import { make as makeThreadAttachmentReader } from "./Attachment.ts";
@@ -62,7 +81,14 @@ import {
   EXECUTION_ACTIVITY_MAX_POINT_READS,
   readRootActivity,
 } from "../orchestration-v2/ExecutionActivity.ts";
+import {
+  SESSION_CATALOG_MAX_LIMIT,
+  readSessionCatalog,
+} from "../orchestration-v2/SessionCatalog.ts";
 import * as SqlClient from "effect/sql/SqlClient";
+import { readSessionDetails } from "../orchestration-v2/SessionReadDetails.ts";
+import { readSessionMetadata } from "../orchestration-v2/SessionMetadata.ts";
+import { readSessionSearch, resolveSessionSearch } from "../orchestration-v2/SessionSearch.ts";
 import * as Duration from "effect/Duration";
 import { rollbackThread } from "./Rollback.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
@@ -92,6 +118,7 @@ import type {
   AgentRuntimeConfiguration,
 } from "./Interface.ts";
 import { AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS } from "./TextGenerationLimits.ts";
+import { turnItemText } from "../orchestration-v2/turnItemContent.ts";
 
 const request = <Method extends string, Input extends Schema.Constraint>(
   method: Method,
@@ -116,6 +143,13 @@ const AgentRequest = Schema.Union([
   ...AcpManagement.Request.members,
   request("thread.import-native", NativeImport.NativeImportInput),
   request("native-imports.find", NativeImport.NativeImportsFindInput),
+  request("native-message.receipt", NativeMessageReceipts.NativeMessageLookup),
+  request("native-message.reserve", NativeMessageReceipts.NativeMessageReserve),
+  request("native-message.settle", NativeMessageReceipts.NativeMessageSettle),
+  request("thread.message-admit", RuntimeMessageReceipts.RuntimeMessageAdmission),
+  request("thread.message-replay", RuntimeMessageReceipts.RuntimeMessageIdentity),
+  request("thread.message-launch", RuntimeMessageReceipts.RuntimeMessageIdentity),
+  request("thread.message-stage", RuntimeMessageReceipts.RuntimeMessageLaunchStage),
   request("execution.handoff.pending", Schema.Struct({ cursor: Schema.optional(Schema.String) })),
   request(
     "execution.handoff.hold",
@@ -216,6 +250,24 @@ const AgentRequest = Schema.Union([
   request("storage.snapshot.release", Schema.Struct({ leaseId: Schema.String })),
   request("providers.configure", Schema.Struct({ providers: ProviderInstanceConfigMap })),
   request("attachments.persist", PersistChatAttachmentsInput),
+  request("attachments.import", ImportChatAttachmentsInput),
+  request(
+    "thread.send",
+    Schema.Struct({
+      threadId: ThreadId,
+      commandId: CommandId,
+      messageId: MessageId,
+      text: Schema.String,
+      attachments: Schema.Array(ChatAttachment),
+      context: Schema.optional(OrchestrationMessageContext),
+      interactionMode: Schema.optional(ProviderInteractionMode),
+      modelSelection: Schema.optional(ModelSelection),
+      mode: Schema.Literals(["auto", "queue", "steer", "restart"]),
+      senderThreadId: Schema.optional(ThreadId),
+      senderRunId: Schema.optional(Schema.NullOr(RunId)),
+      modeLimit: Schema.optional(DispatchModeLimitSchema),
+    }),
+  ),
   request("thread.read", Schema.Struct({ threadId: ThreadId })),
   request(
     "thread.control",
@@ -223,6 +275,23 @@ const AgentRequest = Schema.Union([
       threadId: ThreadId,
       runId: Schema.optional(RunId),
       requestId: Schema.optional(RuntimeRequestId),
+    }),
+  ),
+  request(
+    "thread.execution",
+    Schema.Struct({
+      threadId: ThreadId,
+      runId: Schema.optional(Schema.NullOr(RunId)),
+      messageId: Schema.optional(MessageId),
+    }),
+  ),
+  request(
+    "thread.execution.wait",
+    Schema.Struct({
+      threadId: ThreadId,
+      runId: Schema.NullOr(RunId),
+      afterRevision: Schema.String,
+      timeoutMs: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 30000 })),
     }),
   ),
   request(
@@ -262,7 +331,13 @@ const AgentRequest = Schema.Union([
       }),
     ]),
   ),
-  request("command.dispatch", OrchestrationV2Command),
+  request(
+    "command.dispatch",
+    Schema.Struct({
+      command: OrchestrationV2Command,
+      modeLimit: Schema.optional(DispatchModeLimitSchema),
+    }),
+  ),
   request("command.receipt", Schema.Struct({ commandId: CommandId, threadId: ThreadId })),
   request("thread.compact", Schema.Struct({ threadId: ThreadId, requestId: CommandId })),
   request(
@@ -310,6 +385,49 @@ const AgentRequest = Schema.Union([
   ),
   request("thread.prompt-index", Schema.Struct({ threadId: ThreadId })),
   request(
+    "thread.acknowledge-read",
+    Schema.Struct({
+      callerThreadId: ThreadId,
+      callerRunId: RunId,
+      threadId: ThreadId,
+      items: Schema.Array(
+        Schema.Struct({
+          itemId: TurnItemId,
+          sourceThreadId: ThreadId,
+          format: Schema.Literals(["text", "json"]),
+          contentVersion: Schema.String.check(Schema.isMinLength(43), Schema.isMaxLength(43)),
+          offset: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+          length: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+          totalChars: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+        }),
+      ).check(Schema.isMaxLength(100)),
+    }),
+  ),
+  request("thread.progress", Schema.Struct({ threadId: ThreadId, runId: Schema.optional(RunId) })),
+  request(
+    "thread.read-details",
+    Schema.Struct({
+      threadId: ThreadId,
+      runLimit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 50 })),
+      beforeOrdinal: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+    }),
+  ),
+  request(
+    "thread.timeline",
+    Schema.Struct({
+      threadId: ThreadId,
+      beforeItem: Schema.optional(
+        Schema.Struct({ sourceThreadId: ThreadId, sourceItemId: TurnItemId }),
+      ),
+      afterItem: Schema.optional(
+        Schema.Struct({ sourceThreadId: ThreadId, sourceItemId: TurnItemId }),
+      ),
+      order: Schema.optional(Schema.Literals(["oldest_first", "newest_first"])),
+      view: Schema.optional(Schema.Literals(["messages", "activity"])),
+      limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })),
+    }),
+  ),
+  request(
     "thread.item",
     Schema.Struct({
       threadId: ThreadId,
@@ -338,6 +456,20 @@ const AgentRequest = Schema.Union([
     }),
   ),
   request(
+    "thread.item.content",
+    Schema.Struct({
+      threadId: ThreadId,
+      itemId: TurnItemId,
+      runId: Schema.optional(Schema.NullOr(RunId)),
+      sourceThreadId: Schema.optional(ThreadId),
+      format: Schema.optional(Schema.Literals(["text", "json"])),
+      textOffset: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+      maxChars: Schema.optional(
+        Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 256 * 1024 })),
+      ),
+    }),
+  ),
+  request(
     "events.observe",
     Schema.Struct({
       threadId: Schema.optional(ThreadId),
@@ -350,6 +482,44 @@ const AgentRequest = Schema.Union([
     Schema.Struct({
       threadId: Schema.optional(ThreadId),
       afterSequence: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+    }),
+  ),
+  request(
+    "sessions.search",
+    Schema.Struct({
+      query: Schema.String.check(Schema.isMinLength(2), Schema.isMaxLength(200)),
+      threadIds: Schema.optional(Schema.Array(ThreadId).check(Schema.isMaxLength(100))),
+      cursor: Schema.optional(Schema.String),
+      limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
+    }),
+  ),
+  request(
+    "sessions.search-resolve",
+    Schema.Struct({
+      query: Schema.String.check(Schema.isMinLength(2), Schema.isMaxLength(200)),
+      references: Schema.Array(
+        Schema.Struct({
+          threadId: ThreadId,
+          itemId: TurnItemId,
+          messageId: MessageId,
+          contentVersion: Schema.String.check(Schema.isMinLength(43), Schema.isMaxLength(43)),
+        }),
+      ).check(Schema.isMaxLength(50)),
+    }),
+  ),
+  request(
+    "sessions.metadata",
+    Schema.Struct({ threadIds: Schema.Array(ThreadId).check(Schema.isMaxLength(100)) }),
+  ),
+  request(
+    "sessions.catalog",
+    Schema.Struct({
+      includeSubagents: Schema.optional(Schema.Boolean),
+      cursor: Schema.optional(Schema.String),
+      query: Schema.optional(Schema.String.check(Schema.isMaxLength(200))),
+      limit: Schema.optional(
+        Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: SESSION_CATALOG_MAX_LIMIT })),
+      ),
     }),
   ),
   request(
@@ -374,7 +544,14 @@ const decodeRequest = Schema.decodeUnknownEffect(Schema.toCodecJson(AgentRequest
 const encodeShell = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2ThreadShellSnapshot));
 const encodeProviders = Schema.encodeEffect(Schema.toCodecJson(Schema.Array(ServerProvider)));
 const encodeThreadShell = Schema.encodeEffect(
-  Schema.toCodecJson(Schema.NullOr(OrchestrationV2ThreadShell)),
+  Schema.toCodecJson(
+    Schema.NullOr(
+      OrchestrationV2ThreadShell.mapFields((fields) => ({
+        ...fields,
+        providerDriver: Schema.NullOr(Schema.String),
+      })),
+    ),
+  ),
 );
 const encodeSnapshotJson = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2ThreadStreamItem));
 const encodeSnapshot = (snapshot: OrchestrationV2ThreadStreamItem) =>
@@ -383,6 +560,38 @@ const encodeSnapshot = (snapshot: OrchestrationV2ThreadStreamItem) =>
   );
 const encodeHistory = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2ThreadHistoryPage));
 const encodeItem = Schema.encodeEffect(Schema.toCodecJson(Schema.NullOr(OrchestrationV2TurnItem)));
+const encodeTimeline = Schema.encodeEffect(
+  Schema.toCodecJson(
+    Schema.Struct({
+      items: Schema.Array(
+        OrchestrationV2ProjectedTurnItem.mapFields((fields) => ({
+          ...fields,
+          metadata: Schema.optional(
+            Schema.Struct({
+              messageId: Schema.NullOr(Schema.String),
+              createdBy: Schema.NullOr(Schema.Literals(["user", "agent", "system"])),
+              creationSource: Schema.NullOr(Schema.String),
+              senderThreadId: Schema.NullOr(Schema.String),
+              title: Schema.NullOr(Schema.String),
+            }),
+          ),
+          item: Schema.Struct({
+            id: TurnItemId,
+            runId: Schema.NullOr(RunId),
+            type: Schema.Literals(
+              OrchestrationV2TurnItem.members.map((member) => member.fields.type.literal),
+            ),
+            status: OrchestrationV2TurnItem.members[0].fields.status,
+            updatedAt: OrchestrationV2TurnItem.members[0].fields.updatedAt,
+          }),
+        })),
+      ),
+      totalItems: Schema.Int,
+      hasMore: Schema.Boolean,
+      anchorFound: Schema.Boolean,
+    }),
+  ),
+);
 const encodeQueuedMessage = Schema.encodeEffect(
   Schema.toCodecJson(Schema.NullOr(OrchestrationV2ConversationMessage)),
 );
@@ -476,6 +685,15 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   );
   const acp = yield* AcpManagement.make(storageSnapshot.withWriter, identity.runtimeGeneration);
   const providerPolicy = yield* ProviderConfiguration.ProviderPolicy;
+  const sessionMetadataOptions = {
+    shell: (threadId: string) => projections.getThreadShell(ThreadId.make(threadId)),
+    providerDriver: (instanceId: string) =>
+      Effect.gen(function* () {
+        const id = ProviderInstanceId.make(instanceId);
+        const instance = yield* instances.getInstance(id);
+        return instance?.driverKind ?? (yield* providerPolicy.current)[id]?.driver ?? null;
+      }),
+  };
   const textGeneration = yield* TextGeneration;
   const nativeInteraction = yield* NativeInteraction.make(identity.runtimeGeneration, notify).pipe(
     Effect.provide(NativeRuntimePolicy.layerFromProjectStore),
@@ -483,6 +701,9 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const executionLocation = yield* ExecutionLocation.make;
   const importNative = yield* NativeImport.make;
   const findNativeImports = yield* NativeImport.makeFind;
+  const nativeMessageReceipts = yield* NativeMessageReceipts.make;
+  const runtimeMessageReceipts = yield* RuntimeMessageReceipts.make;
+  const taskReads = yield* OrchestratorMcp.make;
   const readAuthority = yield* Authority.make;
   const readNativeSessionAuthority = yield* Authority.makeNativeSession;
   const configuration = yield* Configuration.ServerConfig;
@@ -504,6 +725,20 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     input: typeof AgentRequest.Type,
   ) {
     switch (input.method) {
+      case "thread.message-admit":
+        return yield* runtimeMessageReceipts.admit(input.input);
+      case "thread.message-replay":
+        return yield* runtimeMessageReceipts.replay(input.input);
+      case "thread.message-launch":
+        return yield* runtimeMessageReceipts.launch(input.input);
+      case "thread.message-stage":
+        return yield* runtimeMessageReceipts
+          .stage(input.input)
+          .pipe(
+            Effect.provideService(Configuration.ServerConfig, configuration),
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
+          );
       case "acp.activity":
       case "acp.registry.search":
       case "acp.install.preview":
@@ -532,6 +767,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* importNative(input.input);
       case "native-imports.find":
         return yield* findNativeImports(input.input);
+      case "native-message.receipt":
+        return yield* nativeMessageReceipts.lookup(input.input);
+      case "native-message.reserve":
+        return yield* nativeMessageReceipts.reserve(input.input);
+      case "native-message.settle":
+        return yield* nativeMessageReceipts.settle(input.input);
       case "execution.handoff.pending":
         return yield* projections.getExecutionHandoffs(input.input.cursor);
       case "execution.handoff.hold":
@@ -626,6 +867,55 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* storageSnapshot.release(input.input.leaseId);
       case "providers.configure":
         return yield* providerConfiguration.configure(input.input.providers);
+      case "thread.send": {
+        const shell = yield* orchestrator.getThreadShell(input.input.threadId);
+        if (!shell) return yield* Effect.fail(new Error("Target execution is unavailable"));
+        const request = input.input;
+        const result = yield* threads
+          .sendToThread({
+            projectId: shell.projectId,
+            commandId: request.commandId,
+            threadId: request.threadId,
+            messageId: request.messageId,
+            text: request.text,
+            attachments: request.attachments,
+            mode: request.mode,
+            ...(request.context === undefined ? {} : { context: request.context }),
+            ...(request.interactionMode === undefined
+              ? {}
+              : { interactionMode: request.interactionMode }),
+            ...(request.modelSelection === undefined
+              ? {}
+              : { modelSelection: request.modelSelection }),
+            ...(request.senderThreadId === undefined
+              ? {}
+              : { senderThreadId: request.senderThreadId }),
+            ...(request.senderRunId === undefined ? {} : { senderRunId: request.senderRunId }),
+            createdBy: "agent",
+            creationSource: "mcp",
+          })
+          .pipe(Effect.provideService(DispatchModeLimit, request.modeLimit));
+        return {
+          messageId: result.message.id,
+          runId: result.run.id,
+          status: result.run.status,
+          delivery: result.delivery,
+          ...(result.run.delegatedTaskId === undefined
+            ? {}
+            : { taskId: result.run.delegatedTaskId }),
+        };
+      }
+      case "attachments.import": {
+        const shell = yield* orchestrator.getThreadShell(input.input.threadId);
+        if (!shell)
+          return yield* Effect.fail(new Error("Attachment target execution is unavailable"));
+        const attachments = yield* importChatAttachments(input.input).pipe(
+          Effect.provideService(Configuration.ServerConfig, configuration),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+        );
+        return yield* encodeAttachments({ attachments });
+      }
       case "attachments.persist": {
         const shell = yield* orchestrator.getThreadShell(input.input.threadId);
         if (shell === null)
@@ -674,10 +964,19 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           return yield* Effect.fail(new Error("Structured generation is unavailable"));
         return yield* textGeneration.generateStructured(input.input);
       }
-      case "thread.read":
-        return yield* orchestrator
-          .getThreadShell(input.input.threadId)
-          .pipe(Effect.flatMap(encodeThreadShell));
+      case "thread.read": {
+        const thread = yield* orchestrator.getThreadShell(input.input.threadId);
+        if (thread === null) return null;
+        const instance = yield* instances.getInstance(
+          ProviderInstanceId.make(thread.providerInstanceId),
+        );
+        const configured = yield* providerPolicy.current;
+        return yield* encodeThreadShell({
+          ...thread,
+          providerDriver:
+            instance?.driverKind ?? configured[thread.providerInstanceId]?.driver ?? null,
+        });
+      }
       case "providers.read": {
         const named = input.input.instanceIds;
         return yield* (
@@ -720,7 +1019,9 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "shutdown":
         return { stopped: true };
       case "command.dispatch": {
-        const result = yield* threads.dispatch(input.input);
+        const result = yield* threads
+          .dispatch(input.input.command)
+          .pipe(Effect.provideService(DispatchModeLimit, input.input.modeLimit));
         return { sequence: result.sequence };
       }
       case "command.receipt": {
@@ -805,6 +1106,125 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           .pipe(Effect.flatMap(encodeHistory));
       case "thread.prompt-index":
         return yield* projections.getThreadPromptIndex(input.input.threadId);
+      case "thread.read-details":
+        return yield* readSessionDetails(
+          input.input.threadId,
+          input.input.runLimit,
+          input.input.beforeOrdinal,
+        ).pipe(Effect.provideService(SqlClient.SqlClient, sql));
+      case "thread.timeline":
+        return yield* projections
+          .getTimelineMetadataPage(input.input.threadId, {
+            limit: input.input.limit,
+            ...(input.input.beforeItem === undefined ? {} : { beforeItem: input.input.beforeItem }),
+            ...(input.input.afterItem === undefined ? {} : { afterItem: input.input.afterItem }),
+            ...(input.input.order === undefined ? {} : { order: input.input.order }),
+            ...(input.input.view === undefined ? {} : { view: input.input.view }),
+          })
+          .pipe(Effect.flatMap(encodeTimeline));
+      case "thread.execution":
+        return yield* readExecution(input.input).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
+      case "thread.execution.wait":
+        return yield* waitExecution(input.input).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+          Effect.provideService(Orchestrator.OrchestratorV2, orchestrator),
+          Effect.provideService(EffectOutboxV2, effectOutbox),
+        );
+      case "thread.progress": {
+        const scoped =
+          input.input.runId === undefined
+            ? undefined
+            : yield* readExecutionItemIds(input.input.threadId, input.input.runId).pipe(
+                Effect.provideService(SqlClient.SqlClient, sql),
+              );
+        const selectedReply = scoped?.replyId
+          ? yield* projections.getVisibleTurnItem({
+              threadId: input.input.threadId,
+              itemId: TurnItemId.make(scoped.replyId),
+            })
+          : null;
+        const replies = scoped
+          ? {
+              items: selectedReply
+                ? [
+                    {
+                      sourceItemId: selectedReply.id,
+                      sourceThreadId: input.input.threadId,
+                      item: selectedReply,
+                    },
+                  ]
+                : [],
+            }
+          : yield* projections.getTimelinePage(input.input.threadId, {
+              itemTypes: ["assistant_message"],
+              view: "activity",
+              order: "newest_first",
+              limit: 1,
+            });
+        const activities = scoped
+          ? {
+              items: scoped.activity
+                ? [
+                    {
+                      sourceItemId: scoped.activity.turn_item_id,
+                      sourceThreadId: input.input.threadId,
+                      item: {
+                        runId: input.input.runId!,
+                        type: scoped.activity.type,
+                        status: scoped.activity.status,
+                        updatedAt: DateTime.makeUnsafe(scoped.activity.updated_at),
+                      },
+                    },
+                  ]
+                : [],
+            }
+          : yield* projections.getTimelineMetadataPage(input.input.threadId, {
+              itemTypes: OrchestrationV2TurnItem.members
+                .map((member) => member.fields.type.literal)
+                .filter(
+                  (type) => !["user_message", "assistant_message", "reasoning"].includes(type),
+                ),
+              view: "activity",
+              order: "newest_first",
+              limit: 1,
+            });
+        const reply = replies.items[0];
+        const activity = activities.items[0];
+        const text = reply === undefined ? "" : (turnItemText(reply.item) ?? "");
+        const end = Math.min(text.length, 1024);
+        return {
+          latestReply:
+            reply === undefined
+              ? null
+              : {
+                  itemId: reply.sourceItemId,
+                  sourceThreadId: reply.sourceThreadId,
+                  runId: reply.item.runId,
+                  type: reply.item.type,
+                  status: reply.item.status,
+                  updatedAt: DateTime.formatIso(reply.item.updatedAt),
+                  contentVersion: createHash("sha256").update(text).digest("base64url"),
+                  format: "text" as const,
+                  text: text.slice(0, end),
+                  textOffset: 0,
+                  totalChars: text.length,
+                  nextTextOffset: end < text.length ? end : null,
+                },
+          latestActivity:
+            activity === undefined
+              ? null
+              : {
+                  itemId: activity.sourceItemId,
+                  sourceThreadId: activity.sourceThreadId,
+                  runId: activity.item.runId,
+                  type: activity.item.type,
+                  status: activity.item.status,
+                  updatedAt: DateTime.formatIso(activity.item.updatedAt),
+                },
+        };
+      }
       case "thread.item":
         return yield* projections
           .getVisibleTurnItem({
@@ -843,6 +1263,67 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           );
         return item;
       }
+      case "thread.acknowledge-read": {
+        const actor = yield* readAuthority({
+          threadId: input.input.callerThreadId,
+          runId: input.input.callerRunId,
+        });
+        if (!actor) return { acknowledged: 0 };
+        return yield* taskReads.acknowledgeRead(
+          {
+            environmentId: EnvironmentId.make(identity.runtimeId),
+            capabilities: new Set(["orchestration"]),
+            issuedAt: actor.admittedAtMs,
+            requestNamespace: `session-read:${actor.threadId}:${actor.runId}`,
+            thread: {
+              threadId: input.input.callerThreadId,
+              providerSessionId: actor.providerSessionId,
+              providerInstanceId: ProviderInstanceId.make(actor.providerInstanceId),
+            },
+            client: undefined,
+          },
+          {
+            threadId: input.input.threadId,
+            callerRunId: input.input.callerRunId,
+            items: input.input.items,
+          },
+        );
+      }
+      case "thread.item.content": {
+        const record = yield* projections.getVisibleTurnItemRecord({
+          threadId: input.input.threadId,
+          itemId: input.input.itemId,
+          ...(input.input.sourceThreadId === undefined
+            ? {}
+            : { sourceThreadId: input.input.sourceThreadId }),
+        });
+        if (
+          record === null ||
+          (input.input.runId !== undefined && record.item.runId !== input.input.runId)
+        )
+          return null;
+        return yield* runtimeHistoryContent(record, {
+          format: input.input.format ?? "text",
+          offset: input.input.textOffset ?? 0,
+          maxChars: input.input.maxChars ?? 16_384,
+        });
+      }
+      case "sessions.search":
+        return yield* readSessionSearch(input.input).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
+      case "sessions.search-resolve":
+        return yield* resolveSessionSearch(input.input).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
+      case "sessions.metadata":
+        return yield* readSessionMetadata(input.input.threadIds, sessionMetadataOptions).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
+      case "sessions.catalog":
+        return yield* readSessionCatalog(input.input, sessionMetadataOptions).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
       case "execution.activity":
         return yield* readRootActivity(input.input).pipe(
           Effect.provideService(SqlClient.SqlClient, sql),
@@ -969,6 +1450,9 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "project.roots":
       case "thread.queue":
       case "thread.run-message":
+      case "thread.message-replay":
+      case "thread.message-launch":
+      case "native-message.receipt":
       case "thread.queued-preview":
       case "shell.read":
       case "thread.snapshot":
@@ -976,13 +1460,23 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "thread.fork-source":
       case "run.outcome":
       case "thread.history":
+      case "thread.timeline":
+      case "thread.progress":
+      case "thread.execution":
+      case "thread.execution.wait":
+      case "thread.read-details":
       case "thread.prompt-index":
       case "thread.item":
       case "thread.item.full":
+      case "thread.item.content":
       case "thread.attachment":
       case "events.observe":
       case "execution.observe":
       case "execution.activity":
+      case "sessions.catalog":
+      case "sessions.metadata":
+      case "sessions.search":
+      case "sessions.search-resolve":
       case "events.unobserve":
       case "runtime.identity":
       case "shutdown":

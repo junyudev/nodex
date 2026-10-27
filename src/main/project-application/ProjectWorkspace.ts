@@ -50,6 +50,7 @@ import type {
   ProjectSessionRenameCommandInput,
   ProjectSessionReorderCommandInput,
   ProjectSessionUnreadCommandInput,
+  ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
   BuiltinSidebarReorderCommandInput,
   BuiltinSidebarProjectPriorityCommandInput,
@@ -301,6 +302,9 @@ export interface ProjectWorkspaceService {
   readonly unarchiveProjectSession: (
     command: ProjectSessionArchiveCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
+  readonly recordProjectSessionOpened: (
+    command: ProjectSessionOpenedCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly markProjectSessionUnread: (
     command: ProjectSessionUnreadCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
@@ -1408,6 +1412,19 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       },
     );
 
+    const recordProjectSessionOpened = Effect.fn("ProjectWorkspace.recordProjectSessionOpened")(
+      function* (command: ProjectSessionOpenedCommandInput) {
+        const { sessionId } = command.payload;
+        yield* requireSession(sessionId);
+        const applied = yield* applyWithId("session.opened.record", command.operationId, {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "record_opened" },
+        });
+        return { value: undefined, apply: applied };
+      },
+    );
+
     const markProjectSessionUnread = Effect.fn("ProjectWorkspace.markProjectSessionUnread")(
       function* (command: ProjectSessionUnreadCommandInput) {
         const { sessionId, unread } = command.payload;
@@ -1543,6 +1560,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       setPinnedProjectSessionOrder,
       archiveProjectSession: (command) => setProjectSessionArchived(command, true),
       unarchiveProjectSession: (command) => setProjectSessionArchived(command, false),
+      recordProjectSessionOpened,
       markProjectSessionUnread,
       upsertProjectSessionThreadLink: Effect.fn("ProjectWorkspace.upsertProjectSessionThreadLink")(
         function* (input) {

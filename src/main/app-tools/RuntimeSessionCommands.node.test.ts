@@ -1,5 +1,16 @@
+import { CodexNativeThreadLookup } from "../codex-application/CodexNativeThreadLookup";
+import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
+import { CodexMainConversationResume } from "../codex-application/CodexMainConversationResume";
+import { CodexAttachments } from "../codex-application/CodexAttachments";
+import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
+import { CodexDelegatedMessages } from "../codex-application/CodexDelegatedMessages";
+import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { FileExportRuntime } from "../library-application/FileExportRuntime";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
@@ -10,6 +21,51 @@ import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { createHostedAppToolCaller } from "./AppToolCaller";
 import { make } from "./RuntimeSessionCommands";
+const intakeServices = Layer.mergeAll(
+  Layer.succeed(ProjectWorkspace, {
+    getProjectSession: () =>
+      Effect.succeed({
+        id: "native-product",
+        archived: false,
+        thread: {
+          threadId: "native-root",
+          backendBinding: { kind: "codex" },
+          executionHostId: "local",
+        },
+      }),
+  } as never),
+  Layer.succeed(CodexThreadDirectory, {
+    resolve: () =>
+      Effect.succeed({
+        canonical: {
+          hostId: "local",
+          currentPermissions: {
+            sandboxPolicy: { type: "dangerFullAccess" },
+            approvalPolicy: "never",
+            approvalsReviewer: "user",
+          },
+          latestModel: "codex-default",
+          latestCollaborationMode: { mode: "plan" },
+          latestThreadSettings: {
+            model: "codex-default",
+            collaborationMode: { mode: "plan" },
+            approvalPolicy: "never",
+            sandboxPolicy: { type: "dangerFullAccess" },
+          },
+        },
+      }),
+  } as never),
+  Layer.succeed(CodexMainConversationResume, {
+    resume: () => Effect.succeed({ status: "ready" }),
+  } as never),
+  Layer.succeed(CodexDelegatedMessages, {} as never),
+  Layer.succeed(CodexAttachments, {} as never),
+  Layer.succeed(ExecutionHostRuntime, {} as never),
+  Layer.succeed(CodexGateway, { localHostId: "local" } as never),
+  Layer.succeed(FileExportRuntime, {} as never),
+  Layer.succeed(CodexNativeThreadLookup, {} as never),
+  Layer.succeed(TemporaryAssets, {} as never),
+);
 const authority: NodexAgentTurnContext = {
   threadId: "child",
   turnId: "run",
@@ -47,10 +103,31 @@ const fixture = () => {
     },
   });
   const execute = make.pipe(
+    Effect.provide(intakeServices),
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
-    Effect.provideService(CoreModules, {} as never),
+    Effect.provideService(CoreModules, {
+      workspace: {
+        read: (request: { session_id: string }) =>
+          Effect.succeed({
+            value: {
+              kind: "agent_session",
+              session: {
+                id: request.session_id,
+                archived: false,
+                execution_ref: {
+                  runtime_id: "runtime",
+                  thread_id: request.session_id === "session:root" ? "root" : "target",
+                },
+              },
+            },
+          }),
+      },
+    } as never),
     Effect.provideService(CodexTurnAuthority, {} as never),
     Effect.provideService(AgentRuntimeApplication, {
+      nativeMessageReceipt: () => Effect.succeed(null),
+      replayMessage: () => Effect.succeed(null),
+      resumeMessageLaunch: () => Effect.succeed(null),
       inspect: method("inspect", {
         sessionId: "session:root",
         projectId: "project",
@@ -58,10 +135,23 @@ const fixture = () => {
         thread: {
           modelSelection: { instanceId: "claude_instance", model: "sonnet" },
           interactionMode: "plan",
+          runtimeMode: "full-access",
         },
       }),
       launch: method("launch", { sessionId: "new", projectId: "project", threadId: "new-root" }),
-      message: method("message", { sequence: 1 }),
+      sendMessage: method("sendMessage", {
+        sessionId: "other",
+        threadId: "target",
+        messageId: "message:delivered",
+        runId: "run:accepted",
+        status: "queued",
+        delivery: "queued",
+      }),
+      execution: method("execution", {
+        selectedRunId: "run:accepted",
+        runId: "run:accepted",
+        status: "queued",
+      }),
       mergeBack: method("merge", { sessionId: "source", projectId: "project", threadId: "root" }),
       fork: method("fork", {
         sourceSessionId: "session:root",
@@ -133,15 +223,15 @@ it.effect(
         name: "send_message_to_session",
         arguments: { sessionId: "other", prompt: "Continue" },
       });
-      assert.equal(f.calls.filter((call) => call.name === "message").length, 1);
-      assert.isNotNull(f.calls.find((call) => call.name === "message")!.agent);
+      assert.equal(f.calls.filter((call) => call.name === "sendMessage").length, 1);
+      assert.isNotNull(f.calls.find((call) => call.name === "sendMessage")!.agent);
       // A model override travels with its message and keeps the Session's own Agent.
       yield* execute({
         caller: f.caller,
         name: "send_message_to_session",
         arguments: { sessionId: "other", prompt: "Review", model: "opus" },
       });
-      const messages = f.calls.filter((call) => call.name === "message");
+      const messages = f.calls.filter((call) => call.name === "sendMessage");
       assert.deepEqual(
         (messages[0]!.input as { message: { modelSelection?: unknown } }).message.modelSelection,
         undefined,
@@ -163,7 +253,7 @@ it.effect(
       });
       assert.deepEqual(
         (
-          f.calls.filter((call) => call.name === "message")[2]!.input as {
+          f.calls.filter((call) => call.name === "sendMessage")[2]!.input as {
             message: { modelSelection?: unknown };
           }
         ).message.modelSelection,
@@ -234,6 +324,7 @@ it.effect(
       const f = fixture();
       let active = true;
       let attached = true;
+      let restricted = false;
       const original = {
         ...authority,
         threadId: "native-root",
@@ -250,6 +341,32 @@ it.effect(
         isActive: () => active,
       };
       const execute = yield* make.pipe(
+        Effect.provideService(CodexThreadDirectory, {
+          resolve: () =>
+            Effect.succeed({
+              canonical: {
+                hostId: "local",
+                currentPermissions: {
+                  sandboxPolicy: restricted
+                    ? { type: "readOnly", networkAccess: false }
+                    : { type: "dangerFullAccess" },
+                  approvalPolicy: "on-request",
+                  approvalsReviewer: "user",
+                },
+                latestModel: "codex-default",
+                latestCollaborationMode: { mode: "plan" },
+                latestThreadSettings: {
+                  model: "codex-default",
+                  collaborationMode: { mode: "plan" },
+                  approvalPolicy: "on-request",
+                  sandboxPolicy: restricted
+                    ? { type: "readOnly", networkAccess: false }
+                    : { type: "dangerFullAccess" },
+                },
+              },
+            }),
+        } as never),
+        Effect.provide(intakeServices),
         Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
         Effect.provideService(CodexTurnAuthority, {
           capture: (threadId: string, turnId: string) =>
@@ -264,6 +381,14 @@ it.effect(
             read: (input: Parameters<CoreModules["Service"]["workspace"]["read"]>[0]) =>
               attached
                 ? Effect.sync(() => {
+                    if (input.kind === "agent_session")
+                      return {
+                        value: {
+                          kind: "agent_session",
+                          session: { id: "native-product", archived: false },
+                          thread: { thread_id: "native-root" },
+                        },
+                      } as never;
                     assert.deepEqual(input, {
                       kind: "codex_thread_session",
                       thread_id: "native-root",
@@ -308,6 +433,7 @@ it.effect(
           },
         } as unknown as CoreModules["Service"]),
         Effect.provideService(AgentRuntimeApplication, {
+          execution: () => Effect.succeed({ selectedRunId: "run:launched" }),
           catalog: () =>
             Effect.succeed([
               {
@@ -351,10 +477,79 @@ it.effect(
         "native-turn-a",
       );
       assert.equal((f.calls[0]?.input as { projectId: string }).projectId, "other-project");
+      assert.equal((f.calls[0]?.input as { interactionMode: string }).interactionMode, "plan");
+      assert.equal(
+        (f.calls[0]?.input as { interactionModeCeiling: string }).interactionModeCeiling,
+        "plan",
+      );
+      restricted = true;
+      const denied = yield* execute(invocation);
+      assert.equal(
+        denied.structuredContent?.error &&
+          (denied.structuredContent.error as { code: string }).code,
+        "runtime_mode_escalation_denied",
+      );
+      assert.equal(
+        f.calls.length,
+        2,
+        "A newly restricted Native caller cannot launch full-access work",
+      );
       attached = false;
       assert.isTrue((yield* execute(invocation)).isError);
       active = false;
       assert.isTrue((yield* execute(invocation)).isError);
       assert.equal(f.calls.length, 2);
+    }),
+);
+
+it.effect(
+  "routes explicit delivery modes and returns the owning Run identity for exact waits",
+  () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const execute = yield* f.execute;
+      for (const mode of ["auto", "queue", "steer", "restart"] as const) {
+        const invocation = {
+          caller: f.caller,
+          name: "send_message_to_session",
+          arguments: { sessionId: "other", prompt: "Continue", mode },
+        };
+        const result = yield* execute(invocation);
+        assert.equal(result.structuredContent?.runId, "run:accepted");
+        assert.equal(result.structuredContent?.resolvedRunId, "run:accepted");
+        assert.equal(result.structuredContent?.status, "queued");
+        assert.equal(typeof result.structuredContent?.messageId, "string");
+        const sent = f.calls.filter((call) => call.name === "sendMessage").at(-1)!;
+        assert.equal((sent.input as { mode: string }).mode, mode);
+        assert.equal(result.structuredContent?.deliveryState, "queued");
+        assert.equal((sent.input as { senderThreadId: string }).senderThreadId, "child");
+        assert.equal((sent.input as { senderRunId: string }).senderRunId, "run");
+        const replay = yield* execute(invocation);
+        assert.deepEqual(replay.structuredContent, result.structuredContent);
+      }
+    }),
+);
+
+it.effect(
+  "self-send can select the caller's child execution without creating a product Session",
+  () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const execute = yield* f.execute;
+      const result = yield* execute({
+        caller: f.caller,
+        name: "send_message_to_session",
+        arguments: {
+          sessionId: "session:root",
+          execution: { threadId: "child" },
+          prompt: "Continue here",
+          mode: "queue",
+        },
+      });
+      assert.isFalse(result.isError ?? false);
+      const sent = f.calls.find((call) => call.name === "sendMessage")!;
+      assert.equal((sent.input as { sessionId: string }).sessionId, "session:root");
+      assert.equal((sent.input as { threadId: string }).threadId, "child");
+      assert.isFalse(f.calls.some((call) => call.name === "launch"));
     }),
 );

@@ -35,6 +35,8 @@ pub(super) fn create_session(
     runtime_id: &str,
     runtime_thread_id: &str,
     launch_request_id: &str,
+    operation_kind: &'static str,
+    detached_native_thread_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     // Agent adapters reach this function only after AgentCommand has verified Turn provenance.
     if !matches!(context.adapter, AdapterKind::Agent) {
@@ -76,7 +78,7 @@ pub(super) fn create_session(
             store_epoch,
             operation_id,
             request_hash,
-            "create_agent_runtime_session",
+            operation_kind,
             project_id.into_iter().map(str::to_owned).collect(),
             vec![session_id.to_owned()],
             &sqlite_now(connection)?,
@@ -168,13 +170,83 @@ pub(super) fn create_session(
         store_epoch,
         operation_id,
         request_hash,
-        "create_agent_runtime_session",
+        operation_kind,
         project_id.into_iter().map(str::to_owned).collect(),
         vec![session_id.to_owned()],
-        Vec::new(),
+        detached_native_thread_id
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
         vec![project_session_scope(project_id)],
         project_id,
         now,
+    )
+}
+
+/// A failed import never reaches this atomic ownership transition.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn adopt_native_session(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    session_id: &str,
+    project_id: Option<&str>,
+    expected_native_thread_id: &str,
+    expected_native_host_id: &str,
+    runtime_id: &str,
+    runtime_thread_id: &str,
+    launch_request_id: &str,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    if !matches!(context.adapter, AdapterKind::Agent) {
+        require_host(context)?;
+    }
+    let authority = require_session(connection, library_id, session_id)?;
+    if authority.archived
+        || authority.project_id.as_deref() != project_id
+        || authority.thread_id.as_deref() != Some(expected_native_thread_id)
+        || is_runtime_bound(connection, session_id)?
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Native Session binding changed before adoption",
+            false,
+        ));
+    }
+    let title: Option<String> = connection.query_row(
+        "SELECT COALESCE(thread.thread_name,session.no_thread_fallback_title) FROM codex_threads thread JOIN project_sessions session ON session.id=?1 WHERE thread.thread_id=?2 AND thread.execution_host_id=?3 AND thread.parent_thread_id IS NULL AND thread.archived=0 AND thread.status_type<>'active' AND thread.agent_backend_kind='codex'",
+        params![session_id,expected_native_thread_id,expected_native_host_id], |row| row.get(0),
+    ).optional()?;
+    let title = title.ok_or_else(|| {
+        StoreError::new(
+            StoreErrorCode::Conflict,
+            "Native execution no longer matches its Session",
+            false,
+        )
+    })?;
+    connection.execute(
+        "DELETE FROM project_session_threads WHERE session_id=?1 AND thread_id=?2",
+        params![session_id, expected_native_thread_id],
+    )?;
+    super::sidebar_pins::clear_thread_projection(connection, expected_native_thread_id)?;
+    create_session(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        session_id,
+        project_id,
+        &title,
+        &[],
+        runtime_id,
+        runtime_thread_id,
+        launch_request_id,
+        "adopt_native_session_execution",
+        Some(expected_native_thread_id),
     )
 }
 
@@ -937,5 +1009,148 @@ mod tests {
             panic!("window")
         };
         assert_eq!(rootless.items[0].session_id, "a");
+    }
+
+    #[test]
+    fn native_adoption_keeps_session_placement_links_and_rejects_changed_sources() {
+        use super::super::test_support::create_session_thread;
+        use nodex_core_contracts::collection::CollectionWindowRequest;
+        use nodex_core_contracts::workspace::{ProjectSessionIntent, ProjectWorkspaceThreadPatch};
+        let workspace = seeded_workspace();
+        create_session_thread(
+            &workspace.module,
+            "native",
+            "session:native",
+            "thread:native",
+            Some("project:default"),
+            1,
+        );
+        create_library_page(&workspace, "page:linked", "project:default");
+        for intent in [
+            ProjectSessionIntent::SetPinned { pinned: true },
+            ProjectSessionIntent::LinkPage {
+                page_id: "page:linked".into(),
+            },
+        ] {
+            apply(
+                &workspace.module,
+                &format!("prepare:{intent:?}"),
+                ProjectWorkspaceIntent::MutateSession {
+                    session_id: "session:native".into(),
+                    intent,
+                },
+            );
+        }
+        let adopt = |host: &str| ProjectWorkspaceIntent::AdoptNativeSessionExecution {
+            session_id: "session:native".into(),
+            project_id: Some("project:default".into()),
+            expected_native_thread_id: "thread:native".into(),
+            expected_native_host_id: host.into(),
+            runtime_id: "engine".into(),
+            runtime_thread_id: "runtime:adopted".into(),
+            launch_request_id: "adopt:one".into(),
+        };
+        let refused = workspace
+            .module
+            .apply(&context(), request("wrong-host", adopt("remote")))
+            .unwrap_err();
+        assert_eq!(refused.code, CoreErrorCode::Conflict);
+        workspace.kernel.writer().call(|connection| {
+            connection.execute_batch("CREATE TRIGGER fail_adoption BEFORE INSERT ON project_session_execution_bindings BEGIN SELECT RAISE(ABORT,'injected'); END;")?; Ok(())
+        }).unwrap();
+        assert!(
+            workspace
+                .module
+                .apply(&context(), request("adopt-failed", adopt("local")))
+                .is_err()
+        );
+        let ProjectWorkspaceReadValue::Session { session: retained } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::Session {
+                session_id: "session:native".into(),
+            },
+        ) else {
+            panic!("Session")
+        };
+        assert_eq!(
+            retained.thread_id.as_deref(),
+            Some("thread:native"),
+            "Failed binding insertion rolls back the Native relation removal"
+        );
+        assert!(retained.execution_ref.is_none());
+        workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                connection.execute_batch("DROP TRIGGER fail_adoption")?;
+                Ok(())
+            })
+            .unwrap();
+        let first = workspace
+            .module
+            .apply(&context(), request("adopt", adopt("local")))
+            .unwrap();
+        let repeated = workspace
+            .module
+            .apply(&context(), request("adopt", adopt("local")))
+            .unwrap();
+        assert_eq!(first.committed.commit_seq, repeated.committed.commit_seq);
+        apply(
+            &workspace.module,
+            "native-background-update",
+            ProjectWorkspaceIntent::UpsertThread {
+                thread_id: "thread:native".into(),
+                patch: Box::new(ProjectWorkspaceThreadPatch {
+                    thread_preview: Some("Background source".into()),
+                    ..Default::default()
+                }),
+            },
+        );
+        let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::SessionWindow {
+                order: None,
+                archived: false,
+                projectless_only: None,
+                project_id: None,
+                query: None,
+                native_only: None,
+                execution_refs: None,
+                session_ids: None,
+                window: CollectionWindowRequest {
+                    after: None,
+                    first: Some(100),
+                },
+            },
+        ) else {
+            panic!("Session window")
+        };
+        assert_eq!(sessions.items.len(), 1);
+        let session = &sessions.items[0].task.session;
+        assert_eq!(session.id, "session:native");
+        assert!(session.pinned);
+        assert_eq!(
+            session.execution_ref.as_ref().unwrap().thread_id,
+            "runtime:adopted"
+        );
+        assert!(sessions.items[0].task.thread.is_none());
+        let ProjectWorkspaceReadValue::PageChatWindow { chats } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::PageChatWindow {
+                page_id: "page:linked".into(),
+                include_archived: None,
+                window: CollectionWindowRequest {
+                    after: None,
+                    first: Some(10),
+                },
+            },
+        ) else {
+            panic!("Page chats")
+        };
+        assert_eq!(chats.items[0].session_id, "session:native");
+        assert_eq!(
+            chats.items[0].execution_ref.as_ref().unwrap().thread_id,
+            "runtime:adopted"
+        );
     }
 }

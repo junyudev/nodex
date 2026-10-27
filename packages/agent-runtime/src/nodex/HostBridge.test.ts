@@ -19,7 +19,7 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import { make } from "./HostBridge.ts";
-import type { AgentHostRequest } from "./Interface.ts";
+import type { AgentHostRequest, AgentRuntimeNotification } from "./Interface.ts";
 
 const turn: ExecutionHost.HostTurnIdentity = {
   projectId: ProjectId.make("project:test"),
@@ -33,6 +33,40 @@ const turn: ExecutionHost.HostTurnIdentity = {
   nativeThreadRef: null,
   cwd: "/workspace",
 };
+
+it.live("interrupting a host call withdraws its exact request in the same Runtime generation", () =>
+  Effect.gen(function* () {
+    const started = yield* Deferred.make<AgentHostRequest>();
+    const frames: AgentRuntimeNotification[] = [];
+    const bridge = yield* make(
+      { home: "/runtime", cwd: "/workspace", providers: {}, host: { tools: [] } },
+      (notification) =>
+        Effect.gen(function* () {
+          frames.push(notification);
+          if (notification.type === "host.request") yield* Deferred.succeed(started, notification);
+        }),
+    );
+    const waiting = yield* bridge
+      .callTool(
+        { ...turn, runtimeId: bridge.runtimeId, runtimeGeneration: bridge.runtimeGeneration },
+        "wait_sessions",
+        { targets: [{ sessionId: "other" }], timeoutMs: 3_600_000 },
+      )
+      .pipe(Effect.forkChild);
+    const request = yield* Deferred.await(started);
+    yield* Fiber.interrupt(waiting);
+    expect(frames.filter((frame) => frame.type === "host.cancel")).toEqual([
+      {
+        type: "host.cancel",
+        id: request.id,
+        runtimeId: bridge.runtimeId,
+        runtimeGeneration: bridge.runtimeGeneration,
+      },
+    ]);
+    // A late host reply no longer has a waiting receiver and cannot resurrect the call.
+    yield* bridge.accept({ type: "host.result", id: request.id, success: true, output: {} });
+  }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
+);
 const identity = Layer.succeed(Environment.ServerEnvironmentIdentity, {
   getEnvironmentId: Effect.succeed(EnvironmentId.make("runtime:test")),
 });

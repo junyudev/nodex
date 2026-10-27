@@ -10,6 +10,9 @@ import type {
   AgentSnapshot,
   AgentTurnItem,
   AgentWire,
+  AgentItemContentSlice,
+  AgentTimelinePage,
+  AgentThreadProgress,
 } from "./Interface.ts";
 import type { PersistChatAttachmentsResult } from "@t3tools/contracts";
 import * as Application from "./Application.ts";
@@ -119,18 +122,20 @@ it.live(
             id: "create",
             method: "command.dispatch",
             input: {
-              type: "thread.create",
-              commandId: "command:content",
-              threadId: "thread:content",
-              projectId: "project:content",
-              title: "Content",
-              modelSelection: { instanceId: "codex", model: "gpt-5.4" },
-              runtimeMode: "full-access",
-              interactionMode: "default",
-              branch: null,
-              worktreePath: null,
-              createdBy: "user",
-              creationSource: "web",
+              command: {
+                type: "thread.create",
+                commandId: "command:content",
+                threadId: "thread:content",
+                projectId: "project:content",
+                title: "Content",
+                modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                branch: null,
+                worktreePath: null,
+                createdBy: "user",
+                creationSource: "web",
+              },
             },
           });
           const upload = {
@@ -256,6 +261,172 @@ it.live(
             expect(detail.output!.length).toBeLessThan(output.length);
             expect(full.output).toBe(output);
           }
+          const timeline = (yield* runtime.handle({
+            id: "timeline",
+            method: "thread.timeline",
+            input: {
+              threadId: "thread:content",
+              view: "activity",
+              order: "newest_first",
+              limit: 1,
+            },
+          })) as AgentTimelinePage;
+          expect(timeline.items[0]?.item).toEqual({
+            id: target.itemId,
+            runId: null,
+            type: "command_execution",
+            status: "completed",
+            updatedAt: full.updatedAt,
+          });
+          expect(JSON.stringify(timeline).length).toBeLessThan(4096);
+          const content = (yield* runtime.handle({
+            id: "item-content",
+            method: "thread.item.content",
+            input: { ...target, format: "text", maxChars: 64 },
+          })) as AgentItemContentSlice;
+          expect(content).toMatchObject({
+            itemId: target.itemId,
+            sourceThreadId: target.threadId,
+            format: "text",
+            text: `$ inspect\n${output.slice(0, 54)}`,
+            textOffset: 0,
+            totalChars: output.length + "$ inspect\n".length,
+            nextTextOffset: 64,
+          });
+          const tail = (yield* runtime.handle({
+            id: "item-content-tail",
+            method: "thread.item.content",
+            input: { ...target, format: "text", textOffset: content.totalChars - 8, maxChars: 64 },
+          })) as AgentItemContentSlice;
+          expect(tail.text).toBe("xxxxxxxx");
+          expect(tail.nextTextOffset).toBeNull();
+          const json = (yield* runtime.handle({
+            id: "item-content-json",
+            method: "thread.item.content",
+            input: { ...target, format: "json", maxChars: 64 },
+          })) as AgentItemContentSlice;
+          expect(json.totalChars).toBe(JSON.stringify(full).length);
+          expect(json.text).toBe(JSON.stringify(full).slice(0, 64));
+          const progress = (yield* runtime.handle({
+            id: "progress",
+            method: "thread.progress",
+            input: { threadId: target.threadId },
+          })) as AgentThreadProgress;
+          expect(progress).toMatchObject({
+            latestReply: null,
+            latestActivity: {
+              itemId: target.itemId,
+              type: "command_execution",
+              status: "completed",
+            },
+          });
+          expect(JSON.stringify(progress).length).toBeLessThan(1024);
+          const unicode = "A😀B\n".repeat(4);
+          const oversizedOutput = "x".repeat(16 * 1024 * 1024);
+          yield* Effect.sync(() => {
+            const database = new DatabaseSync(runtime.identity.databasePath);
+            try {
+              const insert = database.prepare(`INSERT INTO orchestration_v2_projection_turn_items
+                (turn_item_id, thread_id, run_id, node_id, provider_thread_id, provider_turn_id,
+                 type, status, ordinal, updated_at, payload_json) VALUES (?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)`);
+              for (const item of [
+                {
+                  ...full,
+                  id: "item:unicode",
+                  ordinal: 2,
+                  type: "assistant_message",
+                  messageId: "message:unicode",
+                  text: unicode,
+                  streaming: false,
+                },
+                { ...full, id: "item:oversized", ordinal: 3, output: oversizedOutput },
+              ])
+                insert.run(
+                  item.id,
+                  item.threadId,
+                  item.type,
+                  item.status,
+                  item.ordinal,
+                  item.updatedAt,
+                  JSON.stringify(item),
+                );
+            } finally {
+              database.close();
+            }
+          });
+          const chunks: string[] = [];
+          const versions = new Set<string>();
+          let offset = 0;
+          for (;;) {
+            const part = (yield* runtime.handle({
+              id: `unicode:${offset}`,
+              method: "thread.item.content",
+              input: {
+                threadId: target.threadId,
+                itemId: "item:unicode",
+                format: "text",
+                textOffset: offset,
+                maxChars: 2,
+              },
+            })) as AgentItemContentSlice;
+            // Exercise the same JSON framing used by the socket, including split surrogate pairs.
+            chunks.push(JSON.parse(JSON.stringify(part)).text);
+            versions.add(part.contentVersion);
+            if (part.nextTextOffset === null) break;
+            offset = part.nextTextOffset;
+          }
+          expect(chunks.join("")).toBe(unicode);
+          expect(versions.size).toBe(1);
+          yield* Effect.sync(() => {
+            const database = new DatabaseSync(runtime.identity.databasePath);
+            try {
+              database
+                .prepare(
+                  "UPDATE orchestration_v2_projection_turn_items SET payload_json = json_set(payload_json, '$.text', ?) WHERE turn_item_id = 'item:unicode'",
+                )
+                .run(`${unicode}changed`);
+            } finally {
+              database.close();
+            }
+          });
+          const changedContent = (yield* runtime.handle({
+            id: "unicode-changed",
+            method: "thread.item.content",
+            input: {
+              threadId: target.threadId,
+              itemId: "item:unicode",
+              format: "text",
+              maxChars: 0,
+            },
+          })) as AgentItemContentSlice;
+          expect(versions.has(changedContent.contentVersion)).toBe(false);
+          const oversizedTarget = { threadId: target.threadId, itemId: "item:oversized" };
+          expect(
+            (yield* runtime
+              .handle({ id: "oversized-full", method: "thread.item.full", input: oversizedTarget })
+              .pipe(Effect.result))._tag,
+          ).toBe("Failure");
+          const oversizedTail = (yield* runtime.handle({
+            id: "oversized-tail",
+            method: "thread.item.content",
+            input: {
+              ...oversizedTarget,
+              format: "text",
+              textOffset: "$ inspect\n".length + oversizedOutput.length - 8,
+              maxChars: 64,
+            },
+          })) as AgentItemContentSlice;
+          expect(oversizedTail.text).toBe("xxxxxxxx");
+          expect(oversizedTail.nextTextOffset).toBeNull();
+          expect(oversizedTail.totalChars).toBe("$ inspect\n".length + oversizedOutput.length);
+          const latest = (yield* runtime.handle({
+            id: "latest-progress",
+            method: "thread.progress",
+            input: { threadId: target.threadId },
+          })) as AgentThreadProgress;
+          expect(latest.latestReply?.text).toBe(`${unicode}changed`);
+          expect(latest.latestActivity?.itemId).toBe("item:oversized");
+          expect(JSON.stringify(latest).length).toBeLessThan(2048);
           yield* Effect.sync(() => {
             const database = new DatabaseSync(runtime.identity.databasePath);
             const now = new Date().toISOString();
@@ -331,9 +502,11 @@ it.live(
             id: "delete",
             method: "command.dispatch",
             input: {
-              type: "thread.delete",
-              commandId: "command:delete-content",
-              threadId: "thread:content",
+              command: {
+                type: "thread.delete",
+                commandId: "command:delete-content",
+                threadId: "thread:content",
+              },
             },
           });
           const end = yield* Deferred.await(lifecycle);
@@ -352,4 +525,107 @@ it.live(
         }).pipe(Effect.provide(Application.layer({ home, cwd: home, providers: {} }, notify))),
       );
     }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.live("enforces Host mode limits on the shared dispatch and send boundaries", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-mode-limit-" });
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const runtime = yield* AgentRuntime;
+        const call = (method: string, input: unknown) =>
+          runtime.handle({ id: method, method, input });
+        const limit = { runtimeMode: "full-access", interactionMode: "plan" };
+        yield* call("project.upsert", { id: "project:limit", title: "Plan", workspaceRoot: home });
+        const create = {
+          type: "thread.create",
+          commandId: "create:limit",
+          threadId: "thread:limit",
+          projectId: "project:limit",
+          title: "Plan",
+          modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: home,
+          createdBy: "agent",
+          creationSource: "mcp",
+        };
+        const refused = yield* call("command.dispatch", { command: create, modeLimit: limit }).pipe(
+          Effect.result,
+        );
+        expect(refused).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "OrchestratorThreadAboveModeLimitError",
+            reason: "interaction_mode_escalation_denied",
+          },
+        });
+        yield* call("command.dispatch", {
+          command: { ...create, interactionMode: "plan" },
+          modeLimit: limit,
+        });
+        // A plain legacy command is no longer a valid transport request.
+        expect((yield* call("command.dispatch", create).pipe(Effect.result))._tag).toBe("Failure");
+        yield* call("command.dispatch", {
+          command: {
+            type: "thread.interaction-mode.set",
+            commandId: "mode:limit",
+            threadId: "thread:limit",
+            interactionMode: "default",
+          },
+        });
+        const send = {
+          threadId: "thread:limit",
+          commandId: "send:limit",
+          messageId: "message:limit",
+          text: "Continue",
+          attachments: [],
+          mode: "auto",
+          modeLimit: limit,
+        };
+        expect(yield* call("thread.send", send).pipe(Effect.result)).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "OrchestratorThreadAboveModeLimitError",
+            reason: "interaction_mode_escalation_denied",
+          },
+        });
+        expect(
+          yield* call("thread.send", {
+            ...send,
+            modeLimit: { runtimeMode: "approval-required", interactionMode: "default" },
+          }).pipe(Effect.result),
+        ).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "OrchestratorThreadAboveModeLimitError",
+            reason: "runtime_mode_escalation_denied",
+          },
+        });
+        const snapshot = (yield* call("thread.snapshot", {
+          threadId: "thread:limit",
+        })) as AgentSnapshot;
+        expect(snapshot.projection.runs).toHaveLength(0);
+        expect(snapshot.projection.messages).toHaveLength(0);
+      }).pipe(
+        Effect.provide(
+          Application.layer(
+            {
+              home,
+              cwd: home,
+              providers: {
+                codex: {
+                  driver: "codex",
+                  config: { binaryPath: "/missing-codex", homePath: home },
+                },
+              },
+            },
+            () => Effect.void,
+          ),
+        ),
+      ),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
 );

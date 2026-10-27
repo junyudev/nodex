@@ -1262,10 +1262,8 @@ export const CLAUDE_NODEX_APP_TOOL_WILDCARD = `${CLAUDE_NODEX_APP_TOOL_PREFIX}*`
 const CLAUDE_NODEX_APP_TOOL_MATCHER = `${CLAUDE_NODEX_APP_TOOL_PREFIX}.*`;
 
 // Claude Code aborts an HTTP MCP call after 60 s ("The operation timed out.")
-// unless the server config sets `timeout`. Task waits (task_wait, delegate_task
-// mode=wait) legitimately block for up to an hour (MAX_WAIT_TIMEOUT_MS in
-// OrchestratorMcpService), so the budget sits just above that and the server's
-// own wait timeout is what ends a long call.
+// unless the server config sets `timeout`. Session and task waits can block for
+// an hour, so the provider leaves time for the server's final observation and reply.
 export const CLAUDE_NODEX_APP_TOOL_TIMEOUT_MS = 65 * 60 * 1_000;
 
 // The MCP credential travels over CLI stdin, never argv or environment.

@@ -38,6 +38,9 @@ export type AgentWire<T> = T extends DateTime.Utc
         ? { readonly [Key in keyof T]: AgentWire<T[Key]> }
         : T;
 export type AgentCommand = AgentWire<OrchestrationV2Command>;
+export type AgentDispatchModeLimit = AgentWire<
+  import("../orchestration-v2/DispatchModeLimit.ts").DispatchModes
+>;
 export type AgentEvent = AgentWire<OrchestrationV2StoredEvent>;
 export type AgentSnapshot = Extract<
   AgentWire<OrchestrationV2ThreadStreamItem>,
@@ -46,6 +49,45 @@ export type AgentSnapshot = Extract<
 export type AgentHistoryPage = AgentWire<OrchestrationV2ThreadHistoryPage>;
 export type AgentShellSnapshot = AgentWire<OrchestrationV2ThreadShellSnapshot>;
 export type AgentTurnItem = AgentWire<OrchestrationV2TurnItem>;
+export type AgentTimelinePage = AgentWire<
+  import("../orchestration-v2/ProjectionStore.ts").ProjectionTimelineMetadataPage
+>;
+export interface AgentItemContentSlice {
+  readonly itemId: string;
+  readonly sourceThreadId: string;
+  readonly runId: string | null;
+  readonly type: AgentTurnItem["type"];
+  readonly status: AgentTurnItem["status"];
+  readonly updatedAt: string;
+  readonly contentVersion: string;
+  readonly format: "text" | "json";
+  readonly text: string;
+  /** UTF-16 code-unit offsets; joining consecutive slices reproduces the exact canonical content. */
+  readonly textOffset: number;
+  readonly totalChars: number;
+  readonly nextTextOffset: number | null;
+}
+/** A wait pins selectedRunId once, then follows only its restart continuation chain. */
+export interface AgentThreadExecution {
+  readonly selectedRunId: string | null;
+  readonly runId: string | null;
+  readonly status: OrchestrationV2Run["status"] | null;
+  readonly continuationPending: boolean;
+  readonly activeFlags: readonly string[];
+  readonly revision: string;
+}
+
+export interface AgentThreadProgress {
+  readonly latestReply: AgentItemContentSlice | null;
+  readonly latestActivity: {
+    readonly itemId: string;
+    readonly sourceThreadId: string;
+    readonly runId: string | null;
+    readonly type: AgentTurnItem["type"];
+    readonly status: AgentTurnItem["status"];
+    readonly updatedAt: string;
+  } | null;
+}
 export type AgentProjectExecutionActivity = AgentWire<
   import("../orchestration-v2/ProjectionStore.ts").ProjectionProjectExecutionActivity
 >;
@@ -194,6 +236,7 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
       readonly sourceNativeThreadId: string;
       readonly modelSelection: AgentWire<ModelSelection>;
       readonly cwd: string;
+      readonly interactionMode?: "default" | "plan";
     };
     readonly output: { readonly threadId: string };
   };
@@ -209,6 +252,18 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
         readonly threadId: string;
       }[];
     };
+  };
+  readonly "native-message.receipt": {
+    readonly input: import("./NativeMessageReceipts.ts").NativeMessageLookup;
+    readonly output: import("./NativeMessageReceipts.ts").NativeMessageReceipt | null;
+  };
+  readonly "native-message.reserve": {
+    readonly input: import("./NativeMessageReceipts.ts").NativeMessageReserve;
+    readonly output: import("./NativeMessageReceipts.ts").NativeMessageReceipt;
+  };
+  readonly "native-message.settle": {
+    readonly input: import("./NativeMessageReceipts.ts").NativeMessageSettle;
+    readonly output: import("./NativeMessageReceipts.ts").NativeMessageReceipt;
   };
   readonly "execution.handoff.pending": {
     readonly input: { readonly cursor?: string };
@@ -329,13 +384,80 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     readonly input: { readonly leaseId: string };
     readonly output: { readonly released: boolean };
   };
+  readonly "attachments.import": {
+    readonly input: AgentWire<
+      import("../assets/ImportChatAttachments.ts").ImportChatAttachmentsInput
+    >;
+    readonly output: AgentWire<PersistChatAttachmentsResult>;
+  };
+  readonly "thread.send": {
+    readonly input: {
+      readonly threadId: string;
+      readonly commandId: string;
+      readonly messageId: string;
+      readonly text: string;
+      readonly attachments: readonly AgentWire<import("@t3tools/contracts").ChatAttachment>[];
+      readonly context?: Extract<AgentCommand, { readonly type: "message.dispatch" }>["context"];
+      readonly interactionMode?: Extract<
+        AgentCommand,
+        { readonly type: "thread.create" }
+      >["interactionMode"];
+      readonly modelSelection?: AgentWire<ModelSelection>;
+      readonly mode: "auto" | "queue" | "steer" | "restart";
+      readonly senderThreadId?: string;
+      readonly senderRunId?: string | null;
+      readonly modeLimit?: AgentDispatchModeLimit;
+    };
+    readonly output: {
+      readonly messageId: string;
+      readonly runId: string;
+      readonly status: OrchestrationV2Run["status"];
+      readonly delivery: "started" | "queued" | "steered" | "restarted";
+      readonly taskId?: string;
+    };
+  };
+  readonly "thread.message-admit": {
+    readonly input: AgentWire<import("./RuntimeMessageReceipts.ts").RuntimeMessageAdmission>;
+    readonly output: { readonly admitted: boolean };
+  };
+  readonly "thread.message-replay": {
+    readonly input: AgentWire<import("./RuntimeMessageReceipts.ts").RuntimeMessageIdentity>;
+    readonly output: AgentRuntimeOperations["thread.send"]["output"] | null;
+  };
+  readonly "thread.message-launch": {
+    readonly input: AgentRuntimeOperations["thread.message-replay"]["input"];
+    readonly output: AgentWire<import("./RuntimeMessageReceipts.ts").RuntimeMessageLaunch> | null;
+  };
+  readonly "thread.message-stage": {
+    readonly input: AgentWire<import("./RuntimeMessageReceipts.ts").RuntimeMessageLaunchStage>;
+    readonly output: AgentWire<import("./RuntimeMessageReceipts.ts").RuntimeMessageLaunch>;
+  };
   readonly "attachments.persist": {
     readonly input: AgentWire<PersistChatAttachmentsInput>;
     readonly output: AgentWire<PersistChatAttachmentsResult>;
   };
+  readonly "thread.execution": {
+    readonly input: {
+      readonly threadId: string;
+      readonly runId?: string | null;
+      readonly messageId?: string;
+    };
+    readonly output: AgentThreadExecution;
+  };
+  readonly "thread.execution.wait": {
+    readonly input: {
+      readonly threadId: string;
+      readonly runId: string | null;
+      readonly afterRevision: string;
+      readonly timeoutMs: number;
+    };
+    readonly output: AgentThreadExecution;
+  };
   readonly "thread.read": {
     readonly input: { readonly threadId: string };
-    readonly output: AgentWire<OrchestrationV2ThreadShell> | null;
+    readonly output:
+      | (AgentWire<OrchestrationV2ThreadShell> & { readonly providerDriver: string | null })
+      | null;
   };
   readonly "providers.read": {
     /**
@@ -372,7 +494,7 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     readonly output: AgentThreadAuthority | null;
   };
   readonly "command.dispatch": {
-    readonly input: AgentCommand;
+    readonly input: { readonly command: AgentCommand; readonly modeLimit?: AgentDispatchModeLimit };
     readonly output: { readonly sequence: number };
   };
   /** Durable admission evidence, independent of a Thread's current execution/lifecycle state. */
@@ -478,6 +600,41 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     };
     readonly output: AgentHistoryPage;
   };
+  /** Visible item windows, including captured fork ancestry, without a UI snapshot. */
+  readonly "thread.timeline": {
+    readonly input: {
+      readonly threadId: string;
+      readonly beforeItem?: { readonly sourceThreadId: string; readonly sourceItemId: string };
+      readonly afterItem?: { readonly sourceThreadId: string; readonly sourceItemId: string };
+      readonly order?: "oldest_first" | "newest_first";
+      readonly view?: "messages" | "activity";
+      readonly limit: number;
+    };
+    readonly output: AgentTimelinePage;
+  };
+  /** Compact newest reply and activity markers, independent of history volume. */
+  readonly "thread.read-details": {
+    readonly input: {
+      readonly threadId: string;
+      readonly runLimit: number;
+      readonly beforeOrdinal?: number;
+    };
+    readonly output: import("../orchestration-v2/SessionReadDetails.ts").SessionReadDetails;
+  };
+  /** Complete child-result evidence; the Runtime revalidates its task delivery owner. */
+  readonly "thread.acknowledge-read": {
+    readonly input: {
+      readonly callerThreadId: string;
+      readonly callerRunId: string;
+      readonly threadId: string;
+      readonly items: readonly import("./history-contracts.ts").ThreadReadEvidence[];
+    };
+    readonly output: { readonly acknowledged: number };
+  };
+  readonly "thread.progress": {
+    readonly input: { readonly threadId: string; readonly runId?: string };
+    readonly output: AgentThreadProgress;
+  };
   /** Each of the thread's own Runs' opening prompt and latest reply, oldest first. */
   readonly "thread.prompt-index": {
     readonly input: { readonly threadId: string };
@@ -498,7 +655,11 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
       readonly itemId: string;
       readonly attachmentId: string;
     };
-    readonly output: { readonly path: string } | { readonly dataUrl: string } | null;
+    readonly output:
+      | (({ readonly path: string } | { readonly dataUrl: string }) & {
+          readonly attachment?: AgentWire<import("@t3tools/contracts").ChatAttachment>;
+        })
+      | null;
   };
   readonly "thread.item.full": {
     readonly input: {
@@ -507,6 +668,23 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
       readonly sourceThreadId?: string;
     };
     readonly output: AgentTurnItem | null;
+  };
+  /** Lossless, resumable canonical item content; never constrained by whole-item transport size. */
+  readonly "thread.item.content": {
+    readonly input: {
+      readonly threadId: string;
+      readonly itemId: string;
+      readonly runId?: string | null;
+      readonly sourceThreadId?: string;
+      readonly format?: "text" | "json";
+      readonly textOffset?: number;
+      readonly maxChars?: number;
+    };
+    readonly output:
+      | (AgentItemContentSlice & {
+          readonly reference: import("./HistoryRead.ts").HistoryItemReference;
+        })
+      | null;
   };
   readonly "events.observe": {
     readonly input: {
@@ -525,6 +703,22 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
    * or native background work, or a delegated completion that will wake the root. Idle roots are
    * absent. `rootThreadIds` point-reads those roots; otherwise pages follow `cursor`.
    */
+  readonly "sessions.search": {
+    readonly input: import("../orchestration-v2/SessionSearch.ts").SessionSearchInput;
+    readonly output: import("../orchestration-v2/SessionSearch.ts").SessionSearchPage;
+  };
+  readonly "sessions.search-resolve": {
+    readonly input: import("../orchestration-v2/SessionSearch.ts").SessionSearchResolveInput;
+    readonly output: import("../orchestration-v2/SessionSearch.ts").SessionSearchResolvePage;
+  };
+  readonly "sessions.metadata": {
+    readonly input: { readonly threadIds: readonly string[] };
+    readonly output: readonly import("../orchestration-v2/SessionMetadata.ts").SessionExecutionMetadata[];
+  };
+  readonly "sessions.catalog": {
+    readonly input: import("../orchestration-v2/SessionCatalog.ts").SessionCatalogInput;
+    readonly output: import("../orchestration-v2/SessionCatalog.ts").SessionCatalogPage;
+  };
   readonly "execution.activity": {
     readonly input: {
       readonly cursor?: string;
@@ -576,6 +770,7 @@ export type AgentRuntimeResponse =
       readonly error: {
         readonly message: string;
         readonly tag?: string;
+        readonly reason?: string;
         readonly acp?: import("./AcpManagementContract.ts").AgentAcpFailure;
       };
     };
@@ -670,6 +865,12 @@ export type AgentHostResult =
     };
 
 export type AgentRuntimeNotification =
+  | {
+      readonly type: "host.cancel";
+      readonly id: string;
+      readonly runtimeId: string;
+      readonly runtimeGeneration: string;
+    }
   | {
       readonly type: "native.voice.event";
       readonly claimId: string;

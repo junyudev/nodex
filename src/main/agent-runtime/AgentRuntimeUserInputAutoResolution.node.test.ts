@@ -111,14 +111,20 @@ it.effect("resolves only live nonblocking questions through their original Runti
       {
         method: "command.dispatch",
         input: {
-          type: "runtime-request.respond",
-          commandId: "auto-user-input:optional",
-          threadId: "root",
-          requestId: "optional",
-          answers: {},
+          command: {
+            type: "runtime-request.respond",
+            commandId: "auto-user-input:optional",
+            threadId: "root",
+            requestId: "optional",
+            answers: {},
+          },
         },
       },
     ]);
+    assert.deepEqual(f.calls.filter(({ method }) => method === "thread.control").at(-1), {
+      method: "thread.control",
+      input: { threadId: "root", requestId: "optional" },
+    });
     assert.isTrue(
       f.calls.every(({ method }) =>
         ["execution.activity", "thread.control", "command.dispatch"].includes(method),

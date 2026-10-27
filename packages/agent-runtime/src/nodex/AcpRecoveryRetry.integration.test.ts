@@ -46,33 +46,41 @@ it.live.each([
         expect(connected.phase).toBe("succeeded");
         yield* fs.writeFileString(log, "");
         yield* call("command.dispatch", {
-          type: "thread.create",
-          commandId: "import",
-          threadId: "thread",
-          projectId: "project",
-          title: "Captured native session",
-          modelSelection: { instanceId, model: "model-a" },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          branch: null,
-          worktreePath: home,
-          createdBy: "user",
-          creationSource: "web",
-          importedNativeThread: {
-            ref: { driver: "acpRegistry", nativeId: "original-native-session", strength: "strong" },
-            metadata: { itemIdentityVersion: 2 },
+          command: {
+            type: "thread.create",
+            commandId: "import",
+            threadId: "thread",
+            projectId: "project",
+            title: "Captured native session",
+            modelSelection: { instanceId, model: "model-a" },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: home,
+            createdBy: "user",
+            creationSource: "web",
+            importedNativeThread: {
+              ref: {
+                driver: "acpRegistry",
+                nativeId: "original-native-session",
+                strength: "strong",
+              },
+              metadata: { itemIdentityVersion: 2 },
+            },
           },
         });
         yield* call("command.dispatch", {
-          type: "message.dispatch",
-          commandId: "continue",
-          threadId: "thread",
-          messageId: "message",
-          text: "Continue the original conversation",
-          attachments: [],
-          createdBy: "user",
-          creationSource: "web",
-          dispatchMode: { type: "start_immediately" },
+          command: {
+            type: "message.dispatch",
+            commandId: "continue",
+            threadId: "thread",
+            messageId: "message",
+            text: "Continue the original conversation",
+            attachments: [],
+            createdBy: "user",
+            creationSource: "web",
+            dispatchMode: { type: "start_immediately" },
+          },
         });
         const outcome = yield* call("run.outcome", {
           threadId: "thread",

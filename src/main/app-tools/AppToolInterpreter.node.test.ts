@@ -1,3 +1,12 @@
+import { CodexNativeThreadLookup } from "../codex-application/CodexNativeThreadLookup";
+import { TemporaryAssets } from "../local-store/TemporaryAssets";
+import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
+import { CodexMainConversationResume } from "../codex-application/CodexMainConversationResume";
+import { CodexAttachments } from "../codex-application/CodexAttachments";
+import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
+import { CodexDelegatedMessages } from "../codex-application/CodexDelegatedMessages";
+import { FileExportRuntime } from "../library-application/FileExportRuntime";
 import { PluginNativeOperations } from "../codex-application/PluginNativeOperations";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexThreadHandoffRuntime } from "../codex-application/CodexThreadHandoffRuntime";
@@ -52,6 +61,15 @@ const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) 
       Effect.provideService(WorkspaceDependencyRuntime, {} as never),
       Effect.provideService(ComposerCatalog, {} as never),
       Effect.provideService(PluginNativeOperations, {} as never),
+      Effect.provideService(CodexThreadDirectory, {} as never),
+      Effect.provideService(CodexMainConversationResume, {} as never),
+      Effect.provideService(CodexAttachments, {} as never),
+      Effect.provideService(ExecutionHostRuntime, {} as never),
+      Effect.provideService(CodexDelegatedMessages, {} as never),
+      Effect.provideService(FileExportRuntime, {} as never),
+      Effect.provideService(CodexGateway, {} as never),
+      Effect.provideService(CodexNativeThreadLookup, {} as never),
+      Effect.provideService(TemporaryAssets, {} as never),
     )
     .pipe(
       Effect.provideService(CodexTurnPresentation, {} as never),

@@ -7,6 +7,10 @@
     {
       "revision": "2c592a1086ff593293358529a1975dde308edeaf",
       "scope": "ACP legacy model selection, session choice mapping, Droid elicitation, Claude native work and child sessions, pinned v2 wire normalization and standalone Node PTY behavior"
+    },
+    {
+      "revision": "c294d63b2135771dd74f0a2b57af5b501043a74b",
+      "scope": "Search scoring, message matching and independent SQLite reader behavior"
     }
   ]
 }

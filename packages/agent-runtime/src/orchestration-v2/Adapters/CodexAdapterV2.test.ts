@@ -652,6 +652,7 @@ describe("CodexAdapterV2 process spawning", () => {
           "tools.update_plan.enabled": true,
           "mcp_servers.nodex_app": {
             url: "http://127.0.0.1:43123/mcp",
+            tool_timeout_sec: 3670,
             http_headers: {
               Authorization: "Bearer secret-codex-token",
             },

@@ -1,7 +1,8 @@
 import { expect, it } from "@effect/vitest";
 import { Tool } from "effect/ai";
 import * as Schema from "effect/Schema";
-import { TaskToolkit } from "../mcp/toolkits/task/tools.ts";
+import { TaskReadResult, TaskToolkit } from "../mcp/toolkits/task/tools.ts";
+import { taskReadView } from "../mcp/TaskHistoryRead.ts";
 
 const propertyNames = (schema: unknown): ReadonlyArray<string> => {
   if (Array.isArray(schema)) return schema.flatMap(propertyNames);
@@ -14,7 +15,7 @@ const propertyNames = (schema: unknown): ReadonlyArray<string> => {
   ]);
 };
 
-it("publishes task tools without Runtime conversation identities", () => {
+it("publishes task tools without Runtime conversation routing fields", () => {
   const tools = Object.values(TaskToolkit.tools);
   expect(tools.map((tool) => tool.name).toSorted()).toEqual([
     "delegate_task",
@@ -36,4 +37,41 @@ it("publishes task tools without Runtime conversation identities", () => {
       tool.name,
     ).toEqual([]);
   }
+});
+
+it("projects Task routing fields while preserving canonical diagnostic content and opaque continuations", () => {
+  const content = {
+    format: "json" as const,
+    offset: 0,
+    totalChars: 123,
+    nextCursor: null,
+    value: {
+      source: "runtime",
+      item: {
+        threadId: "diagnostic-source",
+        output: { senderThreadId: "producer-output", body: "complete" },
+      },
+    },
+  };
+  const result = taskReadView({
+    items: [
+      {
+        id: "item",
+        sourceThreadId: "private-source",
+        senderThreadId: "private-sender",
+        runId: null,
+        type: "dynamic_tool",
+        status: "completed",
+        content,
+      },
+    ],
+    page: { nextCursor: "opaque-page" },
+  });
+  expect(Object.keys(result.items[0]!)).not.toContain("sourceThreadId");
+  expect(Object.keys(result.items[0]!)).not.toContain("senderThreadId");
+  expect(result.items[0]!.content).toBe(content);
+  expect(result.items[0]!.content.value.item).toEqual(content.value.item);
+  expect(result.page.nextCursor).toBe("opaque-page");
+  const schema = Schema.toJsonSchemaDocument(TaskReadResult);
+  expect(propertyNames(schema).filter((field) => /thread/i.test(field))).toEqual([]);
 });

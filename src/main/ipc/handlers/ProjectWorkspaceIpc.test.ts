@@ -7,7 +7,10 @@ import type { IpcMainInvokeEvent } from "electron";
 import { vi } from "vite-plus/test";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import type { Project, ProjectUpdateCommandInput } from "../../../shared/types";
-import type { BuiltinSidebarReorderCommandInput } from "../../../shared/workspace-catalog-commands";
+import type {
+  ProjectSessionOpenedCommandInput,
+  BuiltinSidebarReorderCommandInput,
+} from "../../../shared/workspace-catalog-commands";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CodexProjectSessionFork } from "../../codex-application/CodexProjectSessionFork";
 import { CodexSidebarSectionSync } from "../../codex-application/CodexSidebarSectionSync";
@@ -92,8 +95,14 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       on: () => Effect.die("unused"),
     });
     const updateInputs: ProjectUpdateCommandInput[] = [];
+    const openedInputs: ProjectSessionOpenedCommandInput[] = [];
     const pinnedOrderInputs: BuiltinSidebarReorderCommandInput[] = [];
     const workspace = ProjectWorkspace.of({
+      recordProjectSessionOpened: (command: ProjectSessionOpenedCommandInput) =>
+        Effect.sync(() => {
+          openedInputs.push(command);
+          return { value: undefined, apply: applied };
+        }),
       listBuiltinSidebarOrder: () =>
         Effect.succeed({
           orderRevision: "pins:3",
@@ -166,7 +175,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
             ),
             Layer.succeed(ElectronDesktop, { dialog: {} } as unknown as ElectronDesktop["Service"]),
             Layer.succeed(WindowRuntime, {
-              has: () => true,
+              has: (id: number) => id === 17,
             } as unknown as WindowRuntime["Service"]),
           ),
         ),
@@ -174,7 +183,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 45);
+    assert.strictEqual(handlers.size, 46);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("projects:update"));
     assert.isTrue(handlers.has("project-sessions:fork"));
@@ -183,6 +192,27 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     assert.isTrue(handlers.has("page-chats:list"));
     assert.isTrue(handlers.has("page-chats:link"));
     assert.isTrue(handlers.has("page-chats:unlink"));
+
+    const opening: ProjectSessionOpenedCommandInput = {
+      operationId: createBoundedOperationId("workspace.session.opened", 1_800_000_000_000),
+      payload: { sessionId: "session:one" },
+    };
+    const deniedOpen = yield* handlers.get("project-sessions:record-opened")!(
+      rendererEvent(99),
+      opening,
+    ).pipe(Effect.result);
+    assert.equal(deniedOpen._tag, "Failure");
+    assert.deepEqual(openedInputs, []);
+    const opened = yield* handlers.get("project-sessions:record-opened")!(
+      rendererEvent(17),
+      opening,
+    );
+    assert.deepEqual(openedInputs, [opening]);
+    assert.deepEqual(opened, {
+      ok: true,
+      value: undefined,
+      localCommit: { status: "committed", commit: applied.commit, delivery: null },
+    });
 
     const pinnedOrder = yield* handlers.get("sidebar:builtin-order:list")!(
       rendererEvent(17),

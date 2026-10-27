@@ -8,6 +8,8 @@ import {
   EventId,
   MessageId,
   ModelSelection,
+  getProviderAttachmentLimitError,
+  ProviderInteractionMode,
   OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2UnavailableImage,
@@ -28,6 +30,12 @@ import { ProviderAdapterRegistryV2 } from "../orchestration-v2/ProviderAdapterRe
 import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
 import { ThreadCommandExecutor } from "../orchestration-v2/ThreadCommandExecutor.ts";
 import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
+import { importChatAttachments } from "../assets/ImportChatAttachments.ts";
+import { parseBase64DataUrl } from "../imageMime.ts";
+import { nativeSessionMediaResources } from "./NativeAttachmentResource.ts";
+import * as Base64 from "effect/encoding/Base64";
+import * as Mime from "effect/http/Mime";
+import * as Option from "effect/Option";
 import { importHistoryEvents, importIdentity } from "./NativeImportHistory.ts";
 import { openCodexImportSource } from "./CodexImportSource.ts";
 import { openClaudeImportSource } from "./ClaudeImportSource.ts";
@@ -46,6 +54,7 @@ export const NativeImportInput = Schema.Struct({
   sourceNativeThreadId: Schema.NonEmptyString,
   modelSelection: ModelSelection,
   cwd: Schema.NonEmptyString,
+  interactionMode: Schema.optional(ProviderInteractionMode),
 });
 export const NativeImportsFindInput = Schema.Struct({
   backendKind: Schema.Literals(["codex", "claude"]),
@@ -116,7 +125,8 @@ export const make = Effect.gen(function* () {
         input.backendKind !== requested.backendKind ||
         input.sourceHome !== requested.sourceHome ||
         input.projectId !== requested.projectId ||
-        input.cwd !== requested.cwd)
+        input.cwd !== requested.cwd ||
+        (input.interactionMode ?? "default") !== (requested.interactionMode ?? "default"))
     )
       return yield* fail("This import identity already belongs to another request.");
     const previousThread = existing ? yield* store.getThread(input.threadId) : null;
@@ -153,7 +163,7 @@ export const make = Effect.gen(function* () {
         providerInstanceId: input.modelSelection.instanceId,
         modelSelection: input.modelSelection,
         runtimeMode: "full-access",
-        interactionMode: "default",
+        interactionMode: input.interactionMode ?? "default",
         branch: null,
         worktreePath: input.cwd,
         activeProviderThreadId: null,
@@ -242,10 +252,6 @@ export const make = Effect.gen(function* () {
         return yield* fail("Part of this conversation is too large to import.");
       const events: OrchestrationV2DomainEvent[] = [];
       for (const entry of page.data) {
-        if (hasUncopiedMedia(entry))
-          return yield* fail(
-            "This conversation contains media that cannot yet be copied into Nodex.",
-          );
         const { attachments, unavailableImages, importedImageLinks } = yield* persistImages(
           input,
           entry,
@@ -320,38 +326,79 @@ export const make = Effect.gen(function* () {
       );
 });
 
-/** Reject provider-owned media locators until their bytes have a Runtime attachment owner. */
-function hasUncopiedMedia(entry: ThreadItemEntry): boolean {
-  const item = entry.item;
-  if (item.type === "imageGeneration") return true;
-  if (
-    item.type !== "mcpToolCall" &&
-    item.type !== "dynamicToolCall" &&
-    item.type !== "functionCallOutput"
-  )
-    return false;
-  const stack: unknown[] = [item];
-  while (stack.length > 0) {
-    const value = stack.pop();
-    if (Array.isArray(value)) {
-      stack.push(...value);
-      continue;
-    }
-    if (typeof value !== "object" || value === null) continue;
-    const record = value as Record<string, unknown>;
-    for (const [key, child] of Object.entries(record)) {
-      if (typeof child === "string" && child.startsWith("file://")) return true;
-      if (
-        typeof child === "string" &&
-        (key === "imageUrl" || key === "audioUrl") &&
-        !child.startsWith("data:")
-      )
-        return true;
-      stack.push(child);
-    }
-  }
-  return false;
-}
+/** The captured source owns these locators; unresolved provider identities never become files. */
+const persistAdditionalMedia = Effect.fn("NativeImport.persistMedia")(function* (
+  input: Input,
+  entry: ThreadItemEntry,
+  sourceCwd: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const media = nativeSessionMediaResources(entry.item).filter((resource) =>
+    entry.item.type === "userMessage"
+      ? resource.media === "audio"
+      : entry.item.type !== "imageView",
+  );
+  if (!media.length) return [];
+  const resources = yield* Effect.forEach(
+    media,
+    (item) =>
+      Effect.gen(function* () {
+        const resource = item.resource;
+        if (!resource)
+          return yield* fail(
+            `resource_unavailable: Native media ${entry.item.id}/${item.id} has no producer byte export.`,
+          );
+        const maximum = item.media === "image" ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+        if (resource.source.startsWith("data:")) {
+          const data = parseBase64DataUrl(resource.source);
+          if (!data || !data.mimeType.startsWith(`${item.media}/`))
+            return yield* fail("A Native media payload is invalid.");
+          const bytes = yield* Effect.fromResult(Base64.decode(data.base64));
+          if (bytes.byteLength === 0 || bytes.byteLength > maximum)
+            return yield* fail("A Native media payload exceeds its byte budget.");
+          return {
+            ...resource,
+            source: resource.source,
+            mimeType: data.mimeType,
+            sizeBytes: bytes.byteLength,
+          };
+        }
+        if (
+          /^[a-z][a-z0-9+.-]*:/iu.test(resource.source) &&
+          !resource.source.startsWith("file:") &&
+          !/^[a-z]:[\\/]/iu.test(resource.source)
+        )
+          return yield* fail(
+            `resource_unavailable: Native media ${entry.item.id}/${item.id} has no producer byte export.`,
+          );
+        const source = yield* Effect.try(() =>
+          resolveMarkdownImagePath(
+            resource.source,
+            sourceCwd,
+            path.sep === "\\" ? "win32" : "posix",
+          ),
+        );
+        const info = yield* fs.stat(source);
+        if (info.type !== "File" || info.size < 1 || info.size > maximum)
+          return yield* fail("A Native media file is unavailable or exceeds its byte budget.");
+        const mimeType =
+          resource.mimeType ??
+          Option.getOrElse(Mime.getType(source), () =>
+            item.media === "image" ? "image/png" : "application/octet-stream",
+          );
+        return { name: resource.name, source, mimeType, sizeBytes: Number(info.size) };
+      }),
+    { concurrency: 1 },
+  );
+  return yield* importChatAttachments({
+    threadId: input.threadId,
+    messageId: MessageId.make(
+      `native-import:${importIdentity(input.threadId, entry.turnId, entry.item.id)}:media`,
+    ),
+    attachments: resources,
+  });
+});
 
 const persistImages = Effect.fn("NativeImport.persistImages")(function* (
   input: Input,
@@ -390,8 +437,10 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
       });
       continue;
     }
-    if (part.type === "image" || part.type === "audio" || part.type === "localAudio")
-      return yield* fail("This conversation contains media that cannot yet be copied into Nodex.");
+    if (part.type === "image")
+      return yield* fail(
+        `resource_unavailable: Native media ${entry.item.id} has no producer byte export.`,
+      );
     if (part.type !== "localImage") continue;
     // Historical locators belong to the source directory, including when it has disappeared.
     // The new execution directory must never supply an unrelated same-name image.
@@ -475,7 +524,11 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
     sourcePath,
     attachmentId: imageIndex === null ? null : attachments[imageIndex]!.id,
   }));
-  return { attachments, unavailableImages, importedImageLinks };
+  const additional = yield* persistAdditionalMedia(input, entry, sourceCwd);
+  const copied = [...attachments, ...additional];
+  const limit = getProviderAttachmentLimitError(copied);
+  if (limit) return yield* fail(limit);
+  return { attachments: copied, unavailableImages, importedImageLinks };
 });
 
 type MarkdownNode = {

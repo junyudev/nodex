@@ -231,7 +231,7 @@ of a started task. Core validates the current execution identity again on receip
 
 `create_session` starts a Session through this admission boundary. A Runtime caller retains
 its configured Provider instance unless a supported explicit model choice changes its model;
-an explicit native caller uses the configured Codex default. It accepts a prompt,
+an explicit native caller uses its proven Codex model and settings. It accepts a prompt,
 optional title and model, and an explicit Project/local, Project/worktree, or projectless target.
 Created Sessions are independently visible tasks; they are not hidden internal helper Threads.
 Worktree starts may use the default branch, an existing branch, or the current working tree.
@@ -247,18 +247,61 @@ The same caller Thread can reuse an operation ID and unchanged launch arguments 
 Turn, including after restart. Every retry validates its captured execution identity;
 cancelled or retired credentials cannot replay a write receipt.
 
-`send_message_to_session` sends a follow-up to an existing unarchived Runtime Session,
-including a configured ACP Session. It retains the destination's instance and settings unless
-a supported model is explicitly supplied. A `providerInstanceId` with its `model` from
-`list_agent_models` continues the Session on that Agent from its model's defaults, with the
-same context handoff and refusal rules as a person's choice; see
-[Changing Agent in a chat](agent-runtime-behavior.md#changing-agent-in-a-chat). The calling Session cannot message itself, and
-an unstarted draft has no execution target. Core verifies the captured caller and exact
-destination binding; the Runtime's stable message identity and durable receipt prevent a
-retry from starting duplicate work. An accepted delivery identifies the Session, Thread and
-operation with `deliveryState: "accepted"` without claiming completion or a replay flag.
-Use `read_session` or `wait_sessions` to observe it. Explicit remote native Sessions use
-their own supported execution route.
+`send_message_to_session` sends a message or authorized resource attachment to an unarchived
+Session. It can message the calling Session, target a Runtime child with `execution.threadId`,
+or start an unstarted draft in place. A settled local Native Session is adopted into the
+Runtime in place before delivery; its Session identity, placement and linked content remain
+unchanged. The import receipt and atomic binding transition preserve one execution writer.
+An active local Native source returns `active_source_busy` until it settles. Strict steering
+does not start a draft or adopt a local Native Session; it requires an active Run from the
+existing Runtime or remote Native execution owner. An explicit remote Native owner keeps
+its existing execution route.
+The product `sessionId` always names the root Session; an execution coordinate never creates
+an independent product Session. Core verifies the caller and destination binding, and the
+canonical writer's stable message identity prevents duplicate work on retries.
+
+Attachments refer to Library Files (optionally pinned to a version or Page) or visible Session
+attachments. Their resource owners authorize and materialize them before intake; caller-supplied
+local paths are not accepted. Image and file limits are the same as ordinary Agent messages.
+A resource-only message is valid. Runtime drafts materialize their resources before the first
+message, using the same launch as a person's message.
+Remote Native delivery copies authorized bytes to the selected host through its file-transfer
+owner. Content-addressed paths remain stable on retries; changed resources cannot overwrite
+an attachment already retained by a queued message.
+Native references use the original `itemId` and `runId`, with `input:<content index>`,
+`content:<tool output index>` or `image` for a viewed/generated image. Main validates that
+exact producer item before and after exporting bytes from its bound host. Opaque provider
+file IDs and URL-only resources without a producer export remain explicitly unavailable.
+
+Destination settings cannot widen the calling execution's runtime or Plan permissions.
+Runtime rechecks the target's current permissions and the message's effective mode while
+holding its command lock, including a draft's first message. A concurrent mode change
+refuses fresh delivery without recording a failed admission; accepted message receipts
+remain replayable.
+The destination retains its instance and model unless a model is supplied. `providerInstanceId`
+with its `model` from `list_agent_models` can continue a Runtime Session on that Agent, using
+the same context handoff and refusal rules as a person's choice; see
+[Changing Agent in a chat](agent-runtime-behavior.md#changing-agent-in-a-chat).
+Remote Native Sessions reject execution-owner switches. Local adoption checks the Runtime's
+actual permission ceiling before importing, preserves Plan mode, and verifies the committed
+execution settings again before sending.
+
+Delivery defaults to `auto`; `queue` waits behind active work, `steer` targets active work,
+and `restart` interrupts and replaces it. The owning writer reports actual delivery as
+`started`, `queued`, `steered`, or `restarted`, with `messageId`, `runId`, status, Session and
+Thread identity. A Native queue without an assigned Turn reports a null `runId`; producer
+evidence can report `replayed`, while an unconfirmed outcome remains explicit. A retry
+retains the original accepted command. Use `read_session` or
+`wait_sessions` with the returned identity to observe completion.
+Native command admission and confirmed results survive an application restart. An uncertain
+delivery can be confirmed from its original producer queue or history; missing evidence never
+authorizes another send with that operation identity.
+Replay verifies the original explicit request before inspecting current execution settings or
+resolving resources. Confirmed results retain their original execution identity after a later
+model, mode or owner change. Uncertain delivery performs read-only checks against that original
+producer. Fresh Native delivery revalidates the Core binding and captured physical host before
+producer mutations. An interrupted draft launch resumes its original staged message, model and
+mode through the launch owner, without reconstructing them from current defaults.
 
 `send_to_inbox` leaves a self-contained message in the user's Inbox for work outside the
 caller's task, such as a follow-up, an idea, or a question for later. Its body, read
@@ -367,34 +410,174 @@ through Core, including the mutually exclusive custom Section placement. Both ac
 Session or default to the caller. A failed backend synchronization after a Session commit returns
 `session_reconciliation_failed`, `committed: true`, and the operation identity to reuse for retry.
 
-`list_sessions` and `list_archived_sessions` discover bounded Session metadata across the
-current Profile, including projectless Sessions. Active discovery excludes archived
-Projects. Results use pinned-first recency order with opaque continuation cursors bound
-to the active or archived query. Each result identifies direct or Project-inherited sidebar
-placement, title, bounded preview, backend, and status. Conversation reads use the same
-Profile identity. A page contains at most 50 Sessions and fits a 32 KiB tool response;
-callers reduce the limit if unusually large metadata exceeds that budget.
+`list_sessions` and `list_archived_sessions` discover bounded Session metadata in the calling
+Project by default; a projectless caller sees its projectless lane. `scope: "profile"` explicitly
+includes every Project, while `projectId` selects a Project. Combining Profile scope with a
+Project is invalid. Runtime child executions are included by default and carry their root
+product Session identity plus `execution.threadId`; `includeSubagents: false` keeps only roots.
+Native roots retain `threadId` and binding metadata without a Runtime execution selector.
+Active discovery excludes archived Projects. Results use conversation-recency order; pins remain placement metadata.
+`projectId` filters Project ownership and `query` matches the title or bounded first-user
+prompt preview, rather than searching complete transcripts. Each result identifies direct
+or Project-inherited sidebar placement, title, preview, backend, status and `recencyAt`.
+`statuses` accepts observed Session or Run states; `settled` and `snoozed` filter the
+execution owner's organization state. Runtime results include author and creation source,
+model and modes, latest Run, lineage, branch, pull requests and visible item counts.
+Presented Run status and current activity status remain separate, so queued work cannot
+hide an active Run from status filters.
+Unavailable native execution fields remain null rather than being inferred from labels.
+Runtime message activity advances recency; renaming, opening and archiving do not.
+Drafts without conversation activity use creation time for ordering.
 
-`wait_sessions` observes up to eight unique Sessions in the current Profile. A zero timeout returns a
-snapshot; otherwise the first changed completion, request for attention, or per-target
-error ends the wait. The maximum wait is two minutes. Each target returns an opaque cursor;
-passing it as `afterCursor` suppresses unchanged completion/history. Timeouts return compact
-status, and cancellation releases event subscriptions. Core and backend events drive bounded
+Foreground Session navigation records durable recent-use evidence. Reopening within ten minutes
+counts once; earlier opens decay with a fourteen-day half-life. Search uses this evidence within
+match quality, without changing conversation recency or unread state. Restoring a window,
+background Scene updates, passive tool reads and polling do not record opens.
+Body search uses the latest proven user-authored message time when its producer records
+that provenance. A Native producer that exposes only a user-role message supplies separate
+`activityEvidence` with `provenance: "user_role"`; it contributes activity weight without
+claiming the message was authored by a person. Proven author evidence takes precedence,
+and missing timestamps contribute no activity weight.
+
+Discovery merges bounded Core-native and Runtime catalogs after checking each Runtime
+root's exact Session binding in Core. It reports each source's availability; an unavailable
+source does not erase results from another source. Opaque cursors bind the Profile,
+active/archive state, filters and execution store. A page contains at most 50 Sessions
+and fits a 32 KiB complete MCP envelope automatically. Continue `nextCursor` until null,
+including after a short or empty page caused by sparse Project membership or source filtering.
+If a source is unavailable, stop pagination and retry later with its retained continuation.
+
+`search_sessions` searches titles, branches, pull requests, Project names and historical
+user/assistant messages in the calling Project or projectless lane. Use `scope: profile`
+for all Projects, or `projectId` for another Project. Metadata and message matches identify
+their source; message matches include item, source Thread and Run coordinates for direct
+`read_session` access, a bounded snippet, match quality and equal-quality message count.
+Both execution sources use the same complete-text word matcher, including Unicode,
+accent folding and separated query terms. Native producers are read passively through
+bounded item pages; search never resumes a Thread.
+Search includes each root conversation's own messages, excluding delegated child Threads and
+inherited fork prefixes. Child executions remain available through list, read, send and wait.
+
+Core admits product placement and exact execution identities before message work. Runtime
+pushes the admitted roots into its indexed SQL search; short queries use advancing scan
+windows. Native scans have a fixed producer tail. Each conversation contributes its best
+message, counting only messages at that match quality; user messages win equal-quality
+message ties. Main ranks body facts by word quality, hit frequency combined with decayed
+activity and opens, then authored message time. Missing authored times remain unknown.
+The query fixes its ranking clock and retains compact references in disposable indexed
+storage, without retaining transcript bodies or rescanning earlier ranking windows.
+
+Each output window selects its leading metadata pool before reserving one fifth of slots
+for body results, with at least one body slot for small windows. Body admission excludes
+that selected pool, so numerous weak metadata matches cannot hide a strong body result.
+Each Session appears once throughout the query. Metadata typo fallback is selected only
+when no strong exact match exists among the admitted metadata facts. Published output
+positions are immutable, including when a response is shortened to its 32 KiB envelope.
+Current placement, binding, matching metadata and selected message versions are checked
+before output; unrelated Session activity and opens do not invalidate a query.
+
+One opaque continuation owns all source progress and output positions. Source failures
+retain their positions and report partial coverage; healthy sources continue independently,
+and retrying the same query can recover failed sources without repeating successful scans.
+Recovered facts follow already published positions. Very large scans report `state: preparing`
+with a continuation; `state: ready` identifies an admitted output window. Continue until
+`nextCursor` is null. Valid requests renew a five-minute inactivity lease. Expired queries
+and changed selected content or bindings return `cursor_stale`, requiring a fresh search.
+
+`wait_sessions` observes up to eight unique Session/execution targets in the current Profile.
+A zero timeout returns a snapshot; otherwise the first changed terminal state, unavailable
+execution, or per-target error ends the wait. Approval, plan and other attention requests on an
+active Run remain observable without ending its wait. Each target pins the latest Run at the start of the call, or accepts
+`runId` to select a particular Run. Automatic restart continuations remain part of that
+execution; unrelated queued or newer Runs never replace it. Results return the original
+`selectedRunId` and the current continuation's `runId`. Empty Sessions stay empty for that call.
+One target defaults to ten minutes and accepts up to one hour; waits with multiple targets
+retain a two-minute default and maximum. Native MCP call deadlines include time for the
+final observation and reply; ordinary tool calls retain their existing bounded lifetime.
+Each target returns an opaque cursor;
+passing it as `afterCursor` suppresses unchanged completion and progress. Timeouts return compact
+status and running progress, and cancellation releases event subscriptions. The captured caller
+Run and attempt also own background application MCP calls: stopping or replacing that execution
+interrupts its in-flight host request even when code execution has already yielded. Ordinary
+foreground completion does not revoke still-live background work. Core, native Codex
+and Runtime lifecycle events drive bounded
 status reads; the observer subscribes before its first read and does not poll full transcripts.
-Only changed completed/attention targets receive a bounded latest-turn history read. Drafts
-are complete with empty history; unloaded backends are explicitly unavailable. Conversation
-identity is checked for each target and rechecked when history is read.
+Runtime waits replay events from before the initial read and also observe restart-effect
+settlement, so a declined continuation cannot leave a wait asleep. The final projection read
+resolves completion versus timeout. Native Turn selection uses durable metadata pagination,
+including explicit Turns outside the retained window, without resuming execution.
+Changed targets receive `progress` containing at most 160 characters of the latest reply,
+its full-content continuation, and the latest tool's identity and status, scoped to the
+selected Run's current continuation. Complete Run bodies
+never enter wait results. Runtime progress uses indexed latest-item reads. Native progress
+searches a bounded recent activity window and reports `coverage: recent_window` with a history
+cursor when older items remain. A missing reply in that window does not prove there is no reply.
+Waits fit a 32 KiB complete MCP envelope; progress that cannot fit is explicitly deferred with
+`reason: response_budget` and can be read through `read_session`. Oversized target metadata
+becomes a per-target `source_limit` error. Drafts are complete with empty progress; unloaded
+backends are explicitly unavailable. Access and binding are checked again before progress
+delivery; revoked targets return per-target errors.
 
-`read_session` returns a Session in the current Profile's status and newest conversation turns without
-opening a window. A Runtime Session reports the `agent` instance and model its next message
-runs on; `wait_sessions` reports the same `agent` for each target. It defaults to the calling Session, three turns, and 300 characters per text
-item, with tool outputs omitted. The complete response has a 24 KiB budget; a larger response
-fails explicitly so the caller can narrow its limits. Core validates the captured execution
+`read_session` returns a Session's status and newest history items without opening a window
+or resuming its Provider. The target's execution binding selects the same history owner for
+every caller. Runtime accumulates only the ranges admitted into bounded Session and Task read
+responses for the same parent Run, result item, current content version and format. Complete
+coverage of a terminal child result acknowledges delivery through its Task owner after another
+canonical version and causal-parent check. Missing fragments, changed versions, mixed formats,
+inherited items and other callers cannot complete that proof. Read progress retains coordinates
+without bodies, renews during active reads and may safely expire or be evicted while leaving the
+result unread; rereading the complete result rebuilds it.
+
+`execution: {threadId}` selects a Runtime child within that Session's bound root
+subtree for reading or waiting; the Core `sessionId` remains unchanged. Runtime validates the
+canonical root lineage for each operation. A Runtime Session reports the `agent` instance and model its next message
+runs on; `wait_sessions` reports the same `agent` for each target. The version 2 result defaults
+to the calling Session, `view: messages`, 20 items and 2,000 characters per item. Messages
+includes user messages, Agent messages and plans. `view: activity` includes every typed
+source item, retaining tool inputs, outputs, file changes and attachments. Activity content
+is a JSON value with its `source` and complete `item`, or an explicit `json_fragment` of
+that same value. Identity, Run and status fields remain independent of text limits.
+Items retain visibility, timestamps, message identity and available author, creation source
+and sender Thread, including Agent-authored messages that use the user role.
+The `execution` summary includes owner-native metadata, counted Runtime Runs and pending
+requests, and recent Run summaries. `runLimit` selects a bounded number of summaries;
+`execution.runsPage.nextCursor` continues older summaries through the independent
+`runCursor` parameter. Native summaries retain native Turn status/timing and leave counts
+unavailable when the producer does not supply them. Omitted Run summaries remain reachable.
+
+The complete MCP envelope, including text and structured content, stays within 24 KiB.
+Admission shortens content or stops before the next item without increasing this ceiling.
+`history.page.nextCursor` follows the requested order: `newest_first` by default, or
+`oldest_first` for forward reading. A forward page's `tailCursor` remains reusable after
+exhaustion and returns newly appended items without repeating old history, including when
+the initial history was empty. Each partial item's `content.nextCursor` continues
+that exact text or JSON value through `read_session`; retain the page cursor separately.
+Pass `itemId`, `sourceThreadId` and the hit's `runId` to read a search hit directly;
+`sourceThreadId` and `runId` are optional for other known item addresses.
+`textOffset` starts at a specific UTF-16 position. An item address cannot be combined with a
+cursor. Runtime resolves the visible identity directly, including captured fork ancestry.
+Native Run/item addresses use one bounded producer item lookup, including the first and last
+item in a Turn. Missing or withdrawn items return `item_unavailable`. Without `runId`, Native sources scan at most four
+20-item producer pages per call. While
+locating, the available result has no items, `history.page.locating: true`, and a `nextCursor`;
+continue that cursor until the item is found or the source reports `item_unavailable`.
+Native first reads reuse the producer's returned payload without a second content request.
+Offsets count JavaScript UTF-16 code units, and fragments reassemble exactly after JSON
+transport. Continuations contain source locators, positions and content versions; author,
+visibility, status and other item metadata are reconstructed from the canonical source on
+every read, including partial content continuation. Cursors bind the Session, execution store, view and order; changed item versions return
+`cursor_stale` instead of joining different content. Unreadable source identities or cursors
+fail explicitly with `source_limit`, rather than returning an unusable continuation.
+Positive item, Run and character requests normalize to their supported budgets; zero and
+negative quantities are rejected. Normalization never increases the complete-envelope limit.
+
+Core validates the captured execution
 identity before and after backend history reads. A changed backend binding discards the
 result; Project movement changes routing without changing content access.
-Runtime history uses bounded Run/item queries and exact ancestry without opening a native
-Provider connection. Explicit native-history readers retain their own cursor and source
-lifetime. Threadless drafts report empty history and do not start a backend.
+Runtime history uses indexed item metadata, exact fork ancestry and explicit canonical content
+slices. Native Codex history uses passive item queries and stable producer cursors, including
+when new items arrive during continuation. Neither path depends on renderer snapshots or
+their preview limits. Threadless drafts report empty history and do not start a backend.
 
 ## Agent content operations
 

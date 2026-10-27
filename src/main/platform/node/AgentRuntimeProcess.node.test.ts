@@ -30,6 +30,41 @@ const acquire = (
     host,
   });
 
+it.live("withdraws only the cancelled host wait and rejects stale-generation cancellation", () =>
+  Effect.gen(function* () {
+    const started = { a: yield* Deferred.make<void>(), b: yield* Deferred.make<void>() };
+    const stopped = { a: yield* Deferred.make<void>(), b: yield* Deferred.make<void>() };
+    const released = { a: false, b: false };
+    const connection = yield* acquire((request) => {
+      if (request.operation !== "tool.call") return Effect.die("Expected host tool call");
+      const input = request.input as { targets: { sessionId: string }[] };
+      const key = input.targets[0]!.sessionId === "host-wait:a" ? "a" : "b";
+      return Deferred.succeed(started[key], undefined).pipe(
+        Effect.andThen(Effect.never),
+        Effect.ensuring(
+          Effect.sync(() => {
+            released[key] = true;
+          }).pipe(Effect.andThen(Deferred.succeed(stopped[key], undefined))),
+        ),
+      );
+    });
+    const a = yield* connection.request("project.read", { projectId: "host-wait:a" });
+    const b = yield* connection.request("project.read", { projectId: "host-wait:b" });
+    const first = a as unknown as { hostId: string };
+    const second = b as unknown as { hostId: string };
+    yield* Deferred.await(started.a);
+    yield* Deferred.await(started.b);
+    yield* connection.request("project.read", { projectId: `host-cancel-wrong:${first.hostId}` });
+    assert.deepEqual(released, { a: false, b: false });
+    yield* connection.request("project.read", { projectId: `host-cancel:${first.hostId}` });
+    yield* Deferred.await(stopped.a).pipe(Effect.timeout("2 seconds"));
+    assert.deepEqual(released, { a: true, b: false });
+    assert.equal((yield* connection.request("runtime.identity", {})).runtimeId, "fixture-runtime");
+    yield* connection.request("project.read", { projectId: `host-cancel:${second.hostId}` });
+    yield* Deferred.await(stopped.b).pipe(Effect.timeout("2 seconds"));
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.live("correlates out-of-order replies and retains the durable readiness watermark", () =>
   Effect.gen(function* () {
     const connection = yield* acquire();
@@ -94,7 +129,9 @@ it.live("Host callbacks may re-enter the process without blocking their command 
       commandId: "fixture-command",
       threadId: "thread",
     } satisfies AgentCommand;
-    assert.deepEqual(yield* connection.request("command.dispatch", command), { sequence: 9 });
+    assert.deepEqual(yield* connection.request("command.dispatch", { command: command }), {
+      sequence: 9,
+    });
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
@@ -380,5 +417,19 @@ it.live("root activity notifications travel on the execution metadata channel", 
       rootThreadId: "thread:root",
       sequence: 12,
     });
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("preserves structured search continuation failures across the Runtime stdio bridge", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire();
+    for (const reason of ["invalid_cursor", "cursor_stale"] as const) {
+      const error = yield* connection
+        .request("sessions.search", { query: reason })
+        .pipe(Effect.flip);
+      assert.equal(error.reason, "rejected");
+      assert.equal(error.engineTag, "SessionSearchError");
+      assert.equal(error.engineReason, reason);
+    }
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

@@ -110,7 +110,9 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           SELECT json_extract(thread.payload_json, '$.lineage.rootThreadId') AS root_thread_id,
             facts.thread_id, facts.kind, facts.at, facts.amount
           FROM facts
-          INNER JOIN orchestration_v2_projection_threads AS thread
+          -- Keep the live fact set outermost; discovery indexes must never turn this into
+          -- a scan of retained Threads before their live facts are looked up.
+          CROSS JOIN orchestration_v2_projection_threads AS thread
             ON thread.thread_id = facts.thread_id
           WHERE thread.deleted_at IS NULL
         )

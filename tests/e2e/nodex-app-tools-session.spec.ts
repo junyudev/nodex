@@ -1,4 +1,4 @@
-import { nativeAppToolCall } from "./support/native-app-tools";
+import { nativeAppToolCall, nativeCodeTool } from "./support/native-app-tools";
 import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
@@ -39,12 +39,13 @@ const observedRunIds = (value: unknown): string[] => {
   const observation = requireRecord(value, "Session observation");
   const history = requireRecord(observation.history, "Session history");
   expect(history.availability).toBe("available");
-  if (!Array.isArray(history.turns)) throw new Error("Expected bounded Session turns");
-  return history.turns.map((turn) => {
-    const runId = requireRecord(turn, "Session turn").turnId;
+  if (!Array.isArray(history.items)) throw new Error("Expected bounded Session history items");
+  const runIds = history.items.map((item) => {
+    const runId = requireRecord(item, "Session history item").runId;
     if (typeof runId !== "string") throw new Error("Expected Session Run identity");
     return runId;
   });
+  return [...new Set(runIds)];
 };
 
 test("reads its Session through native MCP before and after restarting Nodex", async () => {
@@ -72,63 +73,63 @@ test("reads its Session through native MCP before and after restarting Nodex", a
           respond: (request, index) => {
             const callId = `app_context_${phase}`;
             if (index === 0) {
-              const tool = request.toolInvocation("functions", "exec");
-              expect(tool).not.toBeNull();
+              const tool = nativeCodeTool(request);
               return responses.stream([
                 responses.created(`${phase}_call`),
                 nativeAppToolCall(
                   callId,
                   tool!.name,
                   [
-                    // Omit storage receipts so the complete workflow fits in the tool output budget.
+                    // Print workflow assertions without repeated execution summaries or opaque continuation bytes.
                     '// @exec: {"yield_time_ms": 60000, "max_output_tokens": 30000}',
                     'const unwrap = r => { const v = typeof r === "string" ? JSON.parse(r) : r; return JSON.parse(JSON.stringify(v.structuredContent ?? (v.content ? JSON.parse(v.content[0].text) : v), (key, value) => key === "receipt" ? undefined : value)); };',
-                    'text(unwrap(await app.get_session_context({}))); text(unwrap(await app.list_projects({}))); text(unwrap(await app.get_app_capabilities({}))); text(unwrap(await app.describe_content_schema({scope:{},relation:"pages"}))); text(unwrap(await app.query_content({scope:{},sql:"SELECT count(*) AS page_count FROM pages"})));',
-                    "text(unwrap(await app.read_session({turnLimit:1,maxOutputCharsPerItem:100})));",
+                    'const emit = value => text(JSON.parse(JSON.stringify(value, (key, value) => ["receipt","execution","nextCursor","tailCursor"].includes(key) ? undefined : value)));',
+                    'emit(unwrap(await app.get_session_context({}))); emit(unwrap(await app.list_projects({}))); emit(unwrap(await app.get_app_capabilities({}))); emit(unwrap(await app.describe_content_schema({scope:{},relation:"pages"}))); emit(unwrap(await app.query_content({scope:{},sql:"SELECT count(*) AS page_count FROM pages"})));',
+                    "emit(unwrap(await app.read_session({limit:1,maxCharsPerItem:100})));",
                     `const launchArgs = {prompt:"APP_CHILD_${phase}",title:"MCP child ${phase}",target:{type:"project",projectId:${JSON.stringify(projectId)},environment:{type:"local"}},model:"gpt-5.6-sol"};`,
-                    'const rawChild = await app.create_session(launchArgs); const childOutput=typeof rawChild==="string"?JSON.parse(rawChild):rawChild; if(childOutput.isError) text({childFailure:childOutput}); const child=unwrap(childOutput); text({createdChild:child});',
-                    "text({replayedChild:unwrap(await app.create_session({...launchArgs,operationId:child.operationId}))});",
-                    "text({childWait:unwrap(await app.wait_sessions({targets:[{sessionId:child.sessionId}],timeoutMs:30000}))});",
-                    "text({childHistory:unwrap(await app.read_session({sessionId:child.sessionId,turnLimit:1}))});",
+                    'const rawChild = await app.create_session(launchArgs); const childOutput=typeof rawChild==="string"?JSON.parse(rawChild):rawChild; if(childOutput.isError) emit({childFailure:childOutput}); const child=unwrap(childOutput); emit({createdChild:child});',
+                    "emit({replayedChild:unwrap(await app.create_session({...launchArgs,operationId:child.operationId}))});",
+                    "emit({childWait:unwrap(await app.wait_sessions({targets:[{sessionId:child.sessionId,runId:child.runId}],timeoutMs:30000}))});",
+                    "emit({childHistory:unwrap(await app.read_session({sessionId:child.sessionId}))});",
                     `const messageArgs = {sessionId:child.sessionId,prompt:"APP_FOLLOWUP_${phase}"};`,
-                    "const sent = unwrap(await app.send_message_to_session(messageArgs)); text({sentMessage:sent});",
-                    "text({replayedMessage:unwrap(await app.send_message_to_session({...messageArgs,operationId:sent.operationId}))});",
-                    "text({followupWait:unwrap(await app.wait_sessions({targets:[{sessionId:child.sessionId}],timeoutMs:30000}))});",
-                    "text({followupHistory:unwrap(await app.read_session({sessionId:child.sessionId,turnLimit:2}))});",
-                    "const forkArgs = {sessionId:child.sessionId}; const forked = unwrap(await app.fork_session(forkArgs)); text({forkedChild:forked});",
-                    "text({replayedFork:unwrap(await app.fork_session({...forkArgs,operationId:forked.operationId}))});",
-                    `text({forkMessage:unwrap(await app.send_message_to_session({sessionId:forked.sessionId,prompt:"APP_FORK_${phase}"}))});`,
-                    "text({forkWait:unwrap(await app.wait_sessions({targets:[{sessionId:forked.sessionId}],timeoutMs:30000}))});",
-                    "text({forkHistory:unwrap(await app.read_session({sessionId:forked.sessionId,turnLimit:1}))});",
+                    "const sent = unwrap(await app.send_message_to_session(messageArgs)); emit({sentMessage:sent});",
+                    "emit({replayedMessage:unwrap(await app.send_message_to_session({...messageArgs,operationId:sent.operationId}))});",
+                    "emit({followupWait:unwrap(await app.wait_sessions({targets:[{sessionId:child.sessionId,runId:sent.runId}],timeoutMs:30000}))});",
+                    "emit({followupHistory:unwrap(await app.read_session({sessionId:child.sessionId}))});",
+                    "const forkArgs = {sessionId:child.sessionId}; const forked = unwrap(await app.fork_session(forkArgs)); emit({forkedChild:forked});",
+                    "emit({replayedFork:unwrap(await app.fork_session({...forkArgs,operationId:forked.operationId}))});",
+                    `emit({forkMessage:unwrap(await app.send_message_to_session({sessionId:forked.sessionId,prompt:"APP_FORK_${phase}"}))});`,
+                    "emit({forkWait:unwrap(await app.wait_sessions({targets:[{sessionId:forked.sessionId}],timeoutMs:30000}))});",
+                    "emit({forkHistory:unwrap(await app.read_session({sessionId:forked.sessionId,limit:2}))});",
 
                     ...(retainedHandoff
                       ? [
-                          `text({retainedHandoff:unwrap(await app.get_handoff_status(${JSON.stringify(retainedHandoff)}))});`,
-                          `text({retainedReplay:unwrap(await app.handoff_session(${JSON.stringify(retainedHandoff)}))});`,
+                          `emit({retainedHandoff:unwrap(await app.get_handoff_status(${JSON.stringify(retainedHandoff)}))});`,
+                          `emit({retainedReplay:unwrap(await app.handoff_session(${JSON.stringify(retainedHandoff)}))});`,
                         ]
                       : []),
-                    "const moved = unwrap(await app.handoff_session({sessionId:child.sessionId})); text({startedHandoff:moved});",
-                    "let progress = moved.operation; for (let attempt = 0; attempt < 20 && progress?.status === 'running'; attempt++) { const observed = unwrap(await app.get_handoff_status({sessionId:child.sessionId,operationId:moved.operationId,afterRevision:progress.revision,waitMs:30000})); progress = observed.operation; } text({handoffOutcome:progress});",
-                    "text({replayedHandoff:unwrap(await app.handoff_session({sessionId:child.sessionId,operationId:moved.operationId}))});",
+                    "const moved = unwrap(await app.handoff_session({sessionId:child.sessionId})); emit({startedHandoff:moved});",
+                    "let progress = moved.operation; for (let attempt = 0; attempt < 20 && progress?.status === 'running'; attempt++) { const observed = unwrap(await app.get_handoff_status({sessionId:child.sessionId,operationId:moved.operationId,afterRevision:progress.revision,waitMs:30000})); progress = observed.operation; } emit({handoffOutcome:progress});",
+                    "emit({replayedHandoff:unwrap(await app.handoff_session({sessionId:child.sessionId,operationId:moved.operationId}))});",
 
-                    `const created = unwrap(await app.create_sidebar_section({name:${JSON.stringify(`MCP section ${phase}`)}})); text(created);`,
-                    `text(unwrap(await app.move_session_to_sidebar_section({sessionId:${JSON.stringify(threadlessSessionId)},sectionId:created.section.sectionId})));`,
-                    `text(unwrap(await app.move_project_to_sidebar_section({projectId:${JSON.stringify(projectId)},sectionId:created.section.sectionId})));`,
-                    "const placementWindow = unwrap(await app.list_sidebar_section_items({sectionId:created.section.sectionId})); text({mixedBefore:placementWindow});",
-                    "const orderArgs = {sectionId:created.section.sectionId,items:placementWindow.items.slice().reverse().map(item => ({placementId:item.placementId,expectedRevision:item.revision,expectedRankKey:item.rankKey}))}; const reordered = unwrap(await app.reorder_section(orderArgs)); text({mixedReorder:reordered});",
-                    "text({mixedReplay:unwrap(await app.reorder_section({...orderArgs,operationId:reordered.operationId}))});",
-                    "text({mixedAfter:unwrap(await app.list_sidebar_section_items({sectionId:created.section.sectionId}))});",
-                    `text(unwrap(await app.set_session_title({sessionId:${JSON.stringify(threadlessSessionId)},title:"MCP draft ${phase}"})));`,
-                    `text(unwrap(await app.read_session({sessionId:${JSON.stringify(threadlessSessionId)}})));`,
-                    `const observed = unwrap(await app.wait_sessions({targets:[{sessionId:${JSON.stringify(threadlessSessionId)}}],timeoutMs:0})); text({draftWait:observed});`,
-                    `text({unchangedWait:unwrap(await app.wait_sessions({targets:[{sessionId:${JSON.stringify(threadlessSessionId)},afterCursor:observed.targets[0].cursor}],timeoutMs:1}))});`,
-                    `const active = unwrap(await app.list_sessions({limit:50})); text({activeDraft:active.sessions.find(s => s.sessionId === ${JSON.stringify(threadlessSessionId)})});`,
-                    `text(unwrap(await app.set_session_archived({sessionId:${JSON.stringify(threadlessSessionId)},archived:true})));`,
-                    `const archived = unwrap(await app.list_archived_sessions({limit:50})); text({archivedDraft:archived.sessions.find(s => s.sessionId === ${JSON.stringify(threadlessSessionId)})});`,
-                    `text(unwrap(await app.set_session_archived({sessionId:${JSON.stringify(threadlessSessionId)},archived:false})));`,
-                    'const renamed = unwrap(await app.rename_sidebar_section({sectionId:created.section.sectionId,expectedRevision:created.section.revision,name:"MCP organized"})); text(renamed);',
-                    "text(unwrap(await app.list_sidebar_sections({first:20})));",
-                    "text(unwrap(await app.delete_sidebar_section({sectionId:renamed.section.sectionId,expectedRevision:renamed.section.revision})));",
+                    `const created = unwrap(await app.create_sidebar_section({name:${JSON.stringify(`MCP section ${phase}`)}})); emit(created);`,
+                    `emit(unwrap(await app.move_session_to_sidebar_section({sessionId:${JSON.stringify(threadlessSessionId)},sectionId:created.section.sectionId})));`,
+                    `emit(unwrap(await app.move_project_to_sidebar_section({projectId:${JSON.stringify(projectId)},sectionId:created.section.sectionId})));`,
+                    "const placementWindow = unwrap(await app.list_sidebar_section_items({sectionId:created.section.sectionId})); emit({mixedBefore:placementWindow});",
+                    "const orderArgs = {sectionId:created.section.sectionId,items:placementWindow.items.slice().reverse().map(item => ({placementId:item.placementId,expectedRevision:item.revision,expectedRankKey:item.rankKey}))}; const reordered = unwrap(await app.reorder_section(orderArgs)); emit({mixedReorder:reordered});",
+                    "emit({mixedReplay:unwrap(await app.reorder_section({...orderArgs,operationId:reordered.operationId}))});",
+                    "emit({mixedAfter:unwrap(await app.list_sidebar_section_items({sectionId:created.section.sectionId}))});",
+                    `emit(unwrap(await app.set_session_title({sessionId:${JSON.stringify(threadlessSessionId)},title:"MCP draft ${phase}"})));`,
+                    `emit(unwrap(await app.read_session({sessionId:${JSON.stringify(threadlessSessionId)}})));`,
+                    `const observed = unwrap(await app.wait_sessions({targets:[{sessionId:${JSON.stringify(threadlessSessionId)}}],timeoutMs:0})); emit({draftWait:observed});`,
+                    `emit({unchangedWait:unwrap(await app.wait_sessions({targets:[{sessionId:${JSON.stringify(threadlessSessionId)},afterCursor:observed.targets[0].cursor}],timeoutMs:1}))});`,
+                    `const active = unwrap(await app.list_sessions({limit:50})); emit({activeDraft:active.sessions.find(s => s.sessionId === ${JSON.stringify(threadlessSessionId)})});`,
+                    `emit(unwrap(await app.set_session_archived({sessionId:${JSON.stringify(threadlessSessionId)},archived:true})));`,
+                    `const archived = unwrap(await app.list_archived_sessions({limit:50})); emit({archivedDraft:archived.sessions.find(s => s.sessionId === ${JSON.stringify(threadlessSessionId)})});`,
+                    `emit(unwrap(await app.set_session_archived({sessionId:${JSON.stringify(threadlessSessionId)},archived:false})));`,
+                    'const renamed = unwrap(await app.rename_sidebar_section({sectionId:created.section.sectionId,expectedRevision:created.section.revision,name:"MCP organized"})); emit(renamed);',
+                    "emit(unwrap(await app.list_sidebar_sections({first:20})));",
+                    "emit(unwrap(await app.delete_sidebar_section({sectionId:renamed.section.sectionId,expectedRevision:renamed.section.revision})));",
                   ].join("\n"),
                   tool!.namespace,
                 ),
@@ -237,6 +238,8 @@ test("reads its Session through native MCP before and after restarting Nodex", a
               sessionId: createdChild.sessionId,
               threadId: createdChild.threadId,
               operationId: expect.any(String),
+              messageId: expect.any(String),
+              runId: expect.any(String),
             });
             expect(records.find((record) => record.replayedMessage)?.replayedMessage).toMatchObject(
               {
@@ -244,11 +247,17 @@ test("reads its Session through native MCP before and after restarting Nodex", a
                 sessionId: createdChild.sessionId,
                 threadId: createdChild.threadId,
                 operationId: sentMessage.operationId,
+                messageId: sentMessage.messageId,
+                runId: sentMessage.runId,
               },
             );
             expect(records.find((record) => record.followupWait)?.followupWait).toMatchObject({
               targets: expect.arrayContaining([
-                expect.objectContaining({ disposition: "complete" }),
+                expect.objectContaining({
+                  disposition: "complete",
+                  selectedRunId: sentMessage.runId,
+                  runId: sentMessage.runId,
+                }),
               ]),
             });
             const followupHistory = records.find(
@@ -362,7 +371,7 @@ test("reads its Session through native MCP before and after restarting Nodex", a
           respond: (request, index) => {
             const callId = `fork_context_${phase}`;
             if (index === 0) {
-              const tool = request.toolInvocation("functions", "exec")!;
+              const tool = nativeCodeTool(request);
               return responses.stream([
                 responses.created(`fork_call_${phase}`),
                 nativeAppToolCall(
@@ -377,7 +386,10 @@ test("reads its Session through native MCP before and after restarting Nodex", a
             const context = toolOutputRecords(request.toolCallOutput(callId)).find(
               (record) => typeof record.sessionId === "string",
             );
-            expect(context).toBeDefined();
+            expect(
+              context,
+              JSON.stringify(request.toolCallOutput(callId)).slice(0, 12_000),
+            ).toBeDefined();
             forkContexts.set(phase, context!);
             return responses.stream([
               responses.created(`fork_done_${phase}`),
@@ -442,7 +454,7 @@ test("reads its Session through native MCP before and after restarting Nodex", a
       });
       writeFileSync(
         join(harness.profile.codexHome, "config.toml"),
-        `model_provider = "openai"\nopenai_base_url = ${JSON.stringify(`${model.baseUrl}/v1`)}\nrequest_max_retries = 0\nstream_max_retries = 0\n[features]\nrespect_system_proxy = false\n`,
+        `model_provider = "openai"\nopenai_base_url = ${JSON.stringify(`${model.baseUrl}/v1`)}\nrequest_max_retries = 0\nstream_max_retries = 0\n[features]\nrespect_system_proxy = false\ncode_mode = true\ncode_mode_only = true\n`,
         { mode: 0o600 },
       );
       try {

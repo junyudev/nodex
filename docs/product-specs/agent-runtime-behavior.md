@@ -51,8 +51,12 @@ independent native conversation with the ordinary portable context handoff. The 
 bounded, and omitted history stays available through Runtime history reads. Native hidden state,
 live tools, queues, approvals and goals are not adopted or replayed.
 
-Imported user images, local images in assistant Markdown and image-view files use Runtime-owned
-attachments when their bytes are available. Missing original image files remain explicit
+Imported user images, local images in assistant Markdown, image-view files, generated images
+and tool media use independent Runtime-owned attachments when their bytes are available. Inline
+generated image bytes remain usable after the source's saved image file disappears. Imported audio
+is retained as a file attachment. Opaque provider file identities and remote-only URLs without a
+producer byte export report `resource_unavailable`; the original Native conversation stays intact
+and does not change execution owner. Missing original image files remain explicit
 unavailable-image records rather than readable attachments. They preserve the historical message
 or activity, remain visible in history reads, and tell the continuing Agent that those image bytes
 could not be recovered. A missing image does not block the rest of the import or resolve later
@@ -265,6 +269,20 @@ details provide those bodies. Long text appears as a bounded preview with a trun
 marker; full copy and export use explicit full-item reads. A control envelope that
 cannot fit fails explicitly rather than exceeding the transport budget.
 
+Agent Session and Task reads share one independent metadata-only timeline window and canonical
+text or JSON slices, rather than the renderer's bounded initial window. Each content slice
+carries its exact source identity, offset, total length and content version; item changes
+invalidate a continuation. Message extraction is shared with delegated-task history. Latest
+reply and activity queries use the same indexed visibility rules without loading whole Runs.
+The Runtime also owns a rebuildable root-conversation catalog with message recency and a
+bounded first-user prompt preview, and a rebuildable full-message search index. They are
+queried through bounded owner windows; Core stores
+Session membership and placement, without retaining a second copy of Runtime conversation facts.
+File-backed WAL databases route read-only queries and complete read transactions through
+a scoped SQLite worker connection. Existing write transactions retain their writer;
+in-memory databases and unavailable readers use the writer path. Reader failure cannot
+silently move an in-progress transaction to a replacement connection.
+
 Compaction admits one durable maintenance Run per request; compaction items recorded in
 that Run are manual, and every other compaction is automatic. Editing any sent user
 message first admits a conversation rewind to just before that message's Run and waits
@@ -301,9 +319,18 @@ retain their exact product identities and content owners.
 
 Message delivery intent resolves inside the serialized command writer, after its
 durable receipt lookup. An accepted steer or restart therefore replays after the
-Run completes. A steer the Provider refuses while its Turn keeps running waits as the
+Run completes. Application messages bind their original request fingerprint before
+dispatch. An authorized retry recovers the original message, Run and delivery before
+reading mutable model settings or attachment sources; changed arguments cannot reuse
+that identity. Run status is read from that exact Run, rather than copied into another
+receipt. A steer the Provider refuses while its Turn keeps running waits as the
 next message instead of being lost; Codex steering that names a continued Turn is retried
-once against it. Ordinary intake reads addressed control heads and input identities;
+once against it. A draft's first message retains its prepared model, mode, context and
+owned attachment bytes before Core binds the Session; execution still starts only after
+Core admission. An interrupted launch resumes that retained intent under the current
+caller's permission ceiling. Receipt queries never create a missing Thread from defaults,
+and acceptance atomically releases the duplicate pending message context.
+Ordinary intake reads addressed control heads and input identities;
 historical prompts and tool bodies stay out of planning. Provider handoff, captured
 ancestry and queue promotion select the required control identities before reading
 history. Portable history admits intact items within its database read and delivery
@@ -316,7 +343,10 @@ An existing user-input item resolves through its message identity and follows
 that message into its queued Run, including when a Provider assigned the item ID.
 
 Images are materialized from explicit attachments, then persisted by the runtime under
-the admitted Thread and message before dispatch. Image URLs resolve on demand from that
+the admitted Thread and message before dispatch. Inline media transfers through temporary
+Host-owned files scoped to each send; completion, failure and interruption release those
+sources. Retained draft intent references independent Runtime-owned copies. The existing
+image and message byte limits apply. Image URLs resolve on demand from that
 exact visible item and attachment identity. Each user message owns its attachments in the
 transcript, including steering, queue promotion and image-only input. Collapsing Agent
 activity keeps those complete messages visible, and reopening history preserves their
@@ -626,12 +656,24 @@ use the canonical Runtime writer and stable command identities.
 Every provider attaches the application tools as one MCP server named `nodex_app`. Session
 tools address product Sessions by sessionId across Projects. The Runtime's task tools
 (`list_agent_models`, `delegate_task`, `task_status`, `task_wait`, `task_send`, `task_read`,
-`task_cancel` and `stop_workflow`) address delegated children by taskId only; no tool input or
-result carries a Runtime conversation identity. A task resolves through its indexed owner to its
+`task_cancel` and `stop_workflow`) address delegated children by taskId only; canonical
+history retains source Thread provenance and complete typed items without granting target
+selection by those identities. A task resolves through its indexed owner to its
 actual parent, so observation does not scan every Session. `task_read` without a taskId reads
 the caller's own conversation. Ordinary Session creation goes through the Host's product binding
 transaction before execution. Background tools retain their captured execution identity while
 their native process remains live.
+
+`task_read` shares Session history semantics: text messages or complete activity JSON,
+newest-first or oldest-first order, independent page and content cursors, a reusable forward
+tail, content-version and owner-binding fences, and 24 KiB complete MCP envelope admission.
+Task-relative `itemId` point reads use opaque continuations. Its input and item envelope
+do not publish Runtime Thread routing fields; private source locators still bind each cursor
+and admitted read proof. Canonical activity JSON remains diagnostic data, preserving typed
+provider fields and outputs without turning those fields into Task routing parameters.
+Reading complete admitted coverage of a terminal child's current result acknowledges delivery;
+missing fragments and omitted items do not acknowledge unseen results. Task authorization remains
+with the delegation owner, independently of source identities retained in canonical history.
 
 Delegation attaches to the native call's exact source Run, including a completed
 foreground Run that still has live native background work. A Session-only caller

@@ -43,6 +43,16 @@ pub(super) fn mutate_session(
     validate_id("session_id", session_id)?;
     let authority = require_session(connection, library_id, session_id)?;
     match intent {
+        ProjectSessionIntent::RecordOpened => super::session_usage::record_opened(
+            connection,
+            library_id,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            session_id,
+            &authority,
+        ),
         ProjectSessionIntent::Rename { title } => rename_session(
             connection,
             library_id,

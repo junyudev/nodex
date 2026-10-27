@@ -109,15 +109,17 @@ it.live.each([
           yield* call("thread.read", { threadId });
           expect(yield* fs.readFileString(log)).toBe(beforeReopen);
           yield* call("command.dispatch", {
-            type: "message.dispatch",
-            commandId: "continue",
-            threadId,
-            messageId: "message",
-            text: "Continue",
-            attachments: [],
-            createdBy: "user",
-            creationSource: "web",
-            dispatchMode: { type: "start_immediately" },
+            command: {
+              type: "message.dispatch",
+              commandId: "continue",
+              threadId,
+              messageId: "message",
+              text: "Continue",
+              attachments: [],
+              createdBy: "user",
+              creationSource: "web",
+              dispatchMode: { type: "start_immediately" },
+            },
           });
           const outcome = yield* call("run.outcome", { threadId, messageId: "message" }).pipe(
             Effect.repeat({
@@ -173,15 +175,17 @@ it.live.each([
           expect(nativeRow(restored)?.status).toBe("idle");
           expect(yield* fs.readFileString(log)).toBe(afterContinue);
           yield* call("command.dispatch", {
-            type: "message.dispatch",
-            commandId: "continue-again",
-            threadId,
-            messageId: "second-message",
-            text: "Continue again",
-            attachments: [],
-            createdBy: "user",
-            creationSource: "web",
-            dispatchMode: { type: "start_immediately" },
+            command: {
+              type: "message.dispatch",
+              commandId: "continue-again",
+              threadId,
+              messageId: "second-message",
+              text: "Continue again",
+              attachments: [],
+              createdBy: "user",
+              creationSource: "web",
+              dispatchMode: { type: "start_immediately" },
+            },
           });
           const outcome = yield* call("run.outcome", {
             threadId,

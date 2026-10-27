@@ -21,6 +21,7 @@ mod read;
 mod session_lifecycle;
 mod session_listing;
 mod session_mutation;
+mod session_usage;
 mod sidebar;
 mod sidebar_builtin;
 #[cfg(test)]

@@ -145,7 +145,6 @@ class HostActivation extends Context.Service<
   {
     readonly activate: (execute: AgentRuntimeHostToolExecutor) => Effect.Effect<void>;
     readonly resume: Effect.Effect<void, unknown>;
-    readonly subscribeExecutionChanges: Effect.Effect<Stream.Stream<void>, never, Scope.Scope>;
   }
 >()("nodex/main/app/AgentRuntimeHostActivation") {}
 
@@ -734,7 +733,6 @@ const supervisor = Layer.effectContext(
       Context.add(HostActivation, {
         activate: (tools) => Deferred.succeed(toolsReady, tools).pipe(Effect.asVoid),
         resume: runtime.getUnlessQuiet.pipe(Effect.asVoid),
-        subscribeExecutionChanges: executionChanges,
       }),
     );
   }).pipe(
@@ -756,9 +754,7 @@ export const runtime = supervisor.pipe(
 export const hostTools = Layer.effectDiscard(
   Effect.gen(function* () {
     const activation = yield* HostActivation;
-    const execute = yield* makeHostTools({
-      subscribeExecutionChanges: activation.subscribeExecutionChanges,
-    });
+    const execute = yield* makeHostTools;
     yield* activation.activate(execute);
     yield* activation.resume.pipe(
       Effect.catchCause(() =>

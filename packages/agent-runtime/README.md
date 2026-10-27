@@ -56,8 +56,9 @@ Every provider attaches one MCP server named `nodex_app` (`NODEX_APP_MCP_SERVER`
 `src/mcp/NodexAppMcpServer.ts`). Claude reports its calls as `mcp__nodex_app__<tool>`, Codex as
 server `nodex_app` with the bare tool name, OpenCode as `nodex_app_<tool>` or
 `nodex_app-<thread>_<tool>`. The server carries two families. Host Session and content tools
-address product Sessions by sessionId. The Runtime's task tools address delegated children by
-taskId only; the Runtime conversation that backs a task never appears in tool inputs or results.
+address product Sessions by sessionId. The Runtime's task tools select delegated children by
+taskId only; canonical history retains source Thread provenance without granting target selection
+by those source identities.
 
 | Tool                | Purpose                                                                            |
 | ------------------- | ---------------------------------------------------------------------------------- |
@@ -73,6 +74,8 @@ taskId only; the Runtime conversation that backs a task never appears in tool in
 Task tools resolve a taskId to its conversation through the indexed task owner, then reuse the
 conversation read, send and acknowledgement logic. Mutations keep stable command identities
 derived from `clientRequestId` or the native call, so retries replay durable receipts.
+Session and Task history share typed activity, stable page and content cursors, forward tails,
+version checks and complete-response admission; Task result acknowledgement remains delegation-owned.
 `src/nodex/Instructions.ts` is the guidance every provider receives for these tools.
 
 ## Host bridge

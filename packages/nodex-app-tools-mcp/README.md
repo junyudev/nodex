@@ -50,4 +50,9 @@ The private descriptor is injected through one process-level inline TOML server
 override. It is never saved in Thread configuration. Explicit consent is requested
 for creating, messaging, forking, or handing off a Session and updating an
 Automation; approval policy never replaces application authorization. The server
-retains a bounded 185-second call timeout. Catalog visibility remains unchanged.
+retains a bounded 185-second lifetime for ordinary calls. `wait_sessions` receives its
+validated wait budget plus reply time: one target defaults to ten minutes and supports
+up to one hour, while multiple targets retain two minutes. Both private pipe endpoints
+derive that deadline from the request; the pipe client and native MCP client leave
+successive reply grace periods. Disconnect, cancellation, and owning Scope closure
+still interrupt active calls.

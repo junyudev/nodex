@@ -480,6 +480,7 @@ import type {
   ProjectSessionRenameCommandInput,
   ProjectSessionReorderCommandInput,
   ProjectSessionUnreadCommandInput,
+  ProjectSessionOpenedCommandInput,
   ProjectSessionUpdateCommandInput,
   BuiltinSidebarReorderCommandInput,
   SidebarSectionCreateCommandInput,
@@ -1226,6 +1227,10 @@ export interface IpcApi
   "project-sessions:unarchive": {
     args: [command: ProjectSessionArchiveCommandInput];
     result: CoreLocalCommitResult<ProjectSession>;
+  };
+  "project-sessions:record-opened": {
+    args: [command: ProjectSessionOpenedCommandInput];
+    result: CoreLocalCommitResult<void>;
   };
   "project-sessions:mark-unread": {
     args: [command: ProjectSessionUnreadCommandInput];

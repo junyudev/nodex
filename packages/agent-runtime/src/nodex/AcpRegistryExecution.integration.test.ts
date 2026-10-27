@@ -104,7 +104,7 @@ it.live.skipIf(process.platform === "win32")(
             creationSource: "web",
             dispatchMode: { type: "start_immediately" },
           };
-          yield* call("command.dispatch", command);
+          yield* call("command.dispatch", { command: command });
           const outcome = yield* call("run.outcome", {
             threadId: "installed-thread",
             messageId,
@@ -164,18 +164,20 @@ it.live.skipIf(process.platform === "win32")(
           expect((yield* waitOperation(connection.operationId)).phase).toBe("succeeded");
           yield* call("project.upsert", { id: "project", title: "Project", workspaceRoot: home });
           yield* call("command.dispatch", {
-            type: "thread.create",
-            commandId: "create",
-            threadId: "installed-thread",
-            projectId: "project",
-            title: "Installed conversation",
-            modelSelection: { instanceId, model: "model-a" },
-            runtimeMode: "full-access",
-            interactionMode: "default",
-            branch: null,
-            worktreePath: home,
-            createdBy: "user",
-            creationSource: "web",
+            command: {
+              type: "thread.create",
+              commandId: "create",
+              threadId: "installed-thread",
+              projectId: "project",
+              title: "Installed conversation",
+              modelSelection: { instanceId, model: "model-a" },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: home,
+              createdBy: "user",
+              creationSource: "web",
+            },
           });
           return yield* send("first");
         }),

@@ -177,7 +177,10 @@ export const isCodexForegroundHistoryRequest = (
   priority: CodexRequestPriority,
 ): boolean =>
   priority !== "background" &&
-  (method === "thread/read" || method === "thread/turns/list" || method === "thread/items/list");
+  (method === "thread/read" ||
+    method === "thread/turns/list" ||
+    method === "thread/items/list" ||
+    method === "thread/items/read");
 
 export const codexRequestQueueExpiryMs = (input: {
   readonly priority: CodexRequestPriority;

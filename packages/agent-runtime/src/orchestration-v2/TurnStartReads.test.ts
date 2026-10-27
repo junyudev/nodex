@@ -1083,6 +1083,72 @@ it.effect.each(["sqlite", "memory"] as const)(
           .map((row) => row.sourceItemId),
         expected,
       );
+      const reverseRows = [];
+      let beforePosition: number | undefined;
+      for (;;) {
+        const page = yield* store.getTimelinePage(childId, {
+          view: "activity",
+          itemTypes: ["user_message"],
+          order: "newest_first",
+          ...(beforePosition === undefined ? {} : { beforePosition }),
+          limit: 2,
+        });
+        reverseRows.push(...page.items);
+        if (!page.hasMore) break;
+        beforePosition = page.items.at(-1)!.position;
+      }
+      assert.deepEqual(
+        reverseRows.map((row) => row.sourceItemId),
+        expected.toReversed(),
+      );
+      assert.deepEqual(
+        reverseRows.map((row) => row.sourceThreadId),
+        [childId, childId, parentId, parentId, grandparentId, grandparentId],
+      );
+      assert.deepEqual(
+        reverseRows.map((row) => row.visibility),
+        ["local", "local", "inherited", "inherited", "inherited", "inherited"],
+      );
+      const metadata = yield* store.getTimelineMetadataPage(childId, {
+        view: "activity",
+        itemTypes: ["user_message"],
+        order: "newest_first",
+        limit: 20,
+      });
+      assert.deepEqual(
+        metadata.items.map(({ metadata: _metadata, ...row }) => row),
+        reverseRows.map((row) => ({
+          position: row.position,
+          sourceThreadId: row.sourceThreadId,
+          sourceItemId: row.sourceItemId,
+          visibility: row.visibility,
+          item: {
+            id: row.item.id,
+            runId: row.item.runId,
+            type: row.item.type,
+            status: row.item.status,
+            updatedAt: row.item.updatedAt,
+          },
+        })),
+      );
+      for (const row of metadata.items) {
+        const record = yield* store.getVisibleTurnItemRecord({
+          threadId: childId,
+          itemId: row.sourceItemId,
+          sourceThreadId: row.sourceThreadId,
+        });
+        assert.isNotNull(record);
+        assert.equal(record?.sourceThreadId, row.sourceThreadId);
+        assert.equal(record?.visibility, row.visibility);
+        assert.deepEqual(record?.metadata, row.metadata);
+      }
+      assert.isNull(
+        yield* store.getVisibleTurnItemRecord({
+          threadId: childId,
+          itemId: inheritedParent.itemId,
+          sourceThreadId: grandparentId,
+        }),
+      );
       const window = yield* store.getThreadSnapshotWindow(childId, { rowLimit: 20 });
       assert.deepEqual(
         window.projection.visibleTurnItems
@@ -1178,6 +1244,57 @@ it.effect.each(["sqlite", "memory"] as const)(
       assert.isBelow(bounded.history.messages.length, expected.length);
       assert.equal(bounded.history.omittedItems, expected.length - bounded.history.messages.length);
       assert.isAtMost(historyCost(bounded.history.messages, bounded.context), 1_800);
+      const newest = yield* store.getTimelineMetadataPage(childId, {
+        view: "activity",
+        itemTypes: ["user_message"],
+        order: "newest_first",
+        limit: 1,
+      });
+      const selected = newest.items[0]!;
+      const beforeItem = {
+        sourceThreadId: selected.sourceThreadId,
+        sourceItemId: selected.sourceItemId,
+      };
+      assert.equal(selected.sourceItemId, localLast.itemId);
+      // Removing an earlier visible item renumbers positions; source identity still resumes exactly.
+      yield* putRun(childId, 1, "rolled_back");
+      const older = yield* store.getTimelineMetadataPage(childId, {
+        view: "activity",
+        itemTypes: ["user_message"],
+        order: "newest_first",
+        beforeItem,
+        limit: 20,
+      });
+      assert.isTrue(older.anchorFound);
+      assert.deepEqual(
+        older.items.map((row) => row.sourceItemId),
+        expected.slice(0, 4).toReversed(),
+      );
+      const firstVisible = older.items.at(-1)!;
+      const forward = yield* store.getTimelineMetadataPage(childId, {
+        view: "activity",
+        itemTypes: ["user_message"],
+        order: "oldest_first",
+        limit: 20,
+        afterItem: {
+          sourceThreadId: firstVisible.sourceThreadId,
+          sourceItemId: firstVisible.sourceItemId,
+        },
+      });
+      assert.isTrue(forward.anchorFound);
+      assert.deepEqual(
+        forward.items.map((row) => row.sourceItemId),
+        [...expected.slice(1, 4), localLast.itemId],
+      );
+      yield* putRun(childId, 3, "rolled_back");
+      const missing = yield* store.getTimelineMetadataPage(childId, {
+        view: "activity",
+        order: "newest_first",
+        beforeItem,
+        limit: 20,
+      });
+      assert.isFalse(missing.anchorFound);
+      assert.deepEqual(missing.items, []);
     }).pipe(
       Effect.provide(
         storage === "sqlite"

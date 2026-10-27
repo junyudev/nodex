@@ -118,6 +118,25 @@ async function startProcess(
   };
 }
 
+it("preserves actionable search cursor failures through real stdio", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-search-cursor-process-"));
+  const runtime = await startProcess(home);
+  try {
+    expect(
+      await runtime.request("sessions.search", { query: "history", cursor: "invalid-cursor" }),
+    ).toMatchObject({
+      success: false,
+      error: { tag: "SessionSearchError", reason: "invalid_cursor" },
+    });
+    expect(runtime.invalidLines).toEqual([]);
+    expect(await runtime.close()).toBe(0);
+  } finally {
+    runtime.child.kill("SIGKILL");
+    await runtime.exit;
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 it("releases a snapshot ahead of 32 blocked reads and closes an unreleased lease on EOF", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-snapshot-process-"));
   const runtime = await startProcess(home);

@@ -5,7 +5,7 @@ import { setImmediate } from "node:timers/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { connectAppToolsPipe, listenAppToolsPipe, type AppToolsPipeDescriptor } from "./pipe";
 import type { AppToolsHost } from "./server";
 
@@ -88,6 +88,64 @@ const closeRaw = async (socket: Socket) => {
 };
 
 describe("private application tool pipe", () => {
+  it.each([600_000, 3_600_000])(
+    "delivers a %s-ms wait across both pipe endpoints beyond the ordinary call deadline",
+    async (timeoutMs) => {
+      const admitted = barrier();
+      let aborted = false;
+      await withPipe(
+        {
+          ...emptyHost,
+          callTool: ({ signal }) =>
+            new Promise((resolve, reject) => {
+              const timer = setTimeout(
+                () => resolve({ content: [], structuredContent: { reason: "timeout" } }),
+                timeoutMs,
+              );
+              signal.addEventListener(
+                "abort",
+                () => {
+                  aborted = true;
+                  clearTimeout(timer);
+                  reject(new Error("cancelled"));
+                },
+                { once: true },
+              );
+              admitted.resolve();
+            }),
+        },
+        async (descriptor) => {
+          const client = await connectAppToolsPipe(descriptor);
+          vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+          try {
+            const pending = client.callTool({
+              name: "wait_sessions",
+              arguments: { targets: [{ sessionId: "one" }], timeoutMs },
+              metadata: {},
+              signal: new AbortController().signal,
+            });
+            const result = pending.then(
+              (value) => ({ success: true, value }),
+              (error: unknown) => ({ success: false, error }),
+            );
+            await admitted.promise;
+            await vi.advanceTimersByTimeAsync(185_001);
+            expect(aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(timeoutMs - 185_001);
+            expect(await result).toEqual({
+              success: true,
+              value: { content: [], structuredContent: { reason: "timeout" } },
+            });
+            expect(aborted).toBe(false);
+          } finally {
+            vi.useRealTimers();
+            client.close();
+          }
+        },
+      );
+    },
+  );
+
   it("accepts fragmented prefixes and coalesced JSON-RPC calls with exact metadata", async () => {
     const calls: unknown[] = [];
     const metadata = {

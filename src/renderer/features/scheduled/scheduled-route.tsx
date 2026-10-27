@@ -22,7 +22,7 @@ import {
 import {
   buildAutomationsPath,
   resolveAutomationsRouteState,
-} from "@/components/workbench/workbench-automations-routes";
+} from "@/lib/workbench-automations-routes";
 import type { ScheduledTaskChatOption } from "./scheduled-task-fields";
 import { ScheduledTaskDialog, type ScheduledTaskDialogRequest } from "./scheduled-task-dialog";
 import {

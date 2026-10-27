@@ -1,3 +1,5 @@
+import * as Cause from "effect/Cause";
+import * as PubSub from "effect/PubSub";
 import {
   EnvironmentId,
   ProjectId,
@@ -27,7 +29,17 @@ import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as Sessions from "../orchestration-v2/ProviderSessionManager.ts";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import { HostBridge, make as makeBridge } from "./HostBridge.ts";
-import { make } from "./Ingress.ts";
+import { make as makeIngress } from "./Ingress.ts";
+import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
+import * as Stream from "effect/Stream";
+const make = makeIngress.pipe(
+  Effect.provide(
+    Layer.mock(OrchestratorV2)({
+      getThreadEventSequence: () => Effect.succeed(0),
+      streamStoredEventsFrom: () => Stream.never,
+    }),
+  ),
+);
 import { TaskToolkit } from "../mcp/toolkits/task/tools.ts";
 
 const actor = {
@@ -992,4 +1004,139 @@ it.live(
         }),
       ),
     ),
+);
+
+it.live("cancels a yielded background host call when its exact captured Run is stopped", () =>
+  Effect.gen(function* () {
+    const events =
+      yield* PubSub.unbounded<import("@t3tools/contracts").OrchestrationV2StoredEvent>();
+    const subscribed = yield* Deferred.make<void>();
+    const hostStarted = yield* Deferred.make<string>();
+    const hostCancelled = yield* Deferred.make<string>();
+    const completedChecked = yield* Deferred.make<void>();
+    let status = "running";
+    let bridge!: Effect.Success<ReturnType<typeof makeBridge>>;
+    bridge = yield* makeBridge(
+      { home: "/runtime", cwd: "/workspace", providers: {}, host: { tools: [] } },
+      (notification) => {
+        if (notification.type === "host.cancel")
+          return Deferred.succeed(hostCancelled, notification.id).pipe(Effect.asVoid);
+        if (notification.type !== "host.request") return Effect.void;
+        if (notification.operation === "tool.call")
+          return Deferred.succeed(hostStarted, notification.id).pipe(Effect.asVoid);
+        return Effect.suspend(() =>
+          bridge.accept({ type: "host.result", id: notification.id, success: true, output: {} }),
+        ).pipe(Effect.asVoid, Effect.orDie);
+      },
+    );
+    const captured = { ...actor, nativeDriver: ProviderDriverKind.make("codex") };
+    yield* bridge.registerNativeSession({
+      credentialId: scope.thread!.providerSessionId,
+      providerSessionId: captured.providerSessionId,
+      nativeGeneration: captured.nativeGeneration,
+    });
+    yield* bridge.prepareTurn(captured);
+    yield* bridge.captureNativeToolCall({
+      identity: captured,
+      nativeCallId: "background:call",
+      nativeThreadId: "native:thread",
+      nativeTurnId: "native:turn",
+    });
+    const authority = Layer.mock(Projections.ProjectionStoreV2)({
+      getHostToolAuthorityContext: () =>
+        Effect.gen(function* () {
+          if (status === "completed") yield* Deferred.succeed(completedChecked, undefined);
+          return {
+            thread: { id: captured.threadId, deletedAt: null },
+            runs: [
+              {
+                id: captured.runId,
+                status,
+                activeAttemptId: captured.attemptId,
+                providerThreadId: captured.providerThreadId,
+                providerInstanceId: captured.providerInstanceId,
+              },
+            ],
+            providerThreads: [
+              {
+                id: captured.providerThreadId,
+                providerSessionId: captured.providerSessionId,
+                providerInstanceId: captured.providerInstanceId,
+                nativeThreadRef: null,
+              },
+            ],
+            subagents: [],
+          } as never;
+        }),
+    });
+    const journal = Layer.mock(OrchestratorV2)({
+      getThreadEventSequence: () => Effect.succeed(7),
+      streamStoredEventsFrom: (input) =>
+        Stream.unwrap(
+          Effect.gen(function* () {
+            expect(input).toEqual({ threadId: captured.threadId, afterSequence: 7 });
+            const queue = yield* PubSub.subscribe(events);
+            yield* Deferred.succeed(subscribed, undefined);
+            return Stream.fromEffectRepeat(PubSub.take(queue));
+          }),
+        ),
+    });
+    const invoked = Effect.gen(function* () {
+      const admit = yield* makeIngress;
+      const pending = yield* admit(
+        bridge
+          .callTool({ ...captured, nativeDriver: captured.nativeDriver }, "wait_sessions", {})
+          .pipe(
+            ExecutionHost.withMcpTurnLifetime,
+            Effect.orDie,
+            Effect.as(HttpServerResponse.empty()),
+          ),
+        scope,
+        request({
+          method: "tools/call",
+          id: "http:background",
+          params: {
+            name: "wait_sessions",
+            arguments: {},
+            _meta: {
+              callId: "background:call",
+              threadId: "native:thread",
+              "x-codex-turn-metadata": { turn_id: "native:turn" },
+            },
+          },
+        }),
+      ).pipe(Effect.forkChild);
+      const hostId = yield* Deferred.await(hostStarted);
+      yield* Deferred.await(subscribed);
+      status = "completed";
+      yield* PubSub.publish(events, {
+        sequence: 8,
+        event: { type: "run.updated", payload: { id: captured.runId } },
+      } as never);
+      yield* Deferred.await(completedChecked);
+      yield* Effect.yieldNow;
+      expect(pending.pollUnsafe()).toBeUndefined();
+      status = "interrupted";
+      yield* PubSub.publish(events, {
+        sequence: 9,
+        event: { type: "run.updated", payload: { id: captured.runId } },
+      } as never);
+      expect(yield* Deferred.await(hostCancelled)).toBe(hostId);
+      const exit = yield* Fiber.await(pending);
+      expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
+    });
+    yield* invoked.pipe(
+      Effect.provideService(HostBridge, bridge),
+      Effect.provide(authority),
+      Effect.provide(journal),
+    );
+  }).pipe(
+    Effect.provide(NodeServices.layer),
+    Effect.provide(
+      Layer.succeed(Environment.ServerEnvironmentIdentity, {
+        getEnvironmentId: Effect.succeed(EnvironmentId.make(actor.runtimeId)),
+      }),
+    ),
+    Effect.timeout("3 seconds"),
+  ),
 );

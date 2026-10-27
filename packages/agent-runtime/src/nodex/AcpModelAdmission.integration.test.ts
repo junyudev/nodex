@@ -59,29 +59,33 @@ it.live.each(["none", "config"] as const)(
         expect(available.models.some((model) => model.slug === "rejected")).toBe(api !== "none");
         yield* fs.writeFileString(log, "");
         yield* call("command.dispatch", {
-          type: "thread.create",
-          commandId: "create",
-          threadId: "thread",
-          projectId: "project",
-          title: "Model refusal",
-          modelSelection: { instanceId, model: "rejected" },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          branch: null,
-          worktreePath: home,
-          createdBy: "user",
-          creationSource: "web",
+          command: {
+            type: "thread.create",
+            commandId: "create",
+            threadId: "thread",
+            projectId: "project",
+            title: "Model refusal",
+            modelSelection: { instanceId, model: "rejected" },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: home,
+            createdBy: "user",
+            creationSource: "web",
+          },
         });
         yield* call("command.dispatch", {
-          type: "message.dispatch",
-          commandId: "send",
-          threadId: "thread",
-          messageId: "message",
-          text: "Must not reach the Agent",
-          attachments: [],
-          createdBy: "user",
-          creationSource: "web",
-          dispatchMode: { type: "start_immediately" },
+          command: {
+            type: "message.dispatch",
+            commandId: "send",
+            threadId: "thread",
+            messageId: "message",
+            text: "Must not reach the Agent",
+            attachments: [],
+            createdBy: "user",
+            creationSource: "web",
+            dispatchMode: { type: "start_immediately" },
+          },
         });
         const outcome = yield* call("run.outcome", {
           threadId: "thread",
@@ -105,16 +109,18 @@ it.live.each(["none", "config"] as const)(
         expect(snapshot.projection.runs).toHaveLength(1);
         expect(snapshot.projection.runs[0]?.modelSelection.model).toBe("rejected");
         yield* call("command.dispatch", {
-          type: "message.dispatch",
-          commandId: "recover",
-          threadId: "thread",
-          messageId: "recovery",
-          text: "Use the selected valid model",
-          attachments: [],
-          modelSelection: { instanceId, model: api === "none" ? "default" : "model-a" },
-          createdBy: "user",
-          creationSource: "web",
-          dispatchMode: { type: "start_immediately" },
+          command: {
+            type: "message.dispatch",
+            commandId: "recover",
+            threadId: "thread",
+            messageId: "recovery",
+            text: "Use the selected valid model",
+            attachments: [],
+            modelSelection: { instanceId, model: api === "none" ? "default" : "model-a" },
+            createdBy: "user",
+            creationSource: "web",
+            dispatchMode: { type: "start_immediately" },
+          },
         });
         expect(
           (yield* call("run.outcome", { threadId: "thread", messageId: "recovery" }).pipe(

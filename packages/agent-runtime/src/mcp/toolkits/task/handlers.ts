@@ -1,16 +1,12 @@
-import type {
-  NodeId,
-  OrchestratorMcpDelegateTaskResult,
-  OrchestratorMcpThreadReadResult,
-} from "@t3tools/contracts";
+import type { OrchestratorMcpDelegateTaskResult } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
-import { type TaskReadResult, TaskToolkit, type TaskView } from "./tools.ts";
+import { TaskToolkit, type TaskView } from "./tools.ts";
 
-/** Task results expose task identity only; the backing conversation stays internal. */
+/** Task routing uses task identity; source locators stay inside opaque history cursors. */
 export const taskView = (task: OrchestratorMcpDelegateTaskResult): TaskView => ({
   taskId: task.taskId,
   status: task.status,
@@ -24,42 +20,6 @@ export const taskView = (task: OrchestratorMcpDelegateTaskResult): TaskView => (
       : { status: task.latestTerminalStatus, summary: task.latestTerminalSummary },
   hasPendingFollowUps: task.hasPendingChildRuns,
   waitTimedOut: task.waitTimedOut,
-});
-
-export const conversationView = (
-  read: OrchestratorMcpThreadReadResult,
-  taskId: NodeId | null,
-): TaskReadResult => ({
-  conversation: {
-    taskId,
-    title: read.thread.title,
-    status: read.thread.status,
-    providerInstanceId: read.thread.providerInstanceId,
-    model: read.thread.model,
-    interactionMode: read.thread.interactionMode,
-    activeRunId: read.thread.activeRunId,
-    latestRunId: read.thread.latestRunId,
-    runCount: read.thread.runCount,
-    itemCount: read.thread.itemCount,
-    pendingRequestCount: read.thread.pendingRequestCount,
-  },
-  items: read.items.map((item) => ({
-    position: item.position,
-    visibility: item.visibility,
-    itemId: item.itemId,
-    runId: item.runId,
-    type: item.type,
-    status: item.status,
-    title: item.title,
-    text: item.text,
-    textTruncated: item.textTruncated,
-    ...(item.nextTextOffset === undefined ? {} : { nextTextOffset: item.nextTextOffset }),
-    createdBy: item.createdBy,
-    ...(item.subagentId === undefined ? {} : { taskId: item.subagentId }),
-    updatedAt: item.updatedAt,
-  })),
-  nextPosition: read.nextPosition,
-  hasMore: read.hasMore,
 });
 
 const service = Effect.all({
@@ -104,8 +64,11 @@ const handlers = {
           taskId === undefined
             ? (yield* McpInvocationContext.requireThreadScope(scope, "task_read")).thread.threadId
             : yield* tasks.taskThread(scope, taskId);
-        const read = yield* tasks.readThread(scope, { threadId, ...page });
-        return conversationView(read, taskId ?? null);
+        return yield* tasks.readThread(scope, {
+          threadId,
+          ...(taskId === undefined ? {} : { taskId }),
+          ...page,
+        });
       }),
     ),
   ),

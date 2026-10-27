@@ -796,17 +796,37 @@ Native conversation discovery belongs to Main's backend-neutral catalog. Provide
 native metadata and capture the exact canonical source history identity. Core owns the imported
 Session and immutable Runtime binding; the Runtime owns independent copied history, media and import
 receipts. Source identity never becomes the copy's native execution identity. Existing connected
-native history remains passive. Authentication location never substitutes for history identity. See
+native history remains passive until an explicit same-Session adoption imports its settled
+history and atomically transfers the execution binding to the Runtime; remote execution stays
+with its native owner. Authentication location never substitutes for history identity. See
 [Native Conversation Import Behavior](product-specs/native-conversation-connection-behavior.md).
 
 ### Agent Runtime conversation ownership
 
 The Agent Runtime owns each bound Session's execution root, Runs, provider sessions,
-history, delegated descendants and durable result delivery. Core owns the product
+history, delegated descendants and durable result delivery. It also owns admission receipts
+for remote Native messages; the Native execution owner performs producer writes and resolves
+uncertain delivery through producer evidence. Immutable staged launch input and owned resources
+belong to the Runtime; execution begins only after Core admits the product binding. Core owns the product
 Session, Project Sources and content authority. Main supplies current Source roots
 as transient Turn context. Main's semantic Session Interface resolves the immutable
 execution reference before querying or commanding its root and descendants;
-it never hydrates child histories for status observation. Product writers share
+the target selects this owner regardless of the calling Provider. Main presents bounded
+item windows and exact content continuations from Runtime or passive native Codex Adapters,
+independently of renderer snapshots. Discovery merges owner catalogs after Core validates
+their current Session bindings; Runtime conversation recency, previews and indexed message
+evidence remain Runtime facts. Core owns durable foreground-open usage and a narrow search
+revision for Workspace observations. Main owns one Scope per search query, with private source
+positions and a disposable indexed projection of compact rank references and published output positions.
+Core admits scoped execution identities before source work; append fences and canonical point versions
+replace global query invalidation. Source failures retain retryable progress independently. The query
+owns ranking and admission, while current bindings, visibility and content remain with their canonical
+owners. Session and Task read adapters share one continuation,
+version and response-admission Module while retaining their distinct authorization and
+delivery responsibilities. Status observation selects an exact Run and its restart
+continuations through the execution owner, shares Core, native and Runtime invalidations,
+and never hydrates child histories. Runtime persistence owns the lifetime and transaction
+affinity of its independent read-only SQLite connection. Product writers share
 snapshot admission without holding a Project lifecycle gate across Host callbacks.
 Live Session activity (running, waiting, background) is one Main-owned projection derived from
 the Runtime per process generation and served to every window; it is never copied into Core.

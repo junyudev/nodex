@@ -1,9 +1,7 @@
 import {
   NodeId,
   NonNegativeInt,
-  OrchestrationV2Actor,
   OrchestrationV2RunStatus,
-  OrchestrationV2TurnItemStatus,
   OrchestratorMcpCapabilitiesResult,
   OrchestratorMcpDelegatedTaskStatus,
   OrchestratorMcpDelegateTaskInput,
@@ -14,10 +12,12 @@ import {
   ProviderInteractionMode,
   RunId,
   TrimmedNonEmptyString,
-  TurnItemId,
 } from "@t3tools/contracts";
+import type { AgentTurnItem } from "../../../nodex/Interface.ts";
+import type { HistoryItem } from "../../../nodex/history-contracts.ts";
 import { Tool, Toolkit } from "effect/ai";
 import * as Schema from "effect/Schema";
+import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -25,7 +25,7 @@ import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 
 /**
  * Agent-facing task contracts. A delegated child is addressed only by its
- * taskId; the conversation that backs it is never exposed. Product Sessions
+ * taskId; opaque cursors retain source locators and canonical activity retains diagnostic data. Product Sessions
  * belong to the host's Session tools.
  */
 const dependencies = [
@@ -105,37 +105,63 @@ export const TaskSendResult = Schema.Struct({
 });
 export type TaskSendResult = typeof TaskSendResult.Type;
 
+// Providers may hide advertised bounds; clamp large positive reads while preserving invalid zero.
+const readLimit = (maximum: number) =>
+  PositiveInt.pipe(
+    Schema.decodeTo(
+      PositiveInt.check(Schema.isLessThanOrEqualTo(maximum)),
+      SchemaTransformation.transform({
+        decode: (value) => Math.min(value, maximum),
+        encode: (value) => value,
+      }),
+    ),
+  );
 const TaskReadInput = Schema.Struct({
   taskId: Schema.optional(TaskIdentity).annotate({
     description: "Omit to read your own conversation.",
   }),
-  view: Schema.optional(Schema.Literals(["messages", "activity"])),
-  afterPosition: Schema.optional(NonNegativeInt),
-  limit: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(100))),
-  itemId: Schema.optional(TurnItemId),
+  cursor: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096))),
+  itemId: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(512))),
   textOffset: Schema.optional(NonNegativeInt),
-  maxCharsPerItem: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(50_000))),
+  view: Schema.optional(Schema.Literals(["messages", "activity"])),
+  order: Schema.optional(Schema.Literals(["newest_first", "oldest_first"])),
+  limit: Schema.optional(readLimit(100)),
+  maxCharsPerItem: Schema.optional(readLimit(50_000)),
 });
 export type TaskReadInput = typeof TaskReadInput.Type;
-
+const ContentPosition = {
+  offset: NonNegativeInt,
+  totalChars: NonNegativeInt,
+  nextCursor: Schema.NullOr(Schema.String),
+};
 export const TaskConversationItem = Schema.Struct({
-  position: NonNegativeInt,
-  visibility: Schema.Literals(["local", "inherited", "synthetic"]),
-  itemId: TurnItemId,
-  runId: Schema.NullOr(RunId),
+  id: Schema.String,
+  runId: Schema.NullOr(Schema.String),
   type: Schema.String,
-  status: OrchestrationV2TurnItemStatus,
-  title: Schema.NullOr(Schema.String),
-  text: Schema.NullOr(Schema.String),
-  textTruncated: Schema.Boolean,
-  nextTextOffset: Schema.optional(Schema.NullOr(NonNegativeInt)),
-  createdBy: Schema.NullOr(OrchestrationV2Actor),
-  taskId: Schema.optional(NodeId).annotate({
-    description: "The delegated task or native workflow this item reports.",
-  }),
-  updatedAt: Schema.String,
+  status: Schema.NullOr(Schema.String),
+  visibility: Schema.optional(Schema.Literals(["local", "inherited", "synthetic"])),
+  title: Schema.optional(Schema.NullOr(Schema.String)),
+  updatedAt: Schema.optional(Schema.String),
+  messageId: Schema.optional(Schema.NullOr(Schema.String)),
+  createdBy: Schema.optional(Schema.NullOr(Schema.String)),
+  creationSource: Schema.optional(Schema.NullOr(Schema.String)),
+  content: Schema.Union([
+    Schema.Struct({ ...ContentPosition, format: Schema.Literal("text"), text: Schema.String }),
+    Schema.Struct({
+      ...ContentPosition,
+      format: Schema.Literal("json_fragment"),
+      text: Schema.String,
+    }),
+    Schema.Struct({
+      ...ContentPosition,
+      format: Schema.Literal("json"),
+      value: Schema.Struct({
+        source: Schema.Literal("runtime"),
+        item: Schema.Record(Schema.String, Schema.Unknown),
+      }),
+    }),
+  ]),
 });
-
 export const TaskReadResult = Schema.Struct({
   conversation: Schema.Struct({
     taskId: Schema.NullOr(NodeId),
@@ -151,10 +177,25 @@ export const TaskReadResult = Schema.Struct({
     pendingRequestCount: NonNegativeInt,
   }),
   items: Schema.Array(TaskConversationItem),
-  nextPosition: Schema.NullOr(NonNegativeInt),
-  hasMore: Schema.Boolean,
+  page: Schema.Struct({
+    order: Schema.Literals(["newest_first", "oldest_first"]),
+    view: Schema.Literals(["messages", "activity"]),
+    limit: PositiveInt,
+    hasMore: Schema.Boolean,
+    nextCursor: Schema.NullOr(Schema.String),
+    tailCursor: Schema.NullOr(Schema.String),
+  }),
 });
-export type TaskReadResult = typeof TaskReadResult.Type;
+/** Canonical item validation stays with the owner; the public schema does not duplicate its provider union. */
+export type TaskReadResult = Omit<typeof TaskReadResult.Type, "items"> & {
+  readonly items: readonly Omit<
+    HistoryItem<{
+      readonly source: "runtime";
+      readonly item: AgentTurnItem;
+    }>,
+    "sourceThreadId" | "senderThreadId"
+  >[];
+};
 
 const StopWorkflowInput = Schema.Struct({
   taskId: NodeId.annotate({
@@ -231,7 +272,7 @@ const TaskSendTool = Tool.make("task_send", {
 
 const TaskReadTool = Tool.make("task_read", {
   description:
-    "Read a paginated conversation: a delegated task's by taskId, or your own when taskId is omitted (for example after a context handoff). view='messages' returns messages and plans; 'activity' returns every item. Continue with afterPosition=nextPosition; recover long text with itemId and textOffset=nextTextOffset until it is null. Reading a task's settled result acknowledges it.",
+    "Read your own conversation, or a delegated task by taskId. Newest first by default; oldest_first supports incremental reads with page.tailCursor. Use itemId and optional textOffset for a point read, or opaque cursors to continue. messages returns canonical text, activity returns complete typed diagnostic JSON or exact JSON fragments. Continue older/newer items with page.nextCursor and long content with content.nextCursor. Reading a complete child result acknowledges its delivery.",
   parameters: TaskReadInput,
   success: TaskReadResult,
   failure: OrchestratorMcpFailure,
@@ -259,7 +300,7 @@ const TaskCancelTool = Tool.make("task_cancel", {
 
 const StopWorkflowTool = Tool.make("stop_workflow", {
   description:
-    "Stop a running Claude workflow that your own conversation started, including all of its phases and agents. Find its taskId with task_read view='activity'.",
+    "Stop a running Claude workflow that your own conversation started, including all of its phases and agents. Read task_read activity to find its subagentId and pass it as taskId.",
   parameters: StopWorkflowInput,
   success: Schema.Struct({}),
   failure: OrchestratorMcpFailure,

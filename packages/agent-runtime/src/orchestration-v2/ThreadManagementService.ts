@@ -124,6 +124,14 @@ export interface ThreadManagementSendInput {
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly modelSelection?: ModelSelection;
+  readonly context?: Extract<
+    OrchestrationV2Command,
+    { readonly type: "message.dispatch" }
+  >["context"];
+  readonly interactionMode?: Extract<
+    OrchestrationV2Command,
+    { readonly type: "message.dispatch" }
+  >["interactionMode"];
   readonly mode: ThreadManagementSendMode;
   readonly createdBy: OrchestrationV2Actor;
   readonly creationSource: OrchestrationV2CreationSource;
@@ -309,6 +317,9 @@ export interface ThreadManagementServiceShape {
   >;
   readonly getThreadHistoryPage: Orchestrator.OrchestratorV2["Service"]["getThreadHistoryPage"];
   readonly getTimelinePage: Orchestrator.OrchestratorV2["Service"]["getTimelinePage"];
+  readonly getTimelineMetadataPage: Orchestrator.OrchestratorV2["Service"]["getTimelineMetadataPage"];
+  readonly getVisibleTurnItem: Orchestrator.OrchestratorV2["Service"]["getVisibleTurnItem"];
+  readonly getVisibleTurnItemRecord: Orchestrator.OrchestratorV2["Service"]["getVisibleTurnItemRecord"];
   readonly getMessageCount: Orchestrator.OrchestratorV2["Service"]["getMessageCount"];
   /**
    * One turn item with the input and output the thread stream withholds,
@@ -742,6 +753,8 @@ const make = Effect.gen(function* () {
         ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
         text: input.text,
         attachments: input.attachments,
+        ...(input.context === undefined ? {} : { context: input.context }),
+        ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
         ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
         dispatchMode: {
           type: input.mode === "queue" ? "queue_after_active" : "start_immediately",
@@ -1093,6 +1106,18 @@ const make = Effect.gen(function* () {
     getTimelinePage: (threadId, options) =>
       ensureProjectionTranscript(threadId).pipe(
         Effect.andThen(orchestrator.getTimelinePage(threadId, options)),
+      ),
+    getTimelineMetadataPage: (threadId, options) =>
+      ensureProjectionTranscript(threadId).pipe(
+        Effect.andThen(orchestrator.getTimelineMetadataPage(threadId, options)),
+      ),
+    getVisibleTurnItem: (input) =>
+      ensureProjectionTranscript(input.threadId).pipe(
+        Effect.andThen(orchestrator.getVisibleTurnItem(input)),
+      ),
+    getVisibleTurnItemRecord: (input) =>
+      ensureProjectionTranscript(input.threadId).pipe(
+        Effect.andThen(orchestrator.getVisibleTurnItemRecord(input)),
       ),
     getMessageCount: (threadId) =>
       ensureProjectionTranscript(threadId).pipe(

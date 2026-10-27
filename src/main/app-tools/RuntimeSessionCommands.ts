@@ -1,5 +1,9 @@
 import * as Effect from "effect/Effect";
-import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import * as Schema from "effect/Schema";
+import {
+  AgentRuntimeApplication,
+  AgentRuntimeApplicationError,
+} from "../agent-runtime/AgentRuntimeApplication";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -14,6 +18,7 @@ import { sessionMessageSchema } from "../../shared/nodex-app-tools/session-messa
 import { captureAppToolAuthority, readHostedAppToolSessionContext } from "./AppToolCaller";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { deriveSessionDispatchIdentity } from "./session-dispatch-identity";
+import { make as makeSessionMessageIntake } from "./SessionMessageIntake";
 import { toolFailure, toolSuccess } from "./app-tool-result";
 
 /** Product Session commands use the canonical execution writer and stable command identities. */
@@ -22,6 +27,7 @@ export const make = Effect.gen(function* () {
   const core = yield* CoreAuthority;
   const modules = yield* CoreModules;
   const turns = yield* CodexTurnAuthority;
+  const intake = yield* makeSessionMessageIntake;
   return Effect.fn("RuntimeSessionCommands.execute")(function* (input: AppToolInvocation) {
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
     const authority = yield* captureAppToolAuthority(input.caller, turns);
@@ -37,6 +43,10 @@ export const make = Effect.gen(function* () {
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
     const sessionId = hosted?.sessionId ?? native?.id;
     if (!sessionId) return toolFailure("session_unavailable");
+    const callerTarget = {
+      sessionId,
+      ...(hosted ? { execution: { threadId: hosted.threadId } } : {}),
+    };
 
     const provenance = toCoreAgentTurnProvenance(core.identity.profileId, authority);
     const stableOperation = (supplied: string | undefined) =>
@@ -52,31 +62,20 @@ export const make = Effect.gen(function* () {
         const parsed = sessionMessageSchema.safeParse(input.arguments);
         if (!parsed.success) return toolFailure("invalid_arguments");
         const request = parsed.data;
-        if (request.sessionId === sessionId) return toolFailure("cannot_message_calling_session");
         const operationId = stableOperation(request.operationId);
-        const target = yield* application.inspect({ sessionId: request.sessionId });
-        if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-        // A choice belongs to this message's Run. Another Agent starts from its model's defaults.
-        const current = target.thread.modelSelection;
-        const modelSelection =
-          request.model === undefined
-            ? undefined
-            : request.providerInstanceId && request.providerInstanceId !== current.instanceId
-              ? { instanceId: request.providerInstanceId, model: request.model }
-              : { ...current, model: request.model };
-        yield* application.message({
-          sessionId: request.sessionId,
-          message: {
-            messageId: operationId,
-            text: request.prompt,
-            ...(modelSelection ? { modelSelection } : {}),
-          },
-        });
-        return toolSuccess({
+        const outcome = yield* intake.send({
+          request,
+          caller: callerTarget,
           operationId,
-          sessionId: request.sessionId,
-          threadId: target.threadId,
-          deliveryState: "accepted",
+          sourceThreadId: hosted?.threadId ?? input.caller.threadId,
+          sourceRunId: hosted?.runId ?? input.caller.turnId,
+        });
+        if (!input.caller.isActive()) return toolFailure("call_withdrawn");
+        return toolSuccess({
+          ...outcome,
+          operationId,
+          resolvedRunId: outcome.runId,
+          deliveryState: outcome.delivery,
         });
       }
       if (input.name === "fork_session") {
@@ -115,30 +114,10 @@ export const make = Effect.gen(function* () {
       if (!parsed.success) return toolFailure("invalid_arguments");
       const request = parsed.data;
       const projectId = request.target.type === "project" ? request.target.projectId : null;
-      const current = hosted
-        ? yield* application.inspect({ sessionId, threadId: hosted.threadId })
-        : null;
-      const nativeProvider = current
-        ? null
-        : (yield* application.catalog()).find(
-            (provider) =>
-              provider.instanceId === "codex" &&
-              provider.enabled &&
-              provider.installed &&
-              provider.status !== "error" &&
-              provider.status !== "disabled",
-          );
-      const nativeModel = request.model
-        ? nativeProvider?.models.find((model) => model.slug === request.model)
-        : (nativeProvider?.models.find((model) => model.isDefault) ?? nativeProvider?.models[0]);
-      const selection:
-        | import("../../shared/agent-runtime-api").AgentRuntimeLaunch["modelSelection"]
-        | null =
-        current?.thread.modelSelection ??
-        (nativeProvider && nativeModel
-          ? { instanceId: nativeProvider.instanceId, model: nativeModel.slug }
-          : null);
-      if (!selection) return toolFailure("model_unavailable");
+      const callerFacts = yield* intake.inspect(callerTarget);
+      if (callerFacts.runtimeMode !== "full-access")
+        return toolFailure("runtime_mode_escalation_denied");
+      const selection = callerFacts.modelSelection;
       const operationId = stableOperation(request.operationId);
       const environment = request.target.type === "project" ? request.target.environment : null;
       const result = yield* application.launch({
@@ -159,7 +138,8 @@ export const make = Effect.gen(function* () {
               }
             : {}),
         },
-        interactionMode: current?.thread.interactionMode ?? "default",
+        interactionMode: callerFacts.interactionMode,
+        ...(callerFacts.interactionMode === "plan" ? { interactionModeCeiling: "plan" } : {}),
         runInTarget: environment?.type === "worktree" ? "newWorktree" : "localProject",
         ...(environment?.type === "worktree" && environment.startingState
           ? { worktreeStartingState: environment.startingState }
@@ -169,11 +149,32 @@ export const make = Effect.gen(function* () {
           text: request.prompt,
         },
       });
-      return toolSuccess({ ...result, operationId, launchState: "attached" });
+      const messageId = deriveSessionDispatchIdentity(operationId, "message");
+      const outcome = yield* application.execution({ sessionId: result.sessionId, messageId });
+      return toolSuccess({
+        ...result,
+        operationId,
+        messageId,
+        runId: outcome.selectedRunId,
+        launchState: "attached",
+      });
     });
     return yield* execute.pipe(
       Effect.provideService(CoreApplicationAgent, provenance),
-      Effect.catch((error) => Effect.succeed(toolFailure("session_command_failed", error.message))),
+      Effect.catch((error) =>
+        Effect.succeed(
+          toolFailure(
+            Schema.is(AgentRuntimeApplicationError)(error) && error.adoptionReason
+              ? error.adoptionReason
+              : error instanceof Error &&
+                  (error.message === "runtime_mode_escalation_denied" ||
+                    error.message === "interaction_mode_escalation_denied")
+                ? error.message
+                : "session_command_failed",
+            error instanceof Error ? error.message : "Session command is unavailable",
+          ),
+        ),
+      ),
     );
   });
 });

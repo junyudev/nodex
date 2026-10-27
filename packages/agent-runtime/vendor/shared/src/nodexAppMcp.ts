@@ -1,6 +1,38 @@
 /** The Runtime's application MCP server, registered under this name for every provider. */
 export const NODEX_APP_MCP_SERVER = "nodex_app";
 
+export const SESSION_SINGLE_WAIT_DEFAULT_MS = 10 * 60_000;
+export const SESSION_SINGLE_WAIT_MAX_MS = 60 * 60_000;
+export const SESSION_MULTI_WAIT_DEFAULT_MS = 2 * 60_000;
+export const SESSION_MULTI_WAIT_MAX_MS = 2 * 60_000;
+/** Ordinary tools retain their bounded call lifetime; waits own a separate semantic deadline. */
+export const APP_TOOLS_CALL_TIMEOUT_MS = 185_000;
+export const APP_TOOLS_WAIT_REPLY_GRACE_MS = 60_000;
+export const APP_TOOLS_PIPE_REPLY_GRACE_MS = 5_000;
+/** A provider must leave time for the host and private pipe to deliver the wait's final read. */
+export const APP_TOOLS_PROVIDER_TIMEOUT_MS =
+  SESSION_SINGLE_WAIT_MAX_MS + APP_TOOLS_WAIT_REPLY_GRACE_MS + 2 * APP_TOOLS_PIPE_REPLY_GRACE_MS;
+
+export const sessionWaitLimits = (targetCount: number) =>
+  targetCount === 1
+    ? { defaultMs: SESSION_SINGLE_WAIT_DEFAULT_MS, maximumMs: SESSION_SINGLE_WAIT_MAX_MS }
+    : { defaultMs: SESSION_MULTI_WAIT_DEFAULT_MS, maximumMs: SESSION_MULTI_WAIT_MAX_MS };
+
+/** Transport admission only derives a lifetime; the public tool schema validates the arguments. */
+export const appToolsHostCallTimeoutMs = (
+  name: string,
+  args: Readonly<Record<string, unknown>>,
+): number => {
+  if (name !== "wait_sessions" || !Array.isArray(args.targets)) return APP_TOOLS_CALL_TIMEOUT_MS;
+  if (args.targets.length < 1 || args.targets.length > 8) return APP_TOOLS_CALL_TIMEOUT_MS;
+  const limits = sessionWaitLimits(args.targets.length);
+  const requested =
+    typeof args.timeoutMs === "number" && Number.isSafeInteger(args.timeoutMs)
+      ? Math.max(0, Math.min(limits.maximumMs, args.timeoutMs))
+      : limits.defaultMs;
+  return Math.max(APP_TOOLS_CALL_TIMEOUT_MS, requested + APP_TOOLS_WAIT_REPLY_GRACE_MS);
+};
+
 /**
  * Providers respell server names (`nodex_app`, `nodex-app`, `nodexapp`), so
  * loose matches use this pattern and stay gated on the known tool inventory.

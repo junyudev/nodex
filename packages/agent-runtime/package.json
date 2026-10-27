@@ -13,7 +13,11 @@
     "./codex-conventions": "./src/nodex/CodexConventions.ts",
     "./opencode-catalog": "./src/nodex/OpenCodeCatalog.ts",
     "./orchestration/*": "./src/orchestration-v2/*.ts",
-    "./context-usage": "./vendor/provider-core/src/contextUsage.ts"
+    "./context-usage": "./vendor/provider-core/src/contextUsage.ts",
+    "./history-read": "./src/nodex/HistoryRead.ts",
+    "./history-contracts": "./src/nodex/history-contracts.ts",
+    "./image-mime": "./src/imageMime.ts",
+    "./native-attachment-resource": "./src/nodex/NativeAttachmentResource.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit",

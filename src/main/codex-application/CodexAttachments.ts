@@ -1,4 +1,12 @@
 import * as path from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { link, mkdir, mkdtemp, open, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import {
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+  getProviderAttachmentLimitError,
+} from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -6,6 +14,7 @@ import * as Schema from "effect/Schema";
 import type {
   CodexLiveFileAttachment,
   CodexPastedTextAttachment,
+  CodexPromptInput,
   CodexThreadGoalDraftInput,
   CodexThreadGoalFrozenDraft,
   CodexThreadGoalMaterializedDraft,
@@ -25,6 +34,65 @@ import { ExecutionHostRuntime, type ExecutionHostDescriptor } from "./ExecutionH
 
 const DURABLE_HOST_ID = "durable";
 
+/** Sources are resolved by an authorized resource owner before reaching this boundary. */
+export interface CodexAttachmentResource {
+  readonly name: string;
+  readonly mimeType: string;
+  readonly sizeBytes: number;
+  readonly source: string;
+}
+
+const digest = (bytes: string | Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+
+const missingFile = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  if ("code" in error && error.code === "ENOENT") return true;
+  if (/ENOENT|No such file or directory|\(os error [23]\)/u.test(error.message)) return true;
+  return error.cause !== error && error.cause !== undefined && missingFile(error.cause);
+};
+
+const readResource = async (resource: CodexAttachmentResource): Promise<Buffer> => {
+  const maximum = resource.mimeType.startsWith("image/")
+    ? PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
+    : PROVIDER_SEND_TURN_MAX_FILE_BYTES;
+  if (
+    !Number.isSafeInteger(resource.sizeBytes) ||
+    resource.sizeBytes < 1 ||
+    resource.sizeBytes > maximum
+  )
+    throw new Error("Attachment exceeds its byte budget");
+  if (resource.source.startsWith("data:")) {
+    if (resource.source.length > Math.ceil(maximum / 3) * 4 + 256)
+      throw new Error("Attachment exceeds its byte budget");
+    const match = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/]*={0,2})$/u.exec(
+      resource.source,
+    );
+    if (!match || match[1] !== resource.mimeType)
+      throw new Error("Attachment must be a materialized file or image data URL");
+    const bytes = Buffer.from(match[2]!, "base64");
+    if (bytes.byteLength !== resource.sizeBytes) throw new Error("Attachment resource changed");
+    return bytes;
+  }
+  const file = await open(resource.source, "r");
+  try {
+    const metadata = await file.stat();
+    if (!metadata.isFile() || metadata.size !== resource.sizeBytes)
+      throw new Error("Attachment resource changed");
+    const bytes = Buffer.alloc(resource.sizeBytes);
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      const { bytesRead } = await file.read(bytes, offset, bytes.byteLength - offset, offset);
+      if (bytesRead === 0) throw new Error("Attachment resource changed");
+      offset += bytesRead;
+    }
+    if ((await file.read(Buffer.alloc(1), 0, 1, offset)).bytesRead !== 0)
+      throw new Error("Attachment resource changed");
+    return bytes;
+  } finally {
+    await file.close();
+  }
+};
+
 export class CodexAttachmentsError extends Schema.TaggedError<CodexAttachmentsError>()(
   "CodexAttachmentsError",
   { operation: Schema.String, cause: Schema.Defect() },
@@ -39,6 +107,10 @@ const attempt = <A>(operation: string, evaluate: () => Promise<A>) =>
 export class CodexAttachments extends Context.Service<
   CodexAttachments,
   {
+    readonly materializeResources: (
+      hostId: string,
+      resources: readonly CodexAttachmentResource[],
+    ) => Effect.Effect<Pick<CodexPromptInput, "images" | "fileAttachments">, CodexAttachmentsError>;
     readonly createPastedText: (input: {
       readonly text: string;
       readonly hostId?: string;
@@ -235,6 +307,106 @@ export const live: Layer.Layer<
     };
 
     return CodexAttachments.of({
+      materializeResources: (hostId, resources) =>
+        attempt("materialize-resources", async () => {
+          const limit = getProviderAttachmentLimitError(
+            resources.map((resource) => ({
+              ...resource,
+              type: resource.mimeType.startsWith("image/") ? ("image" as const) : ("file" as const),
+            })),
+          );
+          if (limit) throw new Error(limit);
+          const images: NonNullable<CodexPromptInput["images"]> = [];
+          const fileAttachments: NonNullable<CodexPromptInput["fileAttachments"]> = [];
+          if (resources.length === 0) return { images, fileAttachments };
+          const manager = await forHost(hostId);
+          const host = await callbacks.runPromise(executionHosts.resolve(hostId));
+          for (const resource of resources) {
+            const bytes = await readResource(resource);
+            const sha256 = digest(bytes);
+            const name =
+              path.posix
+                .basename(resource.name.replaceAll("\\", "/"))
+                .replaceAll(/[^A-Za-z0-9._-]/gu, "_")
+                .slice(-100) || "attachment";
+            const directory = path.posix.join(manager.attachmentsRoot, "resources", sha256);
+            const filePath = path.posix.join(
+              directory,
+              `${digest(resource.name).slice(0, 16)}-${name}`,
+            );
+            if (manager.descriptor.kind === "local") {
+              await mkdir(directory, { recursive: true, mode: 0o700 });
+              const temporary = `${filePath}.${randomUUID()}.part`;
+              try {
+                await writeFile(temporary, bytes, { flag: "wx", mode: 0o600 });
+                await link(temporary, filePath).catch((error: unknown) => {
+                  if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST")
+                    throw error;
+                });
+                if (digest(await readResource({ ...resource, source: filePath })) !== sha256)
+                  throw new Error("Materialized attachment changed");
+              } finally {
+                await rm(temporary, { force: true });
+              }
+            } else {
+              const transfer = host.transfer;
+              if (!transfer) throw new Error("Execution host attachment transfer is unavailable");
+              const existing = await callbacks
+                .runPromise(transfer.describe(filePath))
+                .catch((error: unknown) => {
+                  if (!missingFile(error)) throw error;
+                  return null;
+                });
+              if (existing && (existing.sha256 !== sha256 || existing.size !== bytes.byteLength))
+                throw new Error("Materialized attachment changed");
+              if (!existing) {
+                const temporary = await mkdtemp(path.join(tmpdir(), "nodex-attachment-"));
+                const operationId = `attachment-${randomUUID()}`;
+                try {
+                  const localPath = path.join(temporary, name);
+                  await writeFile(localPath, bytes, { flag: "wx", mode: 0o600 });
+                  const uploaded = await callbacks.runPromise(
+                    transfer.upload({
+                      localPath,
+                      operationId,
+                      fileName: name,
+                      sha256,
+                      size: bytes.byteLength,
+                    }),
+                  );
+                  if (uploaded.sha256 !== sha256 || uploaded.size !== bytes.byteLength)
+                    throw new Error("Attachment transfer failed integrity verification");
+                  await manager.fileSystem.createDirectory(directory);
+                  await callbacks.runPromise(
+                    gateway.requestOnHost(hostId, "fs/copy", {
+                      sourcePath: uploaded.path,
+                      destinationPath: filePath,
+                    }),
+                  );
+                  const published = await callbacks.runPromise(transfer.describe(filePath));
+                  if (published.sha256 !== sha256 || published.size !== bytes.byteLength)
+                    throw new Error("Attachment transfer failed integrity verification");
+                } finally {
+                  await Promise.allSettled([
+                    rm(temporary, { recursive: true, force: true }),
+                    callbacks.runPromise(transfer.cleanup(operationId)),
+                  ]);
+                }
+              }
+            }
+            if (resource.mimeType.startsWith("image/")) {
+              images.push({ source: filePath, caption: resource.name });
+            } else {
+              fileAttachments.push({
+                label: resource.name,
+                path: filePath,
+                fsPath: filePath,
+                hostId,
+              });
+            }
+          }
+          return { images, fileAttachments };
+        }),
       createPastedText: (input) =>
         attempt("create-pasted-text", async () => {
           const hostId = input.hostId ?? gateway.localHostId;

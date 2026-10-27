@@ -7128,14 +7128,29 @@
               "type": "object",
               "description": "Profile-wide Session discovery metadata; conversation history uses the same Profile identity.",
               "required": [
+                "cursor",
                 "task",
                 "project_pinned"
               ],
               "properties": {
+                "cursor": {
+                  "type": "string",
+                  "description": "Continue after this item when a consumer merges or shortens the window."
+                },
                 "direct_section_id": {
                   "type": [
                     "string",
                     "null"
+                  ]
+                },
+                "opens": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProjectWorkspaceSessionOpenStats"
+                    }
                   ]
                 },
                 "project_name": {
@@ -29367,6 +29382,51 @@
               },
               {
                 "type": "object",
+                "description": "Replaces one exact Native root relation after its history is durably imported.\nThe product Session, placement and Page links retain their identity.",
+                "required": [
+                  "session_id",
+                  "expected_native_thread_id",
+                  "expected_native_host_id",
+                  "runtime_id",
+                  "runtime_thread_id",
+                  "launch_request_id",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_native_host_id": {
+                    "type": "string"
+                  },
+                  "expected_native_thread_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "adopt_native_session_execution"
+                    ]
+                  },
+                  "launch_request_id": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "runtime_id": {
+                    "type": "string"
+                  },
+                  "runtime_thread_id": {
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "Reserves one handoff of an exact existing Session binding.\nReplays observe the retained operation and never toggle the location again.",
                 "required": [
                   "session_id",
@@ -35039,11 +35099,63 @@
                   "archived": {
                     "type": "boolean"
                   },
+                  "execution_refs": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef"
+                    }
+                  },
                   "kind": {
                     "type": "string",
                     "enum": [
                       "session_window"
                     ]
+                  },
+                  "native_only": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "order": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceSessionOrder"
+                      }
+                    ]
+                  },
+                  "project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "projectless_only": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "session_ids": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": "string"
+                    }
                   },
                   "window": {
                     "$ref": "#/components/schemas/CollectionWindowRequest"
@@ -37138,6 +37250,21 @@
       },
       "ProjectSessionIntent": {
         "oneOf": [
+          {
+            "type": "object",
+            "description": "Record a foreground user opening; the Store supplies the clock.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "record_opened"
+                ]
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -39908,6 +40035,51 @@
           },
           {
             "type": "object",
+            "description": "Replaces one exact Native root relation after its history is durably imported.\nThe product Session, placement and Page links retain their identity.",
+            "required": [
+              "session_id",
+              "expected_native_thread_id",
+              "expected_native_host_id",
+              "runtime_id",
+              "runtime_thread_id",
+              "launch_request_id",
+              "kind"
+            ],
+            "properties": {
+              "expected_native_host_id": {
+                "type": "string"
+              },
+              "expected_native_thread_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "adopt_native_session_execution"
+                ]
+              },
+              "launch_request_id": {
+                "type": "string"
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtime_id": {
+                "type": "string"
+              },
+              "runtime_thread_id": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Reserves one handoff of an exact existing Session binding.\nReplays observe the retained operation and never toggle the location again.",
             "required": [
               "session_id",
@@ -42313,6 +42485,30 @@
             "type": "string"
           }
         }
+      },
+      "ProjectWorkspaceSessionOpenStats": {
+        "type": "object",
+        "required": [
+          "opened_at",
+          "score"
+        ],
+        "properties": {
+          "opened_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "score": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "ProjectWorkspaceSessionOrder": {
+        "type": "string",
+        "enum": [
+          "conversation",
+          "identity"
+        ]
       },
       "ProjectWorkspaceSessionSummary": {
         "type": "object",
@@ -50131,6 +50327,7 @@
                         "type": "object",
                         "required": [
                           "sessions",
+                          "search_revision",
                           "kind"
                         ],
                         "properties": {
@@ -50139,6 +50336,10 @@
                             "enum": [
                               "session_window"
                             ]
+                          },
+                          "search_revision": {
+                            "type": "integer",
+                            "format": "int64"
                           },
                           "sessions": {
                             "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceSessionListingItem"

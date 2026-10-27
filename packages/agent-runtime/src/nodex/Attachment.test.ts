@@ -29,18 +29,20 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
             id: `thread:${name}`,
             method: "command.dispatch",
             input: {
-              type: "thread.create",
-              commandId: `create:${name}`,
-              threadId: `thread:${name}`,
-              projectId: `project:${name}`,
-              title: name,
-              modelSelection: { instanceId: "codex", model: "gpt-5.4" },
-              runtimeMode: "full-access",
-              interactionMode: "default",
-              branch: null,
-              worktreePath: null,
-              createdBy: "user",
-              creationSource: "web",
+              command: {
+                type: "thread.create",
+                commandId: `create:${name}`,
+                threadId: `thread:${name}`,
+                projectId: `project:${name}`,
+                title: name,
+                modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                branch: null,
+                worktreePath: null,
+                createdBy: "user",
+                creationSource: "web",
+              },
             },
           });
         }
@@ -144,7 +146,10 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
             method: "thread.attachment",
             input: { threadId, sourceThreadId, itemId, attachmentId },
           });
-        const expected = { path: path.join(home, "userdata", "attachments", `${image.id}.png`) };
+        const expected = {
+          path: path.join(home, "userdata", "attachments", `${image.id}.png`),
+          attachment: image,
+        };
         expect(yield* query("thread:source", "item:captured")).toEqual(expected);
         expect(yield* query("thread:source", "item:late")).toEqual(expected);
         expect(yield* query("thread:fork", "item:captured")).toEqual(expected);

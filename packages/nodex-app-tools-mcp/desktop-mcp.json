@@ -16,7 +16,7 @@
       },
       "env_vars": ["HOME", "USERPROFILE", "PATH"],
       "startup_timeout_sec": 10,
-      "tool_timeout_sec": 185
+      "tool_timeout_sec": 3670
     }
   }
 }

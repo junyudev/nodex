@@ -494,6 +494,10 @@
     "./BoundedQueue": {
       "types": "./src/BoundedQueue.ts",
       "import": "./src/BoundedQueue.ts"
+    },
+    "./paletteSearch": {
+      "types": "./src/paletteSearch.ts",
+      "import": "./src/paletteSearch.ts"
     }
   },
   "scripts": {

@@ -84,7 +84,7 @@ import {
   subagentThreadTitle,
 } from "@t3tools/provider-core/server/subagentProjection";
 import { openCodeToolTurnItem } from "./toolItems.ts";
-import { NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
+import { APP_TOOLS_PROVIDER_TIMEOUT_MS, NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
 
 export { openCodeToolProjectionKind } from "./toolItems.ts";
 
@@ -805,6 +805,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 url: mcpSession.endpoint,
                 headers: { Authorization: mcpSession.authorizationHeader },
                 oauth: false,
+                timeout: APP_TOOLS_PROVIDER_TIMEOUT_MS,
               },
             }),
           );

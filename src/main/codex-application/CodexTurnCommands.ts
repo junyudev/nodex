@@ -1502,29 +1502,35 @@ export const make: Effect.Effect<
           `  <input>${escape(prompt)}</input>`,
           "</codex_delegation>",
         ].join("\n");
-        const id = createUuidV7();
+        const id = overrides?.clientUserMessageId ?? createUuidV7();
         const hostId = yield* executionHost(threadId);
         const manager = yield* managers.get(hostId);
         const connection = captureTurnConnection(manager);
-        const captured = yield* preparation.prepareCaptured(threadId, id, prompt, { text: prompt });
+        const captured = yield* preparation.prepareCaptured(
+          threadId,
+          id,
+          prompt,
+          overrides?.promptInput ?? { text: prompt },
+        );
         const capability = yield* capabilities.forHost(hostId);
         yield* Effect.try(() => assertTurnConnection(connection));
         const toolOutput = capability.flags.turnToolOutput
           ? { name: "send_message_to_thread", namespace: "codex_app", output }
           : undefined;
+        const attachments = captured.inputItems.slice(1);
         const nativeInput = toolOutput
-          ? []
-          : [{ type: "text" as const, text: output, text_elements: [] }];
+          ? attachments
+          : [{ type: "text" as const, text: output, text_elements: [] }, ...attachments];
         const preparedPrompt = { ...captured, inputItems: nativeInput };
         const restoreMessage: CodexQueuedMessage = {
           id,
           cwd: conversations.current(threadId)?.readCanonicalState()?.cwd ?? null,
           context: {
             prompt,
-            fileAttachments: [],
-            addedFiles: [],
-            commentAttachments: [],
-            imageAttachments: [],
+            fileAttachments: captured.fileAttachments,
+            addedFiles: captured.addedFiles,
+            commentAttachments: captured.commentAttachments,
+            imageAttachments: overrides?.promptInput?.images ?? [],
           },
         };
         const steer: CanonicalOwnerSteerInput = {
@@ -1532,7 +1538,7 @@ export const make: Effect.Effect<
           clientUserMessageId: id,
           input: nativeInput,
           restoreMessage,
-          attachments: [],
+          attachments: [...captured.fileAttachments, ...captured.addedFiles],
           ...(toolOutput ? { toolOutput } : {}),
         };
         if (mode === "steer") {

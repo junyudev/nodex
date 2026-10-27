@@ -225,6 +225,49 @@ fn source_derivation_validates_clone_and_upgrades_once_without_changing_yrs() {
 }
 
 #[test]
+fn session_usage_upgrade_preserves_current_document_derivation() {
+    let profile = source_profile(189);
+    let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+    add_predecessor_document(&connection, "document:current", CURRENT_NFM);
+    connection.execute(
+        "UPDATE document_materializations SET materialization_derivation_version=3 WHERE document_id='document:current'",
+        [],
+    ).unwrap();
+    let canonical = canonical_document(&connection, "document:current");
+    let derived = unchanged_document_state(&connection);
+    assert_eq!(validate_profile_clone_source(&connection).unwrap(), 189);
+
+    let preparation = prepare_profile_store(&mut connection, profile.path()).unwrap();
+    assert_eq!(preparation.migrated_from_version, Some(189));
+    assert_eq!(
+        canonical_document(&connection, "document:current"),
+        canonical
+    );
+    assert_eq!(unchanged_document_state(&connection), derived);
+    let materialization = DocumentReadRepository::new(&connection)
+        .materialization("document:current")
+        .unwrap()
+        .unwrap();
+    assert_eq!(materialization.nfm, CURRENT_NFM);
+    assert_eq!(materialization.updated_at, NOW);
+    validate_restore_documents(&connection).unwrap();
+    assert_eq!(
+        validate_profile_clone_source(&connection).unwrap(),
+        CURRENT_STORE_REVISION
+    );
+    drop(connection);
+
+    let mut reopened = open_writer(&profile.path().join("nodex.db")).unwrap();
+    assert_eq!(
+        prepare_profile_store(&mut reopened, profile.path())
+            .unwrap()
+            .migrated_from_version,
+        None,
+    );
+    assert_eq!(canonical_document(&reopened, "document:current"), canonical);
+}
+
+#[test]
 fn predecessor_derivation_rejects_corruption_before_clone_backup_or_upgrade() {
     for (revision, corruption) in [
         (
@@ -285,7 +328,11 @@ fn derivation_rebuild_rolls_back_every_projection_and_retries_from_verified_back
     add_predecessor_document(&connection, "document:legacy", LEGACY_NFM);
     let canonical = canonical_document(&connection, "document:legacy");
     let mut steps = resolve_migration_path(188, CURRENT_STORE_REVISION, MIGRATION_STEPS).unwrap();
-    steps.last_mut().unwrap().apply = |connection, context| {
+    steps
+        .iter_mut()
+        .find(|step| step.from_revision == 188)
+        .unwrap()
+        .apply = |connection, context| {
         migrate_v188_to_v189(connection, context)?;
         Err(corrupt(
             "injected failure after complete derivation rebuild",

@@ -140,6 +140,7 @@ export function importHistoryEvents(input: {
     turnItem = Schema.decodeUnknownSync(OrchestrationV2TurnItem)({
       ...base,
       type: "dynamic_tool",
+      ...(attachments.length > 0 ? { attachments } : {}),
       toolName: item.tool,
       input: item.arguments,
       output: item.result ?? item.error,
@@ -149,6 +150,7 @@ export function importHistoryEvents(input: {
     turnItem = {
       ...base,
       type: "dynamic_tool",
+      ...(attachments.length > 0 ? { attachments } : {}),
       toolName: item.tool,
       input: item.arguments,
       output: item.contentItems,
@@ -157,24 +159,32 @@ export function importHistoryEvents(input: {
     turnItem = {
       ...base,
       type: "dynamic_tool",
+      ...(attachments.length > 0 ? { attachments } : {}),
       toolName: "imageView",
       input: item.path.startsWith("data:") ? {} : { path: item.path },
       output: {
         type: "imageView",
         ...(item.path.startsWith("data:") ? {} : { sourcePath: item.path }),
       },
-      ...(attachments.length > 0 ? { attachments } : {}),
     };
   } else if (item.type === "functionCallOutput") {
     turnItem = {
       ...base,
       type: "dynamic_tool",
+      ...(attachments.length > 0 ? { attachments } : {}),
       toolName: item.name,
       input: item.namespace === null ? {} : { namespace: item.namespace },
       output: item.output,
     };
   } else {
-    turnItem = { ...base, type: "dynamic_tool", toolName: item.type, input: {}, output: item };
+    turnItem = {
+      ...base,
+      type: "dynamic_tool",
+      toolName: item.type,
+      input: {},
+      output: item,
+      ...(attachments.length > 0 ? { attachments } : {}),
+    };
   }
   events.push({
     id: EventId.make(`native-import:item:${key}`),

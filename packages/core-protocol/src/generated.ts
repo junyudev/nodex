@@ -1704,7 +1704,10 @@ export interface components {
         readonly CollectionWindow_ProjectWorkspaceSessionListingItem: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
+                /** @description Continue after this item when a consumer merges or shortens the window. */
+                readonly cursor: string;
                 readonly direct_section_id?: string | null;
+                readonly opens?: null | components["schemas"]["ProjectWorkspaceSessionOpenStats"];
                 readonly project_name?: string | null;
                 readonly project_pinned: boolean;
                 readonly project_section_id?: string | null;
@@ -7084,6 +7087,16 @@ export interface components {
                 readonly session_id: string;
                 readonly title: string;
             } | {
+                readonly expected_native_host_id: string;
+                readonly expected_native_thread_id: string;
+                /** @enum {string} */
+                readonly kind: "adopt_native_session_execution";
+                readonly launch_request_id: string;
+                readonly project_id?: string | null;
+                readonly runtime_id: string;
+                readonly runtime_thread_id: string;
+                readonly session_id: string;
+            } | {
                 readonly handoff_request_hash: string;
                 /** @enum {string} */
                 readonly kind: "admit_session_handoff";
@@ -8346,8 +8359,15 @@ export interface components {
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 readonly archived: boolean;
+                readonly execution_refs?: readonly components["schemas"]["ProjectWorkspaceSessionExecutionRef"][] | null;
                 /** @enum {string} */
                 readonly kind: "session_window";
+                readonly native_only?: boolean | null;
+                readonly order?: null | components["schemas"]["ProjectWorkspaceSessionOrder"];
+                readonly project_id?: string | null;
+                readonly projectless_only?: boolean | null;
+                readonly query?: string | null;
+                readonly session_ids?: readonly string[] | null;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 readonly include_archived?: boolean | null;
@@ -8934,6 +8954,9 @@ export interface components {
         /** @enum {string} */
         readonly ProjectMarkerIcon: "folder" | "currency-dollar" | "book" | "graduation-cap" | "edit" | "writing" | "function" | "terminal" | "music" | "popcorn" | "customize" | "palette" | "stethoscope" | "health" | "lotus" | "suitcase" | "bar-chart" | "kettlebell" | "dumbbell" | "logs" | "scale" | "desk-globe" | "plane" | "globe" | "wrench" | "paw" | "flask" | "brain" | "heart" | "plant";
         readonly ProjectSessionIntent: {
+            /** @enum {string} */
+            readonly kind: "record_opened";
+        } | {
             /** @enum {string} */
             readonly kind: "rename";
             readonly title: string;
@@ -9597,6 +9620,16 @@ export interface components {
             readonly session_id: string;
             readonly title: string;
         } | {
+            readonly expected_native_host_id: string;
+            readonly expected_native_thread_id: string;
+            /** @enum {string} */
+            readonly kind: "adopt_native_session_execution";
+            readonly launch_request_id: string;
+            readonly project_id?: string | null;
+            readonly runtime_id: string;
+            readonly runtime_thread_id: string;
+            readonly session_id: string;
+        } | {
             readonly handoff_request_hash: string;
             /** @enum {string} */
             readonly kind: "admit_session_handoff";
@@ -10138,6 +10171,14 @@ export interface components {
             readonly runtime_id: string;
             readonly thread_id: string;
         };
+        readonly ProjectWorkspaceSessionOpenStats: {
+            /** Format: int64 */
+            readonly opened_at: number;
+            /** Format: double */
+            readonly score: number;
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceSessionOrder: "conversation" | "identity";
         readonly ProjectWorkspaceSessionSummary: {
             readonly archived: boolean;
             readonly archived_at?: string | null;
@@ -11762,6 +11803,8 @@ export interface components {
                 } | {
                     /** @enum {string} */
                     readonly kind: "session_window";
+                    /** Format: int64 */
+                    readonly search_revision: number;
                     readonly sessions: components["schemas"]["CollectionWindow_ProjectWorkspaceSessionListingItem"];
                 } | {
                     /** @enum {string} */

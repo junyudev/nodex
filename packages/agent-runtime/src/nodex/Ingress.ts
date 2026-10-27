@@ -1,3 +1,5 @@
+import * as Stream from "effect/Stream";
+import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
@@ -71,6 +73,7 @@ const semanticRequest = (
 export const make = Effect.gen(function* () {
   const bridge = yield* HostBridge;
   const projections = yield* Projections.ProjectionStoreV2;
+  const orchestrator = yield* OrchestratorV2;
   const profiles = yield* Ref.make<ReadonlyMap<string, NativeSession>>(new Map());
   const watched = yield* Ref.make<ReadonlySet<string>>(new Set());
   return Effect.fn("AgentRuntime.admitMcpRequest")(function* (
@@ -240,6 +243,41 @@ export const make = Effect.gen(function* () {
         });
       }
     }
+    // Code-mode can keep a real MCP request alive after its foreground tool has yielded.
+    // Its owner is the captured Run/attempt, not that foreground call or the HTTP connection.
+    const awaitRevoked = Effect.gen(function* () {
+      if (actor === undefined || !guarded) return yield* Effect.never;
+      const threadId = ThreadId.make(actor.threadId);
+      // Capture replay position before the canonical point read so cancellation cannot fall
+      // between admission and subscription. Ordinary completion keeps live background work valid.
+      const afterSequence = yield* orchestrator.getThreadEventSequence(threadId);
+      const revoked = Effect.gen(function* () {
+        if (!(yield* bridge.nativeSessionLive(actor))) return true;
+        const state = yield* projections.getHostToolAuthorityContext(
+          threadId,
+          actor.runId,
+          actor.providerThreadId,
+        );
+        return hostToolAuthorityRefusal(state, actor, actor.nativeGeneration) !== undefined;
+      });
+      if (yield* revoked) return;
+      yield* orchestrator.streamStoredEventsFrom({ threadId, afterSequence }).pipe(
+        Stream.filter(
+          ({ event }) =>
+            event.type === "thread.deleted" ||
+            event.type === "thread.provider-switched" ||
+            event.type === "provider-thread.updated" ||
+            event.type === "provider-session.detached" ||
+            event.type === "run.execution-retired" ||
+            (event.type === "run.updated" && event.payload.id === actor.runId),
+        ),
+        Stream.filterEffect(() => revoked),
+        Stream.runHead,
+      );
+    }).pipe(
+      Effect.asVoid,
+      Effect.orElseSucceed(() => undefined),
+    );
     const response = yield* requestEffect.pipe(
       Effect.provideService(HttpServerRequest.HttpServerRequest, semanticRequest(request, body)),
       Effect.provideService(
@@ -256,6 +294,7 @@ export const make = Effect.gen(function* () {
         actor,
         requestId: payload?.id,
         assertCurrent,
+        awaitRevoked,
       }),
     );
     if (payload?.method === "initialize" && native !== undefined) {

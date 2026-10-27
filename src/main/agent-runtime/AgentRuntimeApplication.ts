@@ -1,3 +1,4 @@
+import { AgentRuntimeProcessError } from "../platform/node/AgentRuntimeProcess";
 import type { AcpConversationImportResult } from "../../shared/acp-api";
 import { createHash } from "node:crypto";
 import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "@nodex/agent-runtime/contracts";
@@ -37,6 +38,7 @@ import type {
 } from "../codex-application/AgentChatWorktrees";
 import { resolveAgentRuntimeAgentConfig } from "../../shared/agent-runtime-agent-config";
 import { generateSessionTitle } from "./AgentRuntimeSessionTitle";
+import { make as makeMessageResources } from "./AgentRuntimeMessageResources";
 import { splitCodexPromptAgentConfigLines } from "../../shared/codex-prompt-preparation";
 import { appendAgentAppContext, hasAgentAppContext } from "../../shared/agent-prompt";
 import type {
@@ -171,6 +173,9 @@ export class AgentRuntimeApplicationError extends Schema.TaggedError<AgentRuntim
     committedOperationId: Schema.optionalKey(Schema.String),
     /** This attempt failed admission validation before any product or execution mutation. */
     admissionRejected: Schema.optionalKey(Schema.Literal(true)),
+    /** Actionable source-owned search continuation failure; transport outages omit this field. */
+    cursorReason: Schema.optionalKey(Schema.Literals(["invalid_cursor", "cursor_stale"])),
+    adoptionReason: Schema.optionalKey(Schema.Literal("active_source_busy")),
   },
 ) {}
 
@@ -180,6 +185,21 @@ const failure = (operation: string, message: string, cause?: unknown) =>
     message,
     ...(cause === undefined ? {} : { cause }),
   });
+const searchFailure = (cause: unknown) => {
+  if (
+    !Schema.is(AgentRuntimeProcessError)(cause) ||
+    cause.reason !== "rejected" ||
+    cause.engineTag !== "SessionSearchError" ||
+    (cause.engineReason !== "invalid_cursor" && cause.engineReason !== "cursor_stale")
+  )
+    return cause;
+  return new AgentRuntimeApplicationError({
+    operation: "session-search",
+    message: "Search continuation is no longer usable; start a new search.",
+    cause,
+    cursorReason: cause.engineReason,
+  });
+};
 const importRefusal = (message: string) =>
   new AgentRuntimeApplicationError({
     operation: "import",
@@ -210,17 +230,39 @@ const hash = (value: unknown) =>
 const commandId = (kind: string, identity: unknown) => `nodex:${kind}:${hash(identity)}`;
 const launchThreadId = (launchId: string, sessionId: string) =>
   agentExecutionThreadId(hash({ launchId, sessionId }));
-const nativeImportIdentity = (input: NativeConversationImportInput) => ({
-  backendKind: input.backendKind,
-  instanceConfigId: input.instanceConfigId,
-  requestId: input.requestId,
-  nativeSessionId: input.nativeSessionId,
-  expectedHome: input.expectedHome,
-  projectId: input.projectId,
-  cwd: input.cwd,
-});
-const nativeImportBinding = (input: NativeConversationImportInput, runtimeId: string) => ({
-  session_id: input.requestId,
+interface NativeAdoptionInput {
+  readonly sessionId: string;
+  readonly requestId: string;
+  readonly acceptedAt: number;
+  readonly expectedNativeThreadId: string;
+  readonly expectedNativeHostId: string;
+  readonly interactionMode: "default" | "plan";
+  readonly model?: string | null;
+}
+type NativeImportRequest = NativeConversationImportInput & {
+  readonly adoption?: NativeAdoptionInput;
+};
+const nativeImportIdentity = (input: NativeImportRequest) =>
+  input.adoption
+    ? {
+        adoption: {
+          sessionId: input.adoption.sessionId,
+          requestId: input.requestId,
+          expectedNativeThreadId: input.adoption.expectedNativeThreadId,
+          expectedNativeHostId: input.adoption.expectedNativeHostId,
+        },
+      }
+    : {
+        backendKind: input.backendKind,
+        instanceConfigId: input.instanceConfigId,
+        requestId: input.requestId,
+        nativeSessionId: input.nativeSessionId,
+        expectedHome: input.expectedHome,
+        projectId: input.projectId,
+        cwd: input.cwd,
+      };
+const nativeImportBinding = (input: NativeImportRequest, runtimeId: string) => ({
+  session_id: input.adoption?.sessionId ?? input.requestId,
   project_id: input.projectId,
   runtime_id: runtimeId,
   runtime_thread_id: agentExecutionThreadId(hash({ import: nativeImportIdentity(input) })),
@@ -244,6 +286,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const core = yield* CoreModules;
   const lifecycle = yield* ProjectRuntimeLifecycleRuntime;
   const workspace = yield* ProjectWorkspace;
+  const messageResources = yield* makeMessageResources();
   const sessionLanes = yield* RcMap.make({ lookup: (_sessionId: string) => Semaphore.make(1) });
   const ownerScope = yield* Effect.scope;
   if (!validId(options.projectless.engineProjectId) || !options.projectless.workspaceRoot.trim())
@@ -255,7 +298,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       Effect.mapError((cause) =>
         Schema.is(AgentRuntimeApplicationError)(cause)
           ? cause
-          : failure(operation, AGENT_OPERATION_FAILED, cause),
+          : Schema.is(AgentRuntimeProcessError)(cause) &&
+              cause.engineTag === "OrchestratorThreadAboveModeLimitError" &&
+              (cause.engineReason === "runtime_mode_escalation_denied" ||
+                cause.engineReason === "interaction_mode_escalation_denied")
+            ? failure(operation, cause.engineReason, cause)
+            : failure(operation, AGENT_OPERATION_FAILED, cause),
       ),
     );
   const ownedWrite = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
@@ -730,8 +778,19 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     }
     return { binding, threadId, thread };
   });
-  const dispatch = (connection: AgentRuntimeApplicationConnection, command: AgentCommand) =>
-    connection.request("command.dispatch", command);
+  const dispatch = (
+    connection: AgentRuntimeApplicationConnection,
+    command: AgentCommand,
+    interactionModeCeiling?: "plan",
+  ) =>
+    connection.request("command.dispatch", {
+      command,
+      ...(interactionModeCeiling
+        ? {
+            modeLimit: { runtimeMode: "full-access", interactionMode: interactionModeCeiling },
+          }
+        : {}),
+    });
   const prepareMessageInput = Effect.fn("AgentRuntimeApplication.prepareMessageInput")(function* (
     connection: AgentRuntimeApplicationConnection,
     message: AgentRuntimeMessage,
@@ -965,7 +1024,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       !input.title.trim()
     )
       return yield* failure("launch", "Launch identity and title are required");
-    yield* assertMessage(input.message);
+    if (!input.resources?.length) yield* assertMessage(input.message);
+    else if (!validId(input.message.messageId))
+      return yield* failure("message", "Message identity is required");
     const connection = yield* options.connect;
     const threadId = launchThreadId(input.launchId, input.sessionId);
     const binding = {
@@ -983,17 +1044,92 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         message: "Session is already bound to another launch request",
         admissionRejected: true,
       });
+    if (input.messageFingerprint && previousBinding) {
+      const replay = yield* replayMessage({
+        sessionId: input.sessionId,
+        threadId,
+        messageId: input.message.messageId,
+        fingerprint: input.messageFingerprint,
+      });
+      if (replay)
+        return {
+          sessionId: input.sessionId,
+          threadId,
+          projectId: previousBinding.project_id ?? null,
+        };
+    }
     const projectId = previousBinding ? (previousBinding.project_id ?? null) : input.projectId;
     if (input.runInTarget === "newWorktree" && !options.prepareWorkspace)
       return yield* failure("workspace", "Worktree preparation is unavailable");
     // Invalid input is refused before any product or execution state exists.
-    const prepared = yield* prepareMessageInput(
-      connection,
-      input.message,
-      input.modelSelection,
-      input.interactionMode,
-    );
-    yield* assertMessage(prepared.message);
+    const retained = input.messageFingerprint
+      ? yield* connection.request("thread.message-launch", {
+          threadId,
+          messageId: input.message.messageId,
+          commandId: commandId("message", { threadId, messageId: input.message.messageId }),
+          fingerprint: input.messageFingerprint,
+        })
+      : null;
+    const preparation: { readonly message: AgentRuntimeMessage; readonly hasConfig: boolean } =
+      retained
+        ? { message: retained.message, hasConfig: false }
+        : yield* prepareMessageInput(
+            connection,
+            input.message,
+            input.modelSelection,
+            input.interactionMode,
+            input.resources?.some((resource) => resource.mimeType.startsWith("image/")) ?? false,
+          );
+    if (
+      input.interactionModeCeiling === "plan" &&
+      (preparation.message.interactionMode ?? input.interactionMode) !== "plan"
+    )
+      return yield* failure("launch", "interaction_mode_escalation_denied");
+    const stagedImages =
+      !retained && input.messageFingerprint && preparation.message.images?.length
+        ? options.prepareImages
+          ? yield* options.prepareImages(preparation.message.images)
+          : yield* failure("images", "Image preparation is unavailable")
+        : [];
+    const staged =
+      retained ??
+      (input.messageFingerprint
+        ? yield* connection.request("thread.message-stage", {
+            threadId,
+            messageId: input.message.messageId,
+            commandId: commandId("message", { threadId, messageId: input.message.messageId }),
+            fingerprint: input.messageFingerprint,
+            sessionId: input.sessionId,
+            launchId: input.launchId,
+            acceptedAt: input.acceptedAt,
+            title: input.title,
+            modelSelection: preparation.message.modelSelection ?? input.modelSelection,
+            interactionMode: preparation.message.interactionMode ?? input.interactionMode,
+            message: {
+              messageId: preparation.message.messageId,
+              text: preparation.message.text,
+              attachments: preparation.message.attachments ?? [],
+              ...(preparation.message.context ? { context: preparation.message.context } : {}),
+              modelSelection: preparation.message.modelSelection ?? input.modelSelection,
+              interactionMode: preparation.message.interactionMode ?? input.interactionMode,
+            },
+            resources: yield* messageResources.materialize([
+              ...(input.resources ?? []),
+              ...stagedImages.map((image, index) => ({
+                name:
+                  preparation.message.images?.[index]?.caption?.slice(0, 255) ||
+                  `Image ${index + 1}`,
+                mimeType: image.mediaType,
+                sizeBytes: Buffer.from(image.data, "base64").byteLength,
+                source: `data:${image.mediaType};base64,${image.data}`,
+              })),
+            ]),
+          })
+        : null);
+    const prepared = staged
+      ? { message: staged.message, hasConfig: preparation.hasConfig }
+      : preparation;
+    if (!input.resources?.length) yield* assertMessage(prepared.message);
     // Core admits the product Session first. It rejects an unbindable Session before any
     // execution or workspace effect exists, and the binding names the deterministic Thread
     // that every later step creates idempotently.
@@ -1028,6 +1164,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const existing = yield* connection.request("thread.read", { threadId });
     if (existing)
       yield* reconcileExecution(connection, yield* readBinding(connection, input.sessionId, true));
+    if (existing && input.messageFingerprint) {
+      const accepted = yield* replayMessage({
+        sessionId: input.sessionId,
+        threadId,
+        messageId: input.message.messageId,
+        fingerprint: input.messageFingerprint,
+      });
+      if (accepted) return { sessionId: input.sessionId, threadId, projectId };
+    }
     if (
       existing &&
       (existing.lineage.rootThreadId !== threadId ||
@@ -1076,6 +1221,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         creationSource: provenance ? "mcp" : "web",
       });
     const current = yield* targetInfo(connection, { sessionId: input.sessionId, threadId }, true);
+    if (input.messageFingerprint)
+      yield* connection.request("thread.message-admit", {
+        threadId,
+        messageId: input.message.messageId,
+        commandId: commandId("message", { threadId, messageId: input.message.messageId }),
+        fingerprint: input.messageFingerprint,
+        mode: "auto",
+      });
     if (lease) yield* lease.attach(threadId);
     else if (existing && options.reconcileWorkspace)
       yield* options.reconcileWorkspace({ cwd, threadId });
@@ -1087,7 +1240,21 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         input.message.messageId,
       ) ?? Effect.void
     );
-    const message = yield* prepareMessage(connection, threadId, prepared.message);
+    const imported =
+      !staged && input.resources?.length
+        ? yield* connection.request("attachments.import", {
+            threadId,
+            messageId: input.message.messageId,
+            attachments: yield* messageResources.materialize(input.resources),
+          })
+        : null;
+    const outgoing = imported
+      ? {
+          ...prepared.message,
+          attachments: [...(prepared.message.attachments ?? []), ...imported.attachments],
+        }
+      : prepared.message;
+    const message = yield* prepareMessage(connection, threadId, outgoing);
     const command = messageCommand(threadId, message, undefined, provenance !== null);
     const firstLaunch = !existing && !previousBinding;
     yield* dispatch(
@@ -1107,6 +1274,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             },
           }
         : command,
+      input.interactionModeCeiling,
     );
     if (deferWorktree) {
       const outcome = yield* connection.request("run.outcome", {
@@ -1441,11 +1609,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
 
   /** A lost success reply can be recovered after the source or its account is removed. */
   const completedNativeImport = Effect.fn("AgentRuntimeApplication.completedNativeImport")(
-    function* (input: NativeConversationImportInput) {
+    function* (input: NativeImportRequest) {
       yield* validateCaller();
-      const previous = yield* lookupDestinationBinding(input.requestId);
+      const sessionId = input.adoption?.sessionId ?? input.requestId;
+      const previous = yield* lookupDestinationBinding(sessionId);
       if (!previous) return null;
-      yield* authorizeSession(input.requestId);
+      yield* authorizeSession(sessionId);
       const connection = yield* options.connect;
       const expected = nativeImportBinding(input, connection.identity.runtimeId);
       if (!matchesBinding(previous, expected))
@@ -1466,13 +1635,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       const target = yield* targetInfo(
         connection,
         {
-          sessionId: input.requestId,
+          sessionId,
           threadId: expected.runtime_thread_id,
         },
         true,
       );
       return {
-        sessionId: input.requestId,
+        sessionId,
         threadId: target.threadId,
         projectId: target.binding.project_id ?? null,
       };
@@ -1481,7 +1650,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
 
   /** Copies visible history into an independent Session without starting a model Run. */
   const importNative = Effect.fn("AgentRuntimeApplication.importNative")(function* (
-    input: NativeConversationImportInput & {
+    input: NativeImportRequest & {
       readonly title: string;
       readonly model: string | null;
     },
@@ -1497,7 +1666,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     )
       return yield* failure("import", "Import identity, title and working directory are required");
     const connection = yield* options.connect;
-    const sessionId = input.requestId;
+    const sessionId = input.adoption?.sessionId ?? input.requestId;
     // The complete request is part of the binding, so a reused request cannot import another
     // source or silently change the destination while recovering a partial operation.
     const importIdentity = nativeImportIdentity(input);
@@ -1557,6 +1726,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           yield* authorizeSession(sessionId);
           return scope;
         }
+        if (input.adoption) return scope;
         onBindingAttempt();
         yield* bindExecution({
           binding,
@@ -1578,17 +1748,53 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       }),
     );
     yield* upsertProject(connection, scope);
-    yield* connection.request("thread.import-native", {
-      commandId: commandId("import-native", importIdentity),
-      threadId,
-      projectId: scope.id,
-      title: input.title.trim(),
-      backendKind: input.backendKind,
-      sourceHome: sourceHome,
-      sourceNativeThreadId: input.nativeSessionId,
-      modelSelection: { instanceId: provider.instanceId, model },
-      cwd: input.cwd,
-    });
+    yield* connection
+      .request("thread.import-native", {
+        commandId: commandId("import-native", importIdentity),
+        threadId,
+        projectId: scope.id,
+        title: input.title.trim(),
+        backendKind: input.backendKind,
+        sourceHome: sourceHome,
+        sourceNativeThreadId: input.nativeSessionId,
+        modelSelection: { instanceId: provider.instanceId, model },
+        cwd: input.cwd,
+        ...(input.adoption ? { interactionMode: input.adoption.interactionMode } : {}),
+      })
+      .pipe(
+        Effect.mapError((cause) =>
+          Schema.is(AgentRuntimeProcessError)(cause) &&
+          cause.engineTag === "NativeImportSourceBusyError" &&
+          cause.engineReason === "active_source_busy"
+            ? new AgentRuntimeApplicationError({
+                operation: "adopt-native",
+                message: "Native source is still running; continue after it finishes",
+                adoptionReason: "active_source_busy",
+                cause,
+              })
+            : cause,
+        ),
+      );
+    if (input.adoption && !previous) {
+      const adoption = input.adoption;
+      onBindingAttempt();
+      yield* bindExecution({
+        binding,
+        operation: {
+          operationId: createStableOperationId(
+            "agent-runtime.adopt-native",
+            input.acceptedAt,
+            importIdentity,
+          ),
+          intent: {
+            kind: "adopt_native_session_execution",
+            ...binding,
+            expected_native_thread_id: adoption.expectedNativeThreadId,
+            expected_native_host_id: adoption.expectedNativeHostId,
+          },
+        },
+      });
+    }
     yield* targetInfo(connection, { sessionId, threadId }, true);
     return { sessionId, threadId, projectId: input.projectId };
   });
@@ -1628,6 +1834,62 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     );
+  });
+
+  /** Retains product identity while a settled local Native source becomes Runtime-owned. */
+  const adoptNativeSession = Effect.fn("AgentRuntimeApplication.adoptNativeSession")(function* (
+    input: NativeAdoptionInput,
+  ) {
+    if (
+      !validId(input.sessionId) ||
+      !validId(input.requestId) ||
+      !validId(input.expectedNativeThreadId) ||
+      input.expectedNativeHostId !== "local"
+    )
+      return yield* failure("adopt-native", "Choose an existing local Native Session");
+    const probe: NativeImportRequest = {
+      backendKind: "codex",
+      requestId: input.requestId,
+      acceptedAt: input.acceptedAt,
+      nativeSessionId: input.expectedNativeThreadId,
+      expectedHome: "",
+      projectId: null,
+      cwd: "",
+      adoption: input,
+    };
+    const completed = yield* completedNativeImport(probe);
+    if (completed) return completed;
+    yield* authorizeSession(input.sessionId);
+    const session = yield* workspace.getProjectSession(input.sessionId);
+    const source = session?.thread;
+    if (
+      !session ||
+      session.archived ||
+      session.executionRef ||
+      !source ||
+      source.backendBinding.kind !== "codex" ||
+      source.threadId !== input.expectedNativeThreadId ||
+      source.executionHostId !== input.expectedNativeHostId ||
+      source.parentThreadId
+    )
+      return yield* failure("adopt-native", "Native Session binding changed before adoption");
+    if (source.statusType === "active")
+      return yield* new AgentRuntimeApplicationError({
+        operation: "adopt-native",
+        message: "Native source is still running; continue after it finishes",
+        adoptionReason: "active_source_busy",
+      });
+    if (!source.cwd || !options.nativeImportSourceHome)
+      return yield* failure("adopt-native", "Native source history is unavailable");
+    const connection = yield* options.connect;
+    const requested = { ...probe, projectId: session.projectId, cwd: source.cwd };
+    const home = yield* options.nativeImportSourceHome(connection, requested);
+    return yield* importNative({
+      ...requested,
+      expectedHome: home,
+      title: session.displayTitle,
+      model: input.model ?? null,
+    });
   });
 
   const fork = Effect.fn("AgentRuntimeApplication.fork")(function* (
@@ -1853,55 +2115,87 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return { cleared: true } as const;
   });
 
-  const message = Effect.fn("AgentRuntimeApplication.message")(function* (
-    input: AgentRuntimeSessionTarget & {
-      readonly message: AgentRuntimeMessage;
-      readonly intent?: DispatchMessage["deliveryIntent"];
-      readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+  const prepareMessageDispatch = Effect.fn("AgentRuntimeApplication.prepareMessageDispatch")(
+    function* (
+      input: AgentRuntimeSessionTarget & {
+        readonly message: AgentRuntimeMessage;
+        readonly intent?: DispatchMessage["deliveryIntent"];
+        readonly resources?: AgentRuntimeOperations["attachments.import"]["input"]["attachments"];
+        readonly interactionModeCeiling?: "plan";
+        readonly messageFingerprint?: string;
+        readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+      },
+      queueAfterActive = false,
+    ) {
+      const connection = yield* options.connect;
+      const loaded = yield* targetInfo(connection, input, true);
+      const imported = input.resources?.length
+        ? yield* connection.request("attachments.import", {
+            threadId: loaded.threadId,
+            messageId: input.message.messageId,
+            attachments: yield* messageResources.materialize(input.resources),
+          })
+        : null;
+      const sourceMessage = imported
+        ? {
+            ...input.message,
+            attachments: [...(input.message.attachments ?? []), ...imported.attachments],
+          }
+        : input.message;
+      yield* assertMessage(sourceMessage);
+      // A message that continues the chat on another Agent needs a conversation it can hand over.
+      const requested = sourceMessage.modelSelection;
+      if (requested && requested.instanceId !== loaded.thread.modelSelection.instanceId) {
+        const control = yield* connection.request("thread.control", { threadId: loaded.threadId });
+        const refusal = agentRuntimeAgentSwitchRefusal(control.projection);
+        if (refusal) return yield* failure("message", refusal);
+      }
+      const prepared = yield* prepareMessageInput(
+        connection,
+        sourceMessage,
+        loaded.thread.modelSelection,
+        loaded.thread.interactionMode,
+      );
+      if (
+        input.interactionModeCeiling === "plan" &&
+        (prepared.message.interactionMode ?? loaded.thread.interactionMode) !== "plan"
+      )
+        return yield* failure("message", "interaction_mode_escalation_denied");
+      yield* assertMessage(prepared.message);
+      yield* (
+        options.presentation?.admitRuntimeMessage(
+          input.presentationTicket,
+          { kind: "thread", threadId: loaded.threadId },
+          loaded.threadId,
+          input.message.messageId,
+        ) ?? Effect.void
+      );
+      const agent = (yield* CoreApplicationAgent) !== null;
+      // Only a person's message that starts a Run carries the state they left; a message with app
+      // data of its own already speaks for the response it came from.
+      const interactive =
+        options.interactiveState &&
+        !agent &&
+        !queueAfterActive &&
+        !prepared.hasConfig &&
+        (input.intent ?? "auto") === "auto" &&
+        loaded.thread.activeRunId === null &&
+        !hasAgentAppContext(prepared.message)
+          ? yield* options.interactiveState.unsent(loaded.threadId)
+          : undefined;
+      const outgoing = interactive
+        ? appendAgentAppContext(prepared.message, interactive.parts, "Interactive response state")
+        : prepared.message;
+      return { connection, loaded, prepared, interactive, outgoing, agent };
     },
+  );
+
+  const message = Effect.fn("AgentRuntimeApplication.message")(function* (
+    input: Parameters<typeof prepareMessageDispatch>[0],
     queueAfterActive = false,
   ) {
-    yield* assertMessage(input.message);
-    const connection = yield* options.connect;
-    const loaded = yield* targetInfo(connection, input, true);
-    // A message that continues the chat on another Agent needs a conversation it can hand over.
-    const requested = input.message.modelSelection;
-    if (requested && requested.instanceId !== loaded.thread.modelSelection.instanceId) {
-      const control = yield* connection.request("thread.control", { threadId: loaded.threadId });
-      const refusal = agentRuntimeAgentSwitchRefusal(control.projection);
-      if (refusal) return yield* failure("message", refusal);
-    }
-    const prepared = yield* prepareMessageInput(
-      connection,
-      input.message,
-      loaded.thread.modelSelection,
-      loaded.thread.interactionMode,
-    );
-    yield* assertMessage(prepared.message);
-    yield* (
-      options.presentation?.admitRuntimeMessage(
-        input.presentationTicket,
-        { kind: "thread", threadId: loaded.threadId },
-        loaded.threadId,
-        input.message.messageId,
-      ) ?? Effect.void
-    );
-    const agent = (yield* CoreApplicationAgent) !== null;
-    // Only a person's message that starts a Run carries the state they left; a message with app
-    // data of its own already speaks for the response it came from.
-    const interactive =
-      options.interactiveState &&
-      !agent &&
-      !queueAfterActive &&
-      !prepared.hasConfig &&
-      (input.intent ?? "auto") === "auto" &&
-      loaded.thread.activeRunId === null &&
-      !hasAgentAppContext(prepared.message)
-        ? yield* options.interactiveState.unsent(loaded.threadId)
-        : undefined;
-    const outgoing = interactive
-      ? appendAgentAppContext(prepared.message, interactive.parts, "Interactive response state")
-      : prepared.message;
+    const { connection, loaded, prepared, interactive, outgoing, agent } =
+      yield* prepareMessageDispatch(input, queueAfterActive);
     const result = yield* dispatch(
       connection,
       messageCommand(
@@ -1911,9 +2205,151 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         agent,
         queueAfterActive || prepared.hasConfig,
       ),
+      input.interactionModeCeiling,
     );
     if (interactive) yield* options.interactiveState!.sent(loaded.threadId, interactive.key);
     return result;
+  });
+
+  /** The same intake preparation as interactive messages, with canonical delivery receipts. */
+  const replayMessage = Effect.fn("AgentRuntimeApplication.replayMessage")(function* (
+    input: AgentRuntimeSessionTarget & { readonly messageId: string; readonly fingerprint: string },
+  ) {
+    yield* validateCaller();
+    const connection = yield* options.connect;
+    const binding = yield* readBinding(connection, input.sessionId, false);
+    const threadId = input.threadId ?? binding.runtime_thread_id;
+    const thread = yield* connection.request("thread.read", { threadId });
+    if (!thread && threadId === binding.runtime_thread_id) return null;
+    if (
+      !thread ||
+      thread.lineage.rootThreadId !== binding.runtime_thread_id ||
+      thread.deletedAt !== null
+    )
+      return yield* failure("message-replay", "Thread does not belong to this Session");
+    const result = yield* connection.request("thread.message-replay", {
+      threadId,
+      messageId: input.messageId,
+      commandId: commandId("message", { threadId, messageId: input.messageId }),
+      fingerprint: input.fingerprint,
+    });
+    return result ? { sessionId: input.sessionId, threadId, ...result } : null;
+  });
+
+  const resumeMessageLaunch = Effect.fn("AgentRuntimeApplication.resumeMessageLaunch")(
+    function* (input: {
+      readonly sessionId: string;
+      readonly launchId: string;
+      readonly messageId: string;
+      readonly fingerprint: string;
+      readonly modeLimit: import("@nodex/agent-runtime/contracts").AgentDispatchModeLimit;
+    }) {
+      yield* validateCaller();
+      const binding = yield* lookupDestinationBinding(input.sessionId);
+      if (!binding || binding.launch_request_id !== input.launchId) return null;
+      const replay = yield* replayMessage(input);
+      if (replay) return replay;
+      const connection = yield* options.connect;
+      const intent = yield* connection.request("thread.message-launch", {
+        threadId: binding.runtime_thread_id,
+        messageId: input.messageId,
+        commandId: commandId("message", {
+          threadId: binding.runtime_thread_id,
+          messageId: input.messageId,
+        }),
+        fingerprint: input.fingerprint,
+      });
+      if (!intent) {
+        const completed = yield* replayMessage(input);
+        if (completed) return completed;
+        return yield* failure("launch", "The original message launch intent is unavailable");
+      }
+      if (intent.sessionId !== input.sessionId || intent.launchId !== input.launchId)
+        return yield* failure("launch", "The original message launch intent is unavailable");
+      if (input.modeLimit.runtimeMode !== "full-access")
+        return yield* failure("launch", "runtime_mode_escalation_denied");
+      yield* launch({
+        sessionId: input.sessionId,
+        launchId: input.launchId,
+        acceptedAt: intent.acceptedAt,
+        projectId: binding.project_id ?? null,
+        title: intent.title,
+        messageFingerprint: input.fingerprint,
+        message: intent.message,
+        modelSelection: intent.modelSelection,
+        interactionMode: intent.interactionMode,
+        ...(input.modeLimit.interactionMode === "plan" ? { interactionModeCeiling: "plan" } : {}),
+      });
+      const delivered = yield* replayMessage(input);
+      if (!delivered)
+        return yield* failure("launch", "Message launch has no accepted delivery receipt");
+      return delivered;
+    },
+  );
+
+  const sendMessage = Effect.fn("AgentRuntimeApplication.sendMessage")(function* (
+    input: Parameters<typeof prepareMessageDispatch>[0] & {
+      readonly mode: "auto" | "queue" | "steer" | "restart";
+      readonly senderThreadId?: string;
+      readonly senderRunId?: string | null;
+    },
+  ) {
+    if (input.messageFingerprint) {
+      const replay = yield* replayMessage({
+        ...input,
+        messageId: input.message.messageId,
+        fingerprint: input.messageFingerprint,
+      });
+      if (replay) return replay;
+    }
+    const {
+      connection,
+      loaded,
+      outgoing,
+      prepared: preparation,
+    } = yield* prepareMessageDispatch(
+      {
+        ...input,
+        ...(input.mode === "queue" ? {} : { intent: input.mode }),
+      },
+      input.mode === "queue",
+    );
+    const prepared = yield* prepareMessage(connection, loaded.threadId, outgoing);
+    if (input.messageFingerprint)
+      yield* connection.request("thread.message-admit", {
+        threadId: loaded.threadId,
+        messageId: prepared.messageId,
+        commandId: commandId("message", {
+          threadId: loaded.threadId,
+          messageId: prepared.messageId,
+        }),
+        fingerprint: input.messageFingerprint,
+        mode: input.mode,
+      });
+    const result = yield* connection.request("thread.send", {
+      threadId: loaded.threadId,
+      commandId: commandId("message", { threadId: loaded.threadId, messageId: prepared.messageId }),
+      messageId: prepared.messageId,
+      text: prepared.text,
+      attachments: prepared.attachments ?? [],
+      mode: preparation.hasConfig ? "queue" : input.mode,
+      ...(input.interactionModeCeiling
+        ? {
+            modeLimit: {
+              runtimeMode: "full-access",
+              interactionMode: input.interactionModeCeiling,
+            },
+          }
+        : {}),
+      ...(prepared.context === undefined ? {} : { context: prepared.context }),
+      ...(prepared.interactionMode === undefined
+        ? {}
+        : { interactionMode: prepared.interactionMode }),
+      ...(prepared.modelSelection === undefined ? {} : { modelSelection: prepared.modelSelection }),
+      ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
+      ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
+    });
+    return { sessionId: input.sessionId, threadId: loaded.threadId, ...result };
   });
 
   const stop = Effect.fn("AgentRuntimeApplication.stop")(function* (
@@ -2459,6 +2895,46 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     launch: (input: AgentRuntimeLaunch) => ownedWrite("launch", launch(input).pipe(Effect.scoped)),
+    nativeMessageReceipt: (input: AgentRuntimeOperations["native-message.receipt"]["input"]) =>
+      owned(
+        "native-message-receipt",
+        Effect.gen(function* () {
+          yield* authorizeSession(input.sessionId);
+          const connection = yield* options.connect;
+          return yield* connection.request("native-message.receipt", input);
+        }),
+      ),
+    nativeMessageReserve: (input: AgentRuntimeOperations["native-message.reserve"]["input"]) =>
+      ownedWrite(
+        "native-message-reserve",
+        Effect.gen(function* () {
+          yield* authorizeSession(input.sessionId);
+          const session = yield* workspace.getProjectSession(input.sessionId);
+          if (
+            !session ||
+            session.archived ||
+            session.executionRef ||
+            session.thread?.threadId !== input.threadId ||
+            session.thread.executionHostId !== input.hostId ||
+            session.thread.backendBinding.kind !== "codex"
+          )
+            return yield* failure(
+              "native-message-reserve",
+              "Native message binding changed before admission",
+            );
+          const connection = yield* options.connect;
+          return yield* connection.request("native-message.reserve", input);
+        }),
+      ),
+    nativeMessageSettle: (input: AgentRuntimeOperations["native-message.settle"]["input"]) =>
+      ownedWrite(
+        "native-message-settle",
+        Effect.gen(function* () {
+          yield* authorizeSession(input.sessionId);
+          const connection = yield* options.connect;
+          return yield* connection.request("native-message.settle", input);
+        }),
+      ),
     importAcp: (input: Parameters<typeof importAcp>[0]) =>
       withSessionLane(
         `acp:${input.instanceId}:${input.sessionId}:${input.cwd}`,
@@ -2473,6 +2949,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       withSessionLane(
         input.requestId,
         ownedWrite("import", submitNativeImport(input, prepare).pipe(Effect.scoped)),
+      ),
+    adoptNativeSession: (input: NativeAdoptionInput) =>
+      withSessionLane(
+        input.sessionId,
+        ownedWrite("adopt-native", adoptNativeSession(input).pipe(Effect.scoped)),
       ),
     renameSession: (command: ProjectSessionRenameCommandInput) =>
       ownedWrite("rename-session", workspace.renameProjectSession(command)),
@@ -2587,6 +3068,70 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           };
         }),
       ),
+    sessionSearch: (input: AgentRuntimeOperations["sessions.search"]["input"]) =>
+      owned(
+        "session-search",
+        Effect.gen(function* () {
+          yield* validateCaller();
+          if (options.runtimeExists && !(yield* options.runtimeExists))
+            return {
+              runtimeId: null,
+              items: [],
+              nextCursor: null,
+              coverage: "indexed" as const,
+              startCursor: null,
+            };
+          const connection = yield* options.connect;
+          const page = yield* connection
+            .request("sessions.search", input)
+            .pipe(Effect.mapError(searchFailure));
+          return { runtimeId: connection.identity.runtimeId, ...page };
+        }),
+      ),
+    sessionSearchResolve: (input: AgentRuntimeOperations["sessions.search-resolve"]["input"]) =>
+      owned(
+        "session-search",
+        Effect.gen(function* () {
+          yield* validateCaller();
+          if (options.runtimeExists && !(yield* options.runtimeExists))
+            return yield* new AgentRuntimeApplicationError({
+              operation: "session-search",
+              message: "Search execution store is no longer available; start a new search.",
+              cursorReason: "cursor_stale",
+            });
+          const connection = yield* options.connect;
+          const page = yield* connection
+            .request("sessions.search-resolve", input)
+            .pipe(Effect.mapError(searchFailure));
+          return { runtimeId: connection.identity.runtimeId, ...page };
+        }),
+      ),
+    sessionMetadata: (
+      input: AgentRuntimeOperations["sessions.metadata"]["input"] & { readonly runtimeId: string },
+    ) =>
+      owned(
+        "session-metadata",
+        Effect.gen(function* () {
+          yield* validateCaller();
+          const connection = yield* options.connect;
+          if (connection.identity.runtimeId !== input.runtimeId)
+            return yield* failure("session-metadata", "The bound execution store is unavailable");
+          return yield* connection.request("sessions.metadata", { threadIds: input.threadIds });
+        }),
+      ),
+    /** Runtime-owned discovery metadata; Core joins exact current Session placement separately. */
+    sessionCatalog: (input: AgentRuntimeOperations["sessions.catalog"]["input"]) =>
+      owned(
+        "session-catalog",
+        Effect.gen(function* () {
+          yield* validateCaller();
+          if (options.runtimeExists && !(yield* options.runtimeExists))
+            return { runtimeId: null, items: [], nextCursor: null };
+          const connection = yield* options.connect;
+          const page = yield* connection.request("sessions.catalog", input);
+          return { runtimeId: connection.identity.runtimeId, ...page };
+        }),
+      ),
     inspect: (target: AgentRuntimeSessionTarget) =>
       owned(
         "inspect",
@@ -2670,7 +3215,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           });
         }),
       ),
-    message: (input: Parameters<typeof message>[0]) => ownedWrite("message", message(input)),
+    message: (input: Parameters<typeof message>[0]) =>
+      ownedWrite("message", message(input).pipe(Effect.scoped)),
+    sendMessage: (input: Parameters<typeof sendMessage>[0]) =>
+      ownedWrite("send-message", sendMessage(input).pipe(Effect.scoped)),
+    replayMessage: (input: Parameters<typeof replayMessage>[0]) =>
+      owned("message-replay", replayMessage(input)),
+    resumeMessageLaunch: (input: Parameters<typeof resumeMessageLaunch>[0]) =>
+      ownedWrite("message-launch-resume", resumeMessageLaunch(input).pipe(Effect.scoped)),
     mergeBack: (input: Parameters<typeof mergeBack>[0]) =>
       ownedWrite("merge-back", mergeBack(input)),
     clearContext: (input: Parameters<typeof clearContext>[0]) =>
@@ -2741,7 +3293,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     queueMessage: (input: Parameters<typeof message>[0]) =>
-      ownedWrite("queue-message", message(input, true)),
+      ownedWrite("queue-message", message(input, true).pipe(Effect.scoped)),
     queue: (input: Parameters<typeof queue>[0]) => ownedWrite("queue", queue(input)),
     rollback: (input: Parameters<typeof rollback>[0]) =>
       ownedWrite("rollback", rollback(input).pipe(Effect.scoped)),
@@ -2848,6 +3400,23 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           });
         }),
       ),
+    /** Reads only the selected visible items; Session reads never hydrate a UI snapshot. */
+    timeline: (
+      input: AgentRuntimeSessionTarget &
+        Omit<AgentRuntimeOperations["thread.timeline"]["input"], "threadId">,
+    ) =>
+      owned(
+        "timeline",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          const { sessionId: _sessionId, threadId: _threadId, ...window } = input;
+          return yield* connection.request("thread.timeline", {
+            ...window,
+            threadId: loaded.threadId,
+          });
+        }),
+      ),
     promptIndex: (input: AgentRuntimeSessionTarget) =>
       owned(
         "prompt-index",
@@ -2855,6 +3424,72 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           const connection = yield* options.connect;
           const loaded = yield* targetInfo(connection, input);
           return yield* connection.request("thread.prompt-index", { threadId: loaded.threadId });
+        }),
+      ),
+    readDetails: (
+      input: AgentRuntimeSessionTarget &
+        Omit<AgentRuntimeOperations["thread.read-details"]["input"], "threadId">,
+    ) =>
+      owned(
+        "read-details",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.read-details", {
+            threadId: loaded.threadId,
+            runLimit: input.runLimit,
+            ...(input.beforeOrdinal === undefined ? {} : { beforeOrdinal: input.beforeOrdinal }),
+          });
+        }),
+      ),
+    execution: (
+      input: AgentRuntimeSessionTarget & {
+        readonly runId?: string | null;
+        readonly messageId?: string;
+      },
+    ) =>
+      owned(
+        "execution",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.execution", {
+            threadId: loaded.threadId,
+            ...(input.runId === undefined ? {} : { runId: input.runId }),
+            ...(input.messageId === undefined ? {} : { messageId: input.messageId }),
+          });
+        }),
+      ),
+    waitExecution: (
+      input: AgentRuntimeSessionTarget & {
+        readonly runId: string | null;
+        readonly afterRevision: string;
+        readonly timeoutMs: number;
+      },
+    ) =>
+      owned(
+        "wait-execution",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.execution.wait", {
+            threadId: loaded.threadId,
+            runId: input.runId,
+            afterRevision: input.afterRevision,
+            timeoutMs: input.timeoutMs,
+          });
+        }),
+      ),
+    progress: (input: AgentRuntimeSessionTarget & { readonly runId?: string }) =>
+      owned(
+        "progress",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.progress", {
+            threadId: loaded.threadId,
+            ...(input.runId === undefined ? {} : { runId: input.runId }),
+          });
         }),
       ),
     overview: (
@@ -2920,6 +3555,52 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             threadId: loaded.threadId,
             itemId: input.itemId,
             ...(input.sourceThreadId === undefined ? {} : { sourceThreadId: input.sourceThreadId }),
+          });
+        }),
+      ),
+    acknowledgeRead: (
+      input: AgentRuntimeSessionTarget & {
+        readonly items: AgentRuntimeOperations["thread.acknowledge-read"]["input"]["items"];
+      },
+    ) =>
+      owned(
+        "acknowledge-read",
+        Effect.gen(function* () {
+          const provenance = yield* CoreApplicationAgent;
+          if (provenance?.authority.runtime?.turn_kind !== "run" || input.items.length === 0)
+            return { acknowledged: 0 };
+          yield* validateCaller();
+          const connection = yield* options.connect;
+          if (connection.identity.runtimeId !== provenance.authority.runtime.runtime_id)
+            return yield* failure("acknowledge-read", "Calling execution store changed");
+          const target = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.acknowledge-read", {
+            callerThreadId: provenance.authority.thread_id,
+            callerRunId: provenance.authority.turn_id,
+            threadId: target.threadId,
+            items: input.items,
+          });
+        }),
+      ),
+    /** Complete typed item JSON in resumable slices, including outputs withheld from timelines. */
+    itemContent: (
+      input: AgentRuntimeSessionTarget &
+        Omit<AgentRuntimeOperations["thread.item.content"]["input"], "threadId">,
+    ) =>
+      owned(
+        "item-content",
+        Effect.gen(function* () {
+          if (
+            !validId(input.itemId) ||
+            (input.sourceThreadId !== undefined && !validId(input.sourceThreadId))
+          )
+            return yield* failure("item-content", "Item identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          const { sessionId: _sessionId, threadId: _threadId, ...slice } = input;
+          return yield* connection.request("thread.item.content", {
+            ...slice,
+            threadId: loaded.threadId,
           });
         }),
       ),

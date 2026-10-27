@@ -48,7 +48,7 @@ it.live(
           runtime
             .handle({ id: String(++sequence), method, input })
             .pipe(Effect.map((value) => value as AgentRuntimeOperations[M]["output"]));
-        const dispatch = (command: AgentCommand) => call("command.dispatch", command);
+        const dispatch = (command: AgentCommand) => call("command.dispatch", { command: command });
         const snapshot = () => call("thread.snapshot", { threadId: "queue-thread" });
         const waitSnapshot = (
           predicate: (snapshot: AgentRuntimeOperations["thread.snapshot"]["output"]) => boolean,

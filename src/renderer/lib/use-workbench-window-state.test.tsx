@@ -53,6 +53,43 @@ afterEach(() => {
 });
 
 describe("Workbench synchronous Window owner", () => {
+  test("records only explicit foreground Session navigation, never restoration or background updates", async () => {
+    const view = renderHook(() => useWorkbenchWindowState(), { wrapper: wrapper() });
+    const owner = view.result.current.owner;
+    const opened: string[] = [];
+    const unregister = owner.registerSessionOpened((id) => opened.push(id));
+    await act(async () => {
+      owner.selectSession({ id: "one", projectId: null });
+      owner.selectSession({ id: "one", projectId: null });
+      owner.selectSession({ id: "two", projectId: null });
+      owner.navigateBack();
+      owner.navigateForward();
+      owner.openRoute({ kind: "automations", path: "/automations" });
+      owner.selectProject(null);
+      owner.navigateBack();
+      owner.presentScheduledSession({
+        path: "/automations?runSessionId=scheduled",
+        session: { id: "scheduled", projectId: null },
+      });
+      owner.replaceFromSnapshot({
+        ...createDefaultWorkbenchLayoutSnapshot(),
+        location: { kind: "session", sessionId: "restored", projectContextId: null },
+      });
+      owner.navigate(
+        { kind: "session", sessionId: "silent", projectContextId: null },
+        { record: false },
+      );
+      await Promise.resolve();
+    });
+    expect(opened).toEqual(["one", "two", "one", "two", "scheduled"]);
+    unregister();
+    await act(async () => {
+      owner.selectSession({ id: "after-unmount", projectId: null });
+      await Promise.resolve();
+    });
+    expect(opened).toHaveLength(5);
+  });
+
   test("persists and returns to Inbox when Settings opens from Home over Space", async () => {
     const view = renderHook(() => useWorkbenchWindowState(), { wrapper: wrapper() });
     const owner = view.result.current.owner;

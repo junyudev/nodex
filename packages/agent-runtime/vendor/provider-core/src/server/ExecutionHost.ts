@@ -146,4 +146,13 @@ export class McpTurnAdmission extends Context.Reference<{
   readonly actor: (HostExecutionIdentity & { readonly runtimeId: string; readonly runtimeGeneration: string; readonly nativeCallId?: string; readonly nativeCallKey?: string }) | undefined;
   readonly requestId: string | number | undefined;
   readonly assertCurrent: () => Effect.Effect<void, ExecutionHostError>;
+  /** Completes when this captured execution is cancelled or its authority is replaced. */
+  readonly awaitRevoked?: Effect.Effect<void>;
 } | undefined>("@t3tools/provider-core/server/McpTurnAdmission", { defaultValue: () => undefined }) {}
+
+
+/** Bind the actual tool handler, including work that outlives the provider's foreground call. */
+export const withMcpTurnLifetime = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+  Effect.flatMap(McpTurnAdmission, (admission) => admission?.awaitRevoked === undefined
+    ? effect
+    : Effect.raceFirst(effect, admission.awaitRevoked.pipe(Effect.andThen(Effect.interrupt))));

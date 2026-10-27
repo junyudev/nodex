@@ -144,6 +144,13 @@ export const workspaceCatalogCommandDefinitions = {
     owner: "workbench-session-catalog",
     protocol: receiptFenced("pending"),
   }),
+  sessionRecordOpened: defineLocalCommitRendererCommand({
+    key: "workspace.session.record-opened",
+    channel: "project-sessions:record-opened",
+    authority: "core",
+    owner: "workbench-session-catalog",
+    protocol: receiptFenced("pending"),
+  }),
   sessionMarkUnread: defineLocalCommitRendererCommand({
     key: "workspace.session.mark-unread",
     channel: "project-sessions:mark-unread",
@@ -233,6 +240,7 @@ const {
   sessionReorderPinned: sessionReorderPinnedCommand,
   sessionArchive: sessionArchiveCommand,
   sessionUnarchive: sessionUnarchiveCommand,
+  sessionRecordOpened: sessionRecordOpenedCommand,
   sessionMarkUnread: sessionMarkUnreadCommand,
   sidebarCreate: sidebarCreateCommand,
   sidebarRename: sidebarRenameCommand,
@@ -371,6 +379,13 @@ export const workspaceSessionCommands = {
     (
       await invokeLocalCommitCommand(sessionUnarchiveCommand, {
         operationId: operation("session.unarchive"),
+        payload: { sessionId },
+      })
+    ).value,
+  recordOpened: async (sessionId: string) =>
+    (
+      await invokeLocalCommitCommand(sessionRecordOpenedCommand, {
+        operationId: operation("session.record-opened"),
         payload: { sessionId },
       })
     ).value,

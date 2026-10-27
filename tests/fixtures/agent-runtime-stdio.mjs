@@ -33,6 +33,10 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     process.exitCode = 0;
     break;
   }
+  if(request.method === "sessions.search"){
+    send({id:request.id,success:false,error:{tag:"SessionSearchError",reason:request.input.query,message:"Restart search"}});
+    continue;
+  }
   if (request.method === "acp.auth.logout") {
     send({ id: request.id, success: false, error: {
       message: "Stop active work first.", tag: "AcpManagementError",
@@ -41,6 +45,23 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     continue;
   }
   if (request.method === "project.read") {
+    if (request.input.projectId.startsWith("host-wait:")) {
+      send({ type: "host.request", id: request.id, operation: "tool.call",
+        tool: "wait_sessions", input: { targets: [{sessionId: request.input.projectId}], timeoutMs: 3600000 },
+        identity: { runtimeId: identity.runtimeId, runtimeGeneration: identity.runtimeGeneration,
+          threadId: "thread", source: "native-session", runId: null, attemptId: null,
+          incarnationId: "incarnation", providerSessionId: "acp-session", nativeGeneration: 1 } });
+      success(request.id, { hostId: request.id });
+      continue;
+    }
+    if (request.input.projectId.startsWith("host-cancel:") || request.input.projectId.startsWith("host-cancel-wrong:")) {
+      const wrong = request.input.projectId.startsWith("host-cancel-wrong:");
+      const id = request.input.projectId.slice(wrong ? "host-cancel-wrong:".length : "host-cancel:".length);
+      send({ type: "host.cancel", id, runtimeId: identity.runtimeId,
+        runtimeGeneration: wrong ? "retired-generation" : identity.runtimeGeneration });
+      success(request.id, null);
+      continue;
+    }
     if (request.input.projectId === "host-native-session" || request.input.projectId === "invalid-native-prepare") {
       pendingHosts.set(request.id, request.id);
       send({type: "host.request", id: request.id,

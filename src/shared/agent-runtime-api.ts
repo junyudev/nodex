@@ -24,6 +24,11 @@ export interface AgentRuntimeMessage {
 }
 
 export interface AgentRuntimeLaunch {
+  /** Immutable application-tool request identity; receipt replay precedes mutable preparation. */
+  readonly messageFingerprint?: string;
+  readonly interactionModeCeiling?: "plan";
+  /** Host-authorized resources, materialized by the execution owner before its first message. */
+  readonly resources?: AgentRuntimeOperations["attachments.import"]["input"]["attachments"];
   readonly launchId: string;
   readonly acceptedAt: number;
   /** The unstarted product Session is promoted without changing its identity. */

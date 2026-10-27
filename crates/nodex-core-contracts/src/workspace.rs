@@ -16,7 +16,15 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 43;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 48;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceSessionOrder {
+    #[default]
+    Conversation,
+    Identity,
+}
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -55,6 +63,15 @@ pub enum ProjectWorkspaceRead {
     },
     SessionWindow {
         archived: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        order: Option<ProjectWorkspaceSessionOrder>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        projectless_only: Option<bool>,
+        project_id: Option<String>,
+        query: Option<String>,
+        native_only: Option<bool>,
+        execution_refs: Option<Vec<ProjectWorkspaceSessionExecutionRef>>,
+        session_ids: Option<Vec<String>>,
         window: CollectionWindowRequest,
     },
     TaskWindow {
@@ -249,6 +266,7 @@ pub enum ProjectWorkspaceReadValue {
     },
     SessionWindow {
         sessions: CollectionWindow<ProjectWorkspaceSessionListingItem>,
+        search_revision: i64,
     },
     TaskWindow {
         tasks: CollectionWindow<ProjectWorkspaceTaskSummary>,
@@ -1302,11 +1320,20 @@ pub struct ProjectWorkspaceTaskSummary {
 /// Profile-wide Session discovery metadata; conversation history uses the same Profile identity.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceSessionListingItem {
+    /// Continue after this item when a consumer merges or shortens the window.
+    pub cursor: String,
     pub task: ProjectWorkspaceTaskSummary,
     pub project_name: Option<String>,
     pub direct_section_id: Option<String>,
     pub project_section_id: Option<String>,
     pub project_pinned: bool,
+    pub opens: Option<ProjectWorkspaceSessionOpenStats>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionOpenStats {
+    pub opened_at: i64,
+    pub score: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1513,6 +1540,17 @@ pub enum ProjectWorkspaceIntent {
         project_id: Option<String>,
         title: String,
         initial_page_ids: Vec<String>,
+        runtime_id: String,
+        runtime_thread_id: String,
+        launch_request_id: String,
+    },
+    /// Replaces one exact Native root relation after its history is durably imported.
+    /// The product Session, placement and Page links retain their identity.
+    AdoptNativeSessionExecution {
+        session_id: String,
+        project_id: Option<String>,
+        expected_native_thread_id: String,
+        expected_native_host_id: String,
         runtime_id: String,
         runtime_thread_id: String,
         launch_request_id: String,
@@ -1857,6 +1895,8 @@ pub enum ProjectWorkspaceIntent {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectSessionIntent {
+    /// Record a foreground user opening; the Store supplies the clock.
+    RecordOpened,
     Rename {
         title: String,
     },

@@ -238,17 +238,39 @@ pub(super) fn read(
                 &window,
             )?,
         }),
-        ProjectWorkspaceRead::SessionWindow { archived, window } => {
-            Ok(ProjectWorkspaceReadValue::SessionWindow {
-                sessions: super::session_listing::read_session_window(
-                    connection,
-                    library_id,
-                    commit_head,
+        ProjectWorkspaceRead::SessionWindow {
+            archived,
+            order,
+            projectless_only,
+            project_id,
+            query,
+            native_only,
+            execution_refs,
+            session_ids,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::SessionWindow {
+            search_revision: connection.query_row(
+                "SELECT revision FROM session_search_revision WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )?,
+            sessions: super::session_listing::read_session_window(
+                connection,
+                library_id,
+                commit_head,
+                super::session_listing::SessionListingFilter {
                     archived,
-                    &window,
-                )?,
-            })
-        }
+                    order: order.unwrap_or_default(),
+                    projectless_only: projectless_only.unwrap_or(false),
+                    project_id: project_id.as_deref(),
+                    query: query.as_deref(),
+                    native_only: native_only.unwrap_or(false),
+                    execution_refs: execution_refs.as_deref(),
+                    session_ids: session_ids.as_deref(),
+                },
+                &window,
+            )?,
+        }),
         ProjectWorkspaceRead::TaskWindow {
             project_id,
             include_archived,

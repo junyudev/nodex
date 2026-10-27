@@ -8,30 +8,55 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
-import {
-  SessionObservation,
-  type SessionInspection,
-  type SessionObservationResult,
-} from "./SessionObservation";
+import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor";
+import { subscribe as subscribeExecutionChanges } from "../agent-runtime/AgentRuntimeExecutionChanges";
+import { SessionObservation, type SessionInspection } from "./SessionObservation";
+import type { SessionProgress } from "../../shared/nodex-app-tools/session-history";
 
 type Provenance = components["schemas"]["AgentTurnProvenance"];
 export interface SessionWaitInput {
-  readonly targets: readonly { readonly sessionId: string; readonly afterCursor?: string }[];
+  readonly targets: readonly {
+    readonly sessionId: string;
+    readonly execution?: { readonly threadId: string };
+    readonly runId?: string | null;
+    readonly afterCursor?: string;
+  }[];
   readonly timeoutMs: number;
 }
 
 type Observation =
   | { readonly kind: "snapshot"; readonly value: SessionInspection; readonly changed: boolean }
-  | { readonly kind: "error"; readonly sessionId: string; readonly reason: string };
-type WaitTarget = SessionInspection & {
+  | {
+      readonly kind: "error";
+      readonly sessionId: string;
+      readonly execution?: { readonly threadId: string };
+      readonly reason: string;
+    };
+type WaitTarget = Omit<
+  SessionInspection,
+  "executionRevision" | "selectionPending" | "continuationPending"
+> & {
   readonly changed: boolean;
-  readonly history?: SessionObservationResult["history"];
+  readonly progress?: SessionProgress;
 };
 export interface SessionWaitResult {
   readonly reason: "snapshot" | "ready" | "timeout";
   readonly targets: readonly WaitTarget[];
   readonly errors: readonly Extract<Observation, { kind: "error" }>[];
 }
+
+const hasChangedCompletion = (values: readonly Observation[]) =>
+  values.some(
+    (value) =>
+      value.kind === "snapshot" &&
+      value.changed &&
+      !value.value.continuationPending &&
+      (value.value.disposition === "complete" ||
+        value.value.disposition === "unavailable" ||
+        ["failed", "systemError", "cancelled", "interrupted", "rolled_back", "completed"].includes(
+          value.value.status,
+        )),
+  );
 
 export class SessionWaiter extends Context.Service<
   SessionWaiter,
@@ -59,7 +84,7 @@ export const makeWithSources = (
       return yield* Effect.forEach(
         input.targets,
         (target): Effect.Effect<Observation> =>
-          observations.inspect(target.sessionId, provenance).pipe(
+          observations.inspect(target.sessionId, provenance, target.runId, target.execution).pipe(
             Effect.timeout("10 seconds"),
             Effect.map((value): Observation => ({
               kind: "snapshot",
@@ -70,6 +95,7 @@ export const makeWithSources = (
               Effect.succeed<Observation>({
                 kind: "error",
                 sessionId: target.sessionId,
+                ...(target.execution ? { execution: target.execution } : {}),
                 reason: "reason" in error ? error.reason : "timeout",
               }),
             ),
@@ -82,35 +108,65 @@ export const makeWithSources = (
       reason: SessionWaitResult["reason"],
       provenance: Provenance,
     ): Effect.fn.Return<SessionWaitResult> {
-      const targets = yield* Effect.forEach(
+      const delivered = yield* Effect.forEach(
         values.filter((value) => value.kind === "snapshot"),
-        (target): Effect.Effect<WaitTarget> => {
-          const summary = { ...target.value, changed: target.changed };
-          if (
-            !target.changed ||
-            (target.value.disposition !== "complete" &&
-              target.value.disposition !== "needs_attention")
-          )
+        (target): Effect.Effect<WaitTarget | Extract<Observation, { kind: "error" }>> => {
+          const {
+            executionRevision: _internal,
+            selectionPending: _pending,
+            continuationPending: _continuationPending,
+            ...publicTarget
+          } = target.value;
+          const summary = { ...publicTarget, changed: target.changed };
+          if (!target.changed && (reason !== "timeout" || target.value.disposition !== "running"))
             return Effect.succeed(summary);
           return observations
-            .read(
-              {
-                sessionId: target.value.sessionId,
-                turnLimit: 1,
-                includeOutputs: false,
-                maxOutputCharsPerItem: 300,
-              },
+            .progress(
+              target.value.sessionId,
               provenance,
+              target.value.runId,
+              target.value.execution,
             )
             .pipe(
               Effect.timeout("5 seconds"),
-              Effect.map((result) => ({ ...summary, history: result.history })),
-              Effect.catch(() => Effect.succeed(summary)),
+              Effect.map((progress) => ({ ...summary, progress })),
+              Effect.catch(
+                (error): Effect.Effect<WaitTarget | Extract<Observation, { kind: "error" }>> => {
+                  if (
+                    "reason" in error &&
+                    (error.reason === "authorization" || error.reason === "authority_changed")
+                  )
+                    return Effect.succeed({
+                      kind: "error" as const,
+                      sessionId: summary.sessionId,
+                      reason: error.reason,
+                    });
+                  return Effect.succeed({
+                    ...summary,
+                    progress: {
+                      availability: "unavailable" as const,
+                      coverage: "unavailable" as const,
+                      nextCursor: null,
+                      latestMessage: null,
+                      latestTool: null,
+                    },
+                  });
+                },
+              ),
             );
         },
         { concurrency: 4 },
       );
-      return { reason, targets, errors: values.filter((value) => value.kind === "error") };
+      return {
+        reason,
+        targets: delivered.filter((value): value is WaitTarget => !("kind" in value)),
+        errors: [
+          ...values.filter((value) => value.kind === "error"),
+          ...delivered.filter(
+            (value): value is Extract<Observation, { kind: "error" }> => "kind" in value,
+          ),
+        ],
+      };
     });
     return SessionWaiter.of({
       wait: Effect.fn("SessionWaiter.wait")(function* (input, provenance) {
@@ -131,26 +187,57 @@ export const makeWithSources = (
             }
             const nextEvent = Queue.take(wakeups).pipe(Effect.as("event" as const));
             let values = yield* inspect(input, provenance);
+            // Admission without a producer Turn id stays unresolved. Every other omission
+            // selects once; null then pins a genuinely empty Session for the whole call.
+            const pin = (current: SessionWaitInput): SessionWaitInput => ({
+              ...current,
+              targets: current.targets.map((target) => {
+                if (target.runId !== undefined) return target;
+                const snapshot = values.find(
+                  (value) =>
+                    value.kind === "snapshot" &&
+                    value.value.sessionId === target.sessionId &&
+                    value.value.execution?.threadId === target.execution?.threadId,
+                );
+                return snapshot?.kind === "snapshot" && !snapshot.value.selectionPending
+                  ? { ...target, runId: snapshot.value.selectedRunId }
+                  : target;
+              }),
+            });
+            let pinned = pin(input);
             if (input.timeoutMs === 0) return yield* deliver(values, "snapshot", provenance);
             for (;;) {
-              const ready = values.some(
-                (value) =>
-                  value.kind === "error" ||
-                  (value.changed &&
-                    (value.value.disposition === "complete" ||
-                      value.value.disposition === "needs_attention")),
-              );
+              const ready =
+                values.some((value) => value.kind === "error") || hasChangedCompletion(values);
               if (ready) return yield* deliver(values, "ready", provenance);
               const remaining = deadline - (yield* Clock.currentTimeMillis);
-              if (remaining <= 0)
-                return yield* deliver(yield* inspect(input, provenance), "timeout", provenance);
-              const wake = yield* Effect.race(
-                nextEvent,
-                Effect.sleep(remaining).pipe(Effect.as("timeout" as const)),
+              if (remaining <= 0) {
+                const final = yield* inspect(pinned, provenance);
+                const settled = hasChangedCompletion(final);
+                return yield* deliver(final, settled ? "ready" : "timeout", provenance);
+              }
+              const ownerChanges = values.flatMap((value) =>
+                value.kind === "snapshot" && value.value.executionRevision !== undefined
+                  ? [
+                      observations.awaitChange(value.value, provenance, remaining).pipe(
+                        Effect.as("event" as const),
+                        Effect.catch(() => Effect.succeed("event" as const)),
+                      ),
+                    ]
+                  : [],
               );
-              if (wake === "timeout")
-                return yield* deliver(yield* inspect(input, provenance), "timeout", provenance);
-              values = yield* inspect(input, provenance);
+              const wake = yield* Effect.raceAll([
+                nextEvent,
+                ...ownerChanges,
+                Effect.sleep(remaining).pipe(Effect.as("timeout" as const)),
+              ]);
+              if (wake === "timeout") {
+                const final = yield* inspect(pinned, provenance);
+                const settled = hasChangedCompletion(final);
+                return yield* deliver(final, settled ? "ready" : "timeout", provenance);
+              }
+              values = yield* inspect(pinned, provenance);
+              pinned = pin(pinned);
             }
           }),
         );
@@ -161,6 +248,7 @@ export const makeWithSources = (
 export const make = Effect.gen(function* () {
   const database = yield* DatabaseNotifierRuntime;
   const codex = yield* CodexApplicationEventHub;
+  const runtime = yield* AgentRuntimeSupervisor;
   const sources = [
     database.projectSessionInvalidations.pipe(Stream.map(() => undefined)),
     codex.events.pipe(
@@ -173,7 +261,9 @@ export const make = Effect.gen(function* () {
       Stream.map(() => undefined),
     ),
   ];
-  return yield* makeWithSources(sources);
+  return yield* makeWithSources(sources, {
+    prepareSources: subscribeExecutionChanges(runtime.get()).pipe(Effect.map((source) => [source])),
+  });
 });
 
 export const live = Layer.effect(SessionWaiter, make);

@@ -38,29 +38,33 @@ it.live.each(["v1", "v2"])(
         );
         expect(connected.phase).toBe("succeeded");
         yield* call("command.dispatch", {
-          type: "thread.create",
-          commandId: "create",
-          threadId: "thread",
-          projectId: "project",
-          title: "Streaming",
-          modelSelection: { instanceId, model: "fixture" },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          branch: null,
-          worktreePath: home,
-          createdBy: "user",
-          creationSource: "web",
+          command: {
+            type: "thread.create",
+            commandId: "create",
+            threadId: "thread",
+            projectId: "project",
+            title: "Streaming",
+            modelSelection: { instanceId, model: "fixture" },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: home,
+            createdBy: "user",
+            creationSource: "web",
+          },
         });
         yield* call("command.dispatch", {
-          type: "message.dispatch",
-          commandId: "send",
-          threadId: "thread",
-          messageId: "message",
-          text: "Start the response, then wait",
-          attachments: [],
-          createdBy: "user",
-          creationSource: "web",
-          dispatchMode: { type: "start_immediately" },
+          command: {
+            type: "message.dispatch",
+            commandId: "send",
+            threadId: "thread",
+            messageId: "message",
+            text: "Start the response, then wait",
+            attachments: [],
+            createdBy: "user",
+            creationSource: "web",
+            dispatchMode: { type: "start_immediately" },
+          },
         });
         yield* fs.readFileString(log).pipe(
           Effect.repeat({
@@ -123,11 +127,13 @@ it.live.each(["v1", "v2"])(
           observedDelayMs,
         });
         yield* call("command.dispatch", {
-          type: "run.interrupt",
-          commandId: "stop",
-          threadId: "thread",
-          runId: run.id,
-          holdQueue: true,
+          command: {
+            type: "run.interrupt",
+            commandId: "stop",
+            threadId: "thread",
+            runId: run.id,
+            holdQueue: true,
+          },
         });
         const stopped = yield* call("run.outcome", {
           threadId: "thread",

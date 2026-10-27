@@ -68,27 +68,30 @@ export const layer = (configuration: AgentRuntimeConfiguration) =>
                 const nativeTurn = state.providerTurns.findLast(
                   (turn) => turn.runAttemptId === prepared.attemptId,
                 );
-                const result = yield* bridge.callTool(
-                  {
-                    ...prepared,
-                    ...(nativeTurn?.nativeTurnRef?.nativeId == null
-                      ? {}
-                      : { nativeTurnId: nativeTurn.nativeTurnRef.nativeId }),
-                    mcpClientId: request.clientId,
-                    ...(admission?.requestId === undefined
-                      ? {}
-                      : { mcpRequestId: admission.requestId }),
-                    ...(request.requestMetadata === undefined
-                      ? {}
-                      : { requestMetadata: request.requestMetadata }),
-                  },
-                  descriptor.name,
-                  Object.fromEntries(
-                    Object.entries(input ?? {}).filter(
-                      ([key]) => key !== "__nodexExecutionCall" && key !== "__nodexNativeExecution",
+                const result = yield* bridge
+                  .callTool(
+                    {
+                      ...prepared,
+                      ...(nativeTurn?.nativeTurnRef?.nativeId == null
+                        ? {}
+                        : { nativeTurnId: nativeTurn.nativeTurnRef.nativeId }),
+                      mcpClientId: request.clientId,
+                      ...(admission?.requestId === undefined
+                        ? {}
+                        : { mcpRequestId: admission.requestId }),
+                      ...(request.requestMetadata === undefined
+                        ? {}
+                        : { requestMetadata: request.requestMetadata }),
+                    },
+                    descriptor.name,
+                    Object.fromEntries(
+                      Object.entries(input ?? {}).filter(
+                        ([key]) =>
+                          key !== "__nodexExecutionCall" && key !== "__nodexNativeExecution",
+                      ),
                     ),
-                  ),
-                );
+                  )
+                  .pipe(ExecutionHost.withMcpTurnLifetime);
                 // Recheck after the host returns so a stale completion cannot be presented as a new Run's success.
                 yield* admission!.assertCurrent();
                 const latest = yield* projections.getHostToolAuthorityContext(

@@ -365,7 +365,7 @@ describe("Codex request dispatch selection", () => {
     ).toBeNull();
   });
 
-  test.each(["thread/read", "thread/turns/list", "thread/items/list"])(
+  test.each(["thread/read", "thread/turns/list", "thread/items/list", "thread/items/read"])(
     "reserves the fifth noncritical slot for foreground %s",
     (method) => {
       const ordinary = queueOf(4, "interactive", {

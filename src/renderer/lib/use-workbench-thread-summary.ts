@@ -36,7 +36,7 @@ import {
 } from "./codex-panel-motion";
 import type { WorkbenchSessionRenderProjection } from "./workbench-session-presentation";
 import type { WorkbenchEphemeralPanelState } from "./workbench-ephemeral-panel-state";
-import { buildAutomationsPath } from "@/components/workbench/workbench-automations-routes";
+import { buildAutomationsPath } from "@/lib/workbench-automations-routes";
 import { buildProcessOutputTargetFromSummaryRow } from "./workbench-process-output-target";
 import { sessionExecutionThreadId } from "./session-execution";
 

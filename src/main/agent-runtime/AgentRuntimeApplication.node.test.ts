@@ -1,7 +1,9 @@
+import { AgentRuntimeProcessError } from "../platform/node/AgentRuntimeProcess";
 import { assert, it } from "@effect/vitest";
 import { access, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import type { components } from "@nodex/core-protocol";
 import type {
   AgentCommand,
@@ -129,11 +131,18 @@ const setExecutionHold = (fixture: ReturnType<typeof setup>, threadId: string, h
 const setup = (
   options: Partial<import("./AgentRuntimeApplication").AgentRuntimeApplicationOptions> = {},
   additionalProviders: AgentRuntimeOperations["providers.read"]["output"] = [],
+  importResources?: (
+    input: AgentRuntimeOperations["attachments.import"]["input"],
+  ) => Effect.Effect<AgentRuntimeOperations["attachments.import"]["output"], unknown>,
 ) => {
   const bindings = new Map<string, Binding>();
   const snapshots = new Map<string, AgentSnapshot>();
   const commands = new Map<string, AgentCommand>();
   const imports = new Map<string, AgentRuntimeOperations["thread.import-native"]["input"]>();
+  const messageLaunches = new Map<
+    string,
+    NonNullable<AgentRuntimeOperations["thread.message-launch"]["output"]>
+  >();
   const calls: Array<{ method: AgentRuntimeMethod; input: unknown }> = [];
   const applied: ProjectWorkspaceApplyInput[] = [];
   const receipt = new Map<string, string>();
@@ -205,6 +214,7 @@ const setup = (
     failMessage: false,
     failThreadCreate: false,
     failCodexImportBeforeCommit: false,
+    nativeSession: null as ProjectSession | null,
     failCodexImportAcknowledgment: false,
     codexModelsAvailable: true,
     nativeImportSourceHome: codexImport.expectedHome,
@@ -229,6 +239,8 @@ const setup = (
     supersededArchive: false,
     rollbackImmediate: true,
     rollbackFails: false,
+    messageReplay: null as AgentRuntimeOperations["thread.message-replay"]["output"],
+    nativeReceipt: null as AgentRuntimeOperations["native-message.receipt"]["output"],
   };
   const read = (input: ProjectWorkspaceRead) =>
     (input.kind === "agent_session" || input.kind === "agent_authority") && state.denyAgent
@@ -360,7 +372,11 @@ const setup = (
         if (binding) bindings.set(intent.session_id, { ...binding, project_id: intent.project_id });
         return {};
       }
-      if (intent.kind !== "create_agent_runtime_session") throw new Error("Unexpected Core intent");
+      if (
+        intent.kind !== "create_agent_runtime_session" &&
+        intent.kind !== "adopt_native_session_execution"
+      )
+        throw new Error("Unexpected Core intent");
       bindings.set(intent.session_id, {
         session_id: intent.session_id,
         project_id: intent.project_id,
@@ -440,6 +456,7 @@ const setup = (
                 ...imported.projection.thread,
                 modelSelection: request.modelSelection,
                 worktreePath: request.cwd,
+                interactionMode: request.interactionMode ?? "default",
                 historyOrigin: "native_import",
                 executionHandoff: null,
               },
@@ -453,6 +470,59 @@ const setup = (
         return { threadId: request.threadId } as AgentRuntimeOperations[M]["output"];
       }
       if (method === "native.prediction.clear") return null as AgentRuntimeOperations[M]["output"];
+      if (method === "native-message.receipt" || method === "native-message.reserve")
+        return state.nativeReceipt as AgentRuntimeOperations[M]["output"];
+      if (method === "thread.message-stage") {
+        const { resources, ...request } =
+          input as AgentRuntimeOperations["thread.message-stage"]["input"];
+        const imported = importResources
+          ? yield* importResources({
+              threadId: request.threadId,
+              messageId: request.messageId,
+              attachments: resources,
+            })
+          : null;
+        const staged = messageLaunches.get(request.messageId) ?? {
+          ...request,
+          message: {
+            ...request.message,
+            attachments: [
+              ...request.message.attachments,
+              ...(imported?.attachments ??
+                resources.map((resource, index) => ({
+                  type: resource.mimeType.startsWith("image/")
+                    ? ("image" as const)
+                    : ("file" as const),
+                  id: `staged_${index}`,
+                  name: resource.name,
+                  mimeType: resource.mimeType,
+                  sizeBytes: resource.sizeBytes,
+                }))),
+            ],
+          },
+        };
+        messageLaunches.set(request.messageId, staged);
+        return staged as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "thread.message-launch")
+        return (messageLaunches.get((input as { messageId: string }).messageId) ??
+          null) as AgentRuntimeOperations[M]["output"];
+      if (method === "thread.message-replay") {
+        if (state.messageReplay) return state.messageReplay as AgentRuntimeOperations[M]["output"];
+        const request = input as AgentRuntimeOperations["thread.message-replay"]["input"];
+        return (
+          messageLaunches.has(request.messageId) && commands.has(request.commandId)
+            ? {
+                messageId: request.messageId,
+                runId: "run:launched",
+                status: "running",
+                delivery: "started",
+              }
+            : null
+        ) as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "thread.message-admit")
+        return { admitted: true } as AgentRuntimeOperations[M]["output"];
       if (method === "command.receipt") {
         const request = input as AgentRuntimeOperations["command.receipt"]["input"];
         if (imports.has(request.commandId))
@@ -479,7 +549,7 @@ const setup = (
             : { title: state.generatedTitle, description: "Login fix" }
         ) as AgentRuntimeOperations[M]["output"];
       if (method === "command.dispatch") {
-        const command = input as AgentCommand;
+        const command = (input as AgentRuntimeOperations["command.dispatch"]["input"]).command;
         if (command.type === "thread.delete" && state.failEngineDelete)
           return yield* Effect.fail(new Error("Engine disconnected before deletion"));
         if (command.type === "thread.archive" && state.failEngineArchive)
@@ -792,6 +862,29 @@ const setup = (
           nextCursor: "next",
           hasMoreHistory: true,
         } as AgentRuntimeOperations[M]["output"];
+      if (method === "attachments.import") {
+        const request = input as AgentRuntimeOperations["attachments.import"]["input"];
+        if (importResources)
+          return (yield* importResources(request)) as AgentRuntimeOperations[M]["output"];
+        return {
+          attachments: request.attachments.map((attachment, index) => ({
+            type: attachment.mimeType.startsWith("image/") ? "image" : "file",
+            id: `imported_${index}`,
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            sizeBytes: attachment.sizeBytes,
+          })),
+        } as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "thread.send") {
+        const request = input as AgentRuntimeOperations["thread.send"]["input"];
+        return {
+          messageId: request.messageId,
+          runId: "run:canonical-delivery",
+          status: "queued",
+          delivery: "queued",
+        } as AgentRuntimeOperations[M]["output"];
+      }
       if (method === "attachments.persist")
         return {
           attachments: (
@@ -860,6 +953,12 @@ const setup = (
   }).pipe(
     Effect.provideService(CoreModules, { workspace: { read, apply } } as never),
     Effect.provideService(ProjectWorkspace, {
+      getProjectSession: (id: string) =>
+        Effect.succeed(
+          state.nativeSession?.id === id && !bindings.has(id)
+            ? state.nativeSession
+            : sessionValue(id),
+        ),
       renameProjectSession: (command) =>
         mutateSession("rename", () => ({
           ...sessionValue(command.payload.sessionId),
@@ -911,6 +1010,7 @@ const setup = (
           ),
         ),
     }),
+    Effect.provide(NodeServices.layer),
   );
   return {
     owner,
@@ -3288,6 +3388,61 @@ it.effect(
           sourceThreadId: "ancestor",
         },
       });
+      yield* owner.itemContent({
+        sessionId: result.sessionId,
+        itemId: "inherited",
+        sourceThreadId: "ancestor",
+        format: "json",
+        textOffset: 4000,
+        maxChars: 2000,
+      });
+      assert.deepEqual(fixture.calls.at(-1), {
+        method: "thread.item.content",
+        input: {
+          threadId: result.threadId,
+          itemId: "inherited",
+          sourceThreadId: "ancestor",
+          format: "json",
+          textOffset: 4000,
+          maxChars: 2000,
+        },
+      });
+      yield* owner.timeline({
+        sessionId: result.sessionId,
+        view: "activity",
+        order: "newest_first",
+        beforeItem: { sourceThreadId: "ancestor", sourceItemId: "inherited" },
+        limit: 7,
+      });
+      assert.deepEqual(fixture.calls.at(-1), {
+        method: "thread.timeline",
+        input: {
+          threadId: result.threadId,
+          view: "activity",
+          order: "newest_first",
+          beforeItem: { sourceThreadId: "ancestor", sourceItemId: "inherited" },
+          limit: 7,
+        },
+      });
+      const beforeForeignRead = fixture.calls.length;
+      assert.equal(
+        (yield* owner
+          .itemContent({
+            sessionId: result.sessionId,
+            threadId: "foreign",
+            itemId: "inherited",
+            format: "text",
+            maxChars: 2000,
+          })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.equal(
+        fixture.calls
+          .slice(beforeForeignRead)
+          .some((call) => call.method === "thread.item.content"),
+        false,
+      );
       const image = yield* owner.attachment({
         sessionId: result.sessionId,
         itemId: "inherited",
@@ -3640,7 +3795,8 @@ it.effect("Session lifecycle waits for the handoff lane while stop remains avail
         fixture.calls.some(
           (call) =>
             call.method === "command.dispatch" &&
-            (call.input as AgentCommand).type === "run.interrupt",
+            (call.input as AgentRuntimeOperations["command.dispatch"]["input"]).command.type ===
+              "run.interrupt",
         ),
       );
       yield* Deferred.succeed(release, undefined);
@@ -4316,4 +4472,835 @@ it.effect(
         assert.equal(fixture.imports.size, 1);
       }),
     ),
+);
+
+it.effect(
+  "preserves only known rejected search cursor failures as actionable application errors",
+  () =>
+    Effect.gen(function* () {
+      for (const test of [
+        {
+          reason: "rejected",
+          tag: "SessionSearchError",
+          engineReason: "cursor_stale",
+          expected: "cursor_stale",
+        },
+        {
+          reason: "rejected",
+          tag: "SessionSearchError",
+          engineReason: "invalid_cursor",
+          expected: "invalid_cursor",
+        },
+        {
+          reason: "request",
+          tag: "SessionSearchError",
+          engineReason: "cursor_stale",
+          expected: undefined,
+        },
+        {
+          reason: "rejected",
+          tag: "OtherError",
+          engineReason: "cursor_stale",
+          expected: undefined,
+        },
+      ] as const) {
+        const error = new AgentRuntimeProcessError({
+          reason: test.reason,
+          message: "Remote failure",
+          engineTag: test.tag,
+          engineReason: test.engineReason,
+        });
+        const fixture = setup({
+          connect: Effect.succeed({
+            identity: {
+              runtimeId: "runtime",
+              runtimeGeneration: "generation",
+              schemaVersion: 1,
+              databasePath: "/db",
+              mcpEndpoint: "http://127.0.0.1",
+              lastSequence: 0,
+            },
+            request: () => Effect.fail(error),
+          } as AgentRuntimeApplicationConnection),
+        });
+        const owner = yield* fixture.owner;
+        const requests: readonly Effect.Effect<unknown, AgentRuntimeApplicationError>[] = [
+          owner.sessionSearch({ query: "alpha", cursor: "pending" }),
+          owner.sessionSearchResolve({ query: "alpha", references: [] }),
+        ];
+        for (const request of requests) {
+          const result = yield* request.pipe(Effect.flip);
+          assert.equal(result.cursorReason, test.expected);
+        }
+      }
+    }),
+);
+
+it.effect(
+  "routes resource-only sends to a verified child and returns the canonical delivery result",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const launched = yield* owner.launch(launch);
+      const root = fixture.snapshots.get(launched.threadId)!;
+      fixture.snapshots.set("child", {
+        ...root,
+        projection: {
+          ...root.projection,
+          thread: {
+            ...root.projection.thread,
+            id: "child",
+            lineage: {
+              ...root.projection.thread.lineage,
+              rootThreadId: launched.threadId,
+              parentThreadId: launched.threadId,
+              relationshipToParent: "subagent",
+            },
+          },
+        },
+      });
+      const resources = [
+        {
+          name: "report.txt",
+          mimeType: "text/plain",
+          sizeBytes: 6,
+          source: "/authorized/export/report.txt",
+        },
+      ];
+      const before = fixture.calls.length;
+      const delivered = yield* owner.sendMessage({
+        sessionId: launched.sessionId,
+        threadId: "child",
+        mode: "queue",
+        resources,
+        message: { messageId: "message:resource", text: "" },
+        senderThreadId: launched.threadId,
+      });
+      assert.equal(delivered.threadId, "child");
+      assert.equal(delivered.delivery, "queued");
+      assert.equal(delivered.runId, "run:canonical-delivery");
+      const calls = fixture.calls.slice(before);
+      const imported = calls.find((call) => call.method === "attachments.import")!;
+      assert.equal((imported.input as { threadId: string }).threadId, "child");
+      const sent = calls.find((call) => call.method === "thread.send")!;
+      assert.deepEqual((sent.input as { attachments: unknown }).attachments, [
+        {
+          type: "file",
+          id: "imported_0",
+          name: "report.txt",
+          mimeType: "text/plain",
+          sizeBytes: 6,
+        },
+      ]);
+      assert.isFalse(calls.some((call) => call.method === "command.dispatch"));
+      fixture.snapshots.set("foreign", snapshot("foreign", "foreign-root"));
+      const invalidBefore = fixture.calls.length;
+      assert.equal(
+        (yield* owner
+          .sendMessage({
+            sessionId: launched.sessionId,
+            threadId: "foreign",
+            mode: "queue",
+            resources,
+            message: { messageId: "message:forged", text: "" },
+          })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.isFalse(
+        fixture.calls
+          .slice(invalidBefore)
+          .some((call) => call.method === "attachments.import" || call.method === "thread.send"),
+      );
+    }),
+);
+
+it.effect(
+  "recovers accepted message delivery before reimporting resources or checking changed Plan/model settings",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const launched = yield* owner.launch(launch);
+      fixture.state.messageReplay = {
+        messageId: "message:accepted",
+        runId: "run:accepted",
+        status: "completed",
+        delivery: "queued",
+      };
+      const before = fixture.calls.length;
+      const result = yield* owner.sendMessage({
+        sessionId: launched.sessionId,
+        mode: "queue",
+        messageFingerprint: "a".repeat(64),
+        interactionModeCeiling: "plan",
+        resources: [
+          { name: "gone.png", mimeType: "image/png", sizeBytes: 10, source: "/removed/source.png" },
+        ],
+        message: {
+          messageId: "message:accepted",
+          text: "",
+          modelSelection: { instanceId: "removed-provider", model: "removed-model" },
+        },
+      });
+      assert.equal(result.runId, "run:accepted");
+      assert.equal(result.delivery, "queued");
+      const calls = fixture.calls.slice(before);
+      assert.isTrue(calls.some((call) => call.method === "thread.message-replay"));
+      assert.isFalse(
+        calls.some((call) =>
+          ["attachments.import", "providers.read", "thread.send", "command.dispatch"].includes(
+            call.method,
+          ),
+        ),
+      );
+      fixture.state.denyAgent = true;
+      const revokedBefore = fixture.calls.length;
+      const revoked = yield* owner
+        .replayMessage({
+          sessionId: launched.sessionId,
+          messageId: "message:accepted",
+          fingerprint: "a".repeat(64),
+        })
+        .pipe(Effect.provideService(CoreApplicationAgent, agent), Effect.result);
+      assert.equal(revoked._tag, "Failure");
+      assert.isFalse(
+        fixture.calls.slice(revokedBefore).some((call) => call.method === "thread.message-replay"),
+      );
+    }),
+);
+
+it.effect(
+  "a recovered draft launch keeps its first-message receipt ahead of mutable preparation",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const input = { ...launch, messageFingerprint: "a".repeat(64) };
+      const launched = yield* owner.launch(input);
+      fixture.state.messageReplay = {
+        messageId: launch.message.messageId,
+        runId: "run:accepted",
+        status: "running",
+        delivery: "started",
+      };
+      const before = fixture.calls.length;
+      const retry = yield* owner.launch({
+        ...input,
+        interactionModeCeiling: "plan",
+        interactionMode: "default",
+        resources: [
+          { name: "gone.png", mimeType: "image/png", sizeBytes: 10, source: "/removed/source.png" },
+        ],
+      });
+      assert.deepEqual(retry, launched);
+      assert.isFalse(
+        fixture.calls
+          .slice(before)
+          .some((call) =>
+            ["attachments.import", "providers.read", "command.dispatch"].includes(call.method),
+          ),
+      );
+    }),
+);
+
+it.effect(
+  "resumes an interrupted Plan draft from its retained model and owned resources without default hydration",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      fixture.state.failThreadCreate = true;
+      const input = {
+        ...launch,
+        messageFingerprint: "a".repeat(64),
+        interactionMode: "plan" as const,
+        interactionModeCeiling: "plan" as const,
+        modelSelection: { instanceId: "codex", model: "model-b" },
+        resources: [
+          {
+            name: "draft.txt",
+            mimeType: "text/plain",
+            sizeBytes: 7,
+            source: "/authorized/draft.txt",
+          },
+        ],
+        message: { messageId: "message:draft-interrupted", text: "" },
+      };
+      assert.equal((yield* owner.launch(input).pipe(Effect.result))._tag, "Failure");
+      const binding = fixture.bindings.get(launch.sessionId)!;
+      assert.isFalse(fixture.snapshots.has(binding.runtime_thread_id));
+      const before = fixture.calls.length;
+      assert.isNull(
+        yield* owner.replayMessage({
+          sessionId: input.sessionId,
+          messageId: input.message.messageId,
+          fingerprint: input.messageFingerprint,
+        }),
+      );
+      assert.isFalse(
+        fixture.snapshots.has(binding.runtime_thread_id),
+        "A receipt query never manufactures defaults",
+      );
+      assert.equal(
+        (yield* owner
+          .resumeMessageLaunch({
+            sessionId: input.sessionId,
+            launchId: input.launchId,
+            messageId: input.message.messageId,
+            fingerprint: input.messageFingerprint,
+            modeLimit: { runtimeMode: "auto", interactionMode: "plan" },
+          })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.isFalse(
+        fixture.snapshots.has(binding.runtime_thread_id),
+        "Fresh recovery still obeys the current caller ceiling",
+      );
+      fixture.state.codexModelsAvailable = false;
+      const resumed = yield* owner.resumeMessageLaunch({
+        sessionId: input.sessionId,
+        launchId: input.launchId,
+        messageId: input.message.messageId,
+        fingerprint: input.messageFingerprint,
+        modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
+      });
+      assert.equal(resumed?.delivery, "started");
+      const created = fixture.snapshots.get(binding.runtime_thread_id)!.projection.thread;
+      assert.equal(created.interactionMode, "plan");
+      assert.deepEqual(created.modelSelection, input.modelSelection);
+      const calls = fixture.calls.slice(before);
+      assert.isFalse(
+        calls.some((call) =>
+          ["providers.read", "attachments.import", "thread.message-stage"].includes(call.method),
+        ),
+      );
+      assert.equal(
+        [...fixture.commands.values()].filter((command) => command.type === "message.dispatch")
+          .length,
+        1,
+      );
+      const sent = [...fixture.commands.values()].find(
+        (command) => command.type === "message.dispatch",
+      )!;
+      assert.equal(
+        sent.type === "message.dispatch" ? sent.attachments[0]?.name : null,
+        "draft.txt",
+      );
+    }),
+);
+
+it.effect(
+  "stages prompt image sources through their canonical materializer before first-message delivery",
+  () =>
+    Effect.gen(function* () {
+      const sources: string[][] = [];
+      const fixture = setup({
+        prepareImages: (images) =>
+          Effect.sync(() => {
+            sources.push(images.map((image) => image.source));
+            return [{ mediaType: "image/png", data: "aW1hZ2U=" }];
+          }),
+      });
+      const owner = yield* fixture.owner;
+      yield* owner.launch({
+        ...launch,
+        messageFingerprint: "a".repeat(64),
+        modelSelection: { instanceId: "codex", model: "model-a" },
+        message: {
+          messageId: "message:staged-image",
+          text: "",
+          images: [{ source: "nodex-asset:private", caption: "Evidence" }],
+        },
+      });
+      assert.deepEqual(sources, [["nodex-asset:private"]]);
+      const stage = fixture.calls.find((call) => call.method === "thread.message-stage")!
+        .input as AgentRuntimeOperations["thread.message-stage"]["input"];
+      assert.deepEqual(
+        stage.resources.map(({ source: _source, ...metadata }) => metadata),
+        [{ name: "Evidence", mimeType: "image/png", sizeBytes: 5 }],
+      );
+      assert.isFalse(stage.resources[0]!.source.startsWith("data:"));
+      assert.isFalse(
+        yield* Effect.promise(() =>
+          access(stage.resources[0]!.source).then(
+            () => true,
+            () => false,
+          ),
+        ),
+      );
+      const sent = [...fixture.commands.values()].find(
+        (command) => command.type === "message.dispatch",
+      )!;
+      assert.equal(sent.type === "message.dispatch" ? sent.attachments[0]?.name : null, "Evidence");
+      assert.isFalse(fixture.calls.some((call) => call.method === "attachments.persist"));
+    }),
+);
+
+it.effect("promotes a resource-only draft through one launch and one first-message dispatch", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    yield* owner.launch({
+      ...launch,
+      resources: [
+        {
+          name: "draft.txt",
+          mimeType: "text/plain",
+          sizeBytes: 5,
+          source: "/authorized/draft.txt",
+        },
+      ],
+      message: { messageId: "message:draft-resource", text: "" },
+    });
+    const imports = fixture.calls.filter((call) => call.method === "attachments.import");
+    assert.equal(imports.length, 1);
+    const messages = [...fixture.commands.values()].filter(
+      (command) => command.type === "message.dispatch",
+    );
+    assert.equal(messages.length, 1);
+    const message = messages[0] as Extract<AgentCommand, { type: "message.dispatch" }>;
+    assert.equal(message.messageId, "message:draft-resource");
+    assert.equal(message.attachments[0]?.name, "draft.txt");
+  }),
+);
+
+const largeImageResources = () =>
+  [0x51, 0xb4].map((value, index) => {
+    const bytes = Buffer.alloc(9 * 1024 * 1024, value);
+    return {
+      name: `Image ${index + 1}.png`,
+      mimeType: "image/png",
+      sizeBytes: bytes.byteLength,
+      source: `data:image/png;base64,${bytes.toString("base64")}`,
+    };
+  });
+const resourceDigest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+
+it.effect("sends legal multi-image resources above one frame through scoped file references", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const owned = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-owned-images-test-" });
+    const sources: string[] = [];
+    const copies: string[] = [];
+    const resources = largeImageResources();
+    assert.isAbove(Buffer.byteLength(JSON.stringify(resources)), 16 * 1024 * 1024);
+    const fixture = setup({}, [], (request) =>
+      Effect.gen(function* () {
+        assert.isBelow(Buffer.byteLength(JSON.stringify(request)), 16 * 1024 * 1024);
+        const attachments = [];
+        for (const [index, resource] of request.attachments.entries()) {
+          assert.isFalse(resource.source.startsWith("data:"));
+          const bytes = yield* fs.readFile(resource.source);
+          assert.equal(
+            resourceDigest(bytes),
+            resourceDigest(Buffer.from(resources[index]!.source.split(",")[1]!, "base64")),
+          );
+          sources.push(resource.source);
+          const copy = join(owned, String(index));
+          yield* fs.copyFile(resource.source, copy);
+          copies.push(copy);
+          attachments.push({
+            type: "image" as const,
+            id: `owned_${index}`,
+            name: resource.name,
+            mimeType: resource.mimeType,
+            sizeBytes: bytes.byteLength,
+          });
+        }
+        return { attachments };
+      }),
+    );
+    const owner = yield* fixture.owner;
+    yield* owner.launch({
+      ...launch,
+      modelSelection: { instanceId: "codex", model: "model-a" },
+    });
+    const sent = yield* owner.sendMessage({
+      sessionId: launch.sessionId,
+      message: { messageId: "message:large-images", text: "Read both images" },
+      mode: "auto",
+      resources,
+    });
+    assert.equal(sent.delivery, "queued");
+    assert.lengthOf(sources, 2);
+    for (const source of sources) assert.isFalse(yield* fs.exists(source));
+    for (const copy of copies) assert.equal(Number((yield* fs.stat(copy)).size), 9 * 1024 * 1024);
+    for (const call of fixture.calls)
+      assert.isBelow(Buffer.byteLength(JSON.stringify(call)), 16 * 1024 * 1024);
+    const request = fixture.calls.find((call) => call.method === "thread.send")!
+      .input as AgentRuntimeOperations["thread.send"]["input"];
+    assert.deepEqual(
+      request.attachments.map((attachment) => attachment.id),
+      ["owned_0", "owned_1"],
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "retains independent draft images after temporary source cleanup and interrupted launch",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const owned = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-owned-draft-test-" });
+      const sources: string[] = [];
+      const digests: string[] = [];
+      let imports = 0;
+      const fixture = setup({}, [], (request) =>
+        Effect.gen(function* () {
+          imports += 1;
+          assert.isBelow(Buffer.byteLength(JSON.stringify(request)), 16 * 1024 * 1024);
+          const attachments = [];
+          for (const [index, resource] of request.attachments.entries()) {
+            const bytes = yield* fs.readFile(resource.source);
+            sources.push(resource.source);
+            digests.push(resourceDigest(bytes));
+            yield* fs.copyFile(resource.source, join(owned, String(index)));
+            attachments.push({
+              type: "image" as const,
+              id: `owned_draft_${index}`,
+              name: resource.name,
+              mimeType: resource.mimeType,
+              sizeBytes: bytes.byteLength,
+            });
+          }
+          return { attachments };
+        }),
+      );
+      const owner = yield* fixture.owner;
+      fixture.state.failThreadCreate = true;
+      const resources = largeImageResources();
+      const input = {
+        ...launch,
+        modelSelection: { instanceId: "codex", model: "model-a" },
+        messageFingerprint: "b".repeat(64),
+        resources,
+      };
+      assert.equal((yield* owner.launch(input).pipe(Effect.result))._tag, "Failure");
+      assert.lengthOf(sources, 2);
+      for (const source of sources) assert.isFalse(yield* fs.exists(source));
+      const resumed = yield* owner.resumeMessageLaunch({
+        sessionId: launch.sessionId,
+        launchId: launch.launchId,
+        messageId: launch.message.messageId,
+        fingerprint: input.messageFingerprint,
+        modeLimit: { runtimeMode: "full-access", interactionMode: "default" },
+      });
+      assert.equal(resumed?.delivery, "started");
+      assert.equal(imports, 1);
+      for (const [index, digest] of digests.entries())
+        assert.equal(resourceDigest(yield* fs.readFile(join(owned, String(index)))), digest);
+      for (const call of fixture.calls)
+        assert.isBelow(Buffer.byteLength(JSON.stringify(call)), 16 * 1024 * 1024);
+      const sent = [...fixture.commands.values()].find(
+        (command) => command.type === "message.dispatch",
+      );
+      assert.equal(sent?.type, "message.dispatch");
+      if (sent?.type !== "message.dispatch") throw new Error("Expected recovered dispatch");
+      assert.deepEqual(
+        sent.attachments.map((attachment) => attachment.id),
+        ["owned_draft_0", "owned_draft_1"],
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "releases inline source files on failed and interrupted sends before the owner closes",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      for (const interrupted of [false, true]) {
+        const captured = yield* Deferred.make<readonly string[]>();
+        const fixture = setup({}, [], (request) =>
+          Effect.gen(function* () {
+            const sources = request.attachments.map((resource) => resource.source);
+            for (const source of sources) assert.isTrue(yield* fs.exists(source));
+            yield* Deferred.succeed(captured, sources);
+            return yield* interrupted
+              ? Effect.never
+              : Effect.fail(new Error("Runtime import failed"));
+          }),
+        );
+        const owner = yield* fixture.owner;
+        yield* owner.launch({
+          ...launch,
+          modelSelection: { instanceId: "codex", model: "model-a" },
+        });
+        const send = owner.sendMessage({
+          sessionId: launch.sessionId,
+          message: { messageId: `message:cleanup-${interrupted}`, text: "Read it" },
+          mode: "auto",
+          resources: [
+            {
+              name: "image.png",
+              mimeType: "image/png",
+              sizeBytes: 3,
+              source: "data:image/png;base64,AQID",
+            },
+          ],
+        });
+        if (interrupted) {
+          const fiber = yield* Effect.forkChild(send);
+          yield* Deferred.await(captured);
+          yield* Fiber.interrupt(fiber);
+        } else assert.equal((yield* send.pipe(Effect.result))._tag, "Failure");
+        for (const source of yield* Deferred.await(captured))
+          assert.isFalse(yield* fs.exists(source));
+        assert.isFalse(fixture.calls.some((call) => call.method === "thread.send"));
+      }
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "refuses changed, malformed and oversized inline images before sending resource references",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      yield* owner.launch({ ...launch, modelSelection: { instanceId: "codex", model: "model-a" } });
+      const before = fixture.calls.length;
+      for (const resource of [
+        { sizeBytes: 2, source: "data:image/png;base64,AQID" },
+        { sizeBytes: 3, source: "data:image/png;base64,A===" },
+        { sizeBytes: 3, source: "data:image/jpeg;base64,AQID" },
+        { sizeBytes: 11 * 1024 * 1024, source: "data:image/png;base64,AQID" },
+      ])
+        assert.equal(
+          (yield* owner
+            .sendMessage({
+              sessionId: launch.sessionId,
+              message: { messageId: "message:invalid-image", text: "Read it" },
+              mode: "auto",
+              resources: [{ name: "image.png", mimeType: "image/png", ...resource }],
+            })
+            .pipe(Effect.result))._tag,
+          "Failure",
+        );
+      assert.isFalse(
+        fixture.calls
+          .slice(before)
+          .some((call) => call.method === "attachments.import" || call.method === "thread.send"),
+      );
+    }),
+);
+
+it.effect(
+  "adopts one settled Native Session after import, preserving Plan and recovering an uncertain Core reply",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      fixture.state.nativeSession = {
+        id: "session:native",
+        projectId: "project",
+        displayTitle: "Native work",
+        archived: false,
+        thread: {
+          threadId: codexImport.nativeSessionId,
+          executionHostId: "local",
+          backendBinding: { kind: "codex" },
+          cwd: "/native/work",
+          statusType: "idle",
+        },
+      } as ProjectSession;
+      const owner = yield* fixture.owner;
+      const request = {
+        sessionId: "session:native",
+        requestId: "adopt:one",
+        acceptedAt: launch.acceptedAt,
+        expectedNativeThreadId: codexImport.nativeSessionId,
+        expectedNativeHostId: "local",
+        interactionMode: "plan" as const,
+        model: "model-b",
+      };
+      fixture.state.failCodexImportBeforeCommit = true;
+      assert.equal((yield* owner.adoptNativeSession(request).pipe(Effect.result))._tag, "Failure");
+      assert.equal(fixture.bindings.size, 0, "Failed source capture keeps Native ownership");
+      fixture.state.failCoreAcknowledgment = true;
+      const adopted = yield* owner.adoptNativeSession(request);
+      assert.equal(adopted.sessionId, "session:native");
+      assert.equal(fixture.bindings.size, 1);
+      assert.equal(
+        fixture.snapshots.get(adopted.threadId)!.projection.thread.interactionMode,
+        "plan",
+      );
+      const bindingIndex = fixture.order.indexOf("core.bind");
+      assert.isAbove(bindingIndex, fixture.order.indexOf("runtime.thread.import-native"));
+      const readsBefore = fixture.order.filter(
+        (entry) => entry === "codex.import-source-home",
+      ).length;
+      fixture.state.nativeSession = null;
+      fixture.state.nativeImportSourceHome = "/removed/source";
+      const retry = yield* owner.adoptNativeSession(request);
+      assert.deepEqual(retry, adopted);
+      assert.equal(
+        fixture.order.filter((entry) => entry === "codex.import-source-home").length,
+        readsBefore,
+      );
+      assert.equal(
+        fixture.applied.filter((entry) => entry.intent.kind === "adopt_native_session_execution")
+          .length,
+        1,
+      );
+    }),
+);
+
+it.effect("refuses an active Native adoption without changing its binding", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    fixture.state.nativeSession = {
+      id: "session:native",
+      projectId: "project",
+      displayTitle: "Busy",
+      archived: false,
+      thread: {
+        threadId: codexImport.nativeSessionId,
+        executionHostId: "local",
+        backendBinding: { kind: "codex" },
+        cwd: "/native/work",
+        statusType: "active",
+      },
+    } as ProjectSession;
+    const owner = yield* fixture.owner;
+    const result = yield* owner
+      .adoptNativeSession({
+        sessionId: "session:native",
+        requestId: "adopt:busy",
+        acceptedAt: launch.acceptedAt,
+        expectedNativeThreadId: codexImport.nativeSessionId,
+        expectedNativeHostId: "local",
+        interactionMode: "default",
+      })
+      .pipe(Effect.flip);
+    assert.equal(result.adoptionReason, "active_source_busy");
+    assert.equal(fixture.bindings.size, 0);
+    assert.equal(fixture.imports.size, 0);
+  }),
+);
+
+it.effect("a Plan caller cannot use message config to widen the final send or launch mode", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const message = {
+      messageId: "message:ceiling",
+      text: "Do it",
+      agentConfigs: [{ mode: "default" }],
+    };
+    const launchResult = yield* owner
+      .launch({
+        ...launch,
+        interactionMode: "plan",
+        interactionModeCeiling: "plan",
+        modelSelection: { instanceId: "codex", model: "model-a" },
+        message,
+      })
+      .pipe(Effect.flip);
+    assert.equal(launchResult.message, "interaction_mode_escalation_denied");
+    assert.equal(fixture.bindings.size, 0, "A widened draft is rejected before binding");
+    const started = yield* owner.launch({
+      ...launch,
+      interactionMode: "plan",
+      modelSelection: { instanceId: "codex", model: "model-a" },
+      interactionModeCeiling: "plan",
+    });
+    const first = fixture.calls.find(
+      (call) =>
+        call.method === "command.dispatch" &&
+        (call.input as AgentRuntimeOperations["command.dispatch"]["input"]).command.type ===
+          "message.dispatch",
+    );
+    assert.deepEqual(
+      (first!.input as AgentRuntimeOperations["command.dispatch"]["input"]).modeLimit,
+      { runtimeMode: "full-access", interactionMode: "plan" },
+    );
+    const before = fixture.calls.length;
+    const sendResult = yield* owner
+      .sendMessage({
+        sessionId: started.sessionId,
+        mode: "auto",
+        interactionModeCeiling: "plan",
+        message,
+      })
+      .pipe(Effect.flip);
+    assert.equal(sendResult.message, "interaction_mode_escalation_denied");
+    assert.isFalse(fixture.calls.slice(before).some((call) => call.method === "thread.send"));
+    yield* owner.sendMessage({
+      sessionId: started.sessionId,
+      mode: "auto",
+      interactionModeCeiling: "plan",
+      message: { messageId: "message:allowed-plan", text: "Continue planning" },
+    });
+    const sent = fixture.calls.find((call) => call.method === "thread.send")!;
+    assert.deepEqual((sent.input as AgentRuntimeOperations["thread.send"]["input"]).modeLimit, {
+      runtimeMode: "full-access",
+      interactionMode: "plan",
+    });
+  }),
+);
+
+it.effect("does not read same-named metadata from a different execution store", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const failure = yield* owner
+      .sessionMetadata({ runtimeId: "retired-runtime", threadIds: ["same-thread"] })
+      .pipe(Effect.flip);
+    assert.equal(failure.operation, "session-metadata");
+    assert.match(failure.message, /bound execution store/);
+    assert.isFalse(fixture.calls.some((call) => call.method === "sessions.metadata"));
+  }),
+);
+
+it.effect(
+  "authorizes original Native receipt reads independently from a later execution binding",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      fixture.state.nativeReceipt = {
+        admitted: false,
+        sessionId: "session:native",
+        hostId: "original-host",
+        threadId: "native-thread",
+        phase: "confirmed",
+        attemptId: "attempt",
+        result: {
+          messageId: "accepted-message",
+          runId: "accepted-turn",
+          status: "completed",
+          delivery: "started",
+        },
+      };
+      const input = {
+        sessionId: "session:native",
+        messageId: "accepted-message",
+        fingerprint: "a".repeat(64),
+      };
+      assert.equal((yield* owner.nativeMessageReceipt(input))?.hostId, "original-host");
+      const beforeReserve = fixture.calls.length;
+      const refused = yield* owner
+        .nativeMessageReserve({
+          ...input,
+          hostId: "original-host",
+          threadId: "native-thread",
+          attemptId: "new-attempt",
+          expiresAt: Date.now() + 60000,
+        })
+        .pipe(Effect.result);
+      assert.equal(refused._tag, "Failure");
+      assert.isFalse(
+        fixture.calls.slice(beforeReserve).some((call) => call.method === "native-message.reserve"),
+      );
+      fixture.state.denyAgent = true;
+      const beforeRead = fixture.calls.length;
+      const revoked = yield* owner
+        .nativeMessageReceipt(input)
+        .pipe(Effect.provideService(CoreApplicationAgent, agent), Effect.result);
+      assert.equal(revoked._tag, "Failure");
+      assert.isFalse(
+        fixture.calls.slice(beforeRead).some((call) => call.method === "native-message.receipt"),
+      );
+    }),
 );

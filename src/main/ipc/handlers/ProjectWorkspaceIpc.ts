@@ -588,6 +588,17 @@ export const live: Layer.Layer<
         ),
       ),
     );
+    yield* handleLocalCommitCommand("project-sessions:record-opened", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "project-sessions:record-opened",
+            command,
+            projects.recordProjectSessionOpened(command),
+          ),
+        ),
+      ),
+    );
     yield* handleLocalCommitCommand("project-sessions:mark-unread", (event, command) =>
       authorize(event).pipe(
         Effect.andThen(

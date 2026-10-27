@@ -98,7 +98,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import { turnScopedSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
 import { OPENCODE_PROVIDER } from "../adapter.ts";
 import { openCodeToolTurnItem } from "../toolItems.ts";
-import { NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
+import { APP_TOOLS_PROVIDER_TIMEOUT_MS, NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
 
 const OpenCode2ProviderCapabilities = {
   sessions: {
@@ -3276,6 +3276,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               url: mcpSession!.endpoint,
               headers: { Authorization: wanted.credential },
               oauth: false,
+              timeout: new Mcp.TimeoutConfig({ execution: APP_TOOLS_PROVIDER_TIMEOUT_MS }),
             }),
           })
           .pipe(

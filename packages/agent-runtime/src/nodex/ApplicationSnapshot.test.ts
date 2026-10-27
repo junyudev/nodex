@@ -25,18 +25,20 @@ it.live(
             workspaceRoot: home,
           });
           yield* request("command.dispatch", {
-            type: "thread.create",
-            commandId: "command:snapshot",
-            threadId: "thread:snapshot",
-            projectId: "project:snapshot",
-            title: "Snapshot",
-            modelSelection: { instanceId: "codex", model: "gpt-5.4" },
-            runtimeMode: "full-access",
-            interactionMode: "default",
-            branch: null,
-            worktreePath: home,
-            createdBy: "user",
-            creationSource: "web",
+            command: {
+              type: "thread.create",
+              commandId: "command:snapshot",
+              threadId: "thread:snapshot",
+              projectId: "project:snapshot",
+              title: "Snapshot",
+              modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: home,
+              createdBy: "user",
+              creationSource: "web",
+            },
           });
           yield* runtime.handle({
             id: "project-update",

@@ -25,6 +25,7 @@ import type * as Scope from "effect/Scope";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { z } from "zod";
 import { createAgentRuntimeFrameDecoder } from "./agent-runtime-framing";
+import { appToolsHostCallTimeoutMs } from "@nodex/app-tools-mcp/manifest";
 
 const MAXIMUM_FRAME_BYTES = 16 * 1024 * 1024;
 /**
@@ -71,6 +72,7 @@ const replySchema = z.discriminatedUnion("success", [
     error: z.object({
       message: z.string(),
       tag: z.string().optional(),
+      reason: z.string().optional(),
       acp: z
         .unknown()
         .transform((value, context) => {
@@ -171,6 +173,12 @@ const nativeSourceSchema = z.object({
 });
 const notificationSchema = z.discriminatedUnion("type", [
   z.object({
+    type: z.literal("host.cancel"),
+    id: z.string().min(1),
+    runtimeId: z.string().min(1),
+    runtimeGeneration: z.string().min(1),
+  }),
+  z.object({
     type: z.literal("native.voice.event"),
     claimId: z.string(),
     source: nativeSourceSchema,
@@ -221,6 +229,7 @@ export class AgentRuntimeProcessError extends Schema.TaggedError<AgentRuntimePro
     message: Schema.String,
     /** The engine failure's tag when the engine rejected a request. */
     engineTag: Schema.optional(Schema.String),
+    engineReason: Schema.optional(Schema.String),
     acp: Schema.optional(
       Schema.declare<AgentAcpFailure>(
         (value): value is AgentAcpFailure => decodeAgentAcpFailure(value) !== null,
@@ -282,7 +291,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
   const notificationDelivery = yield* Ref.make(0);
   const executionNotifications = yield* PubSub.sliding<AgentRuntimeProcessDelivery>(64);
   const executionDelivery = yield* Ref.make(0);
-  const hostRequests = yield* Ref.make<ReadonlySet<string>>(new Set());
+  const hostRequests = yield* Ref.make<ReadonlyMap<string, Deferred.Deferred<void>>>(new Map());
   const ready = yield* Deferred.make<AgentRuntimeIdentity, AgentRuntimeProcessError>();
   const terminated = yield* Deferred.make<AgentRuntimeProcessError>();
   const state = yield* Ref.make<{
@@ -320,6 +329,11 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     yield* Effect.forEach(previous.pending.values(), (reply) => Deferred.fail(reply, error), {
       discard: true,
     });
+    yield* Effect.forEach(
+      (yield* Ref.get(hostRequests)).values(),
+      (cancelled) => Deferred.succeed(cancelled, undefined),
+      { discard: true },
+    ).pipe(Effect.uninterruptible);
   });
 
   // The first frame configures providers before readiness; it is queued ahead of every request.
@@ -382,6 +396,9 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           reason: "rejected",
           message: reply.data.error.message,
           ...(reply.data.error.tag === undefined ? {} : { engineTag: reply.data.error.tag }),
+          ...(reply.data.error.reason === undefined
+            ? {}
+            : { engineReason: reply.data.error.reason }),
           ...(reply.data.error.acp === undefined ? {} : { acp: reply.data.error.acp }),
         }),
       );
@@ -398,6 +415,17 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       yield* Deferred.succeed(ready, notification.identity);
       return;
     }
+    if (notification.type === "host.cancel") {
+      const identity = yield* Deferred.await(ready);
+      if (
+        notification.runtimeId !== identity.runtimeId ||
+        notification.runtimeGeneration !== identity.runtimeGeneration
+      )
+        return;
+      const cancelled = (yield* Ref.get(hostRequests)).get(notification.id);
+      if (cancelled) yield* Deferred.succeed(cancelled, undefined);
+      return;
+    }
     if (notification.type !== "host.request") {
       if (
         notification.type === "execution.lifecycle" ||
@@ -412,37 +440,64 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       yield* PubSub.publish(notifications, { delivery, notification });
       return;
     }
+    const cancelled = yield* Deferred.make<void>();
     const admitted = yield* Ref.modify(hostRequests, (current) => {
       if (current.has(notification.id) || current.size >= MAXIMUM_PENDING_HOST_REQUESTS)
         return [false, current] as const;
-      return [true, new Set(current).add(notification.id)] as const;
+      return [true, new Map(current).set(notification.id, cancelled)] as const;
     });
     if (!admitted)
       return yield* new AgentRuntimeProcessError({
         reason: "pressure",
         message: "Agent Runtime Host request capacity is exhausted",
       });
-    yield* options.host(notification).pipe(
-      Effect.matchEffect({
-        onSuccess: (output) =>
-          send({
-            type: "host.result",
-            id: notification.id,
-            success: true,
-            output,
-          } satisfies AgentHostResult),
-        onFailure: (error) =>
-          send({
-            type: "host.result",
-            id: notification.id,
-            success: false,
-            error: { message: error.message },
-          } satisfies AgentHostResult),
-      }),
-      Effect.catch((error) => close(error)),
+    const work =
+      notification.operation === "tool.call"
+        ? options.host(notification).pipe(
+            Effect.timeoutOrElse({
+              duration: appToolsHostCallTimeoutMs(
+                notification.tool,
+                notification.input !== null &&
+                  typeof notification.input === "object" &&
+                  !Array.isArray(notification.input)
+                  ? (notification.input as Record<string, unknown>)
+                  : {},
+              ),
+              orElse: () =>
+                Effect.fail(
+                  new AgentRuntimeProcessError({
+                    reason: "request",
+                    message: "Application tool host deadline elapsed",
+                  }),
+                ),
+            }),
+          )
+        : options.host(notification);
+    yield* Effect.raceFirst(
+      work.pipe(
+        Effect.matchEffect({
+          onSuccess: (output) =>
+            send({
+              type: "host.result",
+              id: notification.id,
+              success: true,
+              output,
+            } satisfies AgentHostResult),
+          onFailure: (error) =>
+            send({
+              type: "host.result",
+              id: notification.id,
+              success: false,
+              error: { message: error.message },
+            } satisfies AgentHostResult),
+        }),
+        Effect.catch((error) => close(error)),
+      ),
+      Deferred.await(cancelled),
+    ).pipe(
       Effect.ensuring(
         Ref.update(hostRequests, (current) => {
-          const next = new Set(current);
+          const next = new Map(current);
           next.delete(notification.id);
           return next;
         }),

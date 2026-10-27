@@ -77,7 +77,10 @@ import {
   buildCodexHooksSettingsPath,
   type CodexHooksSettingsTarget,
 } from "@/lib/codex-hooks-route";
-import { buildAutomationsPath, resolveAutomationsRouteState } from "./workbench-automations-routes";
+import {
+  buildAutomationsPath,
+  resolveAutomationsRouteState,
+} from "@/lib/workbench-automations-routes";
 import type {
   LibraryPlacedResourceTarget,
   LibraryRouteTarget,

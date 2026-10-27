@@ -3,6 +3,7 @@ import {
   type AsyncQuestionReply,
 } from "./AsyncQuestionReplyBatch.ts";
 import { readExecutionHandoff } from "./ExecutionHandoff.ts";
+import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimit.ts";
 import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "../nodex/NativeImportLimits.ts";
 import type {
   OrchestrationV2SearchThreadInput,
@@ -111,6 +112,7 @@ import {
   ProjectionStoreV2,
   type ProjectionRecordField,
   type ProjectionTimelinePage,
+  type ProjectionTimelineMetadataPage,
   type ProjectionTimelinePageOptions,
   type ProjectionRecordFilter,
   type ProjectionRecords,
@@ -164,6 +166,22 @@ export class OrchestratorCommandRejectedError extends Schema.TaggedError<Orchest
 ) {
   override get message(): string {
     return `Orchestration command ${this.commandType} (${this.commandId}) was rejected before commit.`;
+  }
+}
+
+export class OrchestratorThreadAboveModeLimitError extends Schema.TaggedError<OrchestratorThreadAboveModeLimitError>()(
+  "OrchestratorThreadAboveModeLimitError",
+  {
+    commandId: CommandId,
+    threadId: ThreadId,
+    reason: Schema.Literals([
+      "runtime_mode_escalation_denied",
+      "interaction_mode_escalation_denied",
+    ]),
+  },
+) {
+  override get message(): string {
+    return this.reason;
   }
 }
 
@@ -249,6 +267,7 @@ export function canReplayCommandReceipt(
 export const OrchestratorV2Error = Schema.Union([
   OrchestratorDispatchError,
   OrchestratorCommandRejectedError,
+  OrchestratorThreadAboveModeLimitError,
   OrchestratorProjectionError,
   OrchestratorDomainEventStreamError,
   OrchestratorProviderAdapterError,
@@ -298,6 +317,18 @@ export interface OrchestratorV2Shape {
     threadId: ThreadId,
     options: ProjectionTimelinePageOptions,
   ) => Effect.Effect<ProjectionTimelinePage, OrchestratorProjectionError>;
+  readonly getTimelineMetadataPage: (
+    ...input: Parameters<ProjectionStoreV2["Service"]["getTimelineMetadataPage"]>
+  ) => Effect.Effect<ProjectionTimelineMetadataPage, OrchestratorProjectionError>;
+  readonly getVisibleTurnItem: (
+    input: Parameters<ProjectionStoreV2["Service"]["getVisibleTurnItem"]>[0],
+  ) => Effect.Effect<OrchestrationV2TurnItem | null, OrchestratorProjectionError>;
+  readonly getVisibleTurnItemRecord: (
+    input: Parameters<ProjectionStoreV2["Service"]["getVisibleTurnItemRecord"]>[0],
+  ) => Effect.Effect<
+    import("./ProjectionStore.ts").ProjectionVisibleTurnItemRecord | null,
+    OrchestratorProjectionError
+  >;
   readonly getMessageCount: (threadId: ThreadId) => Effect.Effect<number, OrchestratorV2Error>;
   readonly getTurnItem: (input: {
     readonly threadId: ThreadId;
@@ -11702,6 +11733,32 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       } satisfies OrchestratorV2DispatchResult;
     }
 
+    const limit = yield* DispatchModeLimit;
+    if (limit !== undefined) {
+      const threadId = commandThreadId(command);
+      const shell = yield* projectionStore
+        .getThreadShell(threadId)
+        .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })));
+      const modes = command.type === "thread.create" ? command : shell;
+      if (modes !== null) {
+        const current = exceededDispatchModeLimit(limit, modes);
+        const effective =
+          command.type === "message.dispatch" || command.type === "thread.interaction-mode.set"
+            ? exceededDispatchModeLimit(limit, {
+                runtimeMode: modes.runtimeMode,
+                interactionMode: command.interactionMode ?? modes.interactionMode,
+              })
+            : undefined;
+        const reason = current ?? effective;
+        if (reason)
+          return yield* new OrchestratorThreadAboveModeLimitError({
+            commandId: command.commandId,
+            threadId,
+            reason,
+          });
+      }
+    }
+
     // Accepted receipts replay first. A temporary workspace seal does not reject a stable
     // command permanently; a retry may execute once the same location transaction releases it.
     if (
@@ -12113,6 +12170,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       projectionStore
         .getTimelinePage(threadId, options)
         .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause }))),
+    getTimelineMetadataPage: (threadId, options) =>
+      projectionStore
+        .getTimelineMetadataPage(threadId, options)
+        .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause }))),
+    getVisibleTurnItem: (input) =>
+      projectionStore
+        .getVisibleTurnItem(input)
+        .pipe(
+          Effect.mapError(
+            (cause) => new OrchestratorProjectionError({ threadId: input.threadId, cause }),
+          ),
+        ),
+    getVisibleTurnItemRecord: (input) =>
+      projectionStore
+        .getVisibleTurnItemRecord(input)
+        .pipe(
+          Effect.mapError(
+            (cause) => new OrchestratorProjectionError({ threadId: input.threadId, cause }),
+          ),
+        ),
     getMessageCount: (threadId) =>
       projectionStore
         .getMessageCount(threadId)

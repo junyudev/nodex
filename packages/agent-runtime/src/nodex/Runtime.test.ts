@@ -110,18 +110,20 @@ it.live("deletes a shared attachment only after its last live Session is deleted
           workspaceRoot: home,
         });
         yield* request("command.dispatch", {
-          type: "thread.create",
-          commandId: "create:source",
-          threadId: "thread:source",
-          projectId: "project:cleanup",
-          title: "Source",
-          modelSelection: { instanceId: "codex", model: "gpt-5.4" },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          branch: null,
-          worktreePath: null,
-          createdBy: "user",
-          creationSource: "web",
+          command: {
+            type: "thread.create",
+            commandId: "create:source",
+            threadId: "thread:source",
+            projectId: "project:cleanup",
+            title: "Source",
+            modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdBy: "user",
+            creationSource: "web",
+          },
         });
         const persisted = (yield* request("attachments.persist", {
           threadId: "thread:source",
@@ -140,15 +142,17 @@ it.live("deletes a shared attachment only after its last live Session is deleted
         const image = persisted.attachments[0]!;
         const file = path.join(home, "userdata", "attachments", `${image.id}.png`);
         yield* request("command.dispatch", {
-          type: "message.dispatch",
-          commandId: "send:source",
-          threadId: "thread:source",
-          messageId: "message:source",
-          text: "Look at this",
-          attachments: persisted.attachments,
-          createdBy: "user",
-          creationSource: "web",
-          dispatchMode: { type: "start_immediately" },
+          command: {
+            type: "message.dispatch",
+            commandId: "send:source",
+            threadId: "thread:source",
+            messageId: "message:source",
+            text: "Look at this",
+            attachments: persisted.attachments,
+            createdBy: "user",
+            creationSource: "web",
+            dispatchMode: { type: "start_immediately" },
+          },
         });
         const outcome = (yield* request("run.outcome", {
           threadId: "thread:source",
@@ -179,14 +183,16 @@ it.live("deletes a shared attachment only after its last live Session is deleted
           outcome.runId,
         );
         yield* request("command.dispatch", {
-          type: "thread.fork",
-          commandId: "fork:source",
-          sourceThreadId: "thread:source",
-          targetThreadId: "thread:fork",
-          sourcePoint: { type: "run", runId: outcome.runId },
-          rootPolicy: "independent_root",
-          createdBy: "user",
-          creationSource: "web",
+          command: {
+            type: "thread.fork",
+            commandId: "fork:source",
+            sourceThreadId: "thread:source",
+            targetThreadId: "thread:fork",
+            sourcePoint: { type: "run", runId: outcome.runId },
+            rootPolicy: "independent_root",
+            createdBy: "user",
+            creationSource: "web",
+          },
         });
         expect(
           yield* request("thread.fork-source", {
@@ -214,18 +220,22 @@ it.live("deletes a shared attachment only after its last live Session is deleted
 
         expect(yield* fs.exists(file)).toBe(true);
         yield* request("command.dispatch", {
-          type: "thread.delete",
-          commandId: "delete:source",
-          threadId: "thread:source",
+          command: {
+            type: "thread.delete",
+            commandId: "delete:source",
+            threadId: "thread:source",
+          },
         });
         yield* cleanupSettled("delete:source");
         // The fork still shows the captured message, so the shared file survives.
         expect(yield* fs.exists(file)).toBe(true);
 
         yield* request("command.dispatch", {
-          type: "thread.delete",
-          commandId: "delete:fork",
-          threadId: "thread:fork",
+          command: {
+            type: "thread.delete",
+            commandId: "delete:fork",
+            threadId: "thread:fork",
+          },
         });
         yield* cleanupSettled("delete:fork");
         expect(yield* fs.exists(file)).toBe(false);
@@ -272,23 +282,27 @@ it.live("reads durable accepted and rejected command receipts after runtime rest
               workspaceRoot: home,
             });
             yield* request("command.dispatch", {
-              type: "thread.create",
-              commandId: "create:one",
-              threadId: "thread:one",
-              projectId: "project:one",
-              title: "Test",
-              modelSelection: { instanceId: "codex", model: "test" },
-              runtimeMode: "full-access",
-              interactionMode: "default",
-              branch: null,
-              worktreePath: null,
-              createdBy: "user",
-              creationSource: "web",
+              command: {
+                type: "thread.create",
+                commandId: "create:one",
+                threadId: "thread:one",
+                projectId: "project:one",
+                title: "Test",
+                modelSelection: { instanceId: "codex", model: "test" },
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                branch: null,
+                worktreePath: null,
+                createdBy: "user",
+                creationSource: "web",
+              },
             });
             const rejected = yield* request("command.dispatch", {
-              type: "thread.archive",
-              commandId: "reject:one",
-              threadId: "thread:missing",
+              command: {
+                type: "thread.archive",
+                commandId: "reject:one",
+                threadId: "thread:missing",
+              },
             }).pipe(Effect.result);
             expect(rejected._tag).toBe("Failure");
             return;

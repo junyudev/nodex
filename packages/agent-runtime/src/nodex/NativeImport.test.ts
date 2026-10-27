@@ -1226,3 +1226,115 @@ it.effect.each(["mixed root", "child root"] as const)(
       assert.isFalse(copied.turnItems.some((item) => JSON.stringify(item).includes("CHILD_ONLY_")));
     }).pipe(Effect.provide(layer)),
 );
+
+for (const kind of ["imageGeneration", "dynamicToolCall", "functionCallOutput"] as const) {
+  it.effect(`copies ${kind} media into independent Runtime attachment ownership`, () =>
+    Effect.gen(function* () {
+      const payload = "AQID";
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const mediaDirectory = yield* fs.makeTempDirectoryScoped({ prefix: "native-tool-media-" });
+      const mediaPath = path.join(mediaDirectory, "tool.png");
+      yield* fs.writeFile(mediaPath, new Uint8Array([1, 2, 3]));
+      const tool: ThreadItemEntry = {
+        ...user,
+        item:
+          kind === "imageGeneration"
+            ? {
+                type: kind,
+                id: "media:source",
+                status: "completed",
+                result: payload,
+                savedPath: "/missing/generated.png",
+                revisedPrompt: null,
+                failure: null,
+              }
+            : kind === "dynamicToolCall"
+              ? {
+                  type: kind,
+                  id: "media:source",
+                  namespace: null,
+                  tool: "render",
+                  arguments: {},
+                  status: "completed",
+                  contentItems: [{ type: "inputImage", imageUrl: pathToFileURL(mediaPath).href }],
+                  success: true,
+                  durationMs: null,
+                }
+              : {
+                  type: kind,
+                  id: "media:source",
+                  name: "render",
+                  namespace: null,
+                  output: [{ type: "input_image", image_url: `data:image/png;base64,${payload}` }],
+                },
+      };
+      const source = fixture({ tool });
+      const importThread = yield* source.makeImport;
+      const target = input(`media-${kind}`);
+      yield* importThread(target);
+      yield* fs.remove(mediaPath);
+      const projection = yield* (yield* ProjectionStoreV2).getThreadProjection(target.threadId);
+      const copied = projection.turnItems.find((item) => item.type === "dynamic_tool");
+      assert.equal(copied?.type, "dynamic_tool");
+      if (!copied || copied.type !== "dynamic_tool") return;
+      assert.equal(copied.attachments?.length, 1);
+      const readAttachment = yield* Attachment.make;
+      const retained = yield* readAttachment({
+        threadId: target.threadId,
+        itemId: copied.id,
+        attachmentId: copied.attachments![0]!.id,
+      });
+      assert.isTrue(retained !== null && "path" in retained);
+      if (!retained || !("path" in retained)) return;
+      assert.deepEqual(
+        Array.from(yield* (yield* FileSystem.FileSystem).readFile(retained.path)),
+        [1, 2, 3],
+      );
+      yield* importThread(target);
+      assert.equal(
+        (yield* (yield* ProjectionStoreV2).getThreadProjection(target.threadId)).turnItems.length,
+        projection.turnItems.length,
+      );
+    }).pipe(Effect.provide(layer)),
+  );
+}
+
+it.effect("copies Native audio as independently owned bytes", () =>
+  Effect.gen(function* () {
+    const source = fixture({
+      userEntry: {
+        ...user,
+        item: {
+          type: "userMessage",
+          id: "audio:source",
+          clientId: null,
+          content: [{ type: "audio", url: "data:audio/wav;base64,AQID" }],
+        },
+      },
+    });
+    const target = input("owned-audio");
+    yield* (yield* source.makeImport)(target);
+    const projection = yield* (yield* ProjectionStoreV2).getThreadProjection(target.threadId);
+    assert.equal(projection.messages[0]?.attachments[0]?.mimeType, "audio/wav");
+    assert.equal(projection.messages[0]?.attachments[0]?.type, "file");
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("refuses opaque provider media without inventing a local path", () =>
+  Effect.gen(function* () {
+    const opaque = fixture({
+      userEntry: {
+        ...user,
+        item: {
+          type: "userMessage",
+          id: "opaque:source",
+          clientId: null,
+          content: [{ type: "image", fileId: "provider-owned-file" }],
+        },
+      },
+    });
+    const failure = yield* (yield* opaque.makeImport)(input("opaque-media")).pipe(Effect.flip);
+    assert.match(String(failure), /resource_unavailable/);
+  }).pipe(Effect.provide(layer)),
+);

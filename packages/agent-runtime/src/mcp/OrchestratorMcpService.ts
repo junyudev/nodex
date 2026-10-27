@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   CommandId,
   type RunId,
@@ -9,7 +10,6 @@ import {
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadShell,
-  type OrchestrationV2TurnItem,
   OrchestratorMcpFailure,
   type OrchestratorMcpCapabilitiesResult,
   type OrchestratorMcpDelegateTaskInput,
@@ -20,17 +20,14 @@ import {
   type OrchestratorMcpTaskCancelResult,
   type OrchestratorMcpThreadDetail,
   type OrchestratorMcpThreadListItem,
-  type OrchestratorMcpThreadReadInput,
-  type OrchestratorMcpThreadReadResult,
-  type OrchestratorMcpThreadRun,
   type OrchestratorMcpThreadSendInput,
   type OrchestratorMcpThreadSendResult,
-  type OrchestratorMcpThreadTimelineItem,
   type ProviderInteractionMode,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
   type ServerProvider,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as Clock from "effect/Clock";
@@ -47,7 +44,14 @@ import * as Stream from "effect/Stream";
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 import { subagentResultForRun } from "@t3tools/provider-core/server/subagentProjection";
-import { imageAvailabilityText } from "@t3tools/provider-core/server/handoffBudget";
+import { turnItemText } from "../orchestration-v2/turnItemContent.ts";
+export { turnItemText } from "../orchestration-v2/turnItemContent.ts";
+import { readHistory } from "../nodex/HistoryRead.ts";
+import { makeHistoryReadCoverage } from "../nodex/HistoryReadCoverage.ts";
+import { taskHistorySource, taskReadView } from "./TaskHistoryRead.ts";
+import { runtimeHistoryContent } from "../nodex/RuntimeHistoryContent.ts";
+import type { ThreadReadEvidence } from "../nodex/history-contracts.ts";
+import type { TaskReadInput, TaskReadResult } from "./toolkits/task/tools.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { isSnoozed } from "../orchestration-v2/threadSnoozePolicy.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -69,7 +73,6 @@ const TASK_WAKE_EVENTS = [
   { thread: "child", eventType: "provider-thread.updated" },
 ] as const;
 const DEFAULT_THREAD_READ_LIMIT = 50;
-const DEFAULT_THREAD_RUN_LIMIT = 10;
 const DEFAULT_THREAD_ITEM_MAX_CHARS = 20_000;
 
 interface ResolvedTarget {
@@ -82,6 +85,15 @@ type TerminalTaskStatus = Extract<
 >;
 
 export interface OrchestratorMcpServiceShape {
+  /** Only complete, canonically verified final results consume a direct child's delivery. */
+  readonly acknowledgeRead: (
+    scope: McpInvocationScope,
+    input: {
+      readonly threadId: ThreadId;
+      readonly callerRunId?: RunId;
+      readonly items: readonly ThreadReadEvidence[];
+    },
+  ) => Effect.Effect<{ readonly acknowledged: number }, OrchestratorMcpFailure>;
   readonly capabilities: (
     scope: McpInvocationScope,
   ) => Effect.Effect<OrchestratorMcpCapabilitiesResult, OrchestratorMcpFailure>;
@@ -109,8 +121,8 @@ export interface OrchestratorMcpServiceShape {
   ) => Effect.Effect<ThreadId, OrchestratorMcpFailure>;
   readonly readThread: (
     scope: McpInvocationScope,
-    input: OrchestratorMcpThreadReadInput,
-  ) => Effect.Effect<OrchestratorMcpThreadReadResult, OrchestratorMcpFailure>;
+    input: TaskReadInput & { readonly threadId: ThreadId },
+  ) => Effect.Effect<TaskReadResult, OrchestratorMcpFailure>;
   readonly sendToThread: (
     scope: McpInvocationScope,
     input: OrchestratorMcpThreadSendInput,
@@ -350,7 +362,7 @@ function taskResultTransfer(
   );
 }
 
-function pageIncludesTerminalTaskResult(input: {
+function terminalTaskResultInPage(input: {
   readonly parent: Pick<OrchestrationV2ThreadProjection, "thread" | "contextTransfers">;
   readonly page: ReadonlyArray<OrchestrationV2ThreadProjection["visibleTurnItems"][number]>;
   readonly task: OrchestrationV2Subagent;
@@ -359,26 +371,26 @@ function pageIncludesTerminalTaskResult(input: {
     "thread" | "runs" | "contextTransfers" | "messages" | "turnItems"
   >;
   readonly maxChars: number;
-}): boolean {
+}) {
   const transfer = taskResultTransfer(input.parent, input.target, input.task);
-  if (transfer === undefined) return false;
+  if (transfer === undefined) return undefined;
   const run =
     transfer.sourcePoint.runId === undefined
       ? delegatedTaskRun(input.target, input.task)
       : input.target.runs.find((run) => run.id === transfer.sourcePoint.runId);
-  if (run === undefined || !isTerminalTaskStatus(taskStatusForRun(run))) return false;
+  if (run === undefined || !isTerminalTaskStatus(taskStatusForRun(run))) return undefined;
 
   const result = subagentResultForRun(input.target, run);
-  if (result.messageId === null && result.turnItemId === null) return false;
+  if (result.messageId === null && result.turnItemId === null) return undefined;
 
-  return input.page.some((row) => {
-    if (row.sourceThreadId !== input.target.thread.id) return false;
+  return input.page.find((row) => {
+    if (row.sourceThreadId !== input.target.thread.id) return undefined;
     const matchesResult =
       (result.turnItemId !== null && row.sourceItemId === result.turnItemId) ||
       (result.messageId !== null &&
         row.item.type === "assistant_message" &&
         row.item.messageId === result.messageId);
-    if (!matchesResult) return false;
+    if (!matchesResult) return undefined;
 
     const text = turnItemText(row.item);
     return text !== null && text.length <= input.maxChars;
@@ -534,155 +546,8 @@ function threadDetail(
   };
 }
 
-function threadRun(run: OrchestrationV2Run): OrchestratorMcpThreadRun {
-  return {
-    runId: run.id,
-    ordinal: run.ordinal,
-    status: run.status,
-    providerInstanceId: run.modelSelection.instanceId,
-    model: run.modelSelection.model,
-    requestedAt: DateTime.formatIso(run.requestedAt),
-    startedAt: run.startedAt === null ? null : DateTime.formatIso(run.startedAt),
-    completedAt: run.completedAt === null ? null : DateTime.formatIso(run.completedAt),
-  };
-}
-
-function jsonText(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-export function turnItemText(item: OrchestrationV2TurnItem): string | null {
-  const text = turnItemContentText(item);
-  const images = imageAvailabilityText(item);
-  return images.length === 0 ? text : [text, ...images].filter(Boolean).join("\n");
-}
-
-function turnItemContentText(item: OrchestrationV2TurnItem): string | null {
-  switch (item.type) {
-    case "notification":
-      return [item.summary, item.detail].filter((part) => part !== undefined).join("\n");
-    case "user_message":
-    case "assistant_message":
-    case "reasoning":
-      return item.text;
-    case "proposed_plan":
-      return item.markdown;
-    case "todo_list":
-      return [item.explanation, ...item.steps.map((step) => `[${step.status}] ${step.text}`)]
-        .filter((line): line is string => line !== undefined)
-        .join("\n");
-    case "user_input_request":
-      return jsonText(item.questions);
-    case "file_change":
-      return [
-        ...(item.changes?.length
-          ? item.changes.flatMap((change) => [
-              [
-                change.operation,
-                change.oldPath === undefined ? change.path : `${change.oldPath} -> ${change.path}`,
-                change.additions === undefined
-                  ? undefined
-                  : `+${change.additions} -${change.deletions ?? 0}`,
-              ]
-                .filter((part) => part !== undefined)
-                .join(" "),
-              change.diff,
-            ])
-          : [item.fileName]),
-        item.diffStr,
-      ]
-        .filter((line): line is string => line !== undefined)
-        .join("\n");
-    case "command_execution":
-      return [`$ ${item.input}`, item.output]
-        .filter((line): line is string => line !== undefined)
-        .join("\n");
-    case "file_search":
-      return jsonText({ pattern: item.pattern, results: item.results });
-    case "web_search":
-      return jsonText({ patterns: item.patterns, results: item.results });
-    case "approval_request":
-      return item.prompt ?? item.requestKind;
-    case "checkpoint":
-      return jsonText(item.files);
-    case "run_interrupt_request":
-    case "run_interrupt_result":
-    case "system_notice":
-      return item.message;
-    case "error":
-      return item.failure.message;
-    case "compaction":
-      return item.summary ?? null;
-    case "handoff":
-      return item.summary ?? `${item.strategy} handoff to ${item.toProviderInstanceId}`;
-    case "fork":
-      return "Forked into a new conversation.";
-    case "context_cleared":
-      return "The person cleared the context here; later messages started fresh.";
-    case "thread_created":
-      return `Created a conversation with ${item.targetProviderInstanceId} (${item.targetModel}).`;
-    case "secret_request":
-      return `Asked the user for ${item.label}: ${item.secretStatus}.`;
-    case "subagent":
-      return item.result ?? item.progress ?? item.prompt;
-    case "dynamic_tool":
-      return jsonText({ toolName: item.toolName, input: item.input, output: item.output });
-    case "hook_run":
-      return [`${item.eventName} hook ${item.hookStatus}`, item.statusMessage]
-        .filter((line): line is string => line !== null)
-        .join("\n");
-    case "approval_review":
-      return [`${item.actionSummary}: ${item.decision}`, item.rationale]
-        .filter((line): line is string => line !== null)
-        .join("\n");
-  }
-}
-
-function timelineItem(input: {
-  readonly row: OrchestrationV2ThreadProjection["visibleTurnItems"][number];
-  readonly maxChars: number;
-  readonly textOffset?: number;
-  readonly messagesByThreadId: ReadonlyMap<ThreadId, OrchestrationV2ThreadProjection["messages"]>;
-}): OrchestratorMcpThreadTimelineItem {
-  const text = turnItemText(input.row.item);
-  const offset = input.textOffset ?? 0;
-  const end = offset + input.maxChars;
-  const textTruncated = text !== null && text.length > end;
-  const messageId =
-    input.row.item.type === "user_message" || input.row.item.type === "assistant_message"
-      ? input.row.item.messageId
-      : null;
-  const message =
-    messageId === null
-      ? undefined
-      : input.messagesByThreadId
-          .get(input.row.sourceThreadId)
-          ?.find((candidate) => candidate.id === messageId);
-  return {
-    position: input.row.position,
-    visibility: input.row.visibility,
-    sourceThreadId: input.row.sourceThreadId,
-    itemId: input.row.sourceItemId,
-    ...(input.row.item.type === "subagent" ? { subagentId: input.row.item.subagentId } : {}),
-    runId: input.row.item.runId,
-    messageId,
-    createdBy: message?.createdBy ?? null,
-    creationSource: message?.creationSource ?? null,
-    type: input.row.item.type,
-    status: input.row.item.status,
-    title: input.row.item.title,
-    text: text === null ? null : text.slice(offset, end),
-    textTruncated,
-    nextTextOffset: textTruncated ? end : null,
-    updatedAt: DateTime.formatIso(input.row.item.updatedAt),
-  };
-}
-
-const make = Effect.gen(function* () {
+export const make = Effect.gen(function* () {
+  const coverRead = makeHistoryReadCoverage();
   const crypto = yield* Crypto.Crypto;
   const threadManagement = yield* ThreadManagementService.ThreadManagementService;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
@@ -1001,6 +866,7 @@ const make = Effect.gen(function* () {
     waitTimedOut = false,
     acknowledgeTerminal = false,
     acknowledgementOperation = "task-status-acknowledge",
+    observedByRunId?: RunId,
   ): Effect.Effect<OrchestratorMcpDelegateTaskResult, OrchestratorMcpFailure> =>
     Effect.gen(function* () {
       yield* requireCapability(scope);
@@ -1176,7 +1042,8 @@ const make = Effect.gen(function* () {
       ) {
         const admission = yield* ExecutionHost.McpTurnAdmission;
         const observingRunId =
-          admission?.actor?.threadId === parentId ? admission.actor.runId : null;
+          observedByRunId ??
+          (admission?.actor?.threadId === parentId ? admission.actor.runId : null);
         const acknowledgementRequestKey = yield* requestKey(undefined);
         yield* threadManagement
           .dispatch({
@@ -1237,7 +1104,162 @@ const make = Effect.gen(function* () {
       );
     }).pipe(Effect.timeoutOption(Duration.millis(timeoutMs)), Effect.map(Option.flatten));
 
+  const acknowledgeRead: OrchestratorMcpServiceShape["acknowledgeRead"] = Effect.fn(
+    "OrchestratorMcpService.acknowledgeRead",
+  )(function* (scope, input) {
+    if (!scope.thread || input.items.length === 0) return { acknowledged: 0 };
+    const { parent: callerParent, target: targetMetadata } = yield* loadScopedThread(
+      scope,
+      input.threadId,
+    );
+    if (
+      !callerParent ||
+      targetMetadata.thread.lineage.parentThreadId !== callerParent.thread.id ||
+      targetMetadata.thread.lineage.relationshipToParent !== "subagent"
+    )
+      return { acknowledged: 0 };
+    const callerRun = yield* sourceRun(scope as McpThreadInvocationScope, input.callerRunId);
+    if (!callerRun) return { acknowledged: 0 };
+    const verified: Array<{ readonly id: string; readonly runId: RunId | null }> = [];
+    for (const evidence of input.items.slice(0, 100)) {
+      if (evidence.sourceThreadId !== input.threadId) continue;
+      const record = yield* threadManagement
+        .getVisibleTurnItemRecord({
+          threadId: input.threadId,
+          sourceThreadId: input.threadId,
+          itemId: TurnItemId.make(evidence.itemId),
+        })
+        .pipe(Effect.mapError(threadManagementFailure));
+      if (!record || record.visibility !== "local") continue;
+      const content = yield* runtimeHistoryContent(record, {
+        format: evidence.format,
+        offset: 0,
+        maxChars: 0,
+      }).pipe(Effect.mapError(threadManagementFailure));
+      const totalChars =
+        content.totalChars +
+        (evidence.format === "json" ? `{"source":"runtime","item":`.length + 1 : 0);
+      if (
+        !coverRead({
+          callerThreadId: scope.thread.threadId,
+          callerRunId: callerRun.id,
+          targetThreadId: input.threadId,
+          targetRunId: record.item.runId,
+          evidence,
+          currentVersion: content.contentVersion,
+          totalChars,
+          now: yield* Clock.currentTimeMillis,
+        })
+      )
+        continue;
+      verified.push({ id: record.sourceItemId, runId: record.item.runId });
+    }
+    if (verified.length === 0) return { acknowledged: 0 };
+    let acknowledged = 0;
+    const runIds = [
+      ...new Set(
+        verified
+          .map((item) => item.runId)
+          .filter((id): id is RunId => id !== null)
+          .map((id) => id as RunId),
+      ),
+    ];
+    const target = {
+      ...targetMetadata,
+      ...(yield* threadManagement
+        .getThreadRecords(input.threadId, ["runs", "contextTransfers"], {
+          runIds,
+          contextTransferRunIds: runIds,
+          contextTransferLimit: 16,
+        })
+        .pipe(Effect.mapError(threadManagementFailure))),
+    };
+    const taskIds = [
+      ...new Set([
+        ...(target.thread.forkedFrom?.type === "node" ? [target.thread.forkedFrom.nodeId] : []),
+        ...target.runs.flatMap((run) =>
+          run.delegatedTaskId === undefined ? [] : [run.delegatedTaskId],
+        ),
+      ]),
+    ];
+    const parent = {
+      ...callerParent,
+      ...(yield* threadManagement
+        .getThreadRecords(callerParent.thread.id, ["subagents", "contextTransfers"], {
+          subagentIds: taskIds,
+          contextTransferThreadIds: [input.threadId],
+          contextTransferRunIds: runIds,
+          contextTransferLimit: 16,
+        })
+        .pipe(Effect.mapError(threadManagementFailure))),
+    };
+    const returnedRunIds = new Set<RunId | null>(
+      verified.map((item) => (item.runId === null ? null : (item.runId as RunId))),
+    );
+    for (const task of directAppOwnedChildTasks(parent, target, returnedRunIds)) {
+      const transfer = taskResultTransfer(parent, target, task);
+      const runId = transfer?.sourcePoint.runId ?? delegatedTaskRun(target, task)?.id;
+      const resultRecords = yield* threadManagement
+        .getThreadRecords(input.threadId, ["messages", "turnItems"], {
+          messageRoles: ["assistant"],
+          messageRunIds: runId === undefined ? [] : [runId],
+          turnItemRunIds: runId === undefined ? [] : [runId],
+          turnItemTypes: ["assistant_message", "error"],
+        })
+        .pipe(Effect.mapError(threadManagementFailure));
+      const page = resultRecords.turnItems
+        .filter((item) => verified.some((selected) => selected.id === item.id))
+        .map((item) => ({
+          position: 0,
+          sourceThreadId: input.threadId,
+          sourceItemId: item.id,
+          visibility: "local" as const,
+          item,
+        }));
+      const terminal = terminalTaskResultInPage({
+        parent,
+        page,
+        task,
+        target: { ...target, ...resultRecords },
+        maxChars: Number.MAX_SAFE_INTEGER,
+      });
+      if (terminal) {
+        // Result selection can race a replacement; recheck the exact admitted payload last.
+        const proof = input.items.find((evidence) => terminal.sourceItemId === evidence.itemId);
+        if (!proof) continue;
+        const current = yield* threadManagement
+          .getVisibleTurnItemRecord({
+            threadId: input.threadId,
+            sourceThreadId: input.threadId,
+            itemId: TurnItemId.make(proof.itemId),
+          })
+          .pipe(Effect.mapError(threadManagementFailure));
+        if (
+          !current ||
+          (yield* runtimeHistoryContent(current, {
+            format: proof.format,
+            offset: 0,
+            maxChars: 0,
+          }).pipe(Effect.mapError(threadManagementFailure))).contentVersion !== proof.contentVersion
+        )
+          continue;
+        yield* sourceRun(scope as McpThreadInvocationScope, callerRun.id);
+        yield* readTask(
+          scope as McpThreadInvocationScope,
+          task.id,
+          false,
+          true,
+          "thread-read-acknowledge",
+          callerRun.id,
+        );
+        acknowledged++;
+      }
+    }
+    return { acknowledged };
+  });
+
   return OrchestratorMcpService.of({
+    acknowledgeRead,
     capabilities: (scope) =>
       Effect.gen(function* () {
         const { parent, defaults } = yield* loadCaller(scope);
@@ -1553,142 +1575,78 @@ const make = Effect.gen(function* () {
           shell,
           counts,
         } = yield* loadReadableThread(scope, input.threadId);
-        const view = input.view ?? "messages";
-        const afterPosition = input.afterPosition ?? -1;
-        const limit = input.limit ?? DEFAULT_THREAD_READ_LIMIT;
-        const maxChars = input.maxCharsPerItem ?? DEFAULT_THREAD_ITEM_MAX_CHARS;
-        const timeline = yield* threadManagement
-          .getTimelinePage(input.threadId, {
-            afterPosition,
-            limit,
-            view,
-            ...(input.itemId === undefined ? {} : { itemId: input.itemId }),
-          })
+        const summaryRunIds = [shell.activeRunId, shell.latestRunId].filter(
+          (id): id is RunId => id !== null,
+        );
+        const summary = yield* threadManagement
+          .getThreadRecords(input.threadId, ["runs"], { runIds: summaryRunIds })
           .pipe(Effect.mapError(threadManagementFailure));
-        const page = timeline.items;
-        const runIds = [
-          ...new Set(
-            [shell.activeRunId, shell.latestRunId, ...page.map((row) => row.item.runId)].filter(
-              (id): id is RunId => id !== null,
-            ),
-          ),
-        ];
-        const target = {
-          ...targetMetadata,
-          ...(yield* threadManagement
-            .getThreadRecords(input.threadId, ["runs", "contextTransfers"], {
-              runIds,
-              contextTransferRunIds: runIds,
-              contextTransferLimit: 16,
-            })
-            .pipe(Effect.mapError(threadManagementFailure))),
+        const timeline = yield* threadManagement
+          .getTimelineMetadataPage(input.threadId, { view: "activity", limit: 1 })
+          .pipe(Effect.mapError(threadManagementFailure));
+        const detail = threadDetail(
+          { ...targetMetadata, runs: summary.runs },
+          timeline.totalItems,
+          shell,
+          yield* Clock.currentTimeMillis,
+          counts,
+        );
+        const conversation: TaskReadResult["conversation"] = {
+          taskId: input.taskId ?? null,
+          title: detail.title,
+          status: detail.status,
+          providerInstanceId: detail.providerInstanceId,
+          model: detail.model,
+          interactionMode: detail.interactionMode,
+          activeRunId: detail.activeRunId,
+          latestRunId: detail.latestRunId,
+          runCount: detail.runCount,
+          itemCount: detail.itemCount,
+          pendingRequestCount: detail.pendingRequestCount,
         };
-        const taskIds = [
-          ...new Set([
-            ...(target.thread.forkedFrom?.type === "node" ? [target.thread.forkedFrom.nodeId] : []),
-            ...target.runs.flatMap((run) =>
-              run.delegatedTaskId === undefined ? [] : [run.delegatedTaskId],
-            ),
-          ]),
-        ];
-        const parent =
-          callerParent === undefined
-            ? undefined
-            : {
-                ...callerParent,
-                ...(yield* threadManagement
-                  .getThreadRecords(callerParent.thread.id, ["subagents", "contextTransfers"], {
-                    subagentIds: taskIds,
-                    contextTransferThreadIds: [input.threadId],
-                    contextTransferRunIds: runIds,
-                    contextTransferLimit: 16,
-                  })
-                  .pipe(Effect.mapError(threadManagementFailure))),
-              };
-        const messageIdsByThread = new Map<ThreadId, Array<MessageId>>();
-        for (const row of page) {
-          if (row.item.type !== "user_message" && row.item.type !== "assistant_message") continue;
-          const ids = messageIdsByThread.get(row.sourceThreadId) ?? [];
-          ids.push(row.item.messageId);
-          messageIdsByThread.set(row.sourceThreadId, ids);
-        }
-        const sourceMessages = yield* Effect.forEach(
-          [...messageIdsByThread],
-          ([threadId, messageIds]) =>
-            threadManagement.getThreadRecords(threadId, ["messages"], { messageIds }).pipe(
-              Effect.map((records) => [threadId, records.messages] as const),
-              Effect.mapError(threadManagementFailure),
-            ),
-          { concurrency: 1 },
-        );
-        const messagesByThreadId = new Map(sourceMessages);
-        const returnedRunIds = new Set(
-          page
-            .filter((row) => row.sourceThreadId === target.thread.id)
-            .map((row) => row.item.runId),
-        );
-        const tasks =
-          parent === undefined ? [] : directAppOwnedChildTasks(parent, target, returnedRunIds);
-        if (
-          parent !== undefined &&
-          scope.thread !== undefined &&
-          tasks.length > 0 &&
-          (input.textOffset ?? 0) === 0
-        ) {
-          for (const task of tasks) {
-            const transfer = taskResultTransfer(parent, target, task);
-            const resultRunId = transfer?.sourcePoint.runId ?? delegatedTaskRun(target, task)?.id;
-            const resultRunIds = resultRunId === undefined ? [] : [resultRunId];
-            const resultRecords = yield* threadManagement
-              .getThreadRecords(target.thread.id, ["messages", "turnItems"], {
-                messageRoles: ["assistant"],
-                messageRunIds: resultRunIds,
-                turnItemRunIds: resultRunIds,
-                turnItemTypes: ["assistant_message", "error"],
-              })
-              .pipe(Effect.mapError(threadManagementFailure));
-            if (
-              pageIncludesTerminalTaskResult({
-                parent,
-                page,
-                task,
-                target: { ...target, ...resultRecords },
-                maxChars,
-              })
-            ) {
-              yield* readTask(
-                scope as McpThreadInvocationScope,
-                task.id,
-                false,
-                true,
-                "thread-read-acknowledge",
-              );
-            }
-          }
-        }
-        return {
-          thread: threadDetail(
-            target,
-            timeline.totalItems,
-            shell,
-            yield* Clock.currentTimeMillis,
-            counts,
-          ),
-          recentRuns: target.runs
-            .toSorted((left, right) => right.ordinal - left.ordinal)
-            .slice(0, input.runLimit ?? DEFAULT_THREAD_RUN_LIMIT)
-            .map(threadRun),
-          items: page.map((row) =>
-            timelineItem({
-              row,
-              maxChars,
-              messagesByThreadId,
-              ...(input.itemId === undefined ? {} : { textOffset: input.textOffset ?? 0 }),
+        const binding = createHash("sha256")
+          .update(
+            JSON.stringify({
+              environmentId: scope.environmentId,
+              namespace: scope.requestNamespace,
+              issuedAt: scope.issuedAt,
+              caller: scope.thread ?? scope.client,
+              taskId: input.taskId ?? null,
             }),
-          ),
-          nextPosition: page.at(-1)?.position ?? null,
-          hasMore: timeline.hasMore,
-        } satisfies OrchestratorMcpThreadReadResult;
+          )
+          .digest("base64url");
+        const { history, admitted } = yield* readHistory({
+          request: {
+            ownerId: input.threadId,
+            ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+            ...(input.itemId === undefined ? {} : { itemId: input.itemId }),
+            ...(input.textOffset === undefined ? {} : { textOffset: input.textOffset }),
+            ...(input.view === undefined ? {} : { view: input.view }),
+            ...(input.order === undefined ? {} : { order: input.order }),
+            limit: input.limit ?? DEFAULT_THREAD_READ_LIMIT,
+            maxCharsPerItem: input.maxCharsPerItem ?? DEFAULT_THREAD_ITEM_MAX_CHARS,
+          },
+          binding,
+          source: taskHistorySource(threadManagement, input.threadId),
+          wrap: (value) =>
+            value.availability === "available"
+              ? taskReadView({ conversation, items: value.items, page: value.page })
+              : { conversation, history: value },
+        }).pipe(Effect.mapError((error) => failure(error.reason, error.message)));
+        if (history.availability !== "available")
+          return yield* failure("history_unavailable", "Task history is unavailable");
+        const result = taskReadView({
+          conversation,
+          items: history.items,
+          page: history.page,
+        }) as TaskReadResult;
+        if (callerParent === undefined || scope.thread === undefined || admitted.length === 0)
+          return result;
+        yield* acknowledgeRead(scope, {
+          threadId: input.threadId,
+          items: admitted,
+        });
+        return result;
       }),
     stopWorkflow: (callerScope, subagentId) =>
       Effect.gen(function* () {

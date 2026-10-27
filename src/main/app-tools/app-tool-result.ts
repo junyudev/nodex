@@ -19,10 +19,20 @@ export const toolSuccess = (
     content: [{ type: "text", text: JSON.stringify(value) }],
     structuredContent: value,
   };
-  if (Buffer.byteLength(JSON.stringify(result), "utf8") > Math.min(maxBytes, 768 * 1024))
+  if (toolResultBytes(value) > Math.min(maxBytes, 768 * 1024))
     return toolFailure(
       "result_too_large",
       "The complete result exceeds the tool budget. Narrow the query; no partial result was returned.",
     );
   return result;
 };
+
+/** Admission and delivery charge the same complete MCP envelope. */
+export const toolResultBytes = (value: Record<string, unknown>): number =>
+  Buffer.byteLength(
+    JSON.stringify({
+      content: [{ type: "text", text: JSON.stringify(value) }],
+      structuredContent: value,
+    }),
+    "utf8",
+  );

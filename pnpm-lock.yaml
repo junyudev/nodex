@@ -1362,6 +1362,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.1
         version: 1.32.1(supports-color@10.2.2)(zod@4.6.6)
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../agent-runtime/vendor/shared
       zod:
         specifier: 4.6.6
         version: 4.6.6

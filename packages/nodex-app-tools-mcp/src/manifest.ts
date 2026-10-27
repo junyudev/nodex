@@ -1,5 +1,12 @@
 import { z } from "zod";
 import definition from "../desktop-mcp.json";
+export {
+  APP_TOOLS_CALL_TIMEOUT_MS,
+  APP_TOOLS_PIPE_REPLY_GRACE_MS,
+  APP_TOOLS_PROVIDER_TIMEOUT_MS,
+  appToolsHostCallTimeoutMs,
+  sessionWaitLimits,
+} from "@t3tools/shared/nodexAppMcp";
 
 const approvalMode = z.enum(["approve", "prompt", "deny"]);
 const manifestSchema = z.strictObject({
@@ -18,7 +25,5 @@ const manifestSchema = z.strictObject({
   }),
 });
 
-/** The bundled definition is shared by the Main launch adapter and standalone timeout. */
+/** The bundled definition advertises enough time for the longest supported tool call. */
 export const appToolsManifest = manifestSchema.parse(definition);
-export const APP_TOOLS_CALL_TIMEOUT_MS =
-  appToolsManifest.mcpServers.nodex_app.tool_timeout_sec * 1000;

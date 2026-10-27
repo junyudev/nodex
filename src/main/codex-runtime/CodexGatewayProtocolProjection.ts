@@ -1,3 +1,4 @@
+import type { ThreadItemsReadResponse } from "@nodex/codex-app-server-protocol/v2/ThreadItemsReadResponse";
 import type {
   ClientRequestParamsByMethod,
   ClientRequestResponsesByMethod,
@@ -23,6 +24,11 @@ export const projectCodexGatewayThreadReadThread = (thread: CodexGatewayThreadRe
 export const projectCodexGatewayThreadItemsList = (
   page: ClientRequestResponsesByMethod["thread/items/list"],
 ): ThreadItemsListResponse => page as unknown as ThreadItemsListResponse;
+
+/** Bounded item lookup uses the same generated JSON grammar as persisted item pages. */
+export const projectCodexGatewayThreadItemsRead = (
+  response: ClientRequestResponsesByMethod["thread/items/read"],
+): ThreadItemsReadResponse => response as unknown as ThreadItemsReadResponse;
 
 export type CodexGatewayThreadResumeResponse = ClientRequestResponsesByMethod["thread/resume"];
 

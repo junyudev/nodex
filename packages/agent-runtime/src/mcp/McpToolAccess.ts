@@ -1,3 +1,4 @@
+import { withMcpTurnLifetime } from "@t3tools/provider-core/server/ExecutionHost";
 import {
   OrchestratorMcpFailure,
   type ProviderInteractionMode,
@@ -59,7 +60,8 @@ export class Declaration<out Handler> {
     this.#handle = handle;
   }
   static {
-    declare = (handle) => new Declaration(builtHere, handle);
+    declare = (handle) =>
+      new Declaration(builtHere, (params) => withMcpTurnLifetime(handle(params)));
     checkedHandler = Struct.lambda<CheckedHandler>((declaration) => declaration.#handle);
   }
 }

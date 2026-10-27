@@ -29,12 +29,14 @@ authentication are not transferred. History capture does not replay tool calls o
 request. An unsupported item or exceeded capture budget reports a failure rather than claiming
 that a partial import is complete.
 
-Readable user images, local images in assistant Markdown and image-view files are copied into
-Runtime-owned storage. Relative image references use the source conversation's captured directory.
+Readable user images, local images in assistant Markdown, image-view files, generated images
+and supported tool media are copied into Runtime-owned storage; audio is retained as a file
+attachment. Relative image references use the source conversation's captured directory.
 A historical image whose original file is missing retains an explicit unavailable-image record
 in its message or activity. Missing image bytes do not block import; the transcript and
 continuation context identify the gap, and Nodex does not claim to recover or display the original
-image. Other unsupported media still reports an import failure.
+image. An opaque provider file identity or remote-only URL without an authorized byte exporter
+reports `resource_unavailable`; other unsupported media reports an import failure.
 
 The source retains its identity, history, workspace and lifecycle. Importing, continuing, renaming,
 archiving or deleting the Nodex copy does not mutate the source. The imported chat remains readable
@@ -64,8 +66,15 @@ be copied. Subagent histories are not independent import sources.
 
 ## Existing connected history
 
-Previously connected native conversations retain their saved identity and passive history reader.
-They are not silently converted into independent copies or allowed to execute against the source.
+Previously connected local native conversations retain their saved identity and passive history
+reader until an explicit Session message requests continuation. A settled source is imported through
+the same history and media owners, then Core atomically adopts the existing Session into the Runtime.
+Its placement, title and Page links remain intact. An active source reports `active_source_busy`
+before import or execution; unreadable required media leaves the Native binding intact. Retrying the
+same message resumes the same adoption, and later passive discovery cannot recreate that connection.
+The Runtime is the sole local execution writer after adoption. Explicit remote connections continue
+through their retained Native execution owner. The Session message contract is defined in
+[Agent Interface Behavior](agent-interface-behavior.md).
 New imports use the Runtime copy path; Settings no longer offers a separate read-only Connect action.
 Reopening an existing connection follows the bounded presentation rules in
 [Agent Backend Behavior](agent-backend-behavior.md) and
@@ -97,8 +106,8 @@ Account changes retain the history home. Configuration and launch precedence are
 ## Copying Agent setup
 
 Copy setup in Settings > Agents > Codex copies supported configuration, instructions, skills, hooks and related Agent
-resources to Codex. It does not offer or import conversations. Conversation
-history enters Nodex exclusively through the shared independent-copy workflow.
+resources to Codex. It does not offer or import conversations. New conversation imports use the
+shared independent-copy workflow.
 
 Codex setup is the native configuration also used by the Codex app and CLI. Copying setup preserves
 conflicting destination values and never copies authentication secrets. Setup scanning and applying

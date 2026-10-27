@@ -1,3 +1,4 @@
+import { resolveAutomationsRouteState } from "./workbench-automations-routes";
 import type { PanelId } from "../../shared/types";
 import {
   createDefaultWorkbenchLayoutSnapshot,
@@ -127,6 +128,7 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
     focusedPanelGroup: null,
   };
   let commitSnapshot: CommitSnapshot | null = null;
+  let sessionOpened: ((sessionId: string) => void) | null = null;
   const resolvedDatabaseViews = new Map<
     string,
     { readonly token: object; readonly identity: string; readonly read: () => string }
@@ -172,6 +174,22 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
           : null,
       };
     }, expectedPresentationRevision);
+  // Only foreground user navigation publishes usage; restoration and background Scene updates do not.
+  const navigateWindow = (update: (state: WorkbenchWindowState) => WorkbenchWindowState) => {
+    const foregroundSession = (location: WorkbenchLocation): string | null => {
+      if (location.kind === "session") return location.sessionId;
+      if (location.kind === "automations" && location.returnTo.kind === "session") {
+        const { runSessionId } = resolveAutomationsRouteState(location.path);
+        return runSessionId === location.returnTo.sessionId ? runSessionId : null;
+      }
+      return null;
+    };
+    const previous = foregroundSession(read().windowState.location);
+    const next = updateWindow(update);
+    const sessionId = foregroundSession(next.windowState.location);
+    if (sessionId !== null && sessionId !== previous) sessionOpened?.(sessionId);
+    return next;
+  };
   const setFocusedPanelGroup = (focus: WorkbenchFocusedPanelGroup | null) =>
     transition((current) => {
       const previous = current.focusedPanelGroup;
@@ -255,21 +273,23 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
           : { ...current, ephemeralPanels };
       }, expectedPresentationRevision),
     navigate: (location: WorkbenchLocation, options?: { readonly record?: boolean }) =>
-      updateWindow((state) => navigateWorkbenchWindow(state, location, options)),
-    navigateBack: () => updateWindow(navigateBackInWorkbenchWindow),
-    navigateForward: () => updateWindow(navigateForwardInWorkbenchWindow),
+      (options?.record === false ? updateWindow : navigateWindow)((state) =>
+        navigateWorkbenchWindow(state, location, options),
+      ),
+    navigateBack: () => navigateWindow(navigateBackInWorkbenchWindow),
+    navigateForward: () => navigateWindow(navigateForwardInWorkbenchWindow),
     selectSession: (session: WorkbenchSessionCatalogEntry) =>
-      updateWindow((state) => selectWorkbenchSession(state, session)),
+      navigateWindow((state) => selectWorkbenchSession(state, session)),
     presentScheduledSession: (input: Parameters<typeof presentWorkbenchScheduledSession>[1]) =>
-      updateWindow((state) => presentWorkbenchScheduledSession(state, input)),
+      navigateWindow((state) => presentWorkbenchScheduledSession(state, input)),
     selectProject: (projectId: string | null) =>
       updateWindow((state) => selectWorkbenchProject(state, projectId)),
     selectLibrary: () => updateWindow(selectWorkbenchLibrary),
     selectInbox: () => updateWindow(selectWorkbenchInbox),
-    selectHome: () => updateWindow(selectWorkbenchHome),
+    selectHome: () => navigateWindow(selectWorkbenchHome),
     openRoute: (route: Parameters<typeof openWorkbenchRoute>[1]) =>
       updateWindow((state) => openWorkbenchRoute(state, route)),
-    closeRoute: () => updateWindow(closeWorkbenchRoute),
+    closeRoute: () => navigateWindow(closeWorkbenchRoute),
     setDatabaseSearch: (projectId: string, value: string) =>
       updateWindow((state) => setWorkbenchDatabaseSearch(state, projectId, value)),
     setScene: (
@@ -335,13 +355,21 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
       owner: WorkbenchSceneOwner,
       update: (previous: WorkbenchSceneSnapshot | undefined) => WorkbenchSceneSnapshot,
       location: Parameters<typeof updateWorkbenchSceneAndNavigate>[3],
-    ) => updateWindow((state) => updateWorkbenchSceneAndNavigate(state, owner, update, location)),
+    ) => navigateWindow((state) => updateWorkbenchSceneAndNavigate(state, owner, update, location)),
     removeScene: (owner: WorkbenchSceneOwner) =>
       updateWindow((state) => removeWorkbenchScene(state, owner)),
     reconcileMissingSession: (sessionId: string) =>
       updateWindow((state) => reconcileMissingWorkbenchSession(state, sessionId)),
     replaceFromSnapshot: (snapshot: WorkbenchLayoutSnapshot) =>
       updateWindow((state) => replaceWorkbenchWindowSnapshot(state, snapshot)),
+    registerSessionOpened: (record: (sessionId: string) => void) => {
+      if (sessionOpened && sessionOpened !== record)
+        throw new Error("Session usage already has a writer");
+      sessionOpened = record;
+      return () => {
+        if (sessionOpened === record) sessionOpened = null;
+      };
+    },
     registerPersistenceCommit: (commit: CommitSnapshot) => {
       if (commitSnapshot && commitSnapshot !== commit)
         throw new Error("Workbench persistence already has a writer");

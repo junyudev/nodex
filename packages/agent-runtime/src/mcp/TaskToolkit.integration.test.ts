@@ -4,6 +4,7 @@ import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv
 import type { JsonSchemaType } from "@modelcontextprotocol/sdk/validation";
 import {
   CommandId,
+  EventId,
   EnvironmentId,
   MessageId,
   type ModelSelection,
@@ -56,6 +57,12 @@ import {
 import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { layerToolkit } from "../nodex/Mcp.ts";
+import * as OrchestratorMcp from "./OrchestratorMcpService.ts";
+import { runtimeHistoryContent } from "../nodex/RuntimeHistoryContent.ts";
+import { readHistory } from "../nodex/HistoryRead.ts";
+import { taskHistorySource } from "./TaskHistoryRead.ts";
+import type { ThreadReadEvidence } from "../nodex/history-contracts.ts";
+import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import {
   TaskCancelResult,
@@ -531,6 +538,7 @@ describe("task tools", () => {
           }),
         ]);
         const layerTest = layerToolkit.pipe(
+          Layer.provideMerge(OrchestratorMcp.layer),
           Layer.provideMerge(McpServer.McpServer.layer),
           Layer.provideMerge(layerOrchestration),
           Layer.provide(layerRegistry),
@@ -698,26 +706,62 @@ describe("task tools", () => {
             model: claudeModel,
             status: "completed",
           });
-          expect(read.items.map((item) => [item.type, item.text])).toEqual(
+          expect(
+            read.items.map((item) => [
+              item.type,
+              item.content.format === "text" ? item.content.text : null,
+            ]),
+          ).toEqual(
             expect.arrayContaining([
               ["user_message", delegatedPrompt],
               ["assistant_message", delegatedResult],
             ]),
           );
-          expectNoConversationIdentity(read, childThreadId);
-          const firstAssistant = read.items.find((item) => item.type === "assistant_message")!;
+          expect(
+            read.items.every(
+              (item) =>
+                !Object.hasOwn(item, "sourceThreadId") && !Object.hasOwn(item, "senderThreadId"),
+            ),
+          ).toBe(true);
           const truncated = yield* decodeTaskRead(
-            yield* call("task_read", {
-              taskId: started.taskId,
-              itemId: firstAssistant.itemId,
-              maxCharsPerItem: 5,
-            }),
+            yield* call("task_read", { taskId: started.taskId, limit: 1, maxCharsPerItem: 5 }),
           ).pipe(Effect.orDie);
           expect(truncated.items[0]).toMatchObject({
-            text: delegatedResult.slice(0, 5),
-            textTruncated: true,
-            nextTextOffset: 5,
+            type: "assistant_message",
+            content: {
+              format: "text",
+              text: delegatedResult.slice(0, 5),
+              offset: 0,
+              totalChars: delegatedResult.length,
+            },
           });
+          const continuation = truncated.items[0]!.content.nextCursor;
+          expect(continuation).not.toBeNull();
+          const continued = yield* decodeTaskRead(
+            yield* call("task_read", { taskId: started.taskId, cursor: continuation }),
+          ).pipe(Effect.orDie);
+          expect(continued.items[0]).toMatchObject({
+            id: truncated.items[0]!.id,
+            content: {
+              format: "text",
+              text: delegatedResult.slice(5),
+              offset: 5,
+              nextCursor: null,
+            },
+          });
+          const pointed = yield* decodeTaskRead(
+            yield* call("task_read", {
+              taskId: started.taskId,
+              itemId: truncated.items[0]!.id,
+              textOffset: 5,
+            }),
+          ).pipe(Effect.orDie);
+          expect(pointed.items[0]?.content).toEqual(continued.items[0]!.content);
+          const routedByThread = yield* invoke("task_read", {
+            taskId: started.taskId,
+            sourceThreadId: childThreadId,
+          }).pipe(Effect.flip);
+          expect(routedByThread._tag).toBe("InvalidParams");
           const misspelled = yield* invoke("task_read", { taskId: started.taskId, after: 3 }).pipe(
             Effect.flip,
           );
@@ -788,6 +832,13 @@ describe("task tools", () => {
           ).pipe(Effect.orDie);
           expect(["cancelled", "interrupted"]).toContain(stopped.status);
 
+          const clamped = yield* decodeTaskRead(
+            yield* call("task_read", { limit: 1000, maxCharsPerItem: 1000000 }),
+          ).pipe(Effect.orDie);
+          expect(clamped.page.limit).toBe(100);
+          const zero = yield* invoke("task_read", { limit: 0 }).pipe(Effect.flip);
+          expect(zero._tag).toBe("InvalidParams");
+
           // Omitting taskId reads the caller's own conversation.
           const own = yield* decodeTaskRead(
             yield* call("task_read", { view: "activity", limit: 100 }),
@@ -797,11 +848,26 @@ describe("task tools", () => {
             activeRunId: parentRun.id,
             providerInstanceId: codexInstanceId,
           });
-          expect(own.items.find((item) => item.type === "user_message")?.text).toBe(parentPrompt);
+          const ownUser = own.items.find((item) => item.type === "user_message");
+          expect(ownUser?.content).toMatchObject({
+            format: "json",
+            value: { source: "runtime", item: { text: parentPrompt } },
+          });
           expect(
-            own.items.filter((item) => item.type === "subagent").map((item) => item.taskId),
+            own.items
+              .filter((item) => item.type === "subagent")
+              .flatMap((item) =>
+                item.content.format === "json" && item.content.value.item.type === "subagent"
+                  ? [item.content.value.item.subagentId]
+                  : [],
+              ),
           ).toEqual(expect.arrayContaining([started.taskId, blocking.taskId]));
-          expectNoConversationIdentity(own.items, childThreadId);
+          expect(
+            own.items.every(
+              (item) =>
+                !Object.hasOwn(item, "sourceThreadId") && !Object.hasOwn(item, "senderThreadId"),
+            ),
+          ).toBe(true);
 
           // Delegated tasks are not workflows, and unknown tasks fail explicitly.
           expect(
@@ -843,6 +909,7 @@ describe("task tools", () => {
           ),
         );
         const layerTest = layerToolkit.pipe(
+          Layer.provideMerge(OrchestratorMcp.layer),
           Layer.provideMerge(McpServer.McpServer.layer),
           Layer.provideMerge(layerOrchestration),
           Layer.provide(
@@ -948,6 +1015,212 @@ describe("task tools", () => {
               stored.event.payload.sourceThreadId === childThreadId,
             "Delegated result transfer was not created.",
           );
+          const deliveryState = () =>
+            orchestrator
+              .getThreadProjection(parentThreadId)
+              .pipe(
+                Effect.map(
+                  (projection) =>
+                    projection.subagents.find((task) => task.id === delegated.taskId)
+                      ?.completionDelivery?.state,
+                ),
+              );
+          expect(yield* deliveryState()).not.toBe("acknowledged");
+          const partialResult = yield* decodeTaskRead(
+            (yield* invoke("task_read", {
+              taskId: delegated.taskId,
+              limit: 1,
+              maxCharsPerItem: 5,
+            })).structuredContent,
+          ).pipe(Effect.orDie);
+          expect(partialResult.items[0]!.content.nextCursor).not.toBeNull();
+          expect(yield* deliveryState()).not.toBe("acknowledged");
+          const readOwner = yield* OrchestratorMcp.OrchestratorMcpService;
+          const resultProjection = yield* orchestrator.getThreadProjection(childThreadId);
+          const finalItem = resultProjection.turnItems.find(
+            (item) => item.type === "assistant_message" && item.text === delegatedResult,
+          )!;
+          const record = yield* threads.getVisibleTurnItemRecord({
+            threadId: childThreadId,
+            sourceThreadId: childThreadId,
+            itemId: finalItem.id,
+          });
+          const content = yield* runtimeHistoryContent(record!, {
+            format: "text",
+            offset: 0,
+            maxChars: 0,
+          });
+          const evidence = {
+            itemId: finalItem.id,
+            sourceThreadId: childThreadId,
+            format: "text" as const,
+            contentVersion: content.contentVersion,
+            offset: 0,
+            length: content.totalChars,
+            totalChars: content.totalChars,
+          };
+          const parentRunId = (yield* orchestrator.getThreadShell(parentThreadId))!.activeRunId!;
+          expect(
+            (yield* readOwner.acknowledgeRead(scopeFor(parentThreadId, codexInstanceId), {
+              threadId: childThreadId,
+              callerRunId: parentRunId,
+              items: [{ ...evidence, contentVersion: "wrong" }],
+            })).acknowledged,
+          ).toBe(0);
+          expect(
+            (yield* readOwner.acknowledgeRead(scopeFor(childThreadId, codexInstanceId), {
+              threadId: childThreadId,
+              items: [evidence],
+            })).acknowledged,
+          ).toBe(0);
+          expect(yield* deliveryState()).not.toBe("acknowledged");
+          if (finalItem.type !== "assistant_message")
+            return yield* Effect.die("Expected final message");
+          const finalMessage = resultProjection.messages.find(
+            (message) => message.id === finalItem.messageId,
+          )!;
+          const eventSink = yield* EventSink.EventSinkV2;
+          const longText = `${delegatedResult}${'漢😀\\"'.repeat(10000)}`;
+          // Canonical owner pressure fixture: the same final result now requires many bounded responses.
+          const replaceFinal = (text: string, suffix: string) =>
+            eventSink.write({
+              events: [
+                {
+                  id: EventId.make(`coverage:item:${suffix}`),
+                  type: "turn-item.updated",
+                  threadId: childThreadId,
+                  runId: finalItem.runId!,
+                  occurredAt: finalItem.updatedAt,
+                  payload: { ...finalItem, text },
+                },
+                {
+                  id: EventId.make(`coverage:message:${suffix}`),
+                  type: "message.updated",
+                  threadId: childThreadId,
+                  runId: finalMessage.runId!,
+                  occurredAt: finalMessage.updatedAt,
+                  payload: { ...finalMessage, text },
+                },
+              ],
+            });
+          yield* replaceFinal(longText, "large");
+          const readFinal = (
+            request: { cursor?: string; textOffset?: number; maxCharsPerItem?: number } = {},
+          ) =>
+            readHistory({
+              request: {
+                ownerId: childThreadId,
+                view: "activity",
+                limit: 1,
+                maxCharsPerItem: request.maxCharsPerItem ?? 100000,
+                ...(request.cursor
+                  ? { cursor: request.cursor }
+                  : {
+                      itemId: finalItem.id,
+                      sourceThreadId: childThreadId,
+                      runId: finalItem.runId!,
+                      ...(request.textOffset === undefined
+                        ? {}
+                        : { textOffset: request.textOffset }),
+                    }),
+              },
+              binding: "causal-parent-read",
+              source: taskHistorySource(threads, childThreadId),
+              wrap: (history) =>
+                history.availability === "available"
+                  ? {
+                      conversation: partialResult.conversation,
+                      items: history.items,
+                      page: history.page,
+                    }
+                  : { history },
+            });
+          const admit = (items: readonly ThreadReadEvidence[]) =>
+            readOwner.acknowledgeRead(scopeFor(parentThreadId, codexInstanceId), {
+              threadId: childThreadId,
+              callerRunId: parentRunId,
+              items,
+            });
+          const caller = yield* orchestrator.getThreadProjection(parentThreadId);
+          const callerRun = caller.runs.find((run) => run.id === parentRunId)!;
+          const readTaskPage = (cursor?: string) =>
+            invoke("task_read", {
+              taskId: delegated.taskId,
+              limit: 1,
+              maxCharsPerItem: 50000,
+              view: "activity",
+              ...(cursor ? { cursor } : {}),
+            }).pipe(
+              Effect.provideService(ExecutionHost.McpTurnAdmission, {
+                actor: {
+                  runtimeId: "runtime-mcp-task",
+                  runtimeGeneration: "generation-mcp-task",
+                  projectId,
+                  threadId: parentThreadId,
+                  runId: parentRunId,
+                  attemptId: callerRun.activeAttemptId!,
+                  providerInstanceId: codexInstanceId,
+                  providerSessionId: caller.providerThreads[0]!.providerSessionId!,
+                  providerThreadId: caller.providerThreads[0]!.id,
+                  nativeGeneration: 1,
+                  nativeThreadRef: caller.providerThreads[0]!.nativeThreadRef,
+                  cwd,
+                },
+                requestId: undefined,
+                assertCurrent: () => Effect.void,
+              }),
+              Effect.flatMap((result) => decodeTaskRead(result.structuredContent)),
+            );
+          let cursor: string | null = null;
+          let missing: { offset: number; length: number } | undefined;
+          let pages = 0;
+          do {
+            const result: typeof TaskReadResult.Type = yield* readTaskPage(cursor ?? undefined);
+            const part = result.items[0]!;
+            if (part.id !== finalItem.id) {
+              cursor = result.page.nextCursor;
+              expect(cursor).not.toBeNull();
+              continue;
+            }
+            cursor = part.content.nextCursor;
+            if (missing === undefined) {
+              const payload = JSON.parse(
+                Buffer.from(cursor!.slice(5), "base64url").toString("utf8"),
+              );
+              missing = { offset: payload.offset, length: 100 };
+              // A caller can jump its unsigned locator; that cannot manufacture read coverage.
+              cursor = `nxh2.${Buffer.from(JSON.stringify({ ...payload, offset: payload.offset + missing.length })).toString("base64url")}`;
+            }
+            pages++;
+            expect(pages).toBeLessThan(100);
+            expect(yield* deliveryState()).not.toBe("acknowledged");
+          } while (cursor);
+          expect(pages).toBeGreaterThan(2);
+          expect(yield* deliveryState()).not.toBe("acknowledged");
+          const filled = yield* readFinal({
+            textOffset: missing!.offset,
+            maxCharsPerItem: missing!.length,
+          });
+          expect((yield* admit(filled.admitted)).acknowledged).toBe(1);
+          expect(yield* deliveryState()).toBe("acknowledged");
+          yield* replaceFinal(delegatedResult, "restore");
+          expect(
+            (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
+              (task) => task.id === delegated.taskId,
+            )?.completionDelivery,
+          ).toMatchObject({ observedByRunId: parentRunId });
+          const fullResult = yield* decodeTaskRead(
+            (yield* invoke("task_read", {
+              taskId: delegated.taskId,
+              limit: 1,
+            })).structuredContent,
+          ).pipe(Effect.orDie);
+          expect(fullResult.items[0]!.content).toMatchObject({
+            format: "text",
+            text: delegatedResult,
+            nextCursor: null,
+          });
+          expect(yield* deliveryState()).toBe("acknowledged");
           const completed = yield* decodeTaskView(
             (yield* invoke("task_status", { taskId: delegated.taskId })).structuredContent,
           ).pipe(Effect.orDie);

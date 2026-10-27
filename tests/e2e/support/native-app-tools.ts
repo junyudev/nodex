@@ -1,4 +1,16 @@
-import { responses } from "../../../scripts/scenarios/runtime/scripted-model-server";
+import {
+  responses,
+  type ScriptedModelRequest,
+  type ScriptedModelToolInvocation,
+} from "../../../scripts/scenarios/runtime/scripted-model-server";
+
+/** Code Mode can advertise its native execution tool directly or under functions. */
+export const nativeCodeTool = (request: ScriptedModelRequest): ScriptedModelToolInvocation => {
+  const nested = request.toolInvocation("functions", "exec");
+  if (nested) return nested;
+  if (request.namedTool("exec")?.type === "custom") return { name: "exec" };
+  throw new Error(`Expected native code tool: ${request.diagnosticSummary()}`);
+};
 
 const applicationTools = `
 const __nodexAppToolAddresses = Object.keys(tools);

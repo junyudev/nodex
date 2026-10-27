@@ -23,6 +23,7 @@ import { workspaceTextDocumentRegistry } from "@/features/workspace-files/worksp
 import { documentSessionRegistry } from "@/lib/document-session-registry";
 import { flushContentInteractionHistories } from "@/lib/content-interaction-history";
 import { canvasSceneSurfaceRegistry } from "@/lib/canvas-scene-surface-runtime";
+import { useSessionOpenUsage } from "@/lib/use-session-open-usage";
 import { useWindowSessionLayoutPersistence } from "@/lib/use-window-session-layout-persistence";
 import type { OpenPageStageOptions } from "@/components/board/open-page-stage";
 import type { PageStageSessionSnapshot } from "@/components/board/page-stage/types";
@@ -160,6 +161,8 @@ export function WorkbenchShell({
     setDbProjectState(project.id);
     replaceProjectQueryParam(project.id);
   }, [projects, setDbProjectState]);
+
+  useSessionOpenUsage(workbenchWindow.owner);
 
   const { flush: flushWindowSessionLayout } = useWindowSessionLayoutPersistence({
     sessionId: windowSessionBootstrap.session.id,

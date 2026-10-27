@@ -197,6 +197,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
       );
     return yield* notify({ ...message, id } as AgentHostRequest).pipe(
       Effect.andThen(Deferred.await(result)),
+      Effect.onInterrupt(() => notify({ type: "host.cancel", id, runtimeId, runtimeGeneration })),
       Effect.ensuring(
         Ref.update(pending, (current) => {
           const next = new Map(current);

@@ -222,6 +222,7 @@ export interface EffectOutboxV2Shape {
     readonly reason: string;
   }) => Effect.Effect<ReadonlyArray<string>, EffectOutboxError>;
   readonly signalCancellations: (effectIds: ReadonlyArray<string>) => Effect.Effect<void>;
+  readonly awaitSettled: (effectId: string) => Effect.Effect<void, EffectOutboxError>;
   readonly awaitCancellation: (effectId: string) => Effect.Effect<void>;
   readonly clearCancellation: (effectId: string) => Effect.Effect<void>;
   readonly reconcileAfterProcessLoss: Effect.Effect<
@@ -313,6 +314,15 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
     // for distinct threads without allowing notifications to grow unbounded.
     const available = yield* Queue.dropping<void>(64);
     const cancellationSignals = new Map<string, Deferred.Deferred<void>>();
+    const settlementWaiters = new Map<string, Set<Deferred.Deferred<void>>>();
+    const signalSettled = (effectIds: ReadonlyArray<string>) =>
+      Effect.gen(function* () {
+        for (const effectId of effectIds) {
+          const waiters = settlementWaiters.get(effectId);
+          settlementWaiters.delete(effectId);
+          if (waiters) for (const waiter of waiters) yield* Deferred.succeed(waiter, undefined);
+        }
+      });
     const notifyAvailable = (count = 1) =>
       Queue.offerAll(
         available,
@@ -483,10 +493,33 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             },
             { discard: true },
           );
+          yield* signalSettled(effectIds);
           // Cancellation can unblock other pending work on the same thread.
           // This method is deliberately post-commit, so it is also the safe
           // place to wake claimers after the durable status change.
           if (effectIds.length > 0) yield* notifyAvailable(effectIds.length);
+        }),
+      awaitSettled: (effectId) =>
+        Effect.gen(function* () {
+          const waiter = yield* Deferred.make<void>();
+          // Register before the durable read. Both settlement races are safe, and interrupted
+          // clients release their waiter rather than retaining one entry per timed-out request.
+          const waiters = settlementWaiters.get(effectId) ?? new Set();
+          waiters.add(waiter);
+          settlementWaiters.set(effectId, waiters);
+          return yield* Effect.gen(function* () {
+            const current = yield* service.get(effectId);
+            if (Option.isSome(current) && ["pending", "running"].includes(current.value.status))
+              yield* Deferred.await(waiter);
+          }).pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                waiters.delete(waiter);
+                if (waiters.size === 0 && settlementWaiters.get(effectId) === waiters)
+                  settlementWaiters.delete(effectId);
+              }),
+            ),
+          );
         }),
       awaitCancellation: (effectId) => Deferred.await(cancellationSignal(effectId)),
       clearCancellation: (effectId) =>
@@ -521,6 +554,7 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             AND effect_type IN ${sql.in(REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS)}
           RETURNING effect_id
         `;
+        yield* signalSettled(cancelledRows.map((row) => row.effect_id));
         if (requeuedRows.length > 0) yield* notifyAvailable(requeuedRows.length);
         return { requeued: requeuedRows.length, cancelled: cancelledRows.length };
       }).pipe(
@@ -605,6 +639,7 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
           `;
           if (rows.length === 1) {
             cancellationSignals.delete(effectId);
+            yield* signalSettled([effectId]);
             yield* notifyAvailable();
           }
           return rows.length === 1;
@@ -684,6 +719,7 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
           `;
           if (rows.length === 1) {
             cancellationSignals.delete(effectId);
+            yield* signalSettled([effectId]);
             yield* notifyAvailable();
           }
           return rows.length === 1;

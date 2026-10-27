@@ -31,12 +31,13 @@ export const make = Effect.gen(function* () {
       item.type === "assistant_message" ||
       item.type === "dynamic_tool"
         ? item.attachments?.find(
-            (entry) => entry.type === "image" && entry.id === input.attachmentId,
+            (entry) =>
+              (entry.type === "image" || entry.type === "file") && entry.id === input.attachmentId,
           )
         : undefined;
-    if (attachment?.type === "image") {
+    if (attachment?.type === "image" || attachment?.type === "file") {
       const path = resolveAttachmentPath({ attachmentsDir: config.attachmentsDir, attachment });
-      return path !== null && (yield* fs.exists(path)) ? { path } : null;
+      return path !== null && (yield* fs.exists(path)) ? { path, attachment } : null;
     }
     if (item.type === "dynamic_tool") {
       const match = /^tool-result:(0|[1-9]\d*)$/.exec(input.attachmentId);

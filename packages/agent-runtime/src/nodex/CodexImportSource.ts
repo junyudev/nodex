@@ -11,6 +11,7 @@ import type { CodexNativeInteraction } from "@t3tools/provider-core/server/nativ
 import { EventId, ProviderSessionId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
+import * as Schema from "effect/Schema";
 import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
 import { importIdentity } from "./NativeImportHistory.ts";
@@ -18,6 +19,11 @@ import { isAgentRuntimeCodexThreadSource } from "./CodexThreadSource.ts";
 import type { NativeImportInput } from "./NativeImport.ts";
 import type { NativeImportBoundary } from "./NativeImportSource.ts";
 const fail = (message: string) => Effect.fail(new Error(message));
+
+export class NativeImportSourceBusyError extends Schema.TaggedError<NativeImportSourceBusyError>()(
+  "NativeImportSourceBusyError",
+  { reason: Schema.Literal("active_source_busy"), message: Schema.String },
+) {}
 
 export const openCodexImportSource = Effect.fn("CodexImportSource.open")(function* (
   input: typeof NativeImportInput.Type,
@@ -81,9 +87,10 @@ export const openCodexImportSource = Effect.fn("CodexImportSource.open")(functio
           "This is a subagent conversation or one Nodex runs itself, so it can’t be imported.",
         );
       if (source.ephemeral || source.status.type === "active")
-        return yield* fail(
-          "This Codex conversation is still running. Import it after it finishes.",
-        );
+        return yield* new NativeImportSourceBusyError({
+          reason: "active_source_busy",
+          message: "This Native conversation is still running. Continue after it finishes.",
+        });
       if (source.historyMode === "paginated")
         yield* assertOrdinaryHistory(native, input.sourceNativeThreadId);
       const latest = yield* native.request("thread/turns/list", {
@@ -94,9 +101,10 @@ export const openCodexImportSource = Effect.fn("CodexImportSource.open")(functio
       });
       const turn = latest.data[0];
       if (turn?.status === "inProgress")
-        return yield* fail(
-          "This Codex conversation is still running. Import it after it finishes.",
-        );
+        return yield* new NativeImportSourceBusyError({
+          reason: "active_source_busy",
+          message: "This Native conversation is still running. Continue after it finishes.",
+        });
       const boundary = turn?.items.at(-1);
       if (turn && !boundary)
         return yield* fail("Codex could not read the latest turn of this conversation.");

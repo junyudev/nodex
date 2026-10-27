@@ -150,6 +150,7 @@ import {
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { NODEX_APP_MCP_SERVER } from "../../mcp/NodexAppMcpServer.ts";
+import { APP_TOOLS_PROVIDER_TIMEOUT_MS } from "@t3tools/shared/nodexAppMcp";
 import { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "../../nodex/CodexThreadSource.ts";
 import {
   codexAsyncQuestionId,
@@ -1246,6 +1247,7 @@ export function codexThreadRuntimeParams(input: {
         : {
             [`mcp_servers.${NODEX_APP_MCP_SERVER}`]: {
               url: mcpSession.endpoint,
+              tool_timeout_sec: APP_TOOLS_PROVIDER_TIMEOUT_MS / 1000,
               http_headers: {
                 Authorization: mcpSession.authorizationHeader,
               },

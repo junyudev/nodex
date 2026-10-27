@@ -94,6 +94,11 @@ import Migration0077 from "./Migrations/077_NativeConversationImports.ts";
 import Migration0078 from "./Migrations/078_ContextClearIndex.ts";
 import Migration0079 from "./Migrations/079_ClaudeLoneThinkingThoughts.ts";
 import Migration0080 from "./Migrations/080_PendingMessageDeliveries.ts";
+import Migration0081 from "./Migrations/081_ConversationDiscovery.ts";
+import Migration0082 from "./Migrations/082_SessionMessageSearch.ts";
+import Migration0083 from "./Migrations/083_ExecutionWait.ts";
+import Migration0084 from "./Migrations/084_NativeMessageReceipts.ts";
+import Migration0085 from "./Migrations/085_RuntimeMessageAdmissions.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -188,6 +193,11 @@ export const migrationEntries = [
   [78, "ContextClearIndex", Migration0078],
   [79, "ClaudeLoneThinkingThoughts", Migration0079],
   [80, "PendingMessageDeliveries", Migration0080],
+  [81, "ConversationDiscovery", Migration0081],
+  [82, "SessionMessageSearch", Migration0082],
+  [83, "ExecutionWait", Migration0083],
+  [84, "NativeMessageReceipts", Migration0084],
+  [85, "RuntimeMessageAdmissions", Migration0085],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

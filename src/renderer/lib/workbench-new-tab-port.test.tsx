@@ -116,9 +116,20 @@ describe("New tab port", () => {
       );
       const windowOwner = getWorkbenchWindowOwner(createScopeHandle(getMaitaiRootView(store)), {
         ...createDefaultWorkbenchLayoutSnapshot(),
+        ...(owner.kind === "session"
+          ? {
+              location: {
+                kind: "session" as const,
+                sessionId: owner.sessionId,
+                projectContextId: null,
+              },
+            }
+          : {}),
         scenesByOwnerKey: { [makeWorkbenchSceneKey(owner)]: scene },
       });
       windowOwner.initialize();
+      const openedSessions: string[] = [];
+      const unregisterOpened = windowOwner.registerSessionOpened((id) => openedSessions.push(id));
       windowOwner.registerPersistenceCommit(async (snapshot) => ({
         ...snapshot,
         sessionId: "window",
@@ -193,11 +204,25 @@ describe("New tab port", () => {
           "target",
         );
         expect(selectedWhenClosing).toEqual(["target"]);
+        expect(openedSessions).toEqual([]);
+        if (owner.kind === "session") {
+          expect(windowOwner.read().windowState.location).toEqual({
+            kind: "session",
+            sessionId: owner.sessionId,
+            projectContextId: null,
+          });
+          await act(async () => {
+            windowOwner.selectLibrary();
+            windowOwner.selectSession({ id: owner.sessionId, projectId: null });
+          });
+          expect(openedSessions).toEqual([owner.sessionId]);
+        }
         expect(executeSceneCommand.mock.calls.map(([, command]) => command)).toEqual([
           { kind: "activate_tab", tabId: "target" },
           { kind: "close_tab", tabId: "new" },
         ]);
       } finally {
+        unregisterOpened();
         view.unmount();
         disposeMaitaiStore(store);
       }

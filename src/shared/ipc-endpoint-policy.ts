@@ -465,6 +465,7 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "project-sessions:create"
   | "project-sessions:delete"
   | "project-sessions:ensure-default-draft"
+  | "project-sessions:record-opened"
   | "project-sessions:mark-unread"
   | "project-sessions:rename"
   | "project-sessions:reorder"

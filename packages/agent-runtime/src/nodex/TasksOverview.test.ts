@@ -20,18 +20,20 @@ it.live("serves each task overview section with its total", () =>
           workspaceRoot: home,
         });
         yield* request("command.dispatch", {
-          type: "thread.create",
-          commandId: "command:overview",
-          threadId: "thread:overview",
-          projectId: "project:overview",
-          title: "Overview",
-          modelSelection: { instanceId: "codex", model: "gpt-5.4" },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          branch: null,
-          worktreePath: home,
-          createdBy: "user",
-          creationSource: "web",
+          command: {
+            type: "thread.create",
+            commandId: "command:overview",
+            threadId: "thread:overview",
+            projectId: "project:overview",
+            title: "Overview",
+            modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: home,
+            createdBy: "user",
+            creationSource: "web",
+          },
         });
         const empty = { items: [], nextCursor: null, hasMore: false, totalCount: 0 };
         expect(yield* request("tasks.overview", { threadId: "thread:overview" })).toEqual({
