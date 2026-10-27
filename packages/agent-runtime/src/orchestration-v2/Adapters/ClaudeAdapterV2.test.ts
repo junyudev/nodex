@@ -768,6 +768,7 @@ describe("ClaudeAdapterV2 full execution access", () => {
                     }),
 
                   applySelection: () => Effect.void,
+                  setSourceRoots: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -876,6 +877,7 @@ const captureSdkExecutablePaths = Effect.fn("captureSdkExecutablePaths")(functio
             offer: () => Effect.void,
 
             applySelection: () => Effect.void,
+            setSourceRoots: () => Effect.void,
             readAppliedSettings: Effect.succeed(null),
             setPermissionMode: () => Effect.void,
             stopTask: () => Effect.void,
@@ -998,6 +1000,7 @@ describe("ClaudeAdapterV2 resume compaction", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
+                  setSourceRoots: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -1225,6 +1228,7 @@ describe("ClaudeAdapterV2 attachments", () => {
                   }),
 
                 applySelection: () => Effect.void,
+                setSourceRoots: () => Effect.void,
                 readAppliedSettings: Effect.succeed(null),
                 setPermissionMode: () => Effect.void,
                 stopTask: () => Effect.void,
@@ -1372,6 +1376,7 @@ describe("ClaudeAdapterV2 attachments", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
+                  setSourceRoots: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -1469,6 +1474,7 @@ describe("ClaudeAdapterV2 native fork", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
+                  setSourceRoots: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -1677,7 +1683,10 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
     url: "http://127.0.0.1:43123/mcp",
     headers: { Authorization: "Bearer dummy-mcp-credential" },
   };
-  const openWith = (cli: ReturnType<typeof makeFakeClaudeCli>) =>
+  const openWith = (
+    cli: ReturnType<typeof makeFakeClaudeCli>,
+    sdkSettings?: Parameters<typeof ClaudeAdapterV2.makeClaudeQueryOptions>[0]["sdkSettings"],
+  ) =>
     Effect.gen(function* () {
       const runner = yield* ClaudeAdapterV2.ClaudeAgentSdkQueryRunner;
       return yield* runner.open({
@@ -1691,6 +1700,7 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
             cwd: null,
             environment: { PATH: "/usr/bin" },
             mcpServers: { nodex_app: nodexAppMcpServer },
+            ...(sdkSettings === undefined ? {} : { sdkSettings }),
           }),
           pathToClaudeCodeExecutable: "/opt/claude/cli.js",
           spawnClaudeCodeProcess: cli.spawn,
@@ -1740,6 +1750,39 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
     }),
   );
 
+  it.effect("replaces Project Source grants while preserving the caller's inline permissions", () =>
+    Effect.gen(function* () {
+      const cli = makeFakeClaudeCli();
+      const session = yield* openWith(cli, {
+        permissions: { allow: ["Read(/reference/**)"], additionalDirectories: ["/reference"] },
+      });
+      const initialRequests = cli.controlRequests.length;
+      yield* session.setSourceRoots(["/source-a", "/source-b"]);
+      yield* session.setSourceRoots(["/source-b"]);
+      assert.deepEqual(cli.controlRequests.slice(initialRequests), [
+        {
+          subtype: "apply_flag_settings",
+          settings: {
+            permissions: {
+              allow: ["Read(/reference/**)"],
+              additionalDirectories: ["/reference", "/source-a", "/source-b"],
+            },
+          },
+        },
+        {
+          subtype: "apply_flag_settings",
+          settings: {
+            permissions: {
+              allow: ["Read(/reference/**)"],
+              additionalDirectories: ["/reference", "/source-b"],
+            },
+          },
+        },
+      ]);
+      yield* session.close;
+    }),
+  );
+
   it.effect("closes the CLI when it never answers the MCP registration", () =>
     Effect.gen(function* () {
       const cli = makeFakeClaudeCli(false);
@@ -1782,6 +1825,7 @@ describe("ClaudeAdapterV2 native session identity", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
+                  setSourceRoots: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -2047,6 +2091,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     // What Claude Code reports it runs with after a change.
     readonly appliedSettings?: ClaudeAppliedSettings;
     readonly refuseLiveSelectionOnce?: boolean;
+    readonly refuseSourceRootsOnce?: boolean;
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -2072,7 +2117,24 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       let actualNativeModel = "";
       let refuseLiveSelection = options?.refuseLiveSelectionOnce === true;
       const nativeModelsAtOffer: string[] = [];
+      const sourceRootChanges: string[][] = [];
+      const sourceRootsAtOffer: string[][] = [];
+      let nativeSourceRoots: string[] = [];
+      let refuseSourceRoots = options?.refuseSourceRootsOnce === true;
       const liveQuery = {
+        setSourceRoots: (roots: readonly string[]) =>
+          Effect.suspend(() => {
+            nativeSourceRoots = [...roots];
+            sourceRootChanges.push([...roots]);
+            if (!refuseSourceRoots) return Effect.void;
+            refuseSourceRoots = false;
+            return Effect.fail(
+              new ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerError({
+                method: "setSourceRoots",
+                cause: "The native process could not confirm its directories.",
+              }),
+            );
+          }),
         applySelection: (selection: ClaudeAdapterV2.ClaudeLiveSelection) =>
           Effect.suspend(() => {
             // A native control can take effect before its acknowledgement is lost.
@@ -2136,6 +2198,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   offer: (message: SDKUserMessage) =>
                     Effect.sync(() => {
                       offeredMessages.push(message);
+                      sourceRootsAtOffer.push([...nativeSourceRoots]);
                       nativeModelsAtOffer.push(actualNativeModel);
                     }),
                   ...liveQuery,
@@ -2167,6 +2230,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 offer: (message) =>
                   Effect.sync(() => {
                     offeredMessages.push(message);
+                    sourceRootsAtOffer.push([...nativeSourceRoots]);
                     nativeModelsAtOffer.push(actualNativeModel);
                   }),
                 ...liveQuery,
@@ -2249,11 +2313,150 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         getOpenedOptions: () => openedOptions,
         liveChanges,
         nativeModelsAtOffer,
+        sourceRootChanges,
+        sourceRootsAtOffer,
         terminalEvents,
         hasPendingBackgroundWork,
       };
     });
   const makeWakeHarness = makeWakeHarnessWithOptions();
+
+  it.effect(
+    "synchronizes current Project Sources before prompts without replacing background work",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        const rootsByTurn = [
+          ["/source-b", "/source-a", "/source-a"],
+          ["/source-a", "/source-b"],
+          ["/source-a", "/source-b", "/source-c"],
+          ["/source-b"],
+          [],
+        ];
+        for (const [index, hostSourceRoots] of rootsByTurn.entries()) {
+          yield* harness.runtime.startTurn({
+            ...makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now,
+              attemptId: RunAttemptId.make(`sources-${index}`),
+              providerTurnOrdinal: index + 1,
+              text: "Work across the Project Sources.",
+              attachments: [],
+            }),
+            hostSourceRoots,
+          });
+          if (index === 0) yield* Queue.offer(harness.sdkMessages, wakeTaskStarted);
+          yield* Queue.offer(
+            harness.sdkMessages,
+            makeResultFrame({ uuid: `sources-result-${index}`, result: "Done." }),
+          );
+          yield* Queue.take(harness.terminalReceipts);
+        }
+        assert.deepEqual(harness.sourceRootChanges, [
+          ["/source-a", "/source-b"],
+          ["/source-a", "/source-b", "/source-c"],
+          ["/source-b"],
+          [],
+        ]);
+        assert.deepEqual(harness.sourceRootsAtOffer, [
+          ["/source-a", "/source-b"],
+          ["/source-a", "/source-b"],
+          ["/source-a", "/source-b", "/source-c"],
+          ["/source-b"],
+          [],
+        ]);
+        assert.lengthOf(harness.processQueues, 1);
+        assert.isTrue(yield* harness.hasPendingBackgroundWork);
+        // Launch grants remain independent: Project Sources are removable live grants.
+        assert.notInclude(harness.getOpenedOptions()?.additionalDirectories ?? [], "/source-a");
+        assert.notInclude(harness.getOpenedOptions()?.additionalDirectories ?? [], "/source-b");
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect(
+    "keeps the execution worktree independent when a Claude process resumes elsewhere",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarnessWithOptions({
+          freshQueueOnReopen: true,
+          close: Queue.shutdown,
+        });
+        const now = yield* DateTime.now;
+        for (const [index, cwd] of ["/worktree-one", "/worktree-two"].entries()) {
+          yield* harness.runtime.startTurn({
+            ...makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now,
+              attemptId: RunAttemptId.make(`source-worktree-${index}`),
+              providerTurnOrdinal: index + 1,
+              runtimePolicy: { ...CLAUDE_TEST_RUNTIME_POLICY, cwd },
+              text: "Continue in this worktree.",
+              attachments: [],
+            }),
+            hostSourceRoots: ["/primary-source", "/other-source"],
+          });
+          assert.equal(harness.getOpenedOptions()?.cwd, cwd);
+          assert.include(harness.getOpenedOptions()?.additionalDirectories ?? [], cwd);
+          yield* Queue.offer(
+            harness.processQueues[index]!,
+            makeResultFrame({ uuid: `source-worktree-result-${index}`, result: "Done." }),
+          );
+          yield* Queue.take(harness.terminalReceipts);
+        }
+        assert.lengthOf(harness.processQueues, 2);
+        assert.equal(harness.getOpenedOptions()?.resume, WAKE_NATIVE_SESSION);
+        assert.deepEqual(harness.sourceRootsAtOffer, [
+          ["/other-source", "/primary-source"],
+          ["/other-source", "/primary-source"],
+        ]);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect("retries an unconfirmed Source update before offering any prompt", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarnessWithOptions({ refuseSourceRootsOnce: true });
+      const input = {
+        ...makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("source-update-retry"),
+          text: "Continue in the other Source.",
+          attachments: [],
+        }),
+        hostSourceRoots: ["/source-b"],
+      };
+      assert.isTrue(Exit.isFailure(yield* harness.runtime.startTurn(input).pipe(Effect.exit)));
+      assert.lengthOf(harness.offeredMessages, 0);
+      yield* harness.runtime.startTurn(input);
+      assert.deepEqual(harness.sourceRootChanges, [["/source-b"], ["/source-b"]]);
+      assert.deepEqual(harness.sourceRootsAtOffer, [["/source-b"]]);
+      assert.lengthOf(harness.processQueues, 1);
+      yield* Queue.offer(
+        harness.sdkMessages,
+        makeResultFrame({ uuid: "source-update-retried", result: "Done." }),
+      );
+      yield* Queue.take(harness.terminalReceipts);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
 
   it.effect.each(["no_query", "inactive_turn", "attachment"] as const)(
     "classifies a Claude %s steering failure as not dispatched",
@@ -5064,6 +5267,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
+                  setSourceRoots: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -5323,6 +5527,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offer: () => Effect.void,
 
                     applySelection: () => Effect.void,
+                    setSourceRoots: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -6271,7 +6476,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   it.effect("does not offer a continuation for notification-only opaque work", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const harness = yield* makeWakeHarness;
+        const harness = yield* makeWakeHarnessWithOptions({ refuseSourceRootsOnce: true });
         const now = yield* DateTime.now;
 
         yield* harness.runtime.startTurn(
@@ -6296,8 +6501,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         assert.lengthOf(harness.terminalEvents(), 1);
         assert.isFalse(yield* harness.hasPendingBackgroundWork);
 
-        yield* harness.runtime.startTurn(
-          makeClaudeTestTurnInput({
+        yield* harness.runtime.startTurn({
+          ...makeClaudeTestTurnInput({
             threadId: harness.threadId,
             providerThread: harness.providerThread,
             now,
@@ -6308,13 +6513,19 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             messageCreatedBy: "agent",
             messageCreationSource: "provider",
           }),
-        );
+          hostSourceRoots: ["/new-source"],
+        });
         yield* awaitUntil(
           () => harness.terminalEvents().length === 2,
           "notification-only continuation terminal",
         );
         assert.equal(harness.terminalEvents()[1]?.status, "completed");
         assert.lengthOf(harness.offeredMessages, 1);
+        assert.deepEqual(
+          harness.sourceRootChanges,
+          [],
+          "buffered output needs no live directory control",
+        );
       }).pipe(
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
@@ -10117,6 +10328,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
+                  setSourceRoots: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -10306,6 +10518,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offer: () => Effect.void,
 
                     applySelection: () => Effect.void,
+                    setSourceRoots: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -10547,6 +10760,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offer: () => Effect.void,
 
                     applySelection: () => Effect.void,
+                    setSourceRoots: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -10745,6 +10959,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   offer: () => Effect.void,
 
                   applySelection: () => Effect.void,
+                  setSourceRoots: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -10927,6 +11142,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offer: () => Effect.void,
 
                     applySelection: () => Effect.void,
+                    setSourceRoots: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -11065,6 +11281,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     offer: () => Effect.void,
 
                     applySelection: () => Effect.void,
+                    setSourceRoots: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,

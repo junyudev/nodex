@@ -96,6 +96,16 @@ are approved automatically. Blocking information questions and optional message-
 Standard ACP information questions belong to the live Session, with Run left null;
 they can arrive after foreground completion or while another Run executes.
 
+A Claude Code chat can keep its shell working directory across calls within any of
+the Session's current Project Sources. Before each prompted Turn, Nodex reads those
+Sources from Core and confirms them on the running Claude Code process. Adding or
+removing Sources, or moving the Session to another Project, takes effect before its
+next prompt while background agents, shells and workflows keep running. A prompt is
+not submitted until that synchronization succeeds. The Session's execution directory
+or managed worktree and its attachments remain available independently of Project
+Source membership. These directories govern shell working-directory persistence;
+Agents retain full access under the execution policy above.
+
 Host preparation creates and binds the product Session before its first Run executes. Every
 application call carries exact runtime, Thread, native incarnation and connection
 identity. Providers supplying causal tool metadata also carry the captured Run and

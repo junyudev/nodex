@@ -803,8 +803,9 @@ native history remains passive. Authentication location never substitutes for hi
 
 The Agent Runtime owns each bound Session's execution root, Runs, provider sessions,
 history, delegated descendants and durable result delivery. Core owns the product
-Session and content authority. Main's semantic Session Interface resolves the
-immutable execution reference before querying or commanding its root and descendants;
+Session, Project Sources and content authority. Main supplies current Source roots
+as transient Turn context. Main's semantic Session Interface resolves the immutable
+execution reference before querying or commanding its root and descendants;
 it never hydrates child histories for status observation. Product writers share
 snapshot admission without holding a Project lifecycle gate across Host callbacks.
 Live Session activity (running, waiting, background) is one Main-owned projection derived from

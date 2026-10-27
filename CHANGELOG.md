@@ -46,6 +46,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Claude Code chats can keep their working directory while switching between a Project's Sources. Source changes and moves to another Project apply before the next message without interrupting background work.
 - Choosing Ultracode for a Claude chat now actually turns it on, at whatever effort you pick instead of forcing Extra High. When dynamic workflows are off for your Claude account, the toggle says so instead of silently doing nothing.
 - Changing a Claude chat's model, effort, Fast or Ultracode no longer restarts Claude Code, so it applies right away even while background agents, shells or workflows are running. If a change cannot be confirmed, retrying restores the complete choice before sending the next message.
 - The Composer context ring reports Claude Code, OpenCode and other Agents’ current usage, restores it when reopening a chat, and distinguishes unavailable readings from an empty context.

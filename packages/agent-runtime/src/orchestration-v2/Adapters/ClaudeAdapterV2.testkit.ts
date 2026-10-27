@@ -6,6 +6,7 @@ import {
   type SDKAssistantMessage,
   type SDKMessage,
   type SDKUserMessage,
+  type Settings as ClaudeSdkSettings,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -182,7 +183,9 @@ interface ClaudePromptOfferFrame {
 
 interface ClaudeQueryApplyFlagSettingsFrame {
   readonly type: "query.apply_flag_settings";
-  readonly settings: ClaudeAdapterV2.ClaudeLiveSelection;
+  readonly settings:
+    | ClaudeAdapterV2.ClaudeLiveSelection
+    | { readonly permissions: NonNullable<ClaudeSdkSettings["permissions"]> };
 }
 
 interface ClaudeQuerySetPermissionModeFrame {
@@ -815,6 +818,13 @@ function makeReplayQueryRunner(
         applySelection: (settings) =>
           replayEffect(() => {
             assertNextOutboundFrame({ type: "query.apply_flag_settings", settings });
+          }),
+        setSourceRoots: (sourceRoots) =>
+          replayEffect(() => {
+            assertNextOutboundFrame({
+              type: "query.apply_flag_settings",
+              settings: { permissions: { additionalDirectories: [...sourceRoots] } },
+            });
           }),
         readAppliedSettings: Effect.succeed(null),
         setPermissionMode: (mode) =>

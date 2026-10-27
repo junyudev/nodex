@@ -88,6 +88,10 @@ const fixture = Effect.gen(function* () {
   bind(turn());
   let caller: AppToolCaller | undefined;
   let bound = true;
+  let boundProjectId: string | null = "current-project";
+  const projectSources = new Map<string, readonly string[]>([
+    ["current-project", ["/project/frontend", "/project/backend"]],
+  ]);
   const desktopCalls: unknown[] = [];
   const connection: AgentRuntimeProcessConnection = {
     identity: {
@@ -120,6 +124,15 @@ const fixture = Effect.gen(function* () {
   const read = (input: ProjectWorkspaceRead) =>
     Effect.sync(() => {
       coreReads.push(input);
+      if (input.kind === "project")
+        return {
+          value: {
+            kind: "project",
+            project: {
+              sources: (projectSources.get(input.project_id) ?? []).map((root) => ({ root })),
+            },
+          },
+        };
       if (input.kind !== "agent_runtime_session_binding_by_execution")
         throw new Error(`Unexpected Core read ${input.kind}`);
       assert.equal(input.runtime_thread_id, "thread:root");
@@ -129,7 +142,7 @@ const fixture = Effect.gen(function* () {
           binding: bound
             ? {
                 session_id: "session",
-                project_id: "current-project",
+                project_id: boundProjectId,
                 runtime_id: "runtime",
                 runtime_thread_id: "thread:root",
                 launch_request_id: "launch",
@@ -189,12 +202,62 @@ const fixture = Effect.gen(function* () {
     live,
     bind,
     caller: () => caller!,
+    moveToProject: (projectId: string | null) => {
+      boundProjectId = projectId;
+    },
+    setProjectSources: (projectId: string, roots: readonly string[]) => {
+      projectSources.set(projectId, roots);
+    },
     unbind: () => {
       bound = false;
     },
     close: Scope.close(scope, Exit.void),
   };
 });
+
+const prepareTurn = (identity = turn()): AgentHostRequest => ({
+  type: "host.request",
+  id: "prepare",
+  operation: "turn.prepare",
+  identity,
+});
+
+it.effect("a delegated Turn receives its bound Project's current Sources", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    assert.deepInclude(yield* f.execute(prepareTurn()), {
+      sourceRoots: ["/project/frontend", "/project/backend"],
+    });
+    assert.deepEqual(
+      f.coreReads.filter((read) => read.kind === "project"),
+      [{ kind: "project", project_id: "current-project" }],
+    );
+
+    f.setProjectSources("current-project", ["/project/frontend", "/project/shared"]);
+    assert.deepInclude(yield* f.execute(prepareTurn()), {
+      sourceRoots: ["/project/frontend", "/project/shared"],
+    });
+
+    f.setProjectSources("destination-project", ["/destination/source"]);
+    f.moveToProject("destination-project");
+    assert.deepInclude(yield* f.execute(prepareTurn()), {
+      sourceRoots: ["/destination/source"],
+    });
+    assert.deepEqual(f.coreReads.at(-1), {
+      kind: "project",
+      project_id: "destination-project",
+    });
+  }).pipe(Effect.scoped),
+);
+
+it.effect("a projectless Turn contributes no Project directory scope", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    f.moveToProject(null);
+    assert.deepInclude(yield* f.execute(prepareTurn()), { sourceRoots: [] });
+    assert.isFalse(f.coreReads.some((read) => read.kind === "project"));
+  }).pipe(Effect.scoped),
+);
 
 it.effect("a Run call carries engine coordinates, its bound Session, and the Run start time", () =>
   Effect.gen(function* () {

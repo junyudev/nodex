@@ -323,6 +323,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
     readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
     readonly hangSessionScopeClose?: boolean;
     readonly startTurn?: Effect.Effect<void>;
+    readonly turnInputs?: Ref.Ref<readonly ProviderAdapter.ProviderAdapterV2TurnInput[]>;
     readonly retireNativeOnInterrupt?: boolean;
     readonly interruptTurn?: Effect.Effect<void, ProviderAdapter.ProviderAdapterV2Error>;
     readonly beforeUnload?: Effect.Effect<void>;
@@ -435,7 +436,11 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
               ...current,
               resumeCount: current.resumeCount + 1,
             })).pipe(Effect.as(threadInput.providerThread)),
-          startTurn: () => options.startTurn ?? Effect.void,
+          startTurn: (input) =>
+            (options.turnInputs === undefined
+              ? Effect.void
+              : Ref.update(options.turnInputs, (turns) => [...turns, input])
+            ).pipe(Effect.andThen(options.startTurn ?? Effect.void)),
           steerTurn: () => Effect.void,
           interruptTurn: () =>
             Ref.update(state, (current) => ({
@@ -493,6 +498,7 @@ function layerTest(input: {
   readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
   readonly hangSessionScopeClose?: boolean;
   readonly startTurn?: Effect.Effect<void>;
+  readonly turnInputs?: Ref.Ref<readonly ProviderAdapter.ProviderAdapterV2TurnInput[]>;
   readonly retireNativeOnInterrupt?: boolean;
   readonly interruptTurn?: Effect.Effect<void, ProviderAdapter.ProviderAdapterV2Error>;
   readonly beforeUnload?: Effect.Effect<void>;
@@ -531,6 +537,7 @@ function layerTest(input: {
         ? {}
         : { hangSessionScopeClose: input.hangSessionScopeClose }),
       ...(input.startTurn === undefined ? {} : { startTurn: input.startTurn }),
+      ...(input.turnInputs === undefined ? {} : { turnInputs: input.turnInputs }),
       ...(input.retireNativeOnInterrupt === undefined
         ? {}
         : { retireNativeOnInterrupt: input.retireNativeOnInterrupt }),
@@ -5047,6 +5054,7 @@ it.effect("awaits admission of the exact host Turn before native execution", () 
   Effect.gen(function* () {
     const state = yield* Ref.make(emptyState);
     const nativeStarted = yield* Ref.make(false);
+    const turnInputs = yield* Ref.make<readonly ProviderAdapter.ProviderAdapterV2TurnInput[]>([]);
     const hostEntered = yield* Deferred.make<ExecutionHost.HostTurnIdentity>();
     const hostAccepted = yield* Deferred.make<void>();
     yield* Effect.gen(function* () {
@@ -5144,16 +5152,28 @@ it.effect("awaits admission of the exact host Turn before native execution", () 
       yield* Deferred.succeed(hostAccepted, undefined);
       yield* Fiber.join(pending);
       assert.isTrue(yield* Ref.get(nativeStarted));
+      assert.deepEqual(
+        (yield* Ref.get(turnInputs)).map((turn) => turn.hostSourceRoots),
+        [["/project/frontend", "/project/backend"]],
+      );
     }).pipe(
       Effect.provide(
-        layerTest({ state, idleTimeoutMs: 60_000, startTurn: Ref.set(nativeStarted, true) }),
+        layerTest({
+          state,
+          idleTimeoutMs: 60_000,
+          startTurn: Ref.set(nativeStarted, true),
+          turnInputs,
+        }),
       ),
       Effect.provideService(ExecutionHost.ExecutionHost, {
         runtimeGeneration: "current-runtime",
         prepareTurn: (turn) =>
           Deferred.succeed(hostEntered, turn).pipe(
             Effect.andThen(Deferred.await(hostAccepted)),
-            Effect.as({ instructions: "Host context ready." }),
+            Effect.as({
+              instructions: "Host context ready.",
+              sourceRoots: ["/project/frontend", "/project/backend"],
+            }),
           ),
       }),
     );

@@ -116,10 +116,14 @@ it.live("awaits the host, forwards exact identity and admits only the accepted T
       type: "host.result",
       id: request.id,
       success: true,
-      output: { instructions: "Use the admitted Page context." },
+      output: {
+        instructions: "Use the admitted Page context.",
+        sourceRoots: ["/project/frontend", "/project/backend"],
+      },
     });
     expect(yield* Fiber.join(pending)).toMatchObject({
       instructions: "Use the admitted Page context.",
+      sourceRoots: ["/project/frontend", "/project/backend"],
       identity: turn,
     });
     expect(yield* bridge.preparedTurn(turn.threadId)).toEqual(request.identity);

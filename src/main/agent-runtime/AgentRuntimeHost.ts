@@ -13,6 +13,7 @@ import * as Schema from "effect/Schema";
 import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { MainConfig } from "../app/MainConfig";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { CoreModules } from "../core-runtime/CoreModules";
 import { createHostedAppToolCaller } from "../app-tools/AppToolCaller";
 import { buildAgentRuntimeCliContext } from "../platform/node/NodexCliBootstrap";
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
@@ -75,6 +76,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   },
 ) {
   const coreAuthority = yield* CoreAuthority;
+  const core = yield* CoreModules;
   const config = yield* MainConfig;
   const authorizeExecution = yield* makeRuntimeAuthority;
   const { runtimeId, runtimeGeneration: leaseId } = connection.identity;
@@ -134,6 +136,20 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   ) {
     const { proof, sessionId, context } = yield* authorize(identity);
     if (proof.runId === null) return yield* unavailable("turn.prepare");
+    const project =
+      context.actorProjectId === null
+        ? null
+        : yield* core.workspace.read(
+            { kind: "project", project_id: context.actorProjectId },
+            undefined,
+            context.actorProjectId,
+          );
+    if (project !== null && project.value.kind !== "project")
+      return yield* unavailable("turn.prepare");
+    const sourceRoots =
+      project?.value.kind === "project"
+        ? project.value.project.sources.map((source) => source.root)
+        : [];
     if (presentation) yield* presentation.observe(proof);
     const base = `You are working in Nodex Session ${sessionId}. Use the Nodex application tools for content operations.`;
     const cli = yield* buildAgentRuntimeCliContext(
@@ -144,7 +160,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         ? (identity.nativeThreadRef.nativeId ?? null)
         : null,
     );
-    return { instructions: cli ? `${base}\n\n${cli}` : base };
+    return { instructions: cli ? `${base}\n\n${cli}` : base, sourceRoots };
   });
 
   const execute = Effect.fn("AgentRuntimeHost.execute")(

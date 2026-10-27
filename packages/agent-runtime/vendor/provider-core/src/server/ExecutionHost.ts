@@ -105,7 +105,15 @@ export class ExecutionHost extends Context.Reference<{
   readonly releaseNativeToolCall?: (token: string) => Effect.Effect<void>;
   readonly prepareTurn: (
     identity: HostTurnIdentity,
-  ) => Effect.Effect<{ readonly instructions?: string; readonly identity?: HostTurnIdentity }, ExecutionHostError>;
+  ) => Effect.Effect<
+    {
+      readonly instructions?: string;
+      readonly identity?: HostTurnIdentity;
+      /** Current Project Sources, resolved by the host after execution admission. */
+      readonly sourceRoots?: readonly string[];
+    },
+    ExecutionHostError
+  >;
   /**
    * Provider configuration the host contributes whenever a native thread starts, resumes or
    * forks, such as desktop tools that live outside the execution process, and the environment

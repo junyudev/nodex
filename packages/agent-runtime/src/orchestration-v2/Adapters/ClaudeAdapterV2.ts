@@ -392,6 +392,10 @@ export interface ClaudeAgentSdkQuerySession {
   readonly applySelection: (
     selection: ClaudeLiveSelection,
   ) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
+  /** Replace the host's current Project Sources without restarting the native process. */
+  readonly setSourceRoots: (
+    sourceRoots: readonly string[],
+  ) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   /** What Claude Code reports it is actually running with. */
   readonly readAppliedSettings: Effect.Effect<
     ClaudeAppliedSettings | null,
@@ -552,7 +556,9 @@ export type ClaudeAgentSdkProtocolLogEvent =
       readonly stage: "decoded";
       readonly payload: {
         readonly type: "query.apply_flag_settings";
-        readonly settings: ClaudeLiveSelection;
+        readonly settings:
+          | ClaudeLiveSelection
+          | { readonly permissions: NonNullable<ClaudeSdkSettings["permissions"]> };
       };
     }
   | {
@@ -934,6 +940,34 @@ export const layerQueryRunner: Layer.Layer<
                 }),
               ),
             ),
+          setSourceRoots: (sourceRoots) => {
+            // Flag settings shallow-merge permissions. Preserve the caller's own
+            // inline rules and directories while replacing only the host's roots.
+            const permissions =
+              typeof queryOptions.settings === "object"
+                ? queryOptions.settings.permissions
+                : undefined;
+            const settings = {
+              permissions: {
+                ...permissions,
+                additionalDirectories: [
+                  ...new Set([...(permissions?.additionalDirectories ?? []), ...sourceRoots]),
+                ],
+              },
+            };
+            return Effect.tryPromise({
+              try: () => queryRuntime.applyFlagSettings(settings),
+              catch: (cause) => queryRunnerError(cause, "setSourceRoots"),
+            }).pipe(
+              Effect.tap(() =>
+                logProtocolEvent({
+                  direction: "outgoing",
+                  stage: "decoded",
+                  payload: { type: "query.apply_flag_settings", settings },
+                }),
+              ),
+            );
+          },
           readAppliedSettings: Effect.tryPromise({
             try: () => queryClaudeAppliedSettings(queryRuntime),
             catch: (cause) => queryRunnerError(cause, "getSettings"),
@@ -2988,12 +3022,15 @@ interface ActiveClaudeSubagent {
 
 interface ClaudeLiveQueryContext {
   readonly nativeThreadId: string;
+  readonly cwd: string | null;
   readonly query: ClaudeAgentSdkQuerySession;
   readonly queryPolicyKey: string;
   // Choices the process was launched with; a change needs a new process.
   readonly launchKey: string;
   // Null after an unconfirmed native change; the next prompt must resynchronize every choice.
   confirmedLiveSelection: ClaudeLiveSelection | null;
+  // A failed acknowledgement may have changed native state; retry the complete set.
+  confirmedSourceRoots: readonly string[] | null;
   // Ultracode was asked for and Claude Code has not yet confirmed it runs.
   verifyUltracode: boolean;
   readonly closed: Deferred.Deferred<void>;
@@ -8308,6 +8345,24 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           },
         );
 
+        const syncSourceRoots = Effect.fn("ClaudeAdapterV2.syncSourceRoots")(function* (
+          context: ClaudeLiveQueryContext,
+          sourceRoots: readonly string[] | undefined,
+        ) {
+          if (sourceRoots === undefined) return;
+          const roots = [...new Set(sourceRoots)].sort();
+          if (
+            context.confirmedSourceRoots?.length === roots.length &&
+            context.confirmedSourceRoots.every((root, index) => root === roots[index])
+          )
+            return;
+          context.confirmedSourceRoots = null;
+          // Launch-time directory grants cannot be fully withdrawn. Apply the
+          // first set after initialization, then replace it on this same process.
+          yield* context.query.setSourceRoots(roots);
+          context.confirmedSourceRoots = roots;
+        });
+
         const openQuery = Effect.fnUntraced(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
           nativeThreadId: string,
@@ -8339,6 +8394,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           if (
             existing !== null &&
             existing.nativeThreadId === nativeThreadId &&
+            existing.cwd === turnInput.runtimePolicy.cwd &&
             existing.queryPolicyKey === queryPolicyKey &&
             existing.launchKey === compiledSelection.launchIdentity &&
             (yield* applyLiveSelection(existing, compiledSelection.live))
@@ -8478,10 +8534,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const closed = yield* Deferred.make<void>();
           const context: ClaudeLiveQueryContext = {
             nativeThreadId,
+            cwd: turnInput.runtimePolicy.cwd,
             query: querySession,
             queryPolicyKey,
             launchKey: compiledSelection.launchIdentity,
             confirmedLiveSelection: compiledSelection.live,
+            confirmedSourceRoots: null,
             verifyUltracode: compiledSelection.live.ultracode,
             closed,
             lastTurn: null,
@@ -8650,6 +8708,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     uuid: promptUuid,
                   });
             const querySession = yield* openQuery(turnInput, nativeThreadId);
+            if (userMessage !== null)
+              yield* syncSourceRoots(querySession, turnInput.hostSourceRoots);
             const attachTurn = Effect.gen(function* () {
               querySession.lastTurn = context;
               yield* Ref.set(activeTurn, context);

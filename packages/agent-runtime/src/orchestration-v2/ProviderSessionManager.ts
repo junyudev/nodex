@@ -2118,6 +2118,9 @@ export const layerWithOptions = (
                                 ...(host.instructions === undefined
                                   ? {}
                                   : { hostInstructions: host.instructions }),
+                                ...(host.sourceRoots === undefined
+                                  ? {}
+                                  : { hostSourceRoots: host.sourceRoots }),
                                 ...(executionHost.orchestrationInstructions === undefined
                                   ? {}
                                   : {
