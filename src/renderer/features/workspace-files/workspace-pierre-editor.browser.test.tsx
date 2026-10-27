@@ -66,12 +66,27 @@ function spyOnEditor() {
   return vi.spyOn(Editor.prototype, "edit");
 }
 
-async function attached(spy: ReturnType<typeof spyOnEditor>) {
+async function revealedEditor(spy: ReturnType<typeof spyOnEditor>) {
   return settle(() => {
     const editor = spy.mock.contexts.at(-1);
     if (!(editor instanceof Editor)) throw new Error("Editor has not attached");
     expect(editor.getFile()).toBeDefined();
+    // getFile() precedes the queued onAttach callback that applies the pending reveal.
+    expect(editor.getViewState().selections?.at(-1)).toBeDefined();
     return editor!;
+  });
+}
+
+async function focusEditor(editor: Editor, container: HTMLElement) {
+  // With a selection, Pierre's focus() queues native focus for a later frame.
+  // Keyboard delivery must wait for the live additions-side contenteditable.
+  await act(async () => editor.focus({ preventScroll: true }));
+  await settle(() => {
+    const root = shadow(container);
+    const editable = root.querySelector("[data-code]:not([data-deletions]) [contenteditable=true]");
+    expect(editable).not.toBeNull();
+    expect(root.activeElement).toBe(editable);
+    expect(container.ownerDocument.activeElement).toBe(root.host);
   });
 }
 
@@ -102,7 +117,7 @@ describe("Files editable comparisons", () => {
       revealLocation: { line: 4, column: 1 },
     };
     const view = render(<DraftEditor {...props} comparison={comparison} />);
-    const editor = await attached(edits);
+    const editor = await revealedEditor(edits);
     await settle(() => {
       expect(editor.getViewState().selections?.at(-1)?.end.line).toBe(3);
       expect(navigation).toHaveBeenLastCalledWith({
@@ -112,8 +127,8 @@ describe("Files editable comparisons", () => {
         nextIndex: -1,
       });
     });
+    await focusEditor(editor, view.container);
     await act(async () => {
-      editor.focus({ preventScroll: true });
       await userEvent.keyboard("x");
     });
     const typed = "first\nchanged\nthird\nxfourth\nfifth";
@@ -169,7 +184,7 @@ describe("Files editable comparisons", () => {
         revealLocation={{ line: 1, column: 1 }}
       />,
     );
-    const editor = await attached(edits);
+    const editor = await revealedEditor(edits);
     await settle(() => {
       expect(editor.getText()).toBe("first\nnew second\nthird\nnew fourth\nfifth");
       expect(editor.getViewState().selections?.at(-1)?.end.line).toBe(0);
@@ -248,7 +263,7 @@ describe("Files editable comparisons", () => {
     const view = render(
       <DraftEditor onChange={onChange} revealLocation={{ line: 3, column: 2 }} />,
     );
-    const editor = await attached(edits);
+    const editor = await revealedEditor(edits);
     await settle(() =>
       expect(editor.getViewState().selections?.at(-1)?.end).toEqual({ line: 2, character: 1 }),
     );
@@ -311,14 +326,18 @@ describe("Files editable comparisons", () => {
           revealLocation={{ line, column: 1 }}
         />,
       );
-      const editor = await attached(edits);
+      const editor = await revealedEditor(edits);
       const noNewlineRow = () => shadow(view.container).querySelector("[data-no-newline]");
       await settle(() => {
         expect(navigation.mock.lastCall?.[0]?.count).toBe(0);
         expect(noNewlineRow() !== null).toBe(missingFinalNewline);
+        expect(editor.getViewState().selections?.at(-1)?.end).toEqual({
+          line: line - 1,
+          character: 0,
+        });
       });
+      await focusEditor(editor, view.container);
       await act(async () => {
-        editor.focus({ preventScroll: true });
         await userEvent.keyboard("x");
       });
       await settle(() => {
@@ -349,7 +368,7 @@ describe("Files editable comparisons", () => {
           revealLocation={{ line: 1, column: 1 }}
         />,
       );
-      const editor = await attached(edits);
+      const editor = await revealedEditor(edits);
       await act(async () => {
         editor.setSelections([
           {
@@ -358,7 +377,9 @@ describe("Files editable comparisons", () => {
             direction: "forward",
           },
         ]);
-        editor.focus({ preventScroll: true });
+      });
+      await focusEditor(editor, view.container);
+      await act(async () => {
         await userEvent.keyboard("{Backspace}");
       });
       await settle(() => {
@@ -370,6 +391,7 @@ describe("Files editable comparisons", () => {
         expect(line).not.toBeNull();
         expect(line?.textContent).toBe("");
       });
+      await focusEditor(editor, view.container);
       await act(async () => {
         await userEvent.keyboard("x");
       });
@@ -395,7 +417,7 @@ describe("Files editable comparisons", () => {
         revealLocation={{ line: 2, column: 1 }}
       />,
     );
-    const editor = await attached(edits);
+    const editor = await revealedEditor(edits);
     const span = await settle(() => {
       const span = shadow(view.container).querySelector(
         '[data-line="2"] > [data-pierre-editor-inline-blame]',
@@ -405,8 +427,8 @@ describe("Files editable comparisons", () => {
       expect(span?.getAttribute("aria-hidden")).toBe("true");
       return span!;
     });
+    await focusEditor(editor, view.container);
     await act(async () => {
-      editor.focus({ preventScroll: true });
       await userEvent.keyboard("x");
     });
     await settle(() => {
@@ -448,7 +470,7 @@ describe("Files editable comparisons", () => {
         revealLocation={{ line: 1, column: 1 }}
       />,
     );
-    const editor = await attached(edits);
+    const editor = await revealedEditor(edits);
     const span = await settle(() => {
       const span = shadow(view.container).querySelector("[data-pierre-editor-inline-blame]");
       expect(span?.getAttribute("data-pierre-editor-inline-blame")).toBe("Author of 1");
