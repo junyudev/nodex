@@ -92,7 +92,7 @@ const gh = (
 const commandFailureOutput = (error: unknown, stream: "stdout" | "stderr"): string | null => {
   if (!(error instanceof Error) || !("status" in error) || error.status !== 1) return null;
   if (!(stream in error)) return null;
-  const output = error[stream];
+  const output: unknown = Reflect.get(error, stream);
   return typeof output === "string" || Buffer.isBuffer(output) ? output.toString().trim() : null;
 };
 
