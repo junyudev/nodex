@@ -40,44 +40,45 @@ function copyText(value: string) {
 function WorkspaceFileBreadcrumbNav({ breadcrumb }: { breadcrumb: WorkspaceFileBreadcrumb }) {
   const { segments, title } = breadcrumb;
   return (
-    <nav
-      aria-label="File path"
-      className="flex h-full min-w-0 items-center overflow-hidden ps-2 pe-1"
-      title={title}
-    >
-      <ol
-        className="flex min-w-0 flex-1 items-center gap-1 text-sm semantic-text-secondary select-text"
-        onCopy={(event) => {
-          // Selecting the whole trail copies it as a path rather than run-together names.
-          const selected = event.currentTarget.ownerDocument.getSelection()?.toString();
-          if (selected !== segments.join("")) return;
-          event.preventDefault();
-          event.clipboardData.setData("text/plain", title);
-        }}
+    <NodexTooltip tooltipContent={title} delayOpen>
+      <nav
+        aria-label="File path"
+        className="flex h-full min-w-0 items-center overflow-hidden ps-2 pe-1"
       >
-        {segments.map((segment, index) => {
-          const last = index === segments.length - 1;
-          return (
-            <li
-              key={`${index}:${segment}`}
-              className={cn("flex items-center", last ? "min-w-0" : "shrink-0 gap-1")}
-              data-file-ancestor={last ? undefined : index}
-            >
-              <span
-                className={
-                  last
-                    ? "min-w-0 truncate pe-1 font-medium text-(--color-text)"
-                    : "whitespace-nowrap"
-                }
+        <ol
+          className="flex min-w-0 flex-1 items-center gap-1 text-sm semantic-text-secondary select-text"
+          onCopy={(event) => {
+            // Selecting the whole trail copies it as a path rather than run-together names.
+            const selected = event.currentTarget.ownerDocument.getSelection()?.toString();
+            if (selected !== segments.join("")) return;
+            event.preventDefault();
+            event.clipboardData.setData("text/plain", title);
+          }}
+        >
+          {segments.map((segment, index) => {
+            const last = index === segments.length - 1;
+            return (
+              <li
+                key={`${index}:${segment}`}
+                className={cn("flex items-center", last ? "min-w-0" : "shrink-0 gap-1")}
+                data-file-ancestor={last ? undefined : index}
               >
-                {segment}
-              </span>
-              {last ? null : <ChevronRightLgIcon className="shrink-0 text-tertiary" />}
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
+                <span
+                  className={
+                    last
+                      ? "min-w-0 truncate pe-1 font-medium text-(--color-text)"
+                      : "whitespace-nowrap"
+                  }
+                >
+                  {segment}
+                </span>
+                {last ? null : <ChevronRightLgIcon className="shrink-0 text-tertiary" />}
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+    </NodexTooltip>
   );
 }
 

@@ -3656,6 +3656,7 @@ export function WorkbenchRuntime({
       activeOwnedSceneKey,
       projects,
       previewSurfacesByPanel,
+      openCommandPalette,
       openWorkspaceFileTab,
       updateSceneSurfacePresentation,
     ],
