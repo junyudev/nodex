@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
+import { Circle } from "../shared/icons/generic-icons";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
 import "../../globals.css";
 import {
@@ -22,7 +23,7 @@ import {
 
 installRendererThemeFixture();
 
-const icon = <svg viewBox="0 0 20 20" aria-hidden="true" />;
+const icon = <Circle aria-hidden="true" />;
 
 const settleFloatingSurface = async (): Promise<void> => {
   await Promise.resolve();

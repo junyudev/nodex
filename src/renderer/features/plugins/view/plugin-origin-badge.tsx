@@ -6,7 +6,7 @@ import {
   LaptopIcon,
   LaptopSmallIcon,
   PersonCircleIcon,
-  type CodexIconProps,
+  type IconGlyphProps,
 } from "@/components/shared/icons/customize-action-icons";
 import {
   BranchIcon20,
@@ -34,7 +34,7 @@ const ORIGIN_PRESENTATION: Record<
   PluginOrigin,
   {
     readonly label: string;
-    readonly icons: Record<"default" | "large", ComponentType<CodexIconProps>>;
+    readonly icons: Record<"default" | "large", ComponentType<IconGlyphProps>>;
     readonly tooltip: (marketplaceName: string) => string;
     readonly showsPath: boolean;
   }
