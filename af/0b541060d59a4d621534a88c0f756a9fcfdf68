@@ -1,0 +1,33 @@
+src/renderer/features/local-conversation/view/local-conversation-content-anchor.jsdom.test.ts
+  s_b33872d4d89492::t_2b1ec34005a6de 1-7,25-59
+  s_b33872d4d89492::t_6cc03ac8c5c408 8-24
+src/renderer/features/local-conversation/view/local-conversation-content-anchor.ts
+  s_b33872d4d89492::t_05b57f08376db6 1-69
+  s_b33872d4d89492::t_d6759aac217206 70-74
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_b33872d4d89492::t_734ab441acab44 343,345
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_b33872d4d89492::t_74f0475d9f514a 1062-1066,1383-1387
+src/renderer/features/local-conversation/view/local-conversation-realtime-transcript-restore.node.test.ts
+  s_b33872d4d89492::t_b51a5457249c38 3
+src/renderer/features/local-conversation/view/local-conversation-realtime-transcript-restore.ts
+  s_b33872d4d89492::t_4d93e8c304dbe5 63
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_b33872d4d89492::t_15fa9a7e4597a8 81-85,831-841,843-844,846,1029-1105,1136,1138,1144,1147-1149,1320-1340,1376,1422-1423,1490,1527-1528,1610-1614,1618-1619,1640,1716-1723,1876,1884-1890,1957-1958,1965-1970
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af0b541060d59a4d621534a88c0f756a9fcfdf68",
+  "prompts": {},
+  "sessions": {
+    "s_b33872d4d89492": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec3-606f-7b70-bee4-5a7dfdadd216",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
