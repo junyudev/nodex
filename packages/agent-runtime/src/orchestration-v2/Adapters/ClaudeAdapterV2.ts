@@ -25,6 +25,10 @@ import {
 } from "@t3tools/shared/fileChanges";
 import { normalizeClaudeTurnTokenUsage } from "../../provider/ClaudeTurnTokenUsage.ts";
 import { loadClaudeAgentSdk } from "../../provider/ClaudeAgentSdk.ts";
+import {
+  queryClaudeAppliedSettings,
+  type ClaudeAppliedSettings,
+} from "../../provider/ClaudeAppliedSettings.ts";
 import { createClaudeSessionStores } from "../../provider/ClaudeSessionStore.ts";
 import type {
   CanUseTool,
@@ -404,14 +408,6 @@ export interface ClaudeAgentSdkQuerySession {
 
 export type ClaudeLiveFlagSettings = Omit<ClaudeLiveSelection, "model">;
 
-export interface ClaudeAppliedSettings {
-  readonly model: string | null;
-  readonly effort: string | null;
-  readonly ultracode: boolean;
-  readonly ultracodeRequested: boolean;
-  readonly ultracodeAvailable: boolean | null;
-}
-
 export const claudeLiveSelectionsEqual = (
   left: ClaudeLiveSelection,
   right: ClaudeLiveSelection,
@@ -420,26 +416,6 @@ export const claudeLiveSelectionsEqual = (
   left.effortLevel === right.effortLevel &&
   left.fastMode === right.fastMode &&
   left.ultracode === right.ultracode;
-
-/** Reads `get_settings().applied`, whose fields Claude Code adds over time. */
-export function readClaudeAppliedSettings(response: unknown): ClaudeAppliedSettings | null {
-  const applied =
-    typeof response === "object" && response !== null ? Reflect.get(response, "applied") : null;
-  if (typeof applied !== "object" || applied === null) return null;
-  const text = (key: string) => {
-    const value = Reflect.get(applied, key);
-    return typeof value === "string" ? value : null;
-  };
-  const flag = (key: string) => Reflect.get(applied, key) === true;
-  const available = Reflect.get(applied, "ultracodeAvailable");
-  return {
-    model: text("model"),
-    effort: text("effort"),
-    ultracode: flag("ultracode"),
-    ultracodeRequested: flag("ultracodeRequested"),
-    ultracodeAvailable: typeof available === "boolean" ? available : null,
-  };
-}
 
 type ClaudeQueryStreamExit = Exit.Exit<void, ClaudeAgentSdkQueryRunnerError>;
 
@@ -983,14 +959,8 @@ export const layerQueryRunner: Layer.Layer<
                 }),
               ),
             ),
-          // The SDK answers get_settings at runtime without typing it.
           readAppliedSettings: Effect.tryPromise({
-            try: async () => {
-              const getSettings: unknown = Reflect.get(queryRuntime, "getSettings");
-              return typeof getSettings === "function"
-                ? readClaudeAppliedSettings(await getSettings.call(queryRuntime))
-                : null;
-            },
+            try: () => queryClaudeAppliedSettings(queryRuntime),
             catch: (cause) => queryRunnerError(cause, "getSettings"),
           }),
           setPermissionMode: (mode) =>

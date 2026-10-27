@@ -488,7 +488,9 @@ export interface AgentSessionConfigSelectOption {
   /** Advertised reasoning controls when this option selects a model. */
   readonly reasoningEfforts?: readonly string[];
   readonly fastMode?: boolean;
+  /** Ultracode can run; `ultracodeUnavailableReason` lists it when it cannot. */
   readonly ultracode?: boolean;
+  readonly ultracodeUnavailableReason?: string;
   readonly adaptiveThinking?: boolean;
   readonly disableThinking?: boolean;
   readonly disabledThinkingEfforts?: readonly string[];

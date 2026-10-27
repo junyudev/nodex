@@ -2,6 +2,7 @@ import {
   type ClaudeSettings,
   type ModelCapabilities,
   type ServerProvider,
+  type ServerProviderModel,
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -22,6 +23,7 @@ import type {
   SettingSource,
 } from "@anthropic-ai/claude-agent-sdk";
 import { loadClaudeAgentSdk } from "./ClaudeAgentSdk.ts";
+import { queryClaudeAppliedSettings } from "./ClaudeAppliedSettings.ts";
 
 import {
   buildServerProvider,
@@ -50,6 +52,44 @@ import {
   resolveClaudeModelsForVersion,
   resolveClaudeUpdateRequiredModels,
 } from "./ClaudeModelCatalog.ts";
+
+const ULTRACODE_OPTION_ID = "ultracode";
+const ULTRACODE_UNAVAILABLE_REASON =
+  "Dynamic workflows are off for this Claude Code account. Turn them on in Claude Code's /config to use Ultracode.";
+
+/**
+ * Claude Code answers whether Ultracode can run only for the session's model, so the probe
+ * asks about a current model that supports it and the answer reflects the account alone.
+ */
+const ULTRACODE_PROBE_MODEL = BUNDLED_CLAUDE_MODEL_CATALOG.models.find(
+  ({ model }) =>
+    !model.isLegacy &&
+    model.capabilities?.optionDescriptors?.some(
+      (descriptor) => descriptor.id === ULTRACODE_OPTION_ID,
+    ),
+)?.model.slug;
+
+/** Ultracode stays listed but explains itself when the account cannot run workflows. */
+export function markClaudeUltracodeUnavailable(
+  models: ReadonlyArray<ServerProviderModel>,
+): ReadonlyArray<ServerProviderModel> {
+  return models.map((model) => {
+    const descriptors = model.capabilities?.optionDescriptors;
+    if (!model.capabilities || !descriptors?.some(({ id }) => id === ULTRACODE_OPTION_ID))
+      return model;
+    return {
+      ...model,
+      capabilities: {
+        ...model.capabilities,
+        optionDescriptors: descriptors.map((descriptor) =>
+          descriptor.id === ULTRACODE_OPTION_ID && descriptor.type === "boolean"
+            ? { ...descriptor, unavailableReason: ULTRACODE_UNAVAILABLE_REASON }
+            : descriptor,
+        ),
+      },
+    };
+  });
+}
 
 const DEFAULT_CLAUDE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
@@ -279,6 +319,8 @@ type ClaudeCapabilitiesProbe = {
    */
   readonly apiProvider: string | undefined;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
+  /** Whether dynamic workflows, and so Ultracode, can run for this login; unknown when absent. */
+  readonly workflowsAvailable?: boolean;
   /**
    * Subscription windows from the SDK's `get_usage` control request, or
    * `undefined` when the request itself failed. Absent windows on an
@@ -430,6 +472,18 @@ const probeClaudeCapabilities = (
                 usageReadAt: DateTime.formatIso(yield* DateTime.now),
               }
             : undefined;
+        // Account facts belong to the status check. The probe never prompts, so
+        // pointing it at another model changes nothing else.
+        const workflowsAvailable =
+          includeUsage && ULTRACODE_PROBE_MODEL
+            ? yield* Effect.tryPromise(async () => {
+                await q.setModel(ULTRACODE_PROBE_MODEL);
+                return (await queryClaudeAppliedSettings(q))?.ultracodeAvailable ?? undefined;
+              }).pipe(
+                Effect.timeout(DEFAULT_TIMEOUT_MS),
+                Effect.orElseSucceed(() => undefined),
+              )
+            : undefined;
         const account = init.account as
           | {
               readonly email?: string;
@@ -446,6 +500,7 @@ const probeClaudeCapabilities = (
           apiKeySource: account?.apiKeySource,
           apiProvider: account?.apiProvider,
           slashCommands: parseClaudeInitializationCommands(init.commands),
+          ...(workflowsAvailable === undefined ? {} : { workflowsAvailable }),
           ...usage,
         } satisfies ClaudeCapabilitiesProbe;
       }),
@@ -696,7 +751,8 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     presentation: CLAUDE_PRESENTATION,
     enabled: claudeSettings.enabled,
     checkedAt,
-    models,
+    models:
+      capabilities.workflowsAvailable === false ? markClaudeUltracodeUnavailable(models) : models,
     updateRequiredModels,
     slashCommands: dedupedSlashCommands,
     skills,

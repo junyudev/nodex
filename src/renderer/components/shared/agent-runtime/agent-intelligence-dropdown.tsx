@@ -62,6 +62,7 @@ export interface AgentNativeIntelligencePresentation {
   readonly capabilities: {
     readonly fastMode?: boolean;
     readonly ultracode?: boolean;
+    readonly ultracodeUnavailableReason?: string;
     readonly disableThinking?: boolean;
     readonly contextWindows?: readonly string[];
   };

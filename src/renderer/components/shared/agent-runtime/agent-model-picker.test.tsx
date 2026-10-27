@@ -469,3 +469,46 @@ test("sets Claude effort on one track and turns Ultracode on at that effort", as
   await click(ultracode);
   await waitFor(() => expect(change).toHaveBeenLastCalledWith({ ultracode: true }));
 });
+
+test("keeps an unavailable Ultracode visible, explains it, and never turns it on", async () => {
+  const opus = {
+    ...catalogModel("claude-opus-5-5", "Claude Opus 5.5"),
+    supportedReasoningEfforts: [{ reasoningEffort: "high", description: "high" }],
+    defaultReasoningEffort: "high",
+  };
+  const claude = {
+    binding: { kind: "claude", instanceConfigId: "claude" },
+    model: opus.id,
+  } as const;
+  const change = vi.fn(async () => {});
+  const view = renderWithMaitai(
+    <NodexTooltipProvider delay={0}>
+      <AgentIntelligenceDropdown
+        models={[opus]}
+        open
+        selection={{ kind: "claude", model: opus.id, reasoningEffort: "high", serviceTier: null }}
+        onSelectionChange={() => {}}
+        provider={{
+          label: "Claude",
+          selection: "claude",
+          options: [],
+          select: () => {},
+          nativeIntelligence: {
+            selected: { ultracode: true, thinking: true },
+            capabilities: { ultracodeUnavailableReason: "Dynamic workflows are off." },
+            change,
+          },
+          modelCatalog: presentation({
+            selected: claude,
+            entries: [{ binding: claude.binding, label: "Claude", model: opus, selection: claude }],
+          }),
+        }}
+      />
+    </NodexTooltipProvider>,
+  );
+  const ultracode = await view.findByRole("button", { name: "Ultracode" });
+  expect(ultracode.getAttribute("aria-disabled")).toBe("true");
+  expect(ultracode.getAttribute("aria-pressed")).toBe("false");
+  await click(ultracode);
+  expect(change).not.toHaveBeenCalled();
+});

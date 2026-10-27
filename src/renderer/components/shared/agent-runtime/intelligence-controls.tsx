@@ -149,15 +149,19 @@ export function IntelligenceModeToggle({
   description,
   pressed,
   disabled = false,
+  unavailableReason,
   onPressedChange,
 }: {
   readonly mode: IntelligenceMode;
   readonly description: string;
   readonly pressed: boolean;
   readonly disabled?: boolean;
+  /** The mode exists here but cannot be turned on; the toggle stays visible to say why. */
+  readonly unavailableReason?: string;
   readonly onPressedChange: (pressed: boolean) => void;
 }) {
   const { label, icon: Icon, on } = MODES[mode];
+  const unavailable = unavailableReason !== undefined;
   return (
     <NodexTooltip
       side="top"
@@ -166,21 +170,30 @@ export function IntelligenceModeToggle({
         <span className="flex flex-col gap-0.5">
           <span>
             {label}
-            <span className="text-token-description-foreground"> · {pressed ? "On" : "Off"}</span>
+            <span className="text-token-description-foreground">
+              {" · "}
+              {unavailable ? "Unavailable" : pressed ? "On" : "Off"}
+            </span>
           </span>
-          <span className="text-token-description-foreground">{description}</span>
+          <span className="text-token-description-foreground">
+            {unavailableReason ?? description}
+          </span>
         </span>
       }
     >
       <button
         type="button"
         aria-label={label}
-        aria-pressed={pressed}
+        aria-pressed={pressed && !unavailable}
         disabled={disabled}
-        onClick={() => onPressedChange(!pressed)}
+        // Stays hoverable so its tooltip can explain why it is off.
+        aria-disabled={unavailable || undefined}
+        onClick={() => {
+          if (!unavailable) onPressedChange(!pressed);
+        }}
         className={cn(
-          "flex size-6 cursor-interaction items-center justify-center rounded-md outline-hidden transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-50",
-          pressed
+          "flex size-6 cursor-interaction items-center justify-center rounded-md outline-hidden transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-50 aria-disabled:cursor-default aria-disabled:opacity-40",
+          pressed && !unavailable
             ? on
             : "text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground",
         )}

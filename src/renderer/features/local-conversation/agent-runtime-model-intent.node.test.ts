@@ -3,6 +3,7 @@ import {
   applyRuntimeClaudeIntent,
   readRuntimeClaudeSelection,
   resolveRuntimeClaudeIntent,
+  runtimeClaudeModelOption,
 } from "./agent-runtime-model-intent";
 import type { AgentRuntimeProvider } from "./agent-runtime-conversation-adapter";
 
@@ -125,4 +126,26 @@ it("carries Ultracode at any effort and keeps it for a model switch back", () =>
   expect(
     resolveRuntimeClaudeIntent(unsupported, { ...intent, model: "small" }, model("small", false)),
   ).toEqual({ ...intent, model: "small" });
+});
+
+it("keeps Ultracode intent but runs without it while the account cannot use it", () => {
+  const unavailable: AgentRuntimeProvider["models"][number] = {
+    ...model("full", true),
+    capabilities: {
+      optionDescriptors: (model("full", true).capabilities?.optionDescriptors ?? []).map(
+        (descriptor) =>
+          descriptor.id === "ultracode" && descriptor.type === "boolean"
+            ? { ...descriptor, unavailableReason: "Dynamic workflows are off." }
+            : descriptor,
+      ),
+    },
+  };
+  expect(runtimeClaudeModelOption(unavailable)).toMatchObject({
+    ultracode: false,
+    ultracodeUnavailableReason: "Dynamic workflows are off.",
+  });
+  const intent = { model: "full", effort: "high" as const, ultracode: true };
+  const applied = applyRuntimeClaudeIntent({ binding, model: "full" }, intent, unavailable);
+  expect(readRuntimeClaudeSelection(applied).ultracode).toBe(false);
+  expect(resolveRuntimeClaudeIntent(applied, intent, unavailable)).toEqual(intent);
 });

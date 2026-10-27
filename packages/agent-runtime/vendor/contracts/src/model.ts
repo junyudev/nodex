@@ -26,7 +26,6 @@ export const SelectProviderOptionDescriptor = Schema.Struct({
   type: Schema.Literal("select"),
   options: Schema.Array(ProviderOptionChoice),
   currentValue: Schema.optional(TrimmedNonEmptyString),
-  promptInjectedValues: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
 });
 export type SelectProviderOptionDescriptor = typeof SelectProviderOptionDescriptor.Type;
 
@@ -34,6 +33,8 @@ export const BooleanProviderOptionDescriptor = Schema.Struct({
   ...ProviderOptionDescriptorBase,
   type: Schema.Literal("boolean"),
   currentValue: Schema.optional(Schema.Boolean),
+  /** The model has this option, but the account or provider cannot turn it on now. */
+  unavailableReason: Schema.optional(TrimmedNonEmptyString),
 });
 export type BooleanProviderOptionDescriptor = typeof BooleanProviderOptionDescriptor.Type;
 

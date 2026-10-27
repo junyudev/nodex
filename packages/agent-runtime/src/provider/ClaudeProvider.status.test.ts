@@ -103,3 +103,42 @@ it.effect.skipIf(windowsHost)(
       }),
     ),
 );
+
+it.effect.skipIf(windowsHost)(
+  "keeps Ultracode listed but explains it when the account has dynamic workflows off",
+  () =>
+    withFakeClaude(({ settings, cwd }) =>
+      Effect.gen(function* () {
+        const ultracodeOf = (provider: { readonly models: ReadonlyArray<unknown> }) =>
+          (
+            provider.models as ReadonlyArray<{
+              readonly slug: string;
+              readonly capabilities?: {
+                readonly optionDescriptors?: ReadonlyArray<{
+                  readonly id: string;
+                  readonly unavailableReason?: string;
+                }>;
+              };
+            }>
+          )
+            .find(({ slug }) => slug === "claude-opus-5-5")
+            ?.capabilities?.optionDescriptors?.find(({ id }) => id === "ultracode");
+        const off = yield* checkClaudeProviderStatus(
+          settings,
+          () => Effect.succeed({ ...subscriptionProbe, workflowsAvailable: false }),
+          { PATH: process.env.PATH },
+          cwd,
+        );
+        assert.match(ultracodeOf(off)?.unavailableReason ?? "", /dynamic workflows are off/iu);
+
+        const on = yield* checkClaudeProviderStatus(
+          settings,
+          () => Effect.succeed({ ...subscriptionProbe, workflowsAvailable: true }),
+          { PATH: process.env.PATH },
+          cwd,
+        );
+        assert.isDefined(ultracodeOf(on));
+        assert.isUndefined(ultracodeOf(on)?.unavailableReason);
+      }),
+    ),
+);

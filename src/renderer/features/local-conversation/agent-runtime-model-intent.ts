@@ -35,12 +35,23 @@ export function runtimeClaudeModelOption(model: Model): AgentSessionConfigSelect
     description: null,
     reasoningEfforts: effort?.type === "select" ? effort.options.map((choice) => choice.id) : [],
     fastMode: options.some((option) => option.id === "fastMode" && option.type === "boolean"),
-    ultracode: options.some((option) => option.id === "ultracode" && option.type === "boolean"),
+    ...ultracodeCapability(options.find((option) => option.id === "ultracode")),
     disableThinking: options.some(
       (option) => option.id === "thinking" && option.type === "boolean",
     ),
     contextWindows: context?.type === "select" ? context.options.map((choice) => choice.id) : [],
   };
+}
+
+function ultracodeCapability(
+  descriptor:
+    | NonNullable<NonNullable<Model["capabilities"]>["optionDescriptors"]>[number]
+    | undefined,
+): Pick<AgentSessionConfigSelectOption, "ultracode" | "ultracodeUnavailableReason"> {
+  if (descriptor?.type !== "boolean") return { ultracode: false };
+  return descriptor.unavailableReason
+    ? { ultracode: false, ultracodeUnavailableReason: descriptor.unavailableReason }
+    : { ultracode: true };
 }
 
 export function applyRuntimeClaudeIntent(

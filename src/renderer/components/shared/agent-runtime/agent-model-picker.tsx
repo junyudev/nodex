@@ -295,13 +295,16 @@ export function AgentModelPicker(
         }}
       />
     ) : null,
-    native?.capabilities.ultracode ? (
+    native?.capabilities.ultracode || native?.capabilities.ultracodeUnavailableReason ? (
       <IntelligenceModeToggle
         key="ultracode"
         mode="ultracode"
         description="Plans and runs a multi-agent workflow for each substantive task, at any effort. Uses usage much faster."
         pressed={ultracodeOn}
         disabled={disabled}
+        {...(native.capabilities.ultracodeUnavailableReason
+          ? { unavailableReason: native.capabilities.ultracodeUnavailableReason }
+          : {})}
         onPressedChange={(ultracode) => changeNative({ ultracode })}
       />
     ) : null,
@@ -320,6 +323,7 @@ export function AgentModelPicker(
         isCodex ||
         native?.capabilities.fastMode ||
         native?.capabilities.ultracode ||
+        native?.capabilities.ultracodeUnavailableReason ||
         contextWindows.length > 1
       : genericOptions.length > 0 || Boolean(catalog.modes?.availableModes.length));
   return (

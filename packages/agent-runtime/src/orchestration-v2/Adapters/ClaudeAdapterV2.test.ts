@@ -83,6 +83,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ClaudeAdapterV2 from "./ClaudeAdapterV2.ts";
+import type { ClaudeAppliedSettings } from "../../provider/ClaudeAppliedSettings.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { ClaudeOrchestratorReplayHarness } from "./ClaudeAdapterV2.testkit.ts";
 import { provideDeterministicTestRuntime } from "../testkit/DeterministicRuntime.ts";
@@ -2025,7 +2026,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     // first one can exit (Queue.shutdown) and a later turn can start another.
     readonly freshQueueOnReopen?: boolean;
     // What Claude Code reports it runs with after a change.
-    readonly appliedSettings?: ClaudeAdapterV2.ClaudeAppliedSettings;
+    readonly appliedSettings?: ClaudeAppliedSettings;
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
