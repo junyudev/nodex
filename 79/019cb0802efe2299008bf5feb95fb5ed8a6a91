@@ -1,0 +1,21 @@
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_e02c2654af7f79::t_2b12360eff5d4d 2485-2579
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_e02c2654af7f79::t_24ef1a48daadeb 6558-6736,7393-7394,7510
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "79019cb0802efe2299008bf5feb95fb5ed8a6a91",
+  "prompts": {},
+  "sessions": {
+    "s_e02c2654af7f79": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17afc-f4be-7b40-9c91-3935868a6a33",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
