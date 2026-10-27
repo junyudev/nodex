@@ -1,0 +1,33 @@
+src/renderer/features/inbox/inbox-presentation.ts
+  s_f2e3c034e2bc1d::t_73b152849a0f4c 228-229,234
+src/renderer/features/scheduled/scheduled-task-cache.ts
+  s_f2e3c034e2bc1d::t_73b152849a0f4c 33-35,57-60,70-71
+src/renderer/features/local-conversation/projection/tool-metadata/dynamic-tool-call-utils.ts
+  s_f2e3c034e2bc1d::t_73b152849a0f4c 414-419,432,453
+src/renderer/features/inbox/inbox-presentation.node.test.ts
+  s_f2e3c034e2bc1d::t_c265c4ca1355c3 598-599,602
+src/renderer/features/scheduled/scheduled-task-cache.node.test.ts
+  s_f2e3c034e2bc1d::t_c265c4ca1355c3 1-45
+src/renderer/features/inbox/inbox-message.tsx
+  s_f2e3c034e2bc1d::t_73b152849a0f4c 86-87,92
+docs/product-specs/inbox-behavior.md
+  s_f2e3c034e2bc1d::t_0ca05a4b257db6 475-476
+docs/product-specs/scheduled-route-behavior.md
+  s_f2e3c034e2bc1d::t_46d775fb51e3d3 64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "58d4ba70e4400a7456056c05ec75055dd17cc4df",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
