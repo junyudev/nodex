@@ -150,6 +150,10 @@
   --transition-duration-swift: 0.12s;
   --transition-duration-relaxed: 0.3s;
   --spacing-panel: 1.5rem;
+  /* One line of UI text plus the default row padding: list rows, property rows. */
+  --height-token-row: calc(var(--sans-font-size-default) * 1.5 + var(--spacing) * 2);
+  --radius-button-toolbar: var(--radius-lg);
+  --radius-token-row: var(--radius-full);
   --page-stage-body-gutter-inline: calc(var(--spacing) * 18);
   --page-stage-body-content-max-width: 48rem;
   --page-stage-body-max-width: calc(

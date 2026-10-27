@@ -1,0 +1,250 @@
+/*
+ * The sticky header of a searchable page: the title row (title + toolbar) stays pinned while the
+ * page scrolls, and wraps its toolbar under the title when the header is narrower than 48rem.
+ * `--header-content-start` and `--header-collapse-offset` are written by the owning component.
+ */
+
+.shell {
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  padding-top: calc(var(--spacing) * 4);
+  --spacing-token-button-composer: calc(var(--spacing) * 8);
+  /* Header toolbar buttons are pills. */
+  --radius-button-toolbar: var(--radius-full);
+  container-type: inline-size;
+}
+
+.shell[data-sticky] {
+  position: sticky;
+  top: calc(var(--spacing) * -4);
+  z-index: 30;
+}
+
+/* The opaque background starts at the scroll viewport's top, never above it. */
+.shell[data-sticky]::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+  inset-inline: 0;
+  inset-block: var(--header-background-top-inset, 0px) 0;
+  background-color: var(--color-surface);
+  border-start-start-radius: var(--app-shell-main-surface-top-start-radius, 0px);
+  border-start-end-radius: var(--app-shell-main-surface-top-end-radius, 0px);
+}
+
+.content {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: calc(var(--spacing) * 4);
+}
+
+.headerRow {
+  display: contents;
+}
+
+.title {
+  display: flex;
+  min-height: calc(var(--spacing) * 15);
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  flex-basis: max-content;
+  justify-content: center;
+  gap: var(--spacing);
+  padding-block: calc(var(--spacing) * 3);
+  padding-inline-start: 0;
+  grid-row-start: 1;
+  grid-column-start: 1;
+}
+
+.titleContent {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--spacing);
+}
+
+.shell[data-scroll-collapse] .titleContent {
+  width: max-content;
+  max-width: 100%;
+}
+
+.shell[data-scroll-collapse] .title {
+  flex-basis: min-content;
+  overflow: visible clip;
+}
+
+.shell[data-scroll-collapse] .actions {
+  align-self: flex-start;
+}
+
+.shell[data-scroll-collapse] {
+  top: calc(-1 * var(--header-collapse-offset));
+}
+
+.shell[data-scroll-collapse]:not([data-collapsible]) .title {
+  flex-basis: 100%;
+}
+
+.shell[data-collapsible] .content {
+  display: flex;
+}
+
+.shell[data-collapsible] .headerRow {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  gap: calc(var(--spacing) * 4);
+}
+
+.shell[data-collapsible] .title {
+  flex: 0 1 max-content;
+}
+
+.shell[data-collapsible]:not(:has(.search[data-fixed-width])) .title {
+  flex-shrink: 0;
+}
+
+.shell[data-collapsible] .actions {
+  position: sticky;
+  top: 0;
+}
+
+.actions {
+  display: flex;
+  min-height: calc(var(--spacing) * 15);
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 max-content;
+  align-items: center;
+  padding-block: calc(var(--spacing) * 3);
+  grid-row-start: 1;
+  grid-column-start: 2;
+}
+
+.navigation {
+  display: flex;
+  min-height: calc(var(--spacing) * 15);
+  min-width: 0;
+  max-width: 100%;
+  flex-basis: 100%;
+  align-items: center;
+  grid-column: 1 / -1;
+  grid-row-start: 2;
+}
+
+.navigation:empty,
+.actions:empty {
+  display: none;
+}
+
+/* Without a navigation row the whole header stays pinned. */
+.shell:has(.navigation:empty) {
+  margin-bottom: calc(var(--spacing) * 2);
+}
+
+.shell[data-scroll-collapse][data-collapsible]:has(.navigation:empty) {
+  top: calc(var(--spacing) * -4);
+  margin-bottom: 0;
+}
+
+.shell[data-scroll-collapse]:not([data-collapsible]) {
+  top: calc(var(--spacing) * -4);
+}
+
+.toolbar {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(var(--spacing) * 3);
+  user-select: none;
+}
+
+.viewControls,
+.pageActions {
+  display: flex;
+  width: max-content;
+  flex-shrink: 0;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+}
+
+.viewControls:empty,
+.pageActions:empty {
+  display: none;
+}
+
+.search {
+  display: grid;
+  width: calc(var(--spacing) * 60);
+  min-width: 0;
+  flex-shrink: 0;
+  flex-basis: calc(var(--spacing) * 60);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+}
+
+.shell[data-scroll-collapse] .search {
+  flex-shrink: 1;
+}
+
+.shell[data-expand-search] .title {
+  flex-grow: 999;
+}
+
+.shell[data-expand-search] .search {
+  flex-grow: 1;
+}
+
+.shell[data-expand-search][data-collapsible] .toolbar {
+  width: max-content;
+  max-width: 100%;
+  margin-left: auto;
+}
+
+.shell[data-wrap-actions] .headerRow {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  gap: calc(var(--spacing) * 4);
+}
+
+.shell[data-wrap-actions] .headerRow .title {
+  flex: 0 1 max-content;
+}
+
+@container (width >= 48rem) {
+  .shell[data-wrap-actions] .search {
+    max-width: calc(var(--spacing) * 60);
+    min-width: calc(var(--spacing) * 40);
+  }
+}
+
+@container not (width >= 48rem) {
+  .shell[data-wrap-actions] .headerRow {
+    flex-wrap: wrap;
+    row-gap: 0;
+    padding-bottom: var(--spacing);
+  }
+
+  .shell[data-wrap-actions] .headerRow .title {
+    flex: 0 0 100%;
+  }
+
+  .shell[data-wrap-actions] .headerRow .actions {
+    flex: 100%;
+  }
+
+  .shell[data-wrap-actions] .headerRow .toolbar {
+    width: 100%;
+  }
+}
+
+@container searchable-header not (width >= 48rem) {
+  .subtitle {
+    display: none;
+  }
+}
