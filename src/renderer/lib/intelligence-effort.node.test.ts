@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   resolveIntelligenceEffortPosition,
   resolveIntelligenceEffortStops,
+  settleIntelligenceIntentOverlay,
 } from "./intelligence-effort";
 
 const label = (effort: string) => effort.toUpperCase();
@@ -68,5 +69,21 @@ describe("resolveIntelligenceEffortPosition", () => {
         thinkingOff: true,
       }),
     ).toEqual({ value: "off", isDefault: false });
+  });
+});
+
+describe("settleIntelligenceIntentOverlay", () => {
+  const committed = { effort: "high", fast: false, ultracode: true };
+
+  it("keeps choices the committed state has not caught up with", () => {
+    const overlay = { effort: "max", fast: true };
+    expect(settleIntelligenceIntentOverlay(overlay, committed)).toBe(overlay);
+  });
+
+  it("drops each choice once it is committed", () => {
+    expect(
+      settleIntelligenceIntentOverlay({ effort: "high", fast: true, ultracode: true }, committed),
+    ).toEqual({ fast: true });
+    expect(settleIntelligenceIntentOverlay({ effort: "high" }, committed)).toEqual({});
   });
 });

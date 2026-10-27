@@ -2237,7 +2237,14 @@ export function ComposerPlanModeCloseIcon({ className }: IconProps) {
   return <ClearGlyph className={cn("shrink-0", className ?? "icon-xs")} />;
 }
 
-export function FastModeIcon({ className }: IconProps) {
+/** A standing mode's glyph: filled while the mode is on, outlined while it is off. */
+export type ModeIconProps = IconProps & { readonly filled?: boolean };
+
+// The fill fades in as the outline thins, so turning a mode on reads as one glyph filling up.
+const MODE_GLYPH_TRANSITION =
+  "transition-[fill-opacity,stroke-width] duration-200 ease-out motion-reduce:transition-none";
+
+export function FastModeIcon({ className, filled = true }: ModeIconProps) {
   return (
     <svg
       width="24"
@@ -2251,13 +2258,18 @@ export function FastModeIcon({ className }: IconProps) {
       <path
         d="M11.9125 21.4125C11.5292 21.8625 11.0292 22.0958 10.4125 22.1125C9.79586 22.1291 9.29586 21.9208 8.91252 21.4875C8.53752 21.0541 8.45836 20.4541 8.67503 19.6875L9.68752 16H4.57502C4.00836 16 3.56669 15.8375 3.25002 15.5125C2.93336 15.1791 2.77502 14.7791 2.77502 14.3125C2.77502 13.8375 2.92919 13.4125 3.23752 13.0375L12.1375 2.47497C12.5209 2.02497 13.0209 1.79164 13.6375 1.77497C14.2542 1.75831 14.75 1.96664 15.125 2.39997C15.5084 2.83331 15.5917 3.43331 15.375 4.19997L14.3125 7.99998H19.425C19.9917 7.99998 20.4334 8.16664 20.75 8.49997C21.075 8.83331 21.2375 9.23748 21.2375 9.71247C21.2375 10.1791 21.0792 10.5958 20.7625 10.9625L11.9125 21.4125Z"
         fill="currentColor"
+        fillOpacity={filled ? 1 : 0}
+        stroke="currentColor"
+        strokeWidth={filled ? 0 : 1.75}
+        strokeLinejoin="round"
+        className={MODE_GLYPH_TRANSITION}
       />
     </svg>
   );
 }
 
 /** A cell of agents working one task together: Claude Code's Ultracode workflow orchestration. */
-export function UltracodeIcon({ className }: IconProps) {
+export function UltracodeIcon({ className, filled = true }: ModeIconProps) {
   return (
     <svg
       width="20"
@@ -2266,14 +2278,19 @@ export function UltracodeIcon({ className }: IconProps) {
       className={cn(className ?? "icon-2xs shrink-0")}
       fill="currentColor"
       stroke="currentColor"
-      strokeWidth="1.8"
       strokeLinejoin="round"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      <polygon points="10.000 3.190 12.685 4.740 12.685 7.840 10.000 9.390 7.315 7.840 7.315 4.740" />
-      <polygon points="5.715 10.612 8.400 12.162 8.400 15.262 5.715 16.812 3.030 15.262 3.030 12.162" />
-      <polygon points="14.285 10.612 16.970 12.162 16.970 15.262 14.285 16.812 11.600 15.262 11.600 12.162" />
+      <g
+        fillOpacity={filled ? 1 : 0}
+        strokeWidth={filled ? 1.8 : 1.3}
+        className={MODE_GLYPH_TRANSITION}
+      >
+        <polygon points="10.000 3.190 12.685 4.740 12.685 7.840 10.000 9.390 7.315 7.840 7.315 4.740" />
+        <polygon points="5.715 10.612 8.400 12.162 8.400 15.262 5.715 16.812 3.030 15.262 3.030 12.162" />
+        <polygon points="14.285 10.612 16.970 12.162 16.970 15.262 14.285 16.812 11.600 15.262 11.600 12.162" />
+      </g>
     </svg>
   );
 }

@@ -1,0 +1,20 @@
+/* Fast mode: light streams through the filled part of the effort track, against the
+   direction the thumb travels, so the bar reads as moving faster. */
+@keyframes nodex-intelligence-track-flow {
+  0% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  8% {
+    opacity: 1;
+    transform: translateX(92%);
+  }
+  92% {
+    opacity: 1;
+    transform: translateX(8%);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+}

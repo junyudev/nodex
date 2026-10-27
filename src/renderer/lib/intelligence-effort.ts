@@ -47,3 +47,25 @@ export function resolveIntelligenceEffortPosition(input: {
     : (input.stops.find((stop) => stop.value !== THINKING_OFF_EFFORT_STOP)?.value ?? null);
   return { value: fallback, isDefault: true };
 }
+
+/** Choices shown at once while their write is on its way, so controls never lag a click. */
+export interface IntelligenceIntentOverlay {
+  readonly effort?: string;
+  readonly fast?: boolean;
+  readonly ultracode?: boolean;
+}
+
+/** Drops each shown choice the committed state now matches; the rest stay shown. */
+export function settleIntelligenceIntentOverlay(
+  overlay: IntelligenceIntentOverlay,
+  committed: {
+    readonly effort: string | null;
+    readonly fast: boolean;
+    readonly ultracode: boolean;
+  },
+): IntelligenceIntentOverlay {
+  const pending = Object.entries(overlay).filter(
+    ([key, value]) => committed[key as keyof IntelligenceIntentOverlay] !== value,
+  );
+  return pending.length === Object.keys(overlay).length ? overlay : Object.fromEntries(pending);
+}

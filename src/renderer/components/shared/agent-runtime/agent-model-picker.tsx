@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactElement } from "react";
+import { useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import type { AgentBackendBinding } from "../../../../shared/agent-backend";
 import type { AgentModelSelection } from "../../../../shared/agent-model-catalog";
 import type { ExternalAgentBinding } from "../../../../shared/agent-model-catalog";
@@ -52,7 +52,9 @@ import {
 import {
   resolveIntelligenceEffortPosition,
   resolveIntelligenceEffortStops,
+  settleIntelligenceIntentOverlay,
   THINKING_OFF_EFFORT_STOP,
+  type IntelligenceIntentOverlay,
 } from "@/lib/intelligence-effort";
 import type {
   AgentIntelligenceDropdownProps,
@@ -196,21 +198,6 @@ export function AgentModelPicker(
   const modelLabel =
     active?.model.displayName ??
     (selection.model ? formatCodexModelLabel(selection.model, models) : "Choose model");
-  const reasoningLabel =
-    native?.selected.thinking === false
-      ? "Off"
-      : selection.reasoningEffort !== "default" && selection.reasoningEffort !== "none"
-        ? agentEffortLabel(selection.kind, selection.reasoningEffort)
-        : "";
-  const labels = [
-    ...catalog.entries.map((entry) => ({
-      id: agentModelKey(entry.binding, entry.model.id),
-      modelLabel: entry.model.displayName,
-      reasoningLabel: "",
-    })),
-    { id: "selected", modelLabel, reasoningLabel },
-  ];
-  const geometry = useIntelligenceSelectorTriggerGeometry(labels);
   const run = async (operation: () => Promise<void> | void) => {
     if (pending) return;
     setPending(true);
@@ -222,8 +209,54 @@ export function AgentModelPicker(
       setPending(false);
     }
   };
-  const changeNative = (patch: AgentNativeIntelligencePatch) => {
-    if (native) void run(() => native.change(patch));
+  // Effort and mode changes show at once and are written in order, so a click never waits on
+  // the one before it and nothing dims while a write is on its way.
+  const [overlay, setOverlay] = useState<IntelligenceIntentOverlay>({});
+  const nativeRef = useRef(native);
+  useLayoutEffect(() => {
+    nativeRef.current = native;
+  });
+  const queued = useRef<{
+    patch: AgentNativeIntelligencePatch;
+    shown: IntelligenceIntentOverlay;
+  } | null>(null);
+  const draining = useRef(false);
+  const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const drainNative = async () => {
+    if (draining.current) return;
+    draining.current = true;
+    try {
+      while (queued.current) {
+        const { patch, shown } = queued.current;
+        queued.current = null;
+        try {
+          await nativeRef.current?.change(patch);
+        } catch (error) {
+          setOverlay((current) =>
+            Object.fromEntries(Object.entries(current).filter(([key]) => !(key in shown))),
+          );
+          toast.danger(error instanceof Error ? error.message : "Could not update model options");
+        }
+        // The next change builds on this one once it has rendered.
+        await nextFrame();
+      }
+      await nextFrame();
+      if (!queued.current) setOverlay({});
+    } finally {
+      draining.current = false;
+    }
+  };
+  const changeNative = (
+    patch: AgentNativeIntelligencePatch,
+    shown: IntelligenceIntentOverlay = {},
+  ) => {
+    if (!native) return;
+    setOverlay((current) => ({ ...current, ...shown }));
+    queued.current = {
+      patch: { ...queued.current?.patch, ...patch },
+      shown: { ...queued.current?.shown, ...shown },
+    };
+    void drainNative();
   };
   const currentModel = models.find((model) => model.id === selection.model);
   // Codex offers its standard levels for a model the catalog does not describe.
@@ -238,18 +271,45 @@ export function AgentModelPicker(
         canDisableThinking: native?.capabilities.disableThinking === true,
       })
     : [];
-  const effortPosition = resolveIntelligenceEffortPosition({
+  const committedEffort = resolveIntelligenceEffortPosition({
     stops: effortStops,
     selected: selection.reasoningEffort,
     modelDefault: currentModel?.defaultReasoningEffort,
     thinkingOff: native?.selected.thinking === false,
   });
-  const fastOn = isCodex ? selection.serviceTier === "fast" : native?.selected.fast === true;
-  const ultracodeOn = native?.capabilities.ultracode === true && native.selected.ultracode === true;
+  const committedFast = isCodex ? selection.serviceTier === "fast" : native?.selected.fast === true;
+  const committedUltracode =
+    native?.capabilities.ultracode === true && native.selected.ultracode === true;
+  const shown = settleIntelligenceIntentOverlay(overlay, {
+    effort: committedEffort.value,
+    fast: committedFast,
+    ultracode: committedUltracode,
+  });
+  const effortPosition =
+    shown.effort === undefined ? committedEffort : { value: shown.effort, isDefault: false };
+  const fastOn = shown.fast ?? committedFast;
+  const ultracodeOn = shown.ultracode ?? committedUltracode;
   const indicators: IntelligenceModeIndicator[] = [
     ...(fastOn ? (["fast"] as const) : []),
     ...(ultracodeOn ? (["ultracode"] as const) : []),
   ];
+  const reasoningLabel =
+    shown.effort !== undefined
+      ? (effortStops.find((stop) => stop.value === shown.effort)?.label ?? "")
+      : native?.selected.thinking === false
+        ? "Off"
+        : selection.reasoningEffort !== "default" && selection.reasoningEffort !== "none"
+          ? agentEffortLabel(selection.kind, selection.reasoningEffort)
+          : "";
+  const labels = [
+    ...catalog.entries.map((entry) => ({
+      id: agentModelKey(entry.binding, entry.model.id),
+      modelLabel: entry.model.displayName,
+      reasoningLabel: "",
+    })),
+    { id: "selected", modelLabel, reasoningLabel },
+  ];
+  const geometry = useIntelligenceSelectorTriggerGeometry(labels);
   // A model with a thinking switch but no effort levels shows that switch as a mode.
   const thinkingSwitch =
     native?.capabilities.disableThinking === true && reasoningOptions.length === 0;
@@ -270,7 +330,6 @@ export function AgentModelPicker(
           // Keeps the label in line with the model names beside their provider marks.
           leftSlot: <span aria-hidden="true" className="size-3.5" />,
           label: INHERIT_LABEL,
-          disabled: pending,
         },
       ]
     : [];
@@ -291,10 +350,13 @@ export function AgentModelPicker(
       ),
       searchText: `${entry.model.displayName} ${entry.model.id} ${entry.label} ${entry.binding.kind}`,
       tooltipText: entry.unavailableReason ?? (entry.model.description || entry.model.id),
-      disabled: pending || entry.unavailableReason !== undefined,
+      disabled: entry.unavailableReason !== undefined,
     };
   });
-  const disabled = props.disabled === true || pending;
+  // Effort and modes are optimistic, so a pending write never dims them; option menus that
+  // wait on their Agent stay locked until it answers.
+  const disabled = props.disabled === true;
+  const optionsDisabled = disabled || pending;
   const modeToggleList = [
     thinkingSwitch ? (
       <IntelligenceModeToggle
@@ -314,7 +376,7 @@ export function AgentModelPicker(
         pressed={fastOn}
         disabled={disabled}
         onPressedChange={(fast) => {
-          if (native) return changeNative({ fast });
+          if (native) return changeNative({ fast }, { fast });
           props.onSelectionChange(
             { ...selection, serviceTier: fast ? "fast" : null },
             "serviceTier",
@@ -332,7 +394,7 @@ export function AgentModelPicker(
         {...(native.capabilities.ultracodeUnavailableReason
           ? { unavailableReason: native.capabilities.ultracodeUnavailableReason }
           : {})}
-        onPressedChange={(ultracode) => changeNative({ ultracode })}
+        onPressedChange={(ultracode) => changeNative({ ultracode }, { ultracode })}
       />
     ) : null,
   ].filter(Boolean);
@@ -494,13 +556,14 @@ export function AgentModelPicker(
                   stops={effortStops}
                   value={effortPosition.value}
                   isDefault={effortPosition.isDefault}
+                  flowing={fastOn}
                   disabled={disabled}
                   accessory={modeToggles}
                   onChange={(value) => {
                     if (native && value === THINKING_OFF_EFFORT_STOP)
-                      return changeNative({ thinking: false });
+                      return changeNative({ thinking: false }, { effort: value });
                     if (native && isClaudeEffortLevel(value))
-                      return changeNative({ effort: value, thinking: true });
+                      return changeNative({ effort: value, thinking: true }, { effort: value });
                     props.onSelectionChange(
                       { ...selection, reasoningEffort: value },
                       "reasoningEffort",
@@ -509,7 +572,7 @@ export function AgentModelPicker(
                 />
               ) : modeToggles ? (
                 <div className="px-[var(--padding-row-x)]">
-                  <IntelligenceControlsHeader label="Modes" accessory={modeToggles} />
+                  <IntelligenceControlsHeader accessory={modeToggles} />
                 </div>
               ) : null}
               {native && contextWindows.length > 1 ? (
@@ -522,7 +585,7 @@ export function AgentModelPicker(
                     { value: "default", label: "Default" },
                     ...contextWindows.map((value) => ({ value, label: value })),
                   ]}
-                  disabled={disabled}
+                  disabled={optionsDisabled}
                   onChange={(value) =>
                     changeNative({ context: value === "default" ? null : value })
                   }
@@ -533,7 +596,7 @@ export function AgentModelPicker(
                   key={option.id}
                   label={option.name}
                   value={String(option.currentValue)}
-                  disabled={disabled || !catalog.changeConfig}
+                  disabled={optionsDisabled || !catalog.changeConfig}
                   options={
                     option.type === "boolean"
                       ? [
@@ -565,7 +628,7 @@ export function AgentModelPicker(
                     label: mode.name,
                     tooltipText: mode.description,
                   }))}
-                  disabled={disabled}
+                  disabled={optionsDisabled}
                   onChange={(value) => void run(() => catalog.changeMode?.(value))}
                 />
               ) : null}

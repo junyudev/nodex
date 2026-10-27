@@ -502,3 +502,62 @@ test("keeps an unavailable Ultracode visible, explains it, and never turns it on
   await click(ultracode);
   expect(change).not.toHaveBeenCalled();
 });
+
+test("shows a mode change at once without dimming, and sends a second change after the first", async () => {
+  const opus = {
+    ...catalogModel("claude-opus-5-5", "Claude Opus 5.5"),
+    supportedReasoningEfforts: ["low", "high"].map((reasoningEffort) => ({
+      reasoningEffort,
+      description: reasoningEffort,
+    })),
+    defaultReasoningEffort: "high",
+  };
+  const claude = {
+    binding: { kind: "claude", instanceConfigId: "claude" },
+    model: opus.id,
+  } as const;
+  const write = pendingWrite();
+  const change = vi.fn(async () => {
+    await write.promise;
+  });
+  const view = renderWithMaitai(
+    <NodexTooltipProvider delay={0}>
+      <AgentIntelligenceDropdown
+        models={[opus]}
+        open
+        selection={{ kind: "claude", model: opus.id, reasoningEffort: "high", serviceTier: null }}
+        onSelectionChange={() => {}}
+        provider={{
+          label: "Claude",
+          selection: "claude",
+          nativeIntelligence: {
+            selected: { fast: false, ultracode: false, thinking: true },
+            capabilities: { fastMode: true, ultracode: true },
+            change,
+          },
+          modelCatalog: presentation({
+            selected: claude,
+            entries: [{ binding: claude.binding, label: "Claude", model: opus, selection: claude }],
+          }),
+        }}
+      />
+    </NodexTooltipProvider>,
+  );
+  const fast = await view.findByRole("button", { name: "Fast" });
+  await click(fast);
+  expect(fast.getAttribute("aria-pressed")).toBe("true");
+  expect(fast.hasAttribute("disabled")).toBe(false);
+  expect(view.getByRole("slider", { name: "Effort" }).hasAttribute("disabled")).toBe(false);
+  expect(
+    view.getByRole("option", { name: /Claude Opus 5\.5/u }).getAttribute("aria-disabled"),
+  ).not.toBe("true");
+  await click(view.getByRole("button", { name: "Ultracode" }));
+  expect(view.getByRole("button", { name: "Ultracode" }).getAttribute("aria-pressed")).toBe("true");
+  expect(change).toHaveBeenCalledTimes(1);
+  expect(change).toHaveBeenLastCalledWith({ fast: true });
+  await act(async () => {
+    write.resolve();
+    await write.promise;
+  });
+  await waitFor(() => expect(change).toHaveBeenLastCalledWith({ ultracode: true }));
+});
