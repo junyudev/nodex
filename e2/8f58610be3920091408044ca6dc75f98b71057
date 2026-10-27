@@ -1,0 +1,21 @@
+src/renderer/components/workbench/workbench-automation-templates.ts
+  s_f2e3c034e2bc1d::t_254dfdac0c234c 1,13-14,26-42,114,131,180,193
+src/renderer/components/workbench/workbench-automation-templates.node.test.ts
+  s_f2e3c034e2bc1d::t_eceb3e28259b19 22-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e28f58610be3920091408044ca6dc75f98b71057",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
