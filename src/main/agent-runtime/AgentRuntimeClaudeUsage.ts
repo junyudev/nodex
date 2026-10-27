@@ -214,33 +214,36 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
       yield* readNow(true);
     }),
   );
-  const refresh = Effect.gen(function* () {
-    const claimed = yield* Ref.modify(
-      askedInFlight,
-      (
-        current,
-      ): readonly [
-        { readonly owner: boolean; readonly done: Deferred.Deferred<void> },
-        Deferred.Deferred<void> | null,
-      ] => {
-        if (current) return [{ owner: false, done: current }, current];
-        const done = Deferred.makeUnsafe<void>();
-        return [{ owner: true, done }, done];
-      },
-    );
-    // Forked into this owner's scope so an interrupted caller cannot cancel a shared read.
-    if (claimed.owner)
-      yield* readAsked.pipe(
-        Effect.ensuring(
-          Ref.set(askedInFlight, null).pipe(
-            Effect.andThen(Deferred.succeed(claimed.done, undefined)),
-          ),
-        ),
-        Effect.forkIn(scope),
+  const refresh = Effect.uninterruptibleMask((restore) =>
+    Effect.gen(function* () {
+      const candidate = yield* Deferred.make<void>();
+      const claimed = yield* Ref.modify(
+        askedInFlight,
+        (
+          current,
+        ): readonly [
+          { readonly owner: boolean; readonly done: Deferred.Deferred<void> },
+          Deferred.Deferred<void> | null,
+        ] => {
+          if (current) return [{ owner: false, done: current }, current];
+          return [{ owner: true, done: candidate }, candidate];
+        },
       );
-    yield* Deferred.await(claimed.done);
-    return yield* SubscriptionRef.get(snapshot);
-  });
+      // Claim and fork together so cancellation cannot leave an ownerless shared read.
+      // The read belongs to this Module's scope and stays interruptible on shutdown.
+      if (claimed.owner)
+        yield* readAsked.pipe(
+          Effect.ensuring(
+            Ref.set(askedInFlight, null).pipe(
+              Effect.andThen(Deferred.succeed(claimed.done, undefined)),
+            ),
+          ),
+          Effect.forkIn(scope, { uninterruptible: false }),
+        );
+      yield* restore(Deferred.await(claimed.done));
+      return yield* SubscriptionRef.get(snapshot);
+    }),
+  );
 
   const reread = Queue.offer(rereads, undefined).pipe(Effect.asVoid);
   yield* Effect.forever(Queue.take(rereads).pipe(Effect.andThen(readKnown))).pipe(

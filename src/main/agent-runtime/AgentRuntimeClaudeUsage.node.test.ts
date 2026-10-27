@@ -2,6 +2,10 @@ import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
+import * as Exit from "effect/Exit";
+import * as Scope from "effect/Scope";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -231,6 +235,54 @@ it.effect("an opened card reads again unless it read moments ago, once for every
       });
       yield* settle;
       assert.deepEqual(reads, ["known", "asked", "asked"]);
+    }),
+  ).pipe(Effect.provide(TestClock.layer())),
+);
+
+it.effect("cancelling the first opener keeps one shared read alive for the other openers", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const finish = yield* Deferred.make<void>();
+      const { usage, reads, settle } = yield* harness({
+        check: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(started, undefined);
+            yield* Deferred.await(finish);
+            return [claude({ usedPercent: 42 })];
+          }),
+      });
+      const first = yield* usage.refresh.pipe(Effect.forkScoped);
+      yield* Deferred.await(started);
+      const second = yield* usage.refresh.pipe(Effect.forkScoped);
+      yield* settle;
+      yield* Fiber.interrupt(first);
+      yield* Deferred.succeed(finish, undefined);
+      const result = yield* Fiber.join(second);
+      assert.strictEqual(result.providers?.[0]?.usageLimits?.windows[0]?.usedPercent, 42);
+      assert.deepEqual(reads, ["known", "asked"]);
+    }),
+  ).pipe(Effect.provide(TestClock.layer())),
+);
+
+it.effect("closing the usage owner interrupts an outstanding shared read", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const stopped = yield* Deferred.make<void>();
+      const owner = yield* Scope.make();
+      yield* Effect.addFinalizer(() => Scope.close(owner, Exit.void));
+      const { usage } = yield* harness({
+        check: () =>
+          Deferred.succeed(started, undefined).pipe(
+            Effect.andThen(Effect.never),
+            Effect.ensuring(Deferred.succeed(stopped, undefined)),
+          ),
+      }).pipe(Effect.provideService(Scope.Scope, owner));
+      yield* usage.refresh.pipe(Effect.forkScoped);
+      yield* Deferred.await(started);
+      yield* Scope.close(owner, Exit.void);
+      assert.isTrue(yield* Deferred.isDone(stopped));
     }),
   ).pipe(Effect.provide(TestClock.layer())),
 );
