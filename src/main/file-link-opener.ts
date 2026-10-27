@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { spawn, execFile } from "node:child_process";
 import { opendir, stat, access } from "node:fs/promises";
 import { promisify } from "node:util";
@@ -17,6 +17,81 @@ import {
   resolveDirectoryOpenPath,
   type NormalizedFileLinkPosition,
 } from "./file-link-launch-plan";
+import type {
+  FileOpenApplicationsResult,
+  OpenFileWithApplicationInput,
+} from "../shared/file-open-applications";
+import {
+  FileOpenApplicationsInputSchema,
+  OpenFileWithApplicationInputSchema,
+} from "../shared/schemas/file-open-applications";
+import {
+  FILE_OPEN_APPLICATIONS_JXA,
+  parseLaunchServicesApplications,
+} from "./file-open-applications";
+
+export async function assertExistingFileOpenPath(path: string): Promise<void> {
+  FileOpenApplicationsInputSchema.parse({ path });
+  if (!isAbsolute(path)) throw new Error("An absolute local path is required");
+  await stat(path);
+}
+
+export async function readFileOpenApplications(
+  path: string,
+  options: {
+    platform?: string;
+    ownApplicationPath?: string;
+    readIcon: (appPath: string) => Promise<string | null>;
+    readApplications?: (path: string) => Promise<string>;
+  },
+): Promise<FileOpenApplicationsResult> {
+  await assertExistingFileOpenPath(path);
+  if ((options.platform ?? process.platform) !== "darwin")
+    return { defaultApplication: null, applications: [] };
+  const readApplications =
+    options.readApplications ??
+    (async (filePath: string) =>
+      (
+        await execFileAsync(
+          "/usr/bin/osascript",
+          ["-l", "JavaScript", "-e", FILE_OPEN_APPLICATIONS_JXA, filePath],
+          { timeout: 5_000, maxBuffer: 256 * 1024 },
+        )
+      ).stdout);
+  const output = await readApplications(path).catch(() => null);
+  if (output === null) return { defaultApplication: null, applications: [] };
+  const result = parseLaunchServicesApplications(
+    output,
+    options.ownApplicationPath ?? process.execPath,
+  );
+  const withIcon = async (
+    application: NonNullable<FileOpenApplicationsResult["defaultApplication"]>,
+  ) => ({
+    ...application,
+    iconDataUrl: await options.readIcon(application.appPath).catch(() => null),
+  });
+  return {
+    defaultApplication: result.defaultApplication
+      ? await withIcon(result.defaultApplication)
+      : null,
+    applications: await Promise.all(result.applications.map(withIcon)),
+  };
+}
+
+export async function openFileWithApplication(
+  input: OpenFileWithApplicationInput,
+  platform: string = process.platform,
+): Promise<boolean> {
+  if (platform !== "darwin") return false;
+  const parsed = OpenFileWithApplicationInputSchema.safeParse(input);
+  if (!parsed.success) return false;
+  const valid = await assertExistingFileOpenPath(input.path).then(
+    () => true,
+    () => false,
+  );
+  if (!valid || !(await stat(input.appPath).catch(() => null))?.isDirectory()) return false;
+  return runSpawn("/usr/bin/open", ["-a", input.appPath, input.path]);
+}
 
 const APPLICATIONS_DIRECTORIES = ["/Applications", join(homedir(), "Applications")];
 

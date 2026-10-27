@@ -1,4 +1,8 @@
 import type { FileLinkOpenerId, FileLinkTarget } from "../../shared/file-link-openers";
+import type {
+  FileOpenApplicationsResult,
+  OpenFileWithApplicationInput,
+} from "../../shared/file-open-applications";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 
 const openFileLinkCommand = defineRendererCommand({
@@ -12,6 +16,14 @@ const openFileLinkCommand = defineRendererCommand({
 const openPathDefaultCommand = defineRendererCommand({
   key: "file_reference.open_default",
   channel: "shell:open-path-default",
+  authority: "external",
+  owner: "OperatingSystem",
+  protocol: { kind: "pending_operation" },
+});
+
+const openFileWithApplicationCommand = defineRendererCommand({
+  key: "file_reference.open_application",
+  channel: "shell:open-file-with-application",
   authority: "external",
   owner: "OperatingSystem",
   protocol: { kind: "pending_operation" },
@@ -43,4 +55,16 @@ export async function openExternalUrl(url: string): Promise<boolean> {
 
 export function listAvailableFileLinkOpeners(): Promise<FileLinkOpenerId[]> {
   return invokeRendererQuery("shell:file-link-openers:list-available");
+}
+
+export function readFileOpenApplications(path: string): Promise<FileOpenApplicationsResult> {
+  return invokeRendererQuery("file-open-applications", { path });
+}
+
+export function openFileWithApplication(input: OpenFileWithApplicationInput): Promise<boolean> {
+  return invokePlainCommand(openFileWithApplicationCommand, input);
+}
+
+export function openFileWithDefaultApplication(path: string): Promise<boolean> {
+  return openPathWithDefaultApplication(path);
 }

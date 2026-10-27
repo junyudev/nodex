@@ -1475,6 +1475,10 @@ export interface IpcApi
     result: string | null;
   };
   "shell:file-link-openers:list-available": { args: []; result: FileLinkOpenerId[] };
+  "file-open-applications": {
+    args: [input: import("./file-open-applications").FileOpenApplicationsInput];
+    result: import("./file-open-applications").FileOpenApplicationsResult;
+  };
   "settings:app-updates:get": { args: []; result: AppUpdateSettings };
   "settings:app-updates:update": {
     args: [input: UpdateAppUpdateSettingsInput];
@@ -1540,6 +1544,10 @@ export interface IpcApi
   "app:update:install": { args: []; result: boolean };
   "shell:open-file-link": {
     args: [target: FileLinkTarget, openerId: FileLinkOpenerId];
+    result: boolean;
+  };
+  "shell:open-file-with-application": {
+    args: [input: import("./file-open-applications").OpenFileWithApplicationInput];
     result: boolean;
   };
   "shell:open-external-url": {

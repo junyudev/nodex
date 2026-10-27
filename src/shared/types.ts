@@ -3958,6 +3958,7 @@ export interface GitReviewRepositoryMetadataResult {
   isGitRepository: boolean;
   currentBranch: string | null;
   defaultBranch: string | null;
+  originUrl: string | null;
   errorMessage: string | null;
 }
 

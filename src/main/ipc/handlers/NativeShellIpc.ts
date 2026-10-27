@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import {
+  app,
   nativeImage,
   screen,
   type IpcMainInvokeEvent,
@@ -17,7 +18,17 @@ import {
 } from "../../../shared/session-context-menu-icons";
 import { MainConfig } from "../../app/MainConfig";
 import { parseExternalNavigationUrl } from "../../external-navigation";
-import { listAvailableFileLinkOpeners, openFileLinkTarget } from "../../file-link-opener";
+import {
+  assertExistingFileOpenPath,
+  listAvailableFileLinkOpeners,
+  openFileLinkTarget,
+  openFileWithApplication,
+  readFileOpenApplications,
+} from "../../file-link-opener";
+import {
+  FileOpenApplicationsInputSchema,
+  OpenFileWithApplicationInputSchema,
+} from "../../../shared/schemas/file-open-applications";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -244,6 +255,33 @@ export const live: Layer.Layer<
         ),
       ),
     );
+    yield* handleQuery("file-open-applications", (event, input: unknown) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          run("file-open-applications", async () => {
+            const { path } = FileOpenApplicationsInputSchema.parse(input);
+            return readFileOpenApplications(path, {
+              platform: config.platform,
+              readIcon: async (appPath) => {
+                const icon = await app.getFileIcon(appPath, { size: "small" });
+                return icon.isEmpty() ? null : icon.toDataURL();
+              },
+            });
+          }),
+        ),
+      ),
+    );
+    yield* handlePlainCommand("shell:open-file-with-application", (event, input: unknown) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          run("open-file-with-application", async () => {
+            const parsed = OpenFileWithApplicationInputSchema.safeParse(input);
+            if (!parsed.success) return false;
+            return openFileWithApplication(parsed.data, config.platform);
+          }),
+        ),
+      ),
+    );
     yield* handlePlainCommand("open-file", (event, target, openerId) =>
       authorize(event).pipe(
         Effect.andThen(run("open-file", () => openFileLinkTarget(target, openerId))),
@@ -263,9 +301,13 @@ export const live: Layer.Layer<
       authorize(event).pipe(
         Effect.andThen(
           run("open-path", async () => {
-            const path = inputPath.trim();
-            if (!isAbsolute(path)) return false;
-            return (await desktop.shell.openPath(path)) === "";
+            if (typeof inputPath !== "string" || !isAbsolute(inputPath)) return false;
+            const exists = await assertExistingFileOpenPath(inputPath).then(
+              () => true,
+              () => false,
+            );
+            if (!exists) return false;
+            return (await desktop.shell.openPath(inputPath)) === "";
           }),
         ),
       ),

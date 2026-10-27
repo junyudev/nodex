@@ -2329,11 +2329,17 @@ export async function readGitReviewRepositoryMetadata(
           isGitRepository: false,
           currentBranch: null,
           defaultBranch: null,
+          originUrl: null,
           errorMessage: null,
         };
       }
 
-      const branchState = await readGitBranchState(repository.root, signal);
+      const [branchState, originResult] = await Promise.all([
+        readGitBranchState(repository.root, signal),
+        runGitCommand(["config", "--get", "remote.origin.url"], repository.root, [0, 1], {
+          signal,
+        }),
+      ]);
       return {
         cwd,
         root: repository.root,
@@ -2342,6 +2348,7 @@ export async function readGitReviewRepositoryMetadata(
         isGitRepository: true,
         currentBranch: branchState.currentBranch,
         defaultBranch: branchState.defaultBranch,
+        originUrl: originResult.stdout.trim() || null,
         errorMessage: null,
       };
     } catch (error) {
@@ -2354,6 +2361,7 @@ export async function readGitReviewRepositoryMetadata(
         isGitRepository: false,
         currentBranch: null,
         defaultBranch: null,
+        originUrl: null,
         errorMessage:
           error instanceof Error ? error.message : "Could not read Git repository metadata.",
       };

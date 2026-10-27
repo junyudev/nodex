@@ -8,6 +8,30 @@ import {
 } from "./git-worker-protocol";
 
 describe("Git worker protocol", () => {
+  it("requires a nullable origin URL in stable repository metadata", () => {
+    const metadata = {
+      cwd: "/repo",
+      root: "/repo",
+      gitDir: "/repo/.git",
+      commonDir: "/repo/.git",
+      isGitRepository: true,
+      currentBranch: "main",
+      defaultBranch: "main",
+      originUrl: null,
+      errorMessage: null,
+    };
+    const response = (value: unknown) => ({
+      type: "worker-response",
+      workerId: "git",
+      id: "metadata",
+      method: "stable-metadata",
+      result: { type: "ok", value },
+    });
+    for (const originUrl of [null, "git@github.com:example/project.git"])
+      expect(isGitWorkerMessageForView(response({ ...metadata, originUrl }))).toBe(true);
+    for (const originUrl of [undefined, 42, {}])
+      expect(isGitWorkerMessageForView(response({ ...metadata, originUrl }))).toBe(false);
+  });
   it("accepts bounded typed request, response, and lifecycle envelopes", () => {
     expect(
       isGitWorkerMessageFromView({

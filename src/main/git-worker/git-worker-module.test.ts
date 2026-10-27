@@ -62,6 +62,14 @@ describe("GitWorkerModule", () => {
           await execFileAsync("git", ["init", "-q", "-b", "main", directory]);
           await execFileAsync("git", ["-C", directory, "config", "user.email", "test@example.com"]);
           await execFileAsync("git", ["-C", directory, "config", "user.name", "Nodex Test"]);
+          await execFileAsync("git", [
+            "-C",
+            directory,
+            "remote",
+            "add",
+            "origin",
+            "git@github.com:example/project.git",
+          ]);
           await writeFile(path.join(directory, "tracked.txt"), "initial\n", "utf8");
           await execFileAsync("git", ["-C", directory, "add", "tracked.txt"]);
           await execFileAsync("git", ["-C", directory, "commit", "-q", "-m", "initial"]);
@@ -76,6 +84,7 @@ describe("GitWorkerModule", () => {
           isGitRepository: true,
           currentBranch: "main",
           defaultBranch: "main",
+          originUrl: "git@github.com:example/project.git",
         });
         expect(yield* module.execute(request("status-summary", { cwd: root }))).toEqual({
           type: "success",
@@ -108,6 +117,7 @@ describe("GitWorkerModule", () => {
         temporaryDirectories.push(root);
         expect(yield* module.execute(request("stable-metadata", { cwd: root }))).toMatchObject({
           isGitRepository: false,
+          originUrl: null,
           errorMessage: null,
         });
         expect(yield* module.execute(request("status-summary", { cwd: root }))).toEqual({
@@ -115,6 +125,33 @@ describe("GitWorkerModule", () => {
           failureReason: "not-a-repository",
           errorMessage: null,
         });
+      }),
+    ),
+  );
+
+  it.effect("reports an absent origin as null and preserves configured origin URLs", () =>
+    withGitWorkerModule((module) =>
+      Effect.gen(function* () {
+        for (const originUrl of [null, "https://github.com/example/project.git"]) {
+          const root = yield* Effect.promise(async () => {
+            const directory = await mkdtemp(path.join(tmpdir(), "nodex-git-origin-"));
+            temporaryDirectories.push(directory);
+            await execFileAsync("git", ["init", "-q", "-b", "main", directory]);
+            if (originUrl)
+              await execFileAsync("git", [
+                "-C",
+                directory,
+                "config",
+                "remote.origin.url",
+                originUrl,
+              ]);
+            return directory;
+          });
+          expect(yield* module.execute(request("stable-metadata", { cwd: root }))).toMatchObject({
+            originUrl,
+            errorMessage: null,
+          });
+        }
       }),
     ),
   );

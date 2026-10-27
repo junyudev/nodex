@@ -431,6 +431,7 @@ class GitWorkerModuleState implements GitWorkerModule {
         isGitRepository: false,
         currentBranch: null,
         defaultBranch: null,
+        originUrl: null,
         errorMessage: null,
       } satisfies GitReviewRepositoryMetadataResult;
     }
@@ -446,18 +447,26 @@ class GitWorkerModuleState implements GitWorkerModule {
     repository: WorktreeRepository,
     cwd: string,
   ) {
-    const [currentResult, branchesResult, defaultResult] = yield* Effect.all(
+    const [currentResult, branchesResult, defaultResult, originResult] = yield* Effect.all(
       [
         repository.runGit(["branch", "--show-current"]),
         repository.runGit(["branch", "--format=%(refname:short)"]),
         repository.runGit(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], {
           allowedNonZeroExitCodes: [1, 128],
         }),
+        repository.runGit(["config", "--get", "remote.origin.url"], {
+          allowedNonZeroExitCodes: [1],
+        }),
       ] as const,
       { concurrency: "unbounded" },
     );
-    if (!currentResult.success || !branchesResult.success || !defaultResult.success) {
-      const failure = [currentResult, branchesResult, defaultResult].find(
+    if (
+      !currentResult.success ||
+      !branchesResult.success ||
+      !defaultResult.success ||
+      !originResult.success
+    ) {
+      const failure = [currentResult, branchesResult, defaultResult, originResult].find(
         (result) => !result.success,
       );
       return {
@@ -468,6 +477,7 @@ class GitWorkerModuleState implements GitWorkerModule {
         isGitRepository: true,
         currentBranch: null,
         defaultBranch: null,
+        originUrl: originResult.success ? originResult.stdout.trim() || null : null,
         errorMessage: commandErrorMessage(
           failure?.stderr ?? "",
           "Could not read Git repository metadata.",
@@ -496,6 +506,7 @@ class GitWorkerModuleState implements GitWorkerModule {
       isGitRepository: true,
       currentBranch,
       defaultBranch,
+      originUrl: originResult.stdout.trim() || null,
       errorMessage: null,
     } satisfies GitReviewRepositoryMetadataResult;
   });

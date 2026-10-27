@@ -466,6 +466,7 @@ function isStableMetadataResult(value: unknown): boolean {
     typeof value.isGitRepository === "boolean" &&
     isNullableString(value.currentBranch) &&
     isNullableString(value.defaultBranch) &&
+    isNullableString(value.originUrl) &&
     isNullableString(value.errorMessage)
   );
 }
