@@ -1,0 +1,28 @@
+scripts/audit-version-surfaces.ts
+  s_f79dd9d0c7ac54::t_aa83aa8b3a97dd 18-22
+  s_f06f0af563f4d6::t_3365e2362ce68f 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "873e1a44eb8ce6703fd17dcc408a9fdbeeb2be46",
+  "prompts": {},
+  "sessions": {
+    "s_f06f0af563f4d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c08-6d91-7aa1-847f-70c3d1c48dc4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
