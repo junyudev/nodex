@@ -794,6 +794,19 @@ boundaries instead of accepting or silencing them. Compare trends only
 within the same runner/toolchain/scope; ordinary CI does not run repeated full
 benchmarks or enforce a noisy universal wall-time threshold.
 
+### Collaborative editor dependency updates
+
+Keep Tiptap versions aligned across the root, vendored BlockNote manifests, and
+menu overrides. Keep the ProseMirror overrides aligned with direct declarations.
+The Yjs patch extends surface-local UndoManager replay/discard and preserves GC
+keeps across retained surface histories; an upstream version bump must port all
+source, bundle, and declaration hunks unless behavioral evidence replaces them.
+Run the editor history and retention tests plus
+`vp run test:core-client src/shared/block-documents/yjs-yrs-conformance.test.ts`
+after changing Yjs or its bindings. Persisted Yjs/Yrs document encoding must remain
+compatible. The maintained BlockNote contracts and package test commands are in
+[`third_party/blocknote/ORIGIN.md`](../third_party/blocknote/ORIGIN.md).
+
 ### Block drag-and-drop smoke
 
 The Electron test named `moves a Block into a Board with native DnD

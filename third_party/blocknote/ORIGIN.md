@@ -28,6 +28,7 @@ The `@blocknote/xl-*` packages are intentionally excluded because upstream marks
 - Root `package.json` resolves those packages through pnpm workspaces.
 - Vendored package exports are source-first and point at `src` instead of `dist`.
 - Upstream package `devDependencies` are omitted from the private vendored manifests so editor runtime code resolves React and other peers from Nodex instead of package-local tooling installs.
+- Extension state uses the local `core/src/util/Store.ts` observable and its focused contract tests. Its synchronous notifications and unsubscribe functions are part of the BlockNote Interface; do not reintroduce `@tanstack/store` when refreshing upstream manifests.
 - The vendored shadcn adapter uses Base UI behind its BlockNote component Interfaces; it does not expose Base UI parts or DOM tokens to Nodex feature code.
 - Tailwind scans `third_party/blocknote/packages/shadcn/src`.
 - The renderer manual chunk resolver groups `third_party/blocknote/packages/` with the BlockNote/Tiptap vendor chunk.

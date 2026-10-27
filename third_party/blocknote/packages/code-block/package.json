@@ -50,10 +50,10 @@
   },
   "dependencies": {
     "@blocknote/core": "workspace:*",
-    "@shikijs/core": "^4.4.3",
-    "@shikijs/engine-javascript": "^4.4.3",
-    "@shikijs/langs-precompiled": "^4.4.3",
-    "@shikijs/types": "^4.4.3"
+    "@shikijs/core": "^4.5.0",
+    "@shikijs/engine-javascript": "^4.5.0",
+    "@shikijs/langs-precompiled": "^4.5.0",
+    "@shikijs/types": "^4.5.0"
   },
   "peerDependencies": {
     "@blocknote/core": "0.54.2"

@@ -1,6 +1,6 @@
 import "./workbench-testkit/workbench-shell-harness";
 import { describe, test, expect, vi } from "vite-plus/test";
-import { settleAsyncRender, textContent } from "../../test/dom";
+import { hoverWithMouse, settleAsyncRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { splitWorkbenchPanelLeaf } from "../../../shared/workbench-panel-layout";
 import { isUuidV7 } from "../../../shared/uuid-v7";
@@ -1036,8 +1036,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     }
     vi.useFakeTimers();
     try {
-      fireEvent.pointerMove(renamedTitle.parentElement, { pointerType: "mouse" });
-      fireEvent.mouseEnter(renamedTitle.parentElement);
+      hoverWithMouse(renamedTitle.parentElement);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(300);
       });
@@ -1278,8 +1277,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     }
     vi.useFakeTimers();
     try {
-      fireEvent.pointerMove(tabTitle.parentElement, { pointerType: "mouse" });
-      fireEvent.mouseEnter(tabTitle.parentElement);
+      hoverWithMouse(tabTitle.parentElement);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(300);
       });

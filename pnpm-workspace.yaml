@@ -12,7 +12,7 @@ patchedDependencies:
   "@effect/platform-node-shared@4.0.3": patches/@effect__platform-node-shared@4.0.3.patch
   "@effect/vitest@4.0.3": patches/@effect__vitest@4.0.3.patch
   y-prosemirror@1.3.7: patches/y-prosemirror@1.3.7.patch
-  yjs@13.6.32: patches/yjs@13.6.32.patch
+  yjs@13.6.33: patches/yjs@13.6.33.patch
 
 supportedArchitectures:
   os:
@@ -40,11 +40,11 @@ overrides:
   node-abi: ^4.31.0
   picomatch: 4.0.4
   postcss: 8.5.23
-  prosemirror-model: 1.25.11
-  prosemirror-transform: 1.12.0
-  prosemirror-view: 1.42.3
-  "@tiptap/extension-bubble-menu": 3.31.4
-  "@tiptap/extension-floating-menu": 3.31.4
+  prosemirror-model: 1.25.12
+  prosemirror-transform: 1.12.4
+  prosemirror-view: 1.42.8
+  "@tiptap/extension-bubble-menu": 3.32.0
+  "@tiptap/extension-floating-menu": 3.32.0
   rollup: 4.62.0
   sass: 1.101.0
   tar: 7.5.21
@@ -58,7 +58,8 @@ overrides:
   "@modelcontextprotocol/sdk>hono": 4.13.11
   "@modelcontextprotocol/sdk>@hono/node-server": 2.1.3
   js-yaml: 4.3.2
-  katex: 0.18.2
+  # Keep transitive math renderers on the security-patched release.
+  katex: 0.19.1
   # Vite+ uses one Vitest 5 runtime; older library utilities retain patched major-4 APIs.
   "@vitest/expect@^5.0.0": 5.0.5
   "@vitest/expect@^4.0.0": 4.1.11

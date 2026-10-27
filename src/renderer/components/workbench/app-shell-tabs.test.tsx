@@ -9,7 +9,7 @@ import {
   shouldShowAppShellTabSeparator,
   type AppShellTabItem,
 } from "./app-shell-tabs";
-import { render, settleAsyncRender, textContent } from "@/test/dom";
+import { hoverWithMouse, render, settleAsyncRender, textContent } from "@/test/dom";
 
 const motionPreference = vi.hoisted(() => ({ reduced: false }));
 
@@ -100,8 +100,7 @@ async function hoverTabThroughTooltipDelay(element: HTMLElement): Promise<void> 
   vi.useFakeTimers();
   try {
     await act(async () => {
-      fireEvent.pointerMove(tooltipTrigger, { pointerType: "mouse" });
-      fireEvent.mouseEnter(tooltipTrigger);
+      hoverWithMouse(tooltipTrigger);
       await vi.advanceTimersByTimeAsync(300);
     });
   } finally {

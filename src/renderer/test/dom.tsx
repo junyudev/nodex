@@ -79,3 +79,17 @@ export async function waitForStreamdownMermaidBlock(node: ParentNode) {
     }
   });
 }
+
+/**
+ * Moves a mouse pointer onto an element with the event sequence a browser produces
+ * (pointerover, pointerenter, mouseover, mouseenter, pointermove, mousemove), so hover-driven
+ * popups such as tooltips see the same signals they get from a real pointer.
+ */
+export function hoverWithMouse(element: Element) {
+  fireEvent.pointerOver(element, { pointerType: "mouse" });
+  fireEvent.pointerEnter(element, { pointerType: "mouse" });
+  fireEvent.mouseOver(element);
+  fireEvent.mouseEnter(element);
+  fireEvent.pointerMove(element, { pointerType: "mouse" });
+  fireEvent.mouseMove(element);
+}
