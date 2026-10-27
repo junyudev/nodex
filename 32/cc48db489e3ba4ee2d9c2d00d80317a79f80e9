@@ -1,0 +1,30 @@
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_cb8bbfdb133e81::t_e36cebe447917d 103,1114-1115
+src/renderer/features/workspace-files/workspace-file-preview-states.tsx
+  s_cb8bbfdb133e81::t_e36cebe447917d 39-49
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_cb8bbfdb133e81::t_66ec1dd01531ae 691-692,694-695,716-717,719-721
+  s_cb8bbfdb133e81::t_8539d7f03b654e 33,87-96,690,693,696-715,718,722-729
+src/renderer/components/ui/file-tree-filter.tsx
+  s_cb8bbfdb133e81::t_36574e5f3cdb4c 14
+src/renderer/components/ui/viewer-controls.module.css
+  s_cb8bbfdb133e81::t_7ea0076c8f996f 6-7,10-14,16-20,22-25,27-34,36-47,49-57,59-61,63-66,68-75,79-83,85-89,91,95-101,103-106,108-110,112-115,117-122,124-126,128-132,134-140,142-144,146-148,150-156,158-161,163-168,170-173,175-178,180-185
+src/renderer/lib/conversation-media/conversation-video-player.tsx
+  s_cb8bbfdb133e81::t_7ea0076c8f996f 195-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "32cc48db489e3ba4ee2d9c2d00d80317a79f80e9",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

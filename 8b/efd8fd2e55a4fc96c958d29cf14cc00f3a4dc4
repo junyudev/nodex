@@ -1,0 +1,23 @@
+src/renderer/lib/conversation-media/conversation-media.test.tsx
+  s_cb8bbfdb133e81::t_c80a002e47c507 1,56-59
+src/renderer/lib/conversation-media/conversation-video-lazy.test.tsx
+  s_cb8bbfdb133e81::t_c80a002e47c507 41-44
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_cb8bbfdb133e81::t_c80a002e47c507 281-282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8befd8fd2e55a4fc96c958d29cf14cc00f3a4dc4",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

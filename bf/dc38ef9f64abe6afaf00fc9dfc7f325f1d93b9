@@ -1,0 +1,67 @@
+src/shared/ipc-api.ts
+  s_c1554ea80ea21d::t_af03c4f1be38bd 1478-1481,1549-1550,1552
+  s_c1554ea80ea21d::t_5c4d55b5b83ba7 1551
+src/main/ipc/handlers/NativeShellIpc.test.ts
+  s_c1554ea80ea21d::t_8215b41d29d3d8 6-10,17-30,62,72-110,112
+  s_c1554ea80ea21d::t_9d97c4428b9d27 111,113-170
+src/shared/schemas/file-open-applications.ts
+  s_c1554ea80ea21d::t_2c3cf2791a9a25 1-8,10-13
+  s_c1554ea80ea21d::t_dc77d2efbb3ce2 9
+  s_c1554ea80ea21d::t_bdc889a4b7a971 14-22
+src/main/git-worker/git-worker-module.test.ts
+  s_c1554ea80ea21d::t_9bbf7620df5e68 65
+  s_c1554ea80ea21d::t_696dd3176d82ab 66-72,87,120,132-158
+src/shared/git-worker-protocol.test.ts
+  s_c1554ea80ea21d::t_9bbf7620df5e68 11-18
+  s_c1554ea80ea21d::t_b2babf7cf0245d 19-34
+src/shared/ipc-endpoint-policy.ts
+  s_c1554ea80ea21d::t_af03c4f1be38bd 289,740
+src/shared/file-open-applications.ts
+  s_c1554ea80ea21d::t_2c3cf2791a9a25 1-18
+src/main/file-open-applications.ts
+  s_c1554ea80ea21d::t_2c3cf2791a9a25 1-62
+  s_c1554ea80ea21d::t_aa0177af76988a 63-79
+src/main/file-open-applications.test.ts
+  s_c1554ea80ea21d::t_9bbf7620df5e68 1-81
+  s_c1554ea80ea21d::t_ffb4f595e232b4 82-143
+src/renderer/lib/file-system-operations.ts
+  s_c1554ea80ea21d::t_af03c4f1be38bd 2-5,24-31,59-67
+  s_c1554ea80ea21d::t_8fb4fc13840d4c 68-70
+src/main/git-worker/git-review-operations.ts
+  s_c1554ea80ea21d::t_7b35ab1f7d7482 2332,2337-2340
+  s_c1554ea80ea21d::t_f04a35030faea9 2341-2342,2351,2364
+src/shared/types.ts
+  s_c1554ea80ea21d::t_7b35ab1f7d7482 3961
+src/shared/git-worker-protocol.ts
+  s_c1554ea80ea21d::t_7b35ab1f7d7482 469
+src/main/file-link-opener.ts
+  s_c1554ea80ea21d::t_2c3cf2791a9a25 3,20-62,93
+  s_c1554ea80ea21d::t_5eb28b1be28964 63-92,94
+src/main/git-worker/git-worker-module.ts
+  s_c1554ea80ea21d::t_7b35ab1f7d7482 434,450,457-459,463-464
+  s_c1554ea80ea21d::t_2695df6823e4bf 465-469,480,509
+src/shared/schemas/file-open-applications.test.ts
+  s_c1554ea80ea21d::t_9bbf7620df5e68 1-12
+  s_c1554ea80ea21d::t_b00ffaab2c00ab 13-30
+src/main/ipc/handlers/NativeShellIpc.ts
+  s_c1554ea80ea21d::t_af03c4f1be38bd 5,21-28
+  s_c1554ea80ea21d::t_72ca08d71c4fb9 29-31,258-284,304-310
+docs/product-specs/workbench-shell.md
+  s_c1554ea80ea21d::t_3e4d012835f31d 249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bfdc38ef9f64abe6afaf00fc9dfc7f325f1d93b9",
+  "prompts": {},
+  "sessions": {
+    "s_c1554ea80ea21d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17cf5-3973-7873-a573-3b8ed10c04f4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

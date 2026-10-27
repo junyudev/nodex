@@ -1,0 +1,98 @@
+src/renderer/lib/conversation-media/conversation-video-lazy.test.tsx
+  s_cb8bbfdb133e81::t_681f082aa71766 53-57
+src/renderer/components/ui/empty-state.tsx
+  s_cb8bbfdb133e81::t_713909a555b282 44
+  s_cb8bbfdb133e81::t_f10878635b5485 1-43,45-53
+src/renderer/features/workspace-files/workspace-file-preview-states.tsx
+  s_cb8bbfdb133e81::t_620b43bd17ea20 1-50,58-62,64-85
+  s_cb8bbfdb133e81::t_e222cc94f245a7 51-57,63
+tests/e2e/large-content-fixture/main.tsx
+  s_cb8bbfdb133e81::t_aa38b5db3eeaab 123
+src/renderer/features/workspace-files/workspace-file-model.ts
+  s_cb8bbfdb133e81::t_713909a555b282 55-65,251-252
+  s_cb8bbfdb133e81::t_5a19d9ac3b21e1 69-80,82,128,130,157-158,161,178-180
+  s_cb8bbfdb133e81::t_f77c0fe721bf46 6,10-14,16-25,27-37,39-54,66-68,81,83-84,86,129,131,156,159-160,162-177,181-214,217-225,227-231,233-248,250,254-258,260,262-274
+  s_cb8bbfdb133e81::t_69ef2611f19267 132
+src/renderer/components/shared/icons/file-viewer-icons.tsx
+  s_cb8bbfdb133e81::t_ed430f0905f13f 1-206
+src/renderer/components/ui/viewer-header-layout.ts
+  s_cb8bbfdb133e81::t_9f98284e26825a 1-78
+src/shared/types.ts
+  s_cb8bbfdb133e81::t_8c9cbb31bf8d51 997-1006,1012
+src/renderer/lib/conversation-media/conversation-video-player.tsx
+  s_cb8bbfdb133e81::t_685fa82ef94549 2,8-9,12-20,27,29-37,44-45,48-50,61-64,71-72,82-83,86-157,162-164,223-230,239-244,267,270,388,390,395-396,398,436,438
+  s_cb8bbfdb133e81::t_23d1ee3d5ac58d 84-85
+  s_cb8bbfdb133e81::t_713909a555b282 249-258,260-266,268-269,273-275,277-279,290-293,300,302-306,308-314,316-329,331-335,337-386,389,391-394,397,399-435,437,439-442
+src/renderer/styles/theme-surface.css
+  s_cb8bbfdb133e81::t_33a5b3ee36e13e 89
+src/renderer/components/ui/file-tree-filter.tsx
+  s_cb8bbfdb133e81::t_b582b9d9e01099 3,14-17,24,28,34
+src/renderer/features/workspace-files/workspace-file-viewer-header.tsx
+  s_cb8bbfdb133e81::t_713909a555b282 2,28-31,221-223,318-322
+  s_cb8bbfdb133e81::t_cfabd2dc7cfee4 11-15,20,218,374-376
+  s_cb8bbfdb133e81::t_5d3f57b28b3c2e 1,3-10,16-19,21-27,32-217,219-220,224-317,323-373,377-395
+src/renderer/features/workspace-files/workspace-file-types.node.test.ts
+  s_cb8bbfdb133e81::t_37fa61488ecd38 8,21
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_cb8bbfdb133e81::t_713909a555b282 9,399-402,408-412,503,516,710,1070-1071,1191-1193
+  s_cb8bbfdb133e81::t_e222cc94f245a7 403-407,413,725,727,732,736,739-740,834,1069
+  s_cb8bbfdb133e81::t_55926347be041e 5,18,39-44,46,50,60-63,66-67,70,72-75,94-107,121,149-150,165-171,179-184,197,212,225-229,231-232,234-241,244-254,256-260,262-293,295-297,300,316,322,342,358-359,372,378-398,414-425,433,437,488-491,502,504-513,515,517-520,594-615,632-633,638,694-695,700-701,703,707-709,711-716,720-724,748,752-788,790-794,796-826,829-832,920,955-963,970-976,983,988,1009,1011,1060-1062,1065,1067,1073-1075,1077,1086-1087,1092-1137,1140-1162,1170,1177-1190,1194-1224,1226,1228-1254,1256,1258-1283,1285-1296,1298-1301
+  s_cb8bbfdb133e81::t_833879c6d7c6bb 1138-1139
+src/renderer/features/workspace-files/workspace-file-model.node.test.ts
+  s_cb8bbfdb133e81::t_7ba26b8be006a9 6-10,13,22-28,30-31,35-37,39-46,48,51-52,55-64,67-70,72-73,75-76,78-79,81-92
+  s_cb8bbfdb133e81::t_713909a555b282 33-34
+  s_cb8bbfdb133e81::t_81e7c156d8779c 93-97
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_cb8bbfdb133e81::t_833879c6d7c6bb 116,438-443,641-642,646,651,662,667-669,673
+  s_cb8bbfdb133e81::t_9b9437f2f6209f 102,115,153-164
+  s_cb8bbfdb133e81::t_aa38b5db3eeaab 850
+src/renderer/lib/types.ts
+  s_cb8bbfdb133e81::t_8c9cbb31bf8d51 92
+src/renderer/lib/conversation-media/conversation-media.tsx
+  s_cb8bbfdb133e81::t_d748cee192829d 39-41,246,330,377,384-388,432,454,497,541,671,683,697,740,746,907,912-913,915,919-920,936-937
+src/renderer/features/workspace-files/workspace-file-header-model.node.test.ts
+  s_cb8bbfdb133e81::t_713909a555b282 54-58
+  s_cb8bbfdb133e81::t_aa1791baec3d82 1-53,59-107
+src/renderer/components/ui/viewer-header-layout.node.test.ts
+  s_cb8bbfdb133e81::t_9d5a6bffc9022f 1-32,34-35,37-39
+  s_cb8bbfdb133e81::t_713909a555b282 33,36
+src/renderer/lib/conversation-media/conversation-media.test.tsx
+  s_cb8bbfdb133e81::t_713909a555b282 344-346
+  s_cb8bbfdb133e81::t_1bd61cd463fc2e 274-277
+  s_cb8bbfdb133e81::t_39486cb6fab060 311-313,331,337,342,360,363
+src/shared/schemas/workspace-files.ts
+  s_cb8bbfdb133e81::t_01c60583b0f7ea 54-55
+src/renderer/components/ui/viewer-header.tsx
+  s_cb8bbfdb133e81::t_713909a555b282 43,55
+  s_cb8bbfdb133e81::t_6627fdcc67aef5 1-42,44-54,56-410
+src/renderer/features/workspace-files/workspace-file-types.ts
+  s_cb8bbfdb133e81::t_1279e3213368f9 19-20,42
+src/renderer/features/workspace-files/workspace-file-header-model.ts
+  s_cb8bbfdb133e81::t_ee42192b984fae 1-131
+src/renderer/features/workspace-files/index.tsx
+  s_cb8bbfdb133e81::t_e222cc94f245a7 21
+src/renderer/components/ui/viewer-controls.module.css
+  s_cb8bbfdb133e81::t_713909a555b282 24
+  s_cb8bbfdb133e81::t_161a54964a334b 1-23,25-182
+src/renderer/features/workspace-files/workspace-file-media-preview.tsx
+  s_cb8bbfdb133e81::t_de12da2d6f161e 1-11,16-53,57-79,82-98
+  s_cb8bbfdb133e81::t_713909a555b282 12-15
+  s_cb8bbfdb133e81::t_da242def2b6690 54-56
+  s_cb8bbfdb133e81::t_b1f29582c597a5 80-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8baa033bd953f20cc0b13249ab398f36ea2a2375",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

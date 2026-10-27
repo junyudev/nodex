@@ -1,0 +1,38 @@
+src/main/file-link-opener.ts
+  s_cb8bbfdb133e81::t_4150524f490459 31,67
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_cb8bbfdb133e81::t_8b07e486715e43 42-44,75,523-530,622-631,978-979,984-989,1175-1179,1194-1196,1198,1200,1228
+  s_cb8bbfdb133e81::t_7a78a902e42a93 264,286,319,361,1312
+  s_cb8bbfdb133e81::t_72dfe6814ac6ea 125-126,1180-1190
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_cb8bbfdb133e81::t_72dfe6814ac6ea 3630
+src/main/ipc/handlers/NativeShellIpc.ts
+  s_cb8bbfdb133e81::t_dcb1c45bb849c6 266-269
+src/main/file-open-applications.test.ts
+  s_cb8bbfdb133e81::t_2c4ec08b242250 10,30,51,54-72,84-85
+src/renderer/features/workspace-files/workspace-file-media-preview.tsx
+  s_cb8bbfdb133e81::t_7a78a902e42a93 83
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_cb8bbfdb133e81::t_070a51685e3dcc 117,164
+src/main/file-open-applications.ts
+  s_cb8bbfdb133e81::t_2c4ec08b242250 122-123
+  s_cb8bbfdb133e81::t_4150524f490459 7-63,74-77,81,103-106,108-109,111-112,114-121,125-128
+src/shared/file-open-applications.ts
+  s_cb8bbfdb133e81::t_b2df382630bf28 12,14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0df60352d51b93d4f5c9d42071d32747e7eb86b8",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
