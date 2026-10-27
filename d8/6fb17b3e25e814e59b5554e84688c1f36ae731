@@ -57,6 +57,7 @@ packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
   s_7aa8ab5f4cb606::t_d76f8b97e261b8 729,737-738,759-762,765-767,773-774,782-783,785,788-790,799,801-802,804-817,989-993,3802-3804,3817
   s_7aa8ab5f4cb606::t_2f0b40e91f34ab 710-713,763-764,768-772,775-781,786-787,791,795-797,8609-8610,8622-8627,8655,8698-8700,9688,11480-11485,11487
   s_7aa8ab5f4cb606::t_263c61611f1ca8 714-717,730-736,784,792-794,798,800,803
+  s_7aa8ab5f4cb606::t_10946fa4512d64 3277,9754
 packages/agent-runtime/src/mcp/toolkits/task/tools.ts
   s_7aa8ab5f4cb606::t_38e883848fb78d 16-17,20,108-118,123,127-129,132-136,138-139,141-163,180-187,189-190,198,303
   s_7aa8ab5f4cb606::t_27b1358e688ecb 28,124,191-194
@@ -110,6 +111,7 @@ packages/agent-runtime/src/orchestration-v2/SessionMetadata.ts
 packages/agent-runtime/src/persistence/Migrations/081_ConversationDiscovery.test.ts
   s_7aa8ab5f4cb606::t_8fadb59e7b89b2 2-12,20-52,58-63
   s_7aa8ab5f4cb606::t_3ddcdc32d3d4ba 1,64
+  s_7aa8ab5f4cb606::t_8ea1eac727cdd5 13-19,53-57
 packages/agent-runtime/src/nodex/Ingress.ts
   s_7aa8ab5f4cb606::t_09cfac9a47c43a 1-2,76,246-280,297
 packages/core-protocol/openapi.json
@@ -940,6 +942,20 @@ packages/agent-runtime/src/orchestration-v2/SessionSearch.test.ts
   s_7aa8ab5f4cb606::t_8130919e6ca7c1 383-410
 packages/agent-runtime/src/nodex/AcpNativeHistory.integration.test.ts
   s_7aa8ab5f4cb606::t_a3c2b0837784e8 112-122,178-188
+packages/agent-runtime/src/nodex/ExecutionLocation.test.ts
+  s_7aa8ab5f4cb606::t_8ea1eac727cdd5 19,167,176-189,194-197
+crates/nodex-core/src/document/integrity.rs
+  s_7aa8ab5f4cb606::t_10946fa4512d64 61
+src/renderer/lib/workbench-new-tab-port.test.tsx
+  s_7aa8ab5f4cb606::t_042cbdc3ad49b5 119-127,131-132,207-219,225
+crates/nodex-core/src/infrastructure/migration_derivation_tests.rs
+  s_7aa8ab5f4cb606::t_8ea1eac727cdd5 227-262,334
+src/main/agent-runtime/AgentRuntimeUserInputAutoResolution.ts
+  s_7aa8ab5f4cb606::t_042cbdc3ad49b5 87,95-101
+src/main/agent-runtime/AgentRuntimeUserInputAutoResolution.node.test.ts
+  s_7aa8ab5f4cb606::t_042cbdc3ad49b5 114-120,124-127
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_7aa8ab5f4cb606::t_10946fa4512d64 97-104,199-206
 ---
 {
   "schema_version": "authorship/3.0.0",
