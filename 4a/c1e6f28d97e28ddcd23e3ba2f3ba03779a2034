@@ -1,0 +1,33 @@
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.test.tsx
+  s_52b7f544384b72::t_824deaa37b8936 91-115,210,226-229,234-235,237-245,248-280
+  s_52b7f544384b72::t_714e06dafd947a 230-233,236,246-247
+  s_b33872d4d89492::t_7518e741051a8d 281
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_52b7f544384b72::t_250edef222c43c 229-239
+docs/product-specs/agent-runtime-behavior.md
+  s_52b7f544384b72::t_250edef222c43c 341-344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4ac1e6f28d97e28ddcd23e3ba2f3ba03779a2034",
+  "prompts": {},
+  "sessions": {
+    "s_52b7f544384b72": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec4-4401-7440-b010-032c43a1969e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b33872d4d89492": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec3-606f-7b70-bee4-5a7dfdadd216",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
