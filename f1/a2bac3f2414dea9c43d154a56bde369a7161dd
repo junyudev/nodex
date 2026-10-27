@@ -1,0 +1,42 @@
+src/renderer/features/workspace-files/workspace-file-draft-line-map.ts
+  s_4840fe28c6eb44::t_b39672a58a0161 1-55
+src/renderer/features/workspace-files/workspace-file-draft-line-map.test.ts
+  s_4840fe28c6eb44::t_b39672a58a0161 1-46
+  s_4840fe28c6eb44::t_b373af1f55e063 47-54
+docs/product-specs/workspace-file-git-data.md
+  s_4840fe28c6eb44::t_0a8d2920158fcc 52-64
+package.json
+  s_4840fe28c6eb44::t_114bc233338b2d 301
+patches/@pierre__diffs@1.3.0-rc.1.patch
+  s_4840fe28c6eb44::t_dbc8e5b88abb71 1-65
+pnpm-lock.yaml
+  s_4840fe28c6eb44::t_b16951140f1909 171,354,496-498,10252
+pnpm-workspace.yaml
+  s_4840fe28c6eb44::t_31d641ee43ac7c 7
+src/renderer/features/workspace-files/workspace-file-editor-diff.test.ts
+  s_4840fe28c6eb44::t_544ab29a5c9312 1-35
+src/renderer/features/workspace-files/workspace-file-editor-diff.ts
+  s_4840fe28c6eb44::t_d4de2994986191 1-46
+src/renderer/features/workspace-files/workspace-pierre-editor.browser.test.tsx
+  s_4840fe28c6eb44::t_c624812222a29c 1-413
+src/renderer/features/workspace-files/workspace-pierre-editor.test.tsx
+  s_4840fe28c6eb44::t_25e3c9296deac1 3-4,7,13-16,48,53,56,60-69,75-76,81,83-85,90,100-101,154-247
+src/renderer/features/workspace-files/workspace-pierre-editor.tsx
+  s_4840fe28c6eb44::t_231f83efa6118c 1,8,11-20,23,36-46,48-53,62-73,86-112,117-122,124,133-135,141-156,158-173,176-221,223-227,229-424,426-454,457,461,463,474,476-485,497-498,502-533,542-549
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1a2bac3f2414dea9c43d154a56bde369a7161dd",
+  "prompts": {},
+  "sessions": {
+    "s_4840fe28c6eb44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d71-ee7e-76d0-8b09-201a63514fa6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
