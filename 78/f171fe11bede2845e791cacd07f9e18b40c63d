@@ -1,0 +1,21 @@
+docs/product-specs/command-palette-behavior.md
+  s_6c9891f66c664a::t_bff1de4cdaa732 306
+src/renderer/components/workbench/command-palette-folder-picker.tsx
+  s_6c9891f66c664a::t_bff1de4cdaa732 173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "78f171fe11bede2845e791cacd07f9e18b40c63d",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
