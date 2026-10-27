@@ -112,6 +112,7 @@ packages/agent-runtime/src/persistence/Migrations/081_ConversationDiscovery.test
   s_7aa8ab5f4cb606::t_8fadb59e7b89b2 2-12,20-52,58-63
   s_7aa8ab5f4cb606::t_3ddcdc32d3d4ba 1,64
   s_7aa8ab5f4cb606::t_8ea1eac727cdd5 13-19,53-55,57
+  s_7aa8ab5f4cb606::t_4420b1f15fd3d2 56
 packages/agent-runtime/src/nodex/Ingress.ts
   s_7aa8ab5f4cb606::t_09cfac9a47c43a 1-2,76,246-280,297
 packages/core-protocol/openapi.json
@@ -729,6 +730,7 @@ packages/agent-runtime/src/nodex/NativeMessageReceipts.test.ts
   s_7aa8ab5f4cb606::t_92e5bb49d32f05 152-155
   s_7aa8ab5f4cb606::t_b227bc30231b4d 2-5,8,11,33,54,84,103
   s_7aa8ab5f4cb606::t_0644be79124976 1,6-7,10,12-32,34-53,55-83,85-102,104-151
+  s_7aa8ab5f4cb606::t_4420b1f15fd3d2 9
 packages/agent-runtime/vendor/provider-opencode/src/server/v2/adapter.ts
   s_7aa8ab5f4cb606::t_b0a44f6676523f 101,3279
 src/main/app-tools/SessionReadDetails.node.test.ts
@@ -868,6 +870,7 @@ packages/nodex-app-tools-mcp/desktop-mcp.json
   s_7aa8ab5f4cb606::t_ece9c9f9a0bfce 19
 packages/agent-runtime/src/persistence/Migrations/081_ConversationDiscovery.ts
   s_7aa8ab5f4cb606::t_b798659d6c07f8 1-36,38
+  s_7aa8ab5f4cb606::t_4420b1f15fd3d2 37
 packages/agent-runtime/src/persistence/Migrations/085_RuntimeMessageAdmissions.ts
   s_7aa8ab5f4cb606::t_6ba7abaf4cb733 14-18
   s_7aa8ab5f4cb606::t_c97f5bc6c398ac 1-10,12-13,19
@@ -948,6 +951,7 @@ src/main/agent-runtime/AgentRuntimeUserInputAutoResolution.node.test.ts
   s_7aa8ab5f4cb606::t_042cbdc3ad49b5 114-120,124-127
 packages/agent-runtime/src/persistence/Migrations.ts
   s_7aa8ab5f4cb606::t_10946fa4512d64 97-99,196-198
+  s_7aa8ab5f4cb606::t_4420b1f15fd3d2 100-101,199-200
 ---
 {
   "schema_version": "authorship/3.0.0",
