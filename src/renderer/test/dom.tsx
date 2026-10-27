@@ -45,12 +45,13 @@ export async function settleLazyRender() {
 /** Exercise the complete browser press ingress owned by Nodex dropdown triggers. */
 export async function openNodexMenu(trigger: HTMLElement) {
   await act(async () => {
-    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: "mouse" });
     fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-    fireEvent.pointerUp(trigger, { button: 0, ctrlKey: false });
+    fireEvent.pointerUp(trigger, { button: 0, ctrlKey: false, pointerType: "mouse" });
     fireEvent.mouseUp(trigger, { button: 0, ctrlKey: false });
     fireEvent.click(trigger);
-    await Promise.resolve();
+    // Base UI opens pointer-triggered menus in a frame after mousedown's focus.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   });
   await settleAsyncRender();
 }

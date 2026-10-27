@@ -1,4 +1,10 @@
-import { useRef, useState, type ComponentPropsWithRef, type RefObject } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentPropsWithRef,
+  type RefObject,
+} from "react";
 import type { FileSearchScope } from "../../../shared/file-search";
 import {
   commandPaletteWorkspaceScope,
@@ -59,6 +65,12 @@ export function CommandPaletteWorkspaceToolbar({
   const localTriggerRef = useRef<HTMLButtonElement>(null);
   const triggerRef = firstControlRef ?? localTriggerRef;
   const restoreFocus = () => triggerRef.current?.focus();
+  const restoreAfterChoosing = useRef(false);
+  useLayoutEffect(() => {
+    if (choosing || !restoreAfterChoosing.current) return;
+    restoreAfterChoosing.current = false;
+    triggerRef.current?.focus();
+  }, [choosing, triggerRef]);
   const context =
     contextScope?.roots.length && contextScope.hostId === scope?.hostId ? contextScope : null;
   const contextTitle = contextLabel
@@ -92,8 +104,9 @@ export function CommandPaletteWorkspaceToolbar({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to choose a folder");
     } finally {
+      // Restore only after React commits the enabled trigger to the DOM.
+      restoreAfterChoosing.current = true;
       setChoosing(false);
-      restoreFocus();
     }
   };
   return (

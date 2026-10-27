@@ -1,9 +1,17 @@
-import { act, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
+import {
+  NodexDropdownRoot,
+  NodexDropdownTrigger,
+  NodexDropdownPortal,
+  NodexDropdownContent,
+  NodexDropdownItem,
+} from "@/components/ui/dropdown";
 import { ReadonlyCodeBlock } from "@/components/shared/readonly-code-block";
 import { streamdownCodePlugin } from "@/lib/streamdown";
+import { installAsyncRequestAnimationFrame } from "./browser-globals";
 import { renderWithAppMaitai } from "./app-maitai";
-import { settleAsyncRender, waitForCodeHighlight } from "./dom";
+import { openNodexMenu, render, settleAsyncRender, waitForCodeHighlight } from "./dom";
 
 test("code readiness waits for highlighting instead of accepting the plain fallback", async () => {
   let finishHighlight: Parameters<typeof streamdownCodePlugin.highlight>[1];
@@ -41,4 +49,30 @@ test("code readiness waits for highlighting instead of accepting the plain fallb
   } finally {
     highlight.mockRestore();
   }
+});
+
+test("a menu opened with the mouse stays dismissed after selecting an item", async () => {
+  // Keep the opening frame pending beyond the helper's ordinary async-render turn.
+  installAsyncRequestAnimationFrame(100);
+  const changeOpen = vi.fn();
+  const view = render(
+    <NodexDropdownRoot onOpenChange={changeOpen}>
+      <NodexDropdownTrigger>
+        <button type="button">Actions</button>
+      </NodexDropdownTrigger>
+      <NodexDropdownPortal>
+        <NodexDropdownContent>
+          <NodexDropdownItem>Choose</NodexDropdownItem>
+        </NodexDropdownContent>
+      </NodexDropdownPortal>
+    </NodexDropdownRoot>,
+  );
+  await openNodexMenu(view.getByRole("button", { name: "Actions" }));
+  const item = view.getByRole("menuitem", { name: "Choose" });
+  await act(async () => {
+    fireEvent.click(item);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  await waitFor(() => expect(view.queryByRole("menu")).toBeNull());
+  expect(changeOpen.mock.calls).toEqual([[true], [false]]);
 });

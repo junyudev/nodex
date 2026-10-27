@@ -6,6 +6,7 @@ import type {
   WorkspaceDirectoryEntriesInput,
   WorkspaceDirectoryEntriesResult,
 } from "../../../shared/types";
+import type { FileSearchScope } from "../../../shared/file-search";
 import type { WorkspaceTextSearchMatch } from "../../../shared/workspace-text-search";
 import { renderWithAppMaitai } from "../../test/app-maitai";
 import { openNodexMenu } from "../../test/dom";
@@ -178,6 +179,50 @@ test.each([false, true])(
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     view.unmount();
     expect(control.current).toBeNull();
+  },
+);
+
+test.each(["choose", "cancel", "fail"] as const)(
+  "folder chooser re-enables its trigger before restoring focus after %s",
+  async (outcome) => {
+    let resolveChoice!: (value: FileSearchScope | null) => void;
+    let rejectChoice!: (error: unknown) => void;
+    const choice = new Promise<FileSearchScope | null>((resolve, reject) => {
+      resolveChoice = resolve;
+      rejectChoice = reject;
+    });
+    const selected = vi.fn();
+    const view = renderWithAppMaitai(
+      <CommandPaletteWorkspaceToolbar
+        contextScope={scope}
+        onSelectionChange={selected}
+        onChooseFolder={() => choice}
+      />,
+    );
+    const trigger = view.getByRole("button", { name: "Search folder" }) as HTMLButtonElement;
+    await openNodexMenu(trigger);
+    const choose = await view.findByRole("menuitem", { name: "Choose folder" });
+    await act(async () => {
+      fireEvent.click(choose);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(trigger.disabled).toBe(true));
+    expect(selected).not.toHaveBeenCalled();
+
+    await act(async () => {
+      if (outcome === "fail") rejectChoice(new Error("Folder unavailable"));
+      else resolveChoice(outcome === "choose" ? scope : null);
+      await choice.catch(() => undefined);
+    });
+    await waitFor(() => expect(trigger.disabled).toBe(false));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(view.queryByRole("menu")).toBeNull();
+    if (outcome === "choose") {
+      expect(selected).toHaveBeenCalledExactlyOnceWith({ kind: "directory", scope });
+      return;
+    }
+    expect(selected).not.toHaveBeenCalled();
+    if (outcome === "fail") expect(view.getByRole("alert").textContent).toBe("Folder unavailable");
   },
 );
 
