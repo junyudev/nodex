@@ -1,0 +1,19 @@
+third_party/blocknote/packages/react/src/editor/BlockNoteView.tsx
+  s_cb8bbfdb133e81::t_60b5eff2623478 109-115,146,176,186,190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2673fcb941e1d2c476c1524636616b358b1165c4",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
