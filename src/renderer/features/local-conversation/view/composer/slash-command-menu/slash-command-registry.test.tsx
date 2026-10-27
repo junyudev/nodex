@@ -598,7 +598,7 @@ describe("buildComposerSlashCommands", () => {
       activateGoalMode: () => undefined,
     });
     expect(commands.find((command) => command.id === "goal")?.isVisible).toBe(false);
-    await commands.find((command) => command.id === "service-tier:fast")!.onSelect!({
+    await commands.find((command) => command.id === "fast")!.onSelect!({
       source: "dialog",
     });
     expect(onIntelligenceSelectionChange).toHaveBeenCalledWith({
@@ -608,5 +608,49 @@ describe("buildComposerSlashCommands", () => {
       serviceTier: "fast",
     });
     expect(setServiceTier).not.toHaveBeenCalled();
+  });
+
+  test("a Claude chat toggles Fast and Ultracode on its own model choice", async () => {
+    const change = vi.fn(async () => undefined);
+    const build = (capabilities: Record<string, unknown>, selected: Record<string, unknown>) =>
+      buildComposerSlashCommands({
+        model: {
+          ...buildModel(),
+          provider: {
+            kind: "claude",
+            label: "Claude",
+            selection: "claude",
+            options: [],
+            select: () => {},
+            commands: [{ name: "fast", description: "Native fast", inputHint: null }],
+            nativeIntelligence: { selected, capabilities, change },
+          },
+        } as unknown as ThreadFooterModel,
+        actions: buildActions(),
+        serviceTier: null,
+        setServiceTier: vi.fn(),
+        openExpandedDialog: () => undefined,
+        onPetToggle: () => undefined,
+        activateGoalMode: () => undefined,
+      });
+    const commands = build({ fastMode: true, ultracode: true }, { fast: false, ultracode: true });
+    expect(commands.filter((command) => command.title === "Fast")).toHaveLength(1);
+    await commands.find((command) => command.id === "fast")!.onSelect!({ source: "dialog" });
+    expect(change).toHaveBeenLastCalledWith({ fast: true });
+    const ultracode = commands.find((command) => command.id === "ultracode")!;
+    expect(ultracode.description).toBe("Turn Ultracode off");
+    await ultracode.onSelect!({ source: "dialog" });
+    expect(change).toHaveBeenLastCalledWith({ ultracode: false });
+
+    const unavailable = build(
+      { ultracodeUnavailableReason: "Dynamic workflows are off." },
+      { ultracode: true },
+    ).find((command) => command.id === "ultracode")!;
+    expect(unavailable).toMatchObject({
+      isVisible: true,
+      isEnabled: false,
+      description: "Dynamic workflows are off.",
+    });
+    expect(build({}, {}).find((command) => command.id === "ultracode")?.isVisible).toBe(false);
   });
 });

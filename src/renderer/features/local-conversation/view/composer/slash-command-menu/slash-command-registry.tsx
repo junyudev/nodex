@@ -25,6 +25,7 @@ import {
   SlashSideIcon,
   SlashStatusIcon,
   ComposerPlanModeIcon,
+  UltracodeIcon,
 } from "@/components/shared/icons";
 import {
   formatCodexModelLabel,
@@ -80,6 +81,10 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
   const latestTurnId = input.model.body.latestTurnId;
   const provider = input.model.provider;
   const isCodex = !provider || provider.kind === "codex";
+  const native = provider?.nativeIntelligence;
+  const fastOn = native ? native.selected.fast === true : provider?.serviceTier === "fast";
+  const ultracodeOn = native?.capabilities.ultracode === true && native.selected.ultracode === true;
+  const ultracodeUnavailable = native?.capabilities.ultracodeUnavailableReason;
   const inspectNativeRuntime =
     !isCodex && provider?.diagnostics && input.actions.onOpenStatusPanel && threadId
       ? () => input.actions.onOpenStatusPanel?.(threadId)
@@ -121,14 +126,23 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
       },
     },
     {
-      id: "service-tier:fast",
+      // Named like the mode so a native `/fast` command never shows twice.
+      id: "fast",
       title: "Fast",
-      description: "1.5x speed, increased usage",
+      description: native
+        ? fastOn
+          ? "Turn Fast off"
+          : "Faster output, more usage"
+        : "1.5x speed, increased usage",
       group: "Commands",
       icon: <FastModeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
-      isVisible: isCodex,
+      isVisible: isCodex || native?.capabilities.fastMode === true,
       onSelect: async () => {
+        if (native) {
+          await runCommand("Could not change speed", () => native.change({ fast: !fastOn }));
+          return;
+        }
         // A conversation that owns its speed changes its own selection, not the saved default.
         const owned = input.model.provider?.serviceTier;
         const commit = input.actions.onIntelligenceSelectionChange;
@@ -144,6 +158,24 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
           return;
         }
         input.setServiceTier(input.serviceTier === "fast" ? null : "fast", "slash_command");
+      },
+    },
+    {
+      id: "ultracode",
+      title: "Ultracode",
+      description:
+        ultracodeUnavailable ??
+        (ultracodeOn ? "Turn Ultracode off" : "Run a multi-agent workflow for each task"),
+      group: "Commands",
+      icon: <UltracodeIcon className={iconClassName} />,
+      requiresEmptyComposer: true,
+      isVisible: native?.capabilities.ultracode === true || ultracodeUnavailable !== undefined,
+      isEnabled: ultracodeUnavailable === undefined,
+      onSelect: async () => {
+        if (!native || ultracodeUnavailable !== undefined) return;
+        await runCommand("Could not change Ultracode", () =>
+          native.change({ ultracode: !ultracodeOn }),
+        );
       },
     },
     {

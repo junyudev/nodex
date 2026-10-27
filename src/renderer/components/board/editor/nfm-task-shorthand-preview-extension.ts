@@ -7,7 +7,10 @@ import {
   TASK_SHORTHAND_PAGE_PROMOTION_CHANGE_EVENT,
 } from "../../../lib/page-promotion-preference";
 import { previewTaskShorthandTextRun } from "../../../lib/task-shorthand-preview";
-import { APP_SHELL_TOOLTIP_LAYER_CLASS } from "../../../lib/app-shell-layers";
+import {
+  createEditorDecorationTooltip,
+  type EditorDecorationTooltip,
+} from "../../../lib/editor-decoration-tooltip";
 import { NFM_EDITOR_FLOATING_SURFACE_CHROME_CLASS } from "./nfm-editor-floating-surface";
 
 interface TaskShorthandDecorationState {
@@ -101,31 +104,7 @@ const updateChangedBlockDecorations = (
   return decorations;
 };
 
-const createTooltip = (): HTMLDivElement => {
-  const tooltip = document.createElement("div");
-  tooltip.setAttribute("role", "tooltip");
-  tooltip.dataset.taskShorthandTooltip = "true";
-  tooltip.className = `pointer-events-none fixed hidden max-w-[320px] rounded-md px-2.5 py-1.5 text-xs text-token-text-secondary ${APP_SHELL_TOOLTIP_LAYER_CLASS} ${NFM_EDITOR_FLOATING_SURFACE_CHROME_CLASS}`;
-  document.body.append(tooltip);
-  return tooltip;
-};
-
-const showTooltip = (
-  tooltip: HTMLDivElement,
-  content: string,
-  rectangle: Pick<DOMRect, "left" | "bottom">,
-): void => {
-  tooltip.textContent = content;
-  tooltip.style.left = `${Math.round(rectangle.left)}px`;
-  tooltip.style.top = `${Math.round(rectangle.bottom + 6)}px`;
-  tooltip.classList.remove("hidden");
-};
-
-const hideTooltip = (tooltip: HTMLDivElement): void => {
-  tooltip.classList.add("hidden");
-};
-
-const updateSelectionTooltip = (view: EditorView, tooltip: HTMLDivElement): void => {
+const updateSelectionTooltip = (view: EditorView, tooltip: EditorDecorationTooltip): void => {
   const { from, to } = view.state.selection;
   const decoration = taskShorthandPreviewPluginKey
     .getState(view.state)
@@ -133,10 +112,10 @@ const updateSelectionTooltip = (view: EditorView, tooltip: HTMLDivElement): void
     .find((candidate) => from <= candidate.to && to >= candidate.from);
   const content = decoration?.spec.preview as string | undefined;
   if (!content) {
-    hideTooltip(tooltip);
+    tooltip.hide();
     return;
   }
-  showTooltip(tooltip, content, view.coordsAtPos(from));
+  tooltip.show(content, view.coordsAtPos(from));
 };
 
 const createTaskShorthandPreviewPlugin = () =>
@@ -156,25 +135,13 @@ const createTaskShorthandPreviewPlugin = () =>
         taskShorthandPreviewPluginKey.getState(state)?.decorations ?? DecorationSet.empty,
     },
     view: (view) => {
-      const tooltip = createTooltip();
-      const onPointerOver = (event: Event) => {
-        const target =
-          event.target instanceof HTMLElement
-            ? event.target.closest<HTMLElement>("[data-task-shorthand-preview]")
-            : null;
-        const content = target?.dataset.taskShorthandPreview;
-        if (!target || !content) return;
-        showTooltip(tooltip, content, target.getBoundingClientRect());
-      };
-      const onPointerOut = (event: Event) => {
-        const target =
-          event.target instanceof HTMLElement
-            ? event.target.closest("[data-task-shorthand-preview]")
-            : null;
-        if (target) hideTooltip(tooltip);
-      };
-      view.dom.addEventListener("pointerover", onPointerOver);
-      view.dom.addEventListener("pointerout", onPointerOut);
+      const tooltip = createEditorDecorationTooltip({
+        root: view.dom,
+        selector: "[data-task-shorthand-preview]",
+        read: (element) => element.dataset.taskShorthandPreview,
+        surfaceClassName: NFM_EDITOR_FLOATING_SURFACE_CHROME_CLASS,
+        dataAttribute: "data-task-shorthand-tooltip",
+      });
       const onPreferenceChange = () => {
         view.dispatch(view.state.tr.setMeta(taskShorthandPreviewPluginKey, "refresh"));
       };
@@ -185,13 +152,11 @@ const createTaskShorthandPreviewPlugin = () =>
           updateSelectionTooltip(nextView, tooltip);
         },
         destroy: () => {
-          view.dom.removeEventListener("pointerover", onPointerOver);
-          view.dom.removeEventListener("pointerout", onPointerOut);
           window.removeEventListener(
             TASK_SHORTHAND_PAGE_PROMOTION_CHANGE_EVENT,
             onPreferenceChange,
           );
-          tooltip.remove();
+          tooltip.destroy();
         },
       };
     },

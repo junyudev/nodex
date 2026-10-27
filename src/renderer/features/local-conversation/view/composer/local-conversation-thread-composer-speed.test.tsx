@@ -4635,12 +4635,12 @@ describe("ThreadComposer speed menu", () => {
     });
 
     await waitFor(() => {
-      const fastRow = view.container.querySelector('[data-slash-command-row="service-tier:fast"]');
+      const fastRow = view.container.querySelector('[data-slash-command-row="fast"]');
       if (!(fastRow instanceof HTMLElement)) throw new Error("Expected Fast slash command row.");
       expect(Boolean(view.container.textContent?.includes("Compact"))).toBe(false);
     });
 
-    const fastRow = view.container.querySelector('[data-slash-command-row="service-tier:fast"]');
+    const fastRow = view.container.querySelector('[data-slash-command-row="fast"]');
     if (!(fastRow instanceof HTMLElement)) {
       throw new Error("Expected Fast slash command row.");
     }

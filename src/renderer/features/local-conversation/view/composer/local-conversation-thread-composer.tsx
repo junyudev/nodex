@@ -129,6 +129,7 @@ import {
   type ComposerPromptEditorKeyboardEvent,
   type ComposerSuggestionAction,
 } from "./composer-prompt-editor";
+import { CLAUDE_PROMPT_KEYWORDS } from "./composer-prompt-keywords";
 import {
   inactiveComposerSuggestionState,
   type ComposerSuggestionState,
@@ -3963,6 +3964,7 @@ function HydratedThreadComposer({
       placeholder={promptPlaceholder}
       disabled={isPromptEditorDisabled}
       singleLine={singleLine}
+      {...(model.provider?.kind === "claude" ? { promptKeywords: CLAUDE_PROMPT_KEYWORDS } : {})}
       prediction={
         !isPromptEditorDisabled &&
         model.composerShell.activeRequest === null &&

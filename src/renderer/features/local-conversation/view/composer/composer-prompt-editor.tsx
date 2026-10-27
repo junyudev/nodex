@@ -43,6 +43,11 @@ import {
   type ComposerPastedFiles,
 } from "./image-attachments/composer-image-data-transfer";
 import { resolveSubagentAvatarAsset } from "../shared/subagent-avatar";
+import {
+  createComposerPromptKeywordsPlugin,
+  composerPromptKeywordsPluginKey,
+  type ComposerPromptKeyword,
+} from "./composer-prompt-keywords";
 
 export type ComposerPromptMentionKind =
   | "agent"
@@ -719,6 +724,8 @@ interface ComposerPromptEditorProps {
   singleLine?: boolean;
   compact?: boolean;
   allowSlashCommands?: boolean;
+  /** Words the chat's Agent reacts to in a message; highlighted and explained on hover. */
+  promptKeywords?: readonly ComposerPromptKeyword[];
   onChange: (value: string) => void;
   onKeyDown: (event: KeyboardEvent) => boolean;
   onLargeTextPaste?: (text: string) => boolean;
@@ -1034,6 +1041,7 @@ function createPromptEditorState(
   placeholderRef: { current: string },
   allowSlashCommands = true,
   predictionOptions: Parameters<typeof createComposerPredictionPlugin>[0],
+  promptKeywordsRef: { readonly current: readonly ComposerPromptKeyword[] | undefined },
 ): EditorState {
   const doc = buildPromptDoc(value);
   return EditorState.create({
@@ -1051,6 +1059,7 @@ function createPromptEditorState(
       promptEditingKeymapPlugin,
       promptClipboardPlugin,
       createPromptPlaceholderPlugin(placeholderRef, predictionOptions.disabled),
+      createComposerPromptKeywordsPlugin(promptKeywordsRef),
     ],
   });
 }
@@ -1066,6 +1075,7 @@ export const ComposerPromptEditor = forwardRef<
     singleLine = false,
     compact = false,
     allowSlashCommands = true,
+    promptKeywords,
     onChange,
     onKeyDown,
     onLargeTextPaste,
@@ -1095,6 +1105,7 @@ export const ComposerPromptEditor = forwardRef<
   const singleLineRef = useRef(singleLine);
   const compactRef = useRef(compact);
   const allowSlashCommandsRef = useRef(allowSlashCommands);
+  const promptKeywordsRef = useRef(promptKeywords);
   const disabledRef = useRef(disabled);
   const predictionRef = useRef(prediction);
   const onPredictionInteractionRef = useRef(onPredictionInteraction);
@@ -1112,6 +1123,7 @@ export const ComposerPromptEditor = forwardRef<
     singleLineRef.current = singleLine;
     compactRef.current = compact;
     allowSlashCommandsRef.current = allowSlashCommands;
+    promptKeywordsRef.current = promptKeywords;
     disabledRef.current = disabled;
     predictionRef.current = prediction;
     onPredictionInteractionRef.current = onPredictionInteraction;
@@ -1534,6 +1546,7 @@ export const ComposerPromptEditor = forwardRef<
         placeholderRef,
         allowSlashCommandsRef.current,
         predictionOptions,
+        promptKeywordsRef,
       ),
       editable: () => !disabledRef.current,
       attributes: buildPromptEditorAttributes({
@@ -1608,6 +1621,7 @@ export const ComposerPromptEditor = forwardRef<
           placeholderRef,
           allowSlashCommandsRef.current,
           predictionOptions,
+          promptKeywordsRef,
         ),
       );
       emitSuggestionState(view);
@@ -1622,6 +1636,12 @@ export const ComposerPromptEditor = forwardRef<
     const view = viewRef.current;
     if (view) setComposerPrediction(view, prediction);
   }, [prediction]);
+
+  // Another Agent reacts to other words; redraw so the highlights follow it.
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch(view.state.tr.setMeta(composerPromptKeywordsPluginKey, promptKeywords));
+  }, [promptKeywords]);
 
   useEffect(() => {
     let active = true;

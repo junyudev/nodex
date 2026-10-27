@@ -11,6 +11,7 @@ import {
   promptTextOffsetToDocPosition,
   type ComposerPromptEditorHandle,
 } from "./composer-prompt-editor";
+import { CLAUDE_PROMPT_KEYWORDS } from "./composer-prompt-keywords";
 
 function renderPromptEditor({
   value,
@@ -21,8 +22,10 @@ function renderPromptEditor({
   onPasteFiles,
   onSuggestionStateChange,
   onSuggestionAction,
+  promptKeywords,
 }: {
   value: string;
+  promptKeywords?: Parameters<typeof ComposerPromptEditor>[0]["promptKeywords"];
   singleLine?: boolean;
   allowSlashCommands?: boolean;
   onKeyDown?: (event: KeyboardEvent) => boolean;
@@ -47,6 +50,7 @@ function renderPromptEditor({
       onPasteFiles={onPasteFiles}
       onSuggestionStateChange={onSuggestionStateChange}
       onSuggestionAction={onSuggestionAction}
+      {...(promptKeywords ? { promptKeywords } : {})}
     />,
   );
   const editor = view.container.querySelector("[contenteditable='true']");
@@ -93,6 +97,33 @@ function createClipboardData(initial: Record<string, string> = {}) {
 }
 
 describe("ComposerPromptEditor", () => {
+  test("highlights the Agent's keywords without changing the message or a command", () => {
+    const { editor, editorRef, onChange } = renderPromptEditor({
+      value: "Please ultrathink first",
+      promptKeywords: CLAUDE_PROMPT_KEYWORDS,
+    });
+    const keyword = editor.querySelector("[data-composer-prompt-keyword]");
+    expect(keyword?.textContent).toBe("ultrathink");
+    expect(keyword?.getAttribute("data-composer-prompt-keyword-hint")).toMatch(/deeply/u);
+
+    act(() => {
+      editorRef.current?.focusAtEnd();
+      editorRef.current?.insertText(" /ultracode");
+    });
+    expect(editorRef.current?.getSuggestionState()).toMatchObject({ active: true, trigger: "/" });
+    expect(
+      [...editor.querySelectorAll("[data-composer-prompt-keyword]")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["ultrathink"]);
+    expect(onChange).toHaveBeenLastCalledWith("Please ultrathink first /ultracode");
+  });
+
+  test("leaves keywords plain for an Agent that has none", () => {
+    const { editor } = renderPromptEditor({ value: "Please ultrathink first" });
+    expect(editor.querySelector("[data-composer-prompt-keyword]")).toBeNull();
+  });
+
   test.each([
     ["Draft", " next ", "Draft next"],
     ["Draft ", "next", "Draft next"],
