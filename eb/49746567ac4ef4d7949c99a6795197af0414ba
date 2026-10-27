@@ -1,0 +1,43 @@
+src/renderer/features/local-conversation/view/composer/async-question-controls.tsx
+  s_f06f0af563f4d6::t_480fbb8ed7ae0e 177,201
+  s_f06f0af563f4d6::t_14b829b139a728 87,172,197
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_f06f0af563f4d6::t_801272d020546c 505,507,1169
+  s_f06f0af563f4d6::t_cf1e59d921d35d 3-5,496,501,1131,1179,1186,1191,1204
+  s_f06f0af563f4d6::t_b4d02328936ad4 524
+  s_f06f0af563f4d6::t_14b829b139a728 425
+  s_f06f0af563f4d6::t_480fbb8ed7ae0e 1137-1145
+  s_b83c78f1774995::t_b4b409111d096f 2
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.tsx
+  s_f06f0af563f4d6::t_14b829b139a728 1662
+src/renderer/features/local-conversation/view/composer/question-action-colors.ts
+  s_f06f0af563f4d6::t_cf1e59d921d35d 7-9
+src/renderer/features/local-conversation/view/composer/async-question-panel.tsx
+  s_f06f0af563f4d6::t_ef7b57797001b6 452
+  s_f06f0af563f4d6::t_cf1e59d921d35d 2,361,376,391
+  s_f06f0af563f4d6::t_14b829b139a728 200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb49746567ac4ef4d7949c99a6795197af0414ba",
+  "prompts": {},
+  "sessions": {
+    "s_b83c78f1774995": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c87-b6a8-7552-b76d-ec7cad431a52",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f06f0af563f4d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c08-6d91-7aa1-847f-70c3d1c48dc4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
