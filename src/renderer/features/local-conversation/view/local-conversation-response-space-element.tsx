@@ -2,6 +2,7 @@ import { useCallback, useEffect, useInsertionEffect, useLayoutEffect } from "rea
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { useLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
 import type { ThreadResponseSpaceController } from "./local-conversation-response-space";
+import { subscribeToElementResize } from "../../../lib/resize-observer-motion-values";
 
 const INTERSECTION_THRESHOLDS = Array.from({ length: 101 }, (_, index) => index / 100);
 
@@ -13,7 +14,7 @@ export function LocalConversationResponseSpaceElement({
   readonly onReleased: () => void;
 }) {
   const scroll = useLocalConversationThreadScrollController();
-  const { getScrollElement, addScrollListener, addUserScrollListener, scrollElement } = scroll;
+  const { addScrollListener, addUserScrollListener, scrollElement } = scroll;
   const reducedMotion = useResolvedReducedMotion();
   const setElement = controller.setElement;
   const registerElement = useCallback(
@@ -24,7 +25,7 @@ export function LocalConversationResponseSpaceElement({
     controller.updateContext(scroll, reducedMotion, onReleased);
   }, [controller, onReleased, reducedMotion, scroll]);
   useEffect(() => {
-    const element = getScrollElement();
+    const element = scrollElement;
     if (!element) return;
     const abort = new AbortController();
     for (const event of ["wheel", "touchstart", "pointerdown", "keydown"]) {
@@ -38,10 +39,10 @@ export function LocalConversationResponseSpaceElement({
       abort.abort();
       controller.stop();
     };
-  }, [controller, getScrollElement, scrollElement]);
+  }, [controller, scrollElement]);
   useEffect(() => controller.cancelPendingUserScrollDecay, [controller]);
   useLayoutEffect(() => {
-    const element = getScrollElement();
+    const element = scrollElement;
     const spacer = controller.getElement();
     if (!element || !spacer || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(controller.collapseIfHidden, {
@@ -50,7 +51,7 @@ export function LocalConversationResponseSpaceElement({
     });
     observer.observe(spacer);
     return () => observer.disconnect();
-  }, [controller, getScrollElement, scrollElement]);
+  }, [controller, scrollElement]);
   useLayoutEffect(() => {
     const releaseScroll = addScrollListener(controller.handleScroll);
     const releaseUser = addUserScrollListener(controller.handleUserScroll);
@@ -60,7 +61,7 @@ export function LocalConversationResponseSpaceElement({
     };
   }, [controller, addScrollListener, addUserScrollListener]);
   useLayoutEffect(() => {
-    const element = getScrollElement();
+    const element = scrollElement;
     if (!element) return;
     controller.reconcileViewport();
     let frame: number | null = null;
@@ -71,16 +72,15 @@ export function LocalConversationResponseSpaceElement({
         controller.reconcileViewport();
       });
     };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
-    observer?.observe(element);
     const footer = element.parentElement?.querySelector("[data-thread-scroll-footer]");
-    if (footer) observer?.observe(footer);
+    const elements = footer ? [element, footer] : [element];
+    const release = elements.map((target) => subscribeToElementResize(target, schedule));
     window.addEventListener("resize", schedule, { passive: true });
     return () => {
-      observer?.disconnect();
+      for (const unsubscribe of release) unsubscribe();
       window.removeEventListener("resize", schedule);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [controller, getScrollElement, scrollElement]);
+  }, [controller, scrollElement]);
   return <div ref={registerElement} className="shrink-0" aria-hidden="true" />;
 }

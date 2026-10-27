@@ -3,7 +3,6 @@ import {
   getThreadScrollDistanceFromBottomPx,
   isThreadScrollNearBottom,
   resolveNativeScrollTopForDistanceFromBottomPx,
-  resolveThreadScrollModeForScrollEvent,
   resolveThreadScrollKeyDirection,
 } from "./local-conversation-thread-scroll-controller";
 
@@ -76,12 +75,12 @@ describe("thread keyboard scroll intent", () => {
     expect(resolveThreadScrollKeyDirection(up, viewport)).toBeNull();
     expect(resolveThreadScrollKeyDirection(space, viewport)).toBeNull();
   });
-  test("recognizes repeated scrolling keys while ignoring already consumed events", () => {
+  test("ignores repeated scrolling keys and already consumed events", () => {
     const viewport = document.createElement("div");
     const repeat = new KeyboardEvent("keydown", { key: "Home", repeat: true });
     const consumed = new KeyboardEvent("keydown", { key: "End", cancelable: true });
     consumed.preventDefault();
-    expect(resolveThreadScrollKeyDirection(repeat, viewport)).toBe("away");
+    expect(resolveThreadScrollKeyDirection(repeat, viewport)).toBeNull();
     expect(resolveThreadScrollKeyDirection(consumed, viewport)).toBeNull();
   });
 });
@@ -133,67 +132,5 @@ describe("isThreadScrollNearBottom", () => {
         scrollDistanceFromBottomPx: 25,
       }),
     ).toBe(false);
-  });
-});
-
-describe("resolveThreadScrollModeForScrollEvent", () => {
-  test("preserves programmatic find mode until the programmatic settle window expires", () => {
-    expect(
-      resolveThreadScrollModeForScrollEvent({
-        currentMode: "programmaticFind",
-        isNearBottom: false,
-        nowMs: 1_000,
-        userScrollGraceUntilMs: 1_500,
-        programmaticScrollSettledUntilMs: 1_100,
-      }),
-    ).toBe("programmaticFind");
-  });
-
-  test("returns user after the programmatic find settle window expires", () => {
-    expect(
-      resolveThreadScrollModeForScrollEvent({
-        currentMode: "programmaticFind",
-        isNearBottom: false,
-        nowMs: 1_200,
-        userScrollGraceUntilMs: 1_500,
-        programmaticScrollSettledUntilMs: 1_100,
-      }),
-    ).toBe("user");
-  });
-
-  test("returns stickToBottom when the scroll position reaches the bottom again", () => {
-    expect(
-      resolveThreadScrollModeForScrollEvent({
-        currentMode: "user",
-        isNearBottom: true,
-        nowMs: 1_000,
-        userScrollGraceUntilMs: 1_500,
-        programmaticScrollSettledUntilMs: 900,
-      }),
-    ).toBe("stickToBottom");
-  });
-
-  test("returns user when the user recently scrolled away and programmatic scrolling has settled", () => {
-    expect(
-      resolveThreadScrollModeForScrollEvent({
-        currentMode: "stickToBottom",
-        isNearBottom: false,
-        nowMs: 1_000,
-        userScrollGraceUntilMs: 1_200,
-        programmaticScrollSettledUntilMs: 900,
-      }),
-    ).toBe("user");
-  });
-
-  test("does not leave stickToBottom without a recent user interaction", () => {
-    expect(
-      resolveThreadScrollModeForScrollEvent({
-        currentMode: "stickToBottom",
-        isNearBottom: false,
-        nowMs: 2_000,
-        userScrollGraceUntilMs: 1_200,
-        programmaticScrollSettledUntilMs: 900,
-      }),
-    ).toBe("stickToBottom");
   });
 });

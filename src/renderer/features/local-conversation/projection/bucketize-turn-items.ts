@@ -29,7 +29,6 @@ function createEmptyBuckets(): ThreadTurnRenderBuckets {
     proposedPlanItem: null,
     planImplementationItem: null,
     postAssistantItems: [],
-    questionItems: [],
     agentItems: [],
     remoteTaskCreatedItems: [],
     personalityChangedItems: [],
@@ -275,7 +274,7 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
     }
 
     if (item.type === "assistantMessage" && item.entry.asyncQuestion) {
-      buckets.questionItems.push(item);
+      agentCandidates.push(item);
       continue;
     }
 
@@ -313,7 +312,10 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
   }
 
   const trailingAssistantCandidate = agentCandidates[agentCandidates.length - 1] ?? null;
-  if (trailingAssistantCandidate?.type === "assistantMessage") {
+  if (
+    trailingAssistantCandidate?.type === "assistantMessage" &&
+    !trailingAssistantCandidate.entry.asyncQuestion
+  ) {
     buckets.assistantItem = trailingAssistantCandidate;
     agentCandidates.pop();
   }

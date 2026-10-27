@@ -30,7 +30,10 @@ function getSharedResizeObserver(): ResizeObserver | null {
   return sharedResizeObserver;
 }
 
-function subscribeToElementResize(element: Element, subscription: ResizeSubscription): () => void {
+export function subscribeToElementResize(
+  element: Element,
+  subscription: ResizeSubscription,
+): () => void {
   const observer = getSharedResizeObserver();
   if (!observer) {
     const notify = () => {

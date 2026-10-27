@@ -65,7 +65,7 @@ It produces:
 
 The critical invariant is:
 
-- `latestAssistantMessage` means "the latest assistant message in raw normalized item order"
+- `latestAssistantMessage` means "the latest non-question assistant message in raw normalized item order"
 - `assistantItem` means "the conditionally promoted assistant that gets the dedicated final lane"
 
 They are not interchangeable.
@@ -136,11 +136,13 @@ The fallback ordered candidate list includes:
 - `workedFor`
 - later `hook` rows when a later user/agent-like row still exists
 
+Asynchronous questions remain assistant messages in this ordered agent lane. They never enter a separate trailing lane, become the final assistant, or replace `latestAssistantMessage`. Pending and answered questions retain the same source position before their replies and later work.
+
 ### Conditional assistant promotion
 
 After side-slot extraction and trailing automatic-approval-review peel:
 
-- if the last surviving agent candidate is an `assistantMessage`, that item becomes `assistantItem`
+- if the last surviving agent candidate is a non-question `assistantMessage`, that item becomes `assistantItem`
 - otherwise `assistantItem` stays `null` and every assistant remains inline in `agentItems`
 
 This is the central classifier rule. The renderer must not "helpfully" promote the latest assistant just because one exists.
@@ -210,6 +212,13 @@ The correct behavior is "canonical item order, then semantic lane order."
 
 This is the regression-prone case. If Nodex renders `user, assistant, exec` with the assistant pinned in a dedicated final lane, assistant ownership is wrong.
 
+### `user -> asynchronous question -> answer -> exec -> final assistant`
+
+- the question, answer and execution remain in canonical order in `agentItems`
+- the final assistant alone is eligible for the dedicated final lane
+- pending and answered question rows remain readable when work collapses
+- answering, continued streaming and remounting never move the source question below later output
+
 ### `user -> final assistant -> exploration exec -> reasoning`
 
 - latest assistant stays inline
@@ -278,7 +287,7 @@ In practice this means:
 
 ## Latest Assistant Search Ownership
 
-Thread-find/search follows the latest assistant by raw normalized item order, not by dedicated final-slot ownership.
+Thread-find/search follows the latest non-question assistant by raw normalized item order, not by dedicated final-slot ownership.
 
 So:
 
@@ -313,6 +322,7 @@ Consequences:
 
 - `assistant -> exec` may collapse together as one agent-work section
 - collapsing hides work, never the Turn's reply: when `assistantItem` is `null`, the latest non-commentary assistant with content stays visible with user messages and recovery rows; work folds around these rows in place, so they keep their canonical order and never move or remount when the body toggles; this covers phaseless Agent Runtime replies followed by delegated work
+- asynchronous questions remain visible at their canonical positions whether pending or answered; their answer actions follow answerability rather than work disclosure
 - a renderable final-answer boundary, or settled subagent activity, establishes collapse eligibility
 - eligible latest and historical turns both default collapsed unless persisted disclosure state overrides that default
 - interrupted turns never collapse, and active subagent activity prevents automatic collapse

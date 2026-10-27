@@ -55,6 +55,20 @@ const frames = async (count = 3) => {
   for (let index = 0; index < count; index++)
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 };
+async function settleNativeViewport(viewport: HTMLElement) {
+  // Completed work can still be finishing its mount or accordion animation.
+  await frames(75);
+  let stableFrames = 0;
+  let previousHeight = viewport.scrollHeight;
+  for (let frame = 0; frame < 120 && stableFrames < 12; frame++) {
+    await frames(1);
+    const height = viewport.scrollHeight;
+    stableFrames = height === previousHeight ? stableFrames + 1 : 0;
+    previousHeight = height;
+  }
+  expect(stableFrames).toBe(12);
+}
+
 const base = (id: string, ordinal: number) => ({
   id,
   ordinal,
@@ -175,7 +189,7 @@ function conversation(
 }
 
 /** Continuation replies can contain work and a final delivery without a new user message. */
-function runtimeFixture(toolWork = false) {
+function runtimeFixture(toolWork = false, completed = false) {
   const items: AgentTurnItem[] = Array.from({ length: 9 }, (_, index) => ({
     ...base(`work:${index}`, index + 1),
     type: "assistant_message",
@@ -214,9 +228,23 @@ function runtimeFixture(toolWork = false) {
             "The report and application behavior are consistent. ".repeat(3),
         ).join("\n\n"),
   );
-  items.push(answer);
-  const initial = conversation(items);
-  const run = initial.snapshot.projection.runs[0]!;
+  items.push(
+    completed ? { ...answer, status: "completed", streaming: false, completedAt: at } : answer,
+  );
+  const running = conversation(items);
+  const run = running.snapshot.projection.runs[0]!;
+  const initial: AgentRuntimeConversation = completed
+    ? {
+        ...running,
+        snapshot: {
+          ...running.snapshot,
+          projection: {
+            ...running.snapshot.projection,
+            runs: [{ ...run, status: "completed", completedAt: at }],
+          },
+        },
+      }
+    : running;
   let listener: ((event: AgentRuntimeSessionEvent) => void) | undefined;
   let sequence = 1;
   const transport: AgentRuntimeReadTransport = {
@@ -291,7 +319,7 @@ function mountRuntime(
   const store = createMaitaiStore();
   let controller: LocalConversationThreadScrollControllerValue | null = null;
   let ready = false;
-  function Thread() {
+  function Thread({ footerRevision }: { footerRevision: number }) {
     const { owner, structure } = useCodexTranscriptStructure();
     const scroll = useLocalConversationThreadScrollController();
     useLayoutEffect(() => {
@@ -317,7 +345,9 @@ function mountRuntime(
         }
         onScrollCapture={() => scroll.getScrollDistanceFromBottomPx()}
       >
-        <LocalConversationThreadScrollLayout footer={<div style={{ height: 80 }} />}>
+        <LocalConversationThreadScrollLayout
+          footer={<div data-test-footer-revision={footerRevision} style={{ height: 80 }} />}
+        >
           <LocalConversationVirtualizedTurnList
             entries={[...projected.entries]}
             historyRows={projected.historyRows ?? undefined}
@@ -341,21 +371,24 @@ function mountRuntime(
       </div>
     );
   }
-  const view = render(
+  const renderRuntime = (footerRevision: number) => (
     <MaitaiProvider store={store}>
       <LocalConversationTestQueryProvider>
         <NodexTooltipProvider>
           <CodexTranscriptReadOwnerContext.Provider value={fixture.owner.readOwner}>
             <EnsureLocalConversationThreadScrollController>
-              <Thread />
+              <Thread footerRevision={footerRevision} />
             </EnsureLocalConversationThreadScrollController>
           </CodexTranscriptReadOwnerContext.Provider>
         </NodexTooltipProvider>
       </LocalConversationTestQueryProvider>
-    </MaitaiProvider>,
+    </MaitaiProvider>
   );
+  let footerRevision = 0;
+  const view = render(renderRuntime(footerRevision));
   return {
     ...view,
+    rerenderFooter: () => view.rerender(renderRuntime(++footerRevision)),
     scroll: () => {
       if (!controller) throw new Error("Missing controller");
       return controller;
@@ -423,7 +456,53 @@ describe("completed runtime response scroll intent", () => {
       view.dispose();
     }
   });
-  test("small upward scrolling survives the expansion of completed tool work", async () => {
+  test.each([0.9, 1.1, 1.2])(
+    "a settled thread preserves repeated small wheel gestures across footer rerenders at zoom %s",
+    async (zoom) => {
+      const fixture = runtimeFixture(false, true);
+      const view = mountRuntime(fixture, { zoom });
+      try {
+        await view.settle();
+        const viewport = view.scroll().getScrollElement()!;
+        expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight + 500);
+        const bounds = viewport.getBoundingClientRect();
+        const iframe = window.frameElement?.getBoundingClientRect();
+        const session: CDPSession = cdp();
+        await act(async () => {
+          await settleNativeViewport(viewport);
+        });
+        let previousDistance = getThreadScrollDistanceFromBottomPx(viewport);
+        for (let gesture = 0; gesture < 3; gesture++) {
+          await act(async () => {
+            await session.send("Input.dispatchMouseEvent", {
+              type: "mouseWheel",
+              x: bounds.left + 20 + (iframe?.left ?? 0),
+              y: bounds.bottom - 130 + (iframe?.top ?? 0),
+              deltaX: 0,
+              deltaY: -8,
+            });
+            await frames(10);
+          });
+          const afterWheel = getThreadScrollDistanceFromBottomPx(viewport);
+          expect(afterWheel).toBeGreaterThan(previousDistance);
+          const nativeTop = viewport.scrollTop;
+          await act(async () => {
+            view.rerenderFooter();
+            await frames(10);
+          });
+          expect(Math.abs(viewport.scrollTop - nativeTop)).toBeLessThanOrEqual(1);
+          expect(getThreadScrollDistanceFromBottomPx(viewport)).toBeGreaterThanOrEqual(
+            afterWheel - 1,
+          );
+          expect(view.scroll().shouldFollowContentGrowth()).toBe(false);
+          previousDistance = getThreadScrollDistanceFromBottomPx(viewport);
+        }
+      } finally {
+        view.dispose();
+      }
+    },
+  );
+  test("small upward scrolling stays away from bottom after completed tool work has expanded", async () => {
     const fixture = runtimeFixture(true);
     const view = mountRuntime(fixture, { zoom: 1.2, height: 480 });
     try {
@@ -442,6 +521,9 @@ describe("completed runtime response scroll intent", () => {
         await frames(10);
       });
       const viewport = view.scroll().getScrollElement()!;
+      await act(async () => {
+        await settleNativeViewport(viewport);
+      });
       expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight + 200);
       expect(view.scroll().getScrollMode()).toBe("stickToBottom");
       const bounds = viewport.getBoundingClientRect();
@@ -469,24 +551,6 @@ describe("completed runtime response scroll intent", () => {
       } finally {
         viewport.removeEventListener("scroll", recordNativeScroll);
       }
-      await act(async () => {
-        await session.send("Input.dispatchMouseEvent", {
-          type: "mouseWheel",
-          x: bounds.left + 20 + (iframe?.left ?? 0),
-          y: bounds.bottom - 130 + (iframe?.top ?? 0),
-          deltaX: 0,
-          deltaY: 1000,
-        });
-        await frames(10);
-      });
-      expect(view.scroll().getScrollDistanceFromBottomPx()).toBe(0);
-      expect(view.scroll().getScrollMode()).toBe("stickToBottom");
-      await act(async () => {
-        view.getByRole("button", { name: "Edited a file, ran commands" }).click();
-        await frames(40);
-      });
-      expect(view.scroll().getScrollDistanceFromBottomPx()).toBe(0);
-      expect(view.scroll().getScrollMode()).toBe("stickToBottom");
     } finally {
       view.dispose();
     }

@@ -1,5 +1,5 @@
 import { useCodexConversationValue } from "../local-conversation-store";
-import { memo, useMemo } from "react";
+import { memo, useMemo, type RefCallback } from "react";
 import type { CodexConversationChildMembership } from "../../../lib/types";
 import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
 import { selectTurnRenderModel } from "../projection/build-turn-render-model";
@@ -68,7 +68,7 @@ interface LocalConversationTurnEntryProps {
   planSidePanelState?: ThreadPlanSidePanelState | null;
   turnDiffHoverPreviewDisabled?: boolean;
   onRendered?: (turnId: string) => void;
-  latestTurnFollowContentRef?: (element: HTMLDivElement | null) => void;
+  latestTurnFollowContentRef?: RefCallback<HTMLDivElement>;
 }
 
 function LocalConversationTurnEntryComponent({

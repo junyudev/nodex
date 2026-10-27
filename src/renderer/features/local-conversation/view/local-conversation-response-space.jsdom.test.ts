@@ -157,4 +157,31 @@ describe("thread response space", () => {
     f.owner.handleScroll(0);
     expect(f.owner.getHeightPx()).toBe(0);
   });
+
+  test("places a requested row at the viewport inset instead of the generic response destination", () => {
+    const f = fixture();
+    const target = document.createElement("div");
+    target.getBoundingClientRect = () => ({ top: 300 }) as DOMRect;
+    f.owner.place(target);
+    expect(f.hold).toHaveBeenCalledOnce();
+    expect(f.owner.getHeightPx()).toBe(101);
+    expect(f.calls).toEqual([1]);
+  });
+
+  test("prepares thread end content once and lets an upward gesture revoke that preparation", () => {
+    const f = fixture();
+    f.owner.place();
+    f.setDistance(60);
+    f.owner.prepareThreadEndContent();
+    expect(f.owner.getHeightPx()).toBe(400);
+    expect(f.calls).toEqual([1, 0]);
+    f.owner.prepareThreadEndContent();
+    expect(f.calls).toEqual([1, 0]);
+
+    f.owner.place();
+    f.owner.handleUserScroll(8, 1);
+    f.owner.prepareThreadEndContent();
+    expect(f.owner.getHeightPx()).toBe(460);
+    f.owner.cancelPendingUserScrollDecay();
+  });
 });

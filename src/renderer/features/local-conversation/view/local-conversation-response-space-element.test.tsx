@@ -38,12 +38,14 @@ test("coalesces viewport and footer resize into one frame and cancels it on rele
     callback: ResizeObserverCallback;
     observe: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
+    unobserve: ReturnType<typeof vi.fn>;
   }> = [];
   vi.stubGlobal(
     "ResizeObserver",
     class {
       observe = vi.fn();
       disconnect = vi.fn();
+      unobserve = vi.fn();
       constructor(readonly callback: ResizeObserverCallback) {
         observers.push(this);
       }
@@ -66,9 +68,16 @@ test("coalesces viewport and footer resize into one frame and cancels it on rele
   const observer = observers[0];
   if (!observer) throw new Error("missing viewport observer");
   expect(observer.observe.mock.calls.map(([target]) => target)).toEqual([element, footer]);
+  const entries: ResizeObserverEntry[] = [element, footer].map((target) => ({
+    target,
+    contentRect: target.getBoundingClientRect(),
+    borderBoxSize: [],
+    contentBoxSize: [],
+    devicePixelContentBoxSize: [],
+  }));
   await act(async () => {
-    observer.callback([], observer as unknown as ResizeObserver);
-    observer.callback([], observer as unknown as ResizeObserver);
+    observer.callback(entries, observer as unknown as ResizeObserver);
+    observer.callback(entries, observer as unknown as ResizeObserver);
     window.dispatchEvent(new Event("resize"));
   });
   expect(frames.size).toBe(1);
@@ -86,7 +95,7 @@ test("coalesces viewport and footer resize into one frame and cancels it on rele
   view.unmount();
   expect(cancelFrame).toHaveBeenCalledWith(2);
   expect(frames.size).toBe(0);
-  expect(observer.disconnect).toHaveBeenCalledOnce();
+  expect(observer.unobserve.mock.calls.map(([target]) => target)).toEqual([element, footer]);
   await act(async () => {
     window.dispatchEvent(new Event("resize"));
   });

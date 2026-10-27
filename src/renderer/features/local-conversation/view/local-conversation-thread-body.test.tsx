@@ -1,13 +1,22 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
 import { NodexTooltipProvider } from "../../../components/ui/tooltip";
-import { createMaitaiStore, MaitaiProvider } from "../../../lib/maitai";
+import {
+  appScope,
+  createMaitaiStore,
+  MaitaiProvider,
+  useScopeHandle,
+  type ScopeHandle,
+} from "../../../lib/maitai";
 import {
   WorkbenchSessionScopePath,
   type ThreadScopeDescriptor,
 } from "../../../lib/workbench-ui-scopes";
-import { installAsyncRequestAnimationFrame } from "../../../test/browser-globals";
+import {
+  installAsyncRequestAnimationFrame,
+  installMeasuredResizeObserver,
+} from "../../../test/browser-globals";
 import { render, settleAsyncRender } from "../../../test/dom";
 import type {
   CodexCanonicalServerRequest,
@@ -30,7 +39,10 @@ import {
   ContentSearchProvider,
   useContentSearch,
 } from "../../content-search/content-search-context";
-import { EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT } from "./local-conversation-thread-view-state";
+import {
+  EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT,
+  localConversationThreadRestoreSnapshotFamily,
+} from "./local-conversation-thread-view-state";
 import { LocalConversationThreadBodyOwner } from "./local-conversation-thread-body-owner";
 import {
   EnsureLocalConversationThreadScrollController,
@@ -510,7 +522,7 @@ describe("LocalConversationThreadBody", () => {
                     backgroundAgentRows={[]}
                     actions={buildActions()}
                     onErrorMessage={() => {}}
-                    initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                    readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
                     onRestoreSnapshotChange={() => {}}
                   />
                 </LocalConversationThreadScrollLayout>
@@ -635,7 +647,7 @@ describe("LocalConversationThreadBody", () => {
                 backgroundAgentRows={[]}
                 actions={buildActions()}
                 onErrorMessage={() => {}}
-                initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
                 onRestoreSnapshotChange={() => {}}
               />
             </LocalConversationThreadScrollLayout>
@@ -750,7 +762,7 @@ describe("LocalConversationThreadBody", () => {
                   backgroundAgentRows={[]}
                   actions={buildActions()}
                   onErrorMessage={() => {}}
-                  initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                  readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
                   onRestoreSnapshotChange={() => {}}
                 />
               </LocalConversationThreadScrollLayout>
@@ -897,7 +909,7 @@ describe("LocalConversationThreadBody", () => {
                 backgroundAgentRows={[]}
                 actions={buildActions()}
                 onErrorMessage={() => {}}
-                initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
                 onRestoreSnapshotChange={() => {}}
               />
             </LocalConversationThreadScrollLayout>
@@ -1273,6 +1285,89 @@ describe("LocalConversationThreadBody", () => {
 
     expect(Boolean(contentRoot)).toBe(true);
   });
+
+  test.each(["hidden transcript", "resuming history"] as const)(
+    "restores the latest reading position after %s remounts the turn list",
+    async (reason) => {
+      const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
+      installThreadRailWideLayoutGeometry();
+      installMeasuredResizeObserver({ blockSize: 500, inlineSize: 1_000 });
+      let appHandle: ScopeHandle | null = null;
+      function RestoreProbe() {
+        const handle = useScopeHandle(appScope);
+        useLayoutEffect(() => {
+          appHandle = handle;
+        }, [handle]);
+        return null;
+      }
+      const model = buildModel();
+      const actions = buildActions();
+      const waiting: ThreadBodySurfaceModel = {
+        ...model,
+        turns: [],
+        body: {
+          ...model.body,
+          turnCount: 0,
+          emptyState: {
+            type: "resumingThread",
+            title: "Restoring thread",
+            description: "Loading history",
+            status: "resuming",
+          },
+        },
+      };
+      const content = (unmounted: boolean) => (
+        <TooltipProvider>
+          <RestoreProbe />
+          <LocalConversationThreadBody
+            model={unmounted && reason === "resuming history" ? waiting : model}
+            actions={actions}
+            transcriptVisible={!(unmounted && reason === "hidden transcript")}
+            onErrorMessage={() => {}}
+          />
+        </TooltipProvider>
+      );
+      const view = render(content(false));
+      const viewport = view.container.querySelector<HTMLDivElement>(
+        "[data-local-conversation-thread-body='true']",
+      )!;
+      const handle = appHandle as ScopeHandle | null;
+      if (!handle) throw new Error("Expected the Chat's view-state owner");
+      const snapshot = () => handle.get(localConversationThreadRestoreSnapshotFamily("thread_1"));
+      Object.defineProperties(viewport, {
+        clientHeight: { configurable: true, value: 500 },
+        scrollHeight: { configurable: true, value: 2_000 },
+      });
+      await settleAsyncRender();
+      await act(async () => {
+        viewport.scrollTop = 1_500;
+        viewport.dispatchEvent(new Event("scroll"));
+        viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -300 }));
+        viewport.scrollTop = 1_200;
+        viewport.dispatchEvent(new Event("scroll"));
+        await Promise.resolve();
+      });
+      expect(snapshot().distanceFromBottomPx).toBe(300);
+
+      view.rerender(content(true));
+      expect(view.queryByText("Assistant message")).toBeNull();
+      await act(async () => {
+        // Removing the transcript can clamp its retained native viewport to its end.
+        viewport.scrollTop = 1_500;
+        viewport.dispatchEvent(new Event("scroll"));
+        await Promise.resolve();
+      });
+      expect(snapshot().distanceFromBottomPx).toBe(300);
+
+      view.rerender(content(false));
+      await waitFor(() => expect(viewport.scrollTop).toBe(1_200));
+      expect(view.getByText("Assistant message")).toBeTruthy();
+      expect(view.container.querySelector("[data-local-conversation-thread-body='true']")).toBe(
+        viewport,
+      );
+      expect(snapshot().distanceFromBottomPx).toBe(300);
+    },
+  );
 
   test("lazy-renders the user message navigation rail after idle for long threads", async () => {
     const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");

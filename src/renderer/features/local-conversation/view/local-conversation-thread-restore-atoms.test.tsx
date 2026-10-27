@@ -1,5 +1,5 @@
 import { act } from "@testing-library/react";
-import { useRef, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import {
   appScope,
@@ -35,9 +35,9 @@ function TestStateRoot({
   readonly children?: ReactNode;
   readonly onHandle: (handle: ScopeHandle) => void;
 }) {
-  const storeRef = useRef(createMaitaiStore());
+  const [store] = useState(createMaitaiStore);
   return (
-    <MaitaiProvider store={storeRef.current}>
+    <MaitaiProvider store={store}>
       <HandleProbe onHandle={onHandle} />
       {children}
     </MaitaiProvider>
@@ -91,19 +91,16 @@ describe("local conversation thread restore atoms", () => {
     expect(freshAReader.virtualizedTurnList).toEqual(snapshotA.virtualizedTurnList);
   });
 
-  test("normalizes native restoration at the 24px bottom boundary", () => {
-    expect(normalizeThreadRestoreDistanceFromBottomPx(24)).toBe(0);
-    expect(normalizeThreadRestoreDistanceFromBottomPx(24.01)).toBe(24.01);
-    expect(normalizeThreadRestoreDistanceFromBottomPx(Number.NaN)).toBe(0);
-  });
-
-  test("keeps held viewport displacement inside the bottom follow region", () => {
-    for (const distance of [0, 0.125, 8, 24, 24.01]) {
-      expect(normalizeThreadRestoreDistanceFromBottomPx(distance, "user_hold")).toBe(distance);
-    }
-    expect(normalizeThreadRestoreDistanceFromBottomPx(-8, "user_hold")).toBe(0);
-    expect(normalizeThreadRestoreDistanceFromBottomPx(Number.NaN, "user_hold")).toBe(0);
-    expect(normalizeThreadRestoreDistanceFromBottomPx(8, "user_follow")).toBe(0);
+  test.each([
+    [-8, 0],
+    [0, 0],
+    [0.125, 0],
+    [24, 0],
+    [24.01, 24.01],
+    [Number.NaN, 0],
+    [Number.POSITIVE_INFINITY, 0],
+  ])("normalizes native restore distance %s to %s", (distance, expected) => {
+    expect(normalizeThreadRestoreDistanceFromBottomPx(distance)).toBe(expected);
   });
 
   test("collapses the old latest turn while preserving the MCP App exception window", () => {

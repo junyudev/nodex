@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
-import { createElement, type ReactElement } from "react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
+import { createElement, type ReactElement, type RefCallback } from "react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../components/ui/tooltip";
 import { renderWithMaitai as renderDom } from "../../../test/thread-maitai";
 import { settleAsyncRender } from "../../../test/dom";
 import type { CodexConversationItem, CodexConversationTurn } from "../../../lib/types";
 import type { VisibleConversationTurnEntry } from "../selectors";
 import type { ThreadStageActions } from "../thread-stage-types";
+import { createAsyncQuestionRuntime } from "../async-question-runtime";
+import { ConversationRuntimeContext, type ConversationRuntime } from "../conversation-runtime";
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
 import { formatThreadMessageTimestamp } from "./shared/thread-message-timestamp";
 
@@ -139,6 +141,215 @@ function buildVisibleTurnEntry(
 describe("LocalConversationTurnEntry", () => {
   beforeEach(() => {
     renderCounts.clear();
+  });
+
+  test("observes response blocks independently as commentary moves between lanes", async () => {
+    const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
+    const observed = new Set<HTMLDivElement>();
+    const observe: RefCallback<HTMLDivElement> = (element) => {
+      if (!element) return;
+      observed.add(element);
+      return () => {
+        observed.delete(element);
+      };
+    };
+    const turnId = "turn_follow_content";
+    const user = buildUserEntry(turnId, "user", "Investigate.");
+    const commentary = buildAssistantEntry(turnId, "commentary", "Checking.", {
+      assistantPhase: "commentary",
+      status: "completed",
+    });
+    const steering = buildSteeringEntry(turnId, "steering", "Continue.", "accepted");
+    const reply = buildAssistantEntry(turnId, "reply", "Ready.", {
+      assistantPhase: "final_answer",
+      status: "completed",
+    });
+    const content = (items: CodexConversationItem[], completed = false) => (
+      <TooltipProvider>
+        <LocalConversationTurnEntry
+          conversationId="thread_1"
+          entry={buildVisibleTurnEntry(
+            buildTurn(turnId, "", "", {
+              status: completed ? "completed" : "inProgress",
+              items,
+              itemIds: items.map((item) => item.itemId),
+            }),
+            [],
+            true,
+          )}
+          cwd="/tmp/project"
+          canEditTurnUserPrefix={false}
+          canForkTurn={false}
+          persistedCollapsed={completed}
+          latestTurnFollowContentRef={observe}
+        />
+      </TooltipProvider>
+    );
+    const view = render(content([user, commentary]));
+    const promotedCommentaryRoot = [...observed].find((element) =>
+      element.contains(view.getByText("Checking.", { exact: true })),
+    );
+    expect(promotedCommentaryRoot).toBeTruthy();
+    for (const element of observed) {
+      expect(element.contains(view.getByText("Investigate.", { exact: true }))).toBe(false);
+    }
+
+    view.rerender(content([user, commentary, steering, reply]));
+    await settleAsyncRender();
+    expect(observed.size).toBe(2);
+    expect(observed.has(promotedCommentaryRoot!)).toBe(false);
+    const commentaryRoot = [...observed].find((element) =>
+      element.contains(view.getByText("Checking.", { exact: true })),
+    )!;
+    const replyRoot = [...observed].find((element) =>
+      element.contains(view.getByText("Ready.", { exact: true })),
+    )!;
+    expect(commentaryRoot).toBeTruthy();
+    expect(replyRoot).toBeTruthy();
+    expect(commentaryRoot.contains(replyRoot)).toBe(false);
+    expect(replyRoot.contains(commentaryRoot)).toBe(false);
+    for (const element of observed) {
+      expect(element.contains(view.getByText("Investigate.", { exact: true }))).toBe(false);
+      expect(element.contains(view.getByText("Continue.", { exact: true }))).toBe(false);
+    }
+
+    view.rerender(content([user, commentary, steering, reply], true));
+    await waitFor(() => expect([...observed]).toEqual([replyRoot]));
+    view.unmount();
+    expect(observed.size).toBe(0);
+  });
+
+  test("keeps an answered question before its reply and subsequent streaming work", async () => {
+    const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
+    const { LocalConversationAboveComposerPortalHost } =
+      await import("./local-conversation-above-composer-portal");
+    const runtime = createAsyncQuestionRuntime();
+    const turnId = "turn_question_history";
+    const question = {
+      id: "question:0",
+      sourceItemId: "question",
+      questionIndex: 0,
+      title: "Which color should I use?",
+      options: ["Blue", "Green"],
+    };
+    runtime.reconcileScope("thread_1", {
+      generation: 1,
+      entityKey: turnId,
+      turnId,
+      questions: [question],
+      answers: new Map(),
+    });
+    const override: ConversationRuntime = {
+      kind: "codex",
+      hostId: "local",
+      subscribe: () => () => {},
+      read: () => null,
+      attachment: () => ({ status: "idle" }),
+      connection: () => ({ status: "disconnected", retries: 0 }),
+      role: () => null,
+      primaryRequest: () => null,
+      children: () => [],
+      retain: () => () => {},
+      loadHistory: async () => {},
+      resume: async () => {},
+      markRead: async () => {},
+      setPresented: async () => {},
+      asyncQuestions: { runtime, deliver: async () => ({ turnId }) },
+    };
+    const prefix = buildUserEntry(turnId, "user", "Choose the presentation color");
+    const source = buildAssistantEntry(turnId, "question", question.title, {
+      asyncQuestion: question,
+      assistantPhase: "commentary",
+      status: "completed",
+    });
+    const replies = [{ questionItemId: question.id, question: question.title, answer: "Blue" }];
+    const answer = buildUserEntry(turnId, "answer", "Blue", { questionReplies: replies });
+    const commentary = buildAssistantEntry(turnId, "commentary", "I will update the palette.", {
+      assistantPhase: "commentary",
+      status: "completed",
+    });
+    const command: CodexConversationItem = {
+      threadId: "thread_1",
+      turnId,
+      itemId: "command",
+      type: "command_execution",
+      kind: "commandExecution",
+      semanticKind: "exec",
+      status: "completed",
+      createdAt: 2,
+      updatedAt: 2,
+      commandActions: [{ type: "read", command: "", name: "palette.ts", path: "palette.ts" }],
+      toolCall: { subtype: "command", toolName: "exec_command", args: {} },
+    };
+    const turn = (items: CodexConversationItem[], status: CodexConversationTurn["status"]) =>
+      buildTurn(turnId, "", "", { status, items, itemIds: items.map((item) => item.itemId) });
+    const content = (value: CodexConversationTurn, collapsed = false) => (
+      <ConversationRuntimeContext.Provider value={override}>
+        <TooltipProvider>
+          <LocalConversationAboveComposerPortalHost conversationId="thread_1" />
+          <LocalConversationTurnEntry
+            conversationId="thread_1"
+            entry={buildVisibleTurnEntry(value, [], true)}
+            cwd="/tmp/project"
+            canEditTurnUserPrefix={false}
+            canForkTurn={false}
+            persistedCollapsed={collapsed}
+          />
+        </TooltipProvider>
+      </ConversationRuntimeContext.Provider>
+    );
+    const view = render(content(turn([prefix, source], "inProgress")));
+    const sourceDocument = view.getByText(question.title, { exact: true });
+    expect(view.getByRole("button", { name: "Answer question" })).toBeTruthy();
+
+    await act(async () => {
+      runtime.acknowledge("thread_1", replies);
+      await Promise.resolve();
+    });
+    const reply = buildAssistantEntry(turnId, "final", "The palette now uses blue.", {
+      assistantPhase: "final_answer",
+      status: "inProgress",
+    });
+    const continuedItems = [prefix, source, answer, commentary, command, reply];
+    view.rerender(content(turn(continuedItems, "inProgress")));
+    await settleAsyncRender();
+    const answerBubble = view
+      .getByText("Blue", { exact: true })
+      .closest("[data-user-message-bubble]")!;
+    const laterCommentary = view.getByText("I will update the palette.", { exact: true });
+    const streamingReply = view
+      .getByText("blue.", { exact: true })
+      .closest("[data-message-copy-root]")!;
+    const follows = (before: Node, after: Node) =>
+      Boolean(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(sourceDocument.isConnected).toBe(true);
+    expect(follows(sourceDocument, answerBubble)).toBe(true);
+    expect(follows(answerBubble, laterCommentary)).toBe(true);
+    expect(follows(laterCommentary, streamingReply)).toBe(true);
+    expect(view.queryByRole("button", { name: "Answer question" })).toBeNull();
+    expect(view.container.querySelector("[data-above-composer-portal]")?.childElementCount).toBe(0);
+
+    view.rerender(content(turn(continuedItems, "completed"), true));
+    await settleAsyncRender();
+    expect(sourceDocument.isConnected).toBe(true);
+    expect(answerBubble.isConnected).toBe(true);
+    expect(follows(sourceDocument, answerBubble)).toBe(true);
+    expect(follows(answerBubble, streamingReply)).toBe(true);
+    expect(view.queryByText("I will update the palette.", { exact: true })).toBeNull();
+    view.unmount();
+
+    const restored = render(content(turn(continuedItems, "completed"), true));
+    const restoredSource = restored
+      .getAllByText(question.title, { exact: true })
+      .find((element) => !element.closest("[data-user-message-bubble]"))!;
+    const restoredAnswer = restored
+      .getByText("Blue", { exact: true })
+      .closest("[data-user-message-bubble]")!;
+    expect(follows(restoredSource, restoredAnswer)).toBe(true);
+    expect(
+      follows(restoredAnswer, restored.getByText("The palette now uses blue.", { exact: true })),
+    ).toBe(true);
+    expect(restored.queryByRole("button", { name: "Answer question" })).toBeNull();
   });
 
   test("owns latest streaming fixed content from the same main-row projection", async () => {

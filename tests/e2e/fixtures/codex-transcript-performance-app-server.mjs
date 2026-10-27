@@ -35,6 +35,17 @@ const handle = (command, state) => {
   const message = (id, phase) => ({
     type: "agentMessage", id, text: "", phase, delivery: null, memoryCitation: null, questions: null,
   });
+  if (command.type === "item") {
+    const index = turn.items.findIndex((item) => item.id === command.item.id);
+    if (index < 0) turn.items.push(command.item);
+    else turn.items[index] = command.item;
+    writeState(state);
+    if (index < 0)
+      notify("item/started", { threadId, turnId: turn.id, item: command.item, startedAtMs: Date.now() });
+    notify("item/completed", { threadId, turnId: turn.id, item: command.item, completedAtMs: Date.now() });
+    record(command);
+    return true;
+  }
   if (command.type === "start") {
     // A commentary sibling settles first; the final answer then streams like Codex streams it.
     const sibling = { ...message("stream-sibling", "commentary"), text: "Unchanged sibling" };

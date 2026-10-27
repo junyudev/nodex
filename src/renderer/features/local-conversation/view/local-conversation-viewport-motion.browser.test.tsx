@@ -130,7 +130,6 @@ function renderThread(
             canForkFromTurn={false}
             initialScrollOffset={normalizeThreadRestoreDistanceFromBottomPx(
               initialRestoreSnapshot?.distanceFromBottomPx ?? 0,
-              initialRestoreSnapshot?.latestTurn?.followMode,
             )}
             initialLatestTurnRestoreState={initialRestoreSnapshot?.latestTurn}
             latestTurnSynchronousMeasurementKey={entries.at(-1)?.turnKey}
@@ -201,28 +200,20 @@ async function recordGeometry(
 }
 
 describe("transcript viewport motion in Chromium", () => {
-  test.each(["same latest Turn", "a newly appended peer Turn"])(
-    "restores a small viewport hold across %s and later growth",
-    async (scenario) => {
+  test.each([0, 8, 24])(
+    "restores completed history at bottom when its saved distance is %spx",
+    async (distanceFromBottomPx) => {
       const turns = Array.from({ length: 10 }, (_, index) => entry(index));
       const latest = turns.at(-1)!;
-      latest.turn = {
-        ...latest.turn,
-        status: "inProgress",
-        firstTurnWorkItemStartedAtMs: 10,
-        items: latest.turn.items.map((item) =>
-          item.kind === "assistantMessage" ? { ...item, assistantPhase: "commentary" } : item,
-        ),
-      };
-      const view = renderThread([], true, {
-        distanceFromBottomPx: 8,
+      const view = renderThread(turns, true, {
+        distanceFromBottomPx,
         latestTurn: {
-          followMode: "user_hold",
-          isLatestTurnInProgress: true,
+          followMode: "static",
+          isLatestTurnInProgress: false,
           latestTurnFollowContentHeightPx: null,
           latestTurnHeightPx: null,
-          latestTurnPhase: "prework",
-          turnKey: scenario === "same latest Turn" ? latest.turnKey : turns.at(-2)!.turnKey,
+          latestTurnPhase: "idle",
+          turnKey: latest.turnKey,
         },
         virtualizedTurnList: null,
       });
@@ -230,33 +221,33 @@ describe("transcript viewport motion in Chromium", () => {
         await act(async () => {
           await settleFrames(8);
         });
-        expect(view.readController().getScrollMode()).toBe("user");
+        expect(view.readController().getScrollDistanceFromBottomPx()).toBeLessThanOrEqual(1);
+        expect(view.readController().shouldFollowContentGrowth()).toBe(true);
         await act(async () => {
-          view.update(turns);
-          await settleFrames(8);
-        });
-        expect(view.readController().getScrollDistanceFromBottomPx()).toBe(8);
-        expect(view.readController().getScrollMode()).toBe("user");
-        const grown = {
-          ...latest,
-          turn: {
-            ...latest.turn,
-            items: latest.turn.items.map((item) =>
-              item.kind === "assistantMessage"
+          view.update(
+            turns.map((value) =>
+              value === latest
                 ? {
-                    ...item,
-                    markdownText: item.markdownText + "\n\n" + "Work continues. ".repeat(50),
+                    ...value,
+                    turn: {
+                      ...value.turn,
+                      items: value.turn.items.map((item) =>
+                        item.kind === "assistantMessage"
+                          ? {
+                              ...item,
+                              markdownText:
+                                item.markdownText + "\n\n" + "The report was expanded. ".repeat(50),
+                            }
+                          : item,
+                      ),
+                    },
                   }
-                : item,
+                : value,
             ),
-          },
-        };
-        await act(async () => {
-          view.update([...turns.slice(0, -1), grown]);
+          );
           await settleFrames(8);
         });
-        expect(view.readController().getScrollDistanceFromBottomPx()).toBeGreaterThan(0);
-        expect(view.readController().getScrollMode()).toBe("user");
+        expect(view.readController().getScrollDistanceFromBottomPx()).toBeLessThanOrEqual(1);
       } finally {
         view.dispose();
       }

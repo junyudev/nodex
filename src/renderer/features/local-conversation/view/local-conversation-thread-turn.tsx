@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, type RefCallback } from "react";
 import { ChevronRightIcon } from "@/components/shared/icons";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import type { CodexConversationChildMembership, ProtocolAppInfo } from "../../../lib/types";
@@ -86,7 +86,7 @@ interface ThreadTurnProps {
   onClosePlanSidePanel?: ThreadStageActions["onClosePlanSidePanel"];
   planSidePanelState?: ThreadPlanSidePanelState | null;
   turnDiffHoverPreviewDisabled?: boolean;
-  latestTurnFollowContentRef?: (element: HTMLDivElement | null) => void;
+  latestTurnFollowContentRef?: RefCallback<HTMLDivElement>;
 }
 
 function ThreadGap() {
@@ -158,16 +158,19 @@ function AgentBodyUnitFrame({
   unit,
   leadingGap,
   animateGap,
+  followContentRef,
   children,
 }: {
   unit: ThreadAgentRenderUnit;
   leadingGap: "toggle" | "item" | null;
   animateGap: boolean;
+  followContentRef?: RefCallback<HTMLDivElement>;
   children: ReactNode;
 }) {
   const hasTargets = unit.targetAttributes !== undefined;
   return (
     <div
+      ref={followContentRef}
       className={cn(
         "empty:hidden",
         hasTargets && "outline-none",
@@ -257,6 +260,10 @@ function ThreadTurnBody({
   const firstVisibleBodyUnitIndex = effectiveAgentBodyCollapsed
     ? bodyUnits.findIndex(({ persistent }) => persistent)
     : 0;
+  const latestFollowBodyUnit = bodyUnits.findLast(
+    ({ unit, persistent }) =>
+      (!effectiveAgentBodyCollapsed || persistent) && unit.block.type !== "userMessage",
+  )?.unit;
   const reducedMotion = useResolvedReducedMotion();
   const agentBodyMotion = resolveCodexThreadAgentBodyMotion(reducedMotion);
   const workedForItem = turn.workedForItem ?? agentBodyCollapsePresentation.workedForItem;
@@ -285,30 +292,35 @@ function ThreadTurnBody({
     );
 
   const renderBlock = (block: ThreadBlockModel) => (
-    <ThreadBlockRenderer
-      block={block}
-      hostId={hostId}
-      isLatestTurn={turn.isLatestTurn}
-      isStreamingTurn={turn.isStreamingTurn}
-      projectWorkspacePath={projectWorkspacePath}
-      projectlessOutputDirectory={projectlessOutputDirectory}
-      childMemberships={childMemberships}
-      parentModel={parentModel}
-      threadCwd={threadCwd}
-      onEditUserTurn={onEditUserTurn}
-      onForkFromTurn={onForkFromTurn}
-      onOpenTurnDiffReview={onOpenTurnDiffReview}
-      onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
-      onOpenSideChat={onOpenSideChat}
-      onOpenThread={onOpenThread}
-      onOpenSubagentsPanel={onOpenSubagentsPanel}
-      onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
-      onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
-      onOpenPlanInSidePanel={onOpenPlanInSidePanel}
-      onClosePlanSidePanel={onClosePlanSidePanel}
-      planSidePanelState={planSidePanelState}
-      turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-    />
+    <div
+      ref={block.type === "userMessage" ? undefined : latestTurnFollowContentRef}
+      className="flex flex-col"
+    >
+      <ThreadBlockRenderer
+        block={block}
+        hostId={hostId}
+        isLatestTurn={turn.isLatestTurn}
+        isStreamingTurn={turn.isStreamingTurn}
+        projectWorkspacePath={projectWorkspacePath}
+        projectlessOutputDirectory={projectlessOutputDirectory}
+        childMemberships={childMemberships}
+        parentModel={parentModel}
+        threadCwd={threadCwd}
+        onEditUserTurn={onEditUserTurn}
+        onForkFromTurn={onForkFromTurn}
+        onOpenTurnDiffReview={onOpenTurnDiffReview}
+        onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
+        onOpenSideChat={onOpenSideChat}
+        onOpenThread={onOpenThread}
+        onOpenSubagentsPanel={onOpenSubagentsPanel}
+        onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+        onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
+        onOpenPlanInSidePanel={onOpenPlanInSidePanel}
+        onClosePlanSidePanel={onClosePlanSidePanel}
+        planSidePanelState={planSidePanelState}
+        turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+      />
+    </div>
   );
 
   const renderAgentUnit = (unit: ThreadAgentRenderUnit, compactUserMessageActions = false) => (
@@ -359,10 +371,7 @@ function ThreadTurnBody({
                   }
                 />
               ) : null}
-              <div
-                ref={effectiveAgentBodyCollapsed ? undefined : latestTurnFollowContentRef}
-                className="flex flex-col"
-              >
+              <div className="flex flex-col">
                 {bodyUnits.map(({ unit, persistent }, index) => (
                   // A keyed slot per unit: work folds in place, and what stays visible never moves.
                   <AnimatePresence key={resolveThreadBlockRenderKey(unit.block)} initial={false}>
@@ -385,6 +394,9 @@ function ThreadTurnBody({
                                 : null
                           }
                           animateGap={!reducedMotion}
+                          followContentRef={
+                            unit === latestFollowBodyUnit ? latestTurnFollowContentRef : undefined
+                          }
                         >
                           {renderAgentUnit(unit, persistent && effectiveAgentBodyCollapsed)}
                         </AgentBodyUnitFrame>
@@ -410,12 +422,14 @@ function ThreadTurnBody({
         {endResources.length > 0 ? (
           <>
             <ThreadGap />
-            <LocalConversationEndResources
-              resources={endResources}
-              hostId={hostId}
-              cwd={threadCwd}
-              workspaceRoot={projectWorkspacePath}
-            />
+            <div ref={latestTurnFollowContentRef}>
+              <LocalConversationEndResources
+                resources={endResources}
+                hostId={hostId}
+                cwd={threadCwd}
+                workspaceRoot={projectWorkspacePath}
+              />
+            </div>
           </>
         ) : null}
 
@@ -427,7 +441,9 @@ function ThreadTurnBody({
               <ThreadGap />
             ) : null}
             {firstResponseSection === "fallback" ? firstResponseMarker : null}
-            <ThreadLiveActivityFallbackForTurn turn={turn} />
+            <div ref={latestTurnFollowContentRef}>
+              <ThreadLiveActivityFallbackForTurn turn={turn} />
+            </div>
           </>
         ) : null}
       </div>

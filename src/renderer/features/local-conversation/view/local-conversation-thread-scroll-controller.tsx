@@ -10,10 +10,16 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 import { motion, type MotionValue } from "motion/react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "../../../lib/utils";
+import {
+  readResizeObserverBorderBoxSize,
+  subscribeToElementResize,
+} from "../../../lib/resize-observer-motion-values";
 import {
   REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE,
   REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
@@ -54,12 +60,10 @@ export interface ThreadResponseSpacerState {
   holdViewport?: () => void;
 }
 
-export interface ThreadScrollModeResolutionInput {
-  currentMode: ThreadScrollMode;
-  isNearBottom: boolean;
-  nowMs: number;
-  userScrollGraceUntilMs: number;
-  programmaticScrollSettledUntilMs: number;
+export interface ThreadScrollToBottomOptions {
+  durationMs?: number;
+  followContentGrowth?: boolean;
+  onStop?: () => void;
 }
 
 export interface LocalConversationThreadScrollControllerValue {
@@ -86,7 +90,7 @@ export interface LocalConversationThreadScrollControllerValue {
   }) => PendingLatestTurnSubmitPlacement | null;
   registerResponseSpacerState: (state: ThreadResponseSpacerState | null) => void;
   responseSpacerState: ThreadResponseSpacerState | null;
-  scrollToBottom: () => void;
+  scrollToBottom: (options?: ThreadScrollToBottomOptions) => void;
   jumpToBottom: () => void;
   scrollElementIntoView: (
     targetElement: HTMLElement,
@@ -98,7 +102,11 @@ export interface LocalConversationThreadScrollControllerValue {
       readonly signal?: AbortSignal;
     },
   ) => void;
-  scrollToDistanceFromBottomPx: (distanceFromBottomPx: number, behavior?: ScrollBehavior) => void;
+  scrollToDistanceFromBottomPx: (
+    distanceFromBottomPx: number,
+    behavior?: ScrollBehavior,
+    source?: "system" | "user",
+  ) => void;
   setFooterResizeViewportPreserveDisabled: (disabled: boolean) => void;
   setFooterHeightPx: (height: number) => void;
 }
@@ -118,6 +126,8 @@ interface LocalConversationThreadScrollLayoutProps {
 
 interface LocalConversationThreadScrollControllerContextValue extends LocalConversationThreadScrollControllerValue {
   registerScrollElement: (element: HTMLDivElement | null) => void;
+  onViewportWheel: (event: ReactWheelEvent<HTMLDivElement>) => void;
+  onViewportKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
 }
 
 const THREAD_SCROLL_VIEWPORT_CLASS_NAME =
@@ -135,27 +145,6 @@ export function isThreadScrollNearBottom({
   return scrollDistanceFromBottomPx <= THREAD_NEAR_BOTTOM_THRESHOLD_PX;
 }
 
-export function resolveThreadScrollModeForScrollEvent({
-  currentMode,
-  isNearBottom,
-  nowMs,
-  userScrollGraceUntilMs,
-  programmaticScrollSettledUntilMs,
-}: ThreadScrollModeResolutionInput): ThreadScrollMode {
-  if (currentMode === "programmaticFind") {
-    if (isNearBottom) return "stickToBottom";
-    if (nowMs <= programmaticScrollSettledUntilMs) {
-      return "programmaticFind";
-    }
-    return "user";
-  }
-  if (isNearBottom) return "stickToBottom";
-  if (nowMs > programmaticScrollSettledUntilMs && nowMs <= userScrollGraceUntilMs) {
-    return "user";
-  }
-  return currentMode;
-}
-
 type ThreadScrollGeometry = Pick<HTMLElement, "scrollTop" | "scrollHeight" | "clientHeight">;
 
 /**
@@ -164,17 +153,7 @@ type ThreadScrollGeometry = Pick<HTMLElement, "scrollTop" | "scrollHeight" | "cl
  * animated wheel and momentum scrolling keep their full travel.
  */
 export function getThreadScrollDistanceFromBottomPx(element: ThreadScrollGeometry): number {
-  const distanceFromBottomPx = element.scrollHeight - element.clientHeight - element.scrollTop;
-  // Integer extents and zoomed fractional offsets leave sub-pixel remainders at the native end.
-  return distanceFromBottomPx < 0.5 ? 0 : distanceFromBottomPx;
-}
-
-function resolveScrollDistanceFromBottomPx(
-  element: ThreadScrollGeometry,
-  distanceFromBottomPx: number,
-): number {
-  const maxDistanceFromBottomPx = Math.max(0, element.scrollHeight - element.clientHeight);
-  return Math.max(0, Math.min(distanceFromBottomPx, maxDistanceFromBottomPx));
+  return Math.max(0, element.scrollHeight - element.clientHeight - element.scrollTop);
 }
 
 export function resolveNativeScrollTopForDistanceFromBottomPx(
@@ -183,9 +162,7 @@ export function resolveNativeScrollTopForDistanceFromBottomPx(
 ): number {
   return Math.max(
     0,
-    element.scrollHeight -
-      element.clientHeight -
-      resolveScrollDistanceFromBottomPx(element, distanceFromBottomPx),
+    element.scrollHeight - element.clientHeight - Math.max(0, distanceFromBottomPx),
   );
 }
 
@@ -193,7 +170,7 @@ export function resolveThreadScrollKeyDirection(
   event: KeyboardEvent,
   viewport: HTMLElement,
 ): "away" | "toward" | null {
-  if (event.defaultPrevented) return null;
+  if (event.defaultPrevented || event.repeat) return null;
   const target = event.target;
   if (
     target instanceof HTMLElement &&
@@ -244,8 +221,10 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
   const scrollModeRef = useRef<ThreadScrollMode>("stickToBottom");
   const lastScrollDistanceFromBottomPxRef = useRef(0);
   const roundedScrollRequestRef = useRef<{ requested: number; actual: number } | null>(null);
-  const userScrollGraceUntilRef = useRef(0);
-  const programmaticScrollSettledUntilRef = useRef(0);
+  const userScrollIntentRef = useRef<{
+    direction: "away" | "toward";
+    lastAtMs: number;
+  } | null>(null);
   const programmaticFindSettleTimeoutRef = useRef<number | null>(null);
   const scrollListenersRef = useRef(new Set<ThreadScrollListener>());
   const userScrollListenersRef = useRef(new Set<ThreadUserScrollListener>());
@@ -255,6 +234,8 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     readonly height: number;
   } | null>(null);
   const scrollToBottomAnimationFrameRef = useRef<number | null>(null);
+  const scrollToBottomAnimationDurationExplicitRef = useRef(false);
+  const scrollToBottomAnimationOnStopRef = useRef<(() => void) | undefined>(undefined);
   const pendingLatestTurnSubmitPlacementRef = useRef<PendingLatestTurnSubmitPlacement | null>(null);
   const nativeFindScrollRef = useRef<LocalConversationNativeFindScroll | null>(null);
 
@@ -275,58 +256,42 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     [cancelNativeFindScroll],
   );
 
-  useEffect(() => {
-    responseSpacerStateRef.current = responseSpacerState;
-  }, [responseSpacerState]);
-
   const cancelScrollToBottomAnimation = useCallback(() => {
-    if (scrollToBottomAnimationFrameRef.current === null) return;
-    window.cancelAnimationFrame(scrollToBottomAnimationFrameRef.current);
+    if (scrollToBottomAnimationFrameRef.current !== null)
+      window.cancelAnimationFrame(scrollToBottomAnimationFrameRef.current);
     scrollToBottomAnimationFrameRef.current = null;
+    scrollToBottomAnimationDurationExplicitRef.current = false;
+    const onStop = scrollToBottomAnimationOnStopRef.current;
+    scrollToBottomAnimationOnStopRef.current = undefined;
+    onStop?.();
   }, []);
 
-  const recordScrollDistance = useCallback(
-    (
-      scrollDistanceFromBottomPx: number,
-      opts?: { userInitiated?: boolean; previousScrollDistanceFromBottomPx?: number },
-    ) => {
-      const previousScrollDistanceFromBottomPx =
-        opts?.previousScrollDistanceFromBottomPx ?? lastScrollDistanceFromBottomPxRef.current;
-      lastScrollDistanceFromBottomPxRef.current = scrollDistanceFromBottomPx;
-      const isNearBottom = isThreadScrollNearBottom({ scrollDistanceFromBottomPx });
-      const nextIsScrolledFromBottom = !isNearBottom;
-      setIsScrolledFromBottom((current) =>
-        current === nextIsScrolledFromBottom ? current : nextIsScrolledFromBottom,
-      );
+  const recordScrollDistance = useCallback((scrollDistanceFromBottomPx: number) => {
+    if (roundedScrollRequestRef.current?.actual !== scrollDistanceFromBottomPx)
+      roundedScrollRequestRef.current = null;
+    lastScrollDistanceFromBottomPxRef.current = scrollDistanceFromBottomPx;
+    for (const listener of scrollListenersRef.current) listener(scrollDistanceFromBottomPx);
+    setIsScrolledFromBottom(!isThreadScrollNearBottom({ scrollDistanceFromBottomPx }));
+  }, []);
 
-      for (const listener of scrollListenersRef.current) {
-        listener(scrollDistanceFromBottomPx);
-      }
-
-      if (opts?.userInitiated !== true) return;
-      for (const listener of userScrollListenersRef.current) {
-        listener(scrollDistanceFromBottomPx, previousScrollDistanceFromBottomPx);
-      }
-    },
-    [],
-  );
+  const recordUserScrollDistance = useCallback((distance: number, previous: number) => {
+    scrollModeRef.current =
+      distance < previous && isThreadScrollNearBottom({ scrollDistanceFromBottomPx: distance })
+        ? "stickToBottom"
+        : "user";
+    for (const listener of userScrollListenersRef.current) listener(distance, previous);
+  }, []);
 
   const writeNativeScrollDistance = useCallback(
     (element: HTMLDivElement, distanceFromBottomPx: number, behavior: ScrollBehavior) => {
-      const nextDistanceFromBottomPx = resolveScrollDistanceFromBottomPx(
-        element,
-        distanceFromBottomPx,
-      );
+      const nextDistanceFromBottomPx = Math.max(0, distanceFromBottomPx);
+      if (nextDistanceFromBottomPx !== getThreadScrollDistanceFromBottomPx(element))
+        userScrollIntentRef.current = null;
       const top = resolveNativeScrollTopForDistanceFromBottomPx(element, nextDistanceFromBottomPx);
-      // Any native write interrupts an in-flight wheel or momentum scroll. Fractional layout under
-      // integer scroll extents leaves sub-pixel differences that cannot move content perceptibly,
-      // so only a whole-pixel difference is written; the request below keeps its exact value.
-      const instant = behavior !== "smooth";
-      if (instant ? Math.abs(element.scrollTop - top) >= 1 : element.scrollTop !== top)
-        element.scrollTo({ behavior, top });
+      if (element.scrollTop !== top) element.scrollTo({ behavior, top });
       const actual = getThreadScrollDistanceFromBottomPx(element);
       roundedScrollRequestRef.current =
-        instant &&
+        behavior === "instant" &&
         actual !== nextDistanceFromBottomPx &&
         nextDistanceFromBottomPx > 0 &&
         nextDistanceFromBottomPx < element.scrollHeight - element.clientHeight
@@ -342,7 +307,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
   const setScrollMode = useCallback(
     (mode: ThreadScrollMode) => {
       if (mode !== "programmaticFind") cancelNativeFindScroll();
-      else userScrollGraceUntilRef.current = 0;
+      else userScrollIntentRef.current = null;
       if (scrollModeRef.current === mode) return;
       scrollModeRef.current = mode;
 
@@ -421,6 +386,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
 
   const addScrollListener = useCallback((listener: ThreadScrollListener) => {
     scrollListenersRef.current.add(listener);
+    listener(lastScrollDistanceFromBottomPxRef.current);
     return () => {
       scrollListenersRef.current.delete(listener);
     };
@@ -471,20 +437,26 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
   }, []);
 
   const scrollToDistanceFromBottomPx = useCallback(
-    (distanceFromBottomPx: number, behavior: ScrollBehavior = "auto") => {
+    (
+      distanceFromBottomPx: number,
+      behavior: ScrollBehavior = "auto",
+      source: "system" | "user" = "system",
+    ) => {
       const element = scrollElementRef.current;
       if (element === null) return;
+      const previous = lastScrollDistanceFromBottomPxRef.current;
       cancelNativeFindScroll();
-      cancelScrollToBottomAnimation();
-      programmaticScrollSettledUntilRef.current =
-        performance.now() + PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS;
+      if (distanceFromBottomPx > THREAD_NEAR_BOTTOM_THRESHOLD_PX) cancelScrollToBottomAnimation();
       if (distanceFromBottomPx === 0 && scrollModeRef.current !== "programmaticFind")
         setScrollMode("stickToBottom");
       writeNativeScrollDistance(element, distanceFromBottomPx, behavior);
+      const distance = lastScrollDistanceFromBottomPxRef.current;
+      if (source === "user" && distance !== previous) recordUserScrollDistance(distance, previous);
     },
     [
       cancelNativeFindScroll,
       cancelScrollToBottomAnimation,
+      recordUserScrollDistance,
       setScrollMode,
       writeNativeScrollDistance,
     ],
@@ -503,8 +475,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     ) => {
       cancelNativeFindScroll();
       cancelScrollToBottomAnimation();
-      programmaticScrollSettledUntilRef.current =
-        performance.now() + PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS;
       const element = scrollElementRef.current;
       if (findNavigation && element && behavior === "smooth" && block === "center") {
         setScrollMode("programmaticFind");
@@ -556,59 +526,71 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
         scrollToBottomAnimationFrameRef.current !== null
       )
         return;
-      // The footer clearance changes below the reader, so only a reader at the bottom must move.
       if (isThreadScrollNearBottom({ scrollDistanceFromBottomPx: distanceBeforePx })) {
         writeNativeScrollDistance(element, 0, "instant");
         return;
       }
-      // Record only the clearance change, leaving any pending gesture for its own scroll event.
-      recordScrollDistance(
-        lastScrollDistanceFromBottomPxRef.current +
-          getThreadScrollDistanceFromBottomPx(element) -
-          distanceBeforePx,
-      );
+      recordScrollDistance(getThreadScrollDistanceFromBottomPx(element));
     },
     [recordScrollDistance, writeNativeScrollDistance],
   );
 
-  const maybeStickToBottom = useCallback(() => {
-    if (scrollModeRef.current !== "stickToBottom") return;
-    const element = scrollElementRef.current;
-    if (element === null) return;
-    scrollToDistanceFromBottomPx(0, "auto");
-  }, [scrollToDistanceFromBottomPx]);
-
-  const scrollToBottom = useCallback(() => {
-    const element = scrollElementRef.current;
-    if (element === null) return;
-    setScrollMode("stickToBottom");
-    cancelScrollToBottomAnimation();
-
-    const initialDistanceFromBottomPx = getThreadScrollDistanceFromBottomPx(element);
-    if (reducedMotion || initialDistanceFromBottomPx <= THREAD_NEAR_BOTTOM_THRESHOLD_PX) {
-      writeNativeScrollDistance(element, 0, "auto");
-      return;
-    }
-
-    const startedAtMs = performance.now();
-    const step = (nowMs: number) => {
-      const currentElement = scrollElementRef.current;
-      if (currentElement === null) {
-        scrollToBottomAnimationFrameRef.current = null;
+  const scrollToBottom = useCallback(
+    (options?: ThreadScrollToBottomOptions) => {
+      const element = scrollElementRef.current;
+      if (!element) return;
+      cancelNativeFindScroll();
+      scrollModeRef.current = options?.followContentGrowth === false ? "user" : "stickToBottom";
+      const initialDistanceFromBottomPx = getThreadScrollDistanceFromBottomPx(element);
+      if (reducedMotion || initialDistanceFromBottomPx <= THREAD_NEAR_BOTTOM_THRESHOLD_PX) {
+        writeNativeScrollDistance(element, 0, "instant");
+        cancelScrollToBottomAnimation();
+        options?.onStop?.();
         return;
       }
-      const progress = Math.min(1, (nowMs - startedAtMs) / SCROLL_TO_BOTTOM_ANIMATION_DURATION_MS);
-      const nextDistanceFromBottomPx = initialDistanceFromBottomPx * (1 - progress) ** 3;
-      writeNativeScrollDistance(currentElement, nextDistanceFromBottomPx, "auto");
-      if (progress < 1) {
-        scrollToBottomAnimationFrameRef.current = window.requestAnimationFrame(step);
-        return;
-      }
-      writeNativeScrollDistance(currentElement, 0, "auto");
-      scrollToBottomAnimationFrameRef.current = null;
-    };
-    scrollToBottomAnimationFrameRef.current = window.requestAnimationFrame(step);
-  }, [cancelScrollToBottomAnimation, reducedMotion, setScrollMode, writeNativeScrollDistance]);
+      cancelScrollToBottomAnimation();
+      userScrollIntentRef.current = null;
+      roundedScrollRequestRef.current = null;
+      scrollToBottomAnimationOnStopRef.current = options?.onStop;
+      scrollToBottomAnimationDurationExplicitRef.current = options?.durationMs !== undefined;
+      const startedAtMs = performance.now();
+      const step = (nowMs: number) => {
+        const current = scrollElementRef.current;
+        if (!current) {
+          cancelScrollToBottomAnimation();
+          return;
+        }
+        const progress = Math.min(
+          1,
+          (nowMs - startedAtMs) / (options?.durationMs ?? SCROLL_TO_BOTTOM_ANIMATION_DURATION_MS),
+        );
+        const top = resolveNativeScrollTopForDistanceFromBottomPx(
+          current,
+          initialDistanceFromBottomPx * (1 - progress) ** 3,
+        );
+        if (current.scrollTop !== top) current.scrollTop = top;
+        if (
+          progress < 1 &&
+          (options?.durationMs !== undefined ||
+            !isThreadScrollNearBottom({
+              scrollDistanceFromBottomPx: getThreadScrollDistanceFromBottomPx(current),
+            }))
+        ) {
+          scrollToBottomAnimationFrameRef.current = window.requestAnimationFrame(step);
+          return;
+        }
+        writeNativeScrollDistance(current, 0, "instant");
+        cancelScrollToBottomAnimation();
+      };
+      scrollToBottomAnimationFrameRef.current = window.requestAnimationFrame(step);
+    },
+    [
+      cancelNativeFindScroll,
+      cancelScrollToBottomAnimation,
+      reducedMotion,
+      writeNativeScrollDistance,
+    ],
+  );
 
   const jumpToBottom = useCallback(() => {
     setScrollMode("stickToBottom");
@@ -619,99 +601,124 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     setScrollMode("user");
   }, [setScrollMode]);
 
-  useEffect(() => {
-    if (scrollElement === null) return;
-
-    let mounted = true;
-    let userScrollDirection: "away" | "toward" | null = null;
-    let scrollbarPointerStart: { scrollHeight: number; scrollTop: number } | null = null;
-    let touch: Touch | null = null;
-    const updateScrolledFromBottom = (isNearBottom: boolean) => {
-      if (!mounted) return;
-      setIsScrolledFromBottom(!isNearBottom);
-    };
-
-    const syncFromScrollPosition = () => {
-      const previousScrollDistanceFromBottomPx = lastScrollDistanceFromBottomPxRef.current;
-      const scrollDistanceFromBottomPx = getThreadScrollDistanceFromBottomPx(scrollElement);
-      const isNearBottom = isThreadScrollNearBottom({ scrollDistanceFromBottomPx });
-      if (scrollbarPointerStart) {
-        if (
-          scrollbarPointerStart.scrollHeight === scrollElement.scrollHeight &&
-          scrollbarPointerStart.scrollTop !== scrollElement.scrollTop
-        ) {
-          userScrollDirection =
-            scrollDistanceFromBottomPx > previousScrollDistanceFromBottomPx ? "away" : "toward";
-          userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
-        }
-        scrollbarPointerStart = null;
-      }
-      const direction =
-        scrollDistanceFromBottomPx > previousScrollDistanceFromBottomPx
-          ? "away"
-          : scrollDistanceFromBottomPx < previousScrollDistanceFromBottomPx
-            ? "toward"
-            : null;
-      const userInitiated =
-        direction !== null &&
-        direction === userScrollDirection &&
-        performance.now() <= userScrollGraceUntilRef.current;
-      if (userInitiated) {
-        scrollModeRef.current = isNearBottom && direction === "toward" ? "stickToBottom" : "user";
-        userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
-      }
-      if (roundedScrollRequestRef.current?.actual !== scrollDistanceFromBottomPx)
-        roundedScrollRequestRef.current = null;
-      if (isNearBottom) {
-        cancelScrollToBottomAnimation();
-        if (userInitiated) userScrollDirection = null;
-      }
-      updateScrolledFromBottom(isNearBottom);
-      recordScrollDistance(scrollDistanceFromBottomPx, {
-        previousScrollDistanceFromBottomPx,
-        userInitiated,
-      });
-    };
-
-    const initialDistanceFromBottomPx = getThreadScrollDistanceFromBottomPx(scrollElement);
-    lastScrollDistanceFromBottomPxRef.current = initialDistanceFromBottomPx;
-    updateScrolledFromBottom(
-      isThreadScrollNearBottom({
-        scrollDistanceFromBottomPx: initialDistanceFromBottomPx,
-      }),
-    );
-
-    const frameId = window.requestAnimationFrame(() => {
-      maybeStickToBottom();
-    });
-
-    const handleWheel = (event: WheelEvent) => {
+  const registerUserScrollIntent = useCallback(
+    (direction: "away" | "toward") => {
+      const element = scrollElementRef.current;
+      if (!element) return;
+      cancelNativeFindScroll();
+      cancelScrollToBottomAnimation();
+      roundedScrollRequestRef.current = null;
+      const canMove =
+        direction === "away"
+          ? element.scrollTop > 0
+          : getThreadScrollDistanceFromBottomPx(element) > 0;
+      userScrollIntentRef.current = canMove ? { direction, lastAtMs: performance.now() } : null;
+    },
+    [cancelNativeFindScroll, cancelScrollToBottomAnimation],
+  );
+  const onViewportWheel = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement>) => {
       if (
         event.defaultPrevented ||
+        !event.nativeEvent.composedPath().includes(event.currentTarget) ||
         event.ctrlKey ||
         event.shiftKey ||
         Math.abs(event.deltaY) <= Math.abs(event.deltaX)
       )
         return;
-      userScrollDirection = event.deltaY < 0 ? "away" : "toward";
-      userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
-      roundedScrollRequestRef.current = null;
-      cancelNativeFindScroll();
-      cancelScrollToBottomAnimation();
-    };
+      registerUserScrollIntent(event.deltaY < 0 ? "away" : "toward");
+    },
+    [registerUserScrollIntent],
+  );
+  const onViewportKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (!event.nativeEvent.composedPath().includes(event.currentTarget)) return;
+      const direction = resolveThreadScrollKeyDirection(event.nativeEvent, event.currentTarget);
+      if (direction) registerUserScrollIntent(direction);
+    },
+    [registerUserScrollIntent],
+  );
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const direction = resolveThreadScrollKeyDirection(event, scrollElement);
-      if (!direction) return;
-      cancelNativeFindScroll();
-      if (event.repeat) return;
-      userScrollDirection = direction;
-      userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
-      roundedScrollRequestRef.current = null;
-      cancelScrollToBottomAnimation();
+  useLayoutEffect(() => {
+    if (!scrollElement || typeof ResizeObserver === "undefined") return;
+    // Keep native movement that has not reached its scroll event ahead of content measurement.
+    let observedScrollTop = scrollElement.scrollTop;
+    const followContentGrowth = () => {
+      const scrolledSinceObservation = Math.abs(observedScrollTop - scrollElement.scrollTop) > 1;
+      observedScrollTop = scrollElement.scrollTop;
+      if (
+        scrollModeRef.current !== "stickToBottom" ||
+        lastScrollDistanceFromBottomPxRef.current !== 0 ||
+        getThreadScrollDistanceFromBottomPx(scrollElement) <= 0 ||
+        scrolledSinceObservation ||
+        userScrollIntentRef.current?.direction === "away"
+      )
+        return;
+      compensateScrollToDistanceFromBottomPx(0);
+      observedScrollTop = scrollElement.scrollTop;
+    };
+    const contentResizeObserver = new ResizeObserver(followContentGrowth);
+    contentResizeObserver.observe(scrollElement);
+    if (scrollElement.firstElementChild)
+      contentResizeObserver.observe(scrollElement.firstElementChild);
+
+    return () => contentResizeObserver.disconnect();
+  }, [compensateScrollToDistanceFromBottomPx, scrollElement]);
+
+  useEffect(() => {
+    if (!scrollElement) return;
+    const abort = new AbortController();
+    const listenerOptions = { passive: true, signal: abort.signal };
+    let scrollbarPointerStart: { scrollHeight: number; scrollTop: number } | null = null;
+    let touch: Touch | null = null;
+
+    const syncFromScrollPosition = () => {
+      const distance = getThreadScrollDistanceFromBottomPx(scrollElement);
+      if (
+        isThreadScrollNearBottom({ scrollDistanceFromBottomPx: distance }) &&
+        !scrollToBottomAnimationDurationExplicitRef.current
+      )
+        cancelScrollToBottomAnimation();
+      recordScrollDistance(distance);
+    };
+    const handleScroll = () => {
+      const previous = lastScrollDistanceFromBottomPxRef.current;
+      const pointerStart = scrollbarPointerStart;
+      if (pointerStart) {
+        scrollbarPointerStart = null;
+        const distance = getThreadScrollDistanceFromBottomPx(scrollElement);
+        if (
+          scrollElement.scrollHeight === pointerStart.scrollHeight &&
+          scrollElement.scrollTop !== pointerStart.scrollTop &&
+          distance !== previous
+        )
+          userScrollIntentRef.current = {
+            direction: distance > previous ? "away" : "toward",
+            lastAtMs: performance.now(),
+          };
+      }
+      const intent = userScrollIntentRef.current;
+      if (!intent) {
+        syncFromScrollPosition();
+        return;
+      }
+      const now = performance.now();
+      if (now - intent.lastAtMs > USER_SCROLL_GRACE_WINDOW_MS) {
+        userScrollIntentRef.current = null;
+        syncFromScrollPosition();
+        return;
+      }
+      syncFromScrollPosition();
+      const distance = getThreadScrollDistanceFromBottomPx(scrollElement);
+      const direction = distance > previous ? "away" : distance < previous ? "toward" : null;
+      if (direction !== intent.direction) return;
+      intent.lastAtMs = now;
+      recordUserScrollDistance(distance, previous);
+      if (isThreadScrollNearBottom({ scrollDistanceFromBottomPx: distance }))
+        userScrollIntentRef.current = null;
     };
     const handlePointerDown = (event: PointerEvent) => {
-      userScrollDirection = null;
+      userScrollIntentRef.current = null;
       scrollbarPointerStart = null;
       if (event.pointerType !== "mouse" || event.target !== scrollElement) return;
       cancelNativeFindScroll();
@@ -738,80 +745,31 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       const deltaY = next.clientY - touch.clientY;
       if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 8) return;
       touch = null;
-      if (Math.abs(deltaY) <= Math.abs(deltaX)) return;
-      cancelNativeFindScroll();
-      userScrollDirection = deltaY > 0 ? "away" : "toward";
-      userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
-      roundedScrollRequestRef.current = null;
-      cancelScrollToBottomAnimation();
+      if (Math.abs(deltaY) > Math.abs(deltaX))
+        registerUserScrollIntent(deltaY > 0 ? "away" : "toward");
     };
     const handleTouchEnd = () => {
       touch = null;
     };
 
-    // Content that grows below a top-origin viewport extends it away from the reader. Only a
-    // reader following at the bottom is carried along; an unobserved scroll or a live upward
-    // gesture keeps that reader where they are.
-    let observedScrollTop = scrollElement.scrollTop;
-    const handleScroll = () => {
-      observedScrollTop = scrollElement.scrollTop;
-      syncFromScrollPosition();
-    };
-    const followContentGrowth = () => {
-      const scrolledSinceObservation = Math.abs(observedScrollTop - scrollElement.scrollTop) > 1;
-      observedScrollTop = scrollElement.scrollTop;
-      // Physical pixel snapping can leave a sub-pixel remainder; response placement sits at 1px.
-      if (
-        scrollModeRef.current !== "stickToBottom" ||
-        lastScrollDistanceFromBottomPxRef.current >= 1 ||
-        scrolledSinceObservation ||
-        (userScrollDirection === "away" && performance.now() <= userScrollGraceUntilRef.current) ||
-        getThreadScrollDistanceFromBottomPx(scrollElement) < 1
-      )
-        return;
-      compensateScrollToDistanceFromBottomPx(0);
-      observedScrollTop = scrollElement.scrollTop;
-    };
-    const contentResizeObserver =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(followContentGrowth);
-    contentResizeObserver?.observe(scrollElement);
-    if (scrollElement.firstElementChild)
-      contentResizeObserver?.observe(scrollElement.firstElementChild);
-
-    scrollElement.addEventListener("wheel", handleWheel, { passive: true });
-    scrollElement.addEventListener("pointerdown", handlePointerDown, { passive: true });
-    scrollElement.addEventListener("pointerup", handlePointerEnd, { passive: true });
-    scrollElement.addEventListener("pointercancel", handlePointerEnd, { passive: true });
-    scrollElement.addEventListener("keydown", handleKeyDown);
-    scrollElement.addEventListener("touchstart", handleTouchStart, { passive: true });
-    scrollElement.addEventListener("touchmove", handleTouchMove, { passive: true });
-    scrollElement.addEventListener("touchend", handleTouchEnd, { passive: true });
-    scrollElement.addEventListener("touchcancel", handleTouchEnd, { passive: true });
-    scrollElement.addEventListener("scroll", handleScroll, { passive: true });
-
+    scrollElement.addEventListener("pointerdown", handlePointerDown, listenerOptions);
+    scrollElement.addEventListener("pointerup", handlePointerEnd, listenerOptions);
+    scrollElement.addEventListener("pointercancel", handlePointerEnd, listenerOptions);
+    scrollElement.addEventListener("touchstart", handleTouchStart, listenerOptions);
+    scrollElement.addEventListener("touchmove", handleTouchMove, listenerOptions);
+    scrollElement.addEventListener("touchend", handleTouchEnd, listenerOptions);
+    scrollElement.addEventListener("touchcancel", handleTouchEnd, listenerOptions);
+    scrollElement.addEventListener("scroll", handleScroll, listenerOptions);
     return () => {
-      mounted = false;
-      window.cancelAnimationFrame(frameId);
-      contentResizeObserver?.disconnect();
-      scrollElement.removeEventListener("wheel", handleWheel);
-      scrollElement.removeEventListener("pointerdown", handlePointerDown);
-      scrollElement.removeEventListener("pointerup", handlePointerEnd);
-      scrollElement.removeEventListener("pointercancel", handlePointerEnd);
-      scrollElement.removeEventListener("keydown", handleKeyDown);
-      scrollElement.removeEventListener("touchstart", handleTouchStart);
-      scrollElement.removeEventListener("touchmove", handleTouchMove);
-      scrollElement.removeEventListener("touchend", handleTouchEnd);
-      scrollElement.removeEventListener("touchcancel", handleTouchEnd);
-      scrollElement.removeEventListener("scroll", handleScroll);
+      abort.abort();
     };
   }, [
     cancelNativeFindScroll,
     cancelScrollToBottomAnimation,
-    compensateScrollToDistanceFromBottomPx,
-    maybeStickToBottom,
     recordScrollDistance,
+    recordUserScrollDistance,
+    registerUserScrollIntent,
     scrollElement,
-    setScrollMode,
   ]);
 
   useEffect(
@@ -842,6 +800,8 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       getScrollMode,
       isScrolledFromBottom,
       nativeFindTurnKey,
+      onViewportWheel,
+      onViewportKeyDown,
       jumpToBottom,
       prepareLatestTurnSubmitPlacement,
       registerScrollElement,
@@ -872,6 +832,8 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       getScrollMode,
       isScrolledFromBottom,
       nativeFindTurnKey,
+      onViewportWheel,
+      onViewportKeyDown,
       jumpToBottom,
       prepareLatestTurnSubmitPlacement,
       registerResponseSpacerState,
@@ -929,26 +891,17 @@ export const LocalConversationThreadScrollLayout = forwardRef<
     (element: HTMLDivElement | null) => registerScrollElement(element),
     [registerScrollElement],
   );
-  const footerRef = useRef<HTMLDivElement | null>(null);
   const setFooterHeightPx = controller.setFooterHeightPx;
   const scrollElement = controller.scrollElement;
   const restoredElementRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     if (!scrollElement || restoredElementRef.current === scrollElement) return;
     restoredElementRef.current = scrollElement;
-    const followMode = initialRestoreSnapshot?.latestTurn?.followMode;
     const distanceFromBottomPx = normalizeThreadRestoreDistanceFromBottomPx(
       initialRestoreSnapshot?.distanceFromBottomPx ?? 0,
-      followMode,
     );
-    if (distanceFromBottomPx > 0 || followMode === "user_hold") {
-      controller.suppressAutoStickToBottom();
-    } else {
-      controller.setScrollMode("stickToBottom");
-    }
     controller.scrollToDistanceFromBottomPx(distanceFromBottomPx, "auto");
-    // A zero-distance native restore must not take ownership back from the reader.
-    if (followMode === "user_hold") controller.suppressAutoStickToBottom();
+    controller.setScrollMode(distanceFromBottomPx === 0 ? "stickToBottom" : "user");
   }, [controller, initialRestoreSnapshot, scrollElement]);
 
   useImperativeHandle(
@@ -959,37 +912,15 @@ export const LocalConversationThreadScrollLayout = forwardRef<
     [controller.scrollToBottom],
   );
 
-  useEffect(() => {
-    const footerElement = footerRef.current;
-    if (!scrollElement || !footerElement) return undefined;
-
-    const syncFooterPadding = (entries?: readonly ResizeObserverEntry[]) => {
-      const box = entries?.find((entry) => entry.target === footerElement)?.borderBoxSize;
-      const measured = box?.[0]?.blockSize;
-      const windowZoom =
-        Number.parseFloat(
-          getComputedStyle(footerElement).getPropertyValue("--codex-window-zoom"),
-        ) || 1;
-      const footerHeight = measured ?? footerElement.getBoundingClientRect().height / windowZoom;
-      setFooterHeightPx(footerHeight);
-    };
-
-    syncFooterPadding();
-
-    if (typeof ResizeObserver === "undefined") {
-      const handleResize = () => syncFooterPadding();
-      window.addEventListener("resize", handleResize);
-      return () => {
-        window.removeEventListener("resize", handleResize);
-      };
-    }
-
-    const resizeObserver = new ResizeObserver(syncFooterPadding);
-    resizeObserver.observe(footerElement);
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [footer, setFooterHeightPx, scrollElement]);
+  const registerFooter = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (!element) return;
+      return subscribeToElementResize(element, (entry) => {
+        setFooterHeightPx(readResizeObserverBorderBoxSize(entry).height);
+      });
+    },
+    [setFooterHeightPx],
+  );
 
   const motionStyle = contentX == null ? undefined : { x: contentX };
 
@@ -1004,6 +935,8 @@ export const LocalConversationThreadScrollLayout = forwardRef<
         role="region"
         aria-label="Conversation"
         tabIndex={0}
+        onWheel={controller.onViewportWheel}
+        onKeyDown={controller.onViewportKeyDown}
         {...{
           [REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE]: REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
         }}
@@ -1030,7 +963,7 @@ export const LocalConversationThreadScrollLayout = forwardRef<
       </div>
       {footer ? (
         <motion.div
-          ref={footerRef}
+          ref={registerFooter}
           data-thread-scroll-footer="true"
           className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pb-4"
           style={motionStyle}

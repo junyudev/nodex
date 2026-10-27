@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
 } from "react";
 import { appScope, useScopeHandle, type ScopeHandle } from "@/lib/maitai";
 import {
@@ -485,6 +486,47 @@ export function ThreadStartProgressPanel({
   );
 }
 
+type LocalConversationRestoredTurnListProps = Omit<
+  ComponentProps<typeof LocalConversationVirtualizedTurnList>,
+  "initialScrollOffset" | "initialRestoreState" | "initialLatestTurnRestoreState"
+> & {
+  readonly readRestoreSnapshot: () => LocalConversationThreadRestoreSnapshot;
+  readonly onRestoreSnapshotChange: LocalConversationThreadBodyOwnerProps["onRestoreSnapshotChange"];
+};
+
+/** A mounted transcript restores once; removing its rows cannot overwrite the saved position. */
+function LocalConversationRestoredTurnList({
+  readRestoreSnapshot,
+  onRestoreSnapshotChange,
+  ...props
+}: LocalConversationRestoredTurnListProps) {
+  const [initialRestoreSnapshot] = useState(readRestoreSnapshot);
+  const { addScrollListener } = useLocalConversationThreadScrollController();
+  useLayoutEffect(
+    () =>
+      addScrollListener((distanceFromBottomPx) => {
+        onRestoreSnapshotChange((current) => ({
+          ...current,
+          distanceFromBottomPx: Number.isFinite(distanceFromBottomPx)
+            ? Math.max(0, distanceFromBottomPx)
+            : 0,
+        }));
+      }),
+    [addScrollListener, onRestoreSnapshotChange],
+  );
+
+  return (
+    <LocalConversationVirtualizedTurnList
+      {...props}
+      initialScrollOffset={normalizeThreadRestoreDistanceFromBottomPx(
+        initialRestoreSnapshot.distanceFromBottomPx,
+      )}
+      initialRestoreState={initialRestoreSnapshot.virtualizedTurnList}
+      initialLatestTurnRestoreState={initialRestoreSnapshot.latestTurn}
+    />
+  );
+}
+
 interface LocalConversationThreadBodyOwnerProps {
   body: ThreadBodyModel;
   projectId: string | null;
@@ -526,7 +568,7 @@ interface LocalConversationThreadBodyOwnerProps {
   planSidePanelState?: ThreadPlanSidePanelState | null;
   onErrorMessage: (message: string | null) => void;
   initialUiState?: ThreadBodyUiStateOverrides;
-  initialRestoreSnapshot: LocalConversationThreadRestoreSnapshot;
+  readRestoreSnapshot: () => LocalConversationThreadRestoreSnapshot;
   onRestoreSnapshotChange: (
     update: (
       current: LocalConversationThreadRestoreSnapshot,
@@ -576,7 +618,7 @@ export function LocalConversationThreadBodyOwner({
   planSidePanelState,
   onErrorMessage,
   initialUiState,
-  initialRestoreSnapshot,
+  readRestoreSnapshot,
   onRestoreSnapshotChange,
   turnDiffHoverPreviewDisabled = false,
 }: LocalConversationThreadBodyOwnerProps) {
@@ -854,10 +896,7 @@ export function LocalConversationThreadBodyOwner({
     (state: VirtualizedLatestTurnRestoreState | null, distanceFromBottomPx: number) => {
       onRestoreSnapshotChange((current) => ({
         ...current,
-        distanceFromBottomPx: normalizeThreadRestoreDistanceFromBottomPx(
-          distanceFromBottomPx,
-          state?.followMode,
-        ),
+        distanceFromBottomPx: normalizeThreadRestoreDistanceFromBottomPx(distanceFromBottomPx),
         latestTurn: state,
       }));
     },
@@ -1327,7 +1366,7 @@ export function LocalConversationThreadBodyOwner({
               />
             ) : null}
             <ThreadForkSubmissionContext value={forkingTurnId}>
-              <LocalConversationVirtualizedTurnList
+              <LocalConversationRestoredTurnList
                 key={conversation?.threadId ?? body.threadId ?? "unattached"}
                 entries={virtualizedEntries}
                 historyRows={historyRows}
@@ -1357,12 +1396,8 @@ export function LocalConversationThreadBodyOwner({
                 childMemberships={childMemberships}
                 backgroundAgentRows={backgroundAgentRows}
                 turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-                initialScrollOffset={normalizeThreadRestoreDistanceFromBottomPx(
-                  initialRestoreSnapshot.distanceFromBottomPx,
-                  initialRestoreSnapshot.latestTurn?.followMode,
-                )}
-                initialRestoreState={initialRestoreSnapshot.virtualizedTurnList}
-                initialLatestTurnRestoreState={initialRestoreSnapshot.latestTurn}
+                readRestoreSnapshot={readRestoreSnapshot}
+                onRestoreSnapshotChange={onRestoreSnapshotChange}
                 latestTurnSynchronousMeasurementKey={body.latestTurnId ?? body.turnCount}
                 onLatestTurnRestoreStateChange={handleLatestTurnRestoreStateChange}
                 onRestoreStateChange={handleVirtualizedTurnRestoreStateChange}

@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { act } from "@testing-library/react";
-import { startTransition, Suspense, useState, type ReactNode } from "react";
+import { startTransition, Suspense, useLayoutEffect, useState, type ReactNode } from "react";
 import { NodexTooltipProvider } from "../../../components/ui/tooltip";
 import { createMaitaiStore, MaitaiProvider } from "../../../lib/maitai";
 import { render } from "../../../test/dom";
 import type { CodexConversationItem, CodexConversationTurn } from "../../../lib/types";
 import type { CodexHistoryRow } from "../../../../shared/codex-conversation-state/codex-history-topology";
-import { EnsureLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
+import {
+  EnsureLocalConversationThreadScrollController,
+  LocalConversationThreadScrollLayout,
+  useLocalConversationThreadScrollController,
+} from "./local-conversation-thread-scroll-controller";
 import {
   applyLocalConversationTurnMeasurementEffect,
   LocalConversationVirtualizedTurnList,
@@ -23,6 +27,7 @@ import type {
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
 
 const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+const originalGetClientRects = HTMLElement.prototype.getClientRects;
 const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
 const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
 
@@ -34,6 +39,15 @@ function TooltipProvider({ children }: { readonly children: ReactNode }) {
         <NodexTooltipProvider>{children}</NodexTooltipProvider>
       </LocalConversationTestQueryProvider>
     </MaitaiProvider>
+  );
+}
+
+function MountedViewport({ children }: { readonly children: ReactNode }) {
+  const { scrollElement } = useLocalConversationThreadScrollController();
+  return (
+    <LocalConversationThreadScrollLayout>
+      {scrollElement ? children : null}
+    </LocalConversationThreadScrollLayout>
   );
 }
 
@@ -77,11 +91,16 @@ function installQueuedRequestAnimationFrame(): void {
   });
 }
 
-function installTurnBlockSizes(heightsByTurnKey: Readonly<Record<string, number>>): void {
+function installTurnBlockSizes(
+  heightsByTurnKey: Readonly<Record<string, number>>,
+  viewportVisible = true,
+): void {
   Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
     configurable: true,
     writable: true,
     value(this: HTMLElement) {
+      if (this.dataset.localConversationThreadBody === "true")
+        return makeRect({ height: 600, width: 640 });
       const turnKey = this.getAttribute("data-turn-key");
       if (turnKey && Object.prototype.hasOwnProperty.call(heightsByTurnKey, turnKey)) {
         return makeRect({
@@ -92,6 +111,19 @@ function installTurnBlockSizes(heightsByTurnKey: Readonly<Record<string, number>
       return originalGetBoundingClientRect.call(this);
     },
   });
+  Object.defineProperty(HTMLElement.prototype, "getClientRects", {
+    configurable: true,
+    writable: true,
+    value(this: HTMLElement) {
+      const bounds = this.getBoundingClientRect();
+      const visible =
+        this.dataset.localConversationThreadBody === "true"
+          ? viewportVisible
+          : bounds.width > 0 && bounds.height > 0;
+      const rects = visible ? [bounds] : [];
+      return Object.assign(rects, { item: (index: number) => rects[index] ?? null });
+    },
+  });
 }
 
 function restoreBrowserGeometry(): void {
@@ -99,6 +131,11 @@ function restoreBrowserGeometry(): void {
     configurable: true,
     writable: true,
     value: originalGetBoundingClientRect,
+  });
+  Object.defineProperty(HTMLElement.prototype, "getClientRects", {
+    configurable: true,
+    writable: true,
+    value: originalGetClientRects,
   });
   if (originalRequestAnimationFrame) {
     Object.defineProperty(globalThis, "requestAnimationFrame", {
@@ -214,6 +251,7 @@ function buildTurnEntries(texts: readonly string[]): VisibleConversationTurnEntr
 
 function renderVirtualizedTurnList(input: {
   entries: LocalConversationVirtualizedTurnListEntry[];
+  withViewport?: boolean;
   historyRows?: readonly CodexHistoryRow[];
   initialScrollOffset?: number;
   initialLatestTurnRestoreState?: VirtualizedLatestTurnRestoreState;
@@ -227,24 +265,27 @@ function renderVirtualizedTurnList(input: {
     boundary: CodexHistoryViewportBoundary | null | undefined,
   ) => void;
 }) {
+  const list = (
+    <LocalConversationVirtualizedTurnList
+      entries={input.entries}
+      historyRows={input.historyRows}
+      conversationId="thread_1"
+      threadCwd="/tmp/project"
+      editableTurnIds={new Set()}
+      canForkFromTurn={true}
+      initialScrollOffset={input.initialScrollOffset}
+      initialLatestTurnRestoreState={input.initialLatestTurnRestoreState}
+      onLatestTurnRestoreStateChange={input.onLatestTurnRestoreStateChange}
+      onRestoreStateChange={input.onRestoreStateChange}
+      onApiChange={input.onApiChange}
+      onHistoryRetentionBoundaryChange={input.onHistoryRetentionBoundaryChange}
+      scrollElement={null}
+    />
+  );
   return render(
     <TooltipProvider>
       <EnsureLocalConversationThreadScrollController>
-        <LocalConversationVirtualizedTurnList
-          entries={input.entries}
-          historyRows={input.historyRows}
-          conversationId="thread_1"
-          threadCwd="/tmp/project"
-          editableTurnIds={new Set()}
-          canForkFromTurn={true}
-          initialScrollOffset={input.initialScrollOffset}
-          initialLatestTurnRestoreState={input.initialLatestTurnRestoreState}
-          onLatestTurnRestoreStateChange={input.onLatestTurnRestoreStateChange}
-          onRestoreStateChange={input.onRestoreStateChange}
-          onApiChange={input.onApiChange}
-          onHistoryRetentionBoundaryChange={input.onHistoryRetentionBoundaryChange}
-          scrollElement={null}
-        />
+        {input.withViewport ? <MountedViewport>{list}</MountedViewport> : list}
       </EnsureLocalConversationThreadScrollController>
     </TooltipProvider>,
   );
@@ -266,7 +307,7 @@ function hasFixedHeightClippingAncestor(element: Element): boolean {
 }
 
 describe("turn measurement compensation phases", () => {
-  test("following the latest Turn supersedes the captured measurement anchor", () => {
+  test("applies the captured native anchor after the latest-turn follow callback", () => {
     const fixture = createMeasurementResponseSpace();
     applyLocalConversationTurnMeasurementEffect({
       effect: {
@@ -283,14 +324,13 @@ describe("turn measurement compensation phases", () => {
       getResponseSpacerHeightPx: fixture.space.getHeightPx,
       onLatestTurnHeightChange: () => {
         fixture.compensate(0);
-        return "followed_bottom";
       },
       restoreScrollDistanceFromBottomPx: () => {
         throw new Error("Following already owns native placement.");
       },
       compensateScrollToDistanceFromBottomPx: fixture.compensate,
     });
-    expect(fixture.writes).toEqual([0]);
+    expect(fixture.writes).toEqual([0, 708]);
   });
 
   test("uses application-time response space when placement changes after measurement capture", () => {
@@ -317,13 +357,11 @@ describe("turn measurement compensation phases", () => {
       getResponseSpacerHeightPx: fixture.space.getHeightPx,
       onLatestTurnHeightChange: ({ heightDeltaPx }) => {
         fixture.space.consumeGrowth(heightDeltaPx ?? 0);
-        return "preserve_viewport";
       },
       restoreScrollDistanceFromBottomPx: () => {
         throw new Error("Unexpected history restore.");
       },
-      compensateScrollToDistanceFromBottomPx: (virtualDistance) =>
-        fixture.compensate(virtualDistance + fixture.space.getHeightPx()),
+      compensateScrollToDistanceFromBottomPx: fixture.compensate,
     });
 
     expect(fixture.space.getHeightPx()).toBe(328);
@@ -350,7 +388,6 @@ describe("turn measurement compensation phases", () => {
       getResponseSpacerHeightPx: fixture.space.getHeightPx,
       onLatestTurnHeightChange: ({ heightDeltaPx }) => {
         fixture.space.consumeGrowth(heightDeltaPx ?? 0);
-        return "preserve_viewport";
       },
       restoreScrollDistanceFromBottomPx: () => {
         expect(fixture.space.getHeightPx()).toBe(328);
@@ -512,6 +549,25 @@ describe("LocalConversationVirtualizedTurnList", () => {
     expect(restoreStateRef.current?.turnHeightsByKey.turn_3 ?? 0).toBe(128);
   });
 
+  test.each([true, false])(
+    "accepts native viewport measurements only while its rendered box is visible: %s",
+    (visible) => {
+      installQueuedRequestAnimationFrame();
+      installTurnBlockSizes({ turn_1: 96 }, visible);
+      let restored: VirtualizedTurnListRestoreState | null = null;
+      const view = renderVirtualizedTurnList({
+        entries: buildTurnEntries(["Measured answer"]),
+        withViewport: true,
+        onRestoreStateChange: (state) => {
+          restored = state;
+        },
+      });
+      view.unmount();
+      const snapshot = restored as VirtualizedTurnListRestoreState | null;
+      expect(snapshot?.turnHeightsByKey.turn_1).toBe(visible ? 96 : undefined);
+    },
+  );
+
   test("captures the complete running latest-turn restore state during layout cleanup", () => {
     installQueuedRequestAnimationFrame();
     installTurnBlockSizes({ turn_1: 480 });
@@ -532,6 +588,7 @@ describe("LocalConversationVirtualizedTurnList", () => {
     } | null = null;
     const view = renderVirtualizedTurnList({
       entries,
+      initialScrollOffset: 120,
       initialLatestTurnRestoreState: {
         followMode: "prework_watch",
         isLatestTurnInProgress: true,
@@ -560,7 +617,10 @@ describe("LocalConversationVirtualizedTurnList", () => {
     });
   });
 
-  test("restores the user's viewport hold inside the near-bottom follow region", () => {
+  test.each([
+    ["prework", "prework_follow"],
+    ["final_answer", "user_follow"],
+  ] as const)("resumes active %s near the bottom with %s", (phase, followMode) => {
     installQueuedRequestAnimationFrame();
     installTurnBlockSizes({ turn_1: 480 });
     const latest = buildTurnEntries(["Work is still running."])[0]!;
@@ -569,33 +629,33 @@ describe("LocalConversationVirtualizedTurnList", () => {
       status: "inProgress",
       firstTurnWorkItemStartedAtMs: 10,
       items: latest.turn.items.map((item) =>
-        item.kind === "assistantMessage" ? { ...item, assistantPhase: "commentary" } : item,
+        item.kind === "assistantMessage"
+          ? { ...item, assistantPhase: phase === "prework" ? "commentary" : "final_answer" }
+          : item,
       ),
-    };
-    const restored: VirtualizedLatestTurnRestoreState = {
-      followMode: "user_hold",
-      isLatestTurnInProgress: true,
-      latestTurnFollowContentHeightPx: 320,
-      latestTurnHeightPx: 480,
-      latestTurnPhase: "prework",
-      turnKey: "turn_1",
     };
     let captured: VirtualizedLatestTurnRestoreState | null = null;
     const view = renderVirtualizedTurnList({
       entries: [latest],
-      initialScrollOffset: 8,
-      initialLatestTurnRestoreState: restored,
+      initialScrollOffset: 0,
+      initialLatestTurnRestoreState: {
+        followMode: "static",
+        isLatestTurnInProgress: true,
+        latestTurnFollowContentHeightPx: 320,
+        latestTurnHeightPx: 480,
+        latestTurnPhase: phase,
+        turnKey: "turn_1",
+      },
       onLatestTurnRestoreStateChange: (state) => {
         captured = state;
       },
     });
-
     view.unmount();
-
     expect(captured).toMatchObject({
-      followMode: "user_hold",
+      followMode,
       isLatestTurnInProgress: true,
-      latestTurnPhase: "prework",
+      latestTurnPhase: phase,
+      latestTurnHeightPx: null,
       turnKey: "turn_1",
     });
   });
@@ -632,7 +692,12 @@ describe("LocalConversationVirtualizedTurnList", () => {
     let captured: VirtualizedLatestTurnRestoreState | null = null;
     function Fixture() {
       const [suspend, setSuspend] = useState(false);
-      update = () => setSuspend(true);
+      useLayoutEffect(() => {
+        update = () => setSuspend(true);
+        return () => {
+          update = null;
+        };
+      }, []);
       return (
         <Suspense fallback={<div>Loading pending render</div>}>
           <LocalConversationVirtualizedTurnList
@@ -706,6 +771,7 @@ describe("LocalConversationVirtualizedTurnList", () => {
           turnId: null,
         },
       ],
+      initialScrollOffset: 120,
       initialLatestTurnRestoreState: {
         followMode: "prework_watch",
         isLatestTurnInProgress: true,

@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useState, type ReactNode } from "react";
+import { memo, useCallback, useState, type ReactNode } from "react";
 import type { MotionValue } from "motion/react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { ThreadScope } from "@/lib/workbench-ui-scopes";
@@ -15,7 +15,6 @@ import {
 import {
   EnsureLocalConversationThreadScrollController,
   LocalConversationThreadScrollLayout,
-  useLocalConversationThreadScrollController,
 } from "./local-conversation-thread-scroll-controller";
 import { ConversationRecoveryActionsProvider } from "./conversation-recovery-actions";
 import { HookFeedbackSettingsNavigationProvider } from "./hook-feedback-settings-navigation";
@@ -69,6 +68,7 @@ type RestoreSnapshotUpdate = (
 ) => LocalConversationThreadRestoreSnapshot;
 
 const ignoreRestoreSnapshotUpdate = () => {};
+const readEmptyRestoreSnapshot = () => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT;
 
 function LocalConversationThreadBodyLayout({
   model,
@@ -83,10 +83,12 @@ function LocalConversationThreadBodyLayout({
   initialUiState,
   transcriptVisible = true,
   initialRestoreSnapshot,
+  readRestoreSnapshot,
   onRestoreSnapshotChange,
   turnDiffHoverPreviewDisabled = false,
 }: LocalConversationThreadBodyProps & {
   readonly initialRestoreSnapshot: LocalConversationThreadRestoreSnapshot;
+  readonly readRestoreSnapshot: () => LocalConversationThreadRestoreSnapshot;
   readonly onRestoreSnapshotChange: (update: RestoreSnapshotUpdate) => void;
 }) {
   const handleMcpAppFollowUp = useCallback(
@@ -164,7 +166,7 @@ function LocalConversationThreadBodyLayout({
                   planSidePanelState={planSidePanelState}
                   onErrorMessage={onErrorMessage}
                   initialUiState={initialUiState}
-                  initialRestoreSnapshot={initialRestoreSnapshot}
+                  readRestoreSnapshot={readRestoreSnapshot}
                   onRestoreSnapshotChange={onRestoreSnapshotChange}
                   turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
                 />
@@ -182,9 +184,12 @@ function AttachedLocalConversationThreadBody({
   ...props
 }: LocalConversationThreadBodyProps & { readonly conversationId: string }) {
   const appHandle = useScopeHandle(appScope);
-  const { addScrollListener } = useLocalConversationThreadScrollController();
   const restoreAtom = localConversationThreadRestoreSnapshotFamily(conversationId);
   const [initialRestoreSnapshot] = useState(() => appHandle.get(restoreAtom));
+  const readRestoreSnapshot = useCallback(
+    () => appHandle.get(restoreAtom),
+    [appHandle, restoreAtom],
+  );
 
   const updateRestoreSnapshot = useCallback(
     (update: RestoreSnapshotUpdate) => {
@@ -193,23 +198,11 @@ function AttachedLocalConversationThreadBody({
     [appHandle, conversationId],
   );
 
-  useLayoutEffect(
-    () =>
-      addScrollListener((distanceFromBottomPx) => {
-        updateRestoreSnapshot((current) => ({
-          ...current,
-          distanceFromBottomPx: Number.isFinite(distanceFromBottomPx)
-            ? Math.max(0, distanceFromBottomPx)
-            : 0,
-        }));
-      }),
-    [addScrollListener, updateRestoreSnapshot],
-  );
-
   return (
     <LocalConversationThreadBodyLayout
       {...props}
       initialRestoreSnapshot={initialRestoreSnapshot}
+      readRestoreSnapshot={readRestoreSnapshot}
       onRestoreSnapshotChange={updateRestoreSnapshot}
     />
   );
@@ -267,6 +260,7 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
                     <LocalConversationThreadBodyLayout
                       {...props}
                       initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                      readRestoreSnapshot={readEmptyRestoreSnapshot}
                       onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
                     />
                   )}

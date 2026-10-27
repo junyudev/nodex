@@ -179,6 +179,31 @@ describe("agent body collapse presentation", () => {
     expect(presentation.canCollapse).toBe(true);
   });
 
+  test("keeps questions and their answers in place while surrounding work folds", () => {
+    const question = buildEntryUnit("question", "assistantMessage", {
+      assistantPhase: "commentary",
+      asyncQuestion: {
+        id: "question:0",
+        sourceItemId: "question",
+        questionIndex: 0,
+        title: "Which color?",
+        options: ["Blue", "Green"],
+      },
+    });
+    const answer = buildEntryUnit("answer", "userMessage");
+    const before = buildEntryUnit("before", "exec");
+    const after = buildEntryUnit("after", "exec");
+    const presentation = projectAgentBodyCollapsePresentation([before, question, answer, after]);
+
+    expect(presentation.bodyUnits).toEqual([
+      { unit: before, persistent: false },
+      { unit: question, persistent: true },
+      { unit: answer, persistent: true },
+      { unit: after, persistent: false },
+    ]);
+    expect(presentation.collapsibleUnits).toEqual([before, after]);
+  });
+
   test("extracts worked time as the sole collapse label source", () => {
     const workedFor: ThreadWorkedForBlockModel = {
       id: "worked-for",

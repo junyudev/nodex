@@ -251,7 +251,7 @@ describe("actual transcript Find placement", () => {
                       threadStartProgress={null}
                       actions={actions}
                       onErrorMessage={() => {}}
-                      initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                      readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
                       onRestoreSnapshotChange={() => {}}
                     />
                   </LocalConversationThreadScrollLayout>
@@ -413,7 +413,7 @@ describe("actual transcript Find placement", () => {
         threadStartProgress={null}
         actions={actions}
         onErrorMessage={() => {}}
-        initialRestoreSnapshot={restore}
+        readRestoreSnapshot={() => restore}
         onRestoreSnapshotChange={() => {}}
       />
     );

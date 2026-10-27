@@ -384,7 +384,6 @@ function buildSearchUnits(input: {
   for (const block of [
     ...input.buckets.preUserItems,
     ...input.buckets.agentItems,
-    ...input.buckets.questionItems,
     ...(input.buckets.assistantItem ? [input.buckets.assistantItem] : []),
     ...input.buckets.postAssistantItems,
   ]) {
@@ -508,7 +507,6 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     ...initialBuckets,
     preUserItems: initialBuckets.preUserItems.map(searchableAssistant),
     postAssistantItems: initialBuckets.postAssistantItems.map(searchableAssistant),
-    questionItems: initialBuckets.questionItems.map(searchableAssistant),
   };
 
   const userMessageSearchBlocks = collectUserMessageSearchBlocks(buckets);
@@ -655,7 +653,6 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     nextAssistantItem?.assistantAfterBlocks?.map((block) => block.id) ?? [],
   );
   const trailingBlocks: ThreadBlockModel[] = [
-    ...buckets.questionItems,
     ...(buckets.systemEventItem ? [buckets.systemEventItem] : []),
     ...(buckets.assistantItem ? [buckets.assistantItem] : []),
     ...(!buckets.assistantItem && generatedImageGalleryBlock ? [generatedImageGalleryBlock] : []),

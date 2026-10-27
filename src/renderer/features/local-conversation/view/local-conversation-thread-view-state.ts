@@ -9,7 +9,6 @@ import {
 } from "@/lib/maitai";
 import {
   THREAD_NEAR_BOTTOM_THRESHOLD_PX,
-  type ThreadLatestTurnFollowMode,
   type VirtualizedLatestTurnRestoreState,
   type VirtualizedTurnListRestoreState,
 } from "./local-conversation-turn-virtualization";
@@ -87,13 +86,9 @@ const deletedConversationIdsAtom = scopedAtom<Readonly<Record<string, true>>>(
   { debugLabel: "local-conversation-deleted-view-state-ids" },
 );
 
-export function normalizeThreadRestoreDistanceFromBottomPx(
-  distanceFromBottomPx: number,
-  followMode?: ThreadLatestTurnFollowMode,
-): number {
+export function normalizeThreadRestoreDistanceFromBottomPx(distanceFromBottomPx: number): number {
   if (!Number.isFinite(distanceFromBottomPx)) return 0;
   const normalizedDistance = Math.max(0, distanceFromBottomPx);
-  if (followMode === "user_hold") return normalizedDistance;
   return normalizedDistance <= THREAD_NEAR_BOTTOM_THRESHOLD_PX ? 0 : normalizedDistance;
 }
 

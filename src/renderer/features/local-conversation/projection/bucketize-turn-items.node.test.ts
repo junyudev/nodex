@@ -2117,7 +2117,7 @@ describe("bucketizeTurnItems", () => {
   });
 });
 
-test("keeps question sources visible beside a completed reply while work stays collapsible", () => {
+test("keeps question sources in order before their answers and later work", () => {
   const source = buildItem({
     id: "question",
     type: "assistantMessage",
@@ -2145,8 +2145,10 @@ test("keeps question sources visible beside a completed reply while work stays c
       assistantPhase: "final_answer",
     },
   });
+  const answer = buildItem({ id: "answer", type: "userMessage" });
+  const laterWork = buildItem({ id: "later-command", type: "exec" });
   const buckets = bucketizeTurnItems({
-    items: [buildItem({ id: "command", type: "exec" }), source, reply],
+    items: [buildItem({ id: "command", type: "exec" }), source, answer, laterWork, reply],
     turnStatus: "completed",
   });
   const turn = buildTurnViewModel({
@@ -2159,9 +2161,36 @@ test("keeps question sources visible beside a completed reply while work stays c
     isBlocked: false,
     canForkTurn: true,
   });
-  expect(buckets.agentItems.map((item) => item.id)).toEqual(["command"]);
-  expect(turn.trailingBlocks.map((block) => block.id)).toEqual(["question", "reply"]);
+  expect(buckets.agentItems.map((item) => item.id)).toEqual([
+    "command",
+    "question",
+    "answer",
+    "later-command",
+  ]);
+  expect(turn.trailingBlocks.map((block) => block.id)).toEqual(["reply"]);
   expect(
     turn.searchUnits.some((unit) => unit.itemId === "question" && unit.text === "Which color?"),
   ).toBe(true);
+});
+
+test("does not promote the last question to a final assistant reply", () => {
+  const question = buildItem({
+    id: "question",
+    entry: {
+      ...buildItem({}).entry,
+      asyncQuestion: {
+        id: "question:0",
+        sourceItemId: "question",
+        questionIndex: 0,
+        title: "Which color?",
+        options: ["Blue", "Green"],
+      },
+    },
+  });
+
+  const buckets = bucketizeTurnItems({ items: [question], turnStatus: "inProgress" });
+
+  expect(buckets.agentItems).toEqual([question]);
+  expect(buckets.assistantItem).toBeNull();
+  expect(buckets.latestAssistantMessage).toBeNull();
 });

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { act } from "@testing-library/react";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { motionValue } from "motion/react";
 import { installAsyncRequestAnimationFrame } from "../../../test/browser-globals";
 import { render, settleAsyncRender } from "../../../test/dom";
@@ -129,12 +129,14 @@ describe("LocalConversationThreadScrollLayout", () => {
       });
       expect(fixture.viewport.scrollTop).toBe(1_500);
 
+      // Deliver the initial size observation after the fixture installs native geometry.
+      await growContent(2_000);
       await growContent(2_300);
       expect(fixture.viewport.scrollTop).toBe(1_800);
       expect(fixture.controller.getScrollDistanceFromBottomPx()).toBe(0);
 
       await act(async () => {
-        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -40 }));
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -40 }));
         fixture.viewport.scrollTop = 1_760;
         fixture.viewport.dispatchEvent(new Event("scroll"));
         await Promise.resolve();
@@ -237,42 +239,6 @@ describe("LocalConversationThreadScrollLayout", () => {
       await settleAsyncRender();
       expect(nearBottomViewport?.scrollTop ?? -1).toBe(500);
       nearBottom.unmount();
-
-      for (const distanceFromBottomPx of [0, 8]) {
-        const heldController: { current: LocalConversationThreadScrollControllerValue | null } = {
-          current: null,
-        };
-        const held = render(
-          <EnsureLocalConversationThreadScrollController>
-            <ControllerProbe onController={(controller) => (heldController.current = controller)} />
-            <LocalConversationThreadScrollLayout
-              initialRestoreSnapshot={{
-                distanceFromBottomPx,
-                latestTurn: {
-                  followMode: "user_hold",
-                  isLatestTurnInProgress: true,
-                  latestTurnFollowContentHeightPx: null,
-                  latestTurnHeightPx: null,
-                  latestTurnPhase: "prework",
-                  turnKey: "held-turn",
-                },
-                virtualizedTurnList: null,
-              }}
-            >
-              <div>Held thread</div>
-            </LocalConversationThreadScrollLayout>
-          </EnsureLocalConversationThreadScrollController>,
-        );
-        try {
-          await settleAsyncRender();
-          expect(heldController.current?.getScrollDistanceFromBottomPx()).toBe(
-            distanceFromBottomPx,
-          );
-          expect(heldController.current?.getScrollMode()).toBe("user");
-        } finally {
-          held.unmount();
-        }
-      }
     } finally {
       if (originalScrollHeight) {
         Object.defineProperty(HTMLElement.prototype, "scrollHeight", originalScrollHeight);
@@ -314,7 +280,15 @@ describe("LocalConversationThreadScrollLayout", () => {
       disconnect() {}
 
       observe(target: Element) {
-        this.callback([{ target } as ResizeObserverEntry], this as unknown as ResizeObserver);
+        this.callback(
+          [
+            {
+              target,
+              borderBoxSize: [{ blockSize: 48, inlineSize: 300 }],
+            } as unknown as ResizeObserverEntry,
+          ],
+          this as unknown as ResizeObserver,
+        );
       }
 
       unobserve() {}
@@ -345,6 +319,93 @@ describe("LocalConversationThreadScrollLayout", () => {
     expect(Boolean(footer)).toBe(true);
     expect(Boolean(footerObstacle)).toBe(true);
     expect(scrollContainer?.style.getPropertyValue("--thread-scroll-padding-bottom")).toBe("64px");
+  });
+
+  test("keeps a small upward scroll across footer rerenders with fractional zoom geometry", async () => {
+    const observers: Array<{ callback: ResizeObserverCallback; targets: Set<Element> }> = [];
+    class TestResizeObserver {
+      private readonly record: (typeof observers)[number];
+      constructor(callback: ResizeObserverCallback) {
+        this.record = { callback, targets: new Set() };
+        observers.push(this.record);
+      }
+      observe = (element: Element) => this.record.targets.add(element);
+      unobserve = (element: Element) => this.record.targets.delete(element);
+      disconnect = () => this.record.targets.clear();
+    }
+    Object.defineProperty(globalThis, "ResizeObserver", {
+      configurable: true,
+      value: TestResizeObserver,
+      writable: true,
+    });
+    let controller: LocalConversationThreadScrollControllerValue | undefined;
+    const capture = (next: LocalConversationThreadScrollControllerValue) => {
+      controller = next;
+    };
+    function Fixture({ label }: { label: string }) {
+      return (
+        <EnsureLocalConversationThreadScrollController>
+          <LocalConversationThreadScrollLayout footer={<div>{label}</div>}>
+            <ControllerProbe onController={capture} />
+            <div>Thread content</div>
+          </LocalConversationThreadScrollLayout>
+        </EnsureLocalConversationThreadScrollController>
+      );
+    }
+    const view = render(<Fixture label="Composer" />);
+    await settleAsyncRender();
+    const viewport = view.container.querySelector<HTMLDivElement>(
+      "[data-local-conversation-thread-body]",
+    )!;
+    const footer = view.container.querySelector<HTMLDivElement>("[data-thread-scroll-footer]")!;
+    const writes: ScrollToOptions[] = [];
+    Object.defineProperties(viewport, {
+      scrollHeight: { configurable: true, value: 2_000 },
+      clientHeight: { configurable: true, value: 500 },
+      scrollTo: {
+        configurable: true,
+        value: (options: ScrollToOptions) => {
+          writes.push(options);
+          viewport.scrollTop = options.top ?? 0;
+        },
+      },
+    });
+    // Zoomed bounds and ResizeObserver can differ while the footer itself remains unchanged.
+    footer.style.setProperty("--codex-window-zoom", "0.9");
+    footer.getBoundingClientRect = () =>
+      createDomRect({ x: 0, y: 0, width: 300, height: 95.98958333333333 * 0.9 });
+    const observer = observers.find((candidate) => candidate.targets.has(footer))!;
+    try {
+      await act(async () => {
+        controller?.jumpToBottom();
+        observer.callback(
+          [
+            {
+              target: footer,
+              borderBoxSize: [{ blockSize: 95.984375, inlineSize: 300 }],
+            } as unknown as ResizeObserverEntry,
+          ],
+          observer as unknown as ResizeObserver,
+        );
+        viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -8 }));
+        viewport.scrollTop = 1_492;
+        viewport.dispatchEvent(new Event("scroll"));
+        await Promise.resolve();
+      });
+      const beforeRerender = writes.length;
+      expect(controller?.getScrollMode()).toBe("user");
+      await act(async () => {
+        view.rerender(<Fixture label="Updated composer" />);
+        await Promise.resolve();
+      });
+      expect(controller?.getScrollDistanceFromBottomPx()).toBe(8);
+      expect(writes).toHaveLength(beforeRerender);
+      expect(viewport.style.getPropertyValue("--thread-scroll-padding-bottom")).toBe(
+        "111.984375px",
+      );
+    } finally {
+      await act(async () => view.unmount());
+    }
   });
 
   test("publishes remote-hosted PiP host layout and clears it on unmount", async () => {
@@ -639,7 +700,7 @@ describe("LocalConversationThreadScrollLayout", () => {
     try {
       await act(async () => {
         fixture.viewport.dispatchEvent(new Event("scroll"));
-        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -8 }));
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -8 }));
         fixture.viewport.scrollTop = 1_392;
         expect(fixture.controller.getScrollDistanceFromBottomPx()).toBe(108);
         expect(fixture.controller.getLastScrollDistanceFromBottomPx()).toBe(100);
@@ -663,7 +724,7 @@ describe("LocalConversationThreadScrollLayout", () => {
     try {
       await act(async () => {
         fixture.controller.jumpToBottom();
-        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -8 }));
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -8 }));
         fixture.viewport.dispatchEvent(new Event("scroll"));
         fixture.viewport.scrollTop = 1_492;
         fixture.viewport.dispatchEvent(new Event("scroll"));
@@ -677,7 +738,67 @@ describe("LocalConversationThreadScrollLayout", () => {
     }
   });
 
-  test("unchanged or sub-pixel layout compensation does not interrupt native scrolling", async () => {
+  test("notifies geometry before user intent and restores following only while moving toward bottom", async () => {
+    const fixture = await renderNativeFindController();
+    const observations: Array<[string, number, string]> = [];
+    const stopScroll = fixture.controller.addScrollListener((distance) =>
+      observations.push(["scroll", distance, fixture.controller.getScrollMode()]),
+    );
+    const stopUser = fixture.controller.addUserScrollListener((distance) =>
+      observations.push(["user", distance, fixture.controller.getScrollMode()]),
+    );
+    try {
+      await act(async () => {
+        fixture.controller.jumpToBottom();
+        observations.length = 0;
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -8 }));
+        fixture.viewport.scrollTop = 1_492;
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 4 }));
+        fixture.viewport.scrollTop = 1_496;
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        await Promise.resolve();
+      });
+      expect(observations).toEqual([
+        ["scroll", 8, "stickToBottom"],
+        ["user", 8, "user"],
+        ["scroll", 4, "user"],
+        ["user", 4, "stickToBottom"],
+      ]);
+    } finally {
+      stopScroll();
+      stopUser();
+      await fixture.dispose();
+    }
+  });
+
+  test("explicit user navigation updates the follow state and reports its displacement", async () => {
+    const fixture = await renderNativeFindController();
+    const displacements: Array<[number, number | undefined]> = [];
+    const stop = fixture.controller.addUserScrollListener((distance, previous) =>
+      displacements.push([distance, previous]),
+    );
+    try {
+      await act(async () => {
+        fixture.controller.jumpToBottom();
+        fixture.controller.scrollToDistanceFromBottomPx(8, "instant", "user");
+        await Promise.resolve();
+      });
+      expect(fixture.controller.shouldFollowContentGrowth()).toBe(false);
+      expect(displacements).toEqual([[8, 0]]);
+      await act(async () => {
+        fixture.controller.scrollToDistanceFromBottomPx(0, "instant");
+        await Promise.resolve();
+      });
+      expect(fixture.controller.shouldFollowContentGrowth()).toBe(true);
+      expect(displacements).toEqual([[8, 0]]);
+    } finally {
+      stop();
+      await fixture.dispose();
+    }
+  });
+
+  test("skips unchanged positions and writes exact fractional layout compensation", async () => {
     const fixture = await renderNativeFindController();
     try {
       await act(async () => {
@@ -687,12 +808,12 @@ describe("LocalConversationThreadScrollLayout", () => {
       expect(fixture.scrollWrites).toEqual([]);
       expect(fixture.controller.getLastScrollDistanceFromBottomPx()).toBe(100);
 
-      // Integer scroll extents round fractional layout; the request keeps its exact value.
+      // Fractional offsets remain native scroll destinations.
       await act(async () => {
         fixture.controller.compensateScrollToDistanceFromBottomPx(100.5);
         await Promise.resolve();
       });
-      expect(fixture.scrollWrites).toEqual([]);
+      expect(fixture.scrollWrites).toEqual([{ behavior: "instant", top: 1_399.5 }]);
       expect(
         fixture.controller.getUnroundedScrollDistanceFromBottomPx(
           fixture.controller.getLastScrollDistanceFromBottomPx(),
@@ -703,7 +824,10 @@ describe("LocalConversationThreadScrollLayout", () => {
         fixture.controller.compensateScrollToDistanceFromBottomPx(101.5);
         await Promise.resolve();
       });
-      expect(fixture.scrollWrites).toEqual([{ behavior: "instant", top: 1_398.5 }]);
+      expect(fixture.scrollWrites).toEqual([
+        { behavior: "instant", top: 1_399.5 },
+        { behavior: "instant", top: 1_398.5 },
+      ]);
     } finally {
       await fixture.dispose();
     }
@@ -762,7 +886,7 @@ describe("LocalConversationThreadScrollLayout", () => {
     const fixture = await renderNativeFindController();
     try {
       await act(async () => {
-        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20 }));
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -20 }));
         fixture.viewport.scrollTop = 1_380;
         fixture.viewport.dispatchEvent(new Event("scroll"));
         await Promise.resolve();
@@ -785,7 +909,7 @@ describe("LocalConversationThreadScrollLayout", () => {
 
   test.each([
     "wheel",
-    "repeated scroll key",
+    "scroll key",
     "scrollbar",
     "vertical touch",
     "submit",
@@ -800,11 +924,11 @@ describe("LocalConversationThreadScrollLayout", () => {
       await act(async () => {
         switch (intent) {
           case "wheel":
-            fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20 }));
+            fixture.viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -20 }));
             break;
-          case "repeated scroll key":
+          case "scroll key":
             fixture.viewport.dispatchEvent(
-              new KeyboardEvent("keydown", { key: "PageUp", repeat: true }),
+              new KeyboardEvent("keydown", { bubbles: true, key: "PageUp" }),
             );
             break;
           case "scrollbar": {
@@ -851,8 +975,12 @@ describe("LocalConversationThreadScrollLayout", () => {
     try {
       await fixture.beginFind();
       await act(async () => {
-        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaX: 20, deltaY: 1 }));
-        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20, ctrlKey: true }));
+        fixture.viewport.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaX: 20, deltaY: 1 }),
+        );
+        fixture.viewport.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaY: -20, ctrlKey: true }),
+        );
         fixture.input.dispatchEvent(
           new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
         );
@@ -903,6 +1031,40 @@ describe("LocalConversationThreadScrollLayout", () => {
     }
   });
 
+  test.each(["wheel", "keydown"] as const)(
+    "a nested React consumer can handle %s without canceling native Find",
+    async (type) => {
+      const fixture = await renderNativeFindController(
+        <button
+          onWheel={(event) => event.preventDefault()}
+          onKeyDown={(event) => event.preventDefault()}
+        >
+          Nested interaction
+        </button>,
+      );
+      try {
+        await fixture.beginFind();
+        await act(async () => {
+          const event =
+            type === "wheel"
+              ? new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -8 })
+              : new KeyboardEvent("keydown", {
+                  bubbles: true,
+                  cancelable: true,
+                  key: "PageUp",
+                });
+          fixture.view.getByRole("button", { name: "Nested interaction" }).dispatchEvent(event);
+          await Promise.resolve();
+        });
+        expect(fixture.controller.getScrollMode()).toBe("programmaticFind");
+        await fixture.compensateAndSettle();
+        expect(fixture.findScrolls).toHaveLength(2);
+      } finally {
+        await fixture.dispose();
+      }
+    },
+  );
+
   test("unmount cancels queued native recentering and fences retained controller callbacks", async () => {
     const fixture = await renderNativeFindController();
     await fixture.beginFind();
@@ -918,7 +1080,7 @@ describe("LocalConversationThreadScrollLayout", () => {
 });
 
 /** The native scrolling boundary is recorded; the provider, intent listeners, and Find lease are real. */
-async function renderNativeFindController() {
+async function renderNativeFindController(children?: ReactNode) {
   const controllers: LocalConversationThreadScrollControllerValue[] = [];
   const view = render(
     <EnsureLocalConversationThreadScrollController>
@@ -929,6 +1091,7 @@ async function renderNativeFindController() {
         </div>
         <button data-testid="other-target">Another destination</button>
         <input aria-label="Draft" />
+        {children}
       </LocalConversationThreadScrollLayout>
     </EnsureLocalConversationThreadScrollController>,
   );
