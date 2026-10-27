@@ -3243,6 +3243,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 expectedTurnId: nativeTurnId,
                 input: [{ type: "text", text: "then $ship it" }],
                 threadId: nativeThreadId,
+                clientUserMessageId: "message-skill-sigil-steer",
               },
             },
           },
@@ -3306,7 +3307,12 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               frame: {
                 id: 4,
                 method: "turn/steer",
-                params: { expectedTurnId: nativeTurnId, input, threadId: nativeThreadId },
+                params: {
+                  expectedTurnId: nativeTurnId,
+                  input,
+                  threadId: nativeThreadId,
+                  clientUserMessageId: "message-continued-turn-steer",
+                },
               },
             },
             {
@@ -3326,7 +3332,12 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               frame: {
                 id: 5,
                 method: "turn/steer",
-                params: { expectedTurnId: continuedTurnId, input, threadId: nativeThreadId },
+                params: {
+                  expectedTurnId: continuedTurnId,
+                  input,
+                  threadId: nativeThreadId,
+                  clientUserMessageId: "message-continued-turn-steer",
+                },
               },
             },
             {
@@ -3357,6 +3368,149 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             ...turnInput.message,
             messageId: MessageId.make("message-continued-turn-steer"),
             text: "Use the release branch.",
+          },
+        });
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect.each([
+    { delivery: "not_dispatched", echo: "item/completed" },
+    { delivery: "rejected", echo: "item/completed" },
+    { delivery: "unknown", echo: "item/started" },
+    { delivery: "unknown", echo: "item/completed" },
+  ] as const)(
+    "classifies $delivery steering and correlates a late $echo receipt",
+    ({ delivery, echo }) =>
+      Effect.gen(function* () {
+        const nativeThreadId = "delivery-thread";
+        const nativeTurnId = "delivery-turn";
+        const messageId = MessageId.make("exact-delivery-message");
+        const text = "Use the release branch.";
+        const transcript = makeCodexReplayTranscript({
+          scenario: `delivery-${delivery}-${echo.replace("/", "-")}`,
+          entries: [
+            ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "Prepare it." }),
+            ...(delivery === "not_dispatched"
+              ? []
+              : [
+                  {
+                    type: "expect_outbound" as const,
+                    frame: {
+                      id: 4,
+                      method: "turn/steer",
+                      params: {
+                        threadId: nativeThreadId,
+                        expectedTurnId: nativeTurnId,
+                        clientUserMessageId: messageId,
+                        input: [{ type: "text", text }],
+                      },
+                    },
+                  },
+                  {
+                    type: "emit_inbound" as const,
+                    frame:
+                      delivery === "rejected"
+                        ? { id: 4, error: { code: -32600, message: "Turn already ended" } }
+                        : { id: 4, result: { turnId: 17 } },
+                  },
+                ]),
+            ...(delivery !== "unknown"
+              ? []
+              : [
+                  {
+                    type: "emit_inbound" as const,
+                    frame: {
+                      method: "turn/completed",
+                      params: {
+                        threadId: nativeThreadId,
+                        turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+                      },
+                    },
+                  },
+                  {
+                    type: "emit_inbound" as const,
+                    frame: {
+                      method: "item/completed",
+                      params: {
+                        threadId: nativeThreadId,
+                        turnId: nativeTurnId,
+                        item: {
+                          type: "userMessage",
+                          id: "other-native-message",
+                          clientId: "unrelated-client-id",
+                          content: [{ type: "text", text }],
+                        },
+                      },
+                    },
+                  },
+                  {
+                    type: "emit_inbound" as const,
+                    afterMs: 10,
+                    frame: {
+                      method: echo,
+                      params: {
+                        threadId: nativeThreadId,
+                        turnId: nativeTurnId,
+                        startedAtMs: 1_800_000_000_000,
+                        item: {
+                          type: "userMessage",
+                          id: "accepted-native-message",
+                          clientId: messageId,
+                          content: [{ type: "text", text }],
+                        },
+                      },
+                    },
+                  },
+                ]),
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript);
+        const input = makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("delivery-attempt"),
+          text: "Prepare it.",
+        });
+        yield* harness.runtime.startTurn(input);
+        const steerInput = {
+          threadId: harness.threadId,
+          runId: input.runId,
+          providerThread: harness.providerThread,
+          providerTurnId: (yield* IdAllocator.IdAllocatorV2).derive.providerTurn({
+            driver: CodexAdapterV2.CODEX_DRIVER_KIND,
+            nativeTurnId: delivery === "not_dispatched" ? "missing-turn" : nativeTurnId,
+          }),
+          message: { ...input.message, messageId, text },
+        };
+        const error = yield* harness.runtime.steerTurn(steerInput).pipe(Effect.flip);
+        if (error._tag !== "ProviderAdapterSteerRunError")
+          return yield* Effect.die(
+            "Steering failures must preserve their delivery classification.",
+          );
+        assert.equal(error.delivery, delivery);
+        const receipts = () =>
+          harness.events.filter((event) => event.type === "message.delivery.updated");
+        assert.isEmpty(receipts());
+        if (delivery !== "unknown") return;
+        yield* harness.firstTerminal;
+        const retry = yield* harness.runtime.steerTurn(steerInput).pipe(Effect.flip);
+        assert.equal(retry._tag === "ProviderAdapterSteerRunError" && retry.delivery, "unknown");
+        yield* TestClock.adjust("10 millis");
+        yield* awaitUntil(() => receipts().length === 1, "exact native message receipt");
+        assert.deepInclude(receipts()[0], {
+          threadId: harness.threadId,
+          messageId,
+          delivery: "accepted",
+          nativeItemRef: {
+            driver: CodexAdapterV2.CODEX_DRIVER_KIND,
+            nativeId: "accepted-native-message",
+            strength: "strong",
           },
         });
       }).pipe(
@@ -3774,6 +3928,112 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  it.effect.each([true, false])(
+    "preserves native questionnaire metadata when blocking is %s",
+    (isBlocking) =>
+      Effect.gen(function* () {
+        const nativeThreadId = "question-metadata-thread";
+        const nativeTurnId = "question-metadata-turn";
+        const prompt = "Choose the release destination.";
+        let runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime | undefined;
+        const transcript = makeCodexReplayTranscript({
+          scenario: "question-metadata",
+          entries: [
+            ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt }),
+            {
+              type: "emit_inbound",
+              frame: {
+                id: "question-request",
+                method: "item/tool/requestUserInput",
+                params: {
+                  threadId: nativeThreadId,
+                  turnId: nativeTurnId,
+                  itemId: "question-item",
+                  isBlocking,
+                  autoResolutionMs: 12_000,
+                  questions: [
+                    {
+                      id: "destination",
+                      header: "Destination",
+                      question: "Where should it go?",
+                      isOther: false,
+                      isSecret: true,
+                      options: [{ label: "Release", description: "Publish the release" }],
+                    },
+                    {
+                      id: "notes",
+                      header: "Notes",
+                      question: "Any notes?",
+                      isOther: true,
+                      isSecret: false,
+                      options: [],
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              type: "expect_outbound",
+              frame: {
+                id: "question-request",
+                result: {
+                  answers: { destination: { answers: ["Release"] }, notes: { answers: ["Ready"] } },
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+                },
+              },
+            },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript, (event) =>
+          event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending"
+            ? runtime!
+                .respondToRuntimeRequest({
+                  requestId: event.runtimeRequest.id,
+                  answers: { destination: "Release", notes: "Ready" },
+                })
+                .pipe(Effect.orDie)
+            : Effect.void,
+        );
+        runtime = harness.runtime;
+        yield* runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("question-metadata-attempt"),
+            text: prompt,
+          }),
+        );
+        yield* harness.firstTerminal;
+        const item = harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.type === "user_input_request"
+            ? [event.turnItem]
+            : [],
+        )[0];
+        const request = harness.events.flatMap((event) =>
+          event.type === "runtime_request.updated" ? [event.runtimeRequest] : [],
+        )[0];
+        assert.deepInclude(item, { isBlocking, autoResolutionMs: 12_000 });
+        assert.deepInclude(request, { isBlocking, autoResolutionMs: 12_000 });
+        assert.deepInclude(item?.questions[0], { allowCustomAnswer: false, isSecret: true });
+        assert.deepInclude(item?.questions[1], { allowCustomAnswer: true, isSecret: false });
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
   it.effect("preserves Nodex context on the wire and restores it after compaction", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -3941,6 +4201,119 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         );
         assert.equal(items[0]?.id, items[1]?.id);
         assert.equal(harness.terminalEvents()[0]?.status, "completed");
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("reconciles a persisted unknown answer from a bounded native page after restart", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const scenario = "codex-resume-message-receipt";
+        const nativeThreadId = `native-${scenario}-thread`;
+        const messageId = MessageId.make("persisted-question-answer");
+        const preamble = codexReplayPreamble({
+          nativeThreadId,
+          nativeTurnId: "unused-turn",
+          prompt: "unused",
+        }).slice(0, 5);
+        const transcript = makeCodexReplayTranscript({
+          scenario,
+          entries: [
+            ...preamble,
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 3,
+                method: "thread/resume",
+                params: {
+                  threadId: nativeThreadId,
+                  excludeTurns: true,
+                  config: CodexAdapterV2.CODEX_THREAD_CONFIG,
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: { id: 3, result: { thread: { id: nativeThreadId, updatedAt: 1782622450 } } },
+            },
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 4,
+                method: "thread/items/list",
+                params: {
+                  threadId: nativeThreadId,
+                  limit: 100,
+                  sortDirection: "desc",
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                id: 4,
+                result: {
+                  nextCursor: null,
+                  backwardsCursor: null,
+                  data: [
+                    {
+                      turnId: "previous-turn",
+                      startedAtMs: null,
+                      completedAtMs: null,
+                      item: {
+                        type: "userMessage",
+                        id: "unrelated-server-message",
+                        clientId: "someone-else",
+                        content: [{ type: "text", text: "same answer" }],
+                      },
+                    },
+                    {
+                      turnId: "previous-turn",
+                      startedAtMs: null,
+                      completedAtMs: null,
+                      item: {
+                        type: "userMessage",
+                        id: "accepted-before-restart",
+                        clientId: messageId,
+                        content: [{ type: "text", text: "same answer" }],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript);
+        yield* harness.runtime.resumeThread({
+          providerThread: harness.providerThread,
+          threadId: harness.threadId,
+          pendingDeliveryMessageIds: [messageId],
+          modelSelection: CODEX_TEST_MODEL_SELECTION,
+          runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
+        });
+        yield* awaitUntil(
+          () => harness.events.some((event) => event.type === "message.delivery.updated"),
+          "restored native message receipt",
+        );
+        const receipts = harness.events.filter(
+          (event) => event.type === "message.delivery.updated",
+        );
+        assert.lengthOf(receipts, 1);
+        assert.deepInclude(receipts[0], {
+          threadId: harness.threadId,
+          messageId,
+          delivery: "accepted",
+          nativeItemRef: {
+            driver: CodexAdapterV2.CODEX_DRIVER_KIND,
+            nativeId: "accepted-before-restart",
+            strength: "strong",
+          },
+        });
       }).pipe(
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),

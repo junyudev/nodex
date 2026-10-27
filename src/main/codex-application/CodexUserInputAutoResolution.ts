@@ -12,7 +12,10 @@ import * as Stream from "effect/Stream";
 import type {
   CodexUserInputAutoResolutionChange,
   CodexUserInputAutoResolutionEntry,
+  CodexUserInputAutoResolutionConversation,
+  CodexUserInputAutoResolutionTarget,
 } from "../../shared/codex-user-input-auto-resolution";
+import { codexUserInputConversationKey } from "../../shared/codex-user-input-auto-resolution";
 import type { CodexProtocolRequestId } from "../../shared/types";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import { CodexRendererPresentationRegistry } from "./CodexRendererPresentationRegistry";
@@ -21,9 +24,13 @@ export const USER_INPUT_FOREGROUND_INACTIVITY = "60 seconds";
 export const USER_INPUT_AUTO_RESOLUTION_COUNTDOWN = "90 seconds";
 const USER_INPUT_AUTO_RESOLUTION_COUNTDOWN_MS = 90_000;
 
-export type CodexUserInputAutoResolutionResponseKind = "emptyUserInput" | "declineMcpElicitation";
+export type CodexUserInputAutoResolutionResponseKind =
+  | "emptyUserInput"
+  | "declineMcpElicitation"
+  | "runtimeUserInput";
 
 export interface CodexUserInputAutoResolutionRequestOptions {
+  readonly hostId?: string;
   readonly responseKind?: CodexUserInputAutoResolutionResponseKind;
   readonly autoResolutionMs?: number;
 }
@@ -70,15 +77,18 @@ export class CodexUserInputAutoResolution extends Context.Service<
       requestId: CodexProtocolRequestId,
       connection: TrackedUserInput["connection"],
     ) => Effect.Effect<void>;
-    readonly reevaluatePresentation: (conversationId: string) => Effect.Effect<void>;
-    readonly recordActivity: (conversationId: string) => Effect.Effect<void>;
-    readonly snooze: (
-      conversationId: string,
-      requestId: CodexProtocolRequestId,
-    ) => Effect.Effect<boolean>;
-    readonly clearConversation: (conversationId: string) => Effect.Effect<void>;
+    readonly reevaluatePresentation: (
+      conversation: CodexUserInputAutoResolutionConversation,
+    ) => Effect.Effect<void>;
+    readonly recordActivity: (
+      conversation: CodexUserInputAutoResolutionConversation,
+    ) => Effect.Effect<void>;
+    readonly snooze: (target: CodexUserInputAutoResolutionTarget) => Effect.Effect<boolean>;
+    readonly clearConversation: (
+      conversation: CodexUserInputAutoResolutionConversation,
+    ) => Effect.Effect<void>;
     readonly reconcilePendingRequests: (
-      conversationId: string,
+      conversation: CodexUserInputAutoResolutionConversation,
       requestIds: readonly CodexProtocolRequestId[],
     ) => Effect.Effect<void>;
     readonly handleDisconnect: (hostId: string, generation?: number) => Effect.Effect<void>;
@@ -107,12 +117,14 @@ export const make: Effect.Effect<
 
   const publish = (change: AutoResolutionEvent) =>
     PubSub.publish(changes, change).pipe(Effect.asVoid);
-  const current = (conversationId: string) =>
+  const current = (conversation: CodexUserInputAutoResolutionConversation) =>
     Ref.get(state).pipe(
-      Effect.map((entries) => Option.getOrUndefined(HashMap.get(entries, conversationId))),
+      Effect.map((entries) =>
+        Option.getOrUndefined(HashMap.get(entries, codexUserInputConversationKey(conversation))),
+      ),
     );
   const isCurrent = (tracked: TrackedUserInput) =>
-    current(tracked.entry.conversationId).pipe(
+    current(tracked.entry).pipe(
       Effect.map(
         (candidate) =>
           candidate?.generation === tracked.generation &&
@@ -128,11 +140,12 @@ export const make: Effect.Effect<
         Effect.gen(function* () {
           if (!(yield* isCurrent(tracked))) return;
           yield* Ref.update(state, (entries) =>
-            HashMap.remove(entries, tracked.entry.conversationId),
+            HashMap.remove(entries, codexUserInputConversationKey(tracked.entry)),
           );
           const event: CodexUserInputAutoResolutionTimeout = {
             type: "timedOut",
             connection: tracked.connection,
+            hostId: tracked.entry.hostId,
             conversationId: tracked.entry.conversationId,
             requestId: tracked.entry.requestId,
             responseKind: tracked.responseKind,
@@ -164,7 +177,7 @@ export const make: Effect.Effect<
               },
             };
             yield* Ref.update(state, (entries) =>
-              HashMap.set(entries, scheduled.entry.conversationId, scheduled),
+              HashMap.set(entries, codexUserInputConversationKey(scheduled.entry), scheduled),
             );
             yield* publish({ type: "updated", entry: scheduled.entry });
             return true;
@@ -196,25 +209,27 @@ export const make: Effect.Effect<
                 },
         },
       };
-      yield* Ref.update(state, (entries) => HashMap.set(entries, next.entry.conversationId, next));
+      yield* Ref.update(state, (entries) =>
+        HashMap.set(entries, codexUserInputConversationKey(next.entry), next),
+      );
       if (publishChange) yield* publish({ type: "updated", entry: next.entry });
       yield* FiberMap.run(
         timers,
-        next.entry.conversationId,
+        codexUserInputConversationKey(next.entry),
         phase === "foreground" ? foregroundTimer(next) : countdown(next, countdownMs),
         { startImmediately: true },
       );
     });
 
   const remove = (
-    conversationId: string,
+    conversation: CodexUserInputAutoResolutionConversation,
     requestId: CodexProtocolRequestId,
     reason: RemovalReason,
     connection?: TrackedUserInput["connection"],
   ) =>
     mutations.withPermits(1)(
       Effect.gen(function* () {
-        const tracked = yield* current(conversationId);
+        const tracked = yield* current(conversation);
         if (!tracked || !sameRequestId(tracked.entry.requestId, requestId)) return false;
         if (
           connection &&
@@ -222,9 +237,11 @@ export const make: Effect.Effect<
             tracked.connection.generation !== connection.generation)
         )
           return false;
-        yield* FiberMap.remove(timers, conversationId);
-        yield* Ref.update(state, (entries) => HashMap.remove(entries, conversationId));
-        yield* publish({ type: "removed", conversationId, requestId, reason });
+        yield* FiberMap.remove(timers, codexUserInputConversationKey(conversation));
+        yield* Ref.update(state, (entries) =>
+          HashMap.remove(entries, codexUserInputConversationKey(conversation)),
+        );
+        yield* publish({ type: "removed", ...conversation, requestId, reason });
         return true;
       }),
     );
@@ -240,6 +257,7 @@ export const make: Effect.Effect<
           (tracked) =>
             publish({
               type: "removed",
+              hostId: tracked.entry.hostId,
               conversationId: tracked.entry.conversationId,
               requestId: tracked.entry.requestId,
               reason,
@@ -258,6 +276,7 @@ export const make: Effect.Effect<
         change.type === "timedOut"
           ? {
               type: "timedOut",
+              hostId: change.hostId,
               conversationId: change.conversationId,
               requestId: change.requestId,
             }
@@ -279,7 +298,8 @@ export const make: Effect.Effect<
     observeRequest: (conversationId, requestId, connection, options = {}) =>
       mutations.withPermits(1)(
         Effect.gen(function* () {
-          const previous = yield* current(conversationId);
+          const conversation = { hostId: options.hostId ?? connection.hostId, conversationId };
+          const previous = yield* current(conversation);
           if (
             previous &&
             sameRequestId(previous.entry.requestId, requestId) &&
@@ -288,17 +308,17 @@ export const make: Effect.Effect<
           )
             return;
           if (previous) {
-            yield* FiberMap.remove(timers, conversationId);
+            yield* FiberMap.remove(timers, codexUserInputConversationKey(conversation));
             yield* publish({
               type: "removed",
-              conversationId,
+              ...conversation,
               requestId: previous.entry.requestId,
               reason: "replaced",
             });
           }
           const tracked: TrackedUserInput = {
             connection,
-            entry: { conversationId, requestId, phase: { type: "waitingForInactivity" } },
+            entry: { ...conversation, requestId, phase: { type: "waitingForInactivity" } },
             generation: previous?.generation ?? 0,
             responseKind: options.responseKind ?? "emptyUserInput",
             autoResolutionMs: options.autoResolutionMs ?? null,
@@ -309,7 +329,10 @@ export const make: Effect.Effect<
           }
           yield* schedule(
             tracked,
-            rendererConversations.isPresentedInForeground(conversationId)
+            rendererConversations.isPresentedInForeground(
+              conversation.conversationId,
+              conversation.hostId,
+            )
               ? "foreground"
               : "background",
             true,
@@ -317,15 +340,27 @@ export const make: Effect.Effect<
         }),
       ),
     observeResponse: (conversationId, requestId, connection) =>
-      remove(conversationId, requestId, "responded", connection).pipe(Effect.asVoid),
+      remove(
+        { hostId: connection.hostId, conversationId },
+        requestId,
+        "responded",
+        connection,
+      ).pipe(Effect.asVoid),
     observeServerResolution: (conversationId, requestId, connection) =>
-      remove(conversationId, requestId, "resolved", connection).pipe(Effect.asVoid),
-    reevaluatePresentation: (conversationId) =>
+      remove({ hostId: connection.hostId, conversationId }, requestId, "resolved", connection).pipe(
+        Effect.asVoid,
+      ),
+    reevaluatePresentation: (conversation) =>
       mutations.withPermits(1)(
         Effect.gen(function* () {
-          const tracked = yield* current(conversationId);
+          const tracked = yield* current(conversation);
           if (!tracked || tracked.entry.phase.type === "snoozed") return;
-          if (rendererConversations.isPresentedInForeground(conversationId)) {
+          if (
+            rendererConversations.isPresentedInForeground(
+              conversation.conversationId,
+              conversation.hostId,
+            )
+          ) {
             yield* schedule(tracked, "foreground", true);
             return;
           }
@@ -334,21 +369,28 @@ export const make: Effect.Effect<
           }
         }),
       ),
-    recordActivity: (conversationId) =>
+    recordActivity: (conversation) =>
       mutations.withPermits(1)(
         Effect.gen(function* () {
-          const tracked = yield* current(conversationId);
+          const tracked = yield* current(conversation);
           if (!tracked || tracked.entry.phase.type !== "waitingForInactivity") return;
-          if (!rendererConversations.isPresentedInForeground(conversationId)) return;
+          if (
+            !rendererConversations.isPresentedInForeground(
+              conversation.conversationId,
+              conversation.hostId,
+            )
+          )
+            return;
           yield* schedule(tracked, "foreground", false);
         }),
       ),
-    snooze: (conversationId, requestId) =>
+    snooze: (conversation) =>
       mutations.withPermits(1)(
         Effect.gen(function* () {
-          const tracked = yield* current(conversationId);
-          if (!tracked || !sameRequestId(tracked.entry.requestId, requestId)) return false;
-          yield* FiberMap.remove(timers, conversationId);
+          const tracked = yield* current(conversation);
+          if (!tracked || !sameRequestId(tracked.entry.requestId, conversation.requestId))
+            return false;
+          yield* FiberMap.remove(timers, codexUserInputConversationKey(conversation));
           if (tracked.autoResolutionMs !== null) {
             yield* schedule(tracked, "background", true, tracked.autoResolutionMs);
             return true;
@@ -358,39 +400,45 @@ export const make: Effect.Effect<
             generation: tracked.generation + 1,
             entry: { ...tracked.entry, phase: { type: "snoozed" } },
           };
-          yield* Ref.update(state, (entries) => HashMap.set(entries, conversationId, snoozed));
+          yield* Ref.update(state, (entries) =>
+            HashMap.set(entries, codexUserInputConversationKey(conversation), snoozed),
+          );
           yield* publish({ type: "updated", entry: snoozed.entry });
           return true;
         }),
       ),
-    clearConversation: (conversationId) =>
+    clearConversation: (conversation) =>
       mutations.withPermits(1)(
         Effect.gen(function* () {
-          const tracked = yield* current(conversationId);
+          const tracked = yield* current(conversation);
           if (!tracked) return;
-          yield* FiberMap.remove(timers, conversationId);
-          yield* Ref.update(state, (entries) => HashMap.remove(entries, conversationId));
+          yield* FiberMap.remove(timers, codexUserInputConversationKey(conversation));
+          yield* Ref.update(state, (entries) =>
+            HashMap.remove(entries, codexUserInputConversationKey(conversation)),
+          );
           yield* publish({
             type: "removed",
-            conversationId,
+            ...conversation,
             requestId: tracked.entry.requestId,
             reason: "disposed",
           });
         }),
       ),
-    reconcilePendingRequests: (conversationId, requestIds) =>
+    reconcilePendingRequests: (conversation, requestIds) =>
       mutations.withPermits(1)(
         Effect.gen(function* () {
-          const tracked = yield* current(conversationId);
+          const tracked = yield* current(conversation);
           if (!tracked) return;
           if (requestIds.some((requestId) => sameRequestId(requestId, tracked.entry.requestId))) {
             return;
           }
-          yield* FiberMap.remove(timers, conversationId);
-          yield* Ref.update(state, (entries) => HashMap.remove(entries, conversationId));
+          yield* FiberMap.remove(timers, codexUserInputConversationKey(conversation));
+          yield* Ref.update(state, (entries) =>
+            HashMap.remove(entries, codexUserInputConversationKey(conversation)),
+          );
           yield* publish({
             type: "removed",
-            conversationId,
+            ...conversation,
             requestId: tracked.entry.requestId,
             reason: "disposed",
           });
@@ -406,10 +454,19 @@ export const make: Effect.Effect<
               (generation !== undefined && tracked.connection.generation !== generation)
             )
               continue;
-            const { conversationId, requestId } = tracked.entry;
-            yield* FiberMap.remove(timers, conversationId);
-            yield* Ref.update(state, (current) => HashMap.remove(current, conversationId));
-            yield* publish({ type: "removed", conversationId, requestId, reason: "disconnected" });
+            const conversation = tracked.entry;
+            const { requestId } = tracked.entry;
+            yield* FiberMap.remove(timers, codexUserInputConversationKey(conversation));
+            yield* Ref.update(state, (current) =>
+              HashMap.remove(current, codexUserInputConversationKey(conversation)),
+            );
+            yield* publish({
+              type: "removed",
+              hostId: conversation.hostId,
+              conversationId: conversation.conversationId,
+              requestId,
+              reason: "disconnected",
+            });
           }
         }),
       ),

@@ -1,4 +1,8 @@
 import { providerThreadActivatesThread } from "@t3tools/provider-core/contextUsage";
+import {
+  MAX_PENDING_MESSAGE_DELIVERIES,
+  PENDING_MESSAGE_DELIVERY_PREDICATE,
+} from "./MessageDelivery.ts";
 import { projectTurnItemForWire, projectThreadProjectionForWire } from "./WireProjection.ts";
 import {
   isRestartNoteContinuation,
@@ -1139,6 +1143,10 @@ export interface ProjectionStoreV2Shape {
     threadId: ThreadId,
     target: ProjectionProviderControlTarget,
   ) => Effect.Effect<ProjectionProviderControlContext, ProjectionStoreV2Error>;
+  readonly getPendingMessageDeliveryIds: (
+    threadId: ThreadId,
+    providerThreadId: ProviderThreadId,
+  ) => Effect.Effect<ReadonlyArray<MessageId>, ProjectionStoreV2Error>;
   /** The loaded root and its last native turn; retirement never reads historical cohorts. */
   readonly getProviderRetirementContext: (
     threadId: ThreadId,
@@ -1206,6 +1214,7 @@ export interface ProjectionStoreV2Shape {
       readonly exclusiveAnchor?: boolean | undefined;
       readonly historyOnly?: boolean | undefined;
       readonly requiredRunId?: RunId | undefined;
+      readonly requiredRequestId?: RuntimeRequestId | undefined;
     },
   ) => Effect.Effect<
     {
@@ -1653,6 +1662,30 @@ export function applyToProjection(
         ...base,
         runtimeRequests: upsertById(base.runtimeRequests, event.payload),
       };
+    case "message.delivery.updated":
+      return withLocalVisibleTurnItems({
+        ...base,
+        messages: base.messages.map((message) =>
+          message.id !== event.payload.messageId ||
+          (message.delivery === "accepted" && event.payload.delivery !== "accepted")
+            ? message
+            : { ...message, delivery: event.payload.delivery, updatedAt: event.occurredAt },
+        ),
+        turnItems: base.turnItems.map((item) =>
+          item.type !== "user_message" ||
+          item.messageId !== event.payload.messageId ||
+          (item.delivery === "accepted" && event.payload.delivery !== "accepted")
+            ? item
+            : {
+                ...item,
+                delivery: event.payload.delivery,
+                ...(event.payload.nativeItemRef === undefined
+                  ? {}
+                  : { nativeItemRef: event.payload.nativeItemRef }),
+                updatedAt: event.occurredAt,
+              },
+        ),
+      });
     case "message.updated":
       return {
         ...base,
@@ -3594,6 +3627,31 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             `;
             break;
           }
+          case "message.delivery.updated": {
+            const { messageId, delivery, nativeItemRef } = event.payload;
+            const updatedAt = DateTime.formatIso(event.occurredAt);
+            yield* sql`
+              UPDATE orchestration_v2_projection_messages
+              SET payload_json = json_set(payload_json, '$.delivery', ${delivery}, '$.updatedAt', ${updatedAt}),
+                  updated_at = ${updatedAt}
+              WHERE thread_id = ${event.threadId} AND message_id = ${messageId} AND role = 'user'
+                AND (${delivery} = 'accepted' OR COALESCE(json_extract(payload_json, '$.delivery'), 'pending') != 'accepted')
+            `;
+            const itemId = derive.userTurnItem({ messageId });
+            const nativeRefJson =
+              nativeItemRef === undefined ? null : JSON.stringify(nativeItemRef);
+            yield* sql`
+              UPDATE orchestration_v2_projection_turn_items
+              SET payload_json = json_set(
+                    CASE WHEN ${nativeRefJson} IS NULL THEN payload_json
+                      ELSE json_set(payload_json, '$.nativeItemRef', json(${nativeRefJson})) END,
+                    '$.delivery', ${delivery}, '$.updatedAt', ${updatedAt}),
+                  updated_at = ${updatedAt}
+              WHERE thread_id = ${event.threadId} AND turn_item_id = ${itemId} AND type = 'user_message'
+                AND (${delivery} = 'accepted' OR COALESCE(json_extract(payload_json, '$.delivery'), 'pending') != 'accepted')
+            `;
+            break;
+          }
           case "message.updated": {
             const payloadJson = yield* encodeMessagePayload(event.payload);
             const payload = parseEncodedPayload(payloadJson);
@@ -3993,6 +4051,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         readonly anchorOrdinal?: number | undefined;
         readonly exclusiveAnchor?: boolean | undefined;
         readonly requiredRunId?: RunId | undefined;
+        readonly requiredRequestId?: RuntimeRequestId | undefined;
         readonly requiredHistoryRevision?: number | undefined;
         readonly suppressLocal?: boolean | undefined;
         readonly historyOnly?: boolean | undefined;
@@ -4218,6 +4277,13 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                       (row) => row.run_id,
                     )),
                 ...(window.requiredRunId === undefined ? [] : [window.requiredRunId]),
+                ...(window.requiredRequestId === undefined
+                  ? []
+                  : (yield* sql<{ run_id: string | null }>`
+                    SELECT node.run_id FROM orchestration_v2_projection_runtime_requests AS request
+                    JOIN orchestration_v2_projection_nodes AS node ON node.node_id = request.node_id
+                    WHERE request.thread_id = ${threadId} AND request.runtime_request_id = ${window.requiredRequestId}
+                    LIMIT 1`).flatMap((row) => (row.run_id === null ? [] : [row.run_id]))),
                 ...(window.controlOnly === true
                   ? (yield* sql<{ run_id: string }>`
                 SELECT run_id FROM orchestration_v2_projection_runs WHERE thread_id = ${threadId}
@@ -4240,6 +4306,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           window === undefined
             ? "[]"
             : encodeIdList([
+                ...(window.requiredRequestId === undefined ? [] : [window.requiredRequestId]),
                 ...turnItems.flatMap((item) =>
                   item.type === "approval_request" || item.type === "user_input_request"
                     ? [item.requestId]
@@ -4745,6 +4812,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         readonly anchorOrdinal?: number | undefined;
         readonly exclusiveAnchor?: boolean | undefined;
         readonly requiredRunId?: RunId | undefined;
+        readonly requiredRequestId?: RuntimeRequestId | undefined;
         readonly requiredHistoryRevision?: number | undefined;
         readonly suppressLocal?: boolean | undefined;
         readonly historyOnly?: boolean | undefined;
@@ -7269,6 +7337,37 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         )
         .pipe(Effect.mapError(controlReadError(threadId)));
 
+    const getPendingMessageDeliveryIds: ProjectionStoreV2Shape["getPendingMessageDeliveryIds"] = (
+      threadId,
+      providerThreadId,
+    ) =>
+      sql
+        .withTransaction(
+          Effect.gen(function* () {
+            const messages = yield* sql<{ message_id: string }>`
+          SELECT message_id FROM orchestration_v2_projection_messages INDEXED BY orchestration_v2_messages_pending_delivery_idx
+          WHERE thread_id = ${threadId} AND ${sql.literal(PENDING_MESSAGE_DELIVERY_PREDICATE)}
+          ORDER BY message_id LIMIT ${MAX_PENDING_MESSAGE_DELIVERIES}`;
+            if (messages.length === 0) return [];
+            const byItemId = new Map(
+              messages.map((row) => {
+                const messageId = MessageId.make(row.message_id);
+                return [derive.userTurnItem({ messageId }), messageId] as const;
+              }),
+            );
+            const items = yield* sql<{
+              turn_item_id: string;
+            }>`SELECT turn_item_id FROM orchestration_v2_projection_turn_items
+          WHERE thread_id = ${threadId} AND provider_thread_id = ${providerThreadId}
+            AND turn_item_id IN (SELECT value FROM json_each(${encodeIdList([...byItemId.keys()])}))`;
+            return items.flatMap((item) => {
+              const id = byItemId.get(TurnItemId.make(item.turn_item_id));
+              return id === undefined ? [] : [id];
+            });
+          }),
+        )
+        .pipe(Effect.mapError(controlReadError(threadId)));
+
     const getProviderControlContext: ProjectionStoreV2Shape["getProviderControlContext"] = (
       threadId,
       target,
@@ -8371,6 +8470,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               rowLimit: Math.min(options.rowLimit, THREAD_HISTORY_PAGE_POLICY.maxItems),
               controlOnly: options.controlOnly,
               requiredRunId: options.requiredRunId,
+              requiredRequestId: options.requiredRequestId,
               userTurnLimit: options.userTurnLimit,
               anchorOrdinal: options.anchorOrdinal,
               exclusiveAnchor: options.exclusiveAnchor,
@@ -9324,6 +9424,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getRuntimeRequest,
       getPlan,
       getProviderControlContext,
+      getPendingMessageDeliveryIds,
       getProviderRetirementContext,
       getLimitRecoveryCandidates,
       getRecoveryThreadIds,
@@ -9831,6 +9932,27 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                       .filter((turn) => turn.providerThreadId === providerThread.id)
                       .sort((a, b) => b.ordinal - a.ordinal)[0],
             };
+          }),
+        ),
+      getPendingMessageDeliveryIds: (threadId, providerThreadId) =>
+        service.getThreadProjection(threadId).pipe(
+          Effect.map((projection) => {
+            const sourceMessages = new Set(
+              projection.turnItems.flatMap((item) =>
+                item.type === "user_message" && item.providerThreadId === providerThreadId
+                  ? [item.messageId]
+                  : [],
+              ),
+            );
+            return projection.messages
+              .filter(
+                (message) =>
+                  sourceMessages.has(message.id) &&
+                  (message.delivery === "pending" || message.delivery === "unknown"),
+              )
+              .map((message) => message.id)
+              .toSorted()
+              .slice(0, MAX_PENDING_MESSAGE_DELIVERIES);
           }),
         ),
       getProviderControlContext: (threadId, target) =>
@@ -11046,6 +11168,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                     contextTransfers: [],
                   },
                   options.requiredRunId,
+                  options.requiredRequestId,
                 ),
               ),
               latestLocalTurnOrdinal: projection.turnItems.at(-1)?.ordinal ?? null,

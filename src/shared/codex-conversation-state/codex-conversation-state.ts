@@ -47,6 +47,7 @@ import type {
   TurnPlanStep,
   TurnStartParams,
   ToolRequestUserInputOption,
+  ToolRequestUserInputQuestion,
   UserInput,
 } from "@nodex/codex-app-server-protocol/v2";
 import { projectCodexMarkdownLabel } from "../codex-markdown-text";
@@ -183,12 +184,14 @@ type CodexCanonicalJsonObject = Readonly<{
 
 export type CodexCanonicalUserInputOption = Readonly<ToolRequestUserInputOption>;
 
-/** Exact `t0` historical shape; protocol-only flags are intentionally absent. */
-export interface CodexCanonicalUserInputQuestion {
-  readonly id: string;
-  readonly header: string;
-  readonly question: string;
+/** Historical questions preserve native flags when their source supplies them. */
+export interface CodexCanonicalUserInputQuestion extends Readonly<
+  Pick<ToolRequestUserInputQuestion, "id" | "header" | "question">
+> {
   readonly options: readonly CodexCanonicalUserInputOption[];
+  readonly isOther?: ToolRequestUserInputQuestion["isOther"];
+  readonly isSecret?: ToolRequestUserInputQuestion["isSecret"];
+  readonly multiSelect?: boolean;
 }
 
 export type CodexCanonicalUserInputAnswers = Readonly<Record<string, readonly string[]>>;
@@ -305,11 +308,17 @@ export type CodexCanonicalMcpElicitation =
 export type CodexCanonicalRequestSyntheticItem =
   | {
       readonly type: "userInputResponse";
-      readonly id: `user-input-response-${string}`;
+      readonly id: string;
       readonly requestId: RequestId;
       readonly turnId: string;
       readonly questions: readonly CodexCanonicalUserInputQuestion[];
       readonly answers: CodexCanonicalUserInputAnswers;
+      readonly questionAnswer?: NonNullable<
+        Extract<
+          import("@nodex/agent-runtime/contracts").AgentTurnItem,
+          { type: "user_input_request" }
+        >["questionAnswer"]
+      >;
       readonly completed: boolean;
     }
   | {
@@ -487,6 +496,7 @@ export type CodexUserMessageInputIntent = "queued" | "steer" | "promotedToSteer"
 /** App-side delivery context carried beside a generated user message. */
 export type CodexCanonicalUserMessageItem = Extract<ThreadItem, { type: "userMessage" }> & {
   readonly origin?: CodexUserMessageOrigin;
+  readonly runtimeDelivery?: "pending" | "unknown" | "accepted";
   readonly inputIntent?: CodexUserMessageInputIntent;
   readonly textSelections?: import("../thread-text-selection").ThreadTextSelectionContext;
   readonly unavailableImages?: readonly CodexUnavailableImage[];

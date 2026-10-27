@@ -404,6 +404,23 @@ describe("UserMessageBubble collapse", () => {
     expect(onOpenThread).toHaveBeenCalledWith("parent-thread");
   });
 
+  test.each(["pending", "unknown"] as const)(
+    "shows %s delivery without claiming a send failure",
+    (delivery) => {
+      const block = buildUserMessageBlock("Answer accepted by the chat");
+      block.entry.deliveryStatus = delivery;
+      const { getByRole, queryByRole } = render(
+        <TooltipProvider>
+          <UserMessageBubble block={block} isLatestTurn isStreamingTurn={false} />
+        </TooltipProvider>,
+      );
+      expect(getByRole("status").textContent).toBe(
+        delivery === "unknown" ? "Delivery unconfirmed" : "Sending",
+      );
+      expect(queryByRole("link", { name: "Hook blocked this message" })).toBeNull();
+    },
+  );
+
   test("keeps a failed launch distinct from a hook rejection", () => {
     const block = buildUserMessageBlock("Could not start task");
     block.entry.deliveryStatus = "not-sent";

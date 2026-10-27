@@ -122,6 +122,8 @@ export type AgentRuntimeMergeBackInput = AgentRuntimeSessionTarget & { readonly 
 export type AgentRuntimeResponseInput = AgentRuntimeSessionTarget &
   Pick<Respond, "requestId" | "decision" | "answers" | "attachmentsByQuestionId"> & {
     readonly runId: string | null;
+    /** One accepted answer batch; retries reuse it and later answers allocate a new identity. */
+    readonly submissionId?: string;
   };
 export type AgentRuntimeModeInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;

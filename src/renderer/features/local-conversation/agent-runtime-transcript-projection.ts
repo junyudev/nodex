@@ -557,6 +557,7 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         type: "userMessage",
         id,
         clientId: item.messageId,
+        ...(item.delivery ? { runtimeDelivery: item.delivery } : {}),
         textSelections: readRuntimeThreadTextSelections(item.context),
         ...(origin ? { origin } : {}),
         ...(inputIntent ? { inputIntent } : {}),
@@ -767,10 +768,41 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         to,
       });
     }
-    case "user_input_request":
-      return isAgentRuntimeAsyncQuestion(item)
-        ? projectAgentRuntimeAsyncQuestionMessage(item)
-        : notice(item, item.questions.map((question) => question.question).join("\n"));
+    case "user_input_request": {
+      if (isAgentRuntimeAsyncQuestion(item)) return projectAgentRuntimeAsyncQuestionMessage(item);
+      if (isLive(item.status))
+        return notice(item, item.questions.map((question) => question.question).join("\n"));
+      return {
+        type: "userInputResponse",
+        id,
+        requestId: item.requestId,
+        turnId: item.runId ?? item.providerTurnId ?? "",
+        completed: true,
+        questions: item.questions.map((question) => ({
+          id: question.id,
+          header: question.header,
+          question: question.question,
+          isOther: question.allowCustomAnswer !== false,
+          isSecret: question.isSecret,
+          multiSelect: question.multiSelect,
+          options: question.options.map((option) => ({
+            label: option.label,
+            description: option.description,
+          })),
+        })),
+        answers: Object.fromEntries(
+          Object.entries(item.questionAnswer?.answers ?? {}).map(([questionId, value]) => [
+            questionId,
+            value == null
+              ? []
+              : Array.isArray(value)
+                ? value.map(String)
+                : [typeof value === "object" ? JSON.stringify(value) : String(value)],
+          ]),
+        ),
+        ...(item.questionAnswer ? { questionAnswer: item.questionAnswer } : {}),
+      };
+    }
     case "secret_request":
       return notice(item, item.reason);
     case "approval_review":
@@ -944,12 +976,16 @@ export function projectAgentRuntimeRequest(
     type: "userInput",
     executionOwner: "agent-runtime",
     requestId: item.requestId,
-    isBlocking: true,
+    isBlocking: item.isBlocking ?? true,
+    autoResolutionMs: item.autoResolutionMs,
     questions: item.questions.map((question) => ({
       id: question.id,
       header: question.header,
       question: question.question,
       multiSelect: question.multiSelect,
+      isSecret: question.isSecret,
+      initialAnswer: question.initialAnswer,
+      required: question.required,
       isOther: question.allowCustomAnswer !== false,
       options: question.options.map((option) => ({
         label: option.label,

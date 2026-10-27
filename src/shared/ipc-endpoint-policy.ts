@@ -673,6 +673,7 @@ type PlainResultCommandEndpointPolicy =
   | "codex:turn:interrupt"
   | "codex:turn:start"
   | "codex:turn:steer"
+  | "codex:turn:question-reply"
   | "codex:user-input:auto-resolution:snooze"
   | "composer:pick-files"
   | "computer-use-settings-remove-app-approval"

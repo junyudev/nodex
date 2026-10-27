@@ -91,6 +91,7 @@ import { CodexRendererPresentationRegistry } from "../codex-application/CodexRen
 import { createOperationId } from "../core-runtime/operation-identity";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { run as runSessionNotifications } from "../agent-runtime/AgentRuntimeSessionNotifications";
+import { make as makeUserInputAutoResolution } from "../agent-runtime/AgentRuntimeUserInputAutoResolution";
 import { run as runSessionPredictions } from "../agent-runtime/AgentRuntimeSessionPredictions";
 import { readCodexComposerPredictionEnvironment } from "../codex-application/CodexComposerPrediction";
 import { resolveComposerPredictionConfiguration } from "../codex-application/CodexComposerPredictionDefaults";
@@ -313,6 +314,9 @@ const supervisor = Layer.effectContext(
     const projectlessId = `nodex:projectless:${core.identity.profileId}`;
     const activity = yield* SessionActivity.make({
       resolveSessions: yield* SessionActivity.coreSessionResolver,
+    });
+    const userInputAutoResolution = yield* makeUserInputAutoResolution({
+      transitions: activity.transitions,
     });
     const presented = yield* CodexRendererPresentationRegistry;
     const applicationEvents = yield* CodexApplicationEventHub;
@@ -614,6 +618,17 @@ const supervisor = Layer.effectContext(
           execute,
           readProviderAuth,
         }).pipe(
+          Effect.tap(() =>
+            userInputAutoResolution
+              .attach(connection)
+              .pipe(
+                Effect.catchCause(() =>
+                  Effect.logWarning(
+                    "Question deadlines are unavailable for this execution process",
+                  ),
+                ),
+              ),
+          ),
           Effect.tap(() =>
             activity
               .attach(connection)

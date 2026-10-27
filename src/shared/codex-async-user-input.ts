@@ -4,7 +4,11 @@ import {
   decodeCodexAsyncQuestionReplies,
   type CodexAsyncQuestionReply,
 } from "@nodex/agent-runtime/codex-conventions";
-import type { CodexCanonicalItem } from "./codex-conversation-state/codex-conversation-state";
+import type {
+  CodexCanonicalItem,
+  CodexCanonicalTurnState,
+} from "./codex-conversation-state/codex-conversation-state";
+import type { CodexCollaborationModeKind, CodexServiceTier } from "./types";
 import { projectCodexMarkdownToPlainText } from "./codex-markdown-text";
 
 /** A display identity is stable even when one tool call asks several questions. */
@@ -14,6 +18,55 @@ export interface CodexAsyncQuestion {
   questionIndex: number | null;
   title: string;
   options: readonly string[];
+  sourceTurnId?: string;
+  sourceEntityKey?: string;
+  isSecret?: boolean;
+  initialAnswer?: string;
+  required?: boolean;
+}
+
+/** Answers keep their source identity even when another Turn receives the message. */
+export interface CodexAsyncQuestionResponseInput {
+  readonly threadId: string;
+  readonly submissionId: string;
+  readonly sourceTurnIds: readonly string[];
+  readonly replies: readonly CodexAsyncQuestionReply[];
+  readonly collaborationMode?: CodexCollaborationModeKind | null;
+  readonly serviceTier?: CodexServiceTier;
+}
+
+/** Resolve question wording from its admitted source, without requiring that source to run. */
+export function resolveCodexAsyncQuestionResponse(
+  turns: readonly Pick<CodexCanonicalTurnState, "turnId" | "items">[],
+  input: Pick<CodexAsyncQuestionResponseInput, "sourceTurnIds" | "replies">,
+): CodexAsyncQuestionReply[] {
+  if (!input.sourceTurnIds.length || !input.replies.length)
+    throw new Error("Choose a question and enter an answer before sending");
+  const sourceIds = new Set(input.sourceTurnIds);
+  const sources = turns.filter((turn) => turn.turnId !== null && sourceIds.has(turn.turnId));
+  if (sources.length !== sourceIds.size)
+    throw new Error("The question's source is no longer available");
+  const questions = sources.flatMap((turn) => turn.items.flatMap(expandCodexAsyncQuestions));
+  const answered = new Set<string>();
+  return input.replies.map((reply) => {
+    if (
+      typeof reply?.questionItemId !== "string" ||
+      typeof reply.answer !== "string" ||
+      !reply.answer.trim() ||
+      answered.has(reply.questionItemId)
+    )
+      throw new Error("Each question needs one nonempty answer");
+    const matches = questions.filter((question) => question.id === reply.questionItemId);
+    const question = matches[0];
+    if (matches.length !== 1 || !question)
+      throw new Error("The answer does not belong to its question's source");
+    answered.add(reply.questionItemId);
+    return {
+      questionItemId: question.id,
+      question: question.title,
+      answer: reply.answer.trim(),
+    };
+  });
 }
 
 export {
@@ -40,7 +93,7 @@ export function expandCodexAsyncQuestions(
   }));
 }
 
-/** Only a single text input is a question envelope; ordinary prose stays ordinary prose. */
+/** One reply text may travel with attachments; ordinary prose stays ordinary prose. */
 export function readCodexAsyncQuestionReplies(
   item: CodexCanonicalItem | ThreadItem,
 ): CodexAsyncQuestionReply[] | null {
@@ -51,8 +104,9 @@ export function readCodexAsyncQuestionReplies(
       : item.type === "steeringUserMessage"
         ? item.input
         : [];
-  const first = content[0];
-  if (content.length !== 1 || first?.type !== "text") return null;
+  const texts = content.filter((entry) => entry.type === "text");
+  const first = texts[0];
+  if (texts.length !== 1 || !first) return null;
   return decodeCodexAsyncQuestionReplies(first.text);
 }
 
@@ -60,14 +114,18 @@ export function readCodexAsyncQuestionReplies(
 export function collectCodexAsyncQuestionAnswers(
   items: readonly CodexCanonicalItem[],
 ): Map<string, string> {
-  const questionIds = new Set(
-    items.flatMap(expandCodexAsyncQuestions).map((question) => question.id),
+  const questionPositions = new Map(
+    items.flatMap((item, index) =>
+      expandCodexAsyncQuestions(item).map((question) => [question.id, index] as const),
+    ),
   );
+  const questionIds = new Set(questionPositions.keys());
   const candidates = items.flatMap((item, index) => {
     if (item.type !== "userMessage" && item.type !== "steeringUserMessage") return [];
     const input = item.type === "userMessage" ? item.content : item.input;
-    if (input.length !== 1 || input[0]?.type !== "text") return [];
-    const text = input[0].text;
+    const texts = input.filter((entry) => entry.type === "text");
+    if (texts.length !== 1 || !texts[0]) return [];
+    const text = texts[0].text;
     const replies = decodeCodexAsyncQuestionReplies(text);
     return replies?.some((reply) => questionIds.has(reply.questionItemId))
       ? [{ item, index, text, replies }]
@@ -93,6 +151,7 @@ export function collectCodexAsyncQuestionAnswers(
     for (const reply of replies) {
       if (
         !questionIds.has(reply.questionItemId) ||
+        origin <= (questionPositions.get(reply.questionItemId) ?? -1) ||
         origin <= (answers.get(reply.questionItemId)?.index ?? -1)
       )
         continue;

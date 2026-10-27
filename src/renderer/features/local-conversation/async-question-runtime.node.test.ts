@@ -145,16 +145,17 @@ describe("asynchronous question lifecycle", () => {
     expect(runtime.read("thread").questions[ids[0]!]!.draft).toBe("Local");
     expect(runtime.read("thread").selectedId).toBe(ids[0]);
   });
-  test("turn completion removes the panel and cannot start a replacement turn", async () => {
+  test("turn completion retains an unanswered question with its source identity", async () => {
     const runtime = setup();
     runtime.setDraft("thread", ids[0]!, "Local");
     runtime.reconcile(conversation([question], "completed"));
     const steer = vi.fn();
     await runtime.submit("thread", steer);
     runtime.open("thread", ids[0]!);
-    expect(steer).not.toHaveBeenCalled();
-    expect(runtime.read("thread").selectedId).toBeNull();
-    expect(runtime.read("thread").questions).toEqual({});
+    expect(steer).toHaveBeenCalledOnce();
+    expect(steer.mock.calls[0]?.[2]).toMatchObject({ sourceTurnIds: ["turn"] });
+    expect(runtime.read("thread").selectedId).toBe(ids[0]);
+    expect(runtime.read("thread").questions[ids[0]!]!.draft).toBe("Local");
   });
   test("accepted answers update an untouched draft but preserve newer local edits", () => {
     const runtime = setup();
@@ -460,6 +461,233 @@ test("resident history owns active questions while overlay answers reconcile aga
       },
     },
   });
-  expect(runtime.read("thread").activeTurnId).toBeNull();
-  expect(runtime.read("thread").openIds).toEqual([]);
+  expect(runtime.read("thread").activeTurnId).toBe("turn");
+  expect(runtime.read("thread").questions[ids[0]!]?.title).toBe("Which scope?");
+});
+
+function draftStorage() {
+  const entries = new Map<string, { signature: string; value: unknown }>();
+  const listeners = new Map<string, Set<() => void>>();
+  const store: import("./question-draft-store").QuestionDraftStore = {
+    flush: async () => {},
+    read: (key, signature) =>
+      entries.get(key)?.signature === signature ? entries.get(key)?.value : undefined,
+    watch(key, listener) {
+      const current = listeners.get(key) ?? new Set<() => void>();
+      current.add(listener);
+      listeners.set(key, current);
+      return () => {
+        current.delete(listener);
+      };
+    },
+    write(key, signature, value) {
+      entries.set(key, { signature, value });
+      for (const listener of listeners.get(key) ?? []) listener();
+    },
+    remove(key) {
+      entries.delete(key);
+      for (const listener of listeners.get(key) ?? []) listener();
+    },
+  };
+  return { store, entries };
+}
+
+test("restores authored drafts and panel selection after release and a fresh conversation generation", () => {
+  const { store } = draftStorage();
+  const first = createAsyncQuestionRuntime({ drafts: store });
+  first.reconcile(conversation([question]));
+  first.open("thread", ids[1]!);
+  first.setDraft("thread", ids[1]!, "Keep my unfinished answer");
+  first.clear("thread");
+  const reopened = createAsyncQuestionRuntime({ drafts: store });
+  reopened.reconcile({ ...conversation([question], "completed"), conversationEntityGeneration: 9 });
+  expect(reopened.read("thread").selectedId).toBe(ids[1]);
+  expect(reopened.read("thread").questions[ids[1]!]!.draft).toBe("Keep my unfinished answer");
+  reopened.reconcile(conversation([question], "completed", "another-thread"));
+  expect(reopened.read("another-thread").questions[ids[1]!]!.draft).toBe("");
+});
+
+test("secret answers never enter durable question drafts", () => {
+  const { store, entries } = draftStorage();
+  const runtime = createAsyncQuestionRuntime({ drafts: store });
+  const scope = {
+    generation: 1,
+    entityKey: "request",
+    turnId: "turn",
+    answers: new Map<string, string>(),
+    questions: [
+      {
+        id: "secret",
+        sourceItemId: "ask",
+        questionIndex: 0,
+        title: "Token?",
+        options: [],
+        isSecret: true,
+      },
+    ],
+  };
+  runtime.reconcileScope("thread", scope);
+  runtime.open("thread", "secret");
+  runtime.setDraft("thread", "secret", "private-token");
+  expect(JSON.stringify([...entries.values()])).not.toContain("private-token");
+  runtime.clear();
+  runtime.reconcileScope("thread", { ...scope, generation: 2 });
+  expect(runtime.read("thread").questions.secret!.draft).toBe("");
+});
+
+test("acknowledges each request before a later batch member fails and retries only the remainder", async () => {
+  const runtime = setup();
+  runtime.setDraft("thread", ids[0]!, "Alpha");
+  runtime.setDraft("thread", ids[1]!, "Beta");
+  await expect(
+    runtime.submit("thread", async (_turn, replies) => {
+      runtime.acknowledge("thread", [replies[0]!]);
+      throw new Error("Second request failed");
+    }),
+  ).rejects.toThrow("Second request failed");
+  const retry = vi.fn<import("./async-question-runtime").AsyncQuestionDelivery>(async () => ({
+    turnId: "turn",
+  }));
+  await runtime.submit("thread", retry);
+  expect(retry.mock.calls[0]?.[1]).toEqual([
+    { questionItemId: ids[1], question: "What name?", answer: "Beta" },
+  ]);
+});
+
+test("retries an unchanged batch with one submission identity and replaces it after an edit", async () => {
+  const runtime = setup();
+  runtime.setDraft("thread", ids[0]!, "Alpha");
+  const tokens: string[] = [];
+  const fail: import("./async-question-runtime").AsyncQuestionDelivery = async (
+    _turn,
+    _replies,
+    context,
+  ) => {
+    tokens.push(context.submissionId);
+    throw new Error("Unknown delivery");
+  };
+  await expect(runtime.submit("thread", fail)).rejects.toThrow();
+  await expect(runtime.submit("thread", fail)).rejects.toThrow();
+  runtime.setDraft("thread", ids[0]!, "Revised");
+  await expect(runtime.submit("thread", fail)).rejects.toThrow();
+  expect(tokens[0]).toBe(tokens[1]);
+  expect(tokens[2]).not.toBe(tokens[0]);
+});
+
+test("message questions retain editable initial text and accept explicit empty answers", async () => {
+  const runtime = createAsyncQuestionRuntime();
+  runtime.reconcileScope("thread", {
+    generation: 1,
+    entityKey: "editable",
+    turnId: "turn",
+    answers: new Map(),
+    questions: [
+      {
+        id: "editable",
+        sourceItemId: "source",
+        questionIndex: 0,
+        title: "Change text?",
+        options: [],
+        initialAnswer: "  Original  ",
+      },
+    ],
+  });
+  runtime.open("thread", "editable");
+  expect(runtime.read("thread").questions.editable?.draft).toBe("  Original  ");
+  runtime.setDraft("thread", "editable", "");
+  const deliver = vi.fn<import("./async-question-runtime").AsyncQuestionDelivery>(async () => ({
+    turnId: "turn",
+  }));
+  await runtime.submit("thread", deliver);
+  expect(deliver.mock.calls[0]?.[1]).toEqual([
+    { questionItemId: "editable", question: "Change text?", answer: "" },
+  ]);
+  expect(runtime.read("thread").questions.editable).toMatchObject({ answered: true, baseline: "" });
+  expect(runtime.read("thread").selectedId).toBeNull();
+});
+
+test("the same native Thread on another host cannot read a question draft", () => {
+  const { store } = draftStorage();
+  const first = createAsyncQuestionRuntime({ drafts: store, namespace: "native:host-a" });
+  first.reconcile(conversation([question]));
+  first.open("thread", ids[0]!);
+  first.setDraft("thread", ids[0]!, "Host A draft");
+  const second = createAsyncQuestionRuntime({ drafts: store, namespace: "native:host-b" });
+  second.reconcile(conversation([question]));
+  expect(second.read("thread").questions[ids[0]!]!.draft).toBe("");
+  expect(second.read("thread").selectedId).toBeNull();
+});
+
+test("an unknown native response keeps its immutable submission identity after reopening", async () => {
+  const { store } = draftStorage();
+  const first = createAsyncQuestionRuntime({ drafts: store });
+  first.reconcile(conversation([question]));
+  first.open("thread", ids[0]!);
+  first.setDraft("thread", ids[0]!, "A durable response");
+  const tokens: string[] = [];
+  const unknown: import("./async-question-runtime").AsyncQuestionDelivery = async (
+    _turn,
+    _replies,
+    context,
+  ) => {
+    tokens.push(context.submissionId);
+    throw new Error("Unknown native response");
+  };
+  await expect(first.submit("thread", unknown)).rejects.toThrow();
+  first.clear();
+  const reopened = createAsyncQuestionRuntime({ drafts: store });
+  reopened.reconcile(conversation([question], "completed"));
+  await expect(reopened.submit("thread", unknown)).rejects.toThrow();
+  expect(tokens).toHaveLength(2);
+  expect(tokens[0]).toBe(tokens[1]);
+});
+
+test("a source released during submission preparation cannot make private text durable", async () => {
+  const { store, entries } = draftStorage();
+  let resume!: () => void;
+  const runtime = createAsyncQuestionRuntime({
+    drafts: {
+      ...store,
+      flush: () =>
+        new Promise<void>((resolve) => {
+          resume = resolve;
+        }),
+    },
+  });
+  runtime.reconcileScope("thread", {
+    generation: 1,
+    entityKey: "secret-source",
+    turnId: "turn",
+    answers: new Map(),
+    questions: [
+      {
+        id: "secret",
+        sourceItemId: "source",
+        questionIndex: 0,
+        title: "Token?",
+        options: [],
+        isSecret: true,
+      },
+    ],
+  });
+  const pending = runtime.prepareSubmission("thread", [
+    { questionItemId: "secret", question: "Token?", answer: "private-answer" },
+  ]);
+  runtime.clear("thread");
+  resume();
+  await pending;
+  expect(JSON.stringify([...entries.values()])).not.toContain("private-answer");
+});
+
+test("an execution with no questions does not acquire draft persistence", () => {
+  const { store } = draftStorage();
+  const readDraft = vi.spyOn(store, "read");
+  const watchDraft = vi.spyOn(store, "watch");
+  const runtime = createAsyncQuestionRuntime({ drafts: store });
+  runtime.reconcile(conversation([]));
+  expect(readDraft).not.toHaveBeenCalled();
+  expect(watchDraft).not.toHaveBeenCalled();
+  runtime.reconcile(conversation([question]));
+  expect(readDraft).toHaveBeenCalled();
+  expect(watchDraft).toHaveBeenCalled();
 });

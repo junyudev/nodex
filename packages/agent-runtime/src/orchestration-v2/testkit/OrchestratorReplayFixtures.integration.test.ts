@@ -33,6 +33,7 @@ import {
 } from "./ProviderReplayHarness.ts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 import { materializeReplayTranscriptRuntimeInstructions } from "./ReplayRuntimeInstructions.ts";
+import { materializeReplayMessageIdentities } from "./ReplayMessageIdentities.ts";
 import {
   materializeReplayTranscriptWorkspace,
   readProviderReplayTranscript,
@@ -96,17 +97,20 @@ const runFixtureProvider = Effect.fn("runOrchestratorReplayFixture")(function* <
   );
   const fixtureInput = input.buildInput();
   const workspace = yield* checkpointWorkspace(input.fixtureName, fixtureInput.workspaceFiles);
-  const transcript = yield* input.harness.decodeTranscript(
-    input.driver.driver === "codex"
-      ? materializeReplayTranscriptWorkspace(replayTranscript, workspace)
-      : replayTranscript,
-  );
   const materialized = yield* materializeFixtureInput({
     scenario: input.fixtureName,
     fixtureInput,
     driver: input.driver.driver,
     modelSelection: input.driver.modelSelection,
   }).pipe(Effect.provide(IdAllocator.layer), provideDeterministicTestRuntime);
+  const transcript = yield* input.harness.decodeTranscript(
+    materializeReplayMessageIdentities(
+      input.driver.driver === "codex"
+        ? materializeReplayTranscriptWorkspace(replayTranscript, workspace)
+        : replayTranscript,
+      materialized.commands,
+    ),
+  );
   const scenario = {
     name: `${input.fixtureName}/${input.driver.driver}`,
     transcript,

@@ -24,6 +24,7 @@ import { prepareCodexPrompt } from "../../shared/codex-prompt-preparation";
 import {
   decodeCodexAsyncQuestionReplies,
   expandCodexAsyncQuestions,
+  resolveCodexAsyncQuestionResponse,
 } from "../../shared/codex-async-user-input";
 import {
   parseCodexReasoningSummary,
@@ -725,6 +726,17 @@ export const make: Effect.Effect<
       const questionReplies = decodeCodexAsyncQuestionReplies(input.command.prompt);
       if (questionReplies) {
         const state = yield* projection.read(threadId);
+        if (input.command.questionSourceTurnIds) {
+          yield* Effect.try({
+            try: () =>
+              resolveCodexAsyncQuestionResponse(residentConversationTurns(state.canonical), {
+                sourceTurnIds: input.command.questionSourceTurnIds!,
+                replies: questionReplies,
+              }),
+            catch: (cause) =>
+              new CodexTurnPreparationError({ operation: "steer", threadId, cause }),
+          });
+        }
         const activeTurn = residentConversationTurns(state.canonical).find(
           (turn) => turn.turnId === input.command.expectedTurnId,
         );
@@ -732,9 +744,10 @@ export const make: Effect.Effect<
           activeTurn?.items.flatMap(expandCodexAsyncQuestions).map((question) => question.id),
         );
         if (
-          !input.command.expectedTurnId ||
-          activeTurn?.status !== "inProgress" ||
-          questionReplies.some((reply) => !questionIds.has(reply.questionItemId))
+          !input.command.questionSourceTurnIds &&
+          (!input.command.expectedTurnId ||
+            activeTurn?.status !== "inProgress" ||
+            questionReplies.some((reply) => !questionIds.has(reply.questionItemId)))
         )
           return yield* fail(new Error("The question's Turn is no longer available to answer"));
       }

@@ -592,10 +592,13 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         import("../../shared/codex-user-input-auto-resolution").CodexUserInputAutoResolutionEntry[]
       >;
     },
-    recordUserInputAutoResolutionActivity(conversationId: string) {
-      return bridge.invoke("codex:user-input:auto-resolution:activity", {
-        conversationId,
-      }) as Promise<boolean>;
+    recordUserInputAutoResolutionActivity(
+      conversation: import("../../shared/codex-user-input-auto-resolution").CodexUserInputAutoResolutionConversation,
+    ) {
+      return bridge.invoke(
+        "codex:user-input:auto-resolution:activity",
+        conversation,
+      ) as Promise<boolean>;
     },
     snoozeUserInputAutoResolution(
       target: import("../../shared/codex-user-input-auto-resolution").CodexUserInputAutoResolutionTarget,

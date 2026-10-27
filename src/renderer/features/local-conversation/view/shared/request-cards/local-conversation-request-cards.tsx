@@ -1,3 +1,5 @@
+import { QuestionDictationButton } from "../../composer/question-dictation-button";
+import { QUESTION_OUTLINE_ACTION_COLORS } from "../../composer/question-action-colors";
 import {
   useCallback,
   useEffect,
@@ -10,8 +12,13 @@ import {
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
-import { ChevronDownIcon, ChevronRightIcon, CloseIcon } from "@/components/shared/icons";
-import { NodexTooltip } from "./local-conversation-request-cards-deps";
+import {
+  BackIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  EditIcon,
+} from "@/components/shared/icons";
 import { resolveFormErrorMessage } from "../../../../../lib/forms";
 import { cn } from "../../../../../lib/utils";
 import type { CodexTranscriptEntry, CodexUserInputRequest } from "../../../../../lib/types";
@@ -177,39 +184,12 @@ export function UserInputTranscriptView({ item }: { item: UserInputTranscriptIte
   );
 }
 
-function InfoIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 21 21"
-      className={cn("icon-2xs", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path
-        d="M10.6 9.70459C11.0142 9.70461 11.35 10.0404 11.35 10.4546V13.7876C11.35 14.2018 11.0142 14.5376 10.6 14.5376C10.1858 14.5376 9.84998 14.2018 9.84998 13.7876V10.4546C9.84998 10.0404 10.1858 9.70459 10.6 9.70459Z"
-        fill="currentColor"
-      />
-      <path
-        d="M10.6 6.2876C11.1292 6.28762 11.558 6.71732 11.558 7.24658C11.5578 7.77569 11.1291 8.20457 10.6 8.20459C10.0708 8.20459 9.64215 7.7757 9.64197 7.24658C9.64197 6.71731 10.0707 6.2876 10.6 6.2876Z"
-        fill="currentColor"
-      />
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M10.6 2.53955C14.9713 2.53955 18.515 6.08326 18.515 10.4546C18.515 14.8259 14.9713 18.3696 10.6 18.3696C6.22864 18.3696 2.68494 14.8259 2.68494 10.4546C2.68494 6.08326 6.22864 2.53955 10.6 2.53955ZM10.6 3.86963C6.96318 3.86963 4.01501 6.81779 4.01501 10.4546C4.01501 14.0914 6.96318 17.0396 10.6 17.0396C14.2368 17.0396 17.1849 14.0914 17.1849 10.4546C17.1849 6.81779 14.2368 3.86963 10.6 3.86963Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
 function resolveOtherPromptLabel(question: RequestComposerQuestion): string {
   if (question.otherPlaceholder) return question.otherPlaceholder;
   if (!question.options?.length) {
     return "Type your answer";
   }
-  return "Tell Nodex what to do differently";
+  return "Or write your own response";
 }
 
 function resolveUserInputFocusTargetFromElement(
@@ -350,6 +330,8 @@ function UserInputQuestionSection({
   onOptionSelect,
   onOptionActivate,
   onDraftChange,
+  onDictationChange,
+  onDictationInteraction,
   onOtherFocus,
   onKeyDown,
   actionButtons,
@@ -370,6 +352,8 @@ function UserInputQuestionSection({
   onOptionSelect: (optionLabel: string) => void;
   onOptionActivate: (optionLabel: string) => void;
   onDraftChange: (value: string) => void;
+  onDictationChange: (value: string) => void;
+  onDictationInteraction?: () => void;
   onOtherFocus: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   actionButtons: React.ReactNode;
@@ -404,7 +388,7 @@ function UserInputQuestionSection({
   };
 
   return (
-    <div className="flex flex-col gap-3 py-1">
+    <div className={cn("flex flex-col gap-3", presentation === "composer" ? "pt-1 pb-2" : "py-1")}>
       <div className="flex flex-col gap-1 px-2">
         {question.options?.length ? (
           <>
@@ -420,6 +404,7 @@ function UserInputQuestionSection({
                   ? answer.selectedOptionIds?.includes(option.label) === true
                   : mode === "option" && selectedOption === option.label;
                 const isAdvancing = advancingChoiceId === option.label;
+                const recommended = option.label.endsWith(" (Recommended)");
                 const descriptionId = option.description
                   ? `request-option-${question.id.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}-description`
                   : undefined;
@@ -434,11 +419,9 @@ function UserInputQuestionSection({
                     aria-describedby={descriptionId}
                     data-request-option-label={option.label}
                     className={cn(
-                      "group flex min-h-8 w-full items-center gap-2 px-2 py-1.5 text-left text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border",
-                      presentation === "composer" ? "rounded-full" : "rounded-xl",
-                      isSelected || isAdvancing
-                        ? "bg-foreground-5"
-                        : "bg-transparent hover:bg-foreground-5",
+                      "group flex min-h-8 w-full items-start gap-2 rounded-xl px-2 py-1.5 text-left text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border",
+
+                      isSelected || isAdvancing ? "bg-text/5" : "bg-transparent hover:bg-text/5",
                     )}
                     disabled={busy}
                     onClick={() => {
@@ -446,51 +429,44 @@ function UserInputQuestionSection({
                     }}
                   >
                     <span
+                      aria-hidden="true"
                       className={cn(
-                        "flex min-w-[1.5ch] items-center justify-center text-sm",
-                        isSelected || isAdvancing
-                          ? "text-(--foreground-tertiary)"
-                          : "text-(--foreground-tertiary)/60",
+                        "flex size-5 shrink-0 self-start items-center justify-center rounded-xs border text-xs leading-none font-medium",
+                        isAdvancing && presentation === "composer"
+                          ? "border-text bg-primary-solid text-primary-solid"
+                          : "border-default bg-text/5 text-token-description-foreground",
                       )}
                     >
-                      {isAdvancing && presentation === "composer" ? (
+                      {question.options!.length > 1 ? (
+                        index + 1
+                      ) : isAdvancing && presentation === "composer" ? (
                         <span className="size-1.5 rounded-full bg-current" aria-hidden />
-                      ) : (
-                        `${index + 1}.`
-                      )}
+                      ) : null}
                     </span>
-                    <span className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">
-                        <span className="flex min-w-0 items-center gap-2">
-                          <span className="min-w-0 truncate">{option.label}</span>
-                          {option.description && (
-                            <NodexTooltip
-                              tooltipContent={option.description}
-                              side="top"
-                              delay={0}
-                              tooltipBodyClassName="max-w-64"
-                            >
-                              <span
-                                aria-label={`About ${option.label}`}
-                                className="inline-flex shrink-0 items-center text-(--foreground-tertiary) transition-colors duration-100 hover:text-(--foreground-secondary)"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                }}
-                              >
-                                <InfoIcon />
-                                <span id={descriptionId} className="sr-only">
-                                  {option.description}
-                                </span>
-                              </span>
-                            </NodexTooltip>
-                          )}
+                    <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 @max-5xl/request-card:flex-col @max-5xl/request-card:items-stretch">
+                      <span className="inline-flex min-w-0 items-center gap-1.5">
+                        <span className="min-w-0 text-sm font-medium wrap-anywhere">
+                          {recommended ? option.label.slice(0, -14) : option.label}
                         </span>
+                        {recommended ? (
+                          <span className="shrink-0 rounded-sm bg-text/5 px-2 py-1 text-xs leading-none text-token-description-foreground">
+                            Recommended
+                          </span>
+                        ) : null}
                       </span>
+                      {option.description ? (
+                        <span
+                          id={descriptionId}
+                          className="text-sm text-token-description-foreground"
+                        >
+                          {option.description}
+                        </span>
+                      ) : null}
                     </span>
                     {presentation === "composer" ? (
-                      <ChevronRightIcon
+                      <BackIcon
                         className={cn(
-                          "icon-2xs ml-auto shrink-0 text-(--foreground-tertiary)",
+                          "icon-xs ml-auto shrink-0 self-center rotate-180 text-token-description-foreground",
                           isSelected || isAdvancing
                             ? "opacity-100"
                             : "opacity-0 group-hover:opacity-100",
@@ -514,18 +490,18 @@ function UserInputQuestionSection({
 
             <div
               className={cn(
-                "flex items-end gap-2",
-                showInlineOtherComposer ? "justify-between -mt-1" : "justify-end",
+                "flex items-center gap-2",
+                showInlineOtherComposer ? "justify-between" : "justify-end",
               )}
             >
               {showInlineOtherComposer ? (
-                <div className="group flex min-w-0 flex-1 items-start gap-2 rounded-xl px-2 py-1 text-sm focus-within:outline-none">
-                  <span className="min-w-[1.5ch] pt-0.5 text-left text-(--foreground-tertiary)/60 group-focus-within:text-(--foreground-tertiary)/70">
-                    {question.options.length + 1}.
+                <div className="group flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1 text-sm focus-within:outline-none">
+                  <span className="flex size-5 shrink-0 items-center justify-center text-token-description-foreground">
+                    <EditIcon className="icon-xs" />
                   </span>
                   <span className="relative min-w-0 flex-1 py-0.5">
                     {!answer.freeformText ? (
-                      <span className="pointer-events-none absolute inset-x-0 top-0.5 truncate text-sm/5 text-(--foreground-tertiary)">
+                      <span className="pointer-events-none absolute inset-x-0 top-0.5 truncate text-base leading-[1.35] text-token-input-placeholder-foreground opacity-50">
                         {otherLabel}
                       </span>
                     ) : null}
@@ -533,6 +509,8 @@ function UserInputQuestionSection({
                       textareaRef={(element) => {
                         otherTextareaRef.current = element;
                       }}
+                      aria-label={question.question || question.header}
+                      aria-required={question.required || undefined}
                       value={answer.freeformText ?? ""}
                       disabled={busy}
                       onFocus={onOtherFocus}
@@ -540,12 +518,27 @@ function UserInputQuestionSection({
                       onKeyDown={handleOtherTextareaKeyDown}
                       placeholder={otherLabel}
                       data-user-input-focus-target="other"
-                      className="request-input-panel__inline-freeform w-full min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-sm leading-4 text-(--foreground) shadow-none outline-none placeholder:text-transparent"
+                      className="request-input-panel__inline-freeform w-full min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-base leading-[1.35] text-token-foreground shadow-none outline-none placeholder:text-transparent"
                     />
                   </span>
                 </div>
               ) : null}
-              <div className="flex shrink-0 items-center gap-2 place-self-end py-1">
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-2 place-self-end",
+                  presentation === "composer" ? "py-1.5" : "py-1",
+                )}
+              >
+                {question.isOther ? (
+                  <QuestionDictationButton
+                    id={question.id}
+                    value={answer.freeformText ?? ""}
+                    onChange={onDictationChange}
+                    onInteraction={onDictationInteraction}
+                    disabled={busy}
+                    isSecret={question.isSecret}
+                  />
+                ) : null}
                 {actionButtons}
               </div>
             </div>
@@ -555,6 +548,8 @@ function UserInputQuestionSection({
             <input
               ref={answerInputRef}
               type={question.isSecret ? "password" : "text"}
+              aria-label={question.question || question.header}
+              aria-required={question.required || undefined}
               value={answer.freeformText ?? ""}
               onChange={(event) => onDraftChange(event.target.value)}
               onKeyDown={onKeyDown}
@@ -563,7 +558,17 @@ function UserInputQuestionSection({
               data-user-input-focus-target="answer"
               className="h-10 w-full rounded-xl border border-[color-mix(in_srgb,var(--border)_85%,transparent)] bg-[color-mix(in_srgb,var(--foreground)_2%,transparent)] px-3 text-sm text-(--foreground) transition-colors duration-100 outline-none placeholder:text-(--foreground-tertiary) focus-visible:border-(--ring)"
             />
-            <div className="flex items-center justify-end gap-2 py-1">{actionButtons}</div>
+            <div className="flex items-center justify-end gap-2 py-1">
+              <QuestionDictationButton
+                id={question.id}
+                value={answer.freeformText ?? ""}
+                onChange={onDictationChange}
+                onInteraction={onDictationInteraction}
+                disabled={busy}
+                isSecret={question.isSecret}
+              />
+              {actionButtons}
+            </div>
           </div>
         )}
       </div>
@@ -630,10 +635,14 @@ function RequestComposerViewInstance({
   const [busyAction, setBusyAction] = useState<"dismiss" | "skip" | "submit" | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [advancingChoiceId, setAdvancingChoiceId] = useState<string | null>(null);
-  const [state, setState] = useState<RequestQuestionnaireDraft>(() =>
+  const [localDraft, setState] = useState<RequestQuestionnaireDraft>(() =>
     reconcileRequestQuestionnaireDraft(request, initialDraft),
   );
+  const state = initialDraft ?? localDraft;
   const stateRef = useRef(state);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
   const formRef = useRef<HTMLFormElement>(null);
   const optionsRef = useRef<HTMLDivElement>(null);
   const otherTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -782,10 +791,7 @@ function RequestComposerViewInstance({
 
   const submitDraft = async (nextDraft: RequestQuestionnaireDraft, lockToken?: symbol) => {
     const generation = requestGenerationRef.current;
-    if (
-      policy.requireAllAnswers &&
-      !isRequestQuestionnaireSubmittable(request, nextDraft, policy)
-    ) {
+    if (!isRequestQuestionnaireSubmittable(request, nextDraft, policy)) {
       setErrorMessage("Enter a response before submitting.");
       if (lockToken && activationLockRef.current === lockToken) {
         activationLockRef.current = null;
@@ -1041,12 +1047,17 @@ function RequestComposerViewInstance({
     const currentAnswer = stateRef.current.answers[stateRef.current.questionIndex];
     if (
       currentAnswer?.freeformText?.trim() ||
+      (question.initialAnswer !== undefined && currentAnswer?.freeformText !== null) ||
       (question.multiSelect && currentAnswer?.selectedOptionIds?.length)
     ) {
       advanceOrSubmit(stateRef.current);
       return;
     }
 
+    if (question.required) {
+      setErrorMessage("Enter a response before submitting.");
+      return;
+    }
     const nextDraft = clearCurrentRequestQuestionnaireAnswer(stateRef.current);
     commitDraft(nextDraft);
     advanceOrSubmit(nextDraft);
@@ -1104,19 +1115,29 @@ function RequestComposerViewInstance({
     </>
   );
 
+  const inlineHasAnswer =
+    Boolean(answer.freeformText?.trim()) ||
+    question.initialAnswer !== undefined ||
+    Boolean(question.multiSelect && answer.selectedOptionIds?.length);
   const inlineActionButtons = (
     <button
       type="button"
-      className="inline-flex h-token-button-composer shrink-0 items-center gap-1 rounded-full bg-token-foreground px-2 py-0 text-sm/4.5 text-token-dropdown-background focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
       onClick={handleInlineAction}
-      disabled={isBusy}
+      disabled={isBusy || Boolean(question.required && !inlineHasAnswer)}
+      className={cn(
+        "inline-flex h-7 shrink-0 items-center justify-center rounded-full border px-2 text-sm leading-none font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-40",
+        inlineHasAnswer
+          ? "border-transparent bg-token-foreground text-token-dropdown-background hover:bg-token-foreground/80"
+          : QUESTION_OUTLINE_ACTION_COLORS,
+      )}
     >
-      <span className="text-sm font-medium">
-        {question.multiSelect ? primaryLabel : answer.freeformText?.trim() ? "Next" : "Skip"}
-      </span>
-      <span className="inline-flex items-center rounded-sm bg-token-dropdown-background/15 px-1.5 py-px text-sm leading-none text-token-dropdown-background">
-        <span className="font-mono">⏎</span>
-      </span>
+      {question.multiSelect
+        ? primaryLabel
+        : inlineHasAnswer
+          ? isLastQuestion
+            ? "Send"
+            : "Next"
+          : "Skip"}
     </button>
   );
 
@@ -1138,32 +1159,19 @@ function RequestComposerViewInstance({
         handlePrimaryAction();
       }}
     >
-      <div className="border-token-border bg-token-input-background/70 text-token-foreground flex flex-col overflow-hidden rounded-2xl border backdrop-blur-sm focus:outline-none">
+      <div className="@container/request-card border-default bg-surface-elevated-secondary text-token-foreground flex flex-col overflow-hidden rounded-3xl border focus:outline-none">
         {(header || question.header || question.question) && (
           <div className="flex items-center justify-between border-token-border/70 pt-4 pr-3 pb-2 pl-4">
-            <div className="text-base leading-tight font-medium text-(--foreground)">
+            <div className="text-base leading-5 font-medium text-(--foreground)">
               {header ?? question.question ?? question.header}
             </div>
             <div className="flex shrink-0 items-center gap-1 text-xs text-(--foreground-tertiary)">
               {headerAccessory}
-              {isComposerPresentation && hasDismissAction ? (
-                <button
-                  type="button"
-                  data-request-input-dismiss
-                  className="flex size-6 items-center justify-center rounded-full text-(--foreground-tertiary) hover:bg-foreground-5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="Dismiss"
-                  disabled={isBusy}
-                  onClick={() => void handleEscapeDismiss()}
-                >
-                  <CloseIcon className="icon-2xs shrink-0" />
-                  <span className="sr-only">Dismiss</span>
-                </button>
-              ) : null}
               {isMultiQuestion ? (
                 <>
                   <button
                     type="button"
-                    className="flex size-5 items-center justify-center rounded-full text-(--foreground-tertiary) transition-colors duration-100 hover:bg-foreground-5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex size-6 items-center justify-center rounded-full text-(--foreground-tertiary) transition-colors duration-100 hover:bg-foreground-5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={currentIndex === 0}
                     onClick={() => navigateQuestion(currentIndex - 1)}
                     aria-label="Previous question"
@@ -1175,7 +1183,7 @@ function RequestComposerViewInstance({
                   </span>
                   <button
                     type="button"
-                    className="flex size-5 items-center justify-center rounded-full text-(--foreground-tertiary) transition-colors duration-100 hover:bg-foreground-5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex size-6 items-center justify-center rounded-full text-(--foreground-tertiary) transition-colors duration-100 hover:bg-foreground-5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={currentIndex === request.questions.length - 1}
                     onClick={() => navigateQuestion(currentIndex + 1)}
                     aria-label="Next question"
@@ -1183,6 +1191,19 @@ function RequestComposerViewInstance({
                     <ChevronIcon direction="next" />
                   </button>
                 </>
+              ) : null}
+              {isComposerPresentation && hasDismissAction ? (
+                <button
+                  type="button"
+                  data-request-input-dismiss
+                  className="flex size-6.5 items-center justify-center rounded-full text-(--foreground-tertiary) hover:bg-foreground-5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Dismiss"
+                  disabled={isBusy}
+                  onClick={() => void handleEscapeDismiss()}
+                >
+                  <CloseIcon className="icon-xs shrink-0" />
+                  <span className="sr-only">Dismiss</span>
+                </button>
               ) : null}
             </div>
           </div>
@@ -1224,6 +1245,11 @@ function RequestComposerViewInstance({
                 if (!isCurrentQuestionPanel()) return;
                 updateDraft(value);
               }}
+              onDictationInteraction={onUserInteraction}
+              onDictationChange={(value) => {
+                if (!mountedRef.current) return;
+                commitDraft(setRequestQuestionnaireFreeform(stateRef.current, currentIndex, value));
+              }}
               onOtherFocus={() => {
                 if (!isCurrentQuestionPanel()) return;
                 activateOther();
@@ -1239,7 +1265,9 @@ function RequestComposerViewInstance({
         </AnimatePresence>
 
         {errorMessage && (
-          <div className="px-3 pb-2 text-xs text-(--destructive)">{errorMessage}</div>
+          <div role="alert" className="px-3 pb-2 text-xs text-(--destructive)">
+            {errorMessage}
+          </div>
         )}
       </div>
     </form>

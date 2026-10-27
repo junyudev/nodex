@@ -639,12 +639,18 @@ describe("V2 thread find", () => {
         const queued = item("cancelled", 1, "needle", "user_message");
         if (queued.type !== "user_message") return;
         const answer = item("async-answer:question", 2, "needle", "user_message");
+        if (answer.type !== "user_message") return;
         const question: OrchestrationV2TurnItem = {
           ...item("question", 3, ""),
           type: "user_input_request",
           requestId: RuntimeRequestId.make("question"),
           questions: [],
-          questionAnswer: { requestId: "question", answers: {}, attachmentsByQuestionId: {} },
+          questionAnswer: {
+            requestId: "question",
+            messageIds: [answer.messageId],
+            answers: {},
+            attachmentsByQuestionId: {},
+          },
         };
         yield* putItems([
           { ...queued, runId: queuedRunId, inputIntent: "queued_turn" },

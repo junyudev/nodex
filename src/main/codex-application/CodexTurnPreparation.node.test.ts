@@ -104,6 +104,36 @@ for (const status of ["inProgress", "completed"] as const) {
   );
 }
 
+it.effect(
+  "prepares an old question for the current execution after its source was interrupted",
+  () =>
+    Effect.gen(function* () {
+      const source = turnFixture("old-question-turn", "interrupted");
+      source.items.push({
+        id: "old-question",
+        type: "agentMessage",
+        text: "Which scope?",
+        phase: "final_answer",
+        delivery: "async",
+        memoryCitation: null,
+        questions: null,
+      });
+      const preparation = yield* prepare(
+        conversationFixture(threadId, [source, turnFixture("current-turn", "inProgress")]),
+      );
+      const prompt = encodeCodexAsyncQuestionReplies([
+        { questionItemId: "old-question", question: "Which scope?", answer: "Project" },
+      ]);
+      const input = command(prompt, "current-turn");
+      const prepared = yield* preparation.steer({
+        ...input,
+        command: { ...input.command, questionSourceTurnIds: ["old-question-turn"] },
+      });
+      assert.strictEqual(prepared.clientUserMessageId, "client-message");
+      assert.strictEqual(prepared.input[0]?.type, "text");
+    }),
+);
+
 it.effect.each(["message", "tool-output"] as const)(
   "executes prepared %s steering once after the owner receives its pending Turn ID",
   (kind) =>

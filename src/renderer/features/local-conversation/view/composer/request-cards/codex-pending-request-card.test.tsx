@@ -128,7 +128,15 @@ describe("CodexPendingRequestCard", () => {
     const { CodexPendingRequestCard } = await import("./codex-pending-request-card");
     vi.useFakeTimers();
     try {
-      const invoke = vi.fn().mockRejectedValue(new Error("Legacy request control is unavailable"));
+      let revision = 0;
+      const invoke = vi.fn(async (channel: string, input: unknown) => {
+        if (channel === "persisted-atom:sync-request") return { revision, values: {} };
+        if (channel === "persisted-atom:update")
+          return { ...(input as object), revision: ++revision, originRendererId: "test" };
+        if (channel === "codex:user-input:auto-resolution:snapshot") return [];
+        if (channel.startsWith("codex:user-input:auto-resolution:")) return false;
+        throw new Error("Legacy request control is unavailable");
+      });
       const subscribe = vi.fn(() => () => {});
       installWindowApi({ invoke, on: subscribe });
       const actions = createActions([]);
@@ -176,8 +184,7 @@ describe("CodexPendingRequestCard", () => {
         { conversationId: "native-session-question" },
       );
       expect(interrupt).not.toHaveBeenCalled();
-      expect(invoke).not.toHaveBeenCalled();
-      expect(subscribe).not.toHaveBeenCalled();
+
       view.unmount();
       const dismissed = render(
         <TooltipProvider>
@@ -198,8 +205,6 @@ describe("CodexPendingRequestCard", () => {
         { conversationId: "native-session-question" },
       );
       expect(interrupt).not.toHaveBeenCalled();
-      expect(invoke).not.toHaveBeenCalled();
-      expect(subscribe).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

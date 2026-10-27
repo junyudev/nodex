@@ -274,3 +274,39 @@ describe("request card questionnaire state", () => {
     expect(buildUserInputAnswers(request, restored)).toEqual({});
   });
 });
+
+test("starts with editable provider text and enforces required questions in the composer", () => {
+  const form: RequestComposerRequest = {
+    requestId: "editable",
+    questions: [
+      {
+        id: "name",
+        header: "Name",
+        question: "What name?",
+        isOther: true,
+        initialAnswer: "Draft name",
+        required: true,
+      },
+      { id: "optional", header: "Notes", question: "Any notes?", isOther: true },
+    ],
+  };
+  const initial = createInitialRequestQuestionnaireDraft(form);
+  expect(initial.answers[0]?.freeformText).toBe("Draft name");
+  expect(buildUserInputAnswers(form, initial)).toEqual({ name: ["Draft name"] });
+  expect(isRequestQuestionnaireSubmittable(form, initial, REQUEST_INPUT_COMPOSER_POLICY)).toBe(
+    true,
+  );
+  const empty = setRequestQuestionnaireFreeform(initial, 0, "");
+  expect(isRequestQuestionnaireSubmittable(form, empty, REQUEST_INPUT_COMPOSER_POLICY)).toBe(true);
+  expect(buildUserInputAnswers(form, empty)).toEqual({ name: [""] });
+  const spaced = setRequestQuestionnaireFreeform(initial, 0, "  Spaced text  ");
+  expect(buildUserInputAnswers(form, spaced)).toEqual({ name: ["  Spaced text  "] });
+  const required = { ...form, questions: [{ ...form.questions[0]!, initialAnswer: undefined }] };
+  expect(
+    isRequestQuestionnaireSubmittable(
+      required,
+      createInitialRequestQuestionnaireDraft(required),
+      REQUEST_INPUT_COMPOSER_POLICY,
+    ),
+  ).toBe(false);
+});

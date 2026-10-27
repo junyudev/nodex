@@ -555,7 +555,8 @@ vi.mock("@/features/workspace-files/workspace-pierre-editor", () => ({
     }),
 }));
 
-vi.mock("@/lib/api", () => {
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>();
   const gitWorkerListeners = new Set<(message: unknown) => void>();
   const gitWorkerClient = {
     request: async (input: { method: string; params: Record<string, unknown> }) => {
@@ -700,6 +701,7 @@ vi.mock("@/lib/api", () => {
     };
   };
   return {
+    ...actual,
     getGitWorkerClient: () => gitWorkerClient,
     invoke: async (channel: string, ...args: unknown[]) => {
       invokeCalls.push([channel, ...args]);

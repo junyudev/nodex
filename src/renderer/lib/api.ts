@@ -1051,8 +1051,10 @@ export function getUserInputAutoResolutionSnapshot(): Promise<
   return resolveRendererTransport().getUserInputAutoResolutionSnapshot();
 }
 
-export function recordUserInputAutoResolutionActivity(conversationId: string): Promise<boolean> {
-  return resolveRendererTransport().recordUserInputAutoResolutionActivity(conversationId);
+export function recordUserInputAutoResolutionActivity(
+  conversation: import("../../shared/codex-user-input-auto-resolution").CodexUserInputAutoResolutionConversation,
+): Promise<boolean> {
+  return resolveRendererTransport().recordUserInputAutoResolutionActivity(conversation);
 }
 
 export function snoozeUserInputAutoResolution(

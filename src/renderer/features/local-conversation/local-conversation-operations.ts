@@ -138,6 +138,7 @@ export const localConversationCommandDefinitions = {
   "codex:thread:unarchive": defineReturnedConversationCommand("codex:thread:unarchive"),
   "codex:turn:interrupt": defineReturnedConversationCommand("codex:turn:interrupt"),
   "codex:turn:steer": defineReturnedConversationCommand("codex:turn:steer"),
+  "codex:turn:question-reply": defineReturnedConversationCommand("codex:turn:question-reply"),
 } as const;
 
 type LocalConversationQueryChannel = (typeof queryChannels)[number];

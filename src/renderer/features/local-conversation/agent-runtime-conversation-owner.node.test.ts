@@ -1142,6 +1142,8 @@ describe("Agent Runtime keyed transcript reads", () => {
       },
     ]);
     wire.emit(event({ ...question, status: "completed", completedAt: at }, 3));
+    expect(Object.keys(owner.asyncQuestions.read(target.threadId).questions)).toEqual(ids);
+    wire.emit(event({ ...question, status: "cancelled", completedAt: at }, 4));
     expect(owner.asyncQuestions.read(target.threadId).questions).toEqual({});
     release();
     owner.dispose();
@@ -2988,4 +2990,121 @@ describe("Runtime Composer context usage", () => {
       release();
     }
   });
+});
+
+test("a completed question keeps a newer unsent revision while adopting the admitted answer", async () => {
+  const question = {
+    ...runtimeQuestion("editable-question", "run"),
+    responseMode: "message" as const,
+  };
+  const { owner, wire, release } = await open(conversation([assistant(), question]));
+  try {
+    const id = Object.keys(owner.asyncQuestions.read(target.threadId).questions)[0]!;
+    owner.asyncQuestions.open(target.threadId, id);
+    owner.asyncQuestions.setDraft(target.threadId, id, "Admitted answer");
+    owner.asyncQuestions.acknowledge(target.threadId, [
+      { questionItemId: id, question: "Continue?", answer: "Admitted answer" },
+    ]);
+    owner.asyncQuestions.open(target.threadId, id);
+    owner.asyncQuestions.setDraft(target.threadId, id, "A newer revision");
+    wire.emit(
+      event(
+        {
+          ...question,
+          status: "completed",
+          completedAt: at,
+          questionAnswer: {
+            requestId: "editable-question",
+            answers: { q: "Admitted answer" },
+            attachmentsByQuestionId: {},
+          },
+        },
+        2,
+      ),
+    );
+    expect(owner.asyncQuestions.read(target.threadId).questions[id]).toMatchObject({
+      baseline: "Admitted answer",
+      draft: "A newer revision",
+    });
+    expect(owner.asyncQuestions.read(target.threadId).selectedId).toBe(id);
+    expect(
+      owner.asyncQuestionAnswers([
+        { questionItemId: id, question: "Continue?", answer: "A newer revision" },
+      ]),
+    ).toEqual([
+      { requestId: "editable-question", runId: "run", answers: { q: "A newer revision" } },
+    ]);
+  } finally {
+    release();
+    owner.dispose();
+  }
+});
+
+test("updates the original user message for uncertain delivery and never rewinds native acceptance", async () => {
+  const user: Extract<AgentTurnItem, { type: "user_message" }> = {
+    ...base("delivery-item", 1),
+    type: "user_message",
+    messageId: "delivery-message",
+    text: "Answer",
+    createdBy: "user",
+    creationSource: "web",
+    inputIntent: "turn_start",
+    attachments: [],
+    delivery: "pending",
+  };
+  const { owner, wire, release } = await open(conversation([user, assistant()]));
+  try {
+    const key = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
+    const receipt = (delivery: "unknown" | "accepted", sequence: number) =>
+      wire.emit({
+        sequence,
+        commandId: null,
+        event: {
+          id: `receipt:${sequence}`,
+          threadId: target.threadId,
+          occurredAt: at,
+          type: "message.delivery.updated",
+          payload: { messageId: "delivery-message", delivery },
+        },
+      });
+    receipt("unknown", 2);
+    expect(owner.readOwner.readItem(key, user.id)).toMatchObject({ runtimeDelivery: "unknown" });
+    receipt("accepted", 3);
+    expect(owner.readOwner.readItem(key, user.id)).toMatchObject({ runtimeDelivery: "accepted" });
+    receipt("unknown", 4);
+    expect(owner.readOwner.readItem(key, user.id)).toMatchObject({ runtimeDelivery: "accepted" });
+    expect(wire.port.read).toHaveBeenCalledOnce();
+  } finally {
+    release();
+    owner.dispose();
+  }
+});
+
+test("an older optional question becomes answerable when its source page is loaded", async () => {
+  const question = {
+    ...runtimeQuestion("older-optional", "old-run"),
+    responseMode: "message" as const,
+    status: "completed" as const,
+    completedAt: at,
+  };
+  const page: AgentHistoryPage = {
+    snapshotSequence: 1,
+    items: [row(question)],
+    nextCursor: null,
+    hasMoreHistory: false,
+  };
+  const { owner, release } = await open(conversation([assistant()], "older"), [page]);
+  try {
+    expect(Object.keys(owner.asyncQuestions.read(target.threadId).questions)).toEqual([]);
+    await owner.loadHistoryBoundary(historyBoundary(owner));
+    const id = Object.keys(owner.asyncQuestions.read(target.threadId).questions)[0]!;
+    expect(owner.asyncQuestions.read(target.threadId).selectedId).toBeNull();
+    owner.asyncQuestions.open(target.threadId, id);
+    expect(
+      owner.asyncQuestionAnswers([{ questionItemId: id, question: "Continue?", answer: "Yes" }]),
+    ).toEqual([{ requestId: "older-optional", runId: "old-run", answers: { q: "Yes" } }]);
+  } finally {
+    release();
+    owner.dispose();
+  }
 });

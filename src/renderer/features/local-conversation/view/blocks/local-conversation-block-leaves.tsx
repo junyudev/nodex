@@ -974,6 +974,12 @@ export function UserMessageBubble({
   const userActions = block.userMessageActions;
   const canEdit = userActions?.canEdit ?? false;
   const isNotSent = block.entry.deliveryStatus === "not-sent";
+  const deliveryLabel =
+    block.entry.deliveryStatus === "unknown"
+      ? "Delivery unconfirmed"
+      : block.entry.deliveryStatus === "pending"
+        ? "Sending"
+        : null;
   // Launch failures never ran a submit hook and must not point users at hook settings.
   const isHookBlocked = isNotSent && block.entry.status !== "failed";
   const isGoalMessage = block.entry.goal === true;
@@ -994,6 +1000,7 @@ export function UserMessageBubble({
   });
   const hasMessageContent = content.trim().length > 0;
   const shouldRenderFooter =
+    deliveryLabel !== null ||
     isNotSent ||
     isGoalMessage ||
     isHookFeedback ||
@@ -1089,6 +1096,11 @@ export function UserMessageBubble({
         )}
         {shouldRenderFooter ? (
           <div className="flex flex-row-reverse items-center gap-1">
+            {deliveryLabel ? (
+              <span className="mr-1 text-xs text-token-description-foreground" role="status">
+                {footerText(deliveryLabel)}
+              </span>
+            ) : null}
             {!isNotSent && isGoalMessage ? <UserMessageGoalStatus /> : null}
             {isNotSent && !isHookBlocked ? (
               <span className="mr-1 text-xs text-danger" role="status">

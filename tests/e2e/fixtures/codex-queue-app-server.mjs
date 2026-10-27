@@ -163,7 +163,7 @@ const completeTurn = (turnId, status) => {
   state = readState();
   const current = state.turns.find((entry) => entry.id === turnId);
   if (!current || current.status !== "inProgress") return;
-  if (status === "completed" && !current.items.some((item) => item.type === "agentMessage")) {
+  if (status === "completed" && !current.items.some((item) => item.type === "agentMessage" && item.delivery !== "async" && item.phase !== "commentary")) {
     const reply = {
       type: "agentMessage",
       id: `reply-${turnId}`,
@@ -250,6 +250,27 @@ const startTurn = (params, source = "turn/start") => {
       status: { type: "active", activeFlags: [] },
     });
     record("async-question-mode", { enabled: process.env.NODEX_FAKE_CODEX_ASYNC_QUESTIONS === "1" });
+    if (process.env.NODEX_FAKE_CODEX_SYNC_QUESTIONS === "1") {
+      setTimeout(() => {
+        const currentTurn = state.turns.find((entry) => entry.id === next.id);
+        if (!currentTurn || currentTurn.status !== "inProgress") return;
+        write({
+          id: `question-request:${next.id}`,
+          method: "item/tool/requestUserInput",
+          params: {
+            threadId: thread().id,
+            turnId: next.id,
+            itemId: `sync-question-${next.id}`,
+            isBlocking: false,
+            autoResolutionMs: null,
+            questions: [
+              { id: "private", header: "Private", question: "What is the private test token?", isOther: true, isSecret: true, options: null },
+              { id: "scope", header: "Scope", question: "Which scope is allowed?", isOther: false, isSecret: false, options: [{ label: "Project", description: "Use this Project" }, { label: "Library", description: "Use the Library" }] },
+            ],
+          },
+        });
+      }, 600);
+    }
     if (process.env.NODEX_FAKE_CODEX_ASYNC_QUESTIONS === "1") {
       setTimeout(() => {
         const currentTurn = state.turns.find((entry) => entry.id === next.id);
@@ -411,7 +432,13 @@ const model = {
 const handle = (message) => {
   state = readState();
   const method = message.method;
-  if (typeof method !== "string") return;
+  if (typeof method !== "string") {
+    if (typeof message.id === "string" && message.id.startsWith("question-request:")) {
+      record("question-response", { requestId: message.id, result: message.result });
+      setTimeout(() => completeTurn(message.id.slice("question-request:".length), "completed"), 20);
+    }
+    return;
+  }
   const id = message.id;
   const params = message.params ?? {};
   record("rpc", { method, params });

@@ -34,6 +34,8 @@ export class OrchestrationEffectExecutionError extends Schema.TaggedError<Orches
   {
     effectId: Schema.String,
     effectType: Schema.String,
+    /** A delivery with an unknown outcome cannot safely be replayed. */
+    retryable: Schema.optional(Schema.Boolean),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}
@@ -207,7 +209,29 @@ export const layerExecutor: Layer.Layer<
                     }),
                 ),
               );
-          case "provider-turn.steer":
+          case "provider-turn.steer": {
+            const steerRequest = effect.request;
+            const recordDelivery = (delivery: "accepted" | "unknown") =>
+              threads
+                .dispatch({
+                  type: "message.delivery.update",
+                  commandId: CommandId.make(`command:steer-delivery:${effect.id}:${delivery}`),
+                  threadId: effect.threadId,
+                  messageId: steerRequest.messageId,
+                  delivery,
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new OrchestrationEffectExecutionError({
+                        effectId: effect.id,
+                        effectType: effect.request.type,
+                        retryable: false,
+                        cause,
+                      }),
+                  ),
+                  Effect.asVoid,
+                );
             return providerTurnControl
               .steer({
                 threadId: effect.threadId,
@@ -217,6 +241,7 @@ export const layerExecutor: Layer.Layer<
                 messageId: effect.request.messageId,
               })
               .pipe(
+                Effect.tap(() => recordDelivery("accepted")),
                 Effect.tap(() =>
                   Effect.gen(function* () {
                     if (effect.request.type !== "provider-turn.steer") return;
@@ -234,10 +259,22 @@ export const layerExecutor: Layer.Layer<
                       threadId: effect.threadId,
                       messageId: message.id,
                     });
-                  }),
+                  }).pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new OrchestrationEffectExecutionError({
+                          effectId: effect.id,
+                          effectType: effect.request.type,
+                          retryable: false,
+                          cause,
+                        }),
+                    ),
+                  ),
                 ),
                 Effect.catch((error) =>
                   Effect.gen(function* () {
+                    if (Schema.is(OrchestrationEffectExecutionError)(error)) return yield* error;
+                    if (error.delivery === "unknown") return yield* recordDelivery("unknown");
                     // A steer that missed its Turn starts the next one; one the provider
                     // refused while its Turn keeps running waits for that Turn to end.
                     const turnCompleted = "turnCompleted" in error && error.turnCompleted === true;
@@ -322,15 +359,17 @@ export const layerExecutor: Layer.Layer<
                       );
                   }),
                 ),
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: effect.request.type,
-                      cause,
-                    }),
+                Effect.mapError((cause) =>
+                  Schema.is(OrchestrationEffectExecutionError)(cause)
+                    ? cause
+                    : new OrchestrationEffectExecutionError({
+                        effectId: effect.id,
+                        effectType: effect.request.type,
+                        cause,
+                      }),
                 ),
               );
+          }
           case "provider-turn.restart":
             return providerTurnControl
               .interruptAndAwaitTerminal({
@@ -752,6 +791,8 @@ export const layerWithOptions = (
           }
 
           const error = Cause.pretty(exit.cause);
+          const failure = Cause.findErrorOption(exit.cause);
+          const retryable = Option.isNone(failure) || failure.value.retryable !== false;
           const nonRetryable = isNonRetryableProviderTurnControlFailure(effect.request.type, error);
           yield* Effect.logWarning("Orchestration effect execution failed", {
             effectId: effect.id,
@@ -766,7 +807,7 @@ export const layerWithOptions = (
             ? yield* outbox
                 .succeed({ effectId: effect.id, workerId })
                 .pipe(Effect.onError((cause) => terminalizeClaim(effect, cause)))
-            : effect.attemptCount >= maxAttempts
+            : !retryable || effect.attemptCount >= maxAttempts
               ? yield* outbox
                   .fail({ effectId: effect.id, workerId, error })
                   .pipe(Effect.onError((cause) => terminalizeClaim(effect, cause)))

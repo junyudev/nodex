@@ -51,6 +51,7 @@ import type {
   OrchestrationV2MemoryCitation,
   OrchestrationV2CommandAction,
   ModelSelection,
+  MessageId,
   OrchestrationV2PlanArtifact,
   OrchestrationV2ProviderCapabilities,
   OrchestrationV2ProviderFailure,
@@ -2053,6 +2054,15 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         const pendingRuntimeRequests = yield* Ref.make(
           new Map<string, PendingCodexRuntimeRequest>(),
         );
+        const pendingMessageDeliveries = new Map<
+          string,
+          {
+            readonly nativeThreadId: string;
+            readonly threadId: ThreadId;
+            readonly messageId: MessageId;
+          }
+        >();
+        yield* Effect.addFinalizer(() => Effect.sync(() => pendingMessageDeliveries.clear()));
         /**
          * Turn contexts retained past turn/completed while background command
          * items started in that turn are still running, so late item events
@@ -3694,6 +3704,28 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }),
         });
 
+        const acceptCorrelatedUserMessage = (
+          nativeThreadId: string,
+          item: Extract<
+            CodexSchema.V2ItemCompletedNotification__ThreadItem,
+            { type: "userMessage" }
+          >,
+        ) =>
+          Effect.gen(function* () {
+            if (typeof item.clientId !== "string" || item.clientId.length === 0) return;
+            const pending = pendingMessageDeliveries.get(item.clientId);
+            if (!pending || pending.nativeThreadId !== nativeThreadId) return;
+            pendingMessageDeliveries.delete(item.clientId);
+            yield* emitProviderEvent({
+              type: "message.delivery.updated",
+              driver: CODEX_PROVIDER,
+              threadId: pending.threadId,
+              messageId: pending.messageId,
+              delivery: "accepted",
+              nativeItemRef: codexNativeItemRef(item.id),
+            });
+          });
+
         const emitSubagentUserMessage = (
           context: ActiveCodexTurnContext,
           item: Extract<
@@ -4297,6 +4329,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           readonly nativeRequestId: string;
           readonly questions: ReadonlyArray<CodexSchema.ToolRequestUserInputParams__ToolRequestUserInputQuestion>;
           readonly responseMode?: "message";
+          readonly isBlocking?: boolean;
+          readonly autoResolutionMs?: number | null;
         }) =>
           Effect.gen(function* () {
             const createdAt = yield* DateTime.now;
@@ -4315,6 +4349,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               id: nonEmptyText(question.id, `question-${index + 1}`),
               header: nonEmptyText(question.header, "Question"),
               question: nonEmptyText(question.question, "Choose an answer."),
+              allowCustomAnswer: input.responseMode === "message" || question.isOther === true,
+              isSecret: question.isSecret === true,
               options:
                 question.options?.map((option, optionIndex) => ({
                   label: nonEmptyText(option.label, `Option ${optionIndex + 1}`),
@@ -4366,6 +4402,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   : { type: "live", providerSessionId },
               createdAt,
               resolvedAt: null,
+              ...(input.isBlocking === undefined ? {} : { isBlocking: input.isBlocking }),
+              ...(input.autoResolutionMs === undefined
+                ? {}
+                : { autoResolutionMs: input.autoResolutionMs }),
             };
             const turnItem: OrchestrationV2TurnItem = {
               id: turnItemId,
@@ -4386,6 +4426,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               requestId,
               questions,
               ...(input.responseMode === undefined ? {} : { responseMode: input.responseMode }),
+              ...(input.isBlocking === undefined ? {} : { isBlocking: input.isBlocking }),
+              ...(input.autoResolutionMs === undefined
+                ? {}
+                : { autoResolutionMs: input.autoResolutionMs }),
             };
             return { node, request, turnItem };
           });
@@ -4955,6 +4999,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
 
         yield* registerNotification("item/started", (payload) =>
           Effect.gen(function* () {
+            if (payload.item.type === "userMessage")
+              yield* acceptCorrelatedUserMessage(payload.threadId, payload.item);
             const resolved = yield* resolveItemEventContext(payload.turnId);
             if (resolved === undefined) return;
             const context = resolved.context;
@@ -5102,6 +5148,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
 
         yield* registerNotification("item/completed", (payload) =>
           Effect.gen(function* () {
+            if (payload.item.type === "userMessage")
+              yield* acceptCorrelatedUserMessage(payload.threadId, payload.item);
             if (payload.item.type === "mcpToolCall") {
               yield* releaseNativeMcpCall(
                 JSON.stringify([payload.threadId, payload.turnId, payload.item.id]),
@@ -5577,6 +5625,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               nativeItemId: payload.itemId,
               nativeRequestId: payload.itemId,
               questions: payload.questions,
+              isBlocking: payload.isBlocking,
+              ...(payload.autoResolutionMs === undefined
+                ? {}
+                : { autoResolutionMs: payload.autoResolutionMs }),
             });
             const answers = yield* Deferred.make<ProviderUserInputAnswers>();
             yield* Ref.update(pendingRuntimeRequests, (current) => {
@@ -6760,6 +6812,46 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 ),
                 Effect.flatMap(decodeCodexResumeMetadata),
               );
+              const runtimeThreadId =
+                threadInput.threadId ?? threadInput.providerThread.appThreadId;
+              const pendingIds = threadInput.pendingDeliveryMessageIds ?? [];
+              if (runtimeThreadId !== null && pendingIds.length > 0) {
+                for (const messageId of pendingIds.slice(
+                  0,
+                  Math.max(0, 256 - pendingMessageDeliveries.size),
+                ))
+                  pendingMessageDeliveries.set(messageId, {
+                    nativeThreadId,
+                    threadId: runtimeThreadId,
+                    messageId,
+                  });
+                // Resume carries metadata only. One bounded page can confirm recent
+                // receipts; absent evidence remains unknown and is never resent.
+                yield* client
+                  .request("thread/items/list", {
+                    threadId: nativeThreadId,
+                    limit: 100,
+                    sortDirection: "desc",
+                  })
+                  .pipe(
+                    Effect.flatMap((page) =>
+                      Effect.forEach(
+                        page.data,
+                        (entry) =>
+                          entry.item.type === "userMessage"
+                            ? acceptCorrelatedUserMessage(nativeThreadId, entry.item)
+                            : Effect.void,
+                        { discard: true },
+                      ),
+                    ),
+                    Effect.catch((cause) =>
+                      Effect.logWarning("Could not reconcile pending message delivery on resume", {
+                        providerThreadId: threadInput.providerThread.id,
+                        cause,
+                      }),
+                    ),
+                  );
+              }
               // Codex follows a resume with a goal snapshot notification; the
               // run's first turn writes it if it differs from the stored goal.
               return {
@@ -6902,47 +6994,84 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             );
           },
           steerTurn: (turnInput) =>
-            Effect.gen(function* () {
-              const threadId = yield* getNativeThreadId(turnInput.providerThread);
-              // Between goal turns, steer the turn Codex continues with.
-              const latestTurnId = latestGoalTurnId(turnInput.providerTurnId);
-              const held = heldGoalTurn(turnInput.providerThread, latestTurnId);
-              const providerTurnId =
-                held === undefined
-                  ? latestTurnId
-                  : ((yield* Deferred.await(held.hold.next))?.providerTurnId ?? latestTurnId);
-              const activeTurn = Array.from((yield* Ref.get(activeTurns)).values()).find(
-                (candidate) => candidate.providerTurnId === providerTurnId,
-              );
-              if (activeTurn === undefined) {
-                return yield* toProtocolError(
-                  `Provider turn ${turnInput.providerTurnId} is not active and cannot be steered.`,
+            Effect.suspend(() => {
+              let dispatched = false;
+              return Effect.gen(function* () {
+                const threadId = yield* getNativeThreadId(turnInput.providerThread);
+                if (pendingMessageDeliveries.has(turnInput.message.messageId)) {
+                  dispatched = true;
+                  return yield* toProtocolError(
+                    "This message is still awaiting native delivery confirmation.",
+                  );
+                }
+                // Between goal turns, steer the turn Codex continues with.
+                const latestTurnId = latestGoalTurnId(turnInput.providerTurnId);
+                const held = heldGoalTurn(turnInput.providerThread, latestTurnId);
+                const providerTurnId =
+                  held === undefined
+                    ? latestTurnId
+                    : ((yield* Deferred.await(held.hold.next))?.providerTurnId ?? latestTurnId);
+                const activeTurn = Array.from((yield* Ref.get(activeTurns)).values()).find(
+                  (candidate) => candidate.providerTurnId === providerTurnId,
                 );
-              }
+                if (activeTurn === undefined) {
+                  return yield* toProtocolError(
+                    `Provider turn ${turnInput.providerTurnId} is not active and cannot be steered.`,
+                  );
+                }
 
-              const codexInput = yield* toCodexInput(turnInput);
-              const steer = (expectedTurnId: string) =>
-                client.request("turn/steer", { expectedTurnId, input: codexInput, threadId });
-              const expectedTurnId = codexTurnId(activeTurn.nativeTurnId);
-              yield* steer(expectedTurnId).pipe(
-                Effect.catch((cause) => {
-                  const actual = parseSteerTurnMismatchActualTurnId(cause);
-                  if (actual === null || actual === expectedTurnId) return Effect.fail(cause);
-                  currentNativeTurnIds.set(activeTurn.nativeTurnId, actual);
-                  return steer(actual);
-                }),
-              );
-            }).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ProviderAdapter.ProviderAdapterSteerRunError({
+                const codexInput = yield* toCodexInput(turnInput);
+                if (pendingMessageDeliveries.size >= 256)
+                  return yield* toProtocolError(
+                    "Too many messages are awaiting native delivery confirmation.",
+                  );
+                pendingMessageDeliveries.set(turnInput.message.messageId, {
+                  nativeThreadId: threadId,
+                  threadId: turnInput.threadId,
+                  messageId: turnInput.message.messageId,
+                });
+                const steer = (expectedTurnId: string) => {
+                  dispatched = true;
+                  return client.request("turn/steer", {
+                    expectedTurnId,
+                    input: codexInput,
+                    threadId,
+                    clientUserMessageId: turnInput.message.messageId,
+                  });
+                };
+                const expectedTurnId = codexTurnId(activeTurn.nativeTurnId);
+                yield* steer(expectedTurnId).pipe(
+                  Effect.catch((cause) => {
+                    const actual = parseSteerTurnMismatchActualTurnId(cause);
+                    if (actual === null || actual === expectedTurnId) return Effect.fail(cause);
+                    currentNativeTurnIds.set(activeTurn.nativeTurnId, actual);
+                    return steer(actual);
+                  }),
+                );
+                pendingMessageDeliveries.delete(turnInput.message.messageId);
+              }).pipe(
+                Effect.mapError((cause) => {
+                  const delivery =
+                    !dispatched ||
+                    (cause._tag === "CodexAppServerRequestError" &&
+                      cause.operation === "encode-payload")
+                      ? "not_dispatched"
+                      : cause._tag === "CodexAppServerRequestError" &&
+                          cause.operation === "receive-response"
+                        ? "rejected"
+                        : "unknown";
+                  if (delivery !== "unknown")
+                    pendingMessageDeliveries.delete(turnInput.message.messageId);
+                  return new ProviderAdapter.ProviderAdapterSteerRunError({
                     driver: CODEX_PROVIDER,
                     providerThreadId: turnInput.providerThread.id,
                     providerTurnId: turnInput.providerTurnId,
+                    delivery,
                     cause,
-                  }),
-              ),
-            ),
+                  });
+                }),
+              );
+            }),
           // Dropping this connection's subscription lets the shared app-server
           // shut the native thread (and its MCP servers) down once it is idle.
           // `notLoaded` / `notSubscribed` mean there is nothing left to unload.

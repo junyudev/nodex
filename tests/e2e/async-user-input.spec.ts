@@ -1,5 +1,5 @@
 import { createUuidV7FromTimestamp } from "../../src/shared/uuid-v7";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -116,9 +116,27 @@ test("answers optional questions while the Agent continues and keeps the ordinar
     await page.screenshot({ path: testInfo.outputPath("question-answered.png") });
     await normalComposer.fill("");
     await page.getByRole("button", { name: "Stop", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Answer question", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Answer question", exact: true })).toHaveCount(1);
     await expect(page.getByText("Which scope should I use?", { exact: true })).toHaveCount(1);
     await page.screenshot({ path: testInfo.outputPath("question-completed.png") });
+    await page.getByRole("button", { name: "Answer question", exact: true }).click();
+    await panel.getByRole("radio", { name: "Project", exact: true }).click();
+    await expect
+      .poll(() => requests().filter((entry) => entry.method === "turn/start").length)
+      .toBe(2);
+    const nextTurn = requests().filter((entry) => entry.method === "turn/start")[1]!;
+    expect(decodeCodexAsyncQuestionReplies(nextTurn.params.input?.[0]?.text ?? "")).toEqual([
+      expect.objectContaining({ question: "Which scope should I use?", answer: "Project" }),
+    ]);
+    const answer = page
+      .locator('[data-user-message-bubble="true"]')
+      .filter({ hasText: "Which scope should I use?" });
+    await expect(answer).toBeVisible();
+    await expect(answer).toContainText("Project");
+    await expect(answer).not.toContainText("<send_user_message_question_reply>");
+    await page.reload();
+    await expect(answer).toBeVisible();
+    await expect(answer).not.toContainText("<send_user_message_question_reply>");
   } catch (error) {
     fs.writeFileSync(
       testInfo.outputPath("runtime-logs.txt"),
@@ -128,6 +146,135 @@ test("answers optional questions while the Agent continues and keeps the ordinar
       const source = path.join(harness.profile.runRoot, ".fake-codex", name);
       if (fs.existsSync(source)) fs.copyFileSync(source, testInfo.outputPath(name));
     }
+    throw error;
+  } finally {
+    await harness.close();
+  }
+});
+
+test("restores an optional answer draft after Stop and application restart", async ({}, testInfo) => {
+  test.setTimeout(120_000);
+  const harness = await createQuestionHarness();
+  try {
+    let page = await startQuestionScenario(harness);
+    let panel = page.getByRole("group", { name: "Agent question" });
+    await expect(panel).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).not.toBeVisible();
+    await expect(panel).toBeVisible();
+    await panel.getByRole("button", { name: "Close question" }).click();
+    await page.getByRole("button", { name: "Answer question", exact: true }).last().click();
+    await panel.getByLabel("Reply…").fill("Release checklist retained after restart");
+    page = await harness.restart();
+    panel = page.getByRole("group", { name: "Agent question" });
+    await expect
+      .poll(
+        async () =>
+          (await panel.isVisible()) ||
+          (await page
+            .getByRole("button", { name: "Answer question", exact: true })
+            .last()
+            .isVisible()),
+      )
+      .toBe(true);
+    if (!(await panel.isVisible()))
+      await page.getByRole("button", { name: "Answer question", exact: true }).last().click();
+    await expect(panel.getByLabel("Reply…")).toHaveText("Release checklist retained after restart");
+    await panel.getByRole("button", { name: "Send", exact: true }).click();
+    const answer = page
+      .locator('[data-user-message-bubble="true"]')
+      .filter({ hasText: "Release checklist retained after restart" });
+    await expect(answer).toBeVisible();
+    await expect(answer).not.toContainText("<send_user_message_question_reply>");
+    await expect(page.getByRole("button", { name: "Answer question", exact: true })).toHaveCount(1);
+    await page.screenshot({ path: testInfo.outputPath("draft-restored-and-sibling-retained.png") });
+  } catch (error) {
+    fs.writeFileSync(
+      testInfo.outputPath("runtime-logs.txt"),
+      await readBoundedElectronRuntimeLogs(harness.profile, 300_000),
+    );
+    throw error;
+  } finally {
+    await harness.close();
+  }
+});
+
+test("keeps unanswered questions visible after a final reply and panel dismissal", async () => {
+  const harness = await createQuestionHarness({
+    NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
+    NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "2000",
+  });
+  try {
+    const page = await startQuestionScenario(harness);
+    const panel = page.getByRole("group", { name: "Agent question" });
+    await expect(panel).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).not.toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByText("The task completed successfully.", { exact: true })).toBeVisible();
+    await panel.getByRole("button", { name: "Close question" }).click();
+    await expect(page.getByRole("button", { name: "Answer question", exact: true })).toHaveCount(2);
+    await page.getByRole("button", { name: "Answer question", exact: true }).last().click();
+    await expect(panel.getByLabel("Reply…")).toBeVisible();
+  } finally {
+    await harness.close();
+  }
+});
+
+test("preserves private questions and custom-answer restrictions through Agent execution", async ({}, testInfo) => {
+  test.setTimeout(120_000);
+  const harness = await createQuestionHarness({
+    NODEX_FAKE_CODEX_ASYNC_QUESTIONS: "0",
+    NODEX_FAKE_CODEX_SYNC_QUESTIONS: "1",
+  });
+  let page: Page | undefined;
+  try {
+    page = await startQuestionScenario(harness);
+    const secret = page.locator('input[type="password"]');
+    await expect(secret).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Dictate", exact: true })).toBeDisabled();
+    await secret.fill("synthetic-private-token");
+    await secret.press("Enter");
+    await expect(page.getByRole("radio", { name: "Project", exact: true })).toBeVisible();
+    const question = page.locator("[data-request-question-key]");
+    await expect(question.locator('input,textarea,[contenteditable="true"]')).toHaveCount(0);
+    await page.getByRole("radio", { name: "Project", exact: true }).click();
+    const requests = () =>
+      fs
+        .readFileSync(path.join(harness.profile.runRoot, ".fake-codex/requests.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .map(
+          (line) =>
+            JSON.parse(line) as {
+              method: string;
+              params: { result?: { answers?: Record<string, { answers: string[] }> } };
+            },
+        );
+    await expect
+      .poll(() => requests().filter((entry) => entry.method === "question-response").length)
+      .toBe(1);
+    expect(
+      requests().find((entry) => entry.method === "question-response")?.params.result?.answers,
+    ).toEqual({
+      private: { answers: ["synthetic-private-token"] },
+      scope: { answers: ["Project"] },
+    });
+    await expect(page.getByText("The task completed successfully.", { exact: true })).toBeVisible();
+    const work = page.getByRole("button", { name: /^Worked for/u });
+    if ((await work.count()) > 0 && (await work.getAttribute("aria-expanded")) === "false")
+      await work.click();
+    await page.getByRole("button", { name: "Asked 2 questions", exact: true }).click();
+    await expect(page.getByText("Hidden response", { exact: true })).toBeVisible();
+    await expect(page.getByText("synthetic-private-token", { exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("private-answer-history.png") });
+  } catch (error) {
+    if (page && !page.isClosed())
+      await page.screenshot({ path: testInfo.outputPath("private-question-failure.png") });
+    fs.writeFileSync(
+      testInfo.outputPath("runtime-logs.txt"),
+      await readBoundedElectronRuntimeLogs(harness.profile, 300_000),
+    );
     throw error;
   } finally {
     await harness.close();

@@ -11,15 +11,19 @@ import type {
   CodexUserInputAutoResolutionEntry,
 } from "../../../shared/codex-user-input-auto-resolution";
 import type { CodexProtocolRequestId } from "@/lib/types";
-import { clearCodexUserInputDraft } from "./user-input-draft-state";
+import { clearCodexUserInputDraft, clearCodexUserInputSecretDraft } from "./user-input-draft-state";
 
 const entries = new Map<string, CodexUserInputAutoResolutionEntry>();
 const listeners = new Set<() => void>();
 let stopSubscription: (() => void) | null = null;
 let hydrationPromise: Promise<void> | null = null;
 
-function buildKey(conversationId: string, requestId: CodexProtocolRequestId): string {
-  return `${conversationId}:${buildCodexCanonicalRequestIdentityKey(requestId)}`;
+function buildKey(
+  hostId: string,
+  conversationId: string,
+  requestId: CodexProtocolRequestId,
+): string {
+  return JSON.stringify([hostId, conversationId, buildCodexCanonicalRequestIdentityKey(requestId)]);
 }
 
 function notify(): void {
@@ -28,13 +32,19 @@ function notify(): void {
 
 function applyChange(change: CodexUserInputAutoResolutionChange): void {
   if (change.type === "updated") {
-    entries.set(buildKey(change.entry.conversationId, change.entry.requestId), change.entry);
+    entries.set(
+      buildKey(change.entry.hostId, change.entry.conversationId, change.entry.requestId),
+      change.entry,
+    );
     notify();
     return;
   }
 
-  entries.delete(buildKey(change.conversationId, change.requestId));
-  clearCodexUserInputDraft(change.conversationId, change.requestId);
+  entries.delete(buildKey(change.hostId, change.conversationId, change.requestId));
+  if (change.type === "timedOut" || change.reason === "responded" || change.reason === "resolved")
+    clearCodexUserInputDraft(change.conversationId, change.requestId, change.hostId);
+  else if (change.reason === "disconnected" || change.reason === "disposed")
+    clearCodexUserInputSecretDraft(change.conversationId, change.requestId, change.hostId);
   notify();
 }
 
@@ -44,15 +54,15 @@ function ensureStarted(): void {
   stopSubscription = subscribeUserInputAutoResolutionChanges((change) => {
     const key =
       change.type === "updated"
-        ? buildKey(change.entry.conversationId, change.entry.requestId)
-        : buildKey(change.conversationId, change.requestId);
+        ? buildKey(change.entry.hostId, change.entry.conversationId, change.entry.requestId)
+        : buildKey(change.hostId, change.conversationId, change.requestId);
     changedDuringHydration?.add(key);
     applyChange(change);
   });
   hydrationPromise = getUserInputAutoResolutionSnapshot()
     .then((snapshot) => {
       for (const entry of snapshot) {
-        const key = buildKey(entry.conversationId, entry.requestId);
+        const key = buildKey(entry.hostId, entry.conversationId, entry.requestId);
         if (changedDuringHydration?.has(key)) continue;
         entries.set(key, entry);
       }
@@ -78,9 +88,10 @@ const getDisabledSnapshot = (): null => null;
 export function useUserInputAutoResolution(
   conversationId: string,
   requestId: CodexProtocolRequestId,
+  hostId = "local",
   enabled = true,
 ): CodexUserInputAutoResolutionEntry | null {
-  const key = buildKey(conversationId, requestId);
+  const key = buildKey(hostId, conversationId, requestId);
   const entry = useSyncExternalStore(
     enabled ? subscribe : subscribeDisabled,
     enabled ? () => entries.get(key) ?? null : getDisabledSnapshot,
@@ -96,15 +107,20 @@ export function useUserInputAutoResolution(
   return entry;
 }
 
-export async function recordUserInputActivity(conversationId: string): Promise<void> {
-  await recordUserInputAutoResolutionActivity(conversationId);
+export async function recordUserInputActivity(
+  conversationId: string,
+  hostId = "local",
+): Promise<void> {
+  await recordUserInputAutoResolutionActivity({ hostId, conversationId });
 }
 
 export async function snoozeUserInput(
   conversationId: string,
   requestId: CodexProtocolRequestId,
+  hostId = "local",
 ): Promise<boolean> {
   return await snoozeUserInputAutoResolution({
+    hostId,
     conversationId,
     requestId,
   });
@@ -113,10 +129,13 @@ export async function snoozeUserInput(
 export async function isUserInputAutoResolutionTracked(
   conversationId: string,
   requestId: CodexProtocolRequestId,
+  hostId = "local",
 ): Promise<boolean> {
-  const key = buildKey(conversationId, requestId);
+  const key = buildKey(hostId, conversationId, requestId);
   const snapshot = await getUserInputAutoResolutionSnapshot();
-  return snapshot.some((entry) => buildKey(entry.conversationId, entry.requestId) === key);
+  return snapshot.some(
+    (entry) => buildKey(entry.hostId, entry.conversationId, entry.requestId) === key,
+  );
 }
 
 export function resetUserInputAutoResolutionStateForTests(): void {

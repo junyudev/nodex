@@ -111,18 +111,23 @@ export const live: Layer.Layer<
             "surfaceId" in input && typeof input.surfaceId === "string"
               ? input.surfaceId.trim()
               : "";
-          if (!threadId || !surfaceId) return Effect.succeed(false);
+          const hostId =
+            "hostId" in input && typeof input.hostId === "string" ? input.hostId.trim() : "";
+          if (!hostId || !threadId || !surfaceId) return Effect.succeed(false);
           const result = rendererConversations.setPresented(
             threadId,
             clientId,
             surfaceId,
             "presented" in input && input.presented === true,
+            hostId,
           );
           if (!result.accepted) return Effect.succeed(false);
           if (result.presentedInForeground) {
             events.publish({ kind: "rendererConversationPresentedInForeground", value: threadId });
           }
-          return userInputAutoResolution.reevaluatePresentation(threadId).pipe(Effect.as(true));
+          return userInputAutoResolution
+            .reevaluatePresentation({ hostId, conversationId: threadId })
+            .pipe(Effect.as(true));
         }),
       ),
     );
@@ -158,12 +163,18 @@ export const live: Layer.Layer<
     yield* handleControl("codex:user-input:auto-resolution:activity", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => {
-          const conversationId = parseCodexUserInputAutoResolutionActivityInput(input);
-          if (conversationId === null) return Effect.succeed(false);
-          if (!rendererConversations.isClientPresenting(conversationId, clientId)) {
+          const conversation = parseCodexUserInputAutoResolutionActivityInput(input);
+          if (conversation === null) return Effect.succeed(false);
+          if (
+            !rendererConversations.isClientPresenting(
+              conversation.conversationId,
+              clientId,
+              conversation.hostId,
+            )
+          ) {
             return Effect.succeed(false);
           }
-          return userInputAutoResolution.recordActivity(conversationId).pipe(Effect.as(true));
+          return userInputAutoResolution.recordActivity(conversation).pipe(Effect.as(true));
         }),
       ),
     );
@@ -172,10 +183,16 @@ export const live: Layer.Layer<
         Effect.flatMap((clientId) => {
           const target = parseCodexUserInputAutoResolutionTarget(input);
           if (target === null) return Effect.succeed(false);
-          if (!rendererConversations.isClientPresenting(target.conversationId, clientId)) {
+          if (
+            !rendererConversations.isClientPresenting(
+              target.conversationId,
+              clientId,
+              target.hostId,
+            )
+          ) {
             return Effect.succeed(false);
           }
-          return userInputAutoResolution.snooze(target.conversationId, target.requestId);
+          return userInputAutoResolution.snooze(target);
         }),
       ),
     );

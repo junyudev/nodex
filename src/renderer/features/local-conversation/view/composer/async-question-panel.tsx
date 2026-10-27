@@ -1,3 +1,4 @@
+import { QuestionDictationButton } from "./question-dictation-button";
 import type { FileSearchScope } from "../../../../../shared/file-search";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, type Variants } from "motion/react";
@@ -113,7 +114,7 @@ export function AsyncQuestionPanel({
 
   const selected = question.draftKind === "option" ? question.options.indexOf(question.draft) : -1;
   const hasOptions = question.options.length > 0;
-  const canSend = Boolean(question.draft.trim());
+  const canSend = question.initialAnswer !== undefined || Boolean(question.draft.trim());
   const clearActivation = () => {
     if (activation.current) clearTimeout(activation.current);
     activation.current = null;
@@ -179,7 +180,7 @@ export function AsyncQuestionPanel({
     runtime.focusFreeform(threadId, question.id);
   };
   const label = last
-    ? state.openIds.length === 1 && question.baseline
+    ? state.openIds.length === 1 && question.answered
       ? "Send update"
       : "Send"
     : "Next";
@@ -226,7 +227,8 @@ export function AsyncQuestionPanel({
           }
           if (event.key !== "Enter" || event.shiftKey) return false;
           event.preventDefault();
-          if (runtime.read(threadId).questions[question.id]?.draft.trim() && !state.submitting)
+          const current = runtime.read(threadId).questions[question.id];
+          if ((current?.initialAnswer !== undefined || current?.draft.trim()) && !state.submitting)
             advance();
           return true;
         }}
@@ -241,7 +243,7 @@ export function AsyncQuestionPanel({
       role="group"
       aria-label="Agent question"
       data-async-question-panel="true"
-      className="group-has-[[data-composer-context-suggestions=true]]/async-questions:hidden @container/request-card relative isolate flex flex-col overflow-hidden rounded-3xl border border-default bg-token-bg-fog text-token-foreground outline-none"
+      className="group-has-[[data-composer-context-suggestions=true]]/async-questions:hidden @container/request-card relative isolate flex flex-col overflow-hidden rounded-3xl border border-default bg-surface-elevated-secondary text-token-foreground outline-none"
       onPointerDownCapture={(event) => {
         if (
           event.target instanceof Element &&
@@ -356,7 +358,7 @@ export function AsyncQuestionPanel({
                     <button
                       type="button"
                       aria-label="Previous question"
-                      className={QUESTION_CONTROL}
+                      className={cn(QUESTION_CONTROL, "size-6")}
                       disabled={index === 0 || state.submitting}
                       onClick={() => navigate(-1)}
                       onKeyDown={(event) => {
@@ -371,7 +373,7 @@ export function AsyncQuestionPanel({
                     <button
                       type="button"
                       aria-label="Next question"
-                      className={QUESTION_CONTROL}
+                      className={cn(QUESTION_CONTROL, "size-6")}
                       disabled={last || !canSend || state.submitting}
                       onClick={() => navigate(1)}
                       onKeyDown={(event) => {
@@ -386,7 +388,7 @@ export function AsyncQuestionPanel({
                   type="button"
                   aria-label="Close question"
                   data-async-question-dismiss="true"
-                  className={QUESTION_CONTROL}
+                  className={cn(QUESTION_CONTROL, "size-[26px]")}
                   onClick={close}
                 >
                   <AgentQuestionDismissIcon />
@@ -427,7 +429,7 @@ export function AsyncQuestionPanel({
                 className={cn(
                   "flex items-center gap-2 px-2 py-1.5",
                   hasOptions
-                    ? "group min-h-8 w-full cursor-interaction rounded-2xl text-start text-sm transition-colors hover:bg-text/5 ![corner-shape:round]"
+                    ? "group min-h-8 w-full cursor-interaction rounded-xl text-start text-sm transition-colors hover:bg-text/5"
                     : "justify-end",
                   hasOptions && activating === null && hovered === null && "bg-text/5",
                 )}
@@ -452,7 +454,16 @@ export function AsyncQuestionPanel({
                     {replyField}
                   </div>
                 ) : null}
+                <QuestionDictationButton
+                  id={question.id}
+                  value={question.freeformDraft}
+                  onChange={(value) => runtime.setDraft(threadId, question.id, value)}
+                  onInteraction={() => runtime.touch(threadId, question.id)}
+                  disabled={state.submitting}
+                  isSecret={question.isSecret}
+                />
                 <AsyncQuestionActions
+                  canSkip={!question.required}
                   deadlineMs={question.deadlineMs}
                   submitting={state.submitting}
                   canSend={canSend && activating === null}

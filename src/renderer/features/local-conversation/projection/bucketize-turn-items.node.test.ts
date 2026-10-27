@@ -2116,3 +2116,52 @@ describe("bucketizeTurnItems", () => {
     expect(buckets.contextClearedItems.map((item) => item.id)).toEqual(["cleared"]);
   });
 });
+
+test("keeps question sources visible beside a completed reply while work stays collapsible", () => {
+  const source = buildItem({
+    id: "question",
+    type: "assistantMessage",
+    entry: {
+      ...buildItem({}).entry,
+      itemId: "question",
+      markdownText: "Which color?",
+      assistantPhase: "commentary",
+      asyncQuestion: {
+        id: "question:0",
+        sourceItemId: "question",
+        questionIndex: 0,
+        title: "Which color?",
+        options: ["Blue", "Green"],
+      },
+    },
+  });
+  const reply = buildItem({
+    id: "reply",
+    type: "assistantMessage",
+    entry: {
+      ...buildItem({}).entry,
+      itemId: "reply",
+      markdownText: "I have finished checking.",
+      assistantPhase: "final_answer",
+    },
+  });
+  const buckets = bucketizeTurnItems({
+    items: [buildItem({ id: "command", type: "exec" }), source, reply],
+    turnStatus: "completed",
+  });
+  const turn = buildTurnViewModel({
+    turnId: "turn_1",
+    turn: null,
+    buckets,
+    workedForItem: buildWorkedForItem({}),
+    isLatestTurn: true,
+    isStreamingTurn: false,
+    isBlocked: false,
+    canForkTurn: true,
+  });
+  expect(buckets.agentItems.map((item) => item.id)).toEqual(["command"]);
+  expect(turn.trailingBlocks.map((block) => block.id)).toEqual(["question", "reply"]);
+  expect(
+    turn.searchUnits.some((unit) => unit.itemId === "question" && unit.text === "Which color?"),
+  ).toBe(true);
+});

@@ -491,6 +491,7 @@ export const UserInputQuestion = Schema.Struct({
   question: TrimmedNonEmptyStringSchema,
   options: Schema.Array(UserInputQuestionOption),
   allowCustomAnswer: Schema.optional(Schema.Boolean),
+  isSecret: Schema.optional(Schema.Boolean),
   /** Editable initial text. Answers preserve whitespace and allow an empty string when present. */
   initialAnswer: Schema.optional(Schema.String),
   multiSelect: Schema.optional(Schema.Boolean).pipe(
@@ -502,6 +503,8 @@ export type UserInputQuestion = typeof UserInputQuestion.Type;
 export const UserInputRequestedPayload = Schema.Struct({
   questions: Schema.Array(UserInputQuestion),
   responseMode: Schema.optional(Schema.Literal("message")),
+  isBlocking: Schema.optional(Schema.Boolean),
+  autoResolutionMs: Schema.optional(Schema.NullOr(NonNegativeInt)),
 });
 export type UserInputRequestedPayload = typeof UserInputRequestedPayload.Type;
 

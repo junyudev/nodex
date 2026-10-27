@@ -5,6 +5,7 @@ import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 export function retainPublicThreadControlClosure(
   projection: OrchestrationV2ThreadProjection,
   requiredRunId?: string,
+  requiredRequestId?: string,
 ): OrchestrationV2ThreadProjection {
   const activeProvider = projection.providerThreads.find(
     (provider) =>
@@ -18,6 +19,11 @@ export function retainPublicThreadControlClosure(
   if (context) runIds.add(context.runId);
   const requiredRun = projection.runs.find((run) => run.id === requiredRunId);
   if (requiredRun) runIds.add(requiredRun.id);
+  const requiredRequest = projection.runtimeRequests.find(
+    (request) => request.id === requiredRequestId,
+  );
+  const requestRun = projection.nodes.find((node) => node.id === requiredRequest?.nodeId)?.runId;
+  if (requestRun) runIds.add(requestRun);
   const foreground =
     projection.runs.findLast((run) =>
       ["preparing", "starting", "running", "waiting"].includes(run.status),
@@ -33,13 +39,14 @@ export function retainPublicThreadControlClosure(
     .slice(-4);
   for (const task of activeTasks) taskIds.add(task.id);
   const subagents = projection.subagents.filter((task) => taskIds.has(task.id));
-  const requestIds = new Set(
+  const requestIds = new Set<string>(
     items.flatMap((item) =>
       item.type === "approval_request" || item.type === "user_input_request"
         ? [item.requestId]
         : [],
     ),
   );
+  if (requiredRequestId) requestIds.add(requiredRequestId);
   for (const request of projection.runtimeRequests
     .filter((request) => request.status === "pending")
     .slice(-32))

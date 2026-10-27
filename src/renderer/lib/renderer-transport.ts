@@ -185,7 +185,9 @@ export interface RendererTransport {
   getUserInputAutoResolutionSnapshot: () => Promise<
     import("../../shared/codex-user-input-auto-resolution").CodexUserInputAutoResolutionEntry[]
   >;
-  recordUserInputAutoResolutionActivity: (conversationId: string) => Promise<boolean>;
+  recordUserInputAutoResolutionActivity: (
+    conversation: import("../../shared/codex-user-input-auto-resolution").CodexUserInputAutoResolutionConversation,
+  ) => Promise<boolean>;
   snoozeUserInputAutoResolution: (
     target: import("../../shared/codex-user-input-auto-resolution").CodexUserInputAutoResolutionTarget,
   ) => Promise<boolean>;

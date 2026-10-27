@@ -278,6 +278,7 @@ it.effect(
                 run: undefined,
               })),
             ),
+          getPendingMessageDeliveryIds: () => Effect.succeed([]),
           getCheckpointContext: () => Effect.die("not used"),
           getCheckpointCaptureContext: () => Effect.die("not used"),
           getRunMessage: () => Effect.die("not used"),

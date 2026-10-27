@@ -8877,8 +8877,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ),
         );
 
-        const steerTurn = Effect.fn("ClaudeAdapterV2.steerTurn")(
-          function* (turnInput: ProviderAdapter.ProviderAdapterV2SteerInput) {
+        const steerTurn = Effect.fn("ClaudeAdapterV2.steerTurn")(function* (
+          turnInput: ProviderAdapter.ProviderAdapterV2SteerInput,
+        ) {
+          let delivery: "not_dispatched" | "unknown" = "not_dispatched";
+          return yield* Effect.gen(function* () {
             const existing = yield* Ref.get(queryContext);
             if (existing === null) {
               return yield* new ProviderAdapter.ProviderAdapterProtocolError({
@@ -8909,21 +8912,21 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               next.add(turnInput.providerTurnId);
               return next;
             });
+            delivery = "unknown";
             yield* existing.query.offer(userMessage);
-          },
-          (effect, turnInput) =>
-            effect.pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ProviderAdapter.ProviderAdapterSteerRunError({
-                    driver: CLAUDE_PROVIDER,
-                    providerThreadId: turnInput.providerThread.id,
-                    providerTurnId: turnInput.providerTurnId,
-                    cause,
-                  }),
-              ),
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapter.ProviderAdapterSteerRunError({
+                  driver: CLAUDE_PROVIDER,
+                  providerThreadId: turnInput.providerThread.id,
+                  providerTurnId: turnInput.providerTurnId,
+                  delivery,
+                  cause,
+                }),
             ),
-        );
+          );
+        });
 
         const closeSession = Effect.fnUntraced(function* () {
           const existing = yield* Ref.get(queryContext);

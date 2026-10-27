@@ -1,4 +1,8 @@
 import { install as installMainActions } from "./CodexMainConversationActions";
+import {
+  encodeCodexAsyncQuestionReplies,
+  type CodexAsyncQuestionResponseInput,
+} from "../../shared/codex-async-user-input";
 import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
 import { QueuedMessageLocks } from "../../shared/codex-queued-message-locks";
 import { CodexMainConversationEdit } from "./CodexMainConversationEdit";
@@ -38,7 +42,7 @@ import type {
   CodexCanonicalConversationState,
   CodexCanonicalSteeringUserMessageItem,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
-import { produce } from "immer";
+import { castDraft, produce } from "immer";
 import { CodexTurnDeliveryError } from "../../shared/codex-conversation-state/codex-turn-delivery";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { assert, it } from "@effect/vitest";
@@ -63,6 +67,8 @@ import {
 } from "../platform/node/CodexPeerFraming";
 import type { CodexPeerMessage } from "../../shared/codex-peer-protocol";
 import type { ConversationFollowerTurnStart } from "../../shared/codex-thread-follower-request";
+import type { CanonicalOwnerSteerInput } from "../../shared/codex-conversation-state/codex-owner-steer";
+import { encodeCodexNativeRequestFailure } from "../../shared/codex-native-request-outcome";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
@@ -161,7 +167,14 @@ const makeHarness = (input: {
   readonly discoveredOwner?: string;
   readonly appServerVersion?: string;
   readonly followerFailure?: string;
-  readonly onSteerForward?: (input: unknown) => unknown;
+  readonly onSteerForward?: (
+    input: CanonicalOwnerSteerInput,
+    execute: () => Promise<TurnSteerResponse>,
+  ) => unknown;
+  readonly onStartForward?: (
+    input: ConversationFollowerTurnStart,
+    execute: () => Promise<TurnStartResponse>,
+  ) => unknown;
   readonly onTitle?: () => Effect.Effect<void>;
   readonly onCaptured?: () => Effect.Effect<void>;
   readonly onManagerGet?: (count: number) => void;
@@ -327,7 +340,7 @@ const makeHarness = (input: {
         if (!fixture) return Effect.die("unused");
         return Effect.succeed({
           conversationId: fixture.request.threadId,
-          clientUserMessageId: fixture.request.clientUserMessageId!,
+          clientUserMessageId: command.clientUserMessageId ?? fixture.request.clientUserMessageId!,
           input: fixture.request.input,
           restoreMessage: fixture.item.restoreMessage,
           attachments: fixture.item.attachments,
@@ -337,6 +350,8 @@ const makeHarness = (input: {
       },
     });
     const projection = CodexConversationProjection.of({
+      read: () =>
+        Effect.sync(() => ({ canonical: aggregate.readCanonicalState()!, snapshot: null })),
       configureTurn: (
         value: Parameters<CodexConversationProjection["Service"]["configureTurn"]>[0],
       ) =>
@@ -454,16 +469,40 @@ const makeHarness = (input: {
                 request,
                 targetClientId,
               }: {
-                request: { params: { turnStart: ConversationFollowerTurnStart } };
+                request: {
+                  params: CanonicalOwnerSteerInput | { turnStart: ConversationFollowerTurnStart };
+                };
                 targetClientId: string;
               }) => {
                 if ("clientUserMessageId" in request.params) {
                   if (input.followerFailure) throw new Error(input.followerFailure);
                   return {
                     resultType: "success",
-                    result: input.onSteerForward?.(request.params) ?? {
-                      result: { turnId: "owner-turn" },
-                    },
+                    result: input.onSteerForward
+                      ? await input.onSteerForward(request.params, () => {
+                          const prepared = request.params as CanonicalOwnerSteerInput;
+                          return callbacks.runPromise(
+                            commands.executePreparedNativeSteer(
+                              {
+                                method: "turn/steer",
+                                params: {
+                                  threadId: prepared.conversationId,
+                                  expectedTurnId: input.steerPlan!.expectedTurnId,
+                                  input: prepared.input,
+                                  clientUserMessageId: prepared.clientUserMessageId,
+                                  ...(prepared.additionalContext === undefined
+                                    ? {}
+                                    : { additionalContext: prepared.additionalContext }),
+                                },
+                              },
+                              prepared.clientUserMessageId,
+                              targetClientId,
+                            ),
+                          );
+                        })
+                      : {
+                          result: { turnId: "owner-turn" },
+                        },
                   };
                 }
                 const operation = JSON.parse(
@@ -471,12 +510,20 @@ const makeHarness = (input: {
                 ) as ConversationFollowerTurnStart;
                 forwarded.push(operation);
                 if (input.followerFailure) throw new Error(input.followerFailure);
-                const prepared = await callbacks.runPromise(
-                  commands.inspectPreparedNativeStart(operation, targetClientId),
-                );
-                const result = await callbacks.runPromise(
-                  commands.executePreparedNativeStart(prepared.request, targetClientId),
-                );
+                const execute = async () => {
+                  const prepared = await callbacks.runPromise(
+                    commands.inspectPreparedNativeStart(operation, targetClientId),
+                  );
+                  return await callbacks.runPromise(
+                    commands.executePreparedNativeStart(prepared.request, targetClientId),
+                  );
+                };
+                if (input.onStartForward)
+                  return {
+                    resultType: "success",
+                    result: await input.onStartForward(operation, execute),
+                  };
+                const result = await execute();
                 return { resultType: "success", result: { result } };
               },
             },
@@ -507,7 +554,7 @@ const makeHarness = (input: {
           };
         }),
     } as unknown as CodexMainConversationManagers["Service"];
-    if (input.steerPlan)
+    if (input.steerPlan && !input.initialState)
       aggregate.acceptCanonicalState(
         conversationFixture("thread-a", [
           turnFixture(input.steerPlan.expectedTurnId, "inProgress"),
@@ -1261,6 +1308,515 @@ const questionSteerPlan = (): SteerFixture => ({
     restoreMessage: { context: { commentAttachments: [] } },
   },
 });
+
+function terminalQuestionFixture(status: "completed" | "interrupted", running = false) {
+  const source = turnFixture("source-question-turn", status);
+  source.items.push({
+    type: "agentMessage",
+    id: "source-question",
+    text: "Which scope?",
+    phase: "final_answer",
+    memoryCitation: null,
+    delivery: "async",
+    questions: [{ title: "Which scope?", options: ["Project", "Library"] }],
+  });
+  const input: CodexAsyncQuestionResponseInput = {
+    threadId: "thread-a",
+    submissionId: "question-answer-batch",
+    sourceTurnIds: [source.id],
+    replies: [
+      {
+        questionItemId: '["request_user_input_async","source-question",0]',
+        question: "Which scope?",
+        answer: "Project",
+      },
+    ],
+  };
+  const initialState = conversationFixture("thread-a", [
+    source,
+    ...(running ? [turnFixture("question-turn", "inProgress")] : []),
+  ]);
+  const nativeInput = [
+    {
+      type: "text" as const,
+      text: encodeCodexAsyncQuestionReplies(input.replies),
+      text_elements: [],
+    },
+  ];
+  return {
+    input,
+    initialState,
+    preparedPlan: {
+      ...plan(1),
+      request: { ...plan(1).request, input: nativeInput },
+      canonicalParams: {
+        ...initialState.turns[0]!.params,
+        permissions: null,
+        sandboxPolicy: { type: "readOnly" as const, networkAccess: false },
+        runtimeWorkspaceRoots: [],
+        attachments: [],
+        commentAttachments: [],
+        input: nativeInput,
+      },
+    },
+  };
+}
+
+it.effect.each(["completed", "interrupted"] as const)(
+  "answers a %s source question in a new Turn exactly once",
+  (status) =>
+    Effect.gen(function* () {
+      const fixture = terminalQuestionFixture(status);
+      const harness = yield* makeHarness({
+        initialState: fixture.initialState,
+        preparedPlan: fixture.preparedPlan,
+        request: () => Effect.succeed(response()),
+      });
+      assert.deepEqual(yield* harness.commands.respondAsyncQuestions(fixture.input), {
+        turnId: "turn-accepted",
+      });
+      assert.deepEqual(yield* harness.commands.respondAsyncQuestions(fixture.input), {
+        turnId: "turn-accepted",
+      });
+      assert.strictEqual(harness.requests(), 1);
+      const changed = yield* harness.commands
+        .respondAsyncQuestions({
+          ...fixture.input,
+          replies: [{ ...fixture.input.replies[0]!, answer: "Library" }],
+        })
+        .pipe(Effect.result);
+      assert.strictEqual(changed._tag, "Failure");
+      assert.strictEqual(harness.requests(), 1);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
+it.effect("routes a terminal source answer into a different active Turn", () =>
+  Effect.gen(function* () {
+    const fixture = terminalQuestionFixture("interrupted", true);
+    const harness = yield* makeHarness({
+      initialState: fixture.initialState,
+      request: () => Effect.die("The running question answer must steer"),
+      steerPlan: questionSteerPlan(),
+      steerRequest: () => Effect.succeed({ turnId: "question-turn" }),
+    });
+    assert.deepEqual(yield* harness.commands.respondAsyncQuestions(fixture.input), {
+      turnId: "question-turn",
+    });
+    assert.deepEqual(
+      harness.events.filter((event) => event.startsWith("steer:")),
+      ["steer:question-turn"],
+    );
+    assert.strictEqual(harness.requests(), 0);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+it.effect(
+  "recognizes an accepted answer when its steering row and native echo are both retained",
+  () =>
+    Effect.gen(function* () {
+      const fixture = terminalQuestionFixture("completed", true);
+      const harness = yield* makeHarness({
+        initialState: fixture.initialState,
+        request: () => Effect.die("An accepted answer must not start again"),
+        steerPlan: questionSteerPlan(),
+        steerRequest: () => Effect.die("An accepted answer must not steer again"),
+      });
+      const input = [
+        {
+          type: "text" as const,
+          text: encodeCodexAsyncQuestionReplies(fixture.input.replies),
+          text_elements: [],
+        },
+      ];
+      harness.aggregate.mutateCanonicalState((draft) => {
+        draft.turns[1]!.items.push(
+          castDraft({
+            ...questionSteerPlan().item,
+            id: "accepted-steer",
+            status: "accepted",
+            serverUserMessageId: "accepted-echo",
+            clientUserMessageId: fixture.input.submissionId,
+            input,
+          }),
+          {
+            type: "userMessage",
+            id: "accepted-echo",
+            clientId: fixture.input.submissionId,
+            content: input,
+          },
+        );
+      }, 1000);
+      assert.deepEqual(yield* harness.commands.respondAsyncQuestions(fixture.input), {
+        turnId: "question-turn",
+      });
+      assert.deepEqual(yield* harness.commands.respondAsyncQuestions(fixture.input), {
+        turnId: "question-turn",
+      });
+      assert.strictEqual(
+        (yield* harness.commands
+          .respondAsyncQuestions({
+            ...fixture.input,
+            replies: [{ ...fixture.input.replies[0]!, answer: "Library" }],
+          })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.strictEqual(harness.requests(), 0);
+      assert.strictEqual(harness.events.filter((event) => event.startsWith("steer:")).length, 0);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "waits for the current Turn's native identity before steering an older question answer",
+  () =>
+    Effect.gen(function* () {
+      const fixture = terminalQuestionFixture("interrupted", true);
+      const harness = yield* makeHarness({
+        initialState: fixture.initialState,
+        request: () => Effect.die("A pending active Turn must not start another Turn"),
+        steerPlan: questionSteerPlan(),
+        steerRequest: () => Effect.succeed({ turnId: "question-turn" }),
+      });
+      harness.aggregate.mutateCanonicalState((draft) => {
+        draft.turns[1]!.turnId = null;
+      }, 1000);
+      const pending = yield* harness.commands
+        .respondAsyncQuestions(fixture.input)
+        .pipe(Effect.forkScoped);
+      yield* Effect.yieldNow;
+      assert.strictEqual(
+        (yield* harness.commands.inspectPreparedNativeSteer(fixture.input.submissionId))
+          .clientUserMessageId,
+        fixture.input.submissionId,
+      );
+      assert.strictEqual(harness.requests(), 0);
+      assert.strictEqual(harness.events.filter((event) => event.startsWith("steer:")).length, 0);
+      harness.aggregate.mutateCanonicalState((draft) => {
+        draft.turns[1]!.turnId = "question-turn";
+      }, 1001);
+      assert.deepEqual(yield* Fiber.join(pending), { turnId: "question-turn" });
+      assert.strictEqual(harness.requests(), 0);
+      assert.strictEqual(harness.events.filter((event) => event.startsWith("steer:")).length, 1);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
+it.effect("parks an unknown answer attempt instead of resending it on retry", () =>
+  Effect.gen(function* () {
+    const fixture = terminalQuestionFixture("completed", true);
+    const harness = yield* makeHarness({
+      initialState: fixture.initialState,
+      request: () => Effect.die("Unknown steering must not start another Turn"),
+      steerPlan: questionSteerPlan(),
+      steerRequest: () =>
+        Effect.fail(
+          codexRuntimeError({
+            operation: "scheduler.execution",
+            reason: "outcome-unknown",
+            retryable: false,
+            hostId: OWNER_HOST,
+            method: "turn/steer",
+            cause: new CodexTurnDeliveryError("Answer delivery is unknown", {
+              requestId: "question-unknown",
+              method: "turn/steer",
+              stage: "outcome-unknown",
+            }),
+          }),
+        ),
+    });
+    assert.strictEqual(
+      (yield* harness.commands.respondAsyncQuestions(fixture.input).pipe(Effect.result))._tag,
+      "Failure",
+    );
+    assert.strictEqual(
+      (yield* harness.commands.respondAsyncQuestions(fixture.input).pipe(Effect.result))._tag,
+      "Failure",
+    );
+    assert.deepEqual(
+      harness.events.filter((event) => event.startsWith("steer:")),
+      ["steer:question-turn"],
+    );
+    assert.strictEqual(harness.requests(), 0);
+    harness.aggregate.mutateCanonicalState((draft) => {
+      delete draft.unconfirmedTurnSubmissions;
+      for (const turn of draft.turns)
+        for (const item of turn.items)
+          if (
+            item.type === "steeringUserMessage" &&
+            item.clientUserMessageId === fixture.input.submissionId
+          )
+            item.status = "accepted";
+    }, 1000);
+    assert.deepEqual(yield* harness.commands.respondAsyncQuestions(fixture.input), {
+      turnId: "question-turn",
+    });
+    assert.deepEqual(
+      harness.events.filter((event) => event.startsWith("steer:")),
+      ["steer:question-turn"],
+    );
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+it.effect.each(["steer", "start"] as const)(
+  "keeps the original %s executor alive after its peer response times out",
+  (method) =>
+    Effect.gen(function* () {
+      const fixture = terminalQuestionFixture("completed", method === "steer");
+      const entered = yield* Deferred.make<void>();
+      const nativeReply = yield* Deferred.make<void>();
+      let rejectPeer = (_cause: Error): void => {};
+      const peerReply = new Promise<never>((_resolve, reject) => {
+        rejectPeer = reject;
+      });
+      let originalExecution: Promise<TurnStartResponse | TurnSteerResponse> | undefined;
+      const forward = (
+        _admission: unknown,
+        execute: () => Promise<TurnStartResponse | TurnSteerResponse>,
+      ) => {
+        originalExecution = execute();
+        void originalExecution.catch(() => {});
+        return peerReply;
+      };
+      const harness = yield* makeHarness({
+        initialState: fixture.initialState,
+        preparedPlan: fixture.preparedPlan,
+        request: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(entered, undefined);
+            yield* Deferred.await(nativeReply);
+            return response();
+          }),
+        steerPlan: questionSteerPlan(),
+        steerRequest: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(entered, undefined);
+            yield* Deferred.await(nativeReply);
+            return { turnId: "question-turn" };
+          }),
+        onSteerForward: forward,
+        onStartForward: forward,
+      });
+      harness.changeOwner();
+      const sending = yield* harness.commands
+        .respondAsyncQuestions(fixture.input)
+        .pipe(Effect.forkScoped);
+      yield* Deferred.await(entered);
+      rejectPeer(new Error("timeout"));
+      const failed = yield* Fiber.join(sending).pipe(Effect.result);
+      assert.strictEqual(failed._tag, "Failure");
+      if (failed._tag !== "Failure") throw new Error("Expected peer uncertainty");
+      assert.deepEqual(encodeCodexNativeRequestFailure(failed.failure).delivery, {
+        requestId: fixture.input.submissionId,
+        method: `thread-follower-${method}-turn`,
+        stage: "outcome-unknown",
+      });
+      assert.strictEqual(
+        (yield* harness.commands.respondAsyncQuestions(fixture.input).pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.strictEqual(harness.requests(), method === "start" ? 1 : 0);
+      assert.strictEqual(
+        harness.events.filter((event) => event.startsWith("steer:")).length,
+        method === "steer" ? 1 : 0,
+      );
+      if (method === "steer")
+        assert.strictEqual(
+          (yield* harness.commands.inspectPreparedNativeSteer(fixture.input.submissionId))
+            .clientUserMessageId,
+          fixture.input.submissionId,
+        );
+      yield* Deferred.succeed(nativeReply, undefined);
+      const settled = yield* Effect.tryPromise(() => originalExecution!);
+      const turnId = method === "steer" ? "question-turn" : "turn-accepted";
+      assert.strictEqual("turnId" in settled ? settled.turnId : settled.turn.id, turnId);
+      harness.aggregate.mutateCanonicalState((draft) => {
+        let turn = draft.turns.find((turn) => turn.turnId === turnId);
+        if (!turn) {
+          turn = castDraft(
+            conversationFixture("thread-a", [turnFixture(turnId, "completed")]).turns[0]!,
+          );
+          draft.turns.push(turn);
+        }
+        turn.items.push({
+          type: "userMessage",
+          id: "accepted-answer",
+          clientId: fixture.input.submissionId,
+          content: [
+            {
+              type: "text",
+              text: encodeCodexAsyncQuestionReplies(fixture.input.replies),
+              text_elements: [],
+            },
+          ],
+        });
+      }, 1000);
+      assert.deepEqual(yield* harness.commands.respondAsyncQuestions(fixture.input), { turnId });
+      assert.strictEqual(harness.requests(), method === "start" ? 1 : 0);
+      assert.strictEqual(
+        harness.events.filter((event) => event.startsWith("steer:")).length,
+        method === "steer" ? 1 : 0,
+      );
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
+it.effect("retains a timed-out start admission until its original peer begins execution", () =>
+  Effect.gen(function* () {
+    const fixture = terminalQuestionFixture("completed");
+    let executeOriginal: (() => Promise<TurnStartResponse>) | undefined;
+    const harness = yield* makeHarness({
+      initialState: fixture.initialState,
+      preparedPlan: fixture.preparedPlan,
+      request: () => Effect.succeed(response()),
+      onStartForward: (_admission, execute) => {
+        executeOriginal = execute;
+        throw new Error("request-timeout");
+      },
+    });
+    harness.changeOwner();
+    assert.strictEqual(
+      (yield* harness.commands.respondAsyncQuestions(fixture.input).pipe(Effect.result))._tag,
+      "Failure",
+    );
+    assert.strictEqual(harness.requests(), 0);
+    const result = yield* Effect.tryPromise(() => executeOriginal!());
+    assert.strictEqual(result.turn.id, "turn-accepted");
+    assert.strictEqual(harness.requests(), 1);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+for (const method of ["steer", "start"] as const) {
+  for (const fault of ["decode", "null", "reconnect"] as const) {
+    it.effect(`parks an admitted ${method} after a peer ${fault} failure`, () =>
+      Effect.gen(function* () {
+        const fixture = terminalQuestionFixture("completed", method === "steer");
+        const forward = async (
+          _admission: unknown,
+          execute: () => Promise<TurnStartResponse | TurnSteerResponse>,
+        ) => {
+          const result = await execute();
+          if (fault === "reconnect") harness.reconnect();
+          return fault === "null" ? null : { result: fault === "decode" ? {} : result };
+        };
+        const harness = yield* makeHarness({
+          initialState: fixture.initialState,
+          preparedPlan: fixture.preparedPlan,
+          request: () => Effect.succeed(response()),
+          steerPlan: questionSteerPlan(),
+          steerRequest: () => Effect.succeed({ turnId: "question-turn" }),
+          onSteerForward: forward,
+          onStartForward: forward,
+        });
+        harness.changeOwner();
+        const failed = yield* harness.commands
+          .respondAsyncQuestions(fixture.input)
+          .pipe(Effect.result);
+        if (failed._tag !== "Failure") throw new Error("Expected delivery uncertainty");
+        assert.deepEqual(encodeCodexNativeRequestFailure(failed.failure).delivery, {
+          requestId: fixture.input.submissionId,
+          method: `thread-follower-${method}-turn`,
+          stage: "outcome-unknown",
+        });
+        assert.strictEqual(
+          (yield* harness.commands.respondAsyncQuestions(fixture.input).pipe(Effect.result))._tag,
+          "Failure",
+        );
+        assert.strictEqual(harness.requests(), method === "start" ? 1 : 0);
+        assert.strictEqual(
+          harness.events.filter((event) => event.startsWith("steer:")).length,
+          method === "steer" ? 1 : 0,
+        );
+        yield* Scope.close(harness.scope, Exit.void);
+      }),
+    );
+  }
+
+  it.effect(
+    `does not resend a question answer after native ${method} acceptance crosses a reconnect`,
+    () =>
+      Effect.gen(function* () {
+        const fixture = terminalQuestionFixture("completed", method === "steer");
+        const harness = yield* makeHarness({
+          initialState: fixture.initialState,
+          preparedPlan: fixture.preparedPlan,
+          request: () =>
+            Effect.sync(() => {
+              harness.reconnect();
+              return response();
+            }),
+          steerPlan: questionSteerPlan(),
+          steerRequest: () =>
+            Effect.sync(() => {
+              harness.reconnect();
+              return { turnId: "question-turn" };
+            }),
+        });
+        const failed = yield* harness.commands
+          .respondAsyncQuestions(fixture.input)
+          .pipe(Effect.result);
+        if (failed._tag !== "Failure")
+          throw new Error("Expected the old generation to stay fenced");
+        assert.deepEqual(encodeCodexNativeRequestFailure(failed.failure).delivery, {
+          requestId: fixture.input.submissionId,
+          method: `turn/${method}`,
+          stage: "outcome-unknown",
+        });
+        assert.strictEqual(
+          (yield* harness.commands.respondAsyncQuestions(fixture.input).pipe(Effect.result))._tag,
+          "Failure",
+        );
+        assert.strictEqual(harness.requests(), method === "start" ? 1 : 0);
+        assert.strictEqual(
+          harness.events.filter((event) => event.startsWith("steer:")).length,
+          method === "steer" ? 1 : 0,
+        );
+        yield* Scope.close(harness.scope, Exit.void);
+      }),
+  );
+}
+
+it.effect("a positive missing-peer response safely elects an owner and delivers the answer", () =>
+  Effect.gen(function* () {
+    const fixture = terminalQuestionFixture("completed", true);
+    const harness = yield* makeHarness({
+      initialState: fixture.initialState,
+      request: () => Effect.die("The active Turn must receive the answer"),
+      steerPlan: questionSteerPlan(),
+      followerFailure: "no-client-found",
+      steerRequest: () => Effect.succeed({ turnId: "question-turn" }),
+    });
+    harness.changeOwner();
+    assert.deepEqual(yield* harness.commands.respondAsyncQuestions(fixture.input), {
+      turnId: "question-turn",
+    });
+    assert.strictEqual(harness.events.filter((event) => event.startsWith("steer:")).length, 1);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+it.effect("preserves a positive owner refusal instead of reporting uncertain delivery", () =>
+  Effect.gen(function* () {
+    const fixture = terminalQuestionFixture("completed", true);
+    const harness = yield* makeHarness({
+      initialState: fixture.initialState,
+      request: () => Effect.die("A refused answer must not start a Turn"),
+      steerPlan: questionSteerPlan(),
+      followerFailure: "Native rejected reply",
+    });
+    harness.changeOwner();
+    const result = yield* harness.commands.respondAsyncQuestions(fixture.input).pipe(Effect.result);
+    assert.strictEqual(result._tag, "Failure");
+    if (result._tag !== "Failure") throw new Error("Expected owner refusal");
+    assert.isUndefined(encodeCodexNativeRequestFailure(result.failure).delivery);
+    assert.strictEqual(harness.resetListenerCount(), 0);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
 
 it.effect("routes a public steer through its current window owner without a Main mutation", () =>
   Effect.gen(function* () {
@@ -2767,6 +3323,11 @@ it.effect("does not adopt an old native turn response into the recovered manager
     });
     const result = yield* harness.commands.start("thread-a", "ship").pipe(Effect.result);
     assert.strictEqual(result._tag, "Failure");
+    if (result._tag === "Failure")
+      assert.strictEqual(
+        encodeCodexNativeRequestFailure(result.failure).delivery?.stage,
+        "outcome-unknown",
+      );
     assert.strictEqual(harness.requests(), 1);
     assert.isFalse(harness.events.includes("accept"));
     assert.isFalse(harness.events.includes("authority:bind"));
@@ -2809,6 +3370,11 @@ for (const invalidation of ["reconnect", "owner-replacement", "entity-replacemen
         )
         .pipe(Effect.result);
       assert.strictEqual(result._tag, "Failure");
+      if (result._tag === "Failure")
+        assert.strictEqual(
+          encodeCodexNativeRequestFailure(result.failure).delivery?.stage,
+          "outcome-unknown",
+        );
       assert.strictEqual(harness.dispatchFences.length, 1);
       harness.commands.releasePreparedNativeSteer(prepared.clientUserMessageId);
       assert.strictEqual(harness.resetListenerCount(), 0);

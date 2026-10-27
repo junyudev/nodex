@@ -13,6 +13,7 @@ import {
   ThreadId,
   TurnItemId,
   RunId,
+  RuntimeRequestId,
   ServerProvider,
   OrchestrationV2ThreadShell,
   OrchestrationV2DomainEvent,
@@ -216,7 +217,14 @@ const AgentRequest = Schema.Union([
   request("providers.configure", Schema.Struct({ providers: ProviderInstanceConfigMap })),
   request("attachments.persist", PersistChatAttachmentsInput),
   request("thread.read", Schema.Struct({ threadId: ThreadId })),
-  request("thread.control", Schema.Struct({ threadId: ThreadId, runId: Schema.optional(RunId) })),
+  request(
+    "thread.control",
+    Schema.Struct({
+      threadId: ThreadId,
+      runId: Schema.optional(RunId),
+      requestId: Schema.optional(RuntimeRequestId),
+    }),
+  ),
   request(
     "thread.fork-source",
     Schema.Struct({ threadId: ThreadId, runId: Schema.optional(RunId) }),
@@ -773,6 +781,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           rowLimit: input.method === "thread.control" ? 0 : THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
           controlOnly: input.method === "thread.control",
           requiredRunId: input.method === "thread.control" ? input.input.runId : undefined,
+          requiredRequestId: input.method === "thread.control" ? input.input.requestId : undefined,
           userTurnLimit: THREAD_HISTORY_PAGE_POLICY.maxUserTurns,
         });
         return yield* encodeSnapshot(
@@ -780,6 +789,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
             ...snapshot,
             compactTurnItems: true,
             requiredRunId: input.method === "thread.control" ? input.input.runId : undefined,
+            requiredRequestId:
+              input.method === "thread.control" ? input.input.requestId : undefined,
           }),
         );
       }

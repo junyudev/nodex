@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Unsent answers to Agent questions survive reopening and restart. Optional questions remain answerable after work stops, let you answer a batch in parts, and keep later replies readable in chat history.
+
 - macOS Appearance settings offer app-wide Font smoothing, enabled by default and synchronized across windows.
 - `/fast` and `/ultracode` toggle Fast and Ultracode from a Claude chat's composer, and Claude chats highlight the words Claude Code reacts to in a message, `ultrathink` and `ultracode`, with what each does for that turn.
 - Plugins in the navigation rail opens Customize, where you can browse plugin marketplaces and installed skills, see what a plugin does and includes before installing it, install, enable, try or uninstall it, preview a skill's instructions, and start a chat from a starter prompt. Settings › Plugins switches installed plugins, connected apps and personal skills on or off, shows the tools each app gives Agents, adds, edits and signs in to MCP servers, and upgrades or removes the marketplaces you added.

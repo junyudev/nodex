@@ -472,7 +472,8 @@ export const make: Effect.Effect<
             request: payload,
             occurrenceToken: request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN],
           });
-          if (payload.isBlocking) yield* autoResolution.clearConversation(payload.threadId);
+          if (payload.isBlocking)
+            yield* autoResolution.clearConversation({ hostId, conversationId: payload.threadId });
           else
             yield* autoResolution.observeRequest(payload.threadId, payload.requestId, {
               hostId,

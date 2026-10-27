@@ -14,6 +14,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import {
+  ProviderAdapterSteerRunError,
+  ProviderAdapterSteerRunUnsupportedError,
+} from "@t3tools/provider-core/server/ProviderAdapter";
 
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
@@ -36,8 +40,9 @@ export class ProviderTurnControlError extends Schema.TaggedError<ProviderTurnCon
     operation: Schema.Literals(["interrupt", "restart", "steer"]),
     providerTurnId: ProviderTurnId,
     turnCompleted: Schema.optional(Schema.Boolean),
-    /** The provider refused a steer while its Turn kept running. */
+    /** The Turn is still running; this observation alone does not prove rejection. */
     turnRunning: Schema.optional(Schema.Boolean),
+    delivery: Schema.optional(Schema.Literals(["not_dispatched", "rejected", "unknown"])),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}
@@ -112,6 +117,7 @@ export const layer: Layer.Layer<
             threadId: input.threadId,
             operation: input.operation,
             providerTurnId: input.providerTurnId,
+            delivery: "not_dispatched",
             cause: "The recorded provider execution target is no longer valid.",
           });
         }
@@ -129,6 +135,7 @@ export const layer: Layer.Layer<
               operation: "steer",
               providerTurnId: input.providerTurnId,
               turnCompleted: providerTurn.status === "completed",
+              delivery: "not_dispatched",
               cause: "The provider turn ended before the steering message was delivered.",
             });
           }
@@ -168,6 +175,7 @@ export const layer: Layer.Layer<
             operation: input.operation,
             providerTurnId: input.providerTurnId,
             cause: `Provider session ${input.providerSessionId} is not active.`,
+            delivery: "not_dispatched",
           });
         }
         return { context, providerThread: interruptProviderThread, providerTurn, session };
@@ -331,6 +339,7 @@ export const layer: Layer.Layer<
               operation: "steer",
               providerTurnId: input.providerTurnId,
               cause: "The persisted steering message or target run is missing.",
+              delivery: "not_dispatched",
             });
           }
           yield* loaded.session.value
@@ -369,6 +378,11 @@ export const layer: Layer.Layer<
                     providerTurnId: input.providerTurnId,
                     turnCompleted: current.providerTurn?.status === "completed",
                     turnRunning: current.providerTurn?.status === "running",
+                    delivery: Schema.is(ProviderAdapterSteerRunError)(cause)
+                      ? (cause.delivery ?? "unknown")
+                      : Schema.is(ProviderAdapterSteerRunUnsupportedError)(cause)
+                        ? "not_dispatched"
+                        : "unknown",
                     cause,
                   });
                 }),

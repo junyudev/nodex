@@ -9,6 +9,7 @@ export type RequestComposerQuestion = CodexUserInputQuestion & {
 export interface RequestComposerRequest {
   requestId: CodexProtocolRequestId;
   questions: RequestComposerQuestion[];
+  draftIdentity?: string;
 }
 
 export interface RequestQuestionnaireAnswer {
@@ -65,9 +66,12 @@ export const EXPLICIT_REQUEST_FORM_POLICY: RequestQuestionnairePolicy = {
 
 function createInitialAnswer(question: RequestComposerQuestion): RequestQuestionnaireAnswer {
   return {
-    selectedOptionId: question.multiSelect ? null : (question.options?.[0]?.label ?? null),
+    selectedOptionId:
+      question.multiSelect || question.initialAnswer !== undefined
+        ? null
+        : (question.options?.[0]?.label ?? null),
     ...(question.multiSelect ? { selectedOptionIds: [] } : {}),
-    freeformText: null,
+    freeformText: question.initialAnswer ?? null,
   };
 }
 
@@ -81,15 +85,19 @@ export function createInitialRequestQuestionnaireDraft(
 }
 
 export function buildRequestQuestionSignature(request: RequestComposerRequest): string {
-  return JSON.stringify(
+  return JSON.stringify([
+    request.draftIdentity,
     request.questions.map((question) => ({
       id: question.id,
+      question: question.question,
       options: question.options?.map((option) => option.label) ?? [],
       isOther: question.isOther,
       isSecret: question.isSecret,
       multiSelect: question.multiSelect,
+      initialAnswer: question.isSecret ? undefined : question.initialAnswer,
+      required: question.required,
     })),
-  );
+  ]);
 }
 
 export function reconcileRequestQuestionnaireDraft(
@@ -255,6 +263,7 @@ export function resolveRequestQuestionnaireAnswerValue(
   }
   if (question.options?.length && !question.isOther) return null;
 
+  if (question.initialAnswer !== undefined) return answer.freeformText;
   const freeformText = answer.freeformText?.trim() ?? "";
   return freeformText || null;
 }
@@ -265,7 +274,7 @@ export function buildUserInputAnswers(
 ): Record<string, string[]> {
   return request.questions.reduce<Record<string, string[]>>((answers, question, index) => {
     const value = resolveRequestQuestionnaireAnswerValue(question, draft.answers[index]);
-    if (!value) return answers;
+    if (value === null) return answers;
 
     answers[question.id] =
       question.multiSelect && draft.answers[index]?.selectedOptionIds?.length
@@ -280,12 +289,10 @@ export function isRequestQuestionnaireSubmittable(
   draft: RequestQuestionnaireDraft,
   policy: RequestQuestionnairePolicy,
 ): boolean {
-  if (!policy.requireAllAnswers) return true;
-
-  return request.questions.every(
-    (question, index) =>
-      resolveRequestQuestionnaireAnswerValue(question, draft.answers[index]) !== null,
-  );
+  return request.questions.every((question, index) => {
+    if (!policy.requireAllAnswers && !question.required) return true;
+    return resolveRequestQuestionnaireAnswerValue(question, draft.answers[index]) !== null;
+  });
 }
 
 export function isLastRequestQuestion(

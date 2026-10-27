@@ -493,7 +493,7 @@ schedule; lifecycle publication includes the latest locally accumulated output.
 
 Async questions read merged resident and overlay turns. Hydrating or following an existing
 question does not open it as a new live question. A newly received live item can open it;
-answers, terminal outcomes and document retirement settle its local interaction state.
+accepted answer batches settle only the matching unchanged drafts. A source Turn ending does not remove its unanswered questions. Authored non-secret drafts survive stream resets and view release through Profile-backed, host-scoped state; document retirement fences outstanding delivery without letting a stale result alter a replacement source.
 
 ## History, archive and inactivity
 

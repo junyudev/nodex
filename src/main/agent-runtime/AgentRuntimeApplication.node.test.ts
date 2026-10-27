@@ -2702,6 +2702,54 @@ for (const kind of ["user_input", "mcp-elicitation"] as const) {
 }
 
 it.effect(
+  "gives each optional-answer batch a stable distinct receipt even after request completion",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const result = yield* owner.launch(launch);
+      const current = fixture.snapshots.get(result.threadId)!;
+      fixture.snapshots.set(result.threadId, {
+        ...current,
+        projection: {
+          ...current.projection,
+          nodes: [{ id: "question-node", threadId: result.threadId, runId: "source-run" }] as never,
+          runtimeRequests: [
+            {
+              id: "optional-question",
+              kind: "user_input",
+              nodeId: "question-node",
+              status: "resolved",
+              responseCapability: { type: "message", replyFormat: "codex_question_reply" },
+            },
+          ] as never,
+        },
+      });
+      const input = {
+        sessionId: result.sessionId,
+        runId: "source-run",
+        requestId: "optional-question",
+        submissionId: "batch-first",
+        answers: { first: "Project" },
+      };
+      yield* owner.respond(input);
+      yield* owner.respond(input);
+      yield* owner.respond({
+        ...input,
+        submissionId: "batch-second",
+        answers: { second: "Release" },
+      });
+      const responses = [...fixture.commands.values()].filter(
+        (command) => command.type === "runtime-request.respond",
+      );
+      assert.strictEqual(responses.length, 2);
+      assert.notStrictEqual(responses[0]?.commandId, responses[1]?.commandId);
+      const addressed = fixture.calls.filter((call) => call.method === "thread.control").at(-1);
+      assert.deepInclude(addressed?.input, { requestId: "optional-question", runId: "source-run" });
+    }),
+);
+
+it.effect(
   "lazily prepares a fresh projectless root and retries without duplicating its bound execution",
   () =>
     Effect.gen(function* () {

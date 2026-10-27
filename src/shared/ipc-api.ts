@@ -2665,7 +2665,7 @@ export interface IpcApi
     result: boolean;
   };
   "codex:thread:presentation:set": {
-    args: [input: { threadId: string; surfaceId: string; presented: boolean }];
+    args: [input: { hostId: string; threadId: string; surfaceId: string; presented: boolean }];
     result: boolean;
   };
   "codex:user-input:auto-resolution:snapshot": {
@@ -2673,7 +2673,7 @@ export interface IpcApi
     result: CodexUserInputAutoResolutionEntry[];
   };
   "codex:user-input:auto-resolution:activity": {
-    args: [input: { conversationId: string }];
+    args: [input: { hostId: string; conversationId: string }];
     result: boolean;
   };
   "codex:user-input:auto-resolution:snooze": {
@@ -2846,6 +2846,10 @@ export interface IpcApi
   "codex:turn:steer": {
     args: [input: CodexSteerTurnInput];
     result: CodexSteerTurnResult | null;
+  };
+  "codex:turn:question-reply": {
+    args: [input: import("./codex-async-user-input").CodexAsyncQuestionResponseInput];
+    result: { turnId: string } | null;
   };
   "codex:turn:interrupt": {
     args: [threadId: string, turnId?: string];

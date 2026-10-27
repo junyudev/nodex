@@ -713,6 +713,96 @@ it.effect("passes the thread's MCP app context to the provider under a safe key"
   ),
 );
 
+it.effect.each([
+  { delivery: "pending", receiptFails: false },
+  { delivery: "unknown", receiptFails: false },
+  { delivery: "pending", receiptFails: true },
+] as const)(
+  "confirms a fallback message after provider acceptance: $delivery / persistence failure=$receiptFails",
+  ({ delivery, receiptFails }) =>
+    Effect.gen(function* () {
+      const writes: OrchestrationV2DomainEvent[] = [];
+      let starts = 0;
+      const layerTest = RunExecutionService.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            McpAppModelContext.layerEmpty,
+            Layer.mock(CheckpointService.CheckpointServiceV2)({
+              captureBaseline: () => Effect.void,
+            }),
+            Layer.mock(EventSink.EventSinkV2)({
+              writeWithEffects: (input) =>
+                Effect.gen(function* () {
+                  if (receiptFails)
+                    return yield* new EventSink.EventSinkWriteError({
+                      eventCount: input.events.length,
+                    });
+                  writes.push(...input.events);
+                  return [];
+                }),
+            }),
+            IdAllocator.layer,
+            Layer.mock(ProviderEventIngestor.ProviderEventIngestorV2)({
+              ingestNormalized: () => Effect.succeed([]),
+            }),
+            ServerSettings.layerTest(),
+          ),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        const execution = yield* RunExecutionService.RunExecutionServiceV2;
+        const threadId = ThreadId.make("fallback-message-thread");
+        const runId = RunId.make("fallback-message-run");
+        const attemptId = RunAttemptId.make("fallback-message-attempt");
+        const providerInstanceId = ProviderInstanceId.make("claude");
+        const messageId = MessageId.make("original-steering-message");
+        yield* execution.startRootRun({
+          commandId: CommandId.make("fallback-message-start"),
+          appThread: { id: threadId } as OrchestrationV2AppThread,
+          providerSessionId: ProviderSessionId.make("fallback-message-session"),
+          session: {
+            events: Stream.never,
+            startTurn: () =>
+              Effect.sync(() => {
+                starts += 1;
+              }),
+          } as unknown as ProviderAdapter.ProviderAdapterV2SessionRuntime,
+          run: { id: runId, threadId, ordinal: 1, providerInstanceId } as OrchestrationV2Run,
+          rootNode: { id: NodeId.make("fallback-message-node") } as OrchestrationV2ExecutionNode,
+          checkpointScope: {
+            id: CheckpointScopeId.make("fallback-message-checkpoint"),
+          } as OrchestrationV2CheckpointScope,
+          providerThread: {
+            id: ProviderThreadId.make("fallback-message-provider-thread"),
+            driver: ProviderDriverKind.make("claude"),
+          } as OrchestrationV2ProviderThread,
+          attempt: { id: attemptId, providerTurnId: null } as OrchestrationV2RunAttempt,
+          attemptId,
+          providerTurnOrdinal: 1,
+          message: {
+            messageId,
+            delivery,
+            text: "An answer",
+            attachments: [],
+            createdBy: "user",
+            creationSource: "web",
+          },
+          modelSelection: { instanceId: providerInstanceId, model: "claude-test" },
+          runtimePolicy: {
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            cwd: process.cwd(),
+          },
+        });
+        assert.equal(starts, 1);
+        const receipts = writes.filter((event) => event.type === "message.delivery.updated");
+        assert.equal(receipts.length, receiptFails ? 0 : 1);
+        if (!receiptFails)
+          assert.deepEqual(receipts[0]?.payload, { messageId, delivery: "accepted" });
+      }).pipe(Effect.provide(layerTest));
+    }),
+);
+
 it.effect("fails the run when its ownership check cannot be read before calling the provider", () =>
   Effect.gen(function* () {
     const guardCalls = yield* Ref.make(0);

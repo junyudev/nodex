@@ -108,6 +108,7 @@ export const AgentRuntimeMergeBackSchema = AgentRuntimeTargetSchema.extend({ req
 export const AgentRuntimeResponseSchema = AgentRuntimeTargetSchema.extend({
   runId: id.nullable(),
   requestId: id,
+  submissionId: id.optional(),
   decision: z.enum(["accept", "acceptForSession", "acceptAlways", "decline", "cancel"]).optional(),
   answers: z.record(z.string(), z.unknown()).optional(),
   attachmentsByQuestionId: z.record(z.string(), z.unknown()).optional(),

@@ -18,18 +18,31 @@ import { CodexUserInputRequestCard } from "./view/composer/request-cards/codex-u
 
 const api = vi.hoisted(() => ({
   getSnapshot: vi.fn<() => Promise<CodexUserInputAutoResolutionEntry[]>>(),
-  recordActivity: vi.fn<(conversationId: string) => Promise<boolean>>(),
+  recordActivity:
+    vi.fn<(conversation: { hostId: string; conversationId: string }) => Promise<boolean>>(),
   snooze:
-    vi.fn<(target: { conversationId: string; requestId: string | number }) => Promise<boolean>>(),
+    vi.fn<
+      (target: {
+        hostId: string;
+        conversationId: string;
+        requestId: string | number;
+      }) => Promise<boolean>
+    >(),
   listener: null as ((change: CodexUserInputAutoResolutionChange) => void) | null,
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   getUserInputAutoResolutionSnapshot: () => api.getSnapshot(),
-  recordUserInputAutoResolutionActivity: (conversationId: string) =>
-    api.recordActivity(conversationId),
-  snoozeUserInputAutoResolution: (target: { conversationId: string; requestId: string | number }) =>
-    api.snooze(target),
+  recordUserInputAutoResolutionActivity: (conversation: {
+    hostId: string;
+    conversationId: string;
+  }) => api.recordActivity(conversation),
+  snoozeUserInputAutoResolution: (target: {
+    hostId: string;
+    conversationId: string;
+    requestId: string | number;
+  }) => api.snooze(target),
   subscribeUserInputAutoResolutionChanges: (
     listener: (change: CodexUserInputAutoResolutionChange) => void,
   ) => {
@@ -43,11 +56,13 @@ vi.mock("@/lib/api", () => ({
 function AutoResolutionProbe({
   conversationId,
   requestId,
+  hostId = "local",
 }: {
   conversationId: string;
   requestId: string | number;
+  hostId?: string;
 }) {
-  const entry = useUserInputAutoResolution(conversationId, requestId);
+  const entry = useUserInputAutoResolution(conversationId, requestId, hostId);
   return (
     <output>
       {entry?.phase.type === "scheduled"
@@ -105,6 +120,7 @@ describe("user input auto-resolution renderer state", () => {
       api.listener?.({
         type: "updated",
         entry: {
+          hostId: "local",
           conversationId: "thread-1",
           requestId: "request-1",
           phase: { type: "scheduled", deadlineMs: 91_000 },
@@ -117,6 +133,7 @@ describe("user input auto-resolution renderer state", () => {
     await act(async () => {
       resolveSnapshot([
         {
+          hostId: "local",
           conversationId: "thread-1",
           requestId: "request-1",
           phase: { type: "waitingForInactivity" },
@@ -140,6 +157,7 @@ describe("user input auto-resolution renderer state", () => {
       api.listener?.({
         type: "updated",
         entry: {
+          hostId: "local",
           conversationId: "thread-1",
           requestId: 73,
           phase: { type: "snoozed" },
@@ -156,8 +174,12 @@ describe("user input auto-resolution renderer state", () => {
     await recordUserInputActivity("thread-1");
     await snoozeUserInput("thread-1", 73);
 
-    expect(api.recordActivity).toHaveBeenCalledWith("thread-1");
+    expect(api.recordActivity).toHaveBeenCalledWith({
+      hostId: "local",
+      conversationId: "thread-1",
+    });
     expect(api.snooze).toHaveBeenCalledWith({
+      hostId: "local",
       conversationId: "thread-1",
       requestId: 73,
     });
@@ -184,6 +206,7 @@ describe("user input auto-resolution renderer state", () => {
 
     api.listener?.({
       type: "removed",
+      hostId: "local",
       conversationId: "thread-draft",
       requestId: "draft-request",
       reason: "disconnected",
@@ -194,4 +217,43 @@ describe("user input auto-resolution renderer state", () => {
       (afterDisconnect.getByPlaceholderText("Type your answer") as HTMLInputElement).value,
     ).toBe("");
   });
+});
+
+test("a matching Thread and request on another host cannot change the visible deadline", async () => {
+  const view = render(
+    <AutoResolutionProbe conversationId="same-thread" requestId="same-request" />,
+  );
+  await act(async () => {
+    await settleAsyncRender();
+    api.listener?.({
+      type: "updated",
+      entry: {
+        hostId: "local",
+        conversationId: "same-thread",
+        requestId: "same-request",
+        phase: { type: "snoozed" },
+      },
+    });
+  });
+  expect(view.getByText("snoozed")).not.toBeNull();
+  await act(async () => {
+    api.listener?.({
+      type: "updated",
+      entry: {
+        hostId: "remote",
+        conversationId: "same-thread",
+        requestId: "same-request",
+        phase: { type: "scheduled", deadlineMs: 1000 },
+      },
+    });
+    api.listener?.({
+      type: "removed",
+      hostId: "remote",
+      conversationId: "same-thread",
+      requestId: "same-request",
+      reason: "resolved",
+    });
+    await Promise.resolve();
+  });
+  expect(view.getByText("snoozed")).not.toBeNull();
 });

@@ -1,3 +1,4 @@
+import { getPersistedAtomTransport } from "@/lib/persisted-atom-store";
 import { act, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider as TooltipProvider } from "@/components/ui/tooltip";
@@ -146,6 +147,40 @@ describe("CodexUserInputRequestCard", () => {
     }
   });
 
+  test("keeps secret text out of the durable draft store", async () => {
+    const view = renderWithMaitai(
+      <TooltipProvider>
+        <CodexUserInputRequestCard
+          conversationId="secret-thread"
+          request={{
+            ...ordinaryRequest,
+            requestId: "secret",
+            questions: [
+              {
+                id: "token",
+                header: "Token",
+                question: "Enter token",
+                isOther: true,
+                isSecret: true,
+                initialAnswer: "private-initial-token",
+              },
+            ],
+          }}
+          onRespond={async () => {}}
+        />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      fireEvent.change(view.getByLabelText("Enter token"), {
+        target: { value: "private-answer-token" },
+      });
+      await Promise.resolve();
+    });
+    const snapshot = await getPersistedAtomTransport().readSnapshot();
+    expect(JSON.stringify(snapshot.values)).not.toContain("private-answer-token");
+    expect(JSON.stringify(snapshot.values)).not.toContain("private-initial-token");
+  });
+
   test("restores the current question and freeform draft after a remount", async () => {
     vi.useFakeTimers();
     try {
@@ -183,7 +218,7 @@ describe("CodexUserInputRequestCard", () => {
     }
   });
 
-  test("uses one conversation draft slot so replacement input cannot revive", async () => {
+  test("retains independent drafts when another pending request is presented", async () => {
     vi.useFakeTimers();
     try {
       const view = renderWithMaitai(
@@ -231,8 +266,8 @@ describe("CodexUserInputRequestCard", () => {
         </TooltipProvider>,
       );
 
-      expect(view.getByText("Which scope should Codex use?")).not.toBeNull();
-      expect(view.queryByDisplayValue("Old request draft.")).toBeNull();
+      expect(view.getByText("What else should Codex know?")).not.toBeNull();
+      expect(view.getByDisplayValue("Old request draft.")).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -462,6 +497,7 @@ describe("CodexUserInputRequestCard", () => {
           }
           return [
             {
+              hostId: "local",
               conversationId: "thread-tracked",
               requestId: ordinaryRequest.requestId,
               phase: { type: "waitingForInactivity" },

@@ -1130,3 +1130,73 @@ describe("Runtime file changes", () => {
     ).toMatchObject(expected);
   });
 });
+
+describe("Runtime question history", () => {
+  const question = {
+    id: "choice",
+    header: "Color",
+    question: "Which color?",
+    allowCustomAnswer: false,
+    options: [{ label: "Blue", description: "Use blue" }],
+  };
+  const attachment = {
+    type: "file",
+    id: "file-answer",
+    name: "answer.txt",
+    mimeType: "text/plain",
+    sizeBytes: 12,
+  } as const;
+  const request: Extract<AgentTurnItem, { type: "user_input_request" }> = {
+    ...base,
+    type: "user_input_request",
+    requestId: "question-request",
+    questions: [
+      question,
+      { ...question, id: "secret", question: "Private token?", isSecret: true },
+    ],
+    questionAnswer: {
+      requestId: "question-request",
+      answers: { choice: ["Blue", "Green"], secret: "private-token" },
+      attachmentsByQuestionId: { choice: [attachment] },
+    },
+  };
+  test("preserves completed questions, private metadata, answers and attachment history", () => {
+    const canonical = projectAgentRuntimeItem(request)!;
+    expect(canonical).toMatchObject({
+      type: "userInputResponse",
+      id: request.id,
+      completed: true,
+      answers: { choice: ["Blue", "Green"], secret: ["private-token"] },
+      questionAnswer: request.questionAnswer,
+    });
+    const [view] = projectCodexCanonicalTurnItemViews({
+      threadId: request.threadId,
+      turnId: request.runId,
+      turnStatus: "completed",
+      items: [canonical],
+      observedAtMs: 1,
+    });
+    const entry = projectCodexItemViewToTranscriptEntry(view!, "replay", 1);
+    expect(entry.semanticKind).toBe("userInputResponse");
+    expect(entry.markdownText).toBe("Asked 2 questions");
+    expect(entry.userInputQuestions?.[0]?.isOther).toBe(false);
+    expect(entry.userInputQuestions?.[1]?.isSecret).toBe(true);
+    expect(entry.userInputAnswers).toEqual({
+      choice: ["Blue", "Green"],
+      secret: ["private-token"],
+    });
+    expect(entry.rawItem).toMatchObject({
+      questionAnswer: { attachmentsByQuestionId: { choice: [attachment] } },
+    });
+  });
+  test("keeps pending synchronous requests out of answered history", () => {
+    const pending = {
+      ...request,
+      status: "waiting" as const,
+      completedAt: null,
+      questionAnswer: undefined,
+    };
+    expect(isAgentRuntimeItemHidden(pending)).toBe(true);
+    expect(projectAgentRuntimeItem(pending)).toBeNull();
+  });
+});

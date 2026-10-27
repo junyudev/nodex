@@ -74,6 +74,7 @@ import {
 
 import type { ConversationContentSource, ConversationPromptTurn } from "./conversation-runtime";
 import { createAsyncQuestionRuntime } from "./async-question-runtime";
+import { questionDraftStore } from "./question-draft-store";
 import type { CodexCanonicalHookRun } from "../../../shared/codex-conversation-state/codex-conversation-state";
 import {
   decodeCodexAsyncQuestionReplies,
@@ -252,6 +253,7 @@ export class AgentRuntimeConversationOwner {
   readonly #target: ResolvedAgentRuntimeTarget;
   readonly #listeners = new Set<() => void>();
   readonly #items = new Map<string, ResidentItem>();
+  readonly #messageItems = new Map<string, string>();
   readonly #liveItemsByRun = new Map<string, Set<string>>();
   readonly #nodeRuns = new Map<string, { readonly runId: string | null; readonly live: boolean }>();
   readonly #cohortHeads = new Map<
@@ -268,7 +270,7 @@ export class AgentRuntimeConversationOwner {
   /** Unanswered asynchronous questions by request, answerable until the Agent settles them. */
   readonly #asyncQuestions = new Map<string, AgentRuntimeQuestionRequest>();
   /** Drafts and panel state for this conversation's asynchronous questions. */
-  readonly asyncQuestions = createAsyncQuestionRuntime();
+  readonly asyncQuestions: ReturnType<typeof createAsyncQuestionRuntime>;
   #turnKeys: string[] = [];
   #state: AgentRuntimeConversationOwnerSnapshot = {
     conversation: null,
@@ -310,6 +312,10 @@ export class AgentRuntimeConversationOwner {
   ) {
     this.#target = target;
     this.#transport = transport;
+    this.asyncQuestions = createAsyncQuestionRuntime({
+      drafts: questionDraftStore,
+      namespace: JSON.stringify(["agent-runtime", target.sessionId, target.threadId]),
+    });
     this.readOwner = new CodexTranscriptReadOwner({
       hostId: "local",
       threadId: target.threadId,
@@ -822,6 +828,7 @@ export class AgentRuntimeConversationOwner {
     this.#transcriptHydrated = false;
     this.#historyCursors.clear();
     this.#items.clear();
+    this.#messageItems.clear();
     this.#liveItemsByRun.clear();
     this.#residentTaskIds.clear();
     this.#turns.clear();
@@ -1195,7 +1202,15 @@ export class AgentRuntimeConversationOwner {
   }
   #prepend(page: AgentHistoryPage): void {
     this.#cursor = page.nextCursor;
+    const sources = page.items.filter(
+      (row) =>
+        !this.#items.has(row.item.id) &&
+        row.visibility !== "inherited" &&
+        isAgentRuntimeAsyncQuestion(row.item),
+    );
     const changes = this.#admit(page.items, true);
+    for (const row of sources) this.#captureRequest(row.item, true);
+    if (sources.length) this.#reconcileAsyncQuestions();
     changes.push(
       { type: "structure", timeline: this.#timeline(), turnEntityKeys: this.#turnKeys },
       { type: "history", resumeState: "resumed", historyComplete: !page.hasMoreHistory },
@@ -1207,7 +1222,8 @@ export class AgentRuntimeConversationOwner {
     if (!local || (item.type !== "approval_request" && item.type !== "user_input_request"))
       return false;
     if (isAgentRuntimeAsyncQuestion(item)) {
-      const pending = item.status === "pending" || item.status === "waiting";
+      const pending =
+        item.status === "pending" || item.status === "waiting" || item.status === "completed";
       if (pending) this.#asyncQuestions.set(item.requestId, item);
       else this.#asyncQuestions.delete(item.requestId);
       return true;
@@ -1235,6 +1251,7 @@ export class AgentRuntimeConversationOwner {
     return true;
   }
   #rememberItem(source: ResidentItem, item: AgentTurnItem): void {
+    if (item.type === "user_message") this.#messageItems.set(item.messageId, item.id);
     const resident = {
       ...source,
       type: item.type,
@@ -1528,6 +1545,20 @@ export class AgentRuntimeConversationOwner {
       this.#retireExecution(event);
       return;
     }
+    if (event.type === "message.delivery.updated") {
+      const itemId = this.#messageItems.get(event.payload.messageId);
+      const source = itemId ? this.#items.get(itemId) : undefined;
+      const item = source && itemId ? this.readOwner.readItem(source.entityKey, itemId) : null;
+      if (item?.type === "userMessage" && source && itemId && item.runtimeDelivery !== "accepted")
+        this.#applyChanges([
+          {
+            type: "item",
+            key: { ...this.readOwner.key, entityKey: source.entityKey, itemId },
+            value: { ...item, runtimeDelivery: event.payload.delivery },
+          },
+        ]);
+      return;
+    }
     if (event.type === "message.updated") {
       if (this.#queuePage?.entries.some((row) => row.userMessageId === event.payload.id)) {
         this.#queueEntries = this.#queueEntries.filter(
@@ -1674,7 +1705,8 @@ export class AgentRuntimeConversationOwner {
       };
       if (event.payload.status !== "pending") {
         this.#requests.delete(event.payload.id);
-        if (this.#asyncQuestions.delete(event.payload.id)) this.#reconcileAsyncQuestions();
+        if (event.payload.status !== "resolved" && this.#asyncQuestions.delete(event.payload.id))
+          this.#reconcileAsyncQuestions();
       }
       if (event.payload.status !== "pending" && !this.#nodeRuns.get(event.payload.nodeId)?.live)
         this.#nodeRuns.delete(event.payload.nodeId);
@@ -1882,9 +1914,27 @@ export class AgentRuntimeConversationOwner {
       turnId: pending.length ? AGENT_RUNTIME_QUESTION_SCOPE : null,
       entityKey: AGENT_RUNTIME_QUESTION_SCOPE,
       questions: pending.flatMap((item) =>
-        expandCodexAsyncQuestions(projectAgentRuntimeAsyncQuestionMessage(item)),
+        expandCodexAsyncQuestions(projectAgentRuntimeAsyncQuestionMessage(item)).map(
+          (question, index) => ({
+            ...question,
+            sourceTurnId: item.runId ?? undefined,
+            isSecret: item.questions[index]?.isSecret,
+            initialAnswer: item.questions[index]?.initialAnswer,
+            required: item.questions[index]?.required,
+          }),
+        ),
       ),
-      answers: new Map(),
+      answers: new Map(
+        pending.flatMap((item) => {
+          const questions = expandCodexAsyncQuestions(
+            projectAgentRuntimeAsyncQuestionMessage(item),
+          );
+          return questions.flatMap((question, index) => {
+            const answer = item.questionAnswer?.answers[item.questions[index]?.id ?? ""];
+            return typeof answer === "string" ? [[question.id, answer] as const] : [];
+          });
+        }),
+      ),
     });
   }
   /** The pending requests that receive these replies, with each answer keyed by its question. */

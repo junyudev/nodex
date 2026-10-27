@@ -1,4 +1,6 @@
 import { assertCodexFailedTurnContinuation } from "../../../shared/codex-conversation-state/codex-failed-turn-continuation";
+import type { CodexAsyncQuestionResponseInput } from "../../../shared/codex-async-user-input";
+import { questionDraftStore } from "./question-draft-store";
 import { useConversationRuntimeOverride, type ConversationRuntime } from "./conversation-runtime";
 import { createCodexPromptRailPort } from "./codex-prompt-rail-port";
 import {
@@ -2075,7 +2077,7 @@ function sendCodexAppServerResponse(input: CodexNativeServerResponseInput): Prom
 export class CodexAppServerManager {
   private destroyed = false;
   private readonly foregroundConversations = new Map<symbol, string>();
-  readonly asyncQuestions = createAsyncQuestionRuntime();
+  readonly asyncQuestions: ReturnType<typeof createAsyncQuestionRuntime>;
   private readonly conversationActivity = new ConversationActivity((threadId, active) => {
     void this.applyThreadActivity(threadId, active).catch(() => {});
   });
@@ -2265,6 +2267,10 @@ export class CodexAppServerManager {
       ) => Promise<unknown>;
     } = {},
   ) {
+    this.asyncQuestions = createAsyncQuestionRuntime({
+      drafts: questionDraftStore,
+      namespace: JSON.stringify(["native", hostId]),
+    });
     this.nativeAppServer = new RendererNativeAppServer(hostId);
     this.historyPolicy = new CodexHistoryPolicy({
       source: "endpoint-history-policy",
@@ -4767,6 +4773,7 @@ export class CodexAppServerManager {
     presented: boolean,
   ): Promise<boolean> {
     return (await runConversationOperation("codex:thread:presentation:set", {
+      hostId: this.hostId,
       threadId,
       surfaceId,
       presented,
@@ -7343,6 +7350,14 @@ export class CodexAppServerManager {
       processId,
     });
     return response.terminated;
+  }
+
+  async respondAsyncQuestions(
+    input: CodexAsyncQuestionResponseInput,
+  ): Promise<{ turnId: string } | null> {
+    if (!this.streamState.getRole(input.threadId))
+      await this.requestThreadStreamResume(input.threadId);
+    return await runConversationOperation("codex:turn:question-reply", input);
   }
 
   async steerTurn(input: CodexSteerTurnInput): Promise<{ turnId: string } | null> {

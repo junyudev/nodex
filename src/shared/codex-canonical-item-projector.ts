@@ -454,6 +454,11 @@ export function isReviewDiffCommentAttachment(
   return true;
 }
 
+function questionRepliesFromUserInput(input: readonly { readonly type: string }[], text: string) {
+  if (input.filter((entry) => entry.type === "text").length !== 1) return undefined;
+  return decodeCodexAsyncQuestionReplies(text) ?? undefined;
+}
+
 function projectTurnParamsUserView(input: {
   readonly threadId: string;
   readonly turnId: string | null;
@@ -478,7 +483,11 @@ function projectTurnParamsUserView(input: {
     rawCommentAttachments,
   ).rawText;
   const delegation = parseCodexDelegationText(rawMarkdownText);
-  const markdownText = input.goalProjection?.message ?? delegation?.input ?? rawMarkdownText;
+  const questionReplies = questionRepliesFromUserInput(input.params.input, rawMarkdownText);
+  const markdownText =
+    input.goalProjection?.message ??
+    delegation?.input ??
+    (questionReplies ? formatCodexAsyncQuestionReplies(questionReplies) : rawMarkdownText);
   const userAttachments = buildCodexUserAttachmentsFromInput(
     input.params.input,
     input.params.attachments ?? [],
@@ -507,10 +516,15 @@ function projectTurnParamsUserView(input: {
     role: "user",
     status: "completed",
     markdownText,
+    questionReplies,
     ...(input.goalProjection ? { goal: true } : {}),
     ...(input.opening?.origin ? { userMessageOrigin: input.opening.origin } : {}),
     ...(input.opening?.inputIntent ? { userInputIntent: input.opening.inputIntent } : {}),
-    ...(input.blocked ? { deliveryStatus: "not-sent" as const } : {}),
+    ...(input.blocked
+      ? { deliveryStatus: "not-sent" as const }
+      : input.opening?.runtimeDelivery === "pending" || input.opening?.runtimeDelivery === "unknown"
+        ? { deliveryStatus: input.opening.runtimeDelivery }
+        : {}),
     ...(commentAttachments.length === 0 ? {} : { commentAttachments: [...commentAttachments] }),
     ...(hasThreadTextSelections(textSelections) ? { textSelections } : {}),
     ...(userAttachments.length === 0 ? {} : { userAttachments }),
@@ -537,8 +551,7 @@ function projectSteeringUserMessage(
   context: ItemProjectionContext,
 ): CodexItemView[] {
   const rawText = projectUserMessageText(item.input);
-  const questionReplies =
-    item.input.length === 1 ? (decodeCodexAsyncQuestionReplies(rawText) ?? undefined) : undefined;
+  const questionReplies = questionRepliesFromUserInput(item.input, rawText);
   const markdownText = questionReplies ? formatCodexAsyncQuestionReplies(questionReplies) : rawText;
   const contentAttachments = buildCodexUserAttachmentsFromContent(item.input, item.id);
   if (markdownText.trim().length === 0 && contentAttachments.length === 0) return [];
@@ -1197,8 +1210,8 @@ function projectCanonicalItemViews(
               : `Asked ${item.questions.length} questions`,
           userInputQuestions: item.questions.map((question) => ({
             ...question,
-            isOther: false,
-            isSecret: false,
+            isOther: question.isOther ?? false,
+            isSecret: question.isSecret ?? false,
             options: [...question.options],
           })),
           userInputAnswers: Object.fromEntries(
@@ -1277,10 +1290,7 @@ function projectCanonicalItemViews(
       const rawText = projectUserMessageText(
         withoutThreadTextSelectionInput(item.content, textSelections),
       );
-      const questionReplies =
-        item.content.length === 1
-          ? (decodeCodexAsyncQuestionReplies(rawText) ?? undefined)
-          : undefined;
+      const questionReplies = questionRepliesFromUserInput(item.content, rawText);
       const markdownText = questionReplies
         ? formatCodexAsyncQuestionReplies(questionReplies)
         : rawText;
@@ -1302,6 +1312,9 @@ function projectCanonicalItemViews(
           status: "completed",
           markdownText,
           questionReplies,
+          ...(item.runtimeDelivery === "pending" || item.runtimeDelivery === "unknown"
+            ? { deliveryStatus: item.runtimeDelivery }
+            : {}),
           ...(hasThreadTextSelections(textSelections) ? { textSelections } : {}),
           ...(userAttachments.length === 0 ? {} : { userAttachments }),
           ...(unavailableImages.length === 0 ? {} : { unavailableImages }),

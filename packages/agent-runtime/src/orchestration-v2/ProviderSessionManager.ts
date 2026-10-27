@@ -294,14 +294,15 @@ function sessionKey(providerSessionId: ProviderSessionId): string {
 }
 
 /**
- * Runtime requests with no provider turn belong to the live session itself.
- * Their node and transcript item are runless too, so they bypass the normal
- * per-run subscriber and are persisted by the session event pump.
+ * Runless requests and delivery receipts outlive individual Run subscribers.
+ * The session event pump persists them once, including a late acceptance echo.
  */
-function sessionScopedRuntimeRequestThreadId(
+function sessionScopedProviderEventThreadId(
   event: ProviderAdapter.ProviderAdapterV2Event,
 ): ThreadId | undefined {
   switch (event.type) {
+    case "message.delivery.updated":
+      return event.threadId;
     case "runtime_request.updated":
       return event.runtimeRequest.providerTurnId === null ? event.threadId : undefined;
     case "node.updated":
@@ -1976,7 +1977,24 @@ export const layerWithOptions = (
                 isProviderThreadLoaded({ providerSessionId, threadId, providerThreadKey }),
               ),
               Effect.flatMap((loaded) =>
-                loaded ? Effect.succeed(input.providerThread) : runtime.resumeThread(input),
+                loaded
+                  ? Effect.succeed(input.providerThread)
+                  : projectionStore
+                      .getPendingMessageDeliveryIds(threadId, input.providerThread.id)
+                      .pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new ProviderAdapter.ProviderAdapterResumeThreadError({
+                              driver: runtime.driver,
+                              providerSessionId,
+                              providerThreadId: input.providerThread.id,
+                              cause,
+                            }),
+                        ),
+                        Effect.flatMap((pendingDeliveryMessageIds) =>
+                          runtime.resumeThread({ ...input, pendingDeliveryMessageIds }),
+                        ),
+                      ),
               ),
               Effect.tap((providerThread) =>
                 markProviderThreadLoaded({
@@ -2263,7 +2281,7 @@ export const layerWithOptions = (
                   // (project trust, login, or session-switch hooks). Persist
                   // their runless request artifacts directly so the normal T3
                   // request UI can answer them and unblock session setup.
-                  const threadId = sessionScopedRuntimeRequestThreadId(event);
+                  const threadId = sessionScopedProviderEventThreadId(event);
                   if (threadId !== undefined) {
                     yield* Effect.gen(function* () {
                       const current = (yield* Ref.get(sessions)).get(

@@ -89,7 +89,7 @@ describe("local-conversation request cards", () => {
       </NodexTooltipProvider>,
     );
 
-    expect(textContent(container).includes("Tell Nodex what to do differently")).toBe(false);
+    expect(textContent(container).includes("Or write your own response")).toBe(false);
   });
 
   test("allows an immediate freeform question to resolve without an answer", async () => {
@@ -106,7 +106,7 @@ describe("local-conversation request cards", () => {
         {
           id: "q_freeform",
           header: "Input required",
-          question: "Tell Nodex what to do differently",
+          question: "Or write your own response",
           isOther: false,
           isSecret: false,
           options: undefined,
@@ -246,10 +246,10 @@ describe("local-conversation request cards", () => {
     }
   });
 
-  test("renders the composer-style request surface with hover metadata affordance", async () => {
+  test("exposes option descriptions inline and keeps recommendation metadata separate", async () => {
     const { REQUEST_INPUT_COMPOSER_POLICY, RequestComposerView } =
       await import("./local-conversation-request-cards");
-    const { container, getByLabelText, getByText } = render(
+    const { container, getByRole, getByText } = render(
       <NodexTooltipProvider>
         <RequestComposerView
           request={optionRequest}
@@ -263,11 +263,12 @@ describe("local-conversation request cards", () => {
     );
 
     expect(getByText("What is 1 + 1?").textContent).toBe("What is 1 + 1?");
-    expect(getByText("2 (Recommended)").textContent).toBe("2 (Recommended)");
-    expect(getByLabelText("About 2 (Recommended)").getAttribute("aria-label")).toBe(
-      "About 2 (Recommended)",
+    expect(getByText("Recommended").textContent).toBe("Recommended");
+    const description = getByText("Matches the obvious arithmetic result.");
+    expect(getByRole("radio", { name: "2 (Recommended)" }).getAttribute("aria-describedby")).toBe(
+      description.id,
     );
-    expect(textContent(container).includes("Tell Nodex what to do differently")).toBe(true);
+    expect(textContent(container).includes("Or write your own response")).toBe(true);
     expect(container.querySelector('[data-user-input-focus-target="options"]')).not.toBeNull();
     expect(container.querySelector('[data-user-input-focus-target="other"]')).not.toBeNull();
     expect(getByText("Dismiss").textContent).toBe("Dismiss");
@@ -360,6 +361,62 @@ describe("local-conversation request cards", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(Boolean(textContent(container).includes("What is 1 + 1?"))).toBe(true);
     expect(Boolean(textContent(container).includes("2 (Recommended)"))).toBe(true);
+  });
+
+  test("renders completed Runtime question history through the canonical projection and conceals private answers", async () => {
+    const { projectAgentRuntimeItem } =
+      await import("../../../agent-runtime-transcript-projection");
+    const { projectCodexCanonicalTurnItemViews } =
+      await import("../../../../../../shared/codex-canonical-item-projector");
+    const { projectCodexItemViewToTranscriptEntry } =
+      await import("../../../../../../shared/codex-transcript-entry-projection");
+    const { UserInputTranscriptView } = await import("./local-conversation-request-cards");
+    const at = "2026-10-27T00:00:00.000Z";
+    const item = projectAgentRuntimeItem({
+      id: "resolved-question",
+      threadId: "thread",
+      runId: "run",
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal: 1,
+      status: "completed",
+      title: null,
+      startedAt: at,
+      completedAt: at,
+      updatedAt: at,
+      type: "user_input_request",
+      requestId: "request",
+      questions: [
+        { id: "color", header: "Color", question: "Which color?", options: [] },
+        { id: "token", header: "Token", question: "Private token?", options: [], isSecret: true },
+      ],
+      questionAnswer: {
+        requestId: "request",
+        answers: { color: "Blue", token: "private-token" },
+        attachmentsByQuestionId: {},
+      },
+    })!;
+    const [projected] = projectCodexCanonicalTurnItemViews({
+      threadId: "thread",
+      turnId: "run",
+      turnStatus: "completed",
+      items: [item],
+      observedAtMs: 1,
+    });
+    const entry = projectCodexItemViewToTranscriptEntry(projected!, "replay", 1);
+    const view = render(<UserInputTranscriptView item={entry} />);
+    const summary = view.getByRole("button", { name: /Asked\s*2 questions/i });
+    await act(async () => {
+      fireEvent.click(summary);
+      await settleAsyncRender();
+    });
+    expect(summary.getAttribute("aria-expanded")).toBe("true");
+    expect(view.getByText("Blue")).toBeTruthy();
+    expect(view.getByText("Hidden response")).toBeTruthy();
+    expect(view.queryByText("private-token")).toBeNull();
   });
 
   test("keeps the completed summary visible even when no answers were recorded", async () => {

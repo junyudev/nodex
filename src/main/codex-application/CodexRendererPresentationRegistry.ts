@@ -1,23 +1,38 @@
+import {
+  codexUserInputConversationKey,
+  type CodexUserInputAutoResolutionConversation as Conversation,
+} from "../../shared/codex-user-input-auto-resolution";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import { CodexRendererViewRegistry } from "../codex/codex-renderer-view-registry";
 
 export interface CodexRendererPresentationRegistryService {
-  readonly setClientForegrounded: (clientId: string, foregrounded: boolean) => readonly string[];
+  readonly setClientForegrounded: (
+    clientId: string,
+    foregrounded: boolean,
+  ) => readonly Conversation[];
   readonly setPresented: (
     conversationId: string,
     clientId: string,
     surfaceId: string,
     presented: boolean,
+    hostId?: string,
   ) => { readonly accepted: boolean; readonly presentedInForeground: boolean };
-  readonly isPresentedInForeground: (conversationId: string) => boolean;
+  readonly isPresentedInForeground: (conversationId: string, hostId?: string) => boolean;
   readonly hasForegroundClient: () => boolean;
-  readonly isClientPresenting: (conversationId: string, clientId: string) => boolean;
-  readonly resolvePresentedSurfaceClient: (conversationId: string) => string | null;
+  readonly isClientPresenting: (
+    conversationId: string,
+    clientId: string,
+    hostId?: string,
+  ) => boolean;
+  readonly resolvePresentedSurfaceClient: (
+    conversationId: string,
+    hostId?: string,
+  ) => string | null;
   readonly handleClientConnected: (clientId: string) => void;
-  readonly handleClientDisposed: (clientId: string) => readonly string[];
-  readonly clearConversation: (conversationId: string) => void;
+  readonly handleClientDisposed: (clientId: string) => readonly Conversation[];
+  readonly clearConversation: (conversationId: string, hostId?: string) => void;
 }
 
 export class CodexRendererPresentationRegistry extends Context.Service<
@@ -28,6 +43,14 @@ export class CodexRendererPresentationRegistry extends Context.Service<
 export const make: Effect.Effect<CodexRendererPresentationRegistryService, never, Scope.Scope> =
   Effect.gen(function* () {
     const views = new CodexRendererViewRegistry();
+    const key = (conversationId: string, hostId = "local") =>
+      codexUserInputConversationKey({ hostId, conversationId });
+    const targets = (keys: readonly string[]) =>
+      keys.map((value): Conversation => {
+        // Keys come only from this registry's encoder.
+        const [hostId, conversationId] = JSON.parse(value) as [string, string];
+        return { hostId, conversationId };
+      });
     const disposedClientIds = new Set<string>();
     let closed = false;
     const normalize = (value: string): string => value.trim();
@@ -48,9 +71,9 @@ export const make: Effect.Effect<CodexRendererPresentationRegistryService, never
           (foregrounded && disposedClientIds.has(normalizedClientId))
         )
           return [];
-        return views.setClientForegrounded(normalizedClientId, foregrounded);
+        return targets(views.setClientForegrounded(normalizedClientId, foregrounded));
       },
-      setPresented: (conversationId, clientId, surfaceId, presented) => {
+      setPresented: (conversationId, clientId, surfaceId, presented, hostId = "local") => {
         const normalizedClientId = normalize(clientId);
         if (
           closed ||
@@ -58,18 +81,20 @@ export const make: Effect.Effect<CodexRendererPresentationRegistryService, never
           (presented && disposedClientIds.has(normalizedClientId))
         )
           return { accepted: false, presentedInForeground: false };
-        views.setPresented(conversationId, normalizedClientId, surfaceId, presented);
+        const conversationKey = key(conversationId, hostId);
+        views.setPresented(conversationKey, normalizedClientId, surfaceId, presented);
         return {
           accepted: true,
-          presentedInForeground: presented && views.isPresentedInForeground(conversationId),
+          presentedInForeground: presented && views.isPresentedInForeground(conversationKey),
         };
       },
-      isPresentedInForeground: (conversationId) => views.isPresentedInForeground(conversationId),
+      isPresentedInForeground: (conversationId, hostId) =>
+        views.isPresentedInForeground(key(conversationId, hostId)),
       hasForegroundClient: () => views.hasForegroundClient(),
-      isClientPresenting: (conversationId, clientId) =>
-        views.isClientPresenting(conversationId, clientId),
-      resolvePresentedSurfaceClient: (conversationId) =>
-        views.resolvePresentedSurfaceClient(conversationId),
+      isClientPresenting: (conversationId, clientId, hostId) =>
+        views.isClientPresenting(key(conversationId, hostId), clientId),
+      resolvePresentedSurfaceClient: (conversationId, hostId) =>
+        views.resolvePresentedSurfaceClient(key(conversationId, hostId)),
       handleClientConnected: (clientId) => {
         if (!closed) disposedClientIds.delete(normalize(clientId));
       },
@@ -77,10 +102,12 @@ export const make: Effect.Effect<CodexRendererPresentationRegistryService, never
         const normalizedClientId = normalize(clientId);
         if (closed || !normalizedClientId || disposedClientIds.has(normalizedClientId)) return [];
         disposedClientIds.add(normalizedClientId);
-        return views.removeClient(normalizedClientId);
+        return targets(views.removeClient(normalizedClientId));
       },
-      clearConversation: (conversationId) => {
-        if (!closed) views.clearConversation(conversationId);
+      clearConversation: (conversationId, hostId) => {
+        if (closed) return;
+        const conversationKey = key(conversationId, hostId);
+        views.clearConversation(conversationKey);
       },
     });
   });

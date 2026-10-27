@@ -527,6 +527,7 @@ const makeSideChatHarness = (logicalTurnCount: number) => {
         releasePreparedNativeSteer: () => {},
         start: () => Effect.die("Side-chat fixture has no initial prompt"),
         steer: () => Effect.die("unused"),
+        respondAsyncQuestions: () => Effect.die("unused"),
       } satisfies CodexTurnCommandsService),
     ),
     Effect.provideService(ConversationEntityMap, conversations),

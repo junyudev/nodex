@@ -217,18 +217,18 @@ const DEFAULT_THEMES: Record<ThemeVariant, BaseTheme> = {
   dark: {
     accent: "#3a83f7",
     contrast: 60,
-    ink: "#fcfcfc",
+    ink: "#ffffff",
     semanticColors: {
       diffAdded: "#00a240",
       diffRemoved: "#e02e2a",
       skill: "#b06dff",
     },
-    surface: "#111111",
+    surface: "#181818",
   },
   light: {
     accent: "#3a83f7",
     contrast: 45,
-    ink: "#0d0d0d",
+    ink: "#1a1c1f",
     semanticColors: {
       diffAdded: "#00a240",
       diffRemoved: "#e02e2a",

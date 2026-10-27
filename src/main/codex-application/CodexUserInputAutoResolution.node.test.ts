@@ -50,6 +50,7 @@ it.effect("waits for foreground inactivity before publishing one typed timeout",
     const observed = [...(yield* Fiber.join(changes))];
     const expected = {
       type: "timedOut",
+      hostId: "local",
       conversationId: "thread-1",
       requestId: "request-1",
     } as const;
@@ -79,7 +80,13 @@ it.effect(
       assert.strictEqual((yield* runtime.snapshot)[0]?.phase.type, "scheduled");
 
       yield* TestClock.adjust("4 seconds");
-      assert.isTrue(yield* runtime.snooze("thread-1", "mcp-request"));
+      assert.isTrue(
+        yield* runtime.snooze({
+          hostId: "local",
+          conversationId: "thread-1",
+          requestId: "mcp-request",
+        }),
+      );
       assert.strictEqual((yield* runtime.snapshot)[0]?.phase.type, "scheduled");
       yield* TestClock.adjust("4999 millis");
       assert.lengthOf(yield* runtime.snapshot, 1);
@@ -87,6 +94,7 @@ it.effect(
       assert.isEmpty(yield* runtime.snapshot);
       assert.deepEqual(Option.getOrUndefined(yield* Fiber.join(timeout)), {
         type: "timedOut",
+        hostId: "local",
         conversationId: "thread-1",
         requestId: "mcp-request",
         connection: { hostId: "local", generation: 3 },
@@ -100,20 +108,24 @@ it.effect("resets inactivity, preserves scalar request identity, and snoozes per
     const { registry, runtime } = yield* makeRuntime(true);
     yield* runtime.observeRequest("thread-1", 7, { hostId: "local", generation: 1 });
     yield* TestClock.adjust("59 seconds");
-    yield* runtime.recordActivity("thread-1");
+    yield* runtime.recordActivity({ hostId: "local", conversationId: "thread-1" });
     yield* TestClock.adjust("59 seconds");
     assert.strictEqual((yield* runtime.snapshot)[0]?.phase.type, "waitingForInactivity");
 
     registry.setPresented("thread-1", "renderer-a", "surface-a", false);
-    yield* runtime.reevaluatePresentation("thread-1");
+    yield* runtime.reevaluatePresentation({ hostId: "local", conversationId: "thread-1" });
     assert.strictEqual((yield* runtime.snapshot)[0]?.phase.type, "scheduled");
     registry.setPresented("thread-1", "renderer-a", "surface-a", true);
-    yield* runtime.reevaluatePresentation("thread-1");
+    yield* runtime.reevaluatePresentation({ hostId: "local", conversationId: "thread-1" });
     assert.strictEqual((yield* runtime.snapshot)[0]?.phase.type, "waitingForInactivity");
     registry.setPresented("thread-1", "renderer-a", "surface-a", false);
-    yield* runtime.reevaluatePresentation("thread-1");
-    assert.isFalse(yield* runtime.snooze("thread-1", "7"));
-    assert.isTrue(yield* runtime.snooze("thread-1", 7));
+    yield* runtime.reevaluatePresentation({ hostId: "local", conversationId: "thread-1" });
+    assert.isFalse(
+      yield* runtime.snooze({ hostId: "local", conversationId: "thread-1", requestId: "7" }),
+    );
+    assert.isTrue(
+      yield* runtime.snooze({ hostId: "local", conversationId: "thread-1", requestId: 7 }),
+    );
     yield* TestClock.adjust("10 minutes");
     assert.strictEqual((yield* runtime.snapshot)[0]?.phase.type, "snoozed");
   }),
@@ -134,6 +146,7 @@ it.effect("clears every request generation when the app-server disconnects", () 
     assert.isEmpty(yield* runtime.snapshot);
     assert.deepEqual(Option.getOrUndefined(yield* Fiber.join(removal)), {
       type: "removed",
+      hostId: "local",
       conversationId: "thread-1",
       requestId: "request-1",
       reason: "disconnected",
@@ -184,12 +197,13 @@ it.effect("replaces requests and cancels stale generations on response or reconc
     yield* runtime.observeRequest("thread-1", "7", { hostId: "local", generation: 1 });
     yield* runtime.observeResponse("thread-1", 7, { hostId: "local", generation: 1 });
     assert.lengthOf(yield* runtime.snapshot, 1);
-    yield* runtime.reconcilePendingRequests("thread-1", [7]);
+    yield* runtime.reconcilePendingRequests({ hostId: "local", conversationId: "thread-1" }, [7]);
     assert.isEmpty(yield* runtime.snapshot);
     yield* TestClock.adjust("10 minutes");
     const observed = [...(yield* Fiber.join(changes))];
     assert.deepInclude(observed, {
       type: "removed",
+      hostId: "local",
       conversationId: "thread-1",
       requestId: 7,
       reason: "replaced",
@@ -207,5 +221,43 @@ it.effect("interrupts every countdown when its owning Scope closes", () =>
     yield* Scope.close(scope, Exit.void);
     yield* TestClock.adjust("10 minutes");
     assert.isTrue(Option.isNone(yield* Fiber.join(timeout)));
+  }),
+);
+
+it.effect("isolates the same conversation and request identities across hosts", () =>
+  Effect.gen(function* () {
+    const { registry, runtime } = yield* makeRuntime(true);
+    const local = { hostId: "local", conversationId: "thread-1" };
+    const remote = { hostId: "remote", conversationId: "thread-1" };
+    yield* runtime.observeRequest("thread-1", "same", { hostId: "local", generation: 1 });
+    yield* runtime.observeRequest("thread-1", "same", { hostId: "remote", generation: 1 });
+    assert.deepEqual(
+      (yield* runtime.snapshot).map(({ hostId, phase }) => [hostId, phase.type]),
+      [
+        ["local", "waitingForInactivity"],
+        ["remote", "scheduled"],
+      ],
+    );
+    assert.isTrue(yield* runtime.snooze({ ...local, requestId: "same" }));
+    yield* runtime.clearConversation({ hostId: "unrelated", conversationId: "thread-1" });
+    assert.lengthOf(yield* runtime.snapshot, 2);
+    yield* runtime.reconcilePendingRequests(local, []);
+    assert.deepEqual(
+      (yield* runtime.snapshot).map(({ hostId }) => hostId),
+      ["remote"],
+    );
+    registry.setPresented("thread-1", "renderer-a", "remote-surface", true, "remote");
+    yield* runtime.reevaluatePresentation(remote);
+    assert.strictEqual((yield* runtime.snapshot)[0]?.phase.type, "waitingForInactivity");
+    yield* runtime.observeResponse("thread-1", "same", { hostId: "local", generation: 1 });
+    assert.lengthOf(yield* runtime.snapshot, 1);
+    yield* runtime.handleDisconnect("local", 1);
+    assert.lengthOf(yield* runtime.snapshot, 1);
+    yield* TestClock.adjust("59 seconds");
+    yield* runtime.recordActivity(local);
+    yield* TestClock.adjust("1 second");
+    assert.strictEqual((yield* runtime.snapshot)[0]?.phase.type, "scheduled");
+    yield* TestClock.adjust("90 seconds");
+    assert.isEmpty(yield* runtime.snapshot);
   }),
 );

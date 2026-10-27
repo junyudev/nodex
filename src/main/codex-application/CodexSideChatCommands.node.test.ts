@@ -228,6 +228,7 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
           return null;
         }),
       steer: () => Effect.die("unused"),
+      respondAsyncQuestions: () => Effect.die("unused"),
     } satisfies CodexTurnCommandsService);
     const parentSnapshot = {
       threadId: parentThreadId,

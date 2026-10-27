@@ -305,7 +305,8 @@ it.effect(
           });
           const reply = turnItems.find(
             (item) =>
-              item.type === "user_message" && item.messageId === `async-answer:${requestId}`,
+              item.type === "user_message" &&
+              item.messageId === `async-answer:${requestId}:respond:${mode}`,
           );
           assert.deepEqual(
             reply?.type === "user_message" ? decodeCodexAsyncQuestionReplies(reply.text) : null,

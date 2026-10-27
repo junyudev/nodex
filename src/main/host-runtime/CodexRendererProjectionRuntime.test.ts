@@ -1,3 +1,4 @@
+import type { CodexUserInputAutoResolutionConversation } from "../../shared/codex-user-input-auto-resolution";
 import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
 import * as Exit from "effect/Exit";
@@ -28,7 +29,7 @@ it.effect(
   "clears retired documents, reuses the client after reload, and releases all projection subscriptions",
   () =>
     Effect.gen(function* () {
-      const reevaluated: string[] = [];
+      const reevaluated: CodexUserInputAutoResolutionConversation[] = [];
       const autoResolutionChanges = yield* PubSub.unbounded<CodexUserInputAutoResolutionChange>();
       const applicationEvents = yield* PubSub.unbounded<CodexApplicationEvent>();
       const projectedChanges: Array<readonly [string, unknown]> = [];
@@ -72,7 +73,9 @@ it.effect(
               Layer.succeed(RendererClientRuntime, rendererClients),
               Layer.succeed(CodexUserInputAutoResolution, {
                 changes: Stream.fromPubSub(autoResolutionChanges),
-                reevaluatePresentation: (conversationId: string) =>
+                reevaluatePresentation: (
+                  conversationId: CodexUserInputAutoResolutionConversation,
+                ) =>
                   Effect.sync(() => {
                     reevaluated.push(conversationId);
                   }),
@@ -114,7 +117,7 @@ it.effect(
         window: { ...window, rendererGeneration: null },
       });
       yield* Effect.yieldNow;
-      assert.deepEqual(reevaluated, ["thread-1"]);
+      assert.deepEqual(reevaluated, [{ hostId: "local", conversationId: "thread-1" }]);
       assert.isFalse(presentation.isClientPresenting("thread-1", clientId));
       assert.isFalse(
         presentation.setPresented("thread-1", clientId, "stale-surface", true).accepted,
@@ -135,10 +138,14 @@ it.effect(
       );
       yield* rendererClients.disposeClient(clientId);
       yield* Effect.yieldNow;
-      assert.deepEqual(reevaluated, ["thread-1", "thread-1"]);
+      assert.deepEqual(reevaluated, [
+        { hostId: "local", conversationId: "thread-1" },
+        { hostId: "local", conversationId: "thread-1" },
+      ]);
       assert.isFalse(presentation.isPresentedInForeground("thread-1"));
       yield* PubSub.publish(autoResolutionChanges, {
         type: "timedOut",
+        hostId: "local",
         conversationId: "thread-1",
         requestId: "request-1",
       });
@@ -152,6 +159,7 @@ it.effect(
           "codex:user-input:auto-resolution:changed",
           {
             type: "timedOut",
+            hostId: "local",
             conversationId: "thread-1",
             requestId: "request-1",
           },
@@ -165,6 +173,7 @@ it.effect(
       });
       yield* PubSub.publish(autoResolutionChanges, {
         type: "timedOut",
+        hostId: "local",
         conversationId: "thread-1",
         requestId: "ignored",
       });
@@ -179,7 +188,10 @@ it.effect(
       yield* rendererClients.disposeClient(reconnectId);
       yield* Effect.yieldNow;
       assert.strictEqual(projectedChanges.length, 2);
-      assert.deepEqual(reevaluated, ["thread-1", "thread-1"]);
+      assert.deepEqual(reevaluated, [
+        { hostId: "local", conversationId: "thread-1" },
+        { hostId: "local", conversationId: "thread-1" },
+      ]);
       assert.isFalse(presentation.hasForegroundClient());
     }),
 );

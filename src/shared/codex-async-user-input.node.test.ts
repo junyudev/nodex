@@ -3,6 +3,9 @@ import {
   decodeCodexAsyncQuestionReplies,
   encodeCodexAsyncQuestionReplies,
   expandCodexAsyncQuestions,
+  resolveCodexAsyncQuestionResponse,
+  readCodexAsyncQuestionReplies,
+  collectCodexAsyncQuestionAnswers,
 } from "./codex-async-user-input";
 import { projectCodexCanonicalTurnItemViews } from "./codex-canonical-item-projector";
 import { projectCodexItemViewToTranscriptEntry } from "./codex-transcript-entry-projection";
@@ -22,6 +25,52 @@ const question: CodexCanonicalItem = {
 };
 
 describe("asynchronous user input contract", () => {
+  test("answers a terminal source question without trusting client-supplied wording", () => {
+    const source = { turnId: "old-turn", status: "interrupted", items: [question] };
+    expect(
+      resolveCodexAsyncQuestionResponse([source], {
+        sourceTurnIds: ["old-turn"],
+        replies: [
+          {
+            questionItemId: '["request_user_input_async","ask",1]',
+            question: "Client wording",
+            answer: " Release ",
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        questionItemId: '["request_user_input_async","ask",1]',
+        question: "Name?",
+        answer: "Release",
+      },
+    ]);
+  });
+
+  test.each(["another-turn", "missing-turn"])(
+    "rejects a question attributed to %s",
+    (sourceTurnId) => {
+      expect(() =>
+        resolveCodexAsyncQuestionResponse(
+          [
+            { turnId: "old-turn", items: [question] },
+            { turnId: "another-turn", items: [] },
+          ],
+          {
+            sourceTurnIds: [sourceTurnId],
+            replies: [
+              {
+                questionItemId: '["request_user_input_async","ask",0]',
+                question: "Where?",
+                answer: "Here",
+              },
+            ],
+          },
+        ),
+      ).toThrow();
+    },
+  );
+
   test("expands structured questions with stable display identities and commentary semantics", () => {
     const views = projectCodexCanonicalTurnItemViews({
       threadId: "thread",
@@ -51,6 +100,37 @@ describe("asynchronous user input contract", () => {
       },
     ]);
     expect(expandCodexAsyncQuestions({ ...question, delivery: null })).toEqual([]);
+  });
+  test("recognizes an attached answer in both transcript folding and question state", () => {
+    const replies = [
+      {
+        questionItemId: '["request_user_input_async","ask",0]',
+        question: "Where?",
+        answer: "Here",
+      },
+    ];
+    const response: Extract<CodexCanonicalItem, { type: "userMessage" }> = {
+      type: "userMessage",
+      id: "reply-with-image",
+      clientId: "answer-batch",
+      content: [
+        { type: "text", text: encodeCodexAsyncQuestionReplies(replies), text_elements: [] },
+        { type: "localImage", path: "/workspace/reference.png" },
+      ],
+    };
+    expect(readCodexAsyncQuestionReplies(response)).toEqual(replies);
+    expect(collectCodexAsyncQuestionAnswers([question, response])).toEqual(
+      new Map([[replies[0]!.questionItemId, "Here"]]),
+    );
+    const ordinary = {
+      ...response,
+      content: [
+        ...response.content,
+        { type: "text" as const, text: "Also consider this", text_elements: [] },
+      ],
+    };
+    expect(readCodexAsyncQuestionReplies(ordinary)).toBeNull();
+    expect(collectCodexAsyncQuestionAnswers([question, ordinary])).toEqual(new Map());
   });
   test("round-trips multiple answers, accepting the single-object envelope but rejecting prose and malformed bodies", () => {
     const replies = [{ questionItemId: "q", question: "Name?", answer: 'A\n"quoted" name' }];

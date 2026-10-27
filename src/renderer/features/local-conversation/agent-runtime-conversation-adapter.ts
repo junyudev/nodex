@@ -244,12 +244,24 @@ export function createAgentRuntimeConversationRuntime(
             deliver: async (turnId, replies) => {
               const requests = owner.asyncQuestionAnswers(replies);
               if (requests.length === 0) return null;
-              for (const request of requests)
+              for (const request of requests) {
+                const requestReplies = replies.filter((reply) =>
+                  owner
+                    .asyncQuestionAnswers([reply])
+                    .some((answer) => answer.requestId === request.requestId),
+                );
+                const submissionId = await owner.asyncQuestions.prepareSubmission(
+                  owner.threadId,
+                  requestReplies,
+                );
                 await agentRuntimeRuntime.respond({
                   ...target,
                   threadId: owner.threadId,
                   ...request,
+                  submissionId,
                 });
+                owner.asyncQuestions.acknowledge(owner.threadId, requestReplies);
+              }
               return { turnId };
             },
           },

@@ -4,7 +4,6 @@ import type { ThreadFooterModel } from "../../thread-stage-types";
 import { useSyncExternalStore, type ReactNode } from "react";
 import { useCodexAppServerManagerForConversationId } from "../../local-conversation-store";
 import { useConversationRuntimeOverride } from "../../conversation-runtime";
-import { encodeCodexAsyncQuestionReplies } from "../../../../../shared/codex-async-user-input";
 import { AsyncQuestionPanel } from "./async-question-panel";
 import { CodexShimmerText } from "../shared/codex-shimmer-text";
 export function useAsyncQuestions(threadId: string) {
@@ -38,22 +37,14 @@ export function AsyncQuestionComposer({
         await runtime.submit(
           threadId,
           deliver ??
-            (async (turnId, replies) => {
-              const conversation = manager.readConversation(threadId);
-              if (
-                !conversation?.turns.some(
-                  (turn) => turn.turnId === turnId && turn.status === "inProgress",
-                )
-              )
-                return null;
-              return await manager.steerTurn({
+            (async (_turnId, replies, context) =>
+              manager.respondAsyncQuestions({
                 threadId,
-                expectedTurnId: turnId,
-                prompt: encodeCodexAsyncQuestionReplies(replies),
+                replies,
+                ...context,
                 serviceTier: serviceTierSettings.serviceTier,
                 collaborationMode: model.selectedCollaborationMode,
-              });
-            }),
+              })),
         );
       }}
     />
@@ -82,7 +73,7 @@ export function AsyncQuestionTranscript({
   return (
     <div className="flex flex-col items-start gap-3">
       {children}
-      {live && !question?.baseline && state.selectedId !== questionId ? (
+      {live && !question?.answered && state.selectedId !== questionId ? (
         <button
           type="button"
           onClick={() => runtime.open(threadId, questionId)}

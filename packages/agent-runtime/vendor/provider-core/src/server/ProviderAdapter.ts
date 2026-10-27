@@ -7,6 +7,7 @@ import {
   NodeId,
   OrchestrationV2AppThread,
   OrchestrationV2ConversationMessage,
+  OrchestrationV2MessageDeliveryReceipt,
   OrchestrationV2ExecutionNode,
   OrchestrationV2ProviderSession,
   OrchestrationV2PlanArtifact,
@@ -118,6 +119,12 @@ export const ProviderAdapterV2Event = Schema.Union([
     type: Schema.Literal("message.updated"),
     driver: ProviderDriverKind,
     message: OrchestrationV2ConversationMessage,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("message.delivery.updated"),
+    driver: ProviderDriverKind,
+    threadId: ThreadId,
+    ...OrchestrationV2MessageDeliveryReceipt.fields,
   }),
   Schema.Struct({
     type: Schema.Literal("turn_item.updated"),
@@ -303,6 +310,8 @@ export class ProviderAdapterSteerRunError extends Schema.TaggedError<ProviderAda
     driver: ProviderDriverKind,
     providerThreadId: ProviderThreadId,
     providerTurnId: ProviderTurnId,
+    /** Unknown delivery must never be resent as another Turn. */
+    delivery: Schema.optional(Schema.Literals(["not_dispatched", "rejected", "unknown"])),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
@@ -602,6 +611,7 @@ export interface ProviderAdapterV2SessionRuntime {
   ) => Effect.Effect<OrchestrationV2ProviderThread, ProviderAdapterV2Error>;
   readonly resumeThread: (input: {
     readonly providerThread: OrchestrationV2ProviderThread;
+    readonly pendingDeliveryMessageIds?: ReadonlyArray<MessageId>;
     readonly threadId?: ThreadId;
     readonly modelSelection?: ModelSelection;
     readonly runtimePolicy?: ProviderAdapterV2RuntimePolicy;

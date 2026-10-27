@@ -1,3 +1,4 @@
+import { questionDraftStore } from "./question-draft-store";
 import { act, fireEvent, render, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode, useEffect, useState, type PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -2570,3 +2571,94 @@ describe("Agent Runtime sent-image edit admission", () => {
     },
   );
 });
+
+it.each([false, true])(
+  "preserves the remaining request identity after partial admission (in-flight edit: %s)",
+  async (editFirst) => {
+    vi.spyOn(questionDraftStore, "flush").mockResolvedValue();
+    const target = { sessionId: `question-batch-session-${editFirst}`, threadId: "engine-thread" };
+    const at = snapshot.projection.thread.createdAt;
+    const question = (
+      id: string,
+      ordinal: number,
+    ): Extract<AgentTurnItem, { type: "user_input_request" }> => ({
+      id,
+      threadId: target.threadId,
+      runId: null,
+      nodeId: `${id}:node`,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal,
+      status: "waiting",
+      title: null,
+      startedAt: at,
+      completedAt: null,
+      updatedAt: at,
+      type: "user_input_request",
+      requestId: id,
+      responseMode: "message",
+      questions: [{ id: "q", header: "Question", question: `Answer ${id}?`, options: [] }],
+    });
+    const questions = [question("first", 1), question("second", 2)];
+    vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue({
+      ...target,
+      projectId: "project",
+      snapshot: agentRuntimeSnapshotFixture({
+        projection: {
+          visibleTurnItems: questions.map((item, position) => ({
+            position,
+            visibility: "local",
+            sourceThreadId: target.threadId,
+            sourceItemId: item.id,
+            item,
+          })),
+        },
+      }),
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const owner = new AgentRuntimeConversationOwner(target);
+    let ids: string[] = [];
+    const respond = vi
+      .spyOn(agentRuntimeRuntime, "respond")
+      .mockImplementationOnce(async () => {
+        if (editFirst) owner.asyncQuestions.setDraft(target.threadId, ids[0]!, "Revised Alpha");
+        return { sequence: 2 };
+      })
+      .mockRejectedValueOnce(new Error("Second request outcome unknown"))
+      .mockResolvedValue({ sequence: 3 });
+    const release = owner.readOwner.subscribeStructure(() => {});
+    try {
+      await owner.resume();
+      const port = createAgentRuntimeConversationRuntime("codex", target, owner).asyncQuestions!;
+      ids = Object.keys(owner.asyncQuestions.read(target.threadId).questions);
+      questions.forEach((item) => owner.asyncQuestions.receive(target.threadId, item.id));
+      owner.asyncQuestions.setDraft(target.threadId, ids[0]!, "Alpha");
+      owner.asyncQuestions.setDraft(target.threadId, ids[1]!, "Beta");
+      owner.asyncQuestions.select(target.threadId, ids[1]!);
+      await expect(owner.asyncQuestions.submit(target.threadId, port.deliver)).rejects.toThrow(
+        "Second request outcome unknown",
+      );
+      expect(owner.asyncQuestions.read(target.threadId).openIds).toEqual(
+        editFirst ? ids : [ids[1]],
+      );
+      await owner.asyncQuestions.submit(target.threadId, port.deliver);
+      expect(respond.mock.calls.map(([input]) => input.requestId)).toEqual(
+        editFirst ? ["first", "second", "first", "second"] : ["first", "second", "second"],
+      );
+      const secondAttempts = respond.mock.calls.filter(([input]) => input.requestId === "second");
+      expect(secondAttempts[0]?.[0].submissionId).toBeTypeOf("string");
+      expect(secondAttempts[1]?.[0].submissionId).toBe(secondAttempts[0]?.[0].submissionId);
+      if (editFirst) {
+        expect(respond.mock.calls[2]?.[0].answers).toEqual({ q: "Revised Alpha" });
+        expect(respond.mock.calls[2]?.[0].submissionId).not.toBe(
+          respond.mock.calls[0]?.[0].submissionId,
+        );
+      }
+    } finally {
+      release();
+      owner.dispose();
+    }
+  },
+);

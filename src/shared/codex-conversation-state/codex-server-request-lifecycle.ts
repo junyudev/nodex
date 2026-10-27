@@ -888,6 +888,8 @@ function buildUserInputSynthetic(
       id: question.id,
       header: question.header,
       question: question.question,
+      isOther: question.isOther,
+      isSecret: question.isSecret,
       options: (question.options ?? []).map((option) => ({
         description: option.description,
         label: option.label,

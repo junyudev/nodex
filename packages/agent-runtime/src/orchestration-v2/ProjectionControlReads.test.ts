@@ -29,6 +29,7 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
+import { derive } from "@t3tools/provider-core/server/IdAllocator";
 import { buildBoundedThreadStreamSnapshot } from "./ThreadStream.ts";
 import { projectTurnItemForDetail } from "./WireProjection.ts";
 import { THREAD_HISTORY_PAGE_POLICY } from "./threadHistoryPaging.ts";
@@ -200,6 +201,141 @@ const storageCases = (["sqlite", "memory"] as const).map((storage) => ({
       ? ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))
       : ProjectionStore.layerMemory,
 }));
+
+it.effect.each(storageCases)(
+  "$storage: an addressed control read retains a completed question without transcript bodies",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      yield* Effect.forEach(events, (event) => store.apply(event), { discard: true });
+      const request = events.find((event) => event.type === "runtime-request.updated");
+      assert.ok(request?.type === "runtime-request.updated");
+      yield* store.apply({
+        id: EventId.make("question:completed-node"),
+        type: "node.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: request.payload.nodeId,
+          threadId,
+          runId,
+          parentNodeId: null,
+          rootNodeId: nodeId,
+          kind: "user_input_request",
+          status: "completed",
+          countsForRun: false,
+          providerThreadId,
+          providerTurnId,
+          nativeItemRef: null,
+          runtimeRequestId: requestId,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: now,
+        },
+      });
+      yield* store.apply({
+        ...request,
+        id: EventId.make("question:resolved"),
+        payload: {
+          ...request.payload,
+          status: "resolved",
+          resolvedAt: now,
+          responseCapability: { type: "message" },
+          answers: { first: "accepted" },
+        },
+      });
+      const read = yield* store.getThreadSnapshotWindow(threadId, {
+        rowLimit: 0,
+        controlOnly: true,
+        requiredRequestId: requestId,
+      });
+      const snapshot = buildBoundedThreadStreamSnapshot({
+        ...read,
+        compactTurnItems: true,
+        requiredRequestId: requestId,
+      });
+      assert.deepEqual(
+        snapshot.projection.runtimeRequests.map((request) => request.id),
+        [requestId],
+      );
+      assert.equal(snapshot.projection.runtimeRequests[0]?.status, "resolved");
+      assert.isTrue(snapshot.projection.nodes.some((node) => node.id === request.payload.nodeId));
+      assert.lengthOf(snapshot.projection.turnItems, 0);
+      assert.lengthOf(snapshot.projection.visibleTurnItems, 0);
+      assert.lengthOf(snapshot.projection.messages, 0);
+      const ordinary = yield* store.getThreadSnapshotWindow(threadId, {
+        rowLimit: 0,
+        controlOnly: true,
+      });
+      assert.isFalse(
+        ordinary.projection.runtimeRequests.some((request) => request.id === requestId),
+      );
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it.effect.each(storageCases)(
+  "$storage: recovery selects only unresolved messages from their exact provider thread",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      yield* Effect.forEach(events, (event) => store.apply(event), { discard: true });
+      const message = events.find((event) => event.type === "message.updated");
+      assert.ok(message?.type === "message.updated");
+      yield* store.apply({
+        ...message,
+        id: EventId.make("receipt:unknown-message"),
+        payload: { ...message.payload, delivery: "unknown" },
+      });
+      yield* store.apply({
+        id: EventId.make("receipt:source-item"),
+        type: "turn-item.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: derive.userTurnItem({ messageId }),
+          threadId,
+          runId,
+          nodeId,
+          providerThreadId,
+          providerTurnId,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 1,
+          status: "completed",
+          title: null,
+          startedAt: now,
+          completedAt: now,
+          updatedAt: now,
+          type: "user_message",
+          messageId,
+          inputIntent: "steer",
+          text: message.payload.text,
+          attachments: [],
+          createdBy: "user",
+          creationSource: "web",
+        },
+      });
+      assert.deepEqual(yield* store.getPendingMessageDeliveryIds(threadId, providerThreadId), [
+        messageId,
+      ]);
+      assert.deepEqual(
+        yield* store.getPendingMessageDeliveryIds(threadId, ProviderThreadId.make("other-source")),
+        [],
+      );
+      yield* store.apply({
+        id: EventId.make("receipt:accepted"),
+        type: "message.delivery.updated",
+        threadId,
+        occurredAt: now,
+        payload: { messageId, delivery: "accepted" },
+      });
+      assert.deepEqual(yield* store.getPendingMessageDeliveryIds(threadId, providerThreadId), []);
+    }).pipe(Effect.provide(storeLayer)),
+);
 
 it.effect.each(storageCases)(
   "$storage: resolves the submitted message's Run rather than another foreground Run",

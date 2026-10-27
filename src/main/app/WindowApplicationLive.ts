@@ -193,7 +193,7 @@ const applicationWindows = Layer.unwrap(
                 if (foregrounded) {
                   events.publish({
                     kind: "rendererConversationPresentedInForeground",
-                    value: conversationId,
+                    value: conversationId.conversationId,
                   });
                 }
                 return autoResolution.reevaluatePresentation(conversationId);

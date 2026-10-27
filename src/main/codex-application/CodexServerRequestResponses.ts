@@ -630,6 +630,7 @@ export const make: Effect.Effect<
     );
 
   yield* autoResolution.timeouts.pipe(
+    Stream.filter((timeout) => timeout.responseKind !== "runtimeUserInput"),
     Stream.runForEach(({ conversationId, requestId, connection, responseKind }) =>
       runSerial(
         conversationId,

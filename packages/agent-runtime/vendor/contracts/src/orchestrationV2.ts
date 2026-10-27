@@ -1194,6 +1194,9 @@ export const OrchestrationV2RuntimeRequest = Schema.Struct({
   resolvedAt: Schema.NullOr(Schema.DateTimeUtc),
   decision: Schema.optional(ProviderApprovalDecision),
   answers: Schema.optional(ProviderUserInputAnswers),
+  /** Live information requests alone may expire after host-managed inactivity. */
+  isBlocking: Schema.optional(Schema.Boolean),
+  autoResolutionMs: Schema.optional(Schema.NullOr(NonNegativeInt)),
 });
 export type OrchestrationV2RuntimeRequest = typeof OrchestrationV2RuntimeRequest.Type;
 
@@ -1265,6 +1268,13 @@ export const OrchestrationV2Notification = Schema.Struct({
 });
 export type OrchestrationV2Notification = typeof OrchestrationV2Notification.Type;
 
+export const OrchestrationV2MessageDelivery = Schema.Literals(["pending", "unknown", "accepted"]);
+export const OrchestrationV2MessageDeliveryReceipt = Schema.Struct({
+  messageId: MessageId,
+  delivery: OrchestrationV2MessageDelivery,
+  nativeItemRef: Schema.optional(OrchestrationV2ProviderRef),
+});
+
 export const OrchestrationV2ConversationMessage = Schema.Struct({
   notification: Schema.optional(OrchestrationV2Notification),
   ...OrchestrationV2CreationFields,
@@ -1272,6 +1282,7 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
   // The sending agent's thread in this environment, separate from the receiving thread.
   senderThreadId: Schema.optional(ThreadId),
   id: MessageId,
+  delivery: Schema.optional(OrchestrationV2MessageDelivery),
   threadId: ThreadId,
   runId: Schema.NullOr(RunId),
   nodeId: Schema.NullOr(NodeId),
@@ -1316,6 +1327,7 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
   ),
   multiSelect: Schema.optional(Schema.Boolean),
   allowCustomAnswer: Schema.optional(Schema.Boolean),
+  isSecret: Schema.optional(Schema.Boolean),
   /** Editable initial text. Answers preserve whitespace and allow an empty string when present. */
   initialAnswer: Schema.optional(Schema.String),
   required: Schema.optional(Schema.Boolean),
@@ -1650,6 +1662,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
     ...OrchestrationV2CreationFields,
     type: Schema.Literal("user_message"),
     messageId: MessageId,
+    delivery: Schema.optional(OrchestrationV2MessageDelivery),
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
     inputIntent: OrchestrationV2UserMessageInputIntent,
@@ -1694,6 +1707,8 @@ export const OrchestrationV2TurnItem = Schema.Union([
     questions: Schema.Array(OrchestrationV2UserInputQuestion),
     questionAnswer: Schema.optional(UserInputAttachmentAnswerPayload),
     responseMode: Schema.optional(Schema.Literal("message")),
+    isBlocking: Schema.optional(Schema.Boolean),
+    autoResolutionMs: Schema.optional(Schema.NullOr(NonNegativeInt)),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
@@ -2030,6 +2045,11 @@ export const OrchestrationV2DomainEvent = Schema.Union([
     ...OrchestrationV2EventBase.fields,
     type: Schema.Literal("message.updated"),
     payload: OrchestrationV2ConversationMessage,
+  }),
+  Schema.Struct({
+    ...OrchestrationV2EventBase.fields,
+    type: Schema.Literal("message.delivery.updated"),
+    payload: OrchestrationV2MessageDeliveryReceipt,
   }),
   Schema.Struct({
     ...OrchestrationV2EventBase.fields,
@@ -2453,6 +2473,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     ...OrchestrationV2CreationFields,
     type: Schema.Literal("user_message"),
     messageId: MessageId,
+    delivery: Schema.optional(OrchestrationV2MessageDelivery),
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
     inputIntent: OrchestrationV2UserMessageInputIntent,
@@ -2497,6 +2518,8 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     questions: Schema.Array(OrchestrationV2UserInputQuestion),
     questionAnswer: Schema.optional(UserInputAttachmentAnswerPayload),
     responseMode: Schema.optional(Schema.Literal("message")),
+    isBlocking: Schema.optional(Schema.Boolean),
+    autoResolutionMs: Schema.optional(Schema.NullOr(NonNegativeInt)),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
@@ -2867,6 +2890,11 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
     ...OrchestrationV2JsonEventBaseFields,
     type: Schema.Literal("message.updated"),
     payload: OrchestrationV2ConversationMessageJson,
+  }),
+  Schema.Struct({
+    ...OrchestrationV2JsonEventBaseFields,
+    type: Schema.Literal("message.delivery.updated"),
+    payload: OrchestrationV2MessageDeliveryReceipt,
   }),
   Schema.Struct({
     ...OrchestrationV2JsonEventBaseFields,
@@ -3410,6 +3438,12 @@ export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
  * send them.
  */
 const OrchestrationV2InternalCommand = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("message.delivery.update"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    ...OrchestrationV2MessageDeliveryReceipt.fields,
+  }),
   /**
    * Records what a pull request watch saw, and wakes the agent in the same transaction when
    * `wake` is set. Rejected once the watch started at `startedAt` has ended, and a wake is

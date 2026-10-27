@@ -1,4 +1,5 @@
 import { prepareCodexPrompt } from "./codex-prompt-preparation";
+import { encodeCodexAsyncQuestionReplies } from "./codex-async-user-input";
 import { describe, expect, test } from "vite-plus/test";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import { parseCodexProtocolThreadItem } from "./codex-protocol-thread-item";
@@ -636,6 +637,35 @@ describe("projectCodexCanonicalTurnItemViews", () => {
 });
 
 describe("projectCodexCanonicalTurnViews", () => {
+  test.each([false, true])(
+    "renders a question answer that opens a later Turn, including attachments (%s)",
+    (withImage) => {
+      const replies = [
+        { questionItemId: "source-question", question: "What name?", answer: "Release checklist" },
+      ];
+      const input: CodexCanonicalTurnParams["input"] = [
+        { type: "text", text: encodeCodexAsyncQuestionReplies(replies), text_elements: [] },
+        ...(withImage ? [{ type: "localImage" as const, path: "/workspace/screenshot.png" }] : []),
+      ];
+      const views = projectCodexCanonicalTurnViews({
+        threadId: THREAD_ID,
+        turn: buildCanonicalTurn({
+          params: buildTurnParams({ input }),
+          items: [{ type: "userMessage", id: "answer-echo", clientId: null, content: input }],
+        }),
+        observedAtMs: 1000,
+      });
+
+      expect(views).toHaveLength(1);
+      expect(views[0]).toMatchObject({
+        itemId: `${TURN_ID}:input`,
+        markdownText: "**What name?**\nRelease checklist",
+        questionReplies: replies,
+      });
+      expect(views[0]?.userAttachments?.length ?? 0).toBe(withImage ? 1 : 0);
+    },
+  );
+
   test("shows visualization prompt text in resident and restored native messages while keeping model input unchanged", () => {
     const prompt = "Explain the selected entries";
     const compiled = prepareUntrustedAppInput(

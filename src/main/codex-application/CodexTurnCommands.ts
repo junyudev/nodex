@@ -1,4 +1,12 @@
 import { assertCodexFailedTurnContinuation } from "../../shared/codex-conversation-state/codex-failed-turn-continuation";
+import {
+  encodeCodexAsyncQuestionReplies,
+  decodeCodexAsyncQuestionReplies,
+  resolveCodexAsyncQuestionResponse,
+  type CodexAsyncQuestionResponseInput,
+} from "../../shared/codex-async-user-input";
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
+import { isNoActiveTurnError, isSteerTurnInactiveError } from "../../shared/codex-steer-errors";
 import type {
   CodexInspectedTurnStart,
   CodexTurnStartRejection,
@@ -6,6 +14,7 @@ import type {
 import {
   clearCodexUnconfirmedTurnSubmission,
   recordCodexUnconfirmedTurnSubmission,
+  CodexTurnDeliveryError,
   type CodexTurnDelivery,
 } from "../../shared/codex-conversation-state/codex-turn-delivery";
 import { encodeCodexNativeRequestFailure } from "../../shared/codex-native-request-outcome";
@@ -115,6 +124,40 @@ const turnConnectionFence = ({ manager, nativeGeneration }: NativeTurnConnection
   expectedHostId: manager.hostId,
   expectedGeneration: nativeGeneration,
 });
+const encodeQuestionReplyIdentity = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
+const admittedDeliveryFailure = (cause: unknown, method: string, clientUserMessageId: string) =>
+  encodeCodexNativeRequestFailure(cause).delivery?.stage === "outcome-unknown"
+    ? cause
+    : new CodexTurnDeliveryError(
+        "Message delivery is still being confirmed",
+        { requestId: clientUserMessageId, method, stage: "outcome-unknown" },
+        { cause },
+      );
+
+/** A lost peer reply does not cancel work already admitted by its selected owner. */
+const uncertainPeerDelivery = (
+  cause: unknown,
+  method: "thread-follower-start-turn" | "thread-follower-steer-turn",
+  clientUserMessageId: string,
+) => {
+  const failure = encodeCodexNativeRequestFailure(cause);
+  if (failure.delivery?.stage === "outcome-unknown") return cause;
+  if (failure.delivery || failure.code !== null) return null;
+  if (
+    ![
+      "timeout",
+      "request-timeout",
+      "client-disconnected",
+      "connection-closed",
+      "server-closed",
+      "disposed",
+    ].includes(failure.message)
+  )
+    return null;
+  // The peer response omits its wire ID; retain the exact admitted message identity.
+  return admittedDeliveryFailure(cause, method, clientUserMessageId);
+};
 
 export type CodexTurnStartOverrides = CodexTurnStartOptions & {
   /**
@@ -220,6 +263,9 @@ export interface CodexTurnCommandsService {
   readonly steer: (
     input: CodexSteerTurnInput,
   ) => Effect.Effect<CodexSteerTurnResult | null, CodexTurnCommandsError>;
+  readonly respondAsyncQuestions: (
+    input: CodexAsyncQuestionResponseInput,
+  ) => Effect.Effect<{ turnId: string } | null, CodexTurnCommandsError>;
 }
 
 export class CodexTurnCommands extends Context.Service<
@@ -283,6 +329,7 @@ export const make: Effect.Effect<
       ownerId: string | null | undefined;
       injection: "pending" | "in-flight" | "complete";
       callerOwnsPresentation: boolean;
+      peerOutcomeUnknown?: boolean;
       lock: Semaphore.Semaphore;
       disposal: Disposable;
     }
@@ -298,6 +345,14 @@ export const make: Effect.Effect<
   const presentation = yield* CodexTurnPresentation;
   const core = yield* CoreModules;
   const workspace = yield* ProjectWorkspace;
+  const questionReplyAdmission = yield* Semaphore.make(1);
+  const questionReplyAttempts = new Map<
+    string,
+    {
+      readonly fingerprint: string;
+      readonly execute: Effect.Effect<{ turnId: string } | null, CodexTurnCommandsError>;
+    }
+  >();
 
   const commandError = (
     operation: "start" | "steer",
@@ -587,6 +642,7 @@ export const make: Effect.Effect<
           failure: undefined,
           terminalUnknown: false,
         };
+        let nativeAccepted = false;
         let pendingRequestId: CodexTurnDelivery["requestId"] | null = null;
         const onOutcomeUnknown = (delivery: CodexTurnDelivery) =>
           Effect.gen(function* () {
@@ -748,6 +804,7 @@ export const make: Effect.Effect<
                 }),
               ),
             )) as unknown as TurnStartResponse;
+          nativeAccepted = true;
 
           if (options.serverQueuedSubmission)
             queued.recordAcceptedSend({
@@ -836,6 +893,15 @@ export const make: Effect.Effect<
             itemIds: response.turn.items.map((item) => item.id),
           } satisfies CodexTurnSummary;
         }).pipe(
+          Effect.mapError((cause) =>
+            nativeAccepted
+              ? commandError(
+                  "start",
+                  plan.threadId,
+                  admittedDeliveryFailure(cause, "turn/start", plan.clientUserMessageId),
+                )
+              : cause,
+          ),
           Effect.tapError((error) =>
             Effect.gen(function* () {
               transaction.failure = error;
@@ -986,8 +1052,10 @@ export const make: Effect.Effect<
         Effect.gen(function* () {
           yield* Effect.try(() => assertTurnConnection(connection));
           const request = { method: "thread-follower-steer-turn" as const, params: prepared };
+          const admission = nativeSteers.get(prepared.clientUserMessageId);
           const role = manager.stream.getRole(threadId);
           let response: unknown = null;
+          let peerResponseReceived = false;
           if (role?.role === "follower") {
             response = yield* Effect.tryPromise({
               try: async () => {
@@ -1000,9 +1068,20 @@ export const make: Effect.Effect<
                   throw new Error(
                     forwarded.resultType === "error" ? forwarded.error : "no-client-found",
                   );
+                peerResponseReceived = true;
                 return forwarded.result;
               },
-              catch: (cause) => commandError("steer", threadId, cause),
+              catch: (cause) => {
+                const unknown = uncertainPeerDelivery(
+                  cause,
+                  "thread-follower-steer-turn",
+                  prepared.clientUserMessageId,
+                );
+                if (!unknown) return commandError("steer", threadId, cause);
+                const entry = nativeSteers.get(prepared.clientUserMessageId);
+                if (entry) entry.peerOutcomeUnknown = true;
+                return commandError("steer", threadId, unknown);
+              },
             }).pipe(
               Effect.catch((cause) =>
                 Effect.gen(function* () {
@@ -1029,21 +1108,38 @@ export const make: Effect.Effect<
               ),
             );
           }
-          yield* Effect.try(() => assertTurnConnection(connection));
-          if (response === null) {
-            if (manager.stream.getRole(threadId)?.role !== "owner")
-              return yield* commandError(
+          return yield* Effect.gen(function* () {
+            yield* Effect.try(() => assertTurnConnection(connection));
+            if (response === null) {
+              if (manager.stream.getRole(threadId)?.role !== "owner")
+                return yield* commandError(
+                  "steer",
+                  threadId,
+                  new Error("Conversation has no available owner"),
+                );
+              response = yield* managers.dispatchFollowerRequest(hostId, request);
+            }
+            yield* Effect.try(() => assertTurnConnection(connection));
+            const decoded = yield* Schema.decodeUnknownEffect(
+              Schema.Struct({ result: CLIENT_REQUEST_RESPONSES["turn/steer"] }),
+            )(response);
+            return decoded.result as TurnSteerResponse;
+          }).pipe(
+            Effect.mapError((cause) => {
+              if (!peerResponseReceived && !admission?.completed && !admission?.outcomeUnknown)
+                return cause;
+              if (admission) admission.peerOutcomeUnknown = true;
+              return commandError(
                 "steer",
                 threadId,
-                new Error("Conversation has no available owner"),
+                admittedDeliveryFailure(
+                  cause,
+                  peerResponseReceived ? "thread-follower-steer-turn" : "turn/steer",
+                  prepared.clientUserMessageId,
+                ),
               );
-            response = yield* managers.dispatchFollowerRequest(hostId, request);
-          }
-          yield* Effect.try(() => assertTurnConnection(connection));
-          const decoded = yield* Schema.decodeUnknownEffect(
-            Schema.Struct({ result: CLIENT_REQUEST_RESPONSES["turn/steer"] }),
-          )(response);
-          return decoded.result as TurnSteerResponse;
+            }),
+          );
         }),
       (prepared) => Effect.sync(() => releasePreparedNativeSteer(prepared.clientUserMessageId)),
     );
@@ -1059,6 +1155,7 @@ export const make: Effect.Effect<
       readonly lock: Semaphore.Semaphore;
       completed: boolean;
       outcomeUnknown?: boolean;
+      peerOutcomeUnknown?: boolean;
       execution?: {
         readonly entity: NonNullable<ReturnType<ConversationEntityMap["Service"]["current"]>>;
         readonly owner: NonNullable<ReturnType<MainConversationManager["stream"]["getRole"]>>;
@@ -1066,9 +1163,9 @@ export const make: Effect.Effect<
       launch: CodexTurnPresentationLaunch | null;
     }
   >();
-  const releasePreparedNativeSteer = (clientUserMessageId: string) => {
+  const releasePreparedNativeSteer = (clientUserMessageId: string, force = false) => {
     const entry = nativeSteers.get(clientUserMessageId);
-    if (!entry) return;
+    if (!entry || (!force && entry.peerOutcomeUnknown && !entry.completed)) return;
     nativeSteers.delete(clientUserMessageId);
     entry.disposal[Symbol.dispose]();
     if (!entry.completed && !entry.outcomeUnknown) presentation.abort(entry.launch);
@@ -1076,13 +1173,13 @@ export const make: Effect.Effect<
   };
   yield* Effect.addFinalizer(() =>
     Effect.sync(() => {
-      for (const id of nativeSteers.keys()) releasePreparedNativeSteer(id);
+      for (const id of nativeSteers.keys()) releasePreparedNativeSteer(id, true);
     }),
   );
 
-  const releasePreparedNativeStart = (clientUserMessageId: string) => {
+  const releasePreparedNativeStart = (clientUserMessageId: string, force = false) => {
     const entry = nativePreparations.get(clientUserMessageId);
-    if (!entry) return;
+    if (!entry || (!force && entry.peerOutcomeUnknown)) return;
     nativePreparations.delete(clientUserMessageId);
     entry.disposal[Symbol.dispose]();
     if (!entry.callerOwnsPresentation)
@@ -1090,7 +1187,7 @@ export const make: Effect.Effect<
   };
   yield* Effect.addFinalizer(() =>
     Effect.sync(() => {
-      for (const key of nativePreparations.keys()) releasePreparedNativeStart(key);
+      for (const key of nativePreparations.keys()) releasePreparedNativeStart(key, true);
     }),
   );
   const readNativePreparation = (request: TurnStartParams, finalized: boolean) =>
@@ -1279,6 +1376,7 @@ export const make: Effect.Effect<
               yield* Effect.try(() => assertTurnConnection(connection));
               const role = manager.stream.getRole(threadId);
               if (role?.role === "follower") {
+                let peerResponseReceived = false;
                 const forwarded = yield* Effect.tryPromise({
                   try: async () => {
                     const response = await manager.coordination.requestThreadFollower({
@@ -1293,9 +1391,20 @@ export const make: Effect.Effect<
                       throw new Error(
                         response.resultType === "error" ? response.error : "no-client-found",
                       );
+                    peerResponseReceived = true;
                     return response.result;
                   },
-                  catch: (cause) => commandError("start", threadId, cause),
+                  catch: (cause) => {
+                    const unknown = uncertainPeerDelivery(
+                      cause,
+                      "thread-follower-start-turn",
+                      clientUserMessageId,
+                    );
+                    if (!unknown) return commandError("start", threadId, cause);
+                    const entry = nativePreparations.get(clientUserMessageId);
+                    if (entry) entry.peerOutcomeUnknown = true;
+                    return commandError("start", threadId, unknown);
+                  },
                 }).pipe(
                   Effect.catch((cause) =>
                     Effect.gen(function* () {
@@ -1321,13 +1430,29 @@ export const make: Effect.Effect<
                     }),
                   ),
                 );
-                yield* Effect.try(() => assertTurnConnection(connection));
-                if (forwarded !== null) {
-                  const response = yield* Schema.decodeUnknownEffect(
-                    Schema.Struct({ result: CLIENT_REQUEST_RESPONSES["turn/start"] }),
-                  )(forwarded);
-                  return response.result as TurnStartResponse;
+                if (peerResponseReceived) {
+                  return yield* Effect.gen(function* () {
+                    yield* Effect.try(() => assertTurnConnection(connection));
+                    const response = yield* Schema.decodeUnknownEffect(
+                      Schema.Struct({ result: CLIENT_REQUEST_RESPONSES["turn/start"] }),
+                    )(forwarded);
+                    return response.result as TurnStartResponse;
+                  }).pipe(
+                    Effect.mapError((cause) => {
+                      entry.peerOutcomeUnknown = true;
+                      return commandError(
+                        "start",
+                        threadId,
+                        admittedDeliveryFailure(
+                          cause,
+                          "thread-follower-start-turn",
+                          clientUserMessageId,
+                        ),
+                      );
+                    }),
+                  );
                 }
+                yield* Effect.try(() => assertTurnConnection(connection));
               }
               if (manager.stream.getRole(threadId)?.role !== "owner")
                 return yield* commandError(
@@ -1417,7 +1542,7 @@ export const make: Effect.Effect<
             input: steer,
             ...connection,
             presentationClaim: undefined,
-            disposal: manager.onConnectionReset(() => releasePreparedNativeSteer(id)),
+            disposal: manager.onConnectionReset(() => releasePreparedNativeSteer(id, true)),
             lock,
             completed: false,
             launch: null,
@@ -1609,7 +1734,7 @@ export const make: Effect.Effect<
               ...connection,
               presentationClaim: presentation.readQueued(threadId, message.id),
               disposal: manager.onConnectionReset(() =>
-                releasePreparedNativeSteer(clientUserMessageId),
+                releasePreparedNativeSteer(clientUserMessageId, true),
               ),
               lock,
               completed: false,
@@ -1824,7 +1949,7 @@ export const make: Effect.Effect<
               callerOwnsPresentation: false,
               lock,
               disposal: manager.onConnectionReset(() =>
-                releasePreparedNativeStart(clientUserMessageId),
+                releasePreparedNativeStart(clientUserMessageId, true),
               ),
             });
             return structuredClone(admitted);
@@ -2003,7 +2128,12 @@ export const make: Effect.Effect<
                   );
                 return response as TurnStartResponse;
               },
-              catch: (cause) => commandError("start", request.threadId, cause),
+              catch: (cause) =>
+                commandError(
+                  "start",
+                  request.threadId,
+                  admittedDeliveryFailure(cause, "turn/start", request.clientUserMessageId!),
+                ),
             }),
           ),
           Effect.onError(() =>
@@ -2044,7 +2174,7 @@ export const make: Effect.Effect<
               ...connection,
               presentationClaim,
               disposal: manager.onConnectionReset(() =>
-                releasePreparedNativeSteer(clientUserMessageId),
+                releasePreparedNativeSteer(clientUserMessageId, true),
               ),
               lock,
               completed: false,
@@ -2171,13 +2301,13 @@ export const make: Effect.Effect<
                   }),
                 ),
               );
-              if (entry.input.serverQueuedSubmission)
-                queued.recordAcceptedSend({
-                  conversationId: entry.input.conversationId,
-                  messageId: entry.input.serverQueuedSubmission.id,
-                });
               yield* Effect.try({
                 try: () => {
+                  if (entry.input.serverQueuedSubmission)
+                    queued.recordAcceptedSend({
+                      conversationId: entry.input.conversationId,
+                      messageId: entry.input.serverQueuedSubmission.id,
+                    });
                   assertExecution();
                   if (executingPeerClientId === undefined)
                     recordAcceptedServerQueueSubmission(
@@ -2186,7 +2316,14 @@ export const make: Effect.Effect<
                       entry.input.serverQueuedSubmission,
                     );
                 },
-                catch: (cause) => commandError("steer", entry.input.conversationId, cause),
+                catch: (cause) => {
+                  entry.outcomeUnknown = true;
+                  return commandError(
+                    "steer",
+                    entry.input.conversationId,
+                    admittedDeliveryFailure(cause, request.method, clientUserMessageId),
+                  );
+                },
               });
               yield* presentation
                 .bind(entry.launch, response.turnId)
@@ -2196,6 +2333,7 @@ export const make: Effect.Effect<
                   ),
                 );
               entry.completed = true;
+              if (entry.peerOutcomeUnknown) releasePreparedNativeSteer(clientUserMessageId);
               return response as TurnSteerResponse;
             }),
           )
@@ -2209,6 +2347,151 @@ export const make: Effect.Effect<
           );
       }).pipe(Effect.mapError((cause) => commandError("steer", request.params.threadId, cause))),
     releasePreparedNativeSteer,
+    respondAsyncQuestions: (input) =>
+      Effect.gen(function* () {
+        if (!input.threadId?.trim() || !input.submissionId?.trim())
+          return yield* commandError(
+            "steer",
+            input.threadId,
+            new Error("Answer identity is required"),
+          );
+        yield* resumeForStart(input.threadId);
+        const state = yield* projection.read(input.threadId);
+        const turns = residentConversationTurns(state.canonical);
+        const replies = yield* Effect.try({
+          try: () => resolveCodexAsyncQuestionResponse(turns, input),
+          catch: (cause) => commandError("steer", input.threadId, cause),
+        });
+        const key = encodeQuestionReplyIdentity([input.threadId, input.submissionId]);
+        const fingerprint = encodeQuestionReplyIdentity({
+          sourceTurnIds: [...new Set(input.sourceTurnIds)].sort(),
+          replies,
+        });
+        const previous = questionReplyAttempts.get(key);
+        if (previous && previous.fingerprint !== fingerprint)
+          return yield* commandError(
+            "steer",
+            input.threadId,
+            new Error("An answer submission cannot change while it is being delivered"),
+          );
+        const accepted = turns.find(
+          (turn) =>
+            turn.params?.clientUserMessageId === input.submissionId ||
+            turn.items.some(
+              (item) =>
+                (item.type === "userMessage" && item.clientId === input.submissionId) ||
+                (item.type === "steeringUserMessage" &&
+                  item.clientUserMessageId === input.submissionId &&
+                  item.status === "accepted"),
+            ),
+        );
+        if (accepted?.turnId) {
+          const acceptedMessage =
+            accepted.items.find(
+              (item) => item.type === "userMessage" && item.clientId === input.submissionId,
+            ) ??
+            accepted.items.find(
+              (item) =>
+                item.type === "steeringUserMessage" &&
+                item.clientUserMessageId === input.submissionId &&
+                item.status === "accepted",
+            );
+          const inputs =
+            accepted.params?.clientUserMessageId === input.submissionId
+              ? accepted.params.input
+              : acceptedMessage?.type === "userMessage"
+                ? acceptedMessage.content
+                : acceptedMessage?.type === "steeringUserMessage"
+                  ? acceptedMessage.input
+                  : [];
+          const text = inputs
+            .filter((entry) => entry.type === "text")
+            .map((entry) => entry.text)
+            .join("\n");
+          if (!previous && !isDeepStrictEqual(decodeCodexAsyncQuestionReplies(text), replies))
+            return yield* commandError(
+              "steer",
+              input.threadId,
+              new Error("The answer identity belongs to another message"),
+            );
+          questionReplyAttempts.delete(key);
+          releasePreparedNativeSteer(input.submissionId);
+          releasePreparedNativeStart(input.submissionId, true);
+          return { turnId: accepted.turnId };
+        }
+        const unknown = state.canonical.unconfirmedTurnSubmissions?.find(
+          (entry) => entry.clientUserMessageId === input.submissionId,
+        );
+        if (unknown)
+          return yield* commandError(
+            "steer",
+            input.threadId,
+            new CodexTurnDeliveryError("The answer's delivery is still being confirmed", unknown),
+          );
+        const prompt = encodeCodexAsyncQuestionReplies(replies);
+        const execute = yield* questionReplyAdmission.withPermit(
+          Effect.gen(function* () {
+            const previous = questionReplyAttempts.get(key);
+            if (previous) {
+              if (previous.fingerprint !== fingerprint)
+                return yield* commandError(
+                  "steer",
+                  input.threadId,
+                  new Error("An answer submission cannot change while it is being delivered"),
+                );
+              return { execute: previous.execute };
+            }
+            const deliver = Effect.gen(function* () {
+              const current = yield* projection.read(input.threadId);
+              const active = residentConversationTurns(current.canonical).findLast(
+                (turn) => turn.status === "inProgress",
+              );
+              if (active) {
+                const steered = yield* steerThroughOwner({
+                  threadId: input.threadId,
+                  ...(active.turnId === null ? {} : { expectedTurnId: active.turnId }),
+                  questionSourceTurnIds: input.sourceTurnIds,
+                  clientUserMessageId: input.submissionId,
+                  prompt,
+                  serviceTier: input.serviceTier,
+                  collaborationMode: input.collaborationMode,
+                }).pipe(
+                  Effect.catch((cause) => {
+                    const failure = encodeCodexNativeRequestFailure(cause);
+                    if (
+                      failure.delivery?.stage !== "outcome-unknown" &&
+                      (isSteerTurnInactiveError(cause) ||
+                        isNoActiveTurnError(cause) ||
+                        failure.message === "no active turn to steer")
+                    )
+                      return Effect.succeed(null);
+                    return Effect.fail(cause);
+                  }),
+                );
+                if (steered) return steered;
+              }
+              const started = yield* startThroughOwner(input.threadId, prompt, {
+                clientUserMessageId: input.submissionId,
+                serviceTier: input.serviceTier,
+                collaborationMode: input.collaborationMode ?? undefined,
+              });
+              return started?.turnId ? { turnId: started.turnId } : null;
+            }).pipe(
+              Effect.mapError((cause) => commandError("steer", input.threadId, cause)),
+              Effect.tapError((cause) =>
+                Effect.sync(() => {
+                  if (encodeCodexNativeRequestFailure(cause).delivery?.stage !== "outcome-unknown")
+                    questionReplyAttempts.delete(key);
+                }),
+              ),
+            );
+            const cached = yield* Effect.cached(deliver);
+            questionReplyAttempts.set(key, { fingerprint, execute: cached });
+            return { execute: cached };
+          }),
+        );
+        return yield* execute.execute;
+      }).pipe(Effect.mapError((cause) => commandError("steer", input.threadId, cause))),
     steer: (input) =>
       steerThroughOwner(input).pipe(
         Effect.mapError((cause) =>

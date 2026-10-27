@@ -8,6 +8,7 @@ import {
   type NodeId,
   type OrchestrationV2AppThread,
   type OrchestrationV2CheckpointScope,
+  type OrchestrationV2ConversationMessage,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderFailure,
@@ -413,8 +414,9 @@ export function routeProviderEvent(
 
   switch (event.type) {
     case "provider_session.updated":
-      // The session manager persists process-wide status once for every
-      // attached app thread before broadcasting the adapter event.
+    case "message.delivery.updated":
+      // The session owner persists status and delivery receipts once, including
+      // receipts arriving after the original Run subscriber has ended.
       return [false, state];
     case "app_thread.created": {
       if (event.appThread.id === input.threadId) {
@@ -724,7 +726,8 @@ export interface RunExecutionServiceV2StartRootRunInput {
   readonly shouldStartProviderTurn?: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
   readonly shouldFinalizeRun?: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
   readonly hasUnpairedRunInterruptRequest?: () => Effect.Effect<boolean>;
-  readonly message: ProviderAdapter.ProviderAdapterV2TurnMessage;
+  readonly message: ProviderAdapter.ProviderAdapterV2TurnMessage &
+    Pick<OrchestrationV2ConversationMessage, "delivery">;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
 }
@@ -1674,6 +1677,37 @@ export const layer: Layer.Layer<
               ))
             : input.session.startTurn(turnInput);
           yield* Effect.andThen(shouldStart, startTurn).pipe(
+            Effect.tap(() =>
+              input.message.delivery !== "pending" && input.message.delivery !== "unknown"
+                ? Effect.void
+                : Effect.gen(function* () {
+                    const occurredAt = yield* DateTime.now;
+                    yield* eventSink.writeWithEffects({
+                      effects: [],
+                      events: [
+                        {
+                          id: yield* idAllocator.allocate.event({ threadId: input.run.threadId }),
+                          type: "message.delivery.updated",
+                          threadId: input.run.threadId,
+                          runId: input.run.id,
+                          nodeId: input.rootNode.id,
+                          driver: input.providerThread.driver,
+                          providerInstanceId: input.run.providerInstanceId,
+                          occurredAt,
+                          payload: { messageId: input.message.messageId, delivery: "accepted" },
+                        },
+                      ],
+                    });
+                  }).pipe(
+                    Effect.catchCause((cause) =>
+                      Effect.logWarning("Failed to record accepted message delivery", {
+                        threadId: input.run.threadId,
+                        messageId: input.message.messageId,
+                        cause,
+                      }),
+                    ),
+                  ),
+            ),
             Effect.catchCause((cause) =>
               Effect.logError("orchestration V2 provider turn start failed", {
                 runId: input.run.id,

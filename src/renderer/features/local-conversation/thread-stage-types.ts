@@ -1030,6 +1030,8 @@ export interface ThreadTurnRenderBuckets {
   proposedPlanItem: ThreadTranscriptBlockModel | null;
   planImplementationItem: ThreadTranscriptBlockModel | null;
   postAssistantItems: ThreadTranscriptBlockModel[];
+  /** Question sources keep their answer action outside collapsible work. */
+  questionItems: ThreadTranscriptBlockModel[];
   agentItems: ThreadAgentItemModel[];
   remoteTaskCreatedItems: ThreadTranscriptBlockModel[];
   personalityChangedItems: ThreadTranscriptBlockModel[];

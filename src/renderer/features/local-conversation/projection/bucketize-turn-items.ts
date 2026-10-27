@@ -29,6 +29,7 @@ function createEmptyBuckets(): ThreadTurnRenderBuckets {
     proposedPlanItem: null,
     planImplementationItem: null,
     postAssistantItems: [],
+    questionItems: [],
     agentItems: [],
     remoteTaskCreatedItems: [],
     personalityChangedItems: [],
@@ -270,6 +271,11 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
 
     if (item.type === "userMessage") {
       agentCandidates.push(item);
+      continue;
+    }
+
+    if (item.type === "assistantMessage" && item.entry.asyncQuestion) {
+      buckets.questionItems.push(item);
       continue;
     }
 

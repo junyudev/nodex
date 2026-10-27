@@ -58,7 +58,7 @@ export const make: Effect.Effect<
 
     const hostId = conversations.current(threadId)?.readCanonicalState()?.hostId ?? "local";
     managers.current(hostId)?.stream.removeConversation(threadId);
-    presentation.clearConversation(threadId);
+    presentation.clearConversation(threadId, hostId);
 
     // Preserve the current runtime/lane while retiring all canonical process-local state,
     // including the visible and claimed queued-follow-up generation.

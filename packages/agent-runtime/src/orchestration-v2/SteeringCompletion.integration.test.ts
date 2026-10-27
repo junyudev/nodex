@@ -152,6 +152,7 @@ it.effect.each(
                     driver,
                     providerThreadId: turn.providerThread.id,
                     providerTurnId: turn.providerTurnId,
+                    delivery: "rejected",
                     cause: "turn already completed",
                   });
                 }),
@@ -507,6 +508,7 @@ const nextTurnSelectionHarness = Effect.fn("nextTurnSelectionHarness")(function*
                     driver,
                     providerThreadId: turn.providerThread.id,
                     providerTurnId: turn.providerTurnId,
+                    delivery: "rejected",
                     cause: "no active turn to steer",
                   }),
                 )

@@ -8,24 +8,29 @@ describe("Codex user-input auto-resolution IPC validation", () => {
   test("accepts trimmed conversation identities and strict scalar request ids", () => {
     expect(
       parseCodexUserInputAutoResolutionActivityInput({
+        hostId: " local ",
         conversationId: " thread-1 ",
       }),
-    ).toBe("thread-1");
+    ).toEqual({ hostId: "local", conversationId: "thread-1" });
     expect(
       parseCodexUserInputAutoResolutionTarget({
+        hostId: " local ",
         conversationId: " thread-1 ",
         requestId: 0,
       }),
     ).toEqual({
+      hostId: "local",
       conversationId: "thread-1",
       requestId: 0,
     });
     expect(
       parseCodexUserInputAutoResolutionTarget({
+        hostId: " local ",
         conversationId: "thread-1",
         requestId: "",
       }),
     ).toEqual({
+      hostId: "local",
       conversationId: "thread-1",
       requestId: "",
     });
@@ -36,12 +41,14 @@ describe("Codex user-input auto-resolution IPC validation", () => {
     undefined,
     [],
     {},
-    { conversationId: "" },
-    { conversationId: "   " },
-    { conversationId: "thread-1", requestId: null },
-    { conversationId: "thread-1", requestId: Number.NaN },
-    { conversationId: "thread-1", requestId: Number.POSITIVE_INFINITY },
-    { conversationId: "thread-1", requestId: true },
+    { conversationId: "thread-1", requestId: "request" },
+    { hostId: " ", conversationId: "thread-1", requestId: "request" },
+    { hostId: " local ", conversationId: "" },
+    { hostId: " local ", conversationId: "   " },
+    { hostId: " local ", conversationId: "thread-1", requestId: null },
+    { hostId: " local ", conversationId: "thread-1", requestId: Number.NaN },
+    { hostId: " local ", conversationId: "thread-1", requestId: Number.POSITIVE_INFINITY },
+    { hostId: " local ", conversationId: "thread-1", requestId: true },
   ])("rejects malformed input %#", (input) => {
     expect(parseCodexUserInputAutoResolutionTarget(input)).toBeNull();
   });

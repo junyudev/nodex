@@ -7,6 +7,7 @@ import threadTokenUsageJsonSchema from "@nodex/codex-app-server-protocol/runtime
 import tokenUsageBreakdownJsonSchema from "@nodex/codex-app-server-protocol/runtime-schemas/TokenUsageBreakdown.schema.json";
 import { z } from "zod";
 import type { ThreadGoal, ThreadGoalStatus } from "@nodex/codex-app-server-protocol/v2";
+import type { CodexAsyncQuestionResponseInput } from "../codex-async-user-input";
 import type {
   CodexCollaborationModeKind,
   CodexReasoningEffort,
@@ -44,6 +45,37 @@ export const CodexThreadDetailLevelSchema = z.enum([
 
 export const CodexCollaborationModeKindSchema =
   createGeneratedCodexSchema<CodexCollaborationModeKind>(modeKindJsonSchema);
+
+const QuestionResponseIdentitySchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .refine((value) => value.trim() === value);
+
+/** Question sources are verified by their owner after this strict input boundary. */
+export const CodexAsyncQuestionResponseSchema = z
+  .object({
+    threadId: QuestionResponseIdentitySchema,
+    submissionId: QuestionResponseIdentitySchema,
+    sourceTurnIds: z.array(QuestionResponseIdentitySchema).min(1),
+    replies: z
+      .array(
+        z
+          .object({
+            questionItemId: QuestionResponseIdentitySchema,
+            question: z.string(),
+            answer: z.string().refine((value) => value.trim().length > 0),
+          })
+          .strict(),
+      )
+      .min(1)
+      .refine(
+        (replies) => new Set(replies.map((reply) => reply.questionItemId)).size === replies.length,
+      ),
+    collaborationMode: CodexCollaborationModeKindSchema.nullable().optional(),
+    serviceTier: z.string().trim().min(1).max(64).nullable().optional(),
+  })
+  .strict() satisfies z.ZodType<CodexAsyncQuestionResponseInput>;
 
 export const CodexThreadStatusTypeSchema =
   createGeneratedCodexStringDiscriminatorSchema<CodexThreadStatusType>(

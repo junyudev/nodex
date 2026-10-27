@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { projectCodexCanonicalTurnItemViews } from "../codex-canonical-item-projector";
 import type { ServerRequest } from "@nodex/codex-app-server-protocol";
 import {
   createCodexCanonicalConversationState,
@@ -255,7 +256,7 @@ describe("Codex 30751 server-request lifecycle", () => {
     expect(numericResolved.state.requests[0]?.id).toBe("73");
   });
 
-  test("maps user questions to the historical shape and rebinds the sole empty placeholder", () => {
+  test("preserves question metadata and rebinds the sole empty placeholder", () => {
     const initial = buildState();
     const placeholder: CodexCanonicalConversationState = {
       ...initial,
@@ -283,9 +284,51 @@ describe("Codex 30751 server-request lifecycle", () => {
     expect(pending.state.turns[0]?.turnStartedAtMs).toBe(NOW);
     expect(item?.type).toBe("userInputResponse");
     expect(question?.options.length).toBe(2);
-    expect(Object.prototype.hasOwnProperty.call(question ?? {}, "isOther")).toBe(false);
-    expect(Object.prototype.hasOwnProperty.call(question ?? {}, "isSecret")).toBe(false);
+    expect(question?.isOther).toBe(agentActivityV2UserInputRequest.params.questions[0]?.isOther);
+    expect(question?.isSecret).toBe(agentActivityV2UserInputRequest.params.questions[0]?.isSecret);
     expect(pending.effects[0]?.type).toBe("userInputRequestReceived");
+  });
+
+  test("retains native private and custom-answer flags after the user responds", () => {
+    const request = {
+      ...agentActivityV2UserInputRequest,
+      params: {
+        ...agentActivityV2UserInputRequest.params,
+        questions: [
+          {
+            id: "private",
+            header: "Token",
+            question: "Private token?",
+            isSecret: true,
+            isOther: false,
+            options: [],
+          },
+        ],
+      },
+    } satisfies ServerRequest;
+    const pending = reduceCodexConversationServerRequest(buildState(), request, context());
+    const response = reduceCodexConversationUserInputResponse(
+      pending.state,
+      request.id,
+      { private: ["private-token"] },
+      context(),
+    );
+    const item = response.state.turns[0]!.items[0]!;
+    expect(item).toMatchObject({
+      type: "userInputResponse",
+      completed: true,
+      questions: [{ isSecret: true, isOther: false }],
+      answers: { private: ["private-token"] },
+    });
+    const [view] = projectCodexCanonicalTurnItemViews({
+      threadId: THREAD_ID,
+      turnId: TURN_ID,
+      items: [item],
+      turnStatus: "completed",
+      observedAtMs: NOW,
+    });
+    expect(view?.userInputQuestions?.[0]).toMatchObject({ isSecret: true, isOther: false });
+    expect(view?.userInputAnswers).toEqual({ private: ["private-token"] });
   });
 
   test("uses the ingress OpenAI-form flag but recomputes resolved MCP state with OW defaults", () => {

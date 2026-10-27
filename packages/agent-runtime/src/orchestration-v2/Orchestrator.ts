@@ -1,10 +1,13 @@
+import {
+  selectAsyncQuestionReplyBatch,
+  type AsyncQuestionReply,
+} from "./AsyncQuestionReplyBatch.ts";
 import { readExecutionHandoff } from "./ExecutionHandoff.ts";
 import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "../nodex/NativeImportLimits.ts";
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
   OrchestrationV2ThreadHistoryPage,
-  OrchestrationV2UserInputQuestion,
 } from "@t3tools/contracts";
 import { encodeCodexAsyncQuestionReplies } from "../nodex/CodexConventions.ts";
 import {
@@ -449,6 +452,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.model-selection.set":
     case "provider-session.detach":
     case "message.dispatch":
+    case "message.delivery.update":
     case "notification.delivery.accept":
     case "prepared-run.release":
     case "prepared-run.progress":
@@ -4253,6 +4257,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               : { scheduledTaskId: input.scheduledTaskId }),
             ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
             id: input.messageId,
+            delivery: "pending",
             threadId: input.command.threadId,
             runId: messageInput.runId,
             nodeId: messageInput.nodeId,
@@ -4287,6 +4292,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             updatedAt: now,
             type: "user_message",
             messageId: input.messageId,
+            delivery: "pending",
             inputIntent:
               input.command.type === "queued-message.promote-to-steer"
                 ? "promoted_queued_to_steer"
@@ -5118,6 +5124,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         delegatedCompletion === undefined
           ? command.text
           : delegatedCompletionWakeDetail(delegatedCompletion.taskIds);
+      const delivery = projection.messages.find(
+        (message) => message.id === command.messageId,
+      )?.delivery;
       // Command projections leave plans out, so read the source plan directly.
       const sourcePlanArtifact =
         command.sourcePlanRef === undefined
@@ -5384,6 +5393,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ? {}
             : { senderThreadId: command.senderThreadId }),
           id: command.messageId,
+          ...(delivery === undefined ? {} : { delivery }),
           threadId: command.threadId,
           runId,
           nodeId: rootNodeId,
@@ -5753,6 +5763,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ? {}
             : { senderThreadId: command.senderThreadId }),
           id: command.messageId,
+          ...(delivery === undefined ? {} : { delivery }),
           threadId: command.threadId,
           runId,
           nodeId: rootNodeId,
@@ -5791,6 +5802,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           updatedAt: now,
           type: "user_message",
           messageId: command.messageId,
+          ...(delivery === undefined ? {} : { delivery }),
           inputIntent: "turn_start",
           text: dispatchText,
           ...(command.context ? { context: command.context } : {}),
@@ -6445,6 +6457,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           : { scheduledTaskId: command.scheduledTaskId }),
         ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
         id: command.messageId,
+        ...(delivery === undefined ? {} : { delivery }),
         threadId: command.threadId,
         runId,
         nodeId: rootNodeId,
@@ -6481,6 +6494,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         updatedAt: now,
         type: "user_message",
         messageId: command.messageId,
+        ...(delivery === undefined ? {} : { delivery }),
         inputIntent: "turn_start",
         text: dispatchText,
         ...(command.context ? { context: command.context } : {}),
@@ -7666,7 +7680,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: "Only user questions accept a response.",
         });
       }
-      if (runtimeRequest.status !== "pending") {
+      const canReviseMessageAnswers =
+        runtimeRequest.responseCapability.type === "message" &&
+        runtimeRequest.status === "resolved" &&
+        runtimeRequest.decision !== "decline" &&
+        runtimeRequest.decision !== "cancel";
+      if (runtimeRequest.status !== "pending" && !canReviseMessageAnswers) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
@@ -7694,19 +7713,72 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
 
       const now = yield* DateTime.now;
+      const approvalTurnItem = context.item;
+      const messageResponse = runtimeRequest.responseCapability.type === "message";
+      const cancelled = command.decision === "decline" || command.decision === "cancel";
+      if (messageResponse && approvalTurnItem?.type !== "user_input_request") {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "The question for this request was not found.",
+        });
+      }
+      const previousAnswer =
+        approvalTurnItem?.type === "user_input_request"
+          ? approvalTurnItem.questionAnswer
+          : undefined;
+      let replies: Array<AsyncQuestionReply> = [];
+      if (messageResponse && !cancelled && approvalTurnItem?.type === "user_input_request") {
+        const batch = selectAsyncQuestionReplyBatch({
+          questions: approvalTurnItem.questions,
+          answers: command.answers,
+          attachmentsByQuestionId: command.attachmentsByQuestionId,
+          previous: previousAnswer,
+        });
+        if (batch.type === "unchanged") return;
+        if (batch.type === "invalid")
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            cause: batch.message,
+          });
+        replies = batch.replies;
+      }
+      const answers = messageResponse
+        ? {
+            ...previousAnswer?.answers,
+            ...Object.fromEntries(replies.map(({ question, answer }) => [question.id, answer])),
+          }
+        : command.answers;
+      const fullyAnswered =
+        !messageResponse ||
+        cancelled ||
+        (approvalTurnItem?.type === "user_input_request" &&
+          approvalTurnItem.questions.every((question) => answers?.[question.id] !== undefined));
+      const messageId = MessageId.make(`async-answer:${command.requestId}:${command.commandId}`);
+      const attachmentsByQuestionId = {
+        ...previousAnswer?.attachmentsByQuestionId,
+        ...Object.fromEntries(
+          replies.map(({ question }) => [
+            question.id,
+            command.attachmentsByQuestionId?.[question.id] ?? [],
+          ]),
+        ),
+      };
       const resolvedRequest = {
         ...runtimeRequest,
-        status: "resolved" as const,
-        resolvedAt: now,
+        status: fullyAnswered ? ("resolved" as const) : ("pending" as const),
+        resolvedAt: fullyAnswered ? now : null,
         ...(command.decision === undefined ? {} : { decision: command.decision }),
-        ...(command.answers === undefined ? {} : { answers: command.answers }),
+        ...(answers === undefined ? {} : { answers }),
       };
       const emitEvent = emit(events, command);
       const requestNode = context.node;
-      const resolvedNodeStatus =
-        command.decision === "decline" || command.decision === "cancel"
-          ? ("cancelled" as const)
-          : ("completed" as const);
+      const resolvedNodeStatus = cancelled
+        ? ("cancelled" as const)
+        : fullyAnswered
+          ? ("completed" as const)
+          : ("waiting" as const);
       yield* emitEvent({
         type: "runtime-request.updated",
         threadId: command.threadId,
@@ -7737,12 +7809,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           payload: {
             ...requestNode,
             status: resolvedNodeStatus,
-            completedAt: now,
+            completedAt: fullyAnswered ? now : null,
           },
         });
       }
 
-      const approvalTurnItem = context.item;
       if (approvalTurnItem !== undefined) {
         yield* emitEvent({
           type: "turn-item.updated",
@@ -7762,8 +7833,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               ? {
                   questionAnswer: {
                     requestId: command.requestId,
-                    answers: command.answers ?? {},
-                    attachmentsByQuestionId: command.attachmentsByQuestionId ?? {},
+                    ...(messageResponse
+                      ? { messageIds: [...(previousAnswer?.messageIds ?? []), messageId] }
+                      : {}),
+                    answers: answers ?? {},
+                    attachmentsByQuestionId: messageResponse
+                      ? attachmentsByQuestionId
+                      : (command.attachmentsByQuestionId ?? {}),
                     questionTextById: Object.fromEntries(
                       approvalTurnItem.questions.map((question) => [
                         question.id,
@@ -7774,43 +7850,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 }
               : {}),
             status: resolvedNodeStatus,
-            completedAt: now,
+            completedAt: fullyAnswered ? now : null,
             updatedAt: now,
           },
         });
       }
       if (runtimeRequest.responseCapability.type === "message") {
         if (resolvedNodeStatus === "cancelled") return;
-        if (approvalTurnItem?.type !== "user_input_request") {
-          return yield* new OrchestratorDispatchError({
-            commandId: command.commandId,
-            commandType: command.type,
-            cause: "The question for this request was not found.",
-          });
-        }
-        const replies: Array<{
-          readonly question: OrchestrationV2UserInputQuestion;
-          readonly answer: string;
-        }> = [];
-        for (const question of approvalTurnItem.questions) {
-          const answer = command.answers?.[question.id];
-          if (typeof answer !== "string" || answer.trim().length === 0) {
-            if (question.required === false) continue;
-            return yield* new OrchestratorDispatchError({
-              commandId: command.commandId,
-              commandType: command.type,
-              cause: "Answer each question before sending.",
-            });
-          }
-          replies.push({ question, answer: answer.trim() });
-        }
-        if (replies.length === 0) {
-          return yield* new OrchestratorDispatchError({
-            commandId: command.commandId,
-            commandType: command.type,
-            cause: "Enter an answer before sending.",
-          });
-        }
         let dispatchMode: Extract<
           OrchestrationV2Command,
           { type: "message.dispatch" }
@@ -7850,7 +7896,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             type: "message.dispatch",
             commandId: command.commandId,
             threadId: command.threadId,
-            messageId: MessageId.make(`async-answer:${command.requestId}`),
+            messageId,
             text:
               runtimeRequest.responseCapability.replyFormat === "codex_question_reply"
                 ? encodeCodexAsyncQuestionReplies(
@@ -7863,7 +7909,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 : replies
                     .map(({ question, answer }) => `${question.question}\n${answer}`)
                     .join("\n\n"),
-            attachments: [],
+            attachments: [
+              ...new Map(
+                replies.flatMap(({ question }) =>
+                  (command.attachmentsByQuestionId?.[question.id] ?? []).map(
+                    (attachment) => [attachment.id, attachment] as const,
+                  ),
+                ),
+              ).values(),
+            ],
             createdBy: "user",
             creationSource: "server",
             dispatchMode,
@@ -9026,6 +9080,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           .filter((subagent) => subagent.origin === "app_owned")
           .map((subagent) => subagent.id),
       );
+      const messageQuestionNodeIds = new Set(
+        input.projection.runtimeRequests
+          .filter((request) => request.responseCapability.type === "message")
+          .map((request) => request.nodeId),
+      );
       const cascaded = yield* RunExecutionService.cascadeTerminalizeRunOwnedSubagents({
         run,
         status: "interrupted",
@@ -9043,7 +9102,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ),
           nodes: new Map(
             input.projection.nodes
-              .filter((node) => node.runId === run.id && !delegatedNodeIds.has(node.id))
+              .filter(
+                (node) =>
+                  node.runId === run.id &&
+                  !delegatedNodeIds.has(node.id) &&
+                  !messageQuestionNodeIds.has(node.id),
+              )
               .map((node) => [node.id, node]),
           ),
           turnItems: new Map(),
@@ -9063,6 +9127,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       for (const request of input.projection.runtimeRequests) {
         if (
           request.status !== "pending" ||
+          request.responseCapability.type === "message" ||
           !input.projection.nodes.some(
             (node) => node.id === request.nodeId && node.runId === run.id,
           )
@@ -11384,6 +11449,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "prepared-run.retry":
         yield* dispatchPreparedRunRetry(command, events);
         break;
+      case "message.delivery.update": {
+        const now = yield* DateTime.now;
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "message.delivery.updated",
+          threadId: command.threadId,
+          occurredAt: now,
+          payload: {
+            messageId: command.messageId,
+            delivery: command.delivery,
+            ...(command.nativeItemRef === undefined
+              ? {}
+              : { nativeItemRef: command.nativeItemRef }),
+          },
+        });
+        break;
+      }
       case "runtime-request.respond":
         yield* dispatchRuntimeRequestRespond(command, events, effects);
         break;
@@ -11660,6 +11744,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         command.type === "thread.background-work.settle" ||
         command.type === "thread.stop" ||
         command.type === "thread.clear_context" ||
+        command.type === "runtime-request.respond" ||
         command.type === "subagent.stop"
           ? Effect.succeed(planned)
           : Effect.fail(

@@ -3,31 +3,40 @@ import { motion, type Variants } from "motion/react";
 import { ActivitySpinnerIcon, BackIcon, EditIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  QUESTION_OUTLINE_ACTION_COLORS,
+  QUESTION_PRIMARY_ACTION_COLORS,
+} from "./question-action-colors";
 
 export function AsyncQuestionChoiceMarker({
   index,
   activating = false,
+  showNumber = true,
 }: {
   index?: number;
   activating?: boolean;
+  showNumber?: boolean;
 }) {
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "flex size-token-button-composer shrink-0 items-center justify-center rounded-full border text-xs leading-none font-medium",
-        activating
-          ? "border-text bg-token-foreground text-token-dropdown-background"
-          : "border-default bg-text/5 text-token-description-foreground",
+        index === undefined
+          ? "flex size-5 shrink-0 items-center justify-center text-token-description-foreground"
+          : "flex size-5 shrink-0 self-start items-center justify-center rounded-xs border text-xs leading-none font-medium",
+        index !== undefined &&
+          (activating
+            ? "border-text bg-primary-solid text-primary-solid"
+            : "border-default bg-text/5 text-token-description-foreground"),
       )}
     >
       {index === undefined ? (
-        <EditIcon className="icon-2xs" />
+        <EditIcon className="icon-xs" />
+      ) : showNumber ? (
+        index + 1
       ) : activating ? (
         <span className="size-1.5 rounded-full bg-current" />
-      ) : (
-        index + 1
-      )}
+      ) : null}
     </span>
   );
 }
@@ -75,18 +84,22 @@ export function AsyncQuestionChoices({
               onPointerEnter={() => onHover(index)}
               onClick={() => onChoose(index)}
               className={cn(
-                "group flex min-h-8 w-full cursor-interaction items-center gap-2 rounded-xl px-2 py-1.5 text-start text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-40",
+                "group flex min-h-8 w-full cursor-interaction items-start gap-2 rounded-xl px-2 py-1.5 text-start text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-40",
                 highlighted ? "bg-text/5" : "hover:bg-text/5",
               )}
             >
-              <AsyncQuestionChoiceMarker index={index} activating={activating === index} />
-              <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <AsyncQuestionChoiceMarker
+                index={index}
+                activating={activating === index}
+                showNumber={options.length > 1}
+              />
+              <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 @max-5xl/request-card:flex-col @max-5xl/request-card:items-stretch">
                 <span className="inline-flex min-w-0 items-center gap-1.5">
                   <span className="min-w-0 text-sm font-medium wrap-anywhere">
                     {recommended ? option.slice(0, -14) : option}
                   </span>
                   {recommended ? (
-                    <span className="shrink-0 rounded-full border border-default px-1.5 py-0.5 text-xs text-token-description-foreground">
+                    <span className="shrink-0 rounded-sm bg-text/5 px-2 py-1 text-xs leading-none text-token-description-foreground">
                       Recommended
                     </span>
                   ) : null}
@@ -95,7 +108,7 @@ export function AsyncQuestionChoices({
               <BackIcon
                 aria-hidden="true"
                 className={cn(
-                  "icon-xs ms-auto rotate-180 text-token-description-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+                  "icon-xs ms-auto self-center rotate-180 text-token-description-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
                   highlighted && "opacity-100",
                 )}
               />
@@ -121,6 +134,7 @@ function useVisibleCountdown(deadlineMs: number | null) {
 }
 
 export function AsyncQuestionActions({
+  canSkip,
   deadlineMs,
   submitting,
   canSend,
@@ -128,6 +142,7 @@ export function AsyncQuestionActions({
   onSkip,
   onSend,
 }: {
+  canSkip: boolean;
   deadlineMs: number | null;
   submitting: boolean;
   canSend: boolean;
@@ -139,7 +154,7 @@ export function AsyncQuestionActions({
   return (
     <div className="flex shrink-0 items-center gap-2 place-self-end">
       <NodexButton
-        variant="outline"
+        variant={null}
         size="composer"
         data-async-question-dismiss="true"
         aria-label={
@@ -147,13 +162,14 @@ export function AsyncQuestionActions({
             ? undefined
             : `Skip, ${seconds} ${seconds === 1 ? "second" : "seconds"} remaining`
         }
-        disabled={submitting}
+        disabled={submitting || !canSkip}
         onClick={onSkip}
         onKeyDown={(event) => {
           if (event.key === "Enter") event.stopPropagation();
         }}
         className={cn(
-          "gap-1 rounded-full border-default bg-token-bg-fog px-2 text-sm leading-[18px] font-medium enabled:hover:bg-text/5 disabled:opacity-40",
+          QUESTION_OUTLINE_ACTION_COLORS,
+          "gap-1 rounded-full px-2 text-sm leading-[18px] font-medium disabled:opacity-40",
           seconds !== null &&
             "pe-[calc((var(--spacing-token-button-composer)-var(--spacing)*5)/2-1px)]",
         )}
@@ -169,14 +185,17 @@ export function AsyncQuestionActions({
         ) : null}
       </NodexButton>
       <NodexButton
-        variant="primary"
+        variant={null}
         size="composer"
         disabled={!canSend || submitting}
         onClick={onSend}
         onKeyDown={(event) => {
           if (event.key === "Enter") event.stopPropagation();
         }}
-        className="gap-1 rounded-full border border-default px-2 text-sm leading-[18px] font-medium text-token-dropdown-background enabled:hover:bg-text/80 disabled:opacity-40"
+        className={cn(
+          QUESTION_PRIMARY_ACTION_COLORS,
+          "gap-1 rounded-full px-2 text-sm leading-[18px] font-medium disabled:opacity-40",
+        )}
       >
         {submitting ? <ActivitySpinnerIcon className="icon-xxs" /> : null}
         {label}

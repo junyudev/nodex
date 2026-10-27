@@ -93,6 +93,7 @@ import Migration0076 from "./Migrations/076_BoundedRecoveryIndexes.ts";
 import Migration0077 from "./Migrations/077_NativeConversationImports.ts";
 import Migration0078 from "./Migrations/078_ContextClearIndex.ts";
 import Migration0079 from "./Migrations/079_ClaudeLoneThinkingThoughts.ts";
+import Migration0080 from "./Migrations/080_PendingMessageDeliveries.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -186,6 +187,7 @@ export const migrationEntries = [
   [77, "NativeConversationImports", Migration0077],
   [78, "ContextClearIndex", Migration0078],
   [79, "ClaudeLoneThinkingThoughts", Migration0079],
+  [80, "PendingMessageDeliveries", Migration0080],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

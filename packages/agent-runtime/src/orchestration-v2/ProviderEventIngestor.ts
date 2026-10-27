@@ -669,6 +669,20 @@ export const layer: Layer.Layer<
                 nodeId: input.event.subagent.id,
               }),
             ];
+          case "message.delivery.updated":
+            return [
+              yield* makeDomainEvent(input, {
+                type: "message.delivery.updated",
+                threadId: input.event.threadId,
+                payload: {
+                  messageId: input.event.messageId,
+                  delivery: input.event.delivery,
+                  ...(input.event.nativeItemRef === undefined
+                    ? {}
+                    : { nativeItemRef: input.event.nativeItemRef }),
+                },
+              }),
+            ];
           case "message.updated":
             return [
               yield* makeDomainEvent(input, {

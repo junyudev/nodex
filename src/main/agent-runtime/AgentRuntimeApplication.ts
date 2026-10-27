@@ -53,6 +53,7 @@ import type {
   AgentRuntimeSessionTarget,
   AgentRuntimeConversation,
   AgentRuntimeControlInput,
+  AgentRuntimeResponseInput,
 } from "../../shared/agent-runtime-api";
 export type {
   AgentRuntimeMessage,
@@ -82,7 +83,6 @@ type CleanupWindow = Extract<
 type Cleanup = CleanupWindow["items"][number];
 type CreateThread = Extract<AgentCommand, { readonly type: "thread.create" }>;
 type DispatchMessage = Extract<AgentCommand, { readonly type: "message.dispatch" }>;
-type Respond = Extract<AgentCommand, { readonly type: "runtime-request.respond" }>;
 type ProjectWorkspaceBindingInput = {
   readonly binding: Omit<Binding, "bound_at">;
   readonly operation: ProjectWorkspaceApplyInput;
@@ -1935,16 +1935,21 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   });
 
   const respond = Effect.fn("AgentRuntimeApplication.respond")(function* (
-    input: AgentRuntimeSessionTarget &
-      Pick<Respond, "requestId" | "decision" | "answers" | "attachmentsByQuestionId"> & {
-        readonly runId: string | null;
-      },
+    input: AgentRuntimeResponseInput,
   ) {
     const connection = yield* options.connect;
-    if (!validId(input.requestId) || (input.runId !== null && !validId(input.runId)))
+    if (
+      !validId(input.requestId) ||
+      (input.runId !== null && !validId(input.runId)) ||
+      (input.submissionId !== undefined && !validId(input.submissionId))
+    )
       return yield* failure("respond", "Request identity is required");
     const loaded = yield* targetInfo(connection, input, true);
-    const snapshot = yield* connection.request("thread.control", { threadId: loaded.threadId });
+    const snapshot = yield* connection.request("thread.control", {
+      threadId: loaded.threadId,
+      requestId: input.requestId,
+      ...(input.runId === null ? {} : { runId: input.runId }),
+    });
     const request = snapshot.projection.runtimeRequests.find(
       (request) => request.id === input.requestId,
     );
@@ -1952,7 +1957,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     if (
       !request ||
       (request.kind !== "user_input" && request.kind !== "mcp-elicitation") ||
-      request.status !== "pending" ||
       node?.runId !== input.runId ||
       (input.runId === null && request.responseCapability.type !== "live")
     )
@@ -1960,12 +1964,16 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "respond",
         "This request is no longer pending for its original execution source",
       );
-    if (request.responseCapability.type === "not_resumable")
+    if (request.responseCapability.type === "not_resumable" && input.submissionId === undefined)
       return yield* failure("respond", request.responseCapability.reason);
     const { decision, answers, attachmentsByQuestionId } = input;
     return yield* dispatch(connection, {
       type: "runtime-request.respond",
-      commandId: commandId("response", { threadId: loaded.threadId, requestId: input.requestId }),
+      commandId: commandId("response", {
+        threadId: loaded.threadId,
+        requestId: input.requestId,
+        ...(input.submissionId === undefined ? {} : { submissionId: input.submissionId }),
+      }),
       threadId: loaded.threadId,
       requestId: input.requestId,
       ...(decision === undefined ? {} : { decision }),

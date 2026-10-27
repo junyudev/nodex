@@ -169,13 +169,13 @@ describe("semantic theme contract in the renderer build", () => {
     setWindowTheme("electron", "dark");
     const rootStyle = getComputedStyle(document.documentElement);
 
-    expect(rootStyle.getPropertyValue("--app-color-text-foreground").trim()).toBe("#fcfcfc");
-    expect(getComputedStyle(mountRole("text-token-foreground")).color).toBe("rgb(252, 252, 252)");
+    expect(rootStyle.getPropertyValue("--app-color-text-foreground").trim()).toBe("#ffffff");
+    expect(getComputedStyle(mountRole("text-token-foreground")).color).toBe("rgb(255, 255, 255)");
     expect(rootStyle.getPropertyValue("--app-color-text-foreground-secondary").trim()).toBe(
-      "rgba(252, 252, 252, 0.71)",
+      "rgba(255, 255, 255, 0.71)",
     );
     expect(rootStyle.getPropertyValue("--app-color-text-foreground-tertiary").trim()).toBe(
-      "rgba(252, 252, 252, 0.498)",
+      "rgba(255, 255, 255, 0.498)",
     );
   });
 
@@ -217,8 +217,8 @@ describe("semantic theme contract in the renderer build", () => {
     for (const scheme of ["dark", "light", "dark"] as const) {
       setWindowTheme("electron", scheme);
       const isDark = scheme === "dark";
-      const surface = isDark ? "rgb(17, 17, 17)" : "rgb(255, 255, 255)";
-      const ink = isDark ? "rgb(252, 252, 252)" : "rgb(13, 13, 13)";
+      const surface = isDark ? "rgb(24, 24, 24)" : "rgb(255, 255, 255)";
+      const ink = isDark ? "rgb(255, 255, 255)" : "rgb(26, 28, 31)";
 
       expect(getComputedStyle(main).backgroundColor).toBe(surface);
       expect(getComputedStyle(main).color).toBe(ink);

@@ -92,7 +92,7 @@ Every Agent has full read and write access to the current Profile's Projects, Pa
 and Library. Parent Agents, delegated children and background work use the same model
 and may operate across Projects and Sessions. Plan changes planning interaction and
 permits content writes. Native Providers run with full access and permission requests
-are approved automatically. Questions requiring the user's information remain open.
+are approved automatically. Blocking information questions and optional message-capable questions remain open until answered or explicitly settled. Native nonblocking synchronous questions follow the host's inactivity and snooze policy.
 Standard ACP information questions belong to the live Session, with Run left null;
 they can arrive after foreground completion or while another Run executes.
 
@@ -148,8 +148,7 @@ Every command resolves the Session's immutable root before accessing an engine T
 explicit targets resolve their own Session and Thread identity. Responses carry the exact pending request
 and its original Run, or null when the source is a native Session. A stale card cannot
 answer a newer request. Session-origin Dismiss answers that request without stopping
-an unrelated foreground Run. Runtime questions use this Session interface and remain
-open for user input; native Codex inactivity controls belong to their own execution owner.
+an unrelated foreground Run. Runtime questions use this Session interface. Optional replies carry a stable submission identity for each answer batch; retries replay that batch receipt, while later answers and revisions use another identity. Controls address the exact original request and Run without hydrating transcript bodies, including after the request is completed. Native nonblocking synchronous questions share the host-owned inactivity and snooze controls; blocking and optional message-capable questions do not auto-resolve.
 
 Launch returns execution identity without transcript bodies. Controls acquire only
 execution metadata and observe control events. Activating a transcript reader opens
@@ -523,8 +522,13 @@ bookkeeping such as pending questions, approvals and interrupt requests stays ou
 transcript; pending questions remain answerable from their request card. Optional questions
 the Agent asks while it keeps working are the exception: they read as the message that asked
 them, open the question panel above the ordinary Composer without replacing it, and stay
-answerable until the Agent settles them. Answers reach Codex in its question-reply
-envelope, steered into the running Turn or kept as the next message.
+answerable until explicitly settled, even after completion, Stop, provider loss or restart. Answering only part of a question batch retains its unanswered siblings. Non-secret authored drafts survive view release, reconnect and restart; private text remains memory-only. Answers and their attachments reach Codex in its question-reply envelope, steered into the running Turn or kept as the next message, and read as question/answer content even when they open a later Run.
+
+Answer admission records cumulative per-question answers and a separate message identity for each submission batch. Delivery distinguishes pending, unknown and accepted. An uncertain transport result never blindly queues another copy. Exact native client-message receipts, including bounded resumed history evidence after process recovery, settle the original message without appending another row. Accepted delivery cannot be downgraded by a late unknown receipt. Missing evidence remains unconfirmed rather than guessed.
+
+Synchronous question projection preserves custom-answer eligibility, private intent, initial answers, required questions and native blocking policy. A nonblocking synchronous question in a focused presented chat waits for 60 seconds of inactivity before a 90-second countdown; a background question starts that countdown immediately. Card interaction snoozes it, and timeout returns an empty response without choosing a default option. One host-owned deadline follows the exact request and process generation across windows; equal Thread and request IDs on different hosts remain independent.
+
+Answered synchronous questionnaires appear as a collapsed question-and-answer history item. Expanding it shows the submitted choices and text, with private answers replaced by `Hidden response`. The source response record retains its metadata and attachments independently of that private presentation.
 
 ## Execution location and worktree handoff
 

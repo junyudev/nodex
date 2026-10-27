@@ -18,7 +18,9 @@ it.effect("retains foreground presentation until a client's last surface closes"
     registry.setPresented("thread-a", "renderer-a", "surface-two", false);
     assert.isFalse(registry.isPresentedInForeground("thread-a"));
     assert.isTrue(registry.isClientPresenting("thread-a", "renderer-b"));
-    assert.deepEqual(registry.setClientForegrounded("renderer-b", true), ["thread-a"]);
+    assert.deepEqual(registry.setClientForegrounded("renderer-b", true), [
+      { hostId: "local", conversationId: "thread-a" },
+    ]);
     assert.isTrue(registry.isPresentedInForeground("thread-a"));
   }),
 );
@@ -32,7 +34,10 @@ it.effect(
       registry.setPresented("thread-a", "renderer-a", "surface-a", true);
       registry.setPresented("thread-b", "renderer-a", "surface-b", true);
       registry.setPresented("thread-a", "renderer-b", "surface-c", true);
-      assert.deepEqual(registry.handleClientDisposed("renderer-a"), ["thread-a", "thread-b"]);
+      assert.deepEqual(registry.handleClientDisposed("renderer-a"), [
+        { hostId: "local", conversationId: "thread-a" },
+        { hostId: "local", conversationId: "thread-b" },
+      ]);
       assert.isFalse(registry.hasForegroundClient());
       assert.isFalse(registry.isClientPresenting("thread-b", "renderer-a"));
       assert.isTrue(registry.isClientPresenting("thread-a", "renderer-b"));
@@ -68,5 +73,23 @@ it.effect("closes presentation admission and clears all queries with its owning 
     assert.isFalse(registry.isPresentedInForeground("thread-a"));
     assert.isFalse(registry.isClientPresenting("thread-a", "renderer-a"));
     assert.isNull(registry.resolvePresentedSurfaceClient("thread-a"));
+  }),
+);
+
+it.effect("keeps presentation identity separate for matching threads on different hosts", () =>
+  Effect.gen(function* () {
+    const registry = yield* make;
+    registry.setClientForegrounded("renderer-a", true);
+    registry.setPresented("thread", "renderer-a", "surface", true, "local");
+    assert.isTrue(registry.isPresentedInForeground("thread", "local"));
+    assert.isFalse(registry.isPresentedInForeground("thread", "remote"));
+    assert.isFalse(registry.isClientPresenting("thread", "renderer-a", "remote"));
+    registry.setPresented("thread", "renderer-a", "surface", true, "remote");
+    registry.clearConversation("thread", "local");
+    assert.isFalse(registry.isPresentedInForeground("thread", "local"));
+    assert.isTrue(registry.isPresentedInForeground("thread", "remote"));
+    assert.deepEqual(registry.handleClientDisposed("renderer-a"), [
+      { hostId: "remote", conversationId: "thread" },
+    ]);
   }),
 );

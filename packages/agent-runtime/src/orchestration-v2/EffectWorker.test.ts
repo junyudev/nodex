@@ -1,6 +1,8 @@
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  MessageId,
+  type OrchestrationV2ServerCommand,
   NodeId,
   ProviderSessionId,
   ProviderThreadId,
@@ -83,6 +85,7 @@ function layerExecutorFor(input: {
   readonly threads?: Partial<ThreadManagementService.ThreadManagementService["Service"]>;
   readonly continueAfterRestart?: boolean;
   readonly interrupt?: ProviderTurnControlService.ProviderTurnControlServiceV2Shape["interrupt"];
+  readonly steer?: ProviderTurnControlService.ProviderTurnControlServiceV2Shape["steer"];
 }) {
   const record = (event: string) => Ref.update(input.events, (events) => [...events, event]);
   const layerDependencies = Layer.mergeAll(
@@ -90,7 +93,7 @@ function layerExecutorFor(input: {
       ProviderTurnControlService.ProviderTurnControlServiceV2,
       ProviderTurnControlService.ProviderTurnControlServiceV2.of({
         interrupt: input.interrupt ?? (() => Effect.void),
-        steer: () => Effect.void,
+        steer: input.steer ?? (() => Effect.void),
         interruptAndAwaitTerminal: (request) =>
           record(
             request.replacementProviderSessionId === undefined
@@ -163,6 +166,132 @@ function layerExecutorFor(input: {
     ),
   );
 }
+
+it.effect("parks an unknown steering delivery without scheduling another message", () =>
+  Effect.gen(function* () {
+    const now = yield* DateTime.now;
+    const messageId = MessageId.make("message:unknown-steer");
+    const commands: Array<OrchestrationV2ServerCommand> = [];
+    const events = yield* Ref.make<ReadonlyArray<string>>([]);
+    const layer = layerExecutorFor({
+      events,
+      steer: () =>
+        Effect.fail(
+          new ProviderTurnControlService.ProviderTurnControlError({
+            threadId,
+            operation: "steer",
+            providerTurnId,
+            turnRunning: true,
+            delivery: "unknown",
+            cause: new Error("The native response was lost after dispatch"),
+          }),
+        ),
+      threads: {
+        dispatch: (command) =>
+          Effect.sync(() => {
+            commands.push(command);
+            return undefined as never;
+          }),
+      },
+    });
+    const timestamp = DateTime.formatIso(now);
+    yield* EffectWorker.OrchestrationEffectExecutorV2.pipe(
+      Effect.flatMap((executor) =>
+        executor.execute({
+          id: "effect:unknown-steer",
+          commandId: CommandId.make("command:unknown-steer"),
+          threadId,
+          request: {
+            type: "provider-turn.steer",
+            providerSessionId: oldSessionId,
+            providerThreadId,
+            providerTurnId,
+            messageId,
+          },
+          status: "running",
+          attemptCount: 1,
+          availableAt: timestamp,
+          leaseOwner: "worker",
+          leaseExpiresAt: timestamp,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          completedAt: null,
+          lastError: null,
+        }),
+      ),
+      Effect.provide(layer),
+    );
+    assert.deepEqual(
+      commands.map((command) => command.type),
+      ["message.delivery.update"],
+    );
+    const receipt = commands[0];
+    assert.ok(receipt?.type === "message.delivery.update");
+    assert.equal(receipt.messageId, messageId);
+    assert.equal(receipt.delivery, "unknown");
+  }),
+);
+
+it.effect("does not replay a dispatched steer when recording its unknown outcome fails", () =>
+  Effect.gen(function* () {
+    const now = DateTime.formatIso(yield* DateTime.now);
+    const effect: EffectOutbox.OrchestrationEffectV2 = {
+      id: "effect:unknown-persistence",
+      commandId: CommandId.make("command:unknown-persistence"),
+      threadId,
+      request: {
+        type: "provider-turn.steer",
+        providerSessionId: oldSessionId,
+        providerThreadId,
+        providerTurnId,
+        messageId: MessageId.make("message:unknown-persistence"),
+      },
+      status: "running",
+      attemptCount: 1,
+      availableAt: now,
+      leaseOwner: "worker:unknown-persistence",
+      leaseExpiresAt: now,
+      createdAt: now,
+      updatedAt: now,
+      completedAt: null,
+      lastError: null,
+    };
+    const retries = yield* Ref.make(0);
+    const failures = yield* Ref.make(0);
+    const outbox = Layer.mock(EffectOutbox.EffectOutboxV2)({
+      claimNext: () => Effect.succeed(Option.some(effect)),
+      get: () => Effect.succeed(Option.some(effect)),
+      awaitCancellation: () => Effect.never,
+      clearCancellation: () => Effect.void,
+      retry: () => Ref.update(retries, (count) => count + 1).pipe(Effect.as(true)),
+      fail: () => Ref.update(failures, (count) => count + 1).pipe(Effect.as(true)),
+    });
+    const executor = Layer.succeed(
+      EffectWorker.OrchestrationEffectExecutorV2,
+      EffectWorker.OrchestrationEffectExecutorV2.of({
+        execute: () =>
+          Effect.fail(
+            new EffectWorker.OrchestrationEffectExecutionError({
+              effectId: effect.id,
+              effectType: effect.request.type,
+              retryable: false,
+              cause: "The dispatched message outcome could not be recorded",
+            }),
+          ),
+      }),
+    );
+    yield* EffectWorker.OrchestrationEffectWorkerV2.pipe(
+      Effect.flatMap((worker) => worker.runOnce),
+      Effect.provide(
+        EffectWorker.layerWithOptions({ workerId: "worker:unknown-persistence" }).pipe(
+          Layer.provide(Layer.mergeAll(outbox, executor)),
+        ),
+      ),
+    );
+    assert.equal(yield* Ref.get(retries), 0);
+    assert.equal(yield* Ref.get(failures), 1);
+  }),
+);
 
 it("does not retry pure interrupt races where the turn is already gone", () => {
   assert.isTrue(

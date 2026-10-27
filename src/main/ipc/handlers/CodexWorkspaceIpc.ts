@@ -6,6 +6,7 @@ import {
 } from "../../codex-application/CodexComposerPrediction";
 import { CodexConversationFork } from "../../codex-application/CodexConversationFork";
 import { encodeCodexNativeRequestFailure } from "../../../shared/codex-native-request-outcome";
+import { CodexAsyncQuestionResponseSchema } from "../../../shared/schemas/codex";
 import { codexNativeIpcMethod, type CodexNativeIpcChannel } from "../../../shared/codex-native-ipc";
 import {
   CodexRendererResponseMetrics,
@@ -2107,6 +2108,15 @@ export const live = Layer.effectDiscard(
         .pipe(
           Effect.mapError((cause) => new CodexIpcError({ operation: "codex:turn:steer", cause })),
         ),
+    );
+
+    registerEffectPlainCommand("codex:turn:question-reply", (_, input) =>
+      Effect.try(() => CodexAsyncQuestionResponseSchema.parse(input)).pipe(
+        Effect.flatMap(turnCommands.respondAsyncQuestions),
+        Effect.mapError(
+          (cause) => new CodexIpcError({ operation: "codex:turn:question-reply", cause }),
+        ),
+      ),
     );
 
     registerEffectQuery(

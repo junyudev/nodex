@@ -86,7 +86,7 @@ function searchableRows(items: readonly OrchestrationV2ProjectedTurnItem[]) {
   const foldedAnswers = new Set(
     items.flatMap(({ item }) =>
       item.type === "user_input_request" && item.questionAnswer
-        ? [`async-answer:${item.questionAnswer.requestId}`]
+        ? (item.questionAnswer.messageIds ?? [])
         : [],
     ),
   );
@@ -374,7 +374,7 @@ export const makeThreadFind = Effect.fn("makeThreadFind")(function* (
           if (payload.type !== "user_input_request") continue;
           const { item } = yield* decode(payload);
           if (item.type === "user_input_request" && item.questionAnswer)
-            foldedAnswers.add(`async-answer:${item.questionAnswer.requestId}`);
+            for (const id of item.questionAnswer.messageIds ?? []) foldedAnswers.add(id);
         }
         const rows = payloads.filter(
           (row) =>

@@ -2799,6 +2799,8 @@ export interface CodexSteerTurnInput {
   presentationTicket?: CodexTurnPresentationTicket;
   threadId: string;
   expectedTurnId?: string;
+  /** Optional answers may originate in older completed Turns of this same Thread. */
+  questionSourceTurnIds?: readonly string[];
   prompt: string;
   promptInput?: CodexPromptInput;
   collaborationMode?: CodexCollaborationModeKind | null;
@@ -3340,7 +3342,7 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   importedImages?: readonly CodexImportedMarkdownImage[];
   commentAttachments?: CodexReviewDiffCommentAttachment[];
   textSelections?: import("./thread-text-selection").ThreadTextSelectionContext;
-  deliveryStatus?: "not-sent";
+  deliveryStatus?: "not-sent" | "pending" | "unknown";
   steeringStatus?: CodexSteeringStatus;
   steeringInput?: CodexSteeringUserInput[];
   steeringCompareKey?: string;
@@ -3403,7 +3405,7 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   importedImages?: readonly CodexImportedMarkdownImage[];
   commentAttachments?: CodexReviewDiffCommentAttachment[];
   textSelections?: import("./thread-text-selection").ThreadTextSelectionContext;
-  deliveryStatus?: "not-sent";
+  deliveryStatus?: "not-sent" | "pending" | "unknown";
   steeringStatus?: CodexSteeringStatus;
   steeringInput?: CodexSteeringUserInput[];
   steeringCompareKey?: string;
@@ -3493,6 +3495,8 @@ export interface CodexUserInputQuestion {
   isOther: boolean;
   isSecret?: boolean;
   otherPlaceholder?: string;
+  initialAnswer?: string;
+  required?: boolean;
   options?: CodexUserInputOption[];
 }
 

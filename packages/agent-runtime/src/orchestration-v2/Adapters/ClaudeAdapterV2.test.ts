@@ -2255,6 +2255,69 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     });
   const makeWakeHarness = makeWakeHarnessWithOptions();
 
+  it.effect.each(["no_query", "inactive_turn", "attachment"] as const)(
+    "classifies a Claude %s steering failure as not dispatched",
+    (failure) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const attemptId = RunAttemptId.make("steer-preflight");
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        if (failure !== "no_query")
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now: yield* DateTime.now,
+              attemptId,
+              text: "Work",
+              attachments: [],
+            }),
+          );
+        const failed = yield* harness.runtime
+          .steerTurn({
+            threadId: harness.threadId,
+            runId: RunId.make("steer-preflight"),
+            providerThread: harness.providerThread,
+            providerTurnId:
+              failure === "inactive_turn"
+                ? ProviderTurnId.make("another-turn")
+                : idAllocator.derive.providerTurn({
+                    driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+                    nativeTurnId: `turn:${attemptId}`,
+                  }),
+            message: {
+              messageId: MessageId.make("steer-preflight-message"),
+              text: "Follow up",
+              createdBy: "user",
+              creationSource: "web",
+              attachments:
+                failure === "attachment"
+                  ? [
+                      ChatImageAttachment.make({
+                        type: "image",
+                        id: ChatAttachmentId.make("missing-steer-image"),
+                        name: "missing.png",
+                        mimeType: "image/png",
+                        sizeBytes: 1,
+                      }),
+                    ]
+                  : [],
+            },
+          })
+          .pipe(Effect.result);
+        if (failed._tag !== "Failure") throw new Error("Expected a preflight failure");
+        if (failed.failure._tag !== "ProviderAdapterSteerRunError")
+          throw new Error("Expected a steering failure");
+        assert.equal(failed.failure.delivery, "not_dispatched");
+        assert.equal(harness.offeredMessages.length, failure === "no_query" ? 0 : 1);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
   it.effect.each([
     { isError: false, title: "Check weather" },
     { isError: true, title: "Check weather" },

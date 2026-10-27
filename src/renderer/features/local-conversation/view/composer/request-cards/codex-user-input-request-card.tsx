@@ -1,3 +1,4 @@
+import { useConversationRuntime } from "../../../local-conversation-store";
 import type { CodexProtocolRequestId, CodexUserInputRequest } from "../../../../../lib/types";
 import { useEffect, useState } from "react";
 import {
@@ -117,6 +118,13 @@ export function CodexUserInputRequestCard({
   onRespond,
   onInterrupt,
 }: CodexUserInputRequestCardProps) {
+  const runtime = useConversationRuntime(conversationId);
+  const hostId = runtime.hostId;
+  const namespace = JSON.stringify([
+    runtime.sessionId ? "agent-runtime" : "native",
+    hostId,
+    runtime.sessionId ?? null,
+  ]);
   const viewRequest = request.isOnboardingDynamicInput
     ? {
         ...request,
@@ -127,25 +135,24 @@ export function CodexUserInputRequestCard({
         })),
       }
     : request;
+  const draftRequest = {
+    ...viewRequest,
+    draftIdentity: JSON.stringify([request.turnId, request.itemId]),
+  };
   const { initialDraft, saveDraft, clearDraft } = useCodexUserInputDraft(
     conversationId,
-    viewRequest,
+    draftRequest,
+    { hostId, namespace },
   );
-  const usesNativeAutoResolution = request.executionOwner !== "agent-runtime";
-  const autoResolution = useUserInputAutoResolution(
-    conversationId,
-    request.requestId,
-    usesNativeAutoResolution,
-  );
+  const autoResolution = useUserInputAutoResolution(conversationId, request.requestId, hostId);
 
   useEffect(() => {
-    if (!usesNativeAutoResolution) return;
     const recordActivity = (event: KeyboardEvent | PointerEvent) => {
       const target = event.target;
       if (target instanceof Element && target.closest("[data-user-input-auto-resolution]")) {
         return;
       }
-      void recordUserInputActivity(conversationId);
+      void recordUserInputActivity(conversationId, hostId);
     };
     window.addEventListener("keydown", recordActivity);
     window.addEventListener("pointerdown", recordActivity);
@@ -153,29 +160,24 @@ export function CodexUserInputRequestCard({
       window.removeEventListener("keydown", recordActivity);
       window.removeEventListener("pointerdown", recordActivity);
     };
-  }, [conversationId, usesNativeAutoResolution]);
+  }, [conversationId, hostId]);
 
   return (
     <CodexUserInputRequestCardView
-      request={viewRequest}
+      request={draftRequest}
       autoResolution={autoResolution}
       initialDraft={initialDraft}
       onDraftChange={saveDraft}
       onUserInteraction={() => {
-        if (!usesNativeAutoResolution) return;
-        void snoozeUserInput(conversationId, request.requestId);
+        void snoozeUserInput(conversationId, request.requestId, hostId);
       }}
       onRespond={onRespond}
       onDismiss={async (nextRequest) => {
-        if (!usesNativeAutoResolution) {
-          await onInterrupt?.();
-          return;
-        }
-        const claimed = await snoozeUserInput(conversationId, request.requestId);
+        const claimed = await snoozeUserInput(conversationId, request.requestId, hostId);
         const tracked =
           claimed ||
           autoResolution !== null ||
-          (await isUserInputAutoResolutionTracked(conversationId, request.requestId));
+          (await isUserInputAutoResolutionTracked(conversationId, request.requestId, hostId));
         if (request.isOnboardingDynamicInput || tracked) {
           await onRespond(nextRequest.requestId, {});
           return;
