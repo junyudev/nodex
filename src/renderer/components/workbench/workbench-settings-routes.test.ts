@@ -72,6 +72,15 @@ describe("workbench settings routes", () => {
     expect(resolved.browserAnchor).toBe(null);
   });
 
+  test("keeps a plugin's settings page under Plugins", () => {
+    const resolved = resolveSettingsShellState(
+      "/settings/plugins-settings/plugins/figma%40openai-curated?pluginName=figma",
+    );
+
+    expect(resolved.activeSectionId).toBe("plugins-settings");
+    expect(resolved.detailPageId).toBe(null);
+  });
+
   test("keeps the licenses detail page nested under General", () => {
     const resolved = resolveSettingsShellState(OPEN_SOURCE_LICENSES_SETTINGS_PATH);
 

@@ -42,6 +42,8 @@ export interface SettingsRouteShellProps {
   onBackToApp: () => void;
   onRequestProjectPickerOpen: () => void;
   onOpenThread?: SettingsOpenThread;
+  onOpenCustomize?: (path: string) => void;
+  onStartChat?: (prompt: string) => void;
   projects: Project[];
   activeProjectId: string | null;
   initialLocalEnvironmentProjectId?: string | null;
@@ -172,6 +174,8 @@ export function SettingsRouteShell({
   onBackToApp,
   onRequestProjectPickerOpen,
   onOpenThread,
+  onOpenCustomize,
+  onStartChat,
   projects,
   activeProjectId,
   initialLocalEnvironmentProjectId,
@@ -340,6 +344,8 @@ export function SettingsRouteShell({
                   initialLocalEnvironmentConfigPath={initialLocalEnvironmentConfigPath}
                   onRequestProjectPickerOpen={onRequestProjectPickerOpen}
                   onOpenThread={onOpenThread}
+                  onOpenCustomize={onOpenCustomize}
+                  onStartChat={onStartChat}
                   threadQueueFollowUpsEnabled={threadQueueFollowUpsEnabled}
                   onThreadQueueFollowUpsEnabledChange={onThreadQueueFollowUpsEnabledChange}
                   composerEnterBehavior={composerEnterBehavior}

@@ -7,6 +7,7 @@ import {
   KeyboardShortcutsIcon,
   MicIcon,
   PageIcon,
+  PluginsIcon,
   SettingsAgentIcon,
   SettingsAppearanceIcon,
   SettingsBrowserIcon,
@@ -30,6 +31,7 @@ export type SettingsSectionId =
   | "agent"
   | "keyboard-shortcuts"
   | "inbox-settings"
+  | "plugins-settings"
   | "browser"
   | "computer-use"
   | "hooks-settings"
@@ -145,6 +147,14 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     icon: HooksIcon,
     groupKey: "agents",
     searchMessages: SETTINGS_SEARCH_CATALOG["hooks-settings"].messages,
+  },
+  {
+    id: "plugins-settings",
+    label: "Plugins",
+    pageKey: "plugins",
+    icon: PluginsIcon,
+    groupKey: "integrations",
+    searchMessages: SETTINGS_SEARCH_CATALOG["plugins-settings"].messages,
   },
   {
     id: "browser",

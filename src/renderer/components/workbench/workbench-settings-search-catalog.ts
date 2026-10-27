@@ -874,6 +874,15 @@ export const SETTINGS_SEARCH_CATALOG = {
       "Full CDP access",
     ],
   },
+  "plugins-settings": {
+    messages: [
+      "Plugins",
+      "Manage plugins, skills, and MCPs",
+      "Browse directory",
+      "Add a marketplace",
+      "Skills",
+    ],
+  },
   "computer-use": {
     messages: [
       "Computer use",

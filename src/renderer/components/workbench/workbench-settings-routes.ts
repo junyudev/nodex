@@ -152,6 +152,9 @@ export function resolveSettingsShellState(
   } else if (requestedSlug === "browser") {
     activeSectionId = "browser";
     browserAnchor = parseBrowserAnchor(path);
+  } else if (requestedSlug?.startsWith("plugins-settings/")) {
+    // An installed plugin's settings page belongs to Settings › Plugins.
+    activeSectionId = "plugins-settings";
   } else if (requestedSlug?.startsWith("browser/")) {
     const detail = parseBrowserDetail(requestedSlug.slice("browser/".length));
     if (detail) {

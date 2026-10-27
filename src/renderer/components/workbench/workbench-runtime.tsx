@@ -3452,6 +3452,9 @@ export function WorkbenchRuntime({
         onBackToApp: closeSettings,
         onRequestProjectPickerOpen,
         onOpenThread: openSettingsThreadSessionById,
+        onOpenCustomize: openPlugins,
+        onStartChat: (prompt: string) =>
+          void startNewChatWithPrompt({ projectId: activeProjectId, prompt }),
         projects,
         activeProjectId: activeProject?.id ?? activeProjectId,
         initialLocalEnvironmentProjectId: localEnvironmentSettingsInitial?.projectId ?? null,

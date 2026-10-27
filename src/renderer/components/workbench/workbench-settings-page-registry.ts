@@ -16,6 +16,7 @@ export type SettingsPageKey =
   | "import"
   | "keyboard-shortcuts"
   | "inbox"
+  | "plugins"
   | "browser"
   | "computer-use"
   | "page"
@@ -47,6 +48,10 @@ export interface SettingsSectionPageProps {
     anchor?: BrowserSettingsAnchor,
   ) => void;
   onOpenThread?: SettingsOpenThread;
+  /** Opens a Customize page, such as a plugin's details or the plugin directory. */
+  onOpenCustomize?: (path: string) => void;
+  /** Starts a new chat with an unsent draft. */
+  onStartChat?: (prompt: string) => void;
   onPathChange: (path: string) => void;
   onRequestProjectPickerOpen: () => void;
   onTaskShorthandPagePromotionEnabledChange: (value: boolean) => void;

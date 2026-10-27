@@ -15,6 +15,10 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
   voice: lazy(async () => ({
     default: (await import("@/features/dictation/voice-settings-page")).VoiceSettingsPage,
   })),
+  plugins: lazy(async () => ({
+    default: (await import("@/features/plugins/view/plugins-settings-page"))
+      .PluginsSettingsSectionPage,
+  })),
   browser: lazy(async () => ({
     default: (await import("@/features/browser-sidebar/browser-settings-pages"))
       .BrowserSettingsPage,
