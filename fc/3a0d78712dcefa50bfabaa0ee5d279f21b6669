@@ -1,0 +1,98 @@
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 71-147,243-244,248-265,389,646-666
+  s_cb8bbfdb133e81::t_8bf67191885d54 667-668
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 5,17,19-21,31,50,100-101,116-128,136,141,175-182,225-234,250,266,372-387,389,400-402,496,641-644,646-662,701-785,812,1021,1023-1036,1039,1047,1055,1057,1060,1066-1084,1344-1430,1466-1474,1485-1494,1515,1572-1628,1632-1634
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 167,737
+src/renderer/components/workbench/command-palette-scope.test.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 74
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 4-9,34-35,75-76,140-142,399-400,404,406-407,413-435
+  s_cb8bbfdb133e81::t_cbb835c63af678 436
+src/renderer/components/ui/file-tree.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 2,14,22,29-30,49-51,61-64,88,94-97,124,130-139,143,246-247,289-293
+src/renderer/features/review/view/review-commit-menu-items.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 1-85
+src/renderer/features/workspace-files/use-workspace-directory-tree.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 1-51
+CHANGELOG.md
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 10
+src/renderer/features/workspace-files/workspace-file-comparison-controls.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 1-248
+src/renderer/features/workspace-files/workspace-file-viewer-header.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 33-40,48-62,81-84,91-102,290-296,302,310,312-327,335-356,404,413,421,438,442-459,462-466,468-476
+src/renderer/components/ui/file-tree-theme.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 7-29,31,36,42-43,45,53,56-59,82-123
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 50,3837-3844
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 2744
+src/renderer/features/workspace-files/workspace-file-types.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 2,18-24,33-55,82-120
+src/renderer/lib/workbench-panel-preview.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 20,260-261,287
+src/renderer/features/workspace-files/workspace-file-preferences.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 1-43
+src/renderer/lib/file-reference-router.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 14,42
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 43,173,200,252
+src/renderer/lib/use-workbench-panel-openers.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 81-85,981,1031-1035,1087,1095,1100,1115,1206
+src/renderer/features/workspace-files/workspace-file-tree.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 2,5,7-16,22-29,34,37,40-48,54-55,65-67,73-76,84,88,90-97,99-121,127-130,137-139,141-150,156-163,167-168,175-200
+src/renderer/features/workspace-files/index.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 31
+docs/product-specs/workbench-shell.md
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 245-246,253-257
+src/renderer/components/workbench/workbench-review-route-adapter.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 11
+src/renderer/lib/workbench-scene-navigator.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 81-82,241,243,248,252,342,428,445,474
+src/renderer/features/workspace-files/workspace-file-types.node.test.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 74-97
+src/renderer/features/workspace-files/workspace-file-header-model.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 8-12,31-35,46-49,53
+src/renderer/features/workspace-files/workspace-file-header-model.node.test.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 18-30,33-37
+src/renderer/lib/workbench-scene-file-opener.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 9,45
+src/renderer/lib/command-palette-commands.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 37,72-73,97,469-477
+  s_cb8bbfdb133e81::t_09e7f27387f15d 478
+src/renderer/features/workspace-files/workspace-file-browse-popover.node.test.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 1-33
+src/renderer/components/ui/viewer-header.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 342-372
+src/renderer/features/workspace-files/workspace-file-navigation-state.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 9-17,23,48-53,108
+src/renderer/components/shared/icons/file-viewer-icons.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 207-320
+src/renderer/features/workspace-files/workspace-file-navigation-state.node.test.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 57,64,75,80
+src/renderer/lib/workbench-panel-preview.node.test.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 54,178
+src/renderer/lib/workbench-scene-commands.node.test.ts
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 848
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 83
+src/renderer/features/workspace-files/workspace-file-browse-popover.tsx
+  s_cb8bbfdb133e81::t_2cdd75de7daa41 1-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fc3a0d78712dcefa50bfabaa0ee5d279f21b6669",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
