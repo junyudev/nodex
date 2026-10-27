@@ -76,5 +76,8 @@ export const electronMainSentryAdapter: MainSentryAdapter = {
   close: (timeout) => Sentry.close(timeout),
   init: (options) => Sentry.init(options),
   runTraceSpan,
-  setTag: (key, value) => Sentry.setTag(key, value),
+  setTag: (key, value) => {
+    Sentry.setTag(key, value);
+    Sentry.setAttribute(key, value);
+  },
 };

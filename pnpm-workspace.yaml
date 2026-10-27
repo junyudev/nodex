@@ -17,6 +17,11 @@ supportedArchitectures:
     - current
 
 overrides:
+  # Electron and React must share one Sentry SDK version for renderer initialization.
+  "@sentry/electron>@sentry/browser": 11.9.0
+  "@sentry/electron>@sentry/core": 11.9.0
+  "@sentry/electron>@sentry/node": 11.9.0
+  "@sentry/electron>@sentry/server-utils": 11.9.0
   "@opencode/protocol>effect": 4.0.6
   "@opencode/schema>effect": 4.0.6
   # Trees uses the shared color API; theming 1.0.2 also supports Diffs' Theme 2.
@@ -26,7 +31,8 @@ overrides:
   remark-breaks: 4.0.0
   "@types/node": 24.19.2
   "@babel/core": 7.29.7
-  "@xmldom/xmldom": 0.8.15
+  # plist omits the MIME type required by xmldom 0.9; keep its patched 0.8 API.
+  "plist>@xmldom/xmldom": 0.8.15
   dompurify: 3.4.17
   flatted: 3.4.2
   form-data: 4.0.6
@@ -55,7 +61,8 @@ overrides:
   "@modelcontextprotocol/sdk": 1.32.2
   "@modelcontextprotocol/sdk>hono": 4.13.14
   "@modelcontextprotocol/sdk>@hono/node-server": 2.1.5
-  js-yaml: 4.3.2
+  # Legacy tool APIs (including Redocly Schema.extend) still require YAML 4.
+  "js-yaml@<5": 4.3.2
   # Keep transitive math renderers on the security-patched release.
   katex: 0.19.1
   # Vite+ uses one Vitest 5 runtime; older library utilities retain patched major-4 APIs.

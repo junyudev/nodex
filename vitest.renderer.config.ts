@@ -13,8 +13,8 @@ import { rendererWorkerCount } from "./config/renderer-worker-count";
 
 const testFiles = filesForSuite("renderer", resolveVitestTestTier());
 
-export default defineConfig({
-  plugins: createRendererVitePlugins(),
+export default defineConfig(async () => ({
+  plugins: await createRendererVitePlugins(),
   resolve: rendererViteResolve,
   css: rendererViteCss,
   test: {
@@ -39,4 +39,4 @@ export default defineConfig({
     hookTimeout: testFiles.isStress ? 60_000 : 30_000,
     testTimeout: testFiles.isStress ? 60_000 : 30_000,
   },
-});
+}));

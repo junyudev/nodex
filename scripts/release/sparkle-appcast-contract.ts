@@ -1,4 +1,4 @@
-import { DOMParser } from "@xmldom/xmldom";
+import { type Element, DOMParser } from "@xmldom/xmldom";
 
 import type { SparkleArchitectureUpdateManifest, SparkleFileIdentity } from "./sparkle-manifest";
 

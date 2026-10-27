@@ -1,10 +1,7 @@
 import type { DiagnosticsSettings } from "../../shared/types";
 import type { CodexRequestTraceContext } from "../../shared/codex-request-lifecycle";
-import {
-  scrubSentryBreadcrumb,
-  scrubSentryData,
-  scrubSentryEvent,
-} from "../../shared/diagnostics/sentry-scrub";
+import { scrubSentryBreadcrumb, scrubSentryData } from "../../shared/diagnostics/sentry-scrub";
+import { createSentryPrivacyOptions } from "../../shared/diagnostics/sentry-options";
 import { subscribeToBackendLogs, type BackendLogEntry } from "../logging/logger";
 
 export interface MainSentryAdapter {
@@ -59,7 +56,10 @@ async function loadDefaultAdapter(): Promise<MainSentryAdapter> {
       sentry.captureMessage(message, hint as Parameters<typeof sentry.captureMessage>[1]),
     close: (timeout) => sentry.close(timeout),
     init: (options) => sentry.init(options),
-    setTag: (key, value) => sentry.setTag(key, value),
+    setTag: (key, value) => {
+      sentry.setTag(key, value);
+      sentry.setAttribute(key, value);
+    },
   };
 }
 
@@ -110,14 +110,9 @@ export async function initializeMainSentry(input: InitializeMainSentryInput): Pr
     environment: input.settings.environment,
     release: input.settings.release ?? `nodex@${input.appVersion}`,
     dist: input.arch,
-    sendDefaultPii: false,
+    ...createSentryPrivacyOptions(),
     tracesSampleRate: input.settings.tracesSampleRate,
     attachScreenshot: false,
-    beforeSend: (event: unknown) => scrubSentryEvent(event as Record<string, unknown>),
-    beforeBreadcrumb: (breadcrumb: { category?: string } & Record<string, unknown>) => {
-      if (breadcrumb.category === "console") return null;
-      return scrubSentryBreadcrumb(breadcrumb as Record<string, unknown>) as typeof breadcrumb;
-    },
   });
   adapter.setTag("process", "main");
   adapter.setTag("platform", input.platform);

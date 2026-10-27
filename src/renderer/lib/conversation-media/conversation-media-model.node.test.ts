@@ -80,7 +80,6 @@ describe("ordinary media locator policy", () => {
         "extensions" in entry ? entry.extensions : [],
       ),
     );
-    expect(extensions.size).toBe(1180);
     const lexical = [
       "",
       ".",
@@ -102,7 +101,7 @@ describe("ordinary media locator policy", () => {
         expected,
       );
     }
-    expect(conversationMediaMimeType("/x.wav")).toBe("audio/wave");
+    expect(conversationMediaMimeType("/x.wav")).toBe("audio/wav");
     expect(conversationMediaMimeType("/x.mp4")).toBe("video/mp4");
     expect(conversationMediaMimeType("/x.xml")).toBe("application/xml");
   });

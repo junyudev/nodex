@@ -3,7 +3,7 @@ type JsonLikeRecord = Record<string, unknown>;
 const SENSITIVE_KEY_PATTERN =
   /(?:pass(word)?|secret|token|api[-_]?key|authorization|cookie|session|credential|dsn)/i;
 const CONTENT_KEY_PATTERN =
-  /(?:prompt|transcript|description|markdown|sql|query|body|content|raw|attachment|clipboard)/i;
+  /(?:prompt|transcript|description|markdown|sql|query|body|content|raw|attachment|clipboard|gen_ai\.(?:input|output|tool\.call\.(?:arguments|result))|mcp\.(?:input|output|tool\.(?:arguments|result)))/i;
 const MAX_STRING_LENGTH = 1_000;
 const MAX_DEPTH = 6;
 const MAX_ARRAY_LENGTH = 20;
@@ -112,7 +112,7 @@ export function scrubSentryData(value: unknown): unknown {
   return scrubValue(value, undefined, 0, new WeakSet<object>());
 }
 
-export function scrubSentryEvent<T extends JsonLikeRecord>(event: T): T {
+export function scrubSentryEvent<T extends object>(event: T): T {
   const next = scrubValue(event, undefined, 0, new WeakSet<object>()) as T;
   if ("request" in next) {
     (next as JsonLikeRecord).request = scrubRequest(next.request);
@@ -120,6 +120,6 @@ export function scrubSentryEvent<T extends JsonLikeRecord>(event: T): T {
   return next;
 }
 
-export function scrubSentryBreadcrumb<T extends JsonLikeRecord>(breadcrumb: T): T {
+export function scrubSentryBreadcrumb<T extends object>(breadcrumb: T): T {
   return scrubValue(breadcrumb, undefined, 0, new WeakSet<object>()) as T;
 }

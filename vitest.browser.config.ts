@@ -12,8 +12,8 @@ import { createTypographyBootstrapHtmlPlugin } from "./config/typography-bootstr
 
 const testFiles = filesForSuite("browser", resolveVitestTestTier());
 
-export default defineConfig({
-  plugins: [...createRendererVitePlugins(), createTypographyBootstrapHtmlPlugin()],
+export default defineConfig(async () => ({
+  plugins: [...(await createRendererVitePlugins()), createTypographyBootstrapHtmlPlugin()],
   resolve: rendererViteResolve,
   css: rendererViteCss,
   optimizeDeps: {
@@ -55,4 +55,4 @@ export default defineConfig({
     setupFiles: ["./src/renderer/test/setup-browser.ts"],
     ...(testFiles.isStress ? { testTimeout: 60_000 } : {}),
   },
-});
+}));

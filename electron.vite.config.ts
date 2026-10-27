@@ -1,5 +1,5 @@
 import { resolve } from "path";
-import { defineConfig } from "electron-vite";
+import { defineConfig, type UserConfig } from "electron-vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import type { BuildEnvironmentOptions, Plugin, Rollup } from "vite";
 import { createExcalidrawFontAssetPlugins } from "./config/excalidraw-font-assets";
@@ -125,7 +125,7 @@ function isKnownYProsemirrorAwarenessTypeImportWarning(warning: Rollup.RollupLog
   );
 }
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
   const productionBuild = command === "build" && mode !== "development";
   const buildOptimization = {
     minify: productionBuild ? "oxc" : false,
@@ -221,7 +221,7 @@ export default defineConfig(({ command, mode }) => {
         createRendererDevelopmentCspPlugin(),
         createRendererProductionCspPlugin(),
         ...createExcalidrawFontAssetPlugins(),
-        ...createRendererVitePlugins(),
+        ...(await createRendererVitePlugins()),
         ...createSentryPlugins(),
       ],
       css: rendererViteCss,

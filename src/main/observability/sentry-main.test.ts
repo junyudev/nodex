@@ -61,6 +61,22 @@ describe("main Sentry diagnostics", () => {
     expect(initCount).toBe(0);
   });
 
+  test.each([{ enabled: false }, { dsn: "  " }])(
+    "does not load diagnostics for %o",
+    async (settings) => {
+      process.env.NODEX_SENTRY_FORCE_TEST = "1";
+      expect(
+        await initializeMainSentry({
+          appVersion: "0.1.0",
+          arch: "arm64",
+          isPackaged: false,
+          platform: "darwin",
+          settings: buildSettings(settings),
+        }),
+      ).toBe(false);
+    },
+  );
+
   test("initializes an injected adapter synchronously", async () => {
     process.env.NODEX_SENTRY_FORCE_TEST = "1";
     let initCount = 0;

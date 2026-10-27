@@ -1,6 +1,6 @@
 import type { DiagnosticsSettings } from "./types";
 import { invokeRendererQuery as invoke } from "./renderer-command";
-import { scrubSentryBreadcrumb, scrubSentryEvent } from "../../shared/diagnostics/sentry-scrub";
+import { createSentryPrivacyOptions } from "../../shared/diagnostics/sentry-options";
 import { isDiagnosticsSettings } from "../../shared/diagnostics/diagnostics-settings";
 
 interface RendererSentryAdapter {
@@ -71,7 +71,10 @@ async function loadDefaultAdapter(): Promise<RendererSentryAdapter> {
       sentry.init(options, react.init);
     },
     replayIntegration: (options) => sentry.replayIntegration(options),
-    setTag: (key, value) => sentry.setTag(key, value),
+    setTag: (key, value) => {
+      sentry.setTag(key, value);
+      sentry.setAttribute(key, value);
+    },
   };
 }
 
@@ -82,21 +85,18 @@ export async function initializeRendererSentry(
   if (isTestRuntime() && !shouldForceTestInitialization()) return false;
 
   const settings = await (input.getSettings ?? loadDiagnosticsSettings)();
-  if (!settings?.enabled) return false;
+  if (!settings?.enabled || !settings.dsn.trim()) return false;
 
   const adapter = input.adapter ?? (await loadDefaultAdapter());
+  const privacyOptions = createSentryPrivacyOptions();
   const initOptions: Record<string, unknown> = {
-    sendDefaultPii: false,
+    ...privacyOptions,
     tracesSampleRate: settings.tracesSampleRate,
     attachScreenshot: false,
-    beforeSend: (event: unknown) => scrubSentryEvent(event as Record<string, unknown>),
-    beforeBreadcrumb: (breadcrumb: { category?: string } & Record<string, unknown>) => {
-      if (breadcrumb.category === "console") return null;
-      return scrubSentryBreadcrumb(breadcrumb);
-    },
   };
   if (settings.replayEnabled) {
     initOptions.integrations = [
+      ...privacyOptions.integrations,
       adapter.replayIntegration({
         maskAllText: true,
         maskAllInputs: true,

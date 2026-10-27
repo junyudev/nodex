@@ -8,20 +8,29 @@ import { createRendererVitePlugins } from "./renderer-vite-shared";
 const transform = async (plugin: Plugin, code: string, id: string, ssr = false) => {
   const hook = plugin.transform;
   if (!hook) throw new Error(`Missing transform hook: ${plugin.name}`);
-  return (await Reflect.apply(typeof hook === "function" ? hook : hook.handler, {}, [
-    code,
-    id,
-    { ssr },
-  ])) as TransformResult;
+  return (await Reflect.apply(
+    typeof hook === "function" ? hook : hook.handler,
+    { environment: { name: ssr ? "ssr" : "client" } },
+    [code, id, { ssr }],
+  )) as TransformResult;
 };
+
+async function initializeCompilerEnvironment(plugin: Plugin) {
+  if (!plugin.applyToEnvironment) throw new Error("Missing Babel environment hook");
+  await Reflect.apply(plugin.applyToEnvironment, {}, [
+    { name: "client", config: { consumer: "client" } },
+  ]);
+}
 
 test("skips Babel outside the compiler boundary while retaining native React transforms", async () => {
   const config = await resolveConfig(
-    { configFile: false, logLevel: "silent", plugins: createRendererVitePlugins() },
+    { configFile: false, logLevel: "silent", plugins: await createRendererVitePlugins() },
     "serve",
   );
-  const babel = config.plugins.find((plugin) => plugin.name === "vite:react-babel");
-  if (!babel) throw new Error("Missing React Babel plugin");
+  const babel = config.plugins.find((plugin) => plugin.name === "@rolldown/plugin-babel");
+  if (!babel) throw new Error("Missing compiler Babel plugin");
+
+  await initializeCompilerEnvironment(babel);
 
   for (const path of [
     "src/shared/values.ts",
@@ -51,14 +60,15 @@ test("compiles components and hooks through the real Babel hook and preserves co
   const root = await mkdtemp(resolve(tmpdir(), "nodex-renderer-compiler-"));
   try {
     const config = await resolveConfig(
-      { configFile: false, logLevel: "silent", plugins: createRendererVitePlugins(root) },
+      { configFile: false, logLevel: "silent", plugins: await createRendererVitePlugins(root) },
       "serve",
     );
     const coverage = config.plugins.find(
       (plugin) => plugin.name === "nodex:renderer-compiler-coverage",
     );
-    const babel = config.plugins.find((plugin) => plugin.name === "vite:react-babel");
+    const babel = config.plugins.find((plugin) => plugin.name === "@rolldown/plugin-babel");
     if (!coverage || !babel) throw new Error("Missing renderer compiler plugins");
+    await initializeCompilerEnvironment(babel);
     const inputs = [
       [
         "Greeting.tsx",
@@ -76,7 +86,7 @@ test("compiles components and hooks through the real Babel hook and preserves co
       await transform(coverage, code, id);
       expect(await transform(babel, code, id)).toMatchObject({
         code: expect.any(String),
-        map: expect.objectContaining({ sources: [id] }),
+        map: expect.objectContaining({ sources: [filename], sourcesContent: [code] }),
       });
     }
     const ssrId = resolve(root, "src/renderer/server-probe.tsx");
@@ -113,15 +123,16 @@ test("reuses compiler output across dev servers and invalidates changed source o
     "export function Greeting({ name }: { name: string }) { return <span>{name}</span>; }";
   const compile = async (source: string, command: "serve" | "build" = "serve") => {
     const config = await resolveConfig(
-      { configFile: false, logLevel: "silent", plugins: createRendererVitePlugins(root) },
+      { configFile: false, logLevel: "silent", plugins: await createRendererVitePlugins(root) },
       command,
     );
     const coverage = config.plugins.find(
       (plugin) => plugin.name === "nodex:renderer-compiler-coverage",
     );
-    const babel = config.plugins.find((plugin) => plugin.name === "vite:react-babel");
+    const babel = config.plugins.find((plugin) => plugin.name === "@rolldown/plugin-babel");
     if (!coverage || !babel || !coverage.closeBundle)
       throw new Error("Missing renderer compiler plugins");
+    await initializeCompilerEnvironment(babel);
     await transform(coverage, source, resolve(root, filename));
     const result = await transform(babel, source, resolve(root, filename));
     const close = coverage.closeBundle;

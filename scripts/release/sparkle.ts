@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
+import { type Element, DOMParser, XMLSerializer } from "@xmldom/xmldom";
 
 import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
 import { materializeSparkleRuntime } from "../materialize-sparkle-runtime";

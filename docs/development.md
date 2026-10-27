@@ -64,6 +64,12 @@ Keep the root `yaml` development dependency aligned with Agent Runtime's version
 It supplies Vite's optional peer so workspace test helpers and the root runner
 resolve one Vitest instance.
 
+The renderer uses the React plugin's native JSX and Fast Refresh transforms.
+React Compiler runs through `@rolldown/plugin-babel` and `reactCompilerPreset`,
+with first-party source filtering and a separate development transform cache.
+Resolve the asynchronous Babel plugin before returning configuration to Electron Vite.
+Keep Babel's mutable native hook filter attached when wrapping its transform.
+
 The install lifecycle prepares pinned Electron, then runs `electron-builder install-app-deps`, which rebuilds
 `node-pty` for Electron. Do not run `vp rebuild` for it: that can replace the
 Electron-compatible binary with a host-Node binary. SQLite and collaborative
@@ -733,7 +739,7 @@ The test commands follow production boundaries:
   performance, and reliability gate. `vp run core:test`
   remains the complete local/source-verification alias.
 - `vp run core:protocol:verify` and `vp run core:module-boundaries` verify generated contracts and the Rust-only production boundary.
-- Core protocol generation runs `openapi-typescript` inside `packages/core-protocol-codegen`, where its officially supported TypeScript 5 compiler runtime is pinned. That package is a generator implementation detail; tsc-rs remains the repository source checker inside the shared semantic gate.
+- Core protocol generation runs `openapi-typescript` inside `packages/core-protocol-codegen`, where its officially supported TypeScript 5 compiler runtime is pinned. TypeScript 7 does not expose the JavaScript `factory` API that this generator uses. That package is a generator implementation detail; tsc-rs remains the repository source checker inside the shared semantic gate.
 - `vp run tooling:verify` also proves that Vite+ can load the complete workspace metadata graph while keeping third-party packages outside root task execution. Keep dependencies imported by workspace-local Vite configs resolvable even when those packages are not selected by `vp run`.
 - `vp run verify:effect-boundaries` keeps Effect inside the Main/script control plane, generated/shared/renderer contracts Effect-free, unstable APIs inside app-owned adapters, and runtime execution at approved composition/facade seams. Lifecycle tests use fake capabilities or `@effect/vitest` TestClock instead of real retry or escalation sleeps.
 - `vp run test:e2e` rebuilds the native Core plus Electron application, then

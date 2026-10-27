@@ -1,24 +1,23 @@
 import tailwindcss from "@tailwindcss/postcss";
-import react from "@vitejs/plugin-react";
+import babel from "@rolldown/plugin-babel";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { resolve } from "node:path";
+import type { Plugin } from "vite";
 import {
   createRendererCompilerIntegration,
   isRendererCompilerSource,
 } from "./renderer-react-compiler";
 
-export function createRendererVitePlugins(root = process.cwd()) {
+export async function createRendererVitePlugins(root = process.cwd()) {
   const compiler = createRendererCompilerIntegration(root);
+  const compilerPlugin = await babel({
+    include: (id) => !!id && isRendererCompilerSource(id, root),
+    presets: [reactCompilerPreset(compiler.options)],
+  });
   return [
     compiler.coverage,
-    ...react({
-      // Compiler sources are checked after Babel parses. Skip that work at the plugin boundary,
-      // while leaving the React plugin's native JSX and Fast Refresh coverage unchanged.
-      babel: (id) => ({
-        plugins: isRendererCompilerSource(id, root)
-          ? [["babel-plugin-react-compiler", compiler.options]]
-          : [],
-      }),
-    }).map(compiler.cacheTransform),
+    ...react(),
+    compiler.cacheTransform(compilerPlugin as unknown as Plugin),
   ];
 }
 

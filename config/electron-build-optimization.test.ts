@@ -32,7 +32,7 @@ afterAll(async () => {
 });
 
 async function buildFixture(target: (typeof targets)[number], environment: ConfigEnv) {
-  const settings = electronConfig(environment)[target]?.build;
+  const settings = (await electronConfig(environment))[target]?.build;
   const output = settings?.rollupOptions?.output;
   if (!settings || !output || Array.isArray(output)) {
     throw new Error(`Expected one configured output for ${target}`);
@@ -113,7 +113,7 @@ describe("Electron build optimization", () => {
 test.each(["development", "production"])(
   "keeps multiple %s preload entries independently executable in the sandbox",
   async (mode) => {
-    const preload = electronConfig({ command: "build", mode }).preload;
+    const preload = (await electronConfig({ command: "build", mode })).preload;
     if (!preload?.build) throw new Error("Expected a preload build");
     const { rollupOptions, ...buildSettings } = preload.build;
     const entries = Object.fromEntries(
@@ -164,7 +164,7 @@ contextBridge.exposeInMainWorld("${name}", runtimeNames);
 );
 
 test("keeps renderer name and preload helpers inside the lightweight bootstrap boundary", async () => {
-  const renderer = electronConfig({ command: "build", mode: "production" }).renderer;
+  const renderer = (await electronConfig({ command: "build", mode: "production" })).renderer;
   if (!renderer?.build) throw new Error("Expected a renderer build");
   await writeFile(
     join(fixtureDirectory, "index.html"),

@@ -3,32 +3,50 @@ import { isAbsoluteAppFilesystemPath, buildAppFilesystemUrl } from "../../../sha
 import { interpretConversationFilePath } from "../markdown/conversation-markdown-targets";
 
 export type ConversationMediaKind = "image" | "audio" | "video";
-const mimeSourcePreference: readonly (string | undefined)[] = [
-  "nginx",
-  "apache",
-  undefined,
-  "iana",
-];
-const mimeTypes = new Map<string, string>();
+// Mirror mime-types 3's mime-score without pulling node:path into the renderer.
+function mimeScore(type: string, source: string | undefined): number {
+  if (type === "application/octet-stream") return 0;
+  const [category, subtype = ""] = type.split("/");
+  const facet = subtype.replace(/(\.|x-).*/, "$1");
+  const facetScores: Readonly<Record<string, number>> = {
+    "prs.": 100,
+    "x-": 200,
+    "x.": 300,
+    "vnd.": 400,
+  };
+  const sourceScores: Readonly<Record<string, number>> = { nginx: 10, apache: 20, iana: 40 };
+  const typeScores: Readonly<Record<string, number>> = {
+    application: 1,
+    font: 2,
+    audio: 2,
+    video: 3,
+  };
+  return (
+    (facetScores[facet] ?? 900) +
+    (sourceScores[source ?? ""] ?? 30) +
+    (typeScores[category ?? ""] ?? 0) +
+    1 -
+    type.length / 100
+  );
+}
+
 const database: Readonly<
   Record<
     string,
     {
       readonly source?: string;
       readonly extensions?: readonly string[];
-      readonly charset?: string;
       readonly compressible?: boolean;
+      readonly charset?: string;
     }
   >
 > = mimeDatabase;
+const mimeTypes = new Map<string, string>();
 for (const [type, entry] of Object.entries(database)) {
   for (const extension of entry.extensions ?? []) {
     const previous = mimeTypes.get(extension);
-    if (previous && previous !== "application/octet-stream") {
-      const from = mimeSourcePreference.indexOf(database[previous]?.source);
-      const to = mimeSourcePreference.indexOf(entry.source);
-      if (from > to || (from === to && previous.startsWith("application/"))) continue;
-    }
+    if (previous && mimeScore(previous, database[previous]?.source) > mimeScore(type, entry.source))
+      continue;
     mimeTypes.set(extension, type);
   }
 }

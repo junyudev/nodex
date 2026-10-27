@@ -66,6 +66,14 @@ describe("renderer Sentry diagnostics", () => {
     expect(initCount).toBe(0);
   });
 
+  test("does not initialize diagnostics or replay without a DSN", async () => {
+    process.env.NODEX_SENTRY_FORCE_TEST = "1";
+    const initialized = await initializeRendererSentry({
+      getSettings: async () => buildSettings(true, { dsn: "  ", replayEnabled: true }),
+    });
+    expect(initialized).toBe(false);
+  });
+
   test("does not require the renderer to expose a Node process global", async () => {
     const mutableGlobal = globalThis as unknown as {
       process: typeof process | undefined;
@@ -139,9 +147,9 @@ describe("renderer Sentry diagnostics", () => {
     });
 
     expect(initialized).toBe(true);
-    expect(initOptions[0]?.sendDefaultPii).toBe(false);
+    expect(initOptions[0]?.dataCollection).toMatchObject({ userInfo: false, httpBodies: [] });
     expect(initOptions[0]?.attachScreenshot).toBe(false);
-    expect(initOptions[0]?.integrations).toBe(undefined);
+    expect(initOptions[0]?.integrations).toMatchObject([{ name: "NodexEnvelopePrivacy" }]);
     expect(processTag).toBe("renderer");
   });
 
@@ -174,8 +182,9 @@ describe("renderer Sentry diagnostics", () => {
     expect(replayOptions[0]?.maskAllText).toBe(true);
     expect(replayOptions[0]?.maskAllInputs).toBe(true);
     expect(replayOptions[0]?.blockAllMedia).toBe(true);
-    expect(integrations?.length).toBe(1);
-    expect(integrations?.[0]).toBe(replayToken);
+    expect(integrations?.length).toBe(2);
+    expect(integrations?.[0]).toMatchObject({ name: "NodexEnvelopePrivacy" });
+    expect(integrations?.[1]).toBe(replayToken);
     expect(initOptions[0]?.replaysSessionSampleRate).toBe(0.1);
     expect(initOptions[0]?.replaysOnErrorSampleRate).toBe(1);
   });

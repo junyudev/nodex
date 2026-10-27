@@ -11,7 +11,7 @@ const production = { issuer: "https://clerk.example.test", clientId: "public-pro
 afterEach(() => vi.unstubAllEnvs());
 
 const buildConfiguration = async () => {
-  const main = electronConfig({ command: "build", mode: "production" }).main;
+  const main = (await electronConfig({ command: "build", mode: "production" })).main;
   const result = await build({
     configFile: false,
     logLevel: "silent",

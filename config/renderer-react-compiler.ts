@@ -120,14 +120,10 @@ export function createRendererCompilerIntegration(root = process.cwd()) {
   const coverage: Plugin = {
     name: "nodex:renderer-compiler-coverage",
     enforce: "pre",
-    // The React plugin cannot infer this dependency from per-file Babel options.
-    config: () => ({ optimizeDeps: { include: ["react/compiler-runtime"] } }),
     configResolved(config) {
       command = config.command;
       mode = config.mode;
-      // Unknown Babel overrides may depend on state outside this compiler configuration.
-      cacheEnabled =
-        command === "serve" && !config.plugins.some((plugin) => plugin.api?.reactBabel);
+      cacheEnabled = command === "serve";
       cacheIdentity = `${compilerConfigurationIdentity(root)}:${mode}:${config.isProduction}`;
     },
     transform(code, id, transformOptions) {
@@ -178,7 +174,7 @@ export function createRendererCompilerIntegration(root = process.cwd()) {
 
   /** Cache only Babel's compiler pass; Vite still performs native JSX, Refresh and import analysis. */
   function cacheTransform(plugin: Plugin): Plugin {
-    if (plugin.name !== "vite:react-babel" || !plugin.transform) return plugin;
+    if (!plugin.transform) return plugin;
     const transformHook = plugin.transform;
     const transform = typeof transformHook === "function" ? transformHook : transformHook.handler;
     const handler: typeof transform = async function (code, id, transformOptions) {
@@ -223,10 +219,11 @@ export function createRendererCompilerIntegration(root = process.cwd()) {
       }
       return result;
     };
-    return {
-      ...plugin,
-      transform: typeof transformHook === "function" ? handler : { ...transformHook, handler },
-    };
+    // Babel updates this hook's native filter when Vite resolves its configuration.
+    // Keep the hook object so caching cannot detach that filter update.
+    if (typeof transformHook === "function") plugin.transform = handler;
+    else transformHook.handler = handler;
+    return plugin;
   }
 
   return { options, coverage, cacheTransform };
