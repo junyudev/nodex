@@ -845,7 +845,7 @@ describe("resource-preserving preview promotion", () => {
       cwd: "/workspace",
       workspaceRoot: "/workspace",
       leafId: groupId,
-      location: { line: 17 },
+      state: { pendingReveal: { line: 17 } },
     });
     const slot = makeWorkbenchPanelSlotKey("session:session-a", "right", groupId);
     subject.owner.dispatchEphemeral({

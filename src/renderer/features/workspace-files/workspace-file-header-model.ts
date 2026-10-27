@@ -5,6 +5,11 @@ export interface WorkspaceFileBreadcrumb {
   readonly segments: readonly string[];
   /** The path the breadcrumb stands for, relative to its root when it has one. */
   readonly title: string;
+  /**
+   * Each segment's path relative to the workspace root (`""` for the root itself), present only
+   * when the trail starts at the workspace root, so its folders can be browsed.
+   */
+  readonly workspacePaths: readonly string[] | null;
 }
 
 /**
@@ -23,7 +28,11 @@ export function resolveWorkspaceFileBreadcrumb({
   const contextRoot = workspaceRoot ?? cwd;
   if (path === null) {
     const label = contextRoot ? getWorkspaceFileName(contextRoot) : "";
-    return { segments: label ? [label] : [], title: label };
+    return {
+      segments: label ? [label] : [],
+      title: label,
+      workspacePaths: label && workspaceRoot ? [""] : null,
+    };
   }
   for (const root of [workspaceRoot, cwd]) {
     if (!root) continue;
@@ -34,10 +43,14 @@ export function resolveWorkspaceFileBreadcrumb({
     return {
       segments: [rootLabel, ...parts],
       title: [rootLabel, ...parts].join("/"),
+      workspacePaths:
+        root === workspaceRoot
+          ? ["", ...parts.map((_, index) => parts.slice(0, index + 1).join("/"))]
+          : null,
     };
   }
   const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
-  return { segments: parts, title: path };
+  return { segments: parts, title: path, workspacePaths: null };
 }
 
 export interface WorkspaceFilePathVariants {

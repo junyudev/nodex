@@ -339,6 +339,37 @@ export const ViewerIconButton = forwardRef<
 const COMPOUND_CONTROL_CLASS =
   "no-drag cursor-interaction flex items-center gap-1 whitespace-nowrap rounded-full border border-transparent px-2 py-0.5 text-sm leading-[18px] text-(--color-text) select-none focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-40 aria-disabled:cursor-default aria-disabled:opacity-40 not-disabled:not-aria-disabled:hover:bg-(--color-background-primary-ghost-hover) data-[popup-open]:bg-(--color-background-primary-ghost-hover)";
 
+/**
+ * A borderless icon control inside a group, such as change navigation or a layout toggle. It is
+ * 28px in a compact header.
+ */
+export const ViewerControlButton = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement> & {
+    readonly label: string;
+    /** `toolbar` dims the glyph like a secondary toolbar action. */
+    readonly tone?: "default" | "toolbar";
+  }
+>(function ViewerControlButton({ label, tone = "default", className, type, ...props }, ref) {
+  return (
+    <NodexTooltip tooltipContent={label} delayOpen>
+      <button
+        ref={ref}
+        type={type ?? "button"}
+        aria-label={label}
+        className={cn(
+          COMPOUND_CONTROL_CLASS,
+          "aspect-square shrink-0 justify-center !px-0",
+          tone === "toolbar" && "text-(--color-text-toolbar-action)",
+          styles.control,
+          className,
+        )}
+        {...props}
+      />
+    </NodexTooltip>
+  );
+});
+
 export interface ViewerSplitButtonProps {
   readonly label: string;
   readonly children: ReactNode;

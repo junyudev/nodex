@@ -54,12 +54,14 @@ describe("workspace file navigation state", () => {
   test("normalizes paths, duplicates, and invalid scroll offsets", () => {
     expect(
       normalizeWorkspaceFileNavigationState({
+        ...EMPTY_WORKSPACE_FILE_NAVIGATION_STATE,
         expandedPaths: ["", "src/", "src", "\\src\\components\\"],
         selectedPath: "\\src\\index.ts",
         searchQuery: "index",
         scrollTop: Number.NaN,
       }),
     ).toEqual({
+      ...EMPTY_WORKSPACE_FILE_NAVIGATION_STATE,
       expandedPaths: ["", "src", "src/components"],
       selectedPath: "src/index.ts",
       searchQuery: "index",
@@ -70,16 +72,14 @@ describe("workspace file navigation state", () => {
   test("rejects root-escaping paths and resolves contained parent segments", () => {
     expect(
       normalizeWorkspaceFileNavigationState({
+        ...EMPTY_WORKSPACE_FILE_NAVIGATION_STATE,
         expandedPaths: ["", "../outside", "src/../../outside", "src/../docs"],
         selectedPath: "../outside.ts",
-        searchQuery: "",
-        scrollTop: 0,
       }),
     ).toEqual({
+      ...EMPTY_WORKSPACE_FILE_NAVIGATION_STATE,
       expandedPaths: ["", "docs"],
       selectedPath: null,
-      searchQuery: "",
-      scrollTop: 0,
     });
 
     expect(

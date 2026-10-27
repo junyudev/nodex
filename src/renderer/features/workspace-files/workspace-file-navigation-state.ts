@@ -6,11 +6,21 @@ export interface WorkspaceFileNavigationKey {
   readonly workspaceRoot: string;
 }
 
+/** How the Changed files / All files split is folded, and which section the open file shows in. */
+export interface WorkspaceFileChangesNavigationState {
+  readonly changedCollapsed: boolean;
+  readonly allCollapsed: boolean;
+  /** Changed-section folders (root-relative) the user collapsed; others start open. */
+  readonly collapsedChangedPaths: readonly string[];
+  readonly selectedSection: "changed" | "all";
+}
+
 export interface WorkspaceFileNavigationState {
   readonly expandedPaths: readonly string[];
   readonly selectedPath: string | null;
   readonly searchQuery: string;
   readonly scrollTop: number;
+  readonly changes: WorkspaceFileChangesNavigationState;
 }
 
 export function normalizeWorkspaceFileNavigationKey(
@@ -35,6 +45,12 @@ export const EMPTY_WORKSPACE_FILE_NAVIGATION_STATE: WorkspaceFileNavigationState
   selectedPath: null,
   searchQuery: "",
   scrollTop: 0,
+  changes: Object.freeze({
+    changedCollapsed: false,
+    allCollapsed: false,
+    collapsedChangedPaths: Object.freeze([]),
+    selectedSection: "changed",
+  }),
 });
 
 function normalizeNavigationPath(path: string): string | null {
@@ -89,6 +105,7 @@ export function normalizeWorkspaceFileNavigationState(
     selectedPath,
     searchQuery: state.searchQuery,
     scrollTop,
+    changes: state.changes,
   };
 }
 

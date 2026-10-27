@@ -11,6 +11,7 @@ import {
   canonicalWorkbenchFilePath,
   WorkbenchAbsoluteFilePathSchema,
 } from "../../shared/workbench-resource-identity";
+import type { WorkspaceFileShowChanges } from "@/features/workspace-files/workspace-file-types";
 
 export type FileReferenceTarget = FileLinkTarget;
 
@@ -38,6 +39,7 @@ export interface FileReferenceRouterPort {
     mode?: "preview" | "durable";
     workspaceRoot?: string | null;
     location?: Pick<FileLinkTarget, "line" | "column" | "endLine" | "endColumn">;
+    showChanges?: WorkspaceFileShowChanges;
     isCurrent?: () => boolean;
   }) => Promise<boolean>;
 }

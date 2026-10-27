@@ -17,7 +17,7 @@ import {
   type ProjectSessionFilesPreviewTab,
   type WorkbenchTabProjectionPanelTab,
 } from "@/lib/workbench-panel-tab-model";
-import type { WorkspaceFileRevealLocation } from "@/features/workspace-files/workspace-file-types";
+import type { WorkspaceFilesTabState } from "@/features/workspace-files/workspace-file-types";
 import { normalizeOptionalPath } from "@/lib/workbench-workspace-context";
 
 const PREVIEWABLE_PROJECT_SESSION_TAB_KINDS = [
@@ -257,7 +257,8 @@ export function makePreviewWorkspaceFileTab(
     path: string;
     title: string;
     workspaceRoot: string | null;
-    location?: WorkspaceFileRevealLocation;
+    /** State the file opens with, such as a location to reveal. */
+    state?: WorkspaceFilesTabState | null;
   },
 ): ProjectSessionFilesPreviewTab {
   const now = new Date().toISOString();
@@ -283,7 +284,7 @@ export function makePreviewWorkspaceFileTab(
       path: canonicalWorkbenchFilePath(input.path, input.cwd ?? input.workspaceRoot),
     },
     stateKey: 0,
-    state: input.location ? { pendingReveal: input.location } : {},
+    state: input.state ?? {},
     preview: true,
     previewInstanceId: createSecureRuntimeId("preview"),
     createdAt: now,

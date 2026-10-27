@@ -28,3 +28,4 @@ export type {
   WorkspaceFilesTab,
   WorkspaceFilesTabState,
 } from "./workspace-file-types";
+export type { WorkspaceFilesReview } from "./workspace-files-panel";

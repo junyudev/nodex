@@ -34,6 +34,7 @@ export type CommandPaletteShellCommandId =
   | "toggleSidePanel"
   | typeof TOGGLE_BOTTOM_PANEL_COMMAND_ID
   | "toggleFileTreePanel"
+  | "toggleGitBlame"
   | "openBrowserTab"
   | "openReviewTab"
   | "toggleTerminal"
@@ -68,6 +69,8 @@ export interface CommandPaletteShellCommandContext {
   canOpenSessionInNewWindow: boolean;
   isMac: boolean;
   commandKeymapState?: CommandKeymapState | null;
+  /** Whether the Files editor shows the active line's author and commit. */
+  gitBlameEnabled?: boolean;
 }
 
 function fallbackCommandKeymapState(isMac: boolean): CommandKeymapState {
@@ -91,6 +94,7 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === "toggleSidePanel" ||
     id === TOGGLE_BOTTOM_PANEL_COMMAND_ID ||
     id === "toggleFileTreePanel" ||
+    id === "toggleGitBlame" ||
     id === "openBrowserTab" ||
     id === "openReviewTab" ||
     id === "toggleTerminal" ||
@@ -461,6 +465,16 @@ export function buildCommandPaletteCommands(
         shortcut: shortcutLabel("toggleFileTreePanel", "CmdOrCtrl+Shift+E"),
         disabled: !context.panelActionAvailability.files,
       },
+    ),
+    command(
+      "toggleGitBlame",
+      "Panels",
+      context.gitBlameEnabled ? "Disable Git blame" : "Enable Git blame",
+      context.gitBlameEnabled
+        ? "Hide the author and commit for the active editor line"
+        : "Show the author and commit for the active editor line",
+      ["git", "blame", "author", "commit", "line", "editor"],
+      905,
     ),
     command(
       "openBrowserTab",

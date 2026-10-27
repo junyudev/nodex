@@ -40,6 +40,7 @@ import {
 } from "@/lib/session-execution";
 
 import type { SettingsSectionId } from "./workbench-settings-sections";
+import { useWorkspaceFileActiveLineBlame } from "@/features/workspace-files/workspace-file-preferences";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SessionCommands = Pick<
@@ -169,6 +170,7 @@ export function WorkbenchCommandPaletteHost({
     return () => window.removeEventListener("keydown", handleFolderShortcut);
   }, []);
   const panelCapabilities = panelCommands.resolveActivePanelCapabilities("right");
+  const activeLineBlame = useWorkspaceFileActiveLineBlame();
   const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMockCommands"> = {
     canReloadSkills: skillsReloadControl !== null,
     canSearchFiles: true,
@@ -195,6 +197,7 @@ export function WorkbenchCommandPaletteHost({
     ) as CommandPaletteShellCommandContext["panelActionAvailability"],
     canOpenSessionInNewWindow,
     commandKeymapState,
+    gitBlameEnabled: activeLineBlame.enabled,
   };
   const commandHandlers: CommandPaletteShellCommandHandlers = {
     openFolder: () => {
@@ -246,6 +249,7 @@ export function WorkbenchCommandPaletteHost({
         source: "command_palette",
       });
     },
+    toggleGitBlame: activeLineBlame.toggle,
     toggleFileTreePanel: () => {
       void panelCommands.dispatchPanelAction("files", { panelId: "right" });
     },

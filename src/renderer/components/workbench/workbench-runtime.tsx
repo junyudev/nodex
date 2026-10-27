@@ -2741,6 +2741,7 @@ export function WorkbenchRuntime({
         searchByProject,
         setSearchQuery,
         taskSearchOpenTick,
+        onSearchInFiles: () => openCommandPalette({ mode: "text" }),
       },
       conversation: {
         composerEnterBehavior,

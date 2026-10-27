@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - The Files viewer previews videos and audio, with seeking, volume, playback speed, picture in picture and fullscreen, and explains when a file such as an archive or office document has no preview. Its header copies the file's path in the form you need, opens it on GitHub, and opens media and documents in the app made for them.
+- Files shows a text file's changes in place: pick Uncommitted, Unstaged, Staged, a commit or the branch to compare against, step between changes, switch between unified and split layouts, and keep editing while you compare. The file tree lists changed files above all files, with All changes opening Review, and the breadcrumb opens any folder's contents. Enable Git blame from the command palette to see who last changed the line you're on.
 - Agent questions keep unfinished answers across reopening and restart, support partial replies after work stops, and show readable answer history. Private responses stay hidden in copied and exported text.
 
 - macOS Appearance settings offer app-wide Font smoothing, enabled by default and synchronized across windows.

@@ -1,5 +1,5 @@
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react";
-import type { FileTreeOptions } from "@pierre/trees";
+import type { FileTreeOptions, FileTreeSortComparator } from "@pierre/trees";
 import {
   Component,
   useEffect,
@@ -11,7 +11,7 @@ import {
 } from "react";
 import { buildFileTreeExpandedPaths, getFileTreeEventPath } from "@/lib/file-tree-paths";
 import { cn } from "@/lib/utils";
-import { FILE_TREE_CSS, REVIEW_FILE_TREE_CSS } from "./file-tree-theme";
+import { fileTreeCss, REVIEW_FILE_TREE_CSS, type FileTreeThemeOptions } from "./file-tree-theme";
 
 export interface FileTreeState {
   readonly expandedPaths: readonly string[];
@@ -19,13 +19,15 @@ export interface FileTreeState {
   readonly scrollTop: number;
 }
 
-export interface FileTreeProps {
+export interface FileTreeProps extends FileTreeThemeOptions {
   readonly paths: readonly string[];
   readonly ariaLabel: string;
   readonly appearance: "review" | "workspace";
   readonly expandedPaths: readonly string[];
   readonly selectedPath: string | null;
   readonly flattenEmptyDirectories?: boolean;
+  /** Orders siblings; Pierre's directory-first, name order applies when omitted. */
+  readonly sort?: FileTreeSortComparator;
   readonly gitStatus?: FileTreeOptions["gitStatus"];
   readonly icons?: FileTreeOptions["icons"];
   readonly renderRowDecoration?: FileTreeOptions["renderRowDecoration"];
@@ -44,6 +46,9 @@ export interface FileTreeProps {
 const DEFAULT_ICONS = { set: "complete", colored: true } as const;
 const equalPaths = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length && left.every((path, index) => path === right[index]);
+/** Expansion is a set of folders; order and the implicit root do not change it. */
+const sameExpansion = (left: readonly string[], right: readonly string[]) =>
+  equalPaths(left.filter(Boolean).toSorted(), right.filter(Boolean).toSorted());
 
 /** One long-lived tree model owns focus, selection, sticky folders, and virtualization. */
 function FileTreeContent({
@@ -53,6 +58,10 @@ function FileTreeContent({
   expandedPaths,
   selectedPath,
   flattenEmptyDirectories = false,
+  sort,
+  surface,
+  sectioned,
+  decorationAlignment,
   gitStatus,
   icons = DEFAULT_ICONS,
   renderRowDecoration,
@@ -76,12 +85,16 @@ function FileTreeContent({
     initialSelectedPaths: selectedPath ? [selectedPath] : [],
     fileTreeSearchMode: "hide-non-matches",
     flattenEmptyDirectories,
+    ...(sort ? { sort } : {}),
     gitStatus,
     icons,
     itemHeight: appearance === "review" ? 29 : 28,
     search: false,
     stickyFolders: true,
-    unsafeCSS: appearance === "review" ? REVIEW_FILE_TREE_CSS : FILE_TREE_CSS,
+    unsafeCSS:
+      appearance === "review"
+        ? REVIEW_FILE_TREE_CSS
+        : fileTreeCss({ surface, sectioned, decorationAlignment }),
     onSelectionChange: (selection) => {
       if (!syncingSelection.current) callbacks.current.onSelectionChange?.(selection);
     },
@@ -108,17 +121,26 @@ function FileTreeContent({
       previous &&
       previous.resetKey === resetKey &&
       equalPaths(previous.paths, paths) &&
-      equalPaths(previous.expandedPaths, expandedPaths)
+      sameExpansion(previous.expandedPaths, expandedPaths)
     )
       return;
     previousReset.current = { paths, expandedPaths, resetKey };
     syncingSelection.current = true;
     try {
-      model.resetPaths(paths, { initialExpandedPaths: expandedPaths });
+      if (!previous || previous.resetKey !== resetKey || !equalPaths(previous.paths, paths))
+        model.resetPaths(paths, { initialExpandedPaths: expandedPaths });
+      // A custom sort does not honor initial expansion, so settle every folder explicitly.
+      const open = new Set(expandedPaths.filter(Boolean));
+      for (const path of directoryPaths) {
+        const item = model.getItem(path);
+        if (!item || !("isExpanded" in item)) continue;
+        if (open.has(path) && !item.isExpanded()) item.expand();
+        else if (!open.has(path) && item.isExpanded()) item.collapse();
+      }
     } finally {
       syncingSelection.current = false;
     }
-  }, [expandedPaths, model, paths, resetKey]);
+  }, [directoryPaths, expandedPaths, model, paths, resetKey]);
 
   useEffect(() => {
     model.setGitStatus(gitStatus);
@@ -221,7 +243,8 @@ function FileTreeContent({
       model={model}
       aria-label={ariaLabel}
       className={cn(
-        "block h-full min-h-0 w-full bg-token-main-surface-primary text-(--color-text)",
+        "block h-full min-h-0 w-full text-(--color-text)",
+        surface === "dropdown" ? "bg-surface-elevated-secondary" : "bg-token-main-surface-primary",
         className,
       )}
       data-tab-preview-pin-exempt="true"
@@ -263,7 +286,11 @@ class FileTreeRenderBoundary extends Component<
 export function FileTree(props: FileTreeProps) {
   return (
     <FileTreeRenderBoundary resetKey={props.paths.join("\0")}>
-      <FileTreeContent {...props} />
+      {/* Tree options are fixed at construction, so a theme change builds a new tree. */}
+      <FileTreeContent
+        key={`${props.appearance}:${props.surface}:${props.sectioned}:${props.decorationAlignment}`}
+        {...props}
+      />
     </FileTreeRenderBoundary>
   );
 }

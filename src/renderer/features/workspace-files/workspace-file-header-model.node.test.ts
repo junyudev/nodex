@@ -15,17 +15,26 @@ describe("workspace file header model", () => {
         workspaceRoot: "/repo/nodex",
         path: "/repo/nodex/notes/review.webm",
       }),
-    ).toEqual({ segments: ["nodex", "notes", "review.webm"], title: "nodex/notes/review.webm" });
-    expect(
-      resolveWorkspaceFileBreadcrumb({
-        cwd: "/tmp/run",
-        workspaceRoot: "/repo/nodex",
-        path: "/tmp/run/out.mp4",
-      }).segments,
-    ).toEqual(["run", "out.mp4"]);
+    ).toEqual({
+      segments: ["nodex", "notes", "review.webm"],
+      title: "nodex/notes/review.webm",
+      workspacePaths: ["", "notes", "notes/review.webm"],
+    });
+    const cwdTrail = resolveWorkspaceFileBreadcrumb({
+      cwd: "/tmp/run",
+      workspaceRoot: "/repo/nodex",
+      path: "/tmp/run/out.mp4",
+    });
+    expect(cwdTrail.segments).toEqual(["run", "out.mp4"]);
+    // Only the workspace root's folders are browsable from the trail.
+    expect(cwdTrail.workspacePaths).toBeNull();
     expect(
       resolveWorkspaceFileBreadcrumb({ cwd: null, workspaceRoot: null, path: "/var/log/app.log" }),
-    ).toEqual({ segments: ["var", "log", "app.log"], title: "/var/log/app.log" });
+    ).toEqual({
+      segments: ["var", "log", "app.log"],
+      title: "/var/log/app.log",
+      workspacePaths: null,
+    });
     expect(
       resolveWorkspaceFileBreadcrumb({ cwd: null, workspaceRoot: "/repo/nodex", path: null })
         .segments,

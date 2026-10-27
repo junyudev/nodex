@@ -2,7 +2,7 @@ import { useFileSearch } from "@/lib/use-file-search";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import { FileTreeFilter } from "@/components/ui/file-tree-filter";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
@@ -14,19 +14,21 @@ import {
   Suspense,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
 } from "react";
-import { CopyLightIcon } from "@/components/shared/icons/file-viewer-icons";
+import { BulletListIcon, CopyLightIcon } from "@/components/shared/icons/file-viewer-icons";
+import { ToolbarButton } from "@/components/ui/toolbar-button";
+import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
 import { toast } from "@/components/ui/toast";
 import { LazySourceViewer } from "@/components/ui/lazy-source-viewer";
 import { subscribeWorkspaceFileChanges } from "@/lib/api";
 import {
-  workspaceDirectoryQueryOptions,
   workspaceFileBinaryQueryOptions,
   workspaceFileMetadataQueryOptions,
   workspaceFileTextQueryOptions,
 } from "@/lib/query-options";
-import type { Project, ProjectSession, WorkspaceFileDirectoryEntry } from "@/lib/types";
+import type { Project, ProjectSession } from "@/lib/types";
 import { classifyContentBudget } from "@/lib/content-budget";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { FILE_LINK_OPENER_ICON_URLS } from "@/lib/file-link-opener-icons";
@@ -45,7 +47,7 @@ import {
 } from "@/lib/file-system-operations";
 import { useFileLinkOpener } from "@/lib/use-file-link-opener";
 import { useScopedAtom } from "@/lib/maitai";
-import { createGitWorkerQuery } from "@/features/review/data/git-query";
+import { createGitLiveWorkerQuery, createGitWorkerQuery } from "@/features/review/data/git-query";
 import {
   readWorkspaceFileMetadata,
   readWorkspaceFileText,
@@ -95,6 +97,8 @@ import {
 } from "./workspace-file-layout";
 import { WorkspaceFileConflict } from "./workspace-file-conflict";
 import { WorkspaceFileMediaPreview } from "./workspace-file-media-preview";
+import { useWorkspaceDirectoryTree } from "./use-workspace-directory-tree";
+import { useWorkspaceFileChanges } from "./use-workspace-file-changes";
 import {
   WorkspaceFileErrorState,
   WorkspaceFileLoadingState,
@@ -109,7 +113,19 @@ import {
   type WorkspaceFileOpenTarget,
   type WorkspaceFileViewerOption,
 } from "./workspace-file-viewer-header";
-import { WorkspacePierreEditor } from "./workspace-pierre-editor";
+import {
+  WorkspacePierreEditor,
+  type WorkspacePierreEditorHandle,
+  type WorkspacePierreEditorProps,
+} from "./workspace-pierre-editor";
+import { useWorkspaceFileBlame, useWorkspaceFileGit } from "./use-workspace-file-git";
+import { formatWorkspaceFileActiveLineBlame } from "./workspace-file-blame-model";
+import {
+  useWorkspaceFileActiveLineBlame,
+  useWorkspaceFileDiffLayout,
+} from "./workspace-file-preferences";
+import type { WorkspaceFileChangeNavigationState } from "./workspace-file-change-blocks";
+import type { WorkspaceFileComparisonControl } from "./workspace-file-comparison-controls";
 import {
   WorkspaceTextDocumentController,
   workspaceTextDocumentRegistry,
@@ -117,10 +133,12 @@ import {
 } from "./workspace-text-document-controller";
 import {
   normalizeWorkspaceFilesTabState,
+  type WorkspaceFileShowChanges,
   type WorkspaceFilesTab,
   type WorkspaceFilesTabState,
   type WorkspaceFilePreviewState,
 } from "./workspace-file-types";
+import { workspaceFileGitSourceForComparison } from "./workspace-file-changes";
 
 const MAX_IMAGE_PREVIEW_BYTES = 25_000_000;
 /** The system default app and the next few apps that can open the file. */
@@ -154,9 +172,16 @@ interface WorkspaceFilesPanelProps {
   onUpdateTabState?: (state: WorkspaceFilesTabState) => void;
   /** Opens workspace text search; the header omits the control without it. */
   onSearchInFiles?: () => void;
+  /** The route's Review; the tree offers All changes only when it reviews the same repository. */
+  review?: WorkspaceFilesReview;
 }
 
-type EntriesByPath = Record<string, WorkspaceFileDirectoryEntry[]>;
+export interface WorkspaceFilesReview {
+  /** The directory Review resolves its repository from. */
+  readonly cwd: string | null;
+  readonly open: (intent: ReviewOpenIntent) => void;
+}
+
 const WORKSPACE_NAVIGATION_STATE_WRITE_DELAY_MS = 100;
 
 const EMPTY_PREVIEW_STATE: WorkspaceFilePreviewState = {
@@ -197,6 +222,16 @@ function buildBinaryObjectUrl(dataBase64: string, mimeType: string | undefined):
   return URL.createObjectURL(new Blob([bytes], { type: mimeType || "application/octet-stream" }));
 }
 
+/** What the Files panel feeds its text editor beyond the document itself. */
+interface WorkspaceFileEditorBinding {
+  readonly ref: RefObject<WorkspacePierreEditorHandle | null>;
+  readonly comparison: WorkspacePierreEditorProps["comparison"];
+  /** A comparison outcome shown above the editor, such as a failed read. */
+  readonly notice: { readonly message: string; readonly onRetry?: () => void } | null;
+  readonly activeLineBlame: WorkspacePierreEditorProps["activeLineBlame"];
+  readonly onChangeNavigationChange: (state: WorkspaceFileChangeNavigationState | null) => void;
+}
+
 function WorkspaceFilePreview({
   hostId,
   state,
@@ -212,6 +247,7 @@ function WorkspaceFilePreview({
   revealLocation,
   onRevealComplete,
   resourceRevision,
+  editor,
 }: {
   hostId: string;
   state: WorkspaceFilePreviewState;
@@ -227,6 +263,7 @@ function WorkspaceFilePreview({
   revealLocation?: WorkspaceFilesTabState["pendingReveal"];
   onRevealComplete: (location: NonNullable<WorkspaceFilesTabState["pendingReveal"]>) => void;
   resourceRevision: number;
+  editor: WorkspaceFileEditorBinding;
 }) {
   if (state.status === "idle") return <WorkspaceFileOpenFileState />;
   if (state.status === "loading") return <WorkspaceFileLoadingState />;
@@ -332,18 +369,37 @@ function WorkspaceFilePreview({
             </button>
           </div>
         ) : null}
+        {editor.notice ? (
+          <div className="shrink-0 px-4 pt-3" role="status">
+            <div className="flex items-center gap-2 rounded-lg border border-default px-3 py-2 text-sm semantic-text-secondary">
+              <span className="min-w-0 flex-1">{editor.notice.message}</span>
+              {editor.notice.onRetry ? (
+                <button
+                  type="button"
+                  className="cursor-interaction rounded-md px-2 py-0.5 text-(--color-text) hover:bg-(--color-background-primary-ghost-hover)"
+                  onClick={editor.notice.onRetry}
+                >
+                  Retry
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <WorkspacePierreEditor
+          ref={editor.ref}
           value={document.content}
           filename={getWorkspaceFileName(document.path)}
           language={resolveWorkspaceSourceLanguage(document.path)}
           sourceIdentity={document.path}
           documentVersion={document.documentVersion}
           ariaLabel={`Source editor for ${getWorkspaceFileName(document.path)}`}
-          wrap={wrap}
           className="min-h-0 flex-1"
           onChange={onEdit}
           revealLocation={revealLocation}
           onRevealComplete={onRevealComplete}
+          comparison={editor.comparison}
+          onChangeNavigationChange={editor.onChangeNavigationChange}
+          activeLineBlame={editor.activeLineBlame}
         />
         <div className="flex h-6 shrink-0 items-center justify-end border-t-[0.5px] border-token-border px-2 text-[11px] text-(--color-codex-description)">
           {document.status === "saving"
@@ -437,6 +493,7 @@ export function WorkspaceFilesPanel({
   onOpenFileTab,
   onUpdateTabState,
   onSearchInFiles,
+  review,
 }: WorkspaceFilesPanelProps) {
   const workspaceRoot = resolveWorkspaceRoot(tab, project);
   const fileReferenceRouter = useFileReferenceRouter();
@@ -581,29 +638,28 @@ export function WorkspaceFilesPanel({
     () => new Set(navigationState.expandedPaths),
     [navigationState.expandedPaths],
   );
-  const directoryPaths = useMemo(
-    () => (localFile && workspaceRoot ? [...expandedPaths].sort() : []),
-    [expandedPaths, localFile, workspaceRoot],
-  );
-  const directoryQueries = useQueries({
-    queries: directoryPaths.map((directoryPath) =>
-      workspaceDirectoryQueryOptions({
-        hostId: "local",
-        workspaceRoot: workspaceRoot ?? "",
-        directoryPath,
-        includeHidden: true,
-      }),
-    ),
+  const directoryTree = useWorkspaceDirectoryTree({
+    workspaceRoot,
+    expandedPaths,
+    enabled: localFile,
   });
-  const entriesByPath = Object.fromEntries(
-    directoryQueries.flatMap((query, index) => {
-      const directoryPath = directoryPaths[index];
-      if (directoryPath === undefined || !query.data) return [];
-      return [[directoryPath, query.data.entries] as const];
-    }),
-  ) satisfies EntriesByPath;
-  const directoryError = directoryQueries.find((query) => query.error)?.error;
-  const rootDirectoryPending = directoryQueries[directoryPaths.indexOf("")]?.isPending ?? false;
+  const directoryError = directoryTree.error;
+  const rootDirectoryPending = directoryTree.isPending("");
+  const fileChanges = useWorkspaceFileChanges(workspaceRoot, {
+    enabled: localFile && treeVisible,
+  });
+  const reviewRepositoryQuery = useQuery({
+    ...createGitWorkerQuery({ method: "stable-metadata", params: { cwd: review?.cwd ?? "" } }),
+    enabled: localFile && Boolean(review?.cwd) && fileChanges.showAllChanges,
+  });
+  const allChangesTarget =
+    review &&
+    fileChanges.showAllChanges &&
+    fileChanges.reviewTarget &&
+    fileChanges.repository &&
+    reviewRepositoryQuery.data?.root === fileChanges.repository.root
+      ? fileChanges.reviewTarget
+      : null;
 
   const repositoryQuery = useQuery({
     ...createGitWorkerQuery({
@@ -642,6 +698,91 @@ export function WorkspaceFilesPanel({
     onUpdateTabStateRef.current?.(state);
   }, []);
 
+  // Text files can show their changes against a Git source, with the change under the caret
+  // counted in the header and, optionally, the active line's author and commit.
+  const [comparisonState, setComparisonState] = useState(
+    initialTabStateRef.current.comparison ?? null,
+  );
+  const fileComparison =
+    selectedPath && comparisonState?.path === selectedPath ? comparisonState : null;
+  const isGitFile = localFile && Boolean(repositoryQuery.data?.isGitRepository);
+  const comparing = isGitFile && documentSnapshot !== null && Boolean(fileComparison?.visible);
+  const fileGitInput = {
+    hostId,
+    cwd: selectedPath ? parentDirectory(selectedPath) : "",
+    path: selectedPath ?? "",
+    savedRevision: documentSnapshot?.baseMtimeMs ?? null,
+  };
+  const fileGit = useWorkspaceFileGit({
+    ...fileGitInput,
+    source: fileComparison?.source ?? null,
+    hasUnsavedChanges: documentSnapshot?.status === "dirty",
+    enabled: comparing,
+  });
+  const resolvedSource = fileGit.comparison?.source ?? null;
+  const updateComparison = useCallback(
+    (next: WorkspaceFilesTabState["comparison"]) => {
+      setComparisonState(next ?? null);
+      const state = { ...persistedTabStateRef.current };
+      if (next) state.comparison = next;
+      else delete state.comparison;
+      persistTabState(state);
+    },
+    [persistTabState],
+  );
+  // The first resolved default sticks, so editing the file cannot switch the source under it.
+  useEffect(() => {
+    if (!comparing || !fileComparison || fileComparison.source || !resolvedSource) return;
+    updateComparison({ ...fileComparison, source: resolvedSource });
+  }, [comparing, fileComparison, resolvedSource, updateComparison]);
+  const [changeNavigation, setChangeNavigation] =
+    useState<WorkspaceFileChangeNavigationState | null>(null);
+  const editorRef = useRef<WorkspacePierreEditorHandle | null>(null);
+  const diffLayout = useWorkspaceFileDiffLayout();
+
+  const comparisonRepository = fileGit.comparison?.repository;
+  const gitRepository =
+    comparisonRepository?.root && comparisonRepository.commonDir
+      ? {
+          hostId: "local" as const,
+          root: comparisonRepository.root,
+          commonDir: comparisonRepository.commonDir,
+        }
+      : null;
+  const [commitsRequested, setCommitsRequested] = useState(false);
+  const baseBranchQuery = useQuery({
+    ...createGitLiveWorkerQuery({
+      method: "base-branch",
+      params: { cwd: gitRepository?.root ?? "" },
+      repository: gitRepository,
+    }),
+    enabled: commitsRequested && gitRepository !== null,
+  });
+  const commitsBaseBranch = baseBranchQuery.data
+    ? (baseBranchQuery.data.remote ?? baseBranchQuery.data.local)
+    : null;
+  const branchCommitsQuery = useQuery({
+    ...createGitLiveWorkerQuery({
+      method: "branch-commits",
+      params: { cwd: gitRepository?.root ?? "", baseBranch: commitsBaseBranch },
+      repository: gitRepository,
+    }),
+    enabled: commitsRequested && gitRepository !== null && baseBranchQuery.isSuccess,
+  });
+
+  const activeLineBlame = useWorkspaceFileActiveLineBlame();
+  const fileBlame = useWorkspaceFileBlame({
+    ...fileGitInput,
+    enabled: activeLineBlame.enabled && isGitFile && documentSnapshot !== null,
+  });
+  // Blame describes the saved file; the editor maps the draft's lines back onto it.
+  const [savedContent, setSavedContent] = useState<string | null>(null);
+  const savedSnapshotContent =
+    documentSnapshot?.status === "clean" ? documentSnapshot.content : null;
+  useEffect(() => {
+    if (savedSnapshotContent !== null) setSavedContent(savedSnapshotContent);
+  }, [savedSnapshotContent]);
+
   const handleRevealComplete = useCallback(
     (location: NonNullable<WorkspaceFilesTabState["pendingReveal"]>) => {
       if (persistedTabStateRef.current.pendingReveal !== location) return;
@@ -668,20 +809,7 @@ export function WorkspaceFilesPanel({
     toast.danger(directoryError instanceof Error ? directoryError.message : "Unable to load files");
   }, [directoryError]);
 
-  const refreshDirectories = useCallback(() => {
-    if (!localFile || !workspaceRoot) return;
-    for (const directoryPath of directoryPaths) {
-      void queryClient.invalidateQueries({
-        queryKey: workspaceDirectoryQueryOptions({
-          hostId: "local",
-          workspaceRoot,
-          directoryPath,
-          includeHidden: true,
-        }).queryKey,
-      });
-    }
-  }, [directoryPaths, localFile, queryClient, workspaceRoot]);
-
+  const refreshDirectories = directoryTree.refresh;
   const refreshFiles = useCallback(() => {
     refreshDirectories();
     if (!localFile && selectedPath) setPreviewRevision((current) => current + 1);
@@ -890,22 +1018,25 @@ export function WorkspaceFilesPanel({
     };
   }, [hostId, localFile, persistTabState, previewRevision, queryClient, selectedPath, tab.id]);
 
-  const browsePaths = useMemo(() => {
-    const byPath = new Map<string, WorkspaceFileTreePath>();
-    for (const entries of Object.values(entriesByPath)) {
-      for (const entry of entries) {
-        byPath.set(entry.path, {
-          path: entry.path,
-          kind: entry.type,
-        });
-      }
-    }
-    return [...byPath.values()];
-  }, [entriesByPath]);
+  const browsePaths = directoryTree.paths;
   const treePaths = navigationState.searchQuery.trim() ? (searchPaths ?? []) : browsePaths;
+  const allFilesStatus = navigationState.searchQuery.trim()
+    ? searchError
+      ? { text: "Unavailable", title: searchError }
+      : searchPending
+        ? { text: "Searching…", title: "Searching files…" }
+        : null
+    : directoryError
+      ? {
+          text: "Unavailable",
+          title: directoryError instanceof Error ? directoryError.message : "Unable to load files",
+        }
+      : rootDirectoryPending
+        ? { text: "Loading…", title: "Loading directory entries…" }
+        : null;
 
   const openTreeEntry = useCallback(
-    async (path: string, mode: "preview" | "durable") => {
+    async (path: string, mode: "preview" | "durable", showChanges?: WorkspaceFileShowChanges) => {
       if (!workspaceRoot) return;
       await onOpenFileTab({
         hostId,
@@ -913,6 +1044,7 @@ export function WorkspaceFilesPanel({
         title: getWorkspaceFileName(path),
         panelId: tab.panelId,
         mode,
+        ...(showChanges ? { showChanges } : {}),
       });
     },
     [hostId, onOpenFileTab, tab.panelId, workspaceRoot],
@@ -920,14 +1052,34 @@ export function WorkspaceFilesPanel({
 
   const updateTreeState = useCallback(
     (state: WorkspaceFileTreeState) => {
+      const current = navigationStateRef.current;
       publishNavigationState({
-        ...navigationStateRef.current,
+        ...current,
         expandedPaths: state.expandedPaths,
-        selectedPath: state.selectedPath,
         scrollTop: state.scrollTop,
+        ...(state.changes ? { changes: { ...current.changes, ...state.changes } } : {}),
       });
     },
     [publishNavigationState],
+  );
+
+  const treeComparisonSource = workspaceFileGitSourceForComparison(fileChanges.comparison);
+  const openTreeSectionEntry = useCallback(
+    (section: "changed" | "all", path: string, mode: "preview" | "durable") => {
+      const current = navigationStateRef.current;
+      if (current.changes.selectedSection !== section)
+        publishNavigationState({
+          ...current,
+          changes: { ...current.changes, selectedSection: section },
+        });
+      // A changed file opens showing the changes the tree listed it for.
+      void openTreeEntry(
+        path,
+        mode,
+        section === "changed" ? { source: treeComparisonSource } : undefined,
+      );
+    },
+    [openTreeEntry, publishNavigationState, treeComparisonSource],
   );
 
   const updateFilterQuery = useCallback(
@@ -1189,6 +1341,93 @@ export function WorkspaceFilesPanel({
           reportOpen(openFileWithApplication({ path: selectedPath, appPath: application.appPath }));
       },
     }));
+  // Editable text gets the editor header: changes instead of path actions and viewer options.
+  const editsText = previewState.status === "loaded" && documentSnapshot !== null;
+  const markdownFile = loadedPreviewKind === "markdown";
+  const comparisonQuery = fileGit.query;
+  const comparisonControl: WorkspaceFileComparisonControl | null =
+    editsText && isGitFile && selectedPath
+      ? {
+          active: comparing,
+          loading: comparing && comparisonQuery.isFetching,
+          source: resolvedSource ?? fileComparison?.source ?? null,
+          commits: {
+            status: !commitsRequested
+              ? "idle"
+              : baseBranchQuery.isError ||
+                  branchCommitsQuery.isError ||
+                  branchCommitsQuery.data?.errorMessage
+                ? "error"
+                : branchCommitsQuery.data
+                  ? "loaded"
+                  : "loading",
+            commits: branchCommitsQuery.data?.commits ?? [],
+            errorMessage: branchCommitsQuery.data?.errorMessage ?? null,
+            load: () => {
+              if (!commitsRequested) setCommitsRequested(true);
+              else void branchCommitsQuery.refetch();
+            },
+          },
+          navigation: changeNavigation,
+          layout: diffLayout.layout,
+          onShow: () => {
+            // Changes show over the source, so a rendered Markdown file switches to it first.
+            if (markdownFile && richView) toggleRichView();
+            updateComparison({
+              path: selectedPath,
+              visible: true,
+              source: fileComparison?.source ?? null,
+            });
+          },
+          onHide: () => {
+            if (fileComparison) updateComparison({ ...fileComparison, visible: false });
+          },
+          onSelectSource: (source) =>
+            updateComparison({ path: selectedPath, visible: true, source }),
+          onNavigate: (direction) => editorRef.current?.navigateChange(direction),
+          onToggleLayout: diffLayout.toggle,
+        }
+      : null;
+  const comparisonResult = comparing ? fileGit.comparison : null;
+  const blameLines = new Map(
+    (fileBlame.data?.errorMessage ? [] : (fileBlame.data?.lines ?? [])).map((line) => [
+      line.line,
+      line,
+    ]),
+  );
+  const editorBinding: WorkspaceFileEditorBinding = {
+    ref: editorRef,
+    comparison: comparisonResult
+      ? {
+          oldContent: comparisonResult.oldContent,
+          oldPath: comparisonResult.oldPath,
+          newContent: comparisonResult.editable ? null : comparisonResult.snapshotContent,
+          layout: diffLayout.layout,
+        }
+      : null,
+    notice: !comparing
+      ? null
+      : comparisonQuery.error
+        ? {
+            message: comparisonQuery.error.message || "File comparison could not be read",
+            onRetry: () => void comparisonQuery.refetch(),
+          }
+        : comparisonQuery.isSuccess && comparisonQuery.data === null
+          ? { message: "No changes to this file" }
+          : null,
+    activeLineBlame:
+      activeLineBlame.enabled && savedContent !== null && blameLines.size > 0
+        ? {
+            savedContent,
+            labelForSavedLine: (lineNumber) => {
+              const line = blameLines.get(lineNumber);
+              return line ? formatWorkspaceFileActiveLineBlame(line, navigator.language) : null;
+            },
+          }
+        : null,
+    onChangeNavigationChange: setChangeNavigation,
+  };
+
   const openControl: WorkspaceFileOpenControl | null =
     localFile && selectedPath
       ? {
@@ -1224,6 +1463,15 @@ export function WorkspaceFilesPanel({
                 path: selectedPath,
                 workspaceRoot,
               })}
+              browse={
+                localFile && workspaceRoot
+                  ? {
+                      workspaceRoot,
+                      endsAtFile: selectedPath !== null,
+                      onOpenFile: (relativePath, mode) => void openTreeEntry(relativePath, mode),
+                    }
+                  : null
+              }
               path={selectedPath}
               pathVariants={pathVariants}
               gitHubUrl={gitHubUrl}
@@ -1233,6 +1481,16 @@ export function WorkspaceFilesPanel({
               open={openControl}
               fileTree={
                 localFile && workspaceRoot ? { visible: treeVisible, onToggle: toggleTree } : null
+              }
+              editor={
+                editsText
+                  ? {
+                      comparison: comparisonControl,
+                      markdown: markdownFile
+                        ? { preview: richView, onToggle: toggleRichView }
+                        : null,
+                    }
+                  : null
               }
             />
           </div>
@@ -1254,6 +1512,7 @@ export function WorkspaceFilesPanel({
                   revealLocation={revealLocation}
                   onRevealComplete={handleRevealComplete}
                   resourceRevision={previewRevision}
+                  editor={editorBinding}
                 />
               </div>
 
@@ -1310,34 +1569,69 @@ export function WorkspaceFilesPanel({
                         />
                       </div>
                     </div>
-                    <div className="min-h-0 flex-1 px-1 pb-[var(--right-panel-composer-overlay-reserve,0px)]">
-                      {treePaths.length > 0 ? (
-                        <WorkspaceFileTree
-                          workspaceRoot={workspaceRoot}
-                          threadId={activeSession?.thread?.threadId}
-                          paths={treePaths}
-                          expandedPaths={expandedPaths}
-                          selectedPath={selectedTreePath}
-                          searchQuery={debouncedSearchQuery}
-                          revealSelectedPath
-                          initialScrollTop={navigationState.scrollTop}
-                          onOpen={openTreeEntry}
-                          onStateChange={updateTreeState}
-                        />
-                      ) : (
-                        <div className="px-2 py-2 text-sm text-tertiary">
-                          {searchError ??
-                            (searchPending
-                              ? "Searching files…"
-                              : rootDirectoryPending
-                                ? "Loading directory entries…"
-                                : directoryError
-                                  ? "Unable to load files"
+                    <div className="flex min-h-0 flex-1 flex-col pb-[var(--right-panel-composer-overlay-reserve,0px)]">
+                      {allChangesTarget && review ? (
+                        <div className="flex flex-col gap-px">
+                          <button
+                            type="button"
+                            className="relative flex h-(--height-token-row) w-full shrink-0 cursor-interaction items-center gap-2 overflow-hidden rounded-lg px-row-x py-row-y text-start text-sm outline-none hover:bg-(--color-background-primary-ghost-hover) focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-token-focus-border"
+                            onClick={() => review.open({ source: allChangesTarget.comparison })}
+                          >
+                            <span className="flex min-w-0 flex-1 items-center gap-2 text-base text-(--color-text)">
+                              <span className="flex min-w-4 shrink-0 items-center justify-center">
+                                <BulletListIcon className="size-4" />
+                              </span>
+                              <span className="truncate">All changes</span>
+                            </span>
+                          </button>
+                        </div>
+                      ) : null}
+                      {fileChanges.error ? (
+                        <div className="flex justify-start">
+                          <ToolbarButton onClick={() => void fileChanges.refresh()}>
+                            Could not load changes. Try again
+                          </ToolbarButton>
+                        </div>
+                      ) : null}
+                      <div className="min-h-0 flex-1 px-1">
+                        {treePaths.length > 0 || fileChanges.files.length > 0 ? (
+                          <WorkspaceFileTree
+                            workspaceRoot={workspaceRoot}
+                            threadId={activeSession?.thread?.threadId}
+                            paths={treePaths}
+                            expandedPaths={expandedPaths}
+                            selectedPath={selectedTreePath}
+                            searchQuery={debouncedSearchQuery}
+                            changes={fileChanges.files}
+                            changesState={navigationState.changes}
+                            allFilesStatus={allFilesStatus}
+                            revealSelectedPath
+                            initialScrollTop={navigationState.scrollTop}
+                            onOpen={(path, mode) => openTreeSectionEntry("all", path, mode)}
+                            onOpenChange={(path, mode) =>
+                              openTreeSectionEntry("changed", path, mode)
+                            }
+                            onStateChange={updateTreeState}
+                          />
+                        ) : directoryError && !navigationState.searchQuery.trim() ? (
+                          <div className="px-3 py-2 text-xs text-danger">
+                            {directoryError instanceof Error
+                              ? directoryError.message
+                              : "Unable to load files"}
+                          </div>
+                        ) : (
+                          <div className="px-2 py-2 text-sm text-tertiary">
+                            {searchError ??
+                              (searchPending
+                                ? "Searching files…"
+                                : rootDirectoryPending
+                                  ? "Loading directory entries…"
                                   : navigationState.searchQuery.trim()
                                     ? "No matching files"
                                     : "No files in this folder")}
-                        </div>
-                      )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </aside>

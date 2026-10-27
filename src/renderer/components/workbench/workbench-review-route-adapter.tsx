@@ -8,7 +8,7 @@ export function ReviewRouteOpenAdapter({
 }: {
   activateReviewTab: () => Promise<boolean>;
   children: (actions: {
-    onOpenTurnDiffReview: ThreadStageActions["onOpenTurnDiffReview"];
+    onOpenTurnDiffReview: NonNullable<ThreadStageActions["onOpenTurnDiffReview"]>;
     onOpenSummaryGitReview: NonNullable<ThreadStageActions["onOpenSummaryGitReview"]>;
   }) => ReactNode;
 }) {

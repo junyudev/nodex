@@ -1,7 +1,12 @@
 import type { ComponentProps, MutableRefObject, RefObject } from "react";
 import type { MotionValue } from "motion/react";
 import type { PageStageSessionSnapshot } from "@/components/board/page-stage/types";
-import { WorkspaceFilesPanel, type WorkspaceFilesTab } from "@/features/workspace-files";
+import {
+  WorkspaceFilesPanel,
+  type WorkspaceFilesReview,
+  type WorkspaceFilesTab,
+} from "@/features/workspace-files";
+import { ReviewRouteOpenAdapter } from "./workbench-review-route-adapter";
 import { BrowserSidebarPanel } from "@/features/browser-sidebar/browser-sidebar-panel";
 import type { BrowserSettingsDestination } from "@/features/browser-sidebar/browser-settings-pages";
 import type { BrowserSidebarOpenNewTabRequest } from "../../../shared/browser-sidebar";
@@ -26,7 +31,8 @@ import {
 } from "./workbench-page-stage-panel";
 import { TerminalPanel } from "./workbench-terminal-panel";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
-import { resolveSessionPageSendTarget } from "@/lib/session-execution";
+import { hasSessionConversation, resolveSessionPageSendTarget } from "@/lib/session-execution";
+import { resolveWorkbenchPanelCapabilities } from "@/lib/workbench-panel-capabilities";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
 import type { LibraryRouteTarget } from "../../../shared/library-module";
@@ -66,6 +72,8 @@ export function WorkbenchTabProjectionPanel({
   onUpdateTab,
   onOpenBrowserTab,
   onCreateTerminalTab,
+  onActivateReviewTab,
+  onSearchInFiles,
   onOpenThread,
   pageStageHistoryModal,
   onTogglePageStageHistoryModal,
@@ -129,6 +137,9 @@ export function WorkbenchTabProjectionPanel({
   onUpdateTab: (tabId: string, patch: WorkbenchSurfaceUpdatePatch) => WorkbenchTabProjection | null;
   onOpenBrowserTab?: (request: BrowserSidebarOpenNewTabRequest) => void | Promise<void>;
   onCreateTerminalTab: (panelId: PanelId, leafId: string) => Promise<void> | void;
+  /** Opens the Session's Review tab; Files offers All changes through it. */
+  onActivateReviewTab?: () => Promise<boolean>;
+  onSearchInFiles?: () => void;
   onOpenThread: (threadId: string) => Promise<void>;
   pageStageHistoryModal: PageStageHistoryModalContext | null;
   onTogglePageStageHistoryModal: (context: PageStageHistoryModalContext) => void;
@@ -385,16 +396,43 @@ export function WorkbenchTabProjectionPanel({
   }
 
   if (tab.kind === "files") {
-    return (
+    const project = projects.find((item) => item.id === tab.projectId) ?? null;
+    const renderFiles = (review?: WorkspaceFilesReview) => (
       <WorkspaceFilesPanel
         tab={tab as WorkspaceFilesTab}
         activeSession={activeSession}
-        project={projects.find((item) => item.id === tab.projectId) ?? null}
+        project={project}
         onOpenFileTab={onOpenFileTab}
+        onSearchInFiles={onSearchInFiles}
+        review={review}
         onUpdateTabState={(state) => {
           onUpdateTab(tab.id, { state });
         }}
       />
+    );
+    // All changes opens Review, so it is offered only where this Session can show Review.
+    const reviewAvailable = resolveWorkbenchPanelCapabilities({
+      panelId: "right",
+      owner: {
+        kind: "session",
+        backendKind: activeSession.thread?.backendBinding.kind ?? "codex",
+        projectId: activeSession.projectId,
+        hasAttachedThread: hasSessionConversation(activeSession),
+        cwd: activeSession.thread?.cwd,
+        projectWorkspaceRoot: projectWorkspaceRootOrNull(project),
+      },
+    }).actions.review.available;
+    if (!onActivateReviewTab || !reviewAvailable) return renderFiles();
+    // Review reads a runtime-backed conversation's working directory, else the project root.
+    const reviewCwd = activeSession.executionRef
+      ? (activeSession.thread?.cwd ?? null)
+      : projectWorkspaceRootOrNull(project);
+    return (
+      <ReviewRouteOpenAdapter activateReviewTab={onActivateReviewTab}>
+        {({ onOpenTurnDiffReview }) =>
+          renderFiles({ cwd: reviewCwd, open: (intent) => void onOpenTurnDiffReview(intent) })
+        }
+      </ReviewRouteOpenAdapter>
     );
   }
 

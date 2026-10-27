@@ -71,6 +71,7 @@ const commandHandlers: CommandPaletteShellCommandHandlers = {
   toggleSidePanel: ignore,
   toggleBottomPanel: ignore,
   toggleFileTreePanel: ignore,
+  toggleGitBlame: ignore,
   openBrowserTab: ignore,
   openReviewTab: ignore,
   toggleTerminal: ignore,

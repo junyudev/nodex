@@ -164,6 +164,7 @@ interface WorkbenchPanelProjectionInput {
     | "searchByProject"
     | "setSearchQuery"
     | "taskSearchOpenTick"
+    | "onSearchInFiles"
   >;
   readonly conversation: {
     readonly composerEnterBehavior: ComponentProps<
@@ -733,6 +734,7 @@ export function useWorkbenchPanelProjection({
                 onCreateTerminalTab={async (panelId, leafId) => {
                   await createManualTab("terminal", panelId, leafId);
                 }}
+                onActivateReviewTab={activateReviewTab}
                 onOpenThread={async (threadId) => {
                   await openAttachedThreadSessionById(threadId);
                 }}

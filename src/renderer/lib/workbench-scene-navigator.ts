@@ -78,6 +78,8 @@ export type WorkbenchSurfaceOpenRequest =
       readonly config: WorkbenchFilesSurfaceConfig;
       readonly titleSnapshot?: string;
       readonly reveal?: Extract<WorkbenchSurfaceReveal, { kind: "file" }>;
+      /** Files tab state the file opens with, such as showing its changes. */
+      readonly openState?: object | null;
     };
 
 export interface PresentWorkbenchPanelSurfaceInput {
@@ -236,17 +238,18 @@ function createDefaultIdentityFactory(): WorkbenchSceneNavigatorIdentityFactory 
 function applyFileReveal(
   surface: WorkbenchSurfaceDescriptor,
   reveal: Extract<WorkbenchSurfaceReveal, { kind: "file" }> | undefined,
+  openState?: object | null,
 ): WorkbenchSurfaceDescriptor {
-  if (!reveal || surface.kind !== "files") return surface;
+  if ((!reveal && !openState) || surface.kind !== "files") return surface;
   const previous =
     surface.state && typeof surface.state === "object" && !Array.isArray(surface.state)
       ? surface.state
       : {};
-  const { kind: _kind, ...location } = reveal;
+  const location = reveal ? (({ kind: _kind, ...rest }) => rest)(reveal) : null;
   return {
     ...surface,
     stateKey: surface.stateKey + 1,
-    state: { ...previous, pendingReveal: location },
+    state: { ...previous, ...openState, ...(location ? { pendingReveal: location } : {}) },
   };
 }
 
@@ -336,6 +339,7 @@ function makeSurfaceDescriptor(
           config: canonicalWorkbenchFilesConfig(request.config),
         },
         request.reveal,
+        request.openState,
       );
   }
 }
@@ -421,6 +425,7 @@ async function presentPreviewSurface(
   if (input.isCurrent?.() === false)
     return { status: "unavailable", reason: "The Scene changed while this file was opening" };
   const reveal = input.request.kind === "files" ? input.request.reveal : undefined;
+  const openState = input.request.kind === "files" ? input.request.openState : undefined;
   let result: PresentWorkbenchPanelSurfaceResult = {
     status: "presented",
     surfaceId: matchingPreview?.surface.id ?? candidate.id,
@@ -437,6 +442,7 @@ async function presentPreviewSurface(
             state: matchingPreview.surface.state,
           },
           reveal,
+          openState,
         ),
       }
     : null;
@@ -465,7 +471,7 @@ async function presentPreviewSurface(
         };
         durableSlot = { panelId, leafId: leaf.id };
         previewEntry = null;
-        const revealed = applyFileReveal(durable, reveal);
+        const revealed = applyFileReveal(durable, reveal, openState);
         const revealedScene =
           revealed === durable
             ? scene

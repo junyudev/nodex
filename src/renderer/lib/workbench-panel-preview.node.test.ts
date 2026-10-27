@@ -51,7 +51,7 @@ describe("workbench panel preview", () => {
       path: "docs/../a.ts ",
       title: "a.ts ",
       workspaceRoot: "C:/repo",
-      location: { line: 8 },
+      state: { pendingReveal: { line: 8 } },
     });
     const pinned = makePinnedPreviewTabCreateInput(session, "right", "right-leaf", preview);
     expect(preview.id).toBe(`file:${hostId}:C:/repo/a.ts `);
@@ -175,7 +175,7 @@ describe("workbench panel preview", () => {
       path: "/workspace/src/a.ts",
       title: "a.ts",
       workspaceRoot: "/workspace",
-      location: { line: 12, column: 3, endLine: 14, endColumn: 2 },
+      state: { pendingReveal: { line: 12, column: 3, endLine: 14, endColumn: 2 } },
     });
 
     expect(preview.state).toEqual({

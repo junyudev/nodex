@@ -6,6 +6,7 @@ import type { Project } from "./types";
 import { isWorkspacePathInsideRoot } from "../features/workspace-files/workspace-file-model";
 import { getWorkspaceFileParentPath, normalizeOptionalPath } from "./workbench-workspace-context";
 import { recordWorkspaceSearchFile } from "./workspace-search-recent-files";
+import { workspaceFileOpenState } from "../features/workspace-files/workspace-file-types";
 
 /** File navigation belongs to the current Scene; it never establishes a conversation. */
 export async function openWorkbenchSceneFile({
@@ -41,6 +42,7 @@ export async function openWorkbenchSceneFile({
       ...(input.location?.line
         ? { reveal: { kind: "file" as const, ...input.location, line: input.location.line } }
         : {}),
+      openState: workspaceFileOpenState({ path, showChanges: input.showChanges }),
     },
     target: { panelId: input.panelId },
     mode: input.mode ?? "preview",

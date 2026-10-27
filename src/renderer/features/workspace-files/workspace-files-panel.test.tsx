@@ -68,6 +68,83 @@ const fileContents: Record<string, string> = {
 
 let fileSearch = createFileSearchFixture(Object.values(directoryEntries).flat());
 
+interface GitWorkerTestRequest {
+  readonly method: string;
+  readonly params: { readonly cwd: string; readonly source?: string };
+}
+
+const notARepository = async ({ params }: GitWorkerTestRequest) => ({
+  cwd: params.cwd,
+  root: null,
+  gitDir: null,
+  commonDir: null,
+  isGitRepository: false,
+  currentBranch: null,
+  defaultBranch: null,
+  errorMessage: null,
+  originUrl: null,
+});
+let gitWorkerRequest: (request: GitWorkerTestRequest) => Promise<unknown> = notARepository;
+
+/** A repository at the workspace root where `src/index.ts` has one unstaged edit. */
+const repositoryWithUnstagedEdit = async ({ method, params }: GitWorkerTestRequest) => {
+  if (method === "stable-metadata")
+    return {
+      cwd: params.cwd,
+      root: WORKSPACE_ROOT,
+      gitDir: `${WORKSPACE_ROOT}/.git`,
+      commonDir: `${WORKSPACE_ROOT}/.git`,
+      isGitRepository: true,
+      currentBranch: "main",
+      defaultBranch: "main",
+      errorMessage: null,
+      originUrl: null,
+    };
+  if (method === "review-summary")
+    return {
+      type: "success",
+      source: params.source,
+      files:
+        params.source === "unstaged"
+          ? [
+              {
+                path: "src/index.ts",
+                previousPath: null,
+                status: "modified",
+                rawStatus: "M",
+                oldOid: "base-oid",
+                newOid: null,
+                revision: "1",
+                additions: 1,
+                deletions: 1,
+                safety: {
+                  binary: false,
+                  tooLarge: false,
+                  invalidText: false,
+                  renderable: true,
+                  sizeBytes: 24,
+                  mimeType: null,
+                },
+              },
+            ]
+          : [],
+      snapshotGeneration: 1,
+      stageCounts: { stagedFileCount: 0, unstagedFileCount: 1, untrackedFileCount: 0 },
+      untrackedFilesOmitted: 0,
+    };
+  if (method === "review-cat-file")
+    return {
+      type: "success",
+      value: {
+        snapshotGeneration: 1,
+        results: [{ type: "success", lines: ["export const value = 0;\n"] }],
+      },
+    };
+  if (method === "base-branch")
+    return { cwd: params.cwd, local: "main", remote: null, errorMessage: null };
+  throw new Error(`Unexpected Git request: ${method}`);
+};
+
 const invoke = async (channel: string, ...args: unknown[]) => {
   invokeCalls.push([channel, ...args]);
   if (channel === "workspace-directory-entries") {
@@ -163,18 +240,27 @@ vi.mock("@/lib/api", () => ({
   getWindowFocusState: async () => true,
   subscribeWindowFocusChanges: () => () => undefined,
   getGitWorkerClient: () => ({
-    request: async ({ params }: { params: { cwd: string } }) => ({
-      cwd: params.cwd,
-      root: null,
-      gitDir: null,
-      commonDir: null,
-      isGitRepository: false,
-      currentBranch: null,
-      defaultBranch: null,
-      errorMessage: null,
-      originUrl: null,
-    }),
+    subscribe: () => () => undefined,
+    request: (request: GitWorkerTestRequest) => gitWorkerRequest(request),
   }),
+}));
+
+// The editor has its own Chromium coverage; here it reports what the panel hands it.
+vi.mock("./workspace-pierre-editor", () => ({
+  WorkspacePierreEditor: (props: {
+    ariaLabel: string;
+    value: string;
+    comparison?: { oldContent: string; layout: string } | null;
+  }) => (
+    <section
+      role="region"
+      aria-label={props.ariaLabel}
+      data-comparison-base={props.comparison?.oldContent}
+      data-comparison-layout={props.comparison?.layout}
+    >
+      {props.value}
+    </section>
+  ),
 }));
 
 vi.mock("./workspace-file-tree", () => ({
@@ -300,6 +386,7 @@ beforeEach(() => {
   remoteSizeBytes = null;
   remoteTextRead = null;
   remoteBinaryRead = null;
+  gitWorkerRequest = notARepository;
 });
 
 describe("WorkspaceFilesPanel", () => {
@@ -554,6 +641,29 @@ describe("WorkspaceFilesPanel", () => {
       "read-file-metadata",
       expect.objectContaining({ hostId: otherHost, path }),
     ]);
+  });
+
+  test("shows a text file's changes against its working-tree baseline and hides them again", async () => {
+    gitWorkerRequest = repositoryWithUnstagedEdit;
+    const view = renderPanel(`${WORKSPACE_ROOT}/src/index.ts`);
+    fireEvent.click(await view.findByRole("button", { name: "Show changes" }));
+
+    const source = await view.findByRole("group", { name: "Review source" });
+    await waitFor(() => expect(source.textContent).toBe("Unstaged"));
+    const editor = view.getByRole("region", { name: "Source editor for index.ts" });
+    await waitFor(() =>
+      expect(editor.getAttribute("data-comparison-base")).toBe("export const value = 0;\n"),
+    );
+    expect(editor.getAttribute("data-comparison-layout")).toBe("unified");
+    expect(view.getByRole("button", { name: "Switch to split diff" })).not.toBeNull();
+    // The editable header carries comparison controls instead of the viewer's path actions.
+    expect(view.queryByRole("button", { name: "File viewer options" })).toBeNull();
+    expect(view.queryByRole("group", { name: "Copy repo-relative path" })).toBeNull();
+
+    fireEvent.click(view.getByRole("button", { name: "Hide changes" }));
+    expect(await view.findByRole("button", { name: "Show changes" })).not.toBeNull();
+    expect(view.queryByRole("group", { name: "Review source" })).toBeNull();
+    expect(editor.getAttribute("data-comparison-base")).toBeNull();
   });
 
   test("renders the tree filter and opens files through preview tabs", async () => {

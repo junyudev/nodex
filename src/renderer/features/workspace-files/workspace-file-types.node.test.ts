@@ -71,4 +71,28 @@ describe("normalizeWorkspaceFilesTabState", () => {
       }),
     ).toEqual({});
   });
+
+  test("keeps a file's comparison and drops sources it cannot reproduce", () => {
+    expect(
+      normalizeWorkspaceFilesTabState({
+        comparison: {
+          path: "/repo/a.ts",
+          visible: true,
+          source: { kind: "commit", commitSha: "abc123", title: "Fix", extra: 1 },
+        },
+      }),
+    ).toEqual({
+      comparison: {
+        path: "/repo/a.ts",
+        visible: true,
+        source: { kind: "commit", commitSha: "abc123", title: "Fix" },
+      },
+    });
+    expect(
+      normalizeWorkspaceFilesTabState({
+        comparison: { path: "/repo/a.ts", visible: false, source: { kind: "last-turn" } },
+      }),
+    ).toEqual({ comparison: { path: "/repo/a.ts", visible: false, source: null } });
+    expect(normalizeWorkspaceFilesTabState({ comparison: { visible: true } })).toEqual({});
+  });
 });

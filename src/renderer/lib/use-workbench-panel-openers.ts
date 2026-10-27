@@ -78,7 +78,11 @@ import type {
   WorkbenchTabCreateInput,
   WorkbenchTabProjection,
 } from "./types";
-import type { WorkspaceFileRevealLocation } from "@/features/workspace-files/workspace-file-types";
+import {
+  workspaceFileOpenState,
+  type WorkspaceFileRevealLocation,
+  type WorkspaceFileShowChanges,
+} from "@/features/workspace-files/workspace-file-types";
 import type { useWorkbenchPanelLifecycle } from "./use-workbench-panel-lifecycle";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
@@ -974,6 +978,7 @@ export function useWorkbenchPanelOpeners({
       mode?: "preview" | "durable";
       workspaceRoot?: string | null;
       location?: WorkspaceFileRevealLocation;
+      showChanges?: WorkspaceFileShowChanges;
       isCurrent?: () => boolean;
     }) => {
       if (input.isCurrent?.() === false) return false;
@@ -1023,6 +1028,11 @@ export function useWorkbenchPanelOpeners({
         ];
       });
       const canonicalPath = canonicalWorkbenchFilePath(input.path, cwd ?? workspaceRoot);
+      const openState = workspaceFileOpenState({
+        path: canonicalPath,
+        location: input.location,
+        showChanges: input.showChanges,
+      });
       const didOpen = () => {
         if (input.kind !== "directory") recordWorkspaceSearchFile(hostId, canonicalPath);
         return true;
@@ -1074,7 +1084,7 @@ export function useWorkbenchPanelOpeners({
         path: canonicalPath,
       } as const;
       const applyRevealToDurableTab = (tabId: string) => {
-        if (!input.location) return;
+        if (!openState) return;
         const currentTab = activeSession.tabs.find((tab) => tab.id === tabId);
         const currentState = currentTab?.state;
         const state =
@@ -1082,15 +1092,12 @@ export function useWorkbenchPanelOpeners({
             ? (currentState as Record<string, unknown>)
             : {};
         updateTab(tabId, {
-          state: {
-            ...state,
-            pendingReveal: input.location,
-          },
+          state: { ...state, ...openState },
           stateKey: (currentTab?.stateKey ?? 0) + 1,
         });
       };
       const applyRevealToPreviewTab = (slotKey: string) => {
-        if (!input.location) return;
+        if (!openState) return;
         panelControllerRef.current.updatePreviewTabsByPanel((current) => {
           const previewTab = current[slotKey];
           if (!previewTab || previewTab.kind !== "files") return current;
@@ -1105,10 +1112,7 @@ export function useWorkbenchPanelOpeners({
             ...current,
             [slotKey]: {
               ...previewTab,
-              state: {
-                ...state,
-                pendingReveal: input.location,
-              },
+              state: { ...state, ...openState },
               stateKey: previewTab.stateKey + 1,
             },
           };
@@ -1199,7 +1203,7 @@ export function useWorkbenchPanelOpeners({
             title: input.title || getWorkspaceFileName(input.path),
             cwd,
             workspaceRoot,
-            location: input.location,
+            state: openState,
           }),
       }));
       await ensureActivePanelOpenWithoutRefresh(input.panelId);

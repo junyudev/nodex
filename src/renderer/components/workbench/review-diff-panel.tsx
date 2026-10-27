@@ -47,12 +47,12 @@ import {
   MoreActionsIcon,
 } from "../shared/icons";
 import { FileTypeIcon, FileTypeIconSprite } from "@/components/shared/icons";
+import { ReviewCommitMenuItems } from "@/features/review/view/review-commit-menu-items";
 import {
   NodexDropdownFlyoutSubmenuItem,
   NodexDropdownItem,
   NodexDropdownMenu,
   NodexDropdownMessage,
-  NodexDropdownScrollList,
   NodexDropdownSearchInput,
   NodexDropdownSeparator,
 } from "../ui/dropdown";
@@ -427,27 +427,6 @@ const SOURCE_LABELS: Record<ReviewSource, string> = {
   staged: "Staged",
   unstaged: "Unstaged",
 };
-
-function formatReviewCommitRelativeTime(committedAt: string): string {
-  const committedAtMs = Date.parse(committedAt);
-  if (!Number.isFinite(committedAtMs)) return "";
-
-  const elapsedMs = Math.max(0, Date.now() - committedAtMs);
-  const elapsedMinutes = Math.floor(elapsedMs / 60_000);
-  if (elapsedMinutes < 1) return "now";
-  if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours}h`;
-
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  if (elapsedDays < 30) return `${elapsedDays}d`;
-
-  const elapsedMonths = Math.floor(elapsedDays / 30);
-  if (elapsedMonths < 12) return `${elapsedMonths}mo`;
-
-  return `${Math.floor(elapsedMonths / 12)}y`;
-}
 
 function ReviewSourceCountBadge({ count }: { count: number }) {
   return (
@@ -3855,47 +3834,14 @@ export function ReviewDiffPanel({
                   }}
                   contentClassName="min-w-[320px]"
                 >
-                  {branchCommitsLoadStatus === "loading" ? (
-                    <NodexDropdownMessage compact>Loading commits...</NodexDropdownMessage>
-                  ) : branchCommitsLoadStatus === "error" ? (
-                    <>
-                      <NodexDropdownMessage compact tone="error">
-                        {branchCommitsQuery.data?.errorMessage ?? "Unable to load commits"}
-                      </NodexDropdownMessage>
-                      <NodexDropdownItem onSelect={() => void loadBranchCommits()}>
-                        Retry
-                      </NodexDropdownItem>
-                    </>
-                  ) : branchCommits.length === 0 ? (
-                    <NodexDropdownMessage compact>No commits on branch</NodexDropdownMessage>
-                  ) : (
-                    <NodexDropdownScrollList className="max-h-80">
-                      {branchCommits.map((commit) => {
-                        const relativeTime = formatReviewCommitRelativeTime(commit.committedAt);
-                        return (
-                          <NodexDropdownItem
-                            key={commit.sha}
-                            onSelect={() => selectReviewCommit(commit)}
-                            tooltipText={commit.subject}
-                            rightSlot={
-                              source === "commit" && commitSha === commit.sha ? (
-                                <CheckmarkIcon className="size-4" />
-                              ) : null
-                            }
-                          >
-                            <span className="flex min-w-0 items-center justify-between gap-3">
-                              <span className="min-w-0 truncate">{commit.subject}</span>
-                              {relativeTime ? (
-                                <span className="shrink-0 text-xs text-token-description-foreground">
-                                  {relativeTime} ago
-                                </span>
-                              ) : null}
-                            </span>
-                          </NodexDropdownItem>
-                        );
-                      })}
-                    </NodexDropdownScrollList>
-                  )}
+                  <ReviewCommitMenuItems
+                    status={branchCommitsLoadStatus}
+                    commits={branchCommits}
+                    errorMessage={branchCommitsQuery.data?.errorMessage ?? null}
+                    selectedSha={source === "commit" ? commitSha : null}
+                    onRetry={() => void loadBranchCommits()}
+                    onSelect={selectReviewCommit}
+                  />
                 </NodexDropdownFlyoutSubmenuItem>
                 <NodexDropdownItem
                   onSelect={() => selectReviewSource("branch")}

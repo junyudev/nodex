@@ -1,4 +1,5 @@
 import type { PanelId, WorkbenchTabProjection, WorkspaceFileMetadata } from "@/lib/types";
+import type { WorkspaceFileGitSource } from "./workspace-file-git-model";
 
 export interface WorkspaceFilesDraftState {
   path: string;
@@ -14,6 +15,13 @@ export interface WorkspaceFileRevealLocation {
   endColumn?: number;
 }
 
+/** Whether a file shows its changes, and against which source once one is chosen or resolved. */
+export interface WorkspaceFilesComparisonState {
+  readonly path: string;
+  readonly visible: boolean;
+  readonly source: WorkspaceFileGitSource | null;
+}
+
 export interface WorkspaceFilesTabState {
   draft?: WorkspaceFilesDraftState;
   /** Whether a file that can toggle (Markdown, SVG) shows its rich view instead of its source. */
@@ -22,6 +30,29 @@ export interface WorkspaceFilesTabState {
   treeWidth?: number;
   wordWrap?: boolean;
   pendingReveal?: WorkspaceFileRevealLocation;
+  comparison?: WorkspaceFilesComparisonState;
+}
+
+/** Opens a file showing its changes; a null source lets the file pick its comparison. */
+export interface WorkspaceFileShowChanges {
+  readonly source: WorkspaceFileGitSource | null;
+}
+
+/** The tab state a file opens with: a location to reveal, and whether it shows its changes. */
+export function workspaceFileOpenState({
+  path,
+  location,
+  showChanges,
+}: {
+  readonly path: string;
+  readonly location?: WorkspaceFileRevealLocation;
+  readonly showChanges?: WorkspaceFileShowChanges;
+}): WorkspaceFilesTabState | null {
+  if (!location && !showChanges) return null;
+  return {
+    ...(location ? { pendingReveal: location } : {}),
+    ...(showChanges ? { comparison: { path, visible: true, source: showChanges.source } } : {}),
+  };
 }
 
 export function normalizeWorkspaceFilesTabState(value: unknown): WorkspaceFilesTabState {
@@ -48,6 +79,45 @@ export function normalizeWorkspaceFilesTabState(value: unknown): WorkspaceFilesT
     ...(isValidRevealLocation(candidate.pendingReveal)
       ? { pendingReveal: candidate.pendingReveal }
       : {}),
+    ...(normalizeComparison(candidate.comparison)
+      ? { comparison: normalizeComparison(candidate.comparison)! }
+      : {}),
+  };
+}
+
+export function normalizeWorkspaceFileGitSource(value: unknown): WorkspaceFileGitSource | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  switch (candidate.kind) {
+    case "uncommitted":
+    case "unstaged":
+    case "staged":
+      return { kind: candidate.kind };
+    case "branch":
+      return typeof candidate.baseBranch === "string" && candidate.baseBranch
+        ? { kind: "branch", baseBranch: candidate.baseBranch }
+        : { kind: "branch" };
+    case "commit":
+      return typeof candidate.commitSha === "string" && candidate.commitSha
+        ? {
+            kind: "commit",
+            commitSha: candidate.commitSha,
+            ...(typeof candidate.title === "string" ? { title: candidate.title } : {}),
+          }
+        : null;
+    default:
+      return null;
+  }
+}
+
+function normalizeComparison(value: unknown): WorkspaceFilesComparisonState | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.path !== "string" || typeof candidate.visible !== "boolean") return null;
+  return {
+    path: candidate.path,
+    visible: candidate.visible,
+    source: normalizeWorkspaceFileGitSource(candidate.source),
   };
 }
 
