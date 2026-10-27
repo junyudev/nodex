@@ -1,0 +1,33 @@
+src/renderer/features/workspace-files/workspace-pierre-editor.test.tsx
+  s_cb8bbfdb133e81::t_4c7d0d3bc3986c 68-72
+CHANGELOG.md
+  s_cb8bbfdb133e81::t_e77c4db0a8ad28 10
+docs/product-specs/workspace-file-git-data.md
+  s_cb8bbfdb133e81::t_e77c4db0a8ad28 13-15
+src/renderer/features/workspace-files/workspace-file-preferences.ts
+  s_cb8bbfdb133e81::t_cb758775809de7 31
+src/renderer/features/workspace-files/workspace-file-tree.tsx
+  s_cb8bbfdb133e81::t_cb758775809de7 105-109
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_cb8bbfdb133e81::t_cb758775809de7 1389-1390
+docs/product-specs/workbench-shell.md
+  s_cb8bbfdb133e81::t_e77c4db0a8ad28 253-257
+src/renderer/components/ui/file-tree-theme.ts
+  s_cb8bbfdb133e81::t_c9d277891c2ea1 91-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "68c46c28ddc130cc3a5a7669dfbbae2908a3b3e7",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
