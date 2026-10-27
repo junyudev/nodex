@@ -1,0 +1,61 @@
+src/renderer/features/workspace-files/workspace-file-change-gutter-model.node.test.ts
+  s_209c0de609eeb3::t_d4f0ab0d19e9fb 1-56
+  s_209c0de609eeb3::t_b7cbb23aa071b4 57-92
+src/renderer/features/workspace-files/workspace-file-git-model.ts
+  s_209c0de609eeb3::t_c290d1734083b8 134-136,138-149,151,167-171,173-175,180-181,190-204,211,217
+  s_209c0de609eeb3::t_d3b4433a3b44f9 220,232,238
+  s_209c0de609eeb3::t_1234be88d1101c 283
+  s_209c0de609eeb3::t_df2cc0e2fd388d 1,8-10,14-69,80,83-87,89-113,123-124,150,152-153,158-161,163,207,210,222-231,233-234,237,239-243,249-253,258,264,268-276,282,286,293-295
+  s_209c0de609eeb3::t_9085a00231a1bd 2-7,11-13,70-79,81-82,114-122,125-133,137,154-157,162,164-166,172,176-179,182-189,205-206,208-209,212-216,218-219,221,235-236,244-248,254-257,259-263,265-267,277-281,284-285,287-292
+  s_209c0de609eeb3::t_1ffe149b4a0659 88
+  s_209c0de609eeb3::t_433aa273eef0c9 296-297
+src/main/git-worker/git-blame-model.ts
+  s_209c0de609eeb3::t_ab9d997125b990 1-37
+  s_209c0de609eeb3::t_30748800db411e 38-44
+docs/product-specs/workspace-file-git-data.md
+  s_209c0de609eeb3::t_4226d26cc9113c 1-51
+docs/product-specs/workbench-shell.md
+  s_209c0de609eeb3::t_4226d26cc9113c 245-246
+src/main/git-worker/git-blame-model.test.ts
+  s_209c0de609eeb3::t_d4f0ab0d19e9fb 1-29
+  s_209c0de609eeb3::t_928e3c41a0c3a1 30-67
+src/renderer/features/workspace-files/workspace-file-blame-model.node.test.ts
+  s_209c0de609eeb3::t_d4f0ab0d19e9fb 1-57
+  s_209c0de609eeb3::t_d09cc66191d325 58-130
+src/renderer/features/workspace-files/workspace-file-git-model.node.test.ts
+  s_209c0de609eeb3::t_21a7c91dec940c 5-41,49-90,103,108-111,129-130,141-144,151-154,163,165-169,171-185,190-193,195-200,205-207,209-219,222-232,237-248,252-257,262-268,272-277,279-285,290-292,294-303,309-318,322-324,331-333
+  s_209c0de609eeb3::t_1ffe149b4a0659 1-4,42-48,91-96,164,170,186-189,194,201-204,208,220-221,233-236,249-251,258-261,269-271,278,286-289,293,304-308,319-321,325-330,334-335
+  s_209c0de609eeb3::t_c6ea365679466e 97-102,104-107,112-128,131-140,145-150,155-162
+  s_209c0de609eeb3::t_80f970da5a362c 336-339
+src/renderer/features/workspace-files/workspace-file-blame-model.ts
+  s_209c0de609eeb3::t_bde70a22ab2cb1 1-147
+  s_209c0de609eeb3::t_6f426bc4124107 148-169
+src/shared/types.ts
+  s_209c0de609eeb3::t_ab9d997125b990 4287-4288
+src/renderer/features/workspace-files/use-workspace-file-git.ts
+  s_209c0de609eeb3::t_620e2956ceae5d 24-25
+  s_209c0de609eeb3::t_509f303c0640f0 13-16,18-19,22,26,50,65
+  s_209c0de609eeb3::t_df2cc0e2fd388d 1-12,17,20-21,23,27-49,51-64,66
+  s_209c0de609eeb3::t_5dece3e3fdad1e 67-112
+src/renderer/features/workspace-files/workspace-file-change-gutter-model.ts
+  s_209c0de609eeb3::t_bde70a22ab2cb1 1-97
+  s_209c0de609eeb3::t_1ae543819559a3 98-125
+src/main/git-worker/git-review-operations.ts
+  s_209c0de609eeb3::t_880eef3064621f 59-60,2999
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af3dc783a86557ed787d14ed25baf2af1f121bf2",
+  "prompts": {},
+  "sessions": {
+    "s_209c0de609eeb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d4c-a114-7762-a756-cb1f46c4dd1e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
