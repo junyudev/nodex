@@ -1,0 +1,144 @@
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.test.tsx
+  s_389c80188bce4c::t_6cccca121111a1 320-322
+  s_389c80188bce4c::t_402248c46471ed 10-11,220-315,319,323-341,348,352-353
+  s_389c80188bce4c::t_9194f68a8ff2a3 189-195,200
+  s_389c80188bce4c::t_aff51da52e96ff 316-318,342-347,349-351
+  s_389c80188bce4c::t_681a86f0111093 2-3,146-188,196-199,201-219
+  s_389c80188bce4c::t_df603f566dfdc0 354
+src/renderer/features/local-conversation/view/local-conversation-response-space-element.test.tsx
+  s_389c80188bce4c::t_800c19a5088ed7 41,48,71-77,79-80,98
+tests/e2e/thread-scroll-parity.spec.ts
+  s_389c80188bce4c::t_ab9f0b7752caf9 229
+  s_389c80188bce4c::t_e95cc489e55823 239,241-253,255
+  s_389c80188bce4c::t_c8b45b0eb000b0 270-278,282,291-299,314,328-330,336-339,345-349,351-353,357-365,367,371-372,374,378-389
+  s_389c80188bce4c::t_5e7c66d11ceaf5 1-38,40-53,61-65,72-75,79,83-108,114-117,123-127,132-141,152-163,173,177-184,186-187,191,195-207,211-213,219-221,227-228,230-238,240,254,256-269,279-281,288-290,301-305,310-313,322-325,354-356,366,368-370,373,375-377,390-392
+  s_389c80188bce4c::t_9742734693011c 39,54-60,66-71,76-78,80-82,109-113,118-122,128-131,142-151,164-172,174-176,192-194,208-210,214-218,222-226,283-287,306-309,315-321,326-327,331-335,340-344,350
+  s_389c80188bce4c::t_b2a03f19e7fe9c 185,188-190,300
+  s_389c80188bce4c::t_fe980273df92f4 393-401
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_389c80188bce4c::t_aae270285262ff 70
+  s_389c80188bce4c::t_7f371f4603a783 342,350
+  s_389c80188bce4c::t_17352a83e6be58 227,347,349,353
+  s_389c80188bce4c::t_50bdb5ad232f88 345
+src/renderer/features/local-conversation/projection/agent-body-collapse-presentation.ts
+  s_389c80188bce4c::t_f0e763edbaa026 19,47-48
+src/renderer/features/local-conversation/projection/bucketize-turn-items.ts
+  s_389c80188bce4c::t_f0e763edbaa026 277,315-318
+src/renderer/lib/resize-observer-motion-values.ts
+  s_389c80188bce4c::t_adc947729bfc8c 33-36
+src/renderer/features/local-conversation/view/local-conversation-thread-body.tsx
+  s_389c80188bce4c::t_01f4c9a6361349 1,71,86,91,169,189
+  s_389c80188bce4c::t_3ef43b03e3f2ec 190-192,205,263
+src/renderer/features/local-conversation/view/local-conversation-response-space.jsdom.test.ts
+  s_389c80188bce4c::t_294274e36f0e8a 160-186
+src/renderer/features/local-conversation/view/local-conversation-find-placement.browser.test.tsx
+  s_389c80188bce4c::t_679621cd482541 254,416
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.tsx
+  s_389c80188bce4c::t_91a25bef5386cb 224-227,237-238,260-261,263-266,269-275,287-289,291,294,310,389,761
+  s_389c80188bce4c::t_fb0c595a568d5d 20-22,63-66,93,156,173
+  s_389c80188bce4c::t_8d6cb3f90f8733 105-109,277-283,440-444,447,453-454,459,652,706
+  s_389c80188bce4c::t_4ca578da6266e0 533,538-548,551-564,566-586,593,604-620,623,629-651,653-658,660-663,665-701,708,711,748,760,764
+  s_389c80188bce4c::t_4055adbac48e68 165,449,565,587-592,835-836
+  s_389c80188bce4c::t_4690178fda1f88 13-14,19,129-130,702-705,707,709-710,712-718,721,749,755-759,762,770-771,803-804,904,915-923,938-939,966
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.test.tsx
+  s_389c80188bce4c::t_d9886718a7123d 132-133,139,283-291,324-374,376-410,703,727,741-801,811,827-830,889,978,1037,1083
+  s_389c80188bce4c::t_e42c5f2b4f9f27 375
+  s_389c80188bce4c::t_9772a73e0a0448 3,816,912,927,929,931,979-983,1034-1036,1038-1067,1094
+src/renderer/features/local-conversation/view/local-conversation-turn-virtualization.ts
+  s_389c80188bce4c::t_04dfb2b5ec2ee7 176,695,718-722,726-730
+  s_389c80188bce4c::t_9cd6c71770a115 180
+  s_d68ce1b9269e8f::t_262dcd4051c66a 179
+src/renderer/features/local-conversation/view/local-conversation-turn-virtualization.test.ts
+  s_389c80188bce4c::t_08067dfd434128 502-503,509-515,529,531,533,536-539,541-543,546,548-550,553-555,558-561,563-569,573-599,603,606,707-709,726
+src/renderer/features/local-conversation/view/local-conversation-response-space.ts
+  s_389c80188bce4c::t_e20ab86e688f29 41-42,62,66,101-112,114-117,119,184-204,225,241-245,247-249,257,259,262,265,270,272-276,282
+src/renderer/features/local-conversation/projection/bucketize-turn-items.node.test.ts
+  s_389c80188bce4c::t_bcd2f1be1d7d97 2120,2148-2149,2151,2164-2170,2175-2195
+  s_389c80188bce4c::t_3a8fb4e4fcea46 2196
+src/renderer/features/local-conversation/view/local-conversation-thread-restore-atoms.test.tsx
+  s_389c80188bce4c::t_90cac799362b0b 2,38,40,94-103
+src/renderer/features/local-conversation/projection/agent-body-collapse-presentation.node.test.ts
+  s_389c80188bce4c::t_bcd2f1be1d7d97 182-206
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_389c80188bce4c::t_90814694b81112 489-529
+  s_389c80188bce4c::t_01f4c9a6361349 12,571,621,899,1369,1399-1400
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_389c80188bce4c::t_76879f922a2978 16-19,1294,1341,1365-1367
+  s_389c80188bce4c::t_f16a91fa077036 5-11,42-45,1289-1293,1295-1296,1301-1340,1342-1364,1368-1370
+  s_389c80188bce4c::t_7f371f4603a783 3,1297-1300
+  s_389c80188bce4c::t_679621cd482541 525,650,765,912
+  s_ec8b7ab56a0e48::t_673bb01430c736 1371
+tests/e2e/fixtures/codex-transcript-performance-app-server.mjs
+  s_389c80188bce4c::t_5e7c66d11ceaf5 38-48
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.test.tsx
+  s_389c80188bce4c::t_367de92e3e5d50 3,288,695-700
+  s_389c80188bce4c::t_84b70518703a43 10-11,13,30,94-97,102-103,114-126,135-139,254,310,333,364,620-623,632-634,640-647,655,657-658
+  s_389c80188bce4c::t_bd305782dee073 12,45-53,268-284,591,648,774
+  s_389c80188bce4c::t_90c861e74be39b 552-570
+  s_389c80188bce4c::t_4be358d6cfc4a7 9
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_389c80188bce4c::t_13ab214bd8f525 797-800,853,855,858,1775-1779,1921,1951,1960
+  s_389c80188bce4c::t_06dc15076a05b1 1013,1031-1035,1037-1038,1042,1044-1045,1047-1051,1053,1063-1065,1084,1089,1117,1132,1149-1153,1161-1162,1168-1173,1175-1178,1180-1183,1185-1189,1203,1207,1215-1217,1222-1223,1227,1237,1264-1265
+  s_389c80188bce4c::t_25130ff89c42f8 1565,1579,1730,1745
+  s_389c80188bce4c::t_d22d7fac122c77 11,472,1373,1380
+  s_389c80188bce4c::t_9cd6c71770a115 2260,2298
+  s_389c80188bce4c::t_c87aea37909c22 2554-2557,2560,2564-2566,2568,2598
+  s_389c80188bce4c::t_469fc665304b8d 865,1498,1571,1616,1780-1891,2112-2124,2245,2251,2267,2270-2271,2290,2307,2327,2329,2333-2334,2336,2356,2363,2366,2375,2380,2403,2408-2416,2428,2441,2449,2468,2471-2473,2559,2563,2600-2601
+  s_389c80188bce4c::t_1d834d8294a8cd 149,151,817-818,832-833,838,1028-1029,1072-1073,1075-1081,1289,1438,1580,1752,1904
+  s_389c80188bce4c::t_948fdd3ebfa83a 700-711,866,1017,1021,1046,1164,1179,1278,1282,1286,1340,1370,1427,1432,1449-1450,1455,1473,1486,1489,1509-1511
+  s_389c80188bce4c::t_3b393e8542d2ec 733-743,804-812,1071,1074,1090,1163,1165-1167,1428,1436-1437
+  s_389c80188bce4c::t_94c73d0af6020c 337,370,390,397-399,786,841,843-849
+  s_389c80188bce4c::t_ba12f3366debbd 436-437,481-482,541,603-613,620-621,787,1239-1241,1247-1259
+  s_389c80188bce4c::t_5398e56a7c03ae 732,744-745,749,754,759,777,815,824,834-837,839,1156,1208-1210,1242-1246,1291-1294,1296-1300,1306,1311-1313,1315,1318-1319,1321-1323,1326,1332,1364-1366,1377,1386,1471-1472,1474-1475,1477-1479,1512,1575-1577,1614-1615,1618-1630,1632-1648,1731-1734,1740,2019-2030,2193,2197,2292-2297,2299-2300,2302,2304,2328,2376,2388,2404,2406,2617
+docs/product-specs/codex-thread-turn-ordering-and-assistant-promotion.md
+  s_389c80188bce4c::t_50bdb5ad232f88 290
+  s_389c80188bce4c::t_aae270285262ff 68,139-140,145,215-220,325
+  s_389c80188bce4c::t_10bc44bcf0931d 221
+src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx
+  s_389c80188bce4c::t_91c6c3bfe61551 2,89,161,167,173,263-266,295-323,374,397-399,425-432,444-446
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.tsx
+  s_389c80188bce4c::t_91c6c3bfe61551 2,71
+src/renderer/features/local-conversation/view/local-conversation-response-space-element.tsx
+  s_389c80188bce4c::t_04b4cb8a01b56e 5,17,28,42,45,54,64,76-77,80
+  s_389c80188bce4c::t_7f3e41109e5a7f 84
+src/renderer/features/local-conversation/view/local-conversation-runtime-scroll-intent.browser.test.tsx
+  s_389c80188bce4c::t_b98231ff20043a 58-71,192,231-247,322,348-350,374,380,385,387-388,391,459-505,524-526
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.jsdom.test.ts
+  s_389c80188bce4c::t_25a5fade411e3b 78,83
+src/renderer/features/local-conversation/view/local-conversation-thread-view-state.ts
+  s_389c80188bce4c::t_3a696b6bb95386 89
+src/renderer/features/local-conversation/view/local-conversation-viewport-motion.browser.test.tsx
+  s_389c80188bce4c::t_61b06a22f76f28 203-205,208-209,211-212,215-216,224-225,227-229,231-243,245,247,250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0a6f801b2ee0d1caa233801ee62b366f3ffbea63",
+  "prompts": {},
+  "sessions": {
+    "s_389c80188bce4c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ce3-b3d5-7bf2-8f51-03ebcc734560",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_d68ce1b9269e8f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d3c-6947-7822-b38f-640278e77434",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ec8b7ab56a0e48": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d27-cfaa-76f1-8242-a1d2033dde1d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
