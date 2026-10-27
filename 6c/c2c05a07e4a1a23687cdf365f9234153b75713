@@ -1,0 +1,31 @@
+src/renderer/components/workbench/workbench-automation-draft.ts
+  s_f2e3c034e2bc1d::t_7680e14e346e49 207
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_f2e3c034e2bc1d::t_c668fc4b24e760 5249-5251
+src/renderer/features/inbox/inbox-firing.ts
+  s_f2e3c034e2bc1d::t_d1360dea2e43d5 13-16,36
+src/renderer/features/inbox/inbox-message.tsx
+  s_f2e3c034e2bc1d::t_335aed11e713ad 264
+src/renderer/features/inbox/inbox-presentation.node.test.ts
+  s_f2e3c034e2bc1d::t_fefa28fef71d4e 565-567,615-619,629-633
+src/renderer/features/inbox/inbox-presentation.ts
+  s_f2e3c034e2bc1d::t_3e3d039a3f4a34 436-439
+src/renderer/features/scheduled/scheduled-task-model.ts
+  s_f2e3c034e2bc1d::t_7a09fa6498d0db 205-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6cc2c05a07e4a1a23687cdf365f9234153b75713",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
