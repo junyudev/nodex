@@ -106,6 +106,13 @@ export type BlockNoteViewProps<
 // types here for convenience so consumers can import them from `@blocknote/react`.
 export type { PortalElementsMap, PortalTarget } from "./portalElements.js";
 
+/**
+ * Every default UI option, forwarded explicitly. Listing each key keeps a new
+ * option from falling through `...rest` onto the editor's DOM element.
+ */
+type ForwardedDefaultUIProps = BlockNoteDefaultUIProps &
+  Record<keyof BlockNoteDefaultUIProps, unknown>;
+
 function BlockNoteViewComponent<
   BSchema extends BlockSchema,
   ISchema extends InlineContentSchema,
@@ -136,6 +143,7 @@ function BlockNoteViewComponent<
     filePanel,
     tableHandles,
     comments,
+    attributionTooltip,
     portalElements,
     autoFocus,
     renderEditor = true,
@@ -165,7 +173,7 @@ function BlockNoteViewComponent<
 
   // Disable default UI components if no components context is found.
   const componentsContext = useComponentsContext();
-  const defaultUIProps: BlockNoteDefaultUIProps = useMemo(
+  const defaultUIProps: ForwardedDefaultUIProps = useMemo(
     () => ({
       formattingToolbar: componentsContext ? formattingToolbar : false,
       linkToolbar: componentsContext ? linkToolbar : false,
@@ -175,9 +183,11 @@ function BlockNoteViewComponent<
       tableHandles: componentsContext ? tableHandles : false,
       emojiPicker: componentsContext ? emojiPicker : false,
       comments: componentsContext ? comments : false,
+      attributionTooltip: componentsContext ? attributionTooltip : false,
       portalElements,
     }),
     [
+      attributionTooltip,
       comments,
       componentsContext,
       emojiPicker,
