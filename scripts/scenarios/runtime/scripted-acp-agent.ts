@@ -6,7 +6,7 @@ import {
   ndJsonStream,
   type AgentContext,
   type PromptResponse,
-} from "@agentclientprotocol/sdk";
+} from "@agentclientprotocol/sdk/unstable";
 import { writeFileSync } from "node:fs";
 import { EventEmitter, once } from "node:events";
 import { Readable, Writable } from "node:stream";

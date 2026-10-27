@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
-import { client, methods, ndJsonStream } from "@agentclientprotocol/sdk";
+import { client, methods, ndJsonStream } from "@agentclientprotocol/sdk/unstable";
 import { promisify } from "node:util";
 import { expect, test } from "vite-plus/test";
 import { createScriptedAcpRegistryFixture } from "./scripted-acp-registry-fixture";

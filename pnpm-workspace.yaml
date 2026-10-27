@@ -51,10 +51,10 @@ overrides:
   vite: npm:@voidzero-dev/vite-plus-core@1.4.0
   vite-plus: 1.4.0
   vitest: 5.0.5
-  yaml: 2.9.0
-  "@modelcontextprotocol/sdk": 1.32.1
-  "@modelcontextprotocol/sdk>hono": 4.13.11
-  "@modelcontextprotocol/sdk>@hono/node-server": 2.1.3
+  yaml: 2.9.1
+  "@modelcontextprotocol/sdk": 1.32.2
+  "@modelcontextprotocol/sdk>hono": 4.13.14
+  "@modelcontextprotocol/sdk>@hono/node-server": 2.1.5
   js-yaml: 4.3.2
   # Keep transitive math renderers on the security-patched release.
   katex: 0.19.1
@@ -120,12 +120,3 @@ minimumReleaseAgeExclude:
   - "@vitest/spy@5.0.5"
   - "@vitest/ui@5.0.5"
   - "@vitest/utils@5.0.5"
-  - "@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.301"
-  - "@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.301"
-  - "@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.301"
-  - "@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.301"
-  - "@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.301"
-  - "@anthropic-ai/claude-agent-sdk-linux-x64@0.3.301"
-  - "@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.301"
-  - "@anthropic-ai/claude-agent-sdk-win32-x64@0.3.301"
-  - "@anthropic-ai/claude-agent-sdk@0.3.301"

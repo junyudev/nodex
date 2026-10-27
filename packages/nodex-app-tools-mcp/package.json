@@ -8,7 +8,7 @@
     "./manifest": "./src/manifest.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.32.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@t3tools/shared": "workspace:*",
     "zod": "4.6.7"
   },

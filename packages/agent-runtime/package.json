@@ -25,11 +25,11 @@
     "start": "node --import tsx src/nodex/entry.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.301",
+    "@anthropic-ai/claude-agent-sdk": "0.3.310",
     "@effect/platform-node": "4.0.6",
     "@effect/vitest": "4.0.6",
     "@ff-labs/fff-node": "0.11.0",
-    "@modelcontextprotocol/sdk": "1.32.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@nodex/codex-app-server-protocol": "workspace:*",
     "@opencode-ai/sdk": "1.19.4",
     "@t3tools/contracts": "workspace:*",
@@ -51,14 +51,14 @@
     "effect": "4.0.6",
     "effect-acp": "workspace:*",
     "effect-codex-app-server": "workspace:*",
-    "jose": "6.2.2",
-    "mdast-util-from-markdown": "2.0.2",
+    "jose": "6.2.13",
+    "mdast-util-from-markdown": "2.1.0",
     "node-pty": "1.1.0",
     "proper-lockfile": "4.1.2",
-    "stream-chain": "4.2.5",
+    "stream-chain": "4.2.6",
     "stream-json": "3.7.0",
     "vite-plus": "1.4.0",
-    "yaml": "2.9.0",
+    "yaml": "2.9.1",
     "yauzl": "3.4.0"
   },
   "devDependencies": {

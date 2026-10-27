@@ -504,11 +504,11 @@
     "typecheck": "tsc-rs --noEmit"
   },
   "dependencies": {
-    "@noble/curves": "1.9.1",
-    "@noble/hashes": "1.8.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
     "@t3tools/contracts": "workspace:*",
     "effect": "4.0.6",
-    "jose": "6.2.2",
+    "jose": "6.2.13",
     "mdast-util-directive": "3.1.1",
     "micromark-extension-directive": "4.0.0",
     "micromark-util-character": "2.1.1",
@@ -519,7 +519,7 @@
     "remark-parse": "11.0.0",
     "remark-rehype": "11.1.2",
     "unified": "11.0.5",
-    "yaml": "2.9.0"
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@effect/platform-node": "4.0.6",

@@ -60,6 +60,10 @@ Search WASM regeneration uses `vp run page-search:wasm:generate`. It requires
 the `wasm32-unknown-unknown` Rust target and `wasm-bindgen-cli 0.2.129`, matching
 the search kernel crate and generator pin.
 
+Keep the root `yaml` development dependency aligned with Agent Runtime's version.
+It supplies Vite's optional peer so workspace test helpers and the root runner
+resolve one Vitest instance.
+
 The install lifecycle prepares pinned Electron, then runs `electron-builder install-app-deps`, which rebuilds
 `node-pty` for Electron. Do not run `vp rebuild` for it: that can replace the
 Electron-compatible binary with a host-Node binary. SQLite and collaborative
@@ -467,6 +471,12 @@ bundled dependencies, resolver inputs, tools, mode, copied SDK resources, and
 notices match. Output corruption triggers a rebuild. Compilation happens in a
 temporary sibling tree and publishes only a complete bundle, preserving the
 previous output if a rebuild fails.
+
+The Claude Agent SDK dependency supplies its matching platform runtime. Update
+the root and Agent Runtime manifests together; installation and bundling derive
+the runtime version and build receipt from that SDK closure. Scripted ACP peers
+use the SDK's `/unstable` v1 entrypoint to retain the negotiated lifecycle and
+callback features covered by the Runtime's v1/v2 wire compatibility tests.
 
 ACP terminal sign-in uses a separate `node-pty` build for the verified staged Node.
 The macOS production build prepares that pinned runtime from the verified cache first.

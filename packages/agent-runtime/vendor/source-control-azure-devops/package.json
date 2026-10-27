@@ -47,7 +47,7 @@
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
     "@t3tools/source-control-core": "workspace:*",
-    "diff": "8.0.3",
+    "diff": "9.0.0",
     "effect": "4.0.6"
   },
   "devDependencies": {
