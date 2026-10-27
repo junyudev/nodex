@@ -1,5 +1,3 @@
-import type { ThemeRegistration } from "@pierre/diffs";
-
 export const CODE_BLOCK_SYNTAX_THEME_NAME = "nodex-code-block";
 
 const syntax = (role: string) => `var(--color-codex-syntax-${role})`;
@@ -11,9 +9,9 @@ const FOREGROUND = "var(--foreground)";
  * color scheme wherever it is declared. TextMate scopes are grouped by the roles the palette
  * names; identifiers, operators and punctuation keep the code foreground.
  */
-export const CODE_BLOCK_SYNTAX_THEME: ThemeRegistration = {
+export const CODE_BLOCK_SYNTAX_THEME = {
   name: CODE_BLOCK_SYNTAX_THEME_NAME,
-  type: "light",
+  type: "light" as const,
   fg: FOREGROUND,
   bg: "transparent",
   colors: { "editor.foreground": FOREGROUND, "editor.background": "transparent" },

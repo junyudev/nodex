@@ -104,7 +104,7 @@ describe("Files editable comparisons", () => {
     const view = render(<DraftEditor {...props} comparison={comparison} />);
     const editor = await attached(edits);
     await settle(() => {
-      expect(editor.getState().selections?.at(-1)?.end.line).toBe(3);
+      expect(editor.getViewState().selections?.at(-1)?.end.line).toBe(3);
       expect(navigation).toHaveBeenLastCalledWith({
         count: 1,
         activeIndex: -1,
@@ -127,6 +127,7 @@ describe("Files editable comparisons", () => {
       });
       expect(editor.canUndo).toBe(true);
     });
+    const beforeLayout = editor.getViewState().selections;
     view.rerender(<DraftEditor {...props} comparison={{ ...comparison, layout: "split" }} />);
     await settle(() => {
       expect(
@@ -134,6 +135,7 @@ describe("Files editable comparisons", () => {
       ).not.toBeNull();
       expect(edits).toHaveBeenCalledTimes(1);
       expect(editor.getText()).toBe(typed);
+      expect(editor.getViewState().selections).toEqual(beforeLayout);
     });
     await act(async () => editor.undo());
     await settle(() => {
@@ -142,14 +144,14 @@ describe("Files editable comparisons", () => {
     });
     await act(async () => editor.redo());
     await settle(() => expect(onChange).toHaveBeenLastCalledWith(typed));
-    const position = editor.getState().selections?.at(-1)?.end;
+    const position = editor.getViewState().selections?.at(-1)?.end;
     view.rerender(<DraftEditor {...props} comparison={null} revealLocation={undefined} />);
     await settle(() => {
       const plain = edits.mock.contexts.at(-1);
       if (!(plain instanceof Editor)) throw new Error("Plain editor has not attached");
       expect(plain).not.toBe(editor);
       expect(plain.getText()).toBe(typed);
-      expect(plain.getState().selections?.at(-1)?.end).toEqual(position);
+      expect(plain.getViewState().selections?.at(-1)?.end).toEqual(position);
       expect(navigation).toHaveBeenLastCalledWith(null);
     });
   });
@@ -170,7 +172,7 @@ describe("Files editable comparisons", () => {
     const editor = await attached(edits);
     await settle(() => {
       expect(editor.getText()).toBe("first\nnew second\nthird\nnew fourth\nfifth");
-      expect(editor.getState().selections?.at(-1)?.end.line).toBe(0);
+      expect(editor.getViewState().selections?.at(-1)?.end.line).toBe(0);
       expect(navigation.mock.lastCall?.[0]).toEqual({
         count: 2,
         activeIndex: -1,
@@ -180,7 +182,7 @@ describe("Files editable comparisons", () => {
     });
     await act(async () => ref.current?.navigateChange("next"));
     await settle(() => {
-      expect(editor.getState().selections?.at(-1)).toMatchObject({
+      expect(editor.getViewState().selections?.at(-1)).toMatchObject({
         start: { line: 1, character: 0 },
         end: { line: 1, character: 0 },
       });
@@ -193,11 +195,11 @@ describe("Files editable comparisons", () => {
       expect(shadow(view.container).activeElement?.getAttribute("contenteditable")).toBe("true");
     });
     await act(async () => ref.current?.navigateChange("next"));
-    await settle(() => expect(editor.getState().selections?.at(-1)?.end.line).toBe(3));
+    await settle(() => expect(editor.getViewState().selections?.at(-1)?.end.line).toBe(3));
     await act(async () => ref.current?.navigateChange("next"));
-    expect(editor.getState().selections?.at(-1)?.end.line).toBe(3);
+    expect(editor.getViewState().selections?.at(-1)?.end.line).toBe(3);
     await act(async () => ref.current?.navigateChange("previous"));
-    await settle(() => expect(editor.getState().selections?.at(-1)?.end.line).toBe(1));
+    await settle(() => expect(editor.getViewState().selections?.at(-1)?.end.line).toBe(1));
   });
 
   test("snapshot content, including an empty snapshot, never creates an editable session", async () => {
@@ -248,7 +250,7 @@ describe("Files editable comparisons", () => {
     );
     const editor = await attached(edits);
     await settle(() =>
-      expect(editor.getState().selections?.at(-1)?.end).toEqual({ line: 2, character: 1 }),
+      expect(editor.getViewState().selections?.at(-1)?.end).toEqual({ line: 2, character: 1 }),
     );
     view.rerender(
       <DraftEditor
@@ -275,7 +277,7 @@ describe("Files editable comparisons", () => {
       if (!(restored instanceof Editor)) throw new Error("Editor has not reattached");
       expect(restored).not.toBe(editor);
       expect(restored.getText()).toBe(changed);
-      expect(restored.getState().selections?.at(-1)?.end).toEqual({ line: 2, character: 1 });
+      expect(restored.getViewState().selections?.at(-1)?.end).toEqual({ line: 2, character: 1 });
     });
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -328,6 +330,56 @@ describe("Files editable comparisons", () => {
         expect(onChange).toHaveBeenLastCalledWith(content);
         expect(navigation.mock.lastCall?.[0]?.count).toBe(0);
         expect(noNewlineRow() !== null).toBe(missingFinalNewline);
+      });
+    },
+  );
+
+  test.each(["unified", "split"] as const)(
+    "keeps an empty new side editable in %s layout and restores it on undo",
+    async (layout) => {
+      const edits = spyOnEditor();
+      const navigation = vi.fn();
+      const onChange = vi.fn();
+      const view = render(
+        <DraftEditor
+          initial="before"
+          onChange={onChange}
+          onChangeNavigationChange={navigation}
+          comparison={{ oldContent: "before", oldPath: "example.txt", layout }}
+          revealLocation={{ line: 1, column: 1 }}
+        />,
+      );
+      const editor = await attached(edits);
+      await act(async () => {
+        editor.setSelections([
+          {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 6 },
+            direction: "forward",
+          },
+        ]);
+        editor.focus({ preventScroll: true });
+        await userEvent.keyboard("{Backspace}");
+      });
+      await settle(() => {
+        expect(onChange).toHaveBeenLastCalledWith("");
+        expect(navigation.mock.lastCall?.[0]?.count).toBe(1);
+        const line = shadow(view.container).querySelector(
+          '[data-code]:not([data-deletions]) [contenteditable=true] > [data-line="1"]:not([data-line-type="change-deletion"])',
+        );
+        expect(line).not.toBeNull();
+        expect(line?.textContent).toBe("");
+      });
+      await act(async () => {
+        await userEvent.keyboard("x");
+      });
+      await settle(() => expect(onChange).toHaveBeenLastCalledWith("x"));
+      await act(async () => editor.undo());
+      await settle(() => expect(onChange).toHaveBeenLastCalledWith(""));
+      await act(async () => editor.undo());
+      await settle(() => {
+        expect(onChange).toHaveBeenLastCalledWith("before");
+        expect(navigation.mock.lastCall?.[0]?.count).toBe(0);
       });
     },
   );
@@ -404,8 +456,12 @@ describe("Files editable comparisons", () => {
     });
     const viewport = view.container.querySelector<HTMLElement>(".nodex-source-file")!;
     await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const scrolled = new Promise<void>((resolve) => {
+        viewport.addEventListener("scroll", () => resolve(), { once: true });
+      });
       viewport.scrollTo({ top: 100_000, behavior: "instant" });
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await scrolled;
     });
     await settle(() => {
       expect(shadow(view.container).querySelector('[data-content] > [data-line="1"]')).toBeNull();

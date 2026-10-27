@@ -55,7 +55,7 @@ function buildFileChangeEntry(overrides?: Partial<CodexTranscriptEntry>): CodexT
       type: "update",
       movePath: "src/renderer/features/local-conversation/view/thread-stage-screen.tsx",
       unifiedDiff: [
-        "@@ -1,5 +1,7 @@",
+        "@@ -1,4 +1,6 @@",
         ' import { useState } from "react";',
         '+import { StoryShell } from "./thread-stage-dev-story";',
         " ",

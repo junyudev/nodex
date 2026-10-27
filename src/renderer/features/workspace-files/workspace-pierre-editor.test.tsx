@@ -1,7 +1,8 @@
 import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { createRef, forwardRef, useEffect, useImperativeHandle, useState } from "react";
-import type { CodeViewItem, EditorState } from "@pierre/diffs";
+import type { CodeViewItem } from "@pierre/diffs";
+import type { EditorViewState } from "@pierre/diffs/edit";
 import { settleAsyncRender } from "../../test/dom";
 import { installAsyncRequestAnimationFrame } from "../../test/browser-globals";
 import { WorkspacePierreEditor, type WorkspacePierreEditorHandle } from "./workspace-pierre-editor";
@@ -10,9 +11,10 @@ const { editor, codeViewHandle, typography, captureCodeViewOptions, attachment }
   () => {
     const editor = {
       setSelections: vi.fn(),
-      getState: vi.fn<() => EditorState>(() => ({})),
+      getViewState: vi.fn<() => EditorViewState>(() => ({})),
       getText: vi.fn(() => ""),
-      setState: vi.fn(),
+      getEditState: vi.fn(),
+      setViewState: vi.fn(),
       focus: vi.fn(),
     };
     return {
@@ -50,10 +52,13 @@ vi.mock("@pierre/diffs/react", () => ({
         editorOptions,
         onItemEditChange,
       }: {
-        initialItems: CodeViewItem[];
+        initialItems: CodeViewItem<undefined>[];
         options: { itemMetrics: { lineHeight: number } };
         editorOptions: { onAttach?: (attachedEditor: typeof editor) => void };
-        onItemEditChange?: (item: CodeViewItem, file: { contents: string; name: string }) => void;
+        onItemEditChange?: (
+          event: { file: { contents: string; name: string } },
+          item: CodeViewItem<undefined>,
+        ) => void;
       },
       ref,
     ) => {
@@ -64,7 +69,7 @@ vi.mock("@pierre/diffs/react", () => ({
       editor.getText.mockReturnValue(contents ?? "");
       useImperativeHandle(ref, () => ({
         ...codeViewHandle,
-        addItems: (next: CodeViewItem[]) => setItems((current) => [...current, ...next]),
+        addItems: (next: CodeViewItem<undefined>[]) => setItems((current) => [...current, ...next]),
         getInstance: () => ({
           setItems,
           getScrollTop: () => 0,
@@ -84,11 +89,7 @@ vi.mock("@pierre/diffs/react", () => ({
           data-testid="editable-pierre-file"
           data-editable={item?.edit}
           onClick={() =>
-            item &&
-            onItemEditChange?.(item, {
-              name: "file",
-              contents: "edited",
-            })
+            item && onItemEditChange?.({ file: { name: "file", contents: "edited" } }, item)
           }
         >
           {contents}
@@ -101,7 +102,7 @@ vi.mock("@pierre/diffs/react", () => ({
 beforeEach(() => {
   installAsyncRequestAnimationFrame();
   editor.setSelections.mockClear();
-  editor.getState.mockReturnValue({});
+  editor.getViewState.mockReturnValue({});
   editor.focus.mockClear();
   codeViewHandle.getEditor.mockClear();
   codeViewHandle.scrollTo.mockClear();
@@ -158,7 +159,7 @@ describe("WorkspacePierreEditor", () => {
   test("uses the backward selection start and centers the preceding additions block", async () => {
     const ref = createRef<WorkspacePierreEditorHandle>();
     const navigation = vi.fn();
-    editor.getState.mockReturnValue({
+    editor.getViewState.mockReturnValue({
       selections: [
         {
           start: { line: 2, character: 0 },

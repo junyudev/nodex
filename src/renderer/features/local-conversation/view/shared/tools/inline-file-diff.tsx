@@ -1,7 +1,7 @@
 import { FileDiff, type FileDiffMetadata, type FileDiffProps } from "@pierre/diffs/react";
 import { useEffect, useRef, type CSSProperties } from "react";
 
-type InlineFileDiffOptions = NonNullable<FileDiffProps<undefined>["options"]>;
+type InlineFileDiffOptions = NonNullable<FileDiffProps<undefined, undefined>["options"]>;
 
 interface InlineFileDiffProps {
   fileDiff: FileDiffMetadata;

@@ -1,12 +1,17 @@
-import type { EditorState, FileDiffMetadata, SupportedLanguages } from "@pierre/diffs";
-import { Editor, type EditorOptions } from "@pierre/diffs/edit";
+import type { FileDiffMetadata, SupportedLanguages } from "@pierre/diffs";
+import {
+  Editor,
+  type EditorChangeEvent,
+  type EditorFactory,
+  type EditorType,
+  type EditorViewState,
+} from "@pierre/diffs/edit";
 import {
   CodeView,
   EditProvider,
   type CodeViewHandle,
   type CodeViewItem,
   type CodeViewProps,
-  type FileContents,
 } from "@pierre/diffs/react";
 import {
   useEffect,
@@ -92,7 +97,7 @@ const INLINE_BLAME_CSS = `
   white-space: nowrap;
 }
 `;
-const EMPTY_ITEMS: CodeViewItem[] = [];
+const EMPTY_ITEMS: CodeViewItem<undefined>[] = [];
 
 interface EditorSession {
   readonly sourceIdentity: string;
@@ -106,17 +111,26 @@ interface EditorSession {
   lineCount: number;
   caretLineIndex: number;
   diff?: FileDiffMetadata;
-  editor?: Editor<undefined>;
+  editor?: Editor;
 }
 
-function createWorkspaceEditor(options: EditorOptions<undefined>): Editor<undefined> {
-  return new Editor(options);
-}
+const createWorkspaceEditor: EditorFactory<undefined, undefined> = (
+  editorType,
+  options,
+  editStateKey,
+) => new Editor(editorType, options, editStateKey);
 
-function editorCaretLine(editor: Editor<undefined> | undefined): number | undefined {
-  const selection = editor?.getState().selections?.at(-1);
+function editorCaretLine(editor: Editor | undefined): number | undefined {
+  const selection = editor?.getViewState().selections?.at(-1);
   if (!selection) return undefined;
   return selection.direction < 0 ? selection.start.line : selection.end.line;
+}
+
+function editorChangedSections(session: EditorSession) {
+  // Active hunks belong to Pierre's edit session; the input diff stays immutable.
+  const state = session.editor?.getEditState();
+  const diff = state?.type === "file-diff" ? state.diffSession : session.diff;
+  return diff ? workspaceFileChangedSections(diff) : [];
 }
 
 export function WorkspacePierreEditor({
@@ -136,10 +150,10 @@ export function WorkspacePierreEditor({
   revealLocation,
   onRevealComplete,
 }: WorkspacePierreEditorProps) {
-  const codeViewRef = useRef<CodeViewHandle<undefined>>(null);
+  const codeViewRef = useRef<CodeViewHandle<undefined, undefined>>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<EditorSession | null>(null);
-  const restoreRef = useRef<{ state: EditorState; focused: boolean; scrollTop: number } | null>(
+  const restoreRef = useRef<{ state: EditorViewState; focused: boolean; scrollTop: number } | null>(
     null,
   );
   const surfaceRef = useRef<HTMLElement | null>(null);
@@ -163,7 +177,7 @@ export function WorkspacePierreEditor({
     return () => {
       if (pending) return;
       pending = true;
-      // Pierre emits onItemEditChange before updating selections and rebuilding hunks.
+      // Coalesce document, selection, and virtualized-row updates after the current turn.
       queueMicrotask(() => {
         pending = false;
         refreshRef.current?.();
@@ -177,7 +191,7 @@ export function WorkspacePierreEditor({
   const snapshotContent = comparison?.newContent ?? null;
   const layout = comparison?.layout;
 
-  const options = useMemo<NonNullable<CodeViewProps["options"]>>(() => {
+  const options = useMemo<NonNullable<CodeViewProps<undefined, undefined>["options"]>>(() => {
     const presentation = getNodexSourceOptions(resolved, true, {
       disableLineNumbers: false,
       wrap: !!layout || wrap,
@@ -194,7 +208,7 @@ export function WorkspacePierreEditor({
       expandUnchanged: true,
       unsafeCSS: `${presentation.unsafeCSS ?? ""}\n${INLINE_BLAME_CSS}`,
       itemMetrics: { lineHeight: getNodexSourceEditorLineHeight(codeFontSize), spacing: 0 },
-      onPostRender: (node, instance, phase) => {
+      onPostRender: (node, _instance, phase) => {
         if (phase === "unmount") {
           if (surfaceRef.current !== node) return;
           surfaceRef.current = null;
@@ -203,8 +217,6 @@ export function WorkspacePierreEditor({
           inlineBlameRef.current = null;
           return;
         }
-        const session = sessionRef.current;
-        if (session && "fileDiff" in instance) session.diff = instance.fileDiff;
         if (surfaceRef.current !== node) {
           observerRef.current?.disconnect();
           surfaceRef.current = node;
@@ -257,7 +269,7 @@ export function WorkspacePierreEditor({
       restoreRef.current = null;
     } else if (previousEditor) {
       restoreRef.current = {
-        state: previousEditor.getState(),
+        state: previousEditor.getViewState(),
         focused: surfaceRef.current?.shadowRoot?.activeElement != null,
         scrollTop: codeView.getInstance()?.getScrollTop() ?? 0,
       };
@@ -278,7 +290,7 @@ export function WorkspacePierreEditor({
       diff.cacheKey = cacheKey;
       diff.lang = language ?? undefined;
     }
-    const item: CodeViewItem = diff
+    const item: CodeViewItem<undefined> = diff
       ? {
           id: sourceIdentity,
           type: "diff",
@@ -308,7 +320,8 @@ export function WorkspacePierreEditor({
     };
     sessionRef.current = session;
     // CodeView rejects a type change for an existing id. A new baseline/revision also
-    // starts a fresh session; normal draft echoes keep Pierre's mutable hunks and history.
+    // starts a fresh session; normal draft echoes keep Pierre's owned hunks and history.
+    // Unkeyed editors retain active state across layout/virtualization, then release it here.
     codeView.getInstance()?.setItems(EMPTY_ITEMS);
     codeView.addItems([item]);
     schedule();
@@ -333,7 +346,7 @@ export function WorkspacePierreEditor({
       session.caretLineIndex = caretLine ?? session.caretLineIndex;
       const nextState = session.diff
         ? workspaceFileChangeNavigation(
-            workspaceFileChangedSections(session.diff),
+            editorChangedSections(session),
             session.caretLineIndex,
             session.lineCount,
           )
@@ -430,7 +443,7 @@ export function WorkspacePierreEditor({
         const codeView = codeViewRef.current;
         if (!session?.diff || !codeView) return;
         const caretLine = editorCaretLine(session.editor) ?? session.caretLineIndex;
-        const sections = workspaceFileChangedSections(session.diff);
+        const sections = editorChangedSections(session);
         const navigation = workspaceFileChangeNavigation(sections, caretLine, session.lineCount);
         const targetIndex =
           direction === "previous" ? navigation.previousIndex : navigation.nextIndex;
@@ -477,7 +490,7 @@ export function WorkspacePierreEditor({
     onRevealComplete?.(revealLocation);
   }, [attachment, onRevealComplete, revealLocation, schedule, sourceIdentity]);
 
-  const handleEditChange = (_item: CodeViewItem, file: FileContents) => {
+  const handleEditChange = ({ file }: EditorChangeEvent<EditorType, undefined, undefined>) => {
     const session = sessionRef.current;
     if (!session || session.snapshotContent !== null) return;
     session.content = file.contents;
@@ -500,7 +513,6 @@ export function WorkspacePierreEditor({
           initialItems={EMPTY_ITEMS}
           options={options}
           editorOptions={{
-            persistState: true,
             onAttach: (editor) => {
               const session = sessionRef.current;
               if (!session || codeViewRef.current?.getEditor(session.sourceIdentity) !== editor)
@@ -522,7 +534,7 @@ export function WorkspacePierreEditor({
                   })),
                 );
                 if (restore.state.view)
-                  editor.setState({ ...editor.getState(), view: restore.state.view });
+                  editor.setViewState({ ...editor.getViewState(), view: restore.state.view });
                 codeViewRef.current?.scrollTo({
                   type: "position",
                   position: restore.scrollTop,

@@ -24,12 +24,13 @@ describe("SourceViewer browser behavior", () => {
     );
 
     const region = view.getByRole("region", { name: "Large exact source" });
-    const file = region.querySelector("diffs-container");
-    expect(file).not.toBeNull();
-
-    await waitFor(
+    const file = await waitFor(
       () => {
-        expect(file?.shadowRoot?.querySelector("[data-code]")).not.toBeNull();
+        const file = region.querySelector("diffs-container");
+        if (!file?.shadowRoot?.querySelector("[data-code]")) {
+          throw new Error("Source viewport has not rendered");
+        }
+        return file;
       },
       { timeout: 10_000 },
     );

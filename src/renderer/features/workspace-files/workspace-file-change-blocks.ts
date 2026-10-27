@@ -23,7 +23,7 @@ export interface WorkspaceFileChangedSection {
 }
 
 export function workspaceFileChangedSections(
-  diff: FileDiffMetadata,
+  diff: Pick<FileDiffMetadata, "hunks">,
 ): readonly WorkspaceFileChangedSection[] {
   return diff.hunks.flatMap((hunk) => hunk.hunkContent.filter((block) => block.type === "change"));
 }

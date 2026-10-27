@@ -4,8 +4,8 @@ import type { CSSProperties } from "react";
 import { CODE_BLOCK_SYNTAX_THEME, CODE_BLOCK_SYNTAX_THEME_NAME } from "./code-block-syntax-theme";
 
 type DiffThemeType = Exclude<ThemeTypes, "system">;
-type SharedDiffOptions = NonNullable<FileDiffProps<undefined>["options"]>;
-type SharedSourceOptions = NonNullable<CodeViewProps["options"]>;
+type SharedDiffOptions = NonNullable<FileDiffProps<undefined, undefined>["options"]>;
+type SharedSourceOptions = NonNullable<CodeViewProps<undefined, undefined>["options"]>;
 type SharedCodeOptions = Pick<
   SharedSourceOptions,
   "disableFileHeader" | "overflow" | "theme" | "themeType" | "unsafeCSS"

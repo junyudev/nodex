@@ -41,7 +41,7 @@ const invokeCalls: unknown[][] = [];
 const startThreadPromptCalls: Array<{ threadId: string; prompt: string }> = [];
 const clipboardWrites: string[] = [];
 let mockInvokeImpl: ((...args: unknown[]) => Promise<unknown>) | null = null;
-let lastFileDiffProps: FileDiffProps<unknown> | null = null;
+let lastFileDiffProps: FileDiffProps<unknown, undefined> | null = null;
 const openWorkspaceFileTab = vi.fn(async () => true);
 
 function PrepareReviewOpen({ intent }: { readonly intent: ReviewOpenIntent }) {
@@ -483,10 +483,10 @@ const reviewDiffPanelTestDeps = {
     resolved: "light" as const,
     setTheme: () => {},
   }),
-  FileDiff: <LAnnotation,>(props: FileDiffProps<LAnnotation>) => {
+  FileDiff: <LAnnotation, Caret>(props: FileDiffProps<LAnnotation, Caret>) => {
     const { className, fileDiff, options, lineAnnotations, renderAnnotation, selectedLines } =
       props;
-    lastFileDiffProps = props as unknown as FileDiffProps<unknown>;
+    lastFileDiffProps = props as unknown as FileDiffProps<unknown, undefined>;
     return createElement(
       "div",
       {
@@ -519,7 +519,7 @@ const reviewDiffPanelTestDeps = {
             key: index,
             "data-rendered-line-annotation": `${annotation.side}:${annotation.lineNumber}`,
           },
-          renderAnnotation?.(annotation),
+          renderAnnotation?.(annotation, fileDiff),
         ),
       ),
     );

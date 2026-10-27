@@ -2052,7 +2052,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
     onLineLeave: handleLineLeave,
     onLineSelected: createDraftFromRange,
     onLineSelectionChange: setSelectedLines,
-  } as NonNullable<FileDiffProps<ReviewDiffAnnotationMetadata>["options"]>;
+  } as NonNullable<FileDiffProps<ReviewDiffAnnotationMetadata, undefined>["options"]>;
   const shouldRequestFullContents =
     loadFullFilesEnabled &&
     canLoadFullContent &&

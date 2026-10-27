@@ -20,7 +20,9 @@ describe("page stage raw content", () => {
     await waitFor(() => {
       const root = source.querySelector("diffs-container")?.shadowRoot;
       const lines = Array.from(root?.querySelectorAll("[data-line]") ?? []);
-      expect(lines.map((line) => line.textContent).join("\n")).toBe(content);
+      // A blank row keeps its height with a line-break text node.
+      const texts = lines.map((line) => (line.textContent === "\n" ? "" : line.textContent));
+      expect(texts.join("\n")).toBe(content);
       expect(root?.querySelector('textarea, input, [contenteditable="true"]')).toBeNull();
     });
   });

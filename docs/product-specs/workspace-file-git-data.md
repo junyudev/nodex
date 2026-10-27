@@ -51,6 +51,8 @@ editor diff sessions and search controls remain responsibilities of their consum
 
 The Files text editor displays live comparisons in unified or split layout with wrapping and all
 unchanged context expanded. Edits update the caller-owned draft without saving or reading Git.
+Empty drafts keep an editable caret row; equal empty files have no change blocks, and typing or
+undoing against an empty baseline updates navigation without treating that caret row as a change.
 Staged and Committed content supplied as snapshots is read only, including an empty snapshot.
 Changing the layout preserves the live edit session and undo history. Changing the baseline,
 document revision, entering or leaving a snapshot, or switching between a plain document and a

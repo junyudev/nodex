@@ -54,16 +54,14 @@ test.each(["light", "dark"] as const)(
     const view = renderRawDialog({ callId: "call-1", durationMs: 49, success: true });
     try {
       const dialog = await view.findByRole("dialog");
+      // Color probes mutate the DOM; resolve them outside the observer-driven retry.
+      const attribute = readRendererThemeColor("--color-codex-syntax-attribute");
+      const string = readRendererThemeColor("--color-codex-syntax-string");
+      const literal = readRendererThemeColor("--color-codex-syntax-literal");
       await waitFor(() => {
-        expect(tokenColor(dialog, "callId")).toBe(
-          readRendererThemeColor("--color-codex-syntax-attribute"),
-        );
-        expect(tokenColor(dialog, "call-1")).toBe(
-          readRendererThemeColor("--color-codex-syntax-string"),
-        );
-        expect(tokenColor(dialog, "49")).toBe(
-          readRendererThemeColor("--color-codex-syntax-literal"),
-        );
+        expect(tokenColor(dialog, "callId")).toBe(attribute);
+        expect(tokenColor(dialog, "call-1")).toBe(string);
+        expect(tokenColor(dialog, "49")).toBe(literal);
       });
       expect(view.getByRole("button", { name: "Copy" })).toBeVisible();
     } finally {

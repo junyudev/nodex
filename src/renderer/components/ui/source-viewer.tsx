@@ -49,7 +49,7 @@ export function SourceViewer({
   revealLocation,
   onRevealComplete,
 }: SourceViewerProps) {
-  const codeViewRef = useRef<CodeViewHandle<undefined>>(null);
+  const codeViewRef = useRef<CodeViewHandle<undefined, undefined>>(null);
   const [renderedIdentity, setRenderedIdentity] = useState<string | null>(null);
   const identity = sourceIdentity ?? filename;
   const { resolved } = useTheme();
@@ -75,7 +75,7 @@ export function SourceViewer({
     ],
     [contentVersion, file, filename, sourceIdentity],
   );
-  const options = useMemo<NonNullable<CodeViewProps["options"]>>(
+  const options = useMemo<NonNullable<CodeViewProps<undefined, undefined>["options"]>>(
     () => ({
       ...getNodexSourceOptions(resolved, true, {
         disableLineNumbers: !lineNumbers,

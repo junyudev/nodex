@@ -30,6 +30,9 @@ Do not add release-age exclusions to resolve peer conflicts. Run `vp install`,
 
 - Vendored BlockNote packages share one version; keep the code-block peer
   declaration aligned with its workspace Core dependency.
+- `@pierre/diffs` supplies `@pierre/theme@2.0.0`. Trees `1.0.0-beta.6` pins
+  theming `1.0.0`, so its dependency is overridden to `1.0.2`, which supports
+  Theme 2 and preserves the color normalization API used by Trees.
 - Excalidraw `0.18.1` still pins Radix Tabs `1.0.2`. Override only that dependency
   to `1.2.1` for a React 19-compatible Tabs closure; its Root, List, Trigger, and
   Content API supports Excalidraw's diagram dialog.
