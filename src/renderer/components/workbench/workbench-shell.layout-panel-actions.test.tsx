@@ -103,7 +103,7 @@ describe("workbench session shell / layout-panel-actions", () => {
         throw new Error("Session creation timed out");
       return base(channel, ...args);
     });
-    const menu = await openPanelMenu(screen, "New tab");
+    const menu = await openPanelMenu(screen, "right");
     await clickMenuItem(menu, "Side chat");
 
     expect(textContent(await screen.findByRole("alert"))).toContain(
@@ -1793,7 +1793,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(globalHeader?.contains(addTabButton)).toBe(false);
     expect(screen.queryByRole("button", { name: "Add DB view" })).toBe(null);
 
-    const menu = await openPanelMenu(screen, "New tab");
+    const menu = await openPanelMenu(screen, "right");
     await clickMenuItem(menu, "Files");
 
     expect(screen.getByRole("tab", { name: "Files" }) !== null).toBe(true);
@@ -2194,12 +2194,12 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const filesMenu = await openPanelMenu(screen, "New tab");
+    const filesMenu = await openPanelMenu(screen, "right");
     await clickMenuItem(filesMenu, "Files");
 
     expect(screen.getByRole("tab", { name: "Files" }) !== null).toBe(true);
 
-    const browserMenu = await openPanelMenu(screen, "New tab");
+    const browserMenu = await openPanelMenu(screen, "right");
     await clickMenuItem(browserMenu, "Browser");
 
     expect(screen.getByRole("tab", { name: "Files" }) !== null).toBe(true);
@@ -2285,7 +2285,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(actionText.includes("Files")).toBe(false);
     expect(actionText.includes("Review")).toBe(true);
 
-    const menu = await openPanelMenu(screen, "New tab");
+    const menu = await openPanelMenu(screen, "right");
     expect(within(menu).getByText("Side chat") !== null).toBe(true);
     expect(within(menu).getByText("Browser") !== null).toBe(true);
     expect(within(menu).getByText("Terminal") !== null).toBe(true);
@@ -2311,7 +2311,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       await Promise.resolve();
     });
     await openBottomPanel(screen);
-    const bottomMenu = await openPanelMenu(screen, "Open bottom panel tab");
+    const bottomMenu = await openPanelMenu(screen, "bottom");
     const bottomMenuText = textContent(bottomMenu);
     expect(bottomMenuText.indexOf("Side chat") < bottomMenuText.indexOf("Browser")).toBe(true);
     expect(bottomMenuText.indexOf("Browser") < bottomMenuText.indexOf("Terminal")).toBe(true);
@@ -2406,7 +2406,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await openBottomPanel(screen);
 
-    const menu = await openPanelMenu(screen, "Open bottom panel tab");
+    const menu = await openPanelMenu(screen, "bottom");
     expect(within(menu).getByText("Files") !== null).toBe(true);
     expect(within(menu).getByText("Side chat") !== null).toBe(true);
     expect(within(menu).getByText("Browser") !== null).toBe(true);
@@ -2429,7 +2429,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const menu = await openPanelMenu(screen, "New tab");
+    const menu = await openPanelMenu(screen, "right");
     const menuText = textContent(menu);
     expect(menuText.indexOf("Review") < menuText.indexOf("Terminal")).toBe(true);
     expect(menuText.indexOf("Side chat") < menuText.indexOf("New page")).toBe(true);
@@ -2607,7 +2607,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const menu = await openPanelMenu(screen, "New tab");
+    const menu = await openPanelMenu(screen, "right");
     const dbViewText = within(menu).getByText("DB View");
     const dbViewItem = dbViewText.closest('[role="menuitem"]');
     if (!(dbViewItem instanceof HTMLElement)) {
@@ -2644,7 +2644,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     expect(invokeCalls.some((call) => call[0] === "window-session-view:tab-create")).toBe(false);
 
-    const betaMenu = await openPanelMenu(screen, "New tab");
+    const betaMenu = await openPanelMenu(screen, "right");
     const betaDbViewText = within(betaMenu).getByText("DB View");
     const betaDbViewItem = betaDbViewText.closest('[role="menuitem"]');
     if (!(betaDbViewItem instanceof HTMLElement)) {
@@ -2740,7 +2740,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await openBottomPanel(screen);
 
-    const menu = await openPanelMenu(screen, "Open bottom panel tab");
+    const menu = await openPanelMenu(screen, "bottom");
     await clickMenuItem(menu, "Files");
     await waitFor(() => {
       expect(
@@ -2776,7 +2776,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await openBottomPanel(screen);
 
-    const menu = await openPanelMenu(screen, "Open bottom panel tab");
+    const menu = await openPanelMenu(screen, "bottom");
     await clickMenuItem(menu, "Browser");
 
     expect((await screen.findByRole("tab", { name: "New tab" })) !== null).toBe(true);
@@ -2813,7 +2813,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       (call) => call[0] === "window-session-view:tab-create",
     ).length;
 
-    const menu = await openPanelMenu(screen, "Open bottom panel tab");
+    const menu = await openPanelMenu(screen, "bottom");
     await act(async () => {
       fireEvent.click(within(menu).getByText("Side chat"));
       await Promise.resolve();

@@ -39,9 +39,9 @@ interface WorkbenchPanelNewTabButtonProps {
 }
 
 /**
- * The panel group's `+`. In the side panel a click opens a New tab, which presents every
- * tool, and a right-click opens the action menu directly. The bottom panel opens the menu.
- * The menu owns its transient open state and delegates choices to the owning panel host.
+ * The panel group's `+`. A click opens a New tab, which presents every tool, and a
+ * right-click opens the action menu directly; a panel that cannot hold a Browser opens the
+ * menu instead. The menu owns its transient open state and delegates choices to the host.
  */
 export function WorkbenchPanelNewTabButton({
   actions,
@@ -56,8 +56,7 @@ export function WorkbenchPanelNewTabButton({
 }: WorkbenchPanelNewTabButtonProps) {
   const [open, setOpen] = useState(false);
   if (actions.length === 0) return null;
-  const newTabAction =
-    panelId === "right" ? actions.find((action) => action.kind === "browser") : undefined;
+  const newTabAction = actions.find((action) => action.kind === "browser");
   const title = newTabAction ? "New tab" : "Open bottom panel tab";
 
   return (
@@ -73,7 +72,8 @@ export function WorkbenchPanelNewTabButton({
       contentWidth="menuWide"
       triggerTooltipContent={title}
       triggerTooltipShortcutLabel={
-        newTabAction
+        // The New tab shortcut opens in the side panel.
+        newTabAction && panelId === newTabAction.defaultPanelId
           ? (resolvePanelActionShortcutLabel(newTabAction, isMac, commandKeymapState) ?? undefined)
           : undefined
       }

@@ -15,7 +15,7 @@ const kinds = (list: readonly { readonly kind: string }[]) => list.map((action) 
 const withShortcut = (action: { readonly shortcut?: string }) => action.shortcut !== undefined;
 
 describe("New tab tool layout", () => {
-  test("leads with shortcut tools and moves project content behind More tools", () => {
+  test("shows every Session tool in four rows, shortcut tools first and project content last", () => {
     const layout = resolveNewTabToolLayout(
       actions(
         "review",
@@ -31,9 +31,18 @@ describe("New tab tool layout", () => {
       { hasChat: false, hasShortcut: withShortcut },
     );
 
-    expect(kinds(layout.tiles)).toEqual(["review", "terminal", "files", "side_chat", "new_page"]);
-    expect(kinds(layout.moreTools)).toEqual([]);
-    expect(kinds(layout.projectContent)).toEqual(["db_view", "page_stage", "canvas_stage"]);
+    expect(kinds(layout.tiles)).toEqual([
+      "review",
+      "terminal",
+      "files",
+      "side_chat",
+      "new_page",
+      "db_view",
+      "page_stage",
+      "canvas_stage",
+    ]);
+    expect(layout.moreTools).toEqual([]);
+    expect(layout.projectContent).toEqual([]);
   });
 
   test("fills every slot when nothing overflows", () => {
@@ -47,19 +56,31 @@ describe("New tab tool layout", () => {
     expect(layout.projectContent).toEqual([]);
   });
 
-  test("counts Chat as a tile when reserving the More tools slot", () => {
-    const tools = actions("review", "terminal", "files", "side_chat", "new_page");
+  test("counts Chat as a tile and moves the overflow behind More tools by section", () => {
+    const layout = resolveNewTabToolLayout(
+      actions(
+        "review",
+        "terminal",
+        "files",
+        "side_chat",
+        "new_page",
+        "db_view",
+        "page_stage",
+        "canvas_stage",
+      ),
+      { hasChat: true, hasShortcut: withShortcut },
+    );
 
-    expect(
-      kinds(resolveNewTabToolLayout(tools, { hasChat: true, hasShortcut: withShortcut }).tiles),
-    ).toEqual(["review", "terminal", "files", "side_chat", "new_page"]);
-
-    const layout = resolveNewTabToolLayout([...tools, getPanelNewTabAction("db_view")], {
-      hasChat: true,
-      hasShortcut: withShortcut,
-    });
-    expect(kinds(layout.tiles)).toEqual(["review", "terminal", "files", "side_chat"]);
-    expect(kinds(layout.moreTools)).toEqual(["new_page"]);
+    expect(kinds(layout.tiles)).toEqual([
+      "review",
+      "terminal",
+      "files",
+      "side_chat",
+      "new_page",
+      "db_view",
+    ]);
+    expect(layout.moreTools).toEqual([]);
+    expect(kinds(layout.projectContent)).toEqual(["page_stage", "canvas_stage"]);
   });
 
   test("sorts by the effective shortcut, including custom bindings", () => {

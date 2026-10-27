@@ -82,6 +82,56 @@ describe("workbench session shell / panel-commands", () => {
     expect(tabOrder().indexOf("Files")).toBe(newTabIndex);
   });
 
+  test("the bottom panel plus opens a New tab there instead of a menu", async () => {
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [makeAttachedSession()] },
+    });
+    await settleAsyncRender();
+    await settleAsyncRender();
+    await openBottomPanel(screen);
+    const bottomPanel = await screen.findByTestId("session-bottom-panel");
+    setInvokeCalls([]);
+
+    await act(async () => {
+      fireEvent.click(within(bottomPanel).getByRole("button", { name: "New tab" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    expect(screen.queryByRole("menu")).toBe(null);
+    expect((await within(bottomPanel).findByRole("tab", { name: "New tab" })) !== null).toBe(true);
+    expect(
+      invokeCalls.some(
+        (call) =>
+          call[0] === "window-session-view:tab-create" &&
+          JSON.stringify(call[1]).includes('"panelId":"bottom"') &&
+          JSON.stringify(call[1]).includes('"kind":"browser"'),
+      ),
+    ).toBe(true);
+  });
+
+  test("with no tabs, the titlebar New tab opens a New tab beside the Chat", async () => {
+    const session = makeAttachedSession({
+      tabs: [],
+      rightLayout: makePanelLayout([], null),
+      rightCollapsed: true,
+    });
+    const screen = renderWorkbench({ sessionsByProject: { alpha: [session] } });
+    await settleAsyncRender();
+    await settleAsyncRender();
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "New tab" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    expect((await screen.findByRole("tab", { name: "New tab" })) !== null).toBe(true);
+    expect(
+      screen.container.querySelector('[data-thread-side-panel-new-tab-action-grid="true"]'),
+    ).toBe(null);
+  });
+
   test("plus menu keeps DB and Browser available while hiding singleton Review", async () => {
     const browserTab = makeSessionTab({
       id: "session:alpha:database-view:browser",
@@ -115,7 +165,7 @@ describe("workbench session shell / panel-commands", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const menu = await openPanelMenu(screen, "New tab");
+    const menu = await openPanelMenu(screen, "right");
     expect(within(menu).getByText("DB View") !== null).toBe(true);
     expect(within(menu).getByText("Open page") !== null).toBe(true);
     expect(within(menu).getByText("New page") !== null).toBe(true);
@@ -133,7 +183,7 @@ describe("workbench session shell / panel-commands", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const menu = await openPanelMenu(screen, "New tab");
+    const menu = await openPanelMenu(screen, "right");
     setInvokeCalls([]);
     fireEvent.click(within(menu).getByText("Canvas"));
     await settleAsyncRender();
@@ -182,7 +232,7 @@ describe("workbench session shell / panel-commands", () => {
     await settleAsyncRender();
     await openBottomPanel(screen);
 
-    const menu = await openPanelMenu(screen, "Open bottom panel tab");
+    const menu = await openPanelMenu(screen, "bottom");
     expect(within(menu).getByText("Browser") !== null).toBe(true);
     expect(within(menu).queryByText("Review")).toBe(null);
     expect(within(menu).getByText("Files") !== null).toBe(true);
@@ -197,7 +247,7 @@ describe("workbench session shell / panel-commands", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const menu = await openPanelMenu(screen, "New tab");
+    const menu = await openPanelMenu(screen, "right");
     fireEvent.click(within(menu).getByText("Review"));
     await settleAsyncRender();
     await settleAsyncRender();
@@ -220,7 +270,7 @@ describe("workbench session shell / panel-commands", () => {
     const screen = renderWorkbench({ sessionsByProject: { alpha: [session] } });
     await settleAsyncRender();
     await settleAsyncRender();
-    const menu = await openPanelMenu(screen, "New tab");
+    const menu = await openPanelMenu(screen, "right");
     await act(async () => {
       fireEvent.click(within(menu).getByText("Review"));
       await Promise.resolve();

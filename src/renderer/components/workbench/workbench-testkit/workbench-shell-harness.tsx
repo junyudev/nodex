@@ -4859,21 +4859,28 @@ export async function releasePointerDrag(pointerId = 1): Promise<void> {
   await settleAsyncRender();
 }
 
-/** Opens a panel's action menu: the side panel's New tab button opens it from its context menu. */
+/** Opens a panel's action menu from its `+`, which opens it from the context menu. */
 export async function openPanelMenu(
   screen: ReturnType<typeof renderWorkbench>,
-  label: "New tab" | "Open bottom panel tab",
+  panel: "right" | "bottom",
 ): Promise<HTMLElement> {
-  const trigger = await screen.findByRole("button", { name: label });
-  if (label === "New tab") {
-    await act(async () => {
-      fireEvent.contextMenu(trigger);
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-  } else {
-    await openNodexMenu(trigger);
-  }
+  const trigger = await waitFor(() => {
+    const candidates = screen
+      .getAllByRole("button", { name: "New tab" })
+      .filter((button) => button.getAttribute("role") !== "tab");
+    const inBottomPanel = (button: HTMLElement) =>
+      button.closest('[data-testid$="bottom-panel"]') !== null;
+    const match = candidates.find((button) =>
+      panel === "bottom" ? inBottomPanel(button) : !inBottomPanel(button),
+    );
+    if (!match) throw new Error(`Expected the ${panel} panel New tab button`);
+    return match;
+  });
+  await act(async () => {
+    fireEvent.contextMenu(trigger);
+    await Promise.resolve();
+  });
+  await settleAsyncRender();
   await waitFor(() => {
     expect(screen.queryByRole("menu") !== null).toBe(true);
   });

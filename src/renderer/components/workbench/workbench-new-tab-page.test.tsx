@@ -89,7 +89,7 @@ function renderPage(
 }
 
 describe("WorkbenchNewTabPage", () => {
-  test("shows tools as tiles and keeps project destinations in More tools", async () => {
+  test("shows every tool as a tile, with the Page picker on Open page", async () => {
     const { onSelectAction } = renderPage([
       "terminal",
       "browser",
@@ -103,11 +103,39 @@ describe("WorkbenchNewTabPage", () => {
     if (!tools) throw new Error("Expected the Tools section");
 
     expect(within(tools).queryByRole("button", { name: /^Browser/ })).toBe(null);
+    expect(within(tools).queryByRole("button", { name: /More tools/ })).toBe(null);
     await act(async () => {
       fireEvent.click(within(tools).getByRole("button", { name: /New page/ }));
+      fireEvent.click(within(tools).getByRole("button", { name: /Canvas/ }));
       await Promise.resolve();
     });
-    expect(onSelectAction).toHaveBeenCalledWith("new_page");
+    expect(onSelectAction.mock.calls).toEqual([["new_page"], ["canvas_stage"]]);
+
+    // Open page offers the Page picker instead of running directly.
+    expect(
+      within(tools)
+        .getByRole("button", { name: /Open page/ })
+        .closest("[aria-haspopup]"),
+    ).not.toBe(null);
+    expect(onSelectAction).not.toHaveBeenCalledWith("page_stage");
+  });
+
+  test("moves the overflow behind More tools, grouped by section", async () => {
+    const { onSelectAction } = renderPage(
+      [
+        "review",
+        "terminal",
+        "files",
+        "side_chat",
+        "new_page",
+        "db_view",
+        "page_stage",
+        "canvas_stage",
+      ],
+      { onSelectChat: () => undefined },
+    );
+    const tools = screen.getByRole("heading", { name: "Tools" }).parentElement;
+    if (!tools) throw new Error("Expected the Tools section");
 
     await openNodexMenu(within(tools).getByRole("button", { name: /More tools/ }));
     const menu = await screen.findByRole("menu");

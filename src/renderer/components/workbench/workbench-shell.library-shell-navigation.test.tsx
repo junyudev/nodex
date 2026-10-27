@@ -192,7 +192,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     });
     await settleAsyncRender();
 
-    await openPanelMenu(screen, "New tab");
+    await openPanelMenu(screen, "right");
 
     await act(async () => {
       fireEvent.click(screen.getByText("Browser"));

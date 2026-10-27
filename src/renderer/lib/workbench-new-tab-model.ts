@@ -1,22 +1,22 @@
 import type { WorkbenchRendererObservation } from "../../shared/nodex-app-tools/workbench";
 import { isNodexPanelOptionAction, type PanelNewTabAction } from "./workbench-panel-actions";
 
-/** A New tab's Tools grid holds six tiles, counting its `Chat` and `More tools…` tiles. */
-export const NEW_TAB_TOOL_SLOTS = 6;
+/** A New tab's Tools grid holds four rows of two tiles, counting `Chat` and `More tools…`. */
+export const NEW_TAB_TOOL_SLOTS = 8;
 
 export interface NewTabToolLayout {
-  /** Tools shown as tiles, shortcut-bearing tools first. */
+  /** Tools shown as tiles: shortcut-bearing tools, the other tools, then project content. */
   readonly tiles: readonly PanelNewTabAction[];
   /** General tools that did not fit in the grid. */
   readonly moreTools: readonly PanelNewTabAction[];
-  /** Project content destinations, which always open from `More tools…`. */
+  /** Project content destinations that did not fit in the grid. */
   readonly projectContent: readonly PanelNewTabAction[];
 }
 
 /**
  * Lays out a New tab's Tools. A New tab already is a Browser, so Browser is never a tool.
- * Shortcut-bearing tools lead, the rest keep capability order, and the last slot becomes
- * `More tools…` whenever a tool overflows or project content is available.
+ * Shortcut-bearing tools lead, the rest keep capability order, and project content follows.
+ * Only when they do not all fit does the last slot become `More tools…` for the rest.
  */
 export function resolveNewTabToolLayout(
   actions: readonly PanelNewTabAction[],
@@ -26,18 +26,19 @@ export function resolveNewTabToolLayout(
   },
 ): NewTabToolLayout {
   const tools = actions.filter((action) => action.kind !== "browser");
-  const projectContent = tools.filter(isNodexPanelOptionAction);
   const general = tools.filter((action) => !isNodexPanelOptionAction(action));
   const ordered = [
     ...general.filter(options.hasShortcut),
     ...general.filter((action) => !options.hasShortcut(action)),
+    ...tools.filter(isNodexPanelOptionAction),
   ];
   const slots = options.hasChat ? NEW_TAB_TOOL_SLOTS - 1 : NEW_TAB_TOOL_SLOTS;
-  const tileCount = ordered.length > slots || projectContent.length > 0 ? slots - 1 : slots;
+  const tileCount = ordered.length > slots ? slots - 1 : slots;
+  const overflow = ordered.slice(tileCount);
   return {
     tiles: ordered.slice(0, tileCount),
-    moreTools: ordered.slice(tileCount),
-    projectContent,
+    moreTools: overflow.filter((action) => !isNodexPanelOptionAction(action)),
+    projectContent: overflow.filter(isNodexPanelOptionAction),
   };
 }
 

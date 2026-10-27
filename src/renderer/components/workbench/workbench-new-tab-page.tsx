@@ -230,20 +230,30 @@ function NewTabTools({
             onClick={onSelectChat}
           />
         ) : null}
-        {layout.tiles.map((action) => (
-          <NewTabToolTile
-            key={action.kind}
-            icon={<action.Icon className="icon-xs" />}
-            label={action.label}
-            shortcut={shortcutFor(action)}
-            onClick={() => onSelectAction(action.kind)}
-            trailingAction={
-              action.kind === "terminal" && bottomTerminal ? (
-                <TerminalOptionsMenu action={action} bottomTerminal={bottomTerminal} />
-              ) : null
-            }
-          />
-        ))}
+        {layout.tiles.map((action) =>
+          action.kind === "page_stage" ? (
+            <OpenPageTile
+              key={action.kind}
+              action={action}
+              projects={projects}
+              currentProjectId={currentProjectId}
+              onOpenDestination={onOpenDestination}
+            />
+          ) : (
+            <NewTabToolTile
+              key={action.kind}
+              icon={<action.Icon className="icon-xs" />}
+              label={action.label}
+              shortcut={shortcutFor(action)}
+              onClick={() => onSelectAction(action.kind)}
+              trailingAction={
+                action.kind === "terminal" && bottomTerminal ? (
+                  <TerminalOptionsMenu action={action} bottomTerminal={bottomTerminal} />
+                ) : null
+              }
+            />
+          ),
+        )}
         {hasMore ? (
           <MoreToolsMenu
             layout={layout}
@@ -256,6 +266,47 @@ function NewTabTools({
         ) : null}
       </div>
     </section>
+  );
+}
+
+const PAGE_PICKER_CONTENT_CLASS = "w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0";
+
+/** `Open page` picks a Project Page, so its tile opens the Page picker beneath it. */
+function OpenPageTile({
+  action,
+  projects,
+  currentProjectId,
+  onOpenDestination,
+}: {
+  readonly action: PanelNewTabAction;
+  readonly projects: readonly Project[];
+  readonly currentProjectId: string | null;
+  readonly onOpenDestination: (destination: PanelDestination) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <NodexDropdownMenu
+      open={open}
+      onOpenChange={setOpen}
+      align="start"
+      contentClassName={PAGE_PICKER_CONTENT_CLASS}
+      triggerButton={
+        <NewTabToolTile icon={<action.Icon className="icon-xs" />} label={`${action.label}…`} />
+      }
+    >
+      <PanelDestinationPicker
+        projects={projects}
+        scope="page-only"
+        ariaLabel="Open Page"
+        placeholder="Open Page…"
+        currentProjectId={currentProjectId}
+        onClose={() => setOpen(false)}
+        onAccept={(destination) => {
+          setOpen(false);
+          onOpenDestination(destination);
+        }}
+      />
+    </NodexDropdownMenu>
   );
 }
 
@@ -314,7 +365,7 @@ function MoreToolsMenu({
         key={action.kind}
         label={action.label}
         leftSlot={<action.Icon className="icon-xs" />}
-        contentClassName="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0"
+        contentClassName={PAGE_PICKER_CONTENT_CLASS}
       >
         <PanelDestinationPicker
           projects={projects}

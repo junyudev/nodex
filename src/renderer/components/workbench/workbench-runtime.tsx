@@ -3528,6 +3528,15 @@ export function WorkbenchRuntime({
                 void hideActiveRightPanel();
                 return;
               }
+              // With no tabs to show, `New tab` opens one beside the Chat.
+              if (
+                !sidePanelOpen &&
+                Object.values(panelGroupTabs.right.itemsByLeafId).flat().length === 0 &&
+                resolveActivePanelCapabilities("right").actions.browser.available
+              ) {
+                void dispatchPanelAction("browser", { panelId: "right" });
+                return;
+              }
               if (!rightPanel) return;
               void updateActiveWorkbenchPanel("right", {
                 collapsed: false,
