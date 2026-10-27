@@ -2120,7 +2120,7 @@ mod tests {
 
         let mut first_steps = None;
         for size in [1_000, 10_000, 100_000] {
-            let connection = Connection::open_in_memory().unwrap();
+            let mut connection = Connection::open_in_memory().unwrap();
             install_order_fixture(&connection);
             let order = require_ready(&connection, "view").unwrap();
             // Explicit storage pressure: only the three seed Pages are roots.
@@ -2323,18 +2323,9 @@ mod tests {
             )).unwrap();
             for descending in [false, true] {
                 for (count, stride) in [(1, 1), (64, 1), (64, 2)] {
-                    let transaction = connection.transaction().unwrap();
-                    let ids = (0..count)
-                        .map(|index| format!("pressure-{:06}", 100 + index * stride))
-                        .collect::<Vec<_>>();
-                    let selected = ids.iter().map(String::as_str).collect::<HashSet<_>>();
-                    let expected = vec![LogicalPositionRun {
-                        page_ids: ids.clone(),
-                        before_page_id: Some(format!("pressure-{:06}", size - 2)),
-                    }];
                     let ticks = Arc::new(AtomicUsize::new(0));
                     let observed = Arc::clone(&ticks);
-                    transaction
+                    connection
                         .progress_handler(
                             1,
                             Some(move || {
@@ -2343,6 +2334,16 @@ mod tests {
                             }),
                         )
                         .unwrap();
+                    let transaction = connection.transaction().unwrap();
+                    ticks.store(0, Ordering::Relaxed);
+                    let ids = (0..count)
+                        .map(|index| format!("pressure-{:06}", 100 + index * stride))
+                        .collect::<Vec<_>>();
+                    let selected = ids.iter().map(String::as_str).collect::<HashSet<_>>();
+                    let expected = vec![LogicalPositionRun {
+                        page_ids: ids.clone(),
+                        before_page_id: Some(format!("pressure-{:06}", size - 2)),
+                    }];
                     let order = ready(&transaction, "view").unwrap().unwrap();
                     let before = capture_runs(&transaction, &order, &selected, descending).unwrap();
                     position_runs(&transaction, &order, &expected, descending, "forward").unwrap();
@@ -2365,11 +2366,11 @@ mod tests {
                         capture_runs(&transaction, &order, &selected, descending).unwrap(),
                         expected
                     );
-                    transaction
-                        .progress_handler(0, None::<fn() -> bool>)
-                        .unwrap();
                     let steps = [forward_steps, undo_steps, ticks.load(Ordering::Relaxed)];
                     transaction.rollback().unwrap();
+                    connection
+                        .progress_handler(0, None::<fn() -> bool>)
+                        .unwrap();
                     eprintln!(
                         "manual_order rows={size} selected={count} stride={stride} descending={descending} forward_undo_redo_vm_steps={steps:?}"
                     );

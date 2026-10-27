@@ -22,12 +22,12 @@ impl DurationMetric {
         let micros = u64::try_from(duration.as_micros()).unwrap_or(u64::MAX);
         let _ = self
             .count
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
                 Some(count.saturating_add(1))
             });
         let _ = self
             .total_micros
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |total| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |total| {
                 Some(total.saturating_add(micros))
             });
         self.last_micros.store(micros, Ordering::Relaxed);

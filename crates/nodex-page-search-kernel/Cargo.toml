@@ -18,7 +18,7 @@ serde_json.workspace = true
 unicode-normalization.workspace = true
 unicode-segmentation.workspace = true
 serde-wasm-bindgen = { version = "0.6.5", optional = true }
-wasm-bindgen = { version = "=0.2.127", optional = true }
+wasm-bindgen = { version = "=0.2.129", optional = true }
 
 [lints]
 workspace = true

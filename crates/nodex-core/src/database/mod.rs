@@ -2375,7 +2375,13 @@ mod tests {
             );
             let observation = kernel.writer().call_with_budget(std::time::Duration::from_secs(60),
                 crate::infrastructure::sqlite::QueryCancellation::new(), move |connection| {
-                with_immediate_transaction(connection, |transaction| {
+                    let ticks = Arc::new(AtomicUsize::new(0));
+                    let observed = Arc::clone(&ticks);
+                    connection.progress_handler(100, Some(move || {
+                        observed.fetch_add(1, Ordering::Relaxed);
+                        false
+                    }))?;
+                let result = with_immediate_transaction(connection, |transaction| {
                     // Pressure-only storage fixture: stale/archived candidates must
                     // count toward writer work even when no row can be displayed.
                     transaction.execute(
@@ -2409,12 +2415,7 @@ mod tests {
                     let commit = crate::infrastructure::local_commit::begin(
                         transaction, "epoch-1", "operation:projection-pressure", &"a".repeat(64), NOW,
                     )?;
-                    let ticks = Arc::new(AtomicUsize::new(0));
-                    let observed = Arc::clone(&ticks);
-                    transaction.progress_handler(100, Some(move || {
-                        observed.fetch_add(1, Ordering::Relaxed);
-                        false
-                    }))?;
+                    ticks.store(0, Ordering::Relaxed);
                     let compiled = record_local_projection_delta(transaction,
 &commit,
 "library-1",
@@ -2423,9 +2424,10 @@ mod tests {
                             view_ids: vec![VIEW_ID.to_owned()],
                             database_ids: vec![], data_source_ids: vec![], document_heads: vec![],
                         },);
-                    transaction.progress_handler(0, None::<fn() -> bool>)?;
                     Ok((compiled?, ticks.load(Ordering::Relaxed) * 100))
-                })
+                });
+                connection.progress_handler(0, None::<fn() -> bool>)?;
+                result
             }).expect("compile pressure projection");
             observations.push(observation);
         }
@@ -2519,7 +2521,7 @@ mod tests {
                     connection.trace_v2(
                         TraceEventCodes::SQLITE_TRACE_STMT | TraceEventCodes::SQLITE_TRACE_PROFILE,
                         Some(observe_statement),
-                    );
+                    )?;
                     Ok(())
                 })
                 .unwrap();
@@ -2537,7 +2539,7 @@ mod tests {
             kernel
                 .writer()
                 .call(|connection| {
-                    connection.trace_v2(TraceEventCodes::empty(), None);
+                    connection.trace_v2(TraceEventCodes::empty(), None::<fn(TraceEvent<'_>)>)?;
                     WORK.with(|work| *work.borrow_mut() = None);
                     Ok(())
                 })

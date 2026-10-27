@@ -2558,7 +2558,7 @@ fn is_sha256(value: &str) -> bool {
 }
 
 fn sha256(value: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(value))
+    hex::encode(Sha256::digest(value))
 }
 
 fn corrupt(message: &str) -> StoreError {

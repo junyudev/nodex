@@ -1423,9 +1423,11 @@ impl StoreAdministrationModule {
                         let readers = retention_readers
                             .as_ref()
                             .expect("Operational Journal readers were validated");
-                        let plan = readers.read_default(
-                            crate::infrastructure::operational_journal::plan_bounded_pass,
-                        );
+                        let plan = readers.read_default(|connection| {
+                            crate::infrastructure::operational_journal::plan_bounded_pass(
+                                connection,
+                            )
+                        });
                         task_result = plan.and_then(|plan| {
                             let profile_id = profile_id.clone();
                             let library_id = library_id.clone();

@@ -102,7 +102,7 @@ pub fn schema_inventory_fingerprint(inventory: &SchemaInventory) -> String {
             digest.update([0]);
         }
     }
-    format!("{:x}", digest.finalize())
+    hex::encode(digest.finalize())
 }
 
 pub fn validate_schema_identity(connection: &Connection, revision: i64) -> Result<(), StoreError> {

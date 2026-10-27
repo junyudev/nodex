@@ -208,7 +208,7 @@ fn history_payload_storage_lifetime_preserves_replay_and_page_history() {
         .expect("public Page History checkpoint");
     let initial = kernel
         .readers()
-        .read_default(storage_bytes)
+        .read_default(|connection| storage_bytes(connection))
         .expect("active storage categories");
     assert!(
         initial.active_inverse > 0 && initial.terminal_payload > 0 && initial.retained_receipt > 0
@@ -232,7 +232,10 @@ fn history_payload_storage_lifetime_preserves_replay_and_page_history() {
             .maintain_editor_history_owners(|_| true)
             .expect("bounded maintenance");
     }
-    let protected = kernel.readers().read_default(storage_bytes).unwrap();
+    let protected = kernel
+        .readers()
+        .read_default(|connection| storage_bytes(connection))
+        .unwrap();
     assert_eq!(protected.active_inverse, initial.active_inverse);
     assert_eq!(protected.terminal_payload, initial.terminal_payload);
     let mut replay = module
@@ -263,7 +266,10 @@ fn history_payload_storage_lifetime_preserves_replay_and_page_history() {
             .maintain_editor_history_owners(|_| true)
             .expect("release terminal roots");
     }
-    let released = kernel.readers().read_default(storage_bytes).unwrap();
+    let released = kernel
+        .readers()
+        .read_default(|connection| storage_bytes(connection))
+        .unwrap();
     assert_eq!(released.active_inverse, 0);
     assert!(released.terminal_payload > 0);
     let history_before = kernel
@@ -307,7 +313,10 @@ fn history_payload_storage_lifetime_preserves_replay_and_page_history() {
             .maintain_editor_history_owners(|_| true)
             .expect("bounded payload collection");
     }
-    let collected = kernel.readers().read_default(storage_bytes).unwrap();
+    let collected = kernel
+        .readers()
+        .read_default(|connection| storage_bytes(connection))
+        .unwrap();
     assert_eq!(collected.active_inverse, 0);
     assert_eq!(collected.terminal_payload, 0);
     assert_eq!(collected.retained_receipt, 0);

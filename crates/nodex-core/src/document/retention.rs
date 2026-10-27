@@ -2336,7 +2336,7 @@ mod tests {
 
     #[test]
     fn dormant_discovery_seeks_past_large_deferred_prefixes() {
-        let connection = rusqlite::Connection::open_in_memory().expect("retention fixture");
+        let mut connection = rusqlite::Connection::open_in_memory().expect("retention fixture");
         connection.execute_batch(
             "CREATE TABLE structural_dormant_document_sources (
                library_id TEXT NOT NULL, document_id TEXT NOT NULL, page_id TEXT NOT NULL,

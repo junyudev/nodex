@@ -754,16 +754,18 @@ mod tests {
         let close_id = crate::domain::identity::random_uuid_v7().expect("identity");
         let close_steps = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let measured_steps = std::sync::Arc::clone(&close_steps);
-        with_immediate_transaction(&mut connection, |transaction| {
-            transaction.progress_handler(
+        connection
+            .progress_handler(
                 1,
                 Some(move || {
                     measured_steps.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     false
                 }),
-            )?;
+            )
+            .expect("install close-work counter");
+        with_immediate_transaction(&mut connection, |transaction| {
+            close_steps.store(0, std::sync::atomic::Ordering::Relaxed);
             close(transaction, &context, &close_id, "epoch", &sha256(b"close"))?;
-            transaction.progress_handler(0, None::<fn() -> bool>)?;
             assert!(
                 close_steps.load(std::sync::atomic::Ordering::Relaxed) < 10_000,
                 "closure must not walk the retained history"
@@ -781,6 +783,9 @@ mod tests {
             Ok(())
         })
         .expect("constant-size close fence");
+        connection
+            .progress_handler(0, None::<fn() -> bool>)
+            .unwrap();
         let first = with_immediate_transaction(&mut connection, |transaction| {
             drain_cleanup(transaction, "profile", "library")
         })

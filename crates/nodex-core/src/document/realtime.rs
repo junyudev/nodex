@@ -165,7 +165,7 @@ impl OwnedDocumentRealtimeAdapter {
         };
         let lease_id = self
             .next_lease_id
-            .fetch_update(
+            .try_update(
                 std::sync::atomic::Ordering::Relaxed,
                 std::sync::atomic::Ordering::Relaxed,
                 |value| value.checked_add(1),

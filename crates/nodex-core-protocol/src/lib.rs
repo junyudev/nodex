@@ -988,7 +988,7 @@ mod api {
     #[utoipa::path(
         get,
         path = "/core/v1/health",
-        responses((status = 200, body = HealthResponse))
+        responses((status = 200, description = "Core health", body = HealthResponse))
     )]
     pub(super) fn health() {}
 
@@ -996,7 +996,7 @@ mod api {
         post,
         path = "/core/v1/handshake",
         request_body = HandshakeRequest,
-        responses((status = 200, body = HandshakeResponse))
+        responses((status = 200, description = "Authenticated Core connection", body = HandshakeResponse))
     )]
     pub(super) fn handshake() {}
 
@@ -1017,7 +1017,7 @@ mod api {
             ("x-nodex-request-deadline-ms" = Option<u64>, Header)
         ),
         request_body = LocalMutationResolveRequest,
-        responses((status = 200, body = LocalMutationResolveResponse))
+        responses((status = 200, description = "Local mutation outcome", body = LocalMutationResolveResponse))
     )]
     pub(super) fn resolve_local_mutation() {}
 
@@ -1025,7 +1025,7 @@ mod api {
         post,
         path = "/core/v1/requests/cancel",
         request_body = CoreRequestCancelRequest,
-        responses((status = 200, body = CoreRequestCancelResponse))
+        responses((status = 200, description = "Request cancellation acknowledged", body = CoreRequestCancelResponse))
     )]
     pub(super) fn cancel_request() {}
 
@@ -1033,7 +1033,7 @@ mod api {
         post,
         path = "/core/v1/admin/shutdown",
         request_body = ShutdownRequest,
-        responses((status = 200, body = ShutdownResponse))
+        responses((status = 200, description = "Core shutdown acknowledged", body = ShutdownResponse))
     )]
     pub(super) fn shutdown() {}
 
@@ -1042,7 +1042,7 @@ mod api {
         path = "/core/v1/blobs/prepare",
         params(PrepareFileBlobQuery),
         request_body(content = Vec<u8>, content_type = "application/octet-stream"),
-        responses((status = 200, body = PreparedBlobReceipt))
+        responses((status = 200, description = "Prepared File blob", body = PreparedBlobReceipt))
     )]
     pub(super) fn prepare_blob() {}
 
@@ -1050,7 +1050,7 @@ mod api {
         get,
         path = "/core/v1/threads/{thread_id}/blobs/{content_hash}",
         params(("thread_id" = String, Path), ("content_hash" = String, Path)),
-        responses((status = 200, body = Vec<u8>, content_type = "application/octet-stream"))
+        responses((status = 200, description = "Blob content", body = Vec<u8>, content_type = "application/octet-stream"))
     )]
     pub(super) fn read_thread_asset_blob() {}
 
@@ -1075,7 +1075,7 @@ mod api {
             ("x-nodex-request-class" = Option<CoreRequestClass>, Header),
             ("x-nodex-request-deadline-ms" = Option<u64>, Header)
         ),
-        responses((status = 200, body = Vec<u8>, content_type = "application/octet-stream"))
+        responses((status = 200, description = "Blob content", body = Vec<u8>, content_type = "application/octet-stream"))
     )]
     pub(super) fn read_file_blob() {}
 
@@ -1084,7 +1084,7 @@ mod api {
         path = "/core/v1/files/blobs/prepare",
         params(PrepareFileBlobQuery),
         request_body(content = Vec<u8>, content_type = "application/octet-stream"),
-        responses((status = 200, body = PreparedBlobReceipt))
+        responses((status = 200, description = "Prepared File blob", body = PreparedBlobReceipt))
     )]
     pub(super) fn prepare_file_blob() {}
 
@@ -1097,7 +1097,7 @@ mod api {
             ("x-nodex-request-deadline-ms" = Option<u64>, Header)
         ),
         request_body(content = Vec<u8>, content_type = "application/vnd.nodex.recovery-bundle.v1+octet-stream"),
-        responses((status = 200, body = OwnedDocumentApplyResponse))
+        responses((status = 200, description = "Captured document recovery", body = OwnedDocumentApplyResponse))
     )]
     pub(super) fn recovery_capture() {}
 
@@ -1109,7 +1109,7 @@ mod api {
             ("x-nodex-request-deadline-ms" = Option<u64>, Header)
         ),
         request_body = nodex_core_contracts::document::RecoveryExportRequest,
-        responses((status = 200, body = Vec<u8>, content_type = "application/vnd.nodex.recovery-export.v1+octet-stream"))
+        responses((status = 200, description = "Document recovery export", body = Vec<u8>, content_type = "application/vnd.nodex.recovery-export.v1+octet-stream"))
     )]
     pub(super) fn recovery_export() {}
 
@@ -1124,7 +1124,7 @@ mod api {
                                             ("x-nodex-request-deadline-ms" = Option<u64>, Header)
                                         ),
                                         request_body = $read,
-                                        responses((status = 200, body = $read_response))
+                                        responses((status = 200, description = "Module read snapshot", body = $read_response))
                                     )]
             pub(super) fn $read_fn() {}
 
@@ -1137,7 +1137,7 @@ mod api {
                                             ("x-nodex-request-deadline-ms" = Option<u64>, Header)
                                         ),
                                         request_body = $apply,
-                                        responses((status = 200, body = $apply_response))
+                                        responses((status = 200, description = "Committed module mutation", body = $apply_response))
                                     )]
             pub(super) fn $apply_fn() {}
         };
@@ -1151,7 +1151,7 @@ mod api {
             ("x-nodex-request-deadline-ms" = Option<u64>, Header)
         ),
         request_body = QueryReadRequest,
-        responses((status = 200, body = QueryReadResponse))
+        responses((status = 200, description = "Query read snapshot", body = QueryReadResponse))
     )]
     pub(super) fn query_read() {}
 
@@ -1369,9 +1369,26 @@ mod tests {
     }
 
     #[test]
-    fn openapi_is_version_3_1() {
+    fn serialized_openapi_preserves_version_3_1_response_requirements() {
         let json = serde_json::to_value(openapi()).expect("OpenAPI serializes");
         assert_eq!(json["openapi"], "3.1.0");
+        let responses = json["paths"]
+            .as_object()
+            .expect("OpenAPI paths")
+            .values()
+            .flat_map(|path| path.as_object().expect("path operations").values())
+            .flat_map(|operation| {
+                operation["responses"]
+                    .as_object()
+                    .expect("operation responses")
+                    .values()
+            });
+        for response in responses {
+            assert!(
+                response["description"].is_string(),
+                "OpenAPI 3.1 requires a serialized response description"
+            );
+        }
     }
 
     #[test]

@@ -142,11 +142,11 @@ pub(super) fn plan_definition_due_work(
     let due_now = eligible_at_ms <= now_ms;
     let work_token = due_now.then(|| {
         format!(
-            "automation-due:{:x}",
-            Sha256::digest(
+            "automation-due:{}",
+            hex::encode(Sha256::digest(
                 format!("definitions:{automation_id}:{scheduled_for_ms}:{eligible_at_ms}")
                     .as_bytes()
-            )
+            ))
         )
     });
     Ok(AutomationDueWorkPlan {
@@ -2242,7 +2242,7 @@ mod tests {
         harness
             .kernel
             .readers()
-            .read_default(super::plan_definition_due_work)
+            .read_default(|connection| super::plan_definition_due_work(connection))
             .expect("plan Automation due work")
             .work_token
             .expect("Automation is due")

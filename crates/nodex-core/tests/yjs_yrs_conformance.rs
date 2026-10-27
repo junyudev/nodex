@@ -7,7 +7,7 @@ use nodex_core::document::{
 use nodex_core::domain::block_tree::PortableValue;
 use yrs::sync::{Awareness, AwarenessUpdate};
 use yrs::updates::decoder::Decode;
-use yrs::{ClientID, GetString, ReadTxn, StateVector, Transact, Update};
+use yrs::{ClientID, GetString, Map, ReadTxn, StateVector, Transact, Update};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -128,6 +128,37 @@ fn awareness_join_and_leave_updates_are_y_protocol_compatible() {
         .expect("leave changes state");
     assert_eq!(removed_summary.removed, vec![fixture_client]);
     assert_eq!(awareness.state::<serde_json::Value>(fixture_client), None);
+}
+
+#[test]
+fn checkpoints_preserve_yjs_bigint_wire_types() {
+    // Yjs distinguishes BigInt from Number even when both represent a small integer.
+    for number in [1_i64, -1, 9_007_199_254_740_992, i64::MAX] {
+        let encoded = [vec![122], number.to_be_bytes().to_vec()].concat();
+        let value = yrs::Any::decode(&mut yrs::encoding::read::Cursor::new(&encoded))
+            .expect("valid Yjs BigInt");
+        let document = create_compatible_document("numeric-wire-types");
+        document
+            .get_or_insert_map("values")
+            .insert(&mut document.transact_mut(), "value", value);
+        let checkpoint = document
+            .transact()
+            .encode_state_as_update_v1(&StateVector::default());
+        let restored = create_compatible_document("numeric-wire-types-restored");
+        restored
+            .transact_mut()
+            .apply_update(Update::decode_v1(&checkpoint).expect("valid checkpoint"))
+            .expect("checkpoint applies");
+        let Some(yrs::Out::Any(value)) = restored
+            .get_or_insert_map("values")
+            .get(&restored.transact(), "value")
+        else {
+            panic!("checkpoint must retain the numeric value");
+        };
+        let mut roundtrip = Vec::new();
+        value.encode(&mut roundtrip);
+        assert_eq!(roundtrip, encoded, "BigInt {number} must retain its type");
+    }
 }
 
 #[test]

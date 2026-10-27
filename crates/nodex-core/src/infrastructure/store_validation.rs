@@ -1196,7 +1196,7 @@ mod tests {
         let kernel = SqliteStoreKernel::open_test(home.path()).expect("fresh Store");
         kernel
             .readers()
-            .read_default(validate_current_store)
+            .read_default(|connection| validate_current_store(connection))
             .expect("current Store invariants");
     }
 

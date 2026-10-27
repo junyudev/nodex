@@ -219,7 +219,7 @@ impl Snapshot {
         &self,
         operation: impl FnOnce(&Connection) -> Result<T, StoreError>,
     ) -> Result<T, StoreError> {
-        self.store.read(operation)
+        self.store.read(|connection| operation(connection))
     }
     fn library<'a>(
         &'a self,

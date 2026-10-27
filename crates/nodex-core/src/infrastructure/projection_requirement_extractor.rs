@@ -103,7 +103,7 @@ pub(crate) fn extract(patch: &LocalProjectionPatch) -> Result<ProjectionRequirem
     Ok(ProjectionRequirements {
         subject,
         required_resources: required_resources.into_iter().collect(),
-        patch_hash: format!("{:x}", Sha256::digest(encoded)),
+        patch_hash: hex::encode(Sha256::digest(encoded)),
     })
 }
 

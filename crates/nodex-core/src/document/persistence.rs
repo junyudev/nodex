@@ -2363,7 +2363,7 @@ fn sqlite_now(connection: &Connection) -> Result<String, StoreError> {
 }
 
 pub(crate) fn sha256(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 fn is_uuid_v7(value: &str) -> bool {

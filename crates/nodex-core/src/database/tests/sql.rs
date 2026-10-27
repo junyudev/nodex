@@ -282,7 +282,7 @@ fn all_sql_sources_share_the_enclosing_read_snapshot() {
     let store = kernel.readers().snapshot().unwrap();
     // Establish a real Store snapshot before a concurrent public mutation.
     store
-        .read(crate::infrastructure::local_commit::head)
+        .read(|connection| crate::infrastructure::local_commit::head(connection))
         .unwrap();
     create_rows(&library, SOURCE_ID, 1, "snapshot-after");
     let result = crate::query::execute_test_snapshot(
@@ -778,12 +778,6 @@ fn query_schema_avoids_management_scans_and_value_revisions_are_read_once_per_pa
         .readers()
         .read_default(move |connection| {
             let bound = context();
-            let query = crate::database::query::QueryContext {
-                connection,
-                library_id: "library-1",
-                commit_head: crate::infrastructure::local_commit::head(connection)?,
-                context: &bound,
-            };
             connection.authorizer(Some(|context: AuthContext<'_>| match context.action {
                 AuthAction::Read {
                     table_name: "data_source_property_values" | "database_views",
@@ -791,6 +785,12 @@ fn query_schema_avoids_management_scans_and_value_revisions_are_read_once_per_pa
                 } => Authorization::Deny,
                 _ => Authorization::Allow,
             }))?;
+            let query = crate::database::query::QueryContext {
+                connection,
+                library_id: "library-1",
+                commit_head: crate::infrastructure::local_commit::head(connection)?,
+                context: &bound,
+            };
             let properties = query.source_properties(SOURCE_ID);
             let options = query.property_options(SOURCE_ID, "status");
             connection.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)?;
@@ -811,6 +811,12 @@ fn query_schema_avoids_management_scans_and_value_revisions_are_read_once_per_pa
                 }
                 Authorization::Allow
             }))?;
+            let query = crate::database::query::QueryContext {
+                connection,
+                library_id: "library-1",
+                commit_head: crate::infrastructure::local_commit::head(connection)?,
+                context: &bound,
+            };
             let rows = query.rows(
                 "property_values",
                 &BTreeMap::from([("data_source_id".into(), json!(SOURCE_ID))]),

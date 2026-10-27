@@ -60,7 +60,7 @@ fn bundled_sqlite_supports_the_cutover_feature_set() -> rusqlite::Result<()> {
     let backup_path = directory.path().join("backup.db");
     let restored_path = directory.path().join("restored.db");
 
-    let source = Connection::open(&source_path)?;
+    let mut source = Connection::open(&source_path)?;
     configure(&source)?;
     let journal_mode: String =
         source.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
@@ -140,7 +140,11 @@ fn bundled_sqlite_supports_the_cutover_feature_set() -> rusqlite::Result<()> {
     ));
     writer.execute_batch("ROLLBACK")?;
 
-    source.backup(MAIN_DB, &backup_path, None)?;
+    source.backup(
+        MAIN_DB,
+        &backup_path,
+        None::<fn(rusqlite::backup::Progress)>,
+    )?;
     let backup = Connection::open_with_flags(
         &backup_path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -152,7 +156,11 @@ fn bundled_sqlite_supports_the_cutover_feature_set() -> rusqlite::Result<()> {
     drop(backup);
 
     let backup_source = Connection::open(&backup_path)?;
-    backup_source.backup(MAIN_DB, &restored_path, None)?;
+    backup_source.backup(
+        MAIN_DB,
+        &restored_path,
+        None::<fn(rusqlite::backup::Progress)>,
+    )?;
     let restored = Connection::open(&restored_path)?;
     configure(&restored)?;
     assert_store_is_valid(&restored)?;

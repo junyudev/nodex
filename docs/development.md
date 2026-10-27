@@ -46,6 +46,20 @@ Do not add release-age exclusions to resolve peer conflicts. Run `vp install`,
   shares one Effect version with its protocol and schema packages; only that
   client version accepts it through `peerDependencyRules.allowedVersions`.
 
+### Runtime and build tooling
+
+Rust `1.99.1` is pinned in `rust-toolchain.toml` and the Cargo workspace's
+`rust-version`. Rustup supplies the matching formatter and Clippy; CI reads the
+same toolchain file. `vp run core:build:dev` prepares native helpers and stages
+Core, CLI, and Browser Profile Helper executables under
+`.generated/rust-dev-runtime` on the supported shared-build path. `vp run dev`
+uses that preparation automatically. `vp run core:binaries:prepare:dev` runs
+only the Rust binary preparation and staging step.
+
+Search WASM regeneration uses `vp run page-search:wasm:generate`. It requires
+the `wasm32-unknown-unknown` Rust target and `wasm-bindgen-cli 0.2.129`, matching
+the search kernel crate and generator pin.
+
 The install lifecycle prepares pinned Electron, then runs `electron-builder install-app-deps`, which rebuilds
 `node-pty` for Electron. Do not run `vp rebuild` for it: that can replace the
 Electron-compatible binary with a host-Node binary. SQLite and collaborative

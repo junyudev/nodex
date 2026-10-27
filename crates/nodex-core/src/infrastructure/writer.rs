@@ -15,8 +15,7 @@ use super::request_execution::{
 };
 use super::sqlite::{
     DEFAULT_QUERY_BUDGET, QueryCancellation, StoreError, StoreErrorCode, open_reader, open_writer,
-    optimize_query_planner_before_close, query_interrupted, with_mut_query_deadline,
-    with_query_deadline,
+    optimize_query_planner_before_close, query_interrupted, with_query_deadline,
 };
 
 pub const DEFAULT_WRITER_QUEUE_CAPACITY: usize = 64;
@@ -770,7 +769,7 @@ impl StoreWriter {
                 // the writer. The shared cancellation makes that later dequeue
                 // a no-op instead of executing an expired domain operation.
                 let result =
-                    with_mut_query_deadline(connection, deadline, &job_cancellation, operation);
+                    with_query_deadline(connection, deadline, &job_cancellation, operation);
                 let execution = operation_started_at.elapsed();
                 runtime_metrics.writer_execution.record(execution);
                 let duration_ms = u64::try_from(execution.as_millis()).unwrap_or(u64::MAX);
@@ -953,26 +952,27 @@ impl StoreReaders {
         })
     }
 
+    /// Exclusive access permits hook registration; SQLite still enforces read-only queries.
     pub fn read<T>(
         &self,
         budget: Duration,
         cancellation: &QueryCancellation,
-        operation: impl FnOnce(&Connection) -> Result<T, StoreError>,
+        operation: impl FnOnce(&mut Connection) -> Result<T, StoreError>,
     ) -> Result<T, StoreError> {
         let (deadline, cancellation) = query_control(budget, cancellation.clone());
         let (pool, _lease) = self.control.acquire_reader()?;
         let checkout_phase = enter_request_execution_phase(RequestExecutionPhase::ReaderCheckout);
-        let connection = pool.checkout(deadline, &cancellation)?;
+        let mut connection = pool.checkout(deadline, &cancellation)?;
         drop(checkout_phase);
         let _query_phase = enter_request_execution_phase(RequestExecutionPhase::ReaderQuery);
-        let result = with_query_deadline(&connection, deadline, &cancellation, operation);
+        let result = with_query_deadline(&mut connection, deadline, &cancellation, operation);
         pool.checkin(connection);
         result
     }
 
     pub fn read_default<T>(
         &self,
-        operation: impl FnOnce(&Connection) -> Result<T, StoreError>,
+        operation: impl FnOnce(&mut Connection) -> Result<T, StoreError>,
     ) -> Result<T, StoreError> {
         self.read(DEFAULT_QUERY_BUDGET, &QueryCancellation::new(), operation)
     }
@@ -990,10 +990,10 @@ pub(crate) struct StoreReadSnapshot {
 impl StoreReadSnapshot {
     pub(crate) fn read<T>(
         &self,
-        operation: impl FnOnce(&Connection) -> Result<T, StoreError>,
+        operation: impl FnOnce(&mut Connection) -> Result<T, StoreError>,
     ) -> Result<T, StoreError> {
-        let connection = self.connection.lock().map_err(|_| poisoned_pool())?;
-        let connection = connection.as_ref().ok_or_else(reader_closed)?;
+        let mut connection = self.connection.lock().map_err(|_| poisoned_pool())?;
+        let connection = connection.as_mut().ok_or_else(reader_closed)?;
         let _phase = enter_request_execution_phase(RequestExecutionPhase::ReaderQuery);
         with_query_deadline(connection, self.deadline, &self.cancellation, operation)
     }

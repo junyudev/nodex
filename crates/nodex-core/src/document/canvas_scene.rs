@@ -520,7 +520,7 @@ fn decode_sha256(value: &str) -> Result<[u8; 32], StoreError> {
         return Err(internal("Canvas SHA-256 evidence has invalid length"));
     }
     let mut decoded = [0_u8; 32];
-    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+    for (index, pair) in value.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         decoded[index] = decode_hex_nibble(pair[0])
             .and_then(|high| decode_hex_nibble(pair[1]).map(|low| (high << 4) | low))
             .ok_or_else(|| internal("Canvas SHA-256 evidence is not lowercase hexadecimal"))?;

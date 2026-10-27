@@ -142,7 +142,7 @@ fn query_database() -> Result<Connection, StoreError> {
 fn execute_database(
     snapshot: Arc<Snapshot>,
     query: SqlQuery,
-    database: Connection,
+    mut database: Connection,
     names: BTreeSet<String>,
 ) -> Result<SqlResult, StoreError> {
     database.authorizer(Some(move |context: AuthContext<'_>| match context.action {
@@ -166,7 +166,7 @@ fn execute_database(
     }))?;
     let vm_exhausted = Arc::new(AtomicBool::new(false));
     let result = with_query_deadline(
-        &database,
+        &mut database,
         snapshot.store.deadline,
         &snapshot.store.cancellation,
         |database| {
@@ -247,8 +247,7 @@ fn evaluate(
     }
     let columns = statement
         .column_names()
-        .iter()
-        .map(|s| (*s).to_owned())
+        .map(str::to_owned)
         .collect::<Vec<_>>();
     let mut bytes: usize = columns.iter().map(String::len).sum();
     let mut cursor = statement.raw_query();

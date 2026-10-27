@@ -305,53 +305,15 @@ pub(crate) fn optimize_query_planner_before_close(
 }
 
 pub fn with_query_budget<T>(
-    connection: &Connection,
-    budget: Duration,
-    cancellation: &QueryCancellation,
-    operation: impl FnOnce(&Connection) -> Result<T, StoreError>,
-) -> Result<T, StoreError> {
-    with_query_deadline(connection, Instant::now() + budget, cancellation, operation)
-}
-
-pub fn with_query_deadline<T>(
-    connection: &Connection,
-    deadline: Instant,
-    cancellation: &QueryCancellation,
-    operation: impl FnOnce(&Connection) -> Result<T, StoreError>,
-) -> Result<T, StoreError> {
-    if let Some(error) = current_query_interruption(cancellation, deadline) {
-        return Err(error);
-    }
-    let cancellation = cancellation.clone();
-    let progress_cancellation = cancellation.clone();
-    let interruption = Arc::new(AtomicU8::new(QUERY_INTERRUPTION_NONE));
-    let progress_interruption = Arc::clone(&interruption);
-    connection.progress_handler(
-        PROGRESS_HANDLER_OPS,
-        Some(move || {
-            record_query_interruption(&progress_cancellation, deadline, &progress_interruption)
-        }),
-    )?;
-    let result = operation(connection);
-    connection.progress_handler(0, None::<fn() -> bool>)?;
-    classify_query_interruption(
-        result,
-        &cancellation,
-        deadline,
-        interruption.load(Ordering::Acquire),
-    )
-}
-
-pub fn with_mut_query_budget<T>(
     connection: &mut Connection,
     budget: Duration,
     cancellation: &QueryCancellation,
     operation: impl FnOnce(&mut Connection) -> Result<T, StoreError>,
 ) -> Result<T, StoreError> {
-    with_mut_query_deadline(connection, Instant::now() + budget, cancellation, operation)
+    with_query_deadline(connection, Instant::now() + budget, cancellation, operation)
 }
 
-pub fn with_mut_query_deadline<T>(
+pub fn with_query_deadline<T>(
     connection: &mut Connection,
     deadline: Instant,
     cancellation: &QueryCancellation,
@@ -702,11 +664,11 @@ mod tests {
 
     #[test]
     fn progress_budget_supports_explicit_cancellation() {
-        let connection = Connection::open_in_memory().expect("memory database");
+        let mut connection = Connection::open_in_memory().expect("memory database");
         let cancellation = QueryCancellation::new();
         cancellation.cancel();
         let error = with_query_budget(
-            &connection,
+            &mut connection,
             DEFAULT_QUERY_BUDGET,
             &cancellation,
             |connection| {
@@ -726,7 +688,7 @@ mod tests {
         let observed = Arc::new(AtomicBool::new(false));
         let observed_by_query = Arc::clone(&observed);
         with_query_budget(
-            &connection,
+            &mut connection,
             DEFAULT_QUERY_BUDGET,
             &QueryCancellation::new(),
             move |connection| {
@@ -741,8 +703,8 @@ mod tests {
 
     #[test]
     fn progress_handler_preserves_deadline_and_cancellation_causes() {
-        let connection = Connection::open_in_memory().expect("memory database");
-        let long_query = |connection: &Connection| -> Result<(), StoreError> {
+        let mut connection = Connection::open_in_memory().expect("memory database");
+        let long_query = |connection: &mut Connection| -> Result<(), StoreError> {
             connection.query_row(
                 "WITH RECURSIVE values_cte(value) AS (\
                    SELECT 1 UNION ALL SELECT value + 1 FROM values_cte WHERE value < 100000000\
@@ -754,7 +716,7 @@ mod tests {
         };
 
         let deadline_error = with_query_budget(
-            &connection,
+            &mut connection,
             Duration::from_millis(1),
             &QueryCancellation::new(),
             long_query,
@@ -772,9 +734,13 @@ mod tests {
             std::thread::sleep(Duration::from_millis(1));
             cancellation_from_thread.cancel();
         });
-        let cancelled_error =
-            with_query_budget(&connection, DEFAULT_QUERY_BUDGET, &cancellation, long_query)
-                .expect_err("cancelled query");
+        let cancelled_error = with_query_budget(
+            &mut connection,
+            DEFAULT_QUERY_BUDGET,
+            &cancellation,
+            long_query,
+        )
+        .expect_err("cancelled query");
         cancel.join().expect("cancellation thread");
         assert_eq!(cancelled_error.code, StoreErrorCode::QueryCancelled);
         assert_eq!(cancelled_error.message, "SQLite work was cancelled");

@@ -2098,7 +2098,7 @@ fn runs_supported_read_only_maintenance_without_journaling_idle_work() {
     let commit_head_before = fixture
         .kernel
         .readers()
-        .read_default(crate::infrastructure::local_commit::head)
+        .read_default(|connection| crate::infrastructure::local_commit::head(connection))
         .expect("maintenance baseline");
     let tasks = vec![
         MaintenanceTask::BlockRetention,
@@ -2127,7 +2127,7 @@ fn runs_supported_read_only_maintenance_without_journaling_idle_work() {
         fixture
             .kernel
             .readers()
-            .read_default(crate::infrastructure::local_commit::head)
+            .read_default(|connection| crate::infrastructure::local_commit::head(connection))
             .expect("maintenance result"),
         commit_head_before
     );

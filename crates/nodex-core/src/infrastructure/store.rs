@@ -187,7 +187,7 @@ impl SqliteStoreKernel {
 
     pub fn clean_shutdown_validation_receipt(&self) -> Result<StoreValidationReceipt, StoreError> {
         self.readers()
-            .read_default(store_validation_receipt::current)
+            .read_default(|connection| store_validation_receipt::current(connection))
     }
 
     pub(crate) fn document_runtime_cache(&self) -> Arc<Mutex<DocumentRuntimeCache>> {

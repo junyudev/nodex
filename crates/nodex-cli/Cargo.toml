@@ -30,5 +30,5 @@ yaml-rust2.workspace = true
 utoipa.workspace = true
 
 [dev-dependencies]
-jsonschema = { version = "=0.54.0", default-features = false }
-tempfile = "3.23.0"
+jsonschema = { version = "=0.60.2", default-features = false }
+tempfile = "3.27.0"

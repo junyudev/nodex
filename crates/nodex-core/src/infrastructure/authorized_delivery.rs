@@ -250,7 +250,7 @@ fn route_projection_effects(
 fn packet_hash(packet: CanonicalPacket<'_>) -> Result<String, StoreError> {
     let encoded =
         serde_json::to_vec(&packet).map_err(|_| corrupt("DeliveryPacket hash input is invalid"))?;
-    Ok(format!("{:x}", Sha256::digest(encoded)))
+    Ok(hex::encode(Sha256::digest(encoded)))
 }
 fn corrupt(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::StoreCorrupt, message, false)

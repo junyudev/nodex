@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const output = resolve(root, "src/renderer/generated/page-search-wasm");
-const expectedWasmBindgenVersion = "0.2.127";
+const expectedWasmBindgenVersion = "0.2.129";
 
 const wasmBindgenVersion = execFileSync("wasm-bindgen", ["--version"], {
   cwd: root,

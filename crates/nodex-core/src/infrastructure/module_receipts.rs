@@ -526,7 +526,7 @@ fn parse_module_name(value: &str) -> Result<nodex_core_contracts::ModuleName, St
 
 fn sha256(value: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    format!("{:x}", Sha256::digest(value))
+    hex::encode(Sha256::digest(value))
 }
 
 fn adapter_kind(kind: &AdapterKind) -> &'static str {

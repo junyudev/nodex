@@ -180,6 +180,19 @@ mod tests {
     }
 
     #[test]
+    fn preserves_persisted_collision_keys_for_new_unicode_assignments() {
+        // Unicode 18 assigns U+209D an NFKC mapping to "w"; existing keys use Unicode 17.
+        let path = PortablePageFilePath::parse("x\u{209d}.txt").unwrap();
+        assert_eq!(path.collision_key(), "x\u{209d}.txt");
+        assert_ne!(
+            path.collision_key(),
+            PortablePageFilePath::parse("xw.txt")
+                .unwrap()
+                .collision_key()
+        );
+    }
+
+    #[test]
     fn compatibility_equivalents_share_one_collision_key() {
         let full_width = PortablePageFilePath::parse("Ａpp/readme.md").expect("full width");
         let ascii = PortablePageFilePath::parse("app/README.md").expect("ascii");

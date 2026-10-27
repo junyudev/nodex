@@ -140,7 +140,7 @@ fn append_change_log_inner(
             kind: entry.kind,
             operation_id: entry.operation_id,
             resources: &resources,
-            payload_hash: &format!("{:x}", Sha256::digest(entry.payload_json.as_bytes())),
+            payload_hash: &hex::encode(Sha256::digest(entry.payload_json.as_bytes())),
             projection_impact: &projection_impact,
         },
     )?;
@@ -267,7 +267,8 @@ impl CoreEventLog {
     }
 
     pub fn head(&self) -> Result<i64, StoreError> {
-        self.readers.read_default(local_commit_head)
+        self.readers
+            .read_default(|connection| local_commit_head(connection))
     }
 
     pub fn stream_barrier(&self) -> Result<(StoreEpoch, i64), StoreError> {
@@ -741,13 +742,10 @@ fn scan_authorized_events_with(
         return Err(corrupt("Authorized commit retention boundary is invalid"));
     }
     if oldest_commit > 0 && after < oldest_commit - 1 {
-        let token = format!(
-            "{:x}",
-            Sha256::digest(
-                format!("resync\0{store_epoch}\0{generation}\0{oldest_commit}\0{commit_head}")
-                    .as_bytes()
-            )
-        );
+        let token = hex::encode(Sha256::digest(
+            format!("resync\0{store_epoch}\0{generation}\0{oldest_commit}\0{commit_head}")
+                .as_bytes(),
+        ));
         return Ok(CoreAuthorizedEventReplay::ResyncRequired {
             requested_after: after,
             oldest_available: oldest_commit,
@@ -1784,10 +1782,9 @@ mod tests {
                 return Err(corrupt("Test LocalCommit effects must share one identity"));
             }
         }
-        let request_hash = format!(
-            "{:x}",
-            Sha256::digest(format!("{module_name}\0{operation_id}").as_bytes())
-        );
+        let request_hash = hex::encode(Sha256::digest(
+            format!("{module_name}\0{operation_id}").as_bytes(),
+        ));
         let commit = local_commit::begin(
             connection,
             &store_epoch,

@@ -359,8 +359,7 @@ fn atomic_metadata_read_succeeds_when_document_bodies_and_database_rows_are_inac
         .kernel
         .readers()
         .read_default(move |connection| {
-            let transaction = connection.unchecked_transaction()?;
-            transaction.authorizer(Some(|context: AuthContext<'_>| match context.action {
+            connection.authorizer(Some(|context: AuthContext<'_>| match context.action {
                 AuthAction::Read {
                     table_name: "document_materializations",
                     column_name:
@@ -380,6 +379,8 @@ fn atomic_metadata_read_succeeds_when_document_bodies_and_database_rows_are_inac
                 } => Authorization::Deny,
                 _ => Authorization::Allow,
             }))?;
+            let transaction = connection.unchecked_transaction()?;
+
             let result = [
                 page(),
                 Target::DatabaseView {
@@ -403,13 +404,13 @@ fn atomic_metadata_read_succeeds_when_document_bodies_and_database_rows_are_inac
                 )
             })
             .collect::<Result<Vec<_>, _>>();
-            transaction.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)?;
             assert!(
                 result?
                     .iter()
                     .all(|value| matches!(value, Description::Available { .. }))
             );
             transaction.commit()?;
+            connection.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)?;
             Ok(())
         })
         .unwrap();

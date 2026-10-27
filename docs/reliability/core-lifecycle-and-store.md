@@ -211,6 +211,19 @@ unaffected indexes, references, search, assets, and modification times. The Bloc
 identity index stays unchanged when the canonical tree is unchanged; retained
 recovery Documents can contain Block IDs currently indexed under another Document.
 
+Dependency refreshes must preserve Yjs V1 numeric wire types as well as
+Document materializations. Yrs remains pinned to `0.27.4`: `0.28.0` merges
+BigInt and Number, so checkpoint encoding can turn a stored BigInt into a
+JavaScript number. The numeric wire-type conformance test guards this boundary.
+An upgrade requires an upstream preservation fix or an explicit supported
+Document/Store migration; changing only the dependency pin is insufficient.
+
+Page File collision keys also retain their normalization algorithm. The
+`unicode-normalization` dependency is pinned to `0.1.25` (Unicode 17);
+`0.1.26` adds Unicode 18 compatibility mappings that can change persisted keys
+and introduce collisions. Advancing those tables requires a Store migration
+with an explicit collision policy, rather than a dependency-only update.
+
 Retained unowned Documents keep restore-grade materialization and index state
 without leaking through owner-scoped projections. Migration checkpoints cover
 only Documents with current Block ownership; retained unowned Documents preserve

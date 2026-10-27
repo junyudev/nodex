@@ -391,7 +391,7 @@ fn begin_run(
         &source_cwd,
     ))
     .map_err(|_| internal("Automation run admission cannot be fingerprinted"))?;
-    let request_hash = format!("{:x}", Sha256::digest(payload));
+    let request_hash = hex::encode(Sha256::digest(payload));
     let (now_ms, committed_at) = core_now(connection)?;
     let existing: Option<String> = connection
         .query_row(

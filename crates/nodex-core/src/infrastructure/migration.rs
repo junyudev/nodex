@@ -2877,7 +2877,11 @@ fn create_migration_backup(
         }
         fs::remove_file(&pending_path).map_err(io_error)?;
     }
-    connection.backup(MAIN_DB, &pending_path, None)?;
+    connection.backup(
+        MAIN_DB,
+        &pending_path,
+        None::<fn(rusqlite::backup::Progress)>,
+    )?;
     File::open(&pending_path)
         .map_err(io_error)?
         .sync_all()
@@ -2949,7 +2953,7 @@ fn file_sha256(path: &Path) -> Result<String, StoreError> {
     loop {
         let read = file.read(&mut buffer).map_err(io_error)?;
         if read == 0 {
-            return Ok(format!("{:x}", digest.finalize()));
+            return Ok(hex::encode(digest.finalize()));
         }
         digest.update(&buffer[..read]);
     }

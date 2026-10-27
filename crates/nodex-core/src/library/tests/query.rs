@@ -71,6 +71,15 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
     kernel
         .readers()
         .read_default(move |connection| {
+            // Denial proves metadata reads do not depend on body columns.
+            connection.authorizer(Some(|context: AuthContext<'_>| match context.action {
+                AuthAction::Read {
+                    table_name: "document_materializations",
+                    column_name:
+                        "nfm" | "plain_text" | "preview" | "references_json" | "asset_refs_json",
+                } => Authorization::Deny,
+                _ => Authorization::Allow,
+            }))?;
             let transaction = connection.unchecked_transaction()?;
             let query = super::super::query::QueryContext {
                 connection: &transaction,
@@ -83,15 +92,6 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
             assert_eq!(query.page_ids(None)?, ["page:hidden", "page:visible"]);
             assert_eq!(query.page_ids(Some("page:hidden"))?, ["page:hidden"]);
             assert!(query.page_ids(Some("page:missing"))?.is_empty());
-            // Denial is executable evidence that metadata does not depend on body columns.
-            transaction.authorizer(Some(|context: AuthContext<'_>| match context.action {
-                AuthAction::Read {
-                    table_name: "document_materializations",
-                    column_name:
-                        "nfm" | "plain_text" | "preview" | "references_json" | "asset_refs_json",
-                } => Authorization::Deny,
-                _ => Authorization::Allow,
-            }))?;
             let metadata = query.page_metadata("page:visible");
             let preparations = [
                 LibraryPageOperation::Delete,
@@ -113,7 +113,17 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
                 )
             })
             .collect::<Result<Vec<_>, _>>();
-            transaction.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)?;
+            transaction.commit()?;
+            connection.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)?;
+            let transaction = connection.unchecked_transaction()?;
+            let query = super::super::query::QueryContext {
+                connection: &transaction,
+                library_id: "library-1",
+                store_epoch: "epoch-1",
+                commit_head: navigation::commit_head(&transaction)?,
+                context: &bound,
+                page_search: &page_search::PageSearchIndexRegistry::default(),
+            };
             for (prepared, operation) in preparations?.into_iter().zip([
                 LibraryPagePrepareKind::PageDelete,
                 LibraryPagePrepareKind::PageMove { view_id: None },

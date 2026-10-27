@@ -242,7 +242,7 @@ fn verify_update_hash(
     document_id: &str,
     label: &str,
 ) -> Result<(), StoreError> {
-    if format!("{:x}", Sha256::digest(update)) == expected {
+    if hex::encode(Sha256::digest(update)) == expected {
         return Ok(());
     }
     Err(corrupt(format!(
@@ -296,7 +296,7 @@ mod tests {
         let kernel = SqliteStoreKernel::open_test(home.path()).expect("fresh Store");
         kernel
             .readers()
-            .read_default(validate_restore_documents)
+            .read_default(|connection| validate_restore_documents(connection))
             .expect("current Document integrity");
     }
 }

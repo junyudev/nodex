@@ -28,7 +28,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Core shutdown acknowledged",
             "content": {
               "application/json": {
                 "schema": {
@@ -89,7 +89,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Prepared File blob",
             "content": {
               "application/json": {
                 "schema": {
@@ -182,7 +182,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Prepared File blob",
             "content": {
               "application/json": {
                 "schema": {
@@ -325,10 +325,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -349,7 +349,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "Blob content",
             "content": {
               "application/octet-stream": {
                 "schema": {
@@ -384,7 +384,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Authenticated Core connection",
             "content": {
               "application/json": {
                 "schema": {
@@ -404,7 +404,7 @@
         "operationId": "health",
         "responses": {
           "200": {
-            "description": "",
+            "description": "Core health",
             "content": {
               "application/json": {
                 "schema": {
@@ -441,10 +441,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -475,7 +475,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Local mutation outcome",
             "content": {
               "application/json": {
                 "schema": {
@@ -512,10 +512,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -546,7 +546,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Committed module mutation",
             "content": {
               "application/json": {
                 "schema": {
@@ -583,10 +583,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -617,7 +617,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Module read snapshot",
             "content": {
               "application/json": {
                 "schema": {
@@ -654,10 +654,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -688,7 +688,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Committed module mutation",
             "content": {
               "application/json": {
                 "schema": {
@@ -725,10 +725,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -759,7 +759,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Module read snapshot",
             "content": {
               "application/json": {
                 "schema": {
@@ -796,10 +796,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -830,7 +830,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Committed module mutation",
             "content": {
               "application/json": {
                 "schema": {
@@ -867,10 +867,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -901,7 +901,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Module read snapshot",
             "content": {
               "application/json": {
                 "schema": {
@@ -938,10 +938,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -972,7 +972,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Committed module mutation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1009,10 +1009,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -1043,7 +1043,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Module read snapshot",
             "content": {
               "application/json": {
                 "schema": {
@@ -1114,10 +1114,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -1153,7 +1153,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Captured document recovery",
             "content": {
               "application/json": {
                 "schema": {
@@ -1190,10 +1190,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -1224,7 +1224,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Document recovery export",
             "content": {
               "application/vnd.nodex.recovery-export.v1+octet-stream": {
                 "schema": {
@@ -1266,10 +1266,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -1300,7 +1300,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Committed module mutation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1337,10 +1337,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -1371,7 +1371,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Module read snapshot",
             "content": {
               "application/json": {
                 "schema": {
@@ -1408,10 +1408,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -1442,7 +1442,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Query read snapshot",
             "content": {
               "application/json": {
                 "schema": {
@@ -1479,10 +1479,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -1513,7 +1513,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Committed module mutation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1550,10 +1550,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/CoreRequestClass"
                 },
                 {
-                  "$ref": "#/components/schemas/CoreRequestClass"
+                  "type": "null"
                 }
               ]
             }
@@ -1584,7 +1584,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Module read snapshot",
             "content": {
               "application/json": {
                 "schema": {
@@ -1614,7 +1614,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Request cancellation acknowledged",
             "content": {
               "application/json": {
                 "schema": {
@@ -1652,7 +1652,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "Blob content",
             "content": {
               "application/octet-stream": {
                 "schema": {
@@ -2177,10 +2177,10 @@
               "delivery": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
                   },
                   {
-                    "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
+                    "type": "null"
                   }
                 ]
               },
@@ -2200,100 +2200,100 @@
                   "agent_create_pages": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryAgentCreatePagesResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryAgentCreatePagesResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "agent_move_pages": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryAgentMovePagesResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryAgentMovePagesResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "agent_page_copy": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryAgentPageCopyResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryAgentPageCopyResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "block_property_mutation": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryBlockPropertyMutationReceipt"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryBlockPropertyMutationReceipt"
+                        "type": "null"
                       }
                     ]
                   },
                   "block_transfer": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryBlockTransferResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryBlockTransferResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "block_transfer_undo": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryBlockTransferUndoResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryBlockTransferUndoResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "canvas_mutation": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryCanvasMutationResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryCanvasMutationResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "file_mutation": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryFileMutationResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryFileMutationResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "page_copy": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPageCopyResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPageCopyResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "page_create": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPageCreateResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPageCreateResult"
+                        "type": "null"
                       }
                     ]
                   },
@@ -2306,30 +2306,30 @@
                   "page_lifecycle": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
+                        "type": "null"
                       }
                     ]
                   },
                   "page_relocation_undo": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "structural_edit": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryStructuralEditResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryStructuralEditResult"
+                        "type": "null"
                       }
                     ]
                   }
@@ -2398,10 +2398,10 @@
                       "created_target": {
                         "oneOf": [
                           {
-                            "type": "null"
+                            "$ref": "#/components/schemas/LibraryResourceTarget"
                           },
                           {
-                            "$ref": "#/components/schemas/LibraryResourceTarget"
+                            "type": "null"
                           }
                         ]
                       },
@@ -2451,100 +2451,100 @@
                   "agent_create_pages": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryAgentCreatePagesResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryAgentCreatePagesResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "agent_move_pages": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryAgentMovePagesResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryAgentMovePagesResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "agent_page_copy": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryAgentPageCopyResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryAgentPageCopyResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "block_property_mutation": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryBlockPropertyMutationReceipt"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryBlockPropertyMutationReceipt"
+                        "type": "null"
                       }
                     ]
                   },
                   "block_transfer": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryBlockTransferResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryBlockTransferResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "block_transfer_undo": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryBlockTransferUndoResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryBlockTransferUndoResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "canvas_mutation": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryCanvasMutationResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryCanvasMutationResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "file_mutation": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryFileMutationResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryFileMutationResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "page_copy": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPageCopyResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPageCopyResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "page_create": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPageCreateResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPageCreateResult"
+                        "type": "null"
                       }
                     ]
                   },
@@ -2557,30 +2557,30 @@
                   "page_lifecycle": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
+                        "type": "null"
                       }
                     ]
                   },
                   "page_relocation_undo": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "structural_edit": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryStructuralEditResult"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryStructuralEditResult"
+                        "type": "null"
                       }
                     ]
                   }
@@ -2649,10 +2649,10 @@
                       "created_target": {
                         "oneOf": [
                           {
-                            "type": "null"
+                            "$ref": "#/components/schemas/LibraryResourceTarget"
                           },
                           {
-                            "$ref": "#/components/schemas/LibraryResourceTarget"
+                            "type": "null"
                           }
                         ]
                       },
@@ -2694,10 +2694,10 @@
               "delivery": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
                   },
                   {
-                    "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
+                    "type": "null"
                   }
                 ]
               },
@@ -2714,10 +2714,10 @@
                   "checkpoint_effect": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentCheckpointEffect"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentCheckpointEffect"
+                        "type": "null"
                       }
                     ]
                   },
@@ -2741,10 +2741,10 @@
                   "mutation_effect": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentMutationEffect"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentMutationEffect"
+                        "type": "null"
                       }
                     ]
                   },
@@ -2754,30 +2754,30 @@
                   "owner_effect": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentOwnerEffect"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentOwnerEffect"
+                        "type": "null"
                       }
                     ]
                   },
                   "recovery": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/RecoveryDraftSummary"
                       },
                       {
-                        "$ref": "#/components/schemas/RecoveryDraftSummary"
+                        "type": "null"
                       }
                     ]
                   },
                   "recovery_capture": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/RecoveryCaptureReceipt"
                       },
                       {
-                        "$ref": "#/components/schemas/RecoveryCaptureReceipt"
+                        "type": "null"
                       }
                     ]
                   },
@@ -2805,10 +2805,10 @@
                   "semantic_etags": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentSemanticEtags"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentSemanticEtags"
+                        "type": "null"
                       }
                     ]
                   },
@@ -2887,10 +2887,10 @@
                   "checkpoint_effect": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentCheckpointEffect"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentCheckpointEffect"
+                        "type": "null"
                       }
                     ]
                   },
@@ -2914,10 +2914,10 @@
                   "mutation_effect": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentMutationEffect"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentMutationEffect"
+                        "type": "null"
                       }
                     ]
                   },
@@ -2927,30 +2927,30 @@
                   "owner_effect": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentOwnerEffect"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentOwnerEffect"
+                        "type": "null"
                       }
                     ]
                   },
                   "recovery": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/RecoveryDraftSummary"
                       },
                       {
-                        "$ref": "#/components/schemas/RecoveryDraftSummary"
+                        "type": "null"
                       }
                     ]
                   },
                   "recovery_capture": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/RecoveryCaptureReceipt"
                       },
                       {
-                        "$ref": "#/components/schemas/RecoveryCaptureReceipt"
+                        "type": "null"
                       }
                     ]
                   },
@@ -2978,10 +2978,10 @@
                   "semantic_etags": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentSemanticEtags"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentSemanticEtags"
+                        "type": "null"
                       }
                     ]
                   },
@@ -3113,10 +3113,10 @@
           "history_fence": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DocumentHistoryFence"
               },
               {
-                "$ref": "#/components/schemas/DocumentHistoryFence"
+                "type": "null"
               }
             ]
           },
@@ -3429,10 +3429,10 @@
           "notification_policy": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AutomationNotificationPolicy"
               },
               {
-                "$ref": "#/components/schemas/AutomationNotificationPolicy"
+                "type": "null"
               }
             ]
           },
@@ -3497,10 +3497,10 @@
           "execution_environment": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AutomationExecutionEnvironment"
               },
               {
-                "$ref": "#/components/schemas/AutomationExecutionEnvironment"
+                "type": "null"
               }
             ]
           },
@@ -4567,10 +4567,10 @@
               "value": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AutomationNotificationPolicy"
                   },
                   {
-                    "$ref": "#/components/schemas/AutomationNotificationPolicy"
+                    "type": "null"
                   }
                 ]
               }
@@ -5159,10 +5159,10 @@
                 "notification_policy": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/AutomationNotificationPolicy"
                     },
                     {
-                      "$ref": "#/components/schemas/AutomationNotificationPolicy"
+                      "type": "null"
                     }
                   ]
                 },
@@ -5951,10 +5951,10 @@
                 "system_role": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/DatabasePropertySystemRole"
                     },
                     {
-                      "$ref": "#/components/schemas/DatabasePropertySystemRole"
+                      "type": "null"
                     }
                   ]
                 },
@@ -6664,11 +6664,11 @@
                 "execution_ref": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef",
                       "description": "Present for Runtime-bound Sessions; their status comes from execution, not `status`."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -6690,10 +6690,10 @@
                 "status": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
                     },
                     {
-                      "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
+                      "type": "null"
                     }
                   ]
                 },
@@ -6769,10 +6769,10 @@
                 "kind": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
                     },
                     {
-                      "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                      "type": "null"
                     }
                   ]
                 },
@@ -6782,10 +6782,10 @@
                 "outcome": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/ProjectWorkspaceInboxOutcome"
                     },
                     {
-                      "$ref": "#/components/schemas/ProjectWorkspaceInboxOutcome"
+                      "type": "null"
                     }
                   ]
                 },
@@ -6801,10 +6801,10 @@
                 "proposal": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/ProjectWorkspaceInboxProposal"
                     },
                     {
-                      "$ref": "#/components/schemas/ProjectWorkspaceInboxProposal"
+                      "type": "null"
                     }
                   ]
                 },
@@ -6946,11 +6946,11 @@
                 "execution_ref": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef",
                       "description": "Present for Runtime-bound Sessions; their status comes from execution, not `status`."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -6978,10 +6978,10 @@
                 "status": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
                     },
                     {
-                      "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
+                      "type": "null"
                     }
                   ]
                 },
@@ -7146,10 +7146,10 @@
                 "opens": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/ProjectWorkspaceSessionOpenStats"
                     },
                     {
-                      "$ref": "#/components/schemas/ProjectWorkspaceSessionOpenStats"
+                      "type": "null"
                     }
                   ]
                 },
@@ -7423,10 +7423,10 @@
                 "evidence": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidence"
                     },
                     {
-                      "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidence"
+                      "type": "null"
                     }
                   ]
                 },
@@ -7471,10 +7471,10 @@
                 "thread": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/ProjectWorkspaceTaskThreadSummary"
                     },
                     {
-                      "$ref": "#/components/schemas/ProjectWorkspaceTaskThreadSummary"
+                      "type": "null"
                     }
                   ]
                 }
@@ -7941,10 +7941,10 @@
                 "recurrence": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/PageRecurrenceConfig"
                     },
                     {
-                      "$ref": "#/components/schemas/PageRecurrenceConfig"
+                      "type": "null"
                     }
                   ]
                 },
@@ -9353,11 +9353,11 @@
               "filter": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/DatabaseViewFilter",
                     "description": "Complete saved filter. propertyId and select option values accept exact IDs or unique names.\nUses the shared View expression grammar; omitted or null means no filter."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -9398,11 +9398,11 @@
               "filter": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/DatabaseViewFilter",
                     "description": "Replace all saved filters; omitted preserves them and null clears them.\npropertyId and select option values accept exact IDs or unique names."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -10569,10 +10569,10 @@
               "placement": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DatabasePageLayoutPlacement"
                   },
                   {
-                    "$ref": "#/components/schemas/DatabasePageLayoutPlacement"
+                    "type": "null"
                   }
                 ]
               },
@@ -11637,11 +11637,11 @@
               "undo_recipe": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/DatabaseDataEditUndoRecipe",
                     "description": "None means a supported gesture made no logical change. Unsupported\nor over-budget gestures omit this outcome instead of claiming no-op."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -12100,10 +12100,10 @@
           "system_role": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabasePropertySystemRole"
               },
               {
-                "$ref": "#/components/schemas/DatabasePropertySystemRole"
+                "type": "null"
               }
             ]
           },
@@ -13136,10 +13136,10 @@
           "range": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewCompletedRangeInput"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewCompletedRangeInput"
+                "type": "null"
               }
             ]
           }
@@ -13820,10 +13820,10 @@
           "group": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewGroup"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewGroup"
+                "type": "null"
               }
             ]
           },
@@ -13836,10 +13836,10 @@
           "subgroup": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewGroup"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewGroup"
+                "type": "null"
               }
             ]
           }
@@ -13853,60 +13853,60 @@
           "completion": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewCompletionOverrideInput"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewCompletionOverrideInput"
+                "type": "null"
               }
             ]
           },
           "display": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewLayoutDisplayOverrideInput"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewLayoutDisplayOverrideInput"
+                "type": "null"
               }
             ]
           },
           "group": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewGroupOverrideInput"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewGroupOverrideInput"
+                "type": "null"
               }
             ]
           },
           "group_direction": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewSortDirectionInput"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewSortDirectionInput"
+                "type": "null"
               }
             ]
           },
           "hierarchy": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewHierarchyOverrideInput"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewHierarchyOverrideInput"
+                "type": "null"
               }
             ]
           },
           "subgroup": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewGroupOverrideInput"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewGroupOverrideInput"
+                "type": "null"
               }
             ]
           }
@@ -14066,10 +14066,10 @@
           "advancedFilter": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewFilter"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewFilter"
+                "type": "null"
               }
             ]
           },
@@ -14094,10 +14094,10 @@
           "advanced_filter": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabaseViewAdvancedFilterOverrideInput"
               },
               {
-                "$ref": "#/components/schemas/DatabaseViewAdvancedFilterOverrideInput"
+                "type": "null"
               }
             ]
           },
@@ -15145,10 +15145,10 @@
               "before": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DocumentSpaceAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/DocumentSpaceAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -15247,10 +15247,10 @@
               "before": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DocumentSpaceAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/DocumentSpaceAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -15989,20 +15989,20 @@
           "after": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/EditorHistoryBlockState"
               },
               {
-                "$ref": "#/components/schemas/EditorHistoryBlockState"
+                "type": "null"
               }
             ]
           },
           "before": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/EditorHistoryBlockState"
               },
               {
-                "$ref": "#/components/schemas/EditorHistoryBlockState"
+                "type": "null"
               }
             ]
           },
@@ -16363,20 +16363,20 @@
           "committed": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ApplyResponse_LibraryCommitValue_LibraryReceipt"
               },
               {
-                "$ref": "#/components/schemas/ApplyResponse_LibraryCommitValue_LibraryReceipt"
+                "type": "null"
               }
             ]
           },
           "destination": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageCopyDestination"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageCopyDestination"
+                "type": "null"
               }
             ]
           },
@@ -16389,10 +16389,10 @@
           "destination_document": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryAgentDocumentHead"
               },
               {
-                "$ref": "#/components/schemas/LibraryAgentDocumentHead"
+                "type": "null"
               }
             ]
           },
@@ -16490,10 +16490,10 @@
           "etags": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryAgentPageEtags"
               },
               {
-                "$ref": "#/components/schemas/LibraryAgentPageEtags"
+                "type": "null"
               }
             ]
           },
@@ -16570,20 +16570,20 @@
           "committed": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ApplyResponse_LibraryCommitValue_LibraryReceipt"
               },
               {
-                "$ref": "#/components/schemas/ApplyResponse_LibraryCommitValue_LibraryReceipt"
+                "type": "null"
               }
             ]
           },
           "destination": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageCopyDestination"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageCopyDestination"
+                "type": "null"
               }
             ]
           },
@@ -16596,10 +16596,10 @@
           "destination_document": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryAgentDocumentHead"
               },
               {
-                "$ref": "#/components/schemas/LibraryAgentDocumentHead"
+                "type": "null"
               }
             ]
           },
@@ -16704,20 +16704,20 @@
           "committed": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ApplyResponse_LibraryCommitValue_LibraryReceipt"
               },
               {
-                "$ref": "#/components/schemas/ApplyResponse_LibraryCommitValue_LibraryReceipt"
+                "type": "null"
               }
             ]
           },
           "destination": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageCopyDestination"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageCopyDestination"
+                "type": "null"
               }
             ]
           },
@@ -16730,10 +16730,10 @@
           "destination_document": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryAgentDocumentHead"
               },
               {
-                "$ref": "#/components/schemas/LibraryAgentDocumentHead"
+                "type": "null"
               }
             ]
           },
@@ -16817,10 +16817,10 @@
           "etags": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryAgentPageEtags"
               },
               {
-                "$ref": "#/components/schemas/LibraryAgentPageEtags"
+                "type": "null"
               }
             ]
           },
@@ -16852,10 +16852,10 @@
               "at": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -16877,10 +16877,10 @@
               "at": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -16906,10 +16906,10 @@
               "at": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -18381,11 +18381,11 @@
           "history": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/LibraryStructuralHistoryToken",
                 "description": "A complete symmetric inverse for a surface timeline. Missing means the\nentire gesture is a barrier, even if an explicit one-way Undo is available."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -18453,10 +18453,10 @@
           "undo_token": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryBlockTransferUndoToken"
               },
               {
-                "$ref": "#/components/schemas/LibraryBlockTransferUndoToken"
+                "type": "null"
               }
             ]
           }
@@ -18727,10 +18727,10 @@
           "history": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryStructuralHistoryToken"
               },
               {
-                "$ref": "#/components/schemas/LibraryStructuralHistoryToken"
+                "type": "null"
               }
             ]
           },
@@ -18781,10 +18781,10 @@
               "before": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -19712,10 +19712,10 @@
           "file": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryFile"
               },
               {
-                "$ref": "#/components/schemas/LibraryFile"
+                "type": "null"
               }
             ]
           },
@@ -20676,10 +20676,10 @@
               "before": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -20703,10 +20703,10 @@
               "before": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -20760,10 +20760,10 @@
               "view": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryPageCopyViewPlacement"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryPageCopyViewPlacement"
+                    "type": "null"
                   }
                 ]
               }
@@ -20874,10 +20874,10 @@
           "before": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageCopyPositionAnchor"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageCopyPositionAnchor"
+                "type": "null"
               }
             ]
           },
@@ -21918,10 +21918,10 @@
           "next_cursor": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageHistoryCursor"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageHistoryCursor"
+                "type": "null"
               }
             ]
           },
@@ -22160,10 +22160,10 @@
           "membership": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageLifecycleMembership"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageLifecycleMembership"
+                "type": "null"
               }
             ]
           },
@@ -22184,10 +22184,10 @@
           "restore_evidence": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageLifecycleRestoreEvidence"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageLifecycleRestoreEvidence"
+                "type": "null"
               }
             ]
           }
@@ -22210,20 +22210,20 @@
           "membership": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageLifecycleMutationMembership"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageLifecycleMutationMembership"
+                "type": "null"
               }
             ]
           },
           "nested_parent": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageLifecycleNestedParent"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageLifecycleNestedParent"
+                "type": "null"
               }
             ]
           },
@@ -22330,10 +22330,10 @@
           "position": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageLifecyclePosition"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageLifecyclePosition"
+                "type": "null"
               }
             ]
           },
@@ -22577,10 +22577,10 @@
               "parent_document_head": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DocumentHeadRevision"
                   },
                   {
-                    "$ref": "#/components/schemas/DocumentHeadRevision"
+                    "type": "null"
                   }
                 ]
               }
@@ -22622,10 +22622,10 @@
               "membership": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryPageLifecycleMutationMembership"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryPageLifecycleMutationMembership"
+                    "type": "null"
                   }
                 ]
               },
@@ -22635,10 +22635,10 @@
               "parent_document_head": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DocumentHeadRevision"
                   },
                   {
-                    "$ref": "#/components/schemas/DocumentHeadRevision"
+                    "type": "null"
                   }
                 ]
               }
@@ -22696,10 +22696,10 @@
           "position": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageLifecycleRestorePosition"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageLifecycleRestorePosition"
+                "type": "null"
               }
             ]
           },
@@ -22750,10 +22750,10 @@
           "delete_evidence": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageLifecycleDeleteEvidence"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageLifecycleDeleteEvidence"
+                "type": "null"
               }
             ]
           },
@@ -22919,10 +22919,10 @@
           "page": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageLifecycleAuthority"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageLifecycleAuthority"
+                "type": "null"
               }
             ]
           },
@@ -22948,20 +22948,20 @@
           "membership": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageLifecycleRestoreMembership"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageLifecycleRestoreMembership"
+                "type": "null"
               }
             ]
           },
           "nested_parent": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageLifecycleNestedParent"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageLifecycleNestedParent"
+                "type": "null"
               }
             ]
           },
@@ -23462,10 +23462,10 @@
           "metadata": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/PageMetaProjectionV2"
               },
               {
-                "$ref": "#/components/schemas/PageMetaProjectionV2"
+                "type": "null"
               }
             ]
           },
@@ -23586,10 +23586,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
+                "type": "null"
               }
             ]
           },
@@ -24003,10 +24003,10 @@
           "priority": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageSearchPriority"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageSearchPriority"
+                "type": "null"
               }
             ]
           },
@@ -24025,10 +24025,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
+                "type": "null"
               }
             ]
           },
@@ -24272,10 +24272,10 @@
               "at": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -24297,10 +24297,10 @@
               "at": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -24325,10 +24325,10 @@
               "at": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryAgentSiblingAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -24338,10 +24338,10 @@
               "group": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DatabaseGroupScope"
                   },
                   {
-                    "$ref": "#/components/schemas/DatabaseGroupScope"
+                    "type": "null"
                   }
                 ]
               },
@@ -24569,10 +24569,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
               },
               {
-                "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
+                "type": "null"
               }
             ]
           },
@@ -25494,10 +25494,10 @@
           "clipboard": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryStructuralClipboardToken"
               },
               {
-                "$ref": "#/components/schemas/LibraryStructuralClipboardToken"
+                "type": "null"
               }
             ]
           },
@@ -25528,10 +25528,10 @@
           "history": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryStructuralHistoryToken"
               },
               {
-                "$ref": "#/components/schemas/LibraryStructuralHistoryToken"
+                "type": "null"
               }
             ]
           },
@@ -25547,10 +25547,10 @@
           "resume": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LibraryEditorResumeTarget"
               },
               {
-                "$ref": "#/components/schemas/LibraryEditorResumeTarget"
+                "type": "null"
               }
             ]
           },
@@ -25921,10 +25921,10 @@
               "before": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -25948,10 +25948,10 @@
               "before": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryPlacementAnchor"
+                    "type": "null"
                   }
                 ]
               },
@@ -25966,10 +25966,10 @@
               "insertion": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LibraryPageInsertion"
                   },
                   {
-                    "$ref": "#/components/schemas/LibraryPageInsertion"
+                    "type": "null"
                   }
                 ]
               },
@@ -26025,10 +26025,10 @@
               "delivery": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
                   },
                   {
-                    "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
+                    "type": "null"
                   }
                 ]
               },
@@ -27709,10 +27709,10 @@
                   "containing_document_head": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentHeadRevision"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentHeadRevision"
+                        "type": "null"
                       }
                     ]
                   },
@@ -28503,10 +28503,10 @@
                   "revision_kind": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentRevisionKind"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentRevisionKind"
+                        "type": "null"
                       }
                     ]
                   },
@@ -28743,10 +28743,10 @@
                   "appearance": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectAppearance"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectAppearance"
+                        "type": "null"
                       }
                     ]
                   },
@@ -28795,10 +28795,10 @@
                   "appearance": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectAppearance"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectAppearance"
+                        "type": "null"
                       }
                     ]
                   },
@@ -28842,10 +28842,10 @@
                   "appearance": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectAppearance"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectAppearance"
+                        "type": "null"
                       }
                     ]
                   },
@@ -28982,10 +28982,10 @@
                   "initial_item": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
+                        "type": "null"
                       }
                     ]
                   },
@@ -29702,10 +29702,10 @@
                   "observation": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadObservation"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadObservation"
+                        "type": "null"
                       }
                     ]
                   },
@@ -29852,20 +29852,20 @@
                   "native_state": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentState"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentState"
+                        "type": "null"
                       }
                     ]
                   },
                   "runtime_options": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeOptions"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeOptions"
+                        "type": "null"
                       }
                     ]
                   },
@@ -30057,10 +30057,10 @@
                   "precondition": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidencePrecondition"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidencePrecondition"
+                        "type": "null"
                       }
                     ]
                   },
@@ -30170,10 +30170,10 @@
                   "placement": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceThreadPlacement"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceThreadPlacement"
+                        "type": "null"
                       }
                     ]
                   },
@@ -30247,10 +30247,10 @@
                   "workspace_transition": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspaceTransition"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspaceTransition"
+                        "type": "null"
                       }
                     ]
                   }
@@ -30576,10 +30576,10 @@
                   "entry_kind": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                        "type": "null"
                       }
                     ]
                   },
@@ -30629,10 +30629,10 @@
                   "action": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+                        "type": "null"
                       }
                     ]
                   },
@@ -30645,10 +30645,10 @@
                   "execution_selection": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
+                        "type": "null"
                       }
                     ]
                   },
@@ -30700,10 +30700,10 @@
                   "execution_selection": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
+                        "type": "null"
                       }
                     ]
                   },
@@ -30790,10 +30790,10 @@
                   "entry_kind": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                        "type": "null"
                       }
                     ]
                   },
@@ -31218,10 +31218,10 @@
                   "profile_snapshot": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProfileSnapshotSource"
                       },
                       {
-                        "$ref": "#/components/schemas/ProfileSnapshotSource"
+                        "type": "null"
                       }
                     ]
                   },
@@ -31303,10 +31303,10 @@
                   "profile_snapshot": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProfileSnapshotSource"
                       },
                       {
-                        "$ref": "#/components/schemas/ProfileSnapshotSource"
+                        "type": "null"
                       }
                     ]
                   }
@@ -31893,10 +31893,10 @@
                     "placement": {
                       "oneOf": [
                         {
-                          "type": "null"
+                          "$ref": "#/components/schemas/DatabasePageLayoutPlacement"
                         },
                         {
-                          "$ref": "#/components/schemas/DatabasePageLayoutPlacement"
+                          "type": "null"
                         }
                       ]
                     },
@@ -33088,10 +33088,10 @@
                   "group_scope": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DatabaseGroupScope"
                       },
                       {
-                        "$ref": "#/components/schemas/DatabaseGroupScope"
+                        "type": "null"
                       }
                     ]
                   },
@@ -33160,10 +33160,10 @@
                   "group_scope": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DatabaseGroupScope"
                       },
                       {
-                        "$ref": "#/components/schemas/DatabaseGroupScope"
+                        "type": "null"
                       }
                     ]
                   },
@@ -33629,10 +33629,10 @@
                   "force_include_target": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryRouteTarget"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryRouteTarget"
+                        "type": "null"
                       }
                     ]
                   },
@@ -33670,10 +33670,10 @@
                   "force_include_target": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
+                        "type": "null"
                       }
                     ]
                   },
@@ -33741,10 +33741,10 @@
                   "lifecycle": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryLifecycle"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryLifecycle"
+                        "type": "null"
                       }
                     ]
                   },
@@ -33935,10 +33935,10 @@
                   "prepare": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPagePrepareKind"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPagePrepareKind"
+                        "type": "null"
                       }
                     ]
                   }
@@ -34299,10 +34299,10 @@
                   "filters": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryProjectPageSearchFilters"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryProjectPageSearchFilters"
+                        "type": "null"
                       }
                     ]
                   },
@@ -34469,10 +34469,10 @@
                   "before": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/LibraryPageHistoryCursor"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryPageHistoryCursor"
+                        "type": "null"
                       }
                     ]
                   },
@@ -34745,10 +34745,10 @@
                   "before": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/DocumentVersionCursor"
                       },
                       {
-                        "$ref": "#/components/schemas/DocumentVersionCursor"
+                        "type": "null"
                       }
                     ]
                   },
@@ -35123,10 +35123,10 @@
                   "order": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/ProjectWorkspaceSessionOrder"
                       },
                       {
-                        "$ref": "#/components/schemas/ProjectWorkspaceSessionOrder"
+                        "type": "null"
                       }
                     ]
                   },
@@ -36486,10 +36486,10 @@
               "page_file_reference_change": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/PageFileReferenceChange"
                   },
                   {
-                    "$ref": "#/components/schemas/PageFileReferenceChange"
+                    "type": "null"
                   }
                 ]
               },
@@ -36539,10 +36539,10 @@
               "page_file_reference_change": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/PageFileReferenceChange"
                   },
                   {
-                    "$ref": "#/components/schemas/PageFileReferenceChange"
+                    "type": "null"
                   }
                 ]
               },
@@ -36669,10 +36669,10 @@
               "page_file_reference_change": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/PageFileReferenceChange"
                   },
                   {
-                    "$ref": "#/components/schemas/PageFileReferenceChange"
+                    "type": "null"
                   }
                 ]
               },
@@ -36818,10 +36818,10 @@
           "schedule": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectedScheduleV1"
               },
               {
-                "$ref": "#/components/schemas/ProjectedScheduleV1"
+                "type": "null"
               }
             ]
           },
@@ -36850,10 +36850,10 @@
           "code": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/PageOccurrenceMutationCode"
               },
               {
-                "$ref": "#/components/schemas/PageOccurrenceMutationCode"
+                "type": "null"
               }
             ]
           },
@@ -36899,10 +36899,10 @@
           "recurrence": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/PageRecurrenceConfig"
               },
               {
-                "$ref": "#/components/schemas/PageRecurrenceConfig"
+                "type": "null"
               }
             ]
           },
@@ -36963,10 +36963,10 @@
           "endCondition": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/PageRecurrenceEndCondition"
               },
               {
-                "$ref": "#/components/schemas/PageRecurrenceEndCondition"
+                "type": "null"
               }
             ]
           },
@@ -37372,10 +37372,10 @@
               "execution_location": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceThreadExecutionLocation"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceThreadExecutionLocation"
+                    "type": "null"
                   }
                 ]
               },
@@ -37397,10 +37397,10 @@
               "thread_patch": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceThreadPatch"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceThreadPatch"
+                    "type": "null"
                   }
                 ]
               }
@@ -37890,10 +37890,10 @@
           "project_catalog_change": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectCatalogChangeKind"
               },
               {
-                "$ref": "#/components/schemas/ProjectCatalogChangeKind"
+                "type": "null"
               }
             ]
           },
@@ -37944,10 +37944,10 @@
           "project": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceProject"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceProject"
+                "type": "null"
               }
             ]
           },
@@ -37957,10 +37957,10 @@
           "workspace_state": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspaceState"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspaceState"
+                "type": "null"
               }
             ]
           }
@@ -37984,11 +37984,11 @@
           "execution_ref": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef",
                 "description": "Present for Runtime-bound Sessions; their status comes from execution, not `status`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -38010,10 +38010,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
+                "type": "null"
               }
             ]
           },
@@ -38141,10 +38141,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
+                "type": "null"
               }
             ]
           },
@@ -38220,11 +38220,11 @@
               "agent": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/ProjectWorkspaceInboxChatAgent",
                     "description": "What the chat runs on when chosen for this decision; the Inbox's own otherwise."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -38374,20 +38374,20 @@
           "execution_selection": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
+                "type": "null"
               }
             ]
           },
           "failure_kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxFailureKind"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceInboxFailureKind"
+                "type": "null"
               }
             ]
           },
@@ -38442,10 +38442,10 @@
           "target_execution_ref": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef"
+                "type": "null"
               }
             ]
           },
@@ -38465,11 +38465,11 @@
           "thread_status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus",
                 "description": "Current status of the target chat's Thread, used to wait until it is idle."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -38768,11 +38768,11 @@
           "chat": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProjectWorkspaceInboxChat",
                 "description": "Current state of the chat named by `send_to_chat`, or the dispatched chat."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -38782,10 +38782,10 @@
           "failure_kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxFailureKind"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceInboxFailureKind"
+                "type": "null"
               }
             ]
           },
@@ -38798,10 +38798,10 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                "type": "null"
               }
             ]
           },
@@ -39009,10 +39009,10 @@
           "entry_kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                "type": "null"
               }
             ]
           },
@@ -39059,10 +39059,10 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                "type": "null"
               }
             ]
           },
@@ -39396,10 +39396,10 @@
               "appearance": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectAppearance"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectAppearance"
+                    "type": "null"
                   }
                 ]
               },
@@ -39448,10 +39448,10 @@
               "appearance": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectAppearance"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectAppearance"
+                    "type": "null"
                   }
                 ]
               },
@@ -39495,10 +39495,10 @@
               "appearance": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectAppearance"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectAppearance"
+                    "type": "null"
                   }
                 ]
               },
@@ -39635,10 +39635,10 @@
               "initial_item": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
+                    "type": "null"
                   }
                 ]
               },
@@ -40355,10 +40355,10 @@
               "observation": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadObservation"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadObservation"
+                    "type": "null"
                   }
                 ]
               },
@@ -40505,20 +40505,20 @@
               "native_state": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentState"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentState"
+                    "type": "null"
                   }
                 ]
               },
               "runtime_options": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeOptions"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeOptions"
+                    "type": "null"
                   }
                 ]
               },
@@ -40710,10 +40710,10 @@
               "precondition": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidencePrecondition"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidencePrecondition"
+                    "type": "null"
                   }
                 ]
               },
@@ -40823,10 +40823,10 @@
               "placement": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceThreadPlacement"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceThreadPlacement"
+                    "type": "null"
                   }
                 ]
               },
@@ -40900,10 +40900,10 @@
               "workspace_transition": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspaceTransition"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspaceTransition"
+                    "type": "null"
                   }
                 ]
               }
@@ -41229,10 +41229,10 @@
               "entry_kind": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                    "type": "null"
                   }
                 ]
               },
@@ -41282,10 +41282,10 @@
               "action": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+                    "type": "null"
                   }
                 ]
               },
@@ -41298,10 +41298,10 @@
               "execution_selection": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
+                    "type": "null"
                   }
                 ]
               },
@@ -41353,10 +41353,10 @@
               "execution_selection": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceInboxExecutionSelection"
+                    "type": "null"
                   }
                 ]
               },
@@ -41443,10 +41443,10 @@
               "entry_kind": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
                   },
                   {
-                    "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                    "type": "null"
                   }
                 ]
               },
@@ -41994,11 +41994,11 @@
           "preferences": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentPreferences",
                 "description": "Claude preferences; other native runtimes retain their options separately."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -42214,10 +42214,10 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceNativeUsageFact"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceNativeUsageFact"
+                "type": "null"
               }
             ]
           }
@@ -42247,10 +42247,10 @@
           "cumulative_tokens": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceNativeTokenFact"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceNativeTokenFact"
+                "type": "null"
               }
             ]
           },
@@ -42274,10 +42274,10 @@
           "tokens": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceNativeTokenFact"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceNativeTokenFact"
+                "type": "null"
               }
             ]
           },
@@ -42542,10 +42542,10 @@
           "execution_ref": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef"
+                "type": "null"
               }
             ]
           },
@@ -42961,10 +42961,10 @@
           "evidence": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidence"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidence"
+                "type": "null"
               }
             ]
           },
@@ -43105,10 +43105,10 @@
           "thread": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceTaskThreadSummary"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceTaskThreadSummary"
+                "type": "null"
               }
             ]
           }
@@ -43469,21 +43469,21 @@
           "native_state": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentState",
                 "description": "Host-observed native facts; transcript content remains owned by the Agent."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "runtime_options": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeOptions"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeOptions"
+                "type": "null"
               }
             ]
           },
@@ -43639,10 +43639,10 @@
           "backend_binding": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AgentBackendBinding"
               },
               {
-                "$ref": "#/components/schemas/AgentBackendBinding"
+                "type": "null"
               }
             ]
           },
@@ -43741,10 +43741,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
+                "type": "null"
               }
             ]
           },
@@ -44061,20 +44061,20 @@
           "applied": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
+                "type": "null"
               }
             ]
           },
           "pending": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
+                "type": "null"
               }
             ]
           },
@@ -44092,10 +44092,10 @@
           "pending": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
+                "type": "null"
               }
             ]
           },
@@ -44129,11 +44129,11 @@
           "runtime": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeAuthority",
                 "description": "Present for Agent Runtime executions, whose engine coordinates are used verbatim.\nCore validates them against the bound Session on every use and persists nothing per Run."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -44165,10 +44165,10 @@
           "authority": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthority"
               },
               {
-                "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthority"
+                "type": "null"
               }
             ]
           },
@@ -44473,10 +44473,10 @@
           "patch": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LocalProjectionPatch"
               },
               {
-                "$ref": "#/components/schemas/LocalProjectionPatch"
+                "type": "null"
               }
             ]
           },
@@ -45098,10 +45098,10 @@
           "resolution": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecoveryResolution"
               },
               {
-                "$ref": "#/components/schemas/RecoveryResolution"
+                "type": "null"
               }
             ]
           },
@@ -45149,10 +45149,10 @@
           "representation": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecoveryEvidenceRepresentation"
               },
               {
-                "$ref": "#/components/schemas/RecoveryEvidenceRepresentation"
+                "type": "null"
               }
             ]
           },
@@ -45942,10 +45942,10 @@
                       "delivery": {
                         "oneOf": [
                           {
-                            "type": "null"
+                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
                           },
                           {
-                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
+                            "type": "null"
                           }
                         ]
                       },
@@ -45988,10 +45988,10 @@
                           "page_occurrence_mutation": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/PageOccurrenceMutationResult"
                               },
                               {
-                                "$ref": "#/components/schemas/PageOccurrenceMutationResult"
+                                "type": "null"
                               }
                             ]
                           },
@@ -46010,10 +46010,10 @@
                           "run_bulk": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/AutomationRunBulkResult"
                               },
                               {
-                                "$ref": "#/components/schemas/AutomationRunBulkResult"
+                                "type": "null"
                               }
                             ]
                           },
@@ -46155,10 +46155,10 @@
                           "page_occurrence_mutation": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/PageOccurrenceMutationResult"
                               },
                               {
-                                "$ref": "#/components/schemas/PageOccurrenceMutationResult"
+                                "type": "null"
                               }
                             ]
                           },
@@ -46177,10 +46177,10 @@
                           "run_bulk": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/AutomationRunBulkResult"
                               },
                               {
-                                "$ref": "#/components/schemas/AutomationRunBulkResult"
+                                "type": "null"
                               }
                             ]
                           },
@@ -46328,10 +46328,10 @@
                       "delivery": {
                         "oneOf": [
                           {
-                            "type": "null"
+                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
                           },
                           {
-                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
+                            "type": "null"
                           }
                         ]
                       },
@@ -46596,10 +46596,10 @@
                       "delivery": {
                         "oneOf": [
                           {
-                            "type": "null"
+                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
                           },
                           {
-                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
+                            "type": "null"
                           }
                         ]
                       },
@@ -46619,100 +46619,100 @@
                           "agent_create_pages": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryAgentCreatePagesResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryAgentCreatePagesResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "agent_move_pages": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryAgentMovePagesResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryAgentMovePagesResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "agent_page_copy": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryAgentPageCopyResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryAgentPageCopyResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "block_property_mutation": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryBlockPropertyMutationReceipt"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryBlockPropertyMutationReceipt"
+                                "type": "null"
                               }
                             ]
                           },
                           "block_transfer": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryBlockTransferResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryBlockTransferResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "block_transfer_undo": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryBlockTransferUndoResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryBlockTransferUndoResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "canvas_mutation": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryCanvasMutationResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryCanvasMutationResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "file_mutation": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryFileMutationResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryFileMutationResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "page_copy": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageCopyResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageCopyResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "page_create": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageCreateResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageCreateResult"
+                                "type": "null"
                               }
                             ]
                           },
@@ -46725,30 +46725,30 @@
                           "page_lifecycle": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
+                                "type": "null"
                               }
                             ]
                           },
                           "page_relocation_undo": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "structural_edit": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryStructuralEditResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryStructuralEditResult"
+                                "type": "null"
                               }
                             ]
                           }
@@ -46817,10 +46817,10 @@
                               "created_target": {
                                 "oneOf": [
                                   {
-                                    "type": "null"
+                                    "$ref": "#/components/schemas/LibraryResourceTarget"
                                   },
                                   {
-                                    "$ref": "#/components/schemas/LibraryResourceTarget"
+                                    "type": "null"
                                   }
                                 ]
                               },
@@ -46870,100 +46870,100 @@
                           "agent_create_pages": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryAgentCreatePagesResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryAgentCreatePagesResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "agent_move_pages": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryAgentMovePagesResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryAgentMovePagesResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "agent_page_copy": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryAgentPageCopyResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryAgentPageCopyResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "block_property_mutation": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryBlockPropertyMutationReceipt"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryBlockPropertyMutationReceipt"
+                                "type": "null"
                               }
                             ]
                           },
                           "block_transfer": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryBlockTransferResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryBlockTransferResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "block_transfer_undo": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryBlockTransferUndoResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryBlockTransferUndoResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "canvas_mutation": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryCanvasMutationResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryCanvasMutationResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "file_mutation": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryFileMutationResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryFileMutationResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "page_copy": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageCopyResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageCopyResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "page_create": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageCreateResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageCreateResult"
+                                "type": "null"
                               }
                             ]
                           },
@@ -46976,30 +46976,30 @@
                           "page_lifecycle": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
+                                "type": "null"
                               }
                             ]
                           },
                           "page_relocation_undo": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
+                                "type": "null"
                               }
                             ]
                           },
                           "structural_edit": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryStructuralEditResult"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryStructuralEditResult"
+                                "type": "null"
                               }
                             ]
                           }
@@ -47068,10 +47068,10 @@
                               "created_target": {
                                 "oneOf": [
                                   {
-                                    "type": "null"
+                                    "$ref": "#/components/schemas/LibraryResourceTarget"
                                   },
                                   {
-                                    "$ref": "#/components/schemas/LibraryResourceTarget"
+                                    "type": "null"
                                   }
                                 ]
                               },
@@ -47150,10 +47150,10 @@
                       "delivery": {
                         "oneOf": [
                           {
-                            "type": "null"
+                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
                           },
                           {
-                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
+                            "type": "null"
                           }
                         ]
                       },
@@ -47170,10 +47170,10 @@
                           "checkpoint_effect": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/DocumentCheckpointEffect"
                               },
                               {
-                                "$ref": "#/components/schemas/DocumentCheckpointEffect"
+                                "type": "null"
                               }
                             ]
                           },
@@ -47197,10 +47197,10 @@
                           "mutation_effect": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/DocumentMutationEffect"
                               },
                               {
-                                "$ref": "#/components/schemas/DocumentMutationEffect"
+                                "type": "null"
                               }
                             ]
                           },
@@ -47210,30 +47210,30 @@
                           "owner_effect": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/DocumentOwnerEffect"
                               },
                               {
-                                "$ref": "#/components/schemas/DocumentOwnerEffect"
+                                "type": "null"
                               }
                             ]
                           },
                           "recovery": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/RecoveryDraftSummary"
                               },
                               {
-                                "$ref": "#/components/schemas/RecoveryDraftSummary"
+                                "type": "null"
                               }
                             ]
                           },
                           "recovery_capture": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/RecoveryCaptureReceipt"
                               },
                               {
-                                "$ref": "#/components/schemas/RecoveryCaptureReceipt"
+                                "type": "null"
                               }
                             ]
                           },
@@ -47261,10 +47261,10 @@
                           "semantic_etags": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/DocumentSemanticEtags"
                               },
                               {
-                                "$ref": "#/components/schemas/DocumentSemanticEtags"
+                                "type": "null"
                               }
                             ]
                           },
@@ -47343,10 +47343,10 @@
                           "checkpoint_effect": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/DocumentCheckpointEffect"
                               },
                               {
-                                "$ref": "#/components/schemas/DocumentCheckpointEffect"
+                                "type": "null"
                               }
                             ]
                           },
@@ -47370,10 +47370,10 @@
                           "mutation_effect": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/DocumentMutationEffect"
                               },
                               {
-                                "$ref": "#/components/schemas/DocumentMutationEffect"
+                                "type": "null"
                               }
                             ]
                           },
@@ -47383,30 +47383,30 @@
                           "owner_effect": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/DocumentOwnerEffect"
                               },
                               {
-                                "$ref": "#/components/schemas/DocumentOwnerEffect"
+                                "type": "null"
                               }
                             ]
                           },
                           "recovery": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/RecoveryDraftSummary"
                               },
                               {
-                                "$ref": "#/components/schemas/RecoveryDraftSummary"
+                                "type": "null"
                               }
                             ]
                           },
                           "recovery_capture": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/RecoveryCaptureReceipt"
                               },
                               {
-                                "$ref": "#/components/schemas/RecoveryCaptureReceipt"
+                                "type": "null"
                               }
                             ]
                           },
@@ -47434,10 +47434,10 @@
                           "semantic_etags": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/DocumentSemanticEtags"
                               },
                               {
-                                "$ref": "#/components/schemas/DocumentSemanticEtags"
+                                "type": "null"
                               }
                             ]
                           },
@@ -47548,10 +47548,10 @@
                       "delivery": {
                         "oneOf": [
                           {
-                            "type": "null"
+                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
                           },
                           {
-                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
+                            "type": "null"
                           }
                         ]
                       },
@@ -47764,10 +47764,10 @@
                       "delivery": {
                         "oneOf": [
                           {
-                            "type": "null"
+                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
                           },
                           {
-                            "$ref": "#/components/schemas/AuthorizedDeliveryPacket"
+                            "type": "null"
                           }
                         ]
                       },
@@ -48031,10 +48031,10 @@
                           "item": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/AutomationDefinition"
                               },
                               {
-                                "$ref": "#/components/schemas/AutomationDefinition"
+                                "type": "null"
                               }
                             ]
                           },
@@ -48073,10 +48073,10 @@
                           "item": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/AutomationRun"
                               },
                               {
-                                "$ref": "#/components/schemas/AutomationRun"
+                                "type": "null"
                               }
                             ]
                           },
@@ -49089,10 +49089,10 @@
                           "current_destination": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryMoveDestinationEntry"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryMoveDestinationEntry"
+                                "type": "null"
                               }
                             ]
                           },
@@ -49337,10 +49337,10 @@
                           "value": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryAgentBlockTarget"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryAgentBlockTarget"
+                                "type": "null"
                               }
                             ]
                           }
@@ -49410,10 +49410,10 @@
                           "value": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageTarget"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageTarget"
+                                "type": "null"
                               }
                             ]
                           }
@@ -49452,10 +49452,10 @@
                           "value": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageOwnershipPath"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageOwnershipPath"
+                                "type": "null"
                               }
                             ]
                           }
@@ -49476,10 +49476,10 @@
                           "value": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryPageLocation"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryPageLocation"
+                                "type": "null"
                               }
                             ]
                           }
@@ -49518,10 +49518,10 @@
                           "value": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/LibraryViewLocation"
                               },
                               {
-                                "$ref": "#/components/schemas/LibraryViewLocation"
+                                "type": "null"
                               }
                             ]
                           }
@@ -49981,10 +49981,10 @@
                           "next": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/DocumentVersionCursor"
                               },
                               {
-                                "$ref": "#/components/schemas/DocumentVersionCursor"
+                                "type": "null"
                               }
                             ]
                           }
@@ -50034,10 +50034,10 @@
                           "committed": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/ApplyResponse_OwnedDocumentCommitValue_OwnedDocumentReceipt"
                               },
                               {
-                                "$ref": "#/components/schemas/ApplyResponse_OwnedDocumentCommitValue_OwnedDocumentReceipt"
+                                "type": "null"
                               }
                             ]
                           },
@@ -50505,10 +50505,10 @@
                           "binding": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeSessionBinding"
                               },
                               {
-                                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeSessionBinding"
+                                "type": "null"
                               }
                             ]
                           },
@@ -50593,10 +50593,10 @@
                           "thread": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/ProjectWorkspaceThread"
                               },
                               {
-                                "$ref": "#/components/schemas/ProjectWorkspaceThread"
+                                "type": "null"
                               }
                             ]
                           }
@@ -50635,10 +50635,10 @@
                           "session": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/ProjectWorkspaceThreadBackendSession"
                               },
                               {
-                                "$ref": "#/components/schemas/ProjectWorkspaceThreadBackendSession"
+                                "type": "null"
                               }
                             ]
                           }
@@ -50711,10 +50711,10 @@
                           "item": {
                             "oneOf": [
                               {
-                                "type": "null"
+                                "$ref": "#/components/schemas/ProjectWorkspaceSubagentOverviewItem"
                               },
                               {
-                                "$ref": "#/components/schemas/ProjectWorkspaceSubagentOverviewItem"
+                                "type": "null"
                               }
                             ]
                           },
@@ -51505,10 +51505,10 @@
           "runtime": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RuntimeGenerationIdentity"
               },
               {
-                "$ref": "#/components/schemas/RuntimeGenerationIdentity"
+                "type": "null"
               }
             ]
           },
@@ -51575,10 +51575,10 @@
           "property_schema": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DatabasePropertySchema"
               },
               {
-                "$ref": "#/components/schemas/DatabasePropertySchema"
+                "type": "null"
               }
             ]
           },

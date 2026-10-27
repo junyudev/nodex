@@ -684,7 +684,7 @@ fn verify_hash(bytes: &[u8], expected: &str, label: &str) -> Result<(), StoreErr
 }
 
 fn hash_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 fn corrupt(message: impl Into<String>) -> StoreError {

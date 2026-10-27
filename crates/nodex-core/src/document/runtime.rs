@@ -471,7 +471,7 @@ fn entry_matches(entry: &CacheEntry, head: &DocumentHeadRow) -> bool {
 }
 
 fn sha256(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 fn corrupt(message: String) -> StoreError {

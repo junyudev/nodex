@@ -219,7 +219,7 @@ mod tests {
     fn point_join_does_not_materialize_other_positions() {
         let mut baseline = None;
         for size in [1_000, 10_000, 100_000] {
-            let connection = fixture();
+            let mut connection = fixture();
             connection.execute_batch(&format!(
                 "INSERT INTO database_view_order_state(view_id, active_generation, default_epoch) VALUES ('view', 1, 1);
                  WITH RECURSIVE ids(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ids WHERE n<{size})

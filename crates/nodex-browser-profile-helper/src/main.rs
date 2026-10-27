@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use aes::Aes128;
 use cbc::Decryptor;
-use cbc::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
+use cbc::cipher::{BlockModeDecrypt, KeyIvInit, block_padding::Pkcs7};
 #[cfg(target_os = "macos")]
 use pbkdf2::pbkdf2_hmac;
 use rusqlite::{Connection, OpenFlags};
@@ -347,7 +347,7 @@ fn decrypt_chromium_value(
     }
     let mut payload = encrypted[3..].to_vec();
     let plaintext = Aes128CbcDecryptor::new(key.into(), (&CHROMIUM_IV).into())
-        .decrypt_padded_mut::<Pkcs7>(&mut payload)
+        .decrypt_padded::<Pkcs7>(&mut payload)
         .map_err(|_| HelperError::UnsupportedEncryption)?;
     let plaintext = strip_cookie_host_digest(plaintext, cookie_domain);
     String::from_utf8(plaintext.to_vec()).map_err(|_| HelperError::UnsupportedEncryption)
@@ -470,7 +470,7 @@ fn read_chromium_key(_source: BrowserSource) -> Result<[u8; 16], HelperError> {
 mod tests {
     use super::*;
     use cbc::Encryptor;
-    use cbc::cipher::BlockEncryptMut;
+    use cbc::cipher::BlockModeEncrypt;
 
     type Aes128CbcEncryptor = Encryptor<Aes128>;
 
@@ -478,7 +478,7 @@ mod tests {
         let mut buffer = vec![0_u8; plaintext.len() + 16];
         buffer[..plaintext.len()].copy_from_slice(plaintext);
         let encrypted = Aes128CbcEncryptor::new(key.into(), (&CHROMIUM_IV).into())
-            .encrypt_padded_mut::<Pkcs7>(&mut buffer, plaintext.len())
+            .encrypt_padded::<Pkcs7>(&mut buffer, plaintext.len())
             .expect("fixture encryption");
         [b"v10".as_slice(), encrypted].concat()
     }
