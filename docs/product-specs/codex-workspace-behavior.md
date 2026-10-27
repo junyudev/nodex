@@ -238,8 +238,13 @@ The composer exposes one catalog-driven intelligence selector: a searchable mode
 list, an effort track, and a Fast toggle, the same menu every model choice uses. It
 does not split model selection into simplified and advanced modes, so the same
 layout remains valid as backend catalogs and capabilities vary. The trigger keeps the full model name followed by the active
-reasoning effort, such as `GPT-6 Astra Medium`. Model IDs without a distinct
+reasoning effort, such as `GPT-6 Astra Medium`. A GPT name reads as its version and
+then its variant, such as `GPT-6.1 Sol`, whatever separator the catalog uses; only
+the shown name changes, never the model a choice runs. Model IDs without a distinct
 catalog display name become readable names; the `max` effort is labeled `Max`.
+Max and Ultra, the costly end of the effort track, take their own color there, and
+the trigger names Ultra in that color too because it hands each task to a team of
+Agents.
 The selected execution profile is authoritative for both creation and the first
 Turn. Thread creation, durable metadata, and first-Turn preparation consume that
 same compound selection; scalar draft defaults are fallback only when no profile

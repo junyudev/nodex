@@ -17,6 +17,7 @@ import {
 } from "../../../shared/inbox";
 import type { AgentModelOption, CodexReasoningEffort } from "../../../shared/types";
 import { agentRuntimeQualifier } from "@/lib/agent-model-selection";
+import { formatAgentModelName } from "@/lib/codex-thread-settings";
 import {
   agentEffortLabel,
   agentRuntimeBinding,
@@ -132,7 +133,11 @@ export function describeInboxAgent(
   const fast = readAgentRuntimeServiceTier(selection.options) === "fast";
   return present(
     "ready",
-    [model.name, effort ? agentEffortLabel(kind ?? "codex", effort) : null, fast ? "Fast" : null]
+    [
+      formatAgentModelName(model.name),
+      effort ? agentEffortLabel(kind ?? "codex", effort) : null,
+      fast ? "Fast" : null,
+    ]
       .filter(Boolean)
       .join(" · "),
   );

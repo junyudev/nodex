@@ -116,6 +116,27 @@ describe("what an Inbox chat runs on", () => {
 });
 
 describe("choosing in the Inbox's model menu", () => {
+  test("reads a GPT model's version apart from its variant without renaming the model", () => {
+    const sol = {
+      ...codexProvider().models[0]!,
+      slug: "gpt-6.1-sol",
+      name: "GPT-6.1-Sol",
+      isDefault: false,
+    };
+    const catalog = inboxAgentsFixture({
+      providers: [{ ...codexProvider(), models: [...codexProvider().models, sol] }],
+    });
+    const chosen = codex({ model: "gpt-6.1-sol" });
+    expect(inboxAgentLine(describeInboxAgent(catalog, chosen))).toBe(
+      "Codex · GPT-6.1 Sol · Medium",
+    );
+    const entry = inboxAgentPickerModel(catalog, chosen).entries.find(
+      (candidate) => candidate.model.id === "gpt-6.1-sol",
+    );
+    expect(entry?.model.displayName).toBe("GPT-6.1 Sol");
+    expect(entry?.selection).toEqual({ binding: { kind: "codex" }, model: "gpt-6.1-sol" });
+  });
+
   test("lists every configured Agent's models and marks the resolved default", () => {
     const picker = inboxAgentPickerModel(inboxAgentsFixture(), codex());
     expect(picker.entries.map((entry) => `${entry.label}:${entry.model.id}`)).toEqual([

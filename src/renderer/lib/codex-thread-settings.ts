@@ -231,9 +231,14 @@ export function formatCodexModelLabel<Model extends Pick<AgentModelOption, "id" 
 
   const selectedModel = models.find((model) => model.id === modelId);
   const displayName = selectedModel?.displayName.trim();
-  const label =
-    displayName && displayName !== modelId ? displayName : formatCodexModelLabelFromId(modelId);
-  return label.replace(
+  return formatAgentModelName(
+    displayName && displayName !== modelId ? displayName : formatCodexModelLabelFromId(modelId),
+  );
+}
+
+/** A GPT name reads as its version and then its variant, such as `GPT-6.1 Sol`. */
+export function formatAgentModelName(name: string): string {
+  return name.replace(
     /^(GPT-\d[\d.]*)(.*)$/u,
     (_match, family: string, variant: string) => family + variant.replaceAll("-", " "),
   );

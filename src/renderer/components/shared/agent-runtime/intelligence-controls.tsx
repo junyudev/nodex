@@ -55,12 +55,18 @@ const TRACK_EASE = "ease-[cubic-bezier(0.23,1,0.32,1)]";
 // The thumb is 28px, so stop centers sit 14px inside each end of the pill.
 const THUMB_PX = 28;
 
-/** Max is the costly end of the scale, so it takes its own color; Off has none. */
+/** Max and Ultra are the costly end of the scale, so they take their own color; Off has none. */
 function effortTone(value: string | undefined) {
   if (value === THINKING_OFF_EFFORT_STOP)
     return { text: "text-token-description-foreground", fill: "bg-transparent" };
-  if (value === "max") return { text: "text-token-charts-purple", fill: "bg-token-charts-purple" };
+  if (value === "max" || value === "ultra")
+    return { text: "text-token-charts-purple", fill: "bg-token-charts-purple" };
   return { text: "text-token-charts-blue", fill: "bg-token-charts-blue" };
+}
+
+/** Ultra hands each task to a team of Agents, so a selector names it in its scale color. */
+export function intelligenceEffortEmphasis(value: string | undefined): string | undefined {
+  return value === "ultra" ? effortTone(value).text : undefined;
 }
 
 /**

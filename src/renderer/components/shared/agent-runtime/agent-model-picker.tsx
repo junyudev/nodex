@@ -45,6 +45,7 @@ import {
 import {
   IntelligenceControlsHeader,
   IntelligenceEffortSlider,
+  intelligenceEffortEmphasis,
   IntelligenceModeIndicatorIcon,
   IntelligenceModeToggle,
   type IntelligenceModeIndicator,
@@ -308,6 +309,9 @@ export function AgentModelPicker(
         : selection.reasoningEffort !== "default" && selection.reasoningEffort !== "none"
           ? agentEffortLabel(selection.kind, selection.reasoningEffort)
           : "";
+  const reasoningEffort =
+    shown.effort ??
+    (native?.selected.thinking === false ? THINKING_OFF_EFFORT_STOP : selection.reasoningEffort);
   const labels = [
     ...catalog.entries.map((entry) => ({
       id: agentModelKey(entry.binding, entry.model.id),
@@ -490,7 +494,21 @@ export function AgentModelPicker(
               <IntelligenceModeIndicatorIcon key={mode} mode={mode} />
             ))}
             <span className="min-w-0 flex-1 truncate text-start">
-              {inherited ? INHERIT_LABEL : [modelLabel, reasoningLabel].filter(Boolean).join(" · ")}
+              {inherited ? (
+                INHERIT_LABEL
+              ) : (
+                <>
+                  {modelLabel}
+                  {reasoningLabel ? (
+                    <>
+                      {" · "}
+                      <span className={intelligenceEffortEmphasis(reasoningEffort)}>
+                        {reasoningLabel}
+                      </span>
+                    </>
+                  ) : null}
+                </>
+              )}
             </span>
           </NodexSettingsDropdownTrigger>
         ) : (
@@ -501,6 +519,7 @@ export function AgentModelPicker(
             labelCandidates={labels}
             modelLabel={modelLabel}
             reasoningLabel={reasoningLabel}
+            reasoningEffort={reasoningEffort}
             indicators={indicators}
             aria-keyshortcuts={props.shortcut?.ariaKeyShortcuts}
           />

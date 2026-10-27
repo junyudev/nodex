@@ -2,7 +2,7 @@ import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
 import type { AgentModelOption } from "../../shared/types";
-import { formatCodexReasoningEffortLabel } from "./codex-thread-settings";
+import { formatAgentModelName, formatCodexReasoningEffortLabel } from "./codex-thread-settings";
 import {
   agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
@@ -108,11 +108,12 @@ export function projectAgentRuntimeModel(
 ): AgentModelOption {
   const effort = model.capabilities?.optionDescriptors?.find(isAgentRuntimeEffortOption);
   const choices = effort?.type === "select" ? effort.options : [];
+  const name = formatAgentModelName(model.name);
   return {
     id: model.slug,
     model: model.slug,
-    displayName: model.name,
-    description: model.name,
+    displayName: name,
+    description: name,
     hidden: false,
     supportedReasoningEfforts: choices.map((option) => ({
       reasoningEffort: option.id,

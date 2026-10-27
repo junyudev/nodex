@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import {
   IntelligenceModeIndicatorIcon,
+  intelligenceEffortEmphasis,
   type IntelligenceModeIndicator,
 } from "./intelligence-controls";
 import { COMPOSER_FOOTER_GHOST_BUTTON_CLASS_NAME } from "../../../features/local-conversation/view/shared/composer-footer-controls";
@@ -190,11 +191,13 @@ export function useIntelligenceSelectorTriggerGeometry(
 function IntelligenceSelectorLabel({
   modelLabel,
   reasoningLabel,
+  reasoningEffort,
   reserveModelLabelWidth = false,
   indicators = NO_INDICATORS,
 }: {
   modelLabel: string;
   reasoningLabel: string | null;
+  reasoningEffort?: string;
   reserveModelLabelWidth?: boolean;
   indicators?: readonly IntelligenceModeIndicator[];
 }) {
@@ -220,7 +223,12 @@ function IntelligenceSelectorLabel({
         {modelLabel}
       </span>
       {reasoningLabel ? (
-        <span className="shrink-0 whitespace-nowrap text-token-description-foreground">
+        <span
+          className={cn(
+            "shrink-0 whitespace-nowrap",
+            intelligenceEffortEmphasis(reasoningEffort) ?? "text-token-description-foreground",
+          )}
+        >
           {reasoningLabel}
         </span>
       ) : null}
@@ -237,6 +245,8 @@ interface IntelligenceSelectorTriggerProps extends Omit<
   labelCandidates: readonly IntelligenceSelectorLabelCandidate[];
   modelLabel: string;
   reasoningLabel: string | null;
+  /** The effort the label names, which decides its color. */
+  reasoningEffort?: string;
   indicators: readonly IntelligenceModeIndicator[];
   title?: string;
 }
@@ -260,6 +270,7 @@ export const IntelligenceSelectorTrigger = forwardRef<
     labelCandidates,
     modelLabel,
     reasoningLabel,
+    reasoningEffort,
     indicators,
     title,
     ...buttonProps
@@ -341,6 +352,7 @@ export const IntelligenceSelectorTrigger = forwardRef<
             <IntelligenceSelectorLabel
               modelLabel={modelLabel}
               reasoningLabel={reasoningLabel}
+              reasoningEffort={reasoningEffort}
               indicators={indicators}
             />
           </span>

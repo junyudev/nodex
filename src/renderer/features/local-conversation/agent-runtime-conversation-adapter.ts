@@ -43,6 +43,7 @@ import {
   agentRuntimeSelectionRefusal,
 } from "../../../shared/agent-runtime-agent-switch";
 import { agentRuntimeForkSource } from "../../../shared/agent-runtime-fork-merge";
+import { formatAgentModelName } from "../../lib/codex-thread-settings";
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { CodexReasoningEffortSchema } from "../../../shared/schemas/codex";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
@@ -827,7 +828,9 @@ export function useAgentRuntimeConversationAdapter(input: {
               {
                 label: agentRuntimeProviderLabel(provider, input.instances),
                 kind: binding.kind,
-                models: new Map(provider.models.map((model) => [model.slug, model.name])),
+                models: new Map(
+                  provider.models.map((model) => [model.slug, formatAgentModelName(model.name)]),
+                ),
               },
             ],
           ];
