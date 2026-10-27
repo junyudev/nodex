@@ -1,0 +1,178 @@
+src/renderer/lib/workbench-panel-capabilities.node.test.ts
+  s_881bde2b2ec57a::t_03a3d0bc202b20 17-23,68,83,87,99,135,163,201
+src/renderer/lib/workbench-panel-capabilities.ts
+  s_881bde2b2ec57a::t_afcd12da57a844 7-14,65,75,86
+src/renderer/lib/workbench-panel-actions.ts
+  s_881bde2b2ec57a::t_70b0575947d690 46-47,53,108-112,114,125-126,151,178
+  s_881bde2b2ec57a::t_426c27f5ae117a 17,113
+src/renderer/lib/workbench-new-tab-model.ts
+  s_881bde2b2ec57a::t_f7be82a447a371 1-75,80-86,103-120,122-130
+  s_881bde2b2ec57a::t_2f859714bdd985 76-79,87-102
+  s_881bde2b2ec57a::t_592500ae32140a 121
+src/renderer/components/shared/icons/app-icons.tsx
+  s_881bde2b2ec57a::t_426c27f5ae117a 1741-1779
+src/renderer/lib/workbench-new-tab-model.node.test.ts
+  s_881bde2b2ec57a::t_175fa117f32ffd 1-49,52,61-98,100-108,112-166,206-236,238-239
+  s_881bde2b2ec57a::t_08660fefb81486 50-51,53-60
+  s_881bde2b2ec57a::t_b9df8487ae1296 99,109-111,167-205,237
+src/renderer/features/browser-sidebar/browser-sidebar-panel.tsx
+  s_881bde2b2ec57a::t_2e1e7a952c6c80 72-76,253,266-267,852,1096,1285-1286,1329
+  s_881bde2b2ec57a::t_9d4906b6ccf554 2566-2582,2584-2590,2591-2595,2640-2641,2642-2646,2648,2663-2681,2684-2685,2687,2689-2693,2695,2697-2703,2705-2732,2736-2738,2740-2751,2753-2761,2803-2804,2811,2819-2822,2836,2851,2853,2857-2858,2867-2874,2878,2881,2885,2888
+  s_881bde2b2ec57a::t_212559dfc510ca 150,2583,2828
+  s_881bde2b2ec57a::t_93ab5a34b03013 2854,2877
+  s_881bde2b2ec57a::t_9045bea5520ca1 2735,2739,2752
+  s_a33fd3c2a2c91a::t_f9579c7a2334d4 1074
+  s_881bde2b2ec57a::t_0107c31a24c21b 1065,1074,1076-1077,1080,1084,1119,1121,1124,1129,1193,1196-1197
+src/shared/workbench-scene.ts
+  s_881bde2b2ec57a::t_54f6123d9c6984 1,1446
+src/renderer/lib/workbench-new-tab-port.tsx
+  s_881bde2b2ec57a::t_cf95d4320c2aab 2-28,31-56,59-78,79-118,155,201
+  s_881bde2b2ec57a::t_ac7ec72bad6872 1,124-133,134-154,156-179,181-188,191-193,195-200
+  s_881bde2b2ec57a::t_9ca60b5241dced 29-30,57-58,119-123,180,189-190,194
+src/renderer/components/workbench/space-home.test.tsx
+  s_881bde2b2ec57a::t_27bbdc41ef1fd2 63,65-68
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_881bde2b2ec57a::t_7b7eb404076ba0 313-317,2406-2448,4552
+  s_881bde2b2ec57a::t_c519fbacdb17ee 321-326,3144-3191,3248-3255,3260-3261,5401
+  s_881bde2b2ec57a::t_0a580679fdd34c 319
+  s_881bde2b2ec57a::t_0d0f6b9208ee73 2449,3192,3200-3207,3215-3239,3241-3247,3256-3259
+  s_881bde2b2ec57a::t_50d48710773122 2450-2478,4555
+  s_881bde2b2ec57a::t_c6ff98d75dda4d 320,4227-4235
+  s_881bde2b2ec57a::t_2e0cfc5a36a66d 318,2134-2139,2145-2146,2149-2153,2155-2158,2722-2725
+  s_881bde2b2ec57a::t_a82efb757af103 3262
+  s_881bde2b2ec57a::t_d7012415dc350d 2829
+  s_881bde2b2ec57a::t_d83d59add73f5e 2060,2118,2140-2144,2147-2148,2154,3193-3199,3208-3214,3240
+src/renderer/lib/workbench-panel-preview.ts
+  s_881bde2b2ec57a::t_54f6123d9c6984 7
+  s_881bde2b2ec57a::t_6f76f9d84b5338 73
+src/shared/browser-url.ts
+  s_881bde2b2ec57a::t_212559dfc510ca 20-30
+src/renderer/components/block-documents/collaborative-page-title.tsx
+  s_881bde2b2ec57a::t_af21ca8716da44 359-360
+  s_881bde2b2ec57a::t_47531fcea9ba15 176,342-347,358,361
+  s_881bde2b2ec57a::t_546d7f45ff74a9 362
+  s_881bde2b2ec57a::t_b46f06b6ed390c 191,219-223,357,537,746-749
+  s_881bde2b2ec57a::t_879a6e068a2e37 348-356
+src/renderer/components/workbench/command-palette.test.tsx
+  s_881bde2b2ec57a::t_0c009999639559 91,262,312
+src/renderer/components/workbench/command-palette-scope.test.tsx
+  s_881bde2b2ec57a::t_0c009999639559 108
+src/renderer/lib/use-workbench-panel-command-router.ts
+  s_881bde2b2ec57a::t_dc8bb9b3fd3b2a 80,182,563
+  s_881bde2b2ec57a::t_54f6123d9c6984 37,213-214
+  s_881bde2b2ec57a::t_abea1c35267c98 107-111,167,540-542,572
+src/renderer/components/library/library-new-menu.tsx
+  s_881bde2b2ec57a::t_14733e32d6f6f5 49,55-56,59,68,70-71,74,88
+  s_881bde2b2ec57a::t_879a6e068a2e37 7,69
+src/renderer/components/workbench/workbench-panel-new-tab-button.tsx
+  s_881bde2b2ec57a::t_558d3758262f1d 42-44,59-61,66-70,75-76,78-79,85-99
+  s_881bde2b2ec57a::t_e68ebcf3ead499 77
+src/renderer/components/workbench/pages-tab-picker.test.tsx
+  s_881bde2b2ec57a::t_0c009999639559 46
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_881bde2b2ec57a::t_c6ff98d75dda4d 33,395-403
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_881bde2b2ec57a::t_0c009999639559 117
+src/renderer/lib/workbench-scene-navigator.ts
+  s_881bde2b2ec57a::t_54f6123d9c6984 1,318-319
+src/renderer/components/workbench/workbench-new-tab-page.tsx
+  s_881bde2b2ec57a::t_1a4536498ea792 377,387-388,391,397-398,406-407,412,456,465
+  s_881bde2b2ec57a::t_87b7135db6e4e0 1,9-26,33-37,39-41,43,53,55-103,105-124,132-168,170-217,219,230-376,378-386,389-390,392-396,399-405,408-411,413-455,457-464,466-471,473-501,503-506,535-551,612
+  s_881bde2b2ec57a::t_5bbca2faa15f93 27-32,42,49-52,54,552-600,602-611
+  s_881bde2b2ec57a::t_4dbaba43fa6fce 2-8,218,220-229,472,502,507-534
+  s_881bde2b2ec57a::t_8abf1641abf0a4 45-48,104,125-130
+  s_881bde2b2ec57a::t_1c5fa0dd2e5d25 44,131
+  s_881bde2b2ec57a::t_d83d59add73f5e 601
+  s_881bde2b2ec57a::t_4ef29a181924cd 38,169
+src/renderer/components/workbench/workbench-panel-controls.tsx
+  s_881bde2b2ec57a::t_ac45ea291652f6 28
+  s_881bde2b2ec57a::t_4ef29a181924cd 19,57
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_881bde2b2ec57a::t_b1666571776306 4862,4865,4867-4876
+src/renderer/components/workbench/workbench-shell.sidebar-projects.test.tsx
+  s_881bde2b2ec57a::t_b1666571776306 275,493
+src/renderer/components/workbench/workbench-shell.project-agent-dock.test.tsx
+  s_881bde2b2ec57a::t_b1666571776306 123
+src/renderer/features/browser-sidebar/browser-sidebar-ui-model.jsdom.test.ts
+  s_881bde2b2ec57a::t_1cb43e389651db 66,68-69,76
+src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx
+  s_881bde2b2ec57a::t_f3ce9905dd9744 120-121,309
+  s_881bde2b2ec57a::t_b1666571776306 118,136,200,223
+  s_881bde2b2ec57a::t_b7933f7fa98d11 43-84
+src/renderer/features/browser-sidebar/browser-sidebar-ui-model.ts
+  s_881bde2b2ec57a::t_1cb43e389651db 27-28
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_881bde2b2ec57a::t_d7012415dc350d 141-142,263,335,337-343,346,348
+  s_881bde2b2ec57a::t_b2f03d8bc3b3e0 825
+src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx
+  s_881bde2b2ec57a::t_f3ce9905dd9744 212
+  s_881bde2b2ec57a::t_b1666571776306 195
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_881bde2b2ec57a::t_b1666571776306 106,1796,2197,2202,2288,2432,2610,2647
+  s_881bde2b2ec57a::t_4fafa3dacb29ca 2192,2206,2245-2248
+  s_881bde2b2ec57a::t_0954b355b2b360 2340,2389,2398,2435-2437
+  s_881bde2b2ec57a::t_4481d30233b10d 2694
+  s_881bde2b2ec57a::t_c418731176aa59 2773-2777,2779-2780,2782,2784-2792
+  s_881bde2b2ec57a::t_5b3c0454eaf58b 1792
+  s_881bde2b2ec57a::t_b5b06e62cf6f86 2207,2783
+docs/product-specs/workbench-shell.md
+  s_881bde2b2ec57a::t_5ce8739b7b1115 30,129,201
+  s_881bde2b2ec57a::t_124813d5af0d4f 202
+CHANGELOG.md
+  s_881bde2b2ec57a::t_207b6be95243ce 9-10
+src/renderer/components/workbench/workbench-new-tab-page.test.tsx
+  s_881bde2b2ec57a::t_6e2911664b981b 1-167
+src/renderer/lib/workbench-new-tab-port.test.tsx
+  s_a33fd3c2a2c91a::t_323beb83009ee1 1-15,16,17-19,60,69
+  s_a33fd3c2a2c91a::t_087db02c11642f 86
+  s_881bde2b2ec57a::t_8918ad9b92fea2 21-85
+tests/e2e/new-tab-page.spec.ts
+  s_96204614a8f86c::t_10ae713ac5ee8f 1-31,37-40,49-59,66-69,71-87,89-112
+  s_96204614a8f86c::t_7f3b24116ae14b 32-36
+  s_96204614a8f86c::t_15e6dd221d7541 41-48,60-65,70,88
+src/renderer/components/block-documents/collaborative-page-title.test.tsx
+  s_881bde2b2ec57a::t_14b9141e1dc98b 58-59,66
+  s_881bde2b2ec57a::t_aa2c94eb26a26f 49-57,60-65,67-69
+src/renderer/lib/page-title-focus-intent.ts
+  s_881bde2b2ec57a::t_879a6e068a2e37 1-14
+src/renderer/components/workbench/workbench-library-page-surface.tsx
+  s_881bde2b2ec57a::t_592500ae32140a 1-2
+  s_881bde2b2ec57a::t_611653681f1a15 53-54
+  s_881bde2b2ec57a::t_879a6e068a2e37 157
+src/renderer/lib/workbench-toolbar-control-styles.ts
+  s_881bde2b2ec57a::t_4ef29a181924cd 7-9
+tests/e2e/workbench-shell-navigation.spec.ts
+  s_881bde2b2ec57a::t_68ca57970420eb 650-652
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9b4380d8c5a2c853b0a31e971fd8f0ec7e1abd45",
+  "prompts": {},
+  "sessions": {
+    "s_881bde2b2ec57a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49cbb4a9-e94e-4e20-9ebc-d47c9a27d1f1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_96204614a8f86c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d7c-96fb-75f2-b136-1b009a252a07",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a33fd3c2a2c91a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d7a-6136-7701-a565-154e06b01f5e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
