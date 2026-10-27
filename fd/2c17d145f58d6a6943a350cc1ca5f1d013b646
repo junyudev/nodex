@@ -1,0 +1,19 @@
+tests/e2e/electron-smoke.spec.ts
+  s_cb8bbfdb133e81::t_f3b9799ad2a786 1999
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd2c17d145f58d6a6943a350cc1ca5f1d013b646",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
