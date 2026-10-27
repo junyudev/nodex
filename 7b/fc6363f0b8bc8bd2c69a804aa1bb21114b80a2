@@ -1,0 +1,23 @@
+docs/product-specs/agent-runtime-behavior.md
+  s_bf283e21d5527f::t_ea3562b99ff9a9 325-346
+src/main/agent-backend/claude/ClaudeModels.node.test.ts
+  s_bf283e21d5527f::t_6abc8684a9a10e 2,4,21
+src/main/agent-backend/claude/ClaudeModels.ts
+  s_bf283e21d5527f::t_014d053c1a0cd8 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7bfc6363f0b8bc8bd2c69a804aa1bb21114b80a2",
+  "prompts": {},
+  "sessions": {
+    "s_bf283e21d5527f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9bcf3e4-e297-4281-8ed9-143d145929be",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

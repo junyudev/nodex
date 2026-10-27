@@ -1,0 +1,79 @@
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.test.tsx
+  s_bf283e21d5527f::t_4337bde93e48e7 89
+  s_bf283e21d5527f::t_023e81dd4ed5ba 223,233-235
+  s_bf283e21d5527f::t_e82fb80e1818ba 146,256
+  s_bf283e21d5527f::t_6155ed5d3cc50b 98,103-105,263-264
+  s_bf283e21d5527f::t_df709581e57353 214-216
+  s_bf283e21d5527f::t_b014c41c28deed 1-2,8-12,55-56,70-78,81-84,87-88,91,94-97,99-101,107-112,114,117,122-124,126,131-132,134-137,139-143,145,147-150,152,158-180,183-213,217-219,222,224-228,230-232,238-244,248-253,257-262,266-271
+  s_bf283e21d5527f::t_dea367655e7132 90
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_bf283e21d5527f::t_b1ed3a1f0a0dfc 4947,4950,4954
+  s_bf283e21d5527f::t_0724eb193743b1 5032-5069,5123,5129,5133,5212-5218,5224-5233
+  s_bf283e21d5527f::t_ec3e781d46a327 2548,2561-2562,2565,2569-2570,2572-2575,4937-4942,4944,4957-4958,4960
+  s_bf283e21d5527f::t_19a6ce8bf6be44 4969,4988-4995,4998,5002,5017,5019,5023,5029,5084-5095
+  s_bf283e21d5527f::t_17ecdb28c4a4e5 5030-5031,5070-5073,5075-5076
+docs/product-specs/codex-workspace-behavior.md
+  s_bf283e21d5527f::t_6dd4fa5ea48028 237-240
+src/renderer/components/workbench/workbench-automation-intelligence.tsx
+  s_bf283e21d5527f::t_3c0834b1575c99 24,28-31,34,40,44-45,53-54,56,58,61,75,77-142,151,156,178,181,183
+docs/product-specs/scheduled-route-behavior.md
+  s_bf283e21d5527f::t_6dd4fa5ea48028 108,133-134,138-139
+src/renderer/features/local-conversation/view/composer/use-composer-intelligence-controller.ts
+  s_bf283e21d5527f::t_dbb1220bfacc64 37-39
+src/renderer/components/workbench/workbench-automation-intelligence.test.tsx
+  s_bf283e21d5527f::t_025cd9df3107b7 237-243
+  s_bf283e21d5527f::t_fce1c1a587ff34 1,6-10,91-115,118,120,134-151,153-154,162-175,180-185,193-198,201,206-212,215-216,227-229,234-236,244-249,253-257
+  s_bf283e21d5527f::t_24e933b6467ea3 152,200,213
+  s_bf283e21d5527f::t_df709581e57353 176-179
+  s_bf283e21d5527f::t_58499b511fdfa2 258
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_bf283e21d5527f::t_81e859c477fc3c 263,266-277
+  s_bf283e21d5527f::t_2f12f9981e9eb6 229-232
+  s_bf283e21d5527f::t_22b50273833c6f 17-20,48,94-95,98-99
+  s_bf283e21d5527f::t_2be9aa6dacd58f 160-163,188,362-391,393,423,441,465
+  s_bf283e21d5527f::t_df709581e57353 424
+  s_bf283e21d5527f::t_e82fb80e1818ba 264-265,417-418,420-422
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.tsx
+  s_bf283e21d5527f::t_4d7e7cc100ff7b 1-3,5,56-57,62,76-90
+src/renderer/features/scheduled/scheduled-task-form.tsx
+  s_bf283e21d5527f::t_5929d5ae191751 17-20,105-108,114-150,211,370-375
+  s_bf283e21d5527f::t_df709581e57353 111-113
+  s_bf283e21d5527f::t_56b9f8afd5e196 16
+CHANGELOG.md
+  s_bf283e21d5527f::t_c256689b9629d5 9,24,42-43
+src/renderer/components/board/editor/agent-config-chip.test.tsx
+  s_bf283e21d5527f::t_a74904e3183df4 197-198,203-206,208,216,220,230-237,240-256,258,261-262,264
+src/renderer/lib/listed-agent-model-catalog.ts
+  s_bf283e21d5527f::t_72da868eba6e1f 1-121
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.browser.test.tsx
+  s_bf283e21d5527f::t_b71ee528f9fdce 1,34,60,84-85,87,89-91,93-103
+tests/e2e/support/composer-model-picker.ts
+  s_bf283e21d5527f::t_9329ba9ddc8a46 43-77
+src/renderer/lib/listed-agent-model-catalog.node.test.ts
+  s_bf283e21d5527f::t_039022366b9981 1-14,19-114,121-124,126-149
+  s_bf283e21d5527f::t_df709581e57353 15-18
+  s_bf283e21d5527f::t_9682e9de5f1f0a 115-120,125
+tests/e2e/support/agent-smoke-harness.ts
+  s_bf283e21d5527f::t_0b0bdfb7b892df 9,231-232
+tests/e2e/claude-backend-lifecycle.spec.ts
+  s_bf283e21d5527f::t_0b0bdfb7b892df 4,7
+  s_bf283e21d5527f::t_9329ba9ddc8a46 220-221,223-226,301-302,304,324
+src/renderer/components/workbench/workbench-shell.automations-conversation.test.tsx
+  s_bf283e21d5527f::t_d62bf64aaecbcd 44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "30bb9b2bd9502feaf07456345eba813d38d4cf1a",
+  "prompts": {},
+  "sessions": {
+    "s_bf283e21d5527f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9bcf3e4-e297-4281-8ed9-143d145929be",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,86 @@
+packages/agent-runtime/src/provider/model-manifest.json
+  s_bf283e21d5527f::t_c4359547945c3c 108,269,472,498
+  s_bf283e21d5527f::t_7439a1f0553e31 79-85,109-115,156-162,207-213,258,300,408-414,450,499-505
+CHANGELOG.md
+  s_bf283e21d5527f::t_ddc30cf7a88c66 23,35-38,41
+src/renderer/features/local-conversation/view/composer/intelligence-selector-trigger.browser.test.tsx
+  s_bf283e21d5527f::t_81ec7b83ef2070 28,94,156
+src/renderer/features/inbox/inbox-selection.test.tsx
+  s_bf283e21d5527f::t_2bafdfa235d656 64-70,222-225
+src/renderer/lib/intelligence-effort.node.test.ts
+  s_bf283e21d5527f::t_bcd9bb90321058 1-21,25-72
+  s_bf283e21d5527f::t_2069b96355205a 22-24
+src/renderer/lib/intelligence-effort.ts
+  s_bf283e21d5527f::t_afd774d66aae58 1-49
+src/renderer/components/ui/slider.tsx
+  s_bf283e21d5527f::t_7510e83337204a 7-11,28
+docs/product-specs/agent-runtime-behavior.md
+  s_bf283e21d5527f::t_ddc30cf7a88c66 324-331
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_bf283e21d5527f::t_3b8cab38295367 129,1294,1321
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_bf283e21d5527f::t_73bbff4b540a54 48-52,218-242,317-319,322,389,445-449,453-454
+  s_bf283e21d5527f::t_75555f1961d480 42-47,271-309,451,463-466
+  s_bf283e21d5527f::t_dce2012f56a07a 270
+src/renderer/components/shared/icons/app-icons.tsx
+  s_bf283e21d5527f::t_6fb2d9ffe790b4 2263-2265
+  s_bf283e21d5527f::t_48703010f03663 2260-2262,2266,2271-2273,2277-2280
+  s_bf283e21d5527f::t_d9e496645d6023 2259,2267-2270,2274-2276
+src/renderer/features/local-conversation/agent-runtime-model-intent.node.test.ts
+  s_bf283e21d5527f::t_eefa4d433e8f6f 28,105-127
+  s_bf283e21d5527f::t_b7480b4ff9feff 128
+src/shared/agent-conversation.ts
+  s_bf283e21d5527f::t_010a6364d88591 491
+packages/agent-runtime/src/claudeModelOptions.ts
+  s_bf283e21d5527f::t_5b07440a1178d5 40-42,88
+src/renderer/components/shared/agent-runtime/intelligence-controls.tsx
+  s_bf283e21d5527f::t_819e1b7bf4297e 3-7,39-45,47-54,57-69,74-79,81-93,96,98-99,102-110,112-114,116-124,127,130-131,157,159,161,177,179,187,190-192
+  s_bf283e21d5527f::t_7510e83337204a 94-95,97,100-101,111
+  s_bf283e21d5527f::t_d11b55c809c7ce 115
+  s_bf283e21d5527f::t_6706280f7b8190 1-2,8-38,46,55-56,70-73,80,125-126,128-129,132-156,158,160,162-176,178,180-186,188-189
+packages/agent-runtime/src/claudeModelOptions.test.ts
+  s_bf283e21d5527f::t_9600424e13ae62 44,47-50,52-55,57-63
+  s_bf283e21d5527f::t_54214593469098 56,64
+src/renderer/features/local-conversation/agent-runtime-model-intent.ts
+  s_bf283e21d5527f::t_010a6364d88591 14,21,38,57-58,62
+src/renderer/lib/native-intelligence-selection.ts
+  s_bf283e21d5527f::t_010a6364d88591 68,95,101,109
+src/renderer/components/shared/agent-runtime/intelligence-selector-trigger.tsx
+  s_bf283e21d5527f::t_6706280f7b8190 13,17-20
+  s_bf283e21d5527f::t_14af75735966f1 28,194
+  s_bf283e21d5527f::t_6c297643ef8d28 26,199,204-205,207-212,240,263,279-280,283-286,344
+  s_bf283e21d5527f::t_ed4df00fc94722 27
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.tsx
+  s_bf283e21d5527f::t_a63f8b5a9af502 274
+  s_bf283e21d5527f::t_e40fc12140abe5 49,57,64
+src/renderer/features/local-conversation/view/composer/intelligence-selector-trigger.test.tsx
+  s_bf283e21d5527f::t_81ec7b83ef2070 92
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_bf283e21d5527f::t_e40fc12140abe5 1477,1485,1491
+src/renderer/features/inbox/inbox-agents-popover.test.tsx
+  s_bf283e21d5527f::t_2bafdfa235d656 37-42
+src/renderer/components/shared/agent-runtime/agent-model-picker.test.tsx
+  s_bf283e21d5527f::t_2069b96355205a 418-421,424-427,434-439
+  s_bf283e21d5527f::t_e65164df31ae01 414-417,422-423,428-433,440-466,469-471
+  s_bf283e21d5527f::t_8702aa0e0242d4 467-468
+src/shared/claude-models.ts
+  s_bf283e21d5527f::t_010a6364d88591 14-15
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_bf283e21d5527f::t_28e10497e7ad2d 8527-8529,8778-8780
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3a74b870ca83945506dbc7f3b37bf301aedf01f",
+  "prompts": {},
+  "sessions": {
+    "s_bf283e21d5527f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9bcf3e4-e297-4281-8ed9-143d145929be",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

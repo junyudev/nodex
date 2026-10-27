@@ -1,0 +1,44 @@
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_bf283e21d5527f::t_cc6b0e0a79f1f5 389-396,405-441,3048-3051
+  s_bf283e21d5527f::t_6aa85d16455035 587-590
+  s_bf283e21d5527f::t_fa2d3b39a8f312 4227-4259,8319-8369,8402-8403,8415-8416,8542-8544
+  s_bf283e21d5527f::t_8a1f7524eb9f23 115,969-971,986-995
+  s_bf283e21d5527f::t_33d8e310fb1c42 442-443
+  s_bf283e21d5527f::t_e74f5fd22a62dd 584-586
+  s_bf283e21d5527f::t_f1946f41864679 972-974,983-985
+  s_bf283e21d5527f::t_16a5da23ae7a48 3052-3053
+  s_bf283e21d5527f::t_d41f94d791b6cf 583,975-982,8727-8730
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.testkit.ts
+  s_bf283e21d5527f::t_99904afa6f2a83 828-832
+  s_bf283e21d5527f::t_6aa85d16455035 188-192,254
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_bf283e21d5527f::t_13e808daf6cebc 131-136,10650-10651
+  s_bf283e21d5527f::t_926114f83fb6fc 2027-2028,2050-2058,2106,2136,2214,2332,2371-2387,2408,10662,10987
+  s_bf283e21d5527f::t_b3da04482a61df 2393,2395-2396
+  s_bf283e21d5527f::t_37e6ac70154e1f 2460
+  s_bf283e21d5527f::t_99904afa6f2a83 769-770,877-878,999-1000,1226-1227,1373-1374,1470-1471,1764-1765,4894-4895,4975,5153-5154,9947-9948,10020,10036,10136-10137,10203,10205,10215,10250,10377-10378,10466,10476,10511,10543,10575-10576,10758,10818,10829,10895-10896
+  s_bf283e21d5527f::t_e1f164126e0861 2388-2389
+  s_bf283e21d5527f::t_336f65f9fd440e 2392
+  s_bf283e21d5527f::t_3a1e7739004e87 2457-2459
+  s_bf283e21d5527f::t_a1dc76d5f33de7 10649
+  s_bf283e21d5527f::t_b6c75895ca441b 10757
+  s_bf283e21d5527f::t_63bc97deeac29a 2418-2456,10659,10714,10960,10971
+packages/agent-runtime/src/claudeModelOptions.ts
+  s_bf283e21d5527f::t_d552a0bd69feff 17-26,31-36,109-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "85e45f93223911225c298fbd7bbcd6af370dc1ff",
+  "prompts": {},
+  "sessions": {
+    "s_bf283e21d5527f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9bcf3e4-e297-4281-8ed9-143d145929be",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
