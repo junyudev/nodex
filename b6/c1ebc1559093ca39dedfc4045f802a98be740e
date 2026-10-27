@@ -1,0 +1,23 @@
+src/renderer/components/workbench/command-palette-text-search.test.tsx
+  s_6c9891f66c664a::t_202fa067c76d82 472,474
+  s_6c9891f66c664a::t_888e223107331e 418,473,477-485,505-507
+  s_6c9891f66c664a::t_363840751d14e7 475
+src/renderer/components/workbench/command-palette.test.tsx
+  s_6c9891f66c664a::t_4e51180514fb8c 2118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6c1ebc1559093ca39dedfc4045f802a98be740e",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
