@@ -189,9 +189,11 @@ describe("Nodex per-Turn CLI connection", () => {
             nodexHome: first.profile.nodexHome,
             codexHome: first.profile.codexHome,
             homeDirectory: userShellHome,
-            inheritedZdotdir: userShellHome,
-            inheritedBashEnv: join(userShellHome, "bash-env"),
-            inheritedPath: "/usr/bin:/bin",
+            inheritedEnvironment: {
+              ZDOTDIR: userShellHome,
+              BASH_ENV: join(userShellHome, "bash-env"),
+              PATH: "/usr/bin:/bin",
+            },
             searchPaths: [],
           });
           const shellEnvironment = Object.fromEntries(

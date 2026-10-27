@@ -59,51 +59,60 @@ export async function prepareNodexCliShell(nodexHome: string): Promise<void> {
   );
 }
 
-/** Pin PATH in the runtime shell policy so login-shell snapshots cannot lose the host entrypoint. */
-export async function nodexCliShellLaunchArgs(input: {
+type ShellEnvironment = Readonly<Record<string, string | undefined>>;
+
+interface NodexCliShellEnvironmentInput {
   nodexHome: string;
-  codexHome: string;
   searchPaths: readonly string[];
-  inheritedPath: string;
   homeDirectory: string;
-  inheritedZdotdir?: string;
-  inheritedBashEnv?: string;
-}): Promise<string[]> {
-  const source = await readFile(join(input.codexHome, "config.toml"), "utf8").catch(
-    (error: unknown) => {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
-      throw error;
-    },
-  );
-  const config = parseToml(source);
-  const policy = config.shell_environment_policy;
-  const set =
-    typeof policy === "object" && policy !== null && !Array.isArray(policy) && "set" in policy
-      ? policy.set
-      : undefined;
-  const configuredPath =
-    typeof set === "object" && set !== null && !Array.isArray(set) && "PATH" in set
-      ? set.PATH
-      : undefined;
-  const path = [
-    nodexCliShellPaths(input.nodexHome).bin,
-    ...input.searchPaths,
-    typeof configuredPath === "string" ? configuredPath : input.inheritedPath,
-  ]
+  inheritedEnvironment: ShellEnvironment;
+  configuredEnvironment?: ShellEnvironment;
+}
+
+/** A configured user file wins; an inherited Nodex wrapper delegates only to its recorded user file. */
+const userStartupPath = (
+  inherited: ShellEnvironment,
+  configured: ShellEnvironment,
+  key: string,
+  userKey: string,
+  fallback: string,
+): string => {
+  if (configured[key] === undefined) return inherited[userKey] ?? inherited[key] ?? fallback;
+  if (configured[userKey] !== undefined) return configured[userKey];
+  if (configured[key] === inherited[key]) return inherited[userKey] ?? configured[key];
+  return configured[key];
+};
+
+/** Compose the owning Profile's routing last, after configured and inherited user environment. */
+export async function composeNodexCliShellEnvironment(
+  input: NodexCliShellEnvironmentInput,
+): Promise<Record<string, string>> {
+  const inherited = input.inheritedEnvironment;
+  const configured = input.configuredEnvironment ?? {};
+  const paths = nodexCliShellPaths(input.nodexHome);
+  const path = [paths.bin, ...input.searchPaths, configured.PATH ?? inherited.PATH ?? ""]
     .filter(Boolean)
     .join(":");
-  const value = (key: string): string | undefined => {
-    if (typeof set !== "object" || set === null || !(key in set)) return undefined;
-    const candidate = (set as Record<string, unknown>)[key];
-    return typeof candidate === "string" ? candidate : undefined;
-  };
-  const paths = nodexCliShellPaths(input.nodexHome);
   const zshHome = join(paths.root, "zsh");
   const bashEnv = join(paths.root, "bash-env");
-  const userZdotdir = value("ZDOTDIR") ?? input.inheritedZdotdir ?? input.homeDirectory;
-  const userBashEnv = value("BASH_ENV") ?? input.inheritedBashEnv ?? "";
+  const userZdotdir = userStartupPath(
+    inherited,
+    configured,
+    "ZDOTDIR",
+    "NODEX_USER_ZDOTDIR",
+    input.homeDirectory,
+  );
+  // An empty recorded value means the outer shell had no user BASH_ENV.
+  const userBashEnv = userStartupPath(inherited, configured, "BASH_ENV", "NODEX_USER_BASH_ENV", "");
+  const routing = {
+    NODEX_HOME: input.nodexHome,
+    ZDOTDIR: zshHome,
+    BASH_ENV: bashEnv,
+    NODEX_USER_BASH_ENV: userBashEnv,
+  };
   const command = shellQuote(join(paths.bin, "nodex"));
   const bindCommand = [
+    ...Object.entries(routing).map(([key, entry]) => `export ${key}=${shellQuote(entry)}`),
     "unalias nodex 2>/dev/null || true",
     `nodex() { ${command} "$@"; }`,
     `export PATH=${shellQuote(paths.bin)}:"$PATH"`,
@@ -119,7 +128,6 @@ export async function nodexCliShellLaunchArgs(input: {
         `ZDOTDIR=\${NODEX_USER_ZDOTDIR:-${shellQuote(userZdotdir)}}`,
         `if [[ -r "$ZDOTDIR/${name}" ]]; then source "$ZDOTDIR/${name}"; fi`,
         'export NODEX_USER_ZDOTDIR="${ZDOTDIR:-$HOME}"',
-        `export ZDOTDIR=${shellQuote(zshHome)}`,
         ...bindCommand,
         "",
       ].join("\n"),
@@ -128,21 +136,50 @@ export async function nodexCliShellLaunchArgs(input: {
   await writeExecutable(
     bashEnv,
     [
-      'if [ -n "${NODEX_USER_BASH_ENV:-}" ] && [ -r "$NODEX_USER_BASH_ENV" ]; then . "$NODEX_USER_BASH_ENV"; fi',
+      ...(userBashEnv
+        ? [`if [ -r ${shellQuote(userBashEnv)} ]; then . ${shellQuote(userBashEnv)}; fi`]
+        : []),
+      `export NODEX_USER_ZDOTDIR=${shellQuote(userZdotdir)}`,
       ...bindCommand,
       "export -f nodex",
       "",
     ].join("\n"),
   );
-  const environment = {
+  return {
+    ...routing,
     PATH: path,
-    ZDOTDIR: zshHome,
-    BASH_ENV: bashEnv,
     NODEX_USER_ZDOTDIR: userZdotdir,
-    NODEX_USER_BASH_ENV: userBashEnv,
+    // Bash imports exported functions before startup files, including when invoked as sh.
+    // Empty definitions prevent an outer function from bypassing this Profile's PATH dispatcher.
+    "BASH_FUNC_nodex%%": "",
+    "BASH_FUNC_nodex()": "",
   };
+}
+
+/** Pin the composed environment in runtime policy so shell snapshots retain the owning entrypoint. */
+export async function nodexCliShellLaunchArgs(
+  input: Omit<NodexCliShellEnvironmentInput, "configuredEnvironment"> & { codexHome: string },
+): Promise<string[]> {
+  const source = await readFile(join(input.codexHome, "config.toml"), "utf8").catch(
+    (error: unknown) => {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
+      throw error;
+    },
+  );
+  const config = parseToml(source);
+  const policy = config.shell_environment_policy;
+  const set =
+    typeof policy === "object" && policy !== null && !Array.isArray(policy) && "set" in policy
+      ? policy.set
+      : undefined;
+  const configuredEnvironment =
+    typeof set === "object" && set !== null && !Array.isArray(set)
+      ? Object.fromEntries(Object.entries(set).filter((entry) => typeof entry[1] === "string"))
+      : {};
+  const environment = await composeNodexCliShellEnvironment({ ...input, configuredEnvironment });
   return Object.entries(environment).flatMap(([key, entry]) => [
     "-c",
+    // Codex splits override paths literally on dots; quotes would become part of the key.
     `shell_environment_policy.set.${key}=${JSON.stringify(entry)}`,
   ]);
 }

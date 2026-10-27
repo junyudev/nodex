@@ -2,11 +2,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { expect, test } from "vite-plus/test";
 import { prepareDesktopEnvironment } from "../../../scripts/agent-eval/desktop-environment";
-import {
-  prepareNodexCliShell,
-  bindNodexCliShell,
-  nodexCliShellPaths,
-} from "../platform/node/NodexCliShell";
+import { prepareNodexCliShell, bindNodexCliShell } from "../platform/node/NodexCliShell";
+import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
 
 test("ordinary shell pipelines, redirects, jq and Python preserve development CLI routing", async () => {
@@ -24,7 +21,7 @@ test("ordinary shell pipelines, redirects, jq and Python preserve development CL
       await bindNodexCliShell({
         nodexHome: profile.nodexHome,
         threadId: "eval-test",
-        executable: `${process.cwd()}/target/debug/nodex`,
+        executable: requiredNativeExecutable("cli"),
         profileId: runtime.identity.profileId,
         projectId: manifest.projectId,
       });
@@ -40,7 +37,6 @@ test("ordinary shell pipelines, redirects, jq and Python preserve development CL
             ...process.env,
             ...environment,
             CODEX_THREAD_ID: "eval-test",
-            PATH: `${nodexCliShellPaths(profile.nodexHome).bin}:${process.env.PATH}`,
           },
           encoding: "utf8",
         },

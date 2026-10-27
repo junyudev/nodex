@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   filesForSuite,
+  AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST,
   nativeRequirements,
   NODEX_CLI_BOOTSTRAP_TEST,
   PROFILE_CLONE_TEST,
@@ -48,6 +49,10 @@ describe("application test ownership", () => {
       "cli",
     ]);
     expect(nativeRequirements("core-client", [PROFILE_CLONE_TEST])).toEqual(["core-server", "cli"]);
+    expect(nativeRequirements("core-client", [AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST])).toEqual([
+      "core-server",
+      "cli",
+    ]);
     expect(nativeRequirements("core-client", [YJS_YRS_TEST])).toEqual(["yjs-yrs-bridge"]);
     expect(nativeRequirements("core-client", ["src/main/new/behavior.node.test.ts"])).toEqual([
       "core-server",

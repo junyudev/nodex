@@ -119,6 +119,21 @@ for stdin. New structured operations accept bounded `--input FILE|-`; unknown
 fields and invalid types are rejected. Use regular files when materializing
 large results, reviewable drafts, real attachments, or persistent retry inputs.
 
+## Agent shell routing
+
+Desktop composes each Agent shell with its own task-bound CLI dispatcher. Its
+executable and Profile take precedence over configured shell policy, inherited
+Nodex routing, and working-directory changes. Configured user startup paths take
+precedence over inherited user paths.
+
+Bash chains the user's `BASH_ENV` before restoring Desktop routing. Nested Nodex
+instances use the outer wrapper's recorded `NODEX_USER_BASH_ENV`, including an
+empty value when no user file existed, rather than sourcing the outer wrapper.
+Zsh similarly unwraps `NODEX_USER_ZDOTDIR` and restores routing after each user
+startup file. Inherited exported Bash `nodex` functions are neutralized before
+shell startup. Other POSIX shells use the PATH dispatcher without startup-file
+chaining; Windows does not install these shell wrappers.
+
 ## Context and reads
 
 Profile selection follows nonblank `NODEX_HOME`, the nearest project config,

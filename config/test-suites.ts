@@ -15,6 +15,8 @@ export type SuiteId = (typeof APP_TEST_SUITES)[number];
 export type TestRuntime = "host-node" | "electron-node" | "jsdom" | "chromium";
 export type NativeArtifactId = "core-server" | "yjs-yrs-bridge" | "cli";
 export const NODEX_CLI_BOOTSTRAP_TEST = "src/main/platform/node/NodexCliBootstrap.node.test.ts";
+export const AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST =
+  "src/main/core-client/agent-eval-desktop-environment.node.test.ts";
 export const PROFILE_CLONE_TEST = "src/main/core-client/profile-clone.node.test.ts";
 export const CODEX_SCALE_TEST =
   "src/main/core-client/CodexSubagentParityPerformance.stress.test.ts";
@@ -207,7 +209,12 @@ export function nativeRequirements(
   return [
     ...(files.some((file) => file !== YJS_YRS_TEST) ? ["core-server" as const] : []),
     ...(files.includes(YJS_YRS_TEST) ? ["yjs-yrs-bridge" as const] : []),
-    ...(files.some((file) => file === NODEX_CLI_BOOTSTRAP_TEST || file === PROFILE_CLONE_TEST)
+    ...(files.some(
+      (file) =>
+        file === NODEX_CLI_BOOTSTRAP_TEST ||
+        file === AGENT_EVAL_DESKTOP_ENVIRONMENT_TEST ||
+        file === PROFILE_CLONE_TEST,
+    )
       ? ["cli" as const]
       : []),
   ];

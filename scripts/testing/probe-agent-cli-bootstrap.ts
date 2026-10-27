@@ -163,10 +163,8 @@ const main = async () => {
       nodexHome: scenario.profile.nodexHome,
       codexHome: nativeHome,
       searchPaths: [],
-      inheritedPath: process.env.PATH ?? "/usr/bin:/bin",
       homeDirectory: process.env.HOME!,
-      inheritedZdotdir: process.env.ZDOTDIR,
-      inheritedBashEnv: process.env.BASH_ENV,
+      inheritedEnvironment: process.env,
     });
     await withPinnedShell(
       nativeHome,

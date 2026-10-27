@@ -82,6 +82,7 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 
+- Agent shells stay connected to their owning Profile when Nodex is launched from another Nodex Agent shell.
 - Updated the desktop runtime and content-processing dependencies to address certificate, sanitization, parsing and request-handling vulnerabilities.
 
 ## [0.4.0] - 2026-10-22

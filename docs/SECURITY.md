@@ -18,6 +18,12 @@ Session connection lifetime separately from Run admission. Run remains absent;
 there is no synthetic Run or latest-foreground lookup. A retired incarnation
 cannot be rebound or reactivated, including by replaying an earlier admission.
 
+Agent shell routing belongs to the launching Desktop's Profile. Its environment
+composer replaces inherited Nodex routing and exported CLI functions, unwraps
+outer Nodex startup wrappers to the recorded user files, and restores its own
+routing after user startup. Launching Nodex inside another Agent shell must not
+route the inner Agent's CLI to the outer Profile. See [Agent shell routing](CLI.md#agent-shell-routing).
+
 ## History and resource lifecycle
 
 History replay validates current owner identity, resource lifecycle, schema,

@@ -1,5 +1,7 @@
 import { writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
+import { composeNodexCliShellEnvironment } from "../../src/main/platform/node/NodexCliShell";
 
 /** Prepare a disposable workspace; CLI task routing is supplied by the ordinary Desktop host. */
 export async function prepareDesktopEnvironment(input: {
@@ -11,7 +13,12 @@ export async function prepareDesktopEnvironment(input: {
 }) {
   const binary = path.join(input.repository, "target/debug/nodex");
   const environment = {
-    NODEX_HOME: input.nodexHome,
+    ...(await composeNodexCliShellEnvironment({
+      nodexHome: input.nodexHome,
+      homeDirectory: homedir(),
+      inheritedEnvironment: process.env,
+      searchPaths: [],
+    })),
     NODEX_CORE_BINARY: path.join(input.repository, "target/debug/nodex-core"),
     NODEX_RG_BINARY: path.join(
       input.repository,
@@ -39,7 +46,9 @@ export async function prepareDesktopEnvironment(input: {
       'inherit = "all"',
       "",
       "[shell_environment_policy.set]",
-      ...Object.entries(environment).map(([key, value]) => `${key} = ${JSON.stringify(value)}`),
+      ...Object.entries(environment).map(
+        ([key, value]) => `${JSON.stringify(key)} = ${JSON.stringify(value)}`,
+      ),
       "",
     ].join("\n"),
     { mode: 0o600 },
