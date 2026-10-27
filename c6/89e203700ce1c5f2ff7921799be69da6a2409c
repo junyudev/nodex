@@ -1,0 +1,27 @@
+docs/product-specs/command-palette-behavior.md
+  s_8446f7b22ce881::t_46ebe4ad3fedf4 107
+src/renderer/components/workbench/command-palette-text-search.test.tsx
+  s_8446f7b22ce881::t_c5906c692a2cbf 9,185-228
+src/renderer/components/workbench/command-palette-workspace-toolbar.tsx
+  s_8446f7b22ce881::t_ace08c37128f38 1-7,68-73,107-108
+src/renderer/test/dom.test.tsx
+  s_8446f7b22ce881::t_f787b2ef91a078 1,3-9,12,14,53-78
+src/renderer/test/dom.tsx
+  s_8446f7b22ce881::t_9a9308e879469e 48,50,53-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c689e203700ce1c5f2ff7921799be69da6a2409c",
+  "prompts": {},
+  "sessions": {
+    "s_8446f7b22ce881": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17e25-0a18-7c20-b80f-5d8d8eb84daf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
