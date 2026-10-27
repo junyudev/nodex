@@ -11,6 +11,7 @@ import { z } from "zod";
 import { buildAgentHistoryImageSource } from "./agent-history-images";
 import { isAgentConversationTaskLiveInSnapshot } from "./agent-conversation";
 import { projectCodexMcpToolCallResult } from "./codex-mcp-tool-call";
+import { resolveAgentReplyPhases } from "./agent-reply-phase";
 import type {
   CodexConversationItem,
   CodexConversationServerRequest,
@@ -172,17 +173,25 @@ function projectUpdate(
       : {}),
   };
   if (update.kind === "message") {
-    const kind =
-      update.role === "user"
-        ? "userMessage"
-        : update.role === "thought"
-          ? "reasoning"
-          : "assistantMessage";
+    const kind = (
+      {
+        user: "userMessage",
+        agent: "assistantMessage",
+        thought: "reasoning",
+        compaction: "systemEvent",
+      } as const
+    )[update.role];
+    const status = running && update.role !== "user" ? "inProgress" : "completed";
     return [
       {
         ...common,
         kind,
-        semanticKind: kind,
+        semanticKind: update.role === "compaction" ? "contextCompaction" : kind,
+        // A summary exists only once its compaction has produced it.
+        contextCompaction:
+          update.role === "compaction"
+            ? { status: "completed", source: "automatic", startedAtMs: null }
+            : undefined,
         markdownText: update.text,
         userAttachments: update.promptImages?.map((image) => ({
           type: "image" as const,
@@ -196,7 +205,7 @@ function projectUpdate(
           caption: image.mediaType,
         })),
         role: update.role === "user" ? "user" : "assistant",
-        status: running && update.role !== "user" ? "inProgress" : "completed",
+        status,
       },
     ];
   }
@@ -502,6 +511,28 @@ export const agentConversationTurnId = (
 ): string =>
   `${snapshot.sessionId}:${turn.clientUserMessageId ?? turn.nativeUserMessageId ?? turn.sequence ?? "history"}`;
 
+function withAssistantPhases(
+  items: readonly CodexConversationItem[],
+  running: boolean,
+): CodexConversationItem[] {
+  const phases = resolveAgentReplyPhases(
+    items.map((item) =>
+      item.kind === "assistantMessage"
+        ? "message"
+        : item.kind === "plan" ||
+            item.semanticKind === "systemEvent" ||
+            item.semanticKind === "systemError"
+          ? "transparent"
+          : "work",
+    ),
+    running,
+  );
+  return items.map((item, index) => {
+    const assistantPhase = phases[index];
+    return assistantPhase ? { ...item, assistantPhase } : item;
+  });
+}
+
 /** Stable provider turn/item IDs feed the same Markdown, activity, request and composer UI. */
 export function projectAgentConversation(
   presentation: Pick<AgentBackendSessionPresentation, "snapshot"> &
@@ -516,19 +547,16 @@ export function projectAgentConversation(
         snapshot.status === "running" &&
         index === snapshot.turns.length - 1 &&
         turn.stopReason === null;
+      const startedAt = turn.createdAt ? Date.parse(turn.createdAt) : null;
+      const completedAt = turn.completedAt ? Date.parse(turn.completedAt) : null;
       const base = {
         threadId: snapshot.threadId,
         turnId,
-        createdAt:
-          turn.createdAt && Number.isFinite(Date.parse(turn.createdAt))
-            ? Date.parse(turn.createdAt)
-            : summary.createdAt,
+        createdAt: startedAt !== null && Number.isFinite(startedAt) ? startedAt : summary.createdAt,
         updatedAt:
-          turn.completedAt && Number.isFinite(Date.parse(turn.completedAt))
-            ? Date.parse(turn.completedAt)
-            : summary.updatedAt,
+          completedAt !== null && Number.isFinite(completedAt) ? completedAt : summary.updatedAt,
       };
-      const items: CodexConversationItem[] =
+      const projectedItems: CodexConversationItem[] =
         turn.promptText || turn.promptImages?.length
           ? [
               {
@@ -554,7 +582,7 @@ export function projectAgentConversation(
               },
             ]
           : [];
-      items.push(
+      projectedItems.push(
         ...turn.updates
           .filter(
             (update) =>
@@ -562,6 +590,7 @@ export function projectAgentConversation(
           )
           .flatMap((update) => projectUpdate(update, base, running, snapshot.sessionId)),
       );
+      const items = withAssistantPhases(projectedItems, running);
       if (!items.length && !running) return [];
       return [
         {
@@ -586,8 +615,16 @@ export function projectAgentConversation(
                 ? "interrupted"
                 : "completed",
           errorMessage: turn.error ?? undefined,
-          startedAt: turn.createdAt ? Date.parse(turn.createdAt) : null,
-          completedAt: turn.completedAt ? Date.parse(turn.completedAt) : null,
+          startedAt,
+          completedAt,
+          ...(!running &&
+          startedAt !== null &&
+          completedAt !== null &&
+          Number.isFinite(startedAt) &&
+          Number.isFinite(completedAt) &&
+          completedAt >= startedAt
+            ? { durationMs: completedAt - startedAt }
+            : {}),
         },
       ];
     },

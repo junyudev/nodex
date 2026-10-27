@@ -184,6 +184,56 @@ describe("mounted adaptive Markdown", () => {
     view.unmount();
   });
 
+  test("a streamed message keeps its rendered Markdown when its settled Turn names it the reply", () => {
+    const block = (
+      phase: "commentary" | "final_answer",
+      status: "inProgress" | "completed",
+    ): ThreadTranscriptBlockModel => ({
+      id: "reply",
+      type: "assistantMessage",
+      turnId: "turn",
+      createdAt: 1,
+      updatedAt: 1,
+      searchableText: source,
+      searchUnitKey: "reply",
+      entry: {
+        threadId: "thread",
+        turnId: "turn",
+        itemId: "reply",
+        entryId: "reply",
+        type: "assistant_message",
+        kind: "assistantMessage",
+        role: "assistant",
+        status,
+        assistantPhase: phase,
+        markdownText: source,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+    const view = render(
+      <ThreadAssistantBodyBlock
+        block={block("commentary", "inProgress")}
+        isLatestTurn
+        isStreamingTurn
+      />,
+    );
+    const streamed = view.getByLabelText("Animated Markdown");
+
+    view.rerender(
+      <ThreadAssistantBodyBlock
+        block={block("final_answer", "completed")}
+        isLatestTurn
+        isStreamingTurn={false}
+      />,
+    );
+
+    const settled = view.getByLabelText("Markdown");
+    expect(settled).toBe(streamed);
+    expect(settled.textContent).toBe(source);
+    view.unmount();
+  });
+
   test("completion and stream replacement show full text immediately during layout replay", async () => {
     vi.useFakeTimers();
     const view = render(<StrictMode>{leaf("Prefix")}</StrictMode>);

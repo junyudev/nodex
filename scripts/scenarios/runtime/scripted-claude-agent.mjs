@@ -296,6 +296,70 @@ for await (const line of createInterface({ input: process.stdin })) {
       result();
       continue;
     }
+    if (incoming.message.content === "Verify Claude turn work collapse") {
+      const assistant = (content, stopReason) => {
+        const message = {
+          id: `work-collapse-${randomUUID()}`,
+          role: "assistant",
+          model,
+          content,
+          stop_reason: stopReason,
+          usage: { input_tokens: 12, output_tokens: 8 },
+        };
+        send({
+          type: "assistant",
+          session_id: sessionId,
+          uuid: record("assistant", message),
+          parent_tool_use_id: null,
+          message,
+        });
+      };
+      const toolUseId = `work-collapse-tool-${randomUUID()}`;
+      assistant(
+        [
+          { type: "text", text: "I will inspect the collapse fixture before replying." },
+          {
+            type: "tool_use",
+            id: toolUseId,
+            name: "Bash",
+            input: { command: "echo claude-work-collapse-probe" },
+          },
+        ],
+        "tool_use",
+      );
+      const toolMessage = {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: toolUseId,
+            content: [{ type: "text", text: "claude-work-collapse-probe" }],
+          },
+        ],
+      };
+      send({
+        type: "user",
+        session_id: sessionId,
+        uuid: record("user", toolMessage),
+        parent_tool_use_id: null,
+        message: toolMessage,
+        tool_use_result: {
+          stdout: "claude-work-collapse-probe",
+          stderr: "",
+          exitCode: 0,
+          interrupted: false,
+        },
+      });
+      assistant(
+        [
+          { type: "text", text: "The Claude collapse fixture is ready.\n\n" },
+          { type: "text", text: "Both final reply blocks remain visible." },
+        ],
+        "end_turn",
+      );
+      result();
+      continue;
+    }
     // A tool-heavy, tall reply: a few such Turns exceed one bounded history page and the viewport.
     if (
       typeof incoming.message.content === "string" &&

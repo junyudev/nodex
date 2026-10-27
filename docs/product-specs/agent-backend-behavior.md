@@ -191,9 +191,25 @@ Claude Code returns summarized thinking. Each thinking block is one Thought that
 in place and keeps the position it started at among the Run's work; ACP thought segments
 and OpenCode reasoning parts are Thoughts the same way. Claude 5.1 and later may write
 the note that precedes a tool call as a second thinking block: only the second of two
-consecutive thinking blocks directly before a tool call becomes that reply, while a lone
+consecutive thinking blocks directly before a tool call becomes that note, while a lone
 thinking block before a tool call stays a Thought. Every Agent's Thoughts share the
 presentation in [Thoughts](codex-thread-transcript-behavior.md#thoughts).
+
+## Work and reply
+
+A settled Turn's reply is its trailing Agent messages: every message after the Turn's
+last tool call, Thought, compaction or user message. Plans and notices between them
+do not end the reply, and a compaction summary is shown as the compaction, never as a
+message. Every earlier Agent message is commentary on the work. While a
+Turn runs, all of its Agent messages are commentary, because no Agent marks which text
+ends the Turn before it settles. A settled Turn lasts from its prompt to its
+settlement. With this, a finished Turn of any Agent shows its prompt, its work folded
+under `Worked for <duration>` and its reply, as described in
+[Collapse and Search](codex-thread-transcript-behavior.md#collapse-and-search).
+
+Reply phases update together with the Turn's completion state and remain consistent
+when history or individual messages load. Claude text, Thoughts and tools retain their
+content-block order in both streamed snapshots and complete assistant messages.
 
 ## Scheduled work
 

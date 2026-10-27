@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - New Pages, Databases, Canvases and copies appear at the top of Space Content instead of after everything else, so they stay visible without Show more.
+- Finished Claude Code, OpenCode and other Agent replies read like Codex ones: each Turn's work folds under `Worked for <time>`, leaving your prompt and the complete reply in view.
 - Command K brings chats, Pages, files, and full-text file search into one glass window, with host-aware folder and file-type filters, recent searches, exact match navigation, expandable results, and searchable Settings and themes.
 - Settings is easier to find your way around. Agents, Conversations and Hooks sit together under AI, and Agents lists Codex, Claude Code, OpenCode and other agents as short cards, each opening to its own setup. General is split into App, Chats, Writing, Files & links, Notifications, Privacy and Troubleshooting, with each update and sharing preference on its own row. Searching for a setting, in Settings or Command K, lands on its group or opens the right Agent's card, as does choosing Manage on a chat.
 - Codex reuses the user's native home, including configuration and hooks, without selecting a separate directory from Profile history. Changing the Codex home takes effect after restart; native conversations enter the sidebar only when explicitly imported.

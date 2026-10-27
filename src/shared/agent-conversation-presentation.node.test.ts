@@ -4,7 +4,11 @@ import {
   isThreadClassifiableActivityItem,
 } from "../renderer/features/local-conversation/projection/agent-activity-v2";
 import { describe, expect, test } from "vite-plus/test";
-import type { AgentBackendSessionPresentation } from "./agent-conversation";
+import type {
+  AgentBackendSessionPresentation,
+  AgentCanonicalSessionUpdate,
+  AgentConversationTurn,
+} from "./agent-conversation";
 import type { CodexThreadSummary } from "./types";
 import {
   agentInteractionResponseFromAnswers,
@@ -112,6 +116,263 @@ const presentation = (backend: "claude" | "acp"): AgentBackendSessionPresentatio
     },
     authMethods: [],
   },
+});
+
+describe("agent reply phases and duration", () => {
+  const message = (
+    id: string,
+    role: "agent" | "user" | "thought" | "compaction" = "agent",
+  ): AgentCanonicalSessionUpdate => ({
+    kind: "message",
+    key: id,
+    messageId: id,
+    role,
+    text: id,
+  });
+  const tool: Extract<AgentCanonicalSessionUpdate, { kind: "tool-call" }> = {
+    kind: "tool-call",
+    key: "tool",
+    toolCallId: "tool",
+    title: "Inspect workspace",
+    name: "Read",
+    toolKind: "read",
+    status: "completed",
+    detail: "Done",
+    locations: [],
+  };
+  const projectTurn = (
+    updates: readonly AgentCanonicalSessionUpdate[],
+    { running = false, ...turn }: Partial<AgentConversationTurn> & { running?: boolean } = {},
+  ) => {
+    const source = presentation("claude");
+    return projectAgentConversation(
+      {
+        ...source,
+        snapshot: {
+          ...source.snapshot,
+          status: running ? "running" : "idle",
+          requests: [],
+          turns: [
+            {
+              ...source.snapshot.turns[0]!,
+              stopReason: running ? null : "end_turn",
+              ...turn,
+              updates,
+            },
+          ],
+        },
+      },
+      summary,
+    ).turns[0]!;
+  };
+  const phases = (turn: ReturnType<typeof projectTurn>) =>
+    turn.items
+      .filter((item) => item.kind === "assistantMessage")
+      .map((item) => item.assistantPhase);
+
+  test("keeps every agent message as commentary while the turn is running", () => {
+    const turn = projectTurn([message("working"), tool, message("latest")], { running: true });
+    expect(phases(turn)).toEqual(["commentary", "commentary"]);
+  });
+
+  test.each<{
+    name: string;
+    update: AgentCanonicalSessionUpdate;
+  }>([
+    { name: "generic tool", update: tool },
+    { name: "command", update: { ...tool, presentation: "command" } },
+    {
+      name: "file change",
+      update: { ...tool, presentation: "file-change", changes: [{ path: "file.ts", kind: "add" }] },
+    },
+    { name: "web search", update: { ...tool, presentation: "web-search" } },
+    { name: "MCP call", update: { ...tool, presentation: "mcp" } },
+    { name: "image view", update: { ...tool, output: { type: "image" } } },
+    { name: "thought", update: message("thought", "thought") },
+    {
+      name: "context compaction",
+      update: {
+        kind: "compaction",
+        key: "compact",
+        compactionId: "compact",
+        status: "completed",
+        summary: "Context compacted",
+        error: null,
+      },
+    },
+    { name: "compaction summary", update: message("summary", "compaction") },
+    { name: "steering user message", update: message("steering", "user") },
+  ])("ends the reply run at a $name", ({ update }) => {
+    expect(phases(projectTurn([message("earlier"), update, message("reply")]))).toEqual([
+      "commentary",
+      "final_answer",
+    ]);
+    expect(phases(projectTurn([message("earlier"), update]))).toEqual(["commentary"]);
+  });
+
+  test("projects compaction summaries as context activity", () => {
+    const turn = projectTurn([message("summary", "compaction")]);
+    expect(turn.items.at(-1)).toMatchObject({
+      kind: "systemEvent",
+      semanticKind: "contextCompaction",
+      contextCompaction: { status: "completed", source: "automatic", startedAtMs: null },
+    });
+    expect(phases(turn)).toEqual([]);
+    expect(
+      projectTurn([message("summary", "compaction")], { running: true }).items.at(-1)
+        ?.contextCompaction,
+    ).toMatchObject({ status: "completed" });
+  });
+
+  test("keeps every message in a split trailing reply as final", () => {
+    const turn = projectTurn([
+      message("working"),
+      tool,
+      message("answer-before-citation"),
+      message("citation"),
+      message("answer-after-citation"),
+    ]);
+    expect(phases(turn)).toEqual(["commentary", "final_answer", "final_answer", "final_answer"]);
+  });
+
+  test.each<{ name: string; update: AgentCanonicalSessionUpdate }>([
+    {
+      name: "todo list",
+      update: {
+        kind: "plan",
+        key: "plan",
+        planId: "plan",
+        state: "present",
+        entries: [{ content: "Inspect workspace", priority: "medium", status: "completed" }],
+        markdown: null,
+        uri: null,
+      },
+    },
+    {
+      name: "proposed plan",
+      update: {
+        kind: "plan",
+        key: "plan",
+        planId: "plan",
+        state: "present",
+        entries: [],
+        markdown: "Implement the change",
+        uri: null,
+      },
+    },
+    {
+      name: "system notice",
+      update: {
+        kind: "diagnostic",
+        key: "notice",
+        severity: "info",
+        code: "notice",
+        message: "Session updated",
+      },
+    },
+    {
+      name: "system error",
+      update: {
+        kind: "diagnostic",
+        key: "error",
+        severity: "error",
+        code: "error",
+        message: "Provider error",
+      },
+    },
+    {
+      name: "rate-limit notice",
+      update: { kind: "rate-limit", key: "limit", status: "allowed_warning" },
+    },
+  ])("skips a trailing $name when finding the reply", ({ update }) => {
+    expect(phases(projectTurn([message("working"), tool, message("reply"), update]))).toEqual([
+      "commentary",
+      "final_answer",
+    ]);
+    expect(phases(projectTurn([message("first"), update, message("second")]))).toEqual([
+      "final_answer",
+      "final_answer",
+    ]);
+  });
+
+  test.each(["end_turn", "error", "cancelled", "interrupted", null])(
+    "marks a text-only settled reply as final with stop reason %s",
+    (stopReason) => {
+      const turn = projectTurn([message("reply")], { stopReason });
+      expect(phases(turn)).toEqual(["final_answer"]);
+      expect(turn.items[0]).toMatchObject({ kind: "userMessage", markdownText: "Hello" });
+      expect(turn.items[0]?.assistantPhase).toBeUndefined();
+      if (stopReason === "interrupted") expect(turn.status).toBe("interrupted");
+      if (stopReason === null) expect(turn.outcomeUnknown).toBe(true);
+    },
+  );
+
+  test("finds the reply after excluding child-task updates", () => {
+    const turn = projectTurn([
+      message("working"),
+      tool,
+      message("reply"),
+      { ...tool, key: "child-tool", actor: { parentToolUseId: "spawn" } },
+      { ...message("child-reply"), actor: { taskId: "child" } },
+    ]);
+    expect(turn.items.map((item) => item.itemId)).toEqual([
+      "native-session:client-message:user",
+      "working",
+      "tool",
+      "reply",
+    ]);
+    expect(phases(turn)).toEqual(["commentary", "final_answer"]);
+  });
+
+  test.each<{
+    name: string;
+    createdAt?: string;
+    completedAt?: string;
+    running?: boolean;
+    expected?: number;
+  }>([
+    {
+      name: "valid settled timestamps",
+      createdAt: "2026-10-27T00:00:00Z",
+      completedAt: "2026-10-27T00:02:14Z",
+      expected: 134_000,
+    },
+    {
+      name: "equal timestamps",
+      createdAt: "2026-10-27T00:00:00Z",
+      completedAt: "2026-10-27T00:00:00Z",
+      expected: 0,
+    },
+    {
+      name: "a running turn",
+      createdAt: "2026-10-27T00:00:00Z",
+      completedAt: "2026-10-27T00:02:14Z",
+      running: true,
+    },
+    { name: "missing timestamps" },
+    { name: "a missing creation time", completedAt: "2026-10-27T00:02:14Z" },
+    { name: "a missing completion time", createdAt: "2026-10-27T00:00:00Z" },
+    {
+      name: "an invalid creation time",
+      createdAt: "invalid",
+      completedAt: "2026-10-27T00:02:14Z",
+    },
+    {
+      name: "an invalid completion time",
+      createdAt: "2026-10-27T00:00:00Z",
+      completedAt: "invalid",
+    },
+    {
+      name: "reversed timestamps",
+      createdAt: "2026-10-27T00:02:14Z",
+      completedAt: "2026-10-27T00:00:00Z",
+    },
+  ])("computes duration only from $name", ({ name: _name, expected, ...timing }) => {
+    const turn = projectTurn([message("reply")], timing);
+    expect(turn.durationMs).toBe(expected);
+    expect(turn.firstTurnWorkItemStartedAtMs).toBeUndefined();
+    expect(turn.finalAssistantStartedAtMs).toBeUndefined();
+  });
 });
 
 test("keeps native child content out of the parent while exposing the same shared details projection", () => {
@@ -523,9 +784,16 @@ test("uses authoritative background roster liveness and supplies details for tas
   ]);
   expect(snapshot.tasks[0]?.status).toBe("running");
   expect(
-    filterAgentConversationForTask({ ...snapshot, liveBackgroundTaskIds: ["watch"] }, "watch")
-      .status,
-  ).toBe("running");
+    projectAgentConversation({ ...source, snapshot: filtered }, summary).turns[0]?.items[0],
+  ).toMatchObject({ assistantPhase: "final_answer" });
+  const live = filterAgentConversationForTask(
+    { ...snapshot, liveBackgroundTaskIds: ["watch"] },
+    "watch",
+  );
+  expect(live.status).toBe("running");
+  expect(
+    projectAgentConversation({ ...source, snapshot: live }, summary).turns[0]?.items[0],
+  ).toMatchObject({ assistantPhase: "commentary" });
 });
 
 test("plan approval displays actual plan markdown from the tool payload", () => {

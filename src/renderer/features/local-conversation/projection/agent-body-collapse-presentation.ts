@@ -17,8 +17,9 @@ export interface ThreadAgentBodyCollapsePresentation {
 
 /**
  * Keeps user messages, request recovery and the Turn's reply visible while historical activity
- * is collapsed. Units are only marked persistent, never moved into a second transcript ordering,
- * so folding work around them cannot reorder or remount what stays visible.
+ * is collapsed. The reply is every final-answer message, plus `replyBlockId` for a harness that
+ * reports no message phases. Units are only marked persistent, never moved into a second
+ * transcript ordering, so folding work around them cannot reorder or remount what stays visible.
  */
 export function projectAgentBodyCollapsePresentation(
   units: readonly ThreadAgentRenderUnit[],
@@ -42,6 +43,8 @@ export function projectAgentBodyCollapsePresentation(
       unit.kind === "entry" &&
       (unit.block.type === "userMessage" ||
         unit.block.id === options.replyBlockId ||
+        (unit.block.type === "assistantMessage" &&
+          unit.block.entry.assistantPhase === "final_answer") ||
         ("entry" in unit.block && unit.block.entry.recovery !== undefined));
     bodyUnits.push({ unit, persistent });
     if (!persistent) collapsibleUnits.push(unit);

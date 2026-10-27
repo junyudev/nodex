@@ -20,6 +20,8 @@ const browserScheduler: AdaptiveMarkdownScheduler = {
 export interface AdaptiveMarkdownOptions {
   readonly streamId: string;
   readonly arrivalIntervalFloorSeconds?: number;
+  /** False presents the source directly without changing the renderer's identity. */
+  readonly enabled?: boolean;
 }
 
 export function useAdaptiveMarkdown(
@@ -29,8 +31,8 @@ export function useAdaptiveMarkdown(
   animate: boolean,
 ) {
   const reducedMotion = useResolvedReducedMotion();
-  const active = streaming && animate && !reducedMotion;
-  const { streamId, arrivalIntervalFloorSeconds = 10 } = options;
+  const { streamId, arrivalIntervalFloorSeconds = 10, enabled = true } = options;
+  const active = enabled && streaming && animate && !reducedMotion;
   const [owner] = useState(() =>
     createAdaptiveMarkdownBuffer({ source, streamId, active }, browserScheduler),
   );

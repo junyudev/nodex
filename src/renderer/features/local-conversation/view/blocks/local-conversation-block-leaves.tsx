@@ -1391,13 +1391,11 @@ export function ThreadAssistantBodyBlock({
                 preserveLineBreaks
                 parseIncompleteMarkdown={isAssistantItemStreaming}
                 animateStreamingText={isAssistantItemStreaming}
-                adaptiveBuffering={
-                  block.entry.assistantPhase === "commentary"
-                    ? undefined
-                    : {
-                        streamId: `${block.entry.threadId}:${block.searchUnitKey ?? block.entry.rawItemId ?? block.entry.itemId}`,
-                      }
-                }
+                adaptiveBuffering={{
+                  streamId: `${block.entry.threadId}:${block.searchUnitKey ?? block.entry.rawItemId ?? block.entry.itemId}`,
+                  // Commentary stays unbuffered; a reply whose phase settles keeps its renderer.
+                  enabled: block.entry.assistantPhase !== "commentary",
+                }}
                 cwd={threadCwd}
                 projectWorkspacePath={projectWorkspacePath}
                 visualizationContext={visualizationContext}

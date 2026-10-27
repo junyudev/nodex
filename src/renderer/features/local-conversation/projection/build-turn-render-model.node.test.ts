@@ -1288,6 +1288,70 @@ describe("buildTurnRenderModel", () => {
     expect(commentary.agentBodyReplyBlockId).toBeNull();
   });
 
+  test("folds a settled multi-message reply's work while every reply message stays visible", () => {
+    const narration = buildAssistantItem({
+      itemId: "narration",
+      entryId: "narration",
+      assistantPhase: "commentary",
+      markdownText: "Checking the file first",
+    });
+    const replyStart = buildAssistantItem({
+      itemId: "reply_start",
+      entryId: "reply_start",
+      markdownText: "The fix is in place.",
+    });
+    const replyEnd = buildAssistantItem({
+      itemId: "reply_end",
+      entryId: "reply_end",
+      markdownText: "Tests pass.",
+    });
+    const items = [
+      buildUserItem(),
+      narration,
+      buildExecItem({ status: "completed" }),
+      replyStart,
+      replyEnd,
+    ];
+    const settled = (status: CodexConversationTurn["status"]) =>
+      buildTurnRenderModel({
+        turn: buildTurn({
+          status,
+          durationMs: 134_000,
+          itemIds: items.map((item) => item.itemId),
+          items:
+            status === "inProgress"
+              ? items.map((item) =>
+                  item.kind === "assistantMessage"
+                    ? { ...item, assistantPhase: "commentary", status: "inProgress" }
+                    : item,
+                )
+              : items,
+        }),
+        requests: [],
+        isLatestTurn: true,
+        isStreamingTurn: status === "inProgress",
+      });
+
+    const model = settled("completed");
+    const collapsed = projectAgentBodyCollapsePresentation(model.agentBodyUnits, {
+      extractWorkedFor: model.hasRenderableAgentBodyUnits,
+      replyBlockId: model.agentBodyReplyBlockId,
+    });
+
+    expect(model.defaultAgentBodyCollapsed).toBe(true);
+    expect(model.workedDurationMs).toBe(134_000);
+    expect(model.trailingBlocks.map((block) => block.id)).toContain("reply_end");
+    expect(
+      collapsed.bodyUnits.filter(({ persistent }) => persistent).map(({ unit }) => unit.block.id),
+    ).toEqual(["reply_start"]);
+    expect(collapsed.collapsibleUnits.map((unit) => unit.block.id)).toContain("narration");
+
+    // While the Turn runs, nothing is known to be the reply, so its work stays open.
+    const running = settled("inProgress");
+    expect(running.hasRenderableAgentBodyUnits).toBe(false);
+    expect(running.defaultAgentBodyCollapsed).toBe(false);
+  });
+
   test("routes the production turn through exact maximal v2 units and identity keys", () => {
     const handoff = buildDynamicToolItem({
       itemId: "handoff_1",

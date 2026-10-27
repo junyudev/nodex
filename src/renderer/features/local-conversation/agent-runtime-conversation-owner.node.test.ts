@@ -283,6 +283,272 @@ function historyBoundary(owner: AgentRuntimeConversationOwner): CodexHistoryBoun
   return gap.newerBoundary;
 }
 
+describe("Agent Runtime reply phases", () => {
+  const message = (
+    id: string,
+    ordinal: number,
+  ): Extract<AgentTurnItem, { type: "assistant_message" }> => ({
+    ...assistant(id),
+    id,
+    ordinal,
+    messageId: `message:${id}`,
+    status: "completed",
+    streaming: false,
+    completedAt: at,
+  });
+  const entityKey = JSON.stringify(["agent-run", target.threadId, "run"]);
+  const phases = (owner: AgentRuntimeConversationOwner, ids: readonly string[]) =>
+    ids.map((id) => {
+      const item = owner.readOwner.readItem(entityKey, id);
+      return item?.type === "agentMessage" ? item.phase : undefined;
+    });
+  const settle = (initial: AgentRuntimeConversation): AgentRuntimeConversation => ({
+    ...initial,
+    snapshot: {
+      ...initial.snapshot,
+      projection: {
+        ...initial.snapshot.projection,
+        runs: initial.snapshot.projection.runs.map((run) => ({
+          ...run,
+          status: "completed",
+          completedAt: retiredAt,
+        })),
+      },
+    },
+  });
+  const complete = (
+    wire: ReturnType<typeof transport>,
+    initial: AgentRuntimeConversation,
+    sequence = 2,
+  ) =>
+    wire.emit({
+      sequence,
+      commandId: null,
+      event: {
+        id: `complete:${sequence}`,
+        threadId: target.threadId,
+        occurredAt: retiredAt,
+        type: "run.updated",
+        payload: settle(initial).snapshot.projection.runs[0]!,
+      },
+    });
+
+  test("publishes running messages as commentary, including live replacements", async () => {
+    const { owner, wire, release } = await open(conversation([message("first", 1)]));
+    try {
+      expect(phases(owner, ["first"])).toEqual(["commentary"]);
+      wire.emit(event(message("second", 2)));
+      wire.emit(event({ ...message("first", 1), text: "Updated narration" }, 3));
+      expect(phases(owner, ["first", "second"])).toEqual(["commentary", "commentary"]);
+    } finally {
+      release();
+    }
+  });
+
+  test("settles a multi-message reply in the same update as its Turn, across plans and notices", async () => {
+    const initial = conversation([
+      message("narration", 1),
+      command(2),
+      message("reply-1", 3),
+      {
+        ...base("plan", 4),
+        type: "proposed_plan",
+        planId: "plan",
+        markdown: "Done",
+        streaming: false,
+      },
+      message("reply-2", 5),
+      { ...base("notice", 6), type: "system_notice", message: "Finished" },
+    ]);
+    const { owner, wire, release } = await open(initial);
+    const ids = ["narration", "reply-1", "reply-2"];
+    const narration = owner.readOwner.readItem(entityKey, "narration");
+    const published = vi.fn(() => ({
+      status: owner.readOwner.readTurnDetails(entityKey)?.status,
+      phases: phases(owner, ids),
+    }));
+    const releases = [
+      owner.readOwner.subscribeTurn(entityKey, published),
+      owner.readOwner.subscribeItem(entityKey, "reply-1", published),
+      owner.readOwner.subscribeItem(entityKey, "reply-2", published),
+    ];
+    const publish = vi.spyOn(owner.readOwner, "applyEvent");
+    try {
+      complete(wire, initial);
+      expect(publish).toHaveBeenCalledOnce();
+      expect(published).toHaveBeenCalledTimes(3);
+      for (const result of published.mock.results)
+        expect(result.value).toEqual({
+          status: "completed",
+          phases: ["commentary", "final_answer", "final_answer"],
+        });
+      expect(owner.readOwner.readItem(entityKey, "narration")).toBe(narration);
+      expect(publish.mock.calls[0]?.[0]).toMatchObject({
+        type: "changes",
+        changes: [
+          { type: "turn" },
+          { type: "item", key: { itemId: "reply-1" }, value: { phase: "final_answer" } },
+          { type: "item", key: { itemId: "reply-2" }, value: { phase: "final_answer" } },
+        ],
+      });
+    } finally {
+      releases.forEach((stop) => stop());
+      release();
+    }
+  });
+
+  test.each(["steering", "tool"] as const)(
+    "a later %s item ends the reply in the same slot update",
+    async (kind) => {
+      const { owner, wire, release } = await open(settle(conversation([message("reply", 1)])));
+      const work: AgentTurnItem =
+        kind === "tool"
+          ? command(2)
+          : {
+              ...base("steer", 2),
+              type: "user_message",
+              messageId: "steer-message",
+              text: "Check another file",
+              attachments: [],
+              inputIntent: "steer",
+              createdBy: "user",
+              creationSource: "web",
+            };
+      const published = vi.fn(() => phases(owner, ["reply"]));
+      const stop = owner.readOwner.subscribeTurn(entityKey, published);
+      try {
+        expect(phases(owner, ["reply"])).toEqual(["final_answer"]);
+        wire.emit(event(work));
+        expect(published).toHaveBeenCalledOnce();
+        expect(published.mock.results[0]?.value).toEqual(["commentary"]);
+      } finally {
+        stop();
+        release();
+      }
+    },
+  );
+
+  test.each([false, true])(
+    "hydrating or updating a message keeps its phase with settled=%s",
+    async (settled) => {
+      const initial = conversation([message("reply", 1)]);
+      const { owner, wire, release } = await open(settled ? settle(initial) : initial);
+      try {
+        vi.mocked(wire.port.item).mockResolvedValue({ ...message("reply", 1), text: "Full reply" });
+        await owner.readItem("reply");
+        const phase = settled ? "final_answer" : "commentary";
+        expect(phases(owner, ["reply"])).toEqual([phase]);
+        wire.emit(event({ ...message("reply", 1), text: "Updated reply" }));
+        expect(phases(owner, ["reply"])).toEqual([phase]);
+      } finally {
+        release();
+      }
+    },
+  );
+
+  test("an asynchronous question remains commentary and ends the preceding reply", async () => {
+    const question: AgentTurnItem = {
+      ...runtimeQuestion("question", "run"),
+      ordinal: 2,
+      responseMode: "message",
+      status: "completed",
+      completedAt: at,
+    };
+    const { owner, release } = await open(
+      settle(conversation([message("narration", 1), question, message("reply", 3)])),
+    );
+    try {
+      expect(phases(owner, ["narration", question.id, "reply"])).toEqual([
+        "commentary",
+        "commentary",
+        "final_answer",
+      ]);
+    } finally {
+      release();
+    }
+  });
+
+  test("classifies cold work and a Thought replaced with an Agent message from resident types", async () => {
+    const initial = conversation([
+      { ...base("thought", 1), type: "reasoning", text: "Thinking", streaming: false },
+      command(2),
+      message("reply", 3),
+    ]);
+    const { owner, wire, release } = await open(initial);
+    try {
+      // Body eviction does not remove the item's role in the Turn.
+      owner.readOwner.applyEvent({
+        type: "changes",
+        changes: [
+          {
+            type: "item",
+            key: { ...owner.readOwner.key, entityKey, itemId: "command:2" },
+            value: null,
+          },
+        ],
+      });
+      wire.emit(event(message("thought", 1)));
+      complete(wire, initial, 3);
+      expect(phases(owner, ["thought", "reply"])).toEqual(["commentary", "final_answer"]);
+    } finally {
+      release();
+    }
+  });
+
+  test("execution retirement settles reply phases with the interrupted Turn", async () => {
+    const { owner, wire, release } = await open(
+      conversation([message("narration", 1), command(2), message("reply", 3)]),
+    );
+    const published = vi.fn(() => ({
+      status: owner.readOwner.readTurnDetails(entityKey)?.status,
+      phases: phases(owner, ["narration", "reply"]),
+    }));
+    const stop = owner.readOwner.subscribeTurn(entityKey, published);
+    try {
+      wire.emit(retiredEvent());
+      expect(published).toHaveBeenCalledOnce();
+      expect(published.mock.results[0]?.value).toEqual({
+        status: "interrupted",
+        phases: ["commentary", "final_answer"],
+      });
+    } finally {
+      stop();
+      release();
+    }
+  });
+
+  test("a history page's settled Turns arrive with phases", async () => {
+    const older = [message("narration", 1), command(2), message("reply", 3)].map((item) => ({
+      ...item,
+      runId: "older-run",
+    }));
+    const { owner, release } = await open(conversation([command(4)], "older"), [
+      {
+        snapshotSequence: 1,
+        items: older.map(row),
+        nextCursor: null,
+        hasMoreHistory: false,
+      },
+    ]);
+    const olderKey = JSON.stringify(["agent-run", target.threadId, "older-run"]);
+    const published = vi.fn(() =>
+      ["narration", "reply"].map((id) => owner.readOwner.readItem(olderKey, id)),
+    );
+    const stop = owner.readOwner.subscribeStructure(published);
+    try {
+      await owner.loadHistoryBoundary(historyBoundary(owner));
+      expect(published).toHaveBeenCalledOnce();
+      expect(published.mock.results[0]?.value).toMatchObject([
+        { phase: "commentary" },
+        { phase: "final_answer" },
+      ]);
+    } finally {
+      stop();
+      release();
+    }
+  });
+});
+
 const retiredAt = "2026-10-14T00:00:05.000Z";
 const retiredEvent = (sequence = 2): AgentEvent => ({
   sequence,

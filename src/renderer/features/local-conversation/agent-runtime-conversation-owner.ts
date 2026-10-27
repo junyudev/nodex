@@ -6,6 +6,10 @@ import {
 } from "./agent-runtime-context-usage";
 import { readRuntimeThreadTextSelections } from "../../../shared/thread-text-selection";
 import { agentMessageDisplayText } from "../../../shared/agent-prompt";
+import {
+  resolveAgentReplyPhases,
+  type AgentReplyItemRole,
+} from "../../../shared/agent-reply-phase";
 import type {
   AgentEvent,
   AgentHistoryPage,
@@ -124,6 +128,26 @@ const isTurnOpening = (
   (item.inputIntent === "turn_start" || item.inputIntent === "queued_turn");
 const runKey = (threadId: string, runId: string) => JSON.stringify(["agent-run", threadId, runId]);
 const emptyChildren: readonly CodexConversationChildMembership[] = [];
+
+function replyItemRole(type: AgentTurnItem["type"] | undefined): AgentReplyItemRole {
+  switch (type) {
+    case "assistant_message":
+      return "message";
+    case "proposed_plan":
+    case "todo_list":
+    case "system_notice":
+    case "error":
+    case "notification":
+    case "checkpoint":
+    case "fork":
+    case "run_interrupt_result":
+    case "context_cleared":
+    case "handoff":
+      return "transparent";
+    default:
+      return "work";
+  }
+}
 
 const controlStatusIsLive = (status: string): boolean =>
   ["queued", "preparing", "starting", "running", "waiting", "pending", "paused"].includes(status);
@@ -566,16 +590,13 @@ export class AgentRuntimeConversationOwner {
     this.#rememberItem(source, item);
     const value = projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "");
     if (value)
-      this.readOwner.applyEvent({
-        type: "changes",
-        changes: [
-          {
-            type: "item",
-            key: { ...this.readOwner.key, entityKey: source.entityKey, itemId },
-            value,
-          },
-        ],
-      });
+      this.#applyChanges([
+        {
+          type: "item",
+          key: { ...this.readOwner.key, entityKey: source.entityKey, itemId },
+          value,
+        },
+      ]);
     return item;
   };
   dispose(): void {
@@ -717,17 +738,66 @@ export class AgentRuntimeConversationOwner {
     this.#opening = pending;
   }
 
+  /** Publish each touched Turn's phases atomically with its bodies, slots and lifecycle. */
+  #applyChanges(
+    changes: readonly CodexTranscriptChange[],
+    reset?: Omit<CodexTranscriptSnapshot, "itemsByKey">,
+  ): void {
+    const corrected = [...changes];
+    const touched = new Set<string>();
+    const itemChanges = new Map<string, number>();
+    changes.forEach((change, index) => {
+      if (!("key" in change)) return;
+      touched.add(change.key.entityKey);
+      if (change.type === "item")
+        itemChanges.set(codexTranscriptItemAddress(change.key.entityKey, change.key.itemId), index);
+    });
+    for (const entityKey of touched) {
+      const turn = this.#turns.get(entityKey);
+      if (!turn) continue;
+      const phases = resolveAgentReplyPhases(
+        turn.itemIds.map((itemId) => replyItemRole(this.#items.get(itemId)?.type)),
+        turn.details.status === "inProgress",
+      );
+      turn.itemIds.forEach((itemId, index) => {
+        // Async questions use message presentation, but remain work rather than a reply.
+        const phase =
+          phases[index] ??
+          (this.#items.get(itemId)?.type === "user_input_request" ? "commentary" : null);
+        if (phase == null) return;
+        const address = codexTranscriptItemAddress(entityKey, itemId);
+        const changeIndex = itemChanges.get(address);
+        const change = changeIndex === undefined ? undefined : corrected[changeIndex];
+        const current =
+          change?.type === "item" ? change.value : this.readOwner.readItem(entityKey, itemId);
+        if (current?.type !== "agentMessage" || current.phase === phase) return;
+        const replacement: CodexTranscriptChange = {
+          type: "item",
+          key: { ...this.readOwner.key, entityKey, itemId },
+          value: { ...current, phase },
+        };
+        if (changeIndex === undefined) corrected.push(replacement);
+        else corrected[changeIndex] = replacement;
+      });
+    }
+    if (!reset) {
+      this.readOwner.applyEvent({ type: "changes", changes: corrected });
+      return;
+    }
+    const itemsByKey: Record<string, CodexCanonicalItem> = {};
+    for (const change of corrected) {
+      if (change.type === "item" && change.value)
+        itemsByKey[codexTranscriptItemAddress(change.key.entityKey, change.key.itemId)] =
+          change.value;
+    }
+    this.readOwner.applyEvent({ type: "reset", value: { ...reset, itemsByKey } });
+  }
+
   #reset(snapshot: AgentSnapshot): void {
     this.#clearTranscript();
     if (this.#cursor !== null) this.#historyCursors.add(this.#cursor);
     const changes = this.#admit(snapshot.projection.visibleTurnItems, true);
     const turnsByKey: Record<string, CodexTranscriptSnapshot["turnsByKey"][string]> = {};
-    const itemsByKey: Record<string, CodexCanonicalItem> = {};
-    for (const change of changes) {
-      if (change.type === "item" && change.value)
-        itemsByKey[codexTranscriptItemAddress(change.key.entityKey, change.key.itemId)] =
-          change.value;
-    }
     for (const [entityKey, turn] of this.#turns)
       turnsByKey[entityKey] = {
         details: turn.details,
@@ -737,18 +807,14 @@ export class AgentRuntimeConversationOwner {
           entries: turn.itemIds.map((itemId, index) => ({ index, itemId })),
         },
       };
-    this.readOwner.applyEvent({
-      type: "reset",
-      value: {
-        resumeState: "resumed",
-        historyComplete: !snapshot.hasMoreHistory,
-        timeline: this.#timeline(),
-        itemTimeline: null,
-        turnEntityKeys: this.#turnKeys,
-        turnsByKey,
-        itemsByKey,
-        realtimeItems: {},
-      },
+    this.#applyChanges(changes, {
+      resumeState: "resumed",
+      historyComplete: !snapshot.hasMoreHistory,
+      timeline: this.#timeline(),
+      itemTimeline: null,
+      turnEntityKeys: this.#turnKeys,
+      turnsByKey,
+      realtimeItems: {},
     });
     this.#transcriptHydrated = true;
   }
@@ -1134,7 +1200,7 @@ export class AgentRuntimeConversationOwner {
       { type: "structure", timeline: this.#timeline(), turnEntityKeys: this.#turnKeys },
       { type: "history", resumeState: "resumed", historyComplete: !page.hasMoreHistory },
     );
-    this.readOwner.applyEvent({ type: "changes", changes });
+    this.#applyChanges(changes);
     this.#publishView();
   }
   #captureRequest(item: AgentTurnItem, local: boolean): boolean {
@@ -1171,6 +1237,7 @@ export class AgentRuntimeConversationOwner {
   #rememberItem(source: ResidentItem, item: AgentTurnItem): void {
     const resident = {
       ...source,
+      type: item.type,
       nodeId: item.nodeId,
       status: item.status,
       startedAt: item.startedAt,
@@ -1363,7 +1430,7 @@ export class AgentRuntimeConversationOwner {
         hasSubagentActivity: turn.hasSubagentActivity,
       });
     }
-    if (changes.length > 0) this.readOwner.applyEvent({ type: "changes", changes });
+    if (changes.length > 0) this.#applyChanges(changes);
     if (cancelDelivery) {
       this.#queueGeneration += 1;
       this.#queueRequest = null;
@@ -1399,16 +1466,13 @@ export class AgentRuntimeConversationOwner {
         if (resident) {
           this.#rememberItem(resident, item);
           if (value)
-            this.readOwner.applyEvent({
-              type: "changes",
-              changes: [
-                {
-                  type: "item",
-                  key: { ...this.readOwner.key, entityKey: resident.entityKey, itemId: item.id },
-                  value,
-                },
-              ],
-            });
+            this.#applyChanges([
+              {
+                type: "item",
+                key: { ...this.readOwner.key, entityKey: resident.entityKey, itemId: item.id },
+                value,
+              },
+            ]);
         } else {
           const changes = this.#admit(
             [
@@ -1428,7 +1492,7 @@ export class AgentRuntimeConversationOwner {
               timeline: this.#timeline(),
               turnEntityKeys: this.#turnKeys,
             });
-            this.readOwner.applyEvent({ type: "changes", changes });
+            this.#applyChanges(changes);
           }
         }
       }
@@ -1525,13 +1589,10 @@ export class AgentRuntimeConversationOwner {
         this.#turnKeys = this.#turnKeys.filter((key) => key !== entityKey);
         // Rewound history replaces the topology, so readers of it, including the prompt index, rebind.
         this.#historyGeneration += 1;
-        this.readOwner.applyEvent({
-          type: "changes",
-          changes: [
-            { type: "remove-turn", key: { ...this.readOwner.key, entityKey } },
-            { type: "structure", timeline: this.#timeline(), turnEntityKeys: this.#turnKeys },
-          ],
-        });
+        this.#applyChanges([
+          { type: "remove-turn", key: { ...this.readOwner.key, entityKey } },
+          { type: "structure", timeline: this.#timeline(), turnEntityKeys: this.#turnKeys },
+        ]);
         this.#publishView();
         return;
       }
@@ -1543,17 +1604,14 @@ export class AgentRuntimeConversationOwner {
           previous: turn.details,
         });
         this.#turns.set(entityKey, { ...turn, details });
-        this.readOwner.applyEvent({
-          type: "changes",
-          changes: [
-            {
-              type: "turn",
-              key: { ...this.readOwner.key, entityKey },
-              details,
-              hasSubagentActivity: turn.hasSubagentActivity,
-            },
-          ],
-        });
+        this.#applyChanges([
+          {
+            type: "turn",
+            key: { ...this.readOwner.key, entityKey },
+            details,
+            hasSubagentActivity: turn.hasSubagentActivity,
+          },
+        ]);
       }
       this.#publishView();
       return;

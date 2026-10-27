@@ -156,6 +156,29 @@ describe("agent body collapse presentation", () => {
     expect(projectAgentBodyCollapsePresentation(units).collapsibleUnits).toEqual(units);
   });
 
+  test("keeps every final-answer message visible and folds commentary with the work", () => {
+    const commentary = buildEntryUnit("commentary", "assistantMessage", {
+      assistantPhase: "commentary",
+      markdownText: "Checking the file first",
+    });
+    const exec = buildEntryUnit("exec", "exec");
+    const replyStart = buildEntryUnit("reply-start", "assistantMessage", {
+      assistantPhase: "final_answer",
+      markdownText: "The fix is in place.",
+    });
+    const units = [commentary, exec, replyStart];
+
+    const presentation = projectAgentBodyCollapsePresentation(units);
+
+    expect(presentation.bodyUnits).toEqual([
+      { unit: commentary, persistent: false },
+      { unit: exec, persistent: false },
+      { unit: replyStart, persistent: true },
+    ]);
+    expect(presentation.collapsibleUnits).toEqual([commentary, exec]);
+    expect(presentation.canCollapse).toBe(true);
+  });
+
   test("extracts worked time as the sole collapse label source", () => {
     const workedFor: ThreadWorkedForBlockModel = {
       id: "worked-for",
