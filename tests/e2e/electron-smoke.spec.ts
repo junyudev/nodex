@@ -1996,7 +1996,7 @@ test.describe("parallel functional Electron smoke", () => {
         : undefined;
       expect(projectScene?.primary).toMatchObject({
         kind: "inbox",
-        config: { projectId: createdProject?.id },
+        config: { scope: { kind: "project", projectId: createdProject?.id } },
       });
       const surfaces = Object.values(projectScene?.panelSurfacesById ?? {});
       expect(surfaces.map((surface) => surface.kind)).toEqual(["page_stage"]);
