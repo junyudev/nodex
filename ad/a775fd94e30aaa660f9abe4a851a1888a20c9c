@@ -1,0 +1,95 @@
+tests/e2e/claude-turn-work-collapse.spec.ts
+  s_e02c2654af7f79::t_c7d992c7d6ede8 48,62,108-123,134,146,150,154
+  s_854bf3d42c9b7f::t_2547366c68b7ab 70
+  s_7aa8ab5f4cb606::t_75283e01407349 1-47,49-61,63-69,71-107,124-133,135-145,147-149,151-153,155-159
+src/renderer/features/local-conversation/projection/build-turn-render-model.node.test.ts
+  s_854bf3d42c9b7f::t_e4868c83c96a88 1291-1354
+CHANGELOG.md
+  s_854bf3d42c9b7f::t_137cf54f659903 24
+src/renderer/lib/markdown/use-adaptive-markdown.ts
+  s_854bf3d42c9b7f::t_310792e9e3324c 23-24
+  s_854bf3d42c9b7f::t_35bc349d7f74f5 34-35
+src/renderer/features/local-conversation/projection/agent-body-collapse-presentation.ts
+  s_854bf3d42c9b7f::t_38b2a528b43a33 46-47
+  s_854bf3d42c9b7f::t_ca56c8e65d6a52 20-22
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_e02c2654af7f79::t_ad1b8e3171ad9f 287-290,353-359
+  s_e02c2654af7f79::t_bddd2524408e3b 449-470
+  s_e02c2654af7f79::t_7e6661701378dc 286,291-352,360-448,471-551
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_854bf3d42c9b7f::t_dec114ac5fa933 1394-1398
+src/renderer/features/local-conversation/projection/agent-body-collapse-presentation.node.test.ts
+  s_854bf3d42c9b7f::t_0be628a471aafc 159-181
+src/shared/agent-conversation-presentation.node.test.ts
+  s_854bf3d42c9b7f::t_6b92ba4d5816d4 211,213-221,224-226,236,296,325,375
+  s_854bf3d42c9b7f::t_aa5e603b42c086 222-223
+  s_854bf3d42c9b7f::t_28f78f08e15243 124-203
+  s_854bf3d42c9b7f::t_ee3ff2f3c5fc64 7-11,121-123,204-210,212,227-235,237-295,297-324,326-374,376-377,787-796
+src/renderer/features/local-conversation/view/shared/markdown/adaptive-markdown.test.tsx
+  s_854bf3d42c9b7f::t_4db30b7273e2d6 187-236
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_e02c2654af7f79::t_8ce6fa0871feb1 1240
+  s_e02c2654af7f79::t_21de37622f06e2 763-766
+  s_e02c2654af7f79::t_9872c66e2e24bb 9-12,132-143,146-150
+  s_e02c2654af7f79::t_385b4f15c5b021 144-145,593-599,741-762,767-786,788,793-800,810-817,1203,1433,1469-1475,1495,1592-1595,1607-1614
+  s_7aa8ab5f4cb606::t_2f30212569372e 151
+docs/product-specs/agent-backend-behavior.md
+  s_854bf3d42c9b7f::t_80c90657864ed2 194
+  s_854bf3d42c9b7f::t_46ef7200628934 202-203
+  s_e02c2654af7f79::t_23f790e3ec809b 210-212
+  s_854bf3d42c9b7f::t_22d5993958f949 198-201,204-209
+  s_7aa8ab5f4cb606::t_732a3050eebe72 213
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_854bf3d42c9b7f::t_f8b44fd1c898ca 317,364,496-499
+src/shared/agent-reply-phase.ts
+  s_854bf3d42c9b7f::t_ae021bfdc38db8 1
+  s_854bf3d42c9b7f::t_6cdaa2038e992f 2-19
+src/shared/agent-conversation-presentation.ts
+  s_854bf3d42c9b7f::t_28f78f08e15243 176-183,189,620-627
+  s_854bf3d42c9b7f::t_7d2f56006cb324 14
+  s_854bf3d42c9b7f::t_ae021bfdc38db8 518-533
+  s_854bf3d42c9b7f::t_6b92ba4d5816d4 184,190-194,208
+  s_854bf3d42c9b7f::t_21d476e4b18bb5 514-517,534-535,550-551,555,557,559,585,593,618-619
+scripts/scenarios/runtime/scripted-claude-agent.mjs
+  s_4beddd621c989a::t_ed9e62ad2254b3 299-362
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ada775fd94e30aaa660f9abe4a851a1888a20c9c",
+  "prompts": {},
+  "sessions": {
+    "s_4beddd621c989a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ae5-94bb-7e12-9c4b-83f1c591a11d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7aa8ab5f4cb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17a9d-4961-7e90-bed7-5a3180ade70c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_854bf3d42c9b7f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "59bc5f44-039c-49a4-88d1-65aeab5446fe",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e02c2654af7f79": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17afc-f4be-7b40-9c91-3935868a6a33",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
