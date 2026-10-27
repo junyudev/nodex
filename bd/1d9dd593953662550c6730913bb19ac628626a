@@ -1,0 +1,21 @@
+scripts/scenarios/scenarios/scheduled-ask-in-inbox.ts
+  s_f2e3c034e2bc1d::t_f8aa928a9b8510 187-188
+src/main/core-client/scheduled-ask-in-inbox-scenario.node.test.ts
+  s_f2e3c034e2bc1d::t_f8aa928a9b8510 18,48,134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd1d9dd593953662550c6730913bb19ac628626a",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
