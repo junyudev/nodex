@@ -584,6 +584,34 @@ test("contains long results in a small viewport and returns focus after dismissa
   await waitFor(() => expect(document.activeElement).toBe(trigger));
 });
 
+test("Escape dismisses a hovered folder hint before the palette while search retains focus", async () => {
+  const transport = installWorkspaceSearchTransport();
+  let view: Awaited<ReturnType<typeof openPalette>>["view"] | undefined;
+  try {
+    const opened = await openPalette({ hostId: "local", roots: ["/workspace"] });
+    view = opened.view;
+    const { input, trigger } = opened;
+    await act(async () => userEvent.click(view!.getByRole("tab", { name: "Files" })));
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    const folder = view.getByRole("button", { name: "Search folder" });
+    await act(async () => userEvent.hover(folder));
+    await view.findByRole("tooltip", { name: "/workspace" });
+    expect(document.activeElement).toBe(input);
+
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await waitFor(() => expect(view!.queryByRole("tooltip")).toBeNull());
+    expect(view.getByRole("dialog", { name: "Command palette" })).toBeTruthy();
+    expect(document.activeElement).toBe(input);
+
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await waitFor(() => expect(view!.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  } finally {
+    view?.unmount();
+    transport.restore();
+  }
+});
+
 test("Theme drill-in clears search, dismisses one level, and applies the shared appearance preference", async () => {
   const { view, input } = await openPalette();
   await act(async () => userEvent.type(input, "theme"));

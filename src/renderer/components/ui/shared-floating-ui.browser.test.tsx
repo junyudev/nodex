@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
@@ -68,6 +68,32 @@ function NestedDialogLayerProbe() {
   );
 }
 
+function DialogWithBackgroundPopoverProbe() {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <NodexPopover open>
+        <NodexPopoverAnchor>
+          <button type="button">Background filter</button>
+        </NodexPopoverAnchor>
+        <NodexPopoverContent
+          data-testid="background-popover"
+          initialFocus={false}
+          finalFocus={false}
+        >
+          Background options
+        </NodexPopoverContent>
+      </NodexPopover>
+      <NodexDialog open={open} onOpenChange={setOpen}>
+        <NodexDialogContent>
+          <NodexDialogTitle>Foreground dialog</NodexDialogTitle>
+          <input aria-label="Foreground input" />
+        </NodexDialogContent>
+      </NodexDialog>
+    </>
+  );
+}
+
 afterEach(async () => {
   await act(async () => {
     __resetNodexToastStoreForTests();
@@ -89,6 +115,22 @@ describe("shared floating UI in Chromium", () => {
 
     expect(view.queryByRole("button", { name: "Nested filter action" })).toBeNull();
     expect(view.getByRole("dialog", { name: "Outer dialog" })).toBeTruthy();
+  });
+
+  test("ignores a background popover made inert by the active modal when assigning Escape", async () => {
+    const view = render(<DialogWithBackgroundPopoverProbe />);
+    const input = view.getByRole("textbox", { name: "Foreground input" });
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect(
+      view
+        .getByTestId("background-popover")
+        .closest('[aria-hidden="true"], [inert], [data-base-ui-inert]'),
+    ).not.toBeNull();
+
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await waitFor(() =>
+      expect(view.queryByRole("dialog", { name: "Foreground dialog" })).toBeNull(),
+    );
   });
 
   test("stacks dialogs above editor chrome and their floating descendants above the dialog", async () => {

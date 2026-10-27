@@ -48,6 +48,7 @@ import {
   SidebarVisibleIcon,
 } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import { hasOpenNodexFloatingEscapeLayer } from "@/components/ui/floating-surface";
 import {
   areCommandPalettePageFiltersEqual,
   cloneCommandPalettePageFilters,
@@ -1322,6 +1323,7 @@ export const CommandPaletteSurface = forwardRef<
     }
 
     if (event.key !== "Escape" || event.defaultPrevented) return;
+    if (hasOpenNodexFloatingEscapeLayer(event.currentTarget.ownerDocument)) return;
     event.preventDefault();
     if (activePage) {
       setPageStack((pages) => pages.slice(0, -1));
