@@ -1,0 +1,31 @@
+scripts/release/source-ci.test.ts
+  s_6c9891f66c664a::t_90f9ed1a2a37b8 1-94
+  s_6c9891f66c664a::t_8be2d6cbdb95fa 95-96
+docs/SECURITY.md
+  s_6c9891f66c664a::t_90f9ed1a2a37b8 140-142
+.github/workflows/nightly-release.yml
+  s_6c9891f66c664a::t_90f9ed1a2a37b8 45-57
+scripts/release/cli.ts
+  s_6c9891f66c664a::t_90f9ed1a2a37b8 39,169-172
+  s_6c9891f66c664a::t_ada6275a4a2b73 173-175
+docs/release-macos.md
+  s_6c9891f66c664a::t_90f9ed1a2a37b8 25-31
+scripts/release/source-ci.ts
+  s_6c9891f66c664a::t_90f9ed1a2a37b8 1-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "87d02462c8c95fb1c97c632c7880e20a1fb163df",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
