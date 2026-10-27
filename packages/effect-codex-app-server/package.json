@@ -22,6 +22,6 @@
     "@effect/openapi-generator": "4.0.6",
     "@effect/platform-node": "4.0.6",
     "@effect/vitest": "4.0.6",
-    "@types/node": "24.13.3"
+    "@types/node": "24.19.2"
   }
 }

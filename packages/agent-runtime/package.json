@@ -47,7 +47,7 @@
     "@t3tools/source-control-github": "workspace:*",
     "@t3tools/source-control-gitlab": "workspace:*",
     "@t3tools/source-control-testing": "workspace:*",
-    "@types/node": "24.13.3",
+    "@types/node": "24.19.2",
     "effect": "4.0.6",
     "effect-acp": "workspace:*",
     "effect-codex-app-server": "workspace:*",

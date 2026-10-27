@@ -24,7 +24,7 @@ overrides:
   # Excalidraw's tab API is unchanged; replace its React 18-era Radix closure.
   "@excalidraw/excalidraw@0.18.1>@radix-ui/react-tabs": 1.2.1
   remark-breaks: 4.0.0
-  "@types/node": 24.13.3
+  "@types/node": 24.19.2
   "@babel/core": 7.29.7
   "@xmldom/xmldom": 0.8.15
   dompurify: 3.4.17
@@ -35,7 +35,7 @@ overrides:
   lodash-es: 4.18.1
   mermaid: 11.16.1
   nanoid: 3.3.18
-  node-abi: ^4.31.0
+  node-abi: 4.40.0
   picomatch: 4.0.4
   postcss: 8.5.23
   prosemirror-model: 1.25.12
@@ -111,7 +111,6 @@ peerDependencyRules:
 minimumReleaseAgeExclude:
   - vitest@5.0.5
   - "@vitest/browser-playwright@5.0.5"
-  - electron@44.9.1
   - "@vitest/browser-preview@5.0.5"
   - "@vitest/browser@5.0.5"
   - "@vitest/mocker@5.0.5"

@@ -66,7 +66,7 @@ It ships as an Electron desktop app plus a CLI/HTTP API backed by SQLite.
 ## Runtime and Tooling
 
 - Package manager: pnpm
-- Development runtime: Node 24.15.0
+- Development runtime: Node 24.22.1
 - Native addon: `node-pty` is rebuilt for Electron by `postinstall`; host Node and Electron have different ABIs even when they report the same Node version.
 - Engineering control plane: Vite+ with TypeScript 7, Oxlint, Oxfmt, and Vitest; Playwright for Chromium and Electron E2E
 - Language: TypeScript (`strict` mode)

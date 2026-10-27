@@ -20,6 +20,7 @@ import {
 } from "./sign-macos-runtime.mjs";
 
 const temporaryRoots: string[] = [];
+const signingContext = { platform: "darwin" } as const;
 
 test("signs workspace Mach-O code while leaving document and bytecode data to the outer seal", () => {
   const app = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-workspace-code-"));
@@ -89,7 +90,7 @@ describe("applyMacSigningMode", () => {
   test("local mode disables timestamping while keeping per-file release options", () => {
     const local = applyMacSigningMode(releaseOptions, "local");
     expect(local).not.toBe(releaseOptions);
-    expect(local.optionsForFile("/tmp/Nodex.app/Contents/MacOS/Nodex")).toEqual({
+    expect(local.optionsForFile("/tmp/Nodex.app/Contents/MacOS/Nodex", signingContext)).toEqual({
       entitlements: "/tmp/Nodex.app/Contents/MacOS/Nodex.entitlements",
       hardenedRuntime: true,
       timestamp: "none",
@@ -98,13 +99,40 @@ describe("applyMacSigningMode", () => {
 
   test("local mode disables timestamping even without base per-file options", () => {
     const local = applyMacSigningMode({ app: "/tmp/Nodex.app", platform: "darwin" }, "local");
-    expect(local.optionsForFile?.("/tmp/anything")).toEqual({ timestamp: "none" });
+    expect(local.optionsForFile?.("/tmp/anything", signingContext)).toEqual({ timestamp: "none" });
   });
 
   test("rejects unknown signing modes instead of silently signing differently", () => {
     expect(() => applyMacSigningMode(releaseOptions, "adhoc")).toThrow(
       "Unknown NODEX_MAC_SIGN_MODE: adhoc",
     );
+  });
+});
+
+test("composed signing policies preserve the resolved platform for per-file options", () => {
+  const app = "/tmp/Nodex.app";
+  const policy = applyMacCodeObjectEntitlementPolicy(
+    applyMacSigningMode(
+      {
+        app,
+        optionsForFile: (_filePath, { platform }) => ({
+          entitlements: `${platform}.plist`,
+          hardenedRuntime: platform === "darwin",
+        }),
+      },
+      "local",
+    ),
+  );
+
+  expect(policy.optionsForFile(app, signingContext)).toEqual({
+    entitlements: "darwin.plist",
+    hardenedRuntime: true,
+    timestamp: "none",
+  });
+  expect(policy.optionsForFile(`${app}/Contents/Resources/bin/nodex`, signingContext)).toEqual({
+    entitlements: [],
+    hardenedRuntime: true,
+    timestamp: "none",
   });
 });
 
@@ -122,10 +150,10 @@ describe("macOS code-object entitlement policy", () => {
       appPath,
       "Contents/Frameworks/Nodex Helper (Renderer).app/Contents/MacOS/Nodex Helper (Renderer)",
     );
-    expect(policy.optionsForFile(mainExecutable).entitlements).toBe(
+    expect(policy.optionsForFile(mainExecutable, signingContext).entitlements).toBe(
       `${mainExecutable}.entitlements`,
     );
-    expect(policy.optionsForFile(rendererHelper).entitlements).toBe(
+    expect(policy.optionsForFile(rendererHelper, signingContext).entitlements).toBe(
       `${rendererHelper}.entitlements`,
     );
   });
@@ -139,7 +167,7 @@ describe("macOS code-object entitlement policy", () => {
       ),
       path.join(appPath, "Contents/Helpers/Nodex Service.app/Contents/MacOS/nodex-service"),
     ]) {
-      expect(policy.optionsForFile(nativePath).entitlements).toEqual([]);
+      expect(policy.optionsForFile(nativePath, signingContext).entitlements).toEqual([]);
     }
   });
 });

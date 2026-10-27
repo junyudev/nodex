@@ -14,7 +14,7 @@ import {
 import path from "node:path";
 
 import { agentRuntimeNativeDigest } from "./agent-runtime-native-inventory.mjs";
-import { signAsync } from "@electron/osx-sign";
+import { sign as signApp } from "@electron/osx-sign";
 import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-schema.mjs";
 import { parseCodexAppServerReleaseLock } from "../src/shared/codex-app-server-release-lock.mjs";
 import { writePackagedBuildProvenance } from "./package-provenance.mjs";
@@ -413,7 +413,7 @@ const signWithRetry = async (options) => {
   let lastError;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
-      await signAsync(options);
+      await signApp(options);
       return;
     } catch (error) {
       lastError = error;
@@ -439,8 +439,8 @@ export const applyMacSigningMode = (options, mode = process.env.NODEX_MAC_SIGN_M
   const baseOptionsForFile = options.optionsForFile;
   return {
     ...options,
-    optionsForFile: (filePath) => ({
-      ...(baseOptionsForFile ? baseOptionsForFile(filePath) : {}),
+    optionsForFile: (filePath, context) => ({
+      ...(baseOptionsForFile ? baseOptionsForFile(filePath, context) : {}),
       timestamp: "none",
     }),
   };
@@ -470,8 +470,8 @@ export const applyMacCodeObjectEntitlementPolicy = (options) => {
   const baseOptionsForFile = options.optionsForFile;
   return {
     ...options,
-    optionsForFile: (filePath) => {
-      const baseOptions = baseOptionsForFile ? baseOptionsForFile(filePath) : {};
+    optionsForFile: (filePath, context) => {
+      const baseOptions = baseOptionsForFile ? baseOptionsForFile(filePath, context) : {};
       if (isElectronRuntimeCodeObject(options.app, filePath)) return baseOptions;
       return { ...baseOptions, entitlements: [] };
     },

@@ -61,7 +61,7 @@
     "@effect/platform-node": "4.0.6",
     "@effect/vitest": "4.0.6",
     "@t3tools/provider-testing": "workspace:*",
-    "@types/node": "24.13.3",
+    "@types/node": "24.19.2",
     "vite-plus": "1.4.0"
   }
 }

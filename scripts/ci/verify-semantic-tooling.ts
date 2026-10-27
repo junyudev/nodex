@@ -28,7 +28,7 @@ function fixtureWorkspace(run: (directory: string) => void): void {
         name: "nodex-semantic-contract",
         private: true,
         type: "module",
-        packageManager: "pnpm@12.3.4",
+        packageManager: "pnpm@12.15.0",
       }),
     );
     run(directory);

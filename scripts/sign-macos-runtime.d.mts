@@ -1,8 +1,8 @@
-import type { PerFileSignOptions, SignOptions } from "@electron/osx-sign";
+import type { SignOptions } from "@electron/osx-sign";
 
 type SigningPolicyInput = Pick<SignOptions, "app" | "optionsForFile">;
 type SigningPolicyResult<T> = Omit<T, "optionsForFile"> & {
-  readonly optionsForFile: (filePath: string) => PerFileSignOptions;
+  readonly optionsForFile: NonNullable<SignOptions["optionsForFile"]>;
 };
 
 export function refreshSignedAgentRuntimeNativeManifest(appPath: string): void;

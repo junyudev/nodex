@@ -25,7 +25,7 @@ describe("source type ownership", () => {
       );
       writeFileSync(
         join(directory, "package.json"),
-        JSON.stringify({ private: true, packageManager: "pnpm@12.3.4" }),
+        JSON.stringify({ private: true, packageManager: "pnpm@12.15.0" }),
       );
       writeFileSync(
         join(directory, "tsconfig.json"),

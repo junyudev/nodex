@@ -11,7 +11,7 @@ dependencies from the repository root:
 vp install --frozen-lockfile
 ```
 
-Nodex pins Node `24.15.0` in `.node-version` and pnpm `12.3.4` in
+Nodex pins Node `24.22.1` in `.node-version` and pnpm `12.15.0` in
 `package.json`; Vite+ resolves both declarations for the project. The exact
 `vite-plus` development dependency pins the project toolchain independently of
 the globally installed launcher version.
@@ -253,6 +253,10 @@ run `vp run electron:prepare` from the worktree root. The upstream
 `vp exec install-electron` remains an explicit bypass; normal preparation restores
 the package-pinned host distribution. See
 [Electron's binary download documentation](https://www.electronjs.org/docs/latest/tutorial/installation#binary-download-step).
+
+Sandboxed preloads bundle their dependencies and use Web APIs for bytes, URLs,
+and scheduling. Electron 45 provides only Electron modules through their
+`require`; Node module shims, `Buffer`, and immediate-timer globals are unavailable.
 
 The Clipboard, DeviceCheck, and notification bridges reuse verified worktree-local
 outputs when their source, build scripts, dependency lock, Electron/Node versions,
