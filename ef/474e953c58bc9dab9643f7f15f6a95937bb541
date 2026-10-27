@@ -1,0 +1,83 @@
+crates/nodex-core/schema/current.sql
+  s_e339d587d9e58a::t_ff902db0193c93 170,744,772,4387,4407-4408,4422,4498,4845-4867
+crates/nodex-core/schema/migrations/v189_to_v190.sql
+  s_e339d587d9e58a::t_1d9eef82911443 1-142
+crates/nodex-core/schema/published/v189.sql
+  s_e339d587d9e58a::t_3dffff312ce691 1-4839
+crates/nodex-core/src/automation/agent_command.rs
+  s_7aa8ab5f4cb606::t_edbccae5b550d6 4,44-63
+crates/nodex-core/src/automation/firing.rs
+  s_c1554ea80ea21d::t_e95bd2c325021d 1-296
+crates/nodex-core/src/automation/mod.rs
+  s_7aa8ab5f4cb606::t_ce26bab7f8f35c 2,157-158
+crates/nodex-core/src/automation/mutation.rs
+  s_e339d587d9e58a::t_1078e3994461fc 8-11,115-127,210-214,275-295,671-677,737-744,763,765,786-787,854-855,881,905-906,982,1043,1045-1047,1066,1079,1086,1098,1103,1131-1132,1150-1155,1232-1236,1258-1269,1271-1286,1289-1291,1413-1424,1639,1643-1651,1939,2051,2075-2080,2163-2169,2282-2283,2606,2608,2942,3315,3633,3651,3841,3915,3973,4043,4113
+crates/nodex-core/src/automation/read.rs
+  s_e339d587d9e58a::t_4d647d4d8921b6 4-6,282,310,349,356-358,384-394,417-424,499,523,563,570,591-600,604-613
+crates/nodex-core/src/automation/run.rs
+  s_e339d587d9e58a::t_16ddd7b47bb208 45,99,265,273,377,385-394,402,445-447,449-457,490-492,501-507,978,1148-1178
+crates/nodex-core/src/automation/session_lifecycle.rs
+  s_7aa8ab5f4cb606::t_7e13cc86b1d010 69-71
+crates/nodex-core/src/document/integrity.rs
+  s_7aa8ab5f4cb606::t_84f3b07eb5640b 61
+crates/nodex-core/src/infrastructure/migration.rs
+  s_7aa8ab5f4cb606::t_cdc3258867e85b 362-366,2484-2498,7369-7396,7410-7413,7454,7586-7589,7703,7821-7867
+crates/nodex-core/src/workspace/inbox.rs
+  s_c1554ea80ea21d::t_35546f3d0da52c 13-14,16,280,295-304,499-500,669,680-681,728,731-738,740-799,802,804,817-818,823-841,843-844,911,1014-1022,1227,1246-1257,1260-1279,1460,1518-1521,1646,1660-1664,1810-1812,1881-1901,2216-2228,2416
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_7aa8ab5f4cb606::t_edf3d70f26de21 152,301-302,339,349-350,461-474,488-493,570,681-689,715-717
+crates/nodex-core/src/workspace/inbox_reliable.rs
+  s_7aa8ab5f4cb606::t_f953f9ad44c395 282-284,340-344,636-640,737-745,1046-1052
+crates/nodex-core/src/workspace/inbox_scheduled.rs
+  s_c1554ea80ea21d::t_c2254ae22a34e7 1-367
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_e339d587d9e58a::t_a6dfeb22f28499 4112-5042
+crates/nodex-core/src/workspace/mod.rs
+  s_7aa8ab5f4cb606::t_e4632b00568a0a 299-302
+crates/nodex-core/src/workspace/mutation.rs
+  s_7aa8ab5f4cb606::t_20960db658eed7 382-383,1606-1613
+crates/nodex-core/src/workspace/page_chat.rs
+  s_7aa8ab5f4cb606::t_97d51821c838fe 74
+crates/nodex-store-format/src/lib.rs
+  s_7aa8ab5f4cb606::t_cf71f2b3edbda4 229-232
+docs/ARCHITECTURE.md
+  s_e339d587d9e58a::t_54f210b2562776 182,1148-1153
+docs/product-specs/inbox-behavior.md
+  s_e339d587d9e58a::t_90f6572ce24386 466-474
+docs/product-specs/scheduled-route-behavior.md
+  s_e339d587d9e58a::t_839409e4ff9820 44-83
+packages/core-protocol/src/compatibility.generated.ts
+  s_c1554ea80ea21d::t_52f5ce09843e47 42-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ef474e953c58bc9dab9643f7f15f6a95937bb541",
+  "prompts": {},
+  "sessions": {
+    "s_7aa8ab5f4cb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17a9d-4961-7e90-bed7-5a3180ade70c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c1554ea80ea21d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17cf5-3973-7873-a573-3b8ed10c04f4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e339d587d9e58a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17cf3-045c-7643-9bc8-3277dc8a186a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
