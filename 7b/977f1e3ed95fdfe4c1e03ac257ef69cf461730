@@ -1,0 +1,65 @@
+packages/agent-runtime/src/nodex/HostBridge.test.ts
+  s_23cc45a8227d80::t_1df3d17a3f7647 119-122,126
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.testkit.ts
+  s_23cc45a8227d80::t_283b93fb255303 9,186-188,822-827
+  s_23cc45a8227d80::t_ee930f1eff7bbe 828
+docs/product-specs/agent-runtime-behavior.md
+  s_23cc45a8227d80::t_fce47b3c68e3c4 100-108
+  s_23cc45a8227d80::t_255d48e48430a7 99
+docs/ARCHITECTURE.md
+  s_23cc45a8227d80::t_255d48e48430a7 807-808
+  s_23cc45a8227d80::t_fce47b3c68e3c4 806
+packages/agent-runtime/src/nodex/HostBridge.ts
+  s_23cc45a8227d80::t_4320dbbb404480 41-44,234
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_23cc45a8227d80::t_bd729a1c7b591b 2383-2422,2427,2451-2455,6504-6505,6525
+  s_23cc45a8227d80::t_38baa176ccb4e2 880,1231,2324-2379,6524
+  s_23cc45a8227d80::t_f9a2164245d4a1 771,1003,1379,1477,1686-1689,1703,1753-1785,1828,2094,2120-2123,2125-2137,2201,2233,2316-2317,2380-2382,2423-2424,2456-2457,6526-6527,10331
+  s_23cc45a8227d80::t_373bbd4bdfa0ad 2425-2426,2428-2450,2458-2460,5270,5530,6479,6516-6517,6528,10521,10763,10962,11145,11284
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.ts
+  s_23cc45a8227d80::t_4320dbbb404480 2121-2123
+src/main/agent-runtime/AgentRuntimeHost.ts
+  s_23cc45a8227d80::t_4320dbbb404480 16,79,139-150
+  s_23cc45a8227d80::t_15281d443cda73 151-152,163
+src/main/agent-runtime/AgentRuntimeHost.node.test.ts
+  s_23cc45a8227d80::t_1df3d17a3f7647 91-94,127-135,145,205-210,218-227,231-236,240-242,246-256,258-260
+  s_23cc45a8227d80::t_acbb7dfd580c94 228-230,237-239,243-245,257
+  s_23cc45a8227d80::t_0b329d9903002a 261
+CHANGELOG.md
+  s_23cc45a8227d80::t_fce47b3c68e3c4 47
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_23cc45a8227d80::t_a9da69b5a39c61 3033,8354-8359,8363,8542,8711-8712
+  s_23cc45a8227d80::t_985521ed954072 8348-8353,8360-8362,8364-8365,8397,8537
+  s_23cc45a8227d80::t_568fb0b35508a1 395-398,559-561,943-970,3025,3032
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.test.ts
+  s_23cc45a8227d80::t_1df3d17a3f7647 326,439-443,501,540,5057,5155-5158,5161-5166,5173-5175
+  s_23cc45a8227d80::t_0dfb06b4f02f86 5176
+packages/agent-runtime/vendor/provider-core/src/server/ExecutionHost.ts
+  s_f9fd71b9fe45c3::t_1f5bfd7582fe1c 108-116
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_f9fd71b9fe45c3::t_d36d84e4b06f42 423-424
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7b977f1e3ed95fdfe4c1e03ac257ef69cf461730",
+  "prompts": {},
+  "sessions": {
+    "s_23cc45a8227d80": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17e9f-9979-7c81-940e-2ce1ddd491f1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f9fd71b9fe45c3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17eaa-b134-73b3-b92b-50ce5f951c0d",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
