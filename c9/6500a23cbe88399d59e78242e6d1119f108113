@@ -1,0 +1,42 @@
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_7aa8ab5f4cb606::t_aa40f9c18287db 6
+  s_7aa8ab5f4cb606::t_77582dd9153270 142-144,486-492,499-508,875-876,1021,4781-4783
+  s_7aa8ab5f4cb606::t_873c4b791985a3 4784-4793,4830-5048
+docs/product-specs/agent-interface-behavior.md
+  s_7aa8ab5f4cb606::t_f952238171bcdf 256-258
+docs/product-specs/agent-runtime-behavior.md
+  s_7aa8ab5f4cb606::t_c4bdf9e3c19199 337-340
+src/main/app-tools/SessionMessageAttachments.ts
+  s_7aa8ab5f4cb606::t_75fe6458b3fb59 3,137-138,144-145
+src/main/agent-runtime/AgentRuntimeMessageResources.ts
+  s_7aa8ab5f4cb606::t_abd4a4c8007d7b 1-10,12-14,20-34,36-43,45-52,54-55,58,60-69
+  s_7aa8ab5f4cb606::t_77582dd9153270 11,15-19,35,44,53,59
+  s_7aa8ab5f4cb606::t_be95b26e62e105 57
+  s_7aa8ab5f4cb606::t_14ca1d31315fb6 56
+src/main/app-tools/NativeSessionMessageAttachments.ts
+  s_7aa8ab5f4cb606::t_75fe6458b3fb59 2,70-74,78-79
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_7aa8ab5f4cb606::t_abd4a4c8007d7b 41,289,1116,1126,1248,2136,3210-3211,3213,3288
+packages/agent-runtime/src/assets/ImportChatAttachments.test.ts
+  s_7aa8ab5f4cb606::t_db9e1dcf5234cc 37
+  s_7aa8ab5f4cb606::t_d5acc4aec323c1 4,10,17-36,38-44
+  s_7aa8ab5f4cb606::t_80f0bff362beff 45-59
+packages/agent-runtime/package.json
+  s_7aa8ab5f4cb606::t_abd4a4c8007d7b 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c96500a23cbe88399d59e78242e6d1119f108113",
+  "prompts": {},
+  "sessions": {
+    "s_7aa8ab5f4cb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17a9d-4961-7e90-bed7-5a3180ade70c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
