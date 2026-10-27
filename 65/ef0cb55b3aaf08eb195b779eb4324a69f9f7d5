@@ -1,0 +1,19 @@
+src/main/inbox-application/scheduled-firing-core.node.test.ts
+  s_f2e3c034e2bc1d::t_0988f731dbaddb 34-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "65ef0cb55b3aaf08eb195b779eb4324a69f9f7d5",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
