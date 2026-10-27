@@ -1,0 +1,23 @@
+docs/product-specs/workbench-shell.md
+  s_af85c0ea92d8dc::t_c19624278ac7e9 198
+src/renderer/bootstrap/startup-shell.browser.test.ts
+  s_af85c0ea92d8dc::t_c19624278ac7e9 3,57-61,98,100,102-107
+src/renderer/lib/terminal-theme.browser.test.ts
+  s_af85c0ea92d8dc::t_c19624278ac7e9 1-6,11-17,25-26,29-30,32-36,39-42,44-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "931389869476a15b138f3803990a4cfe55b00bfd",
+  "prompts": {},
+  "sessions": {
+    "s_af85c0ea92d8dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec3-2d69-7eb3-afe0-2f1df667cd90",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
