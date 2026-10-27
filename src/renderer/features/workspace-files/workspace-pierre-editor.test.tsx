@@ -1,14 +1,19 @@
 import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { forwardRef, useEffect, useImperativeHandle } from "react";
+import { createRef, forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import type { CodeViewItem, EditorState } from "@pierre/diffs";
 import { settleAsyncRender } from "../../test/dom";
 import { installAsyncRequestAnimationFrame } from "../../test/browser-globals";
-import { WorkspacePierreEditor } from "./workspace-pierre-editor";
+import { WorkspacePierreEditor, type WorkspacePierreEditorHandle } from "./workspace-pierre-editor";
 
 const { editor, codeViewHandle, typography, captureCodeViewOptions, attachment } = vi.hoisted(
   () => {
     const editor = {
       setSelections: vi.fn(),
+      getState: vi.fn<() => EditorState>(() => ({})),
+      getText: vi.fn(() => ""),
+      setState: vi.fn(),
+      focus: vi.fn(),
     };
     return {
       editor,
@@ -40,39 +45,53 @@ vi.mock("@pierre/diffs/react", () => ({
   CodeView: forwardRef(
     (
       {
-        items,
+        initialItems,
         options,
         editorOptions,
         onItemEditChange,
       }: {
-        items: Array<{ file: { contents: string; name: string }; edit: boolean }>;
+        initialItems: CodeViewItem[];
         options: { itemMetrics: { lineHeight: number } };
         editorOptions: { onAttach?: (attachedEditor: typeof editor) => void };
-        onItemEditChange: (item: unknown, file: { contents: string; name: string }) => void;
+        onItemEditChange?: (item: CodeViewItem, file: { contents: string; name: string }) => void;
       },
       ref,
     ) => {
-      useImperativeHandle(ref, () => codeViewHandle);
+      const [items, setItems] = useState(initialItems);
+      const item = items[0];
+      const contents =
+        item?.type === "diff" ? item.fileDiff.additionLines.join("") : item?.file.contents;
+      editor.getText.mockReturnValue(contents ?? "");
+      useImperativeHandle(ref, () => ({
+        ...codeViewHandle,
+        addItems: (next: CodeViewItem[]) => setItems((current) => [...current, ...next]),
+        getInstance: () => ({
+          setItems,
+          getScrollTop: () => 0,
+          getItem: (id: string) => items.find((candidate) => candidate.id === id),
+        }),
+      }));
       captureCodeViewOptions(options);
       useEffect(() => {
         attachment.onAttach = editorOptions.onAttach;
       }, [editorOptions.onAttach]);
       useEffect(() => {
-        if (attachment.ready) attachment.onAttach?.(editor);
-      }, []);
+        if (attachment.ready && item?.edit) attachment.onAttach?.(editor);
+      }, [item]);
       return (
         <button
           type="button"
           data-testid="editable-pierre-file"
-          data-editable={items[0]?.edit}
+          data-editable={item?.edit}
           onClick={() =>
-            onItemEditChange(items[0], {
-              name: items[0]?.file.name ?? "file",
+            item &&
+            onItemEditChange?.(item, {
+              name: "file",
               contents: "edited",
             })
           }
         >
-          {items[0]?.file.contents}
+          {contents}
         </button>
       );
     },
@@ -82,6 +101,8 @@ vi.mock("@pierre/diffs/react", () => ({
 beforeEach(() => {
   installAsyncRequestAnimationFrame();
   editor.setSelections.mockClear();
+  editor.getState.mockReturnValue({});
+  editor.focus.mockClear();
   codeViewHandle.getEditor.mockClear();
   codeViewHandle.scrollTo.mockClear();
   codeViewHandle.setSelectedLines.mockClear();
@@ -132,6 +153,100 @@ describe("WorkspacePierreEditor", () => {
     expect(editor.getAttribute("data-editable")).toBe("true");
     editor.click();
     expect(onChange).toHaveBeenCalledWith("edited");
+  });
+
+  test("uses the backward selection start and centers the preceding additions block", async () => {
+    const ref = createRef<WorkspacePierreEditorHandle>();
+    const navigation = vi.fn();
+    editor.getState.mockReturnValue({
+      selections: [
+        {
+          start: { line: 2, character: 0 },
+          end: { line: 4, character: 0 },
+          direction: -1,
+        },
+      ],
+    });
+    render(
+      <WorkspacePierreEditor
+        ref={ref}
+        value={"first\nchanged\nthird\nchanged again\nfifth"}
+        filename="file.txt"
+        language={null}
+        sourceIdentity="file"
+        documentVersion={0}
+        ariaLabel="Editor"
+        comparison={{
+          oldContent: "first\nsecond\nthird\nfourth\nfifth",
+          oldPath: "file.txt",
+          layout: "unified",
+        }}
+        onChangeNavigationChange={navigation}
+        onChange={() => undefined}
+      />,
+    );
+    await settleAsyncRender();
+    expect(navigation).toHaveBeenLastCalledWith({
+      count: 2,
+      activeIndex: -1,
+      previousIndex: 0,
+      nextIndex: 1,
+    });
+    await act(async () => ref.current?.navigateChange("previous"));
+    expect(editor.setSelections).toHaveBeenLastCalledWith([
+      {
+        start: { line: 1, character: 0 },
+        end: { line: 1, character: 0 },
+        direction: "none",
+      },
+    ]);
+    expect(codeViewHandle.scrollTo).toHaveBeenLastCalledWith({
+      type: "line",
+      id: "file",
+      side: "additions",
+      lineNumber: 2,
+      align: "center",
+      behavior: "instant",
+    });
+    expect(editor.focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  test("anchors a trailing deletion to the last draft line and scrolls the old side", async () => {
+    const ref = createRef<WorkspacePierreEditorHandle>();
+    render(
+      <WorkspacePierreEditor
+        ref={ref}
+        value={"first\nsecond\n"}
+        filename="file.txt"
+        language={null}
+        sourceIdentity="file"
+        documentVersion={0}
+        ariaLabel="Editor"
+        comparison={{
+          oldContent: "first\nsecond\nthird\nfourth\n",
+          oldPath: "file.txt",
+          layout: "split",
+        }}
+        onChange={() => undefined}
+      />,
+    );
+    await settleAsyncRender();
+    await act(async () => ref.current?.navigateChange("next"));
+    expect(editor.setSelections).toHaveBeenLastCalledWith([
+      {
+        start: { line: 2, character: 0 },
+        end: { line: 2, character: 0 },
+        direction: "none",
+      },
+    ]);
+    expect(codeViewHandle.scrollTo).toHaveBeenLastCalledWith({
+      type: "line",
+      id: "file",
+      side: "deletions",
+      lineNumber: 3,
+      align: "center",
+      behavior: "instant",
+    });
   });
 
   test("reveals and selects a line range in the editable surface", async () => {

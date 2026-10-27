@@ -48,3 +48,16 @@ wrapping.
 The comparison loader retains the Git worker's bounded text-read limits. It does not silently
 replace an oversized baseline with current content. Presentation, selected-source persistence,
 editor diff sessions and search controls remain responsibilities of their consumers.
+
+The Files text editor displays live comparisons in unified or split layout with wrapping and all
+unchanged context expanded. Edits update the caller-owned draft without saving or reading Git.
+Staged and Committed content supplied as snapshots is read only, including an empty snapshot.
+Changing the layout preserves the live edit session and undo history. Changing the baseline,
+document revision, entering or leaving a snapshot, or switching between a plain document and a
+comparison starts a new edit session; the current draft and caret are retained when the document
+revision is unchanged.
+
+Active-line blame appears only on the new side of an editable document. It maps unchanged draft
+lines to saved lines with a line diff bounded to 262,144 UTF-16 characters per input and an edit
+length of 512. Inserted or replaced lines and unavailable bounded mappings have no label. The
+label follows the caret and is removed when its row leaves the rendered window or blame is disabled.

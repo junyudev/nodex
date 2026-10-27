@@ -1,0 +1,65 @@
+diff --git a/dist/utils/renderDiffWithHighlighter.js b/dist/utils/renderDiffWithHighlighter.js
+--- a/dist/utils/renderDiffWithHighlighter.js
++++ b/dist/utils/renderDiffWithHighlighter.js
+@@ -243,14 +243,14 @@
+ 	})();
+ 	return {
+ 		deletionLines: (() => {
+-			if (deletionFile.contents === "") return [];
++			if (deletionFile.contents === "" && deletionInfo.length === 0) return [];
+ 			hastConfig.lang = deletionLang;
+ 			state.lineInfo = deletionInfo;
+ 			hastConfig.decorations = deletionDecorations;
+ 			return getLineNodes(highlighter.codeToHast(cleanLastNewline(deletionFile.contents), hastConfig));
+ 		})(),
+ 		additionLines: (() => {
+-			if (additionFile.contents === "") return [];
++			if (additionFile.contents === "" && additionInfo.length === 0) return [];
+ 			hastConfig.lang = additionLang;
+ 			hastConfig.decorations = additionDecorations;
+ 			state.lineInfo = additionInfo;
+diff --git a/dist/utils/updateDiffHunks.js b/dist/utils/updateDiffHunks.js
+--- a/dist/utils/updateDiffHunks.js
++++ b/dist/utils/updateDiffHunks.js
+@@ -56,7 +56,24 @@
+ 	};
+ }
+ function recomputeEmptyDocumentDiff(diff, parseDiffOptions) {
+-	return recomputeTopAlignedAdditionDiff(diff, [""], parseDiffOptions);
++	if (diff.deletionLines.join("") !== "") return recomputeTopAlignedAdditionDiff(diff, [""], parseDiffOptions);
++	// An empty editor still has one caret row, but equal empty files have no changes.
++	return {
++		type: diff.type,
++		additionLines: [""],
++		deletionLines: [""],
++		splitLineCount: 1,
++		unifiedLineCount: 1,
++		hunks: [{
++			collapsedBefore: 0,
++			additionStart: 1, additionCount: 1, additionLines: 0, additionLineIndex: 0,
++			deletionStart: 1, deletionCount: 1, deletionLines: 0, deletionLineIndex: 0,
++			splitLineStart: 0, splitLineCount: 1,
++			unifiedLineStart: 0, unifiedLineCount: 1,
++			noEOFCRAdditions: true, noEOFCRDeletions: true,
++			hunkContent: [{ type: "context", lines: 1, additionLineIndex: 0, deletionLineIndex: 0 }]
++		}]
++	};
+ }
+ /** Rebuilds diff hunks after an edit, top-aligning sparse addition sides when needed. */
+ function recomputeDiffHunksForEdit(diff, parseDiffOptions) {
+diff --git a/dist/utils/editSessionHunks.js b/dist/utils/editSessionHunks.js
+--- a/dist/utils/editSessionHunks.js
++++ b/dist/utils/editSessionHunks.js
+@@ -41,6 +41,12 @@
+ */
+ function rebuildSessionHunks(diff, parseDiffOptions) {
+ 	const previousHunks = diff.hunks;
++	if (diff.deletionLines.length === 1 && diff.deletionLines[0] === "") {
++		// The empty old file's caret row is not a canonical context line.
++		Object.assign(diff, recomputeDiffHunksForEdit(diff, parseDiffOptions));
++		diff.editSessionDirty = true;
++		return { regions: diff.hunks.map(() => ({ firstIndex: 0, lastIndex: Math.max(0, previousHunks.length - 1) })) };
++	}
+ 	const editorAdditionLines = diff.additionLines;
+ 	const canonicalAdditionLines = normalizeEditorLines(editorAdditionLines);
+ 	const canonicalDiff = canonicalAdditionLines === editorAdditionLines ? diff : {

@@ -1,15 +1,26 @@
-import type { SupportedLanguages } from "@pierre/diffs";
+import type { EditorState, FileDiffMetadata, SupportedLanguages } from "@pierre/diffs";
 import { Editor, type EditorOptions } from "@pierre/diffs/edit";
 import {
   CodeView,
   EditProvider,
   type CodeViewHandle,
   type CodeViewItem,
+  type CodeViewProps,
   type FileContents,
 } from "@pierre/diffs/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useImperativeHandle,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import {
   NODEX_SOURCE_HOST_CLASS,
+  getNodexDiffOptions,
   getNodexSourceEditorHostStyle,
   getNodexSourceEditorLineHeight,
   getNodexSourceOptions,
@@ -22,8 +33,23 @@ import {
   buildWorkspaceFileLineSelection,
   buildWorkspaceFileScrollTarget,
 } from "@/lib/workspace-file-reveal";
+import {
+  workspaceFileChangedSections,
+  workspaceFileChangeNavigation,
+  type WorkspaceFileChangeNavigationState,
+} from "./workspace-file-change-blocks";
+import { workspaceFileEditorDiffFromContents } from "./workspace-file-editor-diff";
+import {
+  buildWorkspaceFileDraftLineMap,
+  workspaceFileSavedLineNumber,
+} from "./workspace-file-draft-line-map";
 
-interface WorkspacePierreEditorProps {
+export interface WorkspacePierreEditorHandle {
+  navigateChange(direction: "previous" | "next"): void;
+}
+
+export interface WorkspacePierreEditorProps {
+  readonly ref?: Ref<WorkspacePierreEditorHandle>;
   readonly value: string;
   readonly filename: string;
   readonly language: SupportedLanguages | null;
@@ -32,6 +58,18 @@ interface WorkspacePierreEditorProps {
   readonly ariaLabel: string;
   readonly wrap?: boolean;
   readonly className?: string;
+  /** Shows a diff against oldContent. Omit newContent for the live editable draft. */
+  readonly comparison?: {
+    readonly oldContent: string;
+    readonly oldPath: string;
+    readonly newContent?: string | null;
+    readonly layout: "unified" | "split";
+  } | null;
+  readonly onChangeNavigationChange?: (state: WorkspaceFileChangeNavigationState | null) => void;
+  readonly activeLineBlame?: {
+    readonly savedContent: string;
+    readonly labelForSavedLine: (lineNumber: number) => string | null;
+  } | null;
   readonly onChange: (value: string) => void;
   readonly onRevealComplete?: (
     location: NonNullable<WorkspacePierreEditorProps["revealLocation"]>,
@@ -44,11 +82,45 @@ interface WorkspacePierreEditorProps {
   };
 }
 
+const INLINE_BLAME_CSS = `
+[data-content] > [data-line] > [data-pierre-editor-inline-blame]::after {
+  content: attr(data-pierre-editor-inline-blame);
+  color: var(--color-text-tertiary);
+  margin-inline-start: var(--padding-row-x);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+`;
+const EMPTY_ITEMS: CodeViewItem[] = [];
+
+interface EditorSession {
+  readonly sourceIdentity: string;
+  readonly documentVersion: number;
+  readonly filename: string;
+  readonly language: SupportedLanguages | null;
+  readonly oldContent: string | undefined;
+  readonly oldPath: string | undefined;
+  readonly snapshotContent: string | null;
+  content: string;
+  lineCount: number;
+  caretLineIndex: number;
+  diff?: FileDiffMetadata;
+  editor?: Editor<undefined>;
+}
+
 function createWorkspaceEditor(options: EditorOptions<undefined>): Editor<undefined> {
   return new Editor(options);
 }
 
+function editorCaretLine(editor: Editor<undefined> | undefined): number | undefined {
+  const selection = editor?.getState().selections?.at(-1);
+  if (!selection) return undefined;
+  return selection.direction < 0 ? selection.start.line : selection.end.line;
+}
+
 export function WorkspacePierreEditor({
+  ref,
   value,
   filename,
   language,
@@ -57,63 +129,341 @@ export function WorkspacePierreEditor({
   ariaLabel,
   wrap = true,
   className,
+  comparison,
+  activeLineBlame,
+  onChangeNavigationChange,
   onChange,
   revealLocation,
   onRevealComplete,
 }: WorkspacePierreEditorProps) {
   const codeViewRef = useRef<CodeViewHandle<undefined>>(null);
-  const [attachment, setAttachment] = useState<{
-    sourceIdentity: string;
-    editor: Editor<undefined>;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const sessionRef = useRef<EditorSession | null>(null);
+  const restoreRef = useRef<{ state: EditorState; focused: boolean; scrollTop: number } | null>(
+    null,
+  );
+  const surfaceRef = useRef<HTMLElement | null>(null);
+  const observerRef = useRef<MutationObserver | null>(null);
+  const inlineBlameRef = useRef<HTMLSpanElement | null>(null);
+  const navigationRef = useRef<{
+    state: WorkspaceFileChangeNavigationState | null;
+    callback: WorkspacePierreEditorProps["onChangeNavigationChange"];
   } | null>(null);
+  const mappedRef = useRef<{
+    saved: string;
+    draft: string;
+    ranges: ReturnType<typeof buildWorkspaceFileDraftLineMap>;
+  } | null>(null);
+  const refreshRef = useRef<(() => void) | null>(null);
+  const revisionRef = useRef(0);
+  const editorIdentity = useId();
+  const [attachment, setAttachment] = useState<EditorSession | null>(null);
+  const [schedule] = useState(() => {
+    let pending = false;
+    return () => {
+      if (pending) return;
+      pending = true;
+      // Pierre emits onItemEditChange before updating selections and rebuilding hunks.
+      queueMicrotask(() => {
+        pending = false;
+        refreshRef.current?.();
+      });
+    };
+  });
   const { resolved } = useTheme();
   const { codeFontSize } = useCodeFontSize();
-  const items = useMemo<CodeViewItem[]>(
-    () => [
-      {
-        id: sourceIdentity,
-        type: "file",
-        edit: true,
-        version: documentVersion,
-        file: {
-          name: filename,
-          contents: value,
-          cacheKey: `${sourceIdentity}:${documentVersion}`,
-          lang: language ?? undefined,
-        },
+  const oldContent = comparison?.oldContent;
+  const oldPath = comparison?.oldPath;
+  const snapshotContent = comparison?.newContent ?? null;
+  const layout = comparison?.layout;
+
+  const options = useMemo<NonNullable<CodeViewProps["options"]>>(() => {
+    const presentation = getNodexSourceOptions(resolved, true, {
+      disableLineNumbers: false,
+      wrap: !!layout || wrap,
+    });
+    const diffOptions = layout
+      ? getNodexDiffOptions(resolved, true, { diffStyle: layout, wrap: true })
+      : undefined;
+    return {
+      ...presentation,
+      diffStyle: diffOptions?.diffStyle,
+      diffIndicators: diffOptions?.diffIndicators,
+      lineDiffType: diffOptions?.lineDiffType,
+      hunkSeparators: "simple",
+      expandUnchanged: true,
+      unsafeCSS: `${presentation.unsafeCSS ?? ""}\n${INLINE_BLAME_CSS}`,
+      itemMetrics: { lineHeight: getNodexSourceEditorLineHeight(codeFontSize), spacing: 0 },
+      onPostRender: (node, instance, phase) => {
+        if (phase === "unmount") {
+          if (surfaceRef.current !== node) return;
+          surfaceRef.current = null;
+          observerRef.current?.disconnect();
+          inlineBlameRef.current?.remove();
+          inlineBlameRef.current = null;
+          return;
+        }
+        const session = sessionRef.current;
+        if (session && "fileDiff" in instance) session.diff = instance.fileDiff;
+        if (surfaceRef.current !== node) {
+          observerRef.current?.disconnect();
+          surfaceRef.current = node;
+          observerRef.current = new MutationObserver(schedule);
+          if (node.shadowRoot)
+            observerRef.current.observe(node.shadowRoot, {
+              subtree: true,
+              childList: true,
+              attributes: true,
+              attributeFilter: ["data-line", "data-line-type"],
+            });
+        }
+        schedule();
       },
-    ],
-    [documentVersion, filename, language, sourceIdentity, value],
-  );
-  const options = useMemo(
-    () => ({
-      ...getNodexSourceOptions(resolved, true, {
-        disableLineNumbers: false,
-        wrap,
-      }),
-      itemMetrics: {
-        lineHeight: getNodexSourceEditorLineHeight(codeFontSize),
-        spacing: 0,
-      },
-    }),
-    [codeFontSize, resolved, wrap],
-  );
+    };
+  }, [codeFontSize, layout, resolved, schedule, wrap]);
   const style = useMemo(
     () => getNodexSourceEditorHostStyle(resolved, codeFontSize),
     [codeFontSize, resolved],
   );
-  const handleEditChange = (_item: CodeViewItem, file: FileContents) => {
-    onChange(file.contents);
-  };
 
-  useEffect(() => {
-    if (!revealLocation?.line) return;
-    if (attachment?.sourceIdentity !== sourceIdentity) return;
+  useLayoutEffect(() => {
     const codeView = codeViewRef.current;
     if (!codeView) return;
-    if (codeView.getEditor(sourceIdentity) !== attachment.editor) return;
+    const previous = sessionRef.current;
+    const content = snapshotContent ?? value;
+    // A remounted CodeView (React's development double mount) starts without the item.
+    const mounted = codeView.getInstance()?.getItem(sourceIdentity) != null;
+    if (
+      mounted &&
+      previous &&
+      previous.sourceIdentity === sourceIdentity &&
+      previous.documentVersion === documentVersion &&
+      previous.filename === filename &&
+      previous.language === language &&
+      previous.oldContent === oldContent &&
+      previous.oldPath === oldPath &&
+      previous.snapshotContent === snapshotContent &&
+      previous.content === content
+    ) {
+      schedule();
+      return;
+    }
 
-    // onAttach is delivered after the editable document and its shadow DOM are ready.
+    const previousEditor = previous?.editor;
+    if (
+      previous?.sourceIdentity !== sourceIdentity ||
+      previous.documentVersion !== documentVersion
+    ) {
+      restoreRef.current = null;
+    } else if (previousEditor) {
+      restoreRef.current = {
+        state: previousEditor.getState(),
+        focused: surfaceRef.current?.shadowRoot?.activeElement != null,
+        scrollTop: codeView.getInstance()?.getScrollTop() ?? 0,
+      };
+    }
+    const revision = ++revisionRef.current;
+    // Differently edited surfaces for the same file must not share highlighted content.
+    const cacheKey = `${editorIdentity}:${sourceIdentity}:${documentVersion}:${revision}`;
+    const diff =
+      oldContent === undefined
+        ? undefined
+        : workspaceFileEditorDiffFromContents({
+            path: filename,
+            oldPath,
+            oldContent,
+            newContent: content,
+          });
+    if (diff) {
+      diff.cacheKey = cacheKey;
+      diff.lang = language ?? undefined;
+    }
+    const item: CodeViewItem = diff
+      ? {
+          id: sourceIdentity,
+          type: "diff",
+          edit: snapshotContent === null,
+          version: revision,
+          fileDiff: diff,
+        }
+      : {
+          id: sourceIdentity,
+          type: "file",
+          edit: true,
+          version: revision,
+          file: { name: filename, contents: content, cacheKey, lang: language ?? undefined },
+        };
+    const session: EditorSession = {
+      sourceIdentity,
+      documentVersion,
+      filename,
+      language,
+      oldContent,
+      oldPath,
+      snapshotContent,
+      diff,
+      content,
+      lineCount: content.split("\n").length,
+      caretLineIndex: previous?.sourceIdentity === sourceIdentity ? previous.caretLineIndex : 0,
+    };
+    sessionRef.current = session;
+    // CodeView rejects a type change for an existing id. A new baseline/revision also
+    // starts a fresh session; normal draft echoes keep Pierre's mutable hunks and history.
+    codeView.getInstance()?.setItems(EMPTY_ITEMS);
+    codeView.addItems([item]);
+    schedule();
+  }, [
+    documentVersion,
+    editorIdentity,
+    filename,
+    language,
+    oldContent,
+    oldPath,
+    schedule,
+    snapshotContent,
+    sourceIdentity,
+    value,
+  ]);
+
+  useLayoutEffect(() => {
+    refreshRef.current = () => {
+      const session = sessionRef.current;
+      if (!session) return;
+      const caretLine = editorCaretLine(session.editor);
+      session.caretLineIndex = caretLine ?? session.caretLineIndex;
+      const nextState = session.diff
+        ? workspaceFileChangeNavigation(
+            workspaceFileChangedSections(session.diff),
+            session.caretLineIndex,
+            session.lineCount,
+          )
+        : null;
+      const previous = navigationRef.current;
+      const sameState =
+        previous &&
+        nextState?.count === previous.state?.count &&
+        nextState?.activeIndex === previous.state?.activeIndex &&
+        nextState?.previousIndex === previous.state?.previousIndex &&
+        nextState?.nextIndex === previous.state?.nextIndex;
+      if (!sameState || previous.callback !== onChangeNavigationChange) {
+        const state = sameState ? previous.state : nextState;
+        navigationRef.current = { state, callback: onChangeNavigationChange };
+        onChangeNavigationChange?.(state);
+      }
+
+      const root = surfaceRef.current?.shadowRoot;
+      const draft = session.editor?.getText();
+      if (
+        !activeLineBlame ||
+        caretLine === undefined ||
+        session.snapshotContent !== null ||
+        draft === undefined ||
+        !root
+      ) {
+        inlineBlameRef.current?.remove();
+        inlineBlameRef.current = null;
+        return;
+      }
+      let mapped = mappedRef.current;
+      if (mapped?.saved !== activeLineBlame.savedContent || mapped?.draft !== draft) {
+        mapped = {
+          saved: activeLineBlame.savedContent,
+          draft,
+          ranges: buildWorkspaceFileDraftLineMap(activeLineBlame.savedContent, draft),
+        };
+        mappedRef.current = mapped;
+      }
+      const lineNumber = session.caretLineIndex + 1;
+      const savedLine = workspaceFileSavedLineNumber(mapped.ranges, lineNumber);
+      const label = savedLine === null ? null : activeLineBlame.labelForSavedLine(savedLine);
+      const line =
+        label == null
+          ? null
+          : root.querySelector(
+              `[data-code]:not([data-deletions]) [data-content] > [data-line="${lineNumber}"]:not([data-line-type="change-deletion"])`,
+            );
+      if (!line) {
+        inlineBlameRef.current?.remove();
+        inlineBlameRef.current = null;
+        return;
+      }
+      // Pierre annotations occupy rows and markers underline diagnostics; neither can
+      // append an inline label. Keep one empty span and reattach after row reuse.
+      if (inlineBlameRef.current?.parentElement !== line) {
+        inlineBlameRef.current?.remove();
+        const span = line.ownerDocument.createElement("span");
+        span.contentEditable = "false";
+        span.setAttribute("aria-hidden", "true");
+        inlineBlameRef.current = span;
+        line.append(span);
+      }
+      inlineBlameRef.current.setAttribute("data-pierre-editor-inline-blame", label!);
+    };
+    schedule();
+    return () => {
+      refreshRef.current = null;
+    };
+  }, [activeLineBlame, onChangeNavigationChange, schedule]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const document = container?.ownerDocument;
+    if (!document) return;
+    container.tabIndex = -1;
+    document.addEventListener("selectionchange", schedule);
+    document.addEventListener("keyup", schedule);
+    document.addEventListener("pointerup", schedule);
+    return () => {
+      document.removeEventListener("selectionchange", schedule);
+      document.removeEventListener("keyup", schedule);
+      document.removeEventListener("pointerup", schedule);
+      observerRef.current?.disconnect();
+      inlineBlameRef.current?.remove();
+    };
+  }, [schedule]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      navigateChange(direction) {
+        const session = sessionRef.current;
+        const codeView = codeViewRef.current;
+        if (!session?.diff || !codeView) return;
+        const caretLine = editorCaretLine(session.editor) ?? session.caretLineIndex;
+        const sections = workspaceFileChangedSections(session.diff);
+        const navigation = workspaceFileChangeNavigation(sections, caretLine, session.lineCount);
+        const targetIndex =
+          direction === "previous" ? navigation.previousIndex : navigation.nextIndex;
+        const block = sections[targetIndex];
+        if (!block) return;
+        const position = {
+          line: Math.min(block.additionLineIndex, session.lineCount - 1),
+          character: 0,
+        };
+        session.caretLineIndex = position.line;
+        codeView.setSelectedLines(null);
+        session.editor?.setSelections([{ start: position, end: position, direction: "none" }]);
+        codeView.scrollTo({
+          type: "line",
+          id: session.sourceIdentity,
+          side: block.additions > 0 ? "additions" : "deletions",
+          lineNumber: (block.additions > 0 ? block.additionLineIndex : block.deletionLineIndex) + 1,
+          align: "center",
+          behavior: "instant",
+        });
+        if (session.editor) session.editor.focus({ preventScroll: true });
+        else containerRef.current?.focus({ preventScroll: true });
+        schedule();
+      },
+    }),
+    [schedule],
+  );
+
+  useEffect(() => {
+    if (!revealLocation?.line || attachment !== sessionRef.current || !attachment?.editor) return;
+    const codeView = codeViewRef.current;
+    if (!codeView || attachment.sourceIdentity !== sourceIdentity) return;
+    if (codeView.getEditor(sourceIdentity) !== attachment.editor) return;
     const editorSelection = buildWorkspaceFileEditorSelection(revealLocation);
     if (editorSelection) {
       codeView.setSelectedLines(null);
@@ -121,11 +471,20 @@ export function WorkspacePierreEditor({
     } else {
       codeView.setSelectedLines(buildWorkspaceFileLineSelection(sourceIdentity, revealLocation));
     }
-
     const target = buildWorkspaceFileScrollTarget(sourceIdentity, revealLocation);
     if (target) codeView.scrollTo(target);
+    schedule();
     onRevealComplete?.(revealLocation);
-  }, [attachment, onRevealComplete, revealLocation, sourceIdentity]);
+  }, [attachment, onRevealComplete, revealLocation, schedule, sourceIdentity]);
+
+  const handleEditChange = (_item: CodeViewItem, file: FileContents) => {
+    const session = sessionRef.current;
+    if (!session || session.snapshotContent !== null) return;
+    session.content = file.contents;
+    session.lineCount = file.contents.split("\n").length;
+    onChange(file.contents);
+    schedule();
+  };
 
   return (
     <section
@@ -137,11 +496,43 @@ export function WorkspacePierreEditor({
       <EditProvider createEditor={createWorkspaceEditor}>
         <CodeView
           ref={codeViewRef}
-          items={items}
+          containerRef={containerRef}
+          initialItems={EMPTY_ITEMS}
           options={options}
           editorOptions={{
             persistState: true,
-            onAttach: (editor) => setAttachment({ sourceIdentity, editor }),
+            onAttach: (editor) => {
+              const session = sessionRef.current;
+              if (!session || codeViewRef.current?.getEditor(session.sourceIdentity) !== editor)
+                return;
+              session.editor = editor;
+              const restore = restoreRef.current;
+              restoreRef.current = null;
+              if (restore) {
+                // setSelections clamps retained positions after an external content replacement.
+                editor.setSelections(
+                  (restore.state.selections ?? []).map((selection) => ({
+                    ...selection,
+                    direction:
+                      selection.direction < 0
+                        ? "backward"
+                        : selection.direction > 0
+                          ? "forward"
+                          : "none",
+                  })),
+                );
+                if (restore.state.view)
+                  editor.setState({ ...editor.getState(), view: restore.state.view });
+                codeViewRef.current?.scrollTo({
+                  type: "position",
+                  position: restore.scrollTop,
+                  behavior: "instant",
+                });
+                if (restore.focused) editor.focus({ preventScroll: true });
+              }
+              setAttachment(session);
+              schedule();
+            },
             clipboard: {
               readText: async () => {
                 if (typeof navigator.clipboard?.readText !== "function") return "";
@@ -150,7 +541,14 @@ export function WorkspacePierreEditor({
             },
           }}
           disableWorkerPool
-          onItemEditChange={handleEditChange}
+          onItemEditChange={snapshotContent === null ? handleEditChange : undefined}
+          onSelectedLinesChange={(selection) => {
+            const session = sessionRef.current;
+            if (session?.snapshotContent == null || !selection) return;
+            session.caretLineIndex = Math.max(0, selection.range.end - 1);
+            schedule();
+          }}
+          onScroll={schedule}
           className={cn(NODEX_SOURCE_HOST_CLASS, "h-full min-h-0 overflow-auto")}
           style={style}
         />

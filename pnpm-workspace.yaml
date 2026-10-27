@@ -4,6 +4,7 @@ packages:
   - "third_party/blocknote/packages/*"
 
 patchedDependencies:
+  "@pierre/diffs@1.3.0-rc.1": patches/@pierre__diffs@1.3.0-rc.1.patch
   "@opencode/client@2.0.23": patches/@opencode__client@2.0.23.patch
   "@opencode/protocol@2.0.23": patches/@opencode__protocol@2.0.23.patch
   "@opencode/schema@2.0.23": patches/@opencode__schema@2.0.23.patch
