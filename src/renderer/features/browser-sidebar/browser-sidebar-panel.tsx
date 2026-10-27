@@ -163,6 +163,12 @@ import {
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import {
+  ViewerButton,
+  ViewerControlDivider,
+  ViewerControlGroup,
+  ViewerInputCapsule,
+} from "@/components/ui/viewer-header";
 import { BrowserProfileImportDialog } from "./browser-profile-import-dialog";
 import type { BrowserSettingsDestination } from "./browser-settings-pages";
 import {
@@ -198,11 +204,9 @@ export interface BrowserSurfaceContext {
 const BROWSER_CHROME_CLASS =
   "relative z-10 h-toolbar-pane min-w-0 shrink-0 border-b border-token-border bg-token-main-surface-primary";
 const BROWSER_CHROME_ROW_CLASS =
-  "draggable flex h-full min-w-0 items-center gap-1 px-2 text-token-description-foreground";
-const BROWSER_TOOL_BUTTON_CLASS =
-  "border-token-border no-drag cursor-interaction flex shrink-0 items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg text-token-text-tertiary enabled:hover:bg-token-list-hover-background enabled:hover:text-token-text-primary data-[state=open]:bg-token-list-hover-background border-transparent h-token-button-composer px-2 py-0 text-base leading-[18px] aspect-square justify-center !px-0";
+  "draggable flex h-full min-w-0 items-center gap-1.5 px-2 text-token-description-foreground";
 const BROWSER_ADDRESS_BAR_CLASS =
-  "group/address-bar flex h-[28px] min-w-0 w-full max-w-[770px] items-center overflow-hidden rounded-[10px] transition-[background-color,box-shadow] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-colors cursor-text bg-transparent hover:bg-token-list-hover-background focus-within:bg-transparent focus-within:ring-1 focus-within:ring-inset focus-within:ring-token-border";
+  "group/address-bar flex min-w-0 w-full items-center overflow-hidden cursor-text focus-within:ring-1 focus-within:ring-inset focus-within:ring-token-border";
 const BROWSER_COLLAPSIBLE_ACTION_CLASS =
   "grid min-w-0 overflow-hidden transition-[max-width,opacity,transform] duration-150 ease-out";
 const BROWSER_DROPDOWN_CONTENT_STYLE: CSSProperties = {
@@ -1094,48 +1098,51 @@ export function BrowserSidebarPanel({
     <div className="relative h-full min-h-0 overflow-hidden bg-token-main-surface-primary text-token-text-primary">
       {/* Open address suggestions extend below the chrome, over the New tab page. */}
       <div className={cn(BROWSER_CHROME_CLASS, addressSuggestionsOpen && "z-30")}>
-        <div className={BROWSER_CHROME_ROW_CLASS}>
-          <BrowserToolbarButton
-            label="Back"
-            disabled={!snapshot.canGoBack}
-            onClick={() => {
-              void command({ type: "go-back", ...browserIdentity });
-            }}
-          >
-            <BrowserBackIcon className="icon-sm" />
-          </BrowserToolbarButton>
-          <BrowserToolbarButton
-            label="Forward"
-            disabled={!snapshot.canGoForward}
-            onClick={() => {
-              void command({ type: "go-forward", ...browserIdentity });
-            }}
-          >
-            <BrowserBackIcon className="icon-sm rotate-180" />
-          </BrowserToolbarButton>
-          <BrowserToolbarButton
-            label={snapshot.isLoading ? "Stop" : "Reload"}
-            disabled={pageActionsDisabled}
-            onClick={() => {
-              if (snapshot.isLoading) {
-                void command({ type: "stop", ...browserIdentity });
-                return;
-              }
-              void command({ type: "reload", ...browserIdentity });
-            }}
-          >
-            {snapshot.isLoading ? (
-              <StopIcon className="icon-sm" />
-            ) : (
-              <BrowserReloadIcon className="icon-sm" />
-            )}
-          </BrowserToolbarButton>
+        <div className={BROWSER_CHROME_ROW_CLASS} data-viewer-density="compact">
+          <ViewerControlGroup label="Navigation" className="no-drag">
+            <BrowserToolbarButton
+              label="Back"
+              disabled={!snapshot.canGoBack}
+              onClick={() => {
+                void command({ type: "go-back", ...browserIdentity });
+              }}
+            >
+              <BrowserBackIcon className="icon-sm" />
+            </BrowserToolbarButton>
+            <BrowserToolbarButton
+              label="Forward"
+              disabled={!snapshot.canGoForward}
+              onClick={() => {
+                void command({ type: "go-forward", ...browserIdentity });
+              }}
+            >
+              <BrowserBackIcon className="icon-sm rotate-180" />
+            </BrowserToolbarButton>
+            <ViewerControlDivider />
+            <BrowserToolbarButton
+              label={snapshot.isLoading ? "Stop" : "Reload"}
+              disabled={pageActionsDisabled}
+              onClick={() => {
+                if (snapshot.isLoading) {
+                  void command({ type: "stop", ...browserIdentity });
+                  return;
+                }
+                void command({ type: "reload", ...browserIdentity });
+              }}
+            >
+              {snapshot.isLoading ? (
+                <StopIcon className="icon-sm" />
+              ) : (
+                <BrowserReloadIcon className="icon-sm" />
+              )}
+            </BrowserToolbarButton>
+          </ViewerControlGroup>
           <form
             className="no-drag flex min-w-0 flex-1 items-center justify-center px-1 text-sm text-token-text-primary"
             onSubmit={submitAddress}
           >
             <div className="relative w-full min-w-0 max-w-[770px]">
-              <div className={BROWSER_ADDRESS_BAR_CLASS}>
+              <ViewerInputCapsule className={BROWSER_ADDRESS_BAR_CLASS}>
                 <div
                   className={cn(
                     "shrink-0 overflow-hidden transition-[width,opacity] duration-150",
@@ -1237,7 +1244,7 @@ export function BrowserSidebarPanel({
                   data-browser-sidebar-open-external
                   data-browser-sidebar-skip-address-commit
                   className={cn(
-                    "mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-lg text-token-text-tertiary transition-opacity",
+                    "mr-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full text-token-text-tertiary transition-opacity",
                     pageActionsDisabled
                       ? "cursor-default opacity-0"
                       : "cursor-interaction opacity-0 hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:bg-token-foreground/5 group-hover/address-bar:opacity-100 group-focus-within/address-bar:opacity-100",
@@ -1249,7 +1256,7 @@ export function BrowserSidebarPanel({
                 >
                   <BrowserExternalIcon className="icon-xs" />
                 </button>
-              </div>
+              </ViewerInputCapsule>
               {addressSuggestionsOpen ? (
                 <div
                   ref={addressListRef}
@@ -1299,95 +1306,101 @@ export function BrowserSidebarPanel({
               ) : null}
             </div>
           </form>
-          <div
-            className={cn(
-              BROWSER_COLLAPSIBLE_ACTION_CLASS,
-              pageActionsDisabled ? "pointer-events-none max-w-0 opacity-0" : "max-w-7 opacity-100",
-            )}
-          >
-            <BrowserCredentialMenu
-              identity={browserIdentity}
-              disabled={pageActionsDisabled}
-              onOpenPasswords={() => onOpenBrowserSettings?.("passwords")}
-              onOpenContactInfo={() => onOpenBrowserSettings?.("contact-info")}
-            />
-          </div>
-          <div
-            className={cn(
-              BROWSER_COLLAPSIBLE_ACTION_CLASS,
-              pageActionsDisabled
-                ? "pointer-events-none max-w-0 opacity-0 -translate-y-0.5"
-                : "max-w-7 opacity-100 translate-y-0",
-            )}
-          >
-            <BrowserToolbarButton
-              label="Capture screenshot"
-              disabled={pageActionsDisabled}
-              onClick={() => void captureScreenshot()}
-            >
-              <BrowserScreenshotIcon className="icon-sm" />
-            </BrowserToolbarButton>
-          </div>
-          <div
-            className={cn(
-              BROWSER_COLLAPSIBLE_ACTION_CLASS,
-              pageActionsDisabled
-                ? "pointer-events-none max-w-0 opacity-0 -translate-y-0.5"
-                : commentMode
-                  ? "max-w-[112px] opacity-100 translate-y-0"
-                  : "max-w-7 opacity-100 translate-y-0",
-            )}
-          >
-            <BrowserToolbarButton
-              label={commentMode ? "Exit comment mode" : "Annotate"}
-              disabled={pageActionsDisabled}
-              active={commentMode}
-              className={cn(commentMode && "aspect-auto !px-2")}
-              onClick={() => {
-                void command({
-                  type: "set-interaction-mode",
-                  ...browserIdentity,
-                  mode: commentMode ? "browse" : "comment",
-                }).then((result) => {
-                  if (result.ok) return;
-                  setClearDataStatus(
-                    result.message ?? "Comment mode is unavailable for this site.",
-                  );
-                });
-              }}
-            >
-              <BrowserAnnotateIcon className="icon-sm shrink-0" />
-              <span
+          {!pageActionsDisabled || activeDownloadCount > 0 ? (
+            <ViewerControlGroup label="Browser actions" className="no-drag">
+              <div
                 className={cn(
-                  "overflow-hidden whitespace-nowrap text-sm transition-[max-width,opacity] duration-150",
-                  commentMode ? "max-w-20 opacity-100" : "max-w-0 opacity-0",
+                  BROWSER_COLLAPSIBLE_ACTION_CLASS,
+                  pageActionsDisabled
+                    ? "pointer-events-none max-w-0 opacity-0"
+                    : "max-w-7 opacity-100",
                 )}
               >
-                Annotating
-              </span>
-            </BrowserToolbarButton>
-          </div>
-          <div
-            className={cn(
-              BROWSER_COLLAPSIBLE_ACTION_CLASS,
-              activeDownloadCount > 0
-                ? "max-w-7 opacity-100"
-                : "pointer-events-none max-w-0 opacity-0",
-            )}
-          >
-            <BrowserToolbarButton
-              label={`${activeDownloadCount} active ${
-                activeDownloadCount === 1 ? "download" : "downloads"
-              }`}
-              active
-              onClick={() => setDownloadsOpen(true)}
-            >
-              <span className="relative">
-                <DownloadIcon className="icon-sm" />
-                <span className="absolute -right-1 -bottom-1 size-1.5 rounded-full bg-token-text-link-foreground ring-2 ring-token-main-surface-primary" />
-              </span>
-            </BrowserToolbarButton>
-          </div>
+                <BrowserCredentialMenu
+                  identity={browserIdentity}
+                  disabled={pageActionsDisabled}
+                  onOpenPasswords={() => onOpenBrowserSettings?.("passwords")}
+                  onOpenContactInfo={() => onOpenBrowserSettings?.("contact-info")}
+                />
+              </div>
+              <div
+                className={cn(
+                  BROWSER_COLLAPSIBLE_ACTION_CLASS,
+                  pageActionsDisabled
+                    ? "pointer-events-none max-w-0 opacity-0 -translate-y-0.5"
+                    : "max-w-7 opacity-100 translate-y-0",
+                )}
+              >
+                <BrowserToolbarButton
+                  label="Capture screenshot"
+                  disabled={pageActionsDisabled}
+                  onClick={() => void captureScreenshot()}
+                >
+                  <BrowserScreenshotIcon className="icon-sm" />
+                </BrowserToolbarButton>
+              </div>
+              <div
+                className={cn(
+                  BROWSER_COLLAPSIBLE_ACTION_CLASS,
+                  pageActionsDisabled
+                    ? "pointer-events-none max-w-0 opacity-0 -translate-y-0.5"
+                    : commentMode
+                      ? "max-w-[112px] opacity-100 translate-y-0"
+                      : "max-w-7 opacity-100 translate-y-0",
+                )}
+              >
+                <BrowserToolbarButton
+                  label={commentMode ? "Exit comment mode" : "Annotate"}
+                  disabled={pageActionsDisabled}
+                  active={commentMode}
+                  className={cn(commentMode && "aspect-auto !px-2")}
+                  onClick={() => {
+                    void command({
+                      type: "set-interaction-mode",
+                      ...browserIdentity,
+                      mode: commentMode ? "browse" : "comment",
+                    }).then((result) => {
+                      if (result.ok) return;
+                      setClearDataStatus(
+                        result.message ?? "Comment mode is unavailable for this site.",
+                      );
+                    });
+                  }}
+                >
+                  <BrowserAnnotateIcon className="icon-sm shrink-0" />
+                  <span
+                    className={cn(
+                      "overflow-hidden whitespace-nowrap text-sm transition-[max-width,opacity] duration-150",
+                      commentMode ? "max-w-20 opacity-100" : "max-w-0 opacity-0",
+                    )}
+                  >
+                    Annotating
+                  </span>
+                </BrowserToolbarButton>
+              </div>
+              <div
+                className={cn(
+                  BROWSER_COLLAPSIBLE_ACTION_CLASS,
+                  activeDownloadCount > 0
+                    ? "max-w-7 opacity-100"
+                    : "pointer-events-none max-w-0 opacity-0",
+                )}
+              >
+                <BrowserToolbarButton
+                  label={`${activeDownloadCount} active ${
+                    activeDownloadCount === 1 ? "download" : "downloads"
+                  }`}
+                  active
+                  onClick={() => setDownloadsOpen(true)}
+                >
+                  <span className="relative">
+                    <DownloadIcon className="icon-sm" />
+                    <span className="absolute -right-1 -bottom-1 size-1.5 rounded-full bg-token-text-link-foreground ring-2 ring-token-main-surface-primary" />
+                  </span>
+                </BrowserToolbarButton>
+              </div>
+            </ViewerControlGroup>
+          ) : null}
           <BrowserOverflowMenu
             snapshot={snapshot}
             disabled={pageActionsDisabled}
@@ -1451,49 +1464,49 @@ export function BrowserSidebarPanel({
           />
         ) : !shouldMountWebview ? (
           <BrowserNewTabSurface renderNewTabPage={renderNewTabPage}>
-          <BrowserLocalServersSection
-            projectId={tab.projectId}
-            localServers={localServers}
-            preferences={localServerPreferences}
-            onPreferencesChange={(update) => {
-              void updateLocalServerPreferences(update).catch((error) => {
-                setClearDataStatus(
-                  error instanceof Error
-                    ? error.message
-                    : "Could not save local server preferences",
-                );
-              });
-            }}
-            onRefresh={() => {
-              if (tab.projectId !== null) {
-                void command({ type: "local-servers-refresh", projectId: tab.projectId });
-              }
-            }}
-            onOpen={navigateTo}
-            onRequestThumbnail={async (url) => {
-              if (tab.projectId === null) {
-                return {
-                  status: "unavailable",
-                  message: "Local server preview has no project",
-                };
-              }
-              return await readBrowserLocalServerThumbnail({
-                ...browserIdentity,
-                projectId: tab.projectId,
-                url,
-              });
-            }}
-            onHideServer={(server) => {
-              if (tab.projectId !== null) {
-                void command({ type: "hide-local-server", projectId: tab.projectId, server });
-              }
-            }}
-            onUnhideServer={(url) => {
-              if (tab.projectId !== null) {
-                void command({ type: "unhide-local-server", projectId: tab.projectId, url });
-              }
-            }}
-          />
+            <BrowserLocalServersSection
+              projectId={tab.projectId}
+              localServers={localServers}
+              preferences={localServerPreferences}
+              onPreferencesChange={(update) => {
+                void updateLocalServerPreferences(update).catch((error) => {
+                  setClearDataStatus(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not save local server preferences",
+                  );
+                });
+              }}
+              onRefresh={() => {
+                if (tab.projectId !== null) {
+                  void command({ type: "local-servers-refresh", projectId: tab.projectId });
+                }
+              }}
+              onOpen={navigateTo}
+              onRequestThumbnail={async (url) => {
+                if (tab.projectId === null) {
+                  return {
+                    status: "unavailable",
+                    message: "Local server preview has no project",
+                  };
+                }
+                return await readBrowserLocalServerThumbnail({
+                  ...browserIdentity,
+                  projectId: tab.projectId,
+                  url,
+                });
+              }}
+              onHideServer={(server) => {
+                if (tab.projectId !== null) {
+                  void command({ type: "hide-local-server", projectId: tab.projectId, server });
+                }
+              }}
+              onUnhideServer={(url) => {
+                if (tab.projectId !== null) {
+                  void command({ type: "unhide-local-server", projectId: tab.projectId, url });
+                }
+              }}
+            />
           </BrowserNewTabSurface>
         ) : (
           <BrowserWebviewStage
@@ -1645,19 +1658,16 @@ function BrowserToolbarButton({
 }) {
   return (
     <NodexTooltip tooltipContent={label}>
-      <button
-        type="button"
-        className={cn(
-          BROWSER_TOOL_BUTTON_CLASS,
-          active && "bg-token-list-hover-background text-token-text-primary",
-          className,
-        )}
+      <ViewerButton
+        uniform
+        variant={active ? "selected" : "default"}
+        className={className}
         disabled={disabled}
         aria-label={label}
         onClick={onClick}
       >
         {children}
-      </button>
+      </ViewerButton>
     </NodexTooltip>
   );
 }
@@ -1692,7 +1702,7 @@ function BrowserSiteInfoMenu({
         <button
           type="button"
           data-browser-sidebar-skip-address-commit
-          className="inline-flex size-7 items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-foreground/5 hover:text-token-text-primary disabled:pointer-events-none disabled:opacity-0"
+          className="inline-flex size-7 items-center justify-center rounded-full text-token-text-tertiary hover:bg-token-foreground/5 hover:text-token-text-primary disabled:pointer-events-none disabled:opacity-0"
           aria-label="Site information"
           disabled={disabled}
           onMouseDown={(event) => event.preventDefault()}
@@ -1786,14 +1796,13 @@ function BrowserCredentialMenu({
       open={open}
       onOpenChange={setOpen}
       triggerButton={
-        <button
-          type="button"
+        <ViewerButton
+          uniform
           data-browser-sidebar-skip-address-commit
-          className={BROWSER_TOOL_BUTTON_CLASS}
           aria-label="Passwords and autofill"
         >
           <KeyRound className="icon-sm" />
-        </button>
+        </ViewerButton>
       }
     >
       <div className="px-[var(--padding-row-x)] py-2">
@@ -1955,14 +1964,14 @@ function BrowserOverflowMenu({
       contentWidth="menuWide"
       contentStyle={BROWSER_DROPDOWN_CONTENT_STYLE}
       triggerButton={
-        <button
-          type="button"
+        <ViewerButton
+          uniform
           data-browser-sidebar-skip-address-commit
-          className={cn(BROWSER_TOOL_BUTTON_CLASS, disabled && "cursor-default opacity-40")}
+          className="size-8"
           aria-label="Browser options"
         >
           <BrowserMoreIcon className="icon-sm" />
-        </button>
+        </ViewerButton>
       }
     >
       <NodexDropdownItem
@@ -2812,8 +2821,7 @@ export function BrowserLocalServersSection({
   // keeps its heading so the filter can be changed back.
   if (localServers?.isLoading || knownServerCount === 0) return null;
 
-  const showModeLabel =
-    settings.showMode === "online" ? "online" : hiddenMode ? "hidden" : "known";
+  const showModeLabel = settings.showMode === "online" ? "online" : hiddenMode ? "hidden" : "known";
   const setShowMode = (showMode: BrowserLocalServerShowMode) => {
     updatePreferences({ showMode });
   };
@@ -2865,9 +2873,7 @@ export function BrowserLocalServersSection({
               Online
             </NodexDropdownItem>
             <NodexDropdownItem
-              rightSlot={
-                settings.showMode === "all" ? <CheckmarkIcon className="icon-xs" /> : null
-              }
+              rightSlot={settings.showMode === "all" ? <CheckmarkIcon className="icon-xs" /> : null}
               onSelect={() => setShowMode("all")}
             >
               All
@@ -2881,9 +2887,7 @@ export function BrowserLocalServersSection({
             <NodexDropdownSeparator />
             <NodexDropdownItem
               rightSlot={
-                settings.sortMode === "recently-used" ? (
-                  <CheckmarkIcon className="icon-xs" />
-                ) : null
+                settings.sortMode === "recently-used" ? <CheckmarkIcon className="icon-xs" /> : null
               }
               onSelect={() => setSortMode("recently-used")}
             >
@@ -3020,28 +3024,28 @@ function LocalServerTile({
   return (
     <li className="group/local-server relative min-w-0">
       <NodexTooltip tooltipContent={server.origin} delayOpen>
-      <button
-        type="button"
-        aria-label={`Open ${title}`}
-        className="cursor-interaction flex w-full min-w-0 flex-col items-center gap-2.5 rounded-xl p-2.5 outline-none select-none group-hover/local-server:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset"
-        onClick={() => onOpen(server.origin)}
-      >
-        <LocalServerThumbnail
-          origin={server.origin}
-          online={server.online}
-          lastSeenAt={server.lastSeenAt}
-          onRequest={onRequestThumbnail}
-        />
-        <span className="flex w-full min-w-0 items-center justify-center gap-1.5">
-          <span
-            className={cn(
-              "size-1.5 shrink-0 rounded-full",
-              server.online ? "bg-emerald-500" : "bg-token-text-tertiary",
-            )}
+        <button
+          type="button"
+          aria-label={`Open ${title}`}
+          className="cursor-interaction flex w-full min-w-0 flex-col items-center gap-2.5 rounded-xl p-2.5 outline-none select-none group-hover/local-server:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset"
+          onClick={() => onOpen(server.origin)}
+        >
+          <LocalServerThumbnail
+            origin={server.origin}
+            online={server.online}
+            lastSeenAt={server.lastSeenAt}
+            onRequest={onRequestThumbnail}
           />
-          <span className="min-w-0 truncate text-sm text-token-text-primary">{title}</span>
-        </span>
-      </button>
+          <span className="flex w-full min-w-0 items-center justify-center gap-1.5">
+            <span
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                server.online ? "bg-emerald-500" : "bg-token-text-tertiary",
+              )}
+            />
+            <span className="min-w-0 truncate text-sm text-token-text-primary">{title}</span>
+          </span>
+        </button>
       </NodexTooltip>
       <div className="absolute end-1 top-1">
         <button

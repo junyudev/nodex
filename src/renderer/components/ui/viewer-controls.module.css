@@ -177,6 +177,32 @@
     height: 100%;
   }
 
+  /* An editable capsule: hovering or focusing it washes the surface like a button. */
+  .inputSurface {
+    isolation: isolate;
+    position: relative;
+  }
+
+  .inputSurface::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    z-index: -10;
+    border-radius: var(--radius-full);
+  }
+
+  .inputSurface:focus-within::after,
+  .inputSurface[data-state="active"]::after {
+    background-color: var(--color-background-primary-ghost-hover);
+  }
+
+  @media (hover: hover) {
+    .inputSurface:hover::after {
+      background-color: var(--color-background-primary-ghost-hover);
+    }
+  }
+
   .divider {
     width: 1px;
     height: calc(var(--spacing) * 4);

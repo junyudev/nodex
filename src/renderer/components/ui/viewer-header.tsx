@@ -256,6 +256,18 @@ export const ViewerCapsule = forwardRef<HTMLDivElement, ComponentPropsWithoutRef
   },
 );
 
+/** A capsule holding an editable field, such as an address bar. */
+export const ViewerInputCapsule = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<"div">>(
+  function ViewerInputCapsule({ className, ...props }, ref) {
+    return <ViewerCapsule ref={ref} className={cn(styles.inputSurface, className)} {...props} />;
+  },
+);
+
+/** A hairline between controls joined in one `ViewerControlGroup`. */
+export function ViewerControlDivider() {
+  return <span aria-hidden="true" className={styles.divider} />;
+}
+
 export interface ViewerControlGroupProps extends ComponentPropsWithoutRef<"div"> {
   readonly label: string;
   readonly shrink?: boolean;
@@ -283,8 +295,10 @@ export function ViewerControlGroup({
   );
 }
 
+// `rounded-full` restates the module's pill radius in the utilities layer, which form-control
+// resets cannot override, so the surface and its backdrop stay pill-shaped.
 const VIEWER_BUTTON_BASE_CLASS =
-  "no-drag cursor-interaction flex items-center whitespace-nowrap select-none focus:outline-hidden focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-offset-0 disabled:cursor-default aria-disabled:cursor-default";
+  "no-drag cursor-interaction flex items-center rounded-full whitespace-nowrap select-none focus:outline-hidden focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-offset-0 disabled:cursor-default aria-disabled:cursor-default";
 
 export type ViewerButtonVariant = "default" | "selected" | "primary" | "dropdown";
 
@@ -313,7 +327,7 @@ export const ViewerButton = forwardRef<HTMLButtonElement, ViewerButtonProps>(fun
         variant === "dropdown" && styles.dropdown,
         variant === "primary"
           ? "disabled:opacity-40 aria-disabled:opacity-40"
-          : "disabled:text-disabled aria-disabled:text-disabled",
+          : "disabled:text-(--color-text-disabled) aria-disabled:text-(--color-text-disabled)",
         className,
       )}
       {...props}
