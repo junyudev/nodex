@@ -1,0 +1,76 @@
+.node-version
+  h_6a6ac0c07fcd37 1
+AGENTS.md
+  h_6a6ac0c07fcd37 69
+docs/development.md
+  h_6a6ac0c07fcd37 14,257-260
+package.json
+  h_6a6ac0c07fcd37 242,282,303-306,323,357,359
+packages/agent-runtime/package.json
+  h_6a6ac0c07fcd37 46
+packages/agent-runtime/vendor/effect-acp/package.json
+  h_6a6ac0c07fcd37 50
+packages/agent-runtime/vendor/effect-codex-app-server/package.json
+  h_6a6ac0c07fcd37 43
+packages/agent-runtime/vendor/provider-acp-registry/package.json
+  h_6a6ac0c07fcd37 46
+packages/agent-runtime/vendor/provider-acp/package.json
+  h_6a6ac0c07fcd37 56
+packages/agent-runtime/vendor/provider-core/package.json
+  h_6a6ac0c07fcd37 211
+packages/agent-runtime/vendor/provider-opencode/package.json
+  h_6a6ac0c07fcd37 64
+packages/agent-runtime/vendor/provider-testing/package.json
+  h_6a6ac0c07fcd37 39
+packages/agent-runtime/vendor/shared/package.json
+  h_6a6ac0c07fcd37 523
+packages/agent-runtime/vendor/source-control-azure-devops/package.json
+  h_6a6ac0c07fcd37 57
+packages/agent-runtime/vendor/source-control-bitbucket/package.json
+  h_6a6ac0c07fcd37 51
+packages/agent-runtime/vendor/source-control-core/package.json
+  h_6a6ac0c07fcd37 57
+packages/agent-runtime/vendor/source-control-forgejo/package.json
+  h_6a6ac0c07fcd37 48
+packages/agent-runtime/vendor/source-control-gitcafe/package.json
+  h_6a6ac0c07fcd37 52
+packages/agent-runtime/vendor/source-control-github/package.json
+  h_6a6ac0c07fcd37 89
+packages/agent-runtime/vendor/source-control-gitlab/package.json
+  h_6a6ac0c07fcd37 55
+packages/agent-runtime/vendor/source-control-testing/package.json
+  h_6a6ac0c07fcd37 21
+packages/effect-codex-app-server/package.json
+  h_6a6ac0c07fcd37 25
+packages/nodex-app-tools-mcp/package.json
+  h_6a6ac0c07fcd37 15
+pnpm-lock.yaml
+  h_6a6ac0c07fcd37 10-11,15-26,30-31,35-41,46-47,52-71,76-77,82-83,87-88,92-94,99-114,117,120,123,126,129,132,135,138-141,143-156,171,182,373,375-376,412,415,433,495-496,508,511,558-559,561-562,564-565,567-568,574,618-619,631,661,697,700,703,724,783-784,814,846,849,868,870-871,874,896,898-899,902,927,929-930,936,964,969-970,976,998,1000-1001,1004,1038,1043-1044,1047,1069,1071-1072,1075,1133,1135-1136,1142,1167,1172-1173,1176,1198,1200-1201,1204,1220,1222-1223,1226,1248,1253-1254,1257,1279,1284-1285,1288,1313,1318-1319,1322,1341,1346-1347,1350,1368-1369,1401,1403-1404,1410,1416,1428-1429,2089-2095,2587-2590,3641-3736,3740-3742,4684-4685,4951,5378-5379,5382-5383,5486-5487,5960-5961,6008-6009,6011-6012,6016-6017,6022-6023,6037-6038,7363-7364,7391-7392,8034-8038,8554-8555,8707,9337,9340-9341,9403-9412,9416,9796,9868-9869,10215,10219,10234,10237,10242,10244,10626-10670,10673-10674,11108,11112-11113,11218,11223,11466,11607,11621,11632,11642,11644,11660,11679,11683,11807,11815,11819,11821-11822,11825,11832,11836-11837,11844,11847,11854,11862,11869,11892,11900,11908,12133-12134,12161,12168,12171,12177,12182,12186-12187,12310,12783,12785-12786,12841,12843-12844,12850,12852-12853,12857,12866,12870,12882,12887,12889-12890,12906,12910,13006,13019,13351,13997,14132,14136,14144,14147,14219,14221,14226,14232,14234,14240,14242,14246,14251,14260,14278,14289,14298,14306,14310,14318,14329,14339,14345,14352,14357,14364,14371,14376,14386,14391,14414,14427,14451,14536,14538,14544,14561,14567,14714,14737,14748,14770,15205,15207-15208,15217,15219-15220,15252,15316-15337,15339,15341,15343,15345,15347,15349,15939,16068,16073-16075,16080-16081,16083-16084,16086,16131,16134,16145,16149-16151
+pnpm-workspace.yaml
+  h_6a6ac0c07fcd37 27,38
+scripts/ci/verify-semantic-tooling.ts
+  h_6a6ac0c07fcd37 31
+scripts/ci/verify-source-type-ownership.test.ts
+  h_6a6ac0c07fcd37 28
+scripts/ci/verify-source-type-ownership.ts
+  h_6a6ac0c07fcd37 98
+scripts/sign-macos-runtime.d.mts
+  h_6a6ac0c07fcd37 1,5
+scripts/sign-macos-runtime.mjs
+  h_6a6ac0c07fcd37 17,416,442-443,473-474
+scripts/sign-macos-runtime.test.ts
+  h_6a6ac0c07fcd37 23,93,102,112-138,153,156,170
+src/main/electron-test-runtime.test.ts
+  h_6a6ac0c07fcd37 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9fccbd25b8a654469242b4baf21ed1d8bcf9025f",
+  "prompts": {},
+  "humans": {
+    "h_6a6ac0c07fcd37": {
+      "author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

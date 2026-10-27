@@ -1,0 +1,77 @@
+Cargo.lock
+  s_d09f074535dd5f::t_7da602349cff70 1171
+crates/nodex-core-protocol/src/client.rs
+  s_d09f074535dd5f::t_81f9d9efb731c0 1277-1280,1282,1284-1287,1387-1416
+crates/nodex-core-protocol/src/lib.rs
+  s_d09f074535dd5f::t_d38cc024a7d4d7 44-45,826-832,1275,1328-1362,1437-1457
+crates/nodex-core-server/Cargo.toml
+  s_d09f074535dd5f::t_53c2bace8b7a06 36
+crates/nodex-core-server/src/http_error.rs
+  s_d09f074535dd5f::t_8311524626dd89 1-288
+crates/nodex-core-server/src/lib.rs
+  s_c6e9ed2961f55c::t_ad59b20a4e97be 7,109,3164,3505
+crates/nodex-core-server/src/transport_bounds.rs
+  s_d09f074535dd5f::t_1d01b73863b045 2,9-10,235-237,242-243
+crates/nodex-core-server/tests/lifecycle.rs
+  s_7aa8ab5f4cb606::t_a6a48a121dd94e 615-640,649-654
+docs/reliability/core-lifecycle-and-store.md
+  s_d09f074535dd5f::t_7f694f345669a2 52-72
+packages/core-protocol/openapi.json
+  s_d09f074535dd5f::t_372d5acb54d5f2 39-48,110-119,152-161,223-232,405-414,445-454,475-484,556-565,637-646,718-727,799-808,880-889,961-970,1042-1051,1123-1132,1204-1213,1324-1333,1410-1419,1491-1500,1572-1581,1653-1662,1734-1743,1815-1824,1855-1864,1908-1917,16493-16515
+packages/core-protocol/src/compatibility.generated.ts
+  s_d09f074535dd5f::t_4fde547a88c05e 5-6
+packages/core-protocol/src/generated.ts
+  s_d09f074535dd5f::t_d9a93bf9dd8648 4007-4012,12169-12177,12206-12214,12238-12246,12287-12295,12324-12332,12357-12365,12386-12394,12423-12431,12460-12468,12497-12505,12534-12542,12571-12579,12608-12616,12645-12653,12682-12690,12719-12727,12760-12768,12797-12805,12834-12842,12871-12879,12908-12916,12945-12953,12982-12990,13015-13023,13047-13055
+src/main/core-client/uds-http.node.test.ts
+  s_d09f074535dd5f::t_91c9588f62f8ff 6-10,13-18,23,164,168,175,177,183-184,263-424,507,519,532
+src/main/core-client/uds-http.ts
+  s_7aa8ab5f4cb606::t_db1d7e89737b8a 5,12,107,188,332-336,342,413,508-514,610,869-895
+src/main/core-runtime/CoreRuntimeError.ts
+  s_d09f074535dd5f::t_ccfc51bc6f4bc3 2-3,19,26,42,45,54-57,65-80
+src/shared/core-failure-evidence.test.ts
+  s_7aa8ab5f4cb606::t_ffce70e47cc19f 2,25-54
+src/shared/core-failure-evidence.ts
+  s_c6e9ed2961f55c::t_f9194696a5e31e 77-84
+src/renderer/components/board/page-stage/raw-content.browser.test.tsx
+  s_cb8bbfdb133e81::t_450400dfe3687c 23-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "87d28c7e5749cee7f62d42ea26320ff6ea4f1961",
+  "prompts": {},
+  "sessions": {
+    "s_7aa8ab5f4cb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17a9d-4961-7e90-bed7-5a3180ade70c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c6e9ed2961f55c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec4-11a9-7303-b652-9803237eff35",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_d09f074535dd5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec3-9a4c-7371-9dee-0a4f6bccae0b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
