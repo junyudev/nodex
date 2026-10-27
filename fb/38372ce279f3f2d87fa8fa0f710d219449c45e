@@ -1,0 +1,21 @@
+src/renderer/lib/plugin-management-adapter.node.test.ts
+  s_f79dd9d0c7ac54::t_f48aad1905b13c 1-52
+src/renderer/lib/plugin-management-adapter.ts
+  s_f79dd9d0c7ac54::t_18f79e5f10d287 7-194,203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fb38372ce279f3f2d87fa8fa0f710d219449c45e",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
