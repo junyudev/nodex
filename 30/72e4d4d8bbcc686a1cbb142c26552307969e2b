@@ -1,0 +1,26 @@
+src/renderer/features/browser-sidebar/browser-sidebar-panel.tsx
+  s_881bde2b2ec57a::t_2ea7cd7b89e8bc 1247,1259,1661-1664,1670,1705,1799-1800,1805,1967-1968,1970,1974
+  s_881bde2b2ec57a::t_0107c31a24c21b 166-171,1103-1138,1309-1311,1313-1316,1319-1403,1467-1509,2824,2876,2890,3027-3037,3039-3048
+  s_881bde2b2ec57a::t_63f15ce9f13b57 207,209,1101-1102,1139,1145
+src/renderer/components/ui/viewer-header.tsx
+  s_881bde2b2ec57a::t_73934f5af51224 259-270
+  s_881bde2b2ec57a::t_d3045b8cdb3c19 328
+src/renderer/components/ui/viewer-controls.module.css
+  s_881bde2b2ec57a::t_73934f5af51224 180-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3072e4d4d8bbcc686a1cbb142c26552307969e2b",
+  "prompts": {},
+  "sessions": {
+    "s_881bde2b2ec57a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49cbb4a9-e94e-4e20-9ebc-d47c9a27d1f1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
