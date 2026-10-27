@@ -1,10 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { CodexRealtimeTranscriptEntry } from "../projection/normalized-timeline-entries";
-import {
-  resolveRealtimeTranscriptRestoreState,
-  resolveRealtimeTranscriptAnchorDistance,
-  resolveRetiringRealtimeTranscriptViewportAnchor,
-} from "./local-conversation-realtime-transcript-restore";
+import { resolveRealtimeTranscriptRestoreState } from "./local-conversation-realtime-transcript-restore";
 import {
   buildVirtualizedTurnLayout,
   resolveInitialVirtualizedTurnViewportState,
@@ -27,43 +23,6 @@ function group(segmentIds: readonly string[]): CodexRealtimeTranscriptEntry {
 }
 
 describe("native voice row restoration", () => {
-  test("selects a surviving visible native segment after a row rename releases its first leaf", () => {
-    const released = { itemId: "released", topWithinViewportPx: -20 };
-    const retained = { itemId: "retained", topWithinViewportPx: 90 };
-    expect(
-      resolveRetiringRealtimeTranscriptViewportAnchor({
-        retiringRows: new Map([["old-row", [released, retained]]]),
-        committedRowKeys: new Set(["renamed-row"]),
-        residentItemIds: new Set(["retained"]),
-      }),
-    ).toBe(retained);
-  });
-
-  test("ignores ref replacement on a retained row and continues to a genuinely removed row", () => {
-    const unchanged = { itemId: "unchanged", topWithinViewportPx: 20 };
-    const retained = { itemId: "retained", topWithinViewportPx: 90 };
-    expect(
-      resolveRetiringRealtimeTranscriptViewportAnchor({
-        retiringRows: new Map([
-          ["same-row", [unchanged]],
-          ["old-row", [retained]],
-        ]),
-        committedRowKeys: new Set(["same-row", "renamed-row"]),
-        residentItemIds: new Set(["unchanged", "retained"]),
-      }),
-    ).toBe(retained);
-  });
-
-  test("does not compensate when every captured visible native identity is gone", () => {
-    expect(
-      resolveRetiringRealtimeTranscriptViewportAnchor({
-        retiringRows: new Map([["old-row", [{ itemId: "released", topWithinViewportPx: 20 }]]]),
-        committedRowKeys: new Set(["new-row"]),
-        residentItemIds: new Set(["different"]),
-      }),
-    ).toBeNull();
-  });
-
   test.each([{ ids: ["older", "first", "second"] }, { ids: ["second"] }])(
     "restores a renamed row through a retained native segment %j",
     ({ ids }) => {
@@ -105,22 +64,5 @@ describe("native voice row restoration", () => {
       turnHeightsByKey: {},
     };
     expect(resolveRealtimeTranscriptRestoreState(state, [group(["unrelated"])])).toBe(state);
-  });
-
-  test("corrects the native leaf position independently of added content below it", () => {
-    expect(
-      resolveRealtimeTranscriptAnchorDistance({
-        distanceFromBottomPx: 200,
-        anchorTopWithinViewportPx: 90,
-        currentTopWithinViewportPx: 30,
-      }),
-    ).toBe(260);
-    expect(
-      resolveRealtimeTranscriptAnchorDistance({
-        distanceFromBottomPx: 200,
-        anchorTopWithinViewportPx: 90,
-        currentTopWithinViewportPx: 140,
-      }),
-    ).toBe(150);
   });
 });

@@ -76,12 +76,13 @@ import { LocalConversationTurnEntry } from "./local-conversation-turn-entry";
 import { LocalConversationRealtimeTranscript } from "./local-conversation-realtime-transcript";
 import {
   readRealtimeTranscriptViewportAnchor,
-  readRealtimeTranscriptViewportAnchors,
-  resolveRetiringRealtimeTranscriptViewportAnchor,
-  resolveRealtimeTranscriptAnchorDistance,
   resolveRealtimeTranscriptRestoreState,
-  type RealtimeTranscriptViewportAnchor,
 } from "./local-conversation-realtime-transcript-restore";
+import {
+  readConversationContentAnchors,
+  resolveConversationContentAnchor,
+  type ConversationContentAnchor,
+} from "./local-conversation-content-anchor";
 import {
   isCodexNativeTimelineTurnEntry,
   isCodexRealtimeTimelineEntry,
@@ -827,12 +828,22 @@ function LocalConversationVirtualizedTurnListCore({
   const measurementPassCountRef = useRef(0);
   const [, setMeasurementFrame] = useState<number | null>(null);
   const pendingLayoutEffectRef = useRef<PendingLayoutEffect | null>(null);
-  const pendingRealtimeAnchorRef = useRef<RealtimeTranscriptViewportAnchor | null>(
-    resolvedInitialRestoreState?.realtimeAnchor ?? null,
+  const contentAnchorsRef = useRef<readonly ConversationContentAnchor[]>(
+    resolvedInitialRestoreState?.realtimeAnchor
+      ? [
+          {
+            element: null,
+            attribute: "data-native-realtime-item-id",
+            key: resolvedInitialRestoreState.realtimeAnchor.itemId,
+            topWithinViewportPx: resolvedInitialRestoreState.realtimeAnchor.topWithinViewportPx,
+          },
+        ]
+      : [],
   );
-  const retiringRealtimeAnchorsRef = useRef(
-    new Map<string, readonly RealtimeTranscriptViewportAnchor[]>(),
+  const restoringInitialContentAnchorRef = useRef(
+    Boolean(resolvedInitialRestoreState?.realtimeAnchor),
   );
+  const applyingContentAnchorRef = useRef(false);
   const viewportRevisionRef = useRef(0);
   const lastScrollElementRef = useRef<HTMLDivElement | null>(null);
   const onRestoreStateChangeRef = useRef(onRestoreStateChange);
@@ -1015,6 +1026,83 @@ function LocalConversationVirtualizedTurnListCore({
     [emitViewportChange, publishViewportState],
   );
 
+  const hasPendingLatestTurnSubmitPlacement = scrollController.hasPendingLatestTurnSubmitPlacement;
+  const canPreserveContentAnchor = useCallback(
+    () =>
+      preserveMeasuredTurnViewport &&
+      (restoringInitialContentAnchorRef.current || getScrollMode() === "user") &&
+      !hasPendingLatestTurnSubmitPlacement() &&
+      activePendingTargetRef.current === null &&
+      getPendingRestoreScrollDistanceFromBottomPx() === null,
+    [
+      getPendingRestoreScrollDistanceFromBottomPx,
+      getScrollMode,
+      hasPendingLatestTurnSubmitPlacement,
+      preserveMeasuredTurnViewport,
+    ],
+  );
+  const readContentAnchor = useCallback(() => {
+    const root = listRootRef.current;
+    if (!root) return null;
+    return resolveConversationContentAnchor(contentAnchorsRef.current, root);
+  }, []);
+  const captureContentAnchors = useCallback(() => {
+    if (hasPendingLatestTurnSubmitPlacement()) {
+      contentAnchorsRef.current = [];
+      restoringInitialContentAnchorRef.current = false;
+      return;
+    }
+    if (applyingContentAnchorRef.current || restoringInitialContentAnchorRef.current) return;
+    const scrollElement = getScrollElement();
+    contentAnchorsRef.current =
+      scrollElement &&
+      preserveMeasuredTurnViewport &&
+      getScrollMode() !== "stickToBottom" &&
+      activePendingTargetRef.current === null
+        ? readConversationContentAnchors({
+            scrollElement,
+            rows: turnElementsByKeyRef.current,
+            windowZoom: readCodexWindowZoom(scrollElement),
+          })
+        : [];
+  }, [
+    getScrollElement,
+    getScrollMode,
+    hasPendingLatestTurnSubmitPlacement,
+    preserveMeasuredTurnViewport,
+  ]);
+  const restoreContentAnchor = useCallback(() => {
+    if (!canPreserveContentAnchor()) return false;
+    const resolved = readContentAnchor();
+    const scrollElement = getScrollElement();
+    if (!resolved || !scrollElement) return false;
+    const currentTopWithinViewportPx =
+      (resolved.element.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top) /
+      readCodexWindowZoom(scrollElement);
+    const distance =
+      getUnroundedScrollDistanceFromBottomPx(getScrollDistanceFromBottomPx()) +
+      resolved.anchor.topWithinViewportPx -
+      currentTopWithinViewportPx;
+    applyingContentAnchorRef.current = true;
+    try {
+      compensateScrollToDistanceFromBottomPx(distance);
+    } finally {
+      applyingContentAnchorRef.current = false;
+    }
+    restoringInitialContentAnchorRef.current = false;
+    captureContentAnchors();
+    return true;
+  }, [
+    canPreserveContentAnchor,
+    captureContentAnchors,
+    // eslint-disable-next-line react/memo-dependencies -- Keep the command in try/finally current across owner changes.
+    compensateScrollToDistanceFromBottomPx,
+    getScrollDistanceFromBottomPx,
+    getScrollElement,
+    getUnroundedScrollDistanceFromBottomPx,
+    readContentAnchor,
+  ]);
+
   const reportLatestTurnFollowContentHeight = useCallback(() => {
     let heightPx = 0;
     let lastElement: HTMLElement | null = null;
@@ -1045,15 +1133,20 @@ function LocalConversationVirtualizedTurnListCore({
 
   const applyMeasurementEffects = useCallback(
     (effect: PendingLayoutEffect) => {
+      const hasContentAnchor = canPreserveContentAnchor() && readContentAnchor() !== null;
       applyLocalConversationTurnMeasurementEffect({
-        effect,
+        effect: hasContentAnchor ? { ...effect, nativeScrollDistanceFromBottomPx: null } : effect,
         getResponseSpacerHeightPx,
         onLatestTurnHeightChange,
         restoreScrollDistanceFromBottomPx,
         compensateScrollToDistanceFromBottomPx,
       });
+      restoreContentAnchor();
     },
     [
+      canPreserveContentAnchor,
+      readContentAnchor,
+      restoreContentAnchor,
       compensateScrollToDistanceFromBottomPx,
       getResponseSpacerHeightPx,
       onLatestTurnHeightChange,
@@ -1224,13 +1317,27 @@ function LocalConversationVirtualizedTurnListCore({
           ? currentViewport.distanceFromBottomPx
           : Math.max(0, scrollDistanceFromBottomPx - responseSpaceHeightAtMeasurementPx);
 
-      const nextViewport = resolveVirtualizedTurnViewportState({
-        current: currentViewport,
-        distanceFromBottomPx: nextDistanceFromBottomPx,
-        layout: nextLayout,
-        overscanCount: OVERSCAN_TURNS,
-        viewportHeightPx: currentViewport.viewportHeightPx,
-      });
+      // Keep the reader's mounted content until its measured layout can restore the anchor.
+      // Publishing a range from the old bottom distance can otherwise unmount it first.
+      const retainedRange =
+        activePendingTargetRef.current === null &&
+        getScrollMode() !== "stickToBottom" &&
+        readContentAnchor()
+          ? (resolveRetainedContentRange({
+              previousTurnKeys: currentViewport.turnKeys,
+              previousRange: currentViewport.renderedRange,
+              layout: nextLayout,
+            }) ?? currentViewport.renderedRange)
+          : null;
+      const nextViewport = retainedRange
+        ? { ...currentViewport, turnKeys: nextLayout.turnKeys, renderedRange: retainedRange }
+        : resolveVirtualizedTurnViewportState({
+            current: currentViewport,
+            distanceFromBottomPx: nextDistanceFromBottomPx,
+            layout: nextLayout,
+            overscanCount: OVERSCAN_TURNS,
+            viewportHeightPx: currentViewport.viewportHeightPx,
+          });
       const latestTurnIndex = latestTurnKey
         ? nextLayout.turnIndexByKey.get(latestTurnKey)
         : undefined;
@@ -1266,6 +1373,7 @@ function LocalConversationVirtualizedTurnListCore({
       // A same-row submit places after child layout. Publish its already measured
       // content before that placement, rather than consuming the new space later.
       const publishLatestMeasurementImmediately =
+        activePendingTargetRef.current === null &&
         measurements.size === 1 &&
         latestTurnElement !== null &&
         latestTurnKey === currentLayout.turnKeys.at(-1) &&
@@ -1311,6 +1419,8 @@ function LocalConversationVirtualizedTurnListCore({
     },
     [
       applyMeasurementEffects,
+      getScrollMode,
+      readContentAnchor,
       getLastScrollDistanceFromBottomPx,
       getPendingRestoreScrollDistanceFromBottomPx,
       getResponseSpacerHeightPx,
@@ -1369,32 +1479,6 @@ function LocalConversationVirtualizedTurnListCore({
       const observer = getResizeObserver();
       observer?.observe(element);
       return () => {
-        const scrollElement = getScrollElement();
-        if (
-          preserveMeasuredTurnViewport &&
-          scrollElement &&
-          getScrollMode() === "user" &&
-          element.querySelector("[data-native-realtime-item-id]") !== null
-        ) {
-          const residentItemIds = new Set(
-            rowsRef.current.flatMap((row) =>
-              row.kind === "content" &&
-              isCodexRealtimeTimelineEntry(row.entry) &&
-              row.entry.itemType === "transcriptSegment"
-                ? row.entry.segmentIds
-                : [],
-            ),
-          );
-          if (!retiringRealtimeAnchorsRef.current.has(turnKey)) {
-            const anchors = readRealtimeTranscriptViewportAnchors({
-              rows: [element],
-              scrollElement,
-              residentItemIds,
-              windowZoom: readCodexWindowZoom(scrollElement),
-            });
-            if (anchors.length > 0) retiringRealtimeAnchorsRef.current.set(turnKey, anchors);
-          }
-        }
         observer?.unobserve(element);
         observedElementMetadataRef.current.delete(element);
         if (pendingTurnMeasurementsRef.current.get(turnKey)?.element === element)
@@ -1403,7 +1487,7 @@ function LocalConversationVirtualizedTurnListCore({
           turnElementsByKeyRef.current.delete(turnKey);
       };
     },
-    [getResizeObserver, getScrollElement, getScrollMode, preserveMeasuredTurnViewport],
+    [getResizeObserver],
   );
 
   const observeLatestTurnFollowContent = useCallback<RefCallback<HTMLDivElement>>(
@@ -1440,6 +1524,8 @@ function LocalConversationVirtualizedTurnListCore({
     ) => {
       if (options?.signal?.aborted) return Promise.resolve();
       onHistoryRetentionBoundaryChange?.(null);
+      contentAnchorsRef.current = [];
+      restoringInitialContentAnchorRef.current = false;
       activePendingTargetRef.current?.complete();
       requestIdRef.current += 1;
       const requestId = requestIdRef.current;
@@ -1521,9 +1607,16 @@ function LocalConversationVirtualizedTurnListCore({
     window.addEventListener("resize", handleWindowResize);
     const removeScrollListener = addScrollListener((distanceFromBottomPx) => {
       syncViewportState(distanceFromBottomPx);
+      if (
+        pendingLayoutEffectRef.current === null &&
+        previousLayoutRef.current === layoutRef.current
+      )
+        captureContentAnchors();
     });
     const removeUserScrollListener = addUserScrollListener(
       (distanceFromBottomPx, previousDistanceFromBottomPx) => {
+        restoringInitialContentAnchorRef.current = false;
+        captureContentAnchors();
         syncViewportState(distanceFromBottomPx, previousDistanceFromBottomPx, true);
       },
     );
@@ -1544,76 +1637,13 @@ function LocalConversationVirtualizedTurnListCore({
   }, [
     addScrollListener,
     addUserScrollListener,
+    captureContentAnchors,
     getLastScrollDistanceFromBottomPx,
     getResponseSpacerHeightPx,
     scrollController.scrollElement,
     restoreScrollDistanceFromBottomPx,
     updateViewportState,
   ]);
-
-  useLayoutEffect(() => {
-    // Child ref cleanup precedes this owner's insertion effect. Decide row removal
-    // against committed rows here, after capturing geometry from the old DOM.
-    const retiring = retiringRealtimeAnchorsRef.current;
-    if (pendingRealtimeAnchorRef.current === null && retiring.size > 0) {
-      const rows = rowsRef.current;
-      const rowKeys = new Set(rows.map((row) => row.layoutKey));
-      const residentItemIds = new Set(
-        rows.flatMap((row) =>
-          row.kind === "content" &&
-          isCodexRealtimeTimelineEntry(row.entry) &&
-          row.entry.itemType === "transcriptSegment"
-            ? row.entry.segmentIds
-            : [],
-        ),
-      );
-      pendingRealtimeAnchorRef.current = resolveRetiringRealtimeTranscriptViewportAnchor({
-        retiringRows: retiring,
-        committedRowKeys: rowKeys,
-        residentItemIds,
-      });
-    }
-    retiring.clear();
-    const anchor = pendingRealtimeAnchorRef.current;
-    if (!anchor || getPendingRestoreScrollDistanceFromBottomPx() !== null) return;
-    const scrollElement = getScrollElement();
-    if (!scrollElement) return;
-    const row = rowsRef.current.find(
-      (row) =>
-        row.kind === "content" &&
-        isCodexRealtimeTimelineEntry(row.entry) &&
-        row.entry.itemType === "transcriptSegment" &&
-        row.entry.segmentIds.includes(anchor.itemId),
-    );
-    if (!row) {
-      pendingRealtimeAnchorRef.current = null;
-      return;
-    }
-    if (measuredHeightsRef.current[row.layoutKey] === undefined) return;
-    const element = turnElementsByKeyRef.current.get(row.layoutKey);
-    const leaf =
-      element &&
-      Array.from(element.querySelectorAll<HTMLElement>("[data-native-realtime-item-id]")).find(
-        (leaf) => leaf.dataset.nativeRealtimeItemId === anchor.itemId,
-      );
-    if (!leaf) return;
-    pendingRealtimeAnchorRef.current = null;
-    if (getScrollMode() === "programmaticFind") return;
-    const currentTopWithinViewportPx =
-      (leaf.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top) /
-      readCodexWindowZoom(scrollElement);
-    const distanceFromBottomPx = resolveRealtimeTranscriptAnchorDistance({
-      // The anchor's live position pairs with the live distance, including committed growth.
-      distanceFromBottomPx: getUnroundedScrollDistanceFromBottomPx(getScrollDistanceFromBottomPx()),
-      currentTopWithinViewportPx,
-      anchorTopWithinViewportPx: anchor.topWithinViewportPx,
-    });
-    updateViewportState(
-      Math.max(0, distanceFromBottomPx - getResponseSpacerHeightPx()),
-      scrollElement.clientHeight,
-    );
-    compensateScrollToDistanceFromBottomPx(distanceFromBottomPx);
-  });
 
   const visibleRange = useMemo((): VisibleTurnRange => {
     if (scrollController.scrollElement === null) {
@@ -1682,6 +1712,14 @@ function LocalConversationVirtualizedTurnListCore({
       if (turnElementsByKeyRef.current.get(turnKey) === measurement.element)
         pendingTurnMeasurementsRef.current.set(turnKey, measurement);
   });
+
+  // Navigation observes the committed measurement and its compensation together.
+  useLayoutEffect(() => {
+    const pendingEffect = pendingLayoutEffectRef.current;
+    if (pendingEffect === null || pendingEffect.turnHeightsByKey !== measuredHeights) return;
+    pendingLayoutEffectRef.current = null;
+    applyMeasurementEffects(pendingEffect);
+  }, [applyMeasurementEffects, measuredHeights]);
 
   useLayoutEffect(() => {
     if (pendingScrollTarget === null) return;
@@ -1807,13 +1845,6 @@ function LocalConversationVirtualizedTurnListCore({
     );
   }, [applyTurnMeasurements, entries, latestNativeTurnKey, latestTurnSynchronousMeasurementKey]);
 
-  useLayoutEffect(() => {
-    const pendingEffect = pendingLayoutEffectRef.current;
-    if (pendingEffect === null || pendingEffect.turnHeightsByKey !== measuredHeights) return;
-    pendingLayoutEffectRef.current = null;
-    applyMeasurementEffects(pendingEffect);
-  }, [applyMeasurementEffects, measuredHeights]);
-
   // A render-layout change must reconcile the live cache, including imperative row commits.
   /* eslint-disable react/exhaustive-effect-dependencies */
   useLayoutEffect(() => {
@@ -1842,16 +1873,19 @@ function LocalConversationVirtualizedTurnListCore({
         }),
       );
 
-    if (
-      !preserveMeasuredTurnViewport ||
-      pendingScrollTarget !== null ||
-      pendingRealtimeAnchorRef.current !== null
-    ) {
+    if (!preserveMeasuredTurnViewport || pendingScrollTarget !== null) {
       publishCurrentLayout();
       return;
     }
     if (getPendingRestoreScrollDistanceFromBottomPx() !== null) {
       publishCurrentLayout();
+      return;
+    }
+    if (restoreContentAnchor()) {
+      updateViewportState(
+        Math.max(0, getScrollDistanceFromBottomPx() - getResponseSpacerHeightPx()),
+        current.viewportHeightPx,
+      );
       return;
     }
     // The committed layout already moved the live position; the recorded one predates it.
@@ -1920,11 +1954,19 @@ function LocalConversationVirtualizedTurnListCore({
     pendingScrollTarget,
     preserveMeasuredTurnViewport,
     publishViewportState,
+    restoreContentAnchor,
+    getScrollDistanceFromBottomPx,
     shouldFollowContentGrowth,
     updateViewportState,
   ]);
 
   /* eslint-enable react/exhaustive-effect-dependencies */
+
+  useLayoutEffect(() => {
+    if (pendingLayoutEffectRef.current !== null || pendingTurnMeasurementsRef.current.size > 0)
+      return;
+    if (!restoreContentAnchor()) captureContentAnchors();
+  });
 
   useLayoutEffect(() => {
     if (!onVisibleContentReady || visibleContentReadyRef.current || listRoot === null) return;

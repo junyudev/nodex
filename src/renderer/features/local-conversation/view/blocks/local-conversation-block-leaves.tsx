@@ -1059,6 +1059,11 @@ export function UserMessageBubble({
         isSearchMatch && THREAD_VISUAL_TOKENS.searchUnitMatched,
         isActiveSearchMatch && THREAD_VISUAL_TOKENS.searchUnitActive,
       )}
+      data-conversation-item-key={JSON.stringify([
+        block.entry.threadId,
+        block.turnId,
+        block.entry.itemId,
+      ])}
       data-content-search-unit-key={block.searchUnitKey}
     >
       {block.entry.textSelections ? (
@@ -1371,6 +1376,11 @@ export function ThreadAssistantBodyBlock({
         isActiveSearchMatch && THREAD_VISUAL_TOKENS.searchUnitActive,
       )}
       data-message-copy-root={JSON.stringify([
+        block.entry.threadId,
+        block.turnId,
+        block.entry.itemId,
+      ])}
+      data-conversation-item-key={JSON.stringify([
         block.entry.threadId,
         block.turnId,
         block.entry.itemId,

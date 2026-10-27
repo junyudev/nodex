@@ -9,20 +9,6 @@ export interface RealtimeTranscriptViewportAnchor {
   readonly topWithinViewportPx: number;
 }
 
-/** Row removal and native residency are decided only after the new layout commits. */
-export function resolveRetiringRealtimeTranscriptViewportAnchor(input: {
-  readonly retiringRows: ReadonlyMap<string, readonly RealtimeTranscriptViewportAnchor[]>;
-  readonly committedRowKeys: ReadonlySet<string>;
-  readonly residentItemIds: ReadonlySet<string>;
-}): RealtimeTranscriptViewportAnchor | null {
-  for (const [key, anchors] of input.retiringRows) {
-    if (input.committedRowKeys.has(key)) continue;
-    const anchor = anchors.find((candidate) => input.residentItemIds.has(candidate.itemId));
-    if (anchor) return anchor;
-  }
-  return null;
-}
-
 /** A changed first segment may rename a row; only a resident native identity can restore it. */
 export function resolveRealtimeTranscriptRestoreState(
   state: VirtualizedTurnListRestoreState | null,
@@ -72,28 +58,10 @@ function* visibleRealtimeTranscriptAnchors(
   }
 }
 
-/** Capture visible native leaves before removal; residency may change later in the commit. */
-export function readRealtimeTranscriptViewportAnchors(
-  input: RealtimeTranscriptViewportAnchorInput,
-): readonly RealtimeTranscriptViewportAnchor[] {
-  return [...visibleRealtimeTranscriptAnchors(input)];
-}
-
 /** Capture the first visible resident native leaf without reading transcript text. */
 export function readRealtimeTranscriptViewportAnchor(
-  input: Parameters<typeof readRealtimeTranscriptViewportAnchors>[0],
+  input: RealtimeTranscriptViewportAnchorInput,
 ): RealtimeTranscriptViewportAnchor | null {
   const first = visibleRealtimeTranscriptAnchors(input).next();
   return first.done ? null : first.value;
-}
-
-export function resolveRealtimeTranscriptAnchorDistance(input: {
-  readonly distanceFromBottomPx: number;
-  readonly currentTopWithinViewportPx: number;
-  readonly anchorTopWithinViewportPx: number;
-}): number {
-  return Math.max(
-    0,
-    input.distanceFromBottomPx + input.anchorTopWithinViewportPx - input.currentTopWithinViewportPx,
-  );
 }
