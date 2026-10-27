@@ -1,0 +1,123 @@
+crates/nodex-core-contracts/src/automation.rs
+  s_ec8b7ab56a0e48::t_db441bf68e3784 116-117
+crates/nodex-core/schema/current.sql
+  s_ec8b7ab56a0e48::t_abdbda8b5fec02 4498-4514,4879-4881
+crates/nodex-core/schema/migrations/v190_to_v191.sql
+  s_ec8b7ab56a0e48::t_cc9ce22e518dad 1-49
+crates/nodex-core/schema/published/v190.sql
+  s_ec8b7ab56a0e48::t_93477d32e870c3 1-4867
+crates/nodex-core/src/automation/firing.rs
+  s_ec8b7ab56a0e48::t_26a494a9a86436 27,32,210-231,233-234,245,249-273
+crates/nodex-core/src/automation/read.rs
+  s_ec8b7ab56a0e48::t_b4a24a878d71d1 394,423-428
+crates/nodex-core/src/document/integrity.rs
+  s_389c80188bce4c::t_d8c8c25eee3671 61
+crates/nodex-core/src/infrastructure/migration.rs
+  s_7aa8ab5f4cb606::t_bdeafe12b992d5 367-371,2489-2503,7841-7889
+crates/nodex-core/src/library/mutation.rs
+  s_ec8b7ab56a0e48::t_68fa25f379eb4e 2753-2764
+crates/nodex-core/src/workspace/inbox.rs
+  s_ec8b7ab56a0e48::t_511218508b0326 1520
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_389c80188bce4c::t_220d4e3d7044ff 79,840
+crates/nodex-core/src/workspace/inbox_reliable.rs
+  s_389c80188bce4c::t_e7f58298d386f3 295,341-344,1022
+crates/nodex-core/src/workspace/inbox_scheduled.rs
+  s_ec8b7ab56a0e48::t_23d421de2a27c6 93,215,226,246,305
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_389c80188bce4c::t_64a27913e525c6 4156,4263-4551,4783,4807,4809,5264-5324
+crates/nodex-store-format/src/lib.rs
+  s_389c80188bce4c::t_c87ac39cc87cff 233-236
+docs/adr/0073-scheduled-runs-that-ask-in-the-inbox.md
+  s_389c80188bce4c::t_2a43249e956a55 26-44
+docs/product-specs/inbox-behavior.md
+  s_ec8b7ab56a0e48::t_3c017731dd6889 472-476,496-503
+docs/product-specs/scheduled-route-behavior.md
+  s_cb8bbfdb133e81::t_1661e7292563f0 63-67,81-82,91-98
+packages/core-protocol/openapi.json
+  s_389c80188bce4c::t_7e8f9a2cfba4e6 3478-3484,5384-5390
+packages/core-protocol/src/compatibility.generated.ts
+  s_389c80188bce4c::t_837a0c6592c1c7 42-43
+packages/core-protocol/src/generated.ts
+  s_389c80188bce4c::t_e1a69247963985 804-805,1290-1291
+src/main/app-tools/AutomationAppTools.node.test.ts
+  s_ec8b7ab56a0e48::t_e43d74926d8813 74
+src/main/automation-application/AutomationApplication.node.test.ts
+  s_389c80188bce4c::t_64be08a074ebeb 218,298
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_ec8b7ab56a0e48::t_10bb94fe99a2f2 41
+src/main/automation-application/AutomationProjection.ts
+  s_ec8b7ab56a0e48::t_3d70394acdd032 72
+src/main/codex-scheduled-automation-runtime.test.ts
+  s_ec8b7ab56a0e48::t_bf3c35b255467f 22
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_ec8b7ab56a0e48::t_c255cb00412150 2,83,661-707
+src/main/host-runtime/ScheduledAutomationRuntime.ts
+  s_ec8b7ab56a0e48::t_579f49727b6552 183-186,189,206-207
+src/main/inbox-application/InboxApplication.ts
+  s_ec8b7ab56a0e48::t_77e88e3ee46d4a 703-706
+src/main/inbox-application/InboxDispatcher.ts
+  s_ec8b7ab56a0e48::t_31bdebbd8a739b 62
+src/main/inbox-application/scheduled-firing-core.node.test.ts
+  s_ec8b7ab56a0e48::t_32675bbae31790 24,80
+src/main/inbox-application/scheduled-firing.node.test.ts
+  s_ec8b7ab56a0e48::t_63dc433ad95726 88,99-103,149-163,212-227
+src/main/inbox-application/scheduled-firing.ts
+  s_ec8b7ab56a0e48::t_aad046fb69bc00 9-10,15-20
+src/main/local-store/codex-scheduled-automation-schedule.test.ts
+  s_ec8b7ab56a0e48::t_4fe474b884f2cd 24
+src/renderer/components/workbench/workbench-automation-draft.node.test.ts
+  s_ec8b7ab56a0e48::t_f429a47eee9435 65
+src/renderer/components/workbench/workbench-testkit/workbench-shell-fixtures.ts
+  s_ec8b7ab56a0e48::t_004161baf69b5d 100
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_ec8b7ab56a0e48::t_9fb15ff959190f 3499,3532
+src/renderer/features/local-conversation/projection/thread-summary-panel-scheduled-automation-model.node.test.ts
+  s_ec8b7ab56a0e48::t_853991995b37a6 13
+src/renderer/features/scheduled/scheduled-task-model.node.test.ts
+  s_ec8b7ab56a0e48::t_82bfb37f48f57a 24
+src/renderer/lib/use-codex-automation-run-updates.test.tsx
+  s_ec8b7ab56a0e48::t_0387fe54d4eaf0 24
+src/shared/types.ts
+  s_ec8b7ab56a0e48::t_2a3042368cebb1 2184-2185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8ced1ffda677e868122897313ef7023c7e3d5d67",
+  "prompts": {},
+  "sessions": {
+    "s_389c80188bce4c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ce3-b3d5-7bf2-8f51-03ebcc734560",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7aa8ab5f4cb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17a9d-4961-7e90-bed7-5a3180ade70c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ec8b7ab56a0e48": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d27-cfaa-76f1-8242-a1d2033dde1d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
