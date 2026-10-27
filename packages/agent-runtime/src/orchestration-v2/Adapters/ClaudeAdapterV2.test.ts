@@ -766,8 +766,8 @@ describe("ClaudeAdapterV2 full execution access", () => {
                     Effect.sync(() => {
                       offeredPrompt = message.message.content;
                     }),
-                  setModel: () => Effect.void,
-                  applyFlagSettings: () => Effect.void,
+
+                  applySelection: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -874,8 +874,8 @@ const captureSdkExecutablePaths = Effect.fn("captureSdkExecutablePaths")(functio
           return {
             messages: Stream.never,
             offer: () => Effect.void,
-            setModel: () => Effect.void,
-            applyFlagSettings: () => Effect.void,
+
+            applySelection: () => Effect.void,
             readAppliedSettings: Effect.succeed(null),
             setPermissionMode: () => Effect.void,
             stopTask: () => Effect.void,
@@ -996,8 +996,8 @@ describe("ClaudeAdapterV2 resume compaction", () => {
                 return {
                   messages: Stream.never,
                   offer: () => Effect.void,
-                  setModel: () => Effect.void,
-                  applyFlagSettings: () => Effect.void,
+
+                  applySelection: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -1223,8 +1223,8 @@ describe("ClaudeAdapterV2 attachments", () => {
                   Effect.sync(() => {
                     offeredMessages.push(message);
                   }),
-                setModel: () => Effect.void,
-                applyFlagSettings: () => Effect.void,
+
+                applySelection: () => Effect.void,
                 readAppliedSettings: Effect.succeed(null),
                 setPermissionMode: () => Effect.void,
                 stopTask: () => Effect.void,
@@ -1370,8 +1370,8 @@ describe("ClaudeAdapterV2 attachments", () => {
                 return {
                   messages: Stream.never,
                   offer: () => Effect.void,
-                  setModel: () => Effect.void,
-                  applyFlagSettings: () => Effect.void,
+
+                  applySelection: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -1467,8 +1467,8 @@ describe("ClaudeAdapterV2 native fork", () => {
                 return {
                   messages: Stream.empty,
                   offer: () => Effect.void,
-                  setModel: () => Effect.void,
-                  applyFlagSettings: () => Effect.void,
+
+                  applySelection: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -1721,6 +1721,25 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
     }),
   );
 
+  it.effect("sends the complete live choice in one SDK control request", () =>
+    Effect.gen(function* () {
+      const cli = makeFakeClaudeCli();
+      const session = yield* openWith(cli);
+      const initialRequests = cli.controlRequests.length;
+      const selection: ClaudeAdapterV2.ClaudeLiveSelection = {
+        model: "claude-sonnet-5-5",
+        effortLevel: "low",
+        fastMode: null,
+        ultracode: true,
+      };
+      yield* session.applySelection(selection);
+      assert.deepEqual(cli.controlRequests.slice(initialRequests), [
+        { subtype: "apply_flag_settings", settings: selection },
+      ]);
+      yield* session.close;
+    }),
+  );
+
   it.effect("closes the CLI when it never answers the MCP registration", () =>
     Effect.gen(function* () {
       const cli = makeFakeClaudeCli(false);
@@ -1761,8 +1780,8 @@ describe("ClaudeAdapterV2 native session identity", () => {
                 return {
                   messages: Stream.empty,
                   offer: () => Effect.void,
-                  setModel: () => Effect.void,
-                  applyFlagSettings: () => Effect.void,
+
+                  applySelection: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -2027,6 +2046,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly freshQueueOnReopen?: boolean;
     // What Claude Code reports it runs with after a change.
     readonly appliedSettings?: ClaudeAppliedSettings;
+    readonly refuseLiveSelectionOnce?: boolean;
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -2048,13 +2068,25 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* Deferred.await(processed);
       });
       const offeredMessages: Array<SDKUserMessage> = [];
-      const liveChanges: Array<
-        { readonly model: string } | { readonly settings: ClaudeAdapterV2.ClaudeLiveFlagSettings }
-      > = [];
+      const liveChanges: Array<ClaudeAdapterV2.ClaudeLiveSelection> = [];
+      let actualNativeModel = "";
+      let refuseLiveSelection = options?.refuseLiveSelectionOnce === true;
+      const nativeModelsAtOffer: string[] = [];
       const liveQuery = {
-        setModel: (model: string) => Effect.sync(() => void liveChanges.push({ model })),
-        applyFlagSettings: (settings: ClaudeAdapterV2.ClaudeLiveFlagSettings) =>
-          Effect.sync(() => void liveChanges.push({ settings })),
+        applySelection: (selection: ClaudeAdapterV2.ClaudeLiveSelection) =>
+          Effect.suspend(() => {
+            // A native control can take effect before its acknowledgement is lost.
+            actualNativeModel = selection.model;
+            liveChanges.push(selection);
+            if (!refuseLiveSelection) return Effect.void;
+            refuseLiveSelection = false;
+            return Effect.fail(
+              new ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerError({
+                method: "applyFlagSettings",
+                cause: "The native process could not confirm the change.",
+              }),
+            );
+          }),
         readAppliedSettings: Effect.succeed(options?.appliedSettings ?? null),
       };
       const permissionModeChanges: Array<string> = [];
@@ -2095,6 +2127,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           open: (input) =>
             Effect.gen(function* () {
               openedOptions = input.options;
+              actualNativeModel = input.options.model;
               if (options?.freshQueueOnReopen === true && processQueues.length > 0) {
                 const processMessages = yield* Queue.unbounded<SDKMessage>();
                 processQueues.push(processMessages);
@@ -2103,6 +2136,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   offer: (message: SDKUserMessage) =>
                     Effect.sync(() => {
                       offeredMessages.push(message);
+                      nativeModelsAtOffer.push(actualNativeModel);
                     }),
                   ...liveQuery,
                   setPermissionMode: () => Effect.void,
@@ -2133,6 +2167,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 offer: (message) =>
                   Effect.sync(() => {
                     offeredMessages.push(message);
+                    nativeModelsAtOffer.push(actualNativeModel);
                   }),
                 ...liveQuery,
                 setPermissionMode: (mode) =>
@@ -2213,6 +2248,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         systemNoticeReceipts,
         getOpenedOptions: () => openedOptions,
         liveChanges,
+        nativeModelsAtOffer,
         terminalEvents,
         hasPendingBackgroundWork,
       };
@@ -2381,8 +2417,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           );
           assert.strictEqual(harness.getOpenedOptions(), originalOptions);
           assert.deepEqual(harness.liveChanges, [
-            { model: "claude-sonnet-5-5" },
-            { settings: { effortLevel: "low", fastMode: null, ultracode: true } },
+            { model: "claude-sonnet-5-5", effortLevel: "low", fastMode: null, ultracode: true },
           ]);
           assert.lengthOf(harness.offeredMessages, 3);
           yield* harness.offerAndWait(turnOneResult);
@@ -2415,6 +2450,79 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         ),
       ),
   );
+
+  for (const change of [
+    { name: "model", model: "claude-sonnet-5-5", options: [] },
+    {
+      name: "effort and modes",
+      model: "claude-opus-5-5",
+      options: [
+        { id: "effort", value: "low" },
+        { id: "fastMode", value: true },
+        { id: "ultracode", value: true },
+      ],
+    },
+  ] satisfies ReadonlyArray<{ name: string } & Pick<ModelSelection, "model" | "options">>) {
+    it.effect(
+      `restores the whole choice after an unconfirmed ${change.name} change with background work`,
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const harness = yield* makeWakeHarnessWithOptions({ refuseLiveSelectionOnce: true });
+            const now = yield* DateTime.now;
+            const original = {
+              instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+              model: "claude-opus-5-5",
+            } satisfies ModelSelection;
+            const turn = (ordinal: number, modelSelection: ModelSelection) =>
+              makeClaudeTestTurnInput({
+                threadId: harness.threadId,
+                providerThread: harness.providerThread,
+                now,
+                attemptId: RunAttemptId.make(`unconfirmed-live:${ordinal}`),
+                text: `Request ${ordinal}`,
+                attachments: [],
+                providerTurnOrdinal: ordinal,
+                modelSelection,
+              });
+            yield* harness.runtime.startTurn(turn(1, original));
+            yield* harness.offerAndWait(wakeTaskStarted);
+            yield* harness.offerAndWait(turnOneResult);
+            yield* Queue.take(harness.terminalReceipts);
+            assert.isTrue(yield* harness.hasPendingBackgroundWork);
+            const refused = yield* harness.runtime
+              .startTurn(turn(2, { ...original, model: change.model, options: change.options }))
+              .pipe(Effect.result);
+            assert.equal(refused._tag, "Failure");
+            assert.lengthOf(harness.offeredMessages, 1);
+            assert.isTrue(yield* harness.hasPendingBackgroundWork);
+            yield* harness.runtime.startTurn(turn(3, original));
+            assert.lengthOf(harness.offeredMessages, 2);
+            assert.lengthOf(harness.processQueues, 1);
+            assert.lengthOf(
+              harness.liveChanges,
+              2,
+              "a failed acknowledgement invalidates every cached field",
+            );
+            assert.deepEqual(harness.liveChanges[1], {
+              model: "claude-opus-5-5",
+              effortLevel: "medium",
+              fastMode: false,
+              ultracode: false,
+            });
+            assert.deepEqual(
+              harness.nativeModelsAtOffer,
+              ["claude-opus-5-5", "claude-opus-5-5"],
+              "the retried original selection must be the model actually receiving the prompt",
+            );
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+            ),
+          ),
+        ),
+    );
+  }
 
   it.effect(
     "says so in the chat when Claude Code runs without the Ultracode it was asked for",
@@ -4891,8 +4999,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 return {
                   messages: Stream.fromQueue(sdkMessages),
                   offer: () => Effect.void,
-                  setModel: () => Effect.void,
-                  applyFlagSettings: () => Effect.void,
+
+                  applySelection: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -5150,8 +5258,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   return {
                     messages: Stream.fromQueue(queue),
                     offer: () => Effect.void,
-                    setModel: () => Effect.void,
-                    applyFlagSettings: () => Effect.void,
+
+                    applySelection: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -9944,8 +10052,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 return {
                   messages: Stream.fromQueue(sdkMessages),
                   offer: () => Effect.void,
-                  setModel: () => Effect.void,
-                  applyFlagSettings: () => Effect.void,
+
+                  applySelection: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -10133,8 +10241,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   return {
                     messages: Stream.fromQueue(sdkMessages),
                     offer: () => Effect.void,
-                    setModel: () => Effect.void,
-                    applyFlagSettings: () => Effect.void,
+
+                    applySelection: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -10374,8 +10482,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   return {
                     messages: Stream.fromQueue(sdkMessages),
                     offer: () => Effect.void,
-                    setModel: () => Effect.void,
-                    applyFlagSettings: () => Effect.void,
+
+                    applySelection: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -10572,8 +10680,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 return {
                   messages: Stream.fromQueue(sdkMessages),
                   offer: () => Effect.void,
-                  setModel: () => Effect.void,
-                  applyFlagSettings: () => Effect.void,
+
+                  applySelection: () => Effect.void,
                   readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
@@ -10754,8 +10862,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   return {
                     messages: Stream.fromQueue(sdkMessages),
                     offer: () => Effect.void,
-                    setModel: () => Effect.void,
-                    applyFlagSettings: () => Effect.void,
+
+                    applySelection: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
@@ -10892,8 +11000,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   return {
                     messages: Stream.fromQueue(sdkMessages),
                     offer: () => Effect.void,
-                    setModel: () => Effect.void,
-                    applyFlagSettings: () => Effect.void,
+
+                    applySelection: () => Effect.void,
                     readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,

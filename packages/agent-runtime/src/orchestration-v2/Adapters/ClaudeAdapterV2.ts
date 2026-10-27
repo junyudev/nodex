@@ -389,9 +389,8 @@ export interface ClaudeAgentSdkQueryOpenInput {
 export interface ClaudeAgentSdkQuerySession {
   readonly messages: Stream.Stream<SDKMessage, ClaudeAgentSdkQueryRunnerError>;
   readonly offer: (message: SDKUserMessage) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
-  readonly setModel: (model: string) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
-  readonly applyFlagSettings: (
-    settings: ClaudeLiveFlagSettings,
+  readonly applySelection: (
+    selection: ClaudeLiveSelection,
   ) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   /** What Claude Code reports it is actually running with. */
   readonly readAppliedSettings: Effect.Effect<
@@ -406,7 +405,7 @@ export interface ClaudeAgentSdkQuerySession {
   readonly close: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
 }
 
-export type ClaudeLiveFlagSettings = Omit<ClaudeLiveSelection, "model">;
+export type { ClaudeLiveSelection } from "../../claudeModelOptions.ts";
 
 export const claudeLiveSelectionsEqual = (
   left: ClaudeLiveSelection,
@@ -552,16 +551,8 @@ export type ClaudeAgentSdkProtocolLogEvent =
       readonly direction: "outgoing";
       readonly stage: "decoded";
       readonly payload: {
-        readonly type: "query.set_model";
-        readonly model: string;
-      };
-    }
-  | {
-      readonly direction: "outgoing";
-      readonly stage: "decoded";
-      readonly payload: {
         readonly type: "query.apply_flag_settings";
-        readonly settings: ClaudeLiveFlagSettings;
+        readonly settings: ClaudeLiveSelection;
       };
     }
   | {
@@ -926,28 +917,12 @@ export const layerQueryRunner: Layer.Layer<
                 }),
               ),
             ),
-          setModel: (model) =>
+          applySelection: (selection) =>
             Effect.tryPromise({
-              try: () => queryRuntime.setModel(model),
-              catch: (cause) => queryRunnerError(cause, "setModel"),
-            }).pipe(
-              Effect.tap(() =>
-                logProtocolEvent({
-                  direction: "outgoing",
-                  stage: "decoded",
-                  payload: {
-                    type: "query.set_model",
-                    model,
-                  },
-                }),
-              ),
-            ),
-          applyFlagSettings: (settings) =>
-            Effect.tryPromise({
-              // Efforts come from the model's own catalog levels.
+              // The SDK's flag layer accepts the whole choice in one control request.
               try: () =>
                 queryRuntime.applyFlagSettings(
-                  settings as Parameters<ClaudeQuery["applyFlagSettings"]>[0],
+                  selection as Parameters<ClaudeQuery["applyFlagSettings"]>[0],
                 ),
               catch: (cause) => queryRunnerError(cause, "applyFlagSettings"),
             }).pipe(
@@ -955,7 +930,7 @@ export const layerQueryRunner: Layer.Layer<
                 logProtocolEvent({
                   direction: "outgoing",
                   stage: "decoded",
-                  payload: { type: "query.apply_flag_settings", settings },
+                  payload: { type: "query.apply_flag_settings", settings: selection },
                 }),
               ),
             ),
@@ -3017,8 +2992,8 @@ interface ClaudeLiveQueryContext {
   readonly queryPolicyKey: string;
   // Choices the process was launched with; a change needs a new process.
   readonly launchKey: string;
-  // Model, effort and modes, changed on the live process between turns.
-  live: ClaudeLiveSelection;
+  // Null after an unconfirmed native change; the next prompt must resynchronize every choice.
+  confirmedLiveSelection: ClaudeLiveSelection | null;
   // Ultracode was asked for and Claude Code has not yet confirmed it runs.
   verifyUltracode: boolean;
   readonly closed: Deferred.Deferred<void>;
@@ -8288,32 +8263,28 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
 
         // Model, effort, Fast and Ultracode change on the running process, so a
         // new choice never ends the background agents, shells and workflows it
-        // hosts. False when Claude Code refused, so the caller starts a new process.
+        // hosts. A failed or interrupted call may have changed native state, so only a
+        // fully acknowledged choice can skip the next synchronization.
         const applyLiveSelection = Effect.fn("ClaudeAdapterV2.applyLiveSelection")(function* (
           context: ClaudeLiveQueryContext,
           live: ClaudeLiveSelection,
         ) {
-          const current = context.live;
-          if (claudeLiveSelectionsEqual(current, live)) return true;
-          const { model, ...flags } = live;
-          const applied = yield* Effect.gen(function* () {
-            if (model !== current.model) yield* context.query.setModel(model);
-            // An effort change without the ultracode key turns Ultracode off,
-            // so every change sends the whole set.
-            yield* context.query.applyFlagSettings(flags);
-          }).pipe(
+          const current = context.confirmedLiveSelection;
+          if (current !== null && claudeLiveSelectionsEqual(current, live)) return true;
+          context.confirmedLiveSelection = null;
+          context.verifyUltracode = false;
+          const applied = yield* context.query.applySelection(live).pipe(
             Effect.as(true),
             Effect.catch((cause) =>
-              Effect.logWarning("Claude Code refused a live model change; restarting it.", {
+              Effect.logWarning("Claude Code could not confirm the live model choice.", {
                 cause,
               }).pipe(Effect.as(false)),
             ),
           );
-          if (applied) {
-            context.live = live;
-            context.verifyUltracode = live.ultracode;
-          }
-          return applied;
+          if (!applied) return false;
+          context.confirmedLiveSelection = live;
+          context.verifyUltracode = live.ultracode;
+          return true;
         });
 
         // Claude Code accepts Ultracode silently and runs without it when the
@@ -8510,7 +8481,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             query: querySession,
             queryPolicyKey,
             launchKey: compiledSelection.launchIdentity,
-            live: compiledSelection.live,
+            confirmedLiveSelection: compiledSelection.live,
             verifyUltracode: compiledSelection.live.ultracode,
             closed,
             lastTurn: null,

@@ -180,14 +180,9 @@ interface ClaudePromptOfferFrame {
   readonly message: SDKUserMessage;
 }
 
-interface ClaudeQuerySetModelFrame {
-  readonly type: "query.set_model";
-  readonly model: string;
-}
-
 interface ClaudeQueryApplyFlagSettingsFrame {
   readonly type: "query.apply_flag_settings";
-  readonly settings: ClaudeAdapterV2.ClaudeLiveFlagSettings;
+  readonly settings: ClaudeAdapterV2.ClaudeLiveSelection;
 }
 
 interface ClaudeQuerySetPermissionModeFrame {
@@ -250,7 +245,6 @@ type ClaudeOutboundFrame =
   | { readonly type: "query.stop_task"; readonly taskId: string }
   | ClaudeQueryOpenFrame
   | ClaudePromptOfferFrame
-  | ClaudeQuerySetModelFrame
   | ClaudeQueryApplyFlagSettingsFrame
   | ClaudeQuerySetPermissionModeFrame
   | ClaudeQueryInterruptFrame
@@ -818,14 +812,7 @@ function makeReplayQueryRunner(
           replayEffect(() => {
             assertNextOutboundFrame(makeClaudePromptOfferFrame(message));
           }),
-        setModel: (model) =>
-          replayEffect(() => {
-            assertNextOutboundFrame({
-              type: "query.set_model",
-              model,
-            });
-          }),
-        applyFlagSettings: (settings) =>
+        applySelection: (settings) =>
           replayEffect(() => {
             assertNextOutboundFrame({ type: "query.apply_flag_settings", settings });
           }),

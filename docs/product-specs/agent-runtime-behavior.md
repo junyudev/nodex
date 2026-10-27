@@ -336,9 +336,11 @@ visible but disabled with that reason and no request is sent; if Claude Code sti
 chat without Ultracode, the chat says so.
 
 A Claude chat changes model, effort, Fast and Ultracode on its running Claude Code process
-before the next message, so background agents, shells and workflows keep running. Only
-turning thinking on or off starts a new process, which waits until background work ends or
-the user stops it.
+before the next message, so background agents, shells and workflows keep running. An
+unconfirmed change prevents that message from being sent. The next attempt confirms the
+entire model, effort and speed choice again before sending, including when returning to
+the previous choice. Only turning thinking on or off starts a new process, which waits
+until background work ends or the user stops it.
 
 Message text reaches Claude unchanged. Claude chats highlight the words Claude Code reacts to
 in a message, `ultrathink` and `ultracode`, and explain on hover what each does for that turn.
