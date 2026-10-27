@@ -30,6 +30,7 @@ const LARGE_MARKDOWN_FILE = `${WORKSPACE_ROOT}/large.md`;
 const PDF_FILE = `${WORKSPACE_ROOT}/design.pdf`;
 const LARGE_PDF_FILE = `${WORKSPACE_ROOT}/large-design.pdf`;
 const IMAGE_FILE = `${WORKSPACE_ROOT}/diagram.png`;
+const VIDEO_FILE = `${WORKSPACE_ROOT}/clips/review #1.webm`;
 const REMOTE_HOST = "remote-ssh-discovered:win";
 let remoteSizeBytes: number | null = null;
 let remoteTextRead: (() => Promise<{ contents: string }>) | null = null;
@@ -83,6 +84,16 @@ const invoke = async (channel: string, ...args: unknown[]) => {
     const unsupported = input.path.endsWith(".zip");
     const pdf = input.path.endsWith(".pdf");
     const image = input.path.endsWith(".png");
+    if (input.path.endsWith(".webm")) {
+      return {
+        isFile: true,
+        sizeBytes: 241_603,
+        createdAtMs: Date.parse(CREATED_AT),
+        mtimeMs: Date.parse(CREATED_AT),
+        contentKind: "video",
+        mimeType: "video/webm",
+      };
+    }
     return {
       isFile: true,
       sizeBytes:
@@ -674,6 +685,46 @@ describe("WorkspaceFilesPanel", () => {
     expect(JSON.stringify(invokeCalls.at(-1))).toBe(
       JSON.stringify(["shell:open-path-default", `${WORKSPACE_ROOT}/archive.zip`]),
     );
+  });
+
+  test("streams a local video into the player without reading its bytes", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    const view = renderPanel(VIDEO_FILE);
+    await waitFor(() => expect(view.getByLabelText("Video").tagName).toBe("VIDEO"));
+    const video = view.getByLabelText("Video");
+    expect(video.getAttribute("src")).toBe("app://fs/@fs/workspace/clips/review%20%231.webm");
+    expect(view.getByRole("button", { name: "Play video" })).not.toBeNull();
+    expect(invokeCalls.some(([channel]) => channel === "read-file-binary")).toBe(false);
+    expect(invokeCalls.some(([channel]) => channel === "read-file")).toBe(false);
+    await act(async () => {
+      view.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  test("plays remote video from its host's bounded byte read", async () => {
+    remoteSizeBytes = 2;
+    remoteBinaryRead = async () => ({ contentsBase64: "AQI=", mimeType: "video/webm" });
+    const blobs: Blob[] = [];
+    createObjectURLMock.mockImplementation((blob: Blob) => {
+      blobs.push(blob);
+      return "blob:remote-video";
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    const view = renderRemotePanel(VIDEO_FILE);
+    await waitFor(() =>
+      expect(view.getByLabelText("Video").getAttribute("src")).toBe("blob:remote-video"),
+    );
+    expect(blobs[0]?.type).toBe("video/webm");
+    const read = invokeCalls.find(([channel]) => channel === "read-file-binary");
+    expect(read?.[1]).toMatchObject({ hostId: REMOTE_HOST, path: VIDEO_FILE });
+    await act(async () => {
+      view.unmount();
+      await Promise.resolve();
+    });
+    createObjectURLMock.mockImplementation(() => "blob:nodex-workspace-preview");
   });
 
   test("passes PDF bytes to the dedicated renderer without creating an object URL", async () => {

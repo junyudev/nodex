@@ -100,6 +100,7 @@ import {
   WorkspaceFileLoadingState,
   WorkspaceFileOpenFileState,
   WorkspaceFileTooLargeState,
+  WorkspaceFileUnavailableState,
   WorkspaceFileUnsupportedState,
 } from "./workspace-file-preview-states";
 import {
@@ -1110,8 +1111,8 @@ export function WorkspaceFilesPanel({
 
   if (!workspaceRoot && !selectedPath) {
     return (
-      <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 bg-surface text-center text-sm semantic-text-secondary">
-        <WorkspaceFileOpenFileState />
+      <div className="flex h-full min-h-0 flex-col bg-surface">
+        <WorkspaceFileUnavailableState />
       </div>
     );
   }

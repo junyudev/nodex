@@ -11,7 +11,7 @@ export function FileTreeFilter({
 }) {
   const id = useId();
   return (
-    <div className="no-drag flex h-token-button-composer items-center gap-2 rounded-full border border-primary-outline bg-transparent px-3 py-0 text-sm leading-5">
+    <div className="no-drag flex h-token-button-composer items-center gap-2 rounded-full border border-(--color-border-primary-outline) bg-transparent px-3 py-0 text-sm leading-[18px]">
       <span className="flex shrink-0 items-center justify-center">
         <MagnifyingGlassIcon className="semantic-text-secondary" />
       </span>

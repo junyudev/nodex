@@ -36,6 +36,17 @@ export function WorkspaceFileOpenFileState() {
   );
 }
 
+/** A Files tab with neither a file nor a workspace folder to browse. */
+export function WorkspaceFileUnavailableState() {
+  return (
+    <EmptyState
+      className="h-full min-h-0 p-6"
+      icon={<SidePanelFilesIcon />}
+      title="No file or workspace folder is available."
+    />
+  );
+}
+
 export function WorkspaceFileUnsupportedState({ type }: { type: WorkspaceFileUnsupportedType }) {
   return (
     <EmptyState

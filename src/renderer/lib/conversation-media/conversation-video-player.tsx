@@ -192,6 +192,16 @@ export function ConversationVideoPlayer({
     },
     [element],
   );
+  useLayoutEffect(() => {
+    // Metadata can arrive before this owner observes the element, e.g. from a cached source.
+    if (!element) return;
+    setPlayback((current) => ({
+      ...current,
+      duration: safeDuration(element.duration),
+      time: element.currentTime,
+      playing: !element.paused,
+    }));
+  }, [element]);
   const sourceFailed = useEffectEvent(() => setFailed(resource.identity));
   const sourceIsCurrent = useEffectEvent(resource.isCurrent);
   useEffect(() => {
