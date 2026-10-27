@@ -1,0 +1,51 @@
+src/main/git-worker/git-blame-model.test.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-54
+src/renderer/features/workspace-files/workspace-file-changes-tree-model.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-180
+docs/product-specs/workspace-file-git-data.md
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-50
+src/renderer/features/workspace-files/workspace-file-blame-model.node.test.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-40
+src/renderer/features/workspace-files/use-workspace-file-changes.test.tsx
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-224
+src/renderer/features/workspace-files/workspace-file-changes.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-75
+src/renderer/features/workspace-files/workspace-file-blame-model.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-23
+src/renderer/features/workspace-files/workspace-file-git-model.node.test.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-339
+src/main/git-worker/git-blame-model.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-37
+src/renderer/features/workspace-files/workspace-file-change-blocks.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-63
+src/renderer/features/workspace-files/use-workspace-file-git.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-81
+src/renderer/features/workspace-files/workspace-file-changes-tree-model.node.test.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-141
+src/main/git-worker/git-review-operations.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 59-60,2999
+src/renderer/features/workspace-files/use-workspace-file-changes.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-136
+src/renderer/features/workspace-files/workspace-file-changes.node.test.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-97
+src/renderer/features/workspace-files/workspace-file-change-blocks.node.test.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-37
+src/renderer/features/workspace-files/workspace-file-git-model.ts
+  s_cb8bbfdb133e81::t_cada01dbc47cb6 1-297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "758d6cff4c3208f04a9d053be294dbea07a87a45",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
