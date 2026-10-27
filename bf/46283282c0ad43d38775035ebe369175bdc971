@@ -1,0 +1,41 @@
+src/renderer/lib/codex-thread-settings.ts
+  s_e697d6c77528f7::t_00fa4d75bc15c5 234-241
+src/renderer/components/shared/agent-runtime/intelligence-controls.tsx
+  s_e697d6c77528f7::t_d4ea684d576e3c 67-69
+  s_e697d6c77528f7::t_e999d0ae32ba94 58,62-63
+  s_e697d6c77528f7::t_ef111bc2153dd8 70-71
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_e697d6c77528f7::t_e35e0cb4059cbd 46,831-833
+src/renderer/components/shared/agent-runtime/intelligence-selector-trigger.tsx
+  s_e697d6c77528f7::t_d4ea684d576e3c 19,229
+  s_e697d6c77528f7::t_20091c14a5d815 355
+  s_e697d6c77528f7::t_a26fd36289f4a9 194,200,226-228,230-231,248-249,273
+src/renderer/features/inbox/inbox-agent-model.node.test.ts
+  s_e697d6c77528f7::t_7e95c82ae7700a 119-139
+src/renderer/lib/agent-runtime-model-selection.ts
+  s_e697d6c77528f7::t_93c068256b6543 111,115-116
+  s_e697d6c77528f7::t_075b3087f3207e 5
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_e697d6c77528f7::t_d4ea684d576e3c 48,312-314,497-511,522
+src/renderer/features/inbox/inbox-agent-model.ts
+  s_e697d6c77528f7::t_e35e0cb4059cbd 20,136-137
+  s_e697d6c77528f7::t_bfe5b077f7fd6b 138-140
+docs/product-specs/codex-workspace-behavior.md
+  s_e697d6c77528f7::t_afa19009ac2edd 241-243,245-247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf46283282c0ad43d38775035ebe369175bdc971",
+  "prompts": {},
+  "sessions": {
+    "s_e697d6c77528f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "59555bcd-7949-4f93-a836-53a8195e29be",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
