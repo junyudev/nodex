@@ -1,45 +1,49 @@
-import { afterEach, expect, test } from "vite-plus/test";
-import { applyCodexThemeVariant } from "./codex-theme-variant";
+import { expect, test } from "vite-plus/test";
+import {
+  applyRendererThemeForTest,
+  installRendererThemeFixture,
+  readRendererThemeColor,
+} from "@/test/renderer-theme";
 import { readTerminalTheme } from "./use-terminal";
 
 import "@/globals.css";
 
-afterEach(() => {
-  document.body.replaceChildren();
-  document.body.removeAttribute("style");
-  document.documentElement.removeAttribute("style");
-  document.documentElement.removeAttribute("data-theme");
-  document.documentElement.removeAttribute("data-codex-window-type");
-});
+installRendererThemeFixture();
+
+function readSemanticRole(variable: `--app-color-${string}`): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
+  expect(value, variable).not.toBe("");
+  return value;
+}
 
 test("resolves the terminal palette from the active semantic theme after appearance changes", () => {
-  const root = document.documentElement;
-  root.dataset.codexWindowType = "electron";
   const terminal = document.createElement("div");
   terminal.dataset.codexTerminal = "true";
   terminal.className = "terminal-fallback-surface";
   document.body.append(terminal);
 
-  for (const variant of ["light", "dark", "light"] as const) {
-    applyCodexThemeVariant(root, variant, document.body);
+  const palettes = (["light", "dark", "light"] as const).map((variant) => {
+    applyRendererThemeForTest(variant);
     const theme = readTerminalTheme(terminal);
-    const isDark = variant === "dark";
 
-    expect(theme.background).toBe(isDark ? "#111111" : "#ffffff");
-    expect(theme.foreground).toBe(isDark ? "#fcfcfc" : "#0d0d0d");
+    expect(theme.background).toBe(readSemanticRole("--app-color-background-surface"));
+    expect(theme.foreground).toBe(readSemanticRole("--app-color-text-foreground"));
     expect(theme.cursor).toBe(theme.foreground);
-    expect(theme.red).toBe(isDark ? "#ff6764" : "#e02e2a");
-    expect(theme.green).toBe(isDark ? "#40c977" : "#00a240");
-    expect(theme.magenta).toBe(isDark ? "#b06dff" : "#751ed9");
-    expect(theme.brightBlack).toBe(
-      isDark ? "rgba(252, 252, 252, 0.71)" : "rgba(13, 13, 13, 0.695)",
-    );
-    expect(theme.selectionBackground).toBe(
-      isDark ? "rgba(252, 252, 252, 0.104)" : "rgba(0, 0, 0, 0.098)",
-    );
+    expect(theme.red).toBe(readSemanticRole("--app-color-accent-red"));
+    expect(theme.green).toBe(readSemanticRole("--app-color-accent-green"));
+    expect(theme.magenta).toBe(readSemanticRole("--app-color-accent-purple"));
+    expect(theme.brightBlack).toBe(readSemanticRole("--app-color-text-foreground-secondary"));
+    expect(theme.selectionBackground).toBe(readSemanticRole("--app-color-simple-scrim"));
     expect(theme.selectionInactiveBackground).toBe(theme.selectionBackground);
     expect(getComputedStyle(terminal).backgroundColor).toBe(
-      isDark ? "rgb(17, 17, 17)" : "rgb(255, 255, 255)",
+      readRendererThemeColor("--app-color-background-surface"),
     );
-  }
+    expect(getComputedStyle(terminal).color).toBe(
+      readRendererThemeColor("--app-color-text-foreground"),
+    );
+    return theme;
+  });
+
+  expect(palettes[1]).not.toEqual(palettes[0]);
+  expect(palettes[2]).toEqual(palettes[0]);
 });

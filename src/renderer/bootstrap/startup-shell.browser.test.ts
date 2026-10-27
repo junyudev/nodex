@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { cdp } from "vite-plus/test/browser";
+import { applyRendererThemeForTest, readRendererThemeColor } from "@/test/renderer-theme";
 import {
   createStartupShellCriticalCss,
   createStartupShellMarkup,
@@ -53,7 +54,11 @@ function readCenter(element: Element): { readonly x: number; readonly y: number 
 
 afterEach(() => {
   document.head.querySelector("[data-startup-shell-test]")?.remove();
-  document.documentElement.classList.remove("dark", "electron-opaque");
+  const root = document.documentElement;
+  root.removeAttribute("style");
+  root.removeAttribute("data-theme");
+  root.removeAttribute("data-codex-window-type");
+  root.classList.remove("dark", "electron-opaque", "electron-dark", "electron-light");
 });
 
 describe("parser-time startup shell presentation", () => {
@@ -90,14 +95,16 @@ describe("parser-time startup shell presentation", () => {
     );
   });
 
-  test.each([
-    { dark: false, expected: "rgb(245, 245, 245)" },
-    { dark: true, expected: "rgb(14, 14, 14)" },
-  ])(
+  test.each([{ dark: false }, { dark: true }])(
     "uses the shared theme surface before application scripts load: dark=$dark",
-    ({ dark, expected }) => {
+    ({ dark }) => {
       mountStartupShell({ dark, opaque: true });
-      expect(getComputedStyle(document.body).backgroundColor).toBe(expected);
+      const startupSurface = getComputedStyle(document.body).backgroundColor;
+
+      // Read parser-time paint before replacing its CSS with the application's palette.
+      document.head.querySelector("[data-startup-shell-test]")?.remove();
+      applyRendererThemeForTest(dark ? "dark" : "light");
+      expect(startupSurface).toBe(readRendererThemeColor("--app-color-background-surface-under"));
     },
   );
 
