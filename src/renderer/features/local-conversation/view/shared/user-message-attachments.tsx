@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type Ref } from "react";
 import { Sparkles } from "@/components/shared/icons/generic-icons";
 import { ActivitySpinnerIcon, FileIcon } from "@/components/shared/icons";
 import type {
@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 import {
   ImagePreviewDialog,
   openUserAttachmentImagePreview,
-  useResolvedImageAsset,
 } from "@/features/user-attachment-image-editor";
 import { useConversationImageAssetContext } from "../conversation-image-asset-context";
 import { useConversationImageAsset } from "./use-conversation-image-asset";
@@ -66,6 +65,9 @@ export function UserImageButton({
   bordered,
   onOpenPreview,
   onImageError,
+  size = 64,
+  previewLabel = "Open image preview",
+  buttonRef,
 }: {
   src: string;
   alt?: string;
@@ -73,22 +75,27 @@ export function UserImageButton({
   bordered: boolean;
   onOpenPreview: (trigger: HTMLButtonElement) => void;
   onImageError?: () => void;
+  size?: 64 | 80;
+  previewLabel?: string;
+  buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       data-composer-attachment-pill="true"
-      aria-label="Open image preview"
+      aria-label={previewLabel}
       className={cn(
-        "size-16 cursor-interaction overflow-hidden rounded-lg focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none",
-        bordered && "border border-token-border",
+        "cursor-interaction overflow-hidden rounded-lg focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none",
+        size === 80 ? "size-20" : "size-16",
+        bordered && (size === 80 ? "border border-border-strong" : "border border-token-border"),
       )}
       onClick={(event) => onOpenPreview(event.currentTarget)}
     >
       <img
         src={src}
-        width={64}
-        height={64}
+        width={size}
+        height={size}
         alt={alt}
         referrerPolicy="no-referrer"
         className={cn(
@@ -101,6 +108,60 @@ export function UserImageButton({
   );
 }
 
+/** Conversation images keep their loaded bytes while the thumbnail remains mounted. */
+export function ConversationImageThumbnail({
+  src,
+  isLoading,
+  isError,
+  alt,
+  onOpenPreview,
+  previewLabel,
+  buttonRef,
+}: {
+  src: string | null;
+  isLoading: boolean;
+  isError: boolean;
+  alt: string;
+  onOpenPreview: (trigger: HTMLButtonElement) => void;
+  previewLabel?: string;
+  buttonRef?: Ref<HTMLButtonElement>;
+}) {
+  if (isLoading) {
+    return (
+      <div
+        className="flex size-20 items-center justify-center rounded-lg border border-border-strong"
+        aria-label={`Loading ${alt.toLowerCase()}`}
+        role="status"
+      >
+        <ActivitySpinnerIcon className="icon-xs" />
+      </div>
+    );
+  }
+  if (isError || !src) {
+    return (
+      <div
+        className="flex size-16 items-center justify-center rounded-lg border border-text-danger/20 bg-background-danger-surface/20 px-1 text-center text-[10px] leading-3 text-danger"
+        aria-label="Image failed to load"
+        role="img"
+      >
+        Failed
+      </div>
+    );
+  }
+  return (
+    <UserImageButton
+      src={src}
+      alt={alt}
+      fit="cover"
+      bordered
+      onOpenPreview={onOpenPreview}
+      size={80}
+      previewLabel={previewLabel}
+      buttonRef={buttonRef}
+    />
+  );
+}
+
 interface ResolvedUserImagePreview {
   attachmentId: string;
   attachmentSource: string;
@@ -110,7 +171,7 @@ interface ResolvedUserImagePreview {
 
 type RegisterResolvedImagePreview = (preview: ResolvedUserImagePreview) => () => void;
 
-export function InlineOrLocalUserImageAttachment({
+function UserImageAttachment({
   attachment,
   onOpenPreview,
   registerPreview,
@@ -119,80 +180,26 @@ export function InlineOrLocalUserImageAttachment({
   onOpenPreview: (trigger: HTMLButtonElement) => void;
   registerPreview: RegisterResolvedImagePreview;
 }) {
-  const { hostId } = useConversationImageAssetContext();
-  const isLocalImage = attachment.sourceKind === "local-image";
-  const asset = useResolvedImageAsset(attachment.source, {
-    hostId,
-    allowLocalPath: isLocalImage,
-    materialize: isLocalImage,
-  });
-  const { previewSrc: src, downloadSrc, isLoading, isError, error, refetch } = asset;
+  const asset = useConversationImageAsset(attachment.source);
+  const { previewSrc: src, downloadSrc, isLoading, isError } = asset;
 
   useEffect(() => {
-    if (!src) return;
+    if (isError || isLoading || !src) return;
     return registerPreview({
       attachmentId: attachment.id,
       attachmentSource: attachment.source,
       downloadSrc: downloadSrc ?? undefined,
       src,
     });
-  }, [attachment.id, attachment.source, downloadSrc, registerPreview, src]);
-
-  if (isLoading) return <ImageLoadingTile label="Loading user attachment" />;
-  if (!src) {
-    return isError ? (
-      <ImageErrorTile onRetry={error ? () => void refetch() : undefined} />
-    ) : (
-      <ImageLoadingTile label="Loading user attachment" />
-    );
-  }
-
-  return <UserImageButton src={src} fit="cover" bordered onOpenPreview={onOpenPreview} />;
-}
-
-export function RemoteUserImageAttachment({
-  attachment,
-  onOpenPreview,
-  registerPreview,
-}: {
-  attachment: CodexUserImageAttachment;
-  onOpenPreview: (trigger: HTMLButtonElement) => void;
-  registerPreview: RegisterResolvedImagePreview;
-}) {
-  const asset = useConversationImageAsset(attachment.source, {
-    shouldLoadFileDataUrl: false,
-  });
-  const { previewSrc: src, downloadSrc, isLoading, isError, refetch } = asset;
-
-  useEffect(() => {
-    if (!src) return;
-    return registerPreview({
-      attachmentId: attachment.id,
-      attachmentSource: attachment.source,
-      downloadSrc: downloadSrc ?? undefined,
-      src,
-    });
-  }, [attachment.id, attachment.source, downloadSrc, registerPreview, src]);
-
-  if (isError) return <ImageErrorTile onRetry={() => void refetch()} />;
-  if (isLoading || !src) {
-    return (
-      <div
-        aria-label="Loading user attachment"
-        className="size-16 rounded-md border border-token-border bg-token-bg-tertiary text-sm text-token-description-foreground"
-      >
-        <div className="flex size-full items-center justify-center">...</div>
-      </div>
-    );
-  }
+  }, [attachment.id, attachment.source, downloadSrc, isError, isLoading, registerPreview, src]);
 
   return (
-    <UserImageButton
+    <ConversationImageThumbnail
       src={src}
-      fit="contain"
-      bordered={false}
+      isError={isError}
+      isLoading={isLoading}
+      alt="User attachment"
       onOpenPreview={onOpenPreview}
-      onImageError={refetch}
     />
   );
 }
@@ -290,15 +297,8 @@ export function UserAttachmentStrip({
             openPreview(attachment.id, trigger);
           };
 
-          return attachment.sourceKind === "remote-pointer" ? (
-            <RemoteUserImageAttachment
-              key={attachment.id}
-              attachment={attachment}
-              onOpenPreview={handleOpenPreview}
-              registerPreview={registerPreview}
-            />
-          ) : (
-            <InlineOrLocalUserImageAttachment
+          return (
+            <UserImageAttachment
               key={attachment.id}
               attachment={attachment}
               onOpenPreview={handleOpenPreview}

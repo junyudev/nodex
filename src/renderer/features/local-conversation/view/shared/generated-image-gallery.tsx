@@ -211,9 +211,7 @@ function GeneratedImagePreview({
   onPreviousImage?: () => void;
   onEditImage?: () => void;
 }) {
-  const fullAsset = useConversationImageAsset(image.src ?? image.previewSrc ?? "", {
-    shouldLoadFileDataUrl: true,
-  });
+  const fullAsset = useConversationImageAsset(image.src ?? image.previewSrc ?? "");
   const alt = `Generated image ${imageNumber}`;
 
   return (

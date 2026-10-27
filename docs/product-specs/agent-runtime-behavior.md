@@ -498,10 +498,19 @@ belongs to the Session's root conversation; an opened subagent shows its own Run
 
 Completed image-file reads, including Claude Code `Read`, appear as image-view activity.
 Consecutive reads share one collapsed `Viewed N images` row; expanding it loads thumbnails
-from the recorded file paths and opens the shared image preview. This remains available
-when history omits tool output. Running, failed, interrupted and cancelled reads retain
-their tool status and details rather than claiming the image was viewed. Ordinary file
-reads and tools that return image content retain their own tool presentation.
+from the recorded file paths through the owning execution host. Each mounted thumbnail
+retains the resolved bytes and gives the same source to the shared image preview, so
+opening a loaded image does not depend on its original file still existing. Successful
+local reads remain fresh in a conversation- and host-scoped binary cache with a five-minute
+unused lifetime; mounted thumbnails do not extend that cache lifetime. After collection,
+reopening reads the recorded path again. Missing or unreadable files show `Failed` without
+a retry button; folding and reopening starts another attempt. Ordinary image-file reads
+do not create permanent Runtime attachments or recover historical files from provider
+logs. Imported images and explicitly submitted attachments retain their separate owned
+attachment behavior. Image-view activity remains available when history omits tool output.
+Running, failed, interrupted and cancelled reads retain their tool status and details rather
+than claiming the image was viewed. Ordinary file reads and tools that return image content
+retain their own tool presentation.
 
 Lifecycle hooks, automatic reviews, cited memory and the files a command read are Turn
 metadata: they reach the reply's hook indicator and footer details as in any chat, and a

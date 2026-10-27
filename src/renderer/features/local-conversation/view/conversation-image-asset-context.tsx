@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../shared/codex-host";
 import type { ImageEditComposerTarget } from "@/features/user-attachment-image-editor";
 
-interface ConversationImageAssetContextValue {
+export interface ConversationImageAssetContextValue {
   conversationId: string | null;
   hostId: string;
   composerTarget: ImageEditComposerTarget | null;

@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../shared/codex-host";
 import { readManagedImageDataUrl } from "../../../lib/assets";
 import { codexConversationImageAssetQueryOptions } from "../../../lib/codex-conversation-image-assets";
@@ -38,24 +37,6 @@ function asError(error: unknown): Error | null {
   if (error instanceof Error) return error;
   if (error == null) return null;
   return new Error(String(error));
-}
-
-function useAssetObjectUrl(blob: Blob | null, cacheKey: string): string | null {
-  const [state, setState] = useState<{ cacheKey: string; objectUrl: string } | null>(null);
-
-  useEffect(() => {
-    if (!blob || typeof URL.createObjectURL !== "function") {
-      setState(null);
-      return;
-    }
-    const nextObjectUrl = URL.createObjectURL(blob);
-    setState({ cacheKey, objectUrl: nextObjectUrl });
-    return () => {
-      window.setTimeout(() => URL.revokeObjectURL(nextObjectUrl), 0);
-    };
-  }, [blob, cacheKey]);
-
-  return state?.cacheKey === cacheKey ? state.objectUrl : null;
 }
 
 export function useResolvedImageAsset(
@@ -97,11 +78,6 @@ export function useResolvedImageAsset(
     staleTime: Infinity,
     gcTime: Infinity,
   });
-  const pointerObjectUrl = useAssetObjectUrl(
-    pointerQuery.data?.blob ?? null,
-    source.kind === "pointer" ? source.source : "",
-  );
-
   const localDataUrl = localFileQuery.data?.contentsBase64
     ? buildImageDataUrl(localFileQuery.data.contentsBase64, localFileQuery.data.mimeType)
     : null;
@@ -114,7 +90,7 @@ export function useResolvedImageAsset(
     remoteAssetQuery.data ??
     null;
   const previewSrc =
-    pointerObjectUrl ??
+    pointerQuery.data?.objectUrl ??
     pointerQuery.data?.dataUrl ??
     localDataUrl ??
     managedAssetQuery.data ??

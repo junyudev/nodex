@@ -387,9 +387,18 @@ export function workspaceFileTextQueryOptions(input: WorkspaceFileTextReadInput)
   });
 }
 
-export function workspaceFileBinaryQueryOptions(input: WorkspaceFileRequest) {
+export function workspaceFileBinaryQueryOptions(
+  input: WorkspaceFileRequest,
+  cacheScope?: { conversationId: string | null },
+) {
   return queryOptions({
-    queryKey: queryKeys.workspaceFiles.binary(input),
+    queryKey: cacheScope
+      ? queryKeys.conversationImages.file(
+          input.hostId ?? "local",
+          cacheScope.conversationId,
+          input.path,
+        )
+      : queryKeys.workspaceFiles.binary(input),
     queryFn: () => invoke("read-file-binary", input) as Promise<WorkspaceFileBinaryReadResult>,
   });
 }

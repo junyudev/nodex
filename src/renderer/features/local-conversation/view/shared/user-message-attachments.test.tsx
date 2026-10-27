@@ -3,7 +3,7 @@ import { buildAgentHistoryImageSource } from "../../../../../shared/agent-histor
 import { buildAgentRuntimeAttachmentSource } from "../../../../../shared/agent-runtime-attachments";
 import { act } from "react";
 import { fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { render, settleAsyncRender } from "../../../../test/dom";
 import { installWindowApi } from "../../../../test/browser-globals";
 import { TestQueryProvider } from "../../../../test/query";
@@ -14,11 +14,16 @@ import {
   type OpenUserAttachmentImagePreviewOptions,
 } from "@/features/user-attachment-image-editor";
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("UserAttachmentStrip", () => {
-  test("a mounted Runtime image resolves only its exact descriptor and displays the lazy filesystem URL", async () => {
-    const invoke = vi.fn(async () => {
-      throw new Error("Unexpected byte read");
-    });
+  test("resolves a mounted Runtime image's exact descriptor to display bytes", async () => {
+    const invoke = vi.fn(async () => ({
+      contentsBase64: "aW1hZ2U=",
+      mimeType: "image/png",
+    }));
     installWindowApi({ invoke, on: () => () => {} });
     const reference = {
       sourceThreadId: "fork-source",
@@ -44,8 +49,13 @@ describe("UserAttachmentStrip", () => {
     );
     await view.findByRole("button", { name: "Open image preview" });
     expect(resolveRuntimeAttachment).toHaveBeenCalledExactlyOnceWith(reference);
-    expect(invoke).not.toHaveBeenCalled();
-    expect(view.container.querySelector("img")?.getAttribute("src")).toContain("image.png");
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("read-file-binary", {
+      hostId: "local",
+      path: "/managed/runtime/attachments/image.png",
+    });
+    expect(view.container.querySelector("img")?.getAttribute("src")).toBe(
+      "data:image/png;base64,aW1hZ2U=",
+    );
     view.unmount();
   });
   test("resolves native file-ID images through the hosted-image boundary", async () => {
@@ -76,9 +86,10 @@ describe("UserAttachmentStrip", () => {
   });
 
   test("resolves native history image descriptors through their owning session without arbitrary file reads", async () => {
-    const invoke = vi.fn(async () => {
-      throw new Error("Unexpected file read");
-    });
+    const invoke = vi.fn(async () => ({
+      bytes: new TextEncoder().encode("image"),
+      mimeType: "image/png",
+    }));
     installWindowApi({
       invoke,
       on: () => () => {},
@@ -108,8 +119,13 @@ describe("UserAttachmentStrip", () => {
     );
     await view.findByRole("button", { name: "Open image preview" });
     expect(resolveHistoryImage).toHaveBeenCalledExactlyOnceWith(reference);
-    expect(invoke).not.toHaveBeenCalled();
-    expect(view.container.querySelector("img")?.getAttribute("src")).toContain("native-image.png");
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      "asset:image:read",
+      "nodex://assets/native-image.png",
+    );
+    expect(view.container.querySelector("img")?.getAttribute("src")).toBe(
+      "data:image/png;base64,aW1hZ2U=",
+    );
   });
   test("rejects a native image resolver result that is not an owned asset", async () => {
     const invoke = vi.fn(async () => {
@@ -140,7 +156,7 @@ describe("UserAttachmentStrip", () => {
         </ConversationImageAssetProvider>
       </TestQueryProvider>,
     );
-    await view.findByRole("button", { name: "Retry image" });
+    await view.findByRole("img", { name: "Image failed to load" });
     expect(invoke).not.toHaveBeenCalled();
     expect(view.queryByRole("button", { name: "Open image preview" })).toBeNull();
   });
@@ -276,13 +292,14 @@ describe("UserAttachmentStrip", () => {
     }
   });
 
-  test("hides failed remote thumbnails after the loading state", async () => {
+  test("shows failed remote thumbnails without an automatic retry or preview action", async () => {
+    const invoke = vi.fn(async () => ({
+      ok: false,
+      status: 404,
+      message: "Image not found",
+    }));
     installWindowApi({
-      invoke: async () => ({
-        ok: false,
-        status: 404,
-        message: "Image not found",
-      }),
+      invoke,
       on: () => () => {},
     });
     const view = render(
@@ -304,7 +321,11 @@ describe("UserAttachmentStrip", () => {
     await waitFor(() => {
       expect(view.queryByLabelText("Loading user attachment")).toBeNull();
     });
-    expect(Boolean(view.container.querySelector('[aria-label="Open image preview"]'))).toBe(false);
+    expect(view.getByRole("img", { name: "Image failed to load" }).textContent).toBe("Failed");
+    expect(view.queryByRole("button", { name: "Retry image" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Open image preview" })).toBeNull();
+    await settleAsyncRender();
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 
   test("materializes a protocol localImage on its trusted local host", async () => {
@@ -345,13 +366,90 @@ describe("UserAttachmentStrip", () => {
     expect(Boolean(view.container.querySelector('[aria-label="Open image preview"]'))).toBe(true);
   });
 
-  test("does not read a protocol localImage from a different host", async () => {
-    let invokeCount = 0;
+  test("keeps an unreadable local image out of preview navigation", async () => {
+    const invoke = vi.fn(async (_channel: string, input: unknown) => {
+      const path = (input as { path: string }).path;
+      if (path === "/images/missing.png") throw new Error("ENOENT");
+      return {
+        contentsBase64: path === "/images/first.png" ? "Zmlyc3Q=" : "bGFzdA==",
+        mimeType: "image/png",
+      };
+    });
+    installWindowApi({ invoke, on: () => () => {} });
+    const view = render(
+      <TestQueryProvider>
+        <UserAttachmentStrip
+          attachments={["first", "missing", "last"].map((id) => ({
+            type: "image",
+            id,
+            source: `/images/${id}.png`,
+            sourceKind: "local-image",
+          }))}
+        />
+      </TestQueryProvider>,
+    );
+
+    await view.findByRole("img", { name: "Image failed to load" });
+    await waitFor(() => {
+      expect(view.getAllByRole("button", { name: "Open image preview" })).toHaveLength(2);
+    });
+    const triggers = view.getAllByRole("button", { name: "Open image preview" });
+    await act(async () => {
+      fireEvent.click(triggers[0]);
+      await Promise.resolve();
+    });
+    const dialog = await view.findByRole("dialog", { name: "Image preview" });
+    expect(dialog.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,Zmlyc3Q=");
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Next image" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(dialog.querySelector("img")?.getAttribute("src")).toBe(
+        "data:image/png;base64,bGFzdA==",
+      );
+    });
+    expect(view.queryByRole("button", { name: "Next image" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Retry image" })).toBeNull();
+    expect(invoke).toHaveBeenCalledTimes(3);
+  });
+
+  test("opens a loaded local image from the same bytes after its source disappears", async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({ contentsBase64: "aW1hZ2U=", mimeType: "image/png" })
+      .mockRejectedValue(new Error("ENOENT"));
+    installWindowApi({ invoke, on: () => () => {} });
+    const view = render(
+      <TestQueryProvider>
+        <UserAttachmentStrip
+          attachments={[
+            {
+              type: "image",
+              id: "loaded-local",
+              source: "/images/loaded.png",
+              sourceKind: "local-image",
+            },
+          ]}
+        />
+      </TestQueryProvider>,
+    );
+
+    const trigger = await view.findByRole("button", { name: "Open image preview" });
+    await act(async () => {
+      fireEvent.click(trigger);
+      await Promise.resolve();
+    });
+    const dialog = await view.findByRole("dialog", { name: "Image preview" });
+    expect(dialog.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,aW1hZ2U=");
+    await settleAsyncRender();
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  test("reads a protocol localImage on its recorded execution host", async () => {
+    const invoke = vi.fn(async () => ({ contentsBase64: "aW1hZ2U=", mimeType: "image/png" }));
     installWindowApi({
-      invoke: async () => {
-        invokeCount += 1;
-        return { contentsBase64: "aW1hZ2U=", mimeType: "image/png" };
-      },
+      invoke,
       on: () => () => {},
     });
 
@@ -372,11 +470,13 @@ describe("UserAttachmentStrip", () => {
       </TestQueryProvider>,
     );
 
-    await settleAsyncRender();
-
-    expect(invokeCount).toBe(0);
-    expect(view.getByRole("status", { name: "Image unavailable" })).not.toBeNull();
-    expect(view.queryByRole("button", { name: "Retry image" })).toBeNull();
-    expect(view.queryByRole("button", { name: "Open image preview" })).toBeNull();
+    await view.findByRole("button", { name: "Open image preview" });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("read-file-binary", {
+      hostId: "ssh:remote",
+      path: "/Users/example/secret.png",
+    });
+    expect(view.getByRole("img", { name: "User attachment" }).getAttribute("src")).toBe(
+      "data:image/png;base64,aW1hZ2U=",
+    );
   });
 });

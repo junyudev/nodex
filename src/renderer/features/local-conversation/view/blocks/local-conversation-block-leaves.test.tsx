@@ -16,7 +16,6 @@ import { THREAD_SETTINGS_STORAGE_KEY } from "../../../../lib/codex-thread-settin
 import { COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY } from "../../../../lib/composer-enter-behavior";
 import { CodexThreadSettingsProvider } from "../../../../lib/use-codex-thread-settings";
 import { buildCodexFileChangeMap } from "../../../../../shared/codex-file-change";
-import { buildAppFilesystemUrl } from "../../../../../shared/app-protocol";
 import { projectCodexCanonicalTurnItemViews } from "../../../../../shared/codex-canonical-item-projector";
 import { projectCodexItemViewToTranscriptEntry } from "../../../../../shared/codex-transcript-entry-projection";
 import { applyContentSearchDomMarks } from "../../../content-search/content-search-dom";
@@ -2082,6 +2081,12 @@ describe("image-view and completed elicitation leaves", () => {
 
   test("projects completed runtime image reads into a collapsed gallery with navigable previews", async () => {
     const paths = ["/workspace/rail-states-light.png", "/workspace/rail-states-dark.png"];
+    const readImage = vi.fn(async (_channel: string, input: { path: string }) => ({
+      contentsBase64: input.path === paths[0] ? "Zmlyc3Q=" : "c2Vjb25k",
+      mimeType: "image/png",
+    }));
+    installWindowApi({ invoke: readImage, on: () => () => {} });
+    const sources = ["data:image/png;base64,Zmlyc3Q=", "data:image/png;base64,c2Vjb25k"];
     const at = "2026-10-23T00:00:00.000Z";
     const items = paths.map((path, ordinal) =>
       projectAgentRuntimeItem({
@@ -2139,7 +2144,8 @@ describe("image-view and completed elicitation leaves", () => {
     expect(thumbnails).toHaveLength(2);
     expect(
       thumbnails.map((thumbnail) => within(thumbnail).getByRole("img").getAttribute("src")),
-    ).toEqual(paths.map(buildAppFilesystemUrl));
+    ).toEqual(sources);
+    expect(readImage).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       fireEvent.click(thumbnails[0]!);
@@ -2147,7 +2153,7 @@ describe("image-view and completed elicitation leaves", () => {
     });
     const preview = await view.findByRole("dialog", { name: "Image preview" });
     expect(within(preview).getByRole("img", { name: "Inspected image" }).getAttribute("src")).toBe(
-      buildAppFilesystemUrl(paths[0]!),
+      sources[0],
     );
     await act(async () => {
       fireEvent.click(within(preview).getByRole("button", { name: "Next image" }));
@@ -2155,14 +2161,22 @@ describe("image-view and completed elicitation leaves", () => {
     });
     await waitFor(() => {
       expect(
-        within(preview).getByRole("img", { name: "Inspected image" }).getAttribute("src"),
-      ).toBe(buildAppFilesystemUrl(paths[1]!));
+        within(view.getByRole("dialog", { name: "Image preview" }))
+          .getByRole("img", { name: "Inspected image" })
+          .getAttribute("src"),
+      ).toBe(sources[1]);
     });
     await act(async () => {
-      fireEvent.click(within(preview).getByRole("button", { name: "Close image preview" }));
+      fireEvent.click(
+        within(view.getByRole("dialog", { name: "Image preview" })).getByRole("button", {
+          name: "Close image preview",
+        }),
+      );
       await Promise.resolve();
     });
     await waitFor(() => expect(view.queryByRole("dialog", { name: "Image preview" })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(thumbnails[1]));
+    expect(readImage).toHaveBeenCalledTimes(2);
   });
 
   test("renders generated images and pending output in the dedicated preview gallery", async () => {

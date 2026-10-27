@@ -1,113 +1,54 @@
 import { useRef, useState } from "react";
-import { ImageEditorTabIcon, LoadingIcon } from "@/components/shared/icons";
-import {
-  ImagePreviewDialog,
-  resolveImageDisplaySource,
-} from "@/features/user-attachment-image-editor";
+import { ImageEditorTabIcon } from "@/components/shared/icons";
+import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import type { CodexUnavailableImage } from "@/lib/types";
-import { parseAgentRuntimeAttachmentSource } from "../../../../../shared/agent-runtime-attachments";
 import { ThreadActivityShell, ThreadRichActivityHeader } from "./tools/tool-primitives";
 import { NO_UNAVAILABLE_IMAGES, UnavailableImageTile } from "./unavailable-image";
 import { useConversationImageAsset } from "./use-conversation-image-asset";
-
-function InspectedImageButton({
-  alt,
-  displaySrc,
-  onImageError,
-  onOpen,
-}: {
-  alt: string;
-  displaySrc: string;
-  onImageError: () => void;
-  onOpen: (trigger: HTMLButtonElement) => void;
-}) {
-  return (
-    <button
-      type="button"
-      className="size-20 cursor-interaction rounded-lg border border-token-border-heavy focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
-      aria-label={alt}
-      onClick={(event) => onOpen(event.currentTarget)}
-    >
-      <img
-        src={displaySrc}
-        className="h-full w-full rounded-md object-cover"
-        referrerPolicy="no-referrer"
-        alt={alt}
-        onError={onImageError}
-      />
-    </button>
-  );
-}
-
-function ResolvedInspectedImageThumbnail({
-  alt,
-  onOpen,
-  source,
-}: {
-  alt: string;
-  onOpen: (trigger: HTMLButtonElement) => void;
-  source: string;
-}) {
-  const asset = useConversationImageAsset(source, { shouldLoadFileDataUrl: true });
-
-  if (asset.isLoading && !asset.dataUrl) {
-    return (
-      <div
-        aria-label={`Loading ${alt.toLowerCase()}`}
-        className="flex size-20 items-center justify-center rounded-lg border border-token-border-heavy text-token-description-foreground"
-        role="status"
-      >
-        <LoadingIcon aria-hidden="true" className="icon-xs animate-spin" />
-      </div>
-    );
-  }
-
-  if (asset.isError || !asset.previewSrc) {
-    return (
-      <button
-        aria-label={`Retry ${alt.toLowerCase()}`}
-        className="size-20 cursor-interaction rounded-lg border border-token-border-heavy text-sm text-token-description-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
-        type="button"
-        onClick={() => void asset.refetch()}
-      >
-        Image unavailable
-      </button>
-    );
-  }
-
-  return (
-    <InspectedImageButton
-      alt={alt}
-      displaySrc={asset.previewSrc}
-      onImageError={() => void asset.refetch()}
-      onOpen={onOpen}
-    />
-  );
-}
+import { ConversationImageThumbnail } from "./user-message-attachments";
 
 function InspectedImageThumbnail({
-  alt,
-  onOpen,
   source,
+  open,
+  onOpenChange,
+  onPreviousImage,
+  onNextImage,
 }: {
-  alt: string;
-  onOpen: (trigger: HTMLButtonElement) => void;
   source: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onPreviousImage?: () => void;
+  onNextImage?: () => void;
 }) {
-  const [shouldResolve, setShouldResolve] = useState(false);
-  const displaySrc = resolveImageDisplaySource(source, { allowLocalPath: true });
-
-  if (shouldResolve || !displaySrc) {
-    return <ResolvedInspectedImageThumbnail alt={alt} onOpen={onOpen} source={source} />;
-  }
-
+  const asset = useConversationImageAsset(source);
+  const trigger = useRef<HTMLButtonElement | null>(null);
   return (
-    <InspectedImageButton
-      alt={alt}
-      displaySrc={displaySrc}
-      onImageError={() => setShouldResolve(true)}
-      onOpen={onOpen}
-    />
+    <>
+      <ConversationImageThumbnail
+        src={asset.previewSrc}
+        isLoading={asset.isLoading}
+        isError={asset.isError}
+        alt="Inspected image"
+        previewLabel="Inspected image"
+        buttonRef={trigger}
+        onOpenPreview={() => onOpenChange(true)}
+      />
+      {open && asset.previewSrc ? (
+        <ImagePreviewDialog
+          open
+          onOpenChange={onOpenChange}
+          src={asset.previewSrc}
+          downloadSrc={asset.downloadSrc ?? undefined}
+          alt="Inspected image"
+          onPreviousImage={onPreviousImage}
+          onNextImage={onNextImage}
+          finalFocus={() => {
+            trigger.current?.focus();
+            return false;
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -119,20 +60,6 @@ function imageViewSummary(viewed: number, missing: number): string {
   return `${summary} · ${total === 1 ? "file" : "files"} missing`;
 }
 
-/** Owned runtime copies resolve to bytes first; the preview dialog only loads direct sources. */
-function InspectedImagePreview({
-  source,
-  ...props
-}: Omit<Parameters<typeof ImagePreviewDialog>[0], "src" | "alt" | "open"> & {
-  source: string;
-}) {
-  const runtime = parseAgentRuntimeAttachmentSource(source) !== null;
-  const asset = useConversationImageAsset(runtime ? source : "", { shouldLoadFileDataUrl: true });
-  const src = runtime ? asset.previewSrc : source;
-  if (!src) return null;
-  return <ImagePreviewDialog {...props} open src={src} alt="Inspected image" allowLocalPath />;
-}
-
 export function ImageViewSurface({
   imagePaths,
   unavailableImages = NO_UNAVAILABLE_IMAGES,
@@ -142,93 +69,63 @@ export function ImageViewSurface({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const sources = imagePaths;
-  const canExpand = sources.length + unavailableImages.length > 0;
-  const summary = imageViewSummary(sources.length, unavailableImages.length);
-  const handleOpenChange = (open: boolean) => {
-    if (!open) setOpenIndex(null);
-  };
-  const activeSource = openIndex === null ? null : (sources[openIndex] ?? null);
+  const canExpand = imagePaths.length + unavailableImages.length > 0;
+  const summary = imageViewSummary(imagePaths.length, unavailableImages.length);
 
   return (
-    <>
-      <ThreadActivityShell
-        className="overflow-clip"
-        header={
-          <ThreadRichActivityHeader
-            icon={
-              <ImageEditorTabIcon
-                aria-hidden="true"
-                className="icon-xs shrink-0 text-token-conversation-body"
-              />
-            }
-            summary={
-              <span className="block truncate text-token-conversation-summary-trailing">
-                {summary}
-              </span>
-            }
-            disclosure={
-              canExpand
-                ? {
-                    expanded,
-                    onToggle: () => {
-                      setExpanded((current) => !current);
-                    },
-                  }
-                : undefined
-            }
-          />
-        }
-        body={
-          expanded ? (
-            <div className="min-w-0">
-              <div className="hide-scrollbar flex max-w-full overflow-x-auto pb-1">
-                <div className="flex min-w-max gap-2">
-                  {sources.map((source, index) => (
-                    <InspectedImageThumbnail
-                      key={`${source}:${index}`}
-                      alt="Inspected image"
-                      source={source}
-                      onOpen={(trigger) => {
-                        previewTriggerRef.current = trigger;
-                        setOpenIndex(index);
-                      }}
-                    />
-                  ))}
-                  {unavailableImages.map((image, index) => (
-                    <UnavailableImageTile key={`${image.sourcePath}:${index}`} image={image} />
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null
-        }
-      />
-      {activeSource ? (
-        <InspectedImagePreview
-          source={activeSource}
-          onOpenChange={handleOpenChange}
-          finalFocus={() => {
-            previewTriggerRef.current?.focus();
-            return false;
-          }}
-          onPreviousImage={
-            openIndex !== null && openIndex > 0
-              ? () => {
-                  setOpenIndex(openIndex - 1);
-                }
-              : undefined
+    <ThreadActivityShell
+      className="overflow-clip"
+      header={
+        <ThreadRichActivityHeader
+          icon={
+            <ImageEditorTabIcon
+              aria-hidden="true"
+              className="icon-xs shrink-0 text-token-conversation-body"
+            />
           }
-          onNextImage={
-            openIndex !== null && openIndex < sources.length - 1
-              ? () => {
-                  setOpenIndex(openIndex + 1);
+          summary={
+            <span className="block truncate text-token-conversation-summary-trailing">
+              {summary}
+            </span>
+          }
+          disclosure={
+            canExpand
+              ? {
+                  expanded,
+                  onToggle: () => {
+                    setExpanded((current) => !current);
+                    setOpenIndex(null);
+                  },
                 }
               : undefined
           }
         />
-      ) : null}
-    </>
+      }
+      body={
+        expanded ? (
+          <div className="min-w-0">
+            <div className="hide-scrollbar flex max-w-full overflow-x-auto pb-1">
+              <div className="flex min-w-max gap-2">
+                {imagePaths.map((source, index) => (
+                  <InspectedImageThumbnail
+                    key={`${source}:${index}`}
+                    source={source}
+                    open={openIndex === index}
+                    onOpenChange={(open) => setOpenIndex(open ? index : null)}
+                    onPreviousImage={index > 0 ? () => setOpenIndex(index - 1) : undefined}
+                    onNextImage={
+                      index < imagePaths.length - 1 ? () => setOpenIndex(index + 1) : undefined
+                    }
+                  />
+                ))}
+                {unavailableImages.map((image, index) => (
+                  <UnavailableImageTile key={`${image.sourcePath}:${index}`} image={image} />
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null
+      }
+    />
   );
 }

@@ -3,7 +3,7 @@ import { fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { installWindowApi } from "../../../test/browser-globals";
 import { render } from "../../../test/dom";
-import { TestQueryProvider } from "../../../test/query";
+import { createTestQueryClient, TestQueryProvider } from "../../../test/query";
 import { useResolvedImageAsset } from "./use-resolved-image-asset";
 
 function AssetProbe({
@@ -117,6 +117,40 @@ describe("useResolvedImageAsset", () => {
     expect(invokeCalls.map(([channel]) => channel)).toEqual([
       "codex:conversation-image-asset:resolve",
     ]);
+  });
+
+  test("shares pointer previews across consumers without releasing them on unmount", async () => {
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:shared-preview");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const client = createTestQueryClient();
+    const view = render(
+      <TestQueryProvider client={client}>
+        <AssetProbe key="first" source="file-service://asset-1" />
+        <AssetProbe key="second" source="file-service://asset-1" />
+      </TestQueryProvider>,
+    );
+
+    await waitFor(() => {
+      expect(view.getAllByTestId("preview").map((node) => node.textContent)).toEqual([
+        "blob:shared-preview",
+        "blob:shared-preview",
+      ]);
+    });
+    view.rerender(
+      <TestQueryProvider client={client}>
+        <AssetProbe key="second" source="file-service://asset-1" />
+      </TestQueryProvider>,
+    );
+    expect(view.getByTestId("preview").textContent).toBe("blob:shared-preview");
+    expect(createObjectUrl).toHaveBeenCalledTimes(1);
+    expect(revokeObjectUrl).not.toHaveBeenCalled();
+
+    view.unmount();
+    expect(revokeObjectUrl).not.toHaveBeenCalled();
+    client.clear();
+    await waitFor(() => {
+      expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith("blob:shared-preview");
+    });
   });
 
   test("replaces a failed remote source with fetched image data on retry", async () => {

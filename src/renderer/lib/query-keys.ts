@@ -305,4 +305,10 @@ export const queryKeys = {
   codexConversationImageAssets: {
     resolve: (pointer: string) => ["file", "image-src", pointer, "codex"] as const,
   },
+  conversationImages: {
+    file: (hostId: string, conversationId: string | null, path: string) =>
+      ["workspaceFiles", "binary", hostId, path, conversationId] as const,
+    managed: (hostId: string, conversationId: string | null, source: string) =>
+      ["conversationImages", "managed", hostId, conversationId, source] as const,
+  },
 };

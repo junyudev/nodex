@@ -21,7 +21,7 @@ function destinationKey(destination: string): string {
 }
 
 function ImportedMarkdownImage({ source, alt }: { source: string; alt: string }) {
-  const asset = useConversationImageAsset(source, { shouldLoadFileDataUrl: true });
+  const asset = useConversationImageAsset(source);
   const [previewing, setPreviewing] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   // Markdown images sit inside paragraphs, so every state stays phrasing content.
