@@ -1,0 +1,77 @@
+docs/adr/0022-renderer-view-state-kernel.md
+  s_cb8bbfdb133e81::t_36015a9dfdf3e3 34,36-37
+docs/product-specs/nfm-editor-equation-and-mermaid-preview-behavior.md
+  s_cb8bbfdb133e81::t_159bea5a53b7f4 68
+package.json
+  s_cb8bbfdb133e81::t_810c651df73661 206,209,215,227,261,309,318,320
+pnpm-lock.yaml
+  s_cb8bbfdb133e81::t_4a413588037361 180,272-273,281-282,299-300,330-331,432-433,576-577,603-604,609-610,1548-1549,1755-1756,1897-1899,1903-1905,1909-1911,1915-1916,1921-1923,2497-2499,2511-2512,2517-2518,2523-2524,2529-2530,2535-2536,2542-2543,2549-2550,2556-2557,2563-2564,2570-2571,2576-2577,2582-2583,4060-4063,4072-4075,4088-4090,4192-4194,5561-5564,6043-6045,6313-6314,6702-6704,6706-6707,7027-7028,7126-7128,7314-7315,7317-7318,7320-7321,7577-7579,8166-8169,8947,9015,9183-9187,9193-9196,9199-9200,9203,9207-9208,9604,9783,9785,9809,9812,9815,9818,9821,9824,9827,9830,9833,9836,9839,9842,9844-9854,10944,10946,10949,10951,10963-10966,10983,10985,11099,11102,12370-12377,12894-12895,13221,13223-13224,13678,13934,14158,14162,14165,14174,14477,14479,14481,14483,14485,14801,14803,15477-15487,15643
+pnpm-workspace.yaml
+  s_cb8bbfdb133e81::t_ab6f56d6cbee7c 36
+src/renderer/components/board/editor/block-transfer-drop.jsdom.test.ts
+  s_cb8bbfdb133e81::t_9c3492b635b9f1 2,38
+src/renderer/components/board/editor/block-transfer-drop.ts
+  s_cb8bbfdb133e81::t_d3a9eab403de49 1
+src/renderer/components/board/use-board-element-drag-monitor.test.tsx
+  s_cb8bbfdb133e81::t_85041c9a516f17 4,15
+src/renderer/components/board/use-board-element-drag-monitor.ts
+  s_cb8bbfdb133e81::t_7f85ada55cf650 2
+src/renderer/components/shared/readonly-code-block.tsx
+  s_cb8bbfdb133e81::t_578f3cefa8cfad 16-20,32-37,44,71
+src/renderer/components/workbench/app-shell-tabs.tsx
+  s_cb8bbfdb133e81::t_6996e52d8c475e 4-6
+src/renderer/components/workbench/database-view-page-drag.jsdom.test.ts
+  s_cb8bbfdb133e81::t_e76c61f7bdd33c 4,20
+src/renderer/components/workbench/database-view-page-drag.ts
+  s_cb8bbfdb133e81::t_f570812c8a4076 1-4
+src/renderer/components/workbench/panel-group-tree.tsx
+  s_cb8bbfdb133e81::t_642beb5ed68e99 4
+src/renderer/features/workspace-files/workspace-pdf-link-service.ts
+  s_cb8bbfdb133e81::t_64e6822beef857 1-122
+src/renderer/features/workspace-files/workspace-pdf-preview.browser.test.tsx
+  s_cb8bbfdb133e81::t_659e8ff9d64518 29-34,51-60,84-85,89-90
+src/renderer/features/workspace-files/workspace-pdf-preview.css
+  s_cb8bbfdb133e81::t_c9a13cb2ed77a0 8-10,33-37,40-41
+src/renderer/features/workspace-files/workspace-pdf-preview.test.tsx
+  s_cb8bbfdb133e81::t_6648c5cc7c0ed2 25,119-143
+src/renderer/features/workspace-files/workspace-pdf-preview.tsx
+  s_cb8bbfdb133e81::t_87a70f635a8563 8,97,99,106,276,340,754,756-762
+src/renderer/features/workspace-files/workspace-pdf-runtime.ts
+  s_cb8bbfdb133e81::t_8a7edd06003f05 3-4,12-16
+src/renderer/lib/maitai/maitai-external-store.test.tsx
+  s_cb8bbfdb133e81::t_9f5e4ab40b6576 21-46
+src/renderer/lib/markdown/conversation-token-renderer.test.tsx
+  s_cb8bbfdb133e81::t_412041cde68c9c 42-65
+src/renderer/lib/markdown/conversation-token-renderer.tsx
+  s_cb8bbfdb133e81::t_0d4942ae6f8407 359-367,373-376
+src/renderer/lib/markdown/conversation-tokens.ts
+  s_cb8bbfdb133e81::t_9dab92dfdc3690 246-249
+src/renderer/lib/mermaid-runtime.ts
+  s_cb8bbfdb133e81::t_2665d955542aa7 36-38
+src/shared/codex-markdown-text.test.ts
+  s_cb8bbfdb133e81::t_fe7a0d75936c71 32
+src/shared/codex-markdown-text.ts
+  s_cb8bbfdb133e81::t_e6dc05fe8cdef8 87-101,123,152
+third_party/blocknote/packages/diagram-block/package.json
+  s_cb8bbfdb133e81::t_ba9d1830ae272a 63
+third_party/blocknote/packages/diagram-block/src/helpers/initializeMermaid.ts
+  s_cb8bbfdb133e81::t_9c6dda61f92894 17-19,21
+vitest.browser.config.ts
+  s_cb8bbfdb133e81::t_55315c1b90eecd 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "14ee90e26df45dbefa5bb2847d974159e20ea3f9",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
