@@ -143,8 +143,9 @@ test("clips at scrolling boundaries and hands the selected paragraphs to side ch
   );
   const target = view.container.querySelector("[data-response-annotation-target]")!;
   await select(target);
+  const askInSideChat = await view.findByRole("button", { name: "Ask in side chat" });
   await act(async () => {
-    await userEvent.click(await view.findByRole("button", { name: "Ask in side chat" }));
+    await userEvent.click(askInSideChat);
   });
   expect(onSide).toHaveBeenCalledExactlyOnceWith({
     kind: "selection",
@@ -168,11 +169,13 @@ test("an annotation stays editable after its source leaves resident history", as
   );
   const target = view.container.querySelector("[data-response-annotation-target]")!;
   await select(target.querySelector("p")!);
+  const addToChat = await view.findByRole("button", { name: "Add to chat" });
   await act(async () => {
-    await userEvent.click(await view.findByRole("button", { name: "Add to chat" }));
+    await userEvent.click(addToChat);
   });
+  const comment = await view.findByRole("button", { name: "Comment" });
   await act(async () => {
-    await userEvent.click(await view.findByRole("button", { name: "Comment" }));
+    await userEvent.click(comment);
   });
   await act(async () => {
     target.remove();
@@ -184,8 +187,9 @@ test("an annotation stays editable after its source leaves resident history", as
   await act(async () => {
     await userEvent.click(view.getByRole("button", { name: "1 annotation" }));
   });
+  const editAnnotation = await view.findByRole("button", { name: "Edit annotation 1" });
   await act(async () => {
-    await userEvent.click(await view.findByRole("button", { name: "Edit annotation 1" }));
+    await userEvent.click(editAnnotation);
   });
   const note = await view.findByRole("textbox", { name: "Note" });
   await act(async () => {

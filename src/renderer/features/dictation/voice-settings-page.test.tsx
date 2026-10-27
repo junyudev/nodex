@@ -257,8 +257,9 @@ describe("VoiceSettingsPage", () => {
       capabilities: { ...defaultCapability.capabilities, global: false, sounds: false },
     });
     renderPage();
+    const advanced = await screen.findByRole("button", { name: "Advanced" });
     await act(async () => {
-      fireEvent.click(await screen.findByRole("button", { name: "Advanced" }));
+      fireEvent.click(advanced);
     });
     const toggle = await screen.findByRole("button", {
       name: "Change shortcut for Single-tap shortcut",
@@ -401,8 +402,9 @@ describe("VoiceSettingsPage", () => {
         return { type: "applied", state: clearedState };
       });
       renderPage();
+      const advanced = await screen.findByRole("button", { name: "Advanced" });
       await act(async () => {
-        fireEvent.click(await screen.findByRole("button", { name: "Advanced" }));
+        fireEvent.click(advanced);
       });
       await act(async () => {
         fireEvent.click(screen.getByRole("button", { name: `Clear shortcut for ${label}` }));
@@ -534,8 +536,9 @@ describe("VoiceSettingsPage", () => {
     await act(async () => {
       fireEvent.click(trigger);
     });
+    const japanese = await screen.findByRole("menuitem", { name: "Japanese" });
     await act(async () => {
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Japanese" }));
+      fireEvent.click(japanese);
     });
     await vi.waitFor(() =>
       expect(mocks.updateLanguage).toHaveBeenCalledWith("ja", expect.anything()),

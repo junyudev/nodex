@@ -74,8 +74,8 @@ describe("SingleImageEditor", () => {
     const view = renderEditor(image, onSubmitIntent);
     expect(view.getAllByRole("button", { name: "Download" })).toHaveLength(1);
 
+    const trigger = await view.findByRole("button", { name: "Resize" });
     await act(async () => {
-      const trigger = await view.findByRole("button", { name: "Resize" });
       fireEvent.pointerDown(trigger, {
         button: 0,
         ctrlKey: false,

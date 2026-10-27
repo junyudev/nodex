@@ -247,10 +247,11 @@ describe("branch selector popover", () => {
       fireEvent.click(view.getByRole("button", { name: "Switch branch" }));
       await Promise.resolve();
     });
+    const createBranch = await view.findByRole("menuitem", {
+      name: "Create and checkout new branch",
+    });
     await act(async () => {
-      fireEvent.click(
-        await view.findByRole("menuitem", { name: "Create and checkout new branch" }),
-      );
+      fireEvent.click(createBranch);
       await Promise.resolve();
     });
     const title = await view.findByRole("heading", { name: "Create and checkout branch" });

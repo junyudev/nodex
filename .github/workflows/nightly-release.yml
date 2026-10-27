@@ -42,16 +42,19 @@ jobs:
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
-          latest="$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "Main CI" --branch main --limit 1 --json headSha,status,conclusion)"
-          latest_sha="$(node -p "JSON.parse(process.argv[1])[0]?.headSha ?? ''" "${latest}")"
-          latest_status="$(node -p "JSON.parse(process.argv[1])[0]?.status ?? ''" "${latest}")"
-          latest_conclusion="$(node -p "JSON.parse(process.argv[1])[0]?.conclusion ?? ''" "${latest}")"
-          if [[ "${latest_sha}" != "${source_sha}" || "${latest_status}" != "completed" || "${latest_conclusion}" != "success" ]]; then
-            echo "eligible=false" >> "${GITHUB_OUTPUT}"
-            printf 'Nightly decision: `source-ci-not-successful` for `%s`.\n' "${source_sha}" >> "${GITHUB_STEP_SUMMARY}"
-            exit 0
-          fi
-          echo "eligible=true" >> "${GITHUB_OUTPUT}"
+          result="${RUNNER_TEMP}/nightly-source-ci.json"
+          vp exec tsx scripts/release/cli.ts check-nightly-ci \
+            --repo "${GITHUB_REPOSITORY}" --head "${source_sha}" --output "${result}"
+          node -e '
+            const fs = require("node:fs");
+            const result = require(process.argv[1]);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `eligible=${result.decision === "eligible"}\n`);
+            const run = result.runUrl ? ` [Main CI](${result.runUrl})` : "";
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Nightly source CI: \`${result.decision}\` for \`${result.sourceSha}\`.${run}\n`);
+            if (result.decision === "failed") {
+              throw new Error(`Nightly blocked by unsuccessful Main CI for ${result.sourceSha}: ${result.runUrl}`);
+            }
+          ' "${result}"
 
       - name: Resolve deterministic candidate
         id: candidate

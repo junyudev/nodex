@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
 import { TestQueryProvider } from "@/test/query";
 import { installWindowApi } from "@/test/browser-globals";
@@ -51,7 +51,13 @@ describe("file Markdown image decoding in Chromium", () => {
       const source = view.container.querySelector("source")!;
       await waitFor(() => expect(source.srcset).toMatch(/^blob:.+ 2x$/));
       await waitFor(() => expect(picture.currentSrc).toBe(source.srcset.slice(0, -3)));
-      await picture.decode();
+      // Native load events publish the image presentation and register its tooltip trigger.
+      await act(async () => {
+        await Promise.all([relative.decode(), picture.decode()]);
+      });
+      await waitFor(() =>
+        expect(view.getAllByRole("button", { name: "Download image" })).toHaveLength(2),
+      );
       const bitmap = await createImageBitmap(await (await fetch(picture.currentSrc)).blob());
       try {
         expect([bitmap.width, bitmap.height]).toEqual([2, 2]);

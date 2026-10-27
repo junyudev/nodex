@@ -283,8 +283,9 @@ describe("ordinary message targets keep their mounted source", () => {
           throw new Error("Unsupported fixture request");
         });
         menu.show.mockResolvedValue("file-reference:copy-contents");
+        const readButton = await reopened.findByRole("button", { name: "Read" });
         await act(async () => {
-          fireEvent.contextMenu(await reopened.findByRole("button", { name: "Read" }));
+          fireEvent.contextMenu(readButton);
           await Promise.resolve();
         });
         await waitFor(() =>

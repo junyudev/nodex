@@ -542,8 +542,9 @@ describe("selected Block presentation in Chromium", () => {
           await settleEditor();
         });
 
+        const action = await view.findByRole("button", { name: actionLabel });
         await act(async () => {
-          await userEvent.click(await view.findByRole("button", { name: actionLabel }));
+          await userEvent.click(action);
           await settleEditor();
         });
         await view.findByText(

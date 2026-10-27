@@ -36,6 +36,7 @@ import {
 import { runSparkleFinalizeCli, runSparkleHistoryCli } from "./sparkle";
 import { projectReleaseAppcasts, verifyPublishedAppcasts } from "./pages";
 import { runNightlyRetention } from "./retention";
+import { inspectNightlySourceCi } from "./source-ci";
 
 const projectRoot = resolve(import.meta.dirname, "../..");
 
@@ -162,6 +163,13 @@ const main = async (): Promise<void> => {
         cwd: projectRoot,
         head: flags.get("head") ?? "HEAD",
       }),
+    );
+    return;
+  }
+  if (command === "check-nightly-ci") {
+    writeJson(
+      required(flags, "output"),
+      inspectNightlySourceCi(required(flags, "repo"), required(flags, "head")),
     );
     return;
   }
@@ -308,7 +316,10 @@ const main = async (): Promise<void> => {
     return;
   }
   if (command === "verify-remote") {
-    verifyRemoteRelease({ bundlePath: required(flags, "bundle"), repo: required(flags, "repo") });
+    await verifyRemoteRelease({
+      bundlePath: required(flags, "bundle"),
+      repo: required(flags, "repo"),
+    });
     return;
   }
   if (command === "verify-bundle") {

@@ -60,9 +60,8 @@ describe("file tree context actions", () => {
       await view.findByRole("menuitem", { name: "Copy path" });
     };
     await openMenu();
-    await act(async () =>
-      userEvent.click(await view.findByRole("menuitem", { name: "Open in VS Code" })),
-    );
+    const openInCode = await view.findByRole("menuitem", { name: "Open in VS Code" });
+    await act(async () => userEvent.click(openInCode));
     expect(calls.open).toHaveBeenCalledWith(
       { path: "/workspace/src/file.ts" },
       { external: true, opener: "vscode" },

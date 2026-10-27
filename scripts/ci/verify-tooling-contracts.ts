@@ -235,6 +235,11 @@ verifyInvalidFixtures([
     code: "nodex(no-native-title-tooltip)",
     filename: "scripts/fixtures/tooling/nodex/native-title-invalid.tsx",
   },
+  {
+    code: "nodex(no-testing-library-wait-in-act)",
+    count: 8,
+    filename: "scripts/fixtures/tooling/nodex/testing-library-wait-in-act-invalid.test.tsx",
+  },
 ]);
 
 verifyValidFixtures([
@@ -245,6 +250,7 @@ verifyValidFixtures([
   "scripts/fixtures/tooling/nodex/manual-effect-runtime-valid.test.ts",
   "scripts/fixtures/tooling/nodex/profile-settings-authority-valid.ts",
   "scripts/fixtures/tooling/nodex/native-title-valid.tsx",
+  "scripts/fixtures/tooling/nodex/testing-library-wait-in-act-valid.test.tsx",
 ]);
 
 verifyAdvisoryPolicy();

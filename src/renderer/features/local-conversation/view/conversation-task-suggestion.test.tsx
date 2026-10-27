@@ -86,8 +86,9 @@ describe("native task suggestion drafts", () => {
         source.connect();
         await Promise.resolve();
       });
+      const useSuggestion = await view.findByRole("button", { name: "Use suggestion" });
       await act(async () => {
-        fireEvent.click(await view.findByRole("button", { name: "Use suggestion" }));
+        fireEvent.click(useSuggestion);
         await Promise.resolve();
       });
       expect(prefill.mock.calls[0]?.[0]).toMatchObject({ projectId: null, prompt: "" });
