@@ -1,5 +1,6 @@
 package.json
   s_fa8d75732255a5::t_5d3614adff01ed 194-195,245-246,318
+  s_cb8bbfdb133e81::t_f58fd079cd8624 353-354
 docs/development.md
   s_fa8d75732255a5::t_c68c2c3e3c0f5f 449-454
   s_fa8d75732255a5::t_5d3614adff01ed 37-40
@@ -32,6 +33,14 @@ scripts/scenarios/runtime/scripted-acp-registry-fixture.test.ts
   "base_commit_sha": "f4b89841b71eb0616547477626dfe71b543145ae",
   "prompts": {},
   "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
     "s_fa8d75732255a5": {
       "agent_id": {
         "tool": "codex",
