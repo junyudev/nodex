@@ -1,0 +1,47 @@
+scripts/testing/probe-agent-cli-bootstrap.ts
+  s_c6e9ed2961f55c::t_f70b3cefba2ed4 167
+src/main/platform/node/NodexCliShell.ts
+  s_c6e9ed2961f55c::t_ce5afdc6af0e89 93,182
+  s_c6e9ed2961f55c::t_306fd23c01b7a4 62-64,68-92,98-112,115,139-142,148-149,152-155,157-179
+CHANGELOG.md
+  s_c6e9ed2961f55c::t_141e0c456a9a88 81
+src/main/platform/node/NodexCliShell.node.test.ts
+  s_c6e9ed2961f55c::t_0eb9b9efbe19df 116-123,125-146,148-184,186-187
+  s_c6e9ed2961f55c::t_ae57dc333137db 58-64,218
+  s_c6e9ed2961f55c::t_6c81758016f948 206-216
+  s_c6e9ed2961f55c::t_a3396906b4bc47 1
+  s_c6e9ed2961f55c::t_0cf59f787baaea 2-57,65-115,124,147,185,188-205,217,219-225
+src/main/core-client/agent-eval-desktop-environment.node.test.ts
+  s_c6e9ed2961f55c::t_f70b3cefba2ed4 5-6,24
+docs/SECURITY.md
+  s_c6e9ed2961f55c::t_141e0c456a9a88 21-26
+src/main/app/CodexApplicationLive.ts
+  s_c6e9ed2961f55c::t_f70b3cefba2ed4 215-218
+src/main/platform/node/NodexCliBootstrap.node.test.ts
+  s_c6e9ed2961f55c::t_f70b3cefba2ed4 192-196
+config/test-suites.ts
+  s_c6e9ed2961f55c::t_f70b3cefba2ed4 18-19,212-217
+config/test-suites.test.ts
+  s_c6e9ed2961f55c::t_f70b3cefba2ed4 4,52-55
+docs/CLI.md
+  s_c6e9ed2961f55c::t_564ed1c0c4059c 122,136
+  s_c6e9ed2961f55c::t_141e0c456a9a88 123-135
+scripts/agent-eval/desktop-environment.ts
+  s_c6e9ed2961f55c::t_f70b3cefba2ed4 2,4,16-21,49-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d583f4cb16a99e382cc67e5a3d73abcaf13dcf95",
+  "prompts": {},
+  "sessions": {
+    "s_c6e9ed2961f55c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec4-11a9-7303-b652-9803237eff35",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
