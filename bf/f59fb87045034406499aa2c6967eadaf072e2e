@@ -1,0 +1,22 @@
+src/main/agent-runtime/AgentRuntimeClaudeUsage.ts
+  s_f79dd9d0c7ac54::t_d53d7998f37db1 217-230,232-243
+  s_f79dd9d0c7ac54::t_f2ba1f6f08cef6 244-246
+src/main/agent-runtime/AgentRuntimeClaudeUsage.node.test.ts
+  s_f79dd9d0c7ac54::t_b063007486d3ac 5-8,242-289
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bff59fb87045034406499aa2c6967eadaf072e2e",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
