@@ -4,6 +4,63 @@ import type { FileOpenApplicationsResult } from "../shared/file-open-application
 
 export const MAX_FILE_OPEN_APPLICATIONS = 20;
 
+const PREVIEW = ["com.apple.Preview"];
+const QUICKTIME = ["com.apple.QuickTimePlayerX"];
+const ARCHIVE_UTILITY = ["com.apple.archiveutility"];
+const WORD = ["com.microsoft.Word", "com.apple.iWork.Pages"];
+const EXCEL = ["com.microsoft.Excel", "com.apple.iWork.Numbers"];
+const POWERPOINT = ["com.microsoft.Powerpoint", "com.apple.iWork.Keynote"];
+
+/** The viewer a file type is expected to open in, ahead of whatever claimed the default. */
+const PRIORITIZED_BUNDLE_IDS = new Map<string, readonly string[]>([
+  ...["pdf", "png", "jpg", "jpeg", "gif", "bmp", "tiff", "ico", "webp"].map(
+    (extension) => [extension, PREVIEW] as const,
+  ),
+  ...[
+    "mov",
+    "mp4",
+    "m4v",
+    "avi",
+    "mkv",
+    "webm",
+    "mpg",
+    "mpeg",
+    "mp3",
+    "wav",
+    "m4a",
+    "aac",
+    "aiff",
+    "aif",
+    "flac",
+    "caf",
+  ].map((extension) => [extension, QUICKTIME] as const),
+  ...["zip", "tar", "gz", "tgz", "bz2", "tbz", "xz", "txz", "7z", "rar"].map(
+    (extension) => [extension, ARCHIVE_UTILITY] as const,
+  ),
+  ["sketch", ["com.bohemiancoding.sketch3"]],
+  ["fig", ["com.figma.Desktop"]],
+  ["psd", ["com.adobe.Photoshop"]],
+  ["ai", ["com.adobe.illustrator"]],
+  ["indd", ["com.adobe.InDesign"]],
+  ["xd", ["com.adobe.xd"]],
+  ["doc", WORD],
+  ["docx", WORD],
+  ["xls", EXCEL],
+  ["xlsm", EXCEL],
+  ["xlsx", EXCEL],
+  ["csv", EXCEL],
+  ["ppt", POWERPOINT],
+  ["pptx", POWERPOINT],
+  ["key", ["com.apple.iWork.Keynote"]],
+  ["pages", ["com.apple.iWork.Pages"]],
+  ["numbers", ["com.apple.iWork.Numbers"]],
+]);
+
+export function prioritizedBundleIdsForFile(filePath: string): readonly string[] {
+  const extension = posix.extname(filePath.replaceAll("\\", "/")).slice(1).toLowerCase();
+  return PRIORITIZED_BUNDLE_IDS.get(extension) ?? [];
+}
+
 const application = z.object({
   name: z.string().trim().min(1).max(256),
   appPath: z
@@ -14,10 +71,14 @@ const application = z.object({
   bundleId: z.string().optional(),
 });
 
-/** LaunchServices can return duplicate versions and the app itself; keep only usable alternatives. */
+/**
+ * LaunchServices can return duplicate versions and the app itself; keep only usable alternatives
+ * in its order. A well-known viewer for the type becomes the default when it is installed.
+ */
 export function parseLaunchServicesApplications(
   output: string,
   ownApplicationPath: string,
+  prioritizedBundleIds: readonly string[] = [],
 ): FileOpenApplicationsResult {
   const empty = { defaultApplication: null, applications: [] };
   const result = z
@@ -39,22 +100,32 @@ export function parseLaunchServicesApplications(
     const appPath = posix.normalize(parsed.data.appPath).replace(/\/$/u, "");
     if (parsed.data.bundleId === "app.jyu.nodex" || (ownBundle && appPath === ownBundle))
       return null;
-    return { name: parsed.data.name, appPath, iconDataUrl: null };
+    return {
+      bundleId: parsed.data.bundleId ?? "",
+      application: { name: parsed.data.name, appPath, iconDataUrl: null },
+    };
   };
-  const defaultApplication = read(result.data.defaultApplication);
-  const alternatives = new Map<string, NonNullable<ReturnType<typeof read>>>();
-  for (const entry of result.data.applications) {
+  const ordered = new Map<string, NonNullable<ReturnType<typeof read>>>();
+  for (const entry of [result.data.defaultApplication, ...result.data.applications]) {
     const value = read(entry);
-    if (!value || value.appPath === defaultApplication?.appPath || alternatives.has(value.appPath))
-      continue;
-    alternatives.set(value.appPath, value);
+    if (value && !ordered.has(value.application.appPath))
+      ordered.set(value.application.appPath, value);
   }
-  const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+  const candidates = [...ordered.values()];
+  const rank = (bundleId: string) => {
+    const index = prioritizedBundleIds.indexOf(bundleId);
+    return index < 0 ? prioritizedBundleIds.length : index;
+  };
+  // A stable sort keeps the system default ahead of the remaining LaunchServices order.
+  const [first, ...rest] = candidates.toSorted((a, b) => rank(a.bundleId) - rank(b.bundleId));
+  const systemDefault = read(result.data.defaultApplication);
+  const promoted =
+    first && (systemDefault !== null || rank(first.bundleId) < prioritizedBundleIds.length);
   return {
-    defaultApplication,
-    applications: [...alternatives.values()]
-      .sort((a, b) => collator.compare(a.name, b.name) || a.appPath.localeCompare(b.appPath))
-      .slice(0, MAX_FILE_OPEN_APPLICATIONS),
+    defaultApplication: promoted ? first.application : null,
+    applications: (promoted ? rest : candidates)
+      .slice(0, MAX_FILE_OPEN_APPLICATIONS)
+      .map((value) => value.application),
   };
 }
 

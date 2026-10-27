@@ -114,6 +114,7 @@ const invoke = async (channel: string, ...args: unknown[]) => {
   if (channel.startsWith("file-search:")) return fileSearch.invoke(channel, args[0]);
   if (channel === "shell:file-link-openers:list-available") return ["vscode", "fileManager"];
   if (channel === "shell:open-path-default") return true;
+  if (channel === "file-open-applications") return { defaultApplication: null, applications: [] };
   if (channel === "read-file") {
     const input = args[0] as { hostId?: string; path: string };
     if (input.hostId === REMOTE_HOST && remoteTextRead) return remoteTextRead();
@@ -160,6 +161,7 @@ vi.mock("@/lib/api", () => ({
       currentBranch: null,
       defaultBranch: null,
       errorMessage: null,
+      originUrl: null,
     }),
   }),
 }));

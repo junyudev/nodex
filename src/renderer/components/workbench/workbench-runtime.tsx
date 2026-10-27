@@ -3627,6 +3627,7 @@ export function WorkbenchRuntime({
           presentationOwnerId={sceneKey}
           project={projects.find((project) => project.id === surface.config.projectId) ?? null}
           onOpenFileTab={openWorkspaceFileTab}
+          onSearchInFiles={() => openCommandPalette({ mode: "text" })}
           onUpdateTabState={(state) => {
             const scene = workbenchWindowRef.current.scenesByOwnerKey[sceneKey];
             const entry = scene

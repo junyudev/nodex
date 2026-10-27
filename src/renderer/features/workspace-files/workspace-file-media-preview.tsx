@@ -80,7 +80,7 @@ export function WorkspaceFileMediaPreview({
   if (!local && remote.isPending) return <WorkspaceFileLoadingState />;
   if (!local && !resource.url) return <WorkspaceFileErrorState />;
   return (
-    <div className="flex h-full min-h-0 min-w-0 items-center justify-center overflow-hidden">
+    <div className="flex h-full min-h-0 min-w-0 items-center justify-center overflow-hidden pb-[var(--right-panel-composer-overlay-reserve,0px)]">
       {kind === "video" ? (
         <ConversationVideo
           key={identity}

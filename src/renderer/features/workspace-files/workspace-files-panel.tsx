@@ -39,7 +39,9 @@ import {
 import {
   listAvailableFileLinkOpeners,
   openExternalUrl as openUrlExternally,
-  openPathWithDefaultApplication,
+  openFileWithApplication,
+  openFileWithDefaultApplication,
+  readFileOpenApplications,
 } from "@/lib/file-system-operations";
 import { useFileLinkOpener } from "@/lib/use-file-link-opener";
 import { useScopedAtom } from "@/lib/maitai";
@@ -70,6 +72,7 @@ import {
   type WorkspaceFilePreviewKind,
 } from "./workspace-file-model";
 import {
+  buildGitHubBlobUrl,
   resolveWorkspaceFileBreadcrumb,
   resolveWorkspaceFilePathVariants,
 } from "./workspace-file-header-model";
@@ -119,6 +122,8 @@ import {
 } from "./workspace-file-types";
 
 const MAX_IMAGE_PREVIEW_BYTES = 25_000_000;
+/** The system default app and the next few apps that can open the file. */
+const NATIVE_OPEN_TARGET_LIMIT = 5;
 export const WORKSPACE_RICH_MARKDOWN_MAX_BYTES = 256 * 1024;
 export const WORKSPACE_RICH_MARKDOWN_MAX_LINES = 5_000;
 
@@ -256,7 +261,7 @@ function WorkspaceFilePreview({
         );
       case "image":
         return state.binaryUrl ? (
-          <div className="flex h-full items-center justify-center overflow-auto bg-surface p-4">
+          <div className="flex h-full items-center justify-center overflow-auto bg-surface p-4 pb-[calc(var(--right-panel-composer-overlay-reserve,0px)+var(--spacing)*4)]">
             <img src={state.binaryUrl} alt="" className="max-h-full max-w-full object-contain" />
           </div>
         ) : (
@@ -278,7 +283,7 @@ function WorkspaceFilePreview({
         const markdownContent = document?.content ?? state.content;
         if (classifyWorkspaceMarkdownPreview(markdownContent).kind !== "tooLarge") {
           return (
-            <div className="h-full overflow-auto bg-surface px-6 py-4">
+            <div className="h-full scroll-pb-[var(--right-panel-composer-overlay-reserve,0px)] overflow-auto bg-surface px-6 pt-4 pb-[calc(var(--right-panel-composer-overlay-reserve,0px)+var(--spacing)*4)]">
               <MarkdownRenderer
                 content={markdownContent}
                 className="max-w-3xl"
@@ -311,7 +316,7 @@ function WorkspaceFilePreview({
     }
 
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-full min-h-0 flex-col pb-[var(--right-panel-composer-overlay-reserve,0px)]">
         {document.status === "error" ? (
           <div className="flex min-h-9 shrink-0 items-center gap-2 border-b-[0.5px] border-token-border px-3 text-xs semantic-text-secondary">
             <span className="min-w-0 flex-1 truncate">
@@ -353,7 +358,7 @@ function WorkspaceFilePreview({
   const isLargeReadOnlySource =
     (state.metadata?.sizeBytes ?? 0) >= WORKSPACE_TEXT_EDITABLE_MAX_BYTES;
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col pb-[var(--right-panel-composer-overlay-reserve,0px)]">
       {isLargeReadOnlySource ? (
         <div className="flex h-7 shrink-0 items-center border-b-[0.5px] border-token-border px-3 text-xs text-(--color-codex-description)">
           Large file opened read-only
@@ -515,6 +520,14 @@ export function WorkspaceFilesPanel({
   const richViewMode = fileInput ? resolveWorkspaceFileRichViewMode(fileInput) : "none";
   const loadedPreviewKind = fileInput ? resolveWorkspaceFilePreviewKind(fileInput) : null;
   const showsSource = view?.kind === "source";
+  const nativeMode =
+    view?.kind === "unsupported" || (view?.kind === "rich" && view.previewKind !== "markdown");
+  const openApplicationsQuery = useQuery({
+    queryKey: ["workspace-files", "open-applications", selectedPath],
+    queryFn: () => readFileOpenApplications(selectedPath ?? ""),
+    enabled: localFile && nativeMode && selectedPath !== null,
+    staleTime: 5 * 60_000,
+  });
   const showsText =
     previewState.status === "loaded" &&
     (showsSource || (view?.kind === "rich" && view.previewKind === "markdown"));
@@ -606,6 +619,16 @@ export function WorkspaceFilesPanel({
         repoRoot,
       })
     : null;
+  const gitHubUrl =
+    selectedPath && repoRoot
+      ? buildGitHubBlobUrl({
+          branch: repositoryQuery.data?.currentBranch ?? null,
+          path: selectedPath,
+          remoteUrl: repositoryQuery.data?.originUrl ?? null,
+          root: repoRoot,
+          ...(revealLocation?.line ? { line: revealLocation.line } : {}),
+        })
+      : null;
   const availableOpenersQuery = useQuery({
     queryKey: ["workspace-files", "available-file-link-openers"],
     queryFn: listAvailableFileLinkOpeners,
@@ -952,14 +975,18 @@ export function WorkspaceFilesPanel({
     [cwd, fileReferenceRouter, hostId, localFile, revealLocation, selectedPath, workspaceRoot],
   );
 
-  const openWithDefaultApplication = useCallback(() => {
-    if (!localFile || !selectedPath) return;
-    void openPathWithDefaultApplication(selectedPath)
+  const reportOpen = useCallback((opening: Promise<boolean>) => {
+    void opening
       .then((opened) => {
         if (!opened) toast.danger("Unable to open file externally");
       })
       .catch(() => toast.danger("Unable to open file externally"));
-  }, [localFile, selectedPath]);
+  }, []);
+
+  const openWithDefaultApplication = useCallback(() => {
+    if (!localFile || !selectedPath) return;
+    reportOpen(openFileWithDefaultApplication(selectedPath));
+  }, [localFile, reportOpen, selectedPath]);
 
   const openExternalUrl = useCallback((url: string) => {
     void openUrlExternally(url).catch(() => {
@@ -1134,9 +1161,6 @@ export function WorkspaceFilesPanel({
     options.push({ id: "refresh", label: "Refresh files", onSelect: refreshFiles });
   }
 
-  // Documents and media open with the system's app for their type; text opens in the chosen editor.
-  const nativeMode =
-    view?.kind === "unsupported" || (view?.kind === "rich" && view.previewKind !== "markdown");
   const editorTargets: WorkspaceFileOpenTarget[] = FILE_LINK_OPENER_OPTIONS.filter(
     (option) =>
       option.id !== "fileManager" && (availableOpenersQuery.data ?? []).includes(option.id),
@@ -1148,14 +1172,32 @@ export function WorkspaceFilesPanel({
   }));
   const preferredTarget =
     editorTargets.find((target) => target.id === preferredOpener) ?? editorTargets[0] ?? null;
+  const applicationTargets: WorkspaceFileOpenTarget[] = [
+    ...(openApplicationsQuery.data?.defaultApplication
+      ? [openApplicationsQuery.data.defaultApplication]
+      : []),
+    ...(openApplicationsQuery.data?.applications ?? []),
+  ]
+    .slice(0, NATIVE_OPEN_TARGET_LIMIT)
+    .map((application) => ({
+      id: application.appPath,
+      label: application.name,
+      iconUrl: application.iconDataUrl,
+      open: () => {
+        if (selectedPath)
+          reportOpen(openFileWithApplication({ path: selectedPath, appPath: application.appPath }));
+      },
+    }));
   const openControl: WorkspaceFileOpenControl | null =
     localFile && selectedPath
       ? {
-          primary: nativeMode ? null : preferredTarget,
+          // Documents and media open with the system's app for their type; text opens in the
+          // chosen editor.
+          primary: nativeMode ? (applicationTargets[0] ?? null) : preferredTarget,
           onOpenDefault: openWithDefaultApplication,
-          targets: editorTargets,
+          targets: nativeMode ? applicationTargets : editorTargets,
           onRevealInFolder: () => openExternal("fileManager"),
-          onOpenGitHub: null,
+          onOpenGitHub: gitHubUrl ? () => openExternalUrl(gitHubUrl) : null,
           onSaveAs: saveCopy,
         }
       : null;
@@ -1183,7 +1225,7 @@ export function WorkspaceFilesPanel({
               })}
               path={selectedPath}
               pathVariants={pathVariants}
-              gitHubUrl={null}
+              gitHubUrl={gitHubUrl}
               onOpenUrl={openExternalUrl}
               onSearchInFiles={localFile && workspaceRoot ? (onSearchInFiles ?? null) : null}
               options={options}
@@ -1267,7 +1309,7 @@ export function WorkspaceFilesPanel({
                         />
                       </div>
                     </div>
-                    <div className="min-h-0 flex-1 px-1">
+                    <div className="min-h-0 flex-1 px-1 pb-[var(--right-panel-composer-overlay-reserve,0px)]">
                       {treePaths.length > 0 ? (
                         <WorkspaceFileTree
                           workspaceRoot={workspaceRoot}

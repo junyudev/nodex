@@ -263,7 +263,10 @@ export const live: Layer.Layer<
             return readFileOpenApplications(path, {
               platform: config.platform,
               readIcon: async (appPath) => {
-                const icon = await app.getFileIcon(appPath, { size: "small" });
+                // A bundle's generic file icon hides its artwork; its thumbnail is the app icon.
+                const icon = await nativeImage
+                  .createThumbnailFromPath(appPath, { width: 32, height: 32 })
+                  .catch(() => app.getFileIcon(appPath, { size: "normal" }));
                 return icon.isEmpty() ? null : icon.toDataURL();
               },
             });

@@ -28,6 +28,7 @@ import {
 import {
   FILE_OPEN_APPLICATIONS_JXA,
   parseLaunchServicesApplications,
+  prioritizedBundleIdsForFile,
 } from "./file-open-applications";
 
 export async function assertExistingFileOpenPath(path: string): Promise<void> {
@@ -63,6 +64,7 @@ export async function readFileOpenApplications(
   const result = parseLaunchServicesApplications(
     output,
     options.ownApplicationPath ?? process.execPath,
+    prioritizedBundleIdsForFile(path),
   );
   const withIcon = async (
     application: NonNullable<FileOpenApplicationsResult["defaultApplication"]>,

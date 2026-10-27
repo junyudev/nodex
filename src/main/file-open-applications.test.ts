@@ -7,6 +7,7 @@ import { afterAll, afterEach, expect, test, vi } from "vite-plus/test";
 import {
   MAX_FILE_OPEN_APPLICATIONS,
   parseLaunchServicesApplications,
+  prioritizedBundleIdsForFile,
 } from "./file-open-applications";
 import { openFileWithApplication, readFileOpenApplications } from "./file-link-opener";
 
@@ -26,7 +27,7 @@ await writeFile(filePath, "media");
 afterEach(() => vi.clearAllMocks());
 afterAll(() => rm(root, { recursive: true, force: true }));
 
-test("keeps the default separate, deduplicates, sorts and excludes Nodex and its running bundle", () => {
+test("keeps the default separate, deduplicates in system order and excludes Nodex and its running bundle", () => {
   const result = parseLaunchServicesApplications(
     JSON.stringify({
       defaultApplication: application("QuickTime Player"),
@@ -47,10 +48,28 @@ test("keeps the default separate, deduplicates, sorts and excludes Nodex and its
     appPath: "/Applications/QuickTime Player.app",
     iconDataUrl: null,
   });
-  expect(result.applications.map((app) => app.name)).toEqual(["IINA", "Zed"]);
+  expect(result.applications.map((app) => app.name)).toEqual(["Zed", "IINA"]);
 });
 
-test("caps sorted alternatives and permits a missing or excluded default", () => {
+test("opens a file type's well-known viewer ahead of whichever app claimed the default", () => {
+  const output = JSON.stringify({
+    defaultApplication: application("Fig Player", "/Applications/Fig Player.app", "fig.player"),
+    applications: [
+      application("Anty", "/Applications/Anty.app", "anty.browser"),
+      application("QuickTime Player", undefined, "com.apple.QuickTimePlayerX"),
+    ],
+  });
+  const result = parseLaunchServicesApplications(
+    output,
+    "",
+    prioritizedBundleIdsForFile("/clips/review.WEBM"),
+  );
+  expect(result.defaultApplication?.name).toBe("QuickTime Player");
+  expect(result.applications.map((app) => app.name)).toEqual(["Fig Player", "Anty"]);
+  expect(prioritizedBundleIdsForFile("/notes/plan.txt")).toEqual([]);
+});
+
+test("caps alternatives and permits a missing or excluded default", () => {
   const result = parseLaunchServicesApplications(
     JSON.stringify({
       defaultApplication: application("Nodex", "/Applications/Nodex.app", "app.jyu.nodex"),
@@ -62,8 +81,8 @@ test("caps sorted alternatives and permits a missing or excluded default", () =>
   );
   expect(result.defaultApplication).toBeNull();
   expect(result.applications).toHaveLength(MAX_FILE_OPEN_APPLICATIONS);
-  expect(result.applications.at(0)?.name).toBe("Player 1");
-  expect(result.applications.at(-1)?.name).toBe(`Player ${MAX_FILE_OPEN_APPLICATIONS}`);
+  expect(result.applications.at(0)?.name).toBe(`Player ${MAX_FILE_OPEN_APPLICATIONS + 5}`);
+  expect(result.applications.at(-1)?.name).toBe("Player 6");
   expect(
     parseLaunchServicesApplications('{"defaultApplication":null,"applications":[]}', ""),
   ).toEqual({ defaultApplication: null, applications: [] });
