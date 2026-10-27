@@ -1,0 +1,35 @@
+crates/nodex-core-contracts/src/workspace.rs
+  s_f2e3c034e2bc1d::t_53de790ffcedc6 1855-1870
+  s_f2e3c034e2bc1d::t_71de058851eff5 19
+packages/core-protocol/openapi.json
+  s_f2e3c034e2bc1d::t_71de058851eff5 3364,3398-3408,3419-3421,3472-3477,3531-3541,3584-3590,3733-3819,4065-4070,4587-4594,4609-4619,4646-4648,4678-4685,4785-4791,5263,5297-5307,5318-5320,5371-5376,5533-5543,5570-5572,5659-5665,6976-6986,26923-26928,31336-31386,38455-38488,38713-38756,39088-39089,39225-39258,42041-42091
+crates/nodex-core-contracts/src/inbox.rs
+  s_f2e3c034e2bc1d::t_53de790ffcedc6 70-71,110-118,166-187,279-280
+packages/core-protocol/src/generated.ts
+  s_f2e3c034e2bc1d::t_71de058851eff5 788,792,803,815,824-828,863-897,957,1084-1090,1092,1104,1114-1118,1140-1141,1272,1276,1287,1320,1332,1353-1354,1690,6527,7527-7538,9265-9270,9330-9346,9434,9466-9473,10083-10094
+src/shared/inbox.ts
+  s_f2e3c034e2bc1d::t_7a8bc5e28bd4c9 10-11,62-70,106-114,117-137,207-208
+crates/nodex-core-contracts/src/automation.rs
+  s_f2e3c034e2bc1d::t_71de058851eff5 9
+  s_f2e3c034e2bc1d::t_0ec01322e54475 49-59,83-90,114-117,134-189,213-217,234-235,592-593
+src/shared/types.ts
+  s_f2e3c034e2bc1d::t_7a8bc5e28bd4c9 2154-2172,2181-2184,2206-2208
+packages/core-protocol/src/compatibility.generated.ts
+  s_f2e3c034e2bc1d::t_eedf2f079a8215 24,28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "68b2039f00238c0eb841fa2762ba35d487313b39",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
