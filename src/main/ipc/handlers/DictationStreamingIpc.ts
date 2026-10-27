@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -22,6 +23,7 @@ export const live = (
 ) =>
   Layer.effectDiscard(
     Effect.gen(function* () {
+      const rendererDestruction = yield* WebContentsDestructionSubscriptions;
       const ipc = yield* ElectronSyncIpc;
       const config = yield* MainConfig;
       const windows = yield* WindowRuntime;
@@ -42,6 +44,7 @@ export const live = (
           if (args.length > 1 || (args.length === 1 && args[0] !== undefined))
             throw new Error("Dictation streaming accepts only a transferred port");
           if (event.ports.length !== 1) throw new Error("Dictation streaming requires one port");
+          if (event.sender.isDestroyed()) throw new Error("Dictation renderer is unavailable");
           const global = dictation.ownsGlobalRenderer(event.sender.id);
           if (!global && !windows.has(event.sender.id)) throw new Error("Unknown Nodex window");
           const active = attempts.get(event.sender.id) ?? new Set<() => void>();
@@ -50,12 +53,13 @@ export const live = (
           let child: Scope.Closeable | undefined;
           let connection: ReturnType<typeof connect> | undefined;
           let closed = false;
+          let releaseDestruction = () => {};
           const release = (): void => {
             if (closed) return;
             closed = true;
             active.delete(release);
             if (active.size === 0) attempts.delete(event.sender.id);
-            event.sender.removeListener("destroyed", release);
+            releaseDestruction();
             event.sender.removeListener("render-process-gone", release);
             event.sender.removeListener("did-start-navigation", navigation);
             port.removeListener("close", release);
@@ -73,7 +77,7 @@ export const live = (
           };
           attempts.set(event.sender.id, active);
           active.add(release);
-          event.sender.once("destroyed", release);
+          releaseDestruction = rendererDestruction.subscribe(event.sender, release);
           event.sender.once("render-process-gone", release);
           event.sender.on("did-start-navigation", navigation);
           port.once("close", release);
@@ -99,4 +103,4 @@ export const live = (
         }
       });
     }),
-  );
+  ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

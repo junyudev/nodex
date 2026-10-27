@@ -43,7 +43,7 @@ import { CodexGateway } from "../../codex-runtime/CodexGateway";
 import { codexRequestCanRetainOutcome } from "../../../shared/codex-renderer-request";
 import * as Fiber from "effect/Fiber";
 import { makeCodexRendererRequestLifetimes } from "../../codex-runtime/CodexRendererRequestLifetimes";
-import { makeWebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import {
   CodexRendererRequestOrigin,
   CodexRendererDeliverySink,
@@ -287,7 +287,7 @@ export const live = Layer.effectDiscard(
     const sideChatCommands = yield* CodexSideChatCommands;
     const gateway = yield* CodexGateway;
     const requestLifetimes = yield* makeCodexRendererRequestLifetimes;
-    const rendererDestruction = yield* makeWebContentsDestructionSubscriptions;
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const callbacks = yield* ScopedCallbackRuntime;
     const rendererClients = yield* RendererClientRuntime;
     const registrations: Array<Effect.Effect<void, never, Scope.Scope>> = [];
@@ -1014,8 +1014,11 @@ export const live = Layer.effectDiscard(
             },
           );
           const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-          const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
-          return yield* Fiber.join(fiber).pipe(Effect.ensuring(Effect.sync(unsubscribeDestroyed)));
+          return yield* Effect.scoped(
+            rendererDestruction
+              .subscribeScoped(event.sender, onDestroyed)
+              .pipe(Effect.andThen(Fiber.join(fiber))),
+          );
         }).pipe(
           Effect.mapError(
             (cause) => new CodexIpcError({ operation: "native-fork-execute", cause }),
@@ -1286,8 +1289,11 @@ export const live = Layer.effectDiscard(
             },
           );
           const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-          const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
-          return yield* Fiber.join(fiber).pipe(Effect.ensuring(Effect.sync(unsubscribeDestroyed)));
+          return yield* Effect.scoped(
+            rendererDestruction
+              .subscribeScoped(event.sender, onDestroyed)
+              .pipe(Effect.andThen(Fiber.join(fiber))),
+          );
         }).pipe(
           Effect.mapError(
             (cause) => new CodexIpcError({ operation: "native-steer-execute", cause }),
@@ -1443,8 +1449,11 @@ export const live = Layer.effectDiscard(
           },
         );
         const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-        const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
-        return yield* Fiber.join(fiber).pipe(Effect.ensuring(Effect.sync(unsubscribeDestroyed)));
+        return yield* Effect.scoped(
+          rendererDestruction
+            .subscribeScoped(event.sender, onDestroyed)
+            .pipe(Effect.andThen(Fiber.join(fiber))),
+        );
       }).pipe(
         Effect.mapError((cause) => new CodexIpcError({ operation: "native-turn-execute", cause })),
         Effect.match({
@@ -1507,8 +1516,11 @@ export const live = Layer.effectDiscard(
             },
           );
           const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-          const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
-          return yield* Fiber.join(fiber).pipe(Effect.ensuring(Effect.sync(unsubscribeDestroyed)));
+          return yield* Effect.scoped(
+            rendererDestruction
+              .subscribeScoped(event.sender, onDestroyed)
+              .pipe(Effect.andThen(Fiber.join(fiber))),
+          );
         }).pipe(
           Effect.mapError((cause) => new CodexIpcError({ operation: "native-inject", cause })),
           Effect.match({
@@ -2247,4 +2259,4 @@ export const live = Layer.effectDiscard(
 
     yield* Effect.all(registrations, { discard: true });
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

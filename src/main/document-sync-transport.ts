@@ -1,11 +1,9 @@
+import type { WebContentsDestructionSource } from "./platform/electron/WebContentsDestructionSubscriptions";
 import type { DocumentSyncCommandResult } from "../shared/block-documents/document-sync";
 
-export interface DocumentSyncClientTarget {
+export interface DocumentSyncClientTarget extends WebContentsDestructionSource {
   readonly id: number;
-  isDestroyed(): boolean;
   send(channel: string, ...args: unknown[]): void;
-  once(event: "destroyed", listener: () => void): unknown;
-  removeListener(event: "destroyed", listener: () => void): unknown;
 }
 
 export const documentSyncInvalidSession = <Value>(): DocumentSyncCommandResult<Value> => ({

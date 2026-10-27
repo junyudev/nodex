@@ -1,3 +1,4 @@
+import type { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { randomUUID } from "node:crypto";
 import type { BrowserWindow } from "electron";
 import {
@@ -149,10 +150,12 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
   #configurationTail: Promise<void> = Promise.resolve();
   #ownership: GlobalDictationOwnershipLease | null = null;
   #disposed = false;
+  readonly #rendererDestruction: Pick<WebContentsDestructionSubscriptions["Service"], "subscribe">;
   readonly #unsubscribeHelper: () => void;
   readonly #unsubscribeWindowTerminal: () => void;
 
   constructor(options: {
+    readonly rendererDestruction: Pick<WebContentsDestructionSubscriptions["Service"], "subscribe">;
     readonly helper: DictationNativeHelperPort<Binding>;
     readonly compileHotkey: CompileHotkey<Binding>;
     readonly windowController: GlobalDictationWindowPort;
@@ -168,6 +171,7 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
     readonly onRecoveryNeeded?: () => void;
     readonly platform?: NodeJS.Platform;
   }) {
+    this.#rendererDestruction = options.rendererDestruction;
     this.#helper = options.helper;
     this.#compileHotkey = options.compileHotkey;
     this.#windowController = options.windowController;
@@ -837,7 +841,7 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
     this.#active = session;
     this.#syncEscapeRegistration();
     const focused = this.#getFocusedAppWindow();
-    if (focused && !focused.isDestroyed()) {
+    if (focused && !focused.isDestroyed() && !focused.webContents.isDestroyed()) {
       session.owner = "pending-in-app";
       session.senderWebContentsId = focused.webContents.id;
       const cancel = (): void => {
@@ -849,11 +853,11 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
         if (details.isMainFrame && !details.isSameDocument) cancel();
       };
       focused.webContents.on("did-start-navigation", onNavigation);
-      focused.webContents.once("destroyed", cancel);
+      const releaseDestruction = this.#rendererDestruction.subscribe(focused.webContents, cancel);
       focused.webContents.once("render-process-gone", cancel);
       session.releaseWindowListeners = () => {
         focused.webContents.removeListener("did-start-navigation", onNavigation);
-        focused.webContents.removeListener("destroyed", cancel);
+        releaseDestruction();
         focused.webContents.removeListener("render-process-gone", cancel);
       };
       this.#publish({ kind: "routing-in-app", sessionId: session.sessionId });

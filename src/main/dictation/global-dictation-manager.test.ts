@@ -113,6 +113,14 @@ const createFixture = (
     return options.ownershipAvailable === false ? null : ownership;
   });
   const manager = new GlobalDictationManager({
+    rendererDestruction: {
+      subscribe: (source, callback) => {
+        source.once("destroyed", callback);
+        return () => {
+          source.removeListener("destroyed", callback);
+        };
+      },
+    },
     helper,
     compileHotkey: compileMacNativeHotkey,
     windowController,

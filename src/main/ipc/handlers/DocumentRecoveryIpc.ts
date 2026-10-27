@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import { CoreHttpError, CoreResponseTooLargeError } from "../../core-client/uds-http";
 import { createHash } from "node:crypto";
 import { contentRoutingIdentityKey } from "../../../shared/content-routing-context";
@@ -89,6 +90,7 @@ const failure = (
 /** Trusted desktop Adapter; Core remains the sole owner of draft bytes, authorization and resolution. */
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const config = yield* MainConfig;
     const desktop = yield* ElectronDesktop;
     const exports = yield* makeDocumentRecoveryExportSink;
@@ -96,8 +98,7 @@ export const live = Layer.effectDiscard(
     const watchedSenders = new Map<import("electron").WebContents, () => void>();
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        for (const [sender, listener] of watchedSenders)
-          sender.removeListener("destroyed", listener);
+        for (const release of watchedSenders.values()) release();
         watchedSenders.clear();
       }),
     );
@@ -160,8 +161,7 @@ export const live = Layer.effectDiscard(
             watchedSenders.delete(event.sender);
             callbacks.fork(exports.closeOwner(owner));
           };
-          watchedSenders.set(event.sender, listener);
-          event.sender.once("destroyed", listener);
+          watchedSenders.set(event.sender, rendererDestruction.subscribe(event.sender, listener));
         }
         if (request.kind === "begin") {
           const handle = yield* exports.begin(
@@ -271,4 +271,4 @@ export const live = Layer.effectDiscard(
       );
     });
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

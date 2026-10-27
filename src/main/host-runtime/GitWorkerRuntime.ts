@@ -1,3 +1,7 @@
+import {
+  WebContentsDestructionSubscriptions,
+  type WebContentsDestructionSource,
+} from "../platform/electron/WebContentsDestructionSubscriptions";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 import * as Clock from "effect/Clock";
@@ -25,12 +29,9 @@ import {
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 1_500;
 
-export interface GitWorkerRendererTarget {
+export interface GitWorkerRendererTarget extends WebContentsDestructionSource {
   readonly id: number;
-  isDestroyed(): boolean;
   send(channel: string, message: GitWorkerMessageForView): void;
-  on(event: "destroyed", listener: () => void): unknown;
-  removeListener(event: "destroyed", listener: () => void): unknown;
 }
 
 export interface GitWorkerProcess {
@@ -50,7 +51,7 @@ interface RendererState {
   readonly target: GitWorkerRendererTarget;
   readonly requestIds: ReadonlySet<string>;
   readonly subscriptionIds: ReadonlySet<string>;
-  readonly onDestroyed: () => void;
+  readonly releaseDestruction: () => void;
 }
 
 interface WorkerSession {
@@ -169,6 +170,7 @@ export const live = (options: GitWorkerRuntimeOptions): Layer.Layer<GitWorkerRun
   Layer.effect(
     GitWorkerRuntime,
     Effect.gen(function* () {
+      const rendererDestruction = yield* WebContentsDestructionSubscriptions;
       const createProcess = options.createProcess ?? createNodeProcess;
       const onInfrastructureError = options.onInfrastructureError ?? (() => undefined);
       const onPerformanceOperation = options.onPerformanceOperation ?? (() => undefined);
@@ -302,7 +304,7 @@ export const live = (options: GitWorkerRuntimeOptions): Layer.Layer<GitWorkerRun
             }),
           );
           if (!released) return;
-          released.renderer.target.removeListener("destroyed", released.renderer.onDestroyed);
+          released.renderer.releaseDestruction();
           if (!released.process) return;
           for (const requestId of released.renderer.requestIds) {
             sendBestEffort(released.process, {
@@ -604,12 +606,11 @@ export const live = (options: GitWorkerRuntimeOptions): Layer.Layer<GitWorkerRun
                 const onDestroyed = () => {
                   void runCallback(releaseRenderer(target.id));
                 };
-                target.on("destroyed", onDestroyed);
                 renderer = {
                   target,
                   requestIds: new Set(),
                   subscriptionIds: new Set(),
-                  onDestroyed,
+                  releaseDestruction: rendererDestruction.subscribe(target, onDestroyed),
                 };
                 current = {
                   ...current,
@@ -733,7 +734,7 @@ export const live = (options: GitWorkerRuntimeOptions): Layer.Layer<GitWorkerRun
             }),
           );
           for (const renderer of released.renderers.values()) {
-            renderer.target.removeListener("destroyed", renderer.onDestroyed);
+            renderer.releaseDestruction();
           }
           yield* rejectRequests(
             released.failed,
@@ -758,4 +759,4 @@ export const live = (options: GitWorkerRuntimeOptions): Layer.Layer<GitWorkerRun
 
       return GitWorkerRuntime.of({ handleRendererMessage, request });
     }),
-  );
+  ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

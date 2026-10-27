@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -92,6 +93,7 @@ export const live = (
 > =>
   Layer.effectDiscard(
     Effect.gen(function* () {
+      const rendererDestruction = yield* WebContentsDestructionSubscriptions;
       const config = yield* MainConfig;
       const ipc = yield* ElectronIpc;
       const desktop = yield* ElectronDesktop;
@@ -274,12 +276,7 @@ export const live = (
               void,
               WorkspaceFileUserError | WorkspaceFileIpcError
             >();
-            const ownerDestroyed = Effect.callback<void>((resume) => {
-              const onDestroyed = () => resume(Effect.void);
-              owner.once("destroyed", onDestroyed);
-              if (owner.isDestroyed()) resume(Effect.void);
-              return Effect.sync(() => owner.removeListener("destroyed", onDestroyed));
-            });
+            const ownerDestroyed = rendererDestruction.wait(owner);
             const lifecycle = Effect.raceFirst(
               Effect.scoped(
                 Effect.gen(function* () {
@@ -343,4 +340,4 @@ export const live = (
         ),
       );
     }),
-  );
+  ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

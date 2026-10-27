@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -101,7 +102,9 @@ export class ApplicationMenuRuntime extends Context.Service<
   }
 >()("nodex/main/host-runtime/ApplicationMenuRuntime") {}
 
-const electronNative = (): ApplicationMenuNativePort => ({
+const electronNative = (
+  rendererDestruction: WebContentsDestructionSubscriptions["Service"],
+): ApplicationMenuNativePort => ({
   shouldUseDarkColors: () => nativeTheme.shouldUseDarkColors,
   getFocusedWebContents: getFocusedFrameOwner,
   buildFromTemplate: (template) => Menu.buildFromTemplate(template),
@@ -117,7 +120,7 @@ const electronNative = (): ApplicationMenuNativePort => ({
       const release = () => {
         contents.off("focus", listener);
         contents.off("blur", listener);
-        contents.off("destroyed", destroyed);
+        releaseDestruction();
         releases.delete(contents);
       };
       const destroyed = () => {
@@ -126,7 +129,7 @@ const electronNative = (): ApplicationMenuNativePort => ({
       };
       contents.on("focus", listener);
       contents.on("blur", listener);
-      contents.on("destroyed", destroyed);
+      const releaseDestruction = rendererDestruction.subscribe(contents, destroyed);
       releases.set(contents, release);
     };
     const created = (_event: Electron.Event, contents: WebContents) => attach(contents);
@@ -147,9 +150,10 @@ export const live = (
   Layer.effect(
     ApplicationMenuRuntime,
     Effect.gen(function* () {
+      const rendererDestruction = yield* WebContentsDestructionSubscriptions;
       const callbacks = yield* ScopedCallbackRuntime;
       const logger = getLogger({ component: "application-menu-runtime" });
-      const native = options.native ?? electronNative();
+      const native = options.native ?? electronNative(rendererDestruction);
       const reportFailure = (operation: string) =>
         Effect.catchCause((cause) =>
           Effect.sync(() => logger.warn("Application menu action failed", { operation, cause })),
@@ -426,4 +430,4 @@ export const live = (
           }),
       );
     }),
-  );
+  ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

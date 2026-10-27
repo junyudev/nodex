@@ -94,6 +94,7 @@ it.effect(
       const frame = { url: "app://-/index.html" };
       const sender = Object.assign(new EventEmitter(), {
         id: 1,
+        isDestroyed: () => false,
         mainFrame: frame,
         getType: () => "window",
       });

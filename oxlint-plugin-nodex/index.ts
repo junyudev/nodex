@@ -1,3 +1,4 @@
+import noDirectWebContentsDestructionListener from "./rules/no-direct-webcontents-destruction-listener.ts";
 import { definePlugin } from "@oxlint/plugins";
 import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-tests.ts";
 import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
@@ -10,6 +11,7 @@ export default definePlugin({
     name: "nodex",
   },
   rules: {
+    "no-direct-webcontents-destruction-listener": noDirectWebContentsDestructionListener,
     "no-ambient-profile-authority": noAmbientProfileAuthority,
     "no-cast-runtime-snapshot-fixtures": noCastRuntimeSnapshotFixtures,
     "no-manual-effect-runtime-in-tests": noManualEffectRuntimeInTests,

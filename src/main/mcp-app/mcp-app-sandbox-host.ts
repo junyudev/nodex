@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import * as Effect from "effect/Effect";
 import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
@@ -55,6 +56,7 @@ interface AttachedMcpAppGuest extends OwnedMcpAppAttachment {
   lastUserGestureAt?: number;
   active: boolean;
   presentationRevision: number;
+  releaseDestruction: () => void;
 }
 
 interface PendingMcpAppAttachment {
@@ -279,6 +281,7 @@ class McpAppSandboxControllerState {
     options: McpAppSandboxHostOptions,
     protocolCache: McpAppSandboxProtocolCache,
     private readonly scheduler: McpAppSandboxScheduler,
+    readonly rendererDestruction: WebContentsDestructionSubscriptions["Service"],
     platform: McpAppSandboxPlatform,
   ) {
     this.#options = options;
@@ -319,9 +322,8 @@ class McpAppSandboxControllerState {
   }
 
   createHost(owner: WebContents): McpAppSandboxHost {
-    if (!this.#installed) {
-      throw new Error("MCP App sandbox coordinator is not installed");
-    }
+    if (!this.#installed) throw new Error("MCP App sandbox coordinator is not installed");
+    if (owner.isDestroyed()) throw new Error("MCP App sandbox owner is unavailable");
     const host = new McpAppSandboxHostState(
       this,
       owner,
@@ -559,7 +561,7 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
   readonly #owner: WebContents;
   readonly #showContextMenu: (owner: WebContents, guest: WebContents) => void;
   #disposed = false;
-  readonly #onOwnerDestroyed = (): void => this.release();
+  readonly #releaseDestruction: () => void;
 
   constructor(
     coordinator: McpAppSandboxControllerState,
@@ -570,7 +572,9 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
     this.#coordinator = coordinator;
     this.#owner = owner;
     this.#options = options;
-    this.#owner.once("destroyed", this.#onOwnerDestroyed);
+    this.#releaseDestruction = coordinator.rendererDestruction.subscribe(owner, () =>
+      this.release(),
+    );
     this.#showContextMenu = showContextMenu;
   }
 
@@ -682,6 +686,7 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
       guest,
       active: true,
       presentationRevision: 0,
+      releaseDestruction: () => {},
     };
     this.#attachedGuests.set(guest.id, attached);
     this.#coordinator.registerGuest(guest.id, this);
@@ -692,8 +697,9 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
   release(): void {
     if (this.#disposed) return;
     this.#disposed = true;
-    this.#owner.removeListener("destroyed", this.#onOwnerDestroyed);
+    this.#releaseDestruction();
     for (const attached of this.#attachedGuests.values()) {
+      attached.releaseDestruction();
       this.#coordinator.unregisterGuest(attached.guest.id);
       if (!attached.guest.isDestroyed()) attached.guest.close();
     }
@@ -752,6 +758,7 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
       (value) => value.sandboxId === sandboxId && value.initId === initId,
     );
     if (!attached) return false;
+    attached.releaseDestruction();
     this.#attachedGuests.delete(attached.guest.id);
     this.#coordinator.unregisterGuest(attached.guest.id);
     if (!attached.guest.isDestroyed()) attached.guest.close();
@@ -848,7 +855,7 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
     guest.on("context-menu", () => {
       this.#showContextMenu(attached.ownerWebContents, guest);
     });
-    guest.once("destroyed", () => {
+    attached.releaseDestruction = this.#coordinator.rendererDestruction.subscribe(guest, () => {
       this.#attachedGuests.delete(guest.id);
       this.#coordinator.unregisterGuest(guest.id);
     });
@@ -889,9 +896,20 @@ export const makeMcpAppSandboxController = (
   protocolCache: McpAppSandboxProtocolCache,
   scheduler: McpAppSandboxScheduler,
   platform: McpAppSandboxPlatform,
-): Effect.Effect<McpAppSandboxController, never, Scope.Scope> =>
+): Effect.Effect<
+  McpAppSandboxController,
+  never,
+  Scope.Scope | WebContentsDestructionSubscriptions
+> =>
   Effect.gen(function* () {
-    const state = new McpAppSandboxControllerState(options, protocolCache, scheduler, platform);
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
+    const state = new McpAppSandboxControllerState(
+      options,
+      protocolCache,
+      scheduler,
+      rendererDestruction,
+      platform,
+    );
     const clearLane = yield* Semaphore.make(1);
     yield* Effect.addFinalizer(() => Effect.sync(() => state.release()));
     yield* Effect.sync(() => state.install());

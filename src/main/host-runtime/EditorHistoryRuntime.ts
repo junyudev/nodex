@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -35,7 +36,7 @@ import type {
 
 const MAX_PENDING_ACTIONS = 128;
 const MAX_PENDING_BYTES = 32 * 1024 * 1024;
-type Target = Pick<WebContents, "id" | "isDestroyed" | "on" | "removeListener">;
+type Target = Pick<WebContents, "id" | "isDestroyed" | "once" | "on" | "removeListener">;
 
 interface Attempt<Result = LibraryModuleApplyResult> {
   readonly fingerprint: string;
@@ -116,6 +117,7 @@ export const live: Layer.Layer<
 > = Layer.effect(
   EditorHistoryRuntime,
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const library = yield* LibraryModule;
     const database = yield* DatabaseModule;
     const documents = yield* DesktopDocumentSessionRuntime;
@@ -182,13 +184,13 @@ export const live: Layer.Layer<
         registration = {
           owner: undefined,
           detach: () => {
-            target.removeListener("destroyed", destroyed);
+            releaseDestruction();
             target.removeListener("render-process-gone", ended);
             target.removeListener("did-start-navigation", navigated);
           },
         };
         registrations.set(target.id, registration);
-        target.on("destroyed", destroyed);
+        const releaseDestruction = rendererDestruction.subscribe(target, destroyed);
         target.on("render-process-gone", ended);
         target.on("did-start-navigation", navigated);
       }
@@ -579,4 +581,4 @@ export const live: Layer.Layer<
       },
     });
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

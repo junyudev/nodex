@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FiberMap from "effect/FiberMap";
@@ -14,6 +15,7 @@ export const makeDictationHotkeyCapture = Effect.fn("DictationHotkeyCapture.make
       allowsBareModifiers: boolean,
     ) => Promise<string | null>;
   }) {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const captures = yield* FiberMap.make<number, string | null>();
     const callbacks = yield* FiberSet.make();
     const runCallback = yield* FiberSet.runtime(callbacks)();
@@ -46,12 +48,12 @@ export const makeDictationHotkeyCapture = Effect.fn("DictationHotkeyCapture.make
             if (event.isMainFrame && !event.isSameDocument) stop();
           };
           window.once("blur", stop);
-          window.webContents.once("destroyed", stop);
+          const releaseDestruction = rendererDestruction.subscribe(window.webContents, stop);
           window.webContents.once("render-process-gone", stop);
           window.webContents.on("did-start-navigation", navigate);
           return () => {
             window.removeListener("blur", stop);
-            window.webContents.removeListener("destroyed", stop);
+            releaseDestruction();
             window.webContents.removeListener("render-process-gone", stop);
             window.webContents.removeListener("did-start-navigation", navigate);
           };

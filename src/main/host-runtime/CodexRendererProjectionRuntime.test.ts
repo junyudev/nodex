@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import type { CodexUserInputAutoResolutionConversation } from "../../shared/codex-user-input-auto-resolution";
 import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
@@ -41,13 +42,13 @@ it.effect(
       const clientsContext = yield* Layer.build(rendererClientLive());
       const rendererClients = Context.get(clientsContext, RendererClientRuntime);
       const deliveredHostMessages: unknown[] = [];
-      const webContents = {
+      const webContents = Object.assign(new EventEmitter(), {
         id: 1,
         isDestroyed: () => false,
         send: (channel: string, payload: unknown) => {
           if (channel === "codex:host-message") deliveredHostMessages.push(payload);
         },
-      };
+      });
       const window: WindowRuntimePrimaryWindowSnapshot = {
         kind: "primary",
         webContentsId: 1,

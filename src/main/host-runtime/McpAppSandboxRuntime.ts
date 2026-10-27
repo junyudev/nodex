@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -103,4 +104,4 @@ export const live = (options: McpAppSandboxRuntimeOptions): Layer.Layer<McpAppSa
         setGuestPresentation: controller.setGuestPresentation,
       });
     }),
-  );
+  ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

@@ -1,10 +1,10 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import * as Scope from "effect/Scope";
 import * as Exit from "effect/Exit";
 import { CodexThreadReadState } from "../../codex-application/CodexThreadReadState";
 import { CodexThreadReadStateService } from "../../platform/electron/CodexThreadReadStateService";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { WebContents } from "electron";
 import { CODEX_CONVERSATION_SERVICE_CHANNEL } from "../../../shared/codex-client-coordination";
 import { MainConfig } from "../../app/MainConfig";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
@@ -15,13 +15,13 @@ import { CodexConversationPeerRuntime } from "../../platform/node/CodexConversat
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
 interface WindowService {
-  readonly sender: WebContents;
   readonly dispose: () => void;
 }
 
 /** A transferred port creates one independent socket peer for the trusted window. */
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const ipc = yield* ElectronIpc;
     const config = yield* MainConfig;
     const windows = yield* WindowRuntime;
@@ -41,7 +41,6 @@ export const live = Layer.effectDiscard(
       const service = services.get(senderId);
       if (!service) return;
       services.delete(senderId);
-      service.sender.removeListener("destroyed", service.dispose);
       service.dispose();
     };
     yield* Effect.addFinalizer(() =>
@@ -70,17 +69,18 @@ export const live = Layer.effectDiscard(
             new CodexThreadReadStateService(readState, callbacks, windowScope),
           );
           const unregisterPeer = peers.registerWindowPeer(event.sender.id, connection.getClientId);
+          let releaseDestruction = () => {};
           const dispose = (): void => {
             unregisterPeer();
             if (services.get(event.sender.id)?.dispose === dispose)
               services.delete(event.sender.id);
-            event.sender.removeListener("destroyed", dispose);
+            releaseDestruction();
             port.removeListener("close", dispose);
             connection.dispose();
             callbacks.fork(Scope.close(windowScope, Exit.void));
           };
-          services.set(event.sender.id, { sender: event.sender, dispose });
-          event.sender.once("destroyed", dispose);
+          services.set(event.sender.id, { dispose });
+          releaseDestruction = rendererDestruction.subscribe(event.sender, dispose);
           port.once("close", dispose);
         });
       }).pipe(
@@ -93,4 +93,4 @@ export const live = Layer.effectDiscard(
       ),
     );
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

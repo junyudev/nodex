@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import type { IpcMainInvokeEvent } from "electron";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
@@ -17,6 +18,7 @@ import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 /** Each window owns its cancellable search fibers; closing the window releases every child process. */
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
@@ -42,15 +44,9 @@ export const live = Layer.effectDiscard(
         Effect.andThen(
           Effect.gen(function* () {
             const request = yield* parse(() => WorkspaceTextSearchStartSchema.parse(raw));
-            const destroyed = Effect.callback<never>((resume) => {
-              if (event.sender.isDestroyed()) {
-                resume(Effect.interrupt);
-                return;
-              }
-              const onDestroyed = () => resume(Effect.interrupt);
-              event.sender.once("destroyed", onDestroyed);
-              return Effect.sync(() => event.sender.removeListener("destroyed", onDestroyed));
-            });
+            const destroyed = rendererDestruction
+              .wait(event.sender)
+              .pipe(Effect.andThen(Effect.interrupt));
             const emit = (notification: Parameters<Parameters<typeof search.search>[1]>[0]) =>
               Effect.sync(() => {
                 safeSendToWebContents(event.sender, "workspace-text-search:event", [notification]);
@@ -86,4 +82,4 @@ export const live = Layer.effectDiscard(
       ),
     );
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

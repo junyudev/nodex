@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import type { IpcMainInvokeEvent } from "electron";
 import { assert, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
+import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -10,6 +11,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CodexGateway } from "../../codex-runtime/CodexGateway";
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -44,7 +46,7 @@ it.effect(
           ),
         on: () => Effect.die("unused"),
       });
-      const stopped = yield* Deferred.make<void>();
+      let stopped = yield* Deferred.make<void>();
       const calls: Array<{ method: string; sessionId: string }> = [];
       const gateway = {
         localHostId: "local",
@@ -60,8 +62,9 @@ it.effect(
           }),
       } as unknown as CodexGateway["Service"];
       const scope = yield* Scope.make();
-      yield* Layer.buildWithScope(
+      const context = yield* Layer.buildWithScope(
         live.pipe(
+          Layer.provideMerge(WebContentsDestructionSubscriptions.live),
           Layer.provide(
             Layer.mergeAll(
               mainConfigLayer(),
@@ -84,8 +87,26 @@ it.effect(
         sessionId: "128cc777-30ab-4c91-8857-a2083e8349f1",
         roots: ["/repo"],
       };
+      const destruction = Context.get(context, WebContentsDestructionSubscriptions);
+      let unrelatedCleanup = 0;
+      let releaseUnrelated = destruction.subscribe(sender, () => unrelatedCleanup++);
       const start = handlers.get("file-search:start")!;
       const update = handlers.get("file-search:update")!;
+      const stop = handlers.get("file-search:stop")!;
+      for (let index = 0; index < 16; index++) {
+        yield* start(event, input);
+        assert.strictEqual(sender.listenerCount("destroyed"), 1);
+        yield* stop(event, { sessionId: input.sessionId });
+      }
+      assert.strictEqual(
+        calls.filter((call) => call.method === "fuzzyFileSearch/sessionStop").length,
+        16,
+      );
+      releaseUnrelated();
+      assert.strictEqual(sender.listenerCount("destroyed"), 0);
+      releaseUnrelated = destruction.subscribe(sender, () => unrelatedCleanup++);
+      stopped = yield* Deferred.make<void>();
+      calls.length = 0;
       yield* start(event, input);
       assert.isTrue(
         Exit.isFailure(
@@ -99,6 +120,8 @@ it.effect(
       sender.emit("destroyed");
       yield* Deferred.await(stopped);
       assert.strictEqual(sender.listenerCount("destroyed"), 0);
+      assert.strictEqual(unrelatedCleanup, 1);
+      releaseUnrelated();
       yield* update(otherEvent, { sessionId: input.sessionId, query: "other" });
       yield* Scope.close(scope, Exit.succeed(undefined));
       assert.strictEqual(other.listenerCount("destroyed"), 0);

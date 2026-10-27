@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -32,6 +33,7 @@ export class AgentRuntimeIpcError extends Schema.TaggedError<AgentRuntimeIpcErro
 /** Renderer observation owns delivery only; the engine owns execution and replay. */
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const application = yield* AgentRuntimeApplication;
     const supervisor = yield* AgentRuntimeSupervisor;
     const activity = yield* AgentRuntimeSessionActivity;
@@ -44,10 +46,7 @@ export const live = Layer.effectDiscard(
       string,
       { readonly sender: IpcMainInvokeEvent["sender"]; readonly scope: Scope.Closeable }
     >();
-    const senderDisposals = new Map<
-      number,
-      { readonly sender: IpcMainInvokeEvent["sender"]; readonly dispose: () => void }
-    >();
+    const senderDisposals = new Map<number, { releaseDestruction: () => void }>();
     const keyOf = (senderId: number, subscriptionId: string) =>
       JSON.stringify([senderId, subscriptionId]);
     const release = Effect.fn("AgentRuntimeIpc.release")(function* (key: string) {
@@ -57,7 +56,7 @@ export const live = Layer.effectDiscard(
       const senderId = watcher.sender.id;
       if (![...watchers.values()].some((entry) => entry.sender.id === senderId)) {
         const disposal = senderDisposals.get(senderId);
-        disposal?.sender.removeListener("destroyed", disposal.dispose);
+        disposal?.releaseDestruction();
         senderDisposals.delete(senderId);
       }
       yield* Scope.close(watcher.scope, Exit.void);
@@ -244,8 +243,9 @@ export const live = Layer.effectDiscard(
                   { discard: true },
                 ),
               );
-            senderDisposals.set(event.sender.id, { sender: event.sender, dispose });
-            event.sender.once("destroyed", dispose);
+            const disposal = { releaseDestruction: () => {} };
+            senderDisposals.set(event.sender.id, disposal);
+            disposal.releaseDestruction = rendererDestruction.subscribe(event.sender, dispose);
           }
           const send = (message: AgentRuntimeSessionEvent) =>
             Effect.sync(() => {
@@ -323,4 +323,4 @@ export const live = Layer.effectDiscard(
       ),
     );
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

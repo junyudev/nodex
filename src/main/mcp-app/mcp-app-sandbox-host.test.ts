@@ -1,3 +1,7 @@
+import {
+  WebContentsDestructionSubscriptions,
+  makeWebContentsDestructionSubscriptions,
+} from "../platform/electron/WebContentsDestructionSubscriptions";
 import { EventEmitter } from "node:events";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -13,7 +17,10 @@ import {
   MCP_APP_SANDBOX_SCHEME,
 } from "../../shared/mcp-app/mcp-app-sandbox-contract";
 import type { BackendLogger } from "../logging/logger";
-import { makeMcpAppSandboxController, type McpAppSandboxPlatform } from "./mcp-app-sandbox-host";
+import {
+  makeMcpAppSandboxController as makeBase,
+  type McpAppSandboxPlatform,
+} from "./mcp-app-sandbox-host";
 
 function makeSession() {
   const events = new EventEmitter();
@@ -71,7 +78,10 @@ it.effect("inline HTML navigation preserves focus without changing ordinary MCP 
   Effect.scoped(
     Effect.gen(function* () {
       const sandboxSession = makeSession();
-      const owner = Object.assign(new EventEmitter(), { id: 91 }) as unknown as WebContents;
+      const owner = Object.assign(new EventEmitter(), {
+        id: 91,
+        isDestroyed: () => false,
+      }) as unknown as WebContents;
       const controller = yield* makeMcpAppSandboxController(
         {
           allowLocalDevelopment: false,
@@ -425,7 +435,9 @@ const appDataFixture = Effect.gen(function* () {
       showGuestContextMenu: () => undefined,
     },
   );
-  const owners = [1, 2].map((id) => Object.assign(new EventEmitter(), { id }));
+  const owners = [1, 2].map((id) =>
+    Object.assign(new EventEmitter(), { id, isDestroyed: () => false }),
+  );
   for (const [index, owner] of owners.entries()) {
     const host = controller.createHost(owner as unknown as WebContents);
     const sandboxId = `source-${String(index + 1).repeat(16)}`;
@@ -492,3 +504,12 @@ it.effect("makes clearing unavailable after the sandbox owner releases", () =>
     assert.deepEqual(h.first.state.cleared, []);
   }),
 );
+
+const makeMcpAppSandboxController = Effect.fnUntraced(function* (
+  ...args: Parameters<typeof makeBase>
+) {
+  const subscriptions = yield* makeWebContentsDestructionSubscriptions;
+  return yield* makeBase(...args).pipe(
+    Effect.provideService(WebContentsDestructionSubscriptions, subscriptions),
+  );
+});

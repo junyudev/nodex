@@ -9,7 +9,10 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import { layer as callbacksLayer, ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 import { makeCodexRendererRequestLifetimes } from "../../codex-runtime/CodexRendererRequestLifetimes";
-import { makeWebContentsDestructionSubscriptions } from "./WebContentsDestructionSubscriptions";
+import {
+  WebContentsDestructionSubscriptions,
+  makeWebContentsDestructionSubscriptions,
+} from "./WebContentsDestructionSubscriptions";
 
 const createSource = () => {
   let destroyed = false;
@@ -146,5 +149,105 @@ it.effect("immediately disposes work admitted after a renderer was destroyed", (
     assert.strictEqual(source.listenerCount("destroyed"), 0);
     release();
     assert.strictEqual(cancelled, 1);
+  }),
+);
+
+it.effect("releases each subscription with its child Scope, including repeated renderer work", () =>
+  Effect.gen(function* () {
+    const subscriptions = yield* makeWebContentsDestructionSubscriptions;
+    const source = createSource();
+    const scopes = yield* Effect.forEach(Array.from({ length: 32 }), () => Scope.make());
+    const notified: number[] = [];
+    for (const [index, scope] of scopes.entries()) {
+      yield* Scope.provide(
+        subscriptions.subscribeScoped(source, () => notified.push(index)),
+        scope,
+      );
+    }
+    assert.strictEqual(source.listenerCount("destroyed"), 1);
+    for (const scope of scopes.slice(0, 16)) yield* Scope.close(scope, Exit.void);
+    source.destroy();
+    assert.deepEqual(
+      notified,
+      Array.from({ length: 16 }, (_, index) => index + 16),
+    );
+    for (const scope of scopes) yield* Scope.close(scope, Exit.void);
+    assert.strictEqual(source.listenerCount("destroyed"), 0);
+
+    const longLived = createSource();
+    for (let index = 0; index < 64; index++) {
+      yield* Effect.scoped(subscriptions.subscribeScoped(longLived, () => notified.push(-1)));
+      assert.strictEqual(longLived.listenerCount("destroyed"), 0);
+    }
+    longLived.destroy();
+    assert.strictEqual(notified.length, 16);
+  }),
+);
+
+it.effect("memoizes the same native owner across independent Main Layers", () =>
+  Effect.gen(function* () {
+    class First extends Context.Service<First, WebContentsDestructionSubscriptions["Service"]>()(
+      "test/destruction/first",
+    ) {}
+    class Second extends Context.Service<Second, WebContentsDestructionSubscriptions["Service"]>()(
+      "test/destruction/second",
+    ) {}
+    const first = Layer.effect(First, WebContentsDestructionSubscriptions).pipe(
+      Layer.provide(WebContentsDestructionSubscriptions.live),
+    );
+    const second = Layer.effect(Second, WebContentsDestructionSubscriptions).pipe(
+      Layer.provide(WebContentsDestructionSubscriptions.live),
+    );
+    const context = yield* Layer.build(Layer.merge(first, second));
+    const firstOwner = Context.get(context, First);
+    const secondOwner = Context.get(context, Second);
+    assert.strictEqual(firstOwner, secondOwner);
+    const source = createSource();
+    let notified = 0;
+    const releases = [firstOwner, secondOwner].flatMap((owner) =>
+      Array.from({ length: 16 }, () => owner.subscribe(source, () => notified++)),
+    );
+    assert.strictEqual(source.listenerCount("destroyed"), 1);
+    source.destroy();
+    for (const release of releases) release();
+    assert.strictEqual(notified, 32);
+  }),
+);
+
+it.effect("removes destruction waits on normal completion and interruption", () =>
+  Effect.gen(function* () {
+    const subscriptions = yield* makeWebContentsDestructionSubscriptions;
+    const source = createSource();
+    for (let index = 0; index < 32; index++) {
+      const fiber = yield* subscriptions
+        .wait(source)
+        .pipe(Effect.forkScoped({ startImmediately: true }));
+      assert.strictEqual(source.listenerCount("destroyed"), 1);
+      yield* Fiber.interrupt(fiber);
+      assert.strictEqual(source.listenerCount("destroyed"), 0);
+    }
+    const waiting = yield* subscriptions
+      .wait(source)
+      .pipe(Effect.forkScoped({ startImmediately: true }));
+    source.destroy();
+    yield* Fiber.join(waiting);
+    assert.strictEqual(source.listenerCount("destroyed"), 0);
+  }),
+);
+
+it.effect("runs every live cleanup even if a callback throws", () =>
+  Effect.gen(function* () {
+    const subscriptions = yield* makeWebContentsDestructionSubscriptions;
+    const source = createSource();
+    let cleaned = false;
+    subscriptions.subscribe(source, () => {
+      throw new Error("cleanup failed");
+    });
+    subscriptions.subscribe(source, () => {
+      cleaned = true;
+    });
+    assert.throws(() => source.destroy(), AggregateError);
+    assert.isTrue(cleaned);
+    assert.strictEqual(source.listenerCount("destroyed"), 0);
   }),
 );

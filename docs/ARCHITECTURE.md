@@ -240,6 +240,12 @@ Store formats and migration sequences are implementation/recovery contracts, not
 
 ### Electron Main / Desktop Host
 
+Main's scoped [WebContents destruction owner](../src/main/platform/electron/WebContentsDestructionSubscriptions.ts)
+shares one native `destroyed` listener per WebContents across renderer requests, subscriptions,
+and sandbox guests. Consumers release their registration when their own lifetime ends;
+request and subscription Effects bind that release to cancellation or Scope finalization.
+Direct native destruction listeners outside this owner are forbidden by the Main lint boundary.
+
 [`src/main`](../src/main) owns the non-transactional desktop boundary:
 
 - Core transport selection, authenticated connection, and compatibility checks through [`src/main/core-client`](../src/main/core-client); process-lifetime supervision and recovery through Effect [`CoreAuthority`](../src/main/core-runtime/CoreAuthority.ts).
@@ -297,7 +303,7 @@ Native filesystem watching is one scoped Stream Adapter around synchronous `fs.w
 changes, and typed failure flow through the Stream, and stream finalization closes the native handle.
 Workspace-file subscriptions are owner-and-subscription-keyed fibers, while a zero-idle `LayerMap`
 shares one physical watch per renderer and exact path until its final subscriber releases. Each
-subscription fiber owns its renderer-destruction listener and physical-watch lease, so explicit stop,
+subscription fiber owns its renderer-destruction registration and physical-watch lease, so explicit stop,
 renderer destruction, acquisition failure, and Main Scope release interrupt the same resource
 without IPC-owned lifecycle registries.
 

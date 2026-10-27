@@ -210,6 +210,7 @@ export default defineConfig({
       "eslint/no-unsafe-optional-chaining": "error",
       "nodex/no-manual-effect-runtime-in-tests": "error",
       "nodex/no-ambient-profile-authority": "error",
+      "nodex/no-direct-webcontents-destruction-listener": "error",
       "nodex/no-native-title-tooltip": "error",
       "nodex/no-cast-runtime-snapshot-fixtures": "error",
       "nodex/no-testing-library-wait-in-act": "error",

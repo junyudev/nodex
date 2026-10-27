@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
@@ -188,6 +189,7 @@ export const live = (options: {
   Layer.effect(
     DictationRuntime,
     Effect.gen(function* () {
+      const rendererDestruction = yield* WebContentsDestructionSubscriptions;
       const applicationSettings = yield* ApplicationSettings;
       const config = yield* MainConfig;
       const codex = yield* CodexPlatform;
@@ -271,11 +273,13 @@ export const live = (options: {
           native.platform === "darwin"
             ? new GlobalDictationManager({
                 ...managerOptions,
+                rendererDestruction,
                 helper: native.helper,
                 compileHotkey: compileMacNativeHotkey,
               })
             : new GlobalDictationManager({
                 ...managerOptions,
+                rendererDestruction,
                 helper: native.helper,
                 compileHotkey: compileWindowsDictationHotkey,
               });
@@ -456,4 +460,4 @@ export const live = (options: {
           attemptPromise("delete-dictation-recording", () => recordings.delete(id)),
       });
     }),
-  );
+  ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

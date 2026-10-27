@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { CoreEventCompatibilityError } from "./uds-http";
 import { createHash } from "node:crypto";
 import { documentSessionError } from "./document-session-error";
@@ -237,6 +238,7 @@ export interface DesktopDocumentSessionRuntimeOptions {
 }
 
 interface DesktopDocumentSessionRuntimeDependencies extends DesktopDocumentSessionRuntimeOptions {
+  readonly rendererDestruction: WebContentsDestructionSubscriptions["Service"];
   readonly coreAuthority: CoreAuthority["Service"];
   readonly coreSession: CoreSessionAccess["Service"];
   readonly coreModules: CoreModules["Service"];
@@ -419,7 +421,7 @@ const makeDesktopDocumentSessionState = (
     number,
     {
       readonly target: DocumentSyncClientTarget;
-      readonly onDestroyed: () => void;
+      releaseDestruction: () => void;
     }
   >();
   const canvasPresenceHub = input.canvasPresenceHub ?? createCanvasPresenceHub();
@@ -891,14 +893,14 @@ const makeDesktopDocumentSessionState = (
     const listener = targetListeners.get(targetId);
     if (!listener) return;
     targetListeners.delete(targetId);
-    listener.target.removeListener("destroyed", listener.onDestroyed);
+    listener.releaseDestruction();
   };
 
   const bindTargetLifecycle = (target: DocumentSyncClientTarget): void => {
     const existing = targetListeners.get(target.id);
     if (existing?.target === target) return;
     if (existing) {
-      existing.target.removeListener("destroyed", existing.onDestroyed);
+      existing.releaseDestruction();
       targetListeners.delete(target.id);
     }
     const onDestroyed = (): void => {
@@ -910,8 +912,9 @@ const makeDesktopDocumentSessionState = (
         if (subscription.targetId === target.id) closeSubscription(key);
       }
     };
-    targetListeners.set(target.id, { target, onDestroyed });
-    target.once("destroyed", onDestroyed);
+    const listener = { target, releaseDestruction: () => {} };
+    targetListeners.set(target.id, listener);
+    listener.releaseDestruction = input.rendererDestruction.subscribe(target, onDestroyed);
   };
 
   const hasNativeSubscription = (
@@ -2155,7 +2158,7 @@ const makeDesktopDocumentSessionState = (
     for (const [, reservation] of pending) cancelPendingSubscription(reservation);
     for (const key of [...subscriptions.keys()]) closeSubscription(key);
     for (const listener of targetListeners.values()) {
-      listener.target.removeListener("destroyed", listener.onDestroyed);
+      listener.releaseDestruction();
     }
     targetListeners.clear();
     bindings.clear();
@@ -2177,16 +2180,22 @@ export const makeDesktopDocumentSessionRuntime = (
 ): Effect.Effect<
   DesktopDocumentSessionService,
   never,
-  Scope.Scope | CoreAuthority | CoreSessionAccess | CoreModules | DocumentLiveRuntime
+  | Scope.Scope
+  | WebContentsDestructionSubscriptions
+  | CoreAuthority
+  | CoreSessionAccess
+  | CoreModules
+  | DocumentLiveRuntime
 > =>
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const coreAuthority = yield* CoreAuthority;
     const coreSession = yield* CoreSessionAccess;
     const coreModules = yield* CoreModules;
     const documentLive = yield* DocumentLiveRuntime;
     const background = yield* FiberSet.makeRuntime<never, void, never>();
     const state = makeDesktopDocumentSessionState(
-      { ...input, coreAuthority, coreSession, coreModules, documentLive },
+      { ...input, rendererDestruction, coreAuthority, coreSession, coreModules, documentLive },
       background,
     );
     yield* Effect.addFinalizer(() => state.close);
@@ -2199,4 +2208,7 @@ export const desktopDocumentSessionRuntimeLive = (
   DesktopDocumentSessionRuntime,
   never,
   CoreAuthority | CoreSessionAccess | CoreModules | DocumentLiveRuntime
-> => Layer.effect(DesktopDocumentSessionRuntime, makeDesktopDocumentSessionRuntime(options));
+> =>
+  Layer.effect(DesktopDocumentSessionRuntime, makeDesktopDocumentSessionRuntime(options)).pipe(
+    Layer.provide(WebContentsDestructionSubscriptions.live),
+  );

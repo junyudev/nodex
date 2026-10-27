@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import { randomUUID } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -16,6 +17,7 @@ import { AgentRuntimeProcessError } from "../../platform/node/AgentRuntimeProces
 
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const agents = yield* AcpAgents;
     const ipc = yield* ElectronIpc;
     const config = yield* MainConfig;
@@ -35,12 +37,14 @@ export const live = Layer.effectDiscard(
         readonly id: string;
         readonly sender: IpcMainInvokeEvent["sender"];
         readonly dispose: () => void;
+        readonly releaseDestruction: () => void;
       }
     >();
     const owner = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
           if (
+            event.sender.isDestroyed() ||
             !isTrustedAppRendererIpcSender({
               developmentOrigin: config.rendererUrl,
               hasOwnerWindow: windows.has(event.sender.id),
@@ -54,13 +58,16 @@ export const live = Layer.effectDiscard(
           if (existing) return existing.id;
           const id = randomUUID();
           const dispose = () => {
+            const entry = owners.get(event.sender.id);
+            if (!entry) return;
             owners.delete(event.sender.id);
-            event.sender.removeListener("destroyed", dispose);
+            entry.releaseDestruction();
             event.sender.removeListener("render-process-gone", dispose);
             callbacks.fork(agents.releaseOwner(id));
           };
-          owners.set(event.sender.id, { id, sender: event.sender, dispose });
-          event.sender.once("destroyed", dispose);
+          const entry = { id, sender: event.sender, dispose, releaseDestruction: () => {} };
+          owners.set(event.sender.id, entry);
+          entry.releaseDestruction = rendererDestruction.subscribe(event.sender, dispose);
           event.sender.once("render-process-gone", dispose);
           return id;
         },
@@ -102,7 +109,7 @@ export const live = Layer.effectDiscard(
         [...owners.values()],
         (entry) =>
           Effect.gen(function* () {
-            entry.sender.removeListener("destroyed", entry.dispose);
+            entry.releaseDestruction();
             entry.sender.removeListener("render-process-gone", entry.dispose);
             yield* agents.releaseOwner(entry.id);
           }),
@@ -201,4 +208,4 @@ export const live = Layer.effectDiscard(
       handle(event, AcpInputSchemas["acp.sessions.import"], input, agents["acp.sessions.import"]),
     );
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

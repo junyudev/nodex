@@ -1,13 +1,13 @@
+import type { WebContentsDestructionSource } from "../platform/electron/WebContentsDestructionSubscriptions";
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
 import type { SafeSendWebContentsLike } from "../ipc-safe-send";
 import type { BackendLogger } from "../logging/logger";
 
-export interface RendererClientWebContents extends SafeSendWebContentsLike {
+export interface RendererClientWebContents
+  extends SafeSendWebContentsLike, WebContentsDestructionSource {
   id: number;
   isLoading?: () => boolean;
-  once?: (event: "destroyed", listener: () => void) => unknown;
-  off?: (event: "destroyed", listener: () => void) => unknown;
 }
 
 export interface RendererClientRegistration {

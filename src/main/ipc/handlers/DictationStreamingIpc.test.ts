@@ -1,3 +1,4 @@
+import type { WebContentsDestructionSource } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import { EventEmitter } from "node:events";
 import { it } from "@effect/vitest";
 import { expect, vi } from "vitest";
@@ -24,7 +25,15 @@ class Port extends EventEmitter {
     this.emit("close");
   }
 }
-class Sender extends EventEmitter {
+class Sender extends EventEmitter implements WebContentsDestructionSource {
+  destroyed = false;
+  isDestroyed(): boolean {
+    return this.destroyed;
+  }
+  destroy(): void {
+    this.destroyed = true;
+    this.emit("destroyed");
+  }
   constructor(readonly id: number) {
     super();
   }
@@ -113,6 +122,12 @@ it.effect(
         context.invoke(new Sender(input.id), input.ports, ...input.args);
         expect(input.ports.every((port) => port.closed)).toBe(true);
       }
+      const destroyed = new Sender(1);
+      destroyed.destroy();
+      const orphan = new Port();
+      context.invoke(destroyed, [orphan]);
+      expect(orphan.closed).toBe(true);
+      expect(destroyed.eventNames()).toEqual([]);
       yield* Effect.yieldNow;
       expect(context.connect).not.toHaveBeenCalled();
     }),
@@ -130,6 +145,8 @@ it.effect(
       context.invoke(global, [new Port()], undefined);
       yield* Effect.tryPromise(async () => {
         await vi.waitFor(() => expect(context.connect).toHaveBeenCalledTimes(3));
+        expect(composer.listenerCount("destroyed")).toBe(1);
+        expect(global.listenerCount("destroyed")).toBe(1);
         expect(context.connect.mock.calls.map((args) => args[4])).toEqual([
           "composer",
           "composer",
@@ -165,7 +182,7 @@ it.effect("retires ports on renderer reload or destruction and removes lifecycle
       const replacement = new Port();
       context.invoke(sender, [replacement]);
       await vi.waitFor(() => expect(context.connect).toHaveBeenCalledTimes(2));
-      sender.emit("destroyed");
+      sender.destroy();
       expect(replacement.closed).toBe(true);
       expect(context.retired).toHaveBeenCalledTimes(2);
     });

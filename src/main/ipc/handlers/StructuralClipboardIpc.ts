@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -22,6 +23,7 @@ export const live: Layer.Layer<
   ElectronIpc | MainConfig | RendererClientRuntime | StructuralClipboardRuntime | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
     const rendererClients = yield* RendererClientRuntime;
@@ -46,15 +48,7 @@ export const live: Layer.Layer<
     ): Effect.Effect<A, E, R> =>
       Effect.raceFirst(
         operation,
-        Effect.callback<never>((resume) => {
-          if (event.sender.isDestroyed()) {
-            resume(Effect.interrupt);
-            return;
-          }
-          const interrupt = (): void => resume(Effect.interrupt);
-          event.sender.once("destroyed", interrupt);
-          return Effect.sync(() => event.sender.removeListener("destroyed", interrupt));
-        }),
+        rendererDestruction.wait(event.sender).pipe(Effect.andThen(Effect.interrupt)),
       );
 
     yield* handleControl("clipboard:structural-begin", (event, input) =>
@@ -80,4 +74,4 @@ export const live: Layer.Layer<
       ),
     );
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

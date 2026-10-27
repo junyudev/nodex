@@ -199,6 +199,11 @@ verifySourceTypeOwnershipFixtures();
 
 verifyInvalidFixtures([
   {
+    code: "nodex(no-direct-webcontents-destruction-listener)",
+    count: 8,
+    filename: "scripts/fixtures/tooling/nodex/webcontents-lifetime-invalid.ts",
+  },
+  {
     code: "react-hooks(rules-of-hooks)",
     filename: "scripts/fixtures/tooling/renderer/hooks-invalid.tsx",
   },
@@ -243,6 +248,7 @@ verifyInvalidFixtures([
 ]);
 
 verifyValidFixtures([
+  "scripts/fixtures/tooling/nodex/webcontents-lifetime-valid.ts",
   "scripts/fixtures/tooling/renderer/hooks-valid.tsx",
   "scripts/fixtures/tooling/query-valid.tsx",
   "src/renderer/components/ui/context-menu.tsx",

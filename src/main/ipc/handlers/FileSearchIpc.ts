@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import { randomUUID } from "node:crypto";
 import type { IpcMainInvokeEvent } from "electron";
 import * as Deferred from "effect/Deferred";
@@ -32,6 +33,7 @@ export const live: Layer.Layer<
   ElectronIpc | MainConfig | WindowRuntime | CodexGateway
 > = Layer.effectDiscard(
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
@@ -59,15 +61,9 @@ export const live: Layer.Layer<
             const input = yield* parse(() => FileSearchStartSchema.parse(raw));
             const key = keyFor(event, input.sessionId);
             const ready = yield* Deferred.make<void, FileSearchIpcError>();
-            const destroyed = Effect.callback<never>((resume) => {
-              if (event.sender.isDestroyed()) {
-                resume(Effect.interrupt);
-                return;
-              }
-              const onDestroyed = () => resume(Effect.interrupt);
-              event.sender.once("destroyed", onDestroyed);
-              return Effect.sync(() => event.sender.removeListener("destroyed", onDestroyed));
-            });
+            const destroyed = rendererDestruction
+              .wait(event.sender)
+              .pipe(Effect.andThen(Effect.interrupt));
             const lifecycle = Effect.scoped(
               Effect.gen(function* () {
                 const session = yield* makeFileSearchSession(
@@ -131,4 +127,4 @@ export const live: Layer.Layer<
       ),
     );
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

@@ -1,10 +1,14 @@
+import {
+  WebContentsDestructionSubscriptions,
+  makeWebContentsDestructionSubscriptions,
+} from "../platform/electron/WebContentsDestructionSubscriptions";
 import { EventEmitter } from "node:events";
 import type { BrowserWindow } from "electron";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { describe, expect, vi } from "vitest";
-import { makeDictationHotkeyCapture } from "./DictationHotkeyCapture";
+import { makeDictationHotkeyCapture as makeBase } from "./DictationHotkeyCapture";
 
 const createWindow = () =>
   Object.assign(new EventEmitter(), {
@@ -104,5 +108,14 @@ describe("DictationHotkeyCapture", () => {
       expect(yield* Fiber.join(capture)).toBeNull();
       expect(cancelled).toBe(true);
     }),
+  );
+});
+
+const makeDictationHotkeyCapture = Effect.fnUntraced(function* (
+  ...args: Parameters<typeof makeBase>
+) {
+  const subscriptions = yield* makeWebContentsDestructionSubscriptions;
+  return yield* makeBase(...args).pipe(
+    Effect.provideService(WebContentsDestructionSubscriptions, subscriptions),
   );
 });

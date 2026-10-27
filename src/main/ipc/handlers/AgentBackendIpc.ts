@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -92,6 +93,7 @@ export const live: Layer.Layer<
   AgentBackendApplication | ElectronIpc | MainConfig | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const application = yield* AgentBackendApplication;
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
@@ -143,15 +145,7 @@ export const live: Layer.Layer<
     ): Effect.Effect<A, E, R> =>
       Effect.raceFirst(
         operation,
-        Effect.callback<never>((resume) => {
-          if (event.sender.isDestroyed()) {
-            resume(Effect.interrupt);
-            return;
-          }
-          const interrupt = (): void => resume(Effect.interrupt);
-          event.sender.once("destroyed", interrupt);
-          return Effect.sync(() => event.sender.removeListener("destroyed", interrupt));
-        }),
+        rendererDestruction.wait(event.sender).pipe(Effect.andThen(Effect.interrupt)),
       );
 
     yield* ipc.handleQuery("agent-backend:model-catalog:read", (event, input) =>
@@ -206,4 +200,4 @@ export const live: Layer.Layer<
       handle(event, "history.read", HistoryInput, input, application.readAgentHistory),
     );
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

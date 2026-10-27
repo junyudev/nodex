@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
@@ -16,9 +17,8 @@ export class ProjectionDeliveryIpcError extends Schema.TaggedError<ProjectionDel
 ) {}
 
 interface SenderSubscriptions {
-  readonly sender: WebContents;
   readonly releases: Map<string, Effect.Effect<void>>;
-  readonly onDestroyed: () => void;
+  releaseDestruction: () => void;
 }
 
 export const live: Layer.Layer<
@@ -27,6 +27,7 @@ export const live: Layer.Layer<
   ElectronIpc | MainConfig | ProjectionDeliveryRuntime | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const config = yield* MainConfig;
     const delivery = yield* ProjectionDeliveryRuntime;
     const ipc = yield* ElectronIpc;
@@ -60,7 +61,7 @@ export const live: Layer.Layer<
         const state = senders.get(senderId);
         if (!state) return;
         senders.delete(senderId);
-        state.sender.removeListener("destroyed", state.onDestroyed);
+        state.releaseDestruction();
         const releases = [...state.releases.values()];
         state.releases.clear();
         yield* Effect.forEach(releases, (release) => release, { discard: true });
@@ -70,14 +71,13 @@ export const live: Layer.Layer<
       const existing = senders.get(sender.id);
       if (existing) return existing;
       const state: SenderSubscriptions = {
-        sender,
         releases: new Map(),
-        onDestroyed: () => {
-          void runDelivery(releaseSender(sender.id, true));
-        },
+        releaseDestruction: () => {},
       };
       senders.set(sender.id, state);
-      sender.once("destroyed", state.onDestroyed);
+      state.releaseDestruction = rendererDestruction.subscribe(sender, () => {
+        void runDelivery(releaseSender(sender.id, true));
+      });
       return state;
     };
     const unsubscribe = (senderId: number, address: DeliveryAddress): Effect.Effect<void> =>
@@ -109,6 +109,10 @@ export const live: Layer.Layer<
                 ),
               );
             const state = ensureSender(event.sender);
+            if (event.sender.isDestroyed() || senders.get(event.sender.id) !== state) {
+              yield* subscription.release;
+              return;
+            }
             state.releases.set(JSON.stringify(address), subscription.release);
           }),
         ),
@@ -127,4 +131,4 @@ export const live: Layer.Layer<
         ),
     );
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

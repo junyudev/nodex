@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../platform/electron/WebContentsDestructionSubscriptions";
 import { randomUUID } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -22,7 +23,7 @@ import { CodexHostChunkedMessageSender } from "./CodexHostChunkedMessageSender";
 interface RegisteredRendererClient {
   readonly clientId: string;
   readonly webContents: RendererClientWebContents;
-  readonly destroyListener: () => void;
+  readonly releaseDestruction: () => void;
 }
 
 const runtimeLogger = getLogger({ subsystem: "codex", component: "renderer-client-runtime" });
@@ -50,6 +51,7 @@ export const live = (
   Layer.effect(
     RendererClientRuntime,
     Effect.gen(function* () {
+      const rendererDestruction = yield* WebContentsDestructionSubscriptions;
       const clientIdFactory = options.clientIdFactory ?? createClientId;
       const logger = options.logger ?? runtimeLogger;
       const send =
@@ -71,7 +73,7 @@ export const live = (
           listener: () => void,
         ) => unknown;
         readonly removeListener?: (
-          event: "destroyed" | "did-start-loading" | "did-stop-loading",
+          event: "did-start-loading" | "did-stop-loading",
           listener: () => void,
         ) => unknown;
       };
@@ -104,11 +106,11 @@ export const live = (
         },
         subscribe: (target, callbacks) => {
           const lifecycleTarget = target as LoadingLifecycleTarget;
-          target.once?.("destroyed", callbacks.onDestroyed);
+          const releaseDestruction = rendererDestruction.subscribe(target, callbacks.onDestroyed);
           lifecycleTarget.on?.("did-start-loading", callbacks.onLoading);
           lifecycleTarget.on?.("did-stop-loading", callbacks.onLoaded);
           return () => {
-            lifecycleTarget.removeListener?.("destroyed", callbacks.onDestroyed);
+            releaseDestruction();
             lifecycleTarget.removeListener?.("did-start-loading", callbacks.onLoading);
             lifecycleTarget.removeListener?.("did-stop-loading", callbacks.onLoaded);
           };
@@ -130,7 +132,7 @@ export const live = (
             });
             if (!removed) return;
 
-            removed.webContents.off?.("destroyed", removed.destroyListener);
+            removed.releaseDestruction();
             chunkedMessageSender.dispose(removed.webContents);
             yield* publish({
               kind: "disposed",
@@ -167,10 +169,9 @@ export const live = (
         clientsByWebContentsId.set(webContents.id, {
           clientId,
           webContents,
-          destroyListener,
+          releaseDestruction: rendererDestruction.subscribe(webContents, destroyListener),
         });
         webContentsIdByClientId.set(clientId, webContents.id);
-        webContents.once?.("destroyed", destroyListener);
         callbacks(
           publish({
             kind: "connected",
@@ -288,4 +289,4 @@ export const live = (
       };
       return RendererClientRuntime.of(runtime);
     }),
-  );
+  ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

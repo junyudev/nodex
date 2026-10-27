@@ -1,3 +1,4 @@
+import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -34,8 +35,7 @@ export class TerminalIpcError extends Schema.TaggedError<TerminalIpcError>()("Te
 }) {}
 
 interface LeaseCleanupBinding {
-  readonly sender: WebContents;
-  readonly listener: () => void;
+  readonly releaseDestruction: () => void;
 }
 
 const errorMessage = (error: TerminalSessionError): string =>
@@ -52,6 +52,7 @@ export const live: Layer.Layer<
   | WindowSessionCatalog
 > = Layer.effectDiscard(
   Effect.gen(function* () {
+    const rendererDestruction = yield* WebContentsDestructionSubscriptions;
     const callbacks = yield* ScopedCallbackRuntime;
     const ipc = yield* ElectronIpc;
     const windows = yield* ElectronWindowHost;
@@ -65,7 +66,7 @@ export const live: Layer.Layer<
         Effect.tap((bindings) =>
           Effect.sync(() => {
             for (const binding of bindings.values()) {
-              binding.sender.removeListener("destroyed", binding.listener);
+              binding.releaseDestruction();
             }
           }),
         ),
@@ -89,13 +90,15 @@ export const live: Layer.Layer<
           ),
         );
       };
+      const binding = { releaseDestruction: () => {} };
       const inserted = yield* Ref.modify(cleanupBindings, (current) => {
         if (current.has(sender.id)) return [false, current] as const;
-        const next = new Map(current);
-        next.set(sender.id, { sender, listener });
-        return [true, next] as const;
+        return [true, new Map(current).set(sender.id, binding)] as const;
       });
-      if (inserted) yield* Effect.sync(() => sender.once("destroyed", listener));
+      if (!inserted) return;
+      yield* Effect.sync(() => {
+        binding.releaseDestruction = rendererDestruction.subscribe(sender, listener);
+      });
     });
 
     const ownerFor = Effect.fn("TerminalIpc.ownerFor")(function* (event: IpcMainInvokeEvent) {
@@ -245,4 +248,4 @@ export const live: Layer.Layer<
       sessions.getThreadSnapshot(threadId),
     );
   }),
-);
+).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));
