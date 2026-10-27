@@ -1327,57 +1327,36 @@ export function PageIcon(props: IconProps) {
   return <FilePageIcon {...props} />;
 }
 
-export function DatabaseIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      className={cn("shrink-0", className ?? "icon-xs")}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M9 3H5A2 2 0 0 0 3 5V9M9 3H19A2 2 0 0 1 21 5V9M9 3V21M9 21H19A2 2 0 0 0 21 19V9M9 21H5A2 2 0 0 1 3 19V9M3 9H21"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
+const BOARD_FRAME_PATH =
+  "M11.4663 2.14111C12.787 2.14111 13.8577 3.21204 13.8579 4.53271V11.4663C13.8579 12.7872 12.7872 13.8579 11.4663 13.8579H4.53271C3.21204 13.8577 2.14111 12.787 2.14111 11.4663V4.53271C2.14136 3.2122 3.2122 2.14136 4.53271 2.14111H11.4663ZM4.53271 3.19189C3.79209 3.19214 3.19214 3.79209 3.19189 4.53271V11.4663C3.19189 12.2071 3.79194 12.8079 4.53271 12.8081H11.4663C12.2073 12.8081 12.8081 12.2073 12.8081 11.4663V4.53271C12.8079 3.79194 12.2071 3.19189 11.4663 3.19189H4.53271Z";
 
+/** Databases, DB View and Board layouts share this glyph on the 16px toolbar grid. */
 export function BoardIcon({ className }: IconProps) {
   return (
     <svg
       width="16"
       height="16"
-      viewBox="0 0 24 24"
+      viewBox="0 0 16 16"
       className={cn("shrink-0", className ?? "icon-xs")}
-      fill="none"
+      fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.75" />
-      <path
-        d="M8 7V14M12 7V11M16 7V16"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path fillRule="evenodd" clipRule="evenodd" d={BOARD_FRAME_PATH} />
+      <rect x="5.075" y="4.95" width="1.05" height="4.65" rx="0.525" />
+      <rect x="7.475" y="4.95" width="1.05" height="2.65" rx="0.525" />
+      <rect x="9.875" y="4.95" width="1.05" height="6.05" rx="0.525" />
     </svg>
   );
 }
 
+/** Outline shapes inset so their frame and stroke match the 16px toolbar glyphs. */
 export function CanvasIcon({ className }: IconProps) {
   return (
     <svg
       width="16"
       height="16"
-      viewBox="0 0 24 24"
+      viewBox="-1.5 -1.5 27 27"
       className={cn("shrink-0", className ?? "icon-xs")}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"

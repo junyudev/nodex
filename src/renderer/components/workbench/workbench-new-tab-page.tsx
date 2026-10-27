@@ -15,7 +15,7 @@ import {
   ChatBubbleIcon,
   ClockIcon,
   ChevronDownIcon,
-  DatabaseIcon,
+  BoardIcon,
   MoreToolsIcon,
   PageIcon,
   SidePanelSideChatIcon,
@@ -615,7 +615,7 @@ function recentSubtitle(item: SpaceContentItem): string {
 function RecentGlyph({ target }: { readonly target: LibraryRouteTarget }) {
   if (target.kind === "page") return <PageIcon className="icon-sm text-token-charts-blue" />;
   if (target.kind === "canvas") return <CanvasIcon className="icon-xs text-token-charts-orange" />;
-  return <DatabaseIcon className="icon-xs text-token-charts-green" />;
+  return <BoardIcon className="icon-xs text-token-charts-green" />;
 }
 
 /** Binds Browser chrome and its blank page to the same Scene and New tab port. */

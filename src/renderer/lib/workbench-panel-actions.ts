@@ -13,7 +13,7 @@ import {
   SidePanelSideChatIcon,
   SidePanelTerminalIcon,
   CanvasIcon,
-  DatabaseIcon,
+  BoardIcon,
   NewPageIcon,
   PageIcon,
 } from "@/components/shared/icons";
@@ -117,7 +117,7 @@ export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
     defaultPanelId: "right",
     label: "DB View",
     description: "Open the project database",
-    Icon: DatabaseIcon,
+    Icon: BoardIcon,
   },
   {
     kind: "page_stage",

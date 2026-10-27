@@ -1,4 +1,4 @@
-import { CanvasIcon, BoardIcon, DatabaseIcon } from "@/components/shared/icons";
+import { BoardIcon, CanvasIcon, ListLayoutIcon } from "@/components/shared/icons";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { createRef } from "react";
 import { fireEvent } from "@testing-library/react";
@@ -25,7 +25,7 @@ const ITEMS: DbViewToolbarItem[] = [
   {
     id: "list",
     label: "List",
-    icon: DatabaseIcon,
+    icon: ListLayoutIcon,
     onSelect: () => undefined,
   },
 ];

@@ -1,5 +1,5 @@
 import { useQueries } from "@tanstack/react-query";
-import { CanvasIcon, ChevronRightIcon, DatabaseIcon, PageIcon } from "@/components/shared/icons";
+import { CanvasIcon, ChevronRightIcon, BoardIcon, PageIcon } from "@/components/shared/icons";
 import { libraryPathQueryOptions } from "@/lib/use-library-navigation";
 import {
   areLibraryResourceTargetsEqual,
@@ -103,7 +103,7 @@ export function LibrarySceneBreadcrumb({ scene }: { readonly scene: WorkbenchSce
   const target = libraryTargetForLibrarySurface(surface);
   const root = navigation.activeRoot;
   const Icon =
-    root?.kind === "database" ? DatabaseIcon : root?.kind === "canvas" ? CanvasIcon : PageIcon;
+    root?.kind === "database" ? BoardIcon : root?.kind === "canvas" ? CanvasIcon : PageIcon;
   const surfaceTitle = usePresentedPageTitle(
     surface?.kind === "page_stage" ? surface.config.pageId : null,
     surface?.titleSnapshot ?? "Untitled",

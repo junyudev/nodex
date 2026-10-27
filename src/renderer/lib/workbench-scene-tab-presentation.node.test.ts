@@ -1,4 +1,4 @@
-import { DatabaseIcon, InboxIcon } from "@/components/shared/icons";
+import { BoardIcon, InboxIcon } from "@/components/shared/icons";
 import { describe, expect, test } from "vite-plus/test";
 
 import { LIBRARY_INBOX, projectInbox } from "../../shared/inbox";
@@ -30,7 +30,7 @@ describe("resolveWorkbenchSceneTabPresentation", () => {
   test("presents the Project's Database like a standard DB View tab", () => {
     expect(resolveWorkbenchSceneTabPresentation(databaseSurface)).toEqual({
       title: "DB View",
-      icon: DatabaseIcon,
+      icon: BoardIcon,
     });
   });
 });

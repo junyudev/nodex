@@ -26,7 +26,6 @@ import {
   ChevronRightIcon,
   CloseIcon,
   CopyIcon,
-  DatabaseIcon,
   DeleteIcon,
   DragHandleDotsIcon,
   ListLayoutIcon,
@@ -201,8 +200,9 @@ const propertySchemaForType = (
   return { kind: type };
 };
 
-const viewLayoutIcon = (layout: DatabaseViewLayout): ComponentType<{ className?: string }> =>
-  layout === "board" ? BoardIcon : ListLayoutIcon;
+export const databaseViewLayoutIcon = (
+  layout: DatabaseViewLayout,
+): ComponentType<{ className?: string }> => (layout === "board" ? BoardIcon : ListLayoutIcon);
 
 function RailSection({
   title,
@@ -407,7 +407,7 @@ function CreateViewRoute({
       <div className="mt-4 text-xs font-medium text-token-description-foreground">Layout</div>
       <div className="mt-1.5 grid grid-cols-2 gap-1.5">
         {(["list", "board"] as const).map((candidate) => {
-          const Icon = viewLayoutIcon(candidate);
+          const Icon = databaseViewLayoutIcon(candidate);
           return (
             <button
               key={candidate}
@@ -492,7 +492,7 @@ function ViewOverview({
     if (next) void onProjectionCommitted();
     return next;
   };
-  const ActiveViewIcon = viewLayoutIcon(activeView.layout);
+  const ActiveViewIcon = databaseViewLayoutIcon(activeView.layout);
   return (
     <>
       <div
@@ -557,7 +557,7 @@ function ViewOverview({
       </div>
       <div className="pb-2">
         <RailRow
-          icon={viewLayoutIcon(activeView.layout)}
+          icon={databaseViewLayoutIcon(activeView.layout)}
           label="Layout"
           value={activeView.layout === "board" ? "Board" : "List"}
           onClick={() => push({ kind: "view_layout", viewId: activeView.viewId })}
@@ -609,7 +609,7 @@ function ViewOverview({
       </div>
 
       <RailSection title="Data source settings" divided>
-        <RailRow icon={DatabaseIcon} label="Source" value={authority.dataSource.name} />
+        <RailRow icon={BoardIcon} label="Source" value={authority.dataSource.name} />
         <RailRow
           icon={TagsIcon}
           label="Edit properties"
@@ -644,7 +644,7 @@ function ViewLayoutRoute({
     <div className="py-2">
       <div className="grid grid-cols-3 gap-2 px-2">
         {(["list", "board"] as const).map((layout) => {
-          const Icon = viewLayoutIcon(layout);
+          const Icon = databaseViewLayoutIcon(layout);
           return (
             <button
               key={layout}

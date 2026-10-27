@@ -130,20 +130,13 @@ const FILTER_PATHS = [
 ] as const;
 
 const LIST_LAYOUT_PATHS = [
-  "M3 5h.01",
-  "M3 12h.01",
-  "M3 19h.01",
-  "M8 5h13",
-  "M8 12h13",
-  "M8 19h13",
-].map((d) => ({
-  d,
-  fill: "none",
-  stroke: "currentColor",
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  strokeWidth: 2,
-}));
+  "M3.35 3.7a.8.8 0 1 1 0 1.6a.8.8 0 1 1 0-1.6Z",
+  "M3.35 7.2a.8.8 0 1 1 0 1.6a.8.8 0 1 1 0-1.6Z",
+  "M3.35 10.7a.8.8 0 1 1 0 1.6a.8.8 0 1 1 0-1.6Z",
+  "M6.125 3.975h7.05a.525.525 0 0 1 0 1.05h-7.05a.525.525 0 0 1 0-1.05Z",
+  "M6.125 7.475h7.05a.525.525 0 0 1 0 1.05h-7.05a.525.525 0 0 1 0-1.05Z",
+  "M6.125 10.975h7.05a.525.525 0 0 1 0 1.05h-7.05a.525.525 0 0 1 0-1.05Z",
+] as const;
 
 const INFO_PATHS = [
   {
@@ -315,13 +308,14 @@ export function FilterIcon(props: CanonicalIconProps) {
   return <CanonicalGlyph {...props} paths={FILTER_PATHS} />;
 }
 
+/** Drawn on the 16px toolbar grid to pair with the Board layout glyph. */
 export function ListLayoutIcon(props: CanonicalIconProps) {
   return (
     <CanonicalGlyph
       {...props}
-      width={24}
-      height={24}
-      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
       paths={LIST_LAYOUT_PATHS}
     />
   );

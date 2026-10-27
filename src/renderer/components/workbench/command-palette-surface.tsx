@@ -43,7 +43,7 @@ import {
   PageIcon,
   FileIcon,
   FolderIcon,
-  DatabaseIcon,
+  BoardIcon,
   SidePanelSideChatIcon,
   SidebarVisibleIcon,
 } from "@/components/shared/icons";
@@ -240,7 +240,7 @@ function getCommandGlyph(id: string) {
     );
   if (id === "searchChats" || id === "searchPages" || id === "searchText" || id === "findInThread")
     return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
-  if (id === OPEN_DB_VIEW_TAB_COMMAND_ID) return DatabaseIcon;
+  if (id === OPEN_DB_VIEW_TAB_COMMAND_ID) return BoardIcon;
   if (id === "openSideChat") return SidePanelSideChatIcon;
   if (
     id === "settings" ||

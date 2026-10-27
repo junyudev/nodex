@@ -1,4 +1,4 @@
-import { DatabaseIcon, PageIcon } from "@/components/shared/icons";
+import { BoardIcon, PageIcon } from "@/components/shared/icons";
 import {
   useCallback,
   useEffect,
@@ -146,7 +146,7 @@ const createReadonlyDatabaseViewRefBlockSpec = createReactBlockSpec(databaseView
 
 const createReadonlyDatabaseBlockSpec = createReactBlockSpec(databaseBlockConfig, {
   render: ({ block }) => (
-    <InertEmbedPlaceholder icon={DatabaseIcon} label="Database" detail={block.id} />
+    <InertEmbedPlaceholder icon={BoardIcon} label="Database" detail={block.id} />
   ),
 });
 

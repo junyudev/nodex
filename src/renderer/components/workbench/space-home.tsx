@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   CanvasIcon,
   ChevronDownIcon,
-  DatabaseIcon,
+  BoardIcon,
   PageIcon,
   SearchIcon,
 } from "@/components/shared/icons";
@@ -45,7 +45,7 @@ function ContentGlyph({ target }: { readonly target: LibraryRouteTarget }) {
   if (target.kind === "page") return <PageIcon className="size-6 text-token-charts-blue" />;
   if (target.kind === "canvas")
     return <CanvasIcon className="icon-base text-token-charts-orange" />;
-  return <DatabaseIcon className="icon-base text-token-charts-green" />;
+  return <BoardIcon className="icon-base text-token-charts-green" />;
 }
 
 function SpaceHomeRow({
@@ -264,7 +264,7 @@ export function SpaceHome({
               Page
             </NodexDropdownItem>
             <NodexDropdownItem
-              leftSlot={<DatabaseIcon className="icon-xs" />}
+              leftSlot={<BoardIcon className="icon-xs" />}
               onSelect={() => void createCommands.createDatabase()}
             >
               Database

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import {
   CanvasIcon,
-  DatabaseIcon,
+  BoardIcon,
   PageIcon,
   SearchIcon,
   SidePanelPlusIcon,
@@ -23,7 +23,7 @@ import {
 
 function targetIcon(target: LibraryRouteTarget) {
   if (target.kind === "database" || target.kind === "view") {
-    return <DatabaseIcon />;
+    return <BoardIcon />;
   }
   if (target.kind === "canvas") return <CanvasIcon className="icon-xs" />;
   return <PageIcon />;
@@ -234,7 +234,7 @@ export function PagesTabPicker({
             disabled={createCommands.isPending}
             onClick={() => void createCommands.createDatabase()}
           >
-            <DatabaseIcon />
+            <BoardIcon />
             New Database
           </button>
         </div>

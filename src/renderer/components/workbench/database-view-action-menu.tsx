@@ -4,7 +4,7 @@ import {
   CheckmarkIcon,
   ChevronRightIcon,
   CopyIcon,
-  DatabaseIcon,
+  BoardIcon,
   DeleteIcon,
   EditIcon,
 } from "@/components/shared/icons";
@@ -129,7 +129,7 @@ export function DatabaseViewActionMenuOverlay({
         </NodexContextMenuItem>
         <NodexContextMenuItem
           disabled={session.busy}
-          leftSlot={<DatabaseIcon />}
+          leftSlot={<BoardIcon />}
           rightSlot={<ChevronRightIcon className="size-4" />}
           onSelect={() => invokeAfterClose(onMenuOpenChange, session.onOpenSource)}
         >

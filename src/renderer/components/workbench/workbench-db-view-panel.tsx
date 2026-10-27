@@ -1,4 +1,4 @@
-import { CanvasIcon, BoardIcon, DatabaseIcon, PlusIcon } from "@/components/shared/icons";
+import { CanvasIcon, PlusIcon } from "@/components/shared/icons";
 import { SlidersHorizontal } from "@/components/shared/icons/generic-icons";
 import {
   useCallback,
@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentType,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -83,7 +82,10 @@ import {
   useDatabasePageChatActivityRuntime,
 } from "./database-page-chat-activity-runtime";
 import { useDatabaseSettingsRuntime } from "./database-settings/use-database-settings-runtime";
-import { DatabaseSettingsRail } from "./database-settings/database-settings-rail";
+import {
+  DatabaseSettingsRail,
+  databaseViewLayoutIcon,
+} from "./database-settings/database-settings-rail";
 import {
   backDatabaseSettingsRoute,
   openDatabaseSettingsRoute,
@@ -98,10 +100,6 @@ import { createUuidV7 } from "../../../shared/uuid-v7";
 import { serializeNfm } from "../../../shared/nfm";
 import { DatabaseViewDeleteConfirmationDialog } from "./database-view-action-menu";
 import { useApplicationPending } from "@/bootstrap/application-surface";
-
-const databaseViewLayoutIcon = (
-  layout: DatabaseViewLayout,
-): ComponentType<{ className?: string }> => (layout === "board" ? BoardIcon : DatabaseIcon);
 
 const EMPTY_DATABASE_PROPERTIES = [] as const;
 const EMPTY_DATABASE_VIEW_RULES: DatabaseViewRules = Object.freeze({

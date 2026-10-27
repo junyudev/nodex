@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
 
-import { ActivitySpinnerIcon, DatabaseIcon, PageIcon } from "@/components/shared/icons";
+import { ActivitySpinnerIcon, BoardIcon, PageIcon } from "@/components/shared/icons";
 import {
   NodexDestinationPicker,
   NodexDestinationPickerOption,
@@ -137,7 +137,7 @@ function DestinationRowView({
       expanded={expandable ? row.expanded : undefined}
       icon={
         entry?.kind === "database" ? (
-          <DatabaseIcon className="size-4" aria-hidden="true" />
+          <BoardIcon className="size-4" aria-hidden="true" />
         ) : (
           <PageIcon className="size-4" aria-hidden="true" />
         )

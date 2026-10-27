@@ -92,8 +92,8 @@ Terminal, Files, Review, or Agent capabilities.
 
 The fixed App Header publishes a breadcrumb beginning with `Pages`, followed by
 the root and active child title. `Pages` is context, not a link to a nonexistent
-home. Database entry points consistently use the table icon rather than a
-cylinder icon.
+home. Database entry points and DB View consistently use the Board glyph rather
+than a table or cylinder icon.
 
 ## Authority boundaries
 

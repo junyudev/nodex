@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 
-import { DatabaseIcon, PageIcon } from "@/components/shared/icons";
+import { BoardIcon, PageIcon } from "@/components/shared/icons";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { useApplyLibraryOperation } from "@/lib/use-library-navigation";
@@ -36,10 +36,7 @@ export function LibraryNewMenu({
       <NodexDropdownItem leftSlot={<PageIcon />} onSelect={() => void commands.createPage()}>
         Page
       </NodexDropdownItem>
-      <NodexDropdownItem
-        leftSlot={<DatabaseIcon />}
-        onSelect={() => void commands.createDatabase()}
-      >
+      <NodexDropdownItem leftSlot={<BoardIcon />} onSelect={() => void commands.createDatabase()}>
         Database
       </NodexDropdownItem>
     </NodexDropdownMenu>

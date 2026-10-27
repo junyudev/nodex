@@ -110,7 +110,7 @@ describe("canonical shared icons", () => {
 
   test.each([
     ["filter", FilterIcon, "0 0 20 20", 3, "M12.5 14.0049", "fill"],
-    ["list layout", ListLayoutIcon, "0 0 24 24", 6, "M3 5h.01", "stroke"],
+    ["list layout", ListLayoutIcon, "0 0 16 16", 6, "M3.35 3.7", "fill"],
     ["image", ImageIcon, "0 0 24 24", 3, "M5 3h14", "stroke"],
     ["loading", LoadingIcon, "0 0 24 24", 2, "M18 12C18", "fill"],
   ])(

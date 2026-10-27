@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { DatabaseIcon, PageIcon, ProjectActionsIcon, CanvasIcon } from "@/components/shared/icons";
+import { BoardIcon, PageIcon, ProjectActionsIcon, CanvasIcon } from "@/components/shared/icons";
 import type {
   LibraryNavigationNode,
   LibraryPlacedResourceTarget,
@@ -96,7 +96,7 @@ const DEFAULT_PAGES_DATA_SOURCE: SidebarPagesDataSource = {
 
 const nodeIcon = (node: LibraryRoot) => {
   if (node.kind === "page") return <PageIcon />;
-  if (node.kind === "database") return <DatabaseIcon />;
+  if (node.kind === "database") return <BoardIcon />;
   return <CanvasIcon className="icon-xs" />;
 };
 
