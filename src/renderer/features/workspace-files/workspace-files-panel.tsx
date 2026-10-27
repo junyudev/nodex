@@ -902,10 +902,9 @@ export function WorkspaceFilesPanel({
           ...(!localFile ? { staleTime: 0 } : {}),
         });
         if (cancelled) return;
+        // Any sampled text is a document; its language only chooses highlighting.
         const editable =
-          metadata.sizeBytes !== null &&
-          metadata.sizeBytes < WORKSPACE_TEXT_EDITABLE_MAX_BYTES &&
-          (previewKind === "markdown" || resolveWorkspaceSourceLanguage(selectedPath) !== null);
+          metadata.sizeBytes !== null && metadata.sizeBytes < WORKSPACE_TEXT_EDITABLE_MAX_BYTES;
         if (localFile && editable) {
           loadedController = new WorkspaceTextDocumentController(
             {

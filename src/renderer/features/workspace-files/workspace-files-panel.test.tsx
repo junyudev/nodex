@@ -62,6 +62,8 @@ const directoryEntries: Record<string, WorkspaceFileDirectoryEntry[]> = {
 const fileContents: Record<string, string> = {
   [`${WORKSPACE_ROOT}/README.md`]: "# Project\n\nWorkspace notes.",
   [`${WORKSPACE_ROOT}/src/index.ts`]: "export const value = 1;\n",
+  [`${WORKSPACE_ROOT}/LICENSE`]: "MIT License\n",
+  [`${WORKSPACE_ROOT}/notes.txt`]: "Plain notes.\n",
   [WORKTREE_FILE]: "# Project\n\nWorktree notes.",
   [LARGE_MARKDOWN_FILE]: `# Large\n\n${"linked content\n".repeat(20_000)}`,
 };
@@ -665,6 +667,15 @@ describe("WorkspaceFilesPanel", () => {
     expect(view.queryByRole("group", { name: "Review source" })).toBeNull();
     expect(editor.getAttribute("data-comparison-base")).toBeNull();
   });
+
+  test.each(["LICENSE", "notes.txt"])(
+    "edits %s even though its name has no source language",
+    async (name) => {
+      const view = renderPanel(`${WORKSPACE_ROOT}/${name}`);
+      expect(await view.findByLabelText(`Source editor for ${name}`)).not.toBeNull();
+      expect(view.queryByLabelText(`Source preview for ${name}`)).toBeNull();
+    },
+  );
 
   test("renders the tree filter and opens files through preview tabs", async () => {
     const view = renderPanel();
