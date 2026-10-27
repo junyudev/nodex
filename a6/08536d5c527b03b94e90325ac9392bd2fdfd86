@@ -1,0 +1,66 @@
+src/main/core-client/scheduled-ask-in-inbox-scenario.node.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 48
+src/renderer/features/scheduled/scheduled-task-cache.node.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 18
+src/renderer/components/workbench/workbench-automation-draft.ts
+  s_f2e3c034e2bc1d::t_2505df52fe26bf 37-38,136,171,209-212
+src/renderer/features/scheduled/scheduled-task-model.node.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 24
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_f2e3c034e2bc1d::t_2505df52fe26bf 2566-2573
+src/main/codex-scheduled-automation-runtime.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 22
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 41
+src/renderer/features/local-conversation/projection/thread-summary-panel-scheduled-automation-model.node.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 13
+src/main/app-tools/AutomationAppTools.node.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 74
+src/renderer/features/scheduled/scheduled-task-form.tsx
+  s_f2e3c034e2bc1d::t_2505df52fe26bf 379,381-383
+src/renderer/components/workbench/workbench-automation-draft.node.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 65
+src/renderer/features/scheduled/scheduled-task-dialog.tsx
+  s_f2e3c034e2bc1d::t_2505df52fe26bf 32,41-42,74,77-78,90,129
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 82
+src/renderer/components/board/page-stage.tsx
+  s_f2e3c034e2bc1d::t_2505df52fe26bf 520-522
+src/main/local-store/codex-scheduled-automation-schedule.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 24
+src/renderer/components/workbench/workbench-testkit/workbench-shell-fixtures.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 100
+src/renderer/features/scheduled/scheduled-navigation.tsx
+  s_f2e3c034e2bc1d::t_2505df52fe26bf 8
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 3499,3532
+src/renderer/lib/use-codex-automation-run-updates.test.tsx
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 24
+src/renderer/features/scheduled/scheduled-route.tsx
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 225
+  s_f2e3c034e2bc1d::t_2505df52fe26bf 294-296
+src/renderer/features/scheduled/scheduled-task-fields.tsx
+  s_f2e3c034e2bc1d::t_2505df52fe26bf 20,312,314,317-318,320,340,342,349-359,372-373
+src/shared/types.ts
+  s_f2e3c034e2bc1d::t_2505df52fe26bf 2184-2185
+src/renderer/components/workbench/workbench-automations-routes.ts
+  s_f2e3c034e2bc1d::t_2505df52fe26bf 17-18,27,56-57,76-79
+src/renderer/components/workbench/workbench-automations-routes.node.test.ts
+  s_f2e3c034e2bc1d::t_2f487c232e96b0 21,31,60-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a608536d5c527b03b94e90325ac9392bd2fdfd86",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
