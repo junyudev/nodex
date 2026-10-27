@@ -1,0 +1,19 @@
+AGENTS.md
+  s_a0a839a04c5f79::t_c415ceabc192c8 241
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9b81052d742590d269112bce3b6f7a9f5de752e9",
+  "prompts": {},
+  "sessions": {
+    "s_a0a839a04c5f79": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec1-1494-7262-88eb-b0fa4eea990a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
