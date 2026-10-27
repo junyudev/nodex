@@ -1,0 +1,50 @@
+src/renderer/features/browser-sidebar/browser-address-suggestions.node.test.ts
+  s_a33fd3c2a2c91a::t_d701165e544dd9 1-23,25-61,63-84
+  s_a33fd3c2a2c91a::t_36b54065042658 24,62
+  s_a33fd3c2a2c91a::t_68949f6341e94f 85-116
+src/renderer/components/workbench/workbench-new-tab-page.tsx
+  s_a33fd3c2a2c91a::t_f95ba7d2680be8 570,575,577-586
+  s_a33fd3c2a2c91a::t_52fcd304230856 2-3,25,587,590-595,597-600,605,609,612-613,627-636,645-649,652-658,662-677
+  s_a33fd3c2a2c91a::t_d8e5545ee3166c 6-7,16,21,23-24,26-32,569,571-574,576,588-589,596,601-604,606-608,610-611,614-626,637-644,650-651,659-661,678-680
+  s_a33fd3c2a2c91a::t_ab36a148643f62 681-686
+src/renderer/lib/workbench-new-tab-port.test.tsx
+  s_a33fd3c2a2c91a::t_323beb83009ee1 1-75
+  s_a33fd3c2a2c91a::t_087db02c11642f 76-141
+src/renderer/features/browser-sidebar/browser-address-suggestions.test.tsx
+  s_a33fd3c2a2c91a::t_4258a550c71d8d 4,12,48-61,88-100,102-106,127-130,144-148,150-154,158-161,172-176,178-180,190-194,196-198,204-209
+  s_a33fd3c2a2c91a::t_27538b087b70e6 1-3,5-11,13-46,62-87,101,107-126,131-143,149,155-157,162-171,177,181-189,195,199-203,210
+  s_a33fd3c2a2c91a::t_54b43925803436 47
+  s_a33fd3c2a2c91a::t_16b0042a1c2d33 211
+src/renderer/lib/workbench-new-tab-port.tsx
+  s_a33fd3c2a2c91a::t_c2074f0d10d359 16,139,144-146,149
+  s_a33fd3c2a2c91a::t_aefd4c2a947b4e 90-92,140-143
+  s_a33fd3c2a2c91a::t_356f7935f10e38 147-148
+src/renderer/features/browser-sidebar/browser-address-suggestions.ts
+  s_a33fd3c2a2c91a::t_3dd365a94690ce 1-72
+  s_a33fd3c2a2c91a::t_b48e182b1bdc2a 73-91
+src/renderer/features/browser-sidebar/browser-sidebar-panel.tsx
+  s_a33fd3c2a2c91a::t_f9579c7a2334d4 5,152,154-158,248-261,275,290,312-318,410-423,426-432,960,968-989,1136-1232,1234-1250,1252-1272,1284-1285
+  s_a33fd3c2a2c91a::t_025b9080d8ac7e 1273-1283,1286-1298
+docs/product-specs/workbench-shell.md
+  s_a33fd3c2a2c91a::t_daa535b9e9e4de 31
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_a33fd3c2a2c91a::t_c25e178d471609 32,383-386
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_a33fd3c2a2c91a::t_98e337b74d3249 319,4162-4165,4209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "71cd2d00a1fc409f546dca09c95dbc3b973d126d",
+  "prompts": {},
+  "sessions": {
+    "s_a33fd3c2a2c91a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d7a-6136-7701-a565-154e06b01f5e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

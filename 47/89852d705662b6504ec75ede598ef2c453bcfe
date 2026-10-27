@@ -1,0 +1,21 @@
+tests/e2e/new-tab-page.spec.ts
+  s_96204614a8f86c::t_10ae713ac5ee8f 1-31,37-40,49-59,66-69,71-87,89-112
+  s_96204614a8f86c::t_7f3b24116ae14b 32-36
+  s_96204614a8f86c::t_15e6dd221d7541 41-48,60-65,70,88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4789852d705662b6504ec75ede598ef2c453bcfe",
+  "prompts": {},
+  "sessions": {
+    "s_96204614a8f86c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d7c-96fb-75f2-b136-1b009a252a07",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+src/renderer/lib/workbench-new-tab-model.node.test.ts
+  s_881bde2b2ec57a::t_c002a03fe1259b 18,34-45,59-72,74-83
+src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx
+  s_881bde2b2ec57a::t_521b41b63b7ac3 195
+src/renderer/components/workbench/workbench-new-tab-page.tsx
+  s_881bde2b2ec57a::t_f62b8e0d028a81 233-256,272-312,368
+src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx
+  s_881bde2b2ec57a::t_521b41b63b7ac3 168,186,235,250,273
+  s_881bde2b2ec57a::t_13154a09a86783 85-134
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_881bde2b2ec57a::t_cae260f606ccb5 3531-3539
+src/renderer/lib/workbench-new-tab-model.ts
+  s_881bde2b2ec57a::t_cfbb95e53e33d6 4-5,8,12,18-19,33,36-37,40-41
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_881bde2b2ec57a::t_521b41b63b7ac3 106,1796,2197,2202,2288,2314,2409,2432,2610,2647,2743,2779,2816
+src/renderer/components/workbench/workbench-shell.sidebar-projects.test.tsx
+  s_881bde2b2ec57a::t_521b41b63b7ac3 275,493
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_881bde2b2ec57a::t_521b41b63b7ac3 4862,4865,4867-4883
+src/renderer/components/workbench/workbench-shell.project-agent-dock.test.tsx
+  s_881bde2b2ec57a::t_521b41b63b7ac3 123
+src/renderer/components/workbench/workbench-new-tab-page.test.tsx
+  s_881bde2b2ec57a::t_e263a6ad53c944 114-115,119-120
+  s_881bde2b2ec57a::t_26f564d1fdfb6d 116-118
+  s_881bde2b2ec57a::t_b761751e8f4c4a 92,106,109,112-113,121-138
+src/renderer/components/workbench/workbench-panel-new-tab-button.tsx
+  s_881bde2b2ec57a::t_f411c04cdc6d28 42-44,59,75-76
+CHANGELOG.md
+  s_881bde2b2ec57a::t_d64fe396cf0bc1 9
+docs/product-specs/workbench-shell.md
+  s_881bde2b2ec57a::t_9c2beda983bfc3 203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8d03847819a1b4826240da8ba2071f6ed3c5c6b0",
+  "prompts": {},
+  "sessions": {
+    "s_881bde2b2ec57a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49cbb4a9-e94e-4e20-9ebc-d47c9a27d1f1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
