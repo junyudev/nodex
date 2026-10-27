@@ -56,6 +56,8 @@ import {
   type GitRepositoryExecutionIdentity,
 } from "./git-command-runner";
 
+import { parseGitBlamePorcelain } from "./git-blame-model";
+
 interface GitCommandResult {
   stdout: string;
   stderr: string;
@@ -2970,49 +2972,6 @@ export async function searchGitReview(input: GitReviewSearchInput): Promise<GitR
   }
 }
 
-function parseBlamePorcelain(stdout: string): GitReviewBlameResult["lines"] {
-  const lines: GitReviewBlameResult["lines"] = [];
-  const chunks = stdout.split("\n");
-  let current: {
-    commitSha: string;
-    line: number;
-    author: string | null;
-    authorTime: number | null;
-    summary: string | null;
-  } | null = null;
-
-  for (const chunk of chunks) {
-    const header = /^([0-9a-f]{40}) \d+ (\d+)/.exec(chunk);
-    if (header) {
-      if (current) lines.push(current);
-      current = {
-        commitSha: header[1] ?? "",
-        line: Number(header[2] ?? "0"),
-        author: null,
-        authorTime: null,
-        summary: null,
-      };
-      continue;
-    }
-    if (!current) continue;
-    if (chunk.startsWith("author ")) {
-      current.author = chunk.slice("author ".length) || null;
-      continue;
-    }
-    if (chunk.startsWith("author-time ")) {
-      const authorTime = Number(chunk.slice("author-time ".length));
-      current.authorTime = Number.isFinite(authorTime) ? authorTime : null;
-      continue;
-    }
-    if (chunk.startsWith("summary ")) {
-      current.summary = chunk.slice("summary ".length) || null;
-      continue;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.filter((line) => line.line > 0 && line.commitSha.length > 0);
-}
-
 export async function readGitReviewBlameFile(
   input: GitReviewBlameInput,
 ): Promise<GitReviewBlameResult> {
@@ -3037,7 +2996,7 @@ export async function readGitReviewBlameFile(
       cwd,
       path: normalizedPath,
       ref,
-      lines: parseBlamePorcelain(result.stdout),
+      lines: parseGitBlamePorcelain(result.stdout),
       errorMessage: null,
     };
   } catch (error) {
