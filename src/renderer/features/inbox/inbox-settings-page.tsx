@@ -94,8 +94,8 @@ export function InboxSettingsPage() {
       <SectionBlock title="Routing preferences">
         <div className="flex items-start justify-between gap-4 p-3 pb-0">
           <p className="text-sm text-token-text-secondary">
-            Standing guidance the suggestion agent follows, such as which Project research belongs
-            in.
+            Standing instructions suggestions follow over Nodex’s own guidance, such as which
+            Project research belongs in.
           </p>
           <NodexButton
             variant="secondary"

@@ -304,6 +304,18 @@ describe("inbox suggestion prompts", () => {
     expect(data.request.request_id).toEqual(request.requestId);
   });
 
+  it("ranks the user's routing preferences above Nodex's own routing guidance", () => {
+    const [instructions, data] = buildInboxSuggestionPrompt({
+      context: context([entry("1", "Research onboarding")]),
+      instructions: "Research always goes to the Website Project.",
+      request,
+    }).split("JSON data:\n");
+    // The rule sits among the instructions, outside the data the suggestion only reads.
+    expect(instructions).toMatch(/preferences are the user's standing instructions, not data/);
+    expect(instructions).toMatch(/follow them over every guideline here/);
+    expect(JSON.parse(data!).preferences).toBe("Research always goes to the Website Project.");
+  });
+
   it("bounds serialized bytes, including JSON escapes", () => {
     expect(() =>
       buildInboxSuggestionPrompt({

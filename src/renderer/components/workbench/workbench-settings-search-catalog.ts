@@ -524,10 +524,11 @@ export const SETTINGS_SEARCH_PANELS = {
             "claude",
             "model",
           ]),
-          entry("Routing preferences", "Standing guidance the suggestion agent follows.", [
-            "instructions",
-            "routing",
-          ]),
+          entry(
+            "Routing preferences",
+            "Standing instructions suggestions follow over Nodex's own guidance.",
+            ["instructions", "routing"],
+          ),
         ],
       },
       {

@@ -253,6 +253,11 @@ structured proposal. It uses the shared Agent Runtime utility policy, which is
 full-access with automatic native approvals; the prompt and output schema are
 behavioral constraints, not a separate tool or content permission boundary.
 
+The user's routing preferences are its standing instructions, not data. They
+outrank every guideline in its prompt about how to route. Only the required
+output structure, the allowed actions, the eligible targets, the Inbox's scope
+and covering every message stay above them.
+
 A Project's Inbox narrows that context to the Project. Its messages are already
 that Project's Pages, so a new chat starts in the Project, an existing chat must
 be one of the Project's own, and a move can only file the message in another
@@ -530,7 +535,8 @@ creates a second message, and does not count against the Agent budget again.
   - the suggestion Agent and model, chosen with the composer's model menu among
     the Agents that can write suggestions. Suggestions run each model at its own
     economical effort, so the menu offers no effort or speed;
-  - free-text routing preferences given to the suggestion Agent;
+  - free-text routing preferences: the user's standing instructions to the
+    suggestion Agent, which outrank Nodex's own guidance;
   - what chats the Inbox starts run on, chosen with the composer's model menu:
     the Agent, its model, and the model's effort and speed.
 
