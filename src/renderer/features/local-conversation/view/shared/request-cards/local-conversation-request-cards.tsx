@@ -1,4 +1,5 @@
 import { QuestionDictationButton } from "../../composer/question-dictation-button";
+import { isQuestionKeyboardOverlaid } from "../question-keyboard-scope";
 import { visibleCodexUserInputAnswerValues as resolveTranscriptAnswers } from "../../../../../../shared/codex-user-input-answer-values";
 import {
   QUESTION_NAVIGATION_CONTROL,
@@ -942,7 +943,13 @@ function RequestComposerViewInstance({
   };
 
   const handleRootKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
-    if (event.defaultPrevented) return;
+    if (
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing ||
+      event.nativeEvent.keyCode === 229 ||
+      isQuestionKeyboardOverlaid(event.currentTarget, event.key)
+    )
+      return;
     if (event.key === "Escape" && hasDismissAction && busyAction === null) {
       event.preventDefault();
       void handleEscapeDismiss();

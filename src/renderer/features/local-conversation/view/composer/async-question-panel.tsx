@@ -1,5 +1,6 @@
 import { QuestionDictationButton } from "./question-dictation-button";
 import { QUESTION_NAVIGATION_CONTROL } from "./question-action-colors";
+import { isQuestionKeyboardOverlaid } from "../shared/question-keyboard-scope";
 import type { FileSearchScope } from "../../../../../shared/file-search";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, type Variants } from "motion/react";
@@ -265,9 +266,7 @@ export function AsyncQuestionPanel({
           event.defaultPrevented ||
           event.nativeEvent.isComposing ||
           event.nativeEvent.keyCode === 229 ||
-          document.querySelector(
-            '[role="dialog"][data-state="open"],[role="menu"][data-state="open"],[role="listbox"][data-state="open"]',
-          )
+          isQuestionKeyboardOverlaid(event.currentTarget, event.key)
         )
           return;
         if (event.key === "Escape") {

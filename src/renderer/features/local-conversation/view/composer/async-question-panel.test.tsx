@@ -1,7 +1,10 @@
 import { createCodexCanonicalHydratedConversationState } from "../../../../../shared/codex-conversation-state/codex-conversation-state";
 import { buildAgentActivityV2CorpusThread } from "../../../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
+import { NodexTooltip } from "@/components/ui/tooltip";
+import { NodexHoverCard } from "@/components/ui/hover-card";
+import { NodexDialog, NodexDialogContent, NodexDialogTitle } from "@/components/ui/dialog";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { toast } from "@/components/ui/toast";
 import { AsyncQuestionPanel } from "./async-question-panel";
@@ -13,7 +16,10 @@ vi.mock("@/components/ui/toast", () => ({ toast: { danger: vi.fn() } }));
 
 vi.mock("@/lib/use-reduced-motion", () => ({ useResolvedReducedMotion: () => true }));
 
-function setup(questions = [{ title: "Which scope?", options: ["Local", "Global"] }]) {
+function setup(
+  questions = [{ title: "Which scope?", options: ["Local", "Global"] }],
+  overlay?: ReactNode,
+) {
   const runtime = createAsyncQuestionRuntime();
   const item: CodexCanonicalItem = {
     type: "agentMessage",
@@ -89,6 +95,7 @@ function setup(questions = [{ title: "Which scope?", options: ["Local", "Global"
           onSend={() => runtime.submit("thread", send)}
         />
         <textarea aria-label="Normal composer" />
+        {overlay}
       </>
     );
   }
@@ -151,6 +158,10 @@ describe("async question panel", () => {
       fireEvent.keyDown(editor, { key: "Enter", isComposing: true, keyCode: 229 }),
     );
     expect(view.send).not.toHaveBeenCalled();
+    await interact(() =>
+      fireEvent.keyDown(editor, { key: "Escape", isComposing: true, keyCode: 229 }),
+    );
+    expect(view.getByRole("group", { name: "Agent question" })).toBeTruthy();
     await interact(() => fireEvent.keyDown(editor, { key: "Enter" }));
     await waitFor(() => expect(view.send).toHaveBeenCalledTimes(1));
   });
@@ -246,6 +257,91 @@ describe("async question panel", () => {
       vi.useRealTimers();
     }
   });
+  test.each(["tooltip", "hover card"] as const)(
+    "Escape dismisses an active %s before the question",
+    async (kind) => {
+      const overlay =
+        kind === "tooltip" ? (
+          <NodexTooltip defaultOpen tooltipContent="Question help">
+            <button type="button">Help</button>
+          </NodexTooltip>
+        ) : (
+          <NodexHoverCard defaultOpen ariaLabel="Question help" hoverCardContent="Question help">
+            <button type="button">Help</button>
+          </NodexHoverCard>
+        );
+      const view = setup(undefined, overlay);
+      const panel = view.getByRole("group", { name: "Agent question" });
+      await view.findByText("Question help");
+      await interact(() => {
+        panel.focus();
+        fireEvent.keyDown(panel, { key: "Escape" });
+      });
+      await waitFor(() => expect(view.queryByText("Question help")).toBeNull());
+      expect(view.getByRole("group", { name: "Agent question" })).toBe(panel);
+      await interact(() => fireEvent.keyDown(panel, { key: "Escape" }));
+      await waitFor(() => expect(view.queryByRole("group", { name: "Agent question" })).toBeNull());
+      expect(view.send).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["hidden", "inert"] as const)(
+    "a %s background popup cannot intercept question shortcuts",
+    async (attribute) => {
+      const view = setup(
+        undefined,
+        <div {...{ [attribute]: true }}>
+          <div role="listbox" data-state="open" data-slot="popover-content" data-open="">
+            Background options
+          </div>
+        </div>,
+      );
+      const panel = view.getByRole("group", { name: "Agent question" });
+      await interact(() => fireEvent.keyDown(panel, { key: "ArrowUp" }));
+      expect(view.getByRole("radio", { name: "Global" }).getAttribute("aria-checked")).toBe("true");
+      await interact(() => fireEvent.keyDown(panel, { key: "Escape" }));
+      expect(view.queryByRole("group", { name: "Agent question" })).toBeNull();
+      expect(view.send).not.toHaveBeenCalled();
+    },
+  );
+
+  test("an active dialog retains keyboard ownership before the question resumes", async () => {
+    const view = setup(
+      undefined,
+      <NodexDialog defaultOpen>
+        <NodexDialogContent>
+          <NodexDialogTitle>Question details</NodexDialogTitle>
+          <input aria-label="Dialog input" />
+        </NodexDialogContent>
+      </NodexDialog>,
+    );
+    const panel = view.getByRole("group", { name: "Agent question", hidden: true });
+    const input = await view.findByRole("textbox", { name: "Dialog input" });
+    await interact(() => fireEvent.keyDown(panel, { key: "ArrowUp" }));
+    expect(Object.values(view.runtime.read("thread").questions)[0]?.draft).toBe("");
+    await interact(() => fireEvent.keyDown(input, { key: "Escape" }));
+    await waitFor(() =>
+      expect(view.queryByRole("dialog", { name: "Question details" })).toBeNull(),
+    );
+    expect(view.getByRole("group", { name: "Agent question" })).toBe(panel);
+    await interact(() => fireEvent.keyDown(panel, { key: "Escape" }));
+    expect(view.queryByRole("group", { name: "Agent question" })).toBeNull();
+  });
+
+  test("the rich editor dismisses its mention suggestions before Escape closes the question", async () => {
+    const view = setup([{ title: "What name?", options: [] }]);
+    const editor = view.getByLabelText("Reply…");
+    await paste(editor, "@");
+    await view.findByLabelText("Files");
+    await interact(() => fireEvent.keyDown(editor, { key: "Escape" }));
+    await waitFor(() => expect(view.queryByLabelText("Files")).toBeNull());
+    expect(view.getByRole("group", { name: "Agent question" })).toBeTruthy();
+    expect(editor.textContent).toBe("@");
+    await interact(() => fireEvent.keyDown(editor, { key: "Escape" }));
+    expect(view.queryByRole("group", { name: "Agent question" })).toBeNull();
+    expect(view.send).not.toHaveBeenCalled();
+  });
+
   test("close preserves the draft for reopening and failures leave a retryable form", async () => {
     const view = setup([{ title: "What name?", options: [] }]);
     const id = view.runtime.read("thread").selectedId!;

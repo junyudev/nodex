@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
-import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { NodexTooltip, NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { CodexUserInputRequest } from "@/lib/types";
 import { render, settleAsyncRender, textContent } from "@/test/dom";
 import { installMotionPreferenceForTest } from "@/test/browser-globals";
@@ -302,6 +302,105 @@ describe("local-conversation request cards", () => {
 
     expect(responses[0]).toBe("{}");
   });
+
+  test("Escape dismisses an active tooltip before dismissing a synchronous questionnaire", async () => {
+    const { REQUEST_INPUT_COMPOSER_POLICY, RequestComposerView } =
+      await import("./local-conversation-request-cards");
+    let dismissed = 0;
+    const view = render(
+      <NodexTooltipProvider>
+        <RequestComposerView
+          request={optionRequest}
+          policy={REQUEST_INPUT_COMPOSER_POLICY}
+          onSubmit={async () => {}}
+          onEscapeDismiss={async () => {
+            dismissed += 1;
+          }}
+          submitErrorMessage="Could not submit input request"
+        />
+        <NodexTooltip defaultOpen tooltipContent="Question help">
+          <button type="button">Help</button>
+        </NodexTooltip>
+      </NodexTooltipProvider>,
+    );
+    const choice = view.getByRole("radio", { name: "2 (Recommended)" });
+    await view.findByText("Question help");
+    await act(async () => {
+      choice.focus();
+      fireEvent.keyDown(choice, { key: "Escape" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.queryByText("Question help")).toBeNull());
+    expect(dismissed).toBe(0);
+    await act(async () => {
+      fireEvent.keyDown(choice, { key: "Escape" });
+      await settleAsyncRender();
+    });
+    expect(dismissed).toBe(1);
+  });
+
+  test("composition Escape remains owned by the editor before questionnaire dismissal", async () => {
+    const { REQUEST_INPUT_COMPOSER_POLICY, RequestComposerView } =
+      await import("./local-conversation-request-cards");
+    let dismissed = 0;
+    const view = render(
+      <NodexTooltipProvider>
+        <RequestComposerView
+          request={optionRequest}
+          policy={REQUEST_INPUT_COMPOSER_POLICY}
+          onSubmit={async () => {}}
+          onEscapeDismiss={async () => {
+            dismissed += 1;
+          }}
+          submitErrorMessage="Could not submit input request"
+        />
+      </NodexTooltipProvider>,
+    );
+    const editor = view.getByRole("textbox", { name: "What is 1 + 1?" });
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "Escape", isComposing: true, keyCode: 229 });
+      await Promise.resolve();
+    });
+    expect(dismissed).toBe(0);
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "Escape" });
+      await settleAsyncRender();
+    });
+    expect(dismissed).toBe(1);
+  });
+
+  test.each(["hidden", "inert"] as const)(
+    "a %s background popup cannot block synchronous questionnaire dismissal",
+    async (attribute) => {
+      const { REQUEST_INPUT_COMPOSER_POLICY, RequestComposerView } =
+        await import("./local-conversation-request-cards");
+      let dismissed = 0;
+      const view = render(
+        <NodexTooltipProvider>
+          <RequestComposerView
+            request={optionRequest}
+            policy={REQUEST_INPUT_COMPOSER_POLICY}
+            onSubmit={async () => {}}
+            onEscapeDismiss={async () => {
+              dismissed += 1;
+            }}
+            submitErrorMessage="Could not submit input request"
+          />
+          <div {...{ [attribute]: true }}>
+            <div role="listbox" data-state="open" data-slot="popover-content" data-open="">
+              Background options
+            </div>
+          </div>
+        </NodexTooltipProvider>,
+      );
+      const choice = view.getByRole("radio", { name: "2 (Recommended)" });
+      await act(async () => {
+        fireEvent.keyDown(choice, { key: "Escape" });
+        await settleAsyncRender();
+      });
+      expect(dismissed).toBe(1);
+    },
+  );
 
   test("does not reinterpret keyboard activation of action buttons as option activation", async () => {
     const { REQUEST_INPUT_COMPOSER_POLICY, RequestComposerView } =
