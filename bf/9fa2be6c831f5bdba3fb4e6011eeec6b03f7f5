@@ -1,0 +1,35 @@
+src/renderer/components/shared/icons/customize-action-icons.tsx
+  s_f79dd9d0c7ac54::t_0027052a766ccf 9,11,17,40,42,47,52,54,59,64,66,73,78,80,87,92,94,103,108,110,123,128,130,135,140,142,147,152,154,165,170,172,183,188,190,195,200,202,207,212,214,229,234,236,243,248,250,263,268,270,277,282,284,293,298,300,315,320,322,335,340,342,349,354,356,363,368,370,375,380,382,389,394,396,403,408,410,415
+src/renderer/components/shared/icons/plugin-detail-icons.tsx
+  s_f79dd9d0c7ac54::t_f78f28dd84b14f 1,10,12,17,22,24,37,42,44,57,62,64,71,76,78,83,88,90,97,102,104,111,116,118,123,128,130,137,142,144,149,154,156,163,168,170,181,186,188,205,210,212,219,224,226,231,236,238,247,252,254,261,266,268,273,278,280,287,292,316,318,323,328,349,351,370
+src/renderer/components/shared/icons/skill-fallback-icons.tsx
+  s_f79dd9d0c7ac54::t_e542b2ad380718 3,18,43-44,69,75,77,82,87,89,94,99,101,126,131,133,138,143,145,147,152,154,173,178,180,201,206,208,220,225,227,269,274,276,288
+src/renderer/components/ui/menu-row.browser.test.tsx
+  s_aae47e3eb47b5d::t_34303a04a6237f 3,26
+src/renderer/features/plugins/view/plugin-origin-badge.tsx
+  s_f79dd9d0c7ac54::t_422ba0401c484c 9,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf9fa2be6c831f5bdba3fb4e6011eeec6b03f7f5",
+  "prompts": {},
+  "sessions": {
+    "s_aae47e3eb47b5d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c23-b237-76a1-95ae-ede98222339b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
