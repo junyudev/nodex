@@ -322,13 +322,28 @@ managed-worktree ownership is attached only after the durable execution is verif
 
 Effort and speed are written under each model's own option names: Codex reasoning effort
 and service tier, Claude effort with its thinking, speed, Ultracode and context choices.
-The model menu presents effort as one track of the model's levels; a Claude model that can
-turn thinking off shows Off below its lowest level, and an effort the user never chose rests
-on the model default, marked Default. Fast and Ultracode are standing modes toggled beside
-effort and shown on the model button while on. Ultracode is Claude Code's workflow
-orchestration for the session: it runs at the chosen effort, is offered only for models
-that support it, and never applies to titles or other generated text. Message text reaches
-Claude unchanged, so keywords such as `ultrathink` remain the user's own words. A model,
+Every model choice uses one menu: the models, then effort as one track of the model's
+levels, with Fast and Ultracode as icon toggles beside it whose tooltips say what each does.
+A Claude model that can turn thinking off shows Off below its lowest level, and an effort
+the user never chose rests on the model default, marked Default. The model button shows the
+Fast and Ultracode icons while they are on, and `/fast` and `/ultracode` toggle them from the
+composer.
+
+Ultracode is Claude Code's workflow orchestration for the session. It runs at the chosen
+effort, is offered only for models that support it, and never applies to titles or other
+generated text. When dynamic workflows are off for the Claude account, the toggle stays
+visible but disabled with that reason and no request is sent; if Claude Code still runs a
+chat without Ultracode, the chat says so.
+
+A Claude chat changes model, effort, Fast and Ultracode on its running Claude Code process
+before the next message, so background agents, shells and workflows keep running. Only
+turning thinking on or off starts a new process, which waits until background work ends or
+the user stops it.
+
+Message text reaches Claude unchanged. Claude chats highlight the words Claude Code reacts to
+in a message, `ultrathink` and `ultracode`, and explain on hover what each does for that turn.
+
+A model,
 effort and speed change from the composer is one choice, so concurrent choices never
 overwrite each other, and options a newly chosen model does not offer fall back to its
 defaults. A new Codex chat starts from the user's saved Codex model, effort and speed.
