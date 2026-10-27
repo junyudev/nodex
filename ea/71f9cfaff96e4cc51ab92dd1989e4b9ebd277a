@@ -1,0 +1,21 @@
+src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx
+  s_881bde2b2ec57a::t_b7933f7fa98d11 43-84
+src/renderer/components/workbench/workbench-new-tab-page.test.tsx
+  s_881bde2b2ec57a::t_6e2911664b981b 1-167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea71f9cfaff96e4cc51ab92dd1989e4b9ebd277a",
+  "prompts": {},
+  "sessions": {
+    "s_881bde2b2ec57a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49cbb4a9-e94e-4e20-9ebc-d47c9a27d1f1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
