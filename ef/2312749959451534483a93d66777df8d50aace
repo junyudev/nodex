@@ -1,0 +1,93 @@
+src/main/app/ApplicationOperationsLive.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 61,95
+src/main/inbox-application/scheduled-firing-core.node.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 1-103
+src/main/host-runtime/ScheduledAutomationPolicy.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 5,17
+src/shared/schemas/inbox.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 83-90
+src/main/app/MainApplicationLive.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 35-39,163-167
+docs/product-specs/scheduled-route-behavior.md
+  s_f2e3c034e2bc1d::t_24e0fb07183183 41,44-56,174-181,211-212
+src/renderer/features/scheduled/scheduled-sidebar.tsx
+  s_f2e3c034e2bc1d::t_789b158d3b1b3a 33,301-309
+src/main/core-client/inbox-adapter.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 42-48,56,59,70,86-92,153-160,249-259
+CHANGELOG.md
+  s_f2e3c034e2bc1d::t_24e0fb07183183 9-10
+src/shared/inbox.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 3-7,521-536
+src/shared/nodex-app-tools/automation-projection.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 18-19,102-103,113-118
+src/shared/nodex-app-tools/automation-schema.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 19-30,136
+docs/ARCHITECTURE.md
+  s_f2e3c034e2bc1d::t_24e0fb07183183 1150-1153
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 28,39-41,83-84,91-92,97-122,163-167,172,178,249-266,342-365,367-483,564
+src/main/inbox-application/inbox-suggestions.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 185,215-218,291-292
+src/main/inbox-application/scheduled-firing.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 1-27
+src/main/ipc/handlers/AutomationIpc.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 7,31-48,55,241-242
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 232,235-237
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 75-102
+src/main/inbox-application/scheduled-firing.node.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 1-257
+src/main/automation-application/AutomationApplication.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 22-24,65-66,74-80,90,592,596-622,741-749,1090
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 23,80-82,104-105,233,330-332,617-706
+  s_f2e3c034e2bc1d::t_e3c85164d50643 707
+src/shared/types.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 3214-3215
+src/main/app-tools/AutomationAppTools.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 290-298
+src/shared/nodex-app-tools/automation-projection.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 12-13
+src/main/local-store/codex-scheduled-automation-schedule.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 22-24
+src/main/inbox-application/InboxApplication.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 81-83,128-131,383-386,432-439,458-461,587,669-722,758-759
+src/main/automation-application/AutomationProjection.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 70-81,230-231
+src/main/codex-scheduled-automation-runtime.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 20-22
+src/main/core-runtime/AutomationRoutingIndex.node.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 27
+src/main/inbox-application/InboxDispatcher.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 55-65
+src/main/codex-scheduled-automation-runtime.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 38-53,56-57,67-68,75-76,83-84
+src/main/app-tools/AutomationAppTools.node.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 24,72-74,120-165
+  s_f2e3c034e2bc1d::t_b90c10e4f4ff64 166
+docs/product-specs/inbox-behavior.md
+  s_f2e3c034e2bc1d::t_24e0fb07183183 47-55
+src/main/automation-application/AutomationApplication.node.test.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 23,209-327,494-495
+src/main/host-runtime/ScheduledAutomationRuntime.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 18-23,27,65-69,76,153-177,180-181,183-194,197-198
+src/main/automation-application/AutomationExecution.ts
+  s_f2e3c034e2bc1d::t_24e0fb07183183 35-39,48,116-117,126-127,137,139,145-150,166-196,300-304,331-333,336,339-342,345,359-405,428,450-453,489-490
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ef2312749959451534483a93d66777df8d50aace",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
