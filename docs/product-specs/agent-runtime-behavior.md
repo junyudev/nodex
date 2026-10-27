@@ -321,7 +321,14 @@ managed-worktree ownership is attached only after the durable execution is verif
 ## Model choices
 
 Effort and speed are written under each model's own option names: Codex reasoning effort
-and service tier, Claude effort with its thinking, speed and context choices. A model,
+and service tier, Claude effort with its thinking, speed, Ultracode and context choices.
+The model menu presents effort as one track of the model's levels; a Claude model that can
+turn thinking off shows Off below its lowest level, and an effort the user never chose rests
+on the model default, marked Default. Fast and Ultracode are standing modes toggled beside
+effort and shown on the model button while on. Ultracode is Claude Code's workflow
+orchestration for the session: it runs at the chosen effort, is offered only for models
+that support it, and never applies to titles or other generated text. Message text reaches
+Claude unchanged, so keywords such as `ultrathink` remain the user's own words. A model,
 effort and speed change from the composer is one choice, so concurrent choices never
 overwrite each other, and options a newly chosen model does not offer fall back to its
 defaults. A new Codex chat starts from the user's saved Codex model, effort and speed.

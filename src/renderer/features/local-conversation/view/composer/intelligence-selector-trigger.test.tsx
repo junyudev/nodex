@@ -89,7 +89,7 @@ describe("intelligence selector trigger geometry", () => {
           ]}
           modelLabel="GPT-5.6-Sol"
           reasoningLabel="High"
-          showFastIndicator={false}
+          indicators={[]}
           title="OpenAI · GPT-5.6-Sol · High"
         />
       </MotionConfig>,

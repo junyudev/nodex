@@ -3,13 +3,11 @@ import {
   getModelSelectionBooleanOptionValue,
   getModelSelectionStringOptionValue,
   getProviderOptionDescriptors,
-  resolvePromptInjectedEffort,
 } from "@t3tools/shared/model";
 
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   getClaudeCatalogModelCapabilities,
-  isClaudeCatalogUltracodeEffort,
   normalizeClaudeCatalogEffort,
   resolveClaudeCatalogApiModelId,
   resolveClaudeCatalogEffort,
@@ -19,7 +17,6 @@ import {
 export interface CompiledClaudeModelSelection {
   readonly apiModelId: string;
   readonly effort: string | undefined;
-  readonly promptEffort: string | undefined;
   readonly settings: Readonly<Record<string, boolean>>;
   readonly queryIdentity: string;
 }
@@ -40,6 +37,9 @@ export function compileClaudeModelSelection(
   const fastMode = supportsBoolean("fastMode")
     ? (getModelSelectionBooleanOptionValue(selection, "fastMode") ?? false)
     : undefined;
+  // Ultracode is Claude Code's session-scoped workflow orchestration; it runs at any effort level.
+  const ultracode =
+    supportsBoolean("ultracode") && getModelSelectionBooleanOptionValue(selection, "ultracode");
   let apiModelId = resolveClaudeCatalogApiModelId(catalog, selection);
   const nativeTraits = knownThinkingTraits(apiModelId);
   const configuredTraits = modelTraits?.[selection.model];
@@ -85,13 +85,11 @@ export function compileClaudeModelSelection(
   const settings = {
     ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
     ...(typeof fastMode === "boolean" ? { fastMode } : {}),
-    ...(isClaudeCatalogUltracodeEffort(resolvedEffort) ? { ultracode: true } : {}),
+    ...(ultracode ? { ultracode: true } : {}),
   };
-  const promptEffort = resolvePromptInjectedEffort(capabilities, rawEffort) ?? undefined;
   return {
     apiModelId,
     effort,
-    promptEffort,
     settings,
     queryIdentity: JSON.stringify({ apiModelId, effort: effort ?? null, settings }),
   };

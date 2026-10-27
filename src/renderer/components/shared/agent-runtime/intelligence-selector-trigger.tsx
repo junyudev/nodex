@@ -10,15 +10,22 @@ import {
   type RefObject,
 } from "react";
 import { useReducedMotionConfig } from "motion/react";
-import { FastModeIcon, ChevronDownIcon } from "@/components/shared/icons";
+import { ChevronDownIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
+import {
+  IntelligenceModeIndicatorIcon,
+  type IntelligenceModeIndicator,
+} from "./intelligence-controls";
 import { COMPOSER_FOOTER_GHOST_BUTTON_CLASS_NAME } from "../../../features/local-conversation/view/shared/composer-footer-controls";
 
 export const INTELLIGENCE_SELECTOR_MENU_WIDTH_PX = 224;
 export const INTELLIGENCE_SELECTOR_FAST_SLOT_WIDTH_PX = 18;
 export const INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX = 8;
+const INTELLIGENCE_SELECTOR_INDICATOR_STEP_PX = 16;
+
+const NO_INDICATORS: readonly IntelligenceModeIndicator[] = [];
 
 const INTELLIGENCE_SELECTOR_ALIGN_NUDGE_PX = 1;
 const INTELLIGENCE_SELECTOR_WIDTH_TRANSITION = "inline-size 320ms cubic-bezier(0.23, 1, 0.32, 1)";
@@ -184,20 +191,25 @@ function IntelligenceSelectorLabel({
   modelLabel,
   reasoningLabel,
   reserveModelLabelWidth = false,
-  showFastIndicator = false,
+  indicators = NO_INDICATORS,
 }: {
   modelLabel: string;
   reasoningLabel: string | null;
   reserveModelLabelWidth?: boolean;
-  showFastIndicator?: boolean;
+  indicators?: readonly IntelligenceModeIndicator[];
 }) {
   return (
     <span
       className="relative inline-flex w-max items-center gap-1 tabular-nums"
-      data-fast-mode-indicator={showFastIndicator ? "true" : undefined}
+      data-fast-mode-indicator={indicators.includes("fast") ? "true" : undefined}
+      data-ultracode-indicator={indicators.includes("ultracode") ? "true" : undefined}
     >
-      {showFastIndicator ? (
-        <FastModeIcon className="absolute end-full top-1/2 me-1 icon-2xs shrink-0 -translate-y-1/2 text-token-foreground" />
+      {indicators.length > 0 ? (
+        <span className="absolute end-full top-1/2 me-1 flex -translate-y-1/2 items-center gap-0.5">
+          {indicators.map((mode) => (
+            <IntelligenceModeIndicatorIcon key={mode} mode={mode} />
+          ))}
+        </span>
       ) : null}
       <span
         className={cn(
@@ -225,7 +237,7 @@ interface IntelligenceSelectorTriggerProps extends Omit<
   labelCandidates: readonly IntelligenceSelectorLabelCandidate[];
   modelLabel: string;
   reasoningLabel: string | null;
-  showFastIndicator: boolean;
+  indicators: readonly IntelligenceModeIndicator[];
   title?: string;
 }
 
@@ -248,7 +260,7 @@ export const IntelligenceSelectorTrigger = forwardRef<
     labelCandidates,
     modelLabel,
     reasoningLabel,
-    showFastIndicator,
+    indicators,
     title,
     ...buttonProps
   },
@@ -264,10 +276,14 @@ export const IntelligenceSelectorTrigger = forwardRef<
     },
     [forwardedRef, geometry.triggerRef],
   );
-  const reserveFastSlot = isOpen || showFastIndicator;
+  const reservedIndicators = Math.max(indicators.length, isOpen ? 1 : 0);
+  const reserveFastSlot = reservedIndicators > 0;
   const transition = shouldReduceMotion ? "none" : INTELLIGENCE_SELECTOR_WIDTH_TRANSITION;
   const fastSlotStyle = {
-    inlineSize: reserveFastSlot ? INTELLIGENCE_SELECTOR_FAST_SLOT_WIDTH_PX : 0,
+    inlineSize: reserveFastSlot
+      ? INTELLIGENCE_SELECTOR_FAST_SLOT_WIDTH_PX +
+        (reservedIndicators - 1) * INTELLIGENCE_SELECTOR_INDICATOR_STEP_PX
+      : 0,
     transition,
   } satisfies CSSProperties;
   const contentStyle = {
@@ -325,7 +341,7 @@ export const IntelligenceSelectorTrigger = forwardRef<
             <IntelligenceSelectorLabel
               modelLabel={modelLabel}
               reasoningLabel={reasoningLabel}
-              showFastIndicator={showFastIndicator}
+              indicators={indicators}
             />
           </span>
         </span>

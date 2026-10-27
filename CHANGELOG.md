@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- The model menu sets effort on one slider and switches Fast and Ultracode on or off from icons beside it, with what each does in its tooltip. The model button shows those icons while a mode is on.
 - New Pages, Databases, Canvases and copies appear at the top of Space Content instead of after everything else, so they stay visible without Show more.
 - Finished Claude Code, OpenCode and other Agent replies read like Codex ones: each Turn's work folds under `Worked for <time>`, leaving your prompt and the complete reply in view.
 - Command K brings chats, Pages, files, and full-text file search into one glass window, with host-aware folder and file-type filters, recent searches, exact match navigation, expandable results, and searchable Settings and themes.
@@ -31,8 +32,13 @@ All notable changes to this project will be documented in this file.
 - The Library Inbox's Database appears in Space with the rest of your content. Like a Project's Database, it can't be archived while the Inbox depends on it, so earlier messages never end up in an archived copy.
 - Every Agent's thinking reads the same way in a chat and stays where it happened. While an Agent thinks, a one-line status shows a few lines of its latest thinking beneath it. Afterwards each thought folds into the work around it, or reads Thought for its duration on its own, and opens in full.
 
+### Removed
+
+- Ultrathink is no longer offered as an effort level. Writing "ultrathink" in a Claude message still asks for deeper reasoning on that turn, and messages now reach Claude exactly as you wrote them.
+
 ### Fixed
 
+- Choosing Ultracode for a Claude chat now actually turns it on, at whatever effort you pick instead of forcing Extra High.
 - The Composer context ring reports Claude Code, OpenCode and other Agents’ current usage, restores it when reopening a chat, and distinguishes unavailable readings from an empty context.
 
 - Space Content keeps its order when you open a Page, Database or Canvas, and every sidebar list remembers how far you expanded it with Show more after switching between Home and Space, reopening the window or relaunching.

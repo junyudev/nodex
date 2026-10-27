@@ -75,27 +75,19 @@
                   {
                     "id": "max",
                     "label": "Max"
-                  },
-                  {
-                    "id": "ultracode",
-                    "label": "Ultracode",
-                    "description": "xhigh effort plus multi-agent workflow orchestration"
-                  },
-                  {
-                    "id": "ultrathink",
-                    "label": "Ultrathink"
                   }
-                ],
-                "promptInjectedValues": ["ultrathink"]
+                ]
+              },
+              {
+                "id": "ultracode",
+                "label": "Ultracode",
+                "type": "boolean",
+                "description": "Plan and run a multi-agent workflow for every task"
               }
             ]
           },
           "adapter": {
             "claudeCode": {
-              "effortMap": {
-                "ultracode": "xhigh",
-                "ultrathink": null
-              },
               "fixedContextWindowTokens": 1000000
             }
           }
@@ -113,22 +105,20 @@
                   { "id": "medium", "label": "Medium", "isDefault": true },
                   { "id": "high", "label": "High" },
                   { "id": "xhigh", "label": "Extra High" },
-                  { "id": "max", "label": "Max" },
-                  {
-                    "id": "ultracode",
-                    "label": "Ultracode",
-                    "description": "xhigh effort plus multi-agent workflow orchestration"
-                  },
-                  { "id": "ultrathink", "label": "Ultrathink" }
-                ],
-                "promptInjectedValues": ["ultrathink"]
+                  { "id": "max", "label": "Max" }
+                ]
+              },
+              {
+                "id": "ultracode",
+                "label": "Ultracode",
+                "type": "boolean",
+                "description": "Plan and run a multi-agent workflow for every task"
               },
               { "id": "fastMode", "label": "Fast Mode", "type": "boolean" }
             ]
           },
           "adapter": {
             "claudeCode": {
-              "effortMap": { "ultracode": "xhigh", "ultrathink": null },
               "fixedContextWindowTokens": 1000000
             }
           }
@@ -162,18 +152,14 @@
                   {
                     "id": "max",
                     "label": "Max"
-                  },
-                  {
-                    "id": "ultracode",
-                    "label": "Ultracode",
-                    "description": "xhigh effort plus multi-agent workflow orchestration"
-                  },
-                  {
-                    "id": "ultrathink",
-                    "label": "Ultrathink"
                   }
-                ],
-                "promptInjectedValues": ["ultrathink"]
+                ]
+              },
+              {
+                "id": "ultracode",
+                "label": "Ultracode",
+                "type": "boolean",
+                "description": "Plan and run a multi-agent workflow for every task"
               },
               {
                 "id": "fastMode",
@@ -184,10 +170,6 @@
           },
           "adapter": {
             "claudeCode": {
-              "effortMap": {
-                "ultracode": "xhigh",
-                "ultrathink": null
-              },
               "fixedContextWindowTokens": 1000000
             }
           }
@@ -221,18 +203,14 @@
                   {
                     "id": "max",
                     "label": "Max"
-                  },
-                  {
-                    "id": "ultracode",
-                    "label": "Ultracode",
-                    "description": "xhigh effort plus multi-agent workflow orchestration"
-                  },
-                  {
-                    "id": "ultrathink",
-                    "label": "Ultrathink"
                   }
-                ],
-                "promptInjectedValues": ["ultrathink"]
+                ]
+              },
+              {
+                "id": "ultracode",
+                "label": "Ultracode",
+                "type": "boolean",
+                "description": "Plan and run a multi-agent workflow for every task"
               },
               {
                 "id": "fastMode",
@@ -243,10 +221,6 @@
           },
           "adapter": {
             "claudeCode": {
-              "effortMap": {
-                "ultracode": "xhigh",
-                "ultrathink": null
-              },
               "fixedContextWindowTokens": 1000000
             }
           }
@@ -280,13 +254,8 @@
                   {
                     "id": "max",
                     "label": "Max"
-                  },
-                  {
-                    "id": "ultrathink",
-                    "label": "Ultrathink"
                   }
-                ],
-                "promptInjectedValues": ["ultrathink"]
+                ]
               },
               {
                 "id": "fastMode",
@@ -297,10 +266,7 @@
           },
           "adapter": {
             "claudeCode": {
-              "effortMap": {
-                "xhigh": "max",
-                "ultrathink": null
-              },
+              "effortMap": { "xhigh": "max" },
               "fixedContextWindowTokens": 1000000
             }
           }
@@ -330,13 +296,8 @@
                   {
                     "id": "max",
                     "label": "Max"
-                  },
-                  {
-                    "id": "ultrathink",
-                    "label": "Ultrathink"
                   }
-                ],
-                "promptInjectedValues": ["ultrathink"]
+                ]
               },
               {
                 "id": "fastMode",
@@ -363,9 +324,6 @@
           },
           "adapter": {
             "claudeCode": {
-              "effortMap": {
-                "ultrathink": null
-              },
               "modelSuffixes": {
                 "contextWindow": {
                   "1m": "[1m]"
@@ -446,21 +404,19 @@
                   {
                     "id": "max",
                     "label": "Max"
-                  },
-                  {
-                    "id": "ultrathink",
-                    "label": "Ultrathink"
                   }
-                ],
-                "promptInjectedValues": ["ultrathink"]
+                ]
+              },
+              {
+                "id": "ultracode",
+                "label": "Ultracode",
+                "type": "boolean",
+                "description": "Plan and run a multi-agent workflow for every task"
               }
             ]
           },
           "adapter": {
             "claudeCode": {
-              "effortMap": {
-                "ultrathink": null
-              },
               "fixedContextWindowTokens": 1000000
             }
           }
@@ -490,13 +446,8 @@
                   {
                     "id": "max",
                     "label": "Max"
-                  },
-                  {
-                    "id": "ultrathink",
-                    "label": "Ultrathink"
                   }
-                ],
-                "promptInjectedValues": ["ultrathink"]
+                ]
               },
               {
                 "id": "contextWindow",
@@ -518,10 +469,7 @@
           },
           "adapter": {
             "claudeCode": {
-              "effortMap": {
-                "max": "high",
-                "ultrathink": null
-              },
+              "effortMap": { "max": "high" },
               "modelSuffixes": {
                 "contextWindow": {
                   "1m": "[1m]"
@@ -547,16 +495,19 @@
                   { "id": "medium", "label": "Medium", "isDefault": true },
                   { "id": "high", "label": "High" },
                   { "id": "xhigh", "label": "Extra High" },
-                  { "id": "max", "label": "Max" },
-                  { "id": "ultrathink", "label": "Ultrathink" }
-                ],
-                "promptInjectedValues": ["ultrathink"]
+                  { "id": "max", "label": "Max" }
+                ]
+              },
+              {
+                "id": "ultracode",
+                "label": "Ultracode",
+                "type": "boolean",
+                "description": "Plan and run a multi-agent workflow for every task"
               }
             ]
           },
           "adapter": {
             "claudeCode": {
-              "effortMap": { "ultrathink": null },
               "fixedContextWindowTokens": 1000000
             }
           }

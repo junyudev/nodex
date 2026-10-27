@@ -411,3 +411,61 @@ test("reads the catalog again each time it opens without forcing providers to ch
   expect(reload).toHaveBeenCalledTimes(2);
   expect(refresh).not.toHaveBeenCalled();
 });
+
+test("sets Claude effort on one track and turns Ultracode on at that effort", async () => {
+  const opus = {
+    ...catalogModel("claude-opus-5-5", "Claude Opus 5.5"),
+    supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"].map((reasoningEffort) => ({
+      reasoningEffort,
+      description: reasoningEffort,
+    })),
+    defaultReasoningEffort: "medium",
+  };
+  const claude = {
+    binding: { kind: "claude", instanceConfigId: "claude" },
+    model: opus.id,
+  } as const;
+  const change = vi.fn(async () => {});
+  const view = renderWithMaitai(
+    <NodexTooltipProvider delay={0}>
+      <AgentIntelligenceDropdown
+        models={[opus]}
+        open
+        selection={{
+          kind: "claude",
+          model: opus.id,
+          reasoningEffort: "default",
+          serviceTier: null,
+        }}
+        onSelectionChange={() => {}}
+        provider={{
+          label: "Claude",
+          selection: "claude",
+          options: [],
+          select: () => {},
+          nativeIntelligence: {
+            selected: { fast: false, ultracode: false, thinking: true },
+            capabilities: { fastMode: true, ultracode: true },
+            change,
+          },
+          modelCatalog: presentation({
+            selected: claude,
+            entries: [{ binding: claude.binding, label: "Claude", model: opus, selection: claude }],
+          }),
+        }}
+      />
+    </NodexTooltipProvider>,
+  );
+  const effort = await view.findByRole("slider", { name: "Effort" });
+  expect(effort.getAttribute("aria-valuetext")).toBe("Medium");
+  await act(async () => {
+    fireEvent.keyDown(effort, { key: "ArrowRight" });
+    await Promise.resolve();
+  });
+  expect(change).toHaveBeenLastCalledWith({ effort: "high", thinking: true });
+
+  const ultracode = view.getByRole("button", { name: "Ultracode" });
+  expect(ultracode.getAttribute("aria-pressed")).toBe("false");
+  await click(ultracode);
+  await waitFor(() => expect(change).toHaveBeenLastCalledWith({ ultracode: true }));
+});

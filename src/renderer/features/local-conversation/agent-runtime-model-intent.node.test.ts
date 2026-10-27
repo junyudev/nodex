@@ -25,6 +25,7 @@ const model = (slug: string, full: boolean): AgentRuntimeProvider["models"][numb
       ...(full
         ? [
             { id: "fastMode", label: "Speed", type: "boolean" as const },
+            { id: "ultracode", label: "Ultracode", type: "boolean" as const },
             { id: "thinking", label: "Thinking", type: "boolean" as const },
             {
               id: "contextWindow",
@@ -100,4 +101,28 @@ it("keeps unknown model intent for native resolution and preserves independent s
     { id: "effort", value: "high" },
     { id: "thinking", value: false },
   ]);
+});
+
+it("carries Ultracode at any effort and keeps it for a model switch back", () => {
+  const intent = { model: "full", effort: "low" as const, ultracode: true };
+  const applied = applyRuntimeClaudeIntent({ binding, model: "full" }, intent, model("full", true));
+  expect(applied.options).toEqual([
+    { id: "effort", value: "low" },
+    { id: "ultracode", value: true },
+  ]);
+  expect(readRuntimeClaudeSelection(applied)).toEqual(intent);
+
+  const unsupported = applyRuntimeClaudeIntent(
+    { binding, model: "small" },
+    { ...intent, model: "small" },
+    model("small", false),
+  );
+  expect(readRuntimeClaudeSelection(unsupported)).toEqual({
+    model: "small",
+    effort: "low",
+    ultracode: false,
+  });
+  expect(
+    resolveRuntimeClaudeIntent(unsupported, { ...intent, model: "small" }, model("small", false)),
+  ).toEqual({ ...intent, model: "small" });
 });

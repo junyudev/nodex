@@ -25,7 +25,7 @@ function SemanticallyStableCandidatesHarness({ revision }: { readonly revision: 
       labelCandidates={labelCandidates}
       modelLabel="GPT-5.6-Sol"
       reasoningLabel="Extra High"
-      showFastIndicator={false}
+      indicators={[]}
       data-revision={revision}
     />
   );
@@ -91,7 +91,7 @@ describe("IntelligenceSelectorTrigger layout", () => {
           ]}
           modelLabel="GPT-5.6-Sol"
           reasoningLabel="Extra High"
-          showFastIndicator={false}
+          indicators={[]}
           title="OpenAI · GPT-5.6-Sol · Extra High"
         />
       </div>,
@@ -153,7 +153,7 @@ describe("IntelligenceSelectorTrigger layout", () => {
         ]}
         modelLabel="GPT-5.6-Sol"
         reasoningLabel="Extra High"
-        showFastIndicator
+        indicators={["fast"]}
         title="OpenAI · GPT-5.6-Sol · Extra High"
       />,
     );

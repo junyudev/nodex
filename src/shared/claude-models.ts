@@ -11,6 +11,8 @@ export interface ClaudeModelSelection {
   readonly model: string;
   readonly effort: ClaudeEffortSelection;
   readonly fast?: boolean;
+  /** Session-scoped workflow orchestration; independent of effort. */
+  readonly ultracode?: boolean;
   readonly thinking?: boolean;
   readonly context?: string;
 }

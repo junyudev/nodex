@@ -2256,6 +2256,28 @@ export function FastModeIcon({ className }: IconProps) {
   );
 }
 
+/** A cell of agents working one task together: Claude Code's Ultracode workflow orchestration. */
+export function UltracodeIcon({ className }: IconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      className={cn(className ?? "icon-2xs shrink-0")}
+      fill="currentColor"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <polygon points="10.000 3.190 12.685 4.740 12.685 7.840 10.000 9.390 7.315 7.840 7.315 4.740" />
+      <polygon points="5.715 10.612 8.400 12.162 8.400 15.262 5.715 16.812 3.030 15.262 3.030 12.162" />
+      <polygon points="14.285 10.612 16.970 12.162 16.970 15.262 14.285 16.812 11.600 15.262 11.600 12.162" />
+    </svg>
+  );
+}
+
 export function SlashCodeReviewIcon({ className }: IconProps) {
   return (
     <svg

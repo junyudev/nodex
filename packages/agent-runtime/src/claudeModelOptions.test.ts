@@ -41,12 +41,27 @@ describe("compileClaudeModelSelection", () => {
     ).toEqual({ fastMode: false });
   });
 
-  it("uses the model default SDK effort alongside prompt-injected effort", () => {
+  it("compiles Ultracode at the selected effort for models that support it", () => {
     expect(
       compileClaudeModelSelection(
-        selection("claude-sonnet-4-6", [{ id: "effort", value: "ultrathink" }]),
+        selection("claude-opus-5-5", [
+          { id: "effort", value: "low" },
+          { id: "ultracode", value: true },
+        ]),
       ),
-    ).toMatchObject({ effort: "high", promptEffort: "ultrathink" });
+    ).toMatchObject({ effort: "low", settings: { ultracode: true } });
+    expect(
+      compileClaudeModelSelection(selection("claude-opus-4-6", [{ id: "ultracode", value: true }]))
+        .settings,
+    ).not.toHaveProperty("ultracode");
+  });
+
+  it("treats a retired effort value as the model default without enabling Ultracode", () => {
+    const compiled = compileClaudeModelSelection(
+      selection("claude-opus-5-5", [{ id: "effort", value: "ultracode" }]),
+    );
+    expect(compiled.effort).toBe("medium");
+    expect(compiled.settings).not.toHaveProperty("ultracode");
   });
 
   it("compiles the thinking toggle for models that expose it", () => {

@@ -1474,6 +1474,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         ? {
             selected: {
               fast: readRuntimeClaudeSelection(selection).fast ?? false,
+              ultracode: readRuntimeClaudeSelection(selection).ultracode ?? false,
               thinking: readRuntimeClaudeSelection(selection).thinking,
               context: readRuntimeClaudeSelection(selection).context,
               contextInherited: readRuntimeClaudeSelection(selection).context === undefined,
@@ -1481,12 +1482,13 @@ export function useAgentRuntimeConversationAdapter(input: {
             capabilities: currentModel ? runtimeClaudeModelOption(currentModel) : {},
             change: async (patch) => {
               const next = { ...claudeIntent };
-              for (const key of ["fast", "thinking", "context"] as const)
+              for (const key of ["fast", "ultracode", "thinking", "context"] as const)
                 if (patch[key] === null) delete next[key];
               await chooseModel(selection, {
                 ...next,
                 ...(patch.effort ? { effort: patch.effort } : {}),
                 ...(typeof patch.fast === "boolean" ? { fast: patch.fast } : {}),
+                ...(typeof patch.ultracode === "boolean" ? { ultracode: patch.ultracode } : {}),
                 ...(typeof patch.thinking === "boolean" ? { thinking: patch.thinking } : {}),
                 ...(typeof patch.context === "string" ? { context: patch.context } : {}),
               });

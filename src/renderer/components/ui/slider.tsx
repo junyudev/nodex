@@ -4,8 +4,11 @@ import { cn } from "@/lib/utils";
 
 export const NodexSlider = forwardRef<
   ComponentRef<typeof SliderPrimitive.Root>,
-  ComponentPropsWithoutRef<typeof SliderPrimitive.Root>
->(function NodexSlider({ className, orientation = "horizontal", ...props }, ref) {
+  ComponentPropsWithoutRef<typeof SliderPrimitive.Root> & {
+    /** Styles the pointer surface; its padding insets the thumb's travel. */
+    readonly controlClassName?: string;
+  }
+>(function NodexSlider({ className, controlClassName, orientation = "horizontal", ...props }, ref) {
   return (
     <SliderPrimitive.Root
       ref={ref}
@@ -22,6 +25,7 @@ export const NodexSlider = forwardRef<
         className={cn(
           "flex size-full touch-none items-center select-none",
           orientation === "vertical" && "flex-col",
+          controlClassName,
         )}
       >
         {props.children}

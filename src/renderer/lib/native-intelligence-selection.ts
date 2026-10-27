@@ -65,7 +65,7 @@ export function fitNativeSelection(
   target: AgentSessionConfigSelectOption | undefined,
 ): ClaudeModelSelection {
   if (!target) return intent;
-  const { fast, thinking, context, ...rest } = intent;
+  const { fast, ultracode, thinking, context, ...rest } = intent;
   let effort =
     rest.effort === "default" ? rest.effort : fitEffort(rest.effort, target.reasoningEfforts);
   const appliedThinking =
@@ -92,12 +92,13 @@ export function fitNativeSelection(
     ...rest,
     effort,
     ...(fast === undefined ? {} : { fast: fast && target.fastMode === true }),
+    ...(ultracode === undefined ? {} : { ultracode: ultracode && target.ultracode === true }),
     ...(appliedThinking === undefined ? {} : { thinking: appliedThinking }),
     ...(context && target.contextWindows?.includes(context) ? { context } : {}),
   };
 }
 
-/** Fast `false` and an absent Fast override both mean the native default is off. */
+/** `false` and an absent override both mean Fast and Ultracode are off. */
 export const nativeSelectionsMatch = (
   left: ClaudeModelSelection,
   right: ClaudeModelSelection,
@@ -105,5 +106,6 @@ export const nativeSelectionsMatch = (
   left.model === right.model &&
   left.effort === right.effort &&
   (left.fast === true) === (right.fast === true) &&
+  (left.ultracode === true) === (right.ultracode === true) &&
   left.thinking === right.thinking &&
   left.context === right.context;

@@ -46,6 +46,7 @@ export type AgentIntelligenceInheritance = "explicit" | "inherited";
 export interface AgentNativeIntelligencePatch {
   readonly effort?: ClaudeEffortLevel;
   readonly fast?: boolean | null;
+  readonly ultracode?: boolean | null;
   readonly thinking?: boolean | null;
   readonly context?: string | null;
 }
@@ -53,12 +54,14 @@ export interface AgentNativeIntelligencePatch {
 export interface AgentNativeIntelligencePresentation {
   readonly selected: {
     readonly fast?: boolean | null;
+    readonly ultracode?: boolean | null;
     readonly thinking?: boolean | null;
     readonly context?: string | null;
     readonly contextInherited?: boolean;
   };
   readonly capabilities: {
     readonly fastMode?: boolean;
+    readonly ultracode?: boolean;
     readonly disableThinking?: boolean;
     readonly contextWindows?: readonly string[];
   };
@@ -268,7 +271,7 @@ function LegacyAgentIntelligenceDropdown({
             labelCandidates={labelCandidates}
             modelLabel={modelLabel}
             reasoningLabel={reasoningLabel}
-            showFastIndicator={showFastIndicator}
+            indicators={showFastIndicator ? ["fast"] : []}
             aria-keyshortcuts={shortcut?.ariaKeyShortcuts}
           />
         )

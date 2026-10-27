@@ -34,8 +34,12 @@ describe("the Inbox's settings panel", () => {
     const chat = screen.getByRole("button", { name: "New chat model" });
     expect(chat.textContent).toBe("GPT-6 Astra · Medium");
     await click(chat);
-    await click(screen.getByRole("button", { name: "Effort Medium" }));
-    await click(screen.getByRole("menuitem", { name: "High" }));
+    const effort = screen.getByRole("slider", { name: "Effort" });
+    expect(effort.getAttribute("aria-valuetext")).toBe("Medium");
+    await act(async () => {
+      fireEvent.keyDown(effort, { key: "ArrowRight" });
+      await settleAsyncRender();
+    });
     expect(agents.save).toHaveBeenLastCalledWith({
       chatAgent: { instanceId: "codex", model: null, reasoningEffort: "high", serviceTier: null },
     });

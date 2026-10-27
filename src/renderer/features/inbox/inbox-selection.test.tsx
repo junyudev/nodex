@@ -61,6 +61,13 @@ const click = async (name: string, role = "button") => {
   });
 };
 
+const stepEffort = async (key: "ArrowLeft" | "ArrowRight") => {
+  await act(async () => {
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Effort" }), { key });
+    await settleAsyncRender();
+  });
+};
+
 const chat = (sessionId: string, displayTitle: string): InboxChat => ({
   sessionId,
   displayTitle,
@@ -212,8 +219,10 @@ describe("Inbox destination and Agent selection", () => {
       />,
     );
     await click("Runs on Codex · GPT-6 Astra · Medium");
-    await click("Effort Medium");
-    await click("High", "menuitem");
+    expect(screen.getByRole("slider", { name: "Effort" }).getAttribute("aria-valuetext")).toBe(
+      "Medium",
+    );
+    await stepEffort("ArrowRight");
     await click("Start chat");
     expect(onSubmit).toHaveBeenCalledWith(
       {

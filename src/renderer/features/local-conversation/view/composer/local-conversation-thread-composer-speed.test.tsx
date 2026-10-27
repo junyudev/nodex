@@ -2536,7 +2536,6 @@ describe("ThreadComposer speed menu", () => {
     expect(fastIcon.getAttribute("height")).toBe("24");
     expect(fastIcon.getAttribute("viewBox")).toBe("0 0 24 24");
     expect(fastIcon.classList.contains("icon-2xs")).toBe(true);
-    expect(fastIcon.classList.contains("text-token-foreground")).toBe(true);
 
     const fastIconPath = fastIcon.querySelector("path");
     if (!(fastIconPath instanceof SVGPathElement)) {

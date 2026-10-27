@@ -11,12 +11,14 @@ const value = (selection: AgentModelSelection, id: string) =>
 export function readRuntimeClaudeSelection(selection: AgentModelSelection): ClaudeModelSelection {
   const effort = value(selection, "effort");
   const fast = value(selection, "fastMode");
+  const ultracode = value(selection, "ultracode");
   const thinking = value(selection, "thinking");
   const context = value(selection, "contextWindow");
   return {
     model: selection.model,
     effort: isClaudeEffortLevel(effort) ? effort : "default",
     ...(typeof fast === "boolean" ? { fast } : {}),
+    ...(typeof ultracode === "boolean" ? { ultracode } : {}),
     ...(typeof thinking === "boolean" ? { thinking } : {}),
     ...(typeof context === "string" ? { context } : {}),
   };
@@ -33,6 +35,7 @@ export function runtimeClaudeModelOption(model: Model): AgentSessionConfigSelect
     description: null,
     reasoningEfforts: effort?.type === "select" ? effort.options.map((choice) => choice.id) : [],
     fastMode: options.some((option) => option.id === "fastMode" && option.type === "boolean"),
+    ultracode: options.some((option) => option.id === "ultracode" && option.type === "boolean"),
     disableThinking: options.some(
       (option) => option.id === "thinking" && option.type === "boolean",
     ),
@@ -51,10 +54,12 @@ export function applyRuntimeClaudeIntent(
     model: applied.model,
     options: [
       ...(selection.options ?? []).filter(
-        (option) => !["effort", "fastMode", "thinking", "contextWindow"].includes(option.id),
+        (option) =>
+          !["effort", "fastMode", "ultracode", "thinking", "contextWindow"].includes(option.id),
       ),
       ...(applied.effort === "default" ? [] : [{ id: "effort", value: applied.effort }]),
       ...(applied.fast === undefined ? [] : [{ id: "fastMode", value: applied.fast }]),
+      ...(applied.ultracode === undefined ? [] : [{ id: "ultracode", value: applied.ultracode }]),
       ...(applied.thinking === undefined ? [] : [{ id: "thinking", value: applied.thinking }]),
       ...(applied.context === undefined ? [] : [{ id: "contextWindow", value: applied.context }]),
     ],

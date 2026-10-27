@@ -50,7 +50,6 @@ import type {
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { applyClaudePromptEffortPrefix } from "@t3tools/shared/model";
 import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
   formatClaudeResumeCompactionQuestion,
@@ -8525,16 +8524,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               promptUuid === null
                 ? null
                 : yield* makeClaudeUserMessageWithAttachments({
-                    text: applyClaudePromptEffortPrefix(
-                      providerPromptForInteraction(
-                        turnInput.message.text,
-                        turnInput.runtimePolicy.interactionMode,
-                      ),
-                      compileClaudeModelSelection(
-                        turnInput.modelSelection,
-                        subagentModelCatalog,
-                        adapterOptions.settings.modelTraits,
-                      ).promptEffort,
+                    text: providerPromptForInteraction(
+                      turnInput.message.text,
+                      turnInput.runtimePolicy.interactionMode,
                     ),
                     attachments: turnInput.message.attachments,
                     attachmentsDir,
@@ -8783,16 +8775,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               });
             }
             const userMessage = yield* makeClaudeUserMessageWithAttachments({
-              text: applyClaudePromptEffortPrefix(
-                providerPromptForInteraction(
-                  turnInput.message.text,
-                  currentTurn.input.runtimePolicy.interactionMode,
-                ),
-                compileClaudeModelSelection(
-                  currentTurn.input.modelSelection,
-                  subagentModelCatalog,
-                  adapterOptions.settings.modelTraits,
-                ).promptEffort,
+              text: providerPromptForInteraction(
+                turnInput.message.text,
+                currentTurn.input.runtimePolicy.interactionMode,
               ),
               attachments: turnInput.message.attachments,
               priority: "now",

@@ -39,6 +39,17 @@ import {
   INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX,
   useIntelligenceSelectorTriggerGeometry,
 } from "./intelligence-selector-trigger";
+import {
+  IntelligenceControlsHeader,
+  IntelligenceEffortSlider,
+  IntelligenceModeToggle,
+  type IntelligenceModeIndicator,
+} from "./intelligence-controls";
+import {
+  resolveIntelligenceEffortPosition,
+  resolveIntelligenceEffortStops,
+  THINKING_OFF_EFFORT_STOP,
+} from "@/lib/intelligence-effort";
 import type {
   AgentIntelligenceDropdownProps,
   AgentNativeIntelligencePatch,
@@ -204,8 +215,31 @@ export function AgentModelPicker(
   const changeNative = (patch: AgentNativeIntelligencePatch) => {
     if (native) void run(() => native.change(patch));
   };
-  const reasoningOptions =
-    models.find((model) => model.id === selection.model)?.supportedReasoningEfforts ?? [];
+  const currentModel = models.find((model) => model.id === selection.model);
+  const reasoningOptions = currentModel?.supportedReasoningEfforts ?? [];
+  const nativeControls = isCodex || selection.kind === "claude";
+  const effortStops = nativeControls
+    ? resolveIntelligenceEffortStops({
+        efforts: reasoningOptions,
+        label: (effort) => agentEffortLabel(selection.kind, effort),
+        canDisableThinking: native?.capabilities.disableThinking === true,
+      })
+    : [];
+  const effortPosition = resolveIntelligenceEffortPosition({
+    stops: effortStops,
+    selected: selection.reasoningEffort,
+    modelDefault: currentModel?.defaultReasoningEffort,
+    thinkingOff: native?.selected.thinking === false,
+  });
+  const fastOn = isCodex ? selection.serviceTier === "fast" : native?.selected.fast === true;
+  const ultracodeOn = native?.capabilities.ultracode === true && native.selected.ultracode === true;
+  const indicators: IntelligenceModeIndicator[] = [
+    ...(fastOn ? (["fast"] as const) : []),
+    ...(ultracodeOn ? (["ultracode"] as const) : []),
+  ];
+  // A model with a thinking switch but no effort levels shows that switch as a mode.
+  const thinkingSwitch =
+    native?.capabilities.disableThinking === true && reasoningOptions.length === 0;
   const contextWindows = [...new Set(native?.capabilities.contextWindows ?? [])];
   const visibleEntries = visibleAgentModelPickerEntries(
     catalog.entries,
@@ -233,19 +267,59 @@ export function AgentModelPicker(
       disabled: pending || entry.unavailableReason !== undefined,
     };
   });
+  const disabled = props.disabled === true || pending;
+  const modeToggleList = [
+    thinkingSwitch ? (
+      <IntelligenceModeToggle
+        key="thinking"
+        mode="thinking"
+        description="Reason before answering."
+        pressed={native?.selected.thinking === true}
+        disabled={disabled}
+        onPressedChange={(thinking) => changeNative({ thinking })}
+      />
+    ) : null,
+    isCodex || native?.capabilities.fastMode ? (
+      <IntelligenceModeToggle
+        key="fast"
+        mode="fast"
+        description={isCodex ? "1.5x speed. Uses more usage." : "Faster output. Uses more usage."}
+        pressed={fastOn}
+        disabled={disabled}
+        onPressedChange={(fast) => {
+          if (native) return changeNative({ fast });
+          props.onSelectionChange(
+            { ...selection, serviceTier: fast ? "fast" : null },
+            "serviceTier",
+          );
+        }}
+      />
+    ) : null,
+    native?.capabilities.ultracode ? (
+      <IntelligenceModeToggle
+        key="ultracode"
+        mode="ultracode"
+        description="Plans and runs a multi-agent workflow for each substantive task, at any effort. Uses usage much faster."
+        pressed={ultracodeOn}
+        disabled={disabled}
+        onPressedChange={(ultracode) => changeNative({ ultracode })}
+      />
+    ) : null,
+  ].filter(Boolean);
+  const modeToggles = modeToggleList.length > 0 ? modeToggleList : null;
   const genericOptions =
     isCodex || selection.kind === "claude"
       ? []
       : (catalog.configOptions?.filter((option) => option.category !== "model") ?? []);
-  const disabled = props.disabled === true || pending;
   const runtimeOptions = catalog.runtimeOptions ?? [];
   const hasOptions =
     props.modelOnly !== true &&
-    (isCodex || selection.kind === "claude"
-      ? reasoningOptions.length > 0 ||
-        native?.capabilities.disableThinking ||
+    (nativeControls
+      ? effortStops.length > 1 ||
+        thinkingSwitch ||
         isCodex ||
         native?.capabilities.fastMode ||
+        native?.capabilities.ultracode ||
         contextWindows.length > 1
       : genericOptions.length > 0 || Boolean(catalog.modes?.availableModes.length));
   return (
@@ -312,9 +386,7 @@ export function AgentModelPicker(
             labelCandidates={labels}
             modelLabel={modelLabel}
             reasoningLabel={reasoningLabel}
-            showFastIndicator={
-              isCodex ? selection.serviceTier === "fast" : native?.selected.fast === true
-            }
+            indicators={indicators}
             aria-keyshortcuts={props.shortcut?.ariaKeyShortcuts}
           />
         ))
@@ -370,28 +442,16 @@ export function AgentModelPicker(
           {hasOptions ? <NodexDropdownSeparator /> : null}
           {props.modelOnly ? null : (
             <>
-              {(isCodex || selection.kind === "claude") &&
-              (reasoningOptions.length > 0 || native?.capabilities.disableThinking) ? (
-                <OptionRow
-                  label="Effort"
-                  value={native?.selected.thinking === false ? "off" : selection.reasoningEffort}
+              {effortStops.length > 1 ? (
+                <IntelligenceEffortSlider
+                  stops={effortStops}
+                  value={effortPosition.value}
+                  isDefault={effortPosition.isDefault}
                   disabled={disabled}
-                  options={[
-                    ...(native?.capabilities.disableThinking
-                      ? [{ value: "off", label: "Off" }]
-                      : []),
-                    ...(native?.capabilities.disableThinking && reasoningOptions.length === 0
-                      ? [{ value: "on", label: "On" }]
-                      : []),
-                    ...reasoningOptions.map((option) => ({
-                      value: option.reasoningEffort,
-                      label: agentEffortLabel(selection.kind, option.reasoningEffort),
-                      tooltipText: option.description,
-                    })),
-                  ]}
+                  accessory={modeToggles}
                   onChange={(value) => {
-                    if (native && value === "off") return changeNative({ thinking: false });
-                    if (native && value === "on") return changeNative({ thinking: true });
+                    if (native && value === THINKING_OFF_EFFORT_STOP)
+                      return changeNative({ thinking: false });
                     if (native && isClaudeEffortLevel(value))
                       return changeNative({ effort: value, thinking: true });
                     props.onSelectionChange(
@@ -400,34 +460,10 @@ export function AgentModelPicker(
                     );
                   }}
                 />
-              ) : null}
-              {isCodex || native?.capabilities.fastMode ? (
-                <OptionRow
-                  label="Speed"
-                  value={
-                    isCodex
-                      ? selection.serviceTier === "fast"
-                        ? "fast"
-                        : "standard"
-                      : native?.selected.fast == null
-                        ? ""
-                        : native.selected.fast
-                          ? "fast"
-                          : "standard"
-                  }
-                  options={[
-                    { value: "standard", label: "Standard" },
-                    { value: "fast", label: "Fast" },
-                  ]}
-                  disabled={disabled}
-                  onChange={(value) => {
-                    if (native) return changeNative({ fast: value === "fast" });
-                    props.onSelectionChange(
-                      { ...selection, serviceTier: value === "fast" ? "fast" : null },
-                      "serviceTier",
-                    );
-                  }}
-                />
+              ) : modeToggles ? (
+                <div className="px-[var(--padding-row-x)]">
+                  <IntelligenceControlsHeader label="Modes" accessory={modeToggles} />
+                </div>
               ) : null}
               {native && contextWindows.length > 1 ? (
                 <OptionRow
