@@ -41,8 +41,8 @@ are forwarded to its command. The canonical command is
 `tsc-rs --build --noEmit && vp lint`; `vp lint` alone is a focused lint investigation.
 A cached success and compiler incremental analysis are different measurements.
 
-tsc-rs is the sole TypeScript and Effect diagnostic owner. Its native Effect
-rules match the pinned `@effect/tsgo` editor runtime, prepared with
+tsc-rs is the sole TypeScript and Effect diagnostic owner for semantic checks.
+`@effect/tsgo` independently prepares the TypeScript editor runtime through
 `effect-tsgo patch`. Oxlint keeps `lint.options.typeAware` enabled and
 `lint.options.typeCheck` disabled so compiler diagnostics run once. No Effect
 plugin is installed into Oxlint.
@@ -223,6 +223,11 @@ Pure synchronous Schema helpers retain ordinary TypeScript execution, so
 `schemaSync` is disabled. `schemaSyncInEffect` remains advisory where a decoder
 must compose failure inside an Effect workflow.
 
+`preferEffectArray`, `preferEffectRecord`, and `preferEffectString` are disabled:
+ordinary native collection and string operations remain valid pure computation
+inside Main Modules. Other new editor diagnostics remain advisory within the
+control-plane scope.
+
 ## Maintenance
 
 After upgrading Vite+, Oxlint, tsc-rs, TypeScript, or `@effect/tsgo`:
@@ -237,6 +242,7 @@ After upgrading Vite+, Oxlint, tsc-rs, TypeScript, or `@effect/tsgo`:
    its invariant, scope, remediation, and escape boundary.
 5. Add a focused `tooling:verify` fixture for every Nodex-owned rule or gate
    behavior. Do not create a warning-count baseline.
-6. Keep the Effect editor and compiler diagnostic generations aligned. Review
-   new upstream rules against `tsconfig.effect.json`; preserve the explicit
+6. Review the Effect editor and compiler diagnostic generations separately:
+   `@effect/tsgo` upgrades the editor runtime, while tsc-rs embeds its own port.
+   Review new upstream rules against `tsconfig.effect.json`; preserve the explicit
    outside-scope defaults and the platform exceptions.

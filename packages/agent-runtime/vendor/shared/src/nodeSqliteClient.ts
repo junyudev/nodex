@@ -638,6 +638,7 @@ const make = Effect.fn("makeWithDatabase")(function* (
   const borrower: Borrower = (use) => Effect.flatMap(route, (target) => target.lock.withPermits(1)(use(target.connection)));
 
   return yield* Client.make({
+    driver: "sqlite-node",
     acquirer: acquire,
     borrower,
     compiler,

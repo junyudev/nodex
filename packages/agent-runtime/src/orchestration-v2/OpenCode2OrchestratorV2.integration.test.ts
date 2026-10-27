@@ -66,7 +66,13 @@ const event = (type: string, data: Record<string, unknown>): ProviderReplayEntry
   type: "emit_inbound",
   frame: {
     type: "sdk.event",
-    event: { id: `evt_${type.replaceAll(".", "")}`, created: 1, type, data },
+    event: {
+      id: `evt_${type.replaceAll(".", "")}`,
+      created: 1,
+      type,
+      data,
+      durable: { aggregateID: data.sessionID ?? SESSION, seq: 1, version: 1 },
+    },
   },
 });
 const labelled = (entry: ProviderReplayEntry, label: string): ProviderReplayEntry =>
@@ -262,6 +268,40 @@ const runScenario = (input: {
   });
 
 describe("OpenCode 2 through the orchestrator", () => {
+  it.effect("projects compaction with native provider data and completes its execution", () =>
+    Effect.gen(function* () {
+      const name = "opencode2-native-compaction";
+      const cwd = yield* checkpointWorkspace(name);
+      const thread = threadCommands({ name, worktreePath: cwd });
+      const answered = answeredPrompt("COMPACTED");
+      const projection = yield* runScenario({
+        name,
+        threadId: thread.threadId,
+        entries: [
+          ...createdSession(cwd, name),
+          ...instructionsWritten,
+          ...answered.slice(0, 2),
+          event("session.compaction.started", { sessionID: SESSION, reason: "auto" }),
+          event("session.compaction.ended", {
+            sessionID: SESSION,
+            reason: "auto",
+            text: "Keep the current workspace and task.",
+            native: { messages: [{ role: "user", content: "Retained context" }] },
+          }),
+          ...answered.slice(2),
+        ],
+        commands: [thread.create, thread.message("continue")],
+      });
+      assert.equal(projection.runs[0]?.status, "completed");
+      const compaction = projection.turnItems.find((item) => item.type === "compaction");
+      assert.equal(compaction?.status, "completed");
+      assert.equal(
+        compaction?.type === "compaction" ? compaction.summary : undefined,
+        "Keep the current workspace and task.",
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect.each(["message", "thread settings"] as const)(
     "switches the session's model before the next prompt when changed from the %s",
     (via) =>

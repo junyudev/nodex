@@ -37,11 +37,11 @@
     "@t3tools/provider-acp": "workspace:*",
     "@t3tools/provider-core": "workspace:*",
     "@t3tools/shared": "workspace:*",
-    "effect": "4.0.3"
+    "effect": "4.0.6"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.3",
-    "@effect/vitest": "4.0.3",
+    "@effect/platform-node": "4.0.6",
+    "@effect/vitest": "4.0.6",
     "@t3tools/provider-testing": "workspace:*",
     "@types/node": "24.13.3",
     "effect-acp": "workspace:*",

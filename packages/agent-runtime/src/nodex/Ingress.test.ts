@@ -114,11 +114,13 @@ it.effect("binds the emitted initialize session before checking canonical execut
       const initialize = request({ method: "initialize", id: 1 });
       const opened = yield* send(
         admit(
-          Effect.sync(() => {
-            HttpEffect.appendPreResponseHandlerUnsafe(initialize, (_request, response) =>
-              Effect.succeed(
-                HttpServerResponse.setHeader(response, "mcp-session-id", "profile:test"),
-              ),
+          Effect.gen(function* () {
+            HttpEffect.appendPreResponseHandlerUnsafe(
+              yield* Effect.context(),
+              (_request, response) =>
+                Effect.succeed(
+                  HttpServerResponse.setHeader(response, "mcp-session-id", "profile:test"),
+                ),
             );
             return HttpServerResponse.empty();
           }),
@@ -333,11 +335,13 @@ it.live("releases every ended native client's HTTP profile while retaining a liv
           admit(
             beforeResponse.pipe(
               Effect.andThen(
-                Effect.sync(() => {
-                  HttpEffect.appendPreResponseHandlerUnsafe(incoming, (_request, response) =>
-                    Effect.succeed(
-                      HttpServerResponse.setHeader(response, "mcp-session-id", profileId),
-                    ),
+                Effect.gen(function* () {
+                  HttpEffect.appendPreResponseHandlerUnsafe(
+                    yield* Effect.context(),
+                    (_request, response) =>
+                      Effect.succeed(
+                        HttpServerResponse.setHeader(response, "mcp-session-id", profileId),
+                      ),
                   );
                   return HttpServerResponse.empty();
                 }),
@@ -447,11 +451,13 @@ it.effect(
         const initialize = request({ method: "initialize", id: "init" });
         yield* send(
           admit(
-            Effect.sync(() => {
-              HttpEffect.appendPreResponseHandlerUnsafe(initialize, (_request, response) =>
-                Effect.succeed(
-                  HttpServerResponse.setHeader(response, "mcp-session-id", "profile:shared"),
-                ),
+            Effect.gen(function* () {
+              HttpEffect.appendPreResponseHandlerUnsafe(
+                yield* Effect.context(),
+                (_request, response) =>
+                  Effect.succeed(
+                    HttpServerResponse.setHeader(response, "mcp-session-id", "profile:shared"),
+                  ),
               );
               return HttpServerResponse.empty();
             }),
@@ -821,11 +827,13 @@ it.live(
         const initialize = request({ method: "initialize", id: 1 });
         yield* send(
           admit(
-            Effect.sync(() => {
-              HttpEffect.appendPreResponseHandlerUnsafe(initialize, (_request, response) =>
-                Effect.succeed(
-                  HttpServerResponse.setHeader(response, "mcp-session-id", "profile:other"),
-                ),
+            Effect.gen(function* () {
+              HttpEffect.appendPreResponseHandlerUnsafe(
+                yield* Effect.context(),
+                (_request, response) =>
+                  Effect.succeed(
+                    HttpServerResponse.setHeader(response, "mcp-session-id", "profile:other"),
+                  ),
               );
               return HttpServerResponse.empty();
             }),
@@ -942,11 +950,13 @@ it.live(
         const initialize = request({ method: "initialize", id: 1 });
         yield* send(
           admit(
-            Effect.sync(() => {
-              HttpEffect.appendPreResponseHandlerUnsafe(initialize, (_request, response) =>
-                Effect.succeed(
-                  HttpServerResponse.setHeader(response, "mcp-session-id", "profile:acp"),
-                ),
+            Effect.gen(function* () {
+              HttpEffect.appendPreResponseHandlerUnsafe(
+                yield* Effect.context(),
+                (_request, response) =>
+                  Effect.succeed(
+                    HttpServerResponse.setHeader(response, "mcp-session-id", "profile:acp"),
+                  ),
               );
               return HttpServerResponse.empty();
             }),

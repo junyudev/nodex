@@ -1,8 +1,10 @@
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { execFileSync } from "node:child_process";
+import nodeChildProcess, { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { fileURLToPath } from "node:url";
+import { vi } from "vite-plus/test";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -13,6 +15,42 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const processTreeFixture = fileURLToPath(
   new URL("../../../../tests/fixtures/scoped-process-tree.mjs", import.meta.url),
+);
+
+it.live.each([false, true])("Windows cleanup skips an exited child's PID (signal: %s)", (signal) =>
+  Effect.gen(function* () {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    const taskkill = vi.spyOn(nodeChildProcess, "execFile").mockImplementation((...args) => {
+      const callback = args.at(-1);
+      if (typeof callback === "function") callback(null, "", "");
+      return new nodeChildProcess.ChildProcess();
+    });
+    syncBuiltinESMExports();
+    try {
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+          const handle = yield* spawner.spawn(
+            ChildProcess.make(process.execPath, [
+              "-e",
+              signal ? "process.kill(process.pid, 'SIGTERM')" : "process.exit(1)",
+            ]),
+          );
+          // Spawn natively, then exercise the Windows exit and release paths.
+          Object.defineProperty(process, "platform", { value: "win32" });
+          const exit = yield* Effect.exit(handle.exitCode);
+          if (signal) assert.isTrue(Exit.isFailure(exit));
+          else assert.strictEqual(Exit.isSuccess(exit) ? Number(exit.value) : undefined, 1);
+          yield* handle.kill();
+        }),
+      );
+      assert.strictEqual(taskkill.mock.calls.length, 0);
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+      taskkill.mockRestore();
+      syncBuiltinESMExports();
+    }
+  }).pipe(Effect.provide(NodeServices.layer)),
 );
 
 /** The process's one-letter state, or undefined once it has been reaped. */

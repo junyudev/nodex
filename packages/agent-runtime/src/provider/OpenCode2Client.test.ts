@@ -6,9 +6,9 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { describe } from "vite-plus/test";
 
-import * as OpenCode2Client from "./OpenCode2Client.ts";
+import * as OpenCode2Client from "@t3tools/provider-opencode/server/v2/OpenCode2Client";
 
-const INFO_BODY = '{"version":"2.0.18","pid":4242,"urls":[],"paths":{"tmp":"/tmp"}}';
+const INFO_BODY = '{"version":"2.1.4","pid":4242,"urls":[],"paths":{"tmp":"/tmp"}}';
 
 /** Sends one request through the client and returns the Authorization header it carried. */
 const authorizationFor = (password: string | Redacted.Redacted) => {

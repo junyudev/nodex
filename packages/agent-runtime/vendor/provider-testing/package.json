@@ -28,14 +28,14 @@
     "typecheck": "tsc-rs --noEmit"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.3",
+    "@effect/platform-node": "4.0.6",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/provider-core": "workspace:*",
     "@t3tools/shared": "workspace:*",
-    "effect": "4.0.3"
+    "effect": "4.0.6"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.3",
+    "@effect/vitest": "4.0.6",
     "@types/node": "24.13.3",
     "vite-plus": "1.4.0"
   }

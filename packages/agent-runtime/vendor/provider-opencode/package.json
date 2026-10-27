@@ -48,18 +48,18 @@
     "typecheck": "tsc-rs --noEmit"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "1.15.13",
-    "@opencode/client": "2.0.23",
-    "@opencode/protocol": "2.0.23",
-    "@opencode/schema": "2.0.23",
+    "@opencode-ai/sdk": "1.19.4",
+    "@opencode/client": "2.1.4",
+    "@opencode/protocol": "2.1.4",
+    "@opencode/schema": "2.1.4",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/provider-core": "workspace:*",
     "@t3tools/shared": "workspace:*",
-    "effect": "4.0.3"
+    "effect": "4.0.6"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.3",
-    "@effect/vitest": "4.0.3",
+    "@effect/platform-node": "4.0.6",
+    "@effect/vitest": "4.0.6",
     "@t3tools/provider-testing": "workspace:*",
     "@types/node": "24.13.3",
     "vite-plus": "1.4.0"

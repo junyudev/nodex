@@ -5,12 +5,8 @@ packages:
 
 patchedDependencies:
   "@pierre/diffs@1.6.1": patches/@pierre__diffs@1.6.1.patch
-  "@opencode/client@2.0.23": patches/@opencode__client@2.0.23.patch
-  "@opencode/protocol@2.0.23": patches/@opencode__protocol@2.0.23.patch
-  "@opencode/schema@2.0.23": patches/@opencode__schema@2.0.23.patch
   "@y/prosemirror@2.0.0-6": patches/@y__prosemirror@2.0.0-6.patch
-  "@effect/platform-node-shared@4.0.3": patches/@effect__platform-node-shared@4.0.3.patch
-  "@effect/vitest@4.0.3": patches/@effect__vitest@4.0.3.patch
+  "@effect/vitest@4.0.6": patches/@effect__vitest@4.0.6.patch
   y-prosemirror@1.3.7: patches/y-prosemirror@1.3.7.patch
   yjs@13.6.33: patches/yjs@13.6.33.patch
 
@@ -21,8 +17,8 @@ supportedArchitectures:
     - current
 
 overrides:
-  "@opencode/protocol>effect": 4.0.3
-  "@opencode/schema>effect": 4.0.3
+  "@opencode/protocol>effect": 4.0.6
+  "@opencode/schema>effect": 4.0.6
   # Trees uses the shared color API; theming 1.0.2 also supports Diffs' Theme 2.
   "@pierre/trees@1.0.0-beta.6>@pierre/theming": 1.0.2
   # Excalidraw's tab API is unchanged; replace its React 18-era Radix closure.
@@ -100,26 +96,19 @@ allowBuilds:
   tsc-rs: true
 
 packageExtensions:
-  "@effect/vitest@4.0.3":
+  "@effect/vitest@4.0.6":
     peerDependencies:
       vite-plus: 1.4.0
 
 peerDependencyRules:
   allowedVersions:
     # OpenCode shares the workspace Effect patch with its protocol/schema packages.
-    "@opencode/client@2.0.23>effect": 4.0.3
+    "@opencode/client@2.1.4>effect": 4.0.6
   allowAny:
     # Vite+ supplies the Vite API through its own package version.
     - vite
 
 minimumReleaseAgeExclude:
-  - "@effect/platform-node-shared@4.0.3"
-  - "@effect/platform-node@4.0.3"
-  - effect@4.0.3
-  - "@effect/vitest@4.0.3"
-  - "@effect/tsgo@0.51.1"
-  - "@effect/tsgo-darwin-arm64@0.51.1"
-  - "@effect/tsgo-darwin-x64@0.51.1"
   - vitest@5.0.5
   - "@vitest/browser-playwright@5.0.5"
   - electron@44.9.1

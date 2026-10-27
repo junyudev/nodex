@@ -299,7 +299,7 @@ export const make = Effect.gen(function* () {
     );
     if (payload?.method === "initialize" && native !== undefined) {
       // MCP adds its session header when the response is sent, after route middleware returns.
-      HttpEffect.appendPreResponseHandlerUnsafe(request, (_request, emitted) => {
+      HttpEffect.appendPreResponseHandlerUnsafe(yield* Effect.context(), (_request, emitted) => {
         const openedProfileId = emitted.headers["mcp-session-id"];
         if (openedProfileId === undefined) return Effect.succeed(emitted);
         return Effect.gen(function* () {

@@ -544,7 +544,9 @@ and Effect diagnostics; Oxlint owns type-aware lint. They share the same task-re
 `vp fmt --check` with that same semantic command. CI uses the same entrypoint and
 policy. To measure actual analysis, use `vp run --no-cache check:semantic`; the
 run option must precede the task name.
-Keep `@effect/tsgo` aligned with the diagnostic version embedded by tsc-rs.
+`@effect/tsgo` supplies the editor runtime. Its version does not change the
+Effect diagnostics embedded by tsc-rs; review both diagnostic generations when
+upgrading either tool.
 `effect-tsgo patch` prepares the TypeScript editor runtime; it does not add a
 second compiler or an Effect pass to Oxlint. `tsconfig.effect.json` owns the
 Effect rule severities, control-plane scope, and platform exceptions for both
