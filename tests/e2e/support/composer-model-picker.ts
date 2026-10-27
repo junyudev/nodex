@@ -40,16 +40,39 @@ export const chooseComposerModel = async (
   await expect(search).toBeHidden();
 };
 
-export const openComposerOptionControl = async (
-  page: Page,
-  name: "Effort" | "Speed" | "Context" | "Mode" | "Reasoning",
-): Promise<void> => {
-  // The picker may still be closing from a previous choice; reopen it until the control answers.
-  await expect(async () => {
-    await openComposerModelPicker(page);
-    await page
-      .getByRole("button", { name: new RegExp(`^${name} `, "u") })
-      .click({ timeout: 1_000 });
-    await expect(page.getByRole("menu")).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
+/**
+ * Moves the open picker's effort track to the stop named `label`. Holding the pointer previews
+ * each stop without committing it, so only the named effort is written.
+ */
+export const chooseComposerEffort = async (page: Page, label: string): Promise<void> => {
+  await openComposerModelPicker(page);
+  const effort = page.getByRole("slider", { name: "Effort", exact: true });
+  await expect(effort).toBeEnabled();
+  const last = Number(await effort.getAttribute("max"));
+  const track = page.locator('[data-slot="slider-track"]').filter({ has: effort });
+  const box = await track.boundingBox();
+  if (!box || !(last > 0)) throw new Error("The effort track is not laid out");
+  const y = box.y + box.height / 2;
+  const stopX = (index: number) => box.x + (box.width * index) / last;
+  await page.mouse.move(stopX(0), y);
+  await page.mouse.down();
+  for (let index = 0; index <= last; index += 1) {
+    await page.mouse.move(stopX(index), y, { steps: 2 });
+    if ((await effort.getAttribute("aria-valuetext")) !== label) continue;
+    await page.mouse.up();
+    await expect(effort).toHaveAttribute("aria-valuetext", label);
+    await expect(effort).toBeEnabled();
+    return;
+  }
+  await page.mouse.up();
+  throw new Error(`The picker offers no ${label} effort`);
+};
+
+/** Turns the open picker's Fast mode on or off. */
+export const setComposerFast = async (page: Page, on: boolean): Promise<void> => {
+  await openComposerModelPicker(page);
+  const fast = page.getByRole("button", { name: "Fast", exact: true });
+  if ((await fast.getAttribute("aria-pressed")) !== String(on)) await fast.click();
+  await expect(fast).toHaveAttribute("aria-pressed", String(on));
+  await expect(fast).toBeEnabled();
 };

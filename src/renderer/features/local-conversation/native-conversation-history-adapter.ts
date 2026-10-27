@@ -88,10 +88,6 @@ export function useNativeConversationHistoryAdapter(input: {
     kind: backend,
     label: backend === "claude" ? "Claude" : backend === "opencode" ? "OpenCode" : "ACP",
     selection: backend,
-    options: [],
-    select: () => {
-      throw new Error("Native history has no execution owner");
-    },
     commands: [],
     error: state.error,
     resolveHistoryImage: (reference) =>

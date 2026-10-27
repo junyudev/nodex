@@ -1,11 +1,15 @@
-import { fireEvent, within } from "@testing-library/react";
-import { act } from "react";
+import { fireEvent, waitFor } from "@testing-library/react";
+import { act, useState } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { renderWithMaitai } from "@/test/thread-maitai";
 import type { CodexModelOption } from "../../../../shared/types";
 import { projectNativeModelOption } from "@/lib/native-model-option";
-import { AgentIntelligenceDropdown } from "./agent-intelligence-dropdown";
+import {
+  AgentIntelligenceDropdown,
+  type AgentIntelligenceDropdownProps,
+  type AgentNativeIntelligencePatch,
+} from "./agent-intelligence-dropdown";
 
 const MODELS: readonly CodexModelOption[] = [
   {
@@ -48,8 +52,8 @@ const SELECTION = {
   serviceTier: null,
 } as const;
 
-function renderSelector(overrides: Partial<Parameters<typeof AgentIntelligenceDropdown>[0]> = {}) {
-  const props: Parameters<typeof AgentIntelligenceDropdown>[0] = {
+function renderSelector(overrides: Partial<AgentIntelligenceDropdownProps> = {}) {
+  const props: AgentIntelligenceDropdownProps = {
     models: MODELS,
     selection: SELECTION,
     onSelectionChange: () => undefined,
@@ -63,307 +67,207 @@ function renderSelector(overrides: Partial<Parameters<typeof AgentIntelligenceDr
   );
 }
 
-async function openSelector(view: ReturnType<typeof renderSelector>) {
-  await act(async () => {
-    const trigger = view.getByRole("button", { name: "Agent intelligence" });
-    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-    fireEvent.click(trigger);
+const click = async (element: HTMLElement) =>
+  act(async () => {
+    fireEvent.click(element);
     await Promise.resolve();
   });
-}
 
-describe("shared Codex intelligence dropdown", () => {
-  test("keeps inheritance explicit and delegates clearing to its consumer", async () => {
-    const onInherit = vi.fn();
-    const view = renderSelector({ allowInherit: true, inheritance: "inherited", onInherit });
-
-    expect(view.getByText("Use current/default")).toBeTruthy();
-    await openSelector(view);
-    await act(async () => {
-      fireEvent.click(view.getByRole("menuitem", { name: "Use current/default" }));
-      await Promise.resolve();
-    });
-    expect(onInherit).toHaveBeenCalledTimes(1);
+const press = async (element: HTMLElement, key: string) =>
+  act(async () => {
+    fireEvent.keyDown(element, { key });
+    await Promise.resolve();
   });
 
-  test("reuses the native Composer model fallback behavior", async () => {
+async function openSelector(view: ReturnType<typeof renderSelector>) {
+  await click(view.getByRole("button", { name: "Agent intelligence" }));
+  await view.findByRole("listbox");
+}
+
+const claudeProvider = (
+  nativeIntelligence: NonNullable<AgentIntelligenceDropdownProps["provider"]>["nativeIntelligence"],
+) => ({ label: "Claude", selection: "claude:work", nativeIntelligence });
+
+describe("Codex models from a plain list", () => {
+  test("keeps inheritance explicit and delegates clearing to its consumer", async () => {
+    const onInherit = vi.fn();
+    const onSelectionChange = vi.fn();
+    const view = renderSelector({
+      allowInherit: true,
+      inheritance: "inherited",
+      selection: { ...SELECTION, serviceTier: "fast" },
+      onInherit,
+      onSelectionChange,
+    });
+
+    const trigger = view.getByRole("button", { name: "Agent intelligence" });
+    expect(trigger.textContent).toBe("Use current/default");
+    expect(trigger.hasAttribute("data-fast-mode-indicator")).toBe(false);
+    await openSelector(view);
+    const inherit = view.getByRole("option", { name: "Use current/default" });
+    expect(inherit.getAttribute("aria-selected")).toBe("true");
+    expect(view.getByRole("option", { name: "Model A" }).getAttribute("aria-selected")).toBe(
+      "false",
+    );
+    await click(inherit);
+    expect(onInherit).toHaveBeenCalledTimes(1);
+    expect(onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  test("falls back to an effort the next model supports", async () => {
     const onSelectionChange = vi.fn();
     const view = renderSelector({ onSelectionChange });
     await openSelector(view);
 
-    expect(view.queryByLabelText(/Provider/u)).toBeNull();
-    await act(async () => {
-      fireEvent.click(view.getByLabelText("Model Model A"));
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(within(view.container.ownerDocument.body).getByText("Model B"));
-      await Promise.resolve();
-    });
+    expect(view.queryByRole("button", { name: "Refresh models" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Manage providers" })).toBeNull();
+    await click(view.getByRole("option", { name: "Model B" }));
     expect(onSelectionChange).toHaveBeenCalledWith(
-      {
-        kind: "codex",
-        model: "model-b",
-        reasoningEffort: "low",
-        serviceTier: null,
-      },
+      { kind: "codex", model: "model-b", reasoningEffort: "low", serviceTier: null },
       "model",
     );
   });
 
-  test("emits the same Standard and Fast service-tier values as Composer", async () => {
-    const onSelectionChange = vi.fn();
-    const view = renderSelector({ onSelectionChange });
+  test("offers the standard Codex levels for a model the list does not describe", async () => {
+    const view = renderSelector({ selection: { ...SELECTION, model: "gpt-unlisted" } });
     await openSelector(view);
+    const effort = view.getByRole("slider", { name: "Effort" });
+    expect(effort.getAttribute("aria-valuetext")).toBe("High");
+    expect(Number(effort.getAttribute("max"))).toBeGreaterThan(1);
+  });
 
-    await act(async () => {
-      fireEvent.click(view.getByLabelText("Speed Standard"));
-      await Promise.resolve();
+  test("turns Fast on as the shared service tier and shows it on the trigger", async () => {
+    const onSelectionChange = vi.fn();
+    const view = renderSelector({
+      onSelectionChange,
+      selection: { ...SELECTION, serviceTier: "fast" },
     });
-    await act(async () => {
-      fireEvent.click(within(view.container.ownerDocument.body).getByText("Fast"));
-      await Promise.resolve();
-    });
+    const trigger = view.getByRole("button", { name: "Agent intelligence" });
+    expect(trigger.getAttribute("data-fast-mode-indicator")).toBe("true");
+    await openSelector(view);
+    const fast = view.getByRole("button", { name: "Fast" });
+    expect(fast.getAttribute("aria-pressed")).toBe("true");
+    await click(fast);
     expect(onSelectionChange).toHaveBeenCalledWith(
-      { ...SELECTION, serviceTier: "fast" },
+      { ...SELECTION, serviceTier: null },
       "serviceTier",
     );
   });
 });
 
-test("shows and selects the concrete Claude model ID in the shared picker", async () => {
-  const onSelectionChange = vi.fn();
-  const model = projectNativeModelOption({
-    value: "claude-sonnet-5",
-    name: "Claude Sonnet 5",
-    description: null,
+describe("Claude models from a plain list", () => {
+  test("keeps a supported effort on a model change and resets an unsupported one", async () => {
+    const onSelectionChange = vi.fn();
+    const selection = { ...SELECTION, kind: "claude" as const, reasoningEffort: "high" };
+    const view = renderSelector({
+      models: [
+        projectNativeModelOption({
+          value: "model-a",
+          name: "Model A",
+          description: null,
+          reasoningEfforts: ["high", "max"],
+        }),
+        projectNativeModelOption({ value: "model-b", name: "Model B", description: null }),
+      ],
+      selection,
+      onSelectionChange,
+    });
+    await openSelector(view);
+    await click(view.getByRole("option", { name: "Model B" }));
+    expect(onSelectionChange).toHaveBeenLastCalledWith(
+      { ...selection, model: "model-b", reasoningEffort: "default" },
+      "model",
+    );
   });
-  const view = renderSelector({
-    models: [model],
-    selection: { ...SELECTION, kind: "claude", model: model.id },
-    onSelectionChange,
-  });
-  await openSelector(view);
-  await act(async () => {
-    fireEvent.click(view.getByLabelText("Model Claude Sonnet 5"));
-  });
-  const row = await within(view.container.ownerDocument.body).findByRole("menuitem", {
-    name: /Claude Sonnet 5\s*claude-sonnet-5/u,
-  });
-  await act(async () => {
-    fireEvent.click(row);
-  });
-  expect(onSelectionChange).toHaveBeenCalledWith(
-    { ...SELECTION, kind: "claude", model: "claude-sonnet-5", reasoningEffort: "default" },
-    "model",
-  );
-});
 
-test("selects native Claude effort levels and resets them for an unsupported model", async () => {
-  const onSelectionChange = vi.fn();
-  const selection = { ...SELECTION, kind: "claude" as const, reasoningEffort: "high" };
-  const view = renderSelector({
-    models: [
-      projectNativeModelOption({
-        value: "model-a",
-        name: "Model A",
-        description: null,
-        reasoningEfforts: ["high", "max"],
-      }),
-      projectNativeModelOption({ value: "model-b", name: "Model B", description: null }),
-    ],
-    selection,
-    onSelectionChange,
+  test("sets native effort on the slider and re-enables thinking from the Off stop", async () => {
+    const change = vi.fn<(patch: AgentNativeIntelligencePatch) => Promise<void>>();
+    function Selector() {
+      const [thinking, setThinking] = useState(false);
+      return (
+        <NodexTooltipProvider delay={0}>
+          <AgentIntelligenceDropdown
+            models={MODELS}
+            triggerStyle="settings"
+            selection={{ ...SELECTION, kind: "claude" }}
+            onSelectionChange={() => {}}
+            provider={claudeProvider({
+              selected: { thinking },
+              capabilities: { disableThinking: true },
+              change: async (patch) => {
+                await change(patch);
+                if (typeof patch.thinking === "boolean") setThinking(patch.thinking);
+              },
+            })}
+          />
+        </NodexTooltipProvider>
+      );
+    }
+    const view = renderWithMaitai(<Selector />);
+    expect(view.getByRole("button", { name: "Agent intelligence" }).textContent).toBe(
+      "Model A · Off",
+    );
+    await openSelector(view);
+    const effort = view.getByRole("slider", { name: "Effort" });
+    expect(effort.getAttribute("aria-valuetext")).toBe("Off");
+    await press(effort, "End");
+    await waitFor(() =>
+      expect(change).toHaveBeenLastCalledWith({ effort: "high", thinking: true }),
+    );
+    await waitFor(() => expect(effort.getAttribute("aria-valuetext")).toBe("High"));
+    await press(effort, "Home");
+    await waitFor(() => expect(change).toHaveBeenLastCalledWith({ thinking: false }));
   });
-  await openSelector(view);
-  await act(async () => {
-    fireEvent.click(view.getByLabelText("Effort High"));
-  });
-  const body = within(view.container.ownerDocument.body);
-  const max = await body.findByRole("menuitem", { name: "Max" });
-  expect(body.queryByRole("menuitem", { name: "Medium" })).toBeNull();
-  await act(async () => {
-    fireEvent.click(max);
-  });
-  expect(onSelectionChange).toHaveBeenLastCalledWith(
-    { ...selection, reasoningEffort: "max" },
-    "reasoningEffort",
-  );
-  await act(async () => {
-    fireEvent.click(view.getByLabelText("Model Model A"));
-  });
-  const nextModel = await body.findByRole("menuitem", { name: /Model B/u });
-  await act(async () => {
-    fireEvent.click(nextModel);
-  });
-  expect(onSelectionChange).toHaveBeenLastCalledWith(
-    { ...selection, model: "model-b", reasoningEffort: "default" },
-    "model",
-  );
-});
 
-test("maps Claude Speed choices to native Fast preferences without changing Codex service tier", async () => {
-  const change = vi.fn(async () => {});
-  const onSelectionChange = vi.fn();
-  const view = renderSelector({
-    selection: { ...SELECTION, kind: "claude" },
-    onSelectionChange,
-    provider: {
-      label: "Claude",
-      selection: "claude:work",
-      options: [],
-      select: () => {},
-      nativeIntelligence: {
-        selected: { fast: false, context: "200k" },
-        capabilities: { fastMode: true, contextWindows: ["200k", "1m"] },
-        change,
-      },
-    },
-  });
-  await openSelector(view);
-  expect(view.queryByLabelText(/Thinking/u)).toBeNull();
-  await act(async () => {
-    fireEvent.click(view.getByLabelText("Speed Standard"));
-  });
-  const body = within(document.body);
-  const fast = await body.findByRole("menuitem", { name: "Fast" });
-  expect(body.queryByRole("menuitem", { name: "On" })).toBeNull();
-  expect(body.queryByRole("menuitem", { name: "Off" })).toBeNull();
-  await act(async () => {
-    fireEvent.click(fast);
-  });
-  expect(change).toHaveBeenLastCalledWith({ fast: true });
-  const standardItem = await body.findByRole("menuitem", { name: "Standard" });
-  await act(async () => {
-    fireEvent.click(standardItem);
-  });
-  expect(change).toHaveBeenLastCalledWith({ fast: false });
-  expect(onSelectionChange).not.toHaveBeenCalled();
-  await act(async () => {
-    fireEvent.click(view.getByLabelText("Context 200k"));
-  });
-  const oneMillionItem = await within(document.body).findByRole("menuitem", { name: "1m" });
-  await act(async () => {
-    fireEvent.click(oneMillionItem);
-  });
-  expect(change).toHaveBeenLastCalledWith({ context: "1m" });
-  const defaultItem = await within(document.body).findByRole("menuitem", { name: "Default" });
-  await act(async () => {
-    fireEvent.click(defaultItem);
-  });
-  expect(change).toHaveBeenLastCalledWith({ context: null });
-});
-
-test("keeps an unobserved Claude Speed unresolved until an explicit choice", async () => {
-  const change = vi.fn(async () => {});
-  const view = renderSelector({
-    selection: { ...SELECTION, kind: "claude" },
-    provider: {
-      label: "Claude",
-      selection: "claude:work",
-      options: [],
-      select: () => {},
-      nativeIntelligence: {
-        selected: { fast: null },
-        capabilities: { fastMode: true },
-        change,
-      },
-    },
-  });
-  await openSelector(view);
-  await act(async () => {
-    fireEvent.click(view.getByLabelText("Speed —"));
-  });
-  expect(change).not.toHaveBeenCalled();
-  const standard = await within(document.body).findByRole("menuitem", { name: "Standard" });
-  await act(async () => {
-    fireEvent.click(standard);
-  });
-  expect(change).toHaveBeenCalledWith({ fast: false });
-});
-
-test("puts thinking Off in Effort and reenables thinking even when selecting the same effort", async () => {
-  const change = vi.fn(async () => {});
-  const view = renderSelector({
-    selection: { ...SELECTION, kind: "claude" },
-    provider: {
-      label: "Claude",
-      selection: "claude:work",
-      options: [],
-      select: () => {},
-      nativeIntelligence: {
-        selected: { thinking: false },
-        capabilities: { disableThinking: true },
-        change,
-      },
-    },
-  });
-  await openSelector(view);
-  await act(async () => {
-    fireEvent.click(view.getByLabelText("Effort Off"));
-  });
-  const body = within(document.body);
-  const highItem = await body.findByRole("menuitem", { name: "High" });
-  await act(async () => {
-    fireEvent.click(highItem);
-  });
-  expect(change).toHaveBeenLastCalledWith({ effort: "high", thinking: true });
-  const offItem = await body.findByRole("menuitem", { name: "Off" });
-  await act(async () => {
-    fireEvent.click(offItem);
-  });
-  expect(change).toHaveBeenLastCalledWith({ thinking: false });
-});
-
-test("adaptive thinking alone does not advertise a thinking Off choice", async () => {
-  const view = renderSelector({
-    selection: { ...SELECTION, kind: "claude" },
-    provider: {
-      label: "Claude",
-      selection: "claude:work",
-      options: [],
-      select: () => {},
-      nativeIntelligence: {
+  test("adaptive thinking alone does not add an Off stop", async () => {
+    const change = vi.fn(async () => {});
+    const view = renderSelector({
+      selection: { ...SELECTION, kind: "claude" },
+      provider: claudeProvider({
         selected: { thinking: true },
         capabilities: { disableThinking: false },
-        change: async () => {},
-      },
-    },
+        change,
+      }),
+    });
+    await openSelector(view);
+    await press(view.getByRole("slider", { name: "Effort" }), "Home");
+    await waitFor(() => expect(change).toHaveBeenCalledWith({ effort: "medium", thinking: true }));
+    expect(change).not.toHaveBeenCalledWith({ thinking: false });
   });
-  await openSelector(view);
-  await act(async () => {
-    fireEvent.click(view.getByLabelText("Effort High"));
-  });
-  const body = within(document.body);
-  await body.findByRole("menuitem", { name: "Medium" });
-  expect(body.queryByRole("menuitem", { name: "Off" })).toBeNull();
-});
 
-test("supports reversible thinking for native models without effort levels", async () => {
-  const change = vi.fn(async () => {});
-  const model = projectNativeModelOption({ value: "haiku", name: "Haiku", description: null });
-  const view = renderSelector({
-    models: [model],
-    selection: { ...SELECTION, kind: "claude", model: model.id },
-    provider: {
-      label: "Claude",
-      selection: "claude:work",
-      options: [],
-      select: () => {},
-      nativeIntelligence: {
+  test("switches thinking as a mode for a model without effort levels", async () => {
+    const change = vi.fn(async () => {});
+    const model = projectNativeModelOption({ value: "haiku", name: "Haiku", description: null });
+    const view = renderSelector({
+      models: [model],
+      selection: { ...SELECTION, kind: "claude", model: model.id },
+      provider: claudeProvider({
         selected: { thinking: false },
         capabilities: { disableThinking: true },
         change,
-      },
-    },
+      }),
+    });
+    await openSelector(view);
+    expect(view.queryByRole("slider", { name: "Effort" })).toBeNull();
+    await click(view.getByRole("button", { name: "Thinking" }));
+    await waitFor(() => expect(change).toHaveBeenCalledWith({ thinking: true }));
   });
-  await openSelector(view);
-  await act(async () => {
-    fireEvent.click(view.getByLabelText("Effort Off"));
+
+  test("maps Fast to the native preference instead of the Codex service tier", async () => {
+    const change = vi.fn(async () => {});
+    const onSelectionChange = vi.fn();
+    const view = renderSelector({
+      selection: { ...SELECTION, kind: "claude" },
+      onSelectionChange,
+      provider: claudeProvider({
+        selected: { fast: false },
+        capabilities: { fastMode: true },
+        change,
+      }),
+    });
+    await openSelector(view);
+    await click(view.getByRole("button", { name: "Fast" }));
+    await waitFor(() => expect(change).toHaveBeenLastCalledWith({ fast: true }));
+    expect(onSelectionChange).not.toHaveBeenCalled();
   });
-  const onItem = await within(document.body).findByRole("menuitem", { name: "On" });
-  await act(async () => {
-    fireEvent.click(onItem);
-  });
-  expect(change).toHaveBeenCalledWith({ thinking: true });
 });

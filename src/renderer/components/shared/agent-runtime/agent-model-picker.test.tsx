@@ -29,8 +29,6 @@ function Picker({ catalog }: { readonly catalog: AgentModelCatalogPresentation }
         provider={{
           label: "Local",
           selection: "local",
-          options: [],
-          select: () => {},
           modelCatalog: catalog,
         }}
       />
@@ -282,8 +280,6 @@ function MenuPicker({ catalog }: { readonly catalog: AgentModelCatalogPresentati
         provider={{
           label: "Local",
           selection: "local",
-          options: [],
-          select: () => {},
           modelCatalog: catalog,
         }}
       />
@@ -387,8 +383,6 @@ test("reads the catalog again each time it opens without forcing providers to ch
         provider={{
           label: "Local",
           selection: "local",
-          options: [],
-          select: () => {},
           modelCatalog: catalog,
         }}
       />
@@ -441,8 +435,6 @@ test("sets Claude effort on one track and turns Ultracode on at that effort", as
         provider={{
           label: "Claude",
           selection: "claude",
-          options: [],
-          select: () => {},
           nativeIntelligence: {
             selected: { fast: false, ultracode: false, thinking: true },
             capabilities: { fastMode: true, ultracode: true },
@@ -491,8 +483,6 @@ test("keeps an unavailable Ultracode visible, explains it, and never turns it on
         provider={{
           label: "Claude",
           selection: "claude",
-          options: [],
-          select: () => {},
           nativeIntelligence: {
             selected: { ultracode: true, thinking: true },
             capabilities: { ultracodeUnavailableReason: "Dynamic workflows are off." },

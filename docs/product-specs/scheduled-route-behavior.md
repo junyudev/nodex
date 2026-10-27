@@ -105,7 +105,7 @@ The dialog edits one draft:
 - `Repeat` (Interval, Daily, Weekdays, Weekly, Custom) with `Every`, `On`, `Time`
   in the local time zone, or a custom rule;
 - `Advanced`: Notifications, `Start each run in new chat`, the Heartbeat's chat,
-  Project, Workspace, Environment, and the Agent, model, and effort.
+  Project, Workspace, Environment, the Agent, and for cron tasks its model and effort.
 
 `Start each run in new chat` chooses a cron task (on) or a Heartbeat that
 continues one chat (off) and is fixed once the task exists. Cron tasks require
@@ -130,11 +130,13 @@ selected Project source. It offers `No environment`, identifies the preferred
 `environment.toml` definition, and can open Settings → Environments with the
 selected Project/config context.
 
-The shared Agent menu offers Codex, enabled Claude Profiles and enabled ACP instances.
+The Agent row offers Codex, enabled Claude Profiles and enabled ACP instances; cron tasks
+choose that Agent's model in a separate Model row with the shared model menu.
 Codex uses its runtime model catalog and exact model, reasoning and service-tier
 tuple. Claude uses discovery
 from the selected Profile and Project, or the trusted host directory for a projectless
-task. It displays concrete native model IDs and only advertised effort levels. Inherited preferences
+task. It lists concrete native models, with each model ID in its tooltip and search, and
+only advertised effort levels. Inherited preferences
 display their resolved native values. Changing Profile clears settings that do not apply to the new
 backend, while a Codex catalog refresh cannot rewrite Claude choices. Claude launches
 use the Profile environment, without Codex service tiers or local Environment files.

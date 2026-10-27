@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openWorkbenchSettings } from "./support/workbench-settings";
 import {
+  chooseComposerEffort,
   chooseComposerModel,
   openComposerModelPicker,
-  openComposerOptionControl,
+  setComposerFast,
 } from "./support/composer-model-picker";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
@@ -216,19 +217,13 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     await expect(page.getByRole("option", { name: "Default", exact: true })).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("claude-model-picker.png") });
     await page.keyboard.press("Escape");
-    await openComposerOptionControl(page, "Effort");
-    await expect(page.getByRole("menuitem", { name: "Max", exact: true })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
-    await page.getByRole("menuitem", { name: "Max", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Effort Max", exact: true })).toBeVisible();
+    await chooseComposerEffort(page, "Max");
+    await setComposerFast(page, true);
     await page.keyboard.press("Escape");
-    await openComposerOptionControl(page, "Speed");
-    await expect(page.getByRole("menuitem", { name: "Standard", exact: true })).toBeVisible();
-    await page.getByRole("menuitem", { name: "Fast", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Speed Fast", exact: true })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("button", { name: "Speed Fast", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("slider", { name: "Effort", exact: true })).toHaveCount(0);
+    const modelTrigger = page.getByRole("button", { name: "Select model", exact: true });
+    await expect(modelTrigger).toContainText("Max");
+    await expect(modelTrigger.locator('[data-fast-mode-indicator="true"]')).toHaveCount(1);
     await expect(location).toHaveText("This computer");
     await expect(location).toBeEnabled();
     await page.getByRole("button", { name: "Configure local environment", exact: true }).click();
@@ -303,15 +298,10 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       ),
     ).toMatchObject({ allowsBypass: true });
 
-    await openComposerOptionControl(page, "Effort");
-    await page.getByRole("menuitem", { name: "Medium", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Effort Medium", exact: true })).toBeVisible();
+    await chooseComposerEffort(page, "Medium");
+    await setComposerFast(page, false);
     await page.keyboard.press("Escape");
-    await openComposerOptionControl(page, "Speed");
-    await page.getByRole("menuitem", { name: "Standard", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Speed Standard", exact: true })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
+    await expect(modelTrigger).toContainText("Medium");
     await composer.fill("Verify thinking enabled");
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();
     await expect(page.getByText("Native thinking enabled", { exact: true })).toBeVisible();
@@ -331,10 +321,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
       "Claude Sonnet 5.5",
     );
-    await openComposerOptionControl(page, "Effort");
-    await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
-    await page.getByRole("menuitem", { name: "Low", exact: true }).click();
-    await page.keyboard.press("Escape");
+    await chooseComposerEffort(page, "Low");
     await page.keyboard.press("Escape");
     await composer.fill("Wait for cancellation");
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();

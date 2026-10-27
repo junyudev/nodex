@@ -41,12 +41,7 @@ async function selectScheduledModel(screen: ReturnType<typeof renderWorkbench>, 
     fireEvent.click(trigger);
     await Promise.resolve();
   });
-  const modelMenu = await screen.findByRole("menuitem", { name: /^Model /u });
-  await act(async () => {
-    fireEvent.click(modelMenu);
-    await Promise.resolve();
-  });
-  const model = await screen.findByRole("menuitem", { name });
+  const model = await screen.findByRole("option", { name });
   await act(async () => {
     fireEvent.click(model);
     await Promise.resolve();

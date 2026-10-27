@@ -1502,8 +1502,6 @@ export function useAgentRuntimeConversationAdapter(input: {
       ? acpImportedHistoryEmptyState(provider?.displayName ?? "the Agent", pendingImport)
       : null,
     selection: agentRuntimeProviderId(selection.binding) ?? "",
-    options: [],
-    select: () => {},
     modelCatalog: {
       entries,
       selected: selection,

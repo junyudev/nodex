@@ -234,10 +234,10 @@ response becomes the child's canonical runtime profile. Heartbeat restoration
 likewise resumes with server profile selection, while cron runs use the
 automation's explicit execution settings. A Side Chat's first prompted Turn may
 still apply its own explicit Turn overrides after the fork is accepted.
-The composer exposes one catalog-driven intelligence selector with Model,
-Effort, and Speed submenus. It does not split model selection into simplified
-and advanced modes, so the same hierarchy remains valid as backend catalogs and
-capabilities vary. The trigger keeps the full model name followed by the active
+The composer exposes one catalog-driven intelligence selector: a searchable model
+list, an effort track, and a Fast toggle, the same menu every model choice uses. It
+does not split model selection into simplified and advanced modes, so the same
+layout remains valid as backend catalogs and capabilities vary. The trigger keeps the full model name followed by the active
 reasoning effort, such as `GPT-6 Astra Medium`. Model IDs without a distinct
 catalog display name become readable names; the `max` effort is labeled `Max`.
 The selected execution profile is authoritative for both creation and the first

@@ -14,7 +14,10 @@ import {
   flattenAgentConfigOptions,
   visibleAgentModelPickerEntries,
 } from "@/lib/agent-model-selection";
-import { formatCodexModelLabel } from "@/lib/codex-thread-settings";
+import {
+  formatCodexModelLabel,
+  resolveCodexReasoningEffortOptions,
+} from "@/lib/codex-thread-settings";
 import { agentEffortLabel } from "@/lib/agent-runtime-model-selection";
 import {
   AgentProviderIcon,
@@ -42,6 +45,7 @@ import {
 import {
   IntelligenceControlsHeader,
   IntelligenceEffortSlider,
+  IntelligenceModeIndicatorIcon,
   IntelligenceModeToggle,
   type IntelligenceModeIndicator,
 } from "./intelligence-controls";
@@ -87,11 +91,12 @@ export interface AgentModelCatalogPresentation {
   readonly loading: boolean;
   readonly error?: string | null;
   readonly choose: (selection: AgentModelSelection) => Promise<void> | void;
-  /** Forces providers to check again, as the Refresh button does. */
-  readonly refresh: () => void;
+  /** Forces providers to check again, as the Refresh button does; without it there is none. */
+  readonly refresh?: () => void;
   /** Reads the catalog as it is now without forcing a check; opening the picker calls it. */
   readonly reload?: () => void;
-  readonly manage: () => void;
+  /** Opens the providers' settings, as the Manage button does; without it there is none. */
+  readonly manage?: () => void;
   readonly runtimeOptions?: readonly { binding: ExternalAgentBinding; label: string }[];
   readonly chooseRuntime?: (binding: ExternalAgentBinding) => void;
   readonly configOptions?: readonly AgentSessionConfigOption[];
@@ -152,6 +157,10 @@ function OptionRow({
   );
 }
 
+/** Not an `agentModelKey`, which is always a JSON array. */
+const INHERIT_OPTION_VALUE = "inherit";
+const INHERIT_LABEL = "Use current/default";
+
 export function AgentModelPicker(
   props: AgentIntelligenceDropdownProps & {
     readonly catalog: AgentModelCatalogPresentation;
@@ -176,6 +185,7 @@ export function AgentModelPicker(
     requestOpenChange(next);
   };
   const setups = catalog.setups ?? [];
+  const { refresh, manage } = catalog;
   const isCodex = selection.kind === "codex";
   const native = provider?.nativeIntelligence;
   const active = catalog.entries.find(
@@ -216,7 +226,10 @@ export function AgentModelPicker(
     if (native) void run(() => native.change(patch));
   };
   const currentModel = models.find((model) => model.id === selection.model);
-  const reasoningOptions = currentModel?.supportedReasoningEfforts ?? [];
+  // Codex offers its standard levels for a model the catalog does not describe.
+  const reasoningOptions = isCodex
+    ? resolveCodexReasoningEffortOptions(selection.model, models)
+    : (currentModel?.supportedReasoningEfforts ?? []);
   const nativeControls = isCodex || selection.kind === "claude";
   const effortStops = nativeControls
     ? resolveIntelligenceEffortStops({
@@ -247,7 +260,21 @@ export function AgentModelPicker(
     showAllModels,
   );
   const hasHiddenModels = visibleEntries.length < catalog.entries.length;
-  const options: readonly NodexOptionPickerOption[] = visibleEntries.map((entry) => {
+  const inherited = props.allowInherit === true && props.inheritance === "inherited";
+  // An inherited choice names no modes of its own.
+  const settingsIndicators = inherited ? [] : indicators;
+  const inheritOptions: readonly NodexOptionPickerOption[] = props.allowInherit
+    ? [
+        {
+          value: INHERIT_OPTION_VALUE,
+          // Keeps the label in line with the model names beside their provider marks.
+          leftSlot: <span aria-hidden="true" className="size-3.5" />,
+          label: INHERIT_LABEL,
+          disabled: pending,
+        },
+      ]
+    : [];
+  const modelOptions: readonly NodexOptionPickerOption[] = visibleEntries.map((entry) => {
     const qualifier = agentRuntimeQualifier(entry.binding, entry.label);
     return {
       value: agentModelKey(entry.binding, entry.model.id),
@@ -332,28 +359,38 @@ export function AgentModelPicker(
       searchPlaceholder="Search models…"
       searchAriaLabel="Search models"
       searchTrailingContent={
-        <span className="-me-1 flex items-center">
-          <NodexIconButton
-            size="xs"
-            ariaLabel="Refresh models"
-            icon={RefreshIcon}
-            className={cn(catalog.loading && "[&_svg]:animate-spin")}
-            disabled={catalog.loading || pending}
-            onClick={catalog.refresh}
-          />
-          <NodexIconButton
-            size="xs"
-            ariaLabel="Manage providers"
-            icon={SettingsGeneralIcon}
-            onClick={() => {
-              changeOpen(false);
-              catalog.manage();
-            }}
-          />
-        </span>
+        refresh || manage ? (
+          <span className="-me-1 flex items-center">
+            {refresh ? (
+              <NodexIconButton
+                size="xs"
+                ariaLabel="Refresh models"
+                icon={RefreshIcon}
+                className={cn(catalog.loading && "[&_svg]:animate-spin")}
+                disabled={catalog.loading || pending}
+                onClick={refresh}
+              />
+            ) : null}
+            {manage ? (
+              <NodexIconButton
+                size="xs"
+                ariaLabel="Manage providers"
+                icon={SettingsGeneralIcon}
+                onClick={() => {
+                  changeOpen(false);
+                  manage();
+                }}
+              />
+            ) : null}
+          </span>
+        ) : undefined
       }
-      value={agentModelKey(catalog.selected.binding, catalog.selected.model)}
-      options={options}
+      value={
+        inherited
+          ? INHERIT_OPTION_VALUE
+          : agentModelKey(catalog.selected.binding, catalog.selected.model)
+      }
+      options={[...inheritOptions, ...modelOptions]}
       emptyMessage={catalog.loading ? "Loading models…" : "No models available"}
       noResultsMessage="No matching models"
       disabled={props.disabled}
@@ -377,9 +414,14 @@ export function AgentModelPicker(
             ref={props.triggerRef}
             aria-label="Agent intelligence"
             className="w-full min-w-0 justify-between"
+            data-fast-mode-indicator={settingsIndicators.includes("fast") ? "true" : undefined}
+            data-ultracode-indicator={settingsIndicators.includes("ultracode") ? "true" : undefined}
           >
-            <span className="truncate">
-              {[modelLabel, reasoningLabel].filter(Boolean).join(" · ")}
+            {settingsIndicators.map((mode) => (
+              <IntelligenceModeIndicatorIcon key={mode} mode={mode} />
+            ))}
+            <span className="min-w-0 flex-1 truncate text-start">
+              {inherited ? INHERIT_LABEL : [modelLabel, reasoningLabel].filter(Boolean).join(" · ")}
             </span>
           </NodexSettingsDropdownTrigger>
         ) : (
@@ -396,6 +438,7 @@ export function AgentModelPicker(
         ))
       }
       onValueChange={(value) => {
+        if (value === INHERIT_OPTION_VALUE) return props.onInherit?.();
         const entry = catalog.entries.find(
           (candidate) => agentModelKey(candidate.binding, candidate.model.id) === value,
         );
@@ -419,7 +462,7 @@ export function AgentModelPicker(
                 const { action } = setup;
                 afterClose.current =
                   action.kind === "settings"
-                    ? catalog.manage
+                    ? (manage ?? null)
                     : () =>
                         action.open({
                           // Setup returns to the default free-model view; the choice is unchanged.

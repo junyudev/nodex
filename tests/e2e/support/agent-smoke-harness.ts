@@ -6,8 +6,8 @@ import type {
 } from "@nodex/codex-app-server-protocol/v2";
 import { formatCodexReasoningEffortLabel } from "../../../src/renderer/lib/codex-thread-settings";
 import {
+  chooseComposerEffort,
   chooseComposerModel,
-  openComposerOptionControl,
   refreshComposerModels,
 } from "./composer-model-picker";
 
@@ -228,15 +228,8 @@ const chooseCodexExecutionProfile = async (
   profile: CodexExecutionProfile,
 ): Promise<void> => {
   await chooseComposerModel(page, `${modelName} Codex`, modelName);
-  if (profile.reasoningEffort) {
-    await openComposerOptionControl(page, "Effort");
-    await page
-      .getByRole("menuitem", {
-        name: formatCodexReasoningEffortLabel(profile.reasoningEffort),
-        exact: true,
-      })
-      .click();
-  }
+  if (profile.reasoningEffort)
+    await chooseComposerEffort(page, formatCodexReasoningEffortLabel(profile.reasoningEffort));
   await page.keyboard.press("Escape");
 };
 

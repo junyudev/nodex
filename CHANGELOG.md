@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `/fast` and `/ultracode` toggle Fast and Ultracode from a Claude chat's composer, and Claude chats highlight the words Claude Code reacts to in a message, `ultrathink` and `ultracode`, with what each does for that turn.
 - Plugins in the navigation rail opens Customize, where you can browse plugin marketplaces and installed skills, see what a plugin does and includes before installing it, install, enable, try or uninstall it, preview a skill's instructions, and start a chat from a starter prompt. Settings › Plugins switches installed plugins, connected apps and personal skills on or off, shows the tools each app gives Agents, adds, edits and signs in to MCP servers, and upgrades or removes the marketplaces you added.
 - Selected reply text can be added to a chat with optional numbered comments, or attached to an idle side chat without replacing its draft. References remain available in sent messages.
 - ACP Agents can be added from the ACP Registry or as a local command, each with its own launch settings and environment, and an optional separate account folder. Settings shows each Agent's live state and next step, installs and updates the exact build you reviewed, signs in through the Agent's own method (including an interactive terminal), and imports conversations the Agent saved. The model menu offers setup for Agents that aren't ready yet.
@@ -20,7 +21,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- The model menu sets effort on one slider and switches Fast and Ultracode on or off from icons beside it, with what each does in its tooltip. The model button shows those icons while a mode is on.
+- Every model menu sets effort on one slider and switches Fast and Ultracode on or off from icons beside it, with what each does in its tooltip. The model button shows those icons while a mode is on, and scheduled tasks choose their Agent and model in separate rows.
 - New Pages, Databases, Canvases and copies appear at the top of Space Content instead of after everything else, so they stay visible without Show more.
 - Finished Claude Code, OpenCode and other Agent replies read like Codex ones: each Turn's work folds under `Worked for <time>`, leaving your prompt and the complete reply in view.
 - Command K brings chats, Pages, files, and full-text file search into one glass window, with host-aware folder and file-type filters, recent searches, exact match navigation, expandable results, and searchable Settings and themes.
@@ -38,7 +39,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- Choosing Ultracode for a Claude chat now actually turns it on, at whatever effort you pick instead of forcing Extra High.
+- Choosing Ultracode for a Claude chat now actually turns it on, at whatever effort you pick instead of forcing Extra High. When dynamic workflows are off for your Claude account, the toggle says so instead of silently doing nothing.
+- Changing a Claude chat's model, effort, Fast or Ultracode no longer restarts Claude Code, so it applies right away even while background agents, shells or workflows are running.
 - The Composer context ring reports Claude Code, OpenCode and other Agents’ current usage, restores it when reopening a chat, and distinguishes unavailable readings from an empty context.
 
 - Space Content keeps its order when you open a Page, Database or Canvas, and every sidebar list remembers how far you expanded it with Show more after switching between Home and Space, reopening the window or relaunching.

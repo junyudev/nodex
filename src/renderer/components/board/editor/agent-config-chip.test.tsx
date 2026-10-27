@@ -194,18 +194,18 @@ describe("agent config chip popover", () => {
       />,
     );
 
+    const trigger = view.getByLabelText("Agent intelligence");
+    expect(trigger.textContent).toBe("Use current/default");
     await act(async () => {
-      const trigger = view.getByLabelText("Agent intelligence");
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
       fireEvent.click(trigger);
       await settleAsyncRender();
     });
+    expect(
+      view.getByRole("option", { name: "Use current/default" }).getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(view.queryByRole("option", { name: "Hidden" })).toBeNull();
     await act(async () => {
-      fireEvent.click(view.getByLabelText("Model GPT-5.5"));
-      await settleAsyncRender();
-    });
-    await act(async () => {
-      fireEvent.click(view.getByRole("menuitem", { name: "GPT-5.5" }));
+      fireEvent.click(view.getByRole("option", { name: "GPT-5.5" }));
       await settleAsyncRender();
     });
 
@@ -213,7 +213,35 @@ describe("agent config chip popover", () => {
     expect(updates[0]?.props.model).toBe("gpt-5.5");
   });
 
-  test("updates reasoning through the reasoning picker", async () => {
+  test("returns an explicit model to the current/default choice", async () => {
+    const updates: AgentConfigInlineContentUpdate[] = [];
+    const view = render(
+      <AgentConfigInlineContentView
+        inlineContent={{ props: { mode: "plan", model: "gpt-5.5", reasoning: "high" } }}
+        updateInlineContent={(update) => {
+          updates.push(update);
+        }}
+        availableModels={MODELS}
+        defaultOpen
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(view.getByLabelText("Agent intelligence"));
+      await settleAsyncRender();
+    });
+    expect(view.getByRole("option", { name: "GPT-5.5" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("option", { name: "Use current/default" }));
+      await settleAsyncRender();
+    });
+
+    expect(updates[0]?.props).toMatchObject({ provider: "", model: "", reasoning: "", speed: "" });
+  });
+
+  test("updates reasoning on the effort slider", async () => {
     const updates: AgentConfigInlineContentUpdate[] = [];
     const view = render(
       <AgentConfigInlineContentView
@@ -227,17 +255,13 @@ describe("agent config chip popover", () => {
     );
 
     await act(async () => {
-      const trigger = view.getByLabelText("Agent intelligence");
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
+      fireEvent.click(view.getByLabelText("Agent intelligence"));
       await settleAsyncRender();
     });
+    const effort = view.getByRole("slider", { name: "Effort" });
+    expect(effort.getAttribute("aria-valuetext")).toBe("High");
     await act(async () => {
-      fireEvent.click(view.getByLabelText("Effort High"));
-      await settleAsyncRender();
-    });
-    await act(async () => {
-      fireEvent.click(view.getByText("Medium"));
+      fireEvent.keyDown(effort, { key: "ArrowLeft" });
       await settleAsyncRender();
     });
 

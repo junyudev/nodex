@@ -305,8 +305,6 @@ export interface ConversationProviderPresentation {
   readonly serviceTier?: CodexServiceTier;
   readonly label: string;
   readonly selection: string;
-  readonly options: readonly { value: string; label: string }[];
-  readonly select: (value: string) => void;
   readonly commands: readonly { name: string; description: string; inputHint: string | null }[];
   readonly authentication?: {
     readonly methods: readonly { id: string; name: string }[];

@@ -13,7 +13,11 @@ import { NodexOptionPicker } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import type { AgentModelOption, Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { AutomationIntelligenceDropdown } from "@/components/workbench/workbench-automation-intelligence";
+import {
+  AutomationAgentDropdown,
+  AutomationModelPicker,
+  useAutomationAgent,
+} from "@/components/workbench/workbench-automation-intelligence";
 import {
   DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT,
   resolveWorkbenchAutomationDraftModelSettings,
@@ -98,9 +102,52 @@ function withNewChatEachRun(
     : next;
 }
 
+/** Rows that share a card are separated by inset hairlines. */
+const ROW_HAIRLINES =
+  "*:relative [&>*+*]:before:absolute [&>*+*]:before:inset-x-4 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-token-border-light [&>*+*]:before:content-['']";
+
 /** One advanced setting, set apart in its own rounded card. */
 function AdvancedCard({ children }: { children: ReactNode }) {
-  return <div className="rounded-2xl border border-token-border">{children}</div>;
+  return (
+    <div className={cn("rounded-2xl border border-token-border", ROW_HAIRLINES)}>{children}</div>
+  );
+}
+
+/** The Agent a task runs with and, when each run starts a new chat, that Agent's model. */
+function ScheduledAgentFields({
+  draft,
+  codexModels,
+  disabled,
+  onChange,
+}: {
+  readonly draft: WorkbenchAutomationDraft;
+  readonly codexModels: readonly AgentModelOption[];
+  readonly disabled: boolean;
+  readonly onChange: (draft: WorkbenchAutomationDraft) => void;
+}) {
+  const agent = useAutomationAgent({ draft, codexModels, onChange });
+  return (
+    <>
+      <ScheduledFieldRow label="Agent">
+        <span className="pe-1.5">
+          <AutomationAgentDropdown agent={agent} disabled={disabled} />
+        </span>
+      </ScheduledFieldRow>
+      {draft.kind === "cron" ? (
+        <ScheduledFieldRow label="Model">
+          <span className="pe-1.5">
+            <AutomationModelPicker
+              agent={agent}
+              draft={draft}
+              codexModels={codexModels}
+              disabled={disabled}
+              onChange={onChange}
+            />
+          </span>
+        </ScheduledFieldRow>
+      ) : null}
+    </>
+  );
 }
 
 /**
@@ -161,8 +208,7 @@ export function ScheduledTaskForm({
       <div
         role="group"
         aria-label="Schedule"
-        // Rows are separated by inset hairlines.
-        className="rounded-[20px] border border-token-foreground/[0.16] *:relative [&>*+*]:before:absolute [&>*+*]:before:inset-x-4 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-token-border-light [&>*+*]:before:content-['']"
+        className={cn("rounded-[20px] border border-token-foreground/[0.16]", ROW_HAIRLINES)}
       >
         <ScheduledScheduleFields
           rrule={draft.rrule}
@@ -321,16 +367,12 @@ export function ScheduledTaskForm({
                     </AdvancedCard>
                   ) : null}
                   <AdvancedCard>
-                    <ScheduledFieldRow label={isCron ? "Model" : "Agent"}>
-                      <span className="pe-1.5">
-                        <AutomationIntelligenceDropdown
-                          draft={draft}
-                          codexModels={codexModels}
-                          disabled={disabled}
-                          onChange={(next) => onDraftChange(next)}
-                        />
-                      </span>
-                    </ScheduledFieldRow>
+                    <ScheduledAgentFields
+                      draft={draft}
+                      codexModels={codexModels}
+                      disabled={disabled}
+                      onChange={(next) => onDraftChange(next)}
+                    />
                   </AdvancedCard>
                 </div>
               </div>

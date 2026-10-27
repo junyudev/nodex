@@ -21,27 +21,108 @@ import {
 const bindingValue = (binding: AgentBackendBinding) =>
   binding.kind === "codex" ? "codex" : `${binding.kind}:${binding.instanceConfigId ?? ""}`;
 
-export function AutomationIntelligenceDropdown({
+interface AutomationDraftEditor {
+  readonly draft: WorkbenchAutomationDraft;
+  readonly codexModels: readonly AgentModelOption[];
+  readonly onChange: (draft: WorkbenchAutomationDraft) => void;
+}
+
+/** The Agents a scheduled task can run with, and switching between them. */
+export function useAutomationAgent({ draft, codexModels, onChange }: AutomationDraftEditor) {
+  const { instances } = useAgentInstances();
+  const binding = draft.backendBinding;
+  const value = bindingValue(binding);
+  // Claude profiles and ACP instances the user turned on; OpenCode isn't scheduled here.
+  const scheduled = instances.filter(
+    (instance) =>
+      instance.enabled && (instance.binding.kind === "claude" || instance.binding.kind === "acp"),
+  );
+  const current = instances.find((instance) => bindingValue(instance.binding) === value);
+  const label =
+    binding.kind === "codex"
+      ? "Codex"
+      : (current?.label ??
+        (binding.kind === "acp" ? "Unavailable Agent" : binding.instanceConfigId || "Claude"));
+  const options = [
+    { value: "codex", label: "Codex" },
+    ...scheduled.map((instance) => ({
+      value: bindingValue(instance.binding),
+      label: instance.label,
+    })),
+  ];
+  const select = (next: string) => {
+    if (next === value) return;
+    const backendBinding: AgentBackendBinding =
+      next === "codex"
+        ? { kind: "codex" }
+        : (scheduled.find((instance) => bindingValue(instance.binding) === next)?.binding ?? {
+            kind: "codex",
+          });
+    const changed = {
+      ...draft,
+      backendBinding,
+      // An ACP instance runs its exact advertised model; its controls come with that model.
+      model: backendBinding.kind === "claude" ? "default" : "",
+      reasoningEffort:
+        backendBinding.kind === "claude"
+          ? "default"
+          : backendBinding.kind === "acp"
+            ? ""
+            : "medium",
+      serviceTier: "",
+      localEnvironmentConfigPath: "",
+    };
+    onChange(resolveWorkbenchAutomationDraftModelSettings({ draft: changed, models: codexModels }));
+  };
+  return { label, value, options, select };
+}
+
+export type AutomationAgent = ReturnType<typeof useAutomationAgent>;
+
+export function AutomationAgentDropdown({
+  agent,
+  disabled,
+}: {
+  readonly agent: AutomationAgent;
+  readonly disabled: boolean;
+}) {
+  return (
+    <NodexDropdownMenu
+      disabled={disabled}
+      triggerButton={
+        <NodexSettingsDropdownTrigger aria-label="Scheduled agent">
+          {agent.label}
+        </NodexSettingsDropdownTrigger>
+      }
+    >
+      {agent.options.map((option) => (
+        <NodexDropdownItem
+          key={option.value}
+          onSelect={() => agent.select(option.value)}
+          rightSlot={option.value === agent.value ? <NodexDropdownSelectedIcon /> : null}
+        >
+          {option.label}
+        </NodexDropdownItem>
+      ))}
+    </NodexDropdownMenu>
+  );
+}
+
+/** The model, effort and modes a task that starts new chats runs its Agent with. */
+export function AutomationModelPicker({
+  agent,
   draft,
   codexModels,
   disabled,
   onChange,
-}: {
-  readonly draft: WorkbenchAutomationDraft;
-  readonly codexModels: readonly AgentModelOption[];
-  readonly disabled: boolean;
-  readonly onChange: (draft: WorkbenchAutomationDraft) => void;
-}) {
-  const { instances } = useAgentInstances();
+}: AutomationDraftEditor & { readonly agent: AutomationAgent; readonly disabled: boolean }) {
   const binding = draft.backendBinding;
   const isClaude = binding.kind === "claude";
   const isAcp = binding.kind === "acp";
   const acp = useAcpAutomationModels(binding);
-  const selectedInstance =
-    draft.backendBinding.kind === "claude" ? draft.backendBinding.instanceConfigId : null;
   const catalog = useClaudeModelCatalog(
-    draft.kind === "cron" && selectedInstance
-      ? { kind: "project", instanceConfigId: selectedInstance, projectId: draft.projectId }
+    isClaude
+      ? { kind: "project", instanceConfigId: binding.instanceConfigId, projectId: draft.projectId }
       : null,
   );
   const intelligence = resolveNativeIntelligenceSelection(
@@ -59,48 +140,6 @@ export function AutomationIntelligenceDropdown({
     : isAcp
       ? acp.models
       : codexModels;
-  const selection = bindingValue(binding);
-  // Claude profiles and ACP instances the user turned on; OpenCode isn't scheduled here.
-  const scheduled = instances.filter(
-    (instance) =>
-      instance.enabled && (instance.binding.kind === "claude" || instance.binding.kind === "acp"),
-  );
-  const current = instances.find((instance) => bindingValue(instance.binding) === selection);
-  const label =
-    binding.kind === "codex"
-      ? "Codex"
-      : (current?.label ?? (isAcp ? "Unavailable Agent" : (selectedInstance ?? "Claude")));
-  const options = [
-    { value: "codex", label: "Codex" },
-    ...scheduled.map((instance) => ({
-      value: bindingValue(instance.binding),
-      label: instance.label,
-    })),
-  ];
-  const selectBackend = (value: string) => {
-    if (value === selection) return;
-    const backendBinding: AgentBackendBinding =
-      value === "codex"
-        ? { kind: "codex" }
-        : (scheduled.find((instance) => bindingValue(instance.binding) === value)?.binding ?? {
-            kind: "codex",
-          });
-    const next = {
-      ...draft,
-      backendBinding,
-      // An ACP instance runs its exact advertised model; its controls come with that model.
-      model: backendBinding.kind === "claude" ? "default" : "",
-      reasoningEffort:
-        backendBinding.kind === "claude"
-          ? "default"
-          : backendBinding.kind === "acp"
-            ? ""
-            : "medium",
-      serviceTier: "",
-      localEnvironmentConfigPath: "",
-    };
-    onChange(resolveWorkbenchAutomationDraftModelSettings({ draft: next, models: codexModels }));
-  };
   /** An ACP model either names one of its advertised effort values or none at all. */
   const acpEffort = (model: string, effort: string) => {
     const efforts = acp.models.find((option) => option.id === model)?.supportedReasoningEfforts;
@@ -109,38 +148,12 @@ export function AutomationIntelligenceDropdown({
       ? effort
       : (acp.models.find((option) => option.id === model)?.defaultReasoningEffort ?? "");
   };
-  if (draft.kind === "heartbeat")
-    return (
-      <NodexDropdownMenu
-        disabled={disabled}
-        triggerButton={
-          <NodexSettingsDropdownTrigger aria-label="Scheduled agent">
-            {label}
-          </NodexSettingsDropdownTrigger>
-        }
-      >
-        {options.map((option) => (
-          <NodexDropdownItem
-            key={option.value}
-            onSelect={() => selectBackend(option.value)}
-            rightSlot={option.value === selection ? <NodexDropdownSelectedIcon /> : null}
-          >
-            {option.label}
-          </NodexDropdownItem>
-        ))}
-      </NodexDropdownMenu>
-    );
-  const dropdown = (
+  const picker = (
     <AgentIntelligenceDropdown
       disabled={disabled}
       models={models}
       triggerStyle="settings"
-      provider={{
-        label,
-        selection,
-        options,
-        select: selectBackend,
-      }}
+      agent={{ binding, label: agent.label }}
       selection={{
         kind: binding.kind,
         model: isClaude ? intelligence.model : isAcp ? draft.model : draft.model || "default",
@@ -162,12 +175,12 @@ export function AutomationIntelligenceDropdown({
       }}
     />
   );
-  if (!isAcp || acp.loading || acp.discovered) return dropdown;
+  if (!isAcp || acp.loading || acp.discovered) return picker;
   return (
     <span className="flex min-w-0 flex-col items-end gap-1">
-      {dropdown}
+      {picker}
       <span className="text-xs text-token-description-foreground">
-        Connect {label} in Settings to choose its model.
+        Connect {agent.label} in Settings to choose its model.
       </span>
     </span>
   );

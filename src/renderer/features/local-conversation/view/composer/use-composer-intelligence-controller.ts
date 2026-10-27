@@ -34,9 +34,9 @@ function focusModelPickerContent(trigger: HTMLButtonElement): void {
     return;
   }
 
-  const candidates = content.querySelectorAll<HTMLElement>('[role="menuitem"]');
-  const target = [...candidates].find((candidate) => !candidate.closest("[inert]"));
-  (target ?? trigger).focus();
+  // The picker opens on its model search, as a click does.
+  const search = content.querySelector<HTMLElement>('[role="combobox"]');
+  (search ?? trigger).focus();
 }
 
 export function useComposerIntelligenceController(

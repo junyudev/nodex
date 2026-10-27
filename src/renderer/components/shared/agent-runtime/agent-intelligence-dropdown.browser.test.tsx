@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { expect, test, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
@@ -31,7 +31,7 @@ const models = [
   }),
 ];
 
-test("selects effort with the pointer after changing model in an open composer menu", async () => {
+test("selects effort with the pointer after a model change commits", async () => {
   const change = vi.fn(async () => {});
   let finishModelChange: (() => void) | null = null;
   function Probe() {
@@ -57,6 +57,7 @@ test("selects effort with the pointer after changing model in an open composer m
         <div style={{ position: "fixed", bottom: 100, right: 200 }}>
           <AgentIntelligenceDropdown
             models={models}
+            agent={{ binding: { kind: "claude", instanceConfigId: "claude" }, label: "Claude" }}
             selection={controller.selection}
             onSelectionChange={controller.select}
             open={controller.isOpen}
@@ -64,8 +65,6 @@ test("selects effort with the pointer after changing model in an open composer m
             provider={{
               label: "Claude",
               selection: "claude",
-              options: [],
-              select: () => {},
               nativeIntelligence: {
                 selected: { thinking: true, fast: false },
                 capabilities: { fastMode: committed.fastMode },
@@ -82,20 +81,24 @@ test("selects effort with the pointer after changing model in an open composer m
       <Probe />
     </CodexServiceTierSettingsProvider>,
   );
-  await act(async () => userEvent.click(view.getByRole("button", { name: "Select model" })));
+  const trigger = view.getByRole("button", { name: "Select model" });
+  await act(async () => userEvent.click(trigger));
   await act(async () =>
-    userEvent.hover(view.getByRole("menuitem", { name: "Model Claude Opus 5" })),
+    userEvent.click(await view.findByRole("option", { name: "Claude Sonnet 5.5" })),
   );
-  const sonnet = await view.findByRole("menuitem", {
-    name: /Claude Sonnet 5\.5.*claude-sonnet-5-5/u,
-  });
-  await act(async () => userEvent.click(sonnet));
-  expect(view.getByRole("menuitem", { name: "Model Claude Opus 5" })).toBeTruthy();
+  await waitFor(() => expect(view.queryByRole("listbox")).toBeNull());
+  // The chat keeps its committed model until the change lands.
+  expect(trigger.textContent).toContain("Claude Opus 5");
   await act(async () => finishModelChange?.());
-  await view.findByRole("menuitem", { name: "Model Claude Sonnet 5.5" });
-  await act(async () => userEvent.keyboard("{Escape}"));
-  await act(async () => userEvent.hover(view.getByRole("menuitem", { name: "Effort Medium" })));
-  const low = await view.findByRole("menuitem", { name: "Low" });
-  await act(async () => userEvent.click(low));
-  expect(change).toHaveBeenCalledWith({ effort: "low", thinking: true });
+  await waitFor(() => expect(trigger.textContent).toContain("Claude Sonnet 5.5"));
+
+  await act(async () => userEvent.click(trigger));
+  const effort = await view.findByRole("slider", { name: "Effort" });
+  expect(effort.getAttribute("aria-valuetext")).toBe("Medium");
+  expect(view.queryByRole("button", { name: "Fast" })).toBeNull();
+  const track = effort.closest<HTMLElement>('[data-slot="slider"]');
+  if (!track) throw new Error("Expected the effort track");
+  const { height } = track.getBoundingClientRect();
+  await act(async () => userEvent.click(track, { position: { x: 1, y: height / 2 } }));
+  await waitFor(() => expect(change).toHaveBeenCalledWith({ effort: "low", thinking: true }));
 });

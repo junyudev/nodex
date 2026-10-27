@@ -67,8 +67,6 @@ function ComposerModelMenu({ owner }: { readonly owner: OpenCodeSetupOwner }) {
         provider={{
           label: "Codex",
           selection: "codex",
-          options: [],
-          select: () => {},
           modelCatalog: {
             entries,
             selected: chosen,

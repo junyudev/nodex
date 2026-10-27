@@ -83,8 +83,6 @@ describe("ThreadStageHeader", () => {
             kind,
             label: kind === "claude" ? "Claude Code" : "OpenCode",
             selection: `${kind}:work`,
-            options: [],
-            select: () => {},
             commands: [],
             error: null,
           }}
@@ -121,8 +119,6 @@ describe("ThreadStageHeader", () => {
           kind: "claude",
           label: "Claude",
           selection: "claude:work",
-          options: [],
-          select: () => {},
           commands: [],
           error: null,
           generateTitle,

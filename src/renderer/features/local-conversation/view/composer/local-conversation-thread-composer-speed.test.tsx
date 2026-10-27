@@ -2545,7 +2545,7 @@ describe("ThreadComposer speed menu", () => {
     expect(fastIconPath.getAttribute("fill")).toBe("currentColor");
   });
 
-  test("writes the shared service tier setting from the Speed submenu", async () => {
+  test("writes the shared service tier setting from the Fast toggle", async () => {
     resetStorage();
     const view = await renderComposer();
 
@@ -2554,33 +2554,25 @@ describe("ThreadComposer speed menu", () => {
     expect(Boolean(modelTrigger.querySelector('[data-fast-mode-indicator="true"]'))).toBe(false);
 
     await act(async () => {
-      fireEvent.pointerDown(modelTrigger, { button: 0, ctrlKey: false });
       fireEvent.click(modelTrigger);
       await Promise.resolve();
     });
 
-    const speedTrigger = view.getByLabelText("Speed Standard");
+    const fast = await view.findByRole("button", { name: "Fast" });
+    expect(fast.getAttribute("aria-pressed")).toBe("false");
 
     await act(async () => {
-      fireEvent.click(speedTrigger);
+      fireEvent.click(fast);
       await Promise.resolve();
     });
 
-    const fastOption = view.container.ownerDocument.body.querySelectorAll(
-      '[data-slot="dropdown-item"]',
+    await waitFor(() =>
+      expect(localStorageRef.getItem("nodex-codex-default-service-tier-v1")).toBe("fast"),
     );
-    const fastItem = Array.from(fastOption).find((node) => node.textContent?.includes("Fast"));
-    if (!(fastItem instanceof HTMLElement)) {
-      throw new Error("Expected the Fast speed option.");
-    }
-
-    await act(async () => {
-      fireEvent.click(fastItem);
-      await Promise.resolve();
-    });
-
-    expect(localStorageRef.getItem("nodex-codex-default-service-tier-v1")).toBe("fast");
-    expect(Boolean(modelTrigger.querySelector('[data-fast-mode-indicator="true"]'))).toBe(true);
+    await waitFor(() =>
+      expect(Boolean(modelTrigger.querySelector('[data-fast-mode-indicator="true"]'))).toBe(true),
+    );
+    expect(view.getByRole("button", { name: "Fast" }).getAttribute("aria-pressed")).toBe("true");
   });
 
   test("keeps Speed out of the add-context menu", async () => {
@@ -4939,47 +4931,33 @@ describe("ThreadComposer speed menu", () => {
     const view = await renderControlledThreadIntelligenceComposer();
     const trigger = view.getByLabelText("Select model");
     await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
       fireEvent.click(trigger);
       await Promise.resolve();
     });
+    const listbox = await view.findByRole("listbox");
+    expect(
+      within(listbox)
+        .getAllByRole("option")
+        .map((option) => option.textContent?.trim()),
+    ).toEqual(["GPT-5.3 Codex", "GPT-5.5"]);
     await act(async () => {
-      fireEvent.click(view.getByLabelText("Model GPT-5.5"));
+      fireEvent.click(within(listbox).getByRole("option", { name: "GPT-5.3 Codex" }));
       await Promise.resolve();
     });
-    await act(async () => {
-      fireEvent.click(
-        within(view.container.ownerDocument.body).getByRole("menuitem", {
-          name: "GPT-5.3 Codex",
-        }),
-      );
-      await Promise.resolve();
-    });
-
+    // Choosing a model closes the picker; the trigger follows the committed choice.
     await waitFor(() => {
       expect(trigger.textContent?.includes("5.3")).toBe(true);
-      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+      expect(view.queryByRole("listbox")).toBeNull();
     });
-    const visibleModelLabels = Array.from(
-      view.container.ownerDocument.body.querySelectorAll<HTMLElement>(
-        '[data-slot="dropdown-item"]',
-      ),
-    )
-      .map((item) => item.textContent?.trim())
-      .filter((label) => label === "GPT-5.5" || label === "GPT-5.3 Codex");
-    expect(visibleModelLabels).toEqual(["GPT-5.3 Codex", "GPT-5.5"]);
 
     await act(async () => {
-      fireEvent.click(view.getByLabelText("Effort High"));
+      fireEvent.click(trigger);
       await Promise.resolve();
     });
+    const effort = await view.findByRole("slider", { name: "Effort" });
+    expect(effort.getAttribute("aria-valuetext")).toBe("High");
     await act(async () => {
-      const mediumOption = within(view.container.ownerDocument.body)
-        .getAllByText("Medium")
-        .map((node) => node.closest<HTMLElement>('[role="menuitem"]'))
-        .find((node): node is HTMLElement => node !== null);
-      if (!mediumOption) throw new Error("Expected the Medium effort option.");
-      fireEvent.click(mediumOption);
+      fireEvent.keyDown(effort, { key: "ArrowRight" });
       await Promise.resolve();
     });
     await waitFor(() => {
@@ -4988,7 +4966,7 @@ describe("ThreadComposer speed menu", () => {
     });
   });
 
-  test("model selector preserves model and effort submenus", async () => {
+  test("model picker changes the model and its effort", async () => {
     resetStorage();
     const selectedModels: string[] = [];
     const selectedReasoning: string[] = [];
@@ -5003,35 +4981,25 @@ describe("ThreadComposer speed menu", () => {
     expect(Boolean(trigger.textContent?.includes("High"))).toBe(true);
 
     await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
       fireEvent.click(trigger);
       await Promise.resolve();
     });
 
-    expect(modelView.getByLabelText("Model GPT-5.3 Codex")).toBeTruthy();
-    expect(modelView.getByLabelText("Effort High")).toBeTruthy();
-    expect(modelView.getByLabelText("Speed Standard")).toBeTruthy();
-
-    const modelTrigger = modelView.getByLabelText("Model GPT-5.3 Codex");
+    const current = await modelView.findByRole("option", { name: "GPT-5.3 Codex" });
+    expect(current.getAttribute("aria-selected")).toBe("true");
+    expect(modelView.getByRole("slider", { name: "Effort" }).getAttribute("aria-valuetext")).toBe(
+      "High",
+    );
+    expect(modelView.getByRole("button", { name: "Fast" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
 
     await act(async () => {
-      fireEvent.click(modelTrigger);
+      fireEvent.click(modelView.getByRole("option", { name: "GPT-5.5" }));
       await Promise.resolve();
     });
 
-    const modelItem = Array.from(
-      modelView.container.ownerDocument.body.querySelectorAll('[data-slot="dropdown-item"]'),
-    ).find((node) => node.textContent?.includes("GPT-5.5"));
-    if (!(modelItem instanceof HTMLElement)) {
-      throw new Error("Expected the Model flyout to include GPT-5.5.");
-    }
-
-    await act(async () => {
-      fireEvent.click(modelItem);
-      await Promise.resolve();
-    });
-
-    expect(selectedModels[0]).toBe("gpt-5.5");
+    await waitFor(() => expect(selectedModels[0]).toBe("gpt-5.5"));
     modelView.unmount();
 
     const reasoningView = await renderComposer(undefined, {
@@ -5042,86 +5010,89 @@ describe("ThreadComposer speed menu", () => {
     const reasoningTrigger = reasoningView.getByLabelText("Select model");
 
     await act(async () => {
-      fireEvent.pointerDown(reasoningTrigger, { button: 0, ctrlKey: false });
       fireEvent.click(reasoningTrigger);
       await Promise.resolve();
     });
 
+    const effort = await reasoningView.findByRole("slider", { name: "Effort" });
     await act(async () => {
-      fireEvent.click(reasoningView.getByLabelText("Effort High"));
+      fireEvent.keyDown(effort, { key: "ArrowRight" });
       await Promise.resolve();
     });
 
-    const nextMenuItems = Array.from(
-      reasoningView.container.ownerDocument.body.querySelectorAll('[data-slot="dropdown-item"]'),
-    );
-    const reasoningItem = nextMenuItems.find((node) => node.textContent?.includes("Medium"));
-    if (!(reasoningItem instanceof HTMLElement)) {
-      throw new Error("Expected the Effort submenu to include Medium reasoning.");
-    }
-
-    await act(async () => {
-      fireEvent.click(reasoningItem);
-      await Promise.resolve();
-    });
-
-    expect(selectedReasoning[0]).toBe("medium");
+    await waitFor(() => expect(selectedReasoning[0]).toBe("medium"));
   });
 
   test("uses one provider-neutral selector for heterogeneous model catalogs", async () => {
     resetStorage();
     const reasoningEfforts = ["low", "medium", "high", "xhigh", "ultra"] as const;
-    const view = await renderComposer({
-      selectedModel: "gpt-5.6-sol",
-      selectedReasoningEffort: "high",
-      availableModels: [
-        {
-          id: "gpt-5.6-terra",
-          model: "gpt-5.6-terra",
-          displayName: "GPT-5.6 Terra",
-          description: "Efficient reasoning for everyday work.",
-          hidden: false,
-          isDefault: false,
-          defaultReasoningEffort: "low",
-          inputModalities: ["text", "image"],
-          multiAgentVersion: "v2",
-          serviceTiers: [],
-          defaultServiceTier: null,
-          supportedReasoningEfforts: reasoningEfforts.slice(0, 4).map((reasoningEffort) => ({
-            reasoningEffort,
-            description: "",
-          })),
+    const selectedReasoning: string[] = [];
+    const view = await renderComposer(
+      {
+        selectedModel: "gpt-5.6-sol",
+        selectedReasoningEffort: "high",
+        availableModels: [
+          {
+            id: "gpt-5.6-terra",
+            model: "gpt-5.6-terra",
+            displayName: "GPT-5.6 Terra",
+            description: "Efficient reasoning for everyday work.",
+            hidden: false,
+            isDefault: false,
+            defaultReasoningEffort: "low",
+            inputModalities: ["text", "image"],
+            multiAgentVersion: "v2",
+            serviceTiers: [],
+            defaultServiceTier: null,
+            supportedReasoningEfforts: reasoningEfforts.slice(0, 4).map((reasoningEffort) => ({
+              reasoningEffort,
+              description: "",
+            })),
+          },
+          {
+            id: "gpt-5.6-sol",
+            model: "gpt-5.6-sol",
+            displayName: "GPT-5.6 Sol",
+            description: "Frontier reasoning for demanding work.",
+            hidden: false,
+            isDefault: true,
+            defaultReasoningEffort: "low",
+            inputModalities: ["text", "image"],
+            multiAgentVersion: "v2",
+            serviceTiers: [],
+            defaultServiceTier: null,
+            supportedReasoningEfforts: reasoningEfforts.map((reasoningEffort) => ({
+              reasoningEffort,
+              description: "",
+            })),
+          },
+        ],
+      },
+      {
+        onReasoningEffortChange: (reasoningEffort) => {
+          selectedReasoning.push(reasoningEffort);
         },
-        {
-          id: "gpt-5.6-sol",
-          model: "gpt-5.6-sol",
-          displayName: "GPT-5.6 Sol",
-          description: "Frontier reasoning for demanding work.",
-          hidden: false,
-          isDefault: true,
-          defaultReasoningEffort: "low",
-          inputModalities: ["text", "image"],
-          multiAgentVersion: "v2",
-          serviceTiers: [],
-          defaultServiceTier: null,
-          supportedReasoningEfforts: reasoningEfforts.map((reasoningEffort) => ({
-            reasoningEffort,
-            description: "",
-          })),
-        },
-      ],
-    });
+      },
+    );
 
     const trigger = view.getByLabelText("Select model");
     await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
       fireEvent.click(trigger);
       await Promise.resolve();
     });
 
-    expect(view.getByLabelText("Model GPT-5.6 Sol")).toBeTruthy();
-    expect(view.getByLabelText("Effort High")).toBeTruthy();
-    expect(view.getByLabelText("Speed Standard")).toBeTruthy();
+    const sol = await view.findByRole("option", { name: "GPT-5.6 Sol" });
+    expect(sol.getAttribute("aria-selected")).toBe("true");
+    const effort = view.getByRole("slider", { name: "Effort" });
+    expect(effort.getAttribute("aria-valuetext")).toBe("High");
+    // Every advertised level, through Ultra, is a stop on the one track.
+    expect(effort.getAttribute("max")).toBe(String(reasoningEfforts.length - 1));
+    await act(async () => {
+      fireEvent.keyDown(effort, { key: "End" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(selectedReasoning).toEqual(["ultra"]));
+    expect(view.getByRole("button", { name: "Fast" }).getAttribute("aria-pressed")).toBe("false");
   });
 
   test("selecting a model coerces unsupported reasoning to that model's supported default", async () => {
@@ -5145,40 +5116,21 @@ describe("ThreadComposer speed menu", () => {
     const trigger = view.getByLabelText("Select model");
 
     await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
       fireEvent.click(trigger);
       await Promise.resolve();
     });
 
-    const modelTrigger = Array.from(
-      view.container.ownerDocument.body.querySelectorAll('[data-slot="dropdown-submenu-trigger"]'),
-    ).find((node) => node.textContent?.includes("GPT-5.3 Codex"));
-    if (!(modelTrigger instanceof HTMLElement)) {
-      throw new Error("Expected the model selector to include the current model row.");
-    }
-
-    await act(async () => {
-      fireEvent.click(modelTrigger);
-      await Promise.resolve();
-    });
-
-    const modelItem = Array.from(
-      view.container.ownerDocument.body.querySelectorAll('[data-slot="dropdown-item"]'),
-    ).find((node) => node.textContent?.includes("GPT-5.5"));
-    if (!(modelItem instanceof HTMLElement)) {
-      throw new Error("Expected the Model flyout to include GPT-5.5.");
-    }
-
+    const modelItem = await view.findByRole("option", { name: "GPT-5.5" });
     await act(async () => {
       fireEvent.click(modelItem);
       await Promise.resolve();
     });
 
-    expect(selectedModels[0]).toBe("gpt-5.5");
+    await waitFor(() => expect(selectedModels[0]).toBe("gpt-5.5"));
     expect(selectedReasoning[0]).toBe("high");
   });
 
-  test("model flyout keeps every model in one concise searchable list", async () => {
+  test("model picker keeps every model in one concise searchable list", async () => {
     resetStorage();
     const view = await renderComposer({
       selectedModel: "gpt-5.4",
@@ -5253,47 +5205,32 @@ describe("ThreadComposer speed menu", () => {
     const trigger = view.getByLabelText("Select model");
 
     await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
       fireEvent.click(trigger);
       await Promise.resolve();
     });
 
-    const modelTrigger = view.getByLabelText("Model GPT-5.3 Codex");
-
-    await act(async () => {
-      fireEvent.click(modelTrigger);
-      await Promise.resolve();
-    });
-
-    const modelMenu = Array.from(
-      view.container.ownerDocument.body.querySelectorAll<HTMLElement>(
-        '[data-slot="dropdown-submenu-content"]',
-      ),
-    ).find((content) => content.textContent?.includes("GPT-5.3 Codex Mini"));
-    if (!modelMenu) throw new Error("Expected the Model flyout content.");
-    const modelMenuText = modelMenu.textContent ?? "";
-    expect(Boolean(modelMenuText.includes("GPT-5.3 Codex Mini"))).toBe(true);
-    expect(Boolean(modelMenuText.includes("GPT-5.3 Codex Spark"))).toBe(true);
-    expect(Boolean(modelMenuText.includes("Other models"))).toBe(false);
-    expect(Boolean(modelMenuText.includes("Latest Codex model"))).toBe(false);
-    expect(Boolean(modelMenuText.includes("Previous stable Codex model"))).toBe(false);
-    const visibleModelLabels = Array.from(
-      modelMenu.querySelectorAll<HTMLElement>('[data-slot="dropdown-item"]'),
-    )
-      .map((item) => item.textContent?.trim())
-      .filter(
-        (label) =>
-          label === "GPT-5.5" ||
-          label === "GPT-5.3 Codex" ||
-          label === "GPT-5.3 Codex Mini" ||
-          label === "GPT-5.3 Codex Spark",
-      );
-    expect(visibleModelLabels).toEqual([
+    const listbox = await view.findByRole("listbox");
+    const modelLabels = () =>
+      within(listbox)
+        .queryAllByRole("option")
+        .map((option) => option.textContent?.trim());
+    // Descriptions stay in tooltips, so each row reads as one concise name.
+    expect(modelLabels()).toEqual([
       "GPT-5.5",
       "GPT-5.3 Codex",
       "GPT-5.3 Codex Mini",
       "GPT-5.3 Codex Spark",
     ]);
+    expect(
+      within(listbox).getByRole("option", { name: "GPT-5.3 Codex" }).getAttribute("aria-selected"),
+    ).toBe("true");
+
+    const search = view.getByRole("combobox", { name: "Search models" });
+    await act(async () => {
+      fireEvent.change(search, { target: { value: "spark" } });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(modelLabels()).toEqual(["GPT-5.3 Codex Spark"]));
   });
 
   test("renders active Plan mode as a direct toggle chip", async () => {
@@ -5452,8 +5389,6 @@ test("sends a restored image with a vision config while the selected Runtime mod
         kind: "codex",
         label: "Codex",
         selection: "codex",
-        options: [],
-        select: () => {},
         commands: [],
         controls: { images: false },
         imageInputUnavailableReason: "This model does not support image attachments.",
