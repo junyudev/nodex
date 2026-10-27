@@ -1,0 +1,19 @@
+src/renderer/components/board/editor/block-children-contract.browser.test.ts
+  s_6c9891f66c664a::t_97586d46e18e83 62-66,68-71,73-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "996a89ac9195370bcaa4925a11c24a0cd4bccb34",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
