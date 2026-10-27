@@ -15,6 +15,12 @@ type Surface = readonly [
  */
 const VERSION_SURFACES: readonly Surface[] = [
   [
+    "scripts/agent-runtime-native.ts:AGENT_RUNTIME_NODE_PTY_VERSION",
+    "runtimeCompatibility",
+    "Agent Runtime terminal addon",
+    "build the pinned node-pty release for the verified staged Node ABI",
+  ],
+  [
     "packages/agent-runtime/src/mcp/AcpMcpStdioBridge.ts:MCP_PROTOCOL_VERSION",
     "runtimeCompatibility",
     "Agent MCP stdio bridge",
