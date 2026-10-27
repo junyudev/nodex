@@ -1,8 +1,8 @@
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { AgentSnapshot } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeConversation } from "../../../shared/agent-runtime-api";
 import { render } from "../../test/dom";
+import { agentRuntimeSnapshotFixture } from "../../../shared/testing/agent-runtime-snapshot";
 import { installWindowApi } from "../../test/browser-globals";
 import { TestQueryProvider } from "../../test/query";
 import { agentRuntimeRuntime } from "../../lib/agent-runtime-runtime";
@@ -16,40 +16,7 @@ const conversation = {
   sessionId: "session:heartbeat",
   projectId: "project",
   threadId: "engine:root",
-  snapshot: {
-    kind: "snapshot",
-    snapshotSequence: 1,
-    historyCursor: null,
-    hasMoreHistory: false,
-    projection: {
-      thread: {
-        id: "engine:root",
-        projectId: "project",
-        lineage: { rootThreadId: "engine:root", parentThreadId: null },
-        modelSelection: { instanceId: "codex", model: "model" },
-        runtimeMode: "auto",
-        interactionMode: "default",
-        archivedAt: null,
-        deletedAt: null,
-      },
-      runs: [],
-      runtimeRequests: [],
-      subagents: [],
-      providerThreads: [],
-      providerSessions: [],
-      providerTurns: [],
-      nodes: [],
-      attempts: [],
-      messages: [],
-      plans: [],
-      checkpoints: [],
-      checkpointScopes: [],
-      contextHandoffs: [],
-      contextTransfers: [],
-      turnItems: [],
-      visibleTurnItems: [],
-    },
-  } as unknown as AgentSnapshot,
+  snapshot: agentRuntimeSnapshotFixture({ thread: { id: "engine:root" } }),
 } satisfies AgentRuntimeConversation;
 const state = (
   projection = conversation.snapshot.projection,

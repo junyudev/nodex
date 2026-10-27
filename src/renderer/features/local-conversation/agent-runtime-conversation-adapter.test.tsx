@@ -8,6 +8,10 @@ import type {
 } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeSessionEvent } from "../../../shared/agent-runtime-api";
 import { agentRuntimeRuntime } from "../../lib/agent-runtime-runtime";
+import {
+  agentRuntimeRow,
+  agentRuntimeSnapshotFixture,
+} from "../../../shared/testing/agent-runtime-snapshot";
 import { workspaceSessionCommands } from "../../lib/workspace-catalog-commands";
 import {
   createAgentRuntimeConversationRuntime,
@@ -65,46 +69,7 @@ const provider = {
   skills: [],
   slashCommands: [],
 } as unknown as AgentRuntimeProvider;
-const snapshot = {
-  kind: "snapshot",
-  snapshotSequence: 1,
-  historyCursor: null,
-  hasMoreHistory: false,
-  latestLocalTurnOrdinal: null,
-  payloadBudgetExceeded: false,
-  projection: {
-    thread: {
-      id: "engine-thread",
-      projectId: "project",
-      title: "Task",
-      modelSelection: { instanceId: "codex", model: "model" },
-      runtimeMode: "auto",
-      interactionMode: "default",
-      worktreePath: "/workspace",
-      archivedAt: null,
-      deletedAt: null,
-      forkedFrom: null,
-      createdAt: "2026-10-14T00:00:00Z",
-      updatedAt: "2026-10-14T00:00:00Z",
-      lineage: { rootThreadId: "engine-thread", parentThreadId: null },
-    },
-    visibleTurnItems: [],
-    turnItems: [],
-    runs: [],
-    runtimeRequests: [],
-    nodes: [],
-    messages: [],
-    subagents: [],
-    attempts: [],
-    plans: [],
-    checkpoints: [],
-    checkpointScopes: [],
-    contextHandoffs: [],
-    contextTransfers: [],
-    providerThreads: [],
-    providerSessions: [],
-  },
-} as unknown as AgentSnapshot;
+const snapshot = agentRuntimeSnapshotFixture();
 beforeEach(() => {
   // The Profile-wide activity feed is read once per attachment and shared by every adapter.
   vi.spyOn(agentRuntimeRuntime, "connection").mockResolvedValue({
@@ -187,27 +152,28 @@ describe("Agent Runtime failed-provider settings", () => {
         instanceId: scenario === "codex" ? "codex" : instanceId,
         model: "model",
       };
-      const failedSnapshot = {
-        ...snapshot,
+      const failedSnapshot = agentRuntimeSnapshotFixture({
+        thread: { modelSelection, activeProviderThreadId: "provider-thread" },
         projection: {
-          ...snapshot.projection,
-          thread: {
-            ...snapshot.projection.thread,
-            modelSelection,
-            activeProviderThreadId: "provider-thread",
-          },
-          runs: [{ id: "failed-run", ordinal: 1, status: "failed", modelSelection }],
+          runs: [
+            agentRuntimeRow("runs", {
+              id: "failed-run",
+              ordinal: 1,
+              status: "failed",
+              modelSelection,
+            }),
+          ],
           providerThreads: [
-            {
+            agentRuntimeRow("providerThreads", {
               id: "provider-thread",
               appThreadId: "engine-thread",
               providerInstanceId: modelSelection.instanceId,
               providerSessionId: null,
               nativeThreadRef: { driver: "claude", nativeId: "native", strength: "strong" },
-            },
+            }),
           ],
         },
-      } as unknown as AgentSnapshot;
+      });
       const sessionId = `failed-settings-${scenario}`;
       const configuredInstances =
         scenario === "missing-configuration" ? [] : [{ binding, label: "Claude", enabled: true }];
@@ -768,24 +734,19 @@ describe("Agent Runtime Codex controls", () => {
       ...target,
       projectId: "project",
       threadId: target.threadId!,
-      snapshot: {
-        ...snapshot,
-        projection: {
-          ...snapshot.projection,
-          thread: {
-            ...snapshot.projection.thread,
-            id: target.threadId!,
-            modelSelection: {
-              instanceId: "codex",
-              model: "gpt",
-              options: [
-                { id: "reasoningEffort", value: "high" },
-                { id: "serviceTier", value: target.threadId === "speed-a" ? "fast" : "default" },
-              ],
-            },
+      snapshot: agentRuntimeSnapshotFixture({
+        thread: {
+          id: target.threadId!,
+          modelSelection: {
+            instanceId: "codex",
+            model: "gpt",
+            options: [
+              { id: "reasoningEffort", value: "high" },
+              { id: "serviceTier", value: target.threadId === "speed-a" ? "fast" : "default" },
+            ],
           },
         },
-      } as AgentSnapshot,
+      }),
     }));
     vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
     const message = vi.spyOn(agentRuntimeRuntime, "message").mockResolvedValue({ sequence: 1 });
@@ -900,16 +861,9 @@ describe("Agent Runtime Codex controls", () => {
       sessionId: "codex-session",
       projectId: "project",
       threadId: "engine-thread",
-      snapshot: {
-        ...snapshot,
-        projection: {
-          ...snapshot.projection,
-          thread: {
-            ...snapshot.projection.thread,
-            modelSelection: { instanceId: "codex", model: "gpt" },
-          },
-        },
-      } as AgentSnapshot,
+      snapshot: agentRuntimeSnapshotFixture({
+        thread: { modelSelection: { instanceId: "codex", model: "gpt" } },
+      }),
     });
     vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
     const message = vi.spyOn(agentRuntimeRuntime, "message").mockResolvedValue({ sequence: 1 });
@@ -972,37 +926,36 @@ describe("Agent Runtime Agent switching", () => {
     displayName: "Claude",
     models: [{ slug: "sonnet", name: "Sonnet", isCustom: false, capabilities: null }],
   } as unknown as AgentRuntimeProvider;
-  const finishedCodex = (runStatus: string) =>
-    ({
-      ...snapshot,
+  const finishedCodex = (
+    runStatus: AgentSnapshot["projection"]["runs"][number]["status"],
+    modelSelection: AgentSnapshot["projection"]["thread"]["modelSelection"] = {
+      instanceId: "codex",
+      model: "model",
+    },
+  ) =>
+    agentRuntimeSnapshotFixture({
+      thread: { activeProviderThreadId: "provider-thread", modelSelection },
       projection: {
-        ...snapshot.projection,
-        thread: {
-          ...snapshot.projection.thread,
-          activeProviderThreadId: "provider-thread",
-          modelSelection: { instanceId: "codex", model: "model" },
-        },
         runs: [
-          {
+          agentRuntimeRow("runs", {
             id: "run",
             ordinal: 1,
             status: runStatus,
             providerThreadId: "provider-thread",
             modelSelection: { instanceId: "codex", model: "model" },
-          },
+          }),
         ],
-        providerSessions: [],
         providerThreads: [
-          {
+          agentRuntimeRow("providerThreads", {
             id: "provider-thread",
             appThreadId: "engine-thread",
             providerInstanceId: "codex",
             providerSessionId: null,
             nativeThreadRef: { driver: "codex", nativeId: "native", strength: "strong" },
-          },
+          }),
         ],
       },
-    }) as unknown as AgentSnapshot;
+    });
   const mount = (initial: AgentSnapshot) => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([provider, claudeProvider]);
     vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
@@ -1099,16 +1052,7 @@ describe("Agent Runtime Agent switching", () => {
       sessionId: "switch-session",
       projectId: "project",
       threadId: "engine-thread",
-      snapshot: {
-        ...finishedCodex("completed"),
-        projection: {
-          ...finishedCodex("completed").projection,
-          thread: {
-            ...finishedCodex("completed").projection.thread,
-            modelSelection: { instanceId: "codex", model: "gpt" },
-          },
-        },
-      } as AgentSnapshot,
+      snapshot: finishedCodex("completed", { instanceId: "codex", model: "gpt" }),
     });
     vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
     const useChat = () =>
@@ -2080,17 +2024,11 @@ describe("Agent Runtime imported native history", () => {
       };
       const instanceId = agentRuntimeProviderId(binding)!;
       const modelSelection = { instanceId, model: "default" };
-      const imported = {
-        ...snapshot,
+      const imported = agentRuntimeSnapshotFixture({
+        thread: { modelSelection, activeProviderThreadId: "imported-thread" },
         projection: {
-          ...snapshot.projection,
-          thread: {
-            ...snapshot.projection.thread,
-            modelSelection,
-            activeProviderThreadId: "imported-thread",
-          },
           providerThreads: [
-            {
+            agentRuntimeRow("providerThreads", {
               id: "imported-thread",
               appThreadId: "engine-thread",
               providerInstanceId: instanceId,
@@ -2098,10 +2036,10 @@ describe("Agent Runtime imported native history", () => {
               status: "not_loaded",
               nativeThreadRef: { driver: "acpRegistry", nativeId: "native", strength: "strong" },
               nativeMetadata: { nativeImport: capabilities },
-            },
+            }),
           ],
         },
-      } as unknown as AgentSnapshot;
+      });
       const conversation = {
         sessionId: "imported-session",
         projectId: "project",
@@ -2174,16 +2112,9 @@ describe("Agent Runtime sent-message editing capabilities", () => {
         sessionId: "edit-capability-session",
         projectId: "project",
         threadId: "engine-thread",
-        snapshot: {
-          ...snapshot,
-          projection: {
-            ...snapshot.projection,
-            thread: {
-              ...snapshot.projection.thread,
-              modelSelection: { instanceId, model: "model" },
-            },
-          },
-        } as AgentSnapshot,
+        snapshot: agentRuntimeSnapshotFixture({
+          thread: { modelSelection: { instanceId, model: "model" } },
+        }),
       });
       vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
       const { result, unmount } = renderHook(
@@ -2376,16 +2307,11 @@ describe("Agent Runtime effective image capability", () => {
       sessionId,
       projectId: "project",
       threadId: "engine-thread",
-      snapshot: {
-        ...snapshot,
+      snapshot: agentRuntimeSnapshotFixture({
+        thread: { modelSelection: { instanceId: "codex", model: "vision" } },
         projection: {
-          ...snapshot.projection,
-          thread: {
-            ...snapshot.projection.thread,
-            modelSelection: { instanceId: "codex", model: "vision" },
-          },
           runs: [
-            {
+            agentRuntimeRow("runs", {
               id: "queued-vision-run",
               threadId: "engine-thread",
               ordinal: 1,
@@ -2401,10 +2327,10 @@ describe("Agent Runtime effective image capability", () => {
               completedAt: null,
               checkpointId: null,
               contextHandoffId: null,
-            },
+            }),
           ],
         },
-      } as AgentSnapshot,
+      }),
     };
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([imageProvider]);
     vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);

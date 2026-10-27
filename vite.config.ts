@@ -211,6 +211,7 @@ export default defineConfig({
       "nodex/no-manual-effect-runtime-in-tests": "error",
       "nodex/no-ambient-profile-authority": "error",
       "nodex/no-native-title-tooltip": "error",
+      "nodex/no-cast-runtime-snapshot-fixtures": "error",
       "oxc/const-comparisons": "error",
       "react/iframe-missing-sandbox": "error",
       "react/jsx-no-constructed-context-values": "error",

@@ -15,6 +15,8 @@ import {
   type AgentRuntimeReadTransport,
 } from "./agent-runtime-conversation-owner";
 import { hasDurableCanonicalFirstSubmission } from "../conversation-launch/session-first-submission-owner";
+import { prepareAgentMessage } from "../../../shared/agent-prompt";
+import { agentRuntimeRow } from "../../../shared/testing/agent-runtime-snapshot";
 import type { CodexHistoryBoundaryRef } from "../../../shared/codex-conversation-state/codex-history-topology";
 
 const target = { sessionId: "session", threadId: "thread" };
@@ -1256,13 +1258,20 @@ describe("Agent Runtime keyed transcript reads", () => {
   test("pages more than five queued messages without opening older history and reads the full edit text only on demand", async () => {
     const initial = conversation([]);
     const template = initial.snapshot.projection.runs[0]!;
+    const words = (index: number) => `Queued message ${index}${" text".repeat(600)}`;
+    const selection = { id: "selection", text: "Keep the old schema" };
+    const edited = await prepareAgentMessage(
+      words(6),
+      { text: words(6), selectedTextAttachments: [selection] },
+      vi.fn(),
+    );
     const messages = Array.from({ length: 30 }, (_, index) => ({
       id: `message:${index}`,
       threadId: target.threadId,
       runId: `queue:${index}`,
       nodeId: null,
       role: "user" as const,
-      text: `Queued message ${index} ${"text ".repeat(600)}`,
+      ...(index === 6 ? edited : { text: words(index) }),
       attachments:
         index === 6
           ? [
@@ -1361,8 +1370,10 @@ describe("Agent Runtime keyed transcript reads", () => {
       { caption: "Queue.png", source: "nodex-runtime-image:thread/queued-user%3A6/queue-image" },
     ]);
     expect(await owner.readQueuedInput("queue:6")).toEqual({
-      text: messages[6]!.text,
+      text: words(6),
       images: [{ source: "/managed/queue-image.png", caption: "Queue.png" }],
+      responseTextAnnotations: [],
+      selectedTextAttachments: [selection],
     });
     expect(attachment).toHaveBeenCalledExactlyOnceWith({
       ...target,
@@ -1972,18 +1983,17 @@ describe("Agent Runtime keyed transcript reads", () => {
 
   test("follows the chat's provider session from attach through detach", async () => {
     const { owner, wire, release } = await open(conversation([assistant()]));
-    const session = {
+    const session = agentRuntimeRow("providerSessions", {
       id: "provider-session",
       driver: "claudeAgent",
       providerInstanceId: "claude",
       status: "running",
       cwd: "/workspace",
       model: "model",
-      capabilities: { sessions: { supportsProviderSwitchingViaHandoff: true } },
       createdAt: at,
       updatedAt: at,
       lastError: null,
-    } as unknown as AgentSnapshot["projection"]["providerSessions"][number];
+    });
     const sessions = () => owner.getSnapshot().conversation!.snapshot.projection.providerSessions;
     const emit = (sequence: number, event: Record<string, unknown>) =>
       wire.emit({
@@ -2160,7 +2170,7 @@ describe("Agent Runtime keyed transcript reads", () => {
 
 test("native observations without child Threads never acquire navigable child membership", async () => {
   const initial = conversation([]);
-  const withTasks = {
+  const withTasks: AgentRuntimeConversation = {
     ...initial,
     snapshot: {
       ...initial.snapshot,
@@ -2188,7 +2198,7 @@ test("native observations without child Threads never acquire navigable child me
             completedAt: null,
             updatedAt: at,
           },
-        ] as AgentSnapshot["projection"]["subagents"],
+        ],
       },
     },
   };

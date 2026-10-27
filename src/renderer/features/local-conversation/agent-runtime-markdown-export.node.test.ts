@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vite-plus/test";
-import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
+import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeConversation } from "../../../shared/agent-runtime-api";
+import { agentRuntimeSnapshotFixture } from "../../../shared/testing/agent-runtime-snapshot";
 import { createAgentRuntimeMarkdownReader } from "./agent-runtime-markdown-export";
 import { streamReadOnlyConversationMarkdown } from "./copy-conversation-markdown";
 
@@ -56,22 +57,11 @@ const row = (item: AgentTurnItem, position = 0) => ({
   sourceItemId: item.id,
   item,
 });
-const snapshot = {
-  kind: "snapshot",
-  snapshotSequence: 10,
-  historyCursor: "older",
-  hasMoreHistory: true,
-  projection: {
-    thread: {
-      id: target.threadId,
-      worktreePath: "/workspace",
-      runtimeMode: "full-access",
-      modelSelection: { instanceId: "codex", model: "model" },
-    },
-    runs: [],
-    visibleTurnItems: [row(command), row(answer, 1)],
-  },
-} as unknown as AgentSnapshot;
+const snapshot = agentRuntimeSnapshotFixture({
+  snapshot: { snapshotSequence: 10, historyCursor: "older", hasMoreHistory: true },
+  thread: { id: target.threadId },
+  projection: { visibleTurnItems: [row(command), row(answer, 1)] },
+});
 const conversation: AgentRuntimeConversation = { ...target, projectId: null, snapshot };
 
 test("copy pages the selected Session and explicitly reads only omitted captured-ancestry items", async () => {

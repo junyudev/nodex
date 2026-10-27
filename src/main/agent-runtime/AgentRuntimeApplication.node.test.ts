@@ -25,6 +25,7 @@ import { ProjectWorkspace, ProjectWorkspaceError } from "../project-application/
 import type { ProjectSession } from "../../shared/types";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { NativeConversationImportInput } from "../../shared/native-session-catalog";
+import { agentRuntimeSnapshotFixture } from "../../shared/testing/agent-runtime-snapshot";
 import {
   make,
   AgentRuntimeApplicationError,
@@ -99,26 +100,17 @@ const snapshot = (
   rootThreadId = threadId,
   projectId = "project",
 ): AgentSnapshot =>
-  ({
-    kind: "snapshot",
-    snapshotSequence: 0,
-    historyCursor: "cursor:older",
-    hasMoreHistory: true,
-    projection: {
-      thread: {
-        id: threadId,
-        projectId,
-        lineage: { rootThreadId, parentThreadId: threadId === rootThreadId ? null : rootThreadId },
-        deletedAt: null,
-        archivedAt: null,
-        interactionMode: "default",
-      },
-      runs: [],
-      runtimeRequests: [],
-      nodes: [],
-      messages: [],
+  agentRuntimeSnapshotFixture({
+    snapshot: { snapshotSequence: 0, historyCursor: "cursor:older", hasMoreHistory: true },
+    thread: {
+      id: threadId,
+      projectId,
+      lineage:
+        threadId === rootThreadId
+          ? { rootThreadId, parentThreadId: null, relationshipToParent: null }
+          : { rootThreadId, parentThreadId: rootThreadId, relationshipToParent: "subagent" },
     },
-  }) as unknown as AgentSnapshot;
+  });
 
 const setExecutionHold = (fixture: ReturnType<typeof setup>, threadId: string, held: boolean) => {
   const current = fixture.snapshots.get(threadId)!;
