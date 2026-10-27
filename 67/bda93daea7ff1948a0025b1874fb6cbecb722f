@@ -1,0 +1,125 @@
+docs/ARCHITECTURE.md
+  s_05bd9493ddfb63::t_78a60b758fe3ab 243-248,306
+oxlint-plugin-nodex/index.ts
+  s_05bd9493ddfb63::t_86d204c25b2a37 1,14
+oxlint-plugin-nodex/rules/no-direct-webcontents-destruction-listener.ts
+  s_05bd9493ddfb63::t_ecdc4fb0c1ae43 1-60
+scripts/ci/verify-tooling-contracts.ts
+  s_05bd9493ddfb63::t_6038fbcf9bb03d 201-205,251
+scripts/fixtures/tooling/nodex/webcontents-lifetime-invalid.ts
+  s_05bd9493ddfb63::t_ea95ecda8ef710 1-14
+scripts/fixtures/tooling/nodex/webcontents-lifetime-valid.ts
+  s_05bd9493ddfb63::t_33cbc7cb9f7baa 1-11
+src/main/codex/renderer-client-runtime-contracts.ts
+  s_b33872d4d89492::t_5fa9c1c9c490d2 1,7-8
+src/main/core-client/desktop-document-sync-bridge.ts
+  s_05bd9493ddfb63::t_e3554af114e5ce 1,241,424,896,903,915-917,2161,2183-2188,2191,2198,2211-2214
+src/main/dictation/DictationHotkeyCapture.test.ts
+  s_05bd9493ddfb63::t_189516cc3eb740 1-4,11,113-121
+src/main/dictation/DictationHotkeyCapture.ts
+  s_05bd9493ddfb63::t_2a440fb8e785c6 1,18,51,56
+src/main/dictation/global-dictation-manager.test.ts
+  s_05bd9493ddfb63::t_4286323ba1103b 116-123
+src/main/dictation/global-dictation-manager.ts
+  s_7aa8ab5f4cb606::t_662dc9d23c223b 1,153,158,174,844,856,860
+src/main/document-sync-transport.ts
+  s_52b7f544384b72::t_51d0f2a10b1f80 1,4
+src/main/host-runtime/ApplicationMenuRuntime.ts
+  s_05bd9493ddfb63::t_169891014b66bf 1,105-107,123,132,153,156,433
+src/main/host-runtime/CodexRendererProjectionRuntime.test.ts
+  s_05bd9493ddfb63::t_cb964ff3e69ae3 1,45,51
+src/main/host-runtime/DictationRuntime.ts
+  s_05bd9493ddfb63::t_5656b466a53e7b 1,192,276,282,463
+src/main/host-runtime/EditorHistoryRuntime.ts
+  s_05bd9493ddfb63::t_f8254767fc19b6 1,39,120,187,193,584
+src/main/host-runtime/GitWorkerRuntime.ts
+  s_b33872d4d89492::t_52a3bc1a8f4c43 1-4,32,54,173,307,613,737,762
+src/main/host-runtime/McpAppSandboxRuntime.ts
+  s_05bd9493ddfb63::t_fcc18a2dd96e0a 1,107
+src/main/host-runtime/RendererClientRuntime.ts
+  s_05bd9493ddfb63::t_ff4fdc2db4bdc1 1,26,54,76,109,113,135,172,292
+src/main/ipc/handlers/AcpAgentsIpc.node.test.ts
+  s_b33872d4d89492::t_122cfb2b0017ad 97
+src/main/ipc/handlers/AcpAgentsIpc.ts
+  s_05bd9493ddfb63::t_5820387107f89b 1,20,40,47,61-62,64,68-70,112,211
+src/main/ipc/handlers/AgentBackendIpc.ts
+  s_05bd9493ddfb63::t_ce7d70753325c6 1,96,148,203
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_05bd9493ddfb63::t_aaeef9f0126f19 1,36,49,59,246-248,326
+src/main/ipc/handlers/CodexConversationServiceIpc.ts
+  s_05bd9493ddfb63::t_66c63fcdea4108 1,24,72,77,82-83,96
+src/main/ipc/handlers/CodexWorkspaceIpc.ts
+  s_b33872d4d89492::t_f27e5f581dfe31 46,290,1017-1021,1292-1296,1452-1456,1519-1523,2262
+src/main/ipc/handlers/DictationStreamingIpc.test.ts
+  s_7aa8ab5f4cb606::t_b4a320e4353f77 1,28-36,125-130,148-149,185
+src/main/ipc/handlers/DictationStreamingIpc.ts
+  s_7aa8ab5f4cb606::t_ff48b2d0e96613 1,26,47,56,62,80,106
+src/main/ipc/handlers/DocumentRecoveryIpc.ts
+  s_05bd9493ddfb63::t_1a7b06549bda5b 1,93,101,164,274
+src/main/ipc/handlers/FileSearchIpc.node.test.ts
+  s_05bd9493ddfb63::t_be1b7cb1cec17b 5,14,49,65,67,90-92,95-109,123-124
+src/main/ipc/handlers/FileSearchIpc.ts
+  s_05bd9493ddfb63::t_c05dbea9de1ce8 1,36,64-66,130
+src/main/ipc/handlers/ProjectionDeliveryIpc.test.ts
+  s_b33872d4d89492::t_6a51e22c614cbf 69
+src/main/ipc/handlers/ProjectionDeliveryIpc.ts
+  s_05bd9493ddfb63::t_7ca183a8d2e4f1 1,21,30,64,75,78-80,112-115,134
+src/main/ipc/handlers/StructuralClipboardIpc.ts
+  s_05bd9493ddfb63::t_1a940b6a3f3b18 1,26,51,77
+src/main/ipc/handlers/TerminalIpc.ts
+  s_7aa8ab5f4cb606::t_78393c83b82cf3 1,38,55,69,93,96-100,251
+src/main/ipc/handlers/WorkspaceFileIpc.ts
+  s_05bd9493ddfb63::t_09690884571a1d 1,96,279,343
+src/main/ipc/handlers/WorkspaceTextSearchIpc.ts
+  s_05bd9493ddfb63::t_cd4d19c1c02be8 1,21,47-49,85
+src/main/mcp-app/mcp-app-sandbox-host.test.ts
+  s_05bd9493ddfb63::t_13c7ce76b2e237 1-4,20-23,81-84,438-440,507-515
+src/main/mcp-app/mcp-app-sandbox-host.ts
+  s_b33872d4d89492::t_f2b960876065ff 1,59,284,325-326,564,575-577,689,700,702,761,858,899-903,905-912
+src/main/platform/electron/WebContentsDestructionSubscriptions.node.test.ts
+  s_05bd9493ddfb63::t_b3cfbfc6d5bb85 12-15,154-253
+src/main/platform/electron/WebContentsDestructionSubscriptions.ts
+  s_05bd9493ddfb63::t_6d6e0136c748c4 1-2,5,16-20,22-23,26,35-39,50-58,69,73-83,85-91
+vite.config.ts
+  s_05bd9493ddfb63::t_5ffcd9267d1039 213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "67bda93daea7ff1948a0025b1874fb6cbecb722f",
+  "prompts": {},
+  "sessions": {
+    "s_05bd9493ddfb63": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec3-d78c-7160-b0b6-162ecc2621b6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_52b7f544384b72": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec4-4401-7440-b010-032c43a1969e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7aa8ab5f4cb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17a9d-4961-7e90-bed7-5a3180ade70c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b33872d4d89492": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ec3-606f-7b70-bee4-5a7dfdadd216",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
