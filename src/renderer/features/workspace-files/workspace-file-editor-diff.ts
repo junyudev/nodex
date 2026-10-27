@@ -13,7 +13,9 @@ export function workspaceFileEditorDiffFromContents(
 
   const lines = diff.additionLines.length ? diff.additionLines : [""];
   const lineCount = lines.length;
-  const noEOFCR = !lines.at(-1)?.endsWith("\n");
+  // An empty file has no final line to terminate, so it reports no missing newline.
+  const lastLine = lines.at(-1) ?? "";
+  const noEOFCR = lastLine !== "" && !lastLine.endsWith("\n");
   return {
     ...diff,
     additionLines: lines,

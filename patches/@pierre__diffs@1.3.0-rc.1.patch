@@ -40,7 +40,7 @@ diff --git a/dist/utils/updateDiffHunks.js b/dist/utils/updateDiffHunks.js
 +			deletionStart: 1, deletionCount: 1, deletionLines: 0, deletionLineIndex: 0,
 +			splitLineStart: 0, splitLineCount: 1,
 +			unifiedLineStart: 0, unifiedLineCount: 1,
-+			noEOFCRAdditions: true, noEOFCRDeletions: true,
++			noEOFCRAdditions: false, noEOFCRDeletions: false,
 +			hunkContent: [{ type: "context", lines: 1, additionLineIndex: 0, deletionLineIndex: 0 }]
 +		}]
 +	};

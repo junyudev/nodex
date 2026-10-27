@@ -286,15 +286,16 @@ describe("Files editable comparisons", () => {
       content: base,
       line: 3,
       typed: "first\nsecond\nxthird\nfourth\nfifth",
+      missingFinalNewline: true,
     },
-    { name: "an empty file", content: "", line: 1, typed: "x" },
+    { name: "an empty file", content: "", line: 1, typed: "x", missingFinalNewline: false },
   ])(
     "edits $name in comparison and returns to zero blocks on undo",
-    async ({ content, line, typed }) => {
+    async ({ content, line, typed, missingFinalNewline }) => {
       const edits = spyOnEditor();
       const navigation = vi.fn();
       const onChange = vi.fn();
-      render(
+      const view = render(
         <DraftEditor
           initial={content}
           onChange={onChange}
@@ -309,7 +310,11 @@ describe("Files editable comparisons", () => {
         />,
       );
       const editor = await attached(edits);
-      await settle(() => expect(navigation.mock.lastCall?.[0]?.count).toBe(0));
+      const noNewlineRow = () => shadow(view.container).querySelector("[data-no-newline]");
+      await settle(() => {
+        expect(navigation.mock.lastCall?.[0]?.count).toBe(0);
+        expect(noNewlineRow() !== null).toBe(missingFinalNewline);
+      });
       await act(async () => {
         editor.focus({ preventScroll: true });
         await userEvent.keyboard("x");
@@ -322,6 +327,7 @@ describe("Files editable comparisons", () => {
       await settle(() => {
         expect(onChange).toHaveBeenLastCalledWith(content);
         expect(navigation.mock.lastCall?.[0]?.count).toBe(0);
+        expect(noNewlineRow() !== null).toBe(missingFinalNewline);
       });
     },
   );
