@@ -4,6 +4,69 @@ Customize manages the selected local Codex home's plugins, marketplaces and skil
 Native Codex remains the installation and configuration authority. Nodex does not copy
 installation state into its content database.
 
+## Customize pages
+
+The rail's Plugins entry opens Customize. Its sidebar has a search over installed plugins,
+the Plugins and Skills pages, and the installed plugins, each with a More actions menu
+(Try now, Manage, Uninstall). The gear on every Customize page opens Settings › Plugins.
+
+- **Plugin page.** Any plugin row opens it. The titlebar breadcrumb reads Plugins, then the
+  category when the plugin was opened from one, then the plugin; ancestors return to the
+  directory tab, category and search the plugin was opened from. The header shows the logo,
+  name, origin badge and "By {developer} • {summary}". Its primary action follows the
+  plugin's state: Install plugin, Installing, Enable, Try now, Uninstalling, the reason an
+  administrator disabled it, or Unavailable. More actions holds Uninstall, or the reason it
+  cannot run (Installed by admin, Required by ChatGPT). A starter prompt starts a chat that
+  mentions the plugin, installing or enabling it first when needed. A long description folds
+  after fifteen lines. Included apps (grouped by category when there are several), MCP
+  servers, skills and hooks follow; a list longer than five folds behind "See A, B, and N
+  more". Skills preview their instructions; an installed plugin's skill can also be opened,
+  revealed, copied or tried. The Information table always lists Website, showing Unavailable
+  without one. A plugin with apps ends with the notice of how connected apps may use chat
+  data, worded for one or several apps and extended for Google apps.
+- **Connecting apps after install.** When a plugin that connects its apps on install still
+  needs accounts for them, installing it offers to connect each app. Connect opens the app's
+  connection page; the row waits, then reads Connected once the account link appears when
+  Nodex regains focus, and the dialog closes when every app is connected. View details and
+  Try {plugin} now (with the starter prompt the install began from) close it; connecting is
+  always optional.
+- **Skills page.** Installed lists every standalone skill and folds to six only when at least
+  three more would be hidden. Tabs then group the same skills by where they are installed:
+  Personal, the project's folder (or Team), System, and Admin installed. Search narrows
+  everything into one list; Command-F focuses it, the arrow keys move the highlight and
+  Enter opens the highlighted skill. A skill's preview switches it on or off, opens, reveals
+  or copies its SKILL.md, and tries it in a new chat. A recommended skill's preview shows its
+  instructions before it is installed. Add starts a chat with the skill
+  creator.
+- **Settings › Plugins.** Counted Plugins, Apps, MCPs, Skills and Marketplace tabs share one
+  search. MCPs is always offered; another tab is hidden while it has nothing in it, and an
+  emptied tab falls through to the next one that has something. Every installed plugin and
+  personal skill has a switch. A plugin row opens that plugin's settings; a skill row opens
+  its instructions. The skills listed are personal skills that aren't recommended ones.
+  Browse directory returns to the Customize page for the selected tab. Add offers Create
+  plugin and Record a skill when their helpers exist, Add a marketplace, and Add MCP server.
+- **Apps.** The apps you have connected each have a switch; one controlled by an administrator
+  or another configuration layer stays locked and says why. A row opens the app's tools, split
+  into tools that change things and tools that only read, with the app's switch and Try now,
+  which starts a chat that mentions the app. App rows on a plugin's page open the same tools.
+- **MCPs.** Your servers each have settings and a switch; servers that plugins provide are
+  listed separately and only sign in. A server that needs a sign-in offers Authenticate,
+  with a choice of how its OAuth client registers. Adding or editing a server replaces the
+  lists with its form: a new server's name and type (a command, or a streamable HTTP URL),
+  then its arguments, environment, working directory, or headers. Fields the form doesn't
+  show, such as timeouts and tool filters, are kept. An edited server can be uninstalled.
+  MCP Apps › Clear all app data clears the site data and caches every interactive MCP app has
+  saved in this session, without asking first.
+- **Marketplace.** The marketplaces you added show how many plugins each offers and where it
+  lives. Git marketplaces can be upgraded. Removing one first lists its installed plugins,
+  then uninstalls them one at a time, marking each, before removing it; a failure names the
+  plugin it stopped at and Retry resumes there. Marketplaces that failed to load are listed
+  above the others with a Retry.
+- **Plugin settings.** Manage, wherever it appears for an installed plugin, opens its settings
+  under Settings › Plugins: each of its skills with a switch and its instructions, and what is
+  known about it (when it was connected, developer, version, website, privacy policy, terms).
+  View details returns to the plugin's page; Uninstall removes it and returns to the list.
+
 ## Context and capabilities
 
 Every operation identifies a host and a nullable Project. The initial host is `local`.
