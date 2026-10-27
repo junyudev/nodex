@@ -1,0 +1,37 @@
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_f2e3c034e2bc1d::t_2d06db163c482f 2566,2572
+src/renderer/components/workbench/workbench-automation-project-options.ts
+  s_f2e3c034e2bc1d::t_2d06db163c482f 96-105
+src/renderer/components/board/page-stage/scheduled-tasks-row.tsx
+  s_f2e3c034e2bc1d::t_1a90b3b91063b2 40
+  s_f2e3c034e2bc1d::t_f1b3d22d4d0589 12-13,43
+src/renderer/components/workbench/workbench-automations-routes.node.test.ts
+  s_f2e3c034e2bc1d::t_2d06db163c482f 22,33,66,69,74
+src/renderer/features/scheduled/scheduled-navigation.tsx
+  s_f2e3c034e2bc1d::t_2d06db163c482f 8-13
+src/renderer/components/board/page-stage.tsx
+  s_f2e3c034e2bc1d::t_2d06db163c482f 521-529
+src/renderer/features/scheduled/scheduled-route.tsx
+  s_f2e3c034e2bc1d::t_2d06db163c482f 297
+src/renderer/features/scheduled/scheduled-task-dialog.tsx
+  s_f2e3c034e2bc1d::t_2d06db163c482f 35,44-45,72-75,77,80-83,124
+  s_f2e3c034e2bc1d::t_3e27cce5d2d461 196-197
+src/renderer/components/workbench/workbench-automations-routes.ts
+  s_f2e3c034e2bc1d::t_2d06db163c482f 19-20,30,61-62,85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5d3479b5b00295f28dab3cf2cd7cc6cefa65a306",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
