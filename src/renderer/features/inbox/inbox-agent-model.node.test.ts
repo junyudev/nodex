@@ -107,7 +107,7 @@ describe("what an Inbox chat runs on", () => {
     };
     const chosen = codex({ reasoningEffort: "high" });
     expect(inboxAgentLine(describeInboxAgent(withSol, chosen, "suggestion"))).toBe(
-      "Codex · GPT-6.1 Sol · Medium",
+      "Codex · GPT-6.1 Sol · High",
     );
     expect(inboxAgentLine(describeInboxAgent(withSol, chosen, "chat"))).toBe(
       "Codex · GPT-6 Astra · High",

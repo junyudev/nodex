@@ -45,6 +45,8 @@ const settings: InboxSettings = {
   suggestionModel: null,
   instructions: "Prefer existing chats when relevant.",
   chatAgent: choice("codex"),
+  suggestionsChooseModels: true,
+  useModelGuide: true,
 };
 const provider = (binding: InboxAgentBinding = { instanceId: "codex" }): Provider => ({
   instanceId: binding.instanceId,
@@ -718,6 +720,11 @@ const suggestionOutput = (pageIds: string[], action = "send_to_chat") => ({
       project_id: null,
       session_id: action === "send_to_chat" ? "session:one" : null,
       prompt: action === "keep" ? null : "Continue with the evidence",
+      chat_instance_id: null,
+      chat_model: null,
+      chat_effort: null,
+      delegates: [],
+      plan: null,
       summary: action === "keep" ? "Keep these thoughts for later" : "Continue the investigation",
       rationale: null,
     },
@@ -792,8 +799,16 @@ it.effect("settles a 16-message explicit group atomically with the actual resolv
     assert.deepEqual(request.modelSelection, {
       instanceId: claude.instanceId,
       model: "default-model",
-      options: [{ id: "reasoningEffort", value: "low" }],
+      // Suggestions also choose models and plan delegation, so Claude suggests at medium effort.
+      options: [{ id: "reasoningEffort", value: "medium" }],
     });
+    // The suggestion is offered the live Agents and the Inbox's own chat Agent to choose among.
+    const data = JSON.parse(request.prompt.split("JSON data:\n")[1]!);
+    assert.deepEqual(
+      data.agents.map((agent: { instance_id: string }) => agent.instance_id),
+      ["codex", claude.instanceId],
+    );
+    assert.strictEqual(data.default_chat_agent.instance_id, "codex");
     assert.strictEqual(request.maxOutputBytes, INBOX_SUGGESTION_MAX_OUTPUT_BYTES);
     assert.strictEqual(request.timeoutMs, INBOX_SUGGESTION_TIMEOUT_MS);
     assert.include(request.prompt, "Captured evidence");

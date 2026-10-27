@@ -1,6 +1,7 @@
 import type { components } from "@nodex/core-protocol";
 import type {
   InboxChat,
+  InboxChatAgent,
   InboxCounts,
   InboxDispatchAction,
   InboxItem,
@@ -25,6 +26,7 @@ export type CoreInboxDispatchWork = Schemas["ProjectWorkspaceInboxDispatchWork"]
 export type CoreInboxPageBasis = Schemas["ProjectWorkspaceInboxPageBasis"];
 export type CoreInboxSuggestionRequest = Schemas["ProjectWorkspaceInboxSuggestionRequest"];
 type CoreInboxExecutionSelection = Schemas["ProjectWorkspaceInboxExecutionSelection"];
+type CoreInboxChatAgent = Schemas["ProjectWorkspaceInboxChatAgent"];
 type CoreInboxSource = Schemas["ProjectWorkspaceInboxSource"];
 type CoreInboxLocation = Schemas["ProjectWorkspaceInboxLocation"];
 type CoreInboxChat = Schemas["ProjectWorkspaceInboxChat"];
@@ -40,7 +42,17 @@ export const inboxDispatchActionFromCore = (
     case "keep":
       return { type: "keep" };
     case "new_chat":
-      return { type: "new_chat", projectId: action.project_id ?? null, prompt: action.prompt };
+      return {
+        type: "new_chat",
+        projectId: action.project_id ?? null,
+        prompt: action.prompt,
+        agent: action.agent ? chatAgentFromCore(action.agent) : null,
+        delegates: (action.delegates ?? []).map((delegate) => ({
+          work: delegate.work,
+          agent: chatAgentFromCore(delegate.agent),
+        })),
+        plan: action.plan ?? null,
+      };
     case "send_to_chat":
       return { type: "send_to_chat", sessionId: action.session_id, prompt: action.prompt };
     case "move_to_project":
@@ -48,12 +60,36 @@ export const inboxDispatchActionFromCore = (
   }
 };
 
+const chatAgentFromCore = (agent: CoreInboxChatAgent): InboxChatAgent => ({
+  instanceId: agent.instance_id,
+  model: agent.model ?? null,
+  reasoningEffort: agent.reasoning_effort ?? null,
+  serviceTier: agent.service_tier ?? null,
+});
+
+const chatAgentToCore = (agent: InboxChatAgent): CoreInboxChatAgent => ({
+  instance_id: agent.instanceId,
+  model: agent.model,
+  reasoning_effort: agent.reasoningEffort,
+  service_tier: agent.serviceTier,
+});
+
 export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInboxDispatchAction => {
   switch (action.type) {
     case "keep":
       return { type: "keep" };
     case "new_chat":
-      return { type: "new_chat", project_id: action.projectId, prompt: action.prompt };
+      return {
+        type: "new_chat",
+        project_id: action.projectId,
+        prompt: action.prompt,
+        agent: action.agent ? chatAgentToCore(action.agent) : null,
+        delegates: action.delegates.map((delegate) => ({
+          work: delegate.work,
+          agent: chatAgentToCore(delegate.agent),
+        })),
+        plan: action.plan,
+      };
     case "send_to_chat":
       return { type: "send_to_chat", session_id: action.sessionId, prompt: action.prompt };
     case "move_to_project":
@@ -80,7 +116,11 @@ export const inboxExecutionSelectionToCore = (
   selection: InboxExecutionSelection | null | undefined,
 ): CoreInboxExecutionSelection | null =>
   selection
-    ? { model_selection: selection.modelSelection, interaction_mode: selection.interactionMode }
+    ? {
+        model_selection: selection.modelSelection,
+        interaction_mode: selection.interactionMode,
+        orchestration: selection.orchestration ?? null,
+      }
     : null;
 export const inboxExecutionSelectionFromCore = (
   selection: CoreInboxExecutionSelection,
@@ -88,6 +128,7 @@ export const inboxExecutionSelectionFromCore = (
   InboxExecutionSelectionSchema.parse({
     modelSelection: selection.model_selection,
     interactionMode: selection.interaction_mode,
+    orchestration: selection.orchestration ?? null,
   });
 
 export const inboxScopeToCore = (scope: InboxScope): CoreInboxScope =>

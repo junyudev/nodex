@@ -576,6 +576,15 @@ fn decide(
         | ProjectWorkspaceInboxDispatchAction::SendToChat { prompt, .. } => {
             require_host(context)?;
             let mut text = prompt.trim().to_owned();
+            // How the chat's Agent runs the work follows the task, before the quoted originals.
+            if let Some(orchestration) = selection
+                .and_then(|selection| selection.orchestration.as_deref())
+                .map(str::trim)
+                .filter(|orchestration| !orchestration.is_empty())
+            {
+                text.push_str("\n\n");
+                text.push_str(orchestration);
+            }
             text.push_str("\n\nOriginal Inbox messages:\n");
             let mut images = Vec::new();
             for (index, page_id) in pages.iter().enumerate() {

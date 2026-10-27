@@ -76,6 +76,7 @@ import type { ProjectWorkspaceCommandResult } from "../project-application/Proje
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
+import { renderInboxOrchestration } from "./inbox-orchestration";
 import { createOperationId } from "../core-runtime/operation-identity";
 
 export class InboxApplicationError extends Schema.TaggedError<InboxApplicationError>()(
@@ -359,7 +360,7 @@ export const make = Effect.gen(function* () {
   const prepareConfirmation = Effect.fn("InboxApplication.prepareConfirmation")(function* (
     input: InboxConfirmationDraft,
   ): Effect.fn.Return<InboxPreparedConfirmation, InboxApplicationError> {
-    const { chatAgent, ...draft } = yield* parse("prepare-confirmation", () =>
+    const draft = yield* parse("prepare-confirmation", () =>
       InboxConfirmationDraftSchema.parse(input),
     );
     const context = yield* dispatchContext(draft.basis.map((basis) => basis.pageId));
@@ -372,17 +373,30 @@ export const make = Effect.gen(function* () {
       return yield* fail("prepare-confirmation")(
         new Error("Review this suggestion before deciding"),
       );
-    // A new chat runs on the user's choice for this message, or else the Inbox's chat Agent.
-    const executionSelection =
+    // A new chat runs on the Agent its decision chose, or else the Inbox's own. Its delegation
+    // instructions are written now, against the catalog that resolved it, and frozen with it.
+    const modelSelection =
       action.type === "new_chat"
+        ? yield* resolveInboxModel(
+            runtime,
+            action.agent ??
+              (yield* settings.snapshot().pipe(Effect.mapError(fail("prepare-confirmation")))).inbox
+                .chatAgent,
+          ).pipe(Effect.mapError(fail("prepare-confirmation")))
+        : null;
+    const executionSelection =
+      action.type === "new_chat" && modelSelection
         ? {
-            modelSelection: yield* resolveInboxModel(
-              runtime,
-              chatAgent ??
-                (yield* settings.snapshot().pipe(Effect.mapError(fail("prepare-confirmation"))))
-                  .inbox.chatAgent,
-            ).pipe(Effect.mapError(fail("prepare-confirmation"))),
+            modelSelection,
             interactionMode: "default" as const,
+            orchestration:
+              action.delegates.length > 0 || action.plan
+                ? renderInboxOrchestration(
+                    yield* runtime.catalog().pipe(Effect.mapError(fail("prepare-confirmation"))),
+                    action,
+                    modelSelection.instanceId,
+                  )
+                : null,
           }
         : null;
     const prepared = {

@@ -3,6 +3,7 @@ import type {
   InboxDispatchAction,
   InboxChat,
   InboxChatAgent,
+  InboxDelegate,
   InboxItem,
   InboxProposal,
   InboxPageBasis,
@@ -12,13 +13,13 @@ import { messageTextOf } from "../../../shared/message-content";
 import { NodexButton } from "@/components/ui/button";
 import { NodexOptionPicker } from "@/components/ui/dropdown";
 import { CompactChevronDownIcon } from "@/components/shared/icons";
-import { LIBRARY_INBOX, projectInbox } from "../../../shared/inbox";
+import { LIBRARY_INBOX, inboxNewChatAction, projectInbox } from "../../../shared/inbox";
 import { useInboxChatTargets } from "./use-inbox";
 import { cn } from "@/lib/utils";
 import { INBOX_ACTION_ICONS } from "./inbox-icon-action";
 import { InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
 import { sameInboxChatAgent } from "./inbox-agent-model";
-import type { InboxChatChoice } from "./use-inbox-actions";
+import { InboxChatPlan } from "./inbox-chat-plan";
 
 type ActionType = InboxDispatchAction["type"];
 
@@ -45,7 +46,11 @@ export interface InboxDispatchDraft {
   readonly sessionId: string | null;
   readonly prompt: string;
   /** What a new chat runs on when chosen for this decision; the Inbox's own when unset. */
-  readonly chatAgent?: InboxChatAgent | null;
+  readonly agent?: InboxChatAgent | null;
+  /** Parts of a new chat's work its Agent hands to other Agents. */
+  readonly delegates?: readonly InboxDelegate[];
+  /** How a new chat's Agent should run the work. */
+  readonly plan?: string | null;
 }
 
 export function draftFromAction(
@@ -61,6 +66,9 @@ export function draftFromAction(
         projectId: action.projectId,
         sessionId: null,
         prompt: action.prompt,
+        agent: action.agent,
+        delegates: action.delegates,
+        plan: action.plan,
       };
     case "send_to_chat":
       return {
@@ -79,22 +87,24 @@ export function draftFromAction(
   }
 }
 
-/** A new decision still reviews the complete source group of the previous handoff. */
+/**
+ * A new decision still reviews the complete source group of the previous handoff. It starts
+ * from the action as the row has it, including a model chosen there.
+ */
 export function draftForInboxItem(
   item: InboxItem,
   projectId: string | null,
-  chatAgent: InboxChatAgent | null = null,
+  edited: InboxDispatchAction | null = null,
 ): InboxDispatchDraft {
   const proposal = item.proposal;
-  const action = proposal?.action;
+  const action = edited ?? proposal?.action;
   return {
     ...draftFromAction(
-      action ?? { type: "new_chat", projectId, prompt: messageTextOf(item.body) },
+      action ?? inboxNewChatAction(projectId, messageTextOf(item.body)),
       messageTextOf(item.body),
     ),
     basis: proposal?.basis ?? [item.basis],
     chat: proposal?.chat ?? null,
-    chatAgent,
     ...(proposal?.state === "open" ? { proposal } : {}),
   };
 }
@@ -106,7 +116,16 @@ export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction 
     case "keep":
       return { type: "keep" };
     case "new_chat":
-      return prompt ? { type: "new_chat", projectId: draft.projectId, prompt } : null;
+      return prompt
+        ? {
+            type: "new_chat",
+            projectId: draft.projectId,
+            prompt,
+            agent: draft.agent ?? null,
+            delegates: draft.delegates ?? [],
+            plan: draft.plan?.trim() || null,
+          }
+        : null;
     case "send_to_chat":
       return prompt && draft.sessionId
         ? { type: "send_to_chat", sessionId: draft.sessionId, prompt }
@@ -159,8 +178,8 @@ export function InboxDispatchEditor({
   readonly projects: readonly Project[];
   /** The Project whose Inbox holds the messages, or null for the Library Inbox. */
   readonly inboxProjectId?: string | null;
-  /** Carries the chosen chat when the action sends to one, and a new chat's chosen Agent. */
-  readonly onSubmit: (action: InboxDispatchAction, choice: InboxChatChoice) => Promise<boolean>;
+  /** `chat` is the chosen chat when the action sends to one. */
+  readonly onSubmit: (action: InboxDispatchAction, chat: InboxChat | null) => Promise<boolean>;
   readonly onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(() =>
@@ -213,10 +232,7 @@ export function InboxDispatchEditor({
   const submit = async () => {
     if (!action) return;
     setSubmitting(true);
-    const done = await onSubmit(action, {
-      chat: action.type === "send_to_chat" ? chosenChat : null,
-      chatAgent: action.type === "new_chat" ? (draft.chatAgent ?? null) : null,
-    });
+    const done = await onSubmit(action, action.type === "send_to_chat" ? chosenChat : null);
     setSubmitting(false);
     if (done) onCancel();
   };
@@ -349,6 +365,17 @@ export function InboxDispatchEditor({
         />
       ) : null}
 
+      {draft.type === "new_chat" ? (
+        <InboxChatPlan
+          agents={agents}
+          delegates={draft.delegates ?? []}
+          plan={draft.plan ?? null}
+          onChange={({ delegates, plan }) =>
+            setDraft((current) => ({ ...current, delegates, plan }))
+          }
+        />
+      ) : null}
+
       <div className="flex min-w-0 items-center gap-1">
         {draft.type === "new_chat" ? (
           // What the chat starts on sits beside the button that starts it, as in the composer.
@@ -356,12 +383,12 @@ export function InboxDispatchEditor({
             agents={agents}
             purpose="chat"
             scope="message"
-            value={draft.chatAgent ?? agents.settings.chatAgent}
+            value={draft.agent ?? agents.settings.chatAgent}
             trigger="inline"
             onChange={(next) =>
               setDraft((current) => ({
                 ...current,
-                chatAgent: sameInboxChatAgent(next, agents.settings.chatAgent) ? null : next,
+                agent: sameInboxChatAgent(next, agents.settings.chatAgent) ? null : next,
               }))
             }
           />

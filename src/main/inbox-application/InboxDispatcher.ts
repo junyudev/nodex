@@ -32,6 +32,7 @@ import {
   validateInboxSuggestions,
 } from "./inbox-suggestions";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
+import { inboxAgentCandidates, inboxDefaultChatCandidate } from "./inbox-agent-candidates";
 import { InboxRuntimeError } from "./InboxRuntimeError";
 
 const SETTLE_DELAY_MS = 1_500;
@@ -64,19 +65,31 @@ export const make = Effect.gen(function* () {
         inboxSuggestionChoice(current),
         "suggestion",
       );
+      const providers = yield* runtime.catalog();
+      // The suggestion chooses each new chat's models only while the user lets it.
+      const agents = current.suggestionsChooseModels
+        ? {
+            candidates: inboxAgentCandidates(providers, {
+              now: yield* Clock.currentTimeMillis,
+              useModelGuide: current.useModelGuide,
+            }),
+            defaultChat: inboxDefaultChatCandidate(providers, current.chatAgent),
+          }
+        : null;
       const prompt = yield* Effect.try({
         try: () =>
           buildInboxSuggestionPrompt({
             context: request.context,
             instructions: current.instructions,
             request: identity,
+            agents,
           }),
         catch: (cause) =>
           new InboxRuntimeError({
             message: cause instanceof Error ? cause.message : "The suggestion input is invalid",
           }),
       });
-      const provider = (yield* runtime.catalog()).find(
+      const provider = providers.find(
         (candidate) => candidate.instanceId === modelSelection.instanceId,
       );
       // Provenance records the actual selection. Captured bodies and correction text never enter logs.
@@ -102,7 +115,13 @@ export const make = Effect.gen(function* () {
       });
       const validated = yield* Effect.try({
         try: () =>
-          validateInboxSuggestions(output, request.context, request.context.entries, identity),
+          validateInboxSuggestions(
+            output,
+            request.context,
+            request.context.entries,
+            identity,
+            agents?.candidates ?? [],
+          ),
         catch: () => new InboxRuntimeError({ message: "The Agent returned an invalid suggestion" }),
       });
       return {

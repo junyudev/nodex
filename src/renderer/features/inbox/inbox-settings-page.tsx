@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { DEFAULT_INBOX_SETTINGS, MAX_INBOX_INSTRUCTIONS_CHARS } from "../../../shared/inbox";
+import { INBOX_MODEL_GUIDE } from "../../../shared/inbox-model-guide";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
@@ -95,7 +96,7 @@ export function InboxSettingsPage() {
         <div className="flex items-start justify-between gap-4 p-3 pb-0">
           <p className="text-sm text-token-text-secondary">
             Standing instructions suggestions follow over Nodex’s own guidance, such as which
-            Project research belongs in.
+            Project research belongs in or which model leads UI work.
           </p>
           <NodexButton
             variant="secondary"
@@ -120,14 +121,61 @@ export function InboxSettingsPage() {
       </SectionBlock>
       <SectionBlock title="Chats">
         <SettingRow
-          label="New chats run on"
-          description="The Agent, model and effort the Inbox starts chats on. One message can choose another from its decision; sending to an existing chat keeps that chat's."
+          label="Suggestions choose models"
+          description="Each suggestion picks its new chat's Agent, model and effort, and which Agents help it, weighing what each does well and how much of each weekly budget is left."
+        >
+          <NodexSwitch
+            ariaLabel="Suggestions choose models"
+            checked={settings.suggestionsChooseModels}
+            onCheckedChange={(suggestionsChooseModels) => save({ suggestionsChooseModels })}
+          />
+        </SettingRow>
+        <SettingRow
+          label={
+            settings.suggestionsChooseModels ? "Otherwise, new chats run on" : "New chats run on"
+          }
+          description={
+            settings.suggestionsChooseModels
+              ? "When a suggestion leaves the choice to the Inbox, and for messages handled by hand. Sending to an existing chat keeps that chat's."
+              : "The Agent, model and effort for every chat the Inbox starts; one message can still choose another. Sending to an existing chat keeps that chat's."
+          }
         >
           <div className="w-72 max-w-full">
             <InboxChatAgentPicker agents={agents} trigger="field" disabled={!ready} />
           </div>
         </SettingRow>
+        <SettingRow
+          label="Use Nodex's model guide"
+          description="What Nodex knows each model does well, read by suggestions when they choose. Your routing preferences take precedence."
+        >
+          <NodexSwitch
+            ariaLabel="Use Nodex's model guide"
+            checked={settings.useModelGuide}
+            disabled={!settings.suggestionsChooseModels}
+            onCheckedChange={(useModelGuide) => save({ useModelGuide })}
+          />
+        </SettingRow>
+        <InboxModelGuide />
       </SectionBlock>
     </SettingsPageSurface>
+  );
+}
+
+/** The guide in full, so what suggestions are told about each model is never hidden. */
+function InboxModelGuide() {
+  return (
+    <details className="group px-4 pb-3 text-sm">
+      <summary className="cursor-interaction w-fit text-xs text-token-description-foreground hover:text-token-foreground">
+        Show the model guide
+      </summary>
+      <dl className="mt-2 flex flex-col gap-2">
+        {INBOX_MODEL_GUIDE.map((entry) => (
+          <div key={entry.family} className="flex flex-col gap-0.5">
+            <dt className="text-token-foreground">{entry.family}</dt>
+            <dd className="text-xs leading-5 text-token-description-foreground">{entry.note}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }

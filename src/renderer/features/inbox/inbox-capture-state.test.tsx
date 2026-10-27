@@ -322,7 +322,14 @@ describe("Inbox capture ownership", () => {
       const persistence = new MemoryPersistence();
       const pageId = createUuidV7();
       const basis = [{ pageId, generation: 1, headSeq: 4, placementRevision: 2 }];
-      const action = { type: "new_chat" as const, projectId: null, prompt: "The edited prompt" };
+      const action = {
+        type: "new_chat" as const,
+        projectId: null,
+        prompt: "The edited prompt",
+        agent: null,
+        delegates: [],
+        plan: null,
+      };
       vi.mocked(prepareInboxConfirmation).mockImplementation(async (draft) => ({
         ...draft,
         operationId: createBoundedOperationId("inbox.confirm"),

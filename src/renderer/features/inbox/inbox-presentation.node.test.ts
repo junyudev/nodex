@@ -47,7 +47,14 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   state: "open",
   pageIds: ["page:1"],
   basis: [{ pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 }],
-  action: { type: "new_chat", projectId: "project:nodex", prompt: "Research" },
+  action: {
+    type: "new_chat",
+    projectId: "project:nodex",
+    prompt: "Research",
+    agent: null,
+    delegates: [],
+    plan: null,
+  },
   kind: "question",
   summary: "Compare both positions",
   rationale: null,
@@ -284,7 +291,14 @@ describe("describeInboxAction", () => {
   it("names the exact destination and switches send to queue for a busy chat", () => {
     expect(
       describeInboxAction(
-        { type: "new_chat", projectId: "project:nodex", prompt: "x" },
+        {
+          type: "new_chat",
+          projectId: "project:nodex",
+          prompt: "x",
+          agent: null,
+          delegates: [],
+          plan: null,
+        },
         {
           targetProjectName: "Nodex",
           chat: null,

@@ -140,8 +140,11 @@ export function InboxAgentPicker({
 }: {
   readonly agents: InboxAgents;
   readonly purpose: InboxAgentPurpose;
-  /** `inbox` for the Inbox's own choice; `message` for one decision, which can become the Inbox's. */
-  readonly scope: "inbox" | "message";
+  /**
+   * `inbox` for the Inbox's own choice; `message` for one decision's chat, which can become the
+   * Inbox's; `delegate` for one part a chat hands to another Agent.
+   */
+  readonly scope: "inbox" | "message" | "delegate";
   readonly value: InboxChatAgent;
   readonly onChange: (next: InboxChatAgent) => void;
   /** `field` fills a form or panel row, `inline` sits beside a send button, or a caller's trigger. */

@@ -7,7 +7,7 @@ import { userEvent } from "vite-plus/test/browser";
 import "@/globals.css";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
-import type { InboxItem, InboxProposal } from "../../../shared/inbox";
+import { inboxNewChatAction, type InboxItem, type InboxProposal } from "../../../shared/inbox";
 import { InboxMessage } from "./inbox-message";
 import { InboxStreamItem } from "./inbox-stream-item";
 import { inboxAgentsFixture } from "./inbox-agents.test-support";
@@ -297,7 +297,7 @@ test("a chat suggestion reads as its prompt: full width, the message's size, why
     state: "open",
     pageIds: ["page:1"],
     basis: [waiting.basis],
-    action: { type: "new_chat", projectId: "project:nodex", prompt },
+    action: inboxNewChatAction("project:nodex", prompt),
     kind: "todo",
     summary: "整理合并前的提交历史",
     rationale: "A clear task for a new chat.",

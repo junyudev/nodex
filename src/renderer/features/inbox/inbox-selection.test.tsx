@@ -186,13 +186,7 @@ describe("Inbox destination and Agent selection", () => {
     // The chosen chat travels with the action, so the message can say where it went.
     expect(onSubmit).toHaveBeenCalledWith(
       { type: "send_to_chat", sessionId: "session:old", prompt: "Continue" },
-      {
-        chat: expect.objectContaining({
-          sessionId: "session:old",
-          displayTitle: "Research findings",
-        }),
-        chatAgent: null,
-      },
+      expect.objectContaining({ sessionId: "session:old", displayTitle: "Research findings" }),
     );
   });
 
@@ -201,7 +195,14 @@ describe("Inbox destination and Agent selection", () => {
     renderQuery(
       <InboxDispatchEditor
         initial={draftFromAction(
-          { type: "new_chat", projectId: null, prompt: "Compare both" },
+          {
+            type: "new_chat",
+            projectId: null,
+            prompt: "Compare both",
+            agent: null,
+            delegates: [],
+            plan: null,
+          },
           "Compare both",
         )}
         projects={[]}
@@ -215,11 +216,15 @@ describe("Inbox destination and Agent selection", () => {
     await click("High", "menuitem");
     await click("Start chat");
     expect(onSubmit).toHaveBeenCalledWith(
-      { type: "new_chat", projectId: null, prompt: "Compare both" },
       {
-        chat: null,
-        chatAgent: { instanceId: "codex", model: null, reasoningEffort: "high", serviceTier: null },
+        type: "new_chat",
+        projectId: null,
+        prompt: "Compare both",
+        agent: { instanceId: "codex", model: null, reasoningEffort: "high", serviceTier: null },
+        delegates: [],
+        plan: null,
       },
+      null,
     );
   });
 
@@ -275,6 +280,26 @@ describe("Inbox destination and Agent selection", () => {
       },
     });
     await waitFor(() => expect(trigger.textContent).toBe("Work · Opus 5.5 · High"));
+  });
+
+  test("lets suggestions choose each chat's models, with the model guide shown in full", async () => {
+    vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([codexProvider()]);
+    renderQuery(<InboxSettingsPage />);
+    await screen.findByRole("switch", { name: "Suggestions choose models" });
+    // While suggestions choose, the Inbox's own model is what they fall back to.
+    expect(screen.getByText("Otherwise, new chats run on")).toBeTruthy();
+    await click("Use Nodex's model guide", "switch");
+    expect(updateInboxSettings).toHaveBeenLastCalledWith({ useModelGuide: false });
+    expect(screen.getByText("Claude Opus 5.5")).toBeTruthy();
+    await click("Suggestions choose models", "switch");
+    expect(updateInboxSettings).toHaveBeenLastCalledWith({ suggestionsChooseModels: false });
+    // The guide only matters to suggestions that choose.
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("switch", { name: "Use Nodex's model guide" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true),
+    );
   });
 
   test("shows cold catalog loading without calling the chosen model unavailable", async () => {

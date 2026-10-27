@@ -37901,6 +37901,37 @@
           }
         }
       },
+      "ProjectWorkspaceInboxChatAgent": {
+        "type": "object",
+        "description": "An Agent instance and, when chosen, its model, effort and speed. Unset choices use the\nAgent's catalog default model and that model's own options.",
+        "required": [
+          "instance_id"
+        ],
+        "properties": {
+          "instance_id": {
+            "type": "string"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "service_tier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "ProjectWorkspaceInboxContextProject": {
         "type": "object",
         "required": [
@@ -38017,6 +38048,23 @@
           }
         }
       },
+      "ProjectWorkspaceInboxDelegate": {
+        "type": "object",
+        "description": "One part of a new chat's work that its Agent delegates to another Agent.",
+        "required": [
+          "work",
+          "agent"
+        ],
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxChatAgent"
+          },
+          "work": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "ProjectWorkspaceInboxDispatchAction": {
         "oneOf": [
           {
@@ -38042,6 +38090,31 @@
               "type"
             ],
             "properties": {
+              "agent": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxChatAgent",
+                    "description": "What the chat runs on when chosen for this decision; the Inbox's own otherwise."
+                  }
+                ]
+              },
+              "delegates": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceInboxDelegate"
+                },
+                "description": "Parts of the work the chat's Agent hands to other Agents."
+              },
+              "plan": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "How the chat's Agent should run the work, written to it."
+              },
               "project_id": {
                 "type": [
                   "string",
@@ -38305,6 +38378,13 @@
           },
           "model_selection": {
             "$ref": "#/components/schemas/ProjectWorkspaceInboxModelSelection"
+          },
+          "orchestration": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The delegation instructions written from the confirmed plan, placed after the prompt."
           }
         },
         "additionalProperties": false

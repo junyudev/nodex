@@ -96,7 +96,25 @@ export function InboxAgentsPopover({
               disabled={!suggestions || !ready}
             />
           </Section>
-          <Section title="New chats" hint="Any suggestion can still choose another.">
+          <Section
+            title="New chats"
+            hint={
+              suggestions && agents.settings.suggestionsChooseModels
+                ? "Suggestions choose each one; otherwise they run on this."
+                : "Every new chat runs on this."
+            }
+            control={
+              <NodexSwitch
+                size="compact"
+                ariaLabel="Suggestions choose models"
+                checked={agents.settings.suggestionsChooseModels}
+                disabled={!suggestions}
+                onCheckedChange={(suggestionsChooseModels) =>
+                  agents.save({ suggestionsChooseModels })
+                }
+              />
+            }
+          >
             <InboxChatAgentPicker agents={agents} trigger="field" disabled={!ready} />
           </Section>
           <button

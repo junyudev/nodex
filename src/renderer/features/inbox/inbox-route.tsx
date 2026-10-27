@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  inboxNewChatAction,
   inboxScopeKey,
   inboxScopeProjectId,
   type InboxItem,
@@ -655,7 +656,7 @@ export function InboxRoute({
                     onClick={() =>
                       setBulkDraft({
                         ...draftFromAction(
-                          { type: "new_chat", projectId: inboxProjectId, prompt: combinedText },
+                          inboxNewChatAction(inboxProjectId, combinedText),
                           combinedText,
                         ),
                         basis: selectedItems.map((item) => item.basis),

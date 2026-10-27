@@ -2,7 +2,6 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   InboxChat,
-  InboxChatAgent,
   InboxConfirmationDraft,
   InboxDispatchAction,
   InboxEntryKind,
@@ -41,14 +40,6 @@ import { inboxReceiptNeedsReview, type InboxDecision } from "./inbox-presentatio
 import { invalidateInbox } from "./use-inbox";
 import { useInboxCaptureState } from "./use-inbox-capture";
 
-/** What the user settled for a chat handoff beyond the action itself. */
-export interface InboxChatChoice {
-  /** The chat an edited action sends to, when the editor knows it. */
-  readonly chat?: InboxChat | null;
-  /** What a new chat runs on when the user chose it for this decision; else the Inbox's own. */
-  readonly chatAgent?: InboxChatAgent | null;
-}
-
 export interface InboxActions {
   readonly send: (intent: InboxSendInput) => Promise<InboxSendResult>;
   readonly pendingDecisions: readonly {
@@ -63,16 +54,17 @@ export interface InboxActions {
     body: string,
     basis: InboxPageBasis,
   ) => Promise<boolean>;
+  /** `chat` is the chat an edited action sends to, when the editor knows it. */
   readonly confirm: (
     proposal: InboxProposal,
     edited?: InboxDispatchAction,
-    choice?: InboxChatChoice,
+    chat?: InboxChat | null,
   ) => Promise<boolean>;
   readonly dispatch: (
     pageIds: readonly string[],
     action: InboxDispatchAction,
     basis: readonly InboxPageBasis[],
-    choice?: InboxChatChoice,
+    chat?: InboxChat | null,
   ) => Promise<boolean>;
   readonly keep: (pageIds: readonly string[]) => Promise<boolean>;
   readonly delete: (pageIds: readonly string[]) => Promise<boolean>;
@@ -86,10 +78,6 @@ export interface InboxActions {
   ) => Promise<boolean>;
   readonly retryDispatch: (proposalId: string) => Promise<boolean>;
 }
-
-/** Only a new chat runs on a chosen Agent; any other action ignores the choice. */
-const chatAgentFor = (action: InboxDispatchAction, choice: InboxChatChoice | undefined) =>
-  action.type === "new_chat" && choice?.chatAgent ? { chatAgent: choice.chatAgent } : {};
 
 const clearedLabel = (outcome: "kept" | "done", count: number): string => {
   if (outcome === "kept") return count > 1 ? `Kept ${count} messages` : "Kept";
@@ -336,33 +324,24 @@ export function useInboxActions(
       run("The message could not be edited", () =>
         editInboxMessage({ pageId, basis, originalBody, body }),
       ),
-    confirm: (proposal, edited, choice) =>
+    confirm: (proposal, edited, chat) =>
       run("The suggestion could not be confirmed", () => {
-        const action = edited ?? proposal.action;
         const draft: InboxConfirmationDraft = {
           kind: "proposal",
           storeEpoch: storeEpoch ?? "",
           proposalId: proposal.proposalId,
           expectedRevision: proposal.revision,
           basis: proposal.basis,
-          action,
-          ...chatAgentFor(action, choice),
+          action: edited ?? proposal.action,
         };
-        return decide(draft, undefined, choice?.chat ?? proposal.chat);
+        return decide(draft, undefined, chat ?? proposal.chat);
       }),
-    dispatch: (pageIds, action, basis, choice) =>
+    dispatch: (pageIds, action, basis, chat) =>
       run("The message could not be dispatched", () =>
         decide(
-          {
-            kind: "direct",
-            storeEpoch: storeEpoch ?? "",
-            pageIds,
-            action,
-            basis,
-            ...chatAgentFor(action, choice),
-          },
+          { kind: "direct", storeEpoch: storeEpoch ?? "", pageIds, action, basis },
           undefined,
-          choice?.chat ?? null,
+          chat ?? null,
         ),
       ),
     keep: (pageIds) =>

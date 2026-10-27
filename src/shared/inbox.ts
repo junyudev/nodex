@@ -46,9 +46,38 @@ export const INBOX_ENTRY_KINDS = [
 /** The exact action a dispatch suggestion asks the user to authorize. */
 export type InboxDispatchAction =
   | { readonly type: "keep" }
-  | { readonly type: "new_chat"; readonly projectId: string | null; readonly prompt: string }
+  | {
+      readonly type: "new_chat";
+      readonly projectId: string | null;
+      readonly prompt: string;
+      /** What the chat runs on when chosen for this decision; the Inbox's own when null. */
+      readonly agent: InboxChatAgent | null;
+      /** Parts of the work the chat's Agent hands to other Agents. */
+      readonly delegates: readonly InboxDelegate[];
+      /** How the chat's Agent should run the work, written to it. */
+      readonly plan: string | null;
+    }
   | { readonly type: "send_to_chat"; readonly sessionId: string; readonly prompt: string }
   | { readonly type: "move_to_project"; readonly projectId: string };
+
+/** One part of a new chat's work that its Agent delegates to another Agent. */
+export interface InboxDelegate {
+  readonly work: string;
+  readonly agent: InboxChatAgent;
+}
+
+/** A new chat with nothing chosen beyond its destination and prompt. */
+export const inboxNewChatAction = (
+  projectId: string | null,
+  prompt: string,
+): Extract<InboxDispatchAction, { type: "new_chat" }> => ({
+  type: "new_chat",
+  projectId,
+  prompt,
+  agent: null,
+  delegates: [],
+  plan: null,
+});
 
 export type InboxSource =
   | { readonly kind: "user" }
@@ -248,23 +277,23 @@ export interface InboxDispatchInput {
   readonly action: InboxDispatchAction;
 }
 
-/** Frozen by Main before the first confirmation is submitted. */
+/**
+ * Frozen by Main before the first confirmation is submitted. A new chat runs on its action's
+ * Agent, or else the Inbox's own; its delegation instructions are written from the confirmed plan.
+ */
 export interface InboxExecutionSelection {
   readonly modelSelection: AgentRuntimeLaunch["modelSelection"];
   readonly interactionMode: AgentRuntimeLaunch["interactionMode"];
+  readonly orchestration?: string | null;
 }
 
-/**
- * What the user reviewed before deciding. A new chat runs on `chatAgent` when the user chose one
- * for this message, otherwise on the Inbox's chat Agent; Main freezes either into the execution
- * selection.
- */
+/** What the user reviewed before deciding. */
 export type InboxConfirmationDraft =
-  | ({ readonly kind: "proposal"; readonly chatAgent?: InboxChatAgent | null } & Omit<
+  | ({ readonly kind: "proposal" } & Omit<
       InboxConfirmInput,
       "operationId" | "sessionId" | "executionSelection"
     >)
-  | ({ readonly kind: "direct"; readonly chatAgent?: InboxChatAgent | null } & Omit<
+  | ({ readonly kind: "direct" } & Omit<
       InboxDispatchInput,
       "operationId" | "proposalId" | "sessionId" | "executionSelection"
     >);
@@ -392,9 +421,12 @@ export const inboxDefaultChatModel = <
   readonly models: readonly Model[];
 }): Model | undefined => provider.models.find((model) => model.isDefault) ?? provider.models[0];
 
-/** Suggestions run at an economical effort that does not follow any chat preference. */
+/**
+ * Suggestions choose models and plan delegation as well as routing, so they reason at a steady
+ * effort that does not follow any chat preference.
+ */
 const inboxSuggestionEffort = (provider: Pick<InboxProvider, "driver">) =>
-  provider.driver === "claudeAgent" ? "low" : "medium";
+  provider.driver === "claudeAgent" ? "medium" : "high";
 
 export const isInboxProviderUsable = (provider: InboxProvider): boolean =>
   provider.enabled &&
@@ -479,8 +511,15 @@ export interface InboxSettings {
   readonly suggestionModel: string | null;
   /** Durable routing preferences given to the suggestion Agent. */
   readonly instructions: string;
-  /** What chats the Inbox starts run on, unless the user chooses otherwise for one message. */
+  /**
+   * What chats the Inbox starts run on, unless their decision chooses otherwise. With
+   * `suggestionsChooseModels`, it is what a suggestion falls back to.
+   */
   readonly chatAgent: InboxChatAgent;
+  /** Suggestions choose each new chat's Agent, model and effort, and which Agents help it. */
+  readonly suggestionsChooseModels: boolean;
+  /** Suggestions read Nodex's guide to what each model does well, under the user's preferences. */
+  readonly useModelGuide: boolean;
 }
 
 export type UpdateInboxSettingsInput = Partial<InboxSettings>;
@@ -493,6 +532,8 @@ export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
   suggestionModel: null,
   instructions: "",
   chatAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
+  suggestionsChooseModels: true,
+  useModelGuide: true,
 };
 
 export const encodeInboxAgentBinding = (binding: InboxAgentBinding): string => binding.instanceId;

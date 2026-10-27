@@ -552,7 +552,8 @@ a Project went, while the Project's own Properties apply to the Page.
 ### Dispatch proposal
 
 A Dispatch proposal is one typed action for one or more Inbox entries: keep,
-new chat, send to chat, or move to Project. It is versioned and fenced by the
+new chat, send to chat, or move to Project. A new chat may also name the Agent it
+runs on, the parts of its work that Agent delegates to other Agents, and a plan. It is versioned and fenced by the
 message revisions it was computed from. A proposal is advice. Only the user's
 confirmation, or a user-written dispatch, makes it Dispatch work. Confirmed chat
 work stays in the `dispatching` state until the Desktop Host delivers it.

@@ -249,14 +249,29 @@ after a restart. Restoring an archived message lets it receive fresh advice.
 
 The suggestion Agent receives bounded message text and eligible routing
 candidates, including relevant chat previews. Its prompt asks only for a
-structured proposal. It uses the shared Agent Runtime utility policy, which is
-full-access with automatic native approvals; the prompt and output schema are
-behavioral constraints, not a separate tool or content permission boundary.
+structured proposal.
+
+While suggestions choose models, it also receives every Agent that can take a
+chat now, with each model's effort and speed choices, the note Nodex's model
+guide keeps for it, and the Agent's usage windows. Each window gives the share
+left, the hours until it resets, how old the reading is when it is old, and a
+pace that compares the share left with the time left: ample, steady, tight or
+spent. It also receives what a chat runs on when it leaves the choice to the
+Inbox. How it weighs strengths and budgets is guidance in its prompt rather
+than a rule Nodex enforces: a nearly spent weekly window is something to avoid
+unless the work needs that model or the window resets soon, not a hard cut-off.
 
 The user's routing preferences are its standing instructions, not data. They
-outrank every guideline in its prompt about how to route. Only the required
-output structure, the allowed actions, the eligible targets, the Inbox's scope
-and covering every message stay above them.
+outrank Nodex's model guide and every guideline in its prompt, including how
+to route, how to weigh budgets and when to delegate. Only the required output
+structure, the allowed actions, the eligible targets, the Inbox's scope and
+covering every message stay above them. So turning the guide off and writing
+the same knowledge, or a different view, as preferences takes effect at least
+as strongly as the guide did.
+
+It uses the shared Agent Runtime utility policy, which is
+full-access with automatic native approvals; the prompt and output schema are
+behavioral constraints, not a separate tool or content permission boundary.
 
 A Project's Inbox narrows that context to the Project. Its messages are already
 that Project's Pages, so a new chat starts in the Project, an existing chat must
@@ -267,7 +282,11 @@ Its single write records one proposal per message or group. Each proposal has
 one exact action:
 
 - **Keep:** keep it as a note.
-- **New chat:** start a chat in a Project or without one, with a prompt.
+- **New chat:** start a chat in a Project or without one, with a prompt. While
+  suggestions choose models, a new chat may also name what it runs on (an
+  Agent, model and effort), parts of the work its Agent hands to another model
+  (each a one-line description and its Agent, model and effort), and a short
+  plan written to its Agent. Most chats delegate nothing.
 - **Send to chat:** send a prompt to an existing chat.
 - **Move to Project:** file the message Page in another Project's Database.
 
@@ -280,7 +299,8 @@ completes a request by asking the user to handle the message manually.
 
 Main rejects unknown targets, invalid action fields, duplicate or missing members
 and overlong prompts instead of repairing or truncating them. A suggestion can
-never invent a destination. An explicit group produces one concrete suggestion
+never invent a destination, and every Agent, model and effort it names must be
+one it was offered, since Nodex starts and delegates to them exactly. An explicit group produces one concrete suggestion
 covering all its members. Generation and transport failures remain failures
 with Retry; they do not masquerade as completed advice. A failure names its own
 cause: a timeout, missing sign-in, a rate limit, or an answer too long or in a
@@ -334,9 +354,13 @@ and its row show one of these:
     the Agent and model that wrote the suggestion;
   - for a new chat, a split decision. Its menu half opens the composer's model
     menu for that message alone: every available Agent's models, then the chosen
-    model's effort and speed. A choice that differs from the Inbox's own shows
-    its model on the menu half, so the decision never hides it, and the menu then
-    offers `Use for all Inbox chats`;
+    model's effort and speed. What the chat runs on, chosen by the suggestion or
+    on the decision, shows its model on the menu half whenever it differs from
+    the Inbox's own, so the decision never hides it, and the menu then offers
+    `Use for all Inbox chats`;
+  - for a planned chat, beneath its prompt, each part it hands off with that
+    Agent's mark and model, then its plan, so how it will run is visible before
+    anything is sent;
   - the member count for a group, with access to its complete scope;
   - `Keep`.
 - **Failure:** one short reason and a new decision. Suggestion failures and
@@ -369,7 +393,9 @@ destination or prompt happens in `Handle manually`, which starts from that
 suggestion, including the model chosen on its decision. Manual target selection
 searches eligible chats beyond the recent list. For a new chat, the dispatch
 editor shows what it runs on beside `Start chat`, as the composer shows its
-model beside Send, and opens the same model menu.
+model beside Send, and opens the same model menu. A planned chat's parts each
+keep their own model menu and can be removed, leaving that part to the chat's
+own Agent, and its plan can be rewritten.
 
 ## Dispatch
 
@@ -380,7 +406,9 @@ the proposal was computed from.
 Every confirmation, including an edited action, checks the message versions
 the user reviewed. It freezes the complete original text, final prompt and
 destination. New chats also retain the resolved Agent instance, model and
-options: the choice made for that decision, or else the Inbox's own. Retries do
+options: the one their decision names, chosen by the suggestion or by the user,
+or else the Inbox's own. A planned chat's delegation instructions are written
+at confirmation against the catalog that resolved it and frozen with it. Retries do
 not re-read the current defaults. A choice the catalog cannot run is refused
 with its reason; it never silently starts on another Agent or model. What the
 Inbox shows before the decision is read against the same catalog with the same
@@ -390,8 +418,12 @@ instructions.
 
 - **New chat:** Core creates the Session atomically with the confirmation, titled
   after the first message. Main then starts its first Turn. The prompt is the
-  confirmed prompt, followed by the original messages quoted as context with
-  their Page keys.
+  confirmed prompt, then a planned chat's delegation instructions, then the
+  original messages quoted as context with their Page keys. The instructions
+  give the plan, then each part with the exact `delegate_task` target Nodex
+  resolved for it; the chat's Agent keeps integration and the final review. A
+  part whose target cannot run when the chat starts still reaches the Agent,
+  which can choose another with `list_agent_models` or do it itself.
 - A chat message sent from the Inbox carries the Library images of its messages
   with the text, each image once and in reading order. Core freezes them with
   the text at confirmation. Up to 20 images are sent, each fitted to what an
@@ -523,8 +555,9 @@ creates a second message, and does not count against the Agent budget again.
   - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
     Project's Inbox;
   - `Inbox settings`, a panel that changes in place what suggests and what new
-    chats run on: the suggestions switch, the suggestion model, and the new chat
-    model, each with the composer's model menu. `Routing preferences and more`
+    chats run on: the suggestions switch and the suggestion model, then whether
+    suggestions choose each new chat's models and the model new chats otherwise
+    run on, each with the composer's model menu. `Routing preferences and more`
     opens `Settings → Inbox`.
 
   Each Inbox is a tab, so its header spans the tab like a Board's: views at
@@ -533,12 +566,18 @@ creates a second message, and does not count against the Agent budget again.
 - `Settings → Inbox` holds these Profile preferences:
   - whether suggestions run;
   - the suggestion Agent and model, chosen with the composer's model menu among
-    the Agents that can write suggestions. Suggestions run each model at its own
-    economical effort, so the menu offers no effort or speed;
+    the Agents that can write suggestions. Suggestions run each model at a fixed
+    effort, high on Codex and medium on Claude, so the menu offers no effort or
+    speed;
   - free-text routing preferences: the user's standing instructions to the
     suggestion Agent, which outrank Nodex's own guidance;
-  - what chats the Inbox starts run on, chosen with the composer's model menu:
-    the Agent, its model, and the model's effort and speed.
+  - whether suggestions choose each new chat's models and plan its delegation,
+    which is on by default;
+  - what chats the Inbox starts run on otherwise, chosen with the composer's
+    model menu: the Agent, its model, and the model's effort and speed;
+  - whether suggestions read Nodex's model guide, which is on by default and can
+    be read in full there. The guide changes with Nodex; the user's own view of
+    each model belongs in the routing preferences.
 
   Choices read the Runtime's existing provider and model catalog without forcing
   discovery on open. Cached choices remain visible during background refresh;

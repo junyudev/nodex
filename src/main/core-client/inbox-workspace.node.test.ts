@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { inboxNewChatAction } from "../../shared/inbox";
 
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
 import { BOARD_DENSE_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/board-dense";
@@ -59,11 +60,9 @@ describe("Inbox over the real Core transport", () => {
             model_selection: { instanceId: "codex", model: "reviewed-model" },
             interaction_mode: "plan",
           },
-          action: inboxDispatchActionToCore({
-            type: "new_chat",
-            projectId,
-            prompt: "Survey three onboarding flows; do not change code.",
-          }),
+          action: inboxDispatchActionToCore(
+            inboxNewChatAction(projectId, "Survey three onboarding flows; do not change code."),
+          ),
           session_id: sessionId,
         },
       });

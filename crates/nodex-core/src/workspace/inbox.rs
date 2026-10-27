@@ -15,6 +15,7 @@ use std::collections::BTreeSet;
 
 use nodex_core_contracts::agent::AgentTurnProvenance;
 use nodex_core_contracts::inbox::{
+    ProjectWorkspaceInboxChatAgent, ProjectWorkspaceInboxDelegate,
     ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxEntryKind,
     ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxPageBasis,
     ProjectWorkspaceInboxProposalOrigin,
@@ -2051,6 +2052,35 @@ fn require_one_scope(
     Ok(scopes.into_iter().next().flatten())
 }
 
+/// Bounds what a stored decision may carry; how many parts to delegate is the Agent's judgment.
+const MAX_INBOX_DELEGATES: usize = 8;
+const MAX_INBOX_DELEGATE_WORK_CHARS: usize = 500;
+const MAX_INBOX_PLAN_CHARS: usize = 4_000;
+const MAX_INBOX_CHOICE_CHARS: usize = 256;
+
+/// An Agent choice names a real-looking instance and bounded option values. Whether it can
+/// run is the Desktop Host's to resolve against its live catalog at confirmation.
+fn normalize_chat_agent(
+    agent: &ProjectWorkspaceInboxChatAgent,
+) -> Result<ProjectWorkspaceInboxChatAgent, StoreError> {
+    validate_id("agent.instance_id", &agent.instance_id)?;
+    let choice = |value: &Option<String>| -> Result<Option<String>, StoreError> {
+        match value.as_deref().map(str::trim) {
+            None | Some("") => Ok(None),
+            Some(value) if value.chars().count() <= MAX_INBOX_CHOICE_CHARS => {
+                Ok(Some(value.to_owned()))
+            }
+            Some(_) => Err(invalid("An Agent choice is too long")),
+        }
+    };
+    Ok(ProjectWorkspaceInboxChatAgent {
+        instance_id: agent.instance_id.clone(),
+        model: choice(&agent.model)?,
+        reasoning_effort: choice(&agent.reasoning_effort)?,
+        service_tier: choice(&agent.service_tier)?,
+    })
+}
+
 /// Validates targets against current Workspace state and returns the canonical action.
 /// A Project's Inbox works inside its Project: its chats start or continue there, and
 /// filing moves a message to a different Project.
@@ -2062,7 +2092,13 @@ fn normalize_action(
 ) -> Result<ProjectWorkspaceInboxDispatchAction, StoreError> {
     match action {
         ProjectWorkspaceInboxDispatchAction::Keep => Ok(ProjectWorkspaceInboxDispatchAction::Keep),
-        ProjectWorkspaceInboxDispatchAction::NewChat { project_id, prompt } => {
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            project_id,
+            prompt,
+            agent,
+            delegates,
+            plan,
+        } => {
             if scope.is_some() && project_id.as_deref() != scope {
                 return Err(invalid(
                     "A chat started from a Project's Inbox runs in that Project",
@@ -2074,9 +2110,40 @@ fn normalize_action(
                     connection, library_id, project_id, true,
                 )?;
             }
+            if delegates.len() > MAX_INBOX_DELEGATES {
+                return Err(invalid("A new chat names too many delegated parts"));
+            }
+            let delegates = delegates
+                .iter()
+                .map(|delegate| {
+                    let work = delegate.work.trim();
+                    if work.is_empty() || work.chars().count() > MAX_INBOX_DELEGATE_WORK_CHARS {
+                        return Err(invalid("A delegated part needs a short description"));
+                    }
+                    Ok(ProjectWorkspaceInboxDelegate {
+                        work: work.to_owned(),
+                        agent: normalize_chat_agent(&delegate.agent)?,
+                    })
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            let plan = plan
+                .as_deref()
+                .map(str::trim)
+                .filter(|plan| !plan.is_empty())
+                .map(|plan| {
+                    if plan.chars().count() > MAX_INBOX_PLAN_CHARS {
+                        Err(invalid("The chat's plan is too long"))
+                    } else {
+                        Ok(plan.to_owned())
+                    }
+                })
+                .transpose()?;
             Ok(ProjectWorkspaceInboxDispatchAction::NewChat {
                 project_id: project_id.clone(),
                 prompt: normalize_prompt(prompt)?,
+                agent: agent.as_ref().map(normalize_chat_agent).transpose()?,
+                delegates,
+                plan,
             })
         }
         ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, prompt } => {

@@ -20,8 +20,9 @@ describe("the Inbox's settings panel", () => {
     await click(screen.getByRole("button", { name: "Inbox settings" }));
 
     // Suggestions run every model at their own economical effort, so only the model is chosen.
+    // Suggestions also choose models and plan delegation, so Codex suggests at High.
     const suggestion = await screen.findByRole("button", { name: "Suggestion model" });
-    expect(suggestion.textContent).toBe("GPT-6 Astra · Medium");
+    expect(suggestion.textContent).toBe("GPT-6 Astra · High");
     await click(suggestion);
     expect(screen.queryByRole("button", { name: /^Effort/ })).toBeNull();
     await click(screen.getByRole("option", { name: /Opus 5\.5/ }));

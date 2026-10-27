@@ -1,7 +1,11 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
-import type { InboxChatAgent } from "../../shared/inbox";
+import {
+  inboxNewChatAction,
+  type InboxChatAgent,
+  type InboxDispatchAction,
+} from "../../shared/inbox";
 import { InboxPreparedConfirmationSchema } from "../../shared/schemas/inbox";
 import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
 
@@ -50,47 +54,56 @@ const deep: InboxChatAgent = {
   serviceTier: null,
 };
 
-it.effect("freezes a new chat on the model chosen for it, or else on the Inbox's own", () =>
+it.effect("freezes a new chat on the Agent its decision chose, or else on the Inbox's own", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const { inbox } = yield* inboxOverRealCore(Effect.void, () => Effect.succeed([codex]));
       const { pageId } = yield* captureInbox(inbox, "Compare both homepage positions");
       const [item] = (yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items;
       if (!item) return assert.fail("Missing captured message");
-      const draft = {
+      const plain = inboxNewChatAction(null, "Compare both positions");
+      const draft = (action: InboxDispatchAction) => ({
         kind: "direct" as const,
-        storeEpoch: (yield* inbox.summary({ scope: LIBRARY })).storeEpoch,
+        storeEpoch: "",
         pageIds: [pageId],
         basis: [item.basis],
-        action: { type: "new_chat" as const, projectId: null, prompt: "Compare both positions" },
-      };
+        action,
+      });
+      const storeEpoch = (yield* inbox.summary({ scope: LIBRARY })).storeEpoch;
+      const prepare = (action: InboxDispatchAction) =>
+        inbox.prepareConfirmation({ ...draft(action), storeEpoch });
 
-      const inboxOwn = yield* inbox.prepareConfirmation(draft);
+      const inboxOwn = yield* prepare(plain);
       assert.deepEqual(inboxOwn.executionSelection?.modelSelection, {
         instanceId: "codex",
         model: "default-model",
       });
+      assert.isNull(inboxOwn.executionSelection?.orchestration ?? null);
 
-      const chosen = yield* inbox.prepareConfirmation({ ...draft, chatAgent: deep });
-      assert.deepEqual(chosen.executionSelection?.modelSelection, {
+      const planned = yield* prepare({
+        ...plain,
+        agent: deep,
+        delegates: [{ work: "The data migration", agent: { ...deep, reasoningEffort: "low" } }],
+        plan: "Write the migration before the UI.",
+      });
+      assert.deepEqual(planned.executionSelection?.modelSelection, {
         instanceId: "codex",
         model: "deep-model",
         options: [{ id: "reasoningEffort", value: "high" }],
       });
-      // The prepared handoff replays unchanged: the choice survives only as its frozen selection.
-      assert.deepEqual(InboxPreparedConfirmationSchema.parse(chosen), chosen);
-
-      // Only a new chat runs on a chosen model.
-      const kept = yield* inbox.prepareConfirmation({
-        ...draft,
-        action: { type: "keep" },
-        chatAgent: deep,
-      });
-      assert.isNull(kept.executionSelection);
+      // The delegation instructions are written once, against the catalog that resolved the chat.
+      const orchestration = planned.executionSelection?.orchestration ?? "";
+      assert.include(orchestration, "Write the migration before the UI.");
+      assert.include(
+        orchestration,
+        '{"providerInstanceId":"codex","model":"deep-model","options":[{"id":"reasoningEffort","value":"low"}]}',
+      );
+      // The prepared handoff replays unchanged.
+      assert.deepEqual(InboxPreparedConfirmationSchema.parse(planned), planned);
 
       // A choice the catalog cannot run is refused rather than replaced by another model.
       const retired = yield* Effect.flip(
-        inbox.prepareConfirmation({ ...draft, chatAgent: { ...deep, model: "retired-model" } }),
+        prepare({ ...plain, agent: { ...deep, model: "retired-model" } }),
       );
       assert.match(retired.message, /selected model is unavailable/);
     }),

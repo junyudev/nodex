@@ -9114,6 +9114,16 @@ export interface components {
             readonly thread_id?: string | null;
             readonly unread: boolean;
         };
+        /**
+         * @description An Agent instance and, when chosen, its model, effort and speed. Unset choices use the
+         *     Agent's catalog default model and that model's own options.
+         */
+        readonly ProjectWorkspaceInboxChatAgent: {
+            readonly instance_id: string;
+            readonly model?: string | null;
+            readonly reasoning_effort?: string | null;
+            readonly service_tier?: string | null;
+        };
         readonly ProjectWorkspaceInboxContextProject: {
             readonly description: string;
             readonly name: string;
@@ -9142,11 +9152,21 @@ export interface components {
             /** @description Only active Projects whose Inbox holds at least one message. */
             readonly projects: readonly components["schemas"]["ProjectWorkspaceInboxProjectCount"][];
         };
+        /** @description One part of a new chat's work that its Agent delegates to another Agent. */
+        readonly ProjectWorkspaceInboxDelegate: {
+            readonly agent: components["schemas"]["ProjectWorkspaceInboxChatAgent"];
+            readonly work: string;
+        };
         /** @description The exact action a proposal asks the user to authorize. */
         readonly ProjectWorkspaceInboxDispatchAction: {
             /** @enum {string} */
             readonly type: "keep";
         } | {
+            readonly agent?: null | components["schemas"]["ProjectWorkspaceInboxChatAgent"];
+            /** @description Parts of the work the chat's Agent hands to other Agents. */
+            readonly delegates?: readonly components["schemas"]["ProjectWorkspaceInboxDelegate"][];
+            /** @description How the chat's Agent should run the work, written to it. */
+            readonly plan?: string | null;
             readonly project_id?: string | null;
             readonly prompt: string;
             /** @enum {string} */
@@ -9214,6 +9234,8 @@ export interface components {
         readonly ProjectWorkspaceInboxExecutionSelection: {
             readonly interaction_mode: components["schemas"]["ProjectWorkspaceInboxInteractionMode"];
             readonly model_selection: components["schemas"]["ProjectWorkspaceInboxModelSelection"];
+            /** @description The delegation instructions written from the confirmed plan, placed after the prompt. */
+            readonly orchestration?: string | null;
         };
         /** @enum {string} */
         readonly ProjectWorkspaceInboxFailureKind: "rejected" | "unavailable" | "unknown";

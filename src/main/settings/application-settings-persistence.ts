@@ -121,6 +121,8 @@ interface ServerTomlConfig {
   inbox_chat_model?: string;
   inbox_chat_effort?: string;
   inbox_chat_speed?: string;
+  inbox_suggestions_choose_models?: boolean;
+  inbox_use_model_guide?: boolean;
   diagnostics_enabled?: boolean;
   diagnostics_dsn?: string;
   diagnostics_environment?: string;
@@ -1303,6 +1305,14 @@ function inboxSettingsFromConfig(config: ServerTomlConfig): InboxSettings {
           serviceTier: inboxChoiceFromConfig(config.inbox_chat_speed),
         }
       : DEFAULT_INBOX_SETTINGS.chatAgent,
+    suggestionsChooseModels:
+      typeof config.inbox_suggestions_choose_models === "boolean"
+        ? config.inbox_suggestions_choose_models
+        : DEFAULT_INBOX_SETTINGS.suggestionsChooseModels,
+    useModelGuide:
+      typeof config.inbox_use_model_guide === "boolean"
+        ? config.inbox_use_model_guide
+        : DEFAULT_INBOX_SETTINGS.useModelGuide,
   };
 }
 
@@ -1325,6 +1335,8 @@ export function updateInboxSettings(
     inbox_suggestion_agent: encodeInboxAgentBinding(next.suggestionAgent),
     inbox_instructions: next.instructions,
     inbox_chat_agent: encodeInboxAgentBinding(next.chatAgent),
+    inbox_suggestions_choose_models: next.suggestionsChooseModels,
+    inbox_use_model_guide: next.useModelGuide,
   };
   writeInboxChoice(server, "inbox_suggestion_model", next.suggestionModel);
   writeInboxChoice(server, "inbox_chat_model", next.chatAgent.model);

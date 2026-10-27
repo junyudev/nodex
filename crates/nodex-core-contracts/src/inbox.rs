@@ -90,12 +90,40 @@ pub enum ProjectWorkspaceInboxDispatchAction {
     NewChat {
         project_id: Option<String>,
         prompt: String,
+        /// What the chat runs on when chosen for this decision; the Inbox's own otherwise.
+        #[serde(default)]
+        agent: Option<ProjectWorkspaceInboxChatAgent>,
+        /// Parts of the work the chat's Agent hands to other Agents.
+        #[serde(default)]
+        delegates: Vec<ProjectWorkspaceInboxDelegate>,
+        /// How the chat's Agent should run the work, written to it.
+        #[serde(default)]
+        plan: Option<String>,
     },
     /// Send a follow-up to one existing chat. Delivery waits until it is idle.
     SendToChat { session_id: String, prompt: String },
     /// File the entries into one active Project: their Pages move into its primary
     /// Database and the entries are kept, without reopening there.
     MoveToProject { project_id: String },
+}
+
+/// An Agent instance and, when chosen, its model, effort and speed. Unset choices use the
+/// Agent's catalog default model and that model's own options.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectWorkspaceInboxChatAgent {
+    pub instance_id: String,
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub service_tier: Option<String>,
+}
+
+/// One part of a new chat's work that its Agent delegates to another Agent.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectWorkspaceInboxDelegate {
+    pub work: String,
+    pub agent: ProjectWorkspaceInboxChatAgent,
 }
 
 /// Causal evidence that a proposal was made for the current message content.
@@ -390,6 +418,9 @@ pub enum ProjectWorkspaceInboxInteractionMode {
 pub struct ProjectWorkspaceInboxExecutionSelection {
     pub model_selection: ProjectWorkspaceInboxModelSelection,
     pub interaction_mode: ProjectWorkspaceInboxInteractionMode,
+    /// The delegation instructions written from the confirmed plan, placed after the prompt.
+    #[serde(default)]
+    pub orchestration: Option<String>,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
