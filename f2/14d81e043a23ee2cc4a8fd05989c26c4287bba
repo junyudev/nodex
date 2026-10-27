@@ -1,0 +1,44 @@
+src/renderer/features/workspace-files/workspace-file-editor-diff.test.ts
+  s_cb8bbfdb133e81::t_51d60143c4616a 2
+docs/product-specs/workspace-file-git-data.md
+  s_cb8bbfdb133e81::t_4e171c74a7cef6 38-46,50
+src/renderer/features/workspace-files/workspace-file-editor-diff.ts
+  s_cb8bbfdb133e81::t_51d60143c4616a 2
+src/renderer/features/workspace-files/workspace-file-comparison-controls.tsx
+  s_cb8bbfdb133e81::t_e9caf5c6612c5b 29
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_cb8bbfdb133e81::t_e9caf5c6612c5b 127-128
+  s_cb8bbfdb133e81::t_12b0ecfce7d51a 1392-1397
+src/renderer/features/workspace-files/use-workspace-file-git.ts
+  s_cb8bbfdb133e81::t_12b0ecfce7d51a 73,76-77,80
+src/main/git-worker/git-blame-model.test.ts
+  s_cb8bbfdb133e81::t_9c3f2eb1f12f2a 7-29,41
+src/renderer/features/workspace-files/workspace-file-change-blocks.ts
+  s_cb8bbfdb133e81::t_51d60143c4616a 1-63
+src/renderer/features/workspace-files/workspace-pierre-editor.tsx
+  s_cb8bbfdb133e81::t_e9caf5c6612c5b 39
+  s_cb8bbfdb133e81::t_51d60143c4616a 40
+src/renderer/features/workspace-files/workspace-file-blame-model.ts
+  s_cb8bbfdb133e81::t_12b0ecfce7d51a 1,3
+src/renderer/features/workspace-files/workspace-file-change-blocks.node.test.ts
+  s_cb8bbfdb133e81::t_51d60143c4616a 1-37
+src/renderer/features/workspace-files/workspace-file-blame-model.node.test.ts
+  s_cb8bbfdb133e81::t_12b0ecfce7d51a 2,5,26,30-39
+  s_cb8bbfdb133e81::t_4e171c74a7cef6 27-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f214d81e043a23ee2cc4a8fd05989c26c4287bba",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
