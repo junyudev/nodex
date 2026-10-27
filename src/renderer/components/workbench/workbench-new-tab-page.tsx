@@ -1,6 +1,10 @@
 import {
+  createContext,
+  useContext,
   useRef,
   useState,
+  useSyncExternalStore,
+  type ComponentProps,
   type ComponentPropsWithoutRef,
   type ReactElement,
   type ReactNode,
@@ -9,11 +13,23 @@ import {
   CanvasIcon,
   ChatActionsIcon,
   ChatBubbleIcon,
+  ClockIcon,
   ChevronDownIcon,
   DatabaseIcon,
   MoreToolsIcon,
   PageIcon,
+  SidePanelSideChatIcon,
 } from "@/components/shared/icons";
+import {
+  BrowserSidebarPanel,
+  type BrowserAddressSuggestionsSource,
+  type BrowserAddressWorkspaceOption,
+} from "@/features/browser-sidebar/browser-sidebar-panel";
+import { readBrowserAddressWorkspaceQuery } from "@/features/browser-sidebar/browser-address-suggestions";
+import { formatCompactRelativeTime } from "@/lib/compact-relative-time";
+import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
+import { getPanelNewTabAction } from "@/lib/workbench-panel-actions";
+import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import {
   NodexDropdownFlyoutSubmenuItem,
   NodexDropdownItem,
@@ -549,6 +565,137 @@ function RecentGlyph({ target }: { readonly target: LibraryRouteTarget }) {
   if (target.kind === "page") return <PageIcon className="icon-sm text-token-charts-blue" />;
   if (target.kind === "canvas") return <CanvasIcon className="icon-xs text-token-charts-orange" />;
   return <DatabaseIcon className="icon-xs text-token-charts-green" />;
+}
+
+/** Binds Browser chrome and its blank page to the same Scene and New tab port. */
+export function WorkbenchBrowserSidebarPanel(
+  binding: Omit<
+    ComponentProps<typeof BrowserSidebarPanel>,
+    "addressSuggestions" | "renderNewTabPage"
+  > & {
+    readonly owner: WorkbenchSceneOwner;
+    readonly surfaceId: string;
+    readonly panelId: PanelId;
+  },
+) {
+  const { owner, surfaceId, panelId, ...props } = binding;
+  return (
+    <WorkbenchNewTabAddressContext.Provider value={binding}>
+      <BrowserSidebarPanel
+        {...props}
+        addressSuggestions={WORKBENCH_ADDRESS_SUGGESTIONS}
+        renderNewTabPage={({ localServers }) => (
+          <WorkbenchNewTabSurface owner={owner} surfaceId={surfaceId} panelId={panelId}>
+            {localServers}
+          </WorkbenchNewTabSurface>
+        )}
+      />
+    </WorkbenchNewTabAddressContext.Provider>
+  );
+}
+
+const WorkbenchNewTabAddressContext = createContext<{
+  readonly owner: WorkbenchSceneOwner;
+  readonly surfaceId: string;
+  readonly panelId: PanelId;
+} | null>(null);
+
+const WORKBENCH_ADDRESS_SUGGESTIONS: BrowserAddressSuggestionsSource = {
+  useWorkspaceSuggestions: useWorkbenchNewTabAddressSuggestions,
+};
+
+const subscribeToNothing = () => () => undefined;
+
+/** Workspace candidates remain presentation data; the port owns every accepted intent. */
+export function useWorkbenchNewTabAddressSuggestions(
+  query: string,
+): readonly BrowserAddressWorkspaceOption[] {
+  const binding = useContext(WorkbenchNewTabAddressContext);
+  const port = useWorkbenchNewTabPort();
+  const windowOwner = useWorkbenchWindowOwner();
+  const workspaceQuery = readBrowserAddressWorkspaceQuery(query);
+  // Every Browser tab mounts this hook; only a New tab with a typed query observes the Scene
+  // and reads Pages, so loaded pages never rerender for unrelated window changes.
+  const active = binding !== null && workspaceQuery !== null;
+  const state = useSyncExternalStore(
+    active ? windowOwner.subscribe : subscribeToNothing,
+    windowOwner.read,
+  );
+  const observation = active ? readWorkbenchAgentContext(state, binding.owner) : null;
+  const results = useSpaceContentResults({
+    query: workspaceQuery ?? "",
+    kinds: ["page"],
+    enabled: active,
+  });
+  if (!port || !binding || !workspaceQuery) return [];
+  const { owner, surfaceId, panelId } = binding;
+
+  const open = (intent: WorkbenchNewTabIntent) => {
+    void port.open({ owner, surfaceId, intent });
+  };
+  // A suggestion runs directly, so picker-only destinations such as Open page stay out.
+  const tools = (port.resolveOwnerContext(owner, panelId)?.actions ?? [])
+    .filter((action) => action.kind !== "browser" && action.kind !== "page_stage")
+    .map((action): BrowserAddressWorkspaceOption => ({
+      id: `action:${action.kind}`,
+      kind: "launch-action",
+      title: action.label,
+      icon: <action.Icon className="icon-xs" />,
+      onSelect: () => open({ kind: "action", action: action.kind }),
+    }));
+  const tabs = (observation?.tabs ?? [])
+    .filter((tab) => tab.tabId !== surfaceId)
+    .map((tab): BrowserAddressWorkspaceOption => {
+      const Icon =
+        tab.surface &&
+        tab.surface.kind !== "conversation" &&
+        tab.surface.kind !== "inbox" &&
+        tab.surface.kind !== "image_editor"
+          ? getPanelNewTabAction(tab.surface.kind).Icon
+          : SidePanelSideChatIcon;
+      return {
+        id: `tab:${tab.tabId}`,
+        kind: "switch-tab",
+        title: tab.surface?.titleSnapshot ?? tab.auxiliary?.title ?? "",
+        icon: <Icon className="icon-xs" />,
+        trailing: "Switch to tab",
+        onSelect: () => open({ kind: "tab", tabId: tab.tabId }),
+      };
+    });
+  const openPageIds = new Set(
+    observation?.tabs.flatMap((tab) =>
+      tab.surface?.kind === "page_stage" ? [tab.surface.config.pageId] : [],
+    ),
+  );
+  // Content-search hits can omit edit times; the title catalog retains their metadata.
+  const catalogEditTimes = new Map(
+    results.catalog.data?.pages.flatMap((page) =>
+      page.items.map(
+        (item) => [item.target.kind === "page" ? item.target.pageId : "", item.updatedAt] as const,
+      ),
+    ),
+  );
+  const pages = results.items.flatMap((item): BrowserAddressWorkspaceOption[] => {
+    if (item.target.kind !== "page" || openPageIds.has(item.target.pageId)) return [];
+    const updatedAt = Date.parse(item.updatedAt ?? catalogEditTimes.get(item.target.pageId) ?? "");
+    return [
+      {
+        id: `page:${item.target.pageId}`,
+        kind: "page",
+        title: item.title,
+        updatedAt: Number.isFinite(updatedAt) ? updatedAt : undefined,
+        icon: <PageIcon className="icon-xs" />,
+        trailing: Number.isFinite(updatedAt) ? (
+          <span className="flex items-center gap-1">
+            <ClockIcon className="icon-2xs" />
+            {formatCompactRelativeTime(updatedAt)}
+          </span>
+        ) : undefined,
+        onSelect: () => open({ kind: "library-target", target: item.target, title: item.title }),
+      },
+    ];
+  });
+  return [...tools, ...tabs, ...pages];
 }
 
 /**

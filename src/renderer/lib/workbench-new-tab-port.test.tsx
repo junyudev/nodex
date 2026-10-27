@@ -13,7 +13,9 @@ import {
   disposeMaitaiStore,
   getMaitaiRootView,
 } from "./maitai/maitai-store";
+import { readWorkbenchAgentContext } from "./workbench-agent-context";
 import { useWorkbenchNewTabPortValue } from "./workbench-new-tab-port";
+import { createWorkbenchSceneCommands } from "./workbench-scene-commands";
 import type { ExecuteWorkbenchUiCommand } from "./use-workbench-scene-commands";
 import { getWorkbenchWindowOwner } from "./workbench-window-owner";
 
@@ -83,4 +85,122 @@ describe("New tab port", () => {
       disposeMaitaiStore(store);
     }
   });
+
+  test.each<WorkbenchSceneOwner>([
+    { kind: "session", sessionId: "session" },
+    { kind: "project", projectId: "project" },
+  ])(
+    "selects a tab in the other panel before retiring the New tab in a $kind Scene",
+    async (owner) => {
+      const store = createMaitaiStore();
+      const scene = (
+        [
+          { panelId: "bottom", id: "target" },
+          { panelId: "bottom", id: "other" },
+          { panelId: "right", id: "new" },
+        ] as const
+      ).reduce(
+        (current, { panelId, id }) =>
+          createWorkbenchSceneSurface(current, {
+            panelId,
+            surface: {
+              id,
+              kind: "browser",
+              titleSnapshot: id,
+              stateKey: 0,
+              state: null,
+              config: { browserTabId: `${id}-browser` },
+            },
+          }),
+        materializeInitialWorkbenchScene(owner),
+      );
+      const windowOwner = getWorkbenchWindowOwner(createScopeHandle(getMaitaiRootView(store)), {
+        ...createDefaultWorkbenchLayoutSnapshot(),
+        scenesByOwnerKey: { [makeWorkbenchSceneKey(owner)]: scene },
+      });
+      windowOwner.initialize();
+      windowOwner.registerPersistenceCommit(async (snapshot) => ({
+        ...snapshot,
+        sessionId: "window",
+        layoutRevision: 1,
+      }));
+      const selectedWhenClosing: (string | null | undefined)[] = [];
+      const executor = createWorkbenchSceneCommands(windowOwner, {
+        close: async () => undefined,
+        prepareClose: async () => {
+          selectedWhenClosing.push(
+            readWorkbenchAgentContext(windowOwner.read(), owner)?.groups.find(
+              (group) => group.panelId === "bottom",
+            )?.selectedTabId,
+          );
+          return true;
+        },
+      });
+      let operation = 0;
+      const executeSceneCommand = vi.fn<ExecuteWorkbenchUiCommand>(async (sceneOwner, command) =>
+        executor.execute({
+          sceneOwner,
+          command,
+          operationId: `operation-${++operation}`,
+          expectedPresentationRevision: windowOwner.read().presentationRevision,
+        }),
+      );
+      const view = renderHook(() =>
+        useWorkbenchNewTabPortValue({
+          windowOwner,
+          executeSceneCommand,
+          isMac: true,
+          commandKeymapState: null,
+          projects: [],
+          commands: {
+            resolveOwnerContext: () => null,
+            runAction: async () => false,
+            openDestination: async () => false,
+            openLibraryTarget: async () => false,
+            returnToChat: () => undefined,
+          },
+        }),
+      );
+      try {
+        expect(
+          readWorkbenchAgentContext(windowOwner.read(), owner)?.groups.find(
+            (group) => group.panelId === "bottom",
+          )?.selectedTabId,
+        ).toBe("other");
+        await act(async () => {
+          await view.result.current.open({
+            owner,
+            surfaceId: "new",
+            intent: { kind: "tab", tabId: "missing" },
+          });
+          await view.result.current.open({
+            owner,
+            surfaceId: "new",
+            intent: { kind: "tab", tabId: "new" },
+          });
+        });
+        expect(executeSceneCommand).not.toHaveBeenCalled();
+        await act(async () => {
+          await view.result.current.open({
+            owner,
+            surfaceId: "new",
+            intent: { kind: "tab", tabId: "target" },
+          });
+        });
+        const observation = readWorkbenchAgentContext(windowOwner.read(), owner);
+        expect(observation?.tabs.some((tab) => tab.tabId === "new")).toBe(false);
+        expect(observation?.groups.find((group) => group.panelId === "bottom")?.selectedTabId).toBe(
+          "target",
+        );
+        expect(selectedWhenClosing).toEqual(["target"]);
+        expect(executeSceneCommand.mock.calls.map(([, command]) => command)).toEqual([
+          { kind: "activate_tab", tabId: "target" },
+          { kind: "close_tab", tabId: "new" },
+        ]);
+      } finally {
+        view.unmount();
+        disposeMaitaiStore(store);
+      }
+    },
+  );
 });

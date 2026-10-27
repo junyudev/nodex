@@ -13,6 +13,7 @@ import type { PanelId, Project } from "./types";
 /** What a New tab can become. */
 export type WorkbenchNewTabIntent =
   | { readonly kind: "action"; readonly action: PanelNewTabActionKind }
+  | { readonly kind: "tab"; readonly tabId: string }
   | { readonly kind: "destination"; readonly destination: PanelDestination }
   | {
       readonly kind: "library-target";
@@ -88,7 +89,9 @@ export function WorkbenchNewTabPortProvider({
   readonly children: ReactNode;
 }) {
   return (
-    <WorkbenchNewTabPortContext.Provider value={port}>{children}</WorkbenchNewTabPortContext.Provider>
+    <WorkbenchNewTabPortContext.Provider value={port}>
+      {children}
+    </WorkbenchNewTabPortContext.Provider>
   );
 }
 
@@ -131,6 +134,17 @@ export function useWorkbenchNewTabPortValue({
     const before = observe(owner);
     const group = before?.groups.find((candidate) => candidate.tabIds.includes(surfaceId));
     if (!before || !group) return;
+    if (intent.kind === "tab") {
+      if (intent.tabId === surfaceId || !before.tabs.some((tab) => tab.tabId === intent.tabId))
+        return;
+      const activated = await executeSceneCommand(owner, {
+        kind: "activate_tab",
+        tabId: intent.tabId,
+      });
+      if (activated.error) return;
+      await executeSceneCommand(owner, { kind: "close_tab", tabId: surfaceId });
+      return;
+    }
     if (intent.kind === "chat") {
       returnToChat();
       await executeSceneCommand(owner, { kind: "close_tab", tabId: surfaceId });

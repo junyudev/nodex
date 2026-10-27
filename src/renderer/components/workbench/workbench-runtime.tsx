@@ -54,7 +54,6 @@ import {
 import { HistoryPanel } from "./workbench-history-panel";
 import { useTerminalSessionStoreVersion } from "@/lib/terminal-session-store";
 import { BrowserSidebarHiddenWebviewHosts } from "@/features/browser-sidebar/browser-sidebar-hidden-webview-hosts";
-import { BrowserSidebarPanel } from "@/features/browser-sidebar/browser-sidebar-panel";
 import { useBrowserSidebarRendererState } from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
 import { WorkspaceFilesPanel, type WorkspaceFilesTab } from "@/features/workspace-files";
 import {
@@ -317,7 +316,7 @@ import {
 } from "@/lib/workbench-panel-actions";
 import { useLibraryCreateCommands } from "../library/library-new-menu";
 import type { PanelDestination } from "./panel-destination-picker-model";
-import { WorkbenchNewTabSurface } from "./workbench-new-tab-page";
+import { WorkbenchBrowserSidebarPanel } from "./workbench-new-tab-page";
 import {
   useWorkbenchNewTabPortValue,
   WorkbenchNewTabPortProvider,
@@ -4180,7 +4179,10 @@ export function WorkbenchRuntime({
           },
         };
         return (
-          <BrowserSidebarPanel
+          <WorkbenchBrowserSidebarPanel
+            owner={{ kind: "project", projectId: activeProject.id }}
+            surfaceId={surface.id}
+            panelId={context.panelId}
             tab={tab}
             surfaceContext={{
               browserConversationId: projectSceneKey,
@@ -4224,15 +4226,6 @@ export function WorkbenchRuntime({
                 },
               };
             }}
-            renderNewTabPage={({ localServers }) => (
-              <WorkbenchNewTabSurface
-                owner={{ kind: "project", projectId: activeProject.id }}
-                surfaceId={surface.id}
-                panelId={context.panelId}
-              >
-                {localServers}
-              </WorkbenchNewTabSurface>
-            )}
             onOpenNewTab={(request) => {
               void openProjectSceneManualSurface(activeProject.id, "browser", {
                 panelId: context.panelId,

@@ -7,7 +7,6 @@ import {
   type WorkspaceFilesTab,
 } from "@/features/workspace-files";
 import { ReviewRouteOpenAdapter } from "./workbench-review-route-adapter";
-import { BrowserSidebarPanel } from "@/features/browser-sidebar/browser-sidebar-panel";
 import type { BrowserSettingsDestination } from "@/features/browser-sidebar/browser-settings-pages";
 import type { BrowserSidebarOpenNewTabRequest } from "../../../shared/browser-sidebar";
 import { ConnectedReviewDiffPanel } from "@/features/local-conversation";
@@ -30,7 +29,7 @@ import {
   type PageStageHistoryModalContext,
 } from "./workbench-page-stage-panel";
 import { TerminalPanel } from "./workbench-terminal-panel";
-import { WorkbenchNewTabSurface } from "./workbench-new-tab-page";
+import { WorkbenchBrowserSidebarPanel } from "./workbench-new-tab-page";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
 import { hasSessionConversation, resolveSessionPageSendTarget } from "@/lib/session-execution";
 import { resolveWorkbenchPanelCapabilities } from "@/lib/workbench-panel-capabilities";
@@ -381,7 +380,10 @@ export function WorkbenchTabProjectionPanel({
 
   if (tab.kind === "browser") {
     return (
-      <BrowserSidebarPanel
+      <WorkbenchBrowserSidebarPanel
+        owner={{ kind: "session", sessionId: activeSession.id }}
+        surfaceId={tab.id}
+        panelId={tab.panelId}
         tab={tab}
         activeSession={activeSession}
         browserViewScopeId={browserViewScopeId}
@@ -392,15 +394,6 @@ export function WorkbenchTabProjectionPanel({
         onOpenBrowserSettings={onOpenBrowserSettings}
         activeForContentSearch={isActivePanelTab}
         isVisible={isActivePanelTab}
-        renderNewTabPage={({ localServers }) => (
-          <WorkbenchNewTabSurface
-            owner={{ kind: "session", sessionId: activeSession.id }}
-            surfaceId={tab.id}
-            panelId={tab.panelId}
-          >
-            {localServers}
-          </WorkbenchNewTabSurface>
-        )}
       />
     );
   }

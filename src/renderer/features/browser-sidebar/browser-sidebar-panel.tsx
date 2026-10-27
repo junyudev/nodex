@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -148,7 +149,13 @@ import {
   ResetIcon,
   SettingsGeneralIcon,
   SidePanelBrowserIcon,
+  SearchIcon,
 } from "@/components/shared/icons";
+import {
+  buildBrowserAddressSuggestions,
+  type BrowserAddressSuggestion,
+  type BrowserAddressWorkspaceCandidate,
+} from "./browser-address-suggestions";
 import {
   NodexDropdownButtonTrigger,
   NodexDropdownItem,
@@ -238,6 +245,20 @@ const DEFAULT_BROWSER_SNAPSHOT: Omit<
 
 const ignoreBrowserTabUpdate = (): null => null;
 
+export interface BrowserAddressWorkspaceOption extends BrowserAddressWorkspaceCandidate {
+  readonly icon: ReactNode;
+  readonly trailing?: ReactNode;
+  readonly onSelect: () => void;
+}
+
+export interface BrowserAddressSuggestionsSource {
+  readonly useWorkspaceSuggestions: (query: string) => readonly BrowserAddressWorkspaceOption[];
+}
+
+const EMPTY_ADDRESS_SUGGESTIONS: BrowserAddressSuggestionsSource = {
+  useWorkspaceSuggestions: () => [],
+};
+
 export function BrowserSidebarPanel({
   tab,
   activeSession,
@@ -251,6 +272,7 @@ export function BrowserSidebarPanel({
   activeForContentSearch = false,
   isVisible,
   renderNewTabPage,
+  addressSuggestions = EMPTY_ADDRESS_SUGGESTIONS,
 }: {
   tab: BrowserTab;
   activeSession?: WorkbenchSessionRenderProjection;
@@ -265,6 +287,7 @@ export function BrowserSidebarPanel({
   isVisible: boolean;
   /** Composes a blank tab's New tab page around the Browser's own sections. */
   renderNewTabPage?: (sections: BrowserNewTabSections) => ReactNode;
+  addressSuggestions?: BrowserAddressSuggestionsSource;
 }) {
   const browserConversationId =
     surfaceContext?.browserConversationId ?? activeSession?.id ?? browserViewScopeId;
@@ -286,6 +309,13 @@ export function BrowserSidebarPanel({
   );
   const [addressValue, setAddressValue] = useState(readBrowserAddressValue(snapshot.url));
   const [addressFocused, setAddressFocused] = useState(false);
+  const [addressSuggestionsDismissed, setAddressSuggestionsDismissed] = useState(false);
+  const [highlightedAddressSuggestionId, setHighlightedAddressSuggestionId] = useState<
+    string | null
+  >(null);
+  const addressListId = useId();
+  const addressListRef = useRef<HTMLDivElement | null>(null);
+  const skipAddressCommitRef = useRef(false);
   const [localServers, setLocalServers] = useState<BrowserSidebarLocalServersSnapshot | null>(null);
   const [localServerPreferences, setLocalServerPreferences] =
     useState<BrowserLocalServerPreferences>(() => ({
@@ -377,7 +407,28 @@ export function BrowserSidebarPanel({
     (tab.kind === "browser" ? tab.config.browserUseSource?.codexSessionId : null) ??
     fallbackCodexSessionId;
   const shouldMountWebview = !isBlank || activeBrowserUseTab !== null;
+  const workspaceAddressCandidates = addressSuggestions.useWorkspaceSuggestions(
+    !shouldMountWebview && addressFocused ? addressValue : "",
+  );
+  const addressRows = buildBrowserAddressSuggestions(addressValue, workspaceAddressCandidates);
+  const addressSuggestionsOpen =
+    !shouldMountWebview && addressFocused && !addressSuggestionsDismissed && addressRows.length > 0;
+  const highlightedAddressIndex = Math.max(
+    0,
+    addressRows.findIndex((row) => row.id === highlightedAddressSuggestionId),
+  );
+  const highlightedAddressRow = addressRows[highlightedAddressIndex];
+  const activeAddressOptionId = addressSuggestionsOpen
+    ? `${addressListId}-${highlightedAddressIndex}`
+    : undefined;
   const browserPagePersistence = exactBrowserUseTab ? "browser-use" : "durable";
+
+  useEffect(() => {
+    if (!activeAddressOptionId) return;
+    addressListRef.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [activeAddressOptionId]);
 
   const handleOpenNewTab = useEffectEvent((request: BrowserSidebarOpenNewTabRequest) => {
     void onOpenNewTab?.(request);
@@ -906,13 +957,34 @@ export function BrowserSidebarPanel({
     [browserIdentity, command],
   );
 
-  const submitAddress = (event: FormEvent) => {
-    event.preventDefault();
+  const commitAddress = () => {
     if (!shouldCommitBrowserAddressEdit(snapshot.url, addressValue)) {
       setAddressValue(readBrowserAddressValue(snapshot.url));
       return;
     }
     navigateTo(addressValue);
+  };
+
+  const acceptAddressSuggestion = (
+    row: BrowserAddressSuggestion<BrowserAddressWorkspaceOption>,
+  ) => {
+    setAddressSuggestionsDismissed(true);
+    if (row.kind !== "workspace") {
+      commitAddress();
+      return;
+    }
+    skipAddressCommitRef.current = true;
+    setAddressValue(readBrowserAddressValue(snapshot.url));
+    row.candidate.onSelect();
+  };
+
+  const submitAddress = (event: FormEvent) => {
+    event.preventDefault();
+    if (addressSuggestionsOpen && highlightedAddressRow) {
+      acceptAddressSuggestion(highlightedAddressRow);
+      return;
+    }
+    commitAddress();
   };
 
   const setZoom = (zoomPercent: number) => {
@@ -1020,7 +1092,8 @@ export function BrowserSidebarPanel({
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden bg-token-main-surface-primary text-token-text-primary">
-      <div className={BROWSER_CHROME_CLASS}>
+      {/* Open address suggestions extend below the chrome, over the New tab page. */}
+      <div className={cn(BROWSER_CHROME_CLASS, addressSuggestionsOpen && "z-30")}>
         <div className={BROWSER_CHROME_ROW_CLASS}>
           <BrowserToolbarButton
             label="Back"
@@ -1061,74 +1134,169 @@ export function BrowserSidebarPanel({
             className="no-drag flex min-w-0 flex-1 items-center justify-center px-1 text-sm text-token-text-primary"
             onSubmit={submitAddress}
           >
-            <div className={BROWSER_ADDRESS_BAR_CLASS}>
-              <div
-                className={cn(
-                  "shrink-0 overflow-hidden transition-[width,opacity] duration-150",
-                  addressFocused ? "w-0 opacity-0" : "w-7 opacity-100",
-                )}
-              >
-                <BrowserSiteInfoMenu
-                  url={snapshot.url}
-                  siteInfo={siteInfo}
-                  disabled={pageActionsDisabled}
-                  onClearSiteData={() => clearBrowsingData("site-data")}
-                />
-              </div>
-              <input
-                data-browser-sidebar-address-input="true"
-                className={cn(
-                  "h-full min-w-0 flex-1 bg-transparent px-1 text-sm outline-none text-token-input-foreground placeholder:text-token-input-placeholder-foreground focus:pl-2 focus:text-left",
-                  !addressFocused && "text-center",
-                  addressValue.trim().length > 0 && "pr-3",
-                )}
-                style={
-                  addressValue.trim().length > 0
-                    ? {
-                        WebkitMaskImage:
-                          "linear-gradient(to right, black calc(100% - 18px), transparent)",
-                        maskImage:
-                          "linear-gradient(to right, black calc(100% - 18px), transparent)",
-                      }
-                    : undefined
-                }
-                value={addressValue}
-                placeholder="Search or enter a URL"
-                onFocus={() => setAddressFocused(true)}
-                onBlur={(event) => {
-                  setAddressFocused(false);
-                  if (shouldSkipBrowserAddressCommit(event.relatedTarget)) return;
-                  if (!shouldCommitBrowserAddressEdit(snapshot.url, addressValue)) {
-                    setAddressValue(readBrowserAddressValue(snapshot.url));
-                    return;
+            <div className="relative w-full min-w-0 max-w-[770px]">
+              <div className={BROWSER_ADDRESS_BAR_CLASS}>
+                <div
+                  className={cn(
+                    "shrink-0 overflow-hidden transition-[width,opacity] duration-150",
+                    addressFocused ? "w-0 opacity-0" : "w-7 opacity-100",
+                  )}
+                >
+                  <BrowserSiteInfoMenu
+                    url={snapshot.url}
+                    siteInfo={siteInfo}
+                    disabled={pageActionsDisabled}
+                    onClearSiteData={() => clearBrowsingData("site-data")}
+                  />
+                </div>
+                <input
+                  data-browser-sidebar-address-input="true"
+                  role={!shouldMountWebview ? "combobox" : undefined}
+                  aria-label="Search or enter a URL"
+                  aria-expanded={!shouldMountWebview ? addressSuggestionsOpen : undefined}
+                  aria-controls={addressSuggestionsOpen ? addressListId : undefined}
+                  aria-activedescendant={activeAddressOptionId}
+                  aria-autocomplete={!shouldMountWebview ? "list" : undefined}
+                  className={cn(
+                    "h-full min-w-0 flex-1 bg-transparent px-1 text-sm outline-none text-token-input-foreground placeholder:text-token-input-placeholder-foreground focus:pl-2 focus:text-left",
+                    !addressFocused && "text-center",
+                    addressValue.trim().length > 0 && "pr-3",
+                  )}
+                  style={
+                    addressValue.trim().length > 0
+                      ? {
+                          WebkitMaskImage:
+                            "linear-gradient(to right, black calc(100% - 18px), transparent)",
+                          maskImage:
+                            "linear-gradient(to right, black calc(100% - 18px), transparent)",
+                        }
+                      : undefined
                   }
-                  navigateTo(addressValue);
-                }}
-                onChange={(event) => setAddressValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Escape") return;
-                  event.preventDefault();
-                  event.currentTarget.blur();
-                  setAddressValue(readBrowserAddressValue(snapshot.url));
-                }}
-              />
-              <button
-                type="button"
-                data-browser-sidebar-open-external
-                data-browser-sidebar-skip-address-commit
-                className={cn(
-                  "mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-lg text-token-text-tertiary transition-opacity",
-                  pageActionsDisabled
-                    ? "cursor-default opacity-0"
-                    : "cursor-interaction opacity-0 hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:bg-token-foreground/5 group-hover/address-bar:opacity-100 group-focus-within/address-bar:opacity-100",
-                )}
-                disabled={pageActionsDisabled}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => void command({ type: "open-external", ...browserIdentity })}
-                aria-label="Open externally"
-              >
-                <BrowserExternalIcon className="icon-xs" />
-              </button>
+                  value={addressValue}
+                  placeholder="Search or enter a URL"
+                  onFocus={() => {
+                    skipAddressCommitRef.current = false;
+                    setAddressSuggestionsDismissed(false);
+                    setHighlightedAddressSuggestionId(null);
+                    setAddressFocused(true);
+                  }}
+                  onBlur={(event) => {
+                    setAddressFocused(false);
+                    if (skipAddressCommitRef.current) {
+                      skipAddressCommitRef.current = false;
+                      return;
+                    }
+                    if (shouldSkipBrowserAddressCommit(event.relatedTarget)) return;
+                    if (!shouldCommitBrowserAddressEdit(snapshot.url, addressValue)) {
+                      setAddressValue(readBrowserAddressValue(snapshot.url));
+                      return;
+                    }
+                    navigateTo(addressValue);
+                  }}
+                  onChange={(event) => {
+                    skipAddressCommitRef.current = false;
+                    setAddressValue(event.target.value);
+                    setAddressSuggestionsDismissed(false);
+                    setHighlightedAddressSuggestionId(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+                    if (
+                      addressSuggestionsOpen &&
+                      (event.key === "ArrowDown" || event.key === "ArrowUp")
+                    ) {
+                      event.preventDefault();
+                      const delta = event.key === "ArrowDown" ? 1 : -1;
+                      const nextRow =
+                        addressRows[
+                          (highlightedAddressIndex + delta + addressRows.length) %
+                            addressRows.length
+                        ];
+                      setHighlightedAddressSuggestionId(nextRow?.id ?? null);
+                      return;
+                    }
+                    if (addressSuggestionsOpen && event.key === "Enter" && highlightedAddressRow) {
+                      event.preventDefault();
+                      acceptAddressSuggestion(highlightedAddressRow);
+                      return;
+                    }
+                    if (event.key !== "Escape") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (addressSuggestionsOpen) {
+                      setAddressSuggestionsDismissed(true);
+                      return;
+                    }
+                    skipAddressCommitRef.current = true;
+                    event.currentTarget.blur();
+                    setAddressValue(readBrowserAddressValue(snapshot.url));
+                  }}
+                />
+                <button
+                  type="button"
+                  data-browser-sidebar-open-external
+                  data-browser-sidebar-skip-address-commit
+                  className={cn(
+                    "mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-lg text-token-text-tertiary transition-opacity",
+                    pageActionsDisabled
+                      ? "cursor-default opacity-0"
+                      : "cursor-interaction opacity-0 hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:bg-token-foreground/5 group-hover/address-bar:opacity-100 group-focus-within/address-bar:opacity-100",
+                  )}
+                  disabled={pageActionsDisabled}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => void command({ type: "open-external", ...browserIdentity })}
+                  aria-label="Open externally"
+                >
+                  <BrowserExternalIcon className="icon-xs" />
+                </button>
+              </div>
+              {addressSuggestionsOpen ? (
+                <div
+                  ref={addressListRef}
+                  id={addressListId}
+                  role="listbox"
+                  aria-label="Address suggestions"
+                  className="absolute top-full left-0 z-30 flex max-h-[min(360px,60vh)] w-full flex-col overflow-y-auto rounded-xl border border-token-border bg-[var(--color-background-primary-soft)] p-1 text-token-text-primary shadow-lg"
+                >
+                  {addressRows.map((row, index) => (
+                    <div
+                      key={row.id}
+                      id={`${addressListId}-${index}`}
+                      role="option"
+                      aria-selected={index === highlightedAddressIndex}
+                      className={cn(
+                        "flex h-9 w-full shrink-0 cursor-interaction items-center gap-2.5 rounded-lg px-2.5 text-start text-[13px] outline-none select-none",
+                        index === highlightedAddressIndex
+                          ? "bg-token-list-hover-background"
+                          : "hover:bg-token-list-hover-background/60",
+                      )}
+                      onMouseEnter={() => setHighlightedAddressSuggestionId(row.id)}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => acceptAddressSuggestion(row)}
+                    >
+                      <span className="flex size-4 shrink-0 items-center justify-center text-token-description-foreground">
+                        {row.kind === "workspace" ? (
+                          row.candidate.icon
+                        ) : row.kind === "search" ? (
+                          <SearchIcon className="icon-xs" />
+                        ) : (
+                          <SidePanelBrowserIcon className="icon-xs" />
+                        )}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-token-text-primary">
+                        {row.kind === "workspace" ? row.candidate.title : row.title}
+                      </span>
+                      <span className="shrink-0 text-token-description-foreground">
+                        {row.kind === "workspace"
+                          ? row.candidate.trailing
+                          : row.kind === "url"
+                            ? "Open"
+                            : "Search the web"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </form>
           <div

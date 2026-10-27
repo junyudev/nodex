@@ -446,8 +446,10 @@ export const useLibraryPageRelocationChildren = (
 
 export const useInfiniteLibraryCatalog = (
   input: Omit<Parameters<typeof libraryCatalogQueryOptions>[0], "cursor"> = {},
+  options: { readonly enabled?: boolean } = {},
 ) =>
   useInfiniteQuery({
+    enabled: options.enabled ?? true,
     queryKey: queryKeys.library.catalogPages(input),
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>

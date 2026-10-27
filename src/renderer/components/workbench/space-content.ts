@@ -12,6 +12,7 @@ export type SpaceContentKind = "page" | "database" | "canvas";
 export interface SpaceContentDataSource {
   readonly useCatalog: (
     input: Parameters<typeof useInfiniteLibraryCatalog>[0],
+    options?: Parameters<typeof useInfiniteLibraryCatalog>[1],
   ) => Pick<
     ReturnType<typeof useInfiniteLibraryCatalog>,
     | "data"
@@ -31,7 +32,7 @@ export interface SpaceContentDataSource {
 }
 
 export const DEFAULT_SPACE_CONTENT_DATA_SOURCE: SpaceContentDataSource = {
-  useCatalog: (input) => useInfiniteLibraryCatalog(input),
+  useCatalog: (input, options) => useInfiniteLibraryCatalog(input, options),
   useCreateCommands: (input) => useLibraryCreateCommands(input),
 };
 
@@ -57,20 +58,29 @@ export function useSpaceContentResults({
   query,
   kinds = ALL_SPACE_CONTENT_KINDS,
   dataSource = DEFAULT_SPACE_CONTENT_DATA_SOURCE,
+  enabled = true,
 }: {
   readonly query: string;
   readonly kinds?: readonly SpaceContentKind[];
   readonly dataSource?: SpaceContentDataSource;
+  /** False keeps a mounted consumer idle: nothing is read until it is needed. */
+  readonly enabled?: boolean;
 }) {
   const liveQuery = query.trim().slice(0, MAX_LIBRARY_QUERY_LENGTH);
-  const catalog = dataSource.useCatalog({
-    lifecycle: "active",
-    kinds: [...kinds],
-    ...(liveQuery ? { query: liveQuery } : {}),
-    limit: 40,
-  });
+  const catalog = dataSource.useCatalog(
+    {
+      lifecycle: "active",
+      kinds: [...kinds],
+      ...(liveQuery ? { query: liveQuery } : {}),
+      limit: 40,
+    },
+    { enabled },
+  );
   const searchesPageContent =
-    liveQuery !== "" && kinds.includes("page") && dataSource === DEFAULT_SPACE_CONTENT_DATA_SOURCE;
+    enabled &&
+    liveQuery !== "" &&
+    kinds.includes("page") &&
+    dataSource === DEFAULT_SPACE_CONTENT_DATA_SOURCE;
   const preview = useInteractivePageSearch({
     projectIds: configuredPageSearchProjectIds(),
     query: searchesPageContent ? liveQuery : "",
