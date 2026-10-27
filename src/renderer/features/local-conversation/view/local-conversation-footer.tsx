@@ -310,15 +310,16 @@ function LocalConversationFooterComponent({
             exit={{ opacity: 0 }}
             initial={{ opacity: 0 }}
             transition={{ duration: 0.15, ease: "easeInOut" }}
-            className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+6*var(--spacing))] flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+6*var(--spacing))] z-30 flex justify-center print:hidden"
           >
             <button
               type="button"
               aria-label="Scroll to latest message"
               onClick={handleCatchUpClick}
-              className="pointer-events-auto inline-flex size-8 items-center justify-center rounded-full border border-token-border bg-token-background text-token-foreground shadow-card-md hover:bg-token-foreground/5"
+              // Keep this floating surface opaque in every interaction state.
+              className="pointer-events-auto inline-flex size-8 cursor-interaction items-center justify-center rounded-full border border-token-border bg-token-editor-background bg-clip-padding text-token-foreground"
             >
-              <DownArrowIcon className="size-4" />
+              <DownArrowIcon className="size-5" />
             </button>
           </motion.div>
         ) : null}
