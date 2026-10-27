@@ -1,0 +1,21 @@
+src/shared/inbox.ts
+  s_f2e3c034e2bc1d::t_5c4fffc410dbfe 3,517-525
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_f2e3c034e2bc1d::t_a820ff64bfbcd4 232-233,236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "722d2a3849315ce52d984fc15cbbdff972d41885",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
