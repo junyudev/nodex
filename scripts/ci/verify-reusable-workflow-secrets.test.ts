@@ -158,3 +158,41 @@ test("rejects reusable workflow permission escalation before GitHub startup", ()
     ),
   ).not.toThrow();
 });
+
+test("requires release attestation reads through job-level reusable workflow permissions", () => {
+  const callerPath = path.resolve(".github/workflows/caller.yml");
+  const calledPath = path.resolve(".github/workflows/called.yml");
+  const calledWorkflow = {
+    ...reusableWorkflow({
+      publish: { permissions: { attestations: "read", contents: "write" }, steps: [] },
+      feed: { permissions: { contents: "read" }, steps: [] },
+    }),
+    permissions: { contents: "read" },
+  };
+  const callerJob = {
+    uses: "./.github/workflows/called.yml",
+    permissions: { contents: "write" },
+    secrets: { DECLARED_SECRET: "${{ secrets.DECLARED_SECRET }}" },
+  };
+  const callerWorkflow = {
+    jobs: { promote: callerJob },
+    permissions: { attestations: "read", contents: "read" },
+  };
+  const workflows = new Map([
+    [callerPath, callerWorkflow],
+    [calledPath, calledWorkflow],
+  ]);
+
+  // Explicit caller-job permissions replace the workflow defaults.
+  expect(() => verifyCall(callerPath, "promote", callerJob, workflows)).toThrow(
+    "does not grant permissions required by the called workflow: attestations",
+  );
+  expect(() =>
+    verifyCall(
+      callerPath,
+      "promote",
+      { ...callerJob, permissions: { attestations: "read", contents: "write" } },
+      workflows,
+    ),
+  ).not.toThrow();
+});

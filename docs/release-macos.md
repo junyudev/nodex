@@ -643,12 +643,17 @@ published asset once into a temporary directory and verifies its byte length and
 SHA-256 digest before removing the temporary copy.
 
 GitHub may expose published immutable assets before their signed release
-attestation is readable. Remote verification retries only the exact
-`gh release verify` missing-attestation response for that tag, up to 12 attempts
-with ten seconds between attempts and a 30-second limit per command. Publication
-still requires successful cryptographic verification. Signature, digest,
-authorization, timeout, and asset failures stop immediately; exhaustion fails
-publication before any update feed is promoted.
+attestation is readable. An exact `gh release verify` missing-attestation response
+is retried only after the same repository tag is readable at that exact digest
+and the raw release-attestation API confirms absence with a specific 404 response
+or a valid response without a GitHub-issued attestation. Stable and Nightly
+publish jobs, including recovery callers, receive only `attestations: read` for
+this check. Raw authorization, transport, malformed-response, and timeout errors
+stop immediately; an attestation that is already present cannot trigger a retry.
+Verification allows at most 12 attempts with ten seconds between attempts and a
+30-second limit per command. Successful cryptographic verification, tag identity,
+remote asset digests, and downloaded bytes are still required before feed
+promotion. Exhaustion fails publication.
 
 The 0.2.1 baseline must contain zero deltas because 0.2.0 and earlier are not
 compatible history. Also verify the stable Apple silicon DMG URL, a clean Apple Silicon

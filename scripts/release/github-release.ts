@@ -89,15 +89,83 @@ const gh = (
   }
 };
 
-const isMissingReleaseAttestation = (error: unknown, tag: string): boolean => {
-  if (!(error instanceof Error) || !("status" in error) || error.status !== 1) return false;
-  if (!("stderr" in error)) return false;
-  const stderr = error.stderr;
-  if (typeof stderr !== "string" && !Buffer.isBuffer(stderr)) return false;
-  const missing = /^no attestations for tag (.+) \(sha1:[a-f0-9]{40}\)$/u.exec(
-    stderr.toString().trim(),
+const commandFailureOutput = (error: unknown, stream: "stdout" | "stderr"): string | null => {
+  if (!(error instanceof Error) || !("status" in error) || error.status !== 1) return null;
+  if (!(stream in error)) return null;
+  const output = error[stream];
+  return typeof output === "string" || Buffer.isBuffer(output) ? output.toString().trim() : null;
+};
+
+const missingReleaseAttestationDigest = (error: unknown, tag: string): string | null => {
+  const stderr = commandFailureOutput(error, "stderr");
+  if (stderr === null) return null;
+  const missing = /^no attestations for tag (.+) \((sha1:[a-f0-9]{40})\)$/u.exec(stderr);
+  return missing?.[1] === tag ? missing[2] : null;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isMissingAttestationResponse = (error: unknown): boolean => {
+  if (commandFailureOutput(error, "stderr") !== "gh: Not Found (HTTP 404)") return false;
+  const stdout = commandFailureOutput(error, "stdout");
+  if (stdout === null) return false;
+  try {
+    const body: unknown = JSON.parse(stdout);
+    return isRecord(body) && body.message === "Not Found" && body.status === "404";
+  } catch {
+    return false;
+  }
+};
+
+/** The verification CLI also calls authorization and bundle-fetch failures "no attestations". */
+const releaseAttestationIsMissing = (repo: string, tag: string, digest: string): boolean => {
+  const reference: unknown = JSON.parse(
+    gh(["api", "--method", "GET", `repos/${repo}/git/ref/tags/${encodeURIComponent(tag)}`], {
+      timeoutMs: 30_000,
+    }),
   );
-  return missing?.[1] === tag;
+  if (
+    !isRecord(reference) ||
+    reference.ref !== `refs/tags/${tag}` ||
+    !isRecord(reference.object) ||
+    reference.object.sha !== digest.slice("sha1:".length)
+  ) {
+    throw new Error("Release attestation lookup does not match the readable release tag.");
+  }
+  let response: unknown;
+  try {
+    response = JSON.parse(
+      gh(
+        [
+          "api",
+          "--method",
+          "GET",
+          `repos/${repo}/attestations/${digest}`,
+          "-f",
+          "predicate_type=release",
+          "-F",
+          "per_page=100",
+        ],
+        { timeoutMs: 30_000 },
+      ),
+    );
+  } catch (error) {
+    if (isMissingAttestationResponse(error)) return true;
+    throw error;
+  }
+  if (
+    !isRecord(response) ||
+    !Array.isArray(response.attestations) ||
+    !response.attestations.every(
+      (entry: unknown) => isRecord(entry) && typeof entry.initiator === "string",
+    )
+  ) {
+    throw new Error("GitHub returned an invalid release-attestation response.");
+  }
+  return !response.attestations.some(
+    (entry: { initiator: string }) => entry.initiator === "github",
+  );
 };
 
 /** GitHub can publish immutable assets before its signed attestation becomes readable. */
@@ -108,7 +176,8 @@ export async function verifyReleaseAttestation(repo: string, tag: string): Promi
       gh(["release", "verify", tag, "--repo", repo], { timeoutMs: 30_000 });
       return;
     } catch (error) {
-      if (!isMissingReleaseAttestation(error, tag)) throw error;
+      const digest = missingReleaseAttestationDigest(error, tag);
+      if (digest === null || !releaseAttestationIsMissing(repo, tag, digest)) throw error;
       if (attempt === attempts) {
         throw new Error(
           `Release attestation for ${tag} remained unavailable after ${attempts} verification attempts.`,
