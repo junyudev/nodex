@@ -200,6 +200,7 @@
     "capnweb": "0.11.1",
     "decode-named-character-reference": "1.2.0",
     "effect": "4.0.3",
+    "file-type": "^22.2.0",
     "https-proxy-agent": "7.0.6",
     "immer": "11.1.8",
     "marked": "16.4.2",

@@ -3,14 +3,14 @@ import {
   getFiletypeFromFileName,
   type SupportedLanguages,
 } from "@pierre/diffs";
-import type { WorkspaceFileContentKind } from "@/lib/types";
+import {
+  WORKSPACE_FILE_PREVIEW_MAX_BYTES,
+  type WorkspaceFileContentKind,
+} from "../../../shared/types";
 
+export { WORKSPACE_FILE_PREVIEW_MAX_BYTES };
 export const WORKSPACE_TEXT_EDITABLE_MAX_BYTES = 10 * 1024 * 1024;
 export const WORKSPACE_TEXT_LOAD_MAX_BYTES = 20 * 1024 * 1024;
-/** Files above this size show a too-large state instead of any preview. */
-export const WORKSPACE_FILE_PREVIEW_MAX_BYTES = 256 * 1024 * 1024;
-/** Media read through a host's byte reader (remote hosts) stays below this size. */
-export const WORKSPACE_MEDIA_READ_MAX_BYTES = WORKSPACE_FILE_PREVIEW_MAX_BYTES / 2;
 export const WORKSPACE_FILE_CONTENT_SAMPLE_BYTES = 4096;
 
 /** A rich preview that replaces the source view. */

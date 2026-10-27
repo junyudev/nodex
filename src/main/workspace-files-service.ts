@@ -1,10 +1,11 @@
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import type { Dirent } from "node:fs";
-import { copyFile, open, opendir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { copyFile, open, opendir, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import type {
   WorkspaceDirectoryEntriesInput,
   WorkspaceDirectoryEntriesResult,
+  WorkspaceFileBinaryReadInput,
   WorkspaceFileBinaryReadResult,
   WorkspaceFileDirectoryEntry,
   WorkspaceFileMetadata,
@@ -16,7 +17,11 @@ import type {
   WorkspaceFileWriteResult,
 } from "../shared/types";
 
-const DEFAULT_CONTENT_SAMPLE_BYTES = 8_192;
+import { WORKSPACE_FILE_BINARY_MAX_BYTES } from "../shared/types";
+import {
+  describeWorkspaceFileBytes,
+  WORKSPACE_FILE_CONTENT_SAMPLE_BYTES,
+} from "./workspace-file-content";
 const EXPECTED_FILE_SYSTEM_ERROR_CODES = new Set([
   "EACCES",
   "EBUSY",
@@ -287,19 +292,6 @@ function resolveFileRequestPath(input: WorkspaceFileRequest): string {
   return resolve(input.path);
 }
 
-function isProbablyBinary(buffer: Buffer): boolean {
-  if (buffer.length === 0) return false;
-  if (buffer.includes(0)) return true;
-
-  let suspicious = 0;
-  for (const byte of buffer) {
-    if (byte === 9 || byte === 10 || byte === 13) continue;
-    if (byte >= 32) continue;
-    suspicious += 1;
-  }
-  return suspicious / buffer.length > 0.08;
-}
-
 async function readFileSample(filePath: string, byteLimit: number): Promise<Buffer> {
   const handle = await open(filePath, "r");
   try {
@@ -309,46 +301,6 @@ async function readFileSample(filePath: string, byteLimit: number): Promise<Buff
   } finally {
     await handle.close();
   }
-}
-
-function detectMimeType(bytes: Buffer): string | undefined {
-  if (
-    bytes.length >= 8 &&
-    bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-  ) {
-    return "image/png";
-  }
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-    return "image/jpeg";
-  }
-  const prefix = bytes.subarray(0, 12).toString("ascii");
-  if (prefix.startsWith("GIF87a") || prefix.startsWith("GIF89a")) return "image/gif";
-  if (prefix.startsWith("RIFF") && prefix.slice(8, 12) === "WEBP") return "image/webp";
-  if (prefix.startsWith("%PDF-")) return "application/pdf";
-  if (prefix.startsWith("BM")) return "image/bmp";
-
-  const textPrefix = bytes
-    .subarray(0, 1_024)
-    .toString("utf8")
-    .replace(/^\uFEFF/, "")
-    .trimStart();
-  if (
-    textPrefix.startsWith("<svg") ||
-    (textPrefix.startsWith("<?xml") && textPrefix.includes("<svg"))
-  ) {
-    return "image/svg+xml";
-  }
-  return undefined;
-}
-
-export function describeWorkspaceFileBytes(
-  bytes: Buffer,
-): Pick<WorkspaceFileMetadata, "contentKind" | "mimeType"> {
-  const mimeType = detectMimeType(bytes);
-  return {
-    contentKind: isProbablyBinary(bytes) ? "binary" : "text",
-    ...(mimeType ? { mimeType } : {}),
-  };
 }
 
 export async function readWorkspaceFile(
@@ -389,11 +341,11 @@ export async function readWorkspaceFileMetadata(
   const fileStats = await stat(filePath);
   const isFile = fileStats.isFile();
   const shouldReadSample =
-    input.contentSampleByteLimit !== undefined &&
     isFile &&
     (input.contentSampleMaxFileBytes === undefined ||
       fileStats.size <= input.contentSampleMaxFileBytes);
-  const contentSampleByteLimit = input.contentSampleByteLimit ?? DEFAULT_CONTENT_SAMPLE_BYTES;
+  const contentSampleByteLimit =
+    input.contentSampleByteLimit ?? WORKSPACE_FILE_CONTENT_SAMPLE_BYTES;
   const sample = shouldReadSample ? await readFileSample(filePath, contentSampleByteLimit) : null;
 
   return {
@@ -401,20 +353,45 @@ export async function readWorkspaceFileMetadata(
     createdAtMs: fileStats.birthtimeMs > 0 ? fileStats.birthtimeMs : null,
     mtimeMs: Number.isFinite(fileStats.mtimeMs) ? fileStats.mtimeMs : null,
     sizeBytes: Number.isFinite(fileStats.size) ? fileStats.size : null,
-    ...(sample === null ? {} : describeWorkspaceFileBytes(sample)),
+    ...(sample === null ? {} : await describeWorkspaceFileBytes(sample)),
   };
 }
 
+/** Bounded reads also detect growth after stat without allocating or reading the whole file. */
 export async function readWorkspaceFileBinary(
-  input: WorkspaceFileRequest,
+  input: WorkspaceFileBinaryReadInput,
 ): Promise<WorkspaceFileBinaryReadResult> {
   const filePath = resolveFileRequestPath(input);
-  const bytes = await readFile(filePath);
-  const mimeType = detectMimeType(bytes);
-  return {
-    contentsBase64: bytes.toString("base64"),
-    ...(mimeType === undefined ? {} : { mimeType }),
-  };
+  const maxBytes = input.maxBytes ?? WORKSPACE_FILE_BINARY_MAX_BYTES;
+  const handle = await open(filePath, "r");
+  try {
+    const info = await handle.stat();
+    if (!info.isFile())
+      throw new WorkspaceFileUserError("invalid_path", `${filePath} is not a file`);
+    const tooLarge = () =>
+      new WorkspaceFileUserError(
+        "too_large",
+        `${basename(filePath)} exceeds the ${maxBytes.toLocaleString()} byte binary preview limit`,
+      );
+    if (info.size > maxBytes) throw tooLarge();
+    const chunks: Buffer[] = [];
+    let length = 0;
+    while (length <= maxBytes) {
+      const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1 - length));
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+      if (length > maxBytes) throw tooLarge();
+      chunks.push(chunk.subarray(0, bytesRead));
+    }
+    const bytes = Buffer.concat(chunks, length);
+    return {
+      contentsBase64: bytes.toString("base64"),
+      ...(await describeWorkspaceFileBytes(bytes.subarray(0, WORKSPACE_FILE_CONTENT_SAMPLE_BYTES))),
+    };
+  } finally {
+    await handle.close();
+  }
 }
 
 /** Copies bytes only after a native destination picker; selecting the source is a no-op. */

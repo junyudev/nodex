@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as Effect from "effect/Effect";
@@ -15,10 +16,15 @@ import { live, WorkspaceFileQueries } from "./WorkspaceFileQueries";
 
 const hostId = "ssh:fixture";
 const textPath = "/workspace/report.md";
+const videoPath = "/workspace/media.bin";
+const video = readFileSync("tests/fixtures/workspace-media/vp9-opus.webm");
 const pngPath = "/workspace/report.png";
 const directoryPath = "/workspace/output";
 const deniedPath = "/workspace/denied";
-const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2]);
+const png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 function fixture(
   options: {
@@ -53,16 +59,38 @@ function fixture(
     requestOnHost: (
       selected: string,
       method: string,
-      params: { path: string },
+      params: { path: string; command?: string[] },
       fence: { expectedHostId: string; expectedGeneration: number },
     ) =>
       Effect.suspend<unknown, CodexRuntimeError, never>(() => {
         assert.strictEqual(selected, hostId);
         assert.strictEqual(fence.expectedHostId, hostId);
         assert.strictEqual(fence.expectedGeneration, 7);
-        requests.push({ method, path: params.path });
-        if (method === "command/exec")
-          return Effect.succeed({ exitCode: 0, stdout: "/home/fixture", stderr: "" });
+        const filePath =
+          params.command?.[3] === "nodex-file-read" ? params.command[4]! : params.path;
+        requests.push({ method, path: filePath });
+        if (method === "command/exec") {
+          if (params.command?.[3] !== "nodex-file-read")
+            return Effect.succeed({ exitCode: 0, stdout: "/home/fixture", stderr: "" });
+          if (options.retire === "generation") generation += 1;
+          if (options.retire === "epoch") epoch = "endpoint-b";
+          const contents =
+            filePath === pngPath
+              ? png
+              : filePath === videoPath
+                ? video
+                : Buffer.from("# Remote report\n");
+          const maxBytes = Number(params.command[5]);
+          const maxFileBytes = Number(params.command[6]);
+          const encoded = options.invalidBase64
+            ? "not-base64"
+            : contents.subarray(0, maxBytes).toString("base64");
+          return Effect.succeed({
+            exitCode: 0,
+            stdout: `${contents.length}\n${contents.length > maxFileBytes ? "" : encoded}`,
+            stderr: "",
+          });
+        }
         if (method === "fs/readDirectory") {
           if (options.retire === "generation") generation += 1;
           if (options.retire === "epoch") epoch = "endpoint-b";
@@ -167,11 +195,11 @@ it.effect("uses the exact remote filename for metadata, text and binary reads", 
     yield* queries.binary({ hostId, path: exactPath });
     assert.isTrue(f.requests.length > 0);
     assert.isTrue(f.requests.every((request) => request.path === exactPath));
-    assert.strictEqual(f.requests.filter((request) => request.method === "fs/readFile").length, 2);
+    assert.strictEqual(f.requests.filter((request) => request.method === "command/exec").length, 3);
   }).pipe(Effect.provide(f.layer));
 });
 
-it.effect("leaves unavailable native file size unknown and derives content only from bytes", () => {
+it.effect("samples remote content and reports its source-host size", () => {
   const f = fixture();
   return Effect.gen(function* () {
     const queries = yield* WorkspaceFileQueries;
@@ -179,17 +207,18 @@ it.effect("leaves unavailable native file size unknown and derives content only 
       isFile: true,
       createdAtMs: null,
       mtimeMs: 123,
-      sizeBytes: null,
+      sizeBytes: 16,
+      contentKind: "text",
     });
-    assert.strictEqual(f.requests.length, 1);
+    assert.strictEqual(f.requests.length, 3);
     assert.deepStrictEqual(
-      yield* queries.metadata({ hostId, path: pngPath, contentSampleByteLimit: 64 }),
+      yield* queries.metadata({ hostId, path: pngPath, contentSampleByteLimit: 4096 }),
       {
         isFile: true,
         createdAtMs: null,
         mtimeMs: 123,
         sizeBytes: png.length,
-        contentKind: "binary",
+        contentKind: "image",
         mimeType: "image/png",
       },
     );
@@ -307,3 +336,43 @@ for (const retire of ["generation", "epoch"] as const) {
     }).pipe(Effect.provide(f.layer));
   });
 }
+
+it.effect(
+  "bounds remote binary reads and skips sampling files above the requested metadata limit",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      const queries = yield* WorkspaceFileQueries;
+      const result = yield* Effect.result(
+        queries.binary({ hostId, path: pngPath, maxBytes: png.length - 1 }),
+      );
+      assert.strictEqual(result._tag, "Failure");
+      const metadata = yield* queries.metadata({
+        hostId,
+        path: pngPath,
+        contentSampleMaxFileBytes: 1,
+      });
+      assert.strictEqual(metadata.sizeBytes, png.length);
+      assert.isUndefined(metadata.contentKind);
+      assert.isFalse(f.requests.some(({ method }) => method === "fs/readFile"));
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
+  "sniffs remote video metadata and returns playable media bytes from the same host",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      const queries = yield* WorkspaceFileQueries;
+      const metadata = yield* queries.metadata({ hostId, path: videoPath });
+      assert.strictEqual(metadata.contentKind, "video");
+      assert.strictEqual(metadata.mimeType, "video/webm");
+      assert.strictEqual(metadata.sizeBytes, video.length);
+      const bytes = yield* queries.binary({ hostId, path: videoPath, maxBytes: video.length });
+      assert.strictEqual(bytes.contentsBase64, video.toString("base64"));
+      assert.strictEqual(bytes.mimeType, "video/webm");
+      assert.strictEqual(bytes.contentKind, "video");
+    }).pipe(Effect.provide(f.layer));
+  },
+);

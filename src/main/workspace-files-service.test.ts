@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { mkdtemp, mkdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  mkdtemp,
+  mkdir,
+  open,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import {
   listWorkspaceDirectoryEntries,
@@ -166,7 +176,13 @@ describe("workspace-files-service exact file resources", () => {
     const textPath = join(root, "notes.md");
     const binaryPath = join(root, "image.bin");
     await writeFile(textPath, "# Notes\n", "utf8");
-    await writeFile(binaryPath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]));
+    await writeFile(
+      binaryPath,
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    );
 
     const text = await readWorkspaceFile({ path: textPath, maxBytes: 100 });
     const textMetadata = await readWorkspaceFileMetadata({
@@ -190,10 +206,11 @@ describe("workspace-files-service exact file resources", () => {
     expect(textMetadata.isFile).toBe(true);
     expect(textMetadata.sizeBytes).toBe(8);
     expect(skippedSample.contentKind).toBeUndefined();
-    expect(binaryMetadata.contentKind).toBe("binary");
+    expect(binaryMetadata.contentKind).toBe("image");
     expect(binaryMetadata.mimeType).toBe("image/png");
     expect(binary).toEqual({
-      contentsBase64: "iVBORw0KGgoA",
+      contentsBase64: (await readFile(binaryPath)).toString("base64"),
+      contentKind: "image",
       mimeType: "image/png",
     });
     await expect(readWorkspaceFile({ path: textPath, maxBytes: 7 })).rejects.toMatchObject({
@@ -272,4 +289,65 @@ test("wide directories retain every entry and natural folder-first ordering acro
     "folder-10",
     ...Array.from({ length: 600 }, (_, index) => `file-${index}.txt`),
   ]);
+});
+
+test("binary reads accept the exact limit, reject overflows, and preserve empty files", async () => {
+  const root = await makeTempWorkspace();
+  const file = join(root, "sample.bin");
+  await writeFile(file, Buffer.from([1, 2, 3, 4]));
+  expect(await readWorkspaceFileBinary({ path: file, maxBytes: 4 })).toMatchObject({
+    contentsBase64: "AQIDBA==",
+    contentKind: "binary",
+  });
+  await expect(readWorkspaceFileBinary({ path: file, maxBytes: 3 })).rejects.toMatchObject({
+    code: "too_large",
+  });
+  await writeFile(file, "");
+  expect(await readWorkspaceFileBinary({ path: file, maxBytes: 1 })).toEqual({
+    contentsBase64: "",
+    contentKind: "text",
+  });
+});
+
+test("local save-copy handles media larger than the preview limits without a base64 read", async () => {
+  const root = await makeTempWorkspace();
+  const file = join(root, "large.webm");
+  const destination = join(root, "copy.webm");
+  const handle = await open(file, "w");
+  try {
+    await handle.truncate(256 * 1024 * 1024 + 1);
+    await handle.write(Buffer.from("media-tail"), 0, 10, 256 * 1024 * 1024 - 9);
+  } finally {
+    await handle.close();
+  }
+  await expect(readWorkspaceFileBinary({ path: file })).rejects.toMatchObject({
+    code: "too_large",
+  });
+  await saveWorkspaceFileCopy({ path: file }, async () => destination);
+  expect((await stat(destination)).size).toBe(256 * 1024 * 1024 + 1);
+  const copy = await open(destination, "r");
+  try {
+    const buffer = Buffer.alloc(10);
+    await copy.read(buffer, 0, 10, 256 * 1024 * 1024 - 9);
+    expect(buffer.toString()).toBe("media-tail");
+  } finally {
+    await copy.close();
+  }
+});
+
+test("local metadata and binary reads identify video independently of filenames", async () => {
+  const root = await makeTempWorkspace();
+  const file = join(root, "media.bin");
+  const bytes = await readFile(resolve("tests/fixtures/workspace-media/vp9-opus.webm"));
+  await writeFile(file, bytes);
+  expect(await readWorkspaceFileMetadata({ path: file })).toMatchObject({
+    contentKind: "video",
+    mimeType: "video/webm",
+    sizeBytes: bytes.length,
+  });
+  expect(await readWorkspaceFileBinary({ path: file, maxBytes: bytes.length })).toEqual({
+    contentKind: "video",
+    mimeType: "video/webm",
+    contentsBase64: bytes.toString("base64"),
+  });
 });

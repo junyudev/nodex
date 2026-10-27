@@ -452,6 +452,7 @@ import type {
   WorkspaceDirectoryEntriesInput,
   WorkspaceDirectoryEntriesResult,
   WorkspaceFileBinaryReadResult,
+  WorkspaceFileBinaryReadInput,
   WorkspaceFileMetadataInput,
   WorkspaceFileMetadata,
   WorkspaceFileReadResult,
@@ -1590,7 +1591,7 @@ export interface IpcApi
     result: WorkspaceFileMetadata;
   };
   "read-file-binary": {
-    args: [input: WorkspaceFileRequest];
+    args: [input: WorkspaceFileBinaryReadInput];
     result: WorkspaceFileBinaryReadResult;
   };
   "write-file": {

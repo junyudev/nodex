@@ -1,4 +1,7 @@
 import path from "node:path";
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   app,
   BrowserWindow,
@@ -32,6 +35,16 @@ void app.whenReady().then(async () => {
     rendererRoot: path.join(__dirname, "renderer"),
     getDevelopmentRendererUrl: () => developmentRendererUrl,
     protocol,
+    // Keep the long audio fixture partially buffered so seeking must request another range.
+    ...(process.env.NODEX_TEST_SLOW_MEDIA === "1" ? {
+      createStream: (filePath, options) => Readable.from((async function* () {
+        const stream = createReadStream(filePath, { ...options, highWaterMark: 16_384 });
+        for await (const bytes of stream) {
+          if (filePath.endsWith(".wav")) await delay(10);
+          yield bytes;
+        }
+      })()),
+    } : {}),
   });
   app.once("before-quit", disposeProtocol);
   const window = new BrowserWindow({

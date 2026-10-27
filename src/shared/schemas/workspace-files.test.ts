@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   WorkspaceDirectoryEntriesInputSchema,
+  WorkspaceFileBinaryReadInputSchema,
   WorkspaceFileMetadataInputSchema,
   WorkspaceFileRequestSchema,
   WorkspaceFileTextReadInputSchema,
@@ -8,8 +9,24 @@ import {
   WorkspaceLocalFileRequestSchema,
   WorkspacePathsExistInputSchema,
 } from "./workspace-files";
+import { WORKSPACE_FILE_BINARY_MAX_BYTES, WORKSPACE_FILE_PREVIEW_MAX_BYTES } from "../types";
 
 describe("workspace file IPC schemas", () => {
+  test("bounds base64 reads independently of the preview size ceiling", () => {
+    const path = "/workspace/movie.webm";
+    expect(WorkspaceFileBinaryReadInputSchema.parse({ path })).toEqual({ path });
+    expect(
+      WorkspaceFileBinaryReadInputSchema.parse({ path, maxBytes: WORKSPACE_FILE_BINARY_MAX_BYTES }),
+    ).toEqual({ path, maxBytes: WORKSPACE_FILE_BINARY_MAX_BYTES });
+    for (const maxBytes of [0, -1, 1.5, WORKSPACE_FILE_BINARY_MAX_BYTES + 1])
+      expect(() => WorkspaceFileBinaryReadInputSchema.parse({ path, maxBytes })).toThrow();
+    expect(
+      WorkspaceFileMetadataInputSchema.parse({
+        path,
+        contentSampleMaxFileBytes: WORKSPACE_FILE_PREVIEW_MAX_BYTES,
+      }),
+    ).toEqual({ path, contentSampleMaxFileBytes: WORKSPACE_FILE_PREVIEW_MAX_BYTES });
+  });
   test("admits host-qualified reads while keeping writes and local watches local", () => {
     const input = { hostId: "ssh:build", path: "/workspace/report.md " };
     expect(WorkspaceFileMetadataInputSchema.parse(input)).toEqual(input);

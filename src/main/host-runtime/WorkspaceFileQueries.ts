@@ -13,7 +13,7 @@ import type {
   WorkspaceFileMetadata,
   WorkspaceFileMetadataInput,
   WorkspaceFileReadResult,
-  WorkspaceFileRequest,
+  WorkspaceFileBinaryReadInput,
   WorkspaceFileTextReadInput,
   WorkspacePathsExistInput,
   WorkspacePathsExistResult,
@@ -23,7 +23,6 @@ import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapab
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import {
-  describeWorkspaceFileBytes,
   listWorkspaceDirectoryEntries,
   readWorkspaceFile,
   readWorkspaceFileBinary,
@@ -31,6 +30,13 @@ import {
   toWorkspaceFileIpcError,
   WorkspaceFileUserError,
 } from "../workspace-files-service";
+
+import { WORKSPACE_FILE_BINARY_MAX_BYTES } from "../../shared/types";
+import {
+  describeWorkspaceFileBytes,
+  WORKSPACE_FILE_CONTENT_SAMPLE_BYTES,
+} from "../workspace-file-content";
+import { workspaceFileReadCommand } from "./workspace-file-read-command";
 
 export class WorkspaceFileQueryError extends Schema.TaggedError<WorkspaceFileQueryError>()(
   "WorkspaceFileQueryError",
@@ -50,11 +56,10 @@ export class WorkspaceFileQueries extends Context.Service<
     readonly pathsExist: (input: WorkspacePathsExistInput) => Query<WorkspacePathsExistResult>;
     readonly metadata: (input: WorkspaceFileMetadataInput) => Query<WorkspaceFileMetadata>;
     readonly text: (input: WorkspaceFileTextReadInput) => Query<WorkspaceFileReadResult>;
-    readonly binary: (input: WorkspaceFileRequest) => Query<WorkspaceFileBinaryReadResult>;
+    readonly binary: (input: WorkspaceFileBinaryReadInput) => Query<WorkspaceFileBinaryReadResult>;
   }
 >()("nodex/main/host-runtime/WorkspaceFileQueries") {}
 
-const MAX_REMOTE_FILE_BYTES = 100 * 1024 * 1024;
 const mapError = (operation: string, cause: unknown): QueryError => {
   const mapped = toWorkspaceFileIpcError(cause);
   return mapped instanceof WorkspaceFileUserError
@@ -70,6 +75,11 @@ interface RemoteFileReader {
     input: WorkspaceDirectoryEntriesInput,
   ) => Effect.Effect<WorkspaceDirectoryEntriesResult, RemoteReadError>;
   readonly metadata: (filePath: string) => Effect.Effect<FsGetMetadataResponse, RemoteReadError>;
+  readonly sample: (
+    filePath: string,
+    sampleBytes: number,
+    maxFileBytes?: number,
+  ) => Effect.Effect<{ sizeBytes: number; contents: Buffer | null }, RemoteReadError>;
   readonly bytes: (filePath: string, maxBytes: number) => Effect.Effect<Buffer, RemoteReadError>;
 }
 
@@ -114,30 +124,55 @@ export const live: Layer.Layer<
               gateway.requestOnHost(hostId, "fs/getMetadata", { path: target }, fence),
             ),
           );
-        const bytes = (filePath: string, maxBytes: number) =>
-          Effect.gen(function* () {
-            const info = yield* metadata(filePath);
-            if (!info.isFile) return yield* Effect.fail(invalid("Remote path is not a file"));
-            const response = yield* gateway.requestOnHost(
-              hostId,
-              "fs/readFile",
-              { path: filePath },
-              fence,
+        const sample = Effect.fnUntraced(function* (
+          filePath: string,
+          sampleBytes: number,
+          maxFileBytes?: number,
+        ) {
+          const info = yield* metadata(filePath);
+          if (!info.isFile) return yield* Effect.fail(invalid("Remote path is not a file"));
+          const response = yield* gateway.requestOnHost(
+            hostId,
+            "command/exec",
+            {
+              command: workspaceFileReadCommand(filePath, sampleBytes, maxFileBytes),
+              timeoutMs: 60_000,
+              outputBytesCap: Math.ceil(sampleBytes / 3) * 4 + Math.ceil(sampleBytes / 48) + 1024,
+            },
+            fence,
+          );
+          if (response.exitCode !== 0)
+            return yield* Effect.fail(invalid("Could not read the remote file"));
+          const newline = response.stdout.indexOf("\n");
+          const sizeText = response.stdout.slice(0, newline).trim();
+          const sizeBytes = Number(sizeText);
+          if (newline < 0 || !/^\d+$/u.test(sizeText) || !Number.isSafeInteger(sizeBytes))
+            return yield* Effect.fail(invalid("Invalid remote file size"));
+          if (maxFileBytes !== undefined && sizeBytes > maxFileBytes)
+            return { sizeBytes, contents: null };
+          const encoded = response.stdout.slice(newline + 1).replace(/\s/gu, "");
+          if (encoded.length > Math.ceil(sampleBytes / 3) * 4)
+            return yield* Effect.fail(invalid("Remote file exceeded the requested read boundary"));
+          const contents = Buffer.from(encoded, "base64");
+          if (
+            contents.toString("base64") !== encoded ||
+            contents.byteLength > sampleBytes ||
+            contents.byteLength < Math.min(sizeBytes, sampleBytes)
+          )
+            return yield* Effect.fail(invalid("Invalid or incomplete remote file contents"));
+          return { sizeBytes, contents };
+        });
+        const bytes = Effect.fnUntraced(function* (filePath: string, maxBytes: number) {
+          const result = yield* sample(filePath, maxBytes + 1, maxBytes);
+          if (result.contents === null || result.contents.length > maxBytes)
+            return yield* Effect.fail(
+              new WorkspaceFileUserError(
+                "too_large",
+                `Remote file exceeds the ${maxBytes.toLocaleString()} byte preview limit`,
+              ),
             );
-            const encoded = response.dataBase64;
-            if (encoded.length > Math.ceil(maxBytes / 3) * 4)
-              return yield* Effect.fail(
-                new WorkspaceFileUserError("too_large", "Remote file exceeds the preview limit"),
-              );
-            const contents = Buffer.from(encoded, "base64");
-            if (contents.toString("base64") !== encoded)
-              return yield* Effect.fail(invalid("Invalid remote file contents"));
-            if (contents.byteLength > maxBytes)
-              return yield* Effect.fail(
-                new WorkspaceFileUserError("too_large", "Remote file exceeds the preview limit"),
-              );
-            return contents;
-          });
+          return result.contents;
+        });
         const directory = Effect.fnUntraced(function* (input: WorkspaceDirectoryEntriesInput) {
           let root = input.workspaceRoot;
           const homeShortcut = root === "~";
@@ -212,7 +247,7 @@ export const live: Layer.Layer<
             entries,
           };
         });
-        const result = yield* task({ metadata, bytes, directory });
+        const result = yield* task({ metadata, bytes, sample, directory });
         const nextConnection = yield* gateway.connection(hostId);
         if (
           nextConnection.kind !== "ready" ||
@@ -281,22 +316,17 @@ export const live: Layer.Layer<
               mtimeMs: info.modifiedAtMs > 0 ? info.modifiedAtMs : null,
               sizeBytes: null,
             };
-            if (!info.isFile || input.contentSampleByteLimit === undefined) return result;
-            const contents = yield* reader
-              .bytes(input.path, input.contentSampleMaxFileBytes ?? MAX_REMOTE_FILE_BYTES)
-              .pipe(
-                Effect.catch((cause) =>
-                  cause instanceof WorkspaceFileUserError && cause.code === "too_large"
-                    ? Effect.succeed(null)
-                    : Effect.fail(cause),
-                ),
-              );
-            if (contents === null) return result;
-            return {
-              ...result,
-              sizeBytes: contents.byteLength,
-              ...describeWorkspaceFileBytes(contents.subarray(0, input.contentSampleByteLimit)),
-            };
+            if (!info.isFile) return result;
+            const { contents, sizeBytes } = yield* reader.sample(
+              input.path,
+              input.contentSampleByteLimit ?? WORKSPACE_FILE_CONTENT_SAMPLE_BYTES,
+              input.contentSampleMaxFileBytes,
+            );
+            if (contents === null) return { ...result, sizeBytes };
+            const description = yield* local("sniff-content", () =>
+              describeWorkspaceFileBytes(contents),
+            );
+            return { ...result, sizeBytes, ...description };
           }),
         );
       },
@@ -313,11 +343,15 @@ export const live: Layer.Layer<
         const hostId = input.hostId ?? "local";
         if (hostId === "local") return local("binary", () => readWorkspaceFileBinary(input));
         return remote("binary", hostId, (reader) =>
-          reader.bytes(input.path, MAX_REMOTE_FILE_BYTES).pipe(
-            Effect.map((contents) => ({
-              contentsBase64: contents.toString("base64"),
-              ...describeWorkspaceFileBytes(contents),
-            })),
+          reader.bytes(input.path, input.maxBytes ?? WORKSPACE_FILE_BINARY_MAX_BYTES).pipe(
+            Effect.flatMap((contents) =>
+              local("sniff-content", async () => ({
+                contentsBase64: contents.toString("base64"),
+                ...(await describeWorkspaceFileBytes(
+                  contents.subarray(0, WORKSPACE_FILE_CONTENT_SAMPLE_BYTES),
+                )),
+              })),
+            ),
           ),
         );
       },

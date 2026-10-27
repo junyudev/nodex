@@ -16,8 +16,8 @@ import { dirname, resolve } from "node:path";
 import type { IpcEvents } from "../../../shared/ipc-api";
 import {
   WorkspaceDirectoryEntriesInputSchema,
+  WorkspaceFileBinaryReadInputSchema,
   WorkspaceFileMetadataInputSchema,
-  WorkspaceFileRequestSchema,
   WorkspaceFileTextReadInputSchema,
   WorkspaceFileWatchStopInputSchema,
   WorkspaceFileWriteInputSchema,
@@ -220,7 +220,9 @@ export const live = (
         runEffect(
           "read-file-binary",
           event,
-          decode(WorkspaceFileRequestSchema, input).pipe(Effect.flatMap(fileQueries.binary)),
+          decode(WorkspaceFileBinaryReadInputSchema, input).pipe(
+            Effect.flatMap(fileQueries.binary),
+          ),
         ),
       );
       yield* ipc.handleQuery("workspace-paths-exist", (event, input: unknown) =>

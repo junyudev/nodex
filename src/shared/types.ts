@@ -980,6 +980,24 @@ export interface WorkspaceFileTextReadInput extends WorkspaceFileRequest {
   maxBytes: number;
 }
 
+export const WORKSPACE_FILE_PREVIEW_MAX_BYTES = 256 * 1024 * 1024;
+export const WORKSPACE_FILE_BINARY_MAX_BYTES = 128 * 1024 * 1024;
+
+/** What a file's leading bytes contain, as sniffed from its content sample. */
+export type WorkspaceFileContentKind =
+  | "text"
+  | "image"
+  | "pdf"
+  | "audio"
+  | "video"
+  | "archive"
+  | "binary";
+
+export interface WorkspaceFileBinaryReadInput extends WorkspaceFileRequest {
+  /** Defaults to WORKSPACE_FILE_BINARY_MAX_BYTES; callers can request a smaller limit. */
+  maxBytes?: number;
+}
+
 export interface WorkspaceFileMetadataInput extends WorkspaceFileRequest {
   contentSampleByteLimit?: number;
   contentSampleMaxFileBytes?: number;
@@ -991,18 +1009,9 @@ export interface WorkspaceFileReadResult {
 
 export interface WorkspaceFileBinaryReadResult {
   contentsBase64: string | null;
+  contentKind?: WorkspaceFileContentKind;
   mimeType?: string;
 }
-
-/** What a file's leading bytes contain, as sniffed from its content sample. */
-export type WorkspaceFileContentKind =
-  | "text"
-  | "image"
-  | "pdf"
-  | "audio"
-  | "video"
-  | "archive"
-  | "binary";
 
 export interface WorkspaceFileMetadata {
   isFile: boolean;
