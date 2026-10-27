@@ -1,0 +1,33 @@
+src/renderer/features/workspace-files/workspace-file-browse-popover.tsx
+  s_cb8bbfdb133e81::t_d0384c7672c03f 1-9,16-112
+  s_cb8bbfdb133e81::t_f9b89cfe6f9a71 10-15
+src/renderer/features/workspace-files/workspace-file-viewer-header.tsx
+  s_cb8bbfdb133e81::t_f9b89cfe6f9a71 33,41-55,74-77,84-95,366,375,399
+src/renderer/features/workspace-files/workspace-file-header-model.ts
+  s_cb8bbfdb133e81::t_91efba63f48fa3 8-12,31-35,46-49,53
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_cb8bbfdb133e81::t_f9b89cfe6f9a71 1186-1194
+  s_cb8bbfdb133e81::t_81088236fa97b8 97,583-586,588-589,654,863
+  s_cb8bbfdb133e81::t_b12de5538bba61 5,28
+src/renderer/features/workspace-files/workspace-file-header-model.node.test.ts
+  s_cb8bbfdb133e81::t_91efba63f48fa3 18-30,33-37
+src/renderer/features/workspace-files/use-workspace-directory-tree.ts
+  s_cb8bbfdb133e81::t_c35736b22d2642 35-41
+  s_cb8bbfdb133e81::t_9de2d6dba90247 1-34,42-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "092e6c232ac04de6a1cdbb7f201f6a39b9ceaded",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
