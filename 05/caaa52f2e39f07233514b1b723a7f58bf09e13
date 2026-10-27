@@ -1,0 +1,19 @@
+src/renderer/components/board/page-stage/raw-content.browser.test.tsx
+  s_cb8bbfdb133e81::t_09487df75e8c25 23-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "05caaa52f2e39f07233514b1b723a7f58bf09e13",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
