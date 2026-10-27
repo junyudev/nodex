@@ -1,0 +1,31 @@
+oxlint-plugin-nodex/rules/no-testing-library-wait-in-act.ts
+  s_6c9891f66c664a::t_cc84d4648259a5 68
+  s_6c9891f66c664a::t_432e37e9d36627 2,15-20,63-67,69-78,98,106,120,123
+  s_6c9891f66c664a::t_9102a41f264895 25,34,39-40,79-97,99-105,107-119,121-122,124-139,141,144,198-204
+  s_6c9891f66c664a::t_9d0cdf0bfdc6de 41
+scripts/fixtures/tooling/nodex/testing-library-wait-in-act-valid.test.tsx
+  s_6c9891f66c664a::t_cab6a4651b2944 41,45
+  s_6c9891f66c664a::t_8343a1a9329819 55-61,64-68
+  s_6c9891f66c664a::t_432e37e9d36627 62-63,69-80
+scripts/ci/verify-tooling-contracts.ts
+  s_6c9891f66c664a::t_432e37e9d36627 240
+scripts/fixtures/tooling/nodex/testing-library-wait-in-act-invalid.test.tsx
+  s_6c9891f66c664a::t_8343a1a9329819 34-60
+  s_6c9891f66c664a::t_432e37e9d36627 4-6,61-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7a27d083fb4a51dff3f71578359c6d15d0644573",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

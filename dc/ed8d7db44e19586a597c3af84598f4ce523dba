@@ -1,0 +1,32 @@
+src/renderer/components/ui/shared-floating-ui.browser.test.tsx
+  s_6c9891f66c664a::t_deb55df0effedd 1,71-78,84-96,120-124,128-130
+  s_6c9891f66c664a::t_d5b2e5f541c72b 79-83,125-127,131-133
+  s_6c9891f66c664a::t_1d1ce3fda5f2b0 134-135
+src/renderer/components/ui/floating-surface.tsx
+  s_6c9891f66c664a::t_d0020f8a747037 42,47-49,52-54
+src/renderer/components/ui/dialog.tsx
+  s_6c9891f66c664a::t_d0020f8a747037 85
+  s_6c9891f66c664a::t_36ea98fd69728d 86
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_6c9891f66c664a::t_36ea98fd69728d 51,1326
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_6c9891f66c664a::t_736dc52cab65a5 587-614
+docs/product-specs/command-palette-behavior.md
+  s_6c9891f66c664a::t_d0020f8a747037 306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dced8d7db44e19586a597c3af84598f4ce523dba",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
