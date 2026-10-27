@@ -75,8 +75,10 @@ export function WorkbenchSceneFrame({
           <div className="app-shell-main-content-frame relative mt-(--app-shell-main-content-frame-top-offset) flex min-h-0 flex-1 flex-col">
             <div
               aria-hidden="true"
-              data-app-shell-main-content-top-fade="full-bleed"
-              className="app-shell-main-content-top-fade pointer-events-none absolute inset-x-0 top-0 z-20 h-4 bg-gradient-to-b from-token-main-surface-primary opacity-0 transition-opacity duration-200 browser:hidden"
+              data-app-shell-main-content-top-fade={
+                layout.appShellMainContentLayout === "thread-edge-scroll" ? "visible" : "hidden"
+              }
+              className="app-shell-main-content-top-fade pointer-events-none absolute inset-x-0 top-0 z-20 h-10 opacity-0 transition-opacity duration-200 browser:hidden"
             />
             {primary}
           </div>

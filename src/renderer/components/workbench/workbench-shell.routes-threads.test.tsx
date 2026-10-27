@@ -656,7 +656,7 @@ describe("workbench session shell / routes-threads", () => {
       screen.container.querySelector("[data-app-shell-main-content-header-divider]") === null,
     ).toBe(true);
     const topFade = screen.container.querySelector(".app-shell-main-content-top-fade");
-    expect(topFade?.getAttribute("data-app-shell-main-content-top-fade")).toBe("full-bleed");
+    expect(topFade?.getAttribute("data-app-shell-main-content-top-fade")).toBe("visible");
   });
 
   test("renders the session new-thread composer instead of the old attach placeholder", async () => {
