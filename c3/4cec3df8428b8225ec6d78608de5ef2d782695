@@ -1,0 +1,39 @@
+src/renderer/lib/intelligence-effort.node.test.ts
+  s_bf283e21d5527f::t_89af07f8f3edf3 5,74-88
+  s_bf283e21d5527f::t_6540d18aea9a1d 89
+src/renderer/lib/intelligence-effort.ts
+  s_bf283e21d5527f::t_89af07f8f3edf3 50-60,66-71
+  s_bf283e21d5527f::t_445f1f96c88341 61-65
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_bf283e21d5527f::t_ed3e1825458c46 1,55,57,212-259,274,280-291,296-312,353,358,379,397,559,564,566,575
+  s_bf283e21d5527f::t_3ad36a8668ab81 356-357,359,588,599,631
+src/renderer/components/shared/agent-runtime/intelligence-controls.tsx
+  s_bf283e21d5527f::t_72e6fa60827148 1-7,10,12,19-27,31-32,37-38,43-44,46,49-50,53-69,74,83-84,86,99,103,105-108,110-114,116,133-135,140-141,144-146,148-164,168-172,174,176-179,187-226,228-236,271,273,296,304-306,310
+  s_bf283e21d5527f::t_445f1f96c88341 165-167
+  s_bf283e21d5527f::t_89af07f8f3edf3 109,227
+src/renderer/components/shared/icons/app-icons.tsx
+  s_bf283e21d5527f::t_6efa27d4327185 2240-2247,2261-2265,2272,2290-2293
+  s_bf283e21d5527f::t_50dfd7287a77b6 2285-2289
+src/renderer/components/shared/agent-runtime/intelligence-controls.css
+  s_bf283e21d5527f::t_85ecdf8cddb9cd 1-20
+src/renderer/components/shared/agent-runtime/agent-model-picker.test.tsx
+  s_bf283e21d5527f::t_b4d7e053298592 532
+  s_bf283e21d5527f::t_161e17faf137be 505-514,519-531,533-550,554-563
+  s_bf283e21d5527f::t_0547f3d6f6ba95 515-518,551-553
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c34cec3df8428b8225ec6d78608de5ef2d782695",
+  "prompts": {},
+  "sessions": {
+    "s_bf283e21d5527f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9bcf3e4-e297-4281-8ed9-143d145929be",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
