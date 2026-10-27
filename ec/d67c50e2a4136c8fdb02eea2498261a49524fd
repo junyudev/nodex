@@ -1,0 +1,29 @@
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_f06f0af563f4d6::t_aa33bbc802f281 215-216
+src/renderer/features/local-conversation/view/composer/async-question-panel.test.tsx
+  s_f06f0af563f4d6::t_65ffd8be2bc9df 4-7,19-22,98,161-164,260-344
+src/renderer/features/local-conversation/view/composer/async-question-panel.tsx
+  s_f06f0af563f4d6::t_6343154ab7569c 3,269
+src/renderer/features/local-conversation/view/shared/question-keyboard-scope.ts
+  s_f06f0af563f4d6::t_5d50b921d238b3 1-16
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.test.tsx
+  s_f06f0af563f4d6::t_ba073b0ec64735 3,306-404
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_f06f0af563f4d6::t_096ca5a284d999 2,946-952
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ecd67c50e2a4136c8fdb02eea2498261a49524fd",
+  "prompts": {},
+  "sessions": {
+    "s_f06f0af563f4d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c08-6d91-7aa1-847f-70c3d1c48dc4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
