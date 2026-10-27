@@ -435,7 +435,10 @@ The macOS production build prepares that pinned runtime from the verified cache 
 `build:agent-runtime` materializes it under
 `.generated/agent-runtime-native/<platform>-<arch>/` from a private source copy and
 packages its JavaScript, native addon and helpers inside
-`out/agent-runtime/node_modules/node-pty/`. Its receipt includes source, dependency,
+`out/agent-runtime/node_modules/node-pty/`. Packaging copies this verified dependency
+through `extraResources` into the unpacked Agent Runtime, preserving its package metadata
+without Electron dependency rewriting. The after-pack inventory checks every file, byte
+and executable bit before signing. Its receipt includes source, dependency,
 Node ABI, toolchain and artifact identities. The root Electron dependency is never
 rebuilt or shared with this execution process. macOS packaging verifies the copied
 closure before signing and reseals its separate manifest afterward.

@@ -6,6 +6,7 @@ directories:
   output: dist
 files:
   - out/**/*
+  - "!out/agent-runtime/node_modules/**/*"
   - package.json
   - "!**/*.map"
   - "!**/*.tsbuildinfo"
@@ -29,6 +30,11 @@ asarUnpack:
   - "out/agent-runtime/**"
 npmRebuild: true
 extraResources:
+  # Preserve the verified Node dependency without Electron metadata rewriting.
+  - from: out/agent-runtime/node_modules
+    to: app.asar.unpacked/out/agent-runtime/node_modules
+    filter:
+      - "**/*"
   - from: .generated/workspace-runtime/${arch}
     to: workspace-runtime
     filter:
