@@ -1,0 +1,51 @@
+.github/workflows/nightly-release-recovery.yml
+  s_6c9891f66c664a::t_b35bda24a15c38 88
+.github/workflows/release.yml
+  s_6c9891f66c664a::t_b35bda24a15c38 184
+.github/workflows/_promote-release.yml
+  s_6c9891f66c664a::t_b35bda24a15c38 32
+.github/workflows/_promote-nightly.yml
+  s_6c9891f66c664a::t_b35bda24a15c38 20
+scripts/release/github-release.test.ts
+  s_6c9891f66c664a::t_91843269e974b5 63-76,81-87,90,92,96,109,120,146-230,235-254,257,262-311
+  s_f79dd9d0c7ac54::t_7bfba75bd90c12 312
+scripts/ci/verify-reusable-workflow-secrets.ts
+  s_6c9891f66c664a::t_b35bda24a15c38 54-65
+.github/workflows/release-recovery.yml
+  s_6c9891f66c664a::t_b35bda24a15c38 283
+scripts/release/github-release.ts
+  s_6c9891f66c664a::t_91843269e974b5 122-135
+  s_6c9891f66c664a::t_b35bda24a15c38 92-121,136-167
+  s_6c9891f66c664a::t_466f866ad38065 179-180
+docs/release-macos.md
+  s_6c9891f66c664a::t_bc5ece0fee1535 647-649
+  s_6c9891f66c664a::t_b35bda24a15c38 646,650-656
+.github/workflows/nightly-release.yml
+  s_6c9891f66c664a::t_b35bda24a15c38 175
+scripts/ci/verify-reusable-workflow-secrets.test.ts
+  s_6c9891f66c664a::t_bc5ece0fee1535 161-198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0fb3816f481d456893443767384076e38c9c6d99",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
