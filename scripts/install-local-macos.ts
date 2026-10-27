@@ -329,7 +329,8 @@ export async function installLocalMacBuild(options: LocalMacBuildInstallOptions)
       rmSync(stagingPath, { recursive: true, force: true });
     }
     if (installed && previousMoved && existsSync(rollbackPath)) {
-      rmSync(rollbackPath, { recursive: true, force: true });
+      // macOS can briefly retain directory entries after the old bundle is removed.
+      rmSync(rollbackPath, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
       syncDirectory(destinationParent);
     }
   }
