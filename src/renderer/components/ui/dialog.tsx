@@ -82,6 +82,8 @@ export function NodexDialog({ onOpenChange, ...props }: NodexDialogProps) {
           hasOpenNodexFloatingEscapeLayer(details.event.view?.document ?? document)
         ) {
           details.cancel();
+          // A hovered popup may own Escape while a different control keeps focus.
+          details.allowPropagation();
           return;
         }
         onOpenChange?.(open, {

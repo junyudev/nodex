@@ -39,16 +39,19 @@ export function dismissNodexFloatingSurfaces(): void {
 }
 
 /**
- * Reports whether a non-dialog floating layer currently owns Escape.
+ * Reports whether an accessible non-dialog floating layer currently owns Escape.
  *
  * Base UI normally stops Escape at the innermost popup. If its focused control
  * becomes disabled or disappears, however, the event starts at `document` and
  * independently registered Dialog and popup listeners can both dismiss. The
- * Dialog boundary uses this live DOM contract to defer to the higher layer;
- * the popup's own listener still performs its normal close and focus return.
+ * Keyboard owners defer through this shared boundary and let the event reach
+ * the popup's own listener, including when a hover popup leaves focus elsewhere.
+ * Hidden or inert background layers never claim the active dialog's Escape.
  */
 export function hasOpenNodexFloatingEscapeLayer(ownerDocument: Document): boolean {
-  return ownerDocument.querySelector(OPEN_FLOATING_ESCAPE_LAYER_SELECTOR) !== null;
+  return [...ownerDocument.querySelectorAll(OPEN_FLOATING_ESCAPE_LAYER_SELECTOR)].some(
+    (layer) => !layer.closest('[hidden], [aria-hidden="true"], [inert], [data-base-ui-inert]'),
+  );
 }
 
 let globalDismissalLeaseCount = 0;
