@@ -1,0 +1,39 @@
+src/renderer/features/local-conversation/view/composer/async-question-controls.tsx
+  s_f06f0af563f4d6::t_82ad08c53815e5 172,197
+src/shared/codex-user-input-answer-values.ts
+  s_f06f0af563f4d6::t_0524726bbac651 1-11
+src/renderer/features/local-conversation/view/composer/question-dictation-button.test.tsx
+  s_f06f0af563f4d6::t_63aa4883175139 52,57
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_f06f0af563f4d6::t_48f5acc43559e5 2
+  s_f06f0af563f4d6::t_c4d973d8358d54 28
+src/renderer/features/local-conversation/conversation-markdown.ts
+  s_f06f0af563f4d6::t_a1af0c1dfbbead 2,367-370
+src/renderer/features/local-conversation/conversation-markdown.node.test.ts
+  s_f06f0af563f4d6::t_dd05eeae4f101f 39-48,57,66-72,75-78
+  s_f06f0af563f4d6::t_7002f0fd6f8bef 49-56,58-65,73-74
+tests/e2e/async-user-input.spec.ts
+  s_f06f0af563f4d6::t_a60778fcfbebb7 235
+docs/product-specs/agent-runtime-behavior.md
+  s_f06f0af563f4d6::t_aa08a7025a702c 520
+src/renderer/features/local-conversation/view/composer/question-dictation-button.tsx
+  s_f06f0af563f4d6::t_82ad08c53815e5 64-65
+CHANGELOG.md
+  s_f06f0af563f4d6::t_1c6a6a166437c2 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "54c89826995604e1e8557ad99d4244ccbf2c47fe",
+  "prompts": {},
+  "sessions": {
+    "s_f06f0af563f4d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c08-6d91-7aa1-847f-70c3d1c48dc4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
