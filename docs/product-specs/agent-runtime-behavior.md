@@ -368,6 +368,10 @@ the user never chose rests on the model default, marked Default. The model butto
 Fast and Ultracode icons while they are on, and `/fast` and `/ultracode` toggle them from the
 composer.
 
+Effort and mode choices appear immediately and stay interactive while a change is pending.
+Consecutive choices apply in order, including a return to the previous choice while an earlier
+change finishes.
+
 Ultracode is Claude Code's workflow orchestration for the session. It runs at the chosen
 effort, is offered only for models that support it, and never applies to titles or other
 generated text. When dynamic workflows are off for the Claude account, the toggle stays

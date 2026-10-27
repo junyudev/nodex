@@ -226,8 +226,17 @@ export function AgentModelPicker(
     if (draining.current) return;
     draining.current = true;
     try {
-      while (queued.current) {
-        const { patch, shown } = queued.current;
+      while (true) {
+        const next = queued.current;
+        if (!next) {
+          await nextFrame();
+          // A choice can arrive during the idle frame. Release the worker only after
+          // checking again, without yielding between that check and the release.
+          if (queued.current) continue;
+          setOverlay({});
+          return;
+        }
+        const { patch, shown } = next;
         queued.current = null;
         try {
           await nativeRef.current?.change(patch);
@@ -240,8 +249,6 @@ export function AgentModelPicker(
         // The next change builds on this one once it has rendered.
         await nextFrame();
       }
-      await nextFrame();
-      if (!queued.current) setOverlay({});
     } finally {
       draining.current = false;
     }

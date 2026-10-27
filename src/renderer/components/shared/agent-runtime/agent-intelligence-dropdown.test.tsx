@@ -88,6 +88,31 @@ const claudeProvider = (
   nativeIntelligence: NonNullable<AgentIntelligenceDropdownProps["provider"]>["nativeIntelligence"],
 ) => ({ label: "Claude", selection: "claude:work", nativeIntelligence });
 
+function renderNativeSelector(change: (patch: AgentNativeIntelligencePatch) => Promise<void>) {
+  function Selector() {
+    const [thinking, setThinking] = useState(false);
+    return (
+      <NodexTooltipProvider delay={0}>
+        <AgentIntelligenceDropdown
+          models={MODELS}
+          triggerStyle="settings"
+          selection={{ ...SELECTION, kind: "claude" }}
+          onSelectionChange={() => {}}
+          provider={claudeProvider({
+            selected: { thinking },
+            capabilities: { disableThinking: true },
+            change: async (patch) => {
+              await change(patch);
+              if (typeof patch.thinking === "boolean") setThinking(patch.thinking);
+            },
+          })}
+        />
+      </NodexTooltipProvider>
+    );
+  }
+  return renderWithMaitai(<Selector />);
+}
+
 describe("Codex models from a plain list", () => {
   test("keeps inheritance explicit and delegates clearing to its consumer", async () => {
     const onInherit = vi.fn();
@@ -182,28 +207,7 @@ describe("Claude models from a plain list", () => {
 
   test("sets native effort on the slider and re-enables thinking from the Off stop", async () => {
     const change = vi.fn<(patch: AgentNativeIntelligencePatch) => Promise<void>>();
-    function Selector() {
-      const [thinking, setThinking] = useState(false);
-      return (
-        <NodexTooltipProvider delay={0}>
-          <AgentIntelligenceDropdown
-            models={MODELS}
-            triggerStyle="settings"
-            selection={{ ...SELECTION, kind: "claude" }}
-            onSelectionChange={() => {}}
-            provider={claudeProvider({
-              selected: { thinking },
-              capabilities: { disableThinking: true },
-              change: async (patch) => {
-                await change(patch);
-                if (typeof patch.thinking === "boolean") setThinking(patch.thinking);
-              },
-            })}
-          />
-        </NodexTooltipProvider>
-      );
-    }
-    const view = renderWithMaitai(<Selector />);
+    const view = renderNativeSelector(change);
     expect(view.getByRole("button", { name: "Agent intelligence" }).textContent).toBe(
       "Model A · Off",
     );
@@ -218,6 +222,62 @@ describe("Claude models from a plain list", () => {
     await press(effort, "Home");
     await waitFor(() => expect(change).toHaveBeenLastCalledWith({ thinking: false }));
   });
+
+  test.each(["pending", "settling"] as const)(
+    "keeps consecutive effort commits while the previous change is %s",
+    async (phase) => {
+      vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+      let resolveWrite!: () => void;
+      const write = new Promise<void>((resolve) => {
+        resolveWrite = resolve;
+      });
+      const change = vi
+        .fn<(patch: AgentNativeIntelligencePatch) => Promise<void>>()
+        .mockImplementationOnce(() => write)
+        .mockResolvedValue(undefined);
+      const view = renderNativeSelector(change);
+      const advanceFrame = () =>
+        act(async () => {
+          vi.advanceTimersToNextFrame();
+          await Promise.resolve();
+        });
+      const finishWrite = () =>
+        act(async () => {
+          resolveWrite();
+          await write;
+        });
+      try {
+        await openSelector(view);
+        const effort = view.getByRole("slider", { name: "Effort" });
+        await press(effort, "End");
+        expect(change).toHaveBeenLastCalledWith({ effort: "high", thinking: true });
+        expect(effort.getAttribute("aria-valuetext")).toBe("High");
+
+        if (phase === "settling") {
+          await finishWrite();
+          // The first write has rendered; the worker is waiting to become idle.
+          await advanceFrame();
+        }
+        await press(effort, "Home");
+        expect(effort.getAttribute("aria-valuetext")).toBe("Off");
+        expect(change).toHaveBeenCalledTimes(1);
+        if (phase === "pending") await finishWrite();
+
+        await advanceFrame();
+        expect(change).toHaveBeenCalledTimes(2);
+        expect(change).toHaveBeenLastCalledWith({ thinking: false });
+        await advanceFrame();
+        await advanceFrame();
+        expect(effort.getAttribute("aria-valuetext")).toBe("Off");
+        expect(view.getByRole("button", { name: "Agent intelligence" }).textContent).toBe(
+          "Model A · Off",
+        );
+      } finally {
+        view.unmount();
+        vi.useRealTimers();
+      }
+    },
+  );
 
   test("adaptive thinking alone does not add an Off stop", async () => {
     const change = vi.fn(async () => {});
