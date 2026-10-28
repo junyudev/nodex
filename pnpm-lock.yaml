@@ -226,6 +226,7 @@ overrides:
 packageExtensionsChecksum: sha256-Jvc+QCFFFyvYZvm88LKEua8WBEVciOwMZpJR5W2hcdw=
 
 patchedDependencies:
+  '@base-ui/react@1.9.0': ab0840a8c49bf51bb92b6f1deb0532d02082ec15039cdfbc1415aa5e112fa4dc
   '@effect/vitest@4.0.6': 7cacfee0141a1807d7fad09485328fc0beedec62114e5602fe007d55c9073047
   '@pierre/diffs@1.6.1': 1511e2107430a490948c1e29eb5738d1dedde3986d557b5e92d7e79cbc38ac7a
   '@y/prosemirror@2.0.0-6': 0571932eed7c6e4ffb73defa770d0e67e7b37168f173eecaf8ec49378a7f767e
@@ -338,7 +339,7 @@ importers:
         version: 7.29.7(supports-color@10.2.2)
       '@base-ui/react':
         specifier: 1.9.0
-        version: 1.9.0(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 1.9.0(patch_hash=ab0840a8c49bf51bb92b6f1deb0532d02082ec15039cdfbc1415aa5e112fa4dc)(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@blocknote/code-block':
         specifier: workspace:*
         version: link:third_party/blocknote/packages/code-block
@@ -1643,7 +1644,7 @@ importers:
     dependencies:
       '@base-ui/react':
         specifier: 1.9.0
-        version: 1.9.0(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 1.9.0(patch_hash=ab0840a8c49bf51bb92b6f1deb0532d02082ec15039cdfbc1415aa5e112fa4dc)(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@blocknote/core':
         specifier: workspace:*
         version: link:../core
@@ -9161,7 +9162,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@base-ui/react@1.9.0(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@base-ui/react@1.9.0(patch_hash=ab0840a8c49bf51bb92b6f1deb0532d02082ec15039cdfbc1415aa5e112fa4dc)(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@babel/runtime': 7.29.7
       '@base-ui/utils': 0.5.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

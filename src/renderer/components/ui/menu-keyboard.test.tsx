@@ -13,43 +13,63 @@ import { settleAsyncRender } from "@/test/dom";
 
 describe("menu editable keyboard ownership", () => {
   test.each([false, true])("preserves native editing in a nested=%s menu", async (nested) => {
-    const localKey = vi.fn();
-    const editor = <input aria-label="Search destinations" onKeyDown={localKey} />;
-    render(
-      <NodexDropdownRoot defaultOpen>
-        <NodexDropdownTrigger>
-          <button>Open</button>
-        </NodexDropdownTrigger>
-        <NodexDropdownPortal>
-          <NodexDropdownContent>
-            <NodexDropdownItem>Alpha</NodexDropdownItem>
-            {nested ? (
-              <NodexDropdownFlyoutSubmenuItem label="Pages" open>
-                {editor}
-              </NodexDropdownFlyoutSubmenuItem>
-            ) : (
-              editor
-            )}
-          </NodexDropdownContent>
-        </NodexDropdownPortal>
-      </NodexDropdownRoot>,
-    );
-    await settleAsyncRender();
-    const input = screen.getByRole("textbox");
-    await act(async () => {
-      input.focus();
-      await Promise.resolve();
-    });
-    for (const key of ["a", " ", "ArrowLeft", "ArrowRight", "Home", "End", "Backspace", "Delete"]) {
-      let allowed = false;
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+    try {
+      const localKey = vi.fn();
+      const editor = <input aria-label="Search destinations" onKeyDown={localKey} />;
+      render(
+        <NodexDropdownRoot defaultOpen>
+          <NodexDropdownTrigger>
+            <button>Open</button>
+          </NodexDropdownTrigger>
+          <NodexDropdownPortal>
+            <NodexDropdownContent>
+              <NodexDropdownItem>Alpha</NodexDropdownItem>
+              {nested ? (
+                <NodexDropdownFlyoutSubmenuItem label="Pages" open>
+                  {editor}
+                </NodexDropdownFlyoutSubmenuItem>
+              ) : (
+                editor
+              )}
+            </NodexDropdownContent>
+          </NodexDropdownPortal>
+        </NodexDropdownRoot>,
+      );
+      await settleAsyncRender();
+      const input = screen.getByRole("textbox");
       await act(async () => {
-        allowed = fireEvent.keyDown(input, { key });
+        input.focus();
         await Promise.resolve();
       });
-      expect(allowed, `${key} must retain its native default`).toBe(true);
-      expect(document.activeElement).toBe(input);
+      await act(async () => {
+        vi.advanceTimersToNextFrame();
+      });
+      expect(document.activeElement, "opening focus must not replace the editor's focus").toBe(
+        input,
+      );
+      for (const key of [
+        "a",
+        " ",
+        "ArrowLeft",
+        "ArrowRight",
+        "Home",
+        "End",
+        "Backspace",
+        "Delete",
+      ]) {
+        let allowed = false;
+        await act(async () => {
+          allowed = fireEvent.keyDown(input, { key });
+          await Promise.resolve();
+        });
+        expect(allowed, `${key} must retain its native default`).toBe(true);
+        expect(document.activeElement, key).toBe(input);
+      }
+      expect(localKey).toHaveBeenCalledTimes(8);
+    } finally {
+      vi.useRealTimers();
     }
-    expect(localKey).toHaveBeenCalledTimes(8);
   });
 });
 
