@@ -1,0 +1,22 @@
+crates/nodex-markdown/src/read/values.rs
+  s_4b53f1a3b989a8::t_0874b78d62d10a 247
+crates/nodex-markdown/src/model.rs
+  s_4b53f1a3b989a8::t_0874b78d62d10a 157-161,687,689-692
+  s_4b53f1a3b989a8::t_797d7da5e01727 1289-1305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d038a27dd004276c3401391221cff52f117c83ce",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
