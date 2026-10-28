@@ -579,6 +579,39 @@ describe("WorkbenchSceneNavigator", () => {
     });
   });
 
+  test("puts Pages beside another Session in order, the first active, without leaving", async () => {
+    const harness = createHarness();
+    harness.navigator.openLibrary();
+    const owner = { kind: "session" as const, sessionId: "session:new" };
+    const present = (pageId: string, tab: "activate" | "background") =>
+      harness.navigator.presentPanelSurface({
+        owner,
+        request: {
+          kind: "page_stage",
+          config: { routingContext: { kind: "library" }, pageId },
+          titleSnapshot: pageId,
+        },
+        target: { panelId: "right" },
+        mode: "durable",
+        navigation: "background",
+        tab,
+      });
+
+    const first = await present("page:first", "activate");
+    const second = await present("page:second", "background");
+    const scene = harness.scenes[makeWorkbenchSceneKey(owner)];
+    const [leaf] = listWorkbenchPanelLeaves(scene.panels.right.layout);
+
+    expect([first.status, second.status]).toEqual(["presented", "presented"]);
+    expect(leaf.tabIds.map((id) => scene.panelSurfacesById[id].titleSnapshot)).toEqual([
+      "page:first",
+      "page:second",
+    ]);
+    expect(scene.panelSurfacesById[leaf.activeTabId!].titleSnapshot).toBe("page:first");
+    expect(scene.panels.right.collapsed).toBe(false);
+    expect(harness.windowOwner.read().windowState.location).toEqual({ kind: "library" });
+  });
+
   test("opens the singleton Library Scene", () => {
     const harness = createHarness();
 

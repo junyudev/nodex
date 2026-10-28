@@ -424,6 +424,10 @@ instructions.
   resolved for it; the chat's Agent keeps integration and the final review. A
   part whose target cannot run when the chat starts still reaches the Agent,
   which can choose another with `list_agent_models` or do it itself.
+  The window that confirmed it puts the message Pages in the new chat's right
+  panel, the first message's active and the rest as tabs after it, while the
+  Inbox stays in view; opening the chat then shows what it was started from
+  beside it. `Settings → Inbox` can turn this off.
 - A chat message sent from the Inbox carries the Library images of its messages
   with the text, each image once and in reading order. Core freezes them with
   the text at confirmation. Up to 20 images are sent, each fitted to what an
@@ -571,6 +575,8 @@ creates a second message, and does not count against the Agent budget again.
     speed;
   - free-text routing preferences: the user's standing instructions to the
     suggestion Agent, which outrank Nodex's own guidance;
+  - whether a chat the Inbox starts opens with its message Pages in its right
+    panel, which is on by default;
   - whether suggestions choose each new chat's models and plan its delegation,
     which is on by default;
   - what chats the Inbox starts run on otherwise, chosen with the composer's

@@ -93,6 +93,8 @@ export interface PresentWorkbenchPanelSurfaceInput {
   };
   readonly mode: "durable" | "preview";
   readonly navigation: "select-owner" | "background";
+  /** A durable tab opened in the background joins the end of its group without becoming active. */
+  readonly tab?: "activate" | "background";
   readonly isCurrent?: () => boolean;
 }
 

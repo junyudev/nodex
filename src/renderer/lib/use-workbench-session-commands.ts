@@ -80,6 +80,7 @@ import {
   sendPageToChatWithRelation,
   type OpenPageInNewChatInput,
   type SendPageToChatInput,
+  type ShowPagesInChatInput,
 } from "./page-chat-actions";
 import { linkPageChat } from "./page-chat-runtime";
 import { subscribeCodexEvents } from "./api";
@@ -91,7 +92,10 @@ import {
   resolveCreatedThreadTarget,
 } from "./codex-created-thread-runtime";
 import { prepareCreatedThreadNavigation } from "./created-thread-navigation";
-import type { WorkbenchSceneNavigator } from "./workbench-scene-navigator";
+import type {
+  WorkbenchSceneNavigator,
+  WorkbenchSurfaceOpenRequest,
+} from "./workbench-scene-navigator";
 import type {
   CodexCollaborationModeKind,
   CodexComposerIntent,
@@ -121,6 +125,18 @@ function isResidentSubagentDescendant(
   return collectCodexSubagentThreadIds(conversationTurnsWithOverlay(parent?.canonicalState)).has(
     threadId,
   );
+}
+
+function chatPageRequest(
+  routingContext: ShowPagesInChatInput["routingContext"],
+  page: ShowPagesInChatInput["pages"][number],
+): WorkbenchSurfaceOpenRequest {
+  const titleSnapshot = page.titleSnapshot?.trim() || undefined;
+  return {
+    kind: "page_stage",
+    config: { routingContext, pageId: page.pageId, ...(titleSnapshot ? { titleSnapshot } : {}) },
+    titleSnapshot,
+  };
 }
 
 type ProjectSession = WorkbenchSessionRenderProjection;
@@ -370,15 +386,7 @@ export function useWorkbenchSessionCommands({
         try {
           const result = await sceneNavigator.presentPanelSurface({
             owner: { kind: "session", sessionId: presentation.domain.id },
-            request: {
-              kind: "page_stage",
-              config: {
-                routingContext: { kind: "project", projectId: input.projectId },
-                pageId: input.pageId,
-                ...(input.titleSnapshot ? { titleSnapshot: input.titleSnapshot } : {}),
-              },
-              titleSnapshot: input.titleSnapshot,
-            },
+            request: chatPageRequest({ kind: "project", projectId: input.projectId }, input),
             target: { panelId: "right" },
             mode: "durable",
             navigation: "select-owner",
@@ -415,6 +423,29 @@ export function useWorkbenchSessionCommands({
       await operation;
     },
     [sceneNavigator, sessionCatalog],
+  );
+
+  /** Shows Pages beside a chat without leaving the current location; the first is active. */
+  const showPagesInChat = useCallback(
+    async (input: ShowPagesInChatInput): Promise<void> => {
+      for (const [index, page] of input.pages.entries()) {
+        const result = await sceneNavigator.presentPanelSurface({
+          owner: { kind: "session", sessionId: input.sessionId },
+          request: chatPageRequest(input.routingContext, page),
+          target: { panelId: "right" },
+          mode: "durable",
+          navigation: "background",
+          tab: index === 0 ? "activate" : "background",
+        });
+        if (result.status !== "presented") {
+          toast.danger("The chat started, but its Page could not be shown beside it", {
+            description: result.reason,
+          });
+          return;
+        }
+      }
+    },
+    [sceneNavigator],
   );
 
   const sendPageToChat = useCallback(
@@ -1482,6 +1513,7 @@ export function useWorkbenchSessionCommands({
     resolveChatSessionForThread,
     openProjectSessionById,
     openPageInNewChat,
+    showPagesInChat,
     sendPageToChat,
     startNewChatInProject,
     startNewChatWithPrompt,

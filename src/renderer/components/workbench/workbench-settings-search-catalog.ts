@@ -535,6 +535,11 @@ export const SETTINGS_SEARCH_PANELS = {
       {
         title: "Chats",
         entries: [
+          entry(
+            "Show the message beside new chats",
+            "A chat the Inbox starts opens with its message's Page in the right panel.",
+            ["page", "right panel", "side panel", "open"],
+          ),
           entry("New chats run on", "The Agent, model and effort for chats the Inbox starts.", [
             "dispatch",
             "runtime",

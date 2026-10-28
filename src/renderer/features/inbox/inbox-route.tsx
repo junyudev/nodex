@@ -30,6 +30,7 @@ import {
   surfaceViewPillClassName,
 } from "@/components/workbench/surface-toolbar";
 import { ToolbarIconButton } from "@/components/workbench/workbench-panel-controls";
+import type { ShowPagesInChatInput } from "@/lib/page-chat-actions";
 import { cn } from "@/lib/utils";
 import { ThreadTimestampSeparator } from "@/features/local-conversation/view/shared/thread-timestamp-separator";
 import { InboxComposer } from "./inbox-composer";
@@ -78,6 +79,8 @@ export interface InboxRouteProps {
   readonly focusComposerToken?: number;
   readonly onOpenSession: (sessionId: string) => void;
   readonly onOpenPage: (pageId: string) => void;
+  /** Shows a new chat's message Pages beside it, without leaving the Inbox. */
+  readonly onShowPagesInChat: (input: ShowPagesInChatInput) => Promise<void>;
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenSettings: () => void;
   /** Whether this Inbox is the visible surface; only then does its first load hold startup. */
@@ -241,6 +244,7 @@ export function InboxRoute({
   focusComposerToken,
   onOpenSession,
   onOpenPage,
+  onShowPagesInChat,
   onOpenDatabase,
   onOpenSettings,
   visible = true,
@@ -274,6 +278,22 @@ export function InboxRoute({
     summary.data?.storeEpoch ?? null,
     stream.items,
     (pageIds, decision) => {
+      if (
+        decision.kind === "chat" &&
+        decision.type === "new_chat" &&
+        settings.showPageBesideNewChats
+      )
+        void onShowPagesInChat({
+          sessionId: decision.sessionId,
+          // The Pages open as this Inbox opens them beside itself.
+          routingContext: inboxProjectId
+            ? { kind: "project", projectId: inboxProjectId }
+            : { kind: "library" },
+          pages: pageIds.map((pageId) => ({
+            pageId,
+            titleSnapshot: stream.items.find((item) => item.pageId === pageId)?.title,
+          })),
+        });
       if (view !== "inbox") return;
       departures.depart(
         stream.items.filter((item) => pageIds.includes(item.pageId)),

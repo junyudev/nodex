@@ -1,3 +1,4 @@
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type { CodexPromptInput } from "@/lib/types";
 
 export type ChatDestinationTarget =
@@ -13,6 +14,13 @@ export interface OpenPageInNewChatInput {
 
 export interface SendPageToChatInput extends OpenPageInNewChatInput {
   readonly target: ChatDestinationTarget;
+}
+
+/** Pages to show in a chat's right panel, in tab order, opened through `routingContext`. */
+export interface ShowPagesInChatInput {
+  readonly sessionId: string;
+  readonly routingContext: ContentRoutingContext;
+  readonly pages: readonly { readonly pageId: string; readonly titleSnapshot?: string }[];
 }
 
 export interface PagePromptContext {

@@ -121,6 +121,16 @@ export function InboxSettingsPage() {
       </SectionBlock>
       <SectionBlock title="Chats">
         <SettingRow
+          label="Show the message beside new chats"
+          description="A chat the Inbox starts opens with its message’s Page in the right panel."
+        >
+          <NodexSwitch
+            ariaLabel="Show the message beside new chats"
+            checked={settings.showPageBesideNewChats}
+            onCheckedChange={(showPageBesideNewChats) => save({ showPageBesideNewChats })}
+          />
+        </SettingRow>
+        <SettingRow
           label="Suggestions choose models"
           description="Each suggestion picks its new chat's Agent, model and effort, and which Agents help it, weighing what each does well and how much of each weekly budget is left."
         >

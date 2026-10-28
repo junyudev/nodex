@@ -3956,6 +3956,7 @@ export function WorkbenchRuntime({
             projects={projects}
             focusComposerToken={inboxFocusToken}
             onOpenSession={sessionCommands.openProjectSessionById}
+            onShowPagesInChat={sessionCommands.showPagesInChat}
             onOpenPage={(pageId) => {
               const peek = inboxPagePeek(surface.id);
               void openProjectScenePage(projectId, pageId, "Page", {
@@ -4311,6 +4312,7 @@ export function WorkbenchRuntime({
       presentLibraryTarget,
       sessionCommands.openPageInNewChat,
       sessionCommands.openProjectSessionById,
+      sessionCommands.showPagesInChat,
       sessionCommands.linkPageToChat,
       sessionCommands.resolveChatSessionForThread,
       sessionCommands.sendPageToChat,
@@ -4372,6 +4374,7 @@ export function WorkbenchRuntime({
             projects={projects}
             focusComposerToken={inboxFocusToken}
             onOpenSession={sessionCommands.openProjectSessionById}
+            onShowPagesInChat={sessionCommands.showPagesInChat}
             onOpenPage={(pageId) =>
               void presentLibraryTarget(
                 { kind: "page", pageId },
@@ -4492,6 +4495,7 @@ export function WorkbenchRuntime({
       projects,
       sessionCommands.openPageInNewChat,
       sessionCommands.openProjectSessionById,
+      sessionCommands.showPagesInChat,
       sessionCommands.sendPageToChat,
       updateSceneSurfacePresentation,
       workbenchWindow.owner,

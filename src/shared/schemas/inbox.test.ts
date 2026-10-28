@@ -7,11 +7,26 @@ import {
   InboxPreparedConfirmationSchema,
   InboxSendInputSchema,
   InboxSuggestionRequestInputSchema,
+  UpdateInboxSettingsInputSchema,
 } from "./inbox";
 
 const basis = { pageId: "page-a", generation: 1, headSeq: 9, placementRevision: 1 };
 
 describe("Inbox boundary contracts", () => {
+  it("accepts an optional boolean preference for showing the Page beside new chats", () => {
+    expect(UpdateInboxSettingsInputSchema.parse({})).toEqual({});
+    for (const showPageBesideNewChats of [true, false]) {
+      const input = { showPageBesideNewChats };
+      expect(UpdateInboxSettingsInputSchema.parse(input)).toEqual(input);
+    }
+    expect(
+      UpdateInboxSettingsInputSchema.safeParse({ showPageBesideNewChats: "false" }).success,
+    ).toBe(false);
+    expect(UpdateInboxSettingsInputSchema.safeParse({ showPageBesideNewChats: null }).success).toBe(
+      false,
+    );
+  });
+
   it("keeps an already prepared confirmation unchanged when replayed", () => {
     const prepared = {
       kind: "direct",

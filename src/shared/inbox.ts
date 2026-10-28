@@ -520,6 +520,8 @@ export interface InboxSettings {
   readonly suggestionsChooseModels: boolean;
   /** Suggestions read Nodex's guide to what each model does well, under the user's preferences. */
   readonly useModelGuide: boolean;
+  /** Show the message's Page in the right panel of a new chat started by the Inbox. */
+  readonly showPageBesideNewChats: boolean;
 }
 
 export type UpdateInboxSettingsInput = Partial<InboxSettings>;
@@ -534,6 +536,7 @@ export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
   chatAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
   suggestionsChooseModels: true,
   useModelGuide: true,
+  showPageBesideNewChats: true,
 };
 
 export const encodeInboxAgentBinding = (binding: InboxAgentBinding): string => binding.instanceId;

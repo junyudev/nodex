@@ -47,6 +47,7 @@ const settings: InboxSettings = {
   chatAgent: choice("codex"),
   suggestionsChooseModels: true,
   useModelGuide: true,
+  showPageBesideNewChats: true,
 };
 const provider = (binding: InboxAgentBinding = { instanceId: "codex" }): Provider => ({
   instanceId: binding.instanceId,

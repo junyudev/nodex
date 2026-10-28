@@ -355,6 +355,11 @@ describe("ApplicationSettings", () => {
         const { root, settingsPath } = fixture();
         const input = { environment: {}, hostHomeDirectory: root, settingsPath };
         const settings = yield* makeApplicationSettings(input);
+        assert.deepInclude((yield* settings.snapshot()).inbox, {
+          suggestionsChooseModels: true,
+          useModelGuide: true,
+          showPageBesideNewChats: true,
+        });
         const chosen = {
           instanceId: "codex",
           model: "gpt-6-astra",
@@ -384,19 +389,22 @@ describe("ApplicationSettings", () => {
           }
         ).server;
         assert.strictEqual(server?.inbox_chat_agent, "opencode");
-        // Suggestions choose models with the guide until the user says otherwise.
-        assert.deepInclude((yield* reopened.snapshot()).inbox, {
-          suggestionsChooseModels: true,
-          useModelGuide: true,
-        });
         yield* reopened.update({
           type: "update-inbox",
-          input: { suggestionsChooseModels: false, useModelGuide: false },
+          input: {
+            suggestionsChooseModels: false,
+            useModelGuide: false,
+            showPageBesideNewChats: false,
+          },
         });
         assert.deepInclude(
           (yield* makeApplicationSettings(input).pipe(Effect.flatMap((next) => next.snapshot())))
             .inbox,
-          { suggestionsChooseModels: false, useModelGuide: false },
+          {
+            suggestionsChooseModels: false,
+            useModelGuide: false,
+            showPageBesideNewChats: false,
+          },
         );
         assert.notProperty(server, "inbox_chat_model");
         assert.notProperty(server, "inbox_chat_effort");

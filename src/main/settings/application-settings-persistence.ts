@@ -123,6 +123,7 @@ interface ServerTomlConfig {
   inbox_chat_speed?: string;
   inbox_suggestions_choose_models?: boolean;
   inbox_use_model_guide?: boolean;
+  inbox_show_page_beside_new_chats?: boolean;
   diagnostics_enabled?: boolean;
   diagnostics_dsn?: string;
   diagnostics_environment?: string;
@@ -1313,6 +1314,10 @@ function inboxSettingsFromConfig(config: ServerTomlConfig): InboxSettings {
       typeof config.inbox_use_model_guide === "boolean"
         ? config.inbox_use_model_guide
         : DEFAULT_INBOX_SETTINGS.useModelGuide,
+    showPageBesideNewChats:
+      typeof config.inbox_show_page_beside_new_chats === "boolean"
+        ? config.inbox_show_page_beside_new_chats
+        : DEFAULT_INBOX_SETTINGS.showPageBesideNewChats,
   };
 }
 
@@ -1337,6 +1342,7 @@ export function updateInboxSettings(
     inbox_chat_agent: encodeInboxAgentBinding(next.chatAgent),
     inbox_suggestions_choose_models: next.suggestionsChooseModels,
     inbox_use_model_guide: next.useModelGuide,
+    inbox_show_page_beside_new_chats: next.showPageBesideNewChats,
   };
   writeInboxChoice(server, "inbox_suggestion_model", next.suggestionModel);
   writeInboxChoice(server, "inbox_chat_model", next.chatAgent.model);

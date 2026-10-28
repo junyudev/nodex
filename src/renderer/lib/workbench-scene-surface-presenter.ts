@@ -73,6 +73,7 @@ export function createWorkbenchSceneSurfacePresenter(
         ...(input.request.kind === "files" && input.request.reveal
           ? { reveal: input.request.reveal }
           : {}),
+        ...(input.tab === "background" ? { open: { presentation: "background" as const } } : {}),
         ...(input.navigation === "select-owner"
           ? { location: sceneLocationForOwner(input.owner) }
           : {}),

@@ -286,6 +286,7 @@ export const UpdateInboxSettingsInputSchema = z
     chatAgent: InboxChatAgentSchema.optional(),
     suggestionsChooseModels: z.boolean().optional(),
     useModelGuide: z.boolean().optional(),
+    showPageBesideNewChats: z.boolean().optional(),
   })
   .strict() satisfies z.ZodType<UpdateInboxSettingsInput>;
 
