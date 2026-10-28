@@ -45,6 +45,7 @@ const INPUT_ROOTS = [
   ".cargo",
   "crates",
   "src/shared/block-documents",
+  "src/shared/nfm/code-language-catalog-v1.json",
   "agent-skills/nodex",
   "scripts/rust-dev-runtime.ts",
 ] as const;

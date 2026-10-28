@@ -5,6 +5,7 @@ members = [
   "crates/nodex-core",
   "crates/nodex-core-contracts",
   "crates/nodex-core-protocol",
+  "crates/nodex-markdown",
   "crates/nodex-page-search-kernel",
   "crates/nodex-profile",
   "crates/nodex-core-server",
@@ -25,6 +26,7 @@ nodex-core = { path = "crates/nodex-core" }
 nodex-core-contracts = { path = "crates/nodex-core-contracts" }
 nodex-core-protocol = { path = "crates/nodex-core-protocol" }
 nodex-store-format = { path = "crates/nodex-store-format" }
+nodex-markdown = { path = "crates/nodex-markdown" }
 nodex-page-search-kernel = { path = "crates/nodex-page-search-kernel" }
 nodex-sqlite-query = { path = "crates/nodex-sqlite-query" }
 async-stream = "0.3.6"
@@ -35,6 +37,7 @@ cbc = "0.2.1"
 chrono = "=0.4.45"
 chrono-tz = { version = "=0.10.4", default-features = false, features = ["std"] }
 clap = { version = "=4.6.7", features = ["derive"] }
+comrak = { version = "=0.57.0", default-features = false }
 fs2 = "0.4.3"
 futures-core = "0.3.34"
 getrandom = "0.4.3"
@@ -93,6 +96,14 @@ split-debuginfo = "unpacked"
 
 [profile.dev.package.sha2]
 opt-level = 3
+
+[profile.wasm-release]
+# WebAssembly the app loads: small over fast, since it ships with every window.
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
 
 [profile.release.build-override]
 # Proc-macro libraries are loaded by the host compiler, never shipped. Stripping

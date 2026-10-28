@@ -19,6 +19,22 @@
     "canvas_incremental_hot_path_stays_bounded_at_twenty_thousand_elements": {
       "tier": "performance",
       "script": "core:test:canvas-performance"
+    },
+    "adversarial_read_timings": {
+      "tier": "performance",
+      "script": "nodex-markdown:test:read-performance"
+    },
+    "adversarial_write_timings": {
+      "tier": "performance",
+      "script": "nodex-markdown:test:write-profile"
+    },
+    "linear_writer_hotspot_timings": {
+      "tier": "performance",
+      "script": "nodex-markdown:test:write-performance"
+    },
+    "corpus_minimizations_match_exhaustive": {
+      "tier": "performance",
+      "script": "nodex-markdown:test:escape-equivalence"
     }
   }
 }

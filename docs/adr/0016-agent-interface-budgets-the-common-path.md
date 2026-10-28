@@ -7,6 +7,8 @@
 - Follow-up: ADR 0020's Source-scoped identity cutover publishes the current
   `nodex_app@5` catalog; `@3` below names the historical budgeted revision and
   `@4` is the preceding Page/Data Source contract.
+- Refined by: [ADR 0073](0073-one-text-language-for-blocks.md), where Agents
+  read, patch and write Pages in one text language, Nodex Markdown.
 
 ## Context
 
@@ -38,7 +40,7 @@ Notion's current Agent API evolution supports the same architectural direction, 
 
 - The [official supported-tools guide](https://developers.notion.com/guides/mcp/mcp-supported-tools) keeps search, fetch, create, update, move, query, schema, View, comment, identity, and asynchronous-task operations as separate intent tools. Their combination forms a workflow; they are not collapsed into one universal mutation union.
 - The [official Markdown guide](https://developers.notion.com/guides/data-apis/working-with-markdown-content) uses one enhanced-Markdown representation for whole-page create, read, exact search-and-replace, and complete replacement. Exact `old_str` matching is the local semantic precondition, and destructive removal of child pages or databases requires an explicit flag.
-- The [official enhanced-Markdown reference](https://developers.notion.com/guides/data-apis/enhanced-markdown) requires one tab per child-Block level. [CommonMark](https://spec.commonmark.org/spec#tabs), by contrast, treats tabs like tab-stop-expanded spaces in structural contexts. Nodex must therefore state its tab nesting signal explicitly instead of assuming generic Markdown knowledge. Lines indented with spaces under a list item also nest, as Agents and people write Markdown lists; every other line keeps its leading spaces as authored input.
+- The [official enhanced-Markdown reference](https://developers.notion.com/guides/data-apis/enhanced-markdown) requires one tab per child-Block level. [CommonMark](https://spec.commonmark.org/spec#tabs), by contrast, treats tabs like tab-stop-expanded spaces in structural contexts. Nodex must therefore state its tab nesting signal explicitly instead of assuming generic Markdown knowledge.
 - The [official changelog](https://developers.notion.com/page/changelog) attributes an approximately 91% context-token reduction specifically to `notion-create-database` and `notion-update-data-source` switching to SQL DDL schema definitions. It separately records flattened `notion-update-page` parameters and removal of the full Notion-flavored Markdown specification from `notion-create-pages` because the specification is available through an on-demand MCP Resource. The 91% figure is not a claim about the entire Notion MCP catalog or ordinary result payloads.
 - Notion's public `makenotion/notion-mcp-server` repository was inspected at commit `d7e3bbd62890f9efca2cd54449ac072f3bd1a4ba`. Its README explicitly says the actively supported remote Notion MCP is separate and the repository is the older local OpenAPI-derived server. The repository still demonstrates one useful boundary—transport-managed headers are omitted and JSON request-body properties are merged into top-level tool inputs—but it is not treated as the source for the remote tool schemas.
 

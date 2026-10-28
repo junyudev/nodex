@@ -1,0 +1,2184 @@
+{
+  "about": "Round-trip contract of Nodex Markdown, docs/references/nodex-markdown.md. Each case's `markdown` is the one exact text of its `blocks`: writing the Blocks gives the text, and reading the text in exact mode gives the Blocks. Blocks are spelled as Nodex stores them, without identities except an owning shell's, props at their defaults, or empty content and children. `gfm` marks text that uses no Nodex extension and that GitHub Flavored Markdown, read as Nodex's Markdown reader reads it today, reads as the same Blocks; `reads` are other GitHub Flavored Markdown spellings that read as them too, checked against today's reader; `nodexReads` are spellings only Nodex Markdown reads as them, such as unindented container bodies, ```math fences, \\(…\\) math and HTML style tags. `rejects` are texts an exact write refuses rather than reading as something else; `boundaryReads` say how such text reads everywhere else, where a container without its closing line still reads as a container so a reply reads while it streams.",
+  "cases": [
+    {
+      "name": "an empty Document is empty text",
+      "markdown": "",
+      "gfm": true,
+      "blocks": [{ "type": "paragraph" }]
+    },
+    {
+      "name": "a paragraph",
+      "markdown": "Plain text, as people write it.",
+      "gfm": true,
+      "blocks": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Plain text, as people write it." }] }
+      ]
+    },
+    {
+      "name": "Blocks are separated by a blank line",
+      "markdown": "First\n\nSecond",
+      "gfm": true,
+      "reads": ["First\n\n\n\nSecond"],
+      "blocks": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "First" }] },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Second" }] }
+      ]
+    },
+    {
+      "name": "a newline is a line break",
+      "markdown": "line one\nline two",
+      "gfm": true,
+      "reads": ["line one  \nline two", "line one\\\nline two"],
+      "blocks": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "line one\nline two" }] }
+      ]
+    },
+    {
+      "name": "spaces at the start of a paragraph are text",
+      "markdown": "  two spaces in",
+      "gfm": true,
+      "blocks": [{ "type": "paragraph", "content": [{ "type": "text", "text": "  two spaces in" }] }]
+    },
+    {
+      "name": "a character reference keeps four spaces from reading as code",
+      "markdown": "&#x20;   four spaces in",
+      "gfm": true,
+      "blocks": [{ "type": "paragraph", "content": [{ "type": "text", "text": "    four spaces in" }] }]
+    },
+    {
+      "name": "a character reference keeps a line's indentation inside a list",
+      "markdown": "- item\n  &#x20; indented line",
+      "gfm": true,
+      "blocks": [
+        { "type": "bulletListItem", "content": [{ "type": "text", "text": "item\n  indented line" }] }
+      ]
+    },
+    {
+      "name": "a space at a text's end is a character reference",
+      "markdown": "trailing&#x20;",
+      "blocks": [{ "type": "paragraph", "content": [{ "type": "text", "text": "trailing " }] }]
+    },
+    {
+      "name": "an escape stays only where the text would read differently",
+      "markdown": "\\- not a list\n\n\\+ not a list\n\n2024\\. was a year\n\n1\\) not a list\n\n\\# not a heading\n\n\\> not a quote\n\n\\*not emphasis*, snake_case_word, [draft, a | b, 50% & more, #5",
+      "gfm": true,
+      "blocks": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "- not a list" }] },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "+ not a list" }] },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "2024. was a year" }] },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "1) not a list" }] },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "# not a heading" }] },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "> not a quote" }] },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "*not emphasis*, snake_case_word, [draft, a | b, 50% & more, #5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "text that would read as Nodex syntax is escaped",
+      "markdown": "\\:::toggle[Not a toggle]\n\nEnds with \\{color=\"red\"}\n\n:::note stays text, as Nodex has no note directive",
+      "gfm": true,
+      "blocks": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": ":::toggle[Not a toggle]" }] },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Ends with {color=\"red\"}" }] },
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": ":::note stays text, as Nodex has no note directive" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "text that would read as HTML is escaped",
+      "markdown": "Use the \\<div> element\n\nA literal \\<br> tag",
+      "gfm": true,
+      "blocks": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Use the <div> element" }] },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "A literal <br> tag" }] }
+      ]
+    },
+    {
+      "name": "an empty paragraph between Blocks",
+      "markdown": "Above\n\n<br>\n\nBelow",
+      "blocks": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Above" }] },
+        { "type": "paragraph" },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Below" }] }
+      ]
+    },
+    {
+      "name": "an empty paragraph with a color is its attribute list",
+      "markdown": "{background=\"gray\"}",
+      "blocks": [{ "type": "paragraph", "props": { "backgroundColor": "gray" } }]
+    },
+    {
+      "name": "a line break at a text's end is <br>",
+      "markdown": "Last line<br>",
+      "blocks": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Last line\n" }] }]
+    },
+    {
+      "name": "a text that is only a line break ends with an empty comment",
+      "markdown": "<br><!-- -->",
+      "blocks": [{ "type": "paragraph", "content": [{ "type": "text", "text": "\n" }] }]
+    },
+    {
+      "name": "Block colors are an attribute list at the end of the text",
+      "markdown": "# Title {color=\"blue\"}\n\nText {color=\"red\" background=\"yellow\"}",
+      "blocks": [
+        {
+          "type": "heading",
+          "props": { "textColor": "blue" },
+          "content": [{ "type": "text", "text": "Title" }]
+        },
+        {
+          "type": "paragraph",
+          "props": { "textColor": "red", "backgroundColor": "yellow" },
+          "content": [{ "type": "text", "text": "Text" }]
+        }
+      ]
+    },
+    {
+      "name": "a paragraph with Blocks under it",
+      "markdown": ":::paragraph[Parent]\n  First child\n\n  - Listed child\n:::",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [{ "type": "text", "text": "Parent" }],
+          "children": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "First child" }] },
+            { "type": "bulletListItem", "content": [{ "type": "text", "text": "Listed child" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an empty paragraph with Blocks under it",
+      "markdown": ":::paragraph{color=\"gray\"}\n  Child\n:::",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "props": { "textColor": "gray" },
+          "children": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Child" }] }]
+        }
+      ]
+    },
+    {
+      "name": "containers nest by indentation",
+      "markdown": ":::paragraph[Outer]\n  :::paragraph[Inner]\n    Leaf\n  :::\n:::",
+      "nodexReads": [":::paragraph[Outer]\n:::paragraph[Inner]\nLeaf\n:::\n:::", "::::paragraph[Outer]\n:::paragraph[Inner]\nLeaf\n:::\n::::"],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [{ "type": "text", "text": "Outer" }],
+          "children": [
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "Inner" }],
+              "children": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Leaf" }] }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a line of colons inside code is code",
+      "markdown": ":::toggle[Example]\n  ```\n  :::\n  ```\n:::",
+      "nodexReads": [":::toggle[Example]\n```\n:::\n```\n:::"],
+      "blocks": [
+        {
+          "type": "toggleListItem",
+          "content": [{ "type": "text", "text": "Example" }],
+          "children": [{ "type": "codeBlock", "content": [{ "type": "text", "text": ":::" }] }]
+        }
+      ]
+    },
+    {
+      "name": "headings",
+      "markdown": "# One\n\n## Two\n\n### Three\n\n#### Four",
+      "gfm": true,
+      "reads": ["One\n===\n\nTwo\n---\n\n### Three ###\n\n#### Four"],
+      "blocks": [
+        { "type": "heading", "content": [{ "type": "text", "text": "One" }] },
+        { "type": "heading", "props": { "level": 2 }, "content": [{ "type": "text", "text": "Two" }] },
+        { "type": "heading", "props": { "level": 3 }, "content": [{ "type": "text", "text": "Three" }] },
+        { "type": "heading", "props": { "level": 4 }, "content": [{ "type": "text", "text": "Four" }] }
+      ]
+    },
+    {
+      "name": "headings five and six read as four",
+      "markdown": "#### Deep",
+      "gfm": true,
+      "reads": ["##### Deep", "###### Deep"],
+      "blocks": [
+        { "type": "heading", "props": { "level": 4 }, "content": [{ "type": "text", "text": "Deep" }] }
+      ]
+    },
+    {
+      "name": "an empty heading",
+      "markdown": "#",
+      "gfm": true,
+      "blocks": [{ "type": "heading" }]
+    },
+    {
+      "name": "a hash that would close a heading is escaped",
+      "markdown": "# Issue \\#\n\n## C# works",
+      "gfm": true,
+      "blocks": [
+        { "type": "heading", "content": [{ "type": "text", "text": "Issue #" }] },
+        { "type": "heading", "props": { "level": 2 }, "content": [{ "type": "text", "text": "C# works" }] }
+      ]
+    },
+    {
+      "name": "a toggle heading",
+      "markdown": ":::toggle[Section]{heading=\"2\"}\n  Inside\n:::",
+      "blocks": [
+        {
+          "type": "heading",
+          "props": { "level": 2, "isToggleable": true },
+          "content": [{ "type": "text", "text": "Section" }],
+          "children": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Inside" }] }]
+        }
+      ]
+    },
+    {
+      "name": "bullets",
+      "markdown": "- One\n- Two",
+      "gfm": true,
+      "reads": ["* One\n* Two", "+ One\n+ Two", "- One\n\n- Two"],
+      "blocks": [
+        { "type": "bulletListItem", "content": [{ "type": "text", "text": "One" }] },
+        { "type": "bulletListItem", "content": [{ "type": "text", "text": "Two" }] }
+      ]
+    },
+    {
+      "name": "nested bullets",
+      "markdown": "- One\n  - Nested\n- Two",
+      "gfm": true,
+      "reads": ["- One\n    - Nested\n- Two"],
+      "blocks": [
+        {
+          "type": "bulletListItem",
+          "content": [{ "type": "text", "text": "One" }],
+          "children": [
+            { "type": "bulletListItem", "content": [{ "type": "text", "text": "Nested" }] }
+          ]
+        },
+        { "type": "bulletListItem", "content": [{ "type": "text", "text": "Two" }] }
+      ]
+    },
+    {
+      "name": "numbers",
+      "markdown": "1. One\n2. Two",
+      "gfm": true,
+      "reads": ["1) One\n2) Two", "1. One\n1. Two"],
+      "blocks": [
+        { "type": "numberedListItem", "content": [{ "type": "text", "text": "One" }] },
+        { "type": "numberedListItem", "content": [{ "type": "text", "text": "Two" }] }
+      ]
+    },
+    {
+      "name": "a numbered list that starts elsewhere",
+      "markdown": "3. Three\n4. Four",
+      "gfm": true,
+      "reads": ["3. Three\n9. Four"],
+      "blocks": [
+        {
+          "type": "numberedListItem",
+          "props": { "start": 3 },
+          "content": [{ "type": "text", "text": "Three" }]
+        },
+        { "type": "numberedListItem", "content": [{ "type": "text", "text": "Four" }] }
+      ]
+    },
+    {
+      "name": "a numbered item's Blocks are indented past its number",
+      "markdown": "9. Nine\n10. Ten\n\n    Under ten",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "numberedListItem",
+          "props": { "start": 9 },
+          "content": [{ "type": "text", "text": "Nine" }]
+        },
+        {
+          "type": "numberedListItem",
+          "content": [{ "type": "text", "text": "Ten" }],
+          "children": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Under ten" }] }]
+        }
+      ]
+    },
+    {
+      "name": "tasks",
+      "markdown": "- [ ] Open\n- [x] Done",
+      "gfm": true,
+      "reads": ["- [ ] Open\n- [X] Done", "* [ ] Open\n* [x] Done"],
+      "blocks": [
+        { "type": "checkListItem", "content": [{ "type": "text", "text": "Open" }] },
+        {
+          "type": "checkListItem",
+          "props": { "checked": true },
+          "content": [{ "type": "text", "text": "Done" }]
+        }
+      ]
+    },
+    {
+      "name": "empty list items",
+      "markdown": "-\n- [ ]\n1.",
+      "gfm": true,
+      "blocks": [
+        { "type": "bulletListItem" },
+        { "type": "checkListItem" },
+        { "type": "numberedListItem" }
+      ]
+    },
+    {
+      "name": "an item that starts like a task is escaped",
+      "markdown": "- \\[ ] not a task",
+      "gfm": true,
+      "blocks": [
+        { "type": "bulletListItem", "content": [{ "type": "text", "text": "[ ] not a task" }] }
+      ]
+    },
+    {
+      "name": "a list item's Blocks",
+      "markdown": "- Item\n\n  More about it\n\n  - Sub item",
+      "gfm": true,
+      "reads": ["- Item\n\n  More about it\n  - Sub item"],
+      "blocks": [
+        {
+          "type": "bulletListItem",
+          "content": [{ "type": "text", "text": "Item" }],
+          "children": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "More about it" }] },
+            { "type": "bulletListItem", "content": [{ "type": "text", "text": "Sub item" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an empty comment is the text of an item whose first Block is a paragraph",
+      "markdown": "- <!-- -->\n\n  Paragraph under an empty item",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "bulletListItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "Paragraph under an empty item" }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a line break in a list item",
+      "markdown": "- one\n  two",
+      "gfm": true,
+      "reads": ["- one\ntwo"],
+      "blocks": [{ "type": "bulletListItem", "content": [{ "type": "text", "text": "one\ntwo" }] }]
+    },
+    {
+      "name": "list items of every kind follow each other line by line",
+      "markdown": "- Bullet\n1. Number\n- [ ] Task",
+      "gfm": true,
+      "blocks": [
+        { "type": "bulletListItem", "content": [{ "type": "text", "text": "Bullet" }] },
+        { "type": "numberedListItem", "content": [{ "type": "text", "text": "Number" }] },
+        { "type": "checkListItem", "content": [{ "type": "text", "text": "Task" }] }
+      ]
+    },
+    {
+      "name": "a list after text",
+      "markdown": "Steps:\n\n1. First",
+      "gfm": true,
+      "reads": ["Steps:\n1. First"],
+      "blocks": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Steps:" }] },
+        { "type": "numberedListItem", "content": [{ "type": "text", "text": "First" }] }
+      ]
+    },
+    {
+      "name": "list item colors",
+      "markdown": "- Item {color=\"red\"}\n- [x] Done {background=\"green\"}\n- {color=\"gray\"}",
+      "blocks": [
+        {
+          "type": "bulletListItem",
+          "props": { "textColor": "red" },
+          "content": [{ "type": "text", "text": "Item" }]
+        },
+        {
+          "type": "checkListItem",
+          "props": { "checked": true, "backgroundColor": "green" },
+          "content": [{ "type": "text", "text": "Done" }]
+        },
+        { "type": "bulletListItem", "props": { "textColor": "gray" } }
+      ]
+    },
+    {
+      "name": "a quote",
+      "markdown": "> Quoted",
+      "gfm": true,
+      "blocks": [{ "type": "quote", "content": [{ "type": "text", "text": "Quoted" }] }]
+    },
+    {
+      "name": "a quote's lines",
+      "markdown": "> one\n> two",
+      "gfm": true,
+      "reads": ["> one\ntwo"],
+      "blocks": [{ "type": "quote", "content": [{ "type": "text", "text": "one\ntwo" }] }]
+    },
+    {
+      "name": "quotes next to each other",
+      "markdown": "> First\n\n> Second",
+      "gfm": true,
+      "blocks": [
+        { "type": "quote", "content": [{ "type": "text", "text": "First" }] },
+        { "type": "quote", "content": [{ "type": "text", "text": "Second" }] }
+      ]
+    },
+    {
+      "name": "a quote's Blocks",
+      "markdown": "> Quoted\n>\n> - item\n>\n> More",
+      "gfm": true,
+      "reads": ["> Quoted\n> - item\n>\n> More"],
+      "blocks": [
+        {
+          "type": "quote",
+          "content": [{ "type": "text", "text": "Quoted" }],
+          "children": [
+            { "type": "bulletListItem", "content": [{ "type": "text", "text": "item" }] },
+            { "type": "paragraph", "content": [{ "type": "text", "text": "More" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an empty comment is the text of a quote whose first Block is a paragraph",
+      "markdown": "> <!-- -->\n>\n> Paragraph",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "quote",
+          "children": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Paragraph" }] }]
+        }
+      ]
+    },
+    {
+      "name": "an empty quote",
+      "markdown": ">",
+      "gfm": true,
+      "blocks": [{ "type": "quote" }]
+    },
+    {
+      "name": "quote colors",
+      "markdown": "> Quoted {background=\"gray\"}",
+      "blocks": [
+        {
+          "type": "quote",
+          "props": { "backgroundColor": "gray" },
+          "content": [{ "type": "text", "text": "Quoted" }]
+        }
+      ]
+    },
+    {
+      "name": "the default callout is a tip",
+      "markdown": "> [!TIP]\n> The default callout",
+      "gfm": true,
+      "reads": ["> [!tip]\n> The default callout"],
+      "blocks": [{ "type": "callout", "content": [{ "type": "text", "text": "The default callout" }] }]
+    },
+    {
+      "name": "callouts with an alert's icon are alerts",
+      "markdown": "> [!NOTE]\n> Note\n\n> [!IMPORTANT]\n> Important\n\n> [!WARNING]\n> Warning\n\n> [!CAUTION]\n> Caution",
+      "gfm": true,
+      "blocks": [
+        { "type": "callout", "props": { "icon": "ℹ️" }, "content": [{ "type": "text", "text": "Note" }] },
+        {
+          "type": "callout",
+          "props": { "icon": "❗" },
+          "content": [{ "type": "text", "text": "Important" }]
+        },
+        {
+          "type": "callout",
+          "props": { "icon": "⚠️" },
+          "content": [{ "type": "text", "text": "Warning" }]
+        },
+        {
+          "type": "callout",
+          "props": { "icon": "🛑" },
+          "content": [{ "type": "text", "text": "Caution" }]
+        }
+      ]
+    },
+    {
+      "name": "an alert's Blocks",
+      "markdown": "> [!WARNING]\n> Careful\n>\n> - First step",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "callout",
+          "props": { "icon": "⚠️" },
+          "content": [{ "type": "text", "text": "Careful" }],
+          "children": [
+            { "type": "bulletListItem", "content": [{ "type": "text", "text": "First step" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an empty alert",
+      "markdown": "> [!NOTE]",
+      "gfm": true,
+      "blocks": [{ "type": "callout", "props": { "icon": "ℹ️" } }]
+    },
+    {
+      "name": "an empty comment is the text of an alert whose first Block is a paragraph",
+      "markdown": "> [!NOTE]\n> <!-- -->\n>\n> Paragraph",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "callout",
+          "props": { "icon": "ℹ️" },
+          "children": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Paragraph" }] }]
+        }
+      ]
+    },
+    {
+      "name": "alert colors",
+      "markdown": "> [!TIP]\n> Tinted {background=\"blue\"}",
+      "blocks": [
+        {
+          "type": "callout",
+          "props": { "backgroundColor": "blue" },
+          "content": [{ "type": "text", "text": "Tinted" }]
+        }
+      ]
+    },
+    {
+      "name": "a callout with another icon",
+      "markdown": ":::callout[Pinned]{icon=\"📌\"}\n:::",
+      "blocks": [
+        { "type": "callout", "props": { "icon": "📌" }, "content": [{ "type": "text", "text": "Pinned" }] }
+      ]
+    },
+    {
+      "name": "a callout's Blocks, colors and line breaks",
+      "markdown": ":::callout[Heads up<br>second line]{icon=\"📌\" color=\"red\" background=\"yellow\"}\n  - detail\n:::",
+      "blocks": [
+        {
+          "type": "callout",
+          "props": { "icon": "📌", "textColor": "red", "backgroundColor": "yellow" },
+          "content": [{ "type": "text", "text": "Heads up\nsecond line" }],
+          "children": [{ "type": "bulletListItem", "content": [{ "type": "text", "text": "detail" }] }]
+        }
+      ]
+    },
+    {
+      "name": "a callout with no text",
+      "markdown": ":::callout{icon=\"📌\"}\n  Paragraph inside\n:::",
+      "blocks": [
+        {
+          "type": "callout",
+          "props": { "icon": "📌" },
+          "children": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Paragraph inside" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a toggle",
+      "markdown": ":::toggle[Details]\n  Hidden paragraph\n:::",
+      "nodexReads": [":::toggle[Details]\nHidden paragraph\n:::"],
+      "blocks": [
+        {
+          "type": "toggleListItem",
+          "content": [{ "type": "text", "text": "Details" }],
+          "children": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Hidden paragraph" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a toggle with nothing inside",
+      "markdown": ":::toggle[**Nothing** inside yet]{background=\"purple\"}\n:::",
+      "blocks": [
+        {
+          "type": "toggleListItem",
+          "props": { "backgroundColor": "purple" },
+          "content": [
+            { "type": "text", "text": "Nothing", "styles": { "bold": true } },
+            { "type": "text", "text": " inside yet" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a container inside a list item",
+      "markdown": "- Item\n\n  :::toggle[More]\n    Hidden\n  :::",
+      "blocks": [
+        {
+          "type": "bulletListItem",
+          "content": [{ "type": "text", "text": "Item" }],
+          "children": [
+            {
+              "type": "toggleListItem",
+              "content": [{ "type": "text", "text": "More" }],
+              "children": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Hidden" }] }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "containers inside a quote inside a list item",
+      "markdown": "- Item\n\n  > [!NOTE]\n  > Inside\n  >\n  > :::toggle[Deeper]\n  >   :::callout[Deepest]{icon=\"📌\"}\n  >   :::\n  > :::",
+      "blocks": [
+        {
+          "type": "bulletListItem",
+          "content": [{ "type": "text", "text": "Item" }],
+          "children": [
+            {
+              "type": "callout",
+              "props": { "icon": "ℹ️" },
+              "content": [{ "type": "text", "text": "Inside" }],
+              "children": [
+                {
+                  "type": "toggleListItem",
+                  "content": [{ "type": "text", "text": "Deeper" }],
+                  "children": [
+                    {
+                      "type": "callout",
+                      "props": { "icon": "📌" },
+                      "content": [{ "type": "text", "text": "Deepest" }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a code Block",
+      "markdown": "```typescript\nconst a = 1;\n```",
+      "gfm": true,
+      "reads": ["```ts\nconst a = 1;\n```", "~~~ts title=a.ts\nconst a = 1;\n~~~"],
+      "blocks": [
+        {
+          "type": "codeBlock",
+          "props": { "language": "typescript" },
+          "content": [{ "type": "text", "text": "const a = 1;" }]
+        }
+      ]
+    },
+    {
+      "name": "code without a language",
+      "markdown": "```\nplain\n```",
+      "gfm": true,
+      "reads": ["    plain", "```text\nplain\n```"],
+      "blocks": [{ "type": "codeBlock", "content": [{ "type": "text", "text": "plain" }] }]
+    },
+    {
+      "name": "a code fence is longer than the code's backticks",
+      "markdown": "````\n```\ninner\n```\n````",
+      "gfm": true,
+      "blocks": [{ "type": "codeBlock", "content": [{ "type": "text", "text": "```\ninner\n```" }] }]
+    },
+    {
+      "name": "empty code",
+      "markdown": "```\n```",
+      "gfm": true,
+      "reads": ["```\n\n```"],
+      "blocks": [{ "type": "codeBlock" }]
+    },
+    {
+      "name": "code keeps its text as written",
+      "markdown": "```\n  - not a list\n\n\tTabbed *not emphasis*\n```",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "codeBlock",
+          "content": [{ "type": "text", "text": "  - not a list\n\n\tTabbed *not emphasis*" }]
+        }
+      ]
+    },
+    {
+      "name": "code in a list item",
+      "markdown": "- Run:\n\n  ```bash\n  npm test\n  ```",
+      "gfm": true,
+      "reads": ["- Run:\n  ```sh\n  npm test\n  ```"],
+      "blocks": [
+        {
+          "type": "bulletListItem",
+          "content": [{ "type": "text", "text": "Run:" }],
+          "children": [
+            {
+              "type": "codeBlock",
+              "props": { "language": "bash" },
+              "content": [{ "type": "text", "text": "npm test" }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an equation",
+      "markdown": "$$\nE = mc^2\n$$",
+      "nodexReads": ["```math\nE = mc^2\n```", "\\[\nE = mc^2\n\\]"],
+      "gfm": true,
+      "blocks": [{ "type": "mathBlock", "content": [{ "type": "text", "text": "E = mc^2" }] }]
+    },
+    {
+      "name": "an equation fence is longer than its dollar lines",
+      "markdown": "$$$\n$$\n$$$",
+      "gfm": true,
+      "blocks": [{ "type": "mathBlock", "content": [{ "type": "text", "text": "$$" }] }]
+    },
+    {
+      "name": "a divider",
+      "markdown": "Above\n\n---\n\nBelow",
+      "gfm": true,
+      "reads": ["Above\n\n***\n\nBelow", "Above\n\n___\n\nBelow", "Above\n\n- - -\n\nBelow"],
+      "blocks": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Above" }] },
+        { "type": "divider" },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Below" }] }
+      ]
+    },
+    {
+      "name": "a table",
+      "markdown": "| Name | Score |\n| --- | ---: |\n| Alpha | 10 |\n| Beta | 2 |",
+      "gfm": true,
+      "reads": [
+        "Name | Score\n--- | ---:\nAlpha | 10\nBeta | 2",
+        "| Name | Score |\n|:-|-:|\n| Alpha | 10 |\n| Beta | 2 | extra |"
+      ],
+      "blocks": [
+        {
+          "type": "table",
+          "content": {
+            "type": "tableContent",
+            "headerRows": 1,
+            "rows": [
+              {
+                "cells": [
+                  { "content": [{ "type": "text", "text": "Name" }] },
+                  { "props": { "textAlignment": "right" }, "content": [{ "type": "text", "text": "Score" }] }
+                ]
+              },
+              {
+                "cells": [
+                  { "content": [{ "type": "text", "text": "Alpha" }] },
+                  { "props": { "textAlignment": "right" }, "content": [{ "type": "text", "text": "10" }] }
+                ]
+              },
+              {
+                "cells": [
+                  { "content": [{ "type": "text", "text": "Beta" }] },
+                  { "props": { "textAlignment": "right" }, "content": [{ "type": "text", "text": "2" }] }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a table's cells hold text",
+      "markdown": "| a \\| b | **bold** |\n| :---: | --- |\n| `code` | [link](https://example.com) |",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "table",
+          "content": {
+            "type": "tableContent",
+            "headerRows": 1,
+            "rows": [
+              {
+                "cells": [
+                  { "props": { "textAlignment": "center" }, "content": [{ "type": "text", "text": "a | b" }] },
+                  { "content": [{ "type": "text", "text": "bold", "styles": { "bold": true } }] }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "props": { "textAlignment": "center" },
+                    "content": [{ "type": "text", "text": "code", "styles": { "code": true } }]
+                  },
+                  {
+                    "content": [
+                      {
+                        "type": "link",
+                        "href": "https://example.com",
+                        "content": [{ "type": "text", "text": "link" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "empty cells",
+      "markdown": "| a | |\n| --- | --- |\n| | b |",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "table",
+          "content": {
+            "type": "tableContent",
+            "headerRows": 1,
+            "rows": [
+              { "cells": [{ "content": [{ "type": "text", "text": "a" }] }, { "content": [] }] },
+              { "cells": [{ "content": [] }, { "content": [{ "type": "text", "text": "b" }] }] }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a line break in a cell is <br>",
+      "markdown": "| one<br>two |\n| --- |\n| three |",
+      "blocks": [
+        {
+          "type": "table",
+          "content": {
+            "type": "tableContent",
+            "headerRows": 1,
+            "rows": [
+              { "cells": [{ "content": [{ "type": "text", "text": "one\ntwo" }] }] },
+              { "cells": [{ "content": [{ "type": "text", "text": "three" }] }] }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a table with no header row",
+      "markdown": ":::table{header=\"none\"}\n  | a | b |\n  | --- | --- |\n  | c | d |\n:::",
+      "blocks": [
+        {
+          "type": "table",
+          "content": {
+            "type": "tableContent",
+            "rows": [
+              {
+                "cells": [
+                  { "content": [{ "type": "text", "text": "a" }] },
+                  { "content": [{ "type": "text", "text": "b" }] }
+                ]
+              },
+              {
+                "cells": [
+                  { "content": [{ "type": "text", "text": "c" }] },
+                  { "content": [{ "type": "text", "text": "d" }] }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a table's header column, widths and color",
+      "markdown": ":::table{header=\"both\" widths=\"160,auto\" color=\"blue\"}\n  | Key | Value |\n  | --- | --- |\n  | a | 1 |\n:::",
+      "blocks": [
+        {
+          "type": "table",
+          "props": { "textColor": "blue" },
+          "content": {
+            "type": "tableContent",
+            "columnWidths": [160, null],
+            "headerRows": 1,
+            "headerCols": 1,
+            "rows": [
+              {
+                "cells": [
+                  { "content": [{ "type": "text", "text": "Key" }] },
+                  { "content": [{ "type": "text", "text": "Value" }] }
+                ]
+              },
+              {
+                "cells": [
+                  { "content": [{ "type": "text", "text": "a" }] },
+                  { "content": [{ "type": "text", "text": "1" }] }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a cell's background",
+      "markdown": "| Task | State |\n| --- | --- |\n| Ship | Done {background=\"green\"} |",
+      "blocks": [
+        {
+          "type": "table",
+          "content": {
+            "type": "tableContent",
+            "headerRows": 1,
+            "rows": [
+              {
+                "cells": [
+                  { "content": [{ "type": "text", "text": "Task" }] },
+                  { "content": [{ "type": "text", "text": "State" }] }
+                ]
+              },
+              {
+                "cells": [
+                  { "content": [{ "type": "text", "text": "Ship" }] },
+                  {
+                    "props": { "backgroundColor": "green" },
+                    "content": [{ "type": "text", "text": "Done" }]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "an image",
+      "markdown": "![Diagram](https://example.com/diagram.png)",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "image",
+          "props": { "url": "https://example.com/diagram.png", "caption": "Diagram" }
+        }
+      ]
+    },
+    {
+      "name": "an image without a caption",
+      "markdown": "![](https://example.com/diagram.png)",
+      "gfm": true,
+      "blocks": [{ "type": "image", "props": { "url": "https://example.com/diagram.png" } }]
+    },
+    {
+      "name": "an image that is still uploading",
+      "markdown": "![Uploading]()",
+      "gfm": true,
+      "blocks": [{ "type": "image", "props": { "caption": "Uploading" } }]
+    },
+    {
+      "name": "an image URL in angle brackets",
+      "markdown": "![Plan](<https://example.com/my plan.png>)",
+      "gfm": true,
+      "blocks": [
+        { "type": "image", "props": { "url": "https://example.com/my plan.png", "caption": "Plan" } }
+      ]
+    },
+    {
+      "name": "an image's width follows its caption after a pipe",
+      "markdown": "![Diagram|420](nodex://files/file-1)",
+      "blocks": [
+        {
+          "type": "image",
+          "props": {
+            "url": "nodex://files/file-1",
+            "caption": "Diagram",
+            "previewWidth": 420
+          }
+        }
+      ]
+    },
+    {
+      "name": "an image with a width and no caption",
+      "markdown": "![|480](https://example.com/d.png)",
+      "blocks": [
+        {
+          "type": "image",
+          "props": {
+            "url": "https://example.com/d.png",
+            "previewWidth": 480
+          }
+        }
+      ]
+    },
+    {
+      "name": "a caption that ends like a width keeps its pipe escaped",
+      "markdown": "![Score \\|10](https://example.com/s.png)",
+      "blocks": [
+        {
+          "type": "image",
+          "props": {
+            "url": "https://example.com/s.png",
+            "caption": "Score |10"
+          }
+        }
+      ]
+    },
+    {
+      "name": "an image alone on its line is a Block",
+      "markdown": "Before\n\n![Diagram](https://example.com/d.png)\n\nAfter",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Before"
+            }
+          ]
+        },
+        {
+          "type": "image",
+          "props": {
+            "url": "https://example.com/d.png",
+            "caption": "Diagram"
+          }
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "After"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a caption is plain text",
+      "markdown": "![Step \\*1*](https://example.com/s.png)",
+      "blocks": [
+        { "type": "image", "props": { "url": "https://example.com/s.png", "caption": "Step *1*" } }
+      ]
+    },
+    {
+      "name": "an owning Page",
+      "markdown": "::page{id=\"page-1\"}",
+      "blocks": [{ "id": "page-1", "type": "page" }]
+    },
+    {
+      "name": "an owning Database and Canvas",
+      "markdown": "::database{id=\"database-1\"}\n\n::canvas{id=\"canvas-1\"}",
+      "blocks": [
+        { "id": "database-1", "type": "database" },
+        { "id": "canvas-1", "type": "canvas" }
+      ]
+    },
+    {
+      "name": "Block references",
+      "markdown": "::page-ref{page=\"page-2\"}\n\n::database-view-ref{view=\"view-1\" hint=\"Planning\"}\n\n::synced-block-ref{source=\"block-9\"}\n\n::template-ref{source=\"block-7\" hint=\"Review\"}",
+      "blocks": [
+        { "type": "pageRef", "props": { "targetBlockId": "page-2" } },
+        { "type": "databaseViewRef", "props": { "databaseViewId": "view-1", "displayHint": "Planning" } },
+        { "type": "syncedBlockRef", "props": { "sourceBlockId": "block-9" } },
+        { "type": "templateRef", "props": { "sourceBlockId": "block-7", "displayHint": "Review" } }
+      ]
+    },
+    {
+      "name": "a quotation mark in an attribute value is a character reference",
+      "markdown": "::database-view-ref{view=\"view-1\" hint=\"Say &quot;hi&quot; & wave\"}",
+      "blocks": [
+        {
+          "type": "databaseViewRef",
+          "props": {
+            "databaseViewId": "view-1",
+            "displayHint": "Say \"hi\" & wave"
+          }
+        }
+      ]
+    },
+    {
+      "name": "inline styles",
+      "markdown": "**bold** *italic* ~~strike~~ `code`",
+      "nodexReads": ["<b>bold</b> <em>italic</em> <del>strike</del> `code`", "<strong>bold</strong> <i>italic</i> <s>strike</s> `code`"],
+      "gfm": true,
+      "reads": ["__bold__ _italic_ ~strike~ `code`"],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "bold", "styles": { "bold": true } },
+            { "type": "text", "text": " " },
+            { "type": "text", "text": "italic", "styles": { "italic": true } },
+            { "type": "text", "text": " " },
+            { "type": "text", "text": "strike", "styles": { "strike": true } },
+            { "type": "text", "text": " " },
+            { "type": "text", "text": "code", "styles": { "code": true } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "styles nest link, span, bold, italic, strike, code, outermost first",
+      "markdown": "[**`code`** in a link](https://example.com) and ***both***",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "link",
+              "href": "https://example.com",
+              "content": [
+                { "type": "text", "text": "code", "styles": { "bold": true, "code": true } },
+                { "type": "text", "text": " in a link" }
+              ]
+            },
+            { "type": "text", "text": " and " },
+            { "type": "text", "text": "both", "styles": { "bold": true, "italic": true } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "underline and colors are spans",
+      "markdown": ":span[underlined]{underline} :span[red]{color=\"red\"} :span[**marked**]{background=\"yellow\"}",
+      "nodexReads": ["<u>underlined</u> :span[red]{color=\"red\"} :span[**marked**]{background=\"yellow\"}", "<ins>underlined</ins> :span[red]{color=\"red\"} :span[**marked**]{background=\"yellow\"}"],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "underlined", "styles": { "underline": true } },
+            { "type": "text", "text": " " },
+            { "type": "text", "text": "red", "styles": { "textColor": "red" } },
+            { "type": "text", "text": " " },
+            {
+              "type": "text",
+              "text": "marked",
+              "styles": { "bold": true, "backgroundColor": "yellow" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a span gives delimiters the edges they need",
+      "markdown": ":span[**Note:**]plain and a:span[**:b**]",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Note:", "styles": { "bold": true } },
+            { "type": "text", "text": "plain and a" },
+            { "type": "text", "text": ":b", "styles": { "bold": true } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "overlapping styles close and reopen",
+      "markdown": "**a*b***:span[*c*]",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "a", "styles": { "bold": true } },
+            { "type": "text", "text": "b", "styles": { "bold": true, "italic": true } },
+            { "type": "text", "text": "c", "styles": { "italic": true } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "links",
+      "markdown": "Visit https://example.com/docs or [the docs](https://example.com/docs).",
+      "gfm": true,
+      "reads": [
+        "Visit <https://example.com/docs> or [the docs][d].\n\n[d]: https://example.com/docs",
+        "Visit https://example.com/docs or [the docs](https://example.com/docs \"Docs\")."
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Visit " },
+            {
+              "type": "link",
+              "href": "https://example.com/docs",
+              "content": [{ "type": "text", "text": "https://example.com/docs" }]
+            },
+            { "type": "text", "text": " or " },
+            {
+              "type": "link",
+              "href": "https://example.com/docs",
+              "content": [{ "type": "text", "text": "the docs" }]
+            },
+            { "type": "text", "text": "." }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a URL that is text",
+      "markdown": "https\\://example.com is not a link",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [{ "type": "text", "text": "https://example.com is not a link" }]
+        }
+      ]
+    },
+    {
+      "name": "a link URL in angle brackets",
+      "markdown": "[Plan](<https://example.com/my plan>)",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "link",
+              "href": "https://example.com/my plan",
+              "content": [{ "type": "text", "text": "Plan" }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a link to a Page keeps its text",
+      "markdown": "[Roadmap](nodex://pages/page-1)",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "link",
+              "href": "nodex://pages/page-1",
+              "content": [{ "type": "text", "text": "Roadmap" }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a Page mention is an autolink to the Page",
+      "markdown": "See <nodex://pages/page-1> first",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "See " },
+            { "type": "pageMention", "props": { "targetPageId": "page-1" } },
+            { "type": "text", "text": " first" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "date mentions",
+      "markdown": ":date{start=\"2026-10-27\"} to :date{start=\"2026-10-27T09:00:00+08:00\" end=\"2026-10-27T10:00:00+08:00\" tz=\"Asia/Shanghai\" format=\"relative\" time-format=\"24h\" reminder=\"minute:10\"}",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "dateMention", "props": { "start": "2026-10-27" } },
+            { "type": "text", "text": " to " },
+            {
+              "type": "dateMention",
+              "props": {
+                "start": "2026-10-27T09:00:00+08:00",
+                "end": "2026-10-27T10:00:00+08:00",
+                "tz": "Asia/Shanghai",
+                "format": "relative",
+                "timeFormat": "24h",
+                "reminder": "minute:10"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a chat mention is an autolink to the Session",
+      "markdown": "Continue in <nodex://sessions/session-1>",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Continue in "
+            },
+            {
+              "type": "threadMention",
+              "props": {
+                "uuid": "session-1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "attachments",
+      "markdown": ":attachment{kind=\"file\" source=\"nodex://files/file-1\" name=\"notes.txt\" mime=\"text/plain\" bytes=\"12\" origin=\"paste\"} and :attachment{kind=\"folder\" mode=\"link\" source=\"/Users/me/project\" name=\"project\"}",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "attachment",
+              "props": {
+                "kind": "file",
+                "source": "nodex://files/file-1",
+                "name": "notes.txt",
+                "mimeType": "text/plain",
+                "bytes": 12,
+                "origin": "paste"
+              }
+            },
+            { "type": "text", "text": " and " },
+            {
+              "type": "attachment",
+              "props": {
+                "kind": "folder",
+                "mode": "link",
+                "source": "/Users/me/project",
+                "name": "project"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Agent config",
+      "markdown": ":agent-config{mode=\"plan\" provider=\"openai\" model=\"gpt-5\" reasoning=\"high\" speed=\"fast\"} Plan it\n\n:agent-config{} Inherit everything",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "agentConfig",
+              "props": {
+                "mode": "plan",
+                "provider": "openai",
+                "model": "gpt-5",
+                "reasoning": "high",
+                "speed": "fast"
+              }
+            },
+            { "type": "text", "text": " Plan it" }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [{ "type": "agentConfig" }, { "type": "text", "text": " Inherit everything" }]
+        }
+      ]
+    },
+    {
+      "name": "inline math",
+      "markdown": "Energy $$E = mc^2$$ and $$$a $$ b$$$",
+      "nodexReads": ["Energy \\(E = mc^2\\) and $$$a $$ b$$$", "Energy \\[E = mc^2\\] and $$$a $$ b$$$"],
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Energy " },
+            { "type": "math", "content": "E = mc^2" },
+            { "type": "text", "text": " and " },
+            { "type": "math", "content": "a $$ b" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "code spans",
+      "markdown": "``a`b`` and ``` `` ``` and `  x  `",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "a`b", "styles": { "code": true } },
+            { "type": "text", "text": " and " },
+            { "type": "text", "text": "``", "styles": { "code": true } },
+            { "type": "text", "text": " and " },
+            { "type": "text", "text": " x ", "styles": { "code": true } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "directive syntax in code is code",
+      "markdown": "`::page{id=\"page-1\"}` and `:date{start=\"2026-10-27\"}` are code",
+      "gfm": true,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "::page{id=\"page-1\"}",
+              "styles": {
+                "code": true
+              }
+            },
+            {
+              "type": "text",
+              "text": " and "
+            },
+            {
+              "type": "text",
+              "text": ":date{start=\"2026-10-27\"}",
+              "styles": {
+                "code": true
+              }
+            },
+            {
+              "type": "text",
+              "text": " are code"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a backslash in an attribute value is itself",
+      "markdown": ":attachment{kind=\"file\" mode=\"link\" source=\"C:\\tmp\\notes.txt\" name=\"notes.txt\"}",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "attachment",
+              "props": {
+                "kind": "file",
+                "mode": "link",
+                "source": "C:\\tmp\\notes.txt",
+                "name": "notes.txt"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a Page that uses almost every form",
+      "markdown": "# Launch plan {color=\"blue\"}\n\nShip **v2** to *every* team by :date{start=\"2026-11-20\"}. Notes live in <nodex://pages/page-notes>; the old plan is [Roadmap](nodex://pages/page-roadmap).\nLine two keeps ~~old~~ `code`, :span[underlined]{underline} and :span[red]{color=\"red\"} text, and $$E = mc^2$$ inline.\n\n> [!WARNING]\n> Freeze merges the day before.\n\n:::callout[Budget approved<br>legal review pending]{icon=\"💰\" background=\"yellow\"}\n  - Contract :attachment{kind=\"file\" source=\"nodex://files/file-contract\" name=\"contract.pdf\" mime=\"application/pdf\" bytes=\"48213\"}\n:::\n\n## Checklist\n\n- [x] Draft announcement {background=\"green\"}\n- [ ] Record demo\n  - [ ] Script\n1. Staging\n2. Production\n- <!-- -->\n\n  A paragraph under an empty bullet\n\n:::paragraph[Outline notes]\n  :::paragraph[Week 1]\n    Kickoff with <nodex://sessions/session-kickoff>\n  :::\n:::\n\n<br>\n\n:::toggle[Rollback steps]{color=\"gray\"}\n  ```bash\n  ./rollback.sh --to v1\n  ```\n:::\n\n:::toggle[Risks]{heading=\"3\"}\n  | Risk | Impact |\n  | --- | :---: |\n  | Load | High {background=\"red\"} |\n:::\n\n:::table{header=\"none\" widths=\"160,auto\"}\n  | Region | EU |\n  | --- | --- |\n  | Window | 02:00–04:00 |\n:::\n\n> Quoted from the review:\n> keep it small\n\n---\n\n![Architecture|480](nodex://files/file-arch)\n\n$$\n\\sum_{i=1}^{n} x_i\n$$\n\n\\- not a list, :span[**Note:**]plain, https\\://example.com stays text\n\n:agent-config{mode=\"plan\" model=\"gpt-5\" reasoning=\"high\"} Plan the rollout\n\n::page{id=\"page-retro\"}\n\n::page-ref{page=\"page-roadmap\"}\n\n::database-view-ref{view=\"view-launch\" hint=\"Board\"}",
+      "blocks": [
+        {
+          "type": "heading",
+          "props": {
+            "textColor": "blue"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Launch plan"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Ship "
+            },
+            {
+              "type": "text",
+              "text": "v2",
+              "styles": {
+                "bold": true
+              }
+            },
+            {
+              "type": "text",
+              "text": " to "
+            },
+            {
+              "type": "text",
+              "text": "every",
+              "styles": {
+                "italic": true
+              }
+            },
+            {
+              "type": "text",
+              "text": " team by "
+            },
+            {
+              "type": "dateMention",
+              "props": {
+                "start": "2026-11-20"
+              }
+            },
+            {
+              "type": "text",
+              "text": ". Notes live in "
+            },
+            {
+              "type": "pageMention",
+              "props": {
+                "targetPageId": "page-notes"
+              }
+            },
+            {
+              "type": "text",
+              "text": "; the old plan is "
+            },
+            {
+              "type": "link",
+              "href": "nodex://pages/page-roadmap",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Roadmap"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ".\nLine two keeps "
+            },
+            {
+              "type": "text",
+              "text": "old",
+              "styles": {
+                "strike": true
+              }
+            },
+            {
+              "type": "text",
+              "text": " "
+            },
+            {
+              "type": "text",
+              "text": "code",
+              "styles": {
+                "code": true
+              }
+            },
+            {
+              "type": "text",
+              "text": ", "
+            },
+            {
+              "type": "text",
+              "text": "underlined",
+              "styles": {
+                "underline": true
+              }
+            },
+            {
+              "type": "text",
+              "text": " and "
+            },
+            {
+              "type": "text",
+              "text": "red",
+              "styles": {
+                "textColor": "red"
+              }
+            },
+            {
+              "type": "text",
+              "text": " text, and "
+            },
+            {
+              "type": "math",
+              "content": "E = mc^2"
+            },
+            {
+              "type": "text",
+              "text": " inline."
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "props": {
+            "icon": "⚠️"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Freeze merges the day before."
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "props": {
+            "icon": "💰",
+            "backgroundColor": "yellow"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Budget approved\nlegal review pending"
+            }
+          ],
+          "children": [
+            {
+              "type": "bulletListItem",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Contract "
+                },
+                {
+                  "type": "attachment",
+                  "props": {
+                    "kind": "file",
+                    "source": "nodex://files/file-contract",
+                    "name": "contract.pdf",
+                    "mimeType": "application/pdf",
+                    "bytes": 48213
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "props": {
+            "level": 2
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Checklist"
+            }
+          ]
+        },
+        {
+          "type": "checkListItem",
+          "props": {
+            "checked": true,
+            "backgroundColor": "green"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Draft announcement"
+            }
+          ]
+        },
+        {
+          "type": "checkListItem",
+          "content": [
+            {
+              "type": "text",
+              "text": "Record demo"
+            }
+          ],
+          "children": [
+            {
+              "type": "checkListItem",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Script"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "numberedListItem",
+          "content": [
+            {
+              "type": "text",
+              "text": "Staging"
+            }
+          ]
+        },
+        {
+          "type": "numberedListItem",
+          "content": [
+            {
+              "type": "text",
+              "text": "Production"
+            }
+          ]
+        },
+        {
+          "type": "bulletListItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "A paragraph under an empty bullet"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Outline notes"
+            }
+          ],
+          "children": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Week 1"
+                }
+              ],
+              "children": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Kickoff with "
+                    },
+                    {
+                      "type": "threadMention",
+                      "props": {
+                        "uuid": "session-kickoff"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph"
+        },
+        {
+          "type": "toggleListItem",
+          "props": {
+            "textColor": "gray"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Rollback steps"
+            }
+          ],
+          "children": [
+            {
+              "type": "codeBlock",
+              "props": {
+                "language": "bash"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "./rollback.sh --to v1"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "props": {
+            "level": 3,
+            "isToggleable": true
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Risks"
+            }
+          ],
+          "children": [
+            {
+              "type": "table",
+              "content": {
+                "type": "tableContent",
+                "headerRows": 1,
+                "rows": [
+                  {
+                    "cells": [
+                      {
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Risk"
+                          }
+                        ]
+                      },
+                      {
+                        "props": {
+                          "textAlignment": "center"
+                        },
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Impact"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "cells": [
+                      {
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Load"
+                          }
+                        ]
+                      },
+                      {
+                        "props": {
+                          "backgroundColor": "red",
+                          "textAlignment": "center"
+                        },
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "High"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "content": {
+            "type": "tableContent",
+            "columnWidths": [
+              160,
+              null
+            ],
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Region"
+                      }
+                    ]
+                  },
+                  {
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "EU"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Window"
+                      }
+                    ]
+                  },
+                  {
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "02:00–04:00"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "quote",
+          "content": [
+            {
+              "type": "text",
+              "text": "Quoted from the review:\nkeep it small"
+            }
+          ]
+        },
+        {
+          "type": "divider"
+        },
+        {
+          "type": "image",
+          "props": {
+            "url": "nodex://files/file-arch",
+            "caption": "Architecture",
+            "previewWidth": 480
+          }
+        },
+        {
+          "type": "mathBlock",
+          "content": [
+            {
+              "type": "text",
+              "text": "\\sum_{i=1}^{n} x_i"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "- not a list, "
+            },
+            {
+              "type": "text",
+              "text": "Note:",
+              "styles": {
+                "bold": true
+              }
+            },
+            {
+              "type": "text",
+              "text": "plain, https://example.com stays text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "agentConfig",
+              "props": {
+                "mode": "plan",
+                "model": "gpt-5",
+                "reasoning": "high"
+              }
+            },
+            {
+              "type": "text",
+              "text": " Plan the rollout"
+            }
+          ]
+        },
+        {
+          "id": "page-retro",
+          "type": "page"
+        },
+        {
+          "type": "pageRef",
+          "props": {
+            "targetBlockId": "page-roadmap"
+          }
+        },
+        {
+          "type": "databaseViewRef",
+          "props": {
+            "databaseViewId": "view-launch",
+            "displayHint": "Board"
+          }
+        }
+      ]
+    },
+    {
+      "name": "an image within text is inline",
+      "markdown": "Before ![icon](icon.svg) after",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Before " },
+            { "type": "inlineImage", "props": { "url": "icon.svg", "alt": "icon" } },
+            { "type": "text", "text": " after" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a linked inline image with a width",
+      "markdown": "[![build|16](badge.svg)](https://example.com)",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "inlineImage",
+              "props": { "url": "badge.svg", "alt": "build", "width": 16, "href": "https://example.com" }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "rejects": [
+    {
+      "name": "an unclosed container",
+      "markdown": ":::toggle[Open]\nNever closed",
+      "reason": "The toggle has no closing fence."
+    },
+    {
+      "name": "an attribute a directive does not take",
+      "markdown": "::page{uuid=\"page-1\"}",
+      "reason": "A Page takes `id`."
+    },
+    {
+      "name": "a color Nodex does not have",
+      "markdown": "Text {color=\"teal\"}",
+      "reason": "`teal` is not a Nodex color."
+    },
+    {
+      "name": "raw HTML",
+      "markdown": "<details>\n<summary>More</summary>\n\nHidden\n\n</details>",
+      "reason": "HTML is not Nodex content; a toggle is `:::toggle[More]`."
+    },
+    {
+      "name": "a date that is not a date",
+      "markdown": ":date{start=\"tomorrow\"}",
+      "reason": "`start` is a date or a date and time."
+    },
+    {
+      "name": "an owning Page without its identity",
+      "markdown": "::page",
+      "reason": "A Page needs its `id`; a new Page is created with its own command."
+    },
+    {
+      "name": "a line of colons that closes nothing",
+      "markdown": ":::toggle[Open]\n  Inside\nOutside\n:::",
+      "reason": "The toggle's body ends at `Outside`, so the `:::` after it closes nothing."
+    },
+    {
+      "name": "a single-quoted attribute value",
+      "markdown": "::page{id='page-1'}",
+      "reason": "Attribute values are double-quoted."
+    },
+    {
+      "name": "an HTML tag Nodex has no style for",
+      "markdown": "Press <kbd>Ctrl</kbd>",
+      "reason": "Nodex has no keyboard style; write `Ctrl` as code."
+    }
+  ],
+  "boundaryReads": [
+    {
+      "name": "a container without its closing line ends with its indented body",
+      "markdown": ":::toggle[Open]\n  Inside\n\nAfter",
+      "blocks": [
+        {
+          "type": "toggleListItem",
+          "content": [
+            {
+              "type": "text",
+              "text": "Open"
+            }
+          ],
+          "children": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inside"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "After"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an unindented container without its closing line runs to the end, as a reply streams",
+      "markdown": ":::toggle[Streaming]\nFirst\n\n- still inside",
+      "blocks": [
+        {
+          "type": "toggleListItem",
+          "content": [
+            {
+              "type": "text",
+              "text": "Streaming"
+            }
+          ],
+          "children": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "First"
+                }
+              ]
+            },
+            {
+              "type": "bulletListItem",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "still inside"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a tag Nodex has no style for keeps its text",
+      "markdown": "Press <kbd>Ctrl</kbd>",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Press Ctrl"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a single-quoted attribute value leaves the directive as text",
+      "markdown": "::page{id='page-1'}",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "::page{id='page-1'}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

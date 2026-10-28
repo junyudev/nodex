@@ -90,6 +90,7 @@
     "version-surfaces:audit": "tsx scripts/audit-version-surfaces.ts",
     "core:protocol:generate": "tsx scripts/core-protocol.ts generate",
     "core:protocol:verify": "tsx scripts/core-protocol.ts verify",
+    "nodex-markdown:wasm:generate": "tsx scripts/build-nodex-markdown-wasm.ts",
     "page-search:wasm:generate": "tsx scripts/build-page-search-wasm.ts",
     "core:test:client": "vp run test:core-client",
     "core:test:electron-authority": "tsx scripts/testing/run-tests.ts integration src/main/rust-data-authority.integration.ts",
@@ -184,7 +185,11 @@
     "test:agent-runtime:related": "tsx scripts/testing/run-tests.ts agent-runtime --related",
     "electron:prepare": "tsx scripts/prepare-electron-runtime-cli.ts",
     "core:binaries:prepare:dev": "tsx scripts/rust-dev-runtime.ts",
-    "cache:report": "tsx scripts/tooling/cache-report.ts"
+    "cache:report": "tsx scripts/tooling/cache-report.ts",
+    "nodex-markdown:test:read-performance": "cargo test -p nodex-markdown --release --lib read::tests::adversarial_read_timings -- --exact --include-ignored --nocapture --test-threads=1",
+    "nodex-markdown:test:write-profile": "cargo test -p nodex-markdown --release --lib write::tests::adversarial_write_timings -- --exact --include-ignored --nocapture --test-threads=1",
+    "nodex-markdown:test:write-performance": "cargo test -p nodex-markdown --release --lib write::tests::linear_writer_hotspot_timings -- --exact --include-ignored --nocapture --test-threads=1",
+    "nodex-markdown:test:escape-equivalence": "cargo test -p nodex-markdown --release --lib write::escapes::performance::corpus_minimizations_match_exhaustive -- --exact --include-ignored --nocapture --test-threads=1"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.0.2",

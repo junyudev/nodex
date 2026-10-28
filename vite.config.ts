@@ -27,6 +27,7 @@ const generatedOrExternalPaths = [
   "scripts/fixtures/tooling/**",
   "scripts/scenarios/artifacts/**",
   "src/renderer/generated/**",
+  "src/shared/generated/**",
   "src/renderer/**/*.generated.*",
   "**/fixtures/**",
   "**/test-fixtures/**",
@@ -35,10 +36,11 @@ const generatedOrExternalPaths = [
 ];
 
 // Whitespace and delimiters are protocol data in these syntax references.
-// Formatting them can silently change the Nested Markdown examples they define.
+// Formatting them can silently change the examples they define.
 const rawMarkdownReferencePaths = [
   "agent-skills/nodex/references/nested-markdown.md",
   "docs/references/nested-markdown-spec.md",
+  "docs/references/nodex-markdown.md",
   "docs/references/notion-flavored-markdown-syntax-sample.md",
 ];
 
