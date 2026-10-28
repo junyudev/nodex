@@ -7,6 +7,7 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { CodexSidebarThreadItem, Project } from "@/lib/types";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { TestQueryProvider } from "../../test/query";
+import { emptySessionLinkedPageStore } from "../../test/session-linked-page";
 import { CodexProjectRow, CodexSidebarSection, CodexSidebarThreadRow } from "./codex-sidebar";
 import {
   SidebarThreadDropContainer,
@@ -1136,6 +1137,7 @@ describe("sidebar thread reorder in Chromium", () => {
                   >
                     <CodexSidebarThreadRow
                       item={THREAD}
+                      linkedPageStore={emptySessionLinkedPageStore}
                       active={false}
                       hoverCardBranchName="codex/stable-ref"
                       hoverCardProjectLabel="Project alpha"
