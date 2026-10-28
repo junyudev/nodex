@@ -23,9 +23,14 @@ src/shared/markdown/markdown-paste.test.ts
 src/renderer/components/board/editor/nfm-editor-extensions.test.ts
   s_819b31638169c3::t_30ccd86cbb4542 107,113,141,148,222-223,225-226
   s_819b31638169c3::t_7f675d9c100ba5 108-112,202-208,224,230-231,309-316
+  s_4b53f1a3b989a8::t_15146f00bd3fba 279,282-285
+  s_4b53f1a3b989a8::t_c0462b07b432f8 158,185-191,196
 src/renderer/components/board/editor/nfm-editor-extensions.ts
   s_819b31638169c3::t_b9ec805296ae21 2,732-734,742,745
   s_819b31638169c3::t_6b9587a72b668b 755-756
+  s_4b53f1a3b989a8::t_402d4e0de36385 643-644,646,738,740-741,743-744,746-747
+  s_4b53f1a3b989a8::t_f6f5e393098a5d 751-754
+  s_4b53f1a3b989a8::t_60adbd18c4c6b6 645
 src/shared/markdown/__fixtures__/rich-html-paste.ts
   s_819b31638169c3::t_e3b80831f823cd 1-39
 ---
@@ -35,6 +40,14 @@ src/shared/markdown/__fixtures__/rich-html-paste.ts
   "base_commit_sha": "41966a5d93044dbb8ff2e01a28aeed8807afa13a",
   "prompts": {},
   "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
     "s_819b31638169c3": {
       "agent_id": {
         "tool": "codex",
