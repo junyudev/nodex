@@ -39,6 +39,7 @@ import type {
 } from "../codex-application/AgentChatWorktrees";
 import { resolveAgentRuntimeAgentConfig } from "../../shared/agent-runtime-agent-config";
 import { generateSessionTitle } from "./AgentRuntimeSessionTitle";
+import { SIDE_CHAT_DEFAULT_TITLE, sideChatRequestTitle } from "../../shared/side-chat-title";
 import { make as makeMessageResources } from "./AgentRuntimeMessageResources";
 import { splitCodexPromptAgentConfigLines } from "../../shared/codex-prompt-preparation";
 import { appendAgentAppContext, hasAgentAppContext } from "../../shared/agent-prompt";
@@ -57,6 +58,8 @@ import type {
   AgentRuntimeConversation,
   AgentRuntimeControlInput,
   AgentRuntimeResponseInput,
+  AgentRuntimeSendMessageResult,
+  AgentRuntimeIpcApi,
 } from "../../shared/agent-runtime-api";
 export type {
   AgentRuntimeMessage,
@@ -2120,7 +2123,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       Effect.orElseSucceed(() => null),
     );
     const title = input.sideChat
-      ? "Side chat"
+      ? SIDE_CHAT_DEFAULT_TITLE
       : input.saveSideChat
         ? sourceTitle?.trim() || "Chat"
         : forkTitle(sourceTitle);
@@ -2333,6 +2336,69 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return { cleared: true } as const;
   });
 
+  /** Core keeps the first admitted request's label independently of provider replies or history. */
+  const titleSideChatRequest = Effect.fn("AgentRuntimeApplication.titleSideChatRequest")(
+    function* (
+      connection: AgentRuntimeApplicationConnection,
+      loaded: Pick<Effect.Success<ReturnType<typeof targetInfo>>, "binding" | "threadId">,
+      expected: { readonly messageId: string } | { readonly runId: string } | undefined,
+      agent: boolean,
+    ) {
+      if (
+        agent ||
+        !loaded.binding.side_chat_source_session_id ||
+        loaded.threadId !== loaded.binding.runtime_thread_id
+      )
+        return;
+      const accepted = yield* connection.request("thread.opening-request", {
+        threadId: loaded.threadId,
+      });
+      if (!accepted || accepted.role !== "user") return;
+      if (expected && "messageId" in expected && accepted.id !== expected.messageId) return;
+      if (expected && "runId" in expected && accepted.runId !== expected.runId) return;
+      if (accepted.createdBy !== "user") return;
+      const title = sideChatRequestTitle(accepted.text);
+      if (!title) return;
+      yield* host(
+        core.workspace.apply(
+          {
+            operationId: createOperationId("agent-runtime.side-chat-title"),
+            intent: {
+              kind: "mutate_session",
+              session_id: loaded.binding.session_id,
+              intent: {
+                kind: "set_fallback_title",
+                // Ordinary Session metadata is bounded; the side-tab receipt keeps the full label.
+                title: title
+                  .slice(0, 2_000)
+                  .replace(/[\uD800-\uDBFF]$/u, "")
+                  .trimEnd(),
+                replaces: SIDE_CHAT_DEFAULT_TITLE,
+              },
+            },
+          },
+          undefined,
+          loaded.binding.project_id ?? null,
+        ),
+      ).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Could not persist the accepted side-chat title").pipe(
+            Effect.annotateLogs({
+              sessionId: loaded.binding.session_id,
+              cause: Cause.pretty(cause),
+            }),
+          ),
+        ),
+      );
+      return title;
+    },
+    Effect.catchCause((cause) =>
+      Effect.logWarning("Could not name the accepted side-chat request").pipe(
+        Effect.annotateLogs({ cause: Cause.pretty(cause) }),
+      ),
+    ),
+  );
+
   const prepareMessageDispatch = Effect.fn("AgentRuntimeApplication.prepareMessageDispatch")(
     function* (
       input: AgentRuntimeSessionTarget & {
@@ -2425,8 +2491,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
       input.interactionModeCeiling,
     );
+    const sideChatTitle = yield* titleSideChatRequest(connection, loaded, prepared.message, agent);
     if (interactive) yield* options.interactiveState!.sent(loaded.threadId, interactive.key);
-    return result;
+    return { ...result, ...(sideChatTitle ? { sideChatTitle } : {}) };
   });
 
   /** The same intake preparation as interactive messages, with canonical delivery receipts. */
@@ -2451,7 +2518,20 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       commandId: commandId("message", { threadId, messageId: input.messageId }),
       fingerprint: input.fingerprint,
     });
-    return result ? { sessionId: input.sessionId, threadId, ...result } : null;
+    if (!result) return null;
+    const sideChatTitle = yield* titleSideChatRequest(
+      connection,
+      { binding, threadId },
+      { messageId: input.messageId },
+      (yield* CoreApplicationAgent) !== null,
+    );
+    const receipt: AgentRuntimeSendMessageResult = {
+      sessionId: input.sessionId,
+      threadId,
+      ...result,
+      ...(sideChatTitle ? { sideChatTitle } : {}),
+    };
+    return receipt;
   });
 
   const resumeMessageLaunch = Effect.fn("AgentRuntimeApplication.resumeMessageLaunch")(
@@ -2525,6 +2605,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       loaded,
       outgoing,
       prepared: preparation,
+      agent,
     } = yield* prepareMessageDispatch(
       {
         ...input,
@@ -2551,6 +2632,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       text: prepared.text,
       attachments: prepared.attachments ?? [],
       mode: preparation.hasConfig ? "queue" : input.mode,
+      createdBy: agent ? "agent" : "user",
       ...(input.interactionModeCeiling
         ? {
             modeLimit: {
@@ -2567,7 +2649,18 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
       ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
     });
-    return { sessionId: input.sessionId, threadId: loaded.threadId, ...result };
+    const sideChatTitle = yield* titleSideChatRequest(
+      connection,
+      loaded,
+      preparation.message,
+      agent,
+    );
+    return {
+      sessionId: input.sessionId,
+      threadId: loaded.threadId,
+      ...result,
+      ...(sideChatTitle ? { sideChatTitle } : {}),
+    };
   });
 
   const stop = Effect.fn("AgentRuntimeApplication.stop")(function* (
@@ -2676,7 +2769,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   });
   const queue = Effect.fn("AgentRuntimeApplication.queue")(function* (
     input: import("../../shared/agent-runtime-api").AgentRuntimeQueueInput,
-  ) {
+  ): Effect.fn.Return<AgentRuntimeIpcApi["agent-runtime:session:queue"]["result"], unknown> {
     if (!validId(input.requestId)) return yield* failure("queue", "Request identity is invalid");
     if (
       input.action === "reorder" &&
@@ -2699,12 +2792,20 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     };
     const base = { threadId: loaded.threadId, commandId: commandId("queue", identity) };
     switch (input.action) {
-      case "resume":
-        return yield* dispatch(connection, {
+      case "resume": {
+        const result = yield* dispatch(connection, {
           ...base,
           type: "queue.resume",
           ...(input.runId === undefined ? {} : { runId: input.runId }),
         });
+        const sideChatTitle = yield* titleSideChatRequest(
+          connection,
+          loaded,
+          input.runId === undefined ? undefined : { runId: input.runId },
+          (yield* CoreApplicationAgent) !== null,
+        );
+        return { ...result, ...(sideChatTitle ? { sideChatTitle } : {}) };
+      }
       case "cancel":
         return yield* dispatch(connection, {
           ...base,

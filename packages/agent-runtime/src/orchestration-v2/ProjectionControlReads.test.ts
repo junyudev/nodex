@@ -338,6 +338,176 @@ it.effect.each(storageCases)(
 );
 
 it.effect.each(storageCases)(
+  "$storage: opening requests follow own turn publication instead of queued Run order or inherited history",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      const initial = events.find((event) => event.type === "run.created")!;
+      const originalMessage = events.find((event) => event.type === "message.updated")!;
+      const originalThread = events.find((event) => event.type === "thread.created")!;
+      if (
+        initial.type !== "run.created" ||
+        originalMessage.type !== "message.updated" ||
+        originalThread.type !== "thread.created"
+      )
+        return;
+      yield* Effect.forEach(
+        events,
+        (event) =>
+          store.apply(
+            event.type === "run.created"
+              ? { ...event, payload: { ...event.payload, status: "queued" } }
+              : event,
+          ),
+        { discard: true },
+      );
+      assert.isNull(yield* store.getOpeningRequest(threadId));
+      const sentRunId = RunId.make("run:sent-second");
+      const sentMessageId = MessageId.make("message:sent-second");
+      const text = "The second Run was sent first. ".repeat(100);
+      yield* store.apply({
+        ...initial,
+        id: EventId.make("opening:run2"),
+        payload: { ...initial.payload, id: sentRunId, userMessageId: sentMessageId, ordinal: 2 },
+      });
+      yield* store.apply({
+        ...originalMessage,
+        id: EventId.make("opening:message2"),
+        payload: { ...originalMessage.payload, id: sentMessageId, runId: sentRunId, text },
+      });
+      const published = {
+        id: EventId.make("opening:sent"),
+        type: "turn-item.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: TurnItemId.make("item:sent-second"),
+          threadId,
+          runId: sentRunId,
+          nodeId,
+          providerThreadId,
+          providerTurnId,
+          nativeItemRef: null,
+          parentItemId: null,
+          title: null,
+          startedAt: now,
+          completedAt: now,
+          ordinal: 200,
+          status: "completed",
+          updatedAt: now,
+          type: "user_message",
+          messageId: sentMessageId,
+          inputIntent: "turn_start",
+          text,
+          attachments: [],
+          createdBy: "user",
+          creationSource: "web",
+        },
+      } satisfies Extract<OrchestrationV2DomainEvent, { type: "turn-item.updated" }>;
+      yield* store.apply(published);
+      assert.equal((yield* store.getOpeningRequest(threadId))?.id, sentMessageId);
+      assert.equal((yield* store.getOpeningRequest(threadId))?.text, text);
+      yield* store.apply({
+        ...initial,
+        id: EventId.make("opening:resume1"),
+        type: "run.updated",
+        payload: { ...initial.payload, status: "starting" },
+      });
+      yield* store.apply({
+        ...published,
+        id: EventId.make("opening:resumed"),
+        payload: {
+          ...published.payload,
+          id: TurnItemId.make("item:resumed-first"),
+          runId,
+          messageId,
+          ordinal: 100,
+          inputIntent: "queued_turn",
+          text: originalMessage.payload.text,
+        },
+      });
+      assert.equal((yield* store.getOpeningRequest(threadId))?.id, sentMessageId);
+      const fork = ThreadId.make("thread:captured-side");
+      yield* store.apply({
+        ...originalThread,
+        id: EventId.make("opening:fork"),
+        threadId: fork,
+        payload: {
+          ...originalThread.payload,
+          id: fork,
+          lineage: { rootThreadId: fork, parentThreadId: null, relationshipToParent: null },
+          forkedFrom: { type: "run", threadId, runId: sentRunId },
+        },
+      });
+      assert.isNull(yield* store.getOpeningRequest(fork));
+      assert.isNull(yield* store.getOpeningRequest(ThreadId.make("foreign")));
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it.effect.each(storageCases)(
+  "$storage: an empty opening body remains authoritative and steering alone does not create an opening request",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      yield* Effect.forEach(events, (event) => store.apply(event), { discard: true });
+      const user = events.find((event) => event.type === "message.updated")!;
+      if (user.type !== "message.updated") return;
+      yield* store.apply({
+        ...user,
+        id: EventId.make("opening:empty"),
+        payload: { ...user.payload, text: "" },
+      });
+      const steer = {
+        id: EventId.make("opening:steer"),
+        type: "turn-item.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: TurnItemId.make("item:steer"),
+          threadId,
+          runId,
+          nodeId,
+          providerThreadId,
+          providerTurnId,
+          nativeItemRef: null,
+          parentItemId: null,
+          title: null,
+          startedAt: now,
+          completedAt: now,
+          ordinal: 200,
+          status: "completed",
+          updatedAt: now,
+          type: "user_message",
+          messageId,
+          inputIntent: "steer",
+          text: "",
+          attachments: [],
+          createdBy: "user",
+          creationSource: "web",
+        },
+      } satisfies Extract<OrchestrationV2DomainEvent, { type: "turn-item.updated" }>;
+      yield* store.apply(steer);
+      assert.isNull(yield* store.getOpeningRequest(threadId));
+      yield* store.apply({
+        ...steer,
+        id: EventId.make("opening:start"),
+        payload: {
+          ...steer.payload,
+          id: TurnItemId.make("item:first"),
+          ordinal: 2,
+          inputIntent: "turn_start",
+        },
+      });
+      assert.equal((yield* store.getOpeningRequest(threadId))?.id, messageId);
+      assert.equal((yield* store.getOpeningRequest(threadId))?.text, "");
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it.effect.each(storageCases)(
   "$storage: resolves the submitted message's Run rather than another foreground Run",
   ({ storeLayer }) =>
     Effect.gen(function* () {

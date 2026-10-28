@@ -36,6 +36,7 @@ import type {
   AgentRuntimeSessionMoveInput,
   AgentRuntimeConnectionState,
   ClaudeUsageSnapshot,
+  AgentRuntimeIpcApi,
 } from "../../shared/agent-runtime-api";
 import type {
   AgentHistoryPage,
@@ -214,11 +215,15 @@ export interface AgentRuntimeRendererTransport {
   readonly overview: (
     input: AgentRuntimeOverviewInput,
   ) => Promise<AgentRuntimeOperations["tasks.overview"]["output"]>;
-  readonly message: (input: AgentRuntimeMessageInput) => Promise<{ readonly sequence: number }>;
+  readonly message: (
+    input: AgentRuntimeMessageInput,
+  ) => Promise<AgentRuntimeIpcApi["agent-runtime:session:message"]["result"]>;
   readonly queueMessage: (
     input: AgentRuntimeMessageInput,
-  ) => Promise<{ readonly sequence: number }>;
-  readonly queue: (input: AgentRuntimeQueueInput) => Promise<{ readonly sequence: number }>;
+  ) => Promise<AgentRuntimeIpcApi["agent-runtime:session:queue-message"]["result"]>;
+  readonly queue: (
+    input: AgentRuntimeQueueInput,
+  ) => Promise<AgentRuntimeIpcApi["agent-runtime:session:queue"]["result"]>;
   readonly fork: (
     input: AgentRuntimeForkInput,
   ) => Promise<AgentRuntimeLaunchResult & { readonly sourceSessionId: string }>;

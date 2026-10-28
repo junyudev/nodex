@@ -122,6 +122,7 @@ export function AgentRuntimeSideChatPanel(input: {
   readonly session: ProjectSession;
   readonly parentThreadId: string;
   readonly title: string;
+  readonly onTitleChange?: (title: string) => void;
   readonly project: Project | null;
   readonly draft: CodexComposerIntent | null;
   readonly initialSubmission?: FirstSubmissionIdentity & {
@@ -146,6 +147,7 @@ export function AgentRuntimeSideChatPanel(input: {
     useAgentRuntimeConversationAdapter({
       sessionId: session.id,
       sessionTitle: input.title,
+      onSideChatTitle: input.onTitleChange,
       sessionUnread: session.unread,
       workspaceRoot: projectWorkspaceRootOrNull(input.project),
       executionRef: session.executionRef,

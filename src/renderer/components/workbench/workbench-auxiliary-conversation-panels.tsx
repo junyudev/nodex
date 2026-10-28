@@ -510,6 +510,7 @@ export function SideChatSessionTab(props: Parameters<typeof NativeSideChatSessio
       session={session}
       parentThreadId={props.tab.parentThreadId}
       title={props.tab.title}
+      onTitleChange={props.onTitleChange}
       initialSubmission={props.tab.initialSubmission}
       project={props.projects.find((candidate) => candidate.id === session.projectId) ?? null}
       draft={
@@ -554,6 +555,7 @@ function NativeSideChatSessionTab({
   onOpenTurnDiffReview,
   onOpenTurnDiffFileInSidePanel,
   turnDiffHoverPreviewDisabled,
+  onTitleChange,
 }: {
   tab: SideChatPanelTab;
   activeSession: WorkbenchSessionRenderProjection;
@@ -570,6 +572,7 @@ function NativeSideChatSessionTab({
   onOpenTurnDiffReview: ThreadStageActions["onOpenTurnDiffReview"];
   onOpenTurnDiffFileInSidePanel: NonNullable<ThreadStageActions["onOpenTurnDiffFileInSidePanel"]>;
   turnDiffHoverPreviewDisabled: boolean;
+  onTitleChange?: (title: string) => void;
 }) {
   const conversation = useConversation(tab.threadId);
   const projectId = resolveSideChatProjectId({
@@ -614,6 +617,7 @@ function NativeSideChatSessionTab({
           control: codexControl,
           host: hostActions,
           onModeChanged: setSelectedCollaborationMode,
+          onSideChatTitle: onTitleChange,
         })
       : composeNativeThreadStageActions(hostActions, {});
   actions.onOpenMcpAppSidePanel = onOpenMcpAppSidePanel;

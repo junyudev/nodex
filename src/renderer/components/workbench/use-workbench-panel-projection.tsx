@@ -58,6 +58,7 @@ import {
   isSubagentsPanelTab,
   isTransientPanelTab,
   updateImageEditorPanelTabTitle,
+  updateSideChatPanelTabTitle,
   type ProjectSessionRenderableTab,
 } from "@/lib/workbench-panel-tab-model";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
@@ -467,6 +468,15 @@ export function useWorkbenchPanelProjection({
                     <SideChatSessionTab
                       key={`${session.id}:${tab.id}`}
                       tab={tab}
+                      onTitleChange={(title) =>
+                        panelControllerRef.current.updateSideChatTabsBySession((current) => {
+                          const tabs = current[tab.sessionId];
+                          if (!tabs) return current;
+                          const updated = updateSideChatPanelTabTitle(tabs, tab.id, title);
+                          if (updated === tabs) return current;
+                          return { ...current, [tab.sessionId]: updated };
+                        })
+                      }
                       activeSession={session}
                       projects={projects}
                       onRefreshSessions={onRefreshSessions}

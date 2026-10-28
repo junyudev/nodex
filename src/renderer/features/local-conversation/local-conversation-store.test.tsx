@@ -15890,6 +15890,49 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test.each([false, true])(
+    "queued Send now captures its first-message claim at the attempt, concurrent turn: %s",
+    async (concurrentTurn) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      resumeThreadResult = buildConversation("thread-1", "project-1");
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      try {
+        await manager.requestThreadStreamResume("thread-1");
+        await manager.enqueueQueuedFollowUp("thread-1", "Opening queued request");
+        const queued = manager.readConversation("thread-1")?.queuedFollowUps.entries[0];
+        if (!queued) throw new Error("Expected the opening queued request");
+        const sent = manager.sendQueuedFollowUpNow("thread-1", queued.followUpId);
+        if (concurrentTurn) {
+          dispatchCodexAppServerMessage("native-notification", {
+            type: "nativeNotification",
+            generation: resumeThreadGeneration,
+            occurrenceId: "native-opening-race:1",
+            occurrenceToken: 1,
+            hostId: "local",
+            notification: {
+              method: "turn/started",
+              params: {
+                threadId: "thread-1",
+                turn: buildProtocolTurn({ id: "concurrent-turn", status: "inProgress" }),
+              },
+            },
+          });
+        }
+        expect(await sent).toEqual({
+          prompt: "Opening queued request",
+          startsConversation: !concurrentTurn,
+        });
+        expect(await manager.sendQueuedFollowUpNow("thread-1", queued.followUpId)).toBeNull();
+      } finally {
+        resumeThreadResult = null;
+        manager.destroy();
+      }
+    },
+  );
+
   test("owner send-now removes a captured queued message after native steering succeeds", async () => {
     invokeRecords = [];
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -15917,7 +15960,10 @@ describe("local-conversation-store", () => {
       const row = manager.readConversation("thread-1")?.queuedFollowUps.entries[0];
       if (!row) throw new Error("Expected captured queued message");
       invokeRecords = [];
-      await manager.sendQueuedFollowUpNow("thread-1", row.followUpId);
+      expect(await manager.sendQueuedFollowUpNow("thread-1", row.followUpId)).toEqual({
+        prompt: "send this now",
+        startsConversation: false,
+      });
       await flushAsyncWork();
       expect(
         invokeRecords.find((record) => record.channel === "codex:queued-messages:prepare-native")
@@ -17215,7 +17261,10 @@ describe("local-conversation-store", () => {
     try {
       await manager.requestThreadStreamResume("thread-1");
       invokeRecords = [];
-      await manager.sendQueuedFollowUpNow("thread-1", "server-idle");
+      expect(await manager.sendQueuedFollowUpNow("thread-1", "server-idle")).toEqual({
+        prompt: "start from server queue",
+        startsConversation: true,
+      });
       expect(
         invokeRecords.some((record) => record.channel === "codex:queued-messages:prepare-native"),
       ).toBe(false);
@@ -17346,7 +17395,7 @@ describe("local-conversation-store", () => {
       rendererQueuedMessageStorage.invalidate();
       await flushAsyncWork();
       invokeRecords = [];
-      await manager.sendQueuedFollowUpNow("thread-1", message.id);
+      expect(await manager.sendQueuedFollowUpNow("thread-1", message.id)).toBeNull();
       expect(
         invokeRecords.some((record) => record.channel === "codex:queued-messages:prepare-native"),
       ).toBe(false);

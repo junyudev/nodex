@@ -19,6 +19,7 @@ function fixture() {
   });
   const openFork = vi.fn().mockResolvedValue(undefined);
   const rollback = vi.fn().mockResolvedValue({ rolledBack: true });
+  const onSideChatTitle = vi.fn();
   const prepare = vi.fn(async (text: string) => ({ text: `Prepared ${text}` }));
   let sourceCurrent = true;
   const source = { identity: "source", isCurrent: () => sourceCurrent };
@@ -41,6 +42,7 @@ function fixture() {
   } as unknown as AgentRuntimeConversationOwnerSnapshot;
   const owner = {
     getSnapshot: () => state,
+    whenObserved: vi.fn(async (_sequence: number) => {}),
     contentSource: () => source,
     nextQueuePage: async () => {},
     previousQueuePage: async () => {},
@@ -75,9 +77,11 @@ function fixture() {
     } as unknown as AgentRuntimeRendererTransport,
     openFork,
     prepare,
+    onSideChatTitle,
   });
   return {
     prepare,
+    onSideChatTitle,
     target,
     message,
     stop,
@@ -135,6 +139,39 @@ function fixture() {
 }
 
 describe("Agent Runtime stage commands", () => {
+  it("publishes the admitted side-chat title after the accepted message is observed", async () => {
+    const f = fixture();
+    let observe!: () => void;
+    f.owner.whenObserved.mockReturnValueOnce(new Promise<void>((resolve) => (observe = resolve)));
+    f.message.mockResolvedValueOnce({ sequence: 8, sideChatTitle: "First request" });
+    const sent = f.actions.onSendPrompt!("First request");
+    await vi.waitFor(() => expect(f.owner.whenObserved).toHaveBeenCalledWith(8));
+    expect(f.onSideChatTitle).not.toHaveBeenCalled();
+    observe();
+    await sent;
+    expect(f.onSideChatTitle).toHaveBeenCalledExactlyOnceWith("First request");
+    await f.actions.onSendPrompt!("Later request");
+    expect(f.onSideChatTitle).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the side-chat title when sending is refused", async () => {
+    const f = fixture();
+    f.message.mockRejectedValueOnce(new Error("Not admitted"));
+    await expect(f.actions.onSendPrompt!("Unsent request")).rejects.toThrow("Not admitted");
+    expect(f.onSideChatTitle).not.toHaveBeenCalled();
+  });
+
+  it.each(["resume", "send-now"] as const)(
+    "names the first actually sent queued request through %s",
+    async (action) => {
+      const f = fixture();
+      f.setRuns([{ id: "queued", ordinal: 1, status: "queued" }]);
+      f.queue.mockResolvedValueOnce({ sequence: 11, sideChatTitle: "Queued request" });
+      if (action === "resume") await f.actions.onResumeQueuedFollowUps!("child");
+      else await f.actions.onSendQueuedFollowUpNow!("child", "queued");
+      expect(f.onSideChatTitle).toHaveBeenCalledExactlyOnceWith("Queued request");
+    },
+  );
   it("opens the failed Run's provider settings independently of the next selected Agent", () => {
     const f = fixture();
     f.setRuns([
@@ -351,6 +388,16 @@ describe("Agent Runtime stage commands", () => {
       }),
     );
     expect(f.message).not.toHaveBeenCalled();
+  });
+
+  it("names a captured follow-up only when its queue admission actually starts the first turn", async () => {
+    const f = fixture();
+    await f.actions.onSendCapturedFollowUp!("child", "Still queued");
+    expect(f.onSideChatTitle).not.toHaveBeenCalled();
+    f.queueMessage.mockResolvedValueOnce({ sequence: 14, sideChatTitle: "First sent request" });
+    await f.actions.onSendCapturedFollowUp!("child", "First sent request");
+    expect(f.owner.whenObserved).toHaveBeenLastCalledWith(14);
+    expect(f.onSideChatTitle).toHaveBeenCalledExactlyOnceWith("First sent request");
   });
 
   it("rejects a captured source retired while its app input is being prepared", async () => {

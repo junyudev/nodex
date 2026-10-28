@@ -264,6 +264,7 @@ const AgentRequest = Schema.Union([
       interactionMode: Schema.optional(ProviderInteractionMode),
       modelSelection: Schema.optional(ModelSelection),
       mode: Schema.Literals(["auto", "queue", "steer", "restart"]),
+      createdBy: Schema.Literals(["user", "agent"]),
       senderThreadId: Schema.optional(ThreadId),
       senderRunId: Schema.optional(Schema.NullOr(RunId)),
       modeLimit: Schema.optional(DispatchModeLimitSchema),
@@ -367,6 +368,7 @@ const AgentRequest = Schema.Union([
   ),
   request("thread.queued-preview", Schema.Struct({ threadId: ThreadId, runId: RunId })),
   request("thread.run-message", Schema.Struct({ threadId: ThreadId, runId: RunId })),
+  request("thread.opening-request", Schema.Struct({ threadId: ThreadId })),
   request("project.close", Schema.Struct({ projectId: ProjectId })),
   request(
     "shell.read",
@@ -852,6 +854,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* projections
           .getRunUserMessage(input.input.threadId, input.input.runId)
           .pipe(Effect.flatMap(encodeQueuedMessage));
+      case "thread.opening-request":
+        return yield* projections
+          .getOpeningRequest(input.input.threadId)
+          .pipe(Effect.flatMap(encodeQueuedMessage));
       case "tasks.overview":
         return yield* projections
           .getThreadSubagentOverview({
@@ -894,8 +900,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               ? {}
               : { senderThreadId: request.senderThreadId }),
             ...(request.senderRunId === undefined ? {} : { senderRunId: request.senderRunId }),
-            createdBy: "agent",
-            creationSource: "mcp",
+            createdBy: request.createdBy,
+            creationSource: request.createdBy === "agent" ? "mcp" : "web",
           })
           .pipe(Effect.provideService(DispatchModeLimit, request.modeLimit));
         return {
@@ -1457,6 +1463,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "project.roots":
       case "thread.queue":
       case "thread.run-message":
+      case "thread.opening-request":
       case "thread.message-replay":
       case "thread.message-launch":
       case "native-message.receipt":

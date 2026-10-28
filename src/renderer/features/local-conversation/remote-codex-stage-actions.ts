@@ -1,6 +1,8 @@
 import type { useCodexAppServerControl } from "./local-conversation-store";
 import { composeNativeThreadStageActions } from "./native-thread-stage-actions";
 import type { ThreadStageActions, ThreadStageHostActions } from "./thread-stage-types";
+import { sideChatRequestTitle } from "../../../shared/side-chat-title";
+import { splitCodexPromptAgentConfigLines } from "../../../shared/codex-prompt-preparation";
 
 /** An attached remote owner controls its own native conversation; it cannot launch a local Session. */
 export function createRemoteCodexStageActions(input: {
@@ -10,6 +12,7 @@ export function createRemoteCodexStageActions(input: {
   readonly control: ReturnType<typeof useCodexAppServerControl>;
   readonly host: ThreadStageHostActions;
   readonly onModeChanged?: ThreadStageActions["onCollaborationModeChange"];
+  readonly onSideChatTitle?: (title: string) => void;
 }): ThreadStageActions {
   if (!input.hostId.trim() || input.hostId === "local" || !input.threadId.trim())
     throw new Error("Remote conversation controls require an attached remote owner");
@@ -40,12 +43,17 @@ export function createRemoteCodexStageActions(input: {
       });
     },
     onSendPrompt: async (prompt, options) => {
+      const first = input.onSideChatTitle && control.readConversationTurnCount(threadId) === 0;
       await control.startTurn(
         threadId,
         prompt,
         { ...project, ...options },
         options?.submittedPresentation,
       );
+      if (!first) return;
+      const text = options?.promptInput?.text ?? splitCodexPromptAgentConfigLines(prompt).text;
+      const title = sideChatRequestTitle(text);
+      if (title !== null) input.onSideChatTitle?.(title);
     },
     onSteerPrompt: async (request) => {
       await control.steerTurn({ ...request, threadId });
@@ -113,7 +121,10 @@ export function createRemoteCodexStageActions(input: {
       );
     },
     onSendQueuedFollowUpNow: async (requested, id) => {
-      await control.sendQueuedFollowUpNow(requireThread(requested), id);
+      const sent = await control.sendQueuedFollowUpNow(requireThread(requested), id);
+      if (!sent?.startsConversation || !input.onSideChatTitle) return;
+      const title = sideChatRequestTitle(sent.prompt);
+      if (title !== null) input.onSideChatTitle?.(title);
     },
     onEditQueuedFollowUp: async ({
       threadId: requested,

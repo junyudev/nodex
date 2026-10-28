@@ -527,6 +527,79 @@ it.live(
     }).pipe(Effect.provide(NodeServices.layer)),
 );
 
+it.live(
+  "semantic message admission preserves the original caller's provenance across retries",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-send-provenance-" });
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* AgentRuntime;
+          const call = (method: string, input: unknown) =>
+            runtime.handle({ id: method, method, input });
+          yield* call("project.upsert", {
+            id: "project:provenance",
+            title: "Provenance",
+            workspaceRoot: home,
+          });
+          for (const createdBy of ["user", "agent"] as const) {
+            const threadId = `thread:provenance:${createdBy}`;
+            yield* call("command.dispatch", {
+              command: {
+                type: "thread.create",
+                commandId: `create:${threadId}`,
+                threadId,
+                projectId: "project:provenance",
+                title: "Side chat",
+                modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                branch: null,
+                worktreePath: null,
+                createdBy: "user",
+                creationSource: "web",
+              },
+            });
+            const send = {
+              threadId,
+              commandId: `send:${threadId}`,
+              messageId: `message:${threadId}`,
+              text: `Original ${createdBy} request`,
+              attachments: [],
+              mode: "auto",
+              createdBy,
+            };
+            yield* call("thread.send", send);
+            yield* call("thread.send", { ...send, createdBy: "user", text: "Changed retry text" });
+            expect(yield* call("thread.opening-request", { threadId })).toMatchObject({
+              id: send.messageId,
+              text: send.text,
+              createdBy,
+              creationSource: createdBy === "agent" ? "mcp" : "web",
+            });
+          }
+        }).pipe(
+          Effect.provide(
+            Application.layer(
+              {
+                home,
+                cwd: home,
+                providers: {
+                  codex: {
+                    driver: "codex",
+                    config: { binaryPath: "/missing-codex", homePath: home },
+                  },
+                },
+              },
+              () => Effect.void,
+            ),
+          ),
+        ),
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
 it.live("enforces Host mode limits on the shared dispatch and send boundaries", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -583,6 +656,7 @@ it.live("enforces Host mode limits on the shared dispatch and send boundaries", 
           text: "Continue",
           attachments: [],
           mode: "auto",
+          createdBy: "agent",
           modeLimit: limit,
         };
         expect(yield* call("thread.send", send).pipe(Effect.result)).toMatchObject({

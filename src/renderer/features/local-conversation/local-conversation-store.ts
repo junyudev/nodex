@@ -2021,6 +2021,12 @@ function isConversationStreaming(conversation: CodexConversationSnapshot): boole
   return conversation.turns.some((turn) => turn.status === "inProgress");
 }
 
+/** Only a confirmed send exposes the captured request; pending queue work has no receipt. */
+export interface CodexAcceptedQueuedFollowUp {
+  readonly prompt: string;
+  readonly startsConversation: boolean;
+}
+
 function normalizeSelectedSubagentInput(
   input: CodexSelectedSubagentHydrateInput,
 ): CodexSelectedSubagentHydrateInput {
@@ -6874,34 +6880,60 @@ export class CodexAppServerManager {
   private resolveQueuedFollowUpsAfterFreshStartAsOwner =
     this.resolveQueuedFollowUpsAfterFreshStart.bind(this);
 
-  async sendQueuedFollowUpNow(threadId: string, followUpId: string): Promise<void> {
+  async sendQueuedFollowUpNow(
+    threadId: string,
+    followUpId: string,
+  ): Promise<CodexAcceptedQueuedFollowUp | null> {
     using lifetime = this.observeOwnerActionLifetime(threadId, "queued message send", true);
+    let startsConversation = false;
     await this.loadQueuedMessages(threadId);
     lifetime.assertCurrent();
     const localMessage = this.queuedMessages
       .readMessages(threadId)
       ?.find((message) => message.id === followUpId);
-    if (localMessage && readCodexQueuedMessageDeliveryReceipt(localMessage)) return;
+    if (localMessage && readCodexQueuedMessageDeliveryReceipt(localMessage)) return null;
     if (
       this.isServerQueueEnabled(threadId) &&
       !this.queuedMessages.readMessages(threadId)?.some((message) => message.id === followUpId)
     ) {
-      if (this.hostId === "durable") return;
-      await this.queuedExecution.sendExternalNow(threadId, followUpId, (accepted) =>
-        this.serverQueuedMessages.sendNow(
-          threadId,
-          followUpId,
-          (message, clientUserMessageId) =>
-            this.sendServerQueuedMessageNow(threadId, message, clientUserMessageId),
-          accepted,
-        ),
+      if (this.hostId === "durable") return null;
+      const attempt: { message: CodexQueuedMessage | undefined; startsConversation: boolean } = {
+        message: undefined,
+        startsConversation: false,
+      };
+      const result = await this.queuedExecution.sendExternalNow(
+        threadId,
+        followUpId,
+        (accepted) => {
+          attempt.startsConversation = (this.readConversation(threadId)?.turns.length ?? 0) === 0;
+          attempt.message = this.serverQueuedMessages
+            .read(threadId)
+            ?.find((item) => item.id === followUpId);
+          return this.serverQueuedMessages.sendNow(
+            threadId,
+            followUpId,
+            (message, clientUserMessageId) =>
+              this.sendServerQueuedMessageNow(threadId, message, clientUserMessageId),
+            accepted,
+          );
+        },
       );
-      return;
+      return result?.status === "sent" && attempt.message
+        ? { prompt: attempt.message.context.prompt, startsConversation: attempt.startsConversation }
+        : null;
     }
+    let sent: CodexAcceptedQueuedFollowUp | null = null;
     await this.queuedExecution.sendNow(threadId, followUpId, {
       isCurrent: lifetime.isCurrent,
       prepare: (id, message, mode) => this.prepareQueuedSubmission(id, message, mode, "view"),
+      onAttempt: () => {
+        startsConversation = (this.readConversation(threadId)?.turns.length ?? 0) === 0;
+      },
+      onResult: (_id, message, result) => {
+        if (result.status === "sent") sent = { prompt: message.context.prompt, startsConversation };
+      },
     });
+    return sent;
   }
   private sendQueuedFollowUpNowAsOwner = this.sendQueuedFollowUpNow.bind(this);
 
@@ -10120,6 +10152,11 @@ export function useCodexAppServerControl(
       managerForConversation(threadId).sendQueuedFollowUpNow(threadId, followUpId),
     [managerForConversation],
   );
+  const readConversationTurnCount = useCallback(
+    (threadId: string) =>
+      managerForConversation(threadId).readConversation(threadId)?.turns.length ?? 0,
+    [managerForConversation],
+  );
   const editUserTurn = useCallback(
     async (
       threadId: string,
@@ -10396,6 +10433,7 @@ export function useCodexAppServerControl(
     resumeQueuedFollowUps,
     resolveQueuedFollowUpsAfterFreshStart,
     sendQueuedFollowUpNow,
+    readConversationTurnCount,
     editUserTurn,
     forkConversationFromTurn,
     compactThread,

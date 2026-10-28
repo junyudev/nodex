@@ -9,6 +9,7 @@ import {
 import { useCallback, useEffect, useRef } from "react";
 import { recordWorkspaceSearchFile } from "./workspace-search-recent-files";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import { sideChatRequestTitle } from "../../shared/side-chat-title";
 import {
   captureCodexTurnPresentation,
   readCodexSubmissionPresentation,
@@ -479,7 +480,12 @@ export function useWorkbenchPanelOpeners({
         const leafId =
           input.targetLeafId ?? resolveSessionPanelActiveLeafId(activeSession, panelId);
         const index = (sideChatTabsBySession[activeSession.id] ?? []).length + 1;
-        const title = prior?.title ?? getSideChatTabTitle(index);
+        const title =
+          prior?.title ??
+          (initialSubmission && input.kind !== "draft"
+            ? sideChatRequestTitle(input.prompt ?? "")
+            : null) ??
+          getSideChatTabTitle(index);
         const loadingId = prior?.id ?? `sidechat-session-loading:${localSourceThreadId}:${index}`;
         panelControllerRef.current.upsertEphemeralTab({
           sideChat: true,
@@ -586,7 +592,9 @@ export function useWorkbenchPanelOpeners({
         (tab) => tab.panelId === panelId,
       );
       const index = existingPanelSideChats.length + 1;
-      const title = getSideChatTabTitle(index);
+      const title =
+        (input.kind !== "draft" ? sideChatRequestTitle(input.prompt ?? "") : null) ??
+        getSideChatTabTitle(index);
       const loadingTabId = `sidechat-loading:${parentThreadId}:${index}`;
       const parentNavigationPath = buildSideChatParentNavigationPath(activeSession, parentThreadId);
       const loadingTab: SideChatPanelTab = {

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import readline from "node:readline";
+import { setTimeout as delay } from "node:timers/promises";
 
 const kind = path.basename(process.argv[1]).startsWith("claude") ? "claude" : "codex";
 if (process.argv.includes("--version")) {
@@ -285,6 +286,12 @@ async function handleCodex(message) {
       reply({ turn });
       notify("turn/started", { threadId: params.threadId, turn });
       record({ event: "prompt", threadId: params.threadId, turnId, prompt, priorItems });
+      const heldPrompt = process.env.NODEX_TEST_NATIVE_HOLD_PROMPT;
+      const releaseFile = process.env.NODEX_TEST_NATIVE_RELEASE_FILE;
+      if (heldPrompt && releaseFile && params.input?.some((part) => part.type === "text" && (part.text.split("\n\nUser message:\n").at(-1) ?? part.text).split("\n", 1)[0] === heldPrompt)) {
+        record({ event: "response.held", prompt: heldPrompt });
+        while (!fs.existsSync(releaseFile)) await delay(25);
+      }
       if (prompt.startsWith("Hold child")) return;
       if (prompt.startsWith("Hold async")) {
         const timer = setInterval(() => {

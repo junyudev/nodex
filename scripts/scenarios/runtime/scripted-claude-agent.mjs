@@ -3,6 +3,7 @@ import { createInterface } from "node:readline";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 
 if (process.argv.includes("--version")) {
   process.stdout.write("2.1.284 (Claude Code)\n");
@@ -281,6 +282,14 @@ for await (const line of createInterface({ input: process.stdin })) {
       .map((text) => text.split("\n\nUser message:\n").at(-1) ?? text)
       .find((text) => text.startsWith("Verify handoff "));
     if (handoffPrompt !== undefined) {
+      const releaseFile = process.env.NODEX_TEST_NATIVE_RELEASE_FILE;
+      if (
+        releaseFile &&
+        handoffPrompt.split("\n", 1)[0] === process.env.NODEX_TEST_NATIVE_HOLD_PROMPT
+      ) {
+        observe({ type: "response.held", prompt: handoffPrompt.split("\n", 1)[0] });
+        while (!existsSync(releaseFile)) await delay(25);
+      }
       const message = {
         id: `handoff-check-${randomUUID()}`,
         role: "assistant",

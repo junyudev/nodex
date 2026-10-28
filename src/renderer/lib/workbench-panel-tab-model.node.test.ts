@@ -17,6 +17,7 @@ import {
   routeDeletedSelectedSubagentsToOverview,
   settlePendingSubagentsPanelTab,
   updateImageEditorPanelTabTitle,
+  updateSideChatPanelTabTitle,
   type ImageEditorPanelTab,
   type ProjectSessionRenderableTab,
   type SideChatPanelTab,
@@ -40,6 +41,18 @@ function transient(discriminant: string): ProjectSessionRenderableTab {
 }
 
 describe("workbench panel tab model", () => {
+  test("names only the addressed side tab without resetting its draft or shortening its request", () => {
+    const first = transient("sideChat") as SideChatPanelTab;
+    const second = { ...first, id: "other-side", stateKey: 12, title: "Side chat 2" };
+    const tabs = [first, second];
+    const title = "Long request ".repeat(200);
+    const updated = updateSideChatPanelTabTitle(tabs, second.id, title);
+    expect(updated[0]).toBe(first);
+    expect(updated[1]).toEqual({ ...second, title });
+    expect(updateSideChatPanelTabTitle(updated, second.id, title)).toBe(updated);
+    expect(updateSideChatPanelTabTitle(updated, "closed-side", "Late request")).toBe(updated);
+    expect(updateSideChatPanelTabTitle(updated, second.id, "  ")).toBe(updated);
+  });
   test.each([
     ["sideChat", isSideChatPanelTab],
     ["mcpApp", isMcpAppPanelTab],

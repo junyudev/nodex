@@ -111,6 +111,7 @@ test("annotates selected replies and reuses a side chat without replacing its dr
     await page.screenshot({ path: testInfo.outputPath("side-chat-selections.png") });
     await sideComposer.press("Enter");
     await expect.poll(() => turns().length, { timeout: 30_000 }).toBe(3);
+    await expect(page.getByRole("tab", { name: "Keep my side draft", exact: true })).toHaveCount(1);
     expect(turns()[2]).toContain("Selection 2");
     expect(turns()[2]).toContain("Keep my side draft");
     await expect(
@@ -133,9 +134,10 @@ test("annotates selected replies and reuses a side chat without replacing its dr
     await expect(sideComposer).toBeFocused();
     await expect(sideComposer).toHaveText("");
     await expect(page.getByRole("button", { name: "1 selection", exact: true })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Side chat", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("tab", { name: "Keep my side draft", exact: true })).toHaveCount(1);
     await sideComposer.press("Enter");
     await expect.poll(() => turns().length, { timeout: 30_000 }).toBe(4);
+    await expect(page.getByRole("tab", { name: "Keep my side draft", exact: true })).toHaveCount(1);
     await expect(scene.locator("[data-response-annotation-target]")).toHaveCount(4);
     await selectResponse(page, response);
     await page.getByRole("button", { name: "Add to chat", exact: true }).click();

@@ -129,10 +129,17 @@ for (const kind of ["codex", "claude"] as const) {
             .filter((record) => record.event === "prompt" || record.type === "prompt")
         : [];
     const artifacts = process.env.NODEX_E2E_SAVE_ARTIFACT_DIR ?? testInfo.outputPath("save-chat");
+    const titleEvidence = process.env.NODEX_E2E_FIRST_MESSAGE_TITLE_DIR;
+    const savedTitleClaims: { name: string; expected: string; actual: unknown; recorded: false }[] =
+      [];
     const claims: { name: string; recorded: boolean; expected: unknown; actual: unknown }[] = [];
     const check = (name: string, expected: unknown, actual: unknown, recorded = false) => {
       claims.push({ name, expected, actual, recorded });
       expect(actual, name).toEqual(expected);
+    };
+    const checkSavedTitle = (name: string, actual: unknown) => {
+      savedTitleClaims.push({ name, expected: sidePrompt, actual, recorded: false });
+      check(name, sidePrompt, actual, recording);
     };
     let page: Page | undefined;
     let readRendererErrors = async () => "";
@@ -206,9 +213,10 @@ for (const kind of ["codex", "claude"] as const) {
       );
       if (!sideId) throw new Error("The side chat has no bound Session");
       const sideComposer = page
-        .getByRole("tabpanel", { name: "Side chat", exact: true })
+        .locator(`[role="tabpanel"][data-tab-id="sidechat-session:${sideId}"]`)
         .locator('[data-codex-composer="true"]');
       await send(sideComposer, sideId, sidePrompt);
+      await expect(page.getByRole("tab", { name: sidePrompt, exact: true })).toBeVisible();
       const sideNativeId = prompts().at(-1)?.threadId ?? prompts().at(-1)?.sessionId;
       if (!sideNativeId) throw new Error("The side chat has no native execution identity");
       const sideInspection = await invokeIpc(page, "agent-runtime:session:inspect", {
@@ -259,6 +267,7 @@ for (const kind of ["codex", "claude"] as const) {
       );
       const saved = await invokeIpc(page, "project-sessions:get", savedId);
       if (!saved?.executionRef) throw new Error("The saved chat has no execution binding");
+      checkSavedTitle("The saved chat inherits its side chat title", saved.displayTitle);
       check(
         "The saved chat stays in the source Project",
         source?.projectId,
@@ -315,6 +324,11 @@ for (const kind of ["codex", "claude"] as const) {
         `[data-app-action-sidebar-thread-row][data-app-action-sidebar-thread-id="${saved?.executionRef?.threadId}"]`,
       );
       await expect(sidebar).toBeVisible();
+      await expect(sidebar).toHaveAccessibleName(sidePrompt);
+      checkSavedTitle(
+        "The saved sidebar row retains the first message title",
+        await sidebar.getAttribute("data-app-action-sidebar-thread-title"),
+      );
       check("The saved chat appears in the sidebar", 1, await sidebar.count(), true);
       await expect.poll(() => invokeIpc(page!, "project-sessions:get", sideId)).toBeNull();
       check(
@@ -405,7 +419,7 @@ for (const kind of ["codex", "claude"] as const) {
         )
         .click();
       await expect.poll(() => visibleSessionId(page!)).toBe(sourceId);
-      const sourceSideTabs = page.getByRole("tab", { name: "Side chat", exact: true });
+      const sourceSideTabs = page.locator('[data-panel-tab-id^="sidechat-session:"]');
       await expect(sourceSideTabs).toHaveCount(0);
       check(
         "Reopening the source does not revive the saved side tab",
@@ -421,6 +435,10 @@ for (const kind of ["codex", "claude"] as const) {
       readRendererErrors = captureRendererErrors(page);
       await harness.waitForApplicationReady();
       await expect.poll(() => visibleSessionId(page!), { timeout: 30_000 }).toBe(savedId);
+      checkSavedTitle(
+        "The saved title survives restart",
+        (await invokeIpc(page, "project-sessions:get", savedId))?.displayTitle,
+      );
       const restored = page.locator(`[data-workbench-scene-owner="session:${savedId}"]`);
       await expect(
         restored.locator('[data-user-message-bubble="true"]', { hasText: sidePrompt }),
@@ -471,6 +489,10 @@ for (const kind of ["codex", "claude"] as const) {
         (await invokeIpc(page, "agent-runtime:session:read", { sessionId: savedId })).snapshot
           .projection.runs.length,
       );
+      checkSavedTitle(
+        "Later saved messages retain the original side title",
+        (await invokeIpc(page, "project-sessions:get", savedId))?.displayTitle,
+      );
       check("The renderer reports no errors", "", await readRendererErrors());
       if (kind === "codex")
         await page.screenshot({ path: path.join(artifacts, "final.png"), animations: "disabled" });
@@ -488,6 +510,17 @@ for (const kind of ["codex", "claude"] as const) {
     } finally {
       if (recording && page && !page.isClosed()) await page.screencast.stop();
       await saveAlerts?.dispose().catch(() => undefined);
+      if (titleEvidence) {
+        fs.mkdirSync(titleEvidence, { recursive: true });
+        fs.writeFileSync(
+          path.join(titleEvidence, `${kind}-saved-title.json`),
+          JSON.stringify(
+            { status: passed ? "passed" : "failed", provider: kind, claims: savedTitleClaims },
+            null,
+            2,
+          ),
+        );
+      }
       if (kind === "codex") {
         fs.mkdirSync(artifacts, { recursive: true });
         fs.writeFileSync(

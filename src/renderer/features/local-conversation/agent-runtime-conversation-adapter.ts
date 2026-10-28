@@ -343,6 +343,7 @@ export function createAgentRuntimeStageActions(input: {
   /** The Agent and model the person chose for the chat's next message, when it changes them. */
   readonly nextSelection?: () => AgentRuntimeMessage["modelSelection"] | null;
   readonly manageProvider?: (instanceId: string) => void;
+  readonly onSideChatTitle?: (title: string) => void;
 }): Partial<ThreadStageActions> {
   const transport = input.transport ?? agentRuntimeRuntime;
   // A choice travels with the message that uses it; the Runtime applies it to that message's Run.
@@ -396,6 +397,7 @@ export function createAgentRuntimeStageActions(input: {
     });
     // The Composer clears when this resolves; the sent message is on screen by then.
     await owner?.whenObserved?.(accepted.sequence);
+    if (accepted.sideChatTitle !== undefined) input.onSideChatTitle?.(accepted.sideChatTitle);
   };
   const continueAfterFailure = async (turnId: string): Promise<void> => {
     const target = { ...requireTarget() };
@@ -514,6 +516,7 @@ export function createAgentRuntimeStageActions(input: {
       },
     });
     await owner?.whenObserved?.(accepted.sequence);
+    if (accepted.sideChatTitle !== undefined) input.onSideChatTitle?.(accepted.sideChatTitle);
   };
   const editQueuedMessage = async (
     threadId: string,
@@ -650,11 +653,14 @@ export function createAgentRuntimeStageActions(input: {
       });
     },
     onResumeQueuedFollowUps: async (threadId) => {
-      await transport.queue({
+      const owner = input.owner();
+      const accepted = await transport.queue({
         ...exactTarget(threadId),
         requestId: createUuidV7(),
         action: "resume",
       });
+      await owner?.whenObserved?.(accepted.sequence);
+      if (accepted.sideChatTitle !== undefined) input.onSideChatTitle?.(accepted.sideChatTitle);
     },
     onReplaceQueuedFollowUp: async (threadId, runId, _revision, prompt, options) => {
       await editQueuedMessage(threadId, runId, prompt, options?.promptInput);
@@ -692,7 +698,15 @@ export function createAgentRuntimeStageActions(input: {
         );
       // An idle chat sends exactly this message now; the queue continues behind it.
       if (!activeRun) {
-        await transport.queue({ ...target, requestId: createUuidV7(), action: "resume", runId });
+        const owner = input.owner();
+        const accepted = await transport.queue({
+          ...target,
+          requestId: createUuidV7(),
+          action: "resume",
+          runId,
+        });
+        await owner?.whenObserved?.(accepted.sequence);
+        if (accepted.sideChatTitle !== undefined) input.onSideChatTitle?.(accepted.sideChatTitle);
         return;
       }
       await transport.queue({
@@ -772,6 +786,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     readonly usesHostExecutable?: boolean;
   }[];
   readonly onRefresh: (projectId: string | null) => Promise<unknown>;
+  readonly onSideChatTitle?: (title: string) => void;
   readonly onOpenThread: ThreadStageActions["onOpenThread"];
   readonly onLaunched?: (
     result: import("../../../shared/agent-runtime-api").AgentRuntimeLaunchResult,
@@ -1172,6 +1187,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       },
       nextSelection: () => nextSelection,
       manageProvider,
+      onSideChatTitle: input.onSideChatTitle,
     }),
     onOpenThread: (threadId, context) =>
       input.onOpenThread(threadId, {

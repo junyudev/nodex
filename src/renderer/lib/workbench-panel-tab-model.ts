@@ -413,6 +413,16 @@ export function getSideChatTabTitle(index: number): string {
   return index === 1 ? "Side chat" : `Side chat ${index}`;
 }
 
+/** An accepted message names only its still-open side tab, without changing its draft identity. */
+export function updateSideChatPanelTabTitle(
+  tabs: SideChatPanelTab[],
+  tabId: string,
+  title: string,
+): SideChatPanelTab[] {
+  if (!title.trim() || !tabs.some((tab) => tab.id === tabId && tab.title !== title)) return tabs;
+  return tabs.map((tab) => (tab.id === tabId ? { ...tab, title } : tab));
+}
+
 export function buildSideChatParentNavigationPath(
   session: WorkbenchSessionRenderProjection,
   parentThreadId: string,

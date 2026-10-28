@@ -121,6 +121,12 @@ export type AgentRuntimeMessageInput = AgentRuntimeSessionTarget & {
   readonly intent?: DispatchMessage["deliveryIntent"];
   readonly presentationTicket?: import("./nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
 };
+
+export type AgentRuntimeSendMessageResult = AgentRuntimeOperations["thread.send"]["output"] & {
+  readonly sessionId: string;
+  readonly threadId: string;
+  readonly sideChatTitle?: string;
+};
 export type AgentRuntimeStopInput = AgentRuntimeSessionTarget & { readonly runId: string };
 /** The fork Session whose newest finished Run merges back into the chat it came from. */
 export type AgentRuntimeMergeBackInput = AgentRuntimeSessionTarget & { readonly requestId: string };
@@ -327,15 +333,15 @@ export interface AgentRuntimeIpcApi {
   };
   "agent-runtime:session:message": {
     args: [input: AgentRuntimeMessageInput];
-    result: { readonly sequence: number };
+    result: { readonly sequence: number; readonly sideChatTitle?: string };
   };
   "agent-runtime:session:queue-message": {
     args: [input: AgentRuntimeMessageInput];
-    result: { readonly sequence: number };
+    result: { readonly sequence: number; readonly sideChatTitle?: string };
   };
   "agent-runtime:session:queue": {
     args: [input: AgentRuntimeQueueInput];
-    result: { readonly sequence: number };
+    result: { readonly sequence: number; readonly sideChatTitle?: string };
   };
   "agent-runtime:session:create-side-chat": {
     args: [input: AgentRuntimeSideChatCreateInput];

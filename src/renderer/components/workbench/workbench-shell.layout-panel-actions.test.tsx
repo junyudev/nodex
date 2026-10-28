@@ -3050,7 +3050,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(startSideChatCalls).toHaveLength(0);
     expect(agentRuntimeLaunchCalls).toHaveLength(0);
     expect(created.source).toMatchObject({ sessionId: source.id });
-    expect(screen.getByRole("tab", { name: "Side chat" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Answer this separate question" })).toBeTruthy();
   });
 
   test("opens each interactive child in its owning root detail without native hydration", async () => {

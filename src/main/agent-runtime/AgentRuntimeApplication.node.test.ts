@@ -13,11 +13,21 @@ import type {
 } from "@nodex/agent-runtime/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
-import { CoreModules } from "../core-runtime/CoreModules";
+import { CoreModules, live as coreModulesLive } from "../core-runtime/CoreModules";
+import { CoreSessionAccess } from "../core-runtime/CoreAuthority";
+import { classifyCoreOperationFailure } from "../core-runtime/CoreRuntimeError";
+import {
+  withCoreScenario,
+  type CoreScenarioContext,
+} from "../../../scripts/scenarios/harness/core-scenario-harness";
+import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/document-sync-recovery";
+import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { coreRuntimeError, type CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
@@ -134,8 +144,13 @@ const setup = (
   importResources?: (
     input: AgentRuntimeOperations["attachments.import"]["input"],
   ) => Effect.Effect<AgentRuntimeOperations["attachments.import"]["output"], unknown>,
+  coreWorkspace?: CoreModules["Service"]["workspace"],
 ) => {
   const bindings = new Map<string, Binding>();
+  const titles = new Map<string, string>();
+  const acceptedTexts = new Map<string, string>();
+  const acceptedActors = new Map<string, "user" | "agent" | "system">();
+  const publishedMessages = new Map<string, string[]>();
   const snapshots = new Map<string, AgentSnapshot>();
   const commands = new Map<string, AgentCommand>();
   const imports = new Map<string, AgentRuntimeOperations["thread.import-native"]["input"]>();
@@ -212,6 +227,9 @@ const setup = (
     mode: "auto",
     runtimeId: "engine",
     failMessage: false,
+    admitMessageRuns: false,
+    holdMessages: false,
+    failTitleWrite: false,
     failThreadCreate: false,
     refuseSideChatSave: false,
     failSideChatSave: false,
@@ -308,7 +326,10 @@ const setup = (
                 return {
                   value: {
                     kind: "session",
-                    session: { archived: state.archived, display_title: "Task" },
+                    session: {
+                      archived: state.archived,
+                      display_title: titles.get(input.session_id) ?? "Task",
+                    },
                   },
                 };
               if (input.kind === "agent_runtime_session_binding")
@@ -359,6 +380,12 @@ const setup = (
       actors.push(yield* CoreApplicationAgent);
       if (state.failCore) return yield* Effect.fail(new Error("Core refused Page access"));
       if (
+        state.failTitleWrite &&
+        input.intent.kind === "mutate_session" &&
+        input.intent.intent.kind === "set_fallback_title"
+      )
+        return yield* Effect.fail(new Error("Core title storage unavailable"));
+      if (
         input.intent.kind === "acknowledge_agent_runtime_execution_cleanup" &&
         state.failCleanupAcknowledgment
       )
@@ -380,6 +407,12 @@ const setup = (
         if (binding) bindings.set(intent.session_id, { ...binding, project_id: intent.project_id });
         return {};
       }
+      if (intent.kind === "mutate_session" && intent.intent.kind === "set_fallback_title") {
+        const current = titles.get(intent.session_id) ?? "Task";
+        if (intent.intent.replaces == null || current === intent.intent.replaces)
+          titles.set(intent.session_id, intent.intent.title);
+        return {};
+      }
       if (
         intent.kind !== "create_agent_runtime_session" &&
         intent.kind !== "adopt_native_session_execution"
@@ -396,6 +429,8 @@ const setup = (
           ? { side_chat_source_session_id: intent.side_chat_source_session_id }
           : {}),
       });
+      if (intent.kind === "create_agent_runtime_session")
+        titles.set(intent.session_id, intent.title);
       order.push("core.bind");
       if (state.failCoreAcknowledgment)
         return yield* Effect.fail(new Error("Core binding committed before disconnect"));
@@ -601,8 +636,23 @@ const setup = (
         }
         if (command.type === "message.dispatch") {
           order.push("engine.message.dispatch");
-          if (command.dispatchMode.type === "defer_start") {
+          if (command.dispatchMode.type === "defer_start" || state.admitMessageRuns) {
+            acceptedTexts.set(JSON.stringify([command.threadId, command.messageId]), command.text);
+            acceptedActors.set(
+              JSON.stringify([command.threadId, command.messageId]),
+              command.createdBy,
+            );
             const current = snapshots.get(command.threadId)!;
+            const blocked =
+              state.holdMessages ||
+              current.projection.runs.some((run) =>
+                ["preparing", "starting", "running", "waiting"].includes(run.status),
+              );
+            if (!blocked)
+              publishedMessages.set(command.threadId, [
+                ...(publishedMessages.get(command.threadId) ?? []),
+                command.messageId,
+              ]);
             snapshots.set(command.threadId, {
               ...current,
               projection: {
@@ -612,10 +662,43 @@ const setup = (
                   {
                     id: `run:${command.messageId}`,
                     userMessageId: command.messageId,
-                    status: "preparing",
+                    status:
+                      command.dispatchMode.type === "defer_start"
+                        ? "preparing"
+                        : blocked
+                          ? "queued"
+                          : "starting",
                     ordinal: current.projection.runs.length + 1,
                   } as never,
                 ],
+              },
+            });
+          }
+        }
+        if (command.type === "queue.resume" && state.admitMessageRuns) {
+          const current = snapshots.get(command.threadId)!;
+          const blocked = current.projection.runs.some((run) =>
+            ["preparing", "starting", "running", "waiting"].includes(run.status),
+          );
+          const queued =
+            !blocked &&
+            current.projection.runs.find(
+              (run) =>
+                run.status === "queued" &&
+                (command.runId === undefined || run.id === command.runId),
+            );
+          if (queued) {
+            publishedMessages.set(command.threadId, [
+              ...(publishedMessages.get(command.threadId) ?? []),
+              queued.userMessageId,
+            ]);
+            snapshots.set(command.threadId, {
+              ...current,
+              projection: {
+                ...current.projection,
+                runs: current.projection.runs.map((run) =>
+                  run.id === queued.id ? { ...run, status: "starting" } : run,
+                ),
               },
             });
           }
@@ -704,6 +787,7 @@ const setup = (
               thread: {
                 ...source.projection.thread,
                 id: command.targetThreadId,
+                title: command.title ?? source.projection.thread.title,
                 sideChat: command.sideChat
                   ? { sourceThreadId: command.sourceThreadId, sourceRunId: null, nativeFork: false }
                   : undefined,
@@ -836,6 +920,38 @@ const setup = (
         if (!value) return yield* Effect.fail(new Error("Thread missing"));
         return value as AgentRuntimeOperations[M]["output"];
       }
+      if (method === "thread.run-message" && state.admitMessageRuns) {
+        const request = input as AgentRuntimeOperations["thread.run-message"]["input"];
+        const run = snapshots
+          .get(request.threadId)
+          ?.projection.runs.find((value) => value.id === request.runId);
+        const text =
+          run && acceptedTexts.get(JSON.stringify([request.threadId, run.userMessageId]));
+        return (
+          text === undefined ? null : { role: "user", text }
+        ) as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "thread.opening-request") {
+        const { threadId } = input as AgentRuntimeOperations["thread.opening-request"]["input"];
+        const messageId = publishedMessages.get(threadId)?.[0];
+        const key = JSON.stringify([threadId, messageId]);
+        const text = acceptedTexts.get(key);
+        const run = snapshots
+          .get(threadId)
+          ?.projection.runs.find((run) => run.userMessageId === messageId);
+        return (
+          text === undefined
+            ? null
+            : {
+                id: messageId,
+                threadId,
+                runId: run?.id,
+                role: "user",
+                text,
+                createdBy: acceptedActors.get(key) ?? "user",
+              }
+        ) as AgentRuntimeOperations[M]["output"];
+      }
       if (method === "thread.queued-preview") {
         const request = input as AgentRuntimeOperations["thread.queued-preview"]["input"];
         const projection = snapshots.get(request.threadId)?.projection;
@@ -909,6 +1025,58 @@ const setup = (
       }
       if (method === "thread.send") {
         const request = input as AgentRuntimeOperations["thread.send"]["input"];
+        if (state.admitMessageRuns) {
+          const current = snapshots.get(request.threadId)!;
+          const existing = current.projection.runs.find(
+            (run) => run.userMessageId === request.messageId,
+          );
+          if (!existing) {
+            commands.set(request.commandId, {
+              type: "message.dispatch",
+              commandId: request.commandId,
+              threadId: request.threadId,
+              messageId: request.messageId,
+              text: request.text,
+              attachments: request.attachments,
+              dispatchMode: {
+                type: request.mode === "queue" ? "queue_after_active" : "start_immediately",
+              },
+              createdBy: request.createdBy,
+              creationSource: request.createdBy === "agent" ? "mcp" : "web",
+            });
+            acceptedTexts.set(JSON.stringify([request.threadId, request.messageId]), request.text);
+            acceptedActors.set(
+              JSON.stringify([request.threadId, request.messageId]),
+              request.createdBy,
+            );
+            if (request.mode !== "queue")
+              publishedMessages.set(request.threadId, [
+                ...(publishedMessages.get(request.threadId) ?? []),
+                request.messageId,
+              ]);
+            snapshots.set(request.threadId, {
+              ...current,
+              projection: {
+                ...current.projection,
+                runs: [
+                  ...current.projection.runs,
+                  {
+                    id: `run:${request.messageId}`,
+                    userMessageId: request.messageId,
+                    status: request.mode === "queue" ? "queued" : "starting",
+                    ordinal: current.projection.runs.length + 1,
+                  } as never,
+                ],
+              },
+            });
+          }
+          return {
+            messageId: request.messageId,
+            runId: existing?.id ?? `run:${request.messageId}`,
+            status: request.mode === "queue" ? "queued" : "starting",
+            delivery: request.mode === "queue" ? "queued" : "started",
+          } as AgentRuntimeOperations[M]["output"];
+        }
         return {
           messageId: request.messageId,
           runId: "run:canonical-delivery",
@@ -951,7 +1119,7 @@ const setup = (
       id: sessionId,
       projectId: binding?.project_id ?? "project",
       archived: state.archived,
-      noThreadFallbackTitle: "Task",
+      noThreadFallbackTitle: titles.get(sessionId) ?? "Task",
       executionRef: binding
         ? { runtimeId: binding.runtime_id, threadId: binding.runtime_thread_id }
         : null,
@@ -982,7 +1150,7 @@ const setup = (
       ensureWorkspaceRoot: Effect.void,
     },
   }).pipe(
-    Effect.provideService(CoreModules, { workspace: { read, apply } } as never),
+    Effect.provideService(CoreModules, { workspace: coreWorkspace ?? { read, apply } } as never),
     Effect.provideService(ProjectWorkspace, {
       getProjectSession: (id: string) =>
         Effect.succeed(
@@ -995,12 +1163,11 @@ const setup = (
           state.nativeBackendSession?.threadId === id ? state.nativeBackendSession : null,
         ),
       renameProjectSession: (command) =>
-        mutateSession("rename", () => ({
-          ...sessionValue(command.payload.sessionId),
-          noThreadFallbackTitle: state.supersededTitle
-            ? "Newer title"
-            : command.payload.input.title.trim(),
-        })),
+        mutateSession("rename", () => {
+          const title = state.supersededTitle ? "Newer title" : command.payload.input.title.trim();
+          titles.set(command.payload.sessionId, title);
+          return sessionValue(command.payload.sessionId);
+        }),
       archiveProjectSession: (command) =>
         mutateSession("archive", () => {
           state.archived = !state.supersededArchive;
@@ -1050,6 +1217,7 @@ const setup = (
   return {
     owner,
     bindings,
+    titles,
     snapshots,
     commands,
     imports,
@@ -5379,6 +5547,497 @@ it.effect(
       assert.isTrue(f.bindings.has(source.sessionId));
       assert.isNotNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
       assert.deepEqual(f.snapshots.get(source.threadId), sourceBefore);
+    }),
+);
+
+const sideChatTitleFixture = Effect.fnUntraced(function* (instanceId = "claude") {
+  const fixture = setup();
+  fixture.state.admitMessageRuns = true;
+  const owner = yield* fixture.owner;
+  const source = yield* owner.launch({
+    ...launch,
+    modelSelection: { instanceId, model: "model-a" },
+  });
+  const side = yield* owner.createSideChat({
+    source: { sessionId: source.sessionId },
+    sessionId: "side:title",
+    requestId: "side:title:create",
+    acceptedAt: launch.acceptedAt,
+  });
+  return { fixture, owner, source, side };
+});
+
+const acquireTitleCoreScenario = Effect.acquireRelease(
+  Effect.callback<
+    { scenario: CoreScenarioContext; release: () => void; completed: Promise<void> },
+    unknown
+  >((resume) => {
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const completed = withCoreScenario(
+      { scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID },
+      async (scenario) => {
+        resume(Effect.succeed({ scenario, release, completed }));
+        await released;
+      },
+    );
+    void completed.catch((cause) => resume(Effect.fail(cause)));
+  }),
+  ({ release, completed }) =>
+    Effect.promise(() => {
+      release();
+      return completed;
+    }),
+);
+
+it.effect(
+  "persists the first side title through the real Core boundary and retains it when saved",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { scenario } = yield* acquireTitleCoreScenario;
+        const access = CoreSessionAccess.of({
+          handshake: Effect.die("unused handshake"),
+          use: (operation, run, options) =>
+            Effect.tryPromise({
+              try: (signal) =>
+                run(
+                  options?.projectId
+                    ? scenario.client.forProject(options.projectId)
+                    : scenario.client,
+                  signal,
+                ),
+              catch: (cause) => classifyCoreOperationFailure(operation, cause),
+            }),
+        });
+        const modules = yield* Layer.build(
+          coreModulesLive.pipe(Layer.provide(Layer.succeed(CoreSessionAccess, access))),
+        );
+        const core = Context.get(modules, CoreModules);
+        // Runtime admission stays deterministic; all Session writes and reads cross real Core.
+        const f = setup({}, [], undefined, core.workspace);
+        f.state.admitMessageRuns = true;
+        f.state.generatedTitle = "Task";
+        const owner = yield* f.owner;
+        const projectId = scenario.manifest.projectId;
+        const acceptedAt = Math.trunc(performance.timeOrigin + performance.now());
+        const source = yield* owner.launch({
+          ...launch,
+          acceptedAt,
+          projectId,
+          initialPageIds: [],
+          modelSelection: { instanceId: "claude", model: "model-a" },
+        });
+        const side = yield* owner.createSideChat({
+          source: { sessionId: source.sessionId },
+          sessionId: "side:real-core-title",
+          requestId: "create:real-core-title",
+          acceptedAt,
+        });
+        const displayTitle = (sessionId: string) =>
+          core.workspace
+            .read({ kind: "session", session_id: sessionId }, undefined, projectId)
+            .pipe(
+              Effect.map((read) =>
+                read.value.kind === "session" ? read.value.session.display_title : null,
+              ),
+            );
+        assert.equal(yield* displayTitle(side.sessionId), "Side chat");
+        const input = {
+          sessionId: side.sessionId,
+          message: {
+            messageId: "side:real-core-first",
+            text: "**Inspect** the launch checklist",
+          },
+        };
+        assert.equal((yield* owner.message(input)).sideChatTitle, "Inspect the launch checklist");
+        assert.equal(yield* displayTitle(side.sessionId), "Inspect the launch checklist");
+        assert.equal((yield* owner.message(input)).sideChatTitle, "Inspect the launch checklist");
+        assert.equal(yield* displayTitle(source.sessionId), "Task");
+        const current = f.snapshots.get(side.threadId)!;
+        f.snapshots.set(side.threadId, {
+          ...current,
+          projection: {
+            ...current.projection,
+            runs: current.projection.runs.map((run) => ({ ...run, status: "completed" })),
+          },
+        });
+        const saved = yield* owner.saveSideChat({
+          source: { sessionId: side.sessionId },
+          sessionId: "saved:real-core-title",
+          requestId: "save:real-core-title",
+          acceptedAt,
+        });
+        assert.equal(yield* displayTitle(saved.sessionId), "Inspect the launch checklist");
+        yield* core.workspace.apply(
+          {
+            operationId: createOperationId("test.side-chat.rename"),
+            intent: {
+              kind: "mutate_session",
+              session_id: side.sessionId,
+              intent: { kind: "rename", title: "Keep this title" },
+            },
+          },
+          undefined,
+          projectId,
+        );
+        yield* owner.message(input);
+        assert.equal(yield* displayTitle(side.sessionId), "Keep this title");
+        assert.equal(yield* displayTitle(saved.sessionId), "Inspect the launch checklist");
+        yield* Effect.promise(() => scenario.withStoppedCore(async () => {}));
+        assert.equal(yield* displayTitle(saved.sessionId), "Inspect the launch checklist");
+        assert.equal(yield* displayTitle(side.sessionId), "Keep this title");
+        assert.equal(yield* displayTitle(source.sessionId), "Task");
+      }),
+    ),
+);
+
+it.effect.each(["codex", "claude", "opencode", "acp"])(
+  "%s side chats take their first admitted request as title before a reply and retain it when saved",
+  (instanceId) =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side, source } = yield* sideChatTitleFixture(instanceId);
+      const text = "Context\n## My request:\n**Inspect** [the request](https://example.com)\n now";
+      const result = yield* owner.message({
+        sessionId: side.sessionId,
+        message: { messageId: "side:first", text },
+      });
+      assert.equal(result.sideChatTitle, "Inspect the request now");
+      assert.equal(f.titles.get(side.sessionId), "Inspect the request now");
+      assert.equal(f.titles.get(source.sessionId), "Task");
+      assert.equal(f.snapshots.get(side.threadId)!.projection.runs[0]!.status, "starting");
+      const later = yield* owner.message({
+        sessionId: side.sessionId,
+        message: { messageId: "side:later", text: "A later request" },
+      });
+      assert.isUndefined(later.sideChatTitle);
+      assert.equal(f.titles.get(side.sessionId), "Inspect the request now");
+      const current = f.snapshots.get(side.threadId)!;
+      f.snapshots.set(side.threadId, {
+        ...current,
+        projection: {
+          ...current.projection,
+          runs: current.projection.runs.map((run) => ({ ...run, status: "completed" })),
+        },
+      });
+      const saved = yield* owner.saveSideChat({
+        source: { sessionId: side.sessionId },
+        sessionId: "saved:title",
+        requestId: "save:title",
+        acceptedAt: launch.acceptedAt,
+      });
+      assert.equal(f.titles.get(saved.sessionId), "Inspect the request now");
+      assert.equal(
+        f.snapshots.get(saved.threadId)!.projection.thread.title,
+        "Inspect the request now",
+      );
+    }),
+);
+
+it.effect(
+  "a rejected first side request leaves the default title available for an accepted retry",
+  () =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+      const input = {
+        sessionId: side.sessionId,
+        message: { messageId: "first", text: "Retry this request" },
+      };
+      f.state.failMessage = true;
+      yield* owner.message(input).pipe(Effect.flip);
+      assert.equal(f.titles.get(side.sessionId), "Side chat");
+      assert.equal((yield* owner.message(input)).sideChatTitle, "Retry this request");
+      assert.equal(f.titles.get(side.sessionId), "Retry this request");
+    }),
+);
+
+it.effect(
+  "an idle side request with Agent configuration is titled when its Run starts immediately",
+  () =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture("codex");
+      const result = yield* owner.message({
+        sessionId: side.sessionId,
+        message: {
+          messageId: "first",
+          text: '<agent-config mode="plan" />\n**Inspect** status',
+        },
+      });
+      assert.equal(result.sideChatTitle, "Inspect status");
+      assert.equal(f.titles.get(side.sessionId), "Inspect status");
+      assert.equal(f.snapshots.get(side.threadId)!.projection.runs[0]!.status, "starting");
+    }),
+);
+
+it.effect.each(["attachment-only", "agent"] as const)(
+  "an admitted %s opening side request keeps the default title and later requests do not replace it",
+  (kind) =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+      const message =
+        kind === "attachment-only"
+          ? {
+              messageId: "first",
+              text: "",
+              attachments: [
+                {
+                  type: "file" as const,
+                  id: "file:one",
+                  name: "notes.txt",
+                  mimeType: "text/plain",
+                  sizeBytes: 4,
+                },
+              ],
+            }
+          : { messageId: "first", text: "Opening request" };
+      const first = owner.message({ sessionId: side.sessionId, message });
+      const result = yield* kind === "agent"
+        ? first.pipe(Effect.provideService(CoreApplicationAgent, agent))
+        : first;
+      assert.isUndefined(result.sideChatTitle);
+      assert.equal(f.titles.get(side.sessionId), "Side chat");
+      const later = yield* owner.message({
+        sessionId: side.sessionId,
+        message: { messageId: "later", text: "Later title" },
+      });
+      assert.isUndefined(later.sideChatTitle);
+      assert.equal(f.titles.get(side.sessionId), "Side chat");
+    }),
+);
+
+it.effect.each([false, true])(
+  "queue intake titles a side request only when it is actually published, held %s",
+  (held) =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+      f.state.holdMessages = held;
+      const result = yield* owner.queueMessage({
+        sessionId: side.sessionId,
+        message: { messageId: "first", text: "Opening request" },
+      });
+      assert.equal(result.sideChatTitle, held ? undefined : "Opening request");
+      assert.equal(f.titles.get(side.sessionId), held ? "Side chat" : "Opening request");
+    }),
+);
+
+it.effect.each(["interactive", "semantic"] as const)(
+  "a person replaying an Agent's %s opening cannot name the side chat",
+  (entry) =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+      const input = {
+        sessionId: side.sessionId,
+        message: { messageId: "agent:first", text: "Agent opening request" },
+      };
+      const admitted =
+        entry === "interactive"
+          ? yield* owner.message(input).pipe(Effect.provideService(CoreApplicationAgent, agent))
+          : yield* owner
+              .sendMessage({ ...input, mode: "auto" })
+              .pipe(Effect.provideService(CoreApplicationAgent, agent));
+      assert.isUndefined(admitted.sideChatTitle);
+      assert.isUndefined((yield* owner.message(input)).sideChatTitle);
+      f.state.messageReplay = {
+        messageId: input.message.messageId,
+        runId: "run:agent:first",
+        status: "starting",
+        delivery: "started",
+      };
+      const replayed = yield* owner.sendMessage({
+        ...input,
+        mode: "auto",
+        messageFingerprint: "agent-opening-fingerprint",
+        message: { ...input.message, text: "Person retry text" },
+      });
+      assert.isUndefined(replayed.sideChatTitle);
+      assert.equal(f.titles.get(side.sessionId), "Side chat");
+      assert.lengthOf(f.snapshots.get(side.threadId)!.projection.runs, 1);
+    }),
+);
+
+it.effect.each(["sent-second", "resumed-second"] as const)(
+  "the first published side request names the chat when a queued first Run is activated after %s",
+  (order) =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+      f.state.holdMessages = true;
+      yield* owner.queueMessage({
+        sessionId: side.sessionId,
+        message: { messageId: "queued:first", text: "Older queued request" },
+      });
+      if (order === "resumed-second")
+        yield* owner.queueMessage({
+          sessionId: side.sessionId,
+          message: { messageId: "sent:second", text: "Chosen first request" },
+        });
+      f.state.holdMessages = false;
+      const result =
+        order === "sent-second"
+          ? yield* owner.message({
+              sessionId: side.sessionId,
+              message: { messageId: "sent:second", text: "Chosen first request" },
+            })
+          : yield* owner.queue({
+              sessionId: side.sessionId,
+              requestId: "resume:second",
+              action: "resume",
+              runId: "run:sent:second",
+            });
+      assert.equal(result.sideChatTitle, "Chosen first request");
+      assert.equal(f.titles.get(side.sessionId), "Chosen first request");
+      const current = f.snapshots.get(side.threadId)!;
+      f.snapshots.set(side.threadId, {
+        ...current,
+        projection: {
+          ...current.projection,
+          runs: current.projection.runs.map((run) =>
+            run.userMessageId === "sent:second" ? { ...run, status: "completed" } : run,
+          ),
+        },
+      });
+      const resumed = yield* owner.queue({
+        sessionId: side.sessionId,
+        requestId: "resume:older",
+        action: "resume",
+        runId: "run:queued:first",
+      });
+      assert.isUndefined(resumed.sideChatTitle);
+      assert.equal(f.titles.get(side.sessionId), "Chosen first request");
+    }),
+);
+
+it.effect.each([undefined, "run:first"])(
+  "resuming the first queued side request names it only after activation, selected Run %s",
+  (runId) =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+      f.state.holdMessages = true;
+      yield* owner.queueMessage({
+        sessionId: side.sessionId,
+        message: { messageId: "first", text: "**Inspect** the paused request" },
+      });
+      assert.equal(f.titles.get(side.sessionId), "Side chat");
+      const input = {
+        sessionId: side.sessionId,
+        requestId: "resume:first",
+        action: "resume" as const,
+        ...(runId ? { runId } : {}),
+      };
+      const result = yield* owner.queue(input);
+      assert.equal(result.sideChatTitle, "Inspect the paused request");
+      assert.equal(f.titles.get(side.sessionId), "Inspect the paused request");
+      assert.equal(f.snapshots.get(side.threadId)!.projection.runs[0]!.status, "starting");
+      const replayed = yield* owner.queue(input);
+      assert.equal(replayed.sideChatTitle, "Inspect the paused request");
+      assert.lengthOf(f.snapshots.get(side.threadId)!.projection.runs, 1);
+    }),
+);
+
+it.effect(
+  "semantic sends return the full first-request title while Core keeps a bounded Unicode prefix",
+  () =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+      const text = `${"中".repeat(1_999)}😀 more request text`;
+      const result = yield* owner.sendMessage({
+        sessionId: side.sessionId,
+        mode: "auto",
+        message: { messageId: "first", text },
+      });
+      assert.equal(result.delivery, "started");
+      assert.equal(result.sideChatTitle, text);
+      assert.equal(f.titles.get(side.sessionId), "中".repeat(1_999));
+      const later = yield* owner.sendMessage({
+        sessionId: side.sessionId,
+        mode: "auto",
+        message: { messageId: "later", text: "Changed title" },
+      });
+      assert.isUndefined(later.sideChatTitle);
+    }),
+);
+
+it.effect(
+  "accepted side requests still return their title when metadata storage fails, and replay repairs it",
+  () =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+      const input = {
+        sessionId: side.sessionId,
+        message: { messageId: "first", text: "Accepted request" },
+      };
+      f.state.failTitleWrite = true;
+      assert.equal((yield* owner.message(input)).sideChatTitle, "Accepted request");
+      assert.equal(f.titles.get(side.sessionId), "Side chat");
+      f.state.failTitleWrite = false;
+      assert.equal((yield* owner.message(input)).sideChatTitle, "Accepted request");
+      assert.equal(f.titles.get(side.sessionId), "Accepted request");
+      assert.lengthOf(f.snapshots.get(side.threadId)!.projection.runs, 1);
+    }),
+);
+
+it.effect(
+  "semantic receipt replay restores the accepted first side title without dispatching again",
+  () =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+      const input = {
+        sessionId: side.sessionId,
+        mode: "auto" as const,
+        message: { messageId: "first", text: "Accepted semantic request" },
+      };
+      const accepted = yield* owner.sendMessage(input);
+      f.state.messageReplay = {
+        messageId: "first",
+        runId: accepted.runId,
+        status: accepted.status,
+        delivery: accepted.delivery,
+      };
+      const before = f.calls.length;
+      const replayed = yield* owner.sendMessage({
+        ...input,
+        messageFingerprint: "accepted-fingerprint",
+        message: { messageId: "first", text: "Changed retry text" },
+      });
+      assert.equal(replayed.sideChatTitle, "Accepted semantic request");
+      assert.isFalse(f.calls.slice(before).some((call) => call.method === "thread.send"));
+      assert.lengthOf(f.snapshots.get(side.threadId)!.projection.runs, 1);
+    }),
+);
+
+it.effect("first-request titles cannot overwrite a manually renamed side Session", () =>
+  Effect.gen(function* () {
+    const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+    yield* owner.renameSession({
+      operationId: "rename:side",
+      payload: { sessionId: side.sessionId, input: { title: "My title" } },
+    });
+    yield* owner.message({
+      sessionId: side.sessionId,
+      message: { messageId: "first", text: "First request" },
+    });
+    assert.equal(f.titles.get(side.sessionId), "My title");
+  }),
+);
+
+it.effect(
+  "replayed side-message receipts use the accepted request instead of altered retry text",
+  () =>
+    Effect.gen(function* () {
+      const { fixture: f, owner, side } = yield* sideChatTitleFixture();
+      const input = {
+        sessionId: side.sessionId,
+        message: { messageId: "first", text: "The accepted request" },
+      };
+      yield* owner.message(input);
+      const replayed = yield* owner.message({
+        ...input,
+        message: { ...input.message, text: "Unaccepted replacement text" },
+      });
+      assert.equal(replayed.sideChatTitle, "The accepted request");
+      assert.equal(f.titles.get(side.sessionId), "The accepted request");
+      assert.lengthOf(f.snapshots.get(side.threadId)!.projection.runs, 1);
     }),
 );
 

@@ -405,6 +405,8 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
       >["interactionMode"];
       readonly modelSelection?: AgentWire<ModelSelection>;
       readonly mode: "auto" | "queue" | "steer" | "restart";
+      /** Host-authenticated origin; message admission retains it when another caller retries. */
+      readonly createdBy: "user" | "agent";
       readonly senderThreadId?: string;
       readonly senderRunId?: string | null;
       readonly modeLimit?: AgentDispatchModeLimit;
@@ -570,6 +572,11 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
   /** The user message that started a Run still in the conversation, queued or settled. */
   readonly "thread.run-message": {
     readonly input: { readonly threadId: string; readonly runId: string };
+    readonly output: AgentWire<OrchestrationV2ConversationMessage> | null;
+  };
+  /** The first own user turn admitted to the conversation, excluding inherited and queued-only history. */
+  readonly "thread.opening-request": {
+    readonly input: { readonly threadId: string };
     readonly output: AgentWire<OrchestrationV2ConversationMessage> | null;
   };
   readonly "shell.read": {

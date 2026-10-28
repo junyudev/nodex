@@ -1234,6 +1234,10 @@ export interface ProjectionStoreV2Shape {
     threadId: ThreadId,
     runId: RunId,
   ) => Effect.Effect<OrchestrationV2ConversationMessage | null, ProjectionStoreV2Error>;
+  /** First own admitted user turn; inherited history and queued-only messages do not name it. */
+  readonly getOpeningRequest: (
+    threadId: ThreadId,
+  ) => Effect.Effect<OrchestrationV2ConversationMessage | null, ProjectionStoreV2Error>;
   readonly getPendingNativeUserInputs: (
     threadId: ThreadId,
     providerTurnId: ProviderTurnId,
@@ -7245,6 +7249,25 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         return yield* decodeMessagePayload(rows[0].payload_json);
       }).pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })));
 
+    const getOpeningRequest: ProjectionStoreV2Shape["getOpeningRequest"] = (threadId) =>
+      Effect.gen(function* () {
+        // Projection rows are inserted in event publication order; upserts retain their rowid.
+        // Display ordinals differ for queued turns and cannot identify the opening request.
+        const rows = yield* sql<PayloadRow>`SELECT message.payload_json
+          FROM orchestration_v2_projection_turn_items item
+          JOIN orchestration_v2_projection_messages message
+            ON message.message_id = json_extract(item.payload_json, '$.messageId')
+              AND message.thread_id = item.thread_id
+          WHERE item.thread_id = ${threadId} AND item.type = 'user_message'
+            AND json_extract(item.payload_json, '$.inputIntent') IN ('turn_start','queued_turn')
+            AND message.role = 'user'
+          ORDER BY item.rowid ASC LIMIT 1`;
+        if (!rows[0]) return null;
+        if (Buffer.byteLength(rows[0].payload_json) > 15 * 1024 * 1024)
+          return yield* Effect.fail(new Error("Opening request exceeds the detail budget"));
+        return yield* decodeMessagePayload(rows[0].payload_json);
+      }).pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })));
+
     const getProjectExecutionActivity: ProjectionStoreV2Shape["getProjectExecutionActivity"] = (
       projectId,
     ) =>
@@ -9736,6 +9759,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getQueuedRunPage,
       getQueuedRunPreview,
       getRunUserMessage,
+      getOpeningRequest,
       getProjectProviderSessionBindings,
       getExecutionActors,
       getExecutionHandoffs,
@@ -9817,6 +9841,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getQueuedRunPage: readOnReader(service.getQueuedRunPage),
       getQueuedRunPreview: readOnReader(service.getQueuedRunPreview),
       getRunUserMessage: readOnReader(service.getRunUserMessage),
+      getOpeningRequest: readOnReader(service.getOpeningRequest),
       getProjectProviderSessionBindings: readOnReader(service.getProjectProviderSessionBindings),
       getExecutionActors: readOnReader(service.getExecutionActors),
       getExecutionHandoffs: readOnReader(service.getExecutionHandoffs),
@@ -11265,6 +11290,24 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             ? (projection?.messages.find(
                 (message) =>
                   message.id === run.userMessageId &&
+                  message.threadId === threadId &&
+                  message.role === "user",
+              ) ?? null)
+            : null;
+        }),
+      getOpeningRequest: (threadId) =>
+        Effect.gen(function* () {
+          const state = yield* Ref.get(replayState);
+          const projection = state.projections.get(threadId);
+          const first = projection?.turnItems.find(
+            (item) =>
+              item.type === "user_message" &&
+              (item.inputIntent === "turn_start" || item.inputIntent === "queued_turn"),
+          );
+          return first?.type === "user_message"
+            ? (projection?.messages.find(
+                (message) =>
+                  message.id === first.messageId &&
                   message.threadId === threadId &&
                   message.role === "user",
               ) ?? null)

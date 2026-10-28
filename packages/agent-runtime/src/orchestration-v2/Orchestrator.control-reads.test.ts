@@ -28,6 +28,9 @@ import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
+import * as EventSink from "./EventSink.ts";
+import * as EventStore from "./EventStore.ts";
+import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import { decodeCodexAsyncQuestionReplies } from "../nodex/CodexConventions.ts";
@@ -45,6 +48,7 @@ const adapter = {
 const layerDatabase = SqlitePersistence.layerMemory;
 const layerTest = Layer.mergeAll(
   layerDatabase,
+  EventStore.layer.pipe(Layer.provide(layerDatabase)),
   ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
   ProviderReplayHarness.layerWithRegistry(
     { name: "control-reads" },
@@ -56,6 +60,7 @@ const layerTest = Layer.mergeAll(
 it.effect("replays stable command identities without creating another message or Run", () =>
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
     const outbox = yield* EffectOutbox.EffectOutboxV2;
     const threadId = ThreadId.make("thread:stable-submission");
     const create = {
@@ -73,6 +78,7 @@ it.effect("replays stable command identities without creating another message or
       creationSource: "web" as const,
     };
     const created = yield* orchestrator.dispatch(create);
+    assert.isNull(yield* projections.getOpeningRequest(threadId));
     assert.deepEqual(yield* orchestrator.dispatch(create), created);
     const message = {
       type: "message.dispatch" as const,
@@ -86,6 +92,8 @@ it.effect("replays stable command identities without creating another message or
       creationSource: "web" as const,
     };
     const accepted = yield* orchestrator.dispatch(message);
+    // The worker is disabled: opening publication belongs to admission, before any reply.
+    assert.equal((yield* projections.getOpeningRequest(threadId))?.id, message.messageId);
     const acceptedEffects = yield* outbox.listByCommandId(message.commandId);
     assert.isNotEmpty(acceptedEffects);
     for (let retry = 0; retry < 3; retry++)
@@ -103,6 +111,7 @@ it.effect("replays stable command identities without creating another message or
     assert.equal(projection.messages.length, 1);
     assert.equal(projection.messages[0]?.text, message.text);
     assert.equal(projection.runs.length, 1);
+    assert.equal((yield* projections.getOpeningRequest(threadId))?.text, message.text);
     const otherThreadId = ThreadId.make("thread:other");
     yield* orchestrator.dispatch({
       ...create,
@@ -116,6 +125,209 @@ it.effect("replays stable command identities without creating another message or
     if (unrelated._tag === "Failure")
       assert.equal(unrelated.failure._tag, "OrchestratorCommandIdConflictError");
   }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "queue activation publishes the opening request before returning and rebuild retains its order",
+  () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:opening-queue");
+      const providerThreadId = ProviderThreadId.make("provider-thread:opening-queue");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("create:opening-queue"),
+        threadId,
+        projectId: ProjectId.make("project:opening-queue"),
+        title: "Side chat",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("provider-thread:opening-queue"),
+            type: "provider-thread.updated",
+            threadId,
+            occurredAt: now,
+            payload: {
+              id: providerThreadId,
+              driver: adapter.driver,
+              providerInstanceId: instanceId,
+              providerSessionId: null,
+              appThreadId: threadId,
+              ownerNodeId: null,
+              nativeThreadRef: null,
+              nativeConversationHeadRef: null,
+              status: "not_loaded",
+              firstRunOrdinal: null,
+              lastRunOrdinal: null,
+              handoffIds: [],
+              forkedFrom: null,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+        ],
+      });
+      // Restore an admitted, held queue with no own user publication yet.
+      for (const ordinal of [1, 2]) {
+        const runId = RunId.make(`run:opening-queue:${ordinal}`);
+        const nodeId = NodeId.make(`node:opening-queue:${ordinal}`);
+        const attemptId = RunAttemptId.make(`attempt:opening-queue:${ordinal}`);
+        const messageId = MessageId.make(`message:opening-queue:${ordinal}`);
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make(`message:${ordinal}`),
+              type: "message.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: messageId,
+                threadId,
+                runId,
+                nodeId,
+                role: "user",
+                text: `Request ${ordinal}`,
+                attachments: [],
+                streaming: false,
+                createdBy: "user",
+                creationSource: "web",
+                createdAt: now,
+                updatedAt: now,
+              },
+            },
+            {
+              id: EventId.make(`run:${ordinal}`),
+              type: "run.created",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: runId,
+                threadId,
+                ordinal,
+                providerInstanceId: instanceId,
+                modelSelection,
+                providerThreadId,
+                userMessageId: messageId,
+                rootNodeId: nodeId,
+                activeAttemptId: attemptId,
+                status: "queued",
+                queueHeld: true,
+                queuePosition: ordinal,
+                requestedAt: now,
+                startedAt: null,
+                completedAt: null,
+                checkpointId: null,
+                contextHandoffId: null,
+              },
+            },
+            {
+              id: EventId.make(`attempt:${ordinal}`),
+              type: "run-attempt.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: attemptId,
+                runId,
+                attemptOrdinal: 1,
+                rootNodeId: nodeId,
+                providerInstanceId: instanceId,
+                providerThreadId,
+                providerTurnId: null,
+                reason: "initial",
+                status: "pending",
+                startedAt: null,
+                completedAt: null,
+              },
+            },
+            {
+              id: EventId.make(`node:${ordinal}`),
+              type: "node.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: nodeId,
+                threadId,
+                runId,
+                parentNodeId: null,
+                rootNodeId: nodeId,
+                kind: "root_turn",
+                status: "pending",
+                countsForRun: true,
+                providerThreadId,
+                providerTurnId: null,
+                nativeItemRef: null,
+                runtimeRequestId: null,
+                checkpointScopeId: null,
+                startedAt: null,
+                completedAt: null,
+              },
+            },
+          ],
+        });
+      }
+      assert.isNull(yield* projections.getOpeningRequest(threadId));
+      const resume = {
+        type: "queue.resume" as const,
+        commandId: CommandId.make("resume:opening-queue:2"),
+        threadId,
+        runId: RunId.make("run:opening-queue:2"),
+      };
+      yield* orchestrator.dispatch(resume);
+      assert.equal((yield* projections.getOpeningRequest(threadId))?.text, "Request 2");
+      const current = yield* projections.getThreadRecords(threadId, ["runs"]);
+      const selected = current.runs.find((run) => run.id === resume.runId)!;
+      const older = current.runs.find((run) => run.id !== resume.runId)!;
+      assert.equal(selected.status, "starting");
+      assert.equal(older.status, "queued");
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("hold:opening-queue:1"),
+            type: "run.updated",
+            threadId,
+            occurredAt: now,
+            payload: { ...older, queueHeld: true },
+          },
+          {
+            id: EventId.make("cancel:opening-queue:2"),
+            type: "run.updated",
+            threadId,
+            occurredAt: now,
+            payload: { ...selected, status: "cancelled", completedAt: now },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch({
+        type: "queue.resume",
+        commandId: CommandId.make("resume:opening-queue:1"),
+        threadId,
+        runId: RunId.make("run:opening-queue:1"),
+      });
+      const items = (yield* projections.getThreadRecords(threadId, ["turnItems"])).turnItems;
+      assert.deepEqual(
+        items.filter((item) => item.type === "user_message").map((item) => item.messageId),
+        [MessageId.make("message:opening-queue:1"), MessageId.make("message:opening-queue:2")],
+      );
+      assert.equal((yield* projections.getOpeningRequest(threadId))?.text, "Request 2");
+      yield* orchestrator.dispatch(resume);
+      assert.equal((yield* projections.getOpeningRequest(threadId))?.text, "Request 2");
+      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2.pipe(
+        Effect.provide(ProjectionMaintenance.layer),
+      );
+      assert.isTrue((yield* maintenance.rebuild).valid);
+      assert.equal((yield* projections.getOpeningRequest(threadId))?.text, "Request 2");
+    }).pipe(Effect.provide(layerTest)),
 );
 
 it.effect(

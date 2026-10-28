@@ -221,6 +221,14 @@ Their Agent's native history is discarded when the Agent supports deletion.
 Closing a side chat with messages asks for confirmation, with a saved Don’t ask again choice;
 untouched side chats close immediately. Switching panel tabs preserves the conversation.
 
+The first own turn can name a temporary side Session when its request comes from the person,
+without generating a title through an Agent or waiting for the reply. Inherited history and
+requests still in the queue do not count as sent turns. A nonempty plain-text label replaces
+only the default fallback title; an empty opening request, refused sends and later turns
+leave it intact. Admission receipts expose the full `sideChatTitle` for the owning tab, while
+durable Session metadata retains a prefix within ordinary title limits. Saving the chat
+retains that durable title.
+
 Save as chat creates an ordinary durable chat in the same Project with the side chat's
 Agent settings, working directory and complete side transcript. It freezes independent
 portable conversation context before returning, so closing the side chat, discarding its
