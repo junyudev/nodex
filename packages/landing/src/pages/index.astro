@@ -1,0 +1,56 @@
+---
+import SiteFooter from "../components/SiteFooter.astro";
+import SiteNav from "../components/SiteNav.astro";
+import IslandProbe from "../islands/IslandProbe";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { BREW_COMMAND, DOWNLOAD_URL, VERSION_LABEL } from "../lib/site";
+---
+
+<BaseLayout>
+  <div class="flex min-h-screen flex-col">
+    <SiteNav />
+    <main class="mx-auto flex w-full max-w-[860px] flex-1 items-center justify-center px-6 py-10">
+      <section class="flex w-full max-w-[640px] flex-col items-center text-center" aria-labelledby="landing-title">
+        <img src="/nodex-icon.svg" alt="" width="196" height="196" aria-hidden="true" class="size-[148px] sm:size-[196px]" />
+        <h1 id="landing-title" class="mt-7 text-[46px] leading-none font-bold tracking-[-0.035em] sm:text-[56px]">Nodex</h1>
+        <p class="mt-6 text-[19px] leading-relaxed text-balance opacity-60 sm:text-[21px]">
+          Local-first orchestration for coding agents.
+          <br />
+          One board for tasks, threads, terminals, and history.
+        </p>
+        <a id="landing-download-button" href={DOWNLOAD_URL} class="mt-9 inline-flex items-center justify-center gap-2 rounded-[14px] bg-[#0a84ff] px-7 py-3.5 text-base font-semibold text-white hover:bg-[#0070e0]">
+          <span aria-hidden="true" class="[font-family:-apple-system,BlinkMacSystemFont,sans-serif]"></span>
+          <span>Download for macOS</span>
+        </a>
+        <div class="mt-2 inline-flex flex-wrap items-center justify-center gap-2 text-[13px]" aria-label="Release information">
+          <span class="rounded-full bg-current/5 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] uppercase opacity-60">Beta</span>
+          <span aria-hidden="true" class="opacity-40">·</span>
+          <span class="landing-version-label font-mono text-xs tracking-[0.08em] opacity-70">{VERSION_LABEL}</span>
+          <span aria-hidden="true" class="opacity-40">·</span>
+          <span class="opacity-50">Apple silicon · macOS 15+</span>
+        </div>
+        <div class="mt-5 flex max-w-full flex-col items-center gap-2.5">
+          <span class="text-[13px] opacity-40">or</span>
+          <div class="inline-flex max-w-full items-center rounded-[10px] border border-current/10 bg-current/5">
+            <code class="py-2.5 pr-3 pl-4 font-mono text-xs leading-none opacity-60 select-all sm:text-sm">{BREW_COMMAND}</code>
+            <button type="button" class="landing-brew-copy group flex cursor-pointer items-center justify-center border-l border-current/10 px-3 py-2.5" aria-label="Copy to clipboard" data-command={BREW_COMMAND}>
+              <svg class="size-4 shrink-0 opacity-60 group-[.copied]:hidden" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3" />
+                <path d="M3 10.5V3a1.5 1.5 0 0 1 1.5-1.5H11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+              </svg>
+              <svg class="hidden size-4 shrink-0 text-green-500 group-[.copied]:block" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M3.5 8.5L6.5 11.5L12.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <IslandProbe client:visible />
+      </section>
+    </main>
+    <SiteFooter />
+  </div>
+</BaseLayout>
+
+<script>
+  import "../download-cta";
+</script>

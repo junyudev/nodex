@@ -9,6 +9,8 @@ on:
       - ".github/workflows/deploy-landing-site.yml"
       - ".github/workflows/_deploy-landing-site.yml"
       - "pnpm-lock.yaml"
+      - "package.json"
+      - "CHANGELOG.md"
   workflow_dispatch:
 
 permissions:

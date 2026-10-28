@@ -1,0 +1,49 @@
+---
+import { readFileSync } from "node:fs";
+import SiteFooter from "../../components/SiteFooter.astro";
+import SiteNav from "../../components/SiteNav.astro";
+import { renderChangelogHtml } from "../../changelog-renderer";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const changelog = readFileSync(new URL("../../../../../CHANGELOG.md", import.meta.url), "utf8");
+const changelogHtml = renderChangelogHtml(changelog);
+---
+
+<BaseLayout title="Changelog | Nodex" ogTitle="Nodex Changelog" description="Latest Nodex release notes and in-development changes.">
+  <SiteNav />
+  <main class="mx-auto w-full max-w-[920px] px-6 pt-14 pb-20 sm:px-10">
+    <header class="max-w-[680px] pb-14">
+      <p class="font-mono text-xs font-medium tracking-[0.16em] text-[#55a2ff] uppercase">Release notes</p>
+      <h1 class="mt-4 text-[42px] leading-none font-semibold tracking-[-0.045em] sm:text-[56px]">Changelog</h1>
+      <p class="mt-5 max-w-[560px] text-lg leading-8 opacity-70">Latest user-visible Nodex changes, generated directly from the project changelog.</p>
+    </header>
+    <div class="changelog-feed border-t border-current/10" aria-label="Nodex changelog releases" set:html={changelogHtml} />
+  </main>
+  <SiteFooter />
+</BaseLayout>
+
+<style is:global>
+  @reference "../../styles/global.css";
+
+  .changelog-release {
+    @apply grid gap-5 border-b border-current/10 py-10 md:grid-cols-[180px_minmax(0,1fr)] md:gap-8;
+  }
+  .changelog-release-header h2 {
+    @apply text-2xl leading-tight font-semibold tracking-tight;
+  }
+  .changelog-release-header p {
+    @apply mt-2 font-mono text-xs leading-5 tracking-wide uppercase opacity-50;
+  }
+  .changelog-category + .changelog-category {
+    @apply mt-8;
+  }
+  .changelog-category h3 {
+    @apply text-sm font-semibold;
+  }
+  .changelog-category ul {
+    @apply mt-3 list-disc space-y-3 pl-5 text-[15px] leading-7 opacity-70;
+  }
+  .changelog-category code {
+    @apply rounded bg-current/5 px-1.5 py-0.5 font-mono text-[0.88em];
+  }
+</style>

@@ -1,0 +1,61 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="Privacy | Nodex" description="Privacy information for the Nodex landing site.">
+  <div class="flex min-h-screen flex-col">
+    <main class="mx-auto flex w-full max-w-3xl flex-1 flex-col px-6 py-12 sm:px-10">
+      <a href="/" class="mb-10 inline-flex items-center gap-2 text-sm opacity-60 hover:opacity-100">← Back to Nodex</a>
+
+      <article class="py-7">
+        <h1 class="text-4xl font-semibold tracking-[-0.045em]">Privacy</h1>
+        <p class="mt-3 text-sm opacity-50">Last updated: June 18, 2026</p>
+
+        <div class="mt-8 space-y-7 text-[15px] leading-7 [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-medium [&_h2]:tracking-tight [&_p]:opacity-70">
+          <section>
+            <h2>What this site collects</h2>
+            <p>
+              The Nodex landing site is a static site. It does not use first-party analytics,
+              advertising trackers, or account creation.
+            </p>
+          </section>
+
+          <section>
+            <h2>Download and outbound links</h2>
+            <p>
+              When you click download or repository links, you leave this site and go to
+              third-party services such as GitHub and Homebrew. Those services may collect network
+              logs, browser metadata, and any information you choose to provide there.
+            </p>
+          </section>
+
+          <section>
+            <h2>Cookies</h2>
+            <p>
+              This site does not set first-party cookies. GitHub Pages and linked destinations may
+              apply their own infrastructure or security controls.
+            </p>
+          </section>
+
+          <section>
+            <h2>Desktop app diagnostics</h2>
+            <p>
+              Nodex desktop crash diagnostics are off by default. If enabled in the app, sanitized
+              crash reports may be sent to Sentry. Session Replay is a separate opt-in setting for
+              masked renderer replays. Nodex does not enable screenshots, default PII collection,
+              or broad remote log shipping for diagnostics.
+            </p>
+          </section>
+
+          <section>
+            <h2>Contact and updates</h2>
+            <p>
+              If the privacy posture of the site changes, this page will be updated alongside the
+              source in the public repository.
+            </p>
+          </section>
+        </div>
+      </article>
+    </main>
+  </div>
+</BaseLayout>

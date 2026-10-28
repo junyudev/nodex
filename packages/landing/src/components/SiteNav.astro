@@ -1,0 +1,16 @@
+---
+import { CHANGELOG_URL, GITHUB_URL } from "../lib/site";
+---
+
+<nav class="px-6 sm:px-10" aria-label="Primary">
+  <div class="mx-auto flex h-14 max-w-[860px] items-center justify-between gap-4 border-b border-current/10">
+    <a href="/" class="inline-flex items-center gap-3">
+      <img src="/nodex-icon.png" alt="" width="30" height="30" class="size-[30px] opacity-50" />
+      <span class="text-[19px] font-bold tracking-[-0.02em] opacity-60">Nodex</span>
+    </a>
+    <div class="flex items-center gap-5 text-[15px] font-semibold">
+      <a href={CHANGELOG_URL} class="opacity-60 hover:opacity-100">Changelog</a>
+      <a href={GITHUB_URL} class="opacity-60 hover:opacity-100">GitHub</a>
+    </div>
+  </div>
+</nav>

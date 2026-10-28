@@ -4,7 +4,7 @@ This document is the source of truth for the public Nodex landing site and its G
 
 ## Overview
 
-The landing site lives in `packages/landing`. It is a small Vite-built static site that intentionally stays separate from the Electron renderer and its design-token stack.
+The landing site lives in `packages/landing`. Astro generates its static pages, with React islands for interactive content and Tailwind v4 for styling. It stays separate from the Electron renderer and its design-token stack.
 
 Why it is separate:
 
@@ -22,24 +22,36 @@ Run these from the repo root:
 vp run dev:landing
 vp run build:landing
 vp run preview:landing
+vp run --filter @nodex/landing test
 ```
+
+Astro owns the development server, production build, and preview server. The root
+commands delegate to the landing package through Vite+. Its Vite plugins use the
+workspace's Vite+ alias. The focused tests run an isolated production build and
+check the generated pages and public assets. They run from the repository root
+because the shared Vitest setup resolves generated Markdown assets from that directory.
 
 ## Package Layout
 
 `packages/landing` contains:
 
-- `index.html` for the homepage
-- `changelog/index.html` for the generated changelog page
-- `privacy/index.html`
-- `terms/index.html`
-- `src/styles.css` for landing-only Tailwind and token styling
+- `astro.config.ts` for static output, React islands, and the Tailwind Vite plugin
+- `src/layouts/BaseLayout.astro` for metadata, font preloads, and system theme detection
+- `src/pages/index.astro` for the homepage
+- `src/pages/changelog/index.astro` for the generated changelog page
+- `src/pages/privacy/index.astro` and `src/pages/terms/index.astro` for the legal pages
+- `src/components/` for shared site navigation and footer
+- `src/islands/` for React components hydrated with Astro's client directives; animations use `motion/react`
+- `src/styles/global.css` for landing-only Tailwind, Geist fonts, and the system-driven dark variant
+- `src/lib/site.ts` for typed release and install constants
 - `src/changelog-renderer.ts` for build-time `CHANGELOG.md` parsing and rendering
 - `src/download-cta.ts` for copying the Homebrew install command
 - `public/` for copied brand assets, the committed OG image, and `.nojekyll`
+- `dist/` for generated static output
 
 The site is a static multi-page build. It does not use React Router or any client-side routing fallback.
 The homepage links directly to the stable Apple silicon GitHub Release alias without JavaScript or browser architecture detection.
-The homepage release stamp is also build-time data: it reads the root app version from the repository `package.json`, so the published site shows the same semver that release automation cuts.
+The homepage release stamp is build-time data: the typed `VERSION_LABEL` constant imports the root app version from the repository `package.json`, so the published site shows the same semver that release automation cuts.
 The changelog page at `/changelog/` is also build-time data: it reads the root `CHANGELOG.md`, renders `Unreleased` first as an in-development entry, and then renders dated release entries in the same order as the source file.
 
 ## Publishing Topology
