@@ -1,0 +1,151 @@
+src/renderer/assets/subagent-avatars/31-spiral-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/31-spiral-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/21-trinity-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/05-hextwist-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/12-tribar-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/22-origami-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-19
+src/renderer/assets/subagent-avatars/01-hexloop-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/26-seed-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-17
+src/renderer/assets/subagent-avatars/14-bloom-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-15
+src/renderer/assets/subagent-avatars/10-compass-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-20
+src/renderer/assets/subagent-avatars/05-hextwist-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/15-duo-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-12
+src/renderer/assets/subagent-avatars/08-comb-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/27-facet-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-19
+src/renderer/assets/subagent-avatars/28-twist-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/19-whirl-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-16
+src/renderer/assets/subagent-avatars/21-trinity-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/29-octagram-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/18-quadrant-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-15
+src/renderer/assets/subagent-avatars/23-fan-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/28-twist-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/09-quilt-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-15
+src/renderer/assets/subagent-avatars/30-propeller-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/12-tribar-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/06-cube-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/20-gem-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 5,7,9-11
+src/renderer/assets/subagent-avatars/08-comb-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/16-acorn-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/features/local-conversation/view/shared/subagent-avatar.tsx
+  s_a84ca1c028548e::t_d62963a755f06a 2-7,10-41,44-65
+src/renderer/assets/subagent-avatars/10-compass-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-20
+src/renderer/assets/subagent-avatars/15-duo-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-12
+src/renderer/assets/subagent-avatars/07-clover-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-15
+src/renderer/assets/subagent-avatars/22-origami-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-19
+src/renderer/assets/subagent-avatars/17-rosette-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-17
+src/renderer/assets/subagent-avatars/02-lozenge-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-12
+src/renderer/assets/subagent-avatars/06-cube-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/27-facet-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-19
+src/renderer/assets/subagent-avatars/30-propeller-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/23-fan-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/29-octagram-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/16-acorn-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/11-blossom-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-16
+src/renderer/assets/subagent-avatars/18-quadrant-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-15
+src/renderer/assets/subagent-avatars/01-hexloop-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+tests/e2e/nodex-account-menu.spec.ts
+  s_a84ca1c028548e::t_d62963a755f06a 71
+src/renderer/assets/subagent-avatars/11-blossom-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-16
+src/renderer/assets/subagent-avatars/20-gem-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 5,7,9-11
+src/renderer/assets/subagent-avatars/09-quilt-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-15
+src/renderer/assets/subagent-avatars/02-lozenge-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-12
+src/renderer/assets/subagent-avatars/03-lotus-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 5,7,9-14
+src/renderer/assets/subagent-avatars/04-aperture-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-17
+src/renderer/assets/subagent-avatars/00-marigold-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-19
+src/renderer/assets/subagent-avatars/00-marigold-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-19
+src/renderer/assets/subagent-avatars/14-bloom-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-15
+src/renderer/assets/subagent-avatars/19-whirl-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-16
+src/renderer/assets/subagent-avatars/24-diamondloop-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/25-turbine-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/03-lotus-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 5,7,9-14
+src/renderer/assets/subagent-avatars/24-diamondloop-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/04-aperture-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-17
+src/renderer/assets/subagent-avatars/25-turbine-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-14
+src/renderer/assets/subagent-avatars/07-clover-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-15
+src/renderer/features/local-conversation/view/shared/subagent-avatar.node.test.ts
+  s_a84ca1c028548e::t_d62963a755f06a 9-11,13-28,30-40
+src/renderer/assets/subagent-avatars/13-tetra-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/26-seed-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-17
+src/renderer/assets/subagent-avatars/13-tetra-light.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-13
+src/renderer/assets/subagent-avatars/17-rosette-dark.svg
+  s_a84ca1c028548e::t_f770a3bf8d29b3 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd832523929c6fe728e552f5265c630c6228e3dc",
+  "prompts": {},
+  "sessions": {
+    "s_a84ca1c028548e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3ddaa936-0b1e-45fc-a855-af258af80561",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
