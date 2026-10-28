@@ -6,6 +6,9 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as Result from "effect/Result";
 import { assert, it } from "@effect/vitest";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import type { FileWatchHost } from "../../file-watch-host";
@@ -37,6 +40,10 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
     let authorized = true;
     let existenceReads = 0;
     let readPath: string | undefined;
+    let saveDestination: string | null = null;
+    let exportReads = 0;
+    let senderDestroyed = false;
+    let retireDuringExport = false;
     const fileWatchHost: FileWatchHost = {
       watch: (input) =>
         Stream.callback((events) =>
@@ -63,7 +70,7 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
     const listeners = new Map<string, () => void>();
     const sender = {
       id: 77,
-      isDestroyed: () => false,
+      isDestroyed: () => senderDestroyed,
       once: (event: string, listener: () => void) => {
         listeners.set(event, listener);
       },
@@ -81,7 +88,14 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ElectronIpc, ipc),
-            Layer.succeed(ElectronDesktop, {} as ElectronDesktop["Service"]),
+            Layer.succeed(ElectronDesktop, {
+              dialog: {
+                showSaveDialog: async () => ({
+                  canceled: saveDestination === null,
+                  filePath: saveDestination ?? undefined,
+                }),
+              },
+            } as unknown as ElectronDesktop["Service"]),
             Layer.succeed(WorkspaceFileQueries, {
               directory: () => Effect.die("unused"),
               pathsExist: () =>
@@ -96,6 +110,13 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
                   return { contents: "exact" };
                 }),
               binary: () => Effect.die("unused"),
+              exportBytes: () =>
+                Effect.sync(() => {
+                  exportReads += 1;
+                  if (retireDuringExport) senderDestroyed = true;
+                  return Buffer.from("remote bytes");
+                }),
+              githubUrl: () => Effect.succeed(null),
             }),
             mainConfigLayer(),
             Layer.succeed(WindowRuntime, {
@@ -106,7 +127,7 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
       ),
       scope,
     );
-    assert.strictEqual(handlers.size, 9);
+    assert.strictEqual(handlers.size, 11);
 
     const text = handlers.get("read-file");
     assert.isDefined(text);
@@ -119,6 +140,47 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
       { contents: "exact" },
     );
     assert.strictEqual(readPath, "/workspace/report ");
+
+    const save = handlers.get("workspace-file:save-copy");
+    assert.isDefined(save);
+    assert.deepStrictEqual(
+      yield* save({ sender } as unknown as IpcMainInvokeEvent, {
+        hostId: "ssh:build",
+        path: "/workspace/export.txt",
+      }),
+      { path: null },
+    );
+    assert.strictEqual(exportReads, 0);
+    const exportDirectory = yield* Effect.promise(() =>
+      mkdtemp(join(tmpdir(), "nodex-remote-export-")),
+    );
+    yield* Scope.addFinalizer(
+      scope,
+      Effect.promise(() => rm(exportDirectory, { recursive: true, force: true })),
+    );
+    saveDestination = join(exportDirectory, "saved.txt");
+    assert.deepStrictEqual(
+      yield* save({ sender } as unknown as IpcMainInvokeEvent, {
+        hostId: "ssh:build",
+        path: "/workspace/export.txt",
+      }),
+      { path: saveDestination },
+    );
+    assert.strictEqual(
+      yield* Effect.promise(() => readFile(saveDestination!, "utf8")),
+      "remote bytes",
+    );
+    saveDestination = join(exportDirectory, "retired.txt");
+    retireDuringExport = true;
+    assert.deepStrictEqual(
+      yield* save({ sender } as unknown as IpcMainInvokeEvent, {
+        hostId: "ssh:build",
+        path: "/workspace/export.txt",
+      }),
+      { path: null },
+    );
+    assert.isNull(yield* Effect.promise(() => stat(saveDestination!).catch(() => null)));
+    senderDestroyed = false;
 
     const start = handlers.get("workspace-file-watch:start");
     assert.isDefined(start);

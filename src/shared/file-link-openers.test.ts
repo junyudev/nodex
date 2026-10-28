@@ -3,6 +3,8 @@ import {
   buildFileUrl,
   DEFAULT_FILE_LINK_OPENER_ID,
   formatFileLinkLocation,
+  getFileManagerRevealLabel,
+  getFileManagerName,
   normalizeFileLinkOpenerId,
   parseLocalFileLinkHref,
 } from "./file-link-openers";
@@ -11,6 +13,25 @@ const EXAMPLE_PARSER_PATH = "/workspace/nodex/src/renderer/lib/nfm/parser.ts";
 const EXAMPLE_MAIN_PATH = "/workspace/nodex/src/main/index.ts";
 
 describe("file link openers", () => {
+  test.each([
+    ["darwin", "Finder"],
+    ["MacIntel", "Finder"],
+    ["win32", "File Explorer"],
+    ["Win32", "File Explorer"],
+    ["linux", "File Manager"],
+    ["", "File Manager"],
+  ])("names the native file manager for %s", (platform, expected) => {
+    expect(getFileManagerName(platform)).toBe(expected);
+  });
+  test.each([
+    ["darwin", "Reveal in Finder"],
+    ["MacIntel", "Reveal in Finder"],
+    ["win32", "Open in Explorer"],
+    ["Win32", "Open in Explorer"],
+    ["linux", "Open in File Manager"],
+  ])("names the native file-manager action for %s", (platform, expected) => {
+    expect(getFileManagerRevealLabel(platform)).toBe(expected);
+  });
   test("parses absolute file paths and line fragments", () => {
     expect(JSON.stringify(parseLocalFileLinkHref(`${EXAMPLE_PARSER_PATH}#L71`))).toBe(
       JSON.stringify({

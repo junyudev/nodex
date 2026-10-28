@@ -37,6 +37,19 @@ export interface FileLinkTarget {
 
 export const DEFAULT_FILE_LINK_OPENER_ID: FileLinkOpenerId = "vscode";
 
+export function getFileManagerName(platform: string): string {
+  if (/^(darwin|mac)/iu.test(platform)) return "Finder";
+  if (/^win/iu.test(platform)) return "File Explorer";
+  return "File Manager";
+}
+
+export function getFileManagerRevealLabel(platform: string): string {
+  const manager = getFileManagerName(platform);
+  if (manager === "Finder") return "Reveal in Finder";
+  if (manager === "File Explorer") return "Open in Explorer";
+  return `Open in ${manager}`;
+}
+
 export const FILE_LINK_OPENER_OPTIONS: FileLinkOpenerOption[] = [
   { id: "vscode", label: "VS Code", icon: "vscode.png" },
   { id: "vscodeInsiders", label: "VS Code Insiders", icon: "vscode-insiders.png" },

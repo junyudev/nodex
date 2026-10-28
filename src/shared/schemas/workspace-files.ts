@@ -43,6 +43,10 @@ export const WorkspaceLocalFileRequestSchema = WorkspaceFileRequestSchema.extend
   hostId: localHostIdSchema,
 }).strict();
 
+export const WorkspaceFileGitHubUrlInputSchema = WorkspaceFileRequestSchema.extend({
+  line: z.number().int().positive().optional(),
+}).strict();
+
 export const WorkspaceFileBinaryReadInputSchema = WorkspaceFileRequestSchema.extend({
   maxBytes: z.number().int().positive().max(WORKSPACE_FILE_BINARY_MAX_BYTES).optional(),
 }).strict() satisfies z.ZodType<WorkspaceFileBinaryReadInput>;

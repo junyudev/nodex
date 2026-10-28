@@ -39,6 +39,27 @@ const saveWorkspaceFileCopyCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
+const saveWorkspaceFileDataCommand = defineRendererCommand({
+  key: "workspace_file.save_data",
+  channel: "workspace-file:save-data",
+  authority: "external",
+  owner: "WorkspaceFiles",
+  protocol: { kind: "returned_value" },
+});
+
+export async function saveWorkspaceFileData(input: {
+  readonly fileName: string;
+  readonly contentsBase64: string;
+}): Promise<{ path: string | null }> {
+  return await invokePlainCommand(saveWorkspaceFileDataCommand, input);
+}
+
+export async function readWorkspaceFileGitHubUrl(
+  input: WorkspaceFileRequest & { readonly line?: number },
+): Promise<string | null> {
+  return await invokeRendererQuery("workspace-file:github-url", input);
+}
+
 export async function saveWorkspaceFileCopy(
   input: WorkspaceFileRequest,
 ): Promise<{ path: string | null }> {

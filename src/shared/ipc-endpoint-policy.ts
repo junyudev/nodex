@@ -264,6 +264,8 @@ type QueryEndpointPolicy =
   | "projects:list"
   | "read-file"
   | "read-file-binary"
+  | "workspace-file:github-url"
+  | "native-resource:read"
   | "read-file-metadata"
   | "settings:app-updates:get"
   | "settings:acp-agents:get"
@@ -754,7 +756,9 @@ type PlainResultCommandEndpointPolicy =
   | "worktrees:settings:update"
   | "worktrees:thread:restore"
   | "write-file"
-  | "workspace-file:save-copy";
+  | "workspace-file:save-copy"
+  | "workspace-file:save-data"
+  | "browser-link:save";
 
 type ClassifiedEndpoint =
   | QueryEndpointPolicy

@@ -75,7 +75,7 @@ async function downloadPreviewImage(
   try {
     const dataUrl = await materialize();
     if (isCurrent?.() === false) return;
-    downloadImageDataUrl(dataUrl, createImageDownloadFilename(source, filename));
+    await downloadImageDataUrl(dataUrl, createImageDownloadFilename(source, filename));
   } catch {
     if (isCurrent?.() !== false) toast.danger("Could not download image");
   } finally {

@@ -66,7 +66,7 @@ export function NfmFileDownloadButton() {
           caption?: string;
           name?: string;
         };
-        downloadImageDataUrl(
+        await downloadImageDataUrl(
           dataUrl,
           createImageDownloadFilename(source, props.name || props.caption),
         );

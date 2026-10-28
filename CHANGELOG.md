@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Desktop context menus offer image and text actions, file and link destinations, diff commands, and editor clipboard actions. Save as uses a native destination dialog, including for remote files.
 - Every panel's `+` opens a New tab in one click, listing the tools it can become, local servers and your recent pages; whatever you pick opens right where the New tab was. Typing in its address bar suggests tools, open tabs and pages before searching the web. Right-click `+` for the full panel menu.
 - New page, in the New tab and panel menus, creates a page in Space and opens it beside your chat with its title ready to type, for quick drafts and notes.
 - The Files viewer previews videos and audio, with seeking, volume, playback speed, picture in picture and fullscreen, and explains when a file such as an archive or office document has no preview. Its header copies the file's path in the form you need, opens it on GitHub, and opens media and documents in the app made for them.

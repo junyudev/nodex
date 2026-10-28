@@ -69,6 +69,7 @@ const menuTemplate = (
       registerAccelerator: false,
       toolTip: item.tooltip,
       icon,
+      role: item.nativeRole,
     } satisfies MenuItemConstructorOptions;
     if (item.type === "submenu") {
       return {

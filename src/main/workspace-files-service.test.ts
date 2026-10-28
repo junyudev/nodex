@@ -18,6 +18,7 @@ import {
   readWorkspaceFileBinary,
   readWorkspaceFileMetadata,
   saveWorkspaceFileCopy,
+  saveWorkspaceFileDataCopy,
   toWorkspaceFileIpcError,
   WorkspaceFileUserError,
   writeWorkspaceFile,
@@ -33,6 +34,22 @@ async function makeTempWorkspace(): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test("native data saves preserve bytes and cancellation never writes", async () => {
+  const root = await makeTempWorkspace();
+  const destination = join(root, "saved.bin");
+  const bytes = Buffer.from([0, 255, 128, 3]);
+  const input = { fileName: "a/b.bin", contentsBase64: bytes.toString("base64") };
+  expect(await saveWorkspaceFileDataCopy(input, async () => null)).toEqual({ path: null });
+  await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(
+    await saveWorkspaceFileDataCopy(input, async (name) => {
+      expect(name).toBe("a_b.bin");
+      return destination;
+    }),
+  ).toEqual({ path: destination });
+  expect(await readFile(destination)).toEqual(bytes);
 });
 
 test("save copy preserves binary bytes, cancellation, and the source through symlinks", async () => {

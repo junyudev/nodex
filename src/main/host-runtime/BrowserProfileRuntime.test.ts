@@ -146,6 +146,9 @@ it.layer(NodeServices.layer)("BrowserProfileRuntime", (it) => {
                       } as never,
                       showMessage: () => Effect.die("unused"),
                       showNotification: () => Effect.die("unused"),
+                      createDownloadView: () => {
+                        throw new Error("unused");
+                      },
                       onPowerEvent: () => Effect.void,
                     }),
                   ),

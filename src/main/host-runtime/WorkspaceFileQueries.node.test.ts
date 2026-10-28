@@ -13,6 +13,7 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { live, WorkspaceFileQueries } from "./WorkspaceFileQueries";
+import { GitWorkerRuntime } from "./GitWorkerRuntime";
 
 const hostId = "ssh:fixture";
 const textPath = "/workspace/report.md";
@@ -32,6 +33,7 @@ function fixture(
     readonly missingEpoch?: boolean;
     readonly retire?: "generation" | "epoch";
     readonly invalidBase64?: boolean;
+    readonly gitMetadata?: boolean;
   } = {},
 ) {
   let generation = 7;
@@ -70,6 +72,17 @@ function fixture(
           params.command?.[3] === "nodex-file-read" ? params.command[4]! : params.path;
         requests.push({ method, path: filePath });
         if (method === "command/exec") {
+          if (options.gitMetadata && params.command?.[0] === "git") {
+            if (options.retire === "generation") generation += 1;
+            if (options.retire === "epoch") epoch = "endpoint-b";
+            const value =
+              params.command[3] === "rev-parse"
+                ? "/workspace"
+                : params.command[3] === "branch"
+                  ? "feature/menu"
+                  : "git@github.com:team/project.git";
+            return Effect.succeed({ exitCode: 0, stdout: `${value}\n`, stderr: "" });
+          }
           if (params.command?.[3] !== "nodex-file-read")
             return Effect.succeed({ exitCode: 0, stdout: "/home/fixture", stderr: "" });
           if (options.retire === "generation") generation += 1;
@@ -141,11 +154,78 @@ function fixture(
       Layer.mergeAll(
         Layer.succeed(CodexGateway, gateway),
         Layer.succeed(CodexAppServerCapabilities, capabilities),
+        Layer.succeed(GitWorkerRuntime, {
+          request: () =>
+            Effect.succeed({
+              root: "/repo",
+              currentBranch: "main",
+              originUrl: "git@github.com:team/project.git",
+            }),
+        } as unknown as GitWorkerRuntime["Service"]),
       ),
     ),
   );
   return { layer, requests };
 }
+
+it.effect("exports complete remote bytes through the same captured host", () => {
+  const f = fixture();
+  return Effect.gen(function* () {
+    const queries = yield* WorkspaceFileQueries;
+    assert.deepStrictEqual(yield* queries.exportBytes({ hostId, path: pngPath }), png);
+    assert.deepStrictEqual(
+      f.requests.map(({ method }) => method),
+      ["fs/getMetadata", "fs/readFile"],
+    );
+  }).pipe(Effect.provide(f.layer));
+});
+
+for (const retire of ["generation", "epoch"] as const) {
+  it.effect(`rejects remote export after native ${retire} retirement`, () => {
+    const f = fixture({ retire });
+    return Effect.gen(function* () {
+      const queries = yield* WorkspaceFileQueries;
+      assert.strictEqual(
+        (yield* Effect.result(queries.exportBytes({ hostId, path: pngPath })))._tag,
+        "Failure",
+      );
+    }).pipe(Effect.provide(f.layer));
+  });
+}
+
+it.effect("builds local GitHub references from the Git worker's current origin and branch", () => {
+  const f = fixture();
+  return Effect.gen(function* () {
+    const queries = yield* WorkspaceFileQueries;
+    assert.strictEqual(
+      yield* queries.githubUrl({ path: "/repo/src/file.ts", line: 4 }),
+      "https://github.com/team/project/blob/main/src/file.ts#L4",
+    );
+  }).pipe(Effect.provide(f.layer));
+});
+
+it.effect("queries GitHub metadata on the source host without local filesystem access", () => {
+  const f = fixture({ gitMetadata: true });
+  return Effect.gen(function* () {
+    const queries = yield* WorkspaceFileQueries;
+    assert.strictEqual(
+      yield* queries.githubUrl({ hostId, path: "/workspace/src/file.ts", line: 5 }),
+      "https://github.com/team/project/blob/feature/menu/src/file.ts#L5",
+    );
+    assert.strictEqual(f.requests.filter(({ method }) => method === "command/exec").length, 3);
+  }).pipe(Effect.provide(f.layer));
+});
+
+it.effect("rejects a GitHub URL prepared across a remote endpoint replacement", () => {
+  const f = fixture({ gitMetadata: true, retire: "epoch" });
+  return Effect.gen(function* () {
+    const queries = yield* WorkspaceFileQueries;
+    assert.strictEqual(
+      (yield* Effect.result(queries.githubUrl({ hostId, path: "/workspace/file.ts" })))._tag,
+      "Failure",
+    );
+  }).pipe(Effect.provide(f.layer));
+});
 
 it.effect("checks real local files and directories without entering a native host", () => {
   const f = fixture();

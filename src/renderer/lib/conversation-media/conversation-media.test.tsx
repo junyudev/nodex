@@ -28,6 +28,10 @@ import { ConversationTokenRenderer } from "../markdown/conversation-token-render
 import { streamdownComponents } from "../streamdown";
 
 const reads = vi.fn();
+const nativeReads = vi.fn();
+const nativeMenu = vi.fn(
+  async (_items: unknown, _options: unknown): Promise<string | null> => null,
+);
 const scope: ConversationMediaSource = {
   hostId: "remote-one",
   threadId: "thread",
@@ -69,10 +73,18 @@ describe("ordinary conversation media", () => {
     await import("./conversation-video-player");
   });
   beforeEach(() => {
+    nativeMenu.mockReset().mockResolvedValue(null);
+    nativeReads
+      .mockReset()
+      .mockResolvedValue({ contentsBase64: "aW1hZ2U=", mimeType: "image/png" });
+    window.electronBridge = {
+      showContextMenu: nativeMenu,
+    } as unknown as typeof window.electronBridge;
     reads.mockReset().mockResolvedValue({ contentsBase64: "aW1hZ2U=", mimeType: "image/png" });
     installWindowApi({
       invoke: async (channel: string, ...args: unknown[]) => {
         if (channel === "read-file-binary") return reads(...args);
+        if (channel === "native-resource:read") return nativeReads(...args);
         if (channel === "asset:image:save") return { source: "nodex://assets/context-image" };
         throw new Error(`Unexpected media operation ${channel}`);
       },
@@ -133,12 +145,20 @@ describe("ordinary conversation media", () => {
         });
         await Promise.resolve();
       });
-      expect(await view.findByRole("menuitem", { name: "Open image in new tab" })).toBeTruthy();
-      expect(view.getByRole("menuitem", { name: "Download a copy" })).toBeTruthy();
-      expect(view.queryByRole("menuitem", { name: "Open in file manager" })).toBeNull();
+      expect(nativeMenu).toHaveBeenCalledExactlyOnceWith(
+        expect.arrayContaining([
+          { id: "open", label: "Open image in new tab" },
+          { id: "download", label: "Download a copy" },
+        ]),
+        { x: 40, y: 40 },
+      );
+      expect(nativeMenu.mock.calls[0]?.[0]).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: "reveal" })]),
+      );
       expect(open).not.toHaveBeenCalled();
       await act(async () => {
-        fireEvent.click(view.getByRole("menuitem", { name: "Open image in new tab" }));
+        nativeMenu.mockResolvedValueOnce("open");
+        fireEvent.contextMenu(image, { clientX: 40, clientY: 40 });
         await Promise.resolve();
       });
       await waitFor(() =>
@@ -191,7 +211,7 @@ describe("ordinary conversation media", () => {
       fireEvent.contextMenu(image, { clientX: 40, clientY: 40 });
       await Promise.resolve();
     });
-    expect(await view.findByRole("menuitem", { name: "Open image in new tab" })).toBeTruthy();
+    expect(nativeMenu).toHaveBeenCalledTimes(1);
     current = false;
     const event = createEvent.contextMenu(image, { clientX: 40, clientY: 40 });
     await act(async () => {
@@ -538,17 +558,15 @@ describe("ordinary conversation media", () => {
     }
   });
 
-  test("does not fetch or download after source retirement, including an in-flight user download", async () => {
+  test("does not save an HTTP image whose source retired during its native read", async () => {
     let current = true;
-    const fetchResult = deferred<Response>();
-    const fetchSource = vi.spyOn(globalThis, "fetch").mockReturnValue(fetchResult.promise);
-    const click = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => undefined);
+    const result = deferred<{ contentsBase64: string; mimeType: string }>();
+    nativeReads.mockReturnValueOnce(result.promise);
+    const save = vi.spyOn(resolvedImageAsset, "downloadImageDataUrl").mockResolvedValue(undefined);
     const view = render(
       mediaTree(
         { ...scope, isCurrent: () => current },
-        <ConversationMedia src="/remote/one.png" alt="One" />,
+        <ConversationMedia src="https://example.test/one.png" alt="One" />,
       ),
     );
     await loaded(await view.findByAltText("One"));
@@ -556,43 +574,14 @@ describe("ordinary conversation media", () => {
       fireEvent.click(view.getByRole("button", { name: "Download image" }));
       await Promise.resolve();
     });
-    expect(fetchSource).toHaveBeenCalledTimes(1);
+    expect(nativeReads).toHaveBeenCalledExactlyOnceWith({ url: "https://example.test/one.png" });
     current = false;
     await act(async () => {
-      fetchResult.resolve(new Response("image", { status: 200 }));
-      await fetchResult.promise;
+      result.resolve({ contentsBase64: "aW1hZ2U=", mimeType: "image/png" });
+      await result.promise;
     });
-    expect(click).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
     view.unmount();
-  });
-
-  test("does not materialize a download body whose source retired while the blob was being read", async () => {
-    let current = true;
-    const body = deferred<Blob>();
-    const response = new Response("image", { status: 200 });
-    const readBody = vi.spyOn(response, "blob").mockImplementation(() => body.promise);
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
-    const materialize = vi
-      .spyOn(resolvedImageAsset, "blobToDataUrl")
-      .mockResolvedValue("data:image/png;base64,aW1hZ2U=");
-    const view = render(
-      mediaTree(
-        { ...scope, isCurrent: () => current },
-        <ConversationMedia src="/remote/one.png" alt="One" />,
-      ),
-    );
-    await loaded(await view.findByAltText("One"));
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Download image" }));
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(readBody).toHaveBeenCalledTimes(1));
-    current = false;
-    await act(async () => {
-      body.resolve(new Blob(["image"], { type: "image/png" }));
-      await body.promise;
-    });
-    expect(materialize).not.toHaveBeenCalled();
   });
 
   test("opens the actual dialog when the Workbench leaves preview ownership to the message, then navigates its mounted collection", async () => {
@@ -746,7 +735,7 @@ describe("ordinary conversation media", () => {
   test("fences the selected image's late download after gallery navigation and removal, even while its original trigger stays resident", async () => {
     const download = vi
       .spyOn(resolvedImageAsset, "downloadImageDataUrl")
-      .mockImplementation(() => undefined);
+      .mockResolvedValue(undefined);
     const release = registerUserAttachmentImagePreviewOpener(async () => false);
     const client = createTestQueryClient();
     const tree = (second: boolean) =>

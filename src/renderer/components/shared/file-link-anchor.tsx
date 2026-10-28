@@ -8,17 +8,16 @@ import {
 } from "react";
 import { type FileLinkTarget } from "../../../shared/file-link-openers";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { writeTextToClipboard } from "@/lib/clipboard";
+import { resolveFileReferenceTarget, useFileReferenceRouter } from "@/lib/file-reference-router";
 import {
-  getFileReferenceOpenWithMenuItems,
-  parseFileReferenceOpenWithMenuId,
-  resolveFileReferenceTarget,
-  useFileReferenceRouter,
-} from "@/lib/file-reference-router";
-import { showNativeContextMenu } from "@/lib/native-context-menu";
+  openFileReferenceContextMenu,
+  type FileReferenceContextMenuRequest,
+} from "@/lib/file-reference-context-menu";
+export { openFileReferenceContextMenu } from "@/lib/file-reference-context-menu";
 import { resolveNfmLinkAction, resolveNfmLinkTooltipLabel } from "@/lib/nfm-link-actions";
 import { cn } from "@/lib/utils";
-import { readWorkspaceFileText } from "@/lib/workspace-file-operations";
+import { openWebLinkContextMenu } from "@/lib/web-link-context-menu";
+import { useWebLinkNavigation } from "@/lib/web-link-navigation";
 
 export interface FileLinkWorkspaceContextValue {
   cwd?: string | null;
@@ -69,102 +68,7 @@ function isFileAction(action: ReturnType<typeof resolveNfmLinkAction>): action i
   return action?.kind === "local-file" || action?.kind === "workspace-file";
 }
 
-const OPEN_WITH_PREFIX = "file-reference:open-with:";
-
-export interface FileReferenceContextMenuRequest {
-  hostId?: string;
-  target: FileLinkTarget;
-  label: string;
-  open: ReturnType<typeof useFileReferenceRouter>["open"];
-  x: number;
-  y: number;
-  isCurrent?: () => boolean;
-}
-
 const isCurrentReference = () => true;
-
-export async function openFileReferenceContextMenu({
-  hostId = "local",
-  target,
-  label,
-  open,
-  x,
-  y,
-  isCurrent = isCurrentReference,
-}: FileReferenceContextMenuRequest): Promise<void> {
-  if (!isCurrent()) return;
-  const selected = await showNativeContextMenu(
-    [
-      {
-        id: "file-reference:open",
-        label: "Open in Files",
-        iconKey: "folder",
-      },
-      {
-        id: "file-reference:open-with",
-        label: "Open with",
-        iconKey: "window",
-        type: "submenu",
-        enabled: hostId === "local",
-        submenu: getFileReferenceOpenWithMenuItems(),
-      },
-      { type: "separator" },
-      {
-        id: "file-reference:copy-path",
-        label: "Copy path",
-        iconKey: "copy",
-      },
-      {
-        id: "file-reference:copy-contents",
-        label: "Copy contents",
-        iconKey: "copy",
-      },
-      { type: "separator" },
-      {
-        id: "file-reference:reveal",
-        label: "Reveal in Finder",
-        iconKey: "folder",
-        enabled: hostId === "local",
-      },
-    ],
-    { x, y },
-  );
-
-  if (!selected || !isCurrent()) return;
-  if (selected === "file-reference:open") {
-    await open(target, { title: label, mode: "preview" });
-    return;
-  }
-  if (selected === "file-reference:copy-path") {
-    await writeTextToClipboard(target.path);
-    return;
-  }
-  if (selected === "file-reference:copy-contents") {
-    try {
-      const result = await readWorkspaceFileText({
-        hostId,
-        path: target.path,
-        maxBytes: 2 * 1024 * 1024,
-      });
-      if (!isCurrent()) return;
-      await writeTextToClipboard(result.contents);
-    } catch {
-      // A native menu action should not turn a transient read failure into a
-      // renderer error; the Files panel remains the full-fidelity fallback.
-    }
-    return;
-  }
-  if (selected === "file-reference:reveal") {
-    if (hostId !== "local") return;
-    await open(target, { external: true, opener: "fileManager" });
-    return;
-  }
-  if (selected.startsWith(OPEN_WITH_PREFIX)) {
-    if (hostId !== "local") return;
-    const opener = parseFileReferenceOpenWithMenuId(selected);
-    if (opener) await open(target, { external: true, opener });
-  }
-}
 
 async function handleFileReferenceContextMenu(
   event: ReactMouseEvent<HTMLElement>,
@@ -189,6 +93,7 @@ export function FileLinkAnchor({
 }: FileLinkAnchorProps) {
   const inheritedWorkspacePath = useContext(FileLinkWorkspaceContext);
   const router = useFileReferenceRouter();
+  const webNavigation = useWebLinkNavigation();
   const workspacePath =
     projectWorkspacePath ?? inheritedWorkspacePath?.workspacePath ?? router.workspaceRoot;
   const cwd = explicitCwd ?? inheritedWorkspacePath?.cwd ?? workspacePath;
@@ -212,6 +117,45 @@ export function FileLinkAnchor({
         href={href}
         data-agent-activity-file-link
         onClick={handleClick}
+        onContextMenu={(event) => {
+          if (action?.kind !== "web-url" || !/^https?:\/\//iu.test(action.url)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const element = event.currentTarget;
+          void openWebLinkContextMenu({
+            url: action.url,
+            selectedText: element.ownerDocument.getSelection()?.toString(),
+            navigation: webNavigation,
+            x: event.clientX,
+            y: event.clientY,
+            isCurrent: () =>
+              element.isConnected &&
+              element.getAttribute("href") === href &&
+              !element.closest("[inert]"),
+          }).catch(() => undefined);
+        }}
+        onKeyDown={(event) => {
+          if (
+            action?.kind !== "web-url" ||
+            (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey))
+          )
+            return;
+          event.preventDefault();
+          event.stopPropagation();
+          const element = event.currentTarget;
+          const bounds = element.getBoundingClientRect();
+          void openWebLinkContextMenu({
+            url: action.url,
+            selectedText: element.ownerDocument.getSelection()?.toString(),
+            navigation: webNavigation,
+            x: bounds.left,
+            y: bounds.bottom,
+            isCurrent: () =>
+              element.isConnected &&
+              element.getAttribute("href") === href &&
+              !element.closest("[inert]"),
+          }).catch(() => undefined);
+        }}
         aria-disabled={
           action?.kind === "blocked" || action?.kind === "unresolved-file-like" ? true : undefined
         }

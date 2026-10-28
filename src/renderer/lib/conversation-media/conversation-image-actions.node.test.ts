@@ -47,6 +47,46 @@ afterEach(() => {
 });
 
 describe("conversation image actions", () => {
+  test.each([
+    { url: "data:image/gif;base64,aW1hZ2U=" },
+    { isAnimated: true },
+    { mimeType: "image/gif; charset=binary" },
+    {
+      url: "https://example.test/animation.gif?key=1",
+      raw: "https://example.test/animation.gif?key=1",
+    },
+  ])("keeps animated images out of static clipboard and Composer actions: %j", (overrides) => {
+    vi.stubGlobal("ClipboardItem", class {});
+    vi.stubGlobal("navigator", { clipboard: { write: vi.fn() } });
+    const release = registerComposerImageAttachmentTarget(target, {
+      hostId: "destination",
+      threadId: "thread",
+      scopeKey: "scope",
+      append: () => true,
+    });
+    try {
+      const actions = createConversationImageActions(
+        input({ composerTarget: target, ...overrides }),
+      );
+      expect(actions.map(({ id }) => id)).not.toContain("add");
+      expect(actions.map(({ id }) => id)).not.toContain("copy");
+      expect(actions.map(({ id }) => id)).toContain("download");
+    } finally {
+      release();
+    }
+  });
+
+  test.each([
+    ["darwin", "Reveal in Finder"],
+    ["win32", "Open in Explorer"],
+    ["linux", "Open in File Manager"],
+  ])("uses the platform reveal action on %s", (platform, label) => {
+    expect(
+      createConversationImageActions(input({ hostId: "local", platform })).find(
+        ({ id }) => id === "reveal",
+      )?.label,
+    ).toBe(label);
+  });
   test("new tabs own a durable read-only image and never persist the body's raw path", async () => {
     const action = createConversationImageActions(input()).find((entry) => entry.id === "open")!;
     await action.run();

@@ -102,6 +102,9 @@ it.effect("registers and releases Browser Profile ingress with the Main Scope", 
                 shell: null as never,
                 showMessage: () => Effect.die("unused"),
                 showNotification: () => Effect.die("unused"),
+                createDownloadView: () => {
+                  throw new Error("unused");
+                },
                 onPowerEvent: () => Effect.void,
               }),
             ),

@@ -26,6 +26,7 @@ export interface NativeContextMenuBaseItem {
   accelerator?: string;
   iconKey?: NativeContextMenuIconKey;
   iconUrl?: string;
+  nativeRole?: "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll";
 }
 
 export interface NativeContextMenuActionItem extends NativeContextMenuBaseItem {

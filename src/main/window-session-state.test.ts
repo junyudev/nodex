@@ -15,7 +15,9 @@ import {
   createDefaultWorkbenchLayoutSnapshotV3,
   createDefaultWorkbenchLayoutSnapshotV4,
   type WorkbenchLayoutSnapshot,
+  type WorkbenchSceneLocation,
 } from "../shared/workbench-layout";
+import { getWorkbenchPanelActiveLeaf } from "../shared/workbench-panel-layout";
 import {
   createWorkbenchSessionViewTab,
   materializeInitialWorkbenchSessionView,
@@ -519,6 +521,123 @@ describe("WindowSessionState", () => {
       ).toBeDefined();
     });
   });
+
+  test.each<WorkbenchSceneLocation>([
+    { kind: "project", projectId: "project-1" },
+    { kind: "session", sessionId: "session-1", projectContextId: "project-1" },
+    { kind: "session", sessionId: "session-1", projectContextId: null },
+  ])("opens a new Browser window in its $kind Scene with independent identities", (location) => {
+    if (location.kind !== "project" && location.kind !== "session") {
+      throw new Error("Expected a Project or Session Scene");
+    }
+    withTempUserData((userDataPath) => {
+      const state = new WindowSessionState(userDataPath);
+      const source = state.createFreshSession();
+      state.attachWindow(1, source.id);
+      const owner =
+        location.kind === "project"
+          ? location
+          : { kind: "session" as const, sessionId: location.sessionId };
+      const sceneKey = makeWorkbenchSceneKey(owner);
+      const sourceScene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(owner), {
+        panelId: "right",
+        surface: {
+          id: "source-browser",
+          kind: "browser",
+          titleSnapshot: "Existing browser",
+          config: {
+            browserTabId: "source-browser-tab",
+            browserStorageId: "source-browser-storage",
+            url: "https://example.com/existing",
+          },
+          stateKey: 0,
+          state: null,
+        },
+      });
+      const saved = saveLayout(state, 1, source.id, 1, {
+        ...source.layout,
+        location,
+        scenesByOwnerKey: { [sceneKey]: sourceScene },
+      });
+      const browserUrl = "https://example.com/new-window";
+
+      const clone = state.cloneSessionForWindow(1, { browserUrl });
+
+      expect(clone.id).not.toBe(source.id);
+      expect(clone.layout.location).toEqual(location);
+      const scene = clone.layout.scenesByOwnerKey[sceneKey]!;
+      expect(scene.owner).toEqual(owner);
+      expect(scene.lastFocusedPanelId).toBe("right");
+      expect(scene.panels.right.collapsed).toBe(false);
+      const activeId = getWorkbenchPanelActiveLeaf(scene.panels.right.layout).activeTabId!;
+      const activeSurface = scene.panelSurfacesById[activeId];
+      expect(activeSurface?.kind).toBe("browser");
+      if (activeSurface?.kind !== "browser") throw new Error("Expected an active Browser");
+      expect(activeSurface.config.url).toBe(browserUrl);
+      const browsers = Object.values(scene.panelSurfacesById).filter(
+        (surface) => surface.kind === "browser",
+      );
+      expect(browsers).toHaveLength(2);
+      expect(new Set(browsers.map((surface) => surface.config.browserTabId)).size).toBe(2);
+      expect(new Set(browsers.map((surface) => surface.config.browserStorageId)).size).toBe(2);
+      for (const browser of browsers) {
+        expect(browser.id).not.toBe("source-browser");
+        expect(browser.config.browserTabId).not.toBe("source-browser-tab");
+        expect(browser.config.browserStorageId).toBeTruthy();
+        expect(browser.config.browserStorageId).not.toBe("source-browser-storage");
+      }
+      expect(state.getSessionForWindow(1)?.layout).toEqual(saved.layout);
+      const persisted = new WindowSessionState(userDataPath).readCatalog();
+      expect(persisted?.sessions.find((session) => session.id === clone.id)?.layout).toEqual(
+        clone.layout,
+      );
+    });
+  });
+
+  test("materializes and selects the Scene behind Settings for a Browser window", () => {
+    withTempUserData((userDataPath) => {
+      const state = new WindowSessionState(userDataPath);
+      const source = state.createFreshSession();
+      state.attachWindow(1, source.id);
+      const location = { kind: "project" as const, projectId: "project-1" };
+      saveLayout(state, 1, source.id, 1, {
+        ...source.layout,
+        location: { kind: "settings", path: "/general", returnTo: location },
+      });
+
+      const clone = state.cloneSessionForWindow(1, { browserUrl: "https://example.com/" });
+
+      expect(clone.layout.location).toEqual(location);
+      const scene = clone.layout.scenesByOwnerKey[makeWorkbenchSceneKey(location)]!;
+      const activeId = getWorkbenchPanelActiveLeaf(scene.panels.right.layout).activeTabId!;
+      expect(scene.panelSurfacesById[activeId]).toMatchObject({
+        kind: "browser",
+        config: { url: "https://example.com/" },
+      });
+      expect(scene.owner).toEqual(location);
+      expect(state.getSessionForWindow(1)?.layout.location.kind).toBe("settings");
+    });
+  });
+
+  test.each<WorkbenchSceneLocation>([{ kind: "library" }, { kind: "inbox" }, { kind: "empty" }])(
+    "rejects a Browser window from an unsupported $kind Scene without creating a session",
+    (location) => {
+      withTempUserData((userDataPath) => {
+        const state = new WindowSessionState(userDataPath);
+        const source = state.createFreshSession();
+        state.attachWindow(1, source.id);
+        saveLayout(state, 1, source.id, 1, { ...source.layout, location });
+
+        expect(() =>
+          state.cloneSessionForWindow(1, {
+            activeProjectSessionId: "session-override",
+            browserUrl: "https://example.com/",
+          }),
+        ).toThrow(/requires a Project or Session Scene/);
+        expect(state.readCatalog()?.sessions).toHaveLength(1);
+      });
+    },
+  );
 
   test("rejects stale and cross-window layout saves", () => {
     withTempUserData((userDataPath) => {

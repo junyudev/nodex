@@ -1,16 +1,65 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
+import { readNativeResource } from "../../../lib/native-resource-operations";
+import * as workspaceFiles from "../../../lib/workspace-file-operations";
+vi.mock("../../../lib/native-resource-operations", () => ({ readNativeResource: vi.fn() }));
 import {
   ImageAssetResolutionError,
   blobToDataUrl,
   classifyImageAssetSource,
   createImageDownloadFilename,
   dataUrlToBlob,
+  downloadImageDataUrl,
   fetchImageSourceAsDataUrl,
   materializeImageSourceAsDataUrl,
   resolveImageDisplaySource,
 } from "./resolved-image-asset";
 
 describe("resolved image assets", () => {
+  test("does not materialize resource bytes after their source retires", async () => {
+    let current = true;
+    let finish!: (blob: Blob) => void;
+    const body = new Promise<Blob>((resolve) => {
+      finish = resolve;
+    });
+    const blob = new Blob(["image"], { type: "image/png" });
+    const readBytes = vi.spyOn(blob, "arrayBuffer");
+    const result = fetchImageSourceAsDataUrl(
+      "app://fs/host/image",
+      async () => ({ ok: true, blob: () => body }) as Response,
+      { isCurrent: () => current },
+    );
+    await Promise.resolve();
+    current = false;
+    finish(blob);
+    await expect(result).rejects.toMatchObject({ name: "AbortError" });
+    expect(readBytes).not.toHaveBeenCalled();
+  });
+  test("desktop image downloads export bytes through the native destination boundary", async () => {
+    const save = vi
+      .spyOn(workspaceFiles, "saveWorkspaceFileData")
+      .mockResolvedValue({ path: null });
+    vi.stubGlobal("window", { electronBridge: {} });
+    try {
+      await downloadImageDataUrl("data:image/png;base64,AAH/", "chart.png");
+      expect(save).toHaveBeenCalledExactlyOnceWith({
+        fileName: "chart.png",
+        contentsBase64: "AAH/",
+      });
+    } finally {
+      save.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+  test("HTTP image reads use the desktop network boundary", async () => {
+    vi.mocked(readNativeResource).mockResolvedValueOnce({
+      contentsBase64: "AAH/",
+      mimeType: "image/png",
+    });
+    await expect(fetchImageSourceAsDataUrl("https://example.test/native.png")).resolves.toBe(
+      "data:image/png;base64,AAH/",
+    );
+    expect(readNativeResource).toHaveBeenCalledExactlyOnceWith("https://example.test/native.png");
+  });
   test("classifies data, managed, pointer, remote, and local sources", () => {
     expect(classifyImageAssetSource("data:image/png;base64,YQ==").kind).toBe("data");
     expect(classifyImageAssetSource("nodex://assets/hero.png").kind).toBe("managed");

@@ -5,6 +5,7 @@ import * as Scope from "effect/Scope";
 import {
   Menu,
   Notification,
+  WebContentsView,
   dialog,
   nativeTheme,
   powerMonitor,
@@ -12,6 +13,7 @@ import {
   shell,
   type MessageBoxOptions,
   type MessageBoxReturnValue,
+  type Session,
 } from "electron";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 import { makeNativeNotificationDelivery } from "./NativeNotificationDelivery";
@@ -36,6 +38,7 @@ export class ElectronDesktop extends Context.Service<
     readonly shell: typeof shell;
     readonly showMessage: (options: MessageBoxOptions) => Effect.Effect<MessageBoxReturnValue>;
     readonly showNotification: (input: ElectronNotificationInput) => Effect.Effect<boolean>;
+    readonly createDownloadView: (session: Session) => WebContentsView;
     readonly onPowerEvent: (
       event: "lock-screen" | "resume" | "suspend" | "unlock-screen",
       handler: Effect.Effect<void>,
@@ -74,6 +77,10 @@ export const live: Layer.Layer<
       shell,
       showMessage: (options) => Effect.promise(() => dialog.showMessageBox(options)),
       showNotification: (input) => deliver(input).pipe(Effect.orDie),
+      createDownloadView: (session) =>
+        new WebContentsView({
+          webPreferences: { session, sandbox: true, nodeIntegration: false },
+        }),
       onPowerEvent: (event, handler) => {
         const listener = () => {
           callbacks.fork(handler);

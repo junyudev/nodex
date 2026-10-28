@@ -44,6 +44,7 @@ export interface WindowSessionBootstrap {
 export interface WindowSessionNewWindowRequest {
   activeProjectSessionId?: string | null;
   activeProjectId?: string | null;
+  browserUrl?: string;
 }
 
 export interface WindowSessionSaveLayoutInput {

@@ -1,5 +1,5 @@
 import type { ClipboardWriteImageResult } from "../../shared/ipc-api";
-import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
+import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 
 const writeClipboardImageCommand = defineRendererCommand({
   key: "clipboard.image.write",
@@ -13,6 +13,18 @@ export type ClipboardImageWritePort = (source: string) => Promise<ClipboardWrite
 
 export const writeImageToClipboard: ClipboardImageWritePort = async (source) =>
   await invokePlainCommand(writeClipboardImageCommand, { source });
+
+/** Native reads avoid Web Clipboard permissions; unsupported formats must not masquerade as text. */
+export async function readPlainTextFromClipboard(type?: string): Promise<string> {
+  if (type !== undefined && type !== "text/plain") return "";
+  if (typeof window !== "undefined" && window.api) {
+    const payload = await invokeRendererQuery("clipboard:read-paste");
+    return payload.text ?? "";
+  }
+  if (typeof navigator === "undefined" || typeof navigator.clipboard?.readText !== "function")
+    return "";
+  return await navigator.clipboard.readText();
+}
 
 export async function writeTextToClipboard(text: string): Promise<boolean> {
   if (typeof navigator !== "undefined" && typeof navigator.clipboard?.writeText === "function") {

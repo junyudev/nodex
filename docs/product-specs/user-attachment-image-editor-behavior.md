@@ -55,6 +55,12 @@ Packaged and development conversation images use the app-local media transport i
 
 Trusted local images replace the standalone download icon with an `Open` split control. Its primary action opens the image in the operating system's default app; the menu offers `Open in folder` and `Save as…`.
 
+Image actions read HTTP(S) bytes through the desktop network stack. Data URLs and app-owned resources retain their existing source-specific readers; an unavailable blob URL can be recovered from its loaded image. Downloads choose a local destination through the native Save dialog, preserve the image bytes, and sanitize the proposed filename without splitting Unicode characters or losing its extension. Canceling the dialog writes nothing.
+
+Images without a feature-owned menu use the window's native image menu: local app-filesystem images offer the platform's Reveal action, all images offer Copy Image, and main-frame images offer Save Image As. Markdown images use a native menu for their image-specific actions. Closing a menu restores its live trigger; a retired image cannot execute a late action.
+
+Markdown image menus for animated images and GIFs retain image navigation, address copying, revealing and downloading; they do not offer the static-image Copy image or Add to chat actions.
+
 Loading, failed, retrying, downloading, pinning, and submitting states belong to the nearest surface. Failed resolution offers Retry where reversible. Submission errors preserve comments, mask history, and selection. Capability rejection leaves tools inactive and reports the failure without creating partial draft state. Editor Send actions use the selected accent with its contrast-aware foreground in both themes and stable disabled/loading geometry. Image comment markers retain their dedicated blue treatment.
 
 Interactive images, toolbars, view toggles, markers, menus, downloads, and retry controls have accessible names. `aria-pressed` communicates selection. Arrow keys navigate lightboxes and the rail. Escape first cancels the innermost comment editor, then exits the active Comment/Erase/Multi-select tool, and finally closes dialogs at the outer layer. Reduced-motion users receive immediate view switching and static loading affordances.

@@ -87,6 +87,11 @@ async function canvasVideo(canvas: HTMLCanvasElement) {
 }
 
 test("decodes captured file media, preserves grouped image identity through terminal text, and drives silent native audio/video", async () => {
+  const originalBridge = window.electronBridge;
+  const nativeMenu = vi.fn(async () => "open");
+  window.electronBridge = {
+    showContextMenu: nativeMenu,
+  } as unknown as typeof window.electronBridge;
   const errors = vi.spyOn(console, "error");
   const canvas = document.createElement("canvas");
   canvas.width = 640;
@@ -163,10 +168,11 @@ test("decodes captured file media, preserves grouped image identity through term
         await userEvent.click(image, { button: "right" });
         await Promise.resolve();
       });
-      const menuItem = await view.findByRole("menuitem", { name: "Open image in new tab" });
+      expect(nativeMenu).toHaveBeenCalledWith(
+        expect.arrayContaining([{ id: "open", label: "Open image in new tab" }]),
+        expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
+      );
       expect(view.queryByRole("dialog")).toBeNull();
-      expect(view.queryByRole("menuitem", { name: "Open in file manager" })).toBeNull();
-      await click(menuItem);
       await waitFor(() => expect(opened).toHaveLength(1));
       expect(opened[0]).toMatchObject({
         readOnly: true,
@@ -265,6 +271,7 @@ test("decodes captured file media, preserves grouped image identity through term
     ).toEqual([]);
   } finally {
     view.unmount();
+    window.electronBridge = originalBridge;
     vi.restoreAllMocks();
   }
 });

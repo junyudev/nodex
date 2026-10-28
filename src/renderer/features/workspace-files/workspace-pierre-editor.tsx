@@ -33,6 +33,7 @@ import {
 import { useTheme } from "@/lib/use-theme";
 import { useCodeFontSize } from "@/lib/use-code-font-size";
 import { cn } from "@/lib/utils";
+import { readPlainTextFromClipboard } from "@/lib/clipboard";
 import {
   buildWorkspaceFileEditorSelection,
   buildWorkspaceFileLineSelection,
@@ -44,6 +45,23 @@ import {
   type WorkspaceFileChangeNavigationState,
 } from "./workspace-file-change-blocks";
 import { workspaceFileEditorDiffFromContents } from "./workspace-file-editor-diff";
+import { formatAcceleratorLabel } from "../../../shared/command-keybindings";
+import { canShowNativeContextMenu } from "@/lib/native-context-menu";
+import { buildFileReferenceContextMenu } from "@/lib/file-reference-context-menu";
+import { useFileReferenceRouter } from "@/lib/file-reference-router";
+import type { WorkspaceFileRequest } from "../../../shared/types";
+import {
+  buildWorkspacePierreEditorContextMenu,
+  openWorkspacePierreEditorNativeContextMenu,
+  type WorkspacePierreEditorContextMenuItem,
+} from "./workspace-pierre-editor-context-menu";
+import {
+  NodexContextMenuContent,
+  NodexContextMenuItem,
+  NodexContextMenuPortal,
+  NodexContextMenuRoot,
+  NodexContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   buildWorkspaceFileDraftLineMap,
   workspaceFileSavedLineNumber,
@@ -59,6 +77,7 @@ export interface WorkspacePierreEditorProps {
   readonly filename: string;
   readonly language: SupportedLanguages | null;
   readonly sourceIdentity: string;
+  readonly file?: WorkspaceFileRequest;
   readonly documentVersion: number;
   readonly ariaLabel: string;
   readonly wrap?: boolean;
@@ -139,6 +158,7 @@ export function WorkspacePierreEditor({
   filename,
   language,
   sourceIdentity,
+  file,
   documentVersion,
   ariaLabel,
   wrap = true,
@@ -150,6 +170,10 @@ export function WorkspacePierreEditor({
   revealLocation,
   onRevealComplete,
 }: WorkspacePierreEditorProps) {
+  const fileRouter = useFileReferenceRouter();
+  const fileIdentity = file ? `${file.hostId ?? "local"}\0${file.path}` : null;
+  const fileIdentityRef = useRef(fileIdentity);
+  fileIdentityRef.current = fileIdentity;
   const codeViewRef = useRef<CodeViewHandle<undefined, undefined>>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<EditorSession | null>(null);
@@ -172,6 +196,7 @@ export function WorkspacePierreEditor({
   const revisionRef = useRef(0);
   const editorIdentity = useId();
   const [attachment, setAttachment] = useState<EditorSession | null>(null);
+  const [contextMenu, setContextMenu] = useState<WorkspacePierreEditorContextMenuItem[]>([]);
   const [schedule] = useState(() => {
     let pending = false;
     return () => {
@@ -499,12 +524,59 @@ export function WorkspacePierreEditor({
     schedule();
   };
 
-  return (
+  const surface = (
     <section
       role="region"
       aria-label={ariaLabel}
       className={cn("h-full min-h-0 overflow-hidden", className)}
       data-workspace-pierre-editor="true"
+      onContextMenuCapture={(event) => {
+        const session = sessionRef.current;
+        const container = event.currentTarget;
+        const isCurrent = () =>
+          container.isConnected &&
+          !container.closest("[inert]") &&
+          sessionRef.current === session &&
+          fileIdentityRef.current === fileIdentity;
+        const items = buildWorkspacePierreEditorContextMenu({
+          editor: session?.snapshotContent === null ? session.editor : undefined,
+          textbox:
+            surfaceRef.current?.shadowRoot?.querySelector<HTMLElement>('[role="textbox"]') ?? null,
+          container,
+          isCurrent,
+        });
+        if (!canShowNativeContextMenu()) {
+          setContextMenu(items);
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const coordinates = { x: event.clientX, y: event.clientY };
+        const clickedLine = event.nativeEvent
+          .composedPath()
+          .find(
+            (node): node is HTMLElement =>
+              node instanceof HTMLElement && node.hasAttribute("data-line"),
+          );
+        const line =
+          Number(clickedLine?.getAttribute("data-line")) ||
+          (session ? (editorCaretLine(session.editor) ?? session.caretLineIndex) + 1 : undefined);
+        void (async () => {
+          const fileMenu = file
+            ? await buildFileReferenceContextMenu({
+                hostId: file.hostId,
+                target: { path: file.path, line },
+                label: filename,
+                open: (target, options) =>
+                  fileRouter.open(target, { ...options, hostId: file.hostId ?? "local" }),
+                includeOpenFile: false,
+                isCurrent,
+              })
+            : undefined;
+          if (!isCurrent()) return;
+          await openWorkspacePierreEditorNativeContextMenu(items, coordinates, isCurrent, fileMenu);
+        })().catch(() => undefined);
+      }}
     >
       <EditProvider createEditor={createWorkspaceEditor}>
         <CodeView
@@ -546,10 +618,7 @@ export function WorkspacePierreEditor({
               schedule();
             },
             clipboard: {
-              readText: async () => {
-                if (typeof navigator.clipboard?.readText !== "function") return "";
-                return await navigator.clipboard.readText();
-              },
+              readText: readPlainTextFromClipboard,
             },
           }}
           disableWorkerPool
@@ -566,5 +635,28 @@ export function WorkspacePierreEditor({
         />
       </EditProvider>
     </section>
+  );
+  return (
+    <NodexContextMenuRoot>
+      <NodexContextMenuTrigger>{surface}</NodexContextMenuTrigger>
+      <NodexContextMenuPortal>
+        <NodexContextMenuContent>
+          {contextMenu.map((item) =>
+            item.type === "separator" ? (
+              <div key={item.id} role="separator" className="my-1 h-px bg-border" />
+            ) : (
+              <NodexContextMenuItem
+                key={item.id}
+                disabled={item.enabled === false}
+                onSelect={() => void item.onSelect?.()}
+                rightSlot={item.accelerator ? formatAcceleratorLabel(item.accelerator) : undefined}
+              >
+                {item.label}
+              </NodexContextMenuItem>
+            ),
+          )}
+        </NodexContextMenuContent>
+      </NodexContextMenuPortal>
+    </NodexContextMenuRoot>
   );
 }

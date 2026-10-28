@@ -10,11 +10,16 @@ import {
   type WorkspacePierreEditorProps,
 } from "./workspace-pierre-editor";
 import "@/globals.css";
+import { buildWorkspacePierreEditorContextMenu } from "./workspace-pierre-editor-context-menu";
 
 vi.mock("@/lib/use-theme", () => ({ useTheme: () => ({ resolved: "light" }) }));
 vi.mock("@/lib/use-code-font-size", () => ({ useCodeFontSize: () => ({ codeFontSize: 12 }) }));
 installRendererThemeFixture();
-afterEach(() => vi.restoreAllMocks());
+const originalApi = window.api;
+afterEach(() => {
+  window.api = originalApi;
+  vi.restoreAllMocks();
+});
 
 const base = "first\nsecond\nthird\nfourth\nfifth";
 const changed = "first\nchanged\nthird\nfourth\nfifth";
@@ -91,6 +96,73 @@ async function focusEditor(editor: Editor, container: HTMLElement) {
 }
 
 describe("Files editable comparisons", () => {
+  test("pastes at the menu's captured selection through Pierre and keeps the edit undoable", async () => {
+    const edits = spyOnEditor();
+    const browserRead = vi
+      .spyOn(navigator.clipboard, "readText")
+      .mockRejectedValue(new Error("Read permission denied"));
+    const invoke = vi.fn(async () => ({ text: "pasted\r\nline" }));
+    window.api = { invoke, on: () => () => {} };
+    const view = render(
+      <DraftEditor revealLocation={{ line: 2, column: 1, endLine: 2, endColumn: 8 }} />,
+    );
+    const editor = await revealedEditor(edits);
+    await focusEditor(editor, view.container);
+    const textbox = shadow(view.container).querySelector<HTMLElement>('[role="textbox"]');
+    expect(textbox).not.toBeNull();
+    const items = buildWorkspacePierreEditorContextMenu({
+      editor,
+      textbox,
+      container: view.container,
+      isCurrent: () => true,
+    });
+    await act(async () => {
+      editor.setSelections([
+        { start: { line: 4, character: 0 }, end: { line: 4, character: 0 }, direction: "none" },
+      ]);
+      await items.find((item) => item.id === "file-paste")?.onSelect?.();
+    });
+    await settle(() => {
+      expect(editor.getText()).toBe("first\npasted\nline\nthird\nfourth\nfifth");
+      expect(editor.canUndo).toBe(true);
+    });
+    expect(invoke).toHaveBeenCalledWith("clipboard:read-paste");
+    expect(browserRead).not.toHaveBeenCalled();
+    await act(async () => editor.undo());
+    await settle(() => expect(editor.getText()).toBe(changed));
+  });
+
+  test("keyboard paste reads native text without treating JSON as multi-selection metadata", async () => {
+    const edits = spyOnEditor();
+    const text = '["one","two"]';
+    const browserRead = vi
+      .spyOn(navigator.clipboard, "readText")
+      .mockRejectedValue(new Error("Read permission denied"));
+    const invoke = vi.fn(async () => ({ text }));
+    window.api = { invoke, on: () => () => {} };
+    const view = render(<DraftEditor initial={base} revealLocation={{ line: 1, column: 1 }} />);
+    const editor = await revealedEditor(edits);
+    await act(async () => {
+      editor.setSelections([
+        { start: { line: 0, character: 0 }, end: { line: 0, character: 0 }, direction: "none" },
+        { start: { line: 1, character: 0 }, end: { line: 1, character: 0 }, direction: "none" },
+      ]);
+    });
+    await focusEditor(editor, view.container);
+    await act(async () => {
+      await userEvent.keyboard(
+        navigator.platform.toLowerCase().includes("mac")
+          ? "{Meta>}v{/Meta}"
+          : "{Control>}v{/Control}",
+      );
+    });
+    await settle(() =>
+      expect(editor.getText()).toBe(`${text}first\n${text}second\nthird\nfourth\nfifth`),
+    );
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("clipboard:read-paste");
+    expect(browserRead).not.toHaveBeenCalled();
+  });
+
   test("shows a plain document after the editor surface mounts twice", async () => {
     // Development renders mount every surface twice; the remounted view must still hold the file.
     const { container } = render(

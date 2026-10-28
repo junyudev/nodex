@@ -23,10 +23,14 @@ import {
 import { WorkbenchLayoutSnapshotSchema } from "../shared/schemas/workbench-layout";
 import {
   cloneWorkbenchSceneLayoutForNewWindow,
+  createWorkbenchSceneSurface,
   makeWorkbenchSceneKey,
   materializeInitialProjectWelcomeScene,
+  materializeInitialWorkbenchScene,
   type WorkbenchSurfaceDescriptor,
 } from "../shared/workbench-scene";
+import { resolveBrowserTabTitle } from "../shared/browser-url";
+import { createSecureRuntimeId } from "../shared/secure-runtime-id";
 import { getLogger } from "./logging/logger";
 
 const WINDOW_SESSIONS_V3_FILE_NAME = "window-sessions-v3.json";
@@ -71,6 +75,46 @@ function normalizeLayout(
 ): WorkbenchLayoutSnapshot {
   const parsed = WorkbenchLayoutSnapshotSchema.safeParse(value);
   return parsed.success ? parsed.data : fallback;
+}
+
+function openBrowserInClonedLayout(
+  layout: WorkbenchLayoutSnapshot,
+  browserUrl: string,
+): WorkbenchLayoutSnapshot {
+  const location = getWorkbenchSceneReturnLocation(layout.location);
+  if (location.kind !== "project" && location.kind !== "session") {
+    throw new Error("Opening a Browser window requires a Project or Session Scene");
+  }
+  const owner =
+    location.kind === "project"
+      ? location
+      : { kind: "session" as const, sessionId: location.sessionId };
+  const sceneKey = makeWorkbenchSceneKey(owner);
+  const scene = layout.scenesByOwnerKey[sceneKey] ?? materializeInitialWorkbenchScene(owner);
+  const surfaceId = createSecureRuntimeId("surface");
+  const nextScene = createWorkbenchSceneSurface(scene, {
+    panelId: "right",
+    surface: {
+      id: surfaceId,
+      kind: "browser",
+      titleSnapshot: resolveBrowserTabTitle(browserUrl, undefined),
+      config: {
+        browserTabId: createSecureRuntimeId("browser"),
+        browserStorageId: createSecureRuntimeId("browser"),
+        url: browserUrl,
+      },
+      stateKey: 0,
+      state: null,
+    },
+  });
+  if (!nextScene.panelSurfacesById[surfaceId]) {
+    throw new Error("The Scene has reached its surface limit");
+  }
+  return {
+    ...layout,
+    location,
+    scenesByOwnerKey: { ...layout.scenesByOwnerKey, [sceneKey]: nextScene },
+  };
 }
 
 function browserStorageIdForLegacyTab(
@@ -244,6 +288,13 @@ export class WindowSessionState {
 
     const layout = cloneWorkbenchSceneLayoutForNewWindow(sourceSession.layout);
     const returnLocation = getWorkbenchSceneReturnLocation(layout.location);
+    if (
+      override.browserUrl !== undefined &&
+      returnLocation.kind !== "project" &&
+      returnLocation.kind !== "session"
+    ) {
+      throw new Error("Opening a Browser window requires a Project or Session Scene");
+    }
     const currentProjectContextId =
       returnLocation.kind === "project"
         ? returnLocation.projectId
@@ -263,10 +314,15 @@ export class WindowSessionState {
               sessionId: override.activeProjectSessionId,
               projectContextId: overrideProjectId,
             };
-    const session = this.createSessionRecord({
+    const requestedLayout = {
       ...layout,
       location,
-    });
+    };
+    const session = this.createSessionRecord(
+      override.browserUrl === undefined
+        ? requestedLayout
+        : openBrowserInClonedLayout(requestedLayout, override.browserUrl),
+    );
     const catalog = this.readOrCreateCatalog();
     const written = this.writeCatalog({
       version: WINDOW_SESSION_VERSION,

@@ -1,7 +1,10 @@
 import { buildAppFilesystemUrl } from "../../../../shared/app-protocol";
+import { sanitizeNativeSaveFileName } from "../../../../shared/native-file-save";
 import { parseLocalFileLinkHref } from "../../../../shared/file-link-openers";
 import { parseAssetSource } from "../../../../shared/assets";
 import { resolveAssetSourceToDisplayUrl } from "../../../lib/assets";
+import { readNativeResource } from "../../../lib/native-resource-operations";
+import { saveWorkspaceFileData } from "../../../lib/workspace-file-operations";
 import {
   isCodexImageAssetPointer,
   parseAbsoluteImagePath,
@@ -111,16 +114,47 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
 
 export async function fetchImageSourceAsDataUrl(
   source: string,
-  fetchSource: typeof fetch = globalThis.fetch,
+  fetchSource?: typeof fetch,
+  options: {
+    readonly signal?: AbortSignal;
+    readonly image?: HTMLImageElement;
+    readonly isCurrent?: () => boolean;
+  } = {},
 ): Promise<string> {
-  const response = await fetchSource(source);
-  if (!response.ok) {
-    throw new ImageAssetResolutionError(
-      `Image request failed with status ${response.status}`,
-      response.status,
-    );
+  const assertCurrent = () => {
+    options.signal?.throwIfAborted();
+    if (options.isCurrent?.() === false)
+      throw new DOMException("Image source retired", "AbortError");
+  };
+  assertCurrent();
+  if (source.startsWith("data:")) return source;
+  if (!fetchSource && /^https?:/iu.test(source)) {
+    const data = await readNativeResource(source);
+    assertCurrent();
+    return buildImageDataUrl(data.contentsBase64, data.mimeType);
   }
-  return await blobToDataUrl(await response.blob());
+  try {
+    const response = await (fetchSource ?? globalThis.fetch)(source, { signal: options.signal });
+    if (!response.ok)
+      throw new ImageAssetResolutionError(
+        `Image request failed with status ${response.status}`,
+        response.status,
+      );
+    assertCurrent();
+    const blob = await response.blob();
+    assertCurrent();
+    return await blobToDataUrl(blob);
+  } catch (error) {
+    assertCurrent();
+    if (!source.startsWith("blob:") || !options.image) throw error;
+    const canvas = document.createElement("canvas");
+    canvas.width = options.image.naturalWidth;
+    canvas.height = options.image.naturalHeight;
+    const context = canvas.getContext("2d");
+    if (!context) throw error;
+    context.drawImage(options.image, 0, 0);
+    return canvas.toDataURL("image/png");
+  }
 }
 
 export async function materializeImageSourceAsDataUrl(
@@ -155,7 +189,7 @@ export async function materializeImageSourceAsDataUrl(
   }
 }
 
-export function dataUrlToBlob(dataUrl: string): Blob {
+function parseImageDataUrl(dataUrl: string) {
   const commaIndex = dataUrl.indexOf(",");
   if (!dataUrl.startsWith("data:") || commaIndex < 5) {
     throw new ImageAssetResolutionError("Invalid image data URL");
@@ -167,16 +201,19 @@ export function dataUrlToBlob(dataUrl: string): Blob {
   try {
     if (/;base64(?:;|$)/iu.test(metadata)) {
       const binary = globalThis.atob(payload);
-      return new Blob([Uint8Array.from(binary, (character) => character.charCodeAt(0))], {
-        type: mimeType,
-      });
+      return { bytes: Uint8Array.from(binary, (character) => character.charCodeAt(0)), mimeType };
     }
-    return new Blob([decodeURIComponent(payload)], { type: mimeType });
+    return { bytes: new TextEncoder().encode(decodeURIComponent(payload)), mimeType };
   } catch (error) {
     throw new ImageAssetResolutionError(
       error instanceof Error ? error.message : "Invalid image data URL",
     );
   }
+}
+
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const { bytes, mimeType } = parseImageDataUrl(dataUrl);
+  return new Blob([bytes], { type: mimeType });
 }
 
 function inferImageExtension(source: string): string | null {
@@ -190,8 +227,7 @@ function inferImageExtension(source: string): string | null {
 }
 
 export function sanitizeImageDownloadFilename(filename: string): string {
-  const sanitized = filename.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "_");
-  return sanitized || "image";
+  return sanitizeNativeSaveFileName(filename);
 }
 
 export function createImageDownloadFilename(
@@ -212,7 +248,7 @@ export function createImageDownloadFilename(
   return sanitizeImageDownloadFilename(`Nodex Image ${formattedDate}.${extension}`);
 }
 
-export function downloadImageDataUrl(
+export async function downloadImageDataUrl(
   dataUrl: string,
   filename: string,
   environment: {
@@ -220,7 +256,16 @@ export function downloadImageDataUrl(
     url?: Pick<typeof URL, "createObjectURL" | "revokeObjectURL">;
     setTimeout?: typeof window.setTimeout;
   } = {},
-): void {
+): Promise<void> {
+  if (
+    Object.keys(environment).length === 0 &&
+    typeof window !== "undefined" &&
+    window.electronBridge
+  ) {
+    const { bytes } = parseImageDataUrl(dataUrl);
+    await saveWorkspaceFileData({ fileName: filename, contentsBase64: bytesToBase64(bytes) });
+    return;
+  }
   const documentRef = environment.document ?? globalThis.document;
   const urlApi = environment.url ?? globalThis.URL;
   const schedule = environment.setTimeout ?? globalThis.setTimeout;

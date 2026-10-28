@@ -8,6 +8,7 @@ import {
   LegacyWindowSessionCatalogV1Schema,
   LegacyWindowSessionCatalogV2Schema,
   WindowSessionCatalogSchema,
+  WindowSessionNewWindowRequestSchema,
 } from "./window-session";
 
 function record(
@@ -27,6 +28,22 @@ function record(
 }
 
 describe("WindowSession schemas", () => {
+  test("accepts only HTTP and HTTPS URLs for a new Browser window", () => {
+    for (const browserUrl of ["https://example.com/path?q=1", "http://localhost:3000/"]) {
+      expect(WindowSessionNewWindowRequestSchema.parse({ browserUrl })).toEqual({ browserUrl });
+    }
+    for (const browserUrl of [
+      "javascript:alert(1)",
+      "file:///tmp/example.html",
+      "data:text/html,example",
+      "about:blank",
+      "example.com",
+      "",
+    ]) {
+      expect(WindowSessionNewWindowRequestSchema.safeParse({ browserUrl }).success).toBe(false);
+    }
+  });
+
   test("accepts catalog v3 with strict open and closed lifecycles", () => {
     const parsed = WindowSessionCatalogSchema.parse({
       version: 3,

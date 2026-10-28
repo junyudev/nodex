@@ -19,6 +19,11 @@ import type {
 
 import { WORKSPACE_FILE_BINARY_MAX_BYTES } from "../shared/types";
 import {
+  sanitizeNativeSaveFileName,
+  WorkspaceFileSaveDataInputSchema,
+  type WorkspaceFileSaveDataInput,
+} from "../shared/native-file-save";
+import {
   describeWorkspaceFileBytes,
   WORKSPACE_FILE_CONTENT_SAMPLE_BYTES,
 } from "./workspace-file-content";
@@ -413,6 +418,18 @@ export async function saveWorkspaceFileCopy(
   if (destinationStats?.dev === sourceStats.dev && destinationStats.ino === sourceStats.ino)
     return { path: destination };
   await copyFile(source, destination);
+  return { path: destination };
+}
+
+/** Writes an exported resource only after the user chooses its native destination. */
+export async function saveWorkspaceFileDataCopy(
+  input: WorkspaceFileSaveDataInput,
+  selectDestination: (defaultPath: string) => Promise<string | null>,
+): Promise<{ path: string | null }> {
+  const parsed = WorkspaceFileSaveDataInputSchema.parse(input);
+  const destination = await selectDestination(sanitizeNativeSaveFileName(parsed.fileName));
+  if (!destination) return { path: null };
+  await writeFile(destination, Buffer.from(parsed.contentsBase64, "base64"));
   return { path: destination };
 }
 

@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import { nativeImageContextMenuItems } from "../native-image-context-menu";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
@@ -591,12 +592,14 @@ export const configuredLive: Layer.Layer<
       installContextMenu: (window) =>
         contextMenu({
           window,
-          prepend: (actions) => {
-            actions.cut({}).accelerator = "CmdOrCtrl+X";
-            actions.copy({}).accelerator = "CmdOrCtrl+C";
-            actions.paste({}).accelerator = "CmdOrCtrl+V";
-            return [];
-          },
+          prepend: (actions, params) =>
+            nativeImageContextMenuItems(
+              actions,
+              params,
+              window,
+              config.platform,
+              desktop.shell.showItemInFolder,
+            ),
           showCopyImage: false,
           showInspectElement: !config.isPackaged,
         }),

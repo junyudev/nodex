@@ -27,7 +27,7 @@ async function downloadReadOnlyImage(
   try {
     const data = await asset.materialize();
     if (isCurrent())
-      downloadImageDataUrl(data, createImageDownloadFilename(image.attachmentSrc, filename));
+      await downloadImageDataUrl(data, createImageDownloadFilename(image.attachmentSrc, filename));
   } catch {
     if (isCurrent()) toast.danger("Could not download image");
   } finally {

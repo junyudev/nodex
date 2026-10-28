@@ -391,6 +391,7 @@ function WorkspaceFilePreview({
           filename={getWorkspaceFileName(document.path)}
           language={resolveWorkspaceSourceLanguage(document.path)}
           sourceIdentity={document.path}
+          file={{ hostId, path: document.path }}
           documentVersion={document.documentVersion}
           ariaLabel={`Source editor for ${getWorkspaceFileName(document.path)}`}
           className="min-h-0 flex-1"

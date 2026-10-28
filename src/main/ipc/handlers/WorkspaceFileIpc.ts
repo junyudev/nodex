@@ -13,18 +13,22 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import { randomUUID } from "node:crypto";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve, win32 } from "node:path";
 import type { IpcEvents } from "../../../shared/ipc-api";
+import type { WorkspaceFileRequest } from "../../../shared/types";
 import {
   WorkspaceDirectoryEntriesInputSchema,
   WorkspaceFileBinaryReadInputSchema,
   WorkspaceFileMetadataInputSchema,
+  WorkspaceFileRequestSchema,
+  WorkspaceFileGitHubUrlInputSchema,
   WorkspaceFileTextReadInputSchema,
   WorkspaceFileWatchStopInputSchema,
   WorkspaceFileWriteInputSchema,
   WorkspaceLocalFileRequestSchema,
   WorkspacePathsExistInputSchema,
 } from "../../../shared/schemas/workspace-files";
+import { WorkspaceFileSaveDataInputSchema } from "../../../shared/native-file-save";
 import { WorkspaceFileQueries } from "../../host-runtime/WorkspaceFileQueries";
 import { MainConfig } from "../../app/MainConfig";
 import { type FileWatchError, type FileWatchHost, localFileWatchHost } from "../../file-watch-host";
@@ -36,6 +40,7 @@ import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../../runtime-limits";
 import {
   saveWorkspaceFileCopy,
+  saveWorkspaceFileDataCopy,
   toWorkspaceFileIpcError,
   WorkspaceFileUserError,
   writeWorkspaceFile,
@@ -241,14 +246,61 @@ export const live = (
           writeWorkspaceFile(WorkspaceFileWriteInputSchema.parse(input)),
         ),
       );
+      const selectSaveDestination = async (defaultPath: string) => {
+        const result = await desktop.dialog.showSaveDialog({ defaultPath });
+        return result.canceled ? null : (result.filePath ?? null);
+      };
+      const saveFileCopy = Effect.fnUntraced(function* (
+        request: WorkspaceFileRequest,
+        isCurrent: () => boolean,
+      ) {
+        if (!request.hostId || request.hostId === "local")
+          return yield* Effect.tryPromise({
+            try: () => saveWorkspaceFileCopy(request, selectSaveDestination),
+            catch: (cause) => mapError("save-file-copy", cause),
+          });
+        const fileName =
+          basename(request.path.replaceAll("\\", "/")) || win32.basename(request.path);
+        const destination = yield* Effect.tryPromise({
+          try: () => selectSaveDestination(fileName),
+          catch: (cause) => mapError("select-file-copy-destination", cause),
+        });
+        if (!destination) return { path: null };
+        if (!isCurrent()) return { path: null };
+        const contents = yield* fileQueries.exportBytes(request);
+        if (!isCurrent()) return { path: null };
+        return yield* Effect.tryPromise({
+          try: () =>
+            saveWorkspaceFileDataCopy(
+              { fileName, contentsBase64: contents.toString("base64") },
+              async () => destination,
+            ),
+          catch: (cause) => mapError("save-file-copy", cause),
+        });
+      });
+      yield* ipc.handlePlainCommand("workspace-file:save-data", (event, input: unknown) =>
+        run("save-file-data", event, () =>
+          saveWorkspaceFileDataCopy(
+            WorkspaceFileSaveDataInputSchema.parse(input),
+            selectSaveDestination,
+          ),
+        ),
+      );
+      yield* ipc.handleQuery("workspace-file:github-url", (event, input: unknown) =>
+        runEffect(
+          "file-github-url",
+          event,
+          decode(WorkspaceFileGitHubUrlInputSchema, input).pipe(
+            Effect.flatMap(fileQueries.githubUrl),
+          ),
+        ),
+      );
       yield* ipc.handlePlainCommand("workspace-file:save-copy", (event, input: unknown) =>
-        run("save-file-copy", event, () =>
-          saveWorkspaceFileCopy(
-            WorkspaceLocalFileRequestSchema.parse(input),
-            async (defaultPath) => {
-              const result = await desktop.dialog.showSaveDialog({ defaultPath });
-              return result.canceled ? null : (result.filePath ?? null);
-            },
+        runEffect(
+          "save-file-copy",
+          event,
+          decode(WorkspaceFileRequestSchema, input).pipe(
+            Effect.flatMap((request) => saveFileCopy(request, () => !event.sender.isDestroyed())),
           ),
         ),
       );

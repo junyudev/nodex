@@ -52,7 +52,7 @@ describe("ImagePreviewDialog", () => {
     let current = true;
     const download = vi
       .spyOn(resolvedImageAsset, "downloadImageDataUrl")
-      .mockImplementation(() => undefined);
+      .mockResolvedValue(undefined);
     const view = renderPreview({ isCurrent: () => current });
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Download image" }));

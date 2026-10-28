@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { fireEvent, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { installWindowApi } from "../../../test/browser-globals";
@@ -8,6 +8,7 @@ import { TestQueryProvider } from "../../../test/query";
 import { IMAGE_REMOVE_BACKGROUND_PROMPT } from "../model/image-edit-submission";
 import type { EditableImageDescriptor, ImageEditSubmissionIntent } from "../model/types";
 import { SingleImageEditor } from "./single-image-editor";
+import * as resolvedImageAsset from "../adapters/resolved-image-asset";
 
 const IMAGE_SRC = "data:image/png;base64,AQID";
 const invokeCalls: Array<[string, ...unknown[]]> = [];
@@ -44,6 +45,49 @@ function renderEditor(image: EditableImageDescriptor, onSubmitIntent = createSub
 }
 
 describe("SingleImageEditor", () => {
+  test("retires a pending image download when the selected image changes", async () => {
+    const save = vi.spyOn(resolvedImageAsset, "downloadImageDataUrl").mockResolvedValue(undefined);
+    const images: EditableImageDescriptor[] = ["one", "two"].map((id) => ({
+      id,
+      alt: id,
+      attachmentSrc: IMAGE_SRC,
+      source: "uploaded",
+      src: IMAGE_SRC,
+    }));
+    function Gallery() {
+      const [index, setIndex] = useState(0);
+      return (
+        <>
+          <button onClick={() => setIndex(1)}>Next fixture</button>
+          <SingleImageEditor
+            comments={[]}
+            entrypoint="image_click"
+            image={images[index]!}
+            onCommentsChange={() => undefined}
+            onSubmitIntent={createSubmitIntentSpy()}
+          />
+        </>
+      );
+    }
+    const view = renderWithMaitai(
+      <TestQueryProvider>
+        <Gallery />
+      </TestQueryProvider>,
+    );
+    try {
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Download" }));
+        fireEvent.click(view.getByRole("button", { name: "Next fixture" }));
+        await Promise.resolve();
+      });
+      expect(save).not.toHaveBeenCalled();
+      expect((view.getByRole("button", { name: "Download" }) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    } finally {
+      save.mockRestore();
+    }
+  });
   test("retries a descriptor-level failure against the current source", async () => {
     const view = renderEditor({
       id: "failed-image",

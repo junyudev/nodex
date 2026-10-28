@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
 import * as Context from "effect/Context";
@@ -17,6 +17,7 @@ import type {
   WorkspaceFileTextReadInput,
   WorkspacePathsExistInput,
   WorkspacePathsExistResult,
+  WorkspaceFileRequest,
 } from "../../shared/types";
 import type { FsGetMetadataResponse } from "@nodex/codex-app-server-protocol/v2";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
@@ -37,6 +38,8 @@ import {
   WORKSPACE_FILE_CONTENT_SAMPLE_BYTES,
 } from "../workspace-file-content";
 import { workspaceFileReadCommand } from "./workspace-file-read-command";
+import { GitWorkerRuntime } from "./GitWorkerRuntime";
+import { buildGitHubBlobUrl } from "../../shared/git-file-url";
 
 export class WorkspaceFileQueryError extends Schema.TaggedError<WorkspaceFileQueryError>()(
   "WorkspaceFileQueryError",
@@ -57,6 +60,11 @@ export class WorkspaceFileQueries extends Context.Service<
     readonly metadata: (input: WorkspaceFileMetadataInput) => Query<WorkspaceFileMetadata>;
     readonly text: (input: WorkspaceFileTextReadInput) => Query<WorkspaceFileReadResult>;
     readonly binary: (input: WorkspaceFileBinaryReadInput) => Query<WorkspaceFileBinaryReadResult>;
+    /** Explicit user exports read the complete file rather than a bounded preview. */
+    readonly exportBytes: (input: WorkspaceFileRequest) => Query<Buffer>;
+    readonly githubUrl: (
+      input: WorkspaceFileRequest & { readonly line?: number },
+    ) => Query<string | null>;
   }
 >()("nodex/main/host-runtime/WorkspaceFileQueries") {}
 
@@ -81,18 +89,24 @@ interface RemoteFileReader {
     maxFileBytes?: number,
   ) => Effect.Effect<{ sizeBytes: number; contents: Buffer | null }, RemoteReadError>;
   readonly bytes: (filePath: string, maxBytes: number) => Effect.Effect<Buffer, RemoteReadError>;
+  readonly exportBytes: (filePath: string) => Effect.Effect<Buffer, RemoteReadError>;
+  readonly githubUrl: (
+    filePath: string,
+    line?: number,
+  ) => Effect.Effect<string | null, RemoteReadError>;
 }
 
 /** Read-only host queries pin their native endpoint; remote paths never reach local Node IO. */
 export const live: Layer.Layer<
   WorkspaceFileQueries,
   never,
-  CodexGateway | CodexAppServerCapabilities
+  CodexGateway | CodexAppServerCapabilities | GitWorkerRuntime
 > = Layer.effect(
   WorkspaceFileQueries,
   Effect.gen(function* () {
     const gateway = yield* CodexGateway;
     const capabilities = yield* CodexAppServerCapabilities;
+    const gitWorker = yield* GitWorkerRuntime;
     const remote = <A>(
       operation: string,
       hostId: string,
@@ -124,6 +138,57 @@ export const live: Layer.Layer<
               gateway.requestOnHost(hostId, "fs/getMetadata", { path: target }, fence),
             ),
           );
+        const exportBytes = Effect.fnUntraced(function* (filePath: string) {
+          const info = yield* metadata(filePath);
+          if (!info.isFile) return yield* Effect.fail(invalid("Remote path is not a file"));
+          const response = yield* gateway.requestOnHost(
+            hostId,
+            "fs/readFile",
+            { path: filePath },
+            fence,
+          );
+          const contents = Buffer.from(response.dataBase64, "base64");
+          if (contents.toString("base64") !== response.dataBase64)
+            return yield* Effect.fail(invalid("Invalid remote file contents"));
+          return contents;
+        });
+        const githubUrl = Effect.fnUntraced(function* (filePath: string, line?: number) {
+          yield* validatePath(filePath);
+          const paths =
+            path.win32.isAbsolute(filePath) && !path.posix.isAbsolute(filePath)
+              ? path.win32
+              : path.posix;
+          const cwd = paths.dirname(filePath);
+          const commands = [
+            ["rev-parse", "--show-toplevel"],
+            ["branch", "--show-current"],
+            ["remote", "get-url", "origin"],
+          ];
+          const results = yield* Effect.all(
+            commands.map((command) =>
+              gateway.requestOnHost(
+                hostId,
+                "command/exec",
+                {
+                  command: ["git", "-C", cwd, ...command],
+                  timeoutMs: 10_000,
+                  outputBytesCap: 32_768,
+                },
+                fence,
+              ),
+            ),
+            { concurrency: 3 },
+          );
+          if (results.some((result) => result.exitCode !== 0)) return null;
+          return buildGitHubBlobUrl({
+            path: filePath,
+            cwd,
+            repoRoot: results[0]!.stdout.trim(),
+            branch: results[1]!.stdout.trim(),
+            originUrl: results[2]!.stdout.trim(),
+            line,
+          });
+        });
         const sample = Effect.fnUntraced(function* (
           filePath: string,
           sampleBytes: number,
@@ -247,7 +312,7 @@ export const live: Layer.Layer<
             entries,
           };
         });
-        const result = yield* task({ metadata, bytes, sample, directory });
+        const result = yield* task({ metadata, bytes, sample, directory, exportBytes, githubUrl });
         const nextConnection = yield* gateway.connection(hostId);
         if (
           nextConnection.kind !== "ready" ||
@@ -259,6 +324,37 @@ export const live: Layer.Layer<
       }).pipe(Effect.mapError((cause) => mapError(operation, cause)));
 
     return WorkspaceFileQueries.of({
+      exportBytes: (input) => {
+        const hostId = input.hostId ?? "local";
+        if (hostId !== "local")
+          return remote("export-file", hostId, (reader) => reader.exportBytes(input.path));
+        return local("export-file", () => {
+          if (!path.isAbsolute(input.path) || input.path.includes("\0"))
+            throw invalid("File path must be absolute");
+          return readFile(input.path);
+        });
+      },
+      githubUrl: (input) => {
+        const hostId = input.hostId ?? "local";
+        if (hostId !== "local")
+          return remote("github-url", hostId, (reader) => reader.githubUrl(input.path, input.line));
+        if (!path.isAbsolute(input.path) || input.path.includes("\0"))
+          return Effect.fail(invalid("File path must be absolute"));
+        const cwd = path.dirname(input.path);
+        return gitWorker.request({ method: "stable-metadata", params: { cwd } }).pipe(
+          Effect.map((metadata) =>
+            buildGitHubBlobUrl({
+              path: input.path,
+              cwd,
+              repoRoot: metadata.root,
+              branch: metadata.currentBranch,
+              originUrl: metadata.originUrl,
+              line: input.line,
+            }),
+          ),
+          Effect.mapError((cause) => mapError("github-url", cause)),
+        );
+      },
       directory: (input) => {
         const hostId = input.hostId ?? "local";
         if (hostId !== "local")

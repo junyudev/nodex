@@ -1,9 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import {
-  FILE_LINK_OPENER_OPTIONS,
-  type FileLinkOpenerId,
-  type FileLinkTarget,
-} from "../../shared/file-link-openers";
+import { type FileLinkOpenerId, type FileLinkTarget } from "../../shared/file-link-openers";
 import type { PanelId } from "./types";
 import { openFileLink, type FileLinkOpenPort } from "./file-system-operations";
 import { useFileLinkOpener } from "./use-file-link-opener";
@@ -12,6 +8,8 @@ import {
   WorkbenchAbsoluteFilePathSchema,
 } from "../../shared/workbench-resource-identity";
 import type { WorkspaceFileShowChanges } from "@/features/workspace-files/workspace-file-types";
+import { WebLinkNavigationProvider } from "./web-link-navigation";
+import type { WebLinkNavigation } from "./web-link-context-menu";
 
 export type FileReferenceTarget = FileLinkTarget;
 
@@ -162,10 +160,14 @@ export function createFileReferenceRouter({
 export function FileReferenceRouterProvider({
   children,
   openWorkspaceFileTab,
+  openBrowserTab,
+  openBrowserWindow,
   workspaceRoot = null,
 }: {
   readonly children: ReactNode;
   readonly openWorkspaceFileTab?: FileReferenceRouterPort["openWorkspaceFileTab"];
+  readonly openBrowserTab?: WebLinkNavigation["openTab"];
+  readonly openBrowserWindow?: WebLinkNavigation["openWindow"];
   readonly workspaceRoot?: string | null;
 }) {
   const { opener } = useFileLinkOpener();
@@ -182,10 +184,14 @@ export function FileReferenceRouterProvider({
     }),
     [router, workspaceRoot],
   );
+  const webNavigation = useMemo<WebLinkNavigation>(
+    () => ({ openTab: openBrowserTab, openWindow: openBrowserWindow }),
+    [openBrowserTab, openBrowserWindow],
+  );
 
   return (
     <FileReferenceRouterContext.Provider value={value}>
-      {children}
+      <WebLinkNavigationProvider navigation={webNavigation}>{children}</WebLinkNavigationProvider>
     </FileReferenceRouterContext.Provider>
   );
 }
@@ -222,21 +228,4 @@ export function useFileReferenceRouter(): FileReferenceRouterContextValue {
   const { opener } = useFileLinkOpener();
   const fallbackRouter = useMemo(() => createFileReferenceRouter({ opener }), [opener]);
   return context ?? { ...fallbackRouter, hostId: "local", workspaceRoot: null };
-}
-
-export function getFileReferenceOpenWithMenuItems() {
-  return FILE_LINK_OPENER_OPTIONS.map((option) => ({
-    id: `file-reference:open-with:${option.id}`,
-    label: option.label,
-    iconKey: "window" as const,
-  }));
-}
-
-export function parseFileReferenceOpenWithMenuId(id: string | null): FileLinkOpenerId | null {
-  const prefix = "file-reference:open-with:";
-  if (!id?.startsWith(prefix)) return null;
-  const candidate = id.slice(prefix.length);
-  return FILE_LINK_OPENER_OPTIONS.some((option) => option.id === candidate)
-    ? (candidate as FileLinkOpenerId)
-    : null;
 }

@@ -29,6 +29,7 @@ export const WindowSessionNewWindowRequestSchema = z
   .object({
     activeProjectSessionId: z.string().min(1).nullable().optional(),
     activeProjectId: z.string().min(1).nullable().optional(),
+    browserUrl: z.url({ protocol: /^https?$/ }).optional(),
   })
   .strict() satisfies z.ZodType<WindowSessionNewWindowRequest>;
 

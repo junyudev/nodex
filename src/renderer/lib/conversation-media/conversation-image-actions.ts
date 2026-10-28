@@ -1,14 +1,15 @@
 import type { ImageEditComposerTarget } from "@/features/user-attachment-image-editor/model/types";
 import { openUserAttachmentImagePreview } from "@/features/user-attachment-image-editor/adapters/image-preview-opener-registry";
 import {
-  blobToDataUrl,
   dataUrlToBlob,
+  fetchImageSourceAsDataUrl,
 } from "@/features/user-attachment-image-editor/adapters/resolved-image-asset";
 import { uploadImageAsset } from "../assets";
 import { captureComposerImageAttachmentTarget } from "../composer-image-attachment-channel";
 import { writeImageToClipboard, writeTextToClipboardStrict } from "../clipboard";
 import { openFileLink } from "../file-system-operations";
-import { conversationMediaFilename } from "./conversation-media-model";
+import { conversationMediaFilename, conversationMediaMimeType } from "./conversation-media-model";
+import { getFileManagerRevealLabel } from "../../../shared/file-link-openers";
 
 export interface ConversationImageAction {
   readonly id: "open" | "address" | "add" | "copy" | "reveal" | "download";
@@ -17,6 +18,10 @@ export interface ConversationImageAction {
 }
 interface ImageActionInput {
   readonly url: string;
+  readonly image?: HTMLImageElement;
+  readonly mimeType?: string;
+  readonly isAnimated?: boolean;
+  readonly platform?: string;
   readonly raw: string;
   readonly alt: string;
   readonly hostId?: string;
@@ -43,12 +48,10 @@ export function conversationImageWebAddress(...sources: readonly string[]): stri
 async function imageData(input: ImageActionInput): Promise<string | null> {
   if (!input.isCurrent() || input.signal.aborted) return null;
   if (/^data:image\//iu.test(input.url)) return input.url;
-  const response = await fetch(input.url, { signal: input.signal, credentials: "omit" });
-  if (!response.ok) throw new Error("Could not read image");
-  if (!input.isCurrent() || input.signal.aborted) return null;
-  const blob = await response.blob();
-  if (!input.isCurrent() || input.signal.aborted) return null;
-  const data = await blobToDataUrl(blob);
+  const data = await fetchImageSourceAsDataUrl(input.url, undefined, {
+    signal: input.signal,
+    image: input.image,
+  });
   return input.isCurrent() && !input.signal.aborted ? data : null;
 }
 
@@ -57,6 +60,14 @@ export function createConversationImageActions(
   input: ImageActionInput,
 ): readonly ConversationImageAction[] {
   const filename = conversationMediaFilename(input.raw);
+  const mimeType =
+    input.mimeType ??
+    /^data:([^;,]+)/iu.exec(input.url)?.[1] ??
+    conversationMediaMimeType(
+      conversationImageWebAddress(input.raw) ? new URL(input.raw).pathname : input.raw,
+    );
+  const canSelectOrCopy =
+    input.isAnimated !== true && mimeType?.split(";", 1)[0]?.trim().toLowerCase() !== "image/gif";
   const current = () => input.isCurrent() && !input.signal.aborted;
   const actions: ConversationImageAction[] = [
     {
@@ -96,7 +107,7 @@ export function createConversationImageActions(
       },
     });
   const composer = captureComposerImageAttachmentTarget(input.composerTarget);
-  if (composer)
+  if (canSelectOrCopy && composer)
     actions.push({
       id: "add",
       label: "Add to chat",
@@ -120,7 +131,11 @@ export function createConversationImageActions(
         if (!accepted && current()) throw new Error("Could not add image to chat");
       },
     });
-  if (typeof ClipboardItem !== "undefined" && typeof navigator.clipboard?.write === "function")
+  if (
+    canSelectOrCopy &&
+    typeof ClipboardItem !== "undefined" &&
+    typeof navigator.clipboard?.write === "function"
+  )
     actions.push({
       id: "copy",
       label: "Copy image",
@@ -134,7 +149,9 @@ export function createConversationImageActions(
   if (input.hostId === "local" && input.path)
     actions.push({
       id: "reveal",
-      label: "Open in file manager",
+      label: getFileManagerRevealLabel(
+        input.platform ?? (typeof navigator !== "undefined" ? navigator.platform : ""),
+      ),
       run: async () => {
         if (!current() || !input.path) return;
         if (!(await openFileLink({ path: input.path }, "fileManager")) && current())

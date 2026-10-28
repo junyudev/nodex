@@ -23,13 +23,7 @@ import {
 } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
-import {
-  NodexContextMenuRoot,
-  NodexContextMenuTrigger,
-  NodexContextMenuPortal,
-  NodexContextMenuContent,
-  NodexContextMenuItem,
-} from "@/components/ui/context-menu";
+import { canShowNativeContextMenu, showNativeContextMenu } from "../native-context-menu";
 import { toast } from "@/components/ui/toast";
 import {
   createConversationImageActions,
@@ -48,7 +42,7 @@ import { ImagePreviewDialog } from "../../features/user-attachment-image-editor/
 import type { EditableImageDescriptor } from "../../features/user-attachment-image-editor/model/types";
 import {
   downloadImageDataUrl,
-  blobToDataUrl,
+  fetchImageSourceAsDataUrl,
 } from "../../features/user-attachment-image-editor/adapters/resolved-image-asset";
 import {
   classifyConversationMedia,
@@ -154,10 +148,6 @@ export function ConversationMediaProvider({
   const [collection] = useState(createImageCollection);
   const entries = useSyncExternalStore(collection.subscribe, collection.read);
   const [preview, setPreview] = useState<ImagePreview | null>(null);
-  const [menu, setMenu] = useState<{
-    readonly entry: PreviewEntry;
-    readonly actions: readonly ConversationImageAction[];
-  } | null>(null);
   const context = useMemo<MediaContext>(
     () => ({
       source,
@@ -178,54 +168,39 @@ export function ConversationMediaProvider({
   const navigate = (image: EditableImageDescriptor) => {
     if (preview?.isCurrent()) setPreview({ ...preview, id: image.id });
   };
-  const actions = menu?.actions ?? [];
   return (
     <MediaContext value={context}>
-      <NodexContextMenuRoot
-        open={menu !== null}
-        onOpenChange={(open) => {
-          if (!open) setMenu(null);
+      <div
+        className="contents"
+        onContextMenuCapture={(event) => {
+          const target = event.target;
+          if (!(target instanceof Node)) return;
+          const entry = collection
+            .read()
+            .find(({ element }) => element.parentElement?.contains(target));
+          if (!entry) return;
+          const actions = entry.isCurrent() ? entry.actions() : [];
+          if (actions.length === 0 || !canShowNativeContextMenu()) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const trigger = entry.element.parentElement;
+          void showNativeContextMenu(
+            actions.map(({ id, label }) => ({ id, label })),
+            { x: event.clientX, y: event.clientY },
+          )
+            .then(async (id) => {
+              if (!entry.isCurrent() || !entry.element.isConnected) return;
+              trigger?.focus();
+              await actions.find((action) => action.id === id)?.run();
+            })
+            .catch((error: unknown) => {
+              if (entry.isCurrent())
+                toast.danger(error instanceof Error ? error.message : "Image action failed");
+            });
         }}
       >
-        <div
-          className="contents"
-          onContextMenuCapture={(event) => {
-            const target = event.target;
-            if (!(target instanceof Node)) return;
-            const entry = collection
-              .read()
-              .find(({ element }) => element.parentElement?.contains(target));
-            if (!entry) return;
-            const actions = entry.isCurrent() ? entry.actions() : [];
-            if (actions.length === 0) {
-              // Keep an unavailable image's trigger from consuming the native fallback.
-              event.stopPropagation();
-              setMenu(null);
-              return;
-            }
-            setMenu({ entry, actions });
-          }}
-        >
-          {children}
-        </div>
-        <NodexContextMenuPortal>
-          <NodexContextMenuContent data-content-search-skip="true">
-            {actions.map((action) => (
-              <NodexContextMenuItem
-                key={action.id}
-                onSelect={() => {
-                  void action.run().catch((error: unknown) => {
-                    if (menu?.entry.isCurrent())
-                      toast.danger(error instanceof Error ? error.message : "Image action failed");
-                  });
-                }}
-              >
-                {action.label}
-              </NodexContextMenuItem>
-            ))}
-          </NodexContextMenuContent>
-        </NodexContextMenuPortal>
-      </NodexContextMenuRoot>
+        {children}
+      </div>
       {active && preview && isPreviewCurrent() ? (
         <ImagePreviewDialog
           open
@@ -388,6 +363,7 @@ async function saveMedia(
   filename: string,
   isCurrent: () => boolean,
   signal: AbortSignal,
+  image?: HTMLImageElement,
 ) {
   if (!isCurrent() || signal.aborted) return;
   // A local stream is copied by the host, so large media never crosses the renderer.
@@ -395,14 +371,9 @@ async function saveMedia(
     await saveWorkspaceFileCopy({ hostId: "local", path: resource.path });
     return;
   }
-  const response = await fetch(url, { signal, credentials: "omit" });
-  if (!response.ok) throw new Error("Media download failed");
+  const data = await fetchImageSourceAsDataUrl(url, undefined, { signal, isCurrent, image });
   if (!isCurrent() || signal.aborted) return;
-  const blob = await response.blob();
-  if (!isCurrent() || signal.aborted) return;
-  const data = await blobToDataUrl(blob);
-  if (!isCurrent() || signal.aborted) return;
-  downloadImageDataUrl(data, filename);
+  await downloadImageDataUrl(data, filename);
 }
 
 export function ConversationMedia({
@@ -571,7 +542,7 @@ function ConversationImage({
     },
     [identity],
   );
-  const download = useMediaDownload(resource, raw);
+  const download = useMediaDownload(resource, raw, image ?? undefined);
   const actionLifetime = useRef<{
     readonly identity: string;
     readonly controller: AbortController;
@@ -594,6 +565,7 @@ function ConversationImage({
         if (current !== "loaded" || !context.source || lifetime?.identity !== identity) return [];
         return createConversationImageActions({
           url: url,
+          image,
           raw,
           alt,
           hostId: context.source?.hostId,
@@ -663,12 +635,7 @@ function ConversationImage({
   );
   const element = (
     <span className="relative inline-flex max-w-full">
-      {context ? (
-        // Native text menus remain available outside the image's own trigger.
-        <NodexContextMenuTrigger>{previewButton}</NodexContextMenuTrigger>
-      ) : (
-        previewButton
-      )}
+      {previewButton}
       {current === "loaded" ? <MediaDownloadButton download={download} kind="image" /> : null}
     </span>
   );
@@ -689,6 +656,7 @@ async function runMediaDownload(
   raw: string,
   pending: { current: PendingDownload | null },
   publish: (state: DownloadState | null) => void,
+  image?: HTMLImageElement,
 ) {
   if (!resource.url || !resource.isCurrent() || pending.current) return;
   const controller = new AbortController();
@@ -702,6 +670,7 @@ async function runMediaDownload(
       conversationMediaFilename(raw),
       resource.isCurrent,
       controller.signal,
+      image,
     );
     if (resource.isCurrent() && !controller.signal.aborted) publish(null);
   } catch {
@@ -711,7 +680,11 @@ async function runMediaDownload(
     if (pending.current === attempt) pending.current = null;
   }
 }
-function useMediaDownload(resource: ConversationMediaResource, raw: string) {
+function useMediaDownload(
+  resource: ConversationMediaResource,
+  raw: string,
+  image?: HTMLImageElement,
+) {
   const pending = useRef<PendingDownload | null>(null);
   const [status, setStatus] = useState<DownloadState | null>(null);
   useLayoutEffect(
@@ -723,7 +696,7 @@ function useMediaDownload(resource: ConversationMediaResource, raw: string) {
     },
     [resource.identity],
   );
-  const save = () => runMediaDownload(resource, raw, pending, setStatus);
+  const save = () => runMediaDownload(resource, raw, pending, setStatus, image);
   const current = status?.identity === resource.identity ? status : null;
   return { save, current };
 }

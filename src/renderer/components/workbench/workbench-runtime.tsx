@@ -210,6 +210,7 @@ import {
   type OpenCanvasStageHandler,
 } from "@/lib/use-workbench-panel-openers";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
+import { openWorkbenchWindow } from "@/lib/workbench-shell-operations";
 import { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
 import { useWorkbenchSessionCommands } from "@/lib/use-workbench-session-commands";
 import {
@@ -2507,6 +2508,34 @@ export function WorkbenchRuntime({
       });
     },
     [activeOwnedSceneOwner, projects, sceneNavigator],
+  );
+  const browserLinkSessionId = activeSession?.id;
+  const browserLinkOwner = useMemo(
+    () =>
+      activeOwnedSceneOwner ??
+      (browserLinkSessionId ? { kind: "session" as const, sessionId: browserLinkSessionId } : null),
+    [activeOwnedSceneOwner, browserLinkSessionId],
+  );
+  const supportsBrowserLinkNavigation =
+    browserLinkOwner?.kind === "project" || browserLinkOwner?.kind === "session";
+  const openLinkInBrowserTab = useCallback(
+    async (url: string): Promise<boolean> => {
+      if (browserLinkOwner?.kind !== "project" && browserLinkOwner?.kind !== "session")
+        return false;
+      const result = await sceneNavigator.presentPanelSurface({
+        owner: browserLinkOwner,
+        request: { kind: "browser", config: { url } },
+        target: { panelId: "right" },
+        mode: "durable",
+        navigation: "background",
+      });
+      return result.status === "presented";
+    },
+    [browserLinkOwner, sceneNavigator],
+  );
+  const openLinkInBrowserWindow = useCallback(
+    (url: string) => openWorkbenchWindow({ browserUrl: url }),
+    [],
   );
   const panelOpeners = useWorkbenchPanelOpeners({
     presentOwnedSceneFile,
@@ -5108,6 +5137,8 @@ export function WorkbenchRuntime({
         <NodexTooltipProvider>
           <FileReferenceRouterProvider
             openWorkspaceFileTab={openWorkspaceFileTab}
+            openBrowserTab={supportsBrowserLinkNavigation ? openLinkInBrowserTab : undefined}
+            openBrowserWindow={supportsBrowserLinkNavigation ? openLinkInBrowserWindow : undefined}
             workspaceRoot={
               projectWorkspaceRootOrNull(activeSessionProject) ?? activeSession?.thread?.cwd ?? null
             }

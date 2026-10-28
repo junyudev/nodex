@@ -18,7 +18,13 @@ vi.mock("@/lib/clipboard", () => ({ writeTextToClipboard: menu.copy }));
 describe("FileLinkAnchor", () => {
   beforeEach(() => {
     invoke.mockReset();
-    invoke.mockResolvedValue(true);
+    invoke.mockImplementation(async (channel) => {
+      if (channel === "workspace-file:github-url") return null;
+      if (channel === "shell:file-link-openers:list-available") return ["vscode", "fileManager"];
+      if (channel === "file-open-applications")
+        return { defaultApplication: null, applications: [] };
+      return true;
+    });
     menu.show.mockReset();
     menu.copy.mockClear();
     installWindowApi({ invoke, on: () => () => undefined });
@@ -74,6 +80,46 @@ describe("FileLinkAnchor", () => {
       workspaceRoot: null,
       location: { line: 19, column: 4 },
     });
+  });
+
+  test("offers remote Save as without sending the path to a local application", async () => {
+    menu.show.mockResolvedValue("file-reference:save");
+    await openFileReferenceContextMenu({
+      hostId: "ssh:build",
+      target: { path: "/repo/output.png" },
+      label: "Output",
+      open: vi.fn(),
+      x: 1,
+      y: 2,
+    });
+    expect(invoke).toHaveBeenCalledWith("workspace-file:save-copy", {
+      hostId: "ssh:build",
+      path: "/repo/output.png",
+    });
+    expect(invoke).not.toHaveBeenCalledWith("file-open-applications", expect.anything());
+    expect(invoke).not.toHaveBeenCalledWith(
+      "shell:open-file-link",
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  test("does not publish a native menu after its reference has retired during preparation", async () => {
+    let current = true;
+    invoke.mockImplementation(async () => {
+      current = false;
+      return null;
+    });
+    await openFileReferenceContextMenu({
+      hostId: "ssh:build",
+      target: { path: "/repo/output.png" },
+      label: "Output",
+      open: vi.fn(),
+      x: 1,
+      y: 2,
+      isCurrent: () => current,
+    });
+    expect(menu.show).not.toHaveBeenCalled();
   });
 
   test("uses durable mode for a double click", async () => {

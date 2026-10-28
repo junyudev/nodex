@@ -198,6 +198,9 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
       shell: null as never,
       showMessage: () => Effect.die("unused"),
       showNotification: () => Effect.die("unused"),
+      createDownloadView: () => {
+        throw new Error("unused");
+      },
       onPowerEvent: () => Effect.void,
     });
     const windows = WindowRuntime.of({

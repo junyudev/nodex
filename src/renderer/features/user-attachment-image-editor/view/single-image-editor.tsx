@@ -1,4 +1,12 @@
-import { useEffect, useState, type ReactNode, type Ref } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 import {
   ChevronDownIcon,
   DownloadIcon,
@@ -203,7 +211,16 @@ export function SingleImageEditor({
   const [uncontrolledTool, setUncontrolledTool] = useState<SingleImageTool>("navigate");
   const activeTool = tool ?? uncontrolledTool;
   const [manualZoomPercent, setManualZoomPercent] = useState<number | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const downloadToken = useMemo(() => ({ image }), [image]);
+  const downloadLifetime = useRef<typeof downloadToken | null>(null);
+  const [pendingDownload, setPendingDownload] = useState<typeof downloadToken | null>(null);
+  const isDownloading = pendingDownload === downloadToken;
+  useLayoutEffect(() => {
+    downloadLifetime.current = downloadToken;
+    return () => {
+      downloadLifetime.current = null;
+    };
+  }, [downloadToken]);
   const [descriptorRetryRequested, setDescriptorRetryRequested] = useState(false);
   const [pendingAction, setPendingAction] = useState<ImmediateImageEditAction | null>(null);
   const displaySrc = asset.previewSrc;
@@ -270,18 +287,20 @@ export function SingleImageEditor({
   };
 
   const handleDownload = async () => {
-    if (isDownloading) return;
-    setIsDownloading(true);
+    const isCurrent = () => downloadLifetime.current === downloadToken;
+    if (isDownloading || !isCurrent()) return;
+    setPendingDownload(downloadToken);
     try {
       const dataUrl = await downloadAsset.materialize();
-      downloadImageDataUrl(
+      if (!isCurrent()) return;
+      await downloadImageDataUrl(
         dataUrl,
         createImageDownloadFilename(image.downloadSrc ?? image.src, image.alt),
       );
     } catch {
-      toast.danger("Could not download image");
+      if (isCurrent()) toast.danger("Could not download image");
     } finally {
-      setIsDownloading(false);
+      if (isCurrent()) setPendingDownload(null);
     }
   };
 

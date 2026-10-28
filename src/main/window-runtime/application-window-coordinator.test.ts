@@ -138,6 +138,35 @@ describe("application window coordinator", () => {
     });
   });
 
+  test("opens a link in a cloned window instead of reopening a closed session", () => {
+    const cloned = session("window-browser");
+    const created = browserWindow(9);
+    const create = vi.fn(() => created);
+    const acquireSessionForNewWindow = vi.fn();
+    const cloneSessionForWindow = vi.fn(() => cloned);
+    const coordinator = createApplicationWindowCoordinator({
+      closeAll: () => Effect.succeed(cleanReport),
+      create,
+      focusedWindow: () => null,
+      reportFailure: vi.fn(),
+      syncTitle: vi.fn(),
+      windows: {
+        acquireSessionForNewWindow,
+        cloneSessionForWindow,
+        hasClosedSessionAvailable: () => true,
+      } as unknown as WindowRuntimeService,
+    });
+    const request = { browserUrl: "https://example.com/path" };
+
+    coordinator.openForRequest(3, request);
+
+    expect(acquireSessionForNewWindow).not.toHaveBeenCalled();
+    expect(cloneSessionForWindow).toHaveBeenCalledExactlyOnceWith(3, request);
+    expect(create).toHaveBeenCalledExactlyOnceWith(cloned);
+    expect(created.show).toHaveBeenCalledOnce();
+    expect(created.focus).toHaveBeenCalledOnce();
+  });
+
   it.effect("clones explicit Project context and owns quit preparation", () =>
     Effect.gen(function* () {
       const cloned = session("window-cloned");

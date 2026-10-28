@@ -6,7 +6,16 @@ import { textContent } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
 import { __resetNodexToastStoreForTests, NodexToastProvider } from "../ui/toast";
 import { NodexTooltipProvider } from "../ui/tooltip";
-import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
+import {
+  FileReferenceHostProvider,
+  FileReferenceRouterProvider,
+} from "@/lib/file-reference-router";
+import { FileLinkOpenerProvider } from "@/lib/use-file-link-opener";
+import {
+  FILE_LINK_OPENER_STORAGE_KEY,
+  readFileLinkOpener,
+  writeFileLinkOpener,
+} from "@/lib/file-link-opener-settings";
 import { NODEX_REVIEW_DIFF_EXPANSION_LINE_COUNT } from "../../lib/diff-presentation";
 import type {
   CodexConversationSnapshot,
@@ -36,6 +45,27 @@ import {
 } from "@/features/review/model/review-view-state";
 import { canonicalizeReviewPath } from "@/features/review/model/review-path";
 import type { GitWorkerQueryClient } from "@/features/review/data/git-query";
+
+const menuPorts = vi.hoisted(() => ({
+  readTargets: vi.fn(),
+  openTarget: vi.fn(),
+  showMenu: vi.fn(),
+  openUrl: vi.fn(),
+  github: vi.fn(),
+}));
+vi.mock("@/lib/file-reference-open-targets", () => ({
+  readFileReferenceOpenTargets: menuPorts.readTargets,
+  openFileReferenceTarget: menuPorts.openTarget,
+}));
+vi.mock("@/lib/native-context-menu", () => ({ showNativeContextMenu: menuPorts.showMenu }));
+vi.mock("@/lib/workspace-file-operations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/workspace-file-operations")>()),
+  readWorkspaceFileGitHubUrl: menuPorts.github,
+}));
+vi.mock("@/lib/file-system-operations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/file-system-operations")>()),
+  openExternalUrl: menuPorts.openUrl,
+}));
 
 const invokeCalls: unknown[][] = [];
 const startThreadPromptCalls: Array<{ threadId: string; prompt: string }> = [];
@@ -699,6 +729,16 @@ function buildGitDiffResultForTest(input: {
 }
 
 beforeEach(() => {
+  menuPorts.readTargets.mockReset().mockResolvedValue({
+    primary: { id: "cursor", label: "Cursor", opener: "cursor" },
+    alternatives: [{ id: "vscode", label: "VS Code", opener: "vscode" }],
+  });
+  menuPorts.openTarget.mockReset().mockResolvedValue(true);
+  menuPorts.showMenu.mockReset().mockResolvedValue(null);
+  menuPorts.openUrl.mockReset().mockResolvedValue(true);
+  menuPorts.github.mockReset().mockResolvedValue(null);
+  localStorage.removeItem(FILE_LINK_OPENER_STORAGE_KEY);
+  document.getSelection()?.removeAllRanges();
   __resetReviewDiffBatcherForTests();
   invokeCalls.length = 0;
   startThreadPromptCalls.length = 0;
@@ -727,22 +767,36 @@ async function loadReviewDiffPanelModule() {
   > & {
     conversation?: CodexConversationSnapshot | null;
     conversationProjection?: ReviewConversationProjection;
+    hostId?: string;
   };
 
   function TestReviewDiffPanel(props: TestReviewDiffPanelProps) {
-    const { conversation = null, conversationProjection, deps, ...panelProps } = props;
+    const {
+      conversation = null,
+      conversationProjection,
+      deps,
+      hostId = "local",
+      ...panelProps
+    } = props;
     return (
       <TestQueryProvider>
-        <FileReferenceRouterProvider openWorkspaceFileTab={openWorkspaceFileTab}>
-          <ReviewDiffPanel
-            {...panelProps}
-            conversationProjection={
-              conversationProjection ?? buildReviewConversationProjection(conversation)
-            }
-            deps={{ ...reviewDiffPanelTestDeps, ...deps }}
-            onStartThreadPrompt={recordStartThreadPrompt}
-          />
-        </FileReferenceRouterProvider>
+        <FileLinkOpenerProvider>
+          <FileReferenceRouterProvider openWorkspaceFileTab={openWorkspaceFileTab}>
+            <FileReferenceHostProvider
+              hostId={hostId}
+              workspaceRoot={panelProps.projectWorkspacePath ?? null}
+            >
+              <ReviewDiffPanel
+                {...panelProps}
+                conversationProjection={
+                  conversationProjection ?? buildReviewConversationProjection(conversation)
+                }
+                deps={{ ...reviewDiffPanelTestDeps, ...deps }}
+                onStartThreadPrompt={recordStartThreadPrompt}
+              />
+            </FileReferenceHostProvider>
+          </FileReferenceRouterProvider>
+        </FileLinkOpenerProvider>
       </TestQueryProvider>
     );
   }
@@ -2968,6 +3022,231 @@ describe("review diff panel", () => {
     expect(
       view.container.querySelector('[data-rendered-line-annotation="additions:2"]'),
     ).not.toBeNull();
+  });
+
+  test("captures the context menu selection before discovering file targets", async () => {
+    const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
+    const view = render(
+      <NodexTooltipProvider>
+        <ReviewDiffPanel conversation={buildConversation()} projectWorkspacePath="/tmp/codex" />
+      </NodexTooltipProvider>,
+    );
+    await settleAsyncRender();
+    let releaseTargets: (() => void) | undefined;
+    menuPorts.readTargets.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseTargets = () => resolve({ primary: null, alternatives: [] });
+        }),
+    );
+    menuPorts.showMenu.mockResolvedValueOnce("copy-selection");
+    const code = document.createElement("span");
+    code.textContent = "  const selected = true;  ";
+    view.container.querySelector("[data-file-diff]")!.append(code);
+    const range = document.createRange();
+    range.selectNodeContents(code);
+    document.getSelection()?.addRange(range);
+    await dispatchReviewEvent(() => {
+      fireEvent.contextMenu(code);
+    });
+    expect(menuPorts.readTargets).toHaveBeenCalledWith("/tmp/codex/src/example.ts");
+    expect(menuPorts.showMenu).not.toHaveBeenCalled();
+    await act(async () => {
+      document.getSelection()?.removeAllRanges();
+      releaseTargets?.();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(clipboardWrites).toEqual(["const selected = true;"]));
+    expect(menuPorts.showMenu.mock.calls[0]?.[0]).toContainEqual({
+      id: "copy-selection",
+      label: "Copy selection",
+      enabled: true,
+    });
+  });
+
+  test("keeps the context menu Request changes action attached to its hovered line", async () => {
+    const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
+    const view = render(
+      <NodexTooltipProvider>
+        <ReviewDiffPanel conversation={buildConversation()} projectWorkspacePath="/tmp/codex" />
+      </NodexTooltipProvider>,
+    );
+    await settleAsyncRender();
+    menuPorts.showMenu.mockResolvedValueOnce("request-changes");
+    await dispatchReviewEvent(() => {
+      (
+        lastFileDiffProps?.options as {
+          onLineEnter?: (line: { annotationSide: "additions"; lineNumber: number }) => void;
+        }
+      )?.onLineEnter?.({ annotationSide: "additions", lineNumber: 2 });
+      fireEvent.contextMenu(view.container.querySelector("[data-file-diff]")!);
+    });
+    await waitFor(() =>
+      expect(
+        view.container.querySelector(
+          '[data-rendered-line-annotation="additions:2"] [data-placeholder="Request change"]',
+        ),
+      ).not.toBeNull(),
+    );
+    expect(menuPorts.showMenu.mock.calls[0]?.[0]).toContainEqual({
+      id: "request-changes",
+      label: "Request changes",
+    });
+  });
+
+  test("keeps Request changes available but does nothing without a commentable hovered line", async () => {
+    const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
+    const view = render(
+      <NodexTooltipProvider>
+        <ReviewDiffPanel conversation={buildConversation()} projectWorkspacePath="/tmp/codex" />
+      </NodexTooltipProvider>,
+    );
+    await settleAsyncRender();
+    menuPorts.showMenu.mockResolvedValueOnce("request-changes");
+    await dispatchReviewEvent(() =>
+      fireEvent.contextMenu(view.container.querySelector("[data-file-diff]")!),
+    );
+    await waitFor(() => expect(menuPorts.showMenu).toHaveBeenCalledOnce());
+    expect(menuPorts.showMenu.mock.calls[0]?.[0]).toContainEqual({
+      id: "request-changes",
+      label: "Request changes",
+    });
+    expect(view.container.querySelector('[data-placeholder="Request change"]')).toBeNull();
+  });
+
+  test.each(["open-in-new-tab", "open-primary", "open-target:vscode"])(
+    "routes the context menu %s action to the clicked source line",
+    async (action) => {
+      const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
+      const view = render(
+        <NodexTooltipProvider>
+          <ReviewDiffPanel conversation={buildConversation()} projectWorkspacePath="/tmp/codex" />
+        </NodexTooltipProvider>,
+      );
+      await settleAsyncRender();
+      writeFileLinkOpener("cursor");
+      menuPorts.showMenu.mockResolvedValueOnce(action);
+      const code = document.createElement("span");
+      code.setAttribute("data-line", "17");
+      view.container.querySelector("[data-file-diff]")!.append(code);
+      await dispatchReviewEvent(() => {
+        fireEvent.contextMenu(code);
+      });
+      if (action === "open-in-new-tab") {
+        await waitFor(() =>
+          expect(openWorkspaceFileTab).toHaveBeenCalledWith(
+            expect.objectContaining({
+              path: "/tmp/codex/src/example.ts",
+              mode: "durable",
+              location: { line: 17 },
+            }),
+          ),
+        );
+        expect(menuPorts.openTarget).not.toHaveBeenCalled();
+        return;
+      }
+      await waitFor(() =>
+        expect(menuPorts.openTarget).toHaveBeenCalledWith(
+          expect.objectContaining({ id: action === "open-primary" ? "cursor" : "vscode" }),
+          { path: "/tmp/codex/src/example.ts", line: 17 },
+        ),
+      );
+      expect(openWorkspaceFileTab).not.toHaveBeenCalled();
+      expect(readFileLinkOpener()).toBe(action === "open-primary" ? "cursor" : "vscode");
+    },
+  );
+
+  test.each([
+    ["copy-path", "/tmp/codex/src/example.ts"],
+    ["copy-relative-path", "src/example.ts"],
+  ])("copies the context menu %s path form", async (action, expected) => {
+    const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
+    const view = render(
+      <NodexTooltipProvider>
+        <ReviewDiffPanel conversation={buildConversation()} projectWorkspacePath="/tmp/codex" />
+      </NodexTooltipProvider>,
+    );
+    await settleAsyncRender();
+    menuPorts.showMenu.mockResolvedValueOnce(action);
+    await dispatchReviewEvent(() => {
+      fireEvent.contextMenu(view.container.querySelector("[data-file-diff]")!);
+    });
+    await waitFor(() => expect(clipboardWrites).toEqual([expected]));
+  });
+
+  test("uses the same word-wrap preference from the context menu and toolbar", async () => {
+    const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
+    const view = render(
+      <NodexTooltipProvider>
+        <ReviewDiffPanel conversation={buildConversation()} projectWorkspacePath="/tmp/codex" />
+      </NodexTooltipProvider>,
+    );
+    await settleAsyncRender();
+    menuPorts.showMenu.mockResolvedValueOnce("toggle-wrap");
+    await dispatchReviewEvent(() => {
+      fireEvent.contextMenu(view.container.querySelector("[data-file-diff]")!);
+    });
+    await waitFor(() => expect(lastFileDiffProps?.options).toMatchObject({ overflow: "wrap" }));
+    await openReviewOptionsMenu(view);
+    expect(view.queryByRole("menuitem", { name: "Disable word wrap" })).not.toBeNull();
+  });
+
+  test.each(["local", "remote-one"])(
+    "opens the source file on GitHub using its %s host",
+    async (hostId) => {
+      const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
+      menuPorts.github.mockResolvedValue(
+        "https://github.com/example/project/blob/feature/menu/src/example.ts",
+      );
+      const view = render(
+        <NodexTooltipProvider>
+          <ReviewDiffPanel
+            conversation={buildConversation()}
+            projectWorkspacePath="/tmp/codex"
+            hostId={hostId}
+          />
+        </NodexTooltipProvider>,
+      );
+      await settleAsyncRender();
+      menuPorts.showMenu.mockResolvedValueOnce("open-in-github");
+      await dispatchReviewEvent(() => {
+        fireEvent.contextMenu(view.container.querySelector("[data-file-diff]")!);
+      });
+      await waitFor(() =>
+        expect(menuPorts.openUrl).toHaveBeenCalledWith(
+          "https://github.com/example/project/blob/feature/menu/src/example.ts",
+        ),
+      );
+      expect(menuPorts.github).toHaveBeenCalledExactlyOnceWith({
+        hostId,
+        path: "/tmp/codex/src/example.ts",
+      });
+      if (hostId !== "local") {
+        expect(menuPorts.readTargets).not.toHaveBeenCalled();
+        expect(menuPorts.showMenu.mock.calls[0]?.[0]).not.toEqual(
+          expect.arrayContaining([expect.objectContaining({ id: "open-primary" })]),
+        );
+      }
+    },
+  );
+
+  test("leaves comment editor context menus with the editable control", async () => {
+    const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
+    const view = render(
+      <NodexTooltipProvider>
+        <ReviewDiffPanel conversation={buildConversation()} projectWorkspacePath="/tmp/codex" />
+      </NodexTooltipProvider>,
+    );
+    await settleAsyncRender();
+    const editor = document.createElement("textarea");
+    view.container.querySelector("[data-file-diff]")!.append(editor);
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    await dispatchReviewEvent(() => {
+      editor.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(false);
+    expect(menuPorts.showMenu).not.toHaveBeenCalled();
+    expect(menuPorts.readTargets).not.toHaveBeenCalled();
   });
 
   test("creates a local comment draft from the diff gutter utility callback", async () => {

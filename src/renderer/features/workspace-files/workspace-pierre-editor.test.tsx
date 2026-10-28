@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { createRef, forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import type { CodeViewItem } from "@pierre/diffs";
@@ -6,6 +6,15 @@ import type { EditorViewState } from "@pierre/diffs/edit";
 import { settleAsyncRender } from "../../test/dom";
 import { installAsyncRequestAnimationFrame } from "../../test/browser-globals";
 import { WorkspacePierreEditor, type WorkspacePierreEditorHandle } from "./workspace-pierre-editor";
+import { buildFileReferenceContextMenu } from "@/lib/file-reference-context-menu";
+import type { CapturedFileReferenceContextMenu } from "@/lib/file-reference-context-menu";
+import { showNativeContextMenu } from "@/lib/native-context-menu";
+
+vi.mock("@/lib/native-context-menu", () => ({
+  canShowNativeContextMenu: () => true,
+  showNativeContextMenu: vi.fn(async () => null),
+}));
+vi.mock("@/lib/file-reference-context-menu", () => ({ buildFileReferenceContextMenu: vi.fn() }));
 
 const { editor, codeViewHandle, typography, captureCodeViewOptions, attachment } = vi.hoisted(
   () => {
@@ -100,6 +109,8 @@ vi.mock("@pierre/diffs/react", () => ({
 }));
 
 beforeEach(() => {
+  vi.mocked(showNativeContextMenu).mockClear();
+  vi.mocked(buildFileReferenceContextMenu).mockReset();
   installAsyncRequestAnimationFrame();
   editor.setSelections.mockClear();
   editor.getViewState.mockReturnValue({});
@@ -114,6 +125,99 @@ beforeEach(() => {
 });
 
 describe("WorkspacePierreEditor", () => {
+  test("captures the readonly selection before preparing host-owned file actions", async () => {
+    let resolveMenu!: (menu: CapturedFileReferenceContextMenu) => void;
+    vi.mocked(buildFileReferenceContextMenu).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMenu = resolve;
+        }),
+    );
+    const view = render(
+      <WorkspacePierreEditor
+        value="selected snapshot"
+        filename="file.ts"
+        language="typescript"
+        sourceIdentity="/remote/file.ts"
+        file={{ hostId: "ssh:build", path: "/remote/file.ts" }}
+        documentVersion={0}
+        comparison={{
+          oldContent: "before",
+          oldPath: "/remote/file.ts",
+          newContent: "selected snapshot",
+          layout: "unified",
+        }}
+        ariaLabel="Editor"
+        onChange={() => undefined}
+      />,
+    );
+    const region = view.getByRole("region", { name: "Editor" });
+    document.getSelection()?.selectAllChildren(view.getByTestId("editable-pierre-file"));
+    await act(async () => {
+      fireEvent.contextMenu(region, { clientX: 12, clientY: 24 });
+      await Promise.resolve();
+    });
+    expect(buildFileReferenceContextMenu).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hostId: "ssh:build",
+        target: { path: "/remote/file.ts", line: 1 },
+        includeOpenFile: false,
+      }),
+    );
+    document.getSelection()?.removeAllRanges();
+    await act(async () => {
+      resolveMenu({
+        items: [{ id: "file-reference:save", label: "Save as…" }],
+        select: vi.fn(async () => undefined),
+      });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(showNativeContextMenu).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "file-copy", enabled: true }),
+          expect.objectContaining({ id: "file-reference:save" }),
+        ]),
+        { x: 12, y: 24 },
+      ),
+    );
+  });
+
+  test("does not open a late prepared menu after its source host changes", async () => {
+    let resolveMenu!: (menu: CapturedFileReferenceContextMenu) => void;
+    vi.mocked(buildFileReferenceContextMenu).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMenu = resolve;
+        }),
+    );
+    const component = (hostId: string) => (
+      <WorkspacePierreEditor
+        value="file"
+        filename="file.ts"
+        language="typescript"
+        sourceIdentity="/remote/file.ts"
+        file={{ hostId, path: "/remote/file.ts" }}
+        documentVersion={0}
+        ariaLabel="Editor"
+        onChange={() => undefined}
+      />
+    );
+    const view = render(component("ssh:old"));
+    await act(async () => {
+      fireEvent.contextMenu(view.getByRole("region", { name: "Editor" }));
+      await Promise.resolve();
+    });
+    view.rerender(component("ssh:new"));
+    await act(async () => {
+      resolveMenu({
+        items: [{ id: "file-reference:save", label: "Save as…" }],
+        select: vi.fn(async () => undefined),
+      });
+      await Promise.resolve();
+    });
+    expect(showNativeContextMenu).not.toHaveBeenCalled();
+  });
   test("updates the virtual row and caret grid when the code preference changes", () => {
     const component = () => (
       <WorkspacePierreEditor

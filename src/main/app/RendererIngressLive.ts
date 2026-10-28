@@ -55,6 +55,7 @@ import * as RemoteHostedPipIpc from "../ipc/handlers/RemoteHostedPipIpc";
 import * as ManagedMediaIpc from "../ipc/handlers/ManagedMediaIpc";
 import * as StructuralClipboardIpc from "../ipc/handlers/StructuralClipboardIpc";
 import * as NativeShellIpc from "../ipc/handlers/NativeShellIpc";
+import * as NativeResourceIpc from "../ipc/handlers/NativeResourceIpc";
 import * as PageSearchIpc from "../ipc/handlers/PageSearchIpc";
 import * as FilesIpc from "../ipc/handlers/FilesIpc";
 import * as ProjectWorkspaceIpc from "../ipc/handlers/ProjectWorkspaceIpc";
@@ -131,6 +132,7 @@ export const live = Layer.mergeAll(
   ManagedMediaIpc.live,
   StructuralClipboardIpc.live,
   NativeShellIpc.live,
+  NativeResourceIpc.live,
   PageSearchIpc.live({}),
   FilesIpc.live,
   ProjectWorkspaceIpc.live,

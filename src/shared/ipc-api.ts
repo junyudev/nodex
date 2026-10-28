@@ -1,4 +1,6 @@
 import type { PluginManagementIpcApi, PluginManagementChanged } from "./codex-plugin-management";
+import type { WorkspaceFileSaveDataInput } from "./native-file-save";
+import type { NativeResourceData, NativeResourceReadInput } from "./native-resource";
 import type { McpAppDataIpcApi } from "./mcp-app/mcp-app-data";
 import type { AcpIpcApi } from "./acp-api";
 import type { AgentRuntimeIpcApi } from "./agent-runtime-api";
@@ -1614,6 +1616,22 @@ export interface IpcApi
   "workspace-file:save-copy": {
     args: [input: WorkspaceFileRequest];
     result: { path: string | null };
+  };
+  "workspace-file:save-data": {
+    args: [input: WorkspaceFileSaveDataInput];
+    result: { path: string | null };
+  };
+  "workspace-file:github-url": {
+    args: [input: WorkspaceFileRequest & { line?: number }];
+    result: string | null;
+  };
+  "native-resource:read": {
+    args: [input: NativeResourceReadInput];
+    result: NativeResourceData;
+  };
+  "browser-link:save": {
+    args: [input: { url: string; conversationId?: string }];
+    result: boolean;
   };
   "workspace-file-watch:start": {
     args: [input: WorkspaceFileRequest];

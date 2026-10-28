@@ -59,6 +59,22 @@ document revision, entering or leaving a snapshot, or switching between a plain 
 comparison starts a new edit session; the current draft and caret are retained when the document
 revision is unchanged.
 
+The text surface offers Undo, Redo, Cut, Copy, Paste and Select all in its context menu, with a
+divider after Redo. Undo and Redo follow the current editor history. Editable files keep Cut,
+Copy and Paste available even with an empty selection. Snapshots disable Undo, Redo, Cut and
+Paste; Copy is available when text is selected. Keyboard and menu plaintext paste share the trusted
+Main clipboard reader without relaxing renderer clipboard permissions. Cut, Copy and Paste act on the selection captured
+when the menu opens. Undo, Redo and Select all return focus to the text editor. Select all covers
+the complete editable document.
+
+The native menu appends the file's available desktop applications, GitHub destination at the
+clicked line, Save as…, Copy path and Copy file contents after a divider. Local files also offer
+the platform's file-manager action. Remote files retain their execution host for reads and save
+a copy on the desktop without offering local application targets. File actions share the same
+destination resolver as transcript references; an editor menu does not reopen its own Files tab.
+Edit state is captured before asynchronous destination discovery, and removed, inert or replaced
+file owners cannot publish or execute a late menu.
+
 Active-line blame appears only on the new side of an editable document. It maps unchanged draft
 lines to saved lines with a line diff bounded to 262,144 UTF-16 characters per input and an edit
 length of 512. Inserted or replaced lines and unavailable bounded mappings have no label. The

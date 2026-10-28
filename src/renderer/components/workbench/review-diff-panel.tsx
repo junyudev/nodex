@@ -130,6 +130,19 @@ import {
   type ReviewCodeComment,
 } from "@/lib/review-code-comments";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
+import {
+  openFileReferenceTarget,
+  readFileReferenceOpenTargets,
+} from "@/lib/file-reference-open-targets";
+import { openExternalUrl } from "@/lib/file-system-operations";
+import { readWorkspaceFileGitHubUrl } from "@/lib/workspace-file-operations";
+import { useFileLinkOpener } from "@/lib/use-file-link-opener";
+import {
+  buildReviewFileContextMenu,
+  readReviewContextMenuLine,
+  reviewFileOpenTargetActionId,
+  reviewFileTargetPreferredOpener,
+} from "@/features/review/model/review-file-context-menu";
 import type {
   CodexTurnDiffPatchBatch,
   GitReviewBranchCommit,
@@ -1590,6 +1603,7 @@ interface ReviewFileRowProps {
   pendingCommentAttachments: CodexReviewDiffCommentAttachment[];
   deps: ReviewDiffPanelDeps;
   onToggleExpandedKey: (key: string, canInheritExpanded: boolean) => void;
+  onToggleWrap: () => void;
 }
 
 function areShallowArraysEqual<T>(left: T[], right: T[]): boolean {
@@ -1669,7 +1683,8 @@ function areReviewFileRowPropsEqual(left: ReviewFileRowProps, right: ReviewFileR
     left.sourceKey === right.sourceKey &&
     areShallowArraysEqual(left.pendingCommentAttachments, right.pendingCommentAttachments) &&
     left.deps === right.deps &&
-    left.onToggleExpandedKey === right.onToggleExpandedKey
+    left.onToggleExpandedKey === right.onToggleExpandedKey &&
+    left.onToggleWrap === right.onToggleWrap
   );
 }
 
@@ -1692,12 +1707,21 @@ const ReviewFileRow = memo(function ReviewFileRow({
   pendingCommentAttachments,
   deps,
   onToggleExpandedKey,
+  onToggleWrap,
 }: ReviewFileRowProps) {
   recordReviewRuntimeEvent({ type: "row-render", path: entry.displayPath });
   const { useTheme, FileDiff } = deps;
   const fileReferenceRouter = useFileReferenceRouter();
+  const { setOpener } = useFileLinkOpener();
   const { resolved } = useTheme();
   const rowRef = useRef<HTMLElement | null>(null);
+  const menuScopeRef = useRef<{ sourceKey: string; request: number } | null>(null);
+  useEffect(() => {
+    menuScopeRef.current = { sourceKey, request: 0 };
+    return () => {
+      menuScopeRef.current = null;
+    };
+  }, [sourceKey]);
   const fullContentState = useReviewFullContentState(fullContentKey);
   const diffHostStyle = getNodexDiffHostStyle(resolved === "dark" ? "dark" : "light");
   const supportsWordDiffs = isReviewWordDiffEnabled(getReviewChangedLines(entry), true);
@@ -1894,45 +1918,143 @@ const ReviewFileRow = memo(function ReviewFileRow({
 
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
+      if (event.defaultPrevented) return;
+      const eventPath = event.nativeEvent.composedPath();
+      if (
+        eventPath.some(
+          (target) =>
+            target instanceof HTMLElement &&
+            (target.matches('input, textarea, [contenteditable]:not([contenteditable="false"])') ||
+              target.isContentEditable),
+        )
+      )
+        return;
+
       const hoveredLine = hoveredLineRef.current;
-      if (!hoveredLine) return;
       event.preventDefault();
       event.stopPropagation();
+      // Native menus and target discovery can change DOM focus and selection.
+      const selectedText =
+        event.currentTarget.ownerDocument.getSelection()?.toString()?.trim() ?? "";
+      const line = readReviewContextMenuLine(eventPath) ?? entry.openLine;
+      const file = entry.openPath ? { path: entry.openPath, ...(line ? { line } : {}) } : null;
+      const relativePath = /^(?:\/|[a-z]:[\\/]|\\\\)/iu.test(entry.displayPath)
+        ? null
+        : entry.displayPath;
+      const position = { x: event.clientX, y: event.clientY };
+      const scope = menuScopeRef.current;
+      if (!scope) return;
+      const request = ++scope.request;
+      const current = () =>
+        menuScopeRef.current === scope &&
+        scope.request === request &&
+        rowRef.current?.isConnected === true;
+      const canRequestChanges =
+        hoveredLine !== null &&
+        !shouldBlockReviewDiffDraft({
+          key: buildReviewDiffAnnotationKey(hoveredLine.side, hoveredLine.lineNumber),
+          existingKeys: existingAnnotationKeys,
+          draftKeys,
+        });
+      const localFile = fileReferenceRouter.hostId === "local" ? file : null;
+      const loadTargets = localFile
+        ? readFileReferenceOpenTargets(localFile.path).catch(() => ({
+            primary: null,
+            alternatives: [],
+          }))
+        : Promise.resolve({ primary: null, alternatives: [] });
+      const loadGitHubUrl =
+        file && entry.gitStatus !== "deleted"
+          ? readWorkspaceFileGitHubUrl({
+              hostId: fileReferenceRouter.hostId,
+              path: file.path,
+            }).catch(() => null)
+          : Promise.resolve(null);
 
-      const key = buildReviewDiffAnnotationKey(hoveredLine.side, hoveredLine.lineNumber);
-      const enabled = !shouldBlockReviewDiffDraft({
-        key,
-        existingKeys: existingAnnotationKeys,
-        draftKeys,
-      });
-
-      void showNativeContextMenu(
-        [
-          {
-            id: "request-changes",
-            label: "Request changes",
-            enabled,
-          },
-        ],
-        {
-          x: event.clientX,
-          y: event.clientY,
-        },
-      )
-        .then((selectedId) => {
-          if (selectedId !== "request-changes") return;
-          createDraft(
-            createReviewDiffDraftFromLine({
-              side: hoveredLine.side,
-              lineNumber: hoveredLine.lineNumber,
-              path: entry.displayPath,
-              patchText: entry.patchText,
+      void Promise.all([loadTargets, loadGitHubUrl])
+        .then(async ([targets, githubUrl]) => {
+          if (!current()) return;
+          const selectedId = await showNativeContextMenu(
+            buildReviewFileContextMenu({
+              canOpenFile: file !== null,
+              canOpenInNewTab: entry.gitStatus !== "deleted",
+              selectedText,
+              relativePath,
+              githubUrl,
+              ...targets,
             }),
+            position,
           );
+          if (!current() || !selectedId) return;
+          if (selectedId === "copy-selection") {
+            if (selectedText) await writeTextToClipboard(selectedText);
+            return;
+          }
+          if (selectedId === "copy-path" || selectedId === "copy-relative-path") {
+            const path = selectedId === "copy-path" ? file?.path : relativePath;
+            if (path) await writeTextToClipboard(path);
+            return;
+          }
+          if (selectedId === "toggle-wrap") {
+            onToggleWrap();
+            return;
+          }
+          if (selectedId === "open-in-github") {
+            if (githubUrl) await openExternalUrl(githubUrl);
+            return;
+          }
+          if (selectedId === "open-in-new-tab") {
+            if (file)
+              await fileReferenceRouter.open(file, {
+                cwd,
+                workspaceRoot,
+                title: entry.displayPath,
+                mode: "durable",
+                isCurrent: current,
+              });
+            return;
+          }
+          if (selectedId === "request-changes") {
+            if (!canRequestChanges || !hoveredLine) return;
+            createDraft(
+              createReviewDiffDraftFromLine({
+                side: hoveredLine.side,
+                lineNumber: hoveredLine.lineNumber,
+                path: entry.displayPath,
+                patchText: entry.patchText,
+              }),
+            );
+            return;
+          }
+          const target =
+            selectedId === "open-primary"
+              ? targets.primary
+              : targets.alternatives.find(
+                  (candidate) => reviewFileOpenTargetActionId(candidate) === selectedId,
+                );
+          if (!target || !file) return;
+          const preferredOpener =
+            selectedId === "open-primary" ? null : reviewFileTargetPreferredOpener(target);
+          if (preferredOpener) setOpener(preferredOpener);
+          await openFileReferenceTarget(target, file);
         })
         .catch(() => {});
     },
-    [createDraft, draftKeys, entry.displayPath, entry.patchText, existingAnnotationKeys],
+    [
+      createDraft,
+      cwd,
+      draftKeys,
+      entry.displayPath,
+      entry.gitStatus,
+      entry.openLine,
+      entry.openPath,
+      entry.patchText,
+      existingAnnotationKeys,
+      fileReferenceRouter,
+      setOpener,
+      onToggleWrap,
+      workspaceRoot,
+    ],
   );
 
   const lineAnnotations = useMemo<Array<DiffLineAnnotation<ReviewDiffAnnotationMetadata>>>(
@@ -2143,6 +2265,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
   return (
     <section
       ref={rowRef}
+      onContextMenu={handleContextMenu}
       data-review-path={entry.displayPath}
       data-review-full-content-state={fullContentPhase}
       className={cn(
@@ -2216,7 +2339,6 @@ const ReviewFileRow = memo(function ReviewFileRow({
         data-code="true"
         data-unified={diffMode === "unified" ? "true" : "false"}
         data-container-size="regular"
-        onContextMenu={handleContextMenu}
       >
         {expanded && fileLevelComments.length > 0 ? (
           <div
@@ -2335,6 +2457,7 @@ export function ReviewDiffPanel({
     (update: SetStateAction<boolean>) => updatePreference("wrap", update),
     [updatePreference],
   );
+  const toggleWrap = useCallback(() => setWrap((current) => !current), [setWrap]);
   const setWordDiffsEnabled = useCallback(
     (update: SetStateAction<boolean>) => updatePreference("wordDiffsEnabled", update),
     [updatePreference],
@@ -3478,6 +3601,7 @@ export function ReviewDiffPanel({
         }
         deps={resolvedDeps}
         onToggleExpandedKey={toggleReviewRow}
+        onToggleWrap={toggleWrap}
       />
     </div>
   );
