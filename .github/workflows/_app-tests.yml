@@ -93,7 +93,7 @@ jobs:
           done
       - name: Upload application diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: app-${{ matrix.suite }}-failure-${{ github.run_attempt }}
           path: |
@@ -106,7 +106,7 @@ jobs:
         run: sccache --show-stats || true
       - name: Upload application timings
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: timings-${{ inputs.timing_prefix }}-${{ matrix.suite }}-${{ github.run_attempt }}
           path: .generated/ci-timings/
