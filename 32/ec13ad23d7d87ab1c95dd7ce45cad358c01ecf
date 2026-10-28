@@ -1,0 +1,45 @@
+tests/e2e/support/native-context-menu.ts
+  s_52c7d635525c94::t_ae5f40e8c0ff5e 1-41
+src/shared/session-context-menu-icons.test.ts
+  s_52c7d635525c94::t_bbb561e46c6cf3 24-51
+tests/e2e/board-dense.spec.ts
+  s_52c7d635525c94::t_adae8a785076a0 15,350-353,423-426
+docs/product-specs/workbench-shell.md
+  s_52c7d635525c94::t_3d7edd79f26677 30,221
+src/shared/session-context-menu-icons.ts
+  s_52c7d635525c94::t_a7b4c5e645b811 2-12,34-61,93-104
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_52c7d635525c94::t_3cf857b732945a 429,435,441,450
+src/shared/icon-geometry.ts
+  s_52c7d635525c94::t_01839805704ea2 55-106
+src/renderer/components/shared/icons/native-menu-icon.tsx
+  s_52c7d635525c94::t_03b2779da4d10d 1-24
+src/renderer/components/workbench/app-shell-tabs.tsx
+  s_52c7d635525c94::t_2bb367508292f9 1415,1417-1437
+  s_52c7d635525c94::t_2cffadc4c4cfad 20,1209
+  s_52c7d635525c94::t_411deae84071cc 27,38-41,67-75,1166-1172,1393,1407,1445,1451,1458,1469
+  s_52c7d635525c94::t_20167096f9f130 150,209-210,1181-1208,1210-1237,1241,1244,1247,1256,1262
+  s_52c7d635525c94::t_55457481c53d2a 1380-1382
+src/shared/native-context-menu.ts
+  s_52c7d635525c94::t_a7b4c5e645b811 21-31
+src/renderer/components/workbench/app-shell-tabs.test.tsx
+  s_52c7d635525c94::t_3f1273fc850bcc 1097-1103
+  s_52c7d635525c94::t_2cffadc4c4cfad 1527-1528
+  s_52c7d635525c94::t_bbb561e46c6cf3 1070-1096,1104-1138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "32ec13ad23d7d87ab1c95dd7ce45cad358c01ecf",
+  "prompts": {},
+  "sessions": {
+    "s_52c7d635525c94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aff2e8a0-50dd-4019-aa85-7b5ade99e79e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
