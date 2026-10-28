@@ -46,7 +46,7 @@ function MetadataTooltip({
   return (
     <NodexTooltip
       side="top"
-      delay={700}
+      delay={0}
       sideOffset={2}
       hoverable
       tooltipClassName="px-3 py-2"
@@ -142,7 +142,7 @@ function SkillDetails({
               {hostId != null && hostId !== "local" ? (
                 <NodexTooltip
                   side="top"
-                  delay={700}
+                  delay={0}
                   tooltipContent={footerText("Opening files on this host is unavailable")}
                 >
                   <span
@@ -189,7 +189,7 @@ export function UsedSkillsIndicator({
   return (
     <NodexTooltip
       side="top"
-      delay={700}
+      delay={0}
       sideOffset={2}
       hoverable
       open={open}
@@ -336,7 +336,7 @@ export function AutoReviewStatsIndicator({ reviews }: { reviews: TurnApprovalRev
     ? footerText("Auto-review stats ({count} rejected)", { count: formatFooterNumber(rejected) })
     : footerText("Auto-review stats");
   return (
-    <NodexTooltip side="top" delay={700} sideOffset={2} tooltipContent={label}>
+    <NodexTooltip side="top" delay={0} sideOffset={2} tooltipContent={label}>
       <button
         type="button"
         aria-label={label}

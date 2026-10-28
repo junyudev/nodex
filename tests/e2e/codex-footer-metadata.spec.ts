@@ -1,8 +1,56 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { openNewChatDraft } from "./support/new-chat-draft";
+
+const measureHoverToVisible = async (trigger: Locator, expectedText: string) => {
+  const measurement = trigger.evaluate(
+    async (element, expected) =>
+      await new Promise<{ hoverToVisibleMs: number; tooltipText: string }>((resolve, reject) => {
+        let frame = 0;
+        const timer = window.setTimeout(() => {
+          cancelAnimationFrame(frame);
+          element.removeEventListener("pointerenter", begin);
+          reject(new Error("The hovered message action did not show its tooltip"));
+        }, 2_000);
+        function begin() {
+          const startedAt = performance.now();
+          const observe = () => {
+            const tooltip = element
+              .getAttribute("aria-describedby")
+              ?.split(/\s+/u)
+              .map((id) => document.getElementById(id))
+              .find((candidate) => candidate?.getAttribute("role") === "tooltip");
+            const text = tooltip?.textContent?.trim() ?? "";
+            const positioner = tooltip?.closest('[data-slot="tooltip-positioner"]');
+            const visible =
+              tooltip &&
+              positioner &&
+              tooltip.getBoundingClientRect().height > 0 &&
+              getComputedStyle(tooltip).visibility === "visible" &&
+              Number(getComputedStyle(tooltip).opacity) > 0 &&
+              getComputedStyle(positioner).visibility === "visible" &&
+              Number(getComputedStyle(positioner).opacity) > 0;
+            if (!visible || !text.includes(expected)) {
+              frame = requestAnimationFrame(observe);
+              return;
+            }
+            // The next frame includes a paint opportunity for the visible tooltip.
+            frame = requestAnimationFrame(() => {
+              window.clearTimeout(timer);
+              resolve({ hoverToVisibleMs: performance.now() - startedAt, tooltipText: text });
+            });
+          };
+          frame = requestAnimationFrame(observe);
+        }
+        element.addEventListener("pointerenter", begin, { once: true });
+      }),
+    expectedText,
+  );
+  await trigger.hover();
+  return await measurement;
+};
 
 test("shows skills, memory citations, and automatic review details for a completed response", async ({}, testInfo) => {
   test.setTimeout(120_000);
@@ -42,8 +90,31 @@ test("shows skills, memory citations, and automatic review details for a complet
     await expect(skills).toHaveCount(1);
     await expect(memories).toHaveCount(1);
     await expect(reviews).toHaveCount(1);
-    await skills.hover();
     const tooltip = page.getByRole("tooltip");
+    const samples = [];
+    for (const [action, expected] of [
+      ["Copy", "Copy response"],
+      ["Fork chat from here", "Branch in new chat"],
+      ["Auto-review stats (1 rejected)", "Auto-review stats (1 rejected)"],
+      ["1 memory citation", "Message actions follow project conventions."],
+      ["Skills", "footer-review"],
+    ] as const) {
+      await reply.hover();
+      await expect(tooltip).toHaveCount(0);
+      // Each target starts after the shared provider's 400ms instant-opening period.
+      await page.waitForTimeout(450);
+      const trigger = page.getByRole("button", { name: action, exact: true });
+      samples.push({ action, ...(await measureHoverToVisible(trigger, expected)) });
+    }
+    await testInfo.attach("message-action-hover-latency", {
+      body: Buffer.from(
+        `${JSON.stringify({ event: "native pointerenter", coldGroupResetMs: 450, samples }, null, 2)}\n`,
+      ),
+      contentType: "application/json",
+    });
+    for (const sample of samples)
+      expect.soft(sample.hoverToVisibleMs, sample.action).toBeLessThan(150);
+
     await expect(tooltip.getByRole("link", { name: "footer-review", exact: true })).toBeVisible();
     await expect(tooltip.getByText("Project", { exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("skills-tooltip.png") });

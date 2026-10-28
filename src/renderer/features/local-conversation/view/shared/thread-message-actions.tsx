@@ -69,7 +69,7 @@ export function ThreadActionIconButton({
   if (!tooltip) return button;
 
   return (
-    <NodexTooltip tooltipContent={tooltip} side="top" delay={700} sideOffset={2}>
+    <NodexTooltip tooltipContent={tooltip} side="top" delay={0} sideOffset={2}>
       {button}
     </NodexTooltip>
   );

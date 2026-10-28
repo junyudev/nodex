@@ -24,7 +24,7 @@ export function HookStatsIndicator({ stats }: { stats: HookStats }) {
   return (
     <NodexTooltip
       side="top"
-      delay={700}
+      delay={0}
       tooltipClassName="rounded-2xl border px-3 py-2"
       style={{ maxWidth: "min(32rem, var(--available-width), calc(100vw - 16px))" }}
       tooltipContent={

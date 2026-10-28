@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-libra
 import { HookStatsIndicator } from "./hook-stats-indicator";
 import { CodexThreadSettingsProvider } from "@/lib/use-codex-thread-settings";
 import { THREAD_SETTINGS_STORAGE_KEY } from "@/lib/codex-thread-settings";
+import { hoverWithMouse } from "@/test/dom";
 import type { HookStats } from "../../projection/hook-stats";
 
 const stats: HookStats = {
@@ -41,6 +42,16 @@ afterEach(() => {
 });
 
 describe("hook statistics tooltip", () => {
+  test("shows the hook summary on pointer entry without a hover dwell", async () => {
+    const view = render(<HookStatsIndicator stats={stats} />);
+    const trigger = view.getByRole("button", { name: "Hooks" });
+    await act(async () => {
+      hoverWithMouse(trigger);
+      await Promise.resolve();
+    });
+    expect(within(view.getByRole("tooltip")).getByText("SessionStart")).toBeTruthy();
+  });
+
   test("opens detailed lifecycle and source rows on keyboard focus and closes on Escape", async () => {
     const view = render(<HookStatsIndicator stats={stats} />);
     expect(view.queryByRole("tooltip")).toBeNull();
