@@ -1,0 +1,33 @@
+src/renderer/test/dom.test.tsx
+  s_6c9891f66c664a::t_914b5d0d96ff7a 1,3,14,23,40
+  s_6c9891f66c664a::t_f4d73e0388e277 41
+  s_cb8bbfdb133e81::t_d3262f28eae8b5 61-70
+  s_6c9891f66c664a::t_48d4045e628242 16-22,24-26,29-34,38-39,42-51,54-56
+src/renderer/test/dom.tsx
+  s_6c9891f66c664a::t_9e095a7ac3912d 88-93
+  s_6c9891f66c664a::t_820c71f5adcda8 10,61-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2824e2886436f8444bf0fc7436bccab60866fdd7",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    },
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

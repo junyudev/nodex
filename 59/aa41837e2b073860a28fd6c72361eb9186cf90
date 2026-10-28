@@ -1,0 +1,52 @@
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.tsx
+  s_6c9891f66c664a::t_4fe3f20219c922 83,226,258,279,367-369,372,851,885
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_6c9891f66c664a::t_c2abdc86052d93 1018
+  s_6c9891f66c664a::t_dbbbe4d41e135f 1020-1025,1070-1074
+  s_6c9891f66c664a::t_a8644bbed44959 1019
+src/renderer/features/local-conversation/view/automatic-history.browser.test.tsx
+  s_6c9891f66c664a::t_802301751dfd6d 12,534-536,538
+  s_6c9891f66c664a::t_37ff579cbce946 474-483,537
+  s_6c9891f66c664a::t_f94b41cc7b5234 544,552
+  s_6c9891f66c664a::t_ea5669356b813f 10-11,29,280-289,293,311,329,356,472,491-513,521-522,524-533,539-540,541-543,549,553,570-574
+  s_6c9891f66c664a::t_60d6301ffcf0cb 523,545-548,550-551,554
+  s_6c9891f66c664a::t_8b9d8116978071 473,484-490,514-520,555-567
+  s_6c9891f66c664a::t_b23d106d7e15e7 568-569
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.test.tsx
+  s_6c9891f66c664a::t_3f94e755ad1f3a 753
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_6c9891f66c664a::t_82f34698a9a4ce 1762-1767
+  s_6c9891f66c664a::t_d42a2147ca2f5d 2011-2012
+  s_6c9891f66c664a::t_8850761d264160 2016
+  s_6c9891f66c664a::t_7e8d821c4841e6 680,737,1219,1468
+  s_6c9891f66c664a::t_f95633de2a0fc8 1768
+  s_6c9891f66c664a::t_51511639a31454 2017
+  s_6c9891f66c664a::t_c36acf68eaf7e9 501,538,582,681,837,1056-1082
+src/renderer/features/local-conversation/view/ordinary-history-position.browser.test.tsx
+  s_6c9891f66c664a::t_b6c503113e0f0f 165
+src/renderer/features/local-conversation/view/shared/image-view-surface.tsx
+  s_6c9891f66c664a::t_d8704de78ec0de 1,10-18,21-23,26-28,32-42,44-52,73-94
+  s_6c9891f66c664a::t_f9d11888c96a96 136-138,146-163
+src/renderer/features/local-conversation/view/shared/image-view-surface.browser.test.tsx
+  s_6c9891f66c664a::t_040c183777cee0 136,143,148,152,155-160,164
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_6c9891f66c664a::t_88d297ba2aef41 2199
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_6c9891f66c664a::t_040c183777cee0 371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "59aa41837e2b073860a28fd6c72361eb9186cf90",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

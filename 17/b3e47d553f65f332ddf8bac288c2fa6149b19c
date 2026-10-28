@@ -1,0 +1,19 @@
+src/renderer/features/local-conversation/view/shared/user-message-collapse.tsx
+  s_6c9891f66c664a::t_812e2a8b8bfc85 82,104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "17b3e47d553f65f332ddf8bac288c2fa6149b19c",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

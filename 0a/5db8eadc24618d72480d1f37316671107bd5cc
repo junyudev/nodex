@@ -1,0 +1,20 @@
+src/renderer/components/workbench/workbench-titlebar-context.browser.test.tsx
+  s_6c9891f66c664a::t_35d0d950ab1825 3-4,9-12
+  s_6c9891f66c664a::t_b9814a5a68e953 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0a5db8eadc24618d72480d1f37316671107bd5cc",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
