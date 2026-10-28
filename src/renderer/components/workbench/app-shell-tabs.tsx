@@ -22,6 +22,17 @@ import {
   type RefObject,
   type SyntheticEvent,
 } from "react";
+import {
+  NodexDialog,
+  NodexDialogAction,
+  NodexDialogBody,
+  NodexDialogContent,
+  NodexDialogDescription,
+  NodexDialogFooter,
+  NodexDialogFrame,
+  NodexDialogHeader,
+  NodexDialogTitle,
+} from "@/components/ui/dialog";
 import { NodexTooltip, NodexTooltipProvider } from "@/components/ui/tooltip";
 import { CloseIcon } from "@/components/shared/icons";
 import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
@@ -40,6 +51,11 @@ import type {
   NativeContextMenuItem,
 } from "../../../shared/native-context-menu";
 import { cn } from "@/lib/utils";
+import {
+  resolveContentTabPaneMoves,
+  type SessionWorkspacePresentation,
+  type WorkbenchPanelSide,
+} from "@/lib/workbench-session-workspace";
 import { WorkbenchPaneTitlebar } from "./workbench-titlebar-context";
 import {
   buildPanelGroupBodyDropData,
@@ -61,8 +77,17 @@ import {
 
 export type AppShellTabSplitSide = "left" | "right" | "up" | "down";
 
-/** The physical side of the Scene's content panel, which bottom tabs can move into. */
-export const AppShellContentPanelSideContext = createContext<"left" | "right">("right");
+/**
+ * A Session's content pane: where its content tabs can be presented beside the Conversation,
+ * and the side bottom tabs move into. Scenes without a Conversation provide none.
+ */
+export interface AppShellContentPane {
+  readonly presentation: SessionWorkspacePresentation;
+  /** Selects a content tab and presents it in the pane on `side`, beside the Conversation. */
+  readonly presentTab: (tabId: string, side: WorkbenchPanelSide) => void;
+}
+
+export const AppShellContentPaneContext = createContext<AppShellContentPane | null>(null);
 
 const APP_SHELL_SPLIT_ACTIONS: {
   side: AppShellTabSplitSide;
@@ -929,8 +954,24 @@ function AppShellTab({
       onClose?.(candidate.id);
     }
   };
+  const closeAllTabs = () => {
+    for (let index = tabs.length - 1; index >= 0; index -= 1) {
+      const candidate = tabs[index];
+      if (candidate?.closable !== true) continue;
+      onClose?.(candidate.id);
+    }
+  };
+  const [confirmingCloseAll, setConfirmingCloseAll] = useState(false);
   const targetPanelId = controllerId.includes("bottom") ? "right" : "bottom";
-  const contentPanelSide = useContext(AppShellContentPanelSideContext);
+  const contentPane = useContext(AppShellContentPaneContext);
+  const contentPanelSide = contentPane?.presentation.contentSide ?? "right";
+  const paneMoves =
+    contentPane && targetPanelId === "bottom"
+      ? resolveContentTabPaneMoves({
+          presentation: contentPane.presentation,
+          tabSelected: isActive,
+        }).map((side) => ({ side, onSelect: () => contentPane.presentTab(tab.id, side) }))
+      : [];
   const moveCurrentTab = () => {
     onMove?.(tab.id, targetPanelId);
   };
@@ -958,6 +999,7 @@ function AppShellTab({
   );
   const hasClosableTabsToRight =
     tabIndex !== -1 && tabs.slice(tabIndex + 1).some((candidate) => candidate.closable === true);
+  const canCloseAllTabs = tabs.length > 1 && tabs.some((candidate) => candidate.closable === true);
   const flexSizing = buildAppShellTabFlexSizing(lockedWidthPx);
 
   useEffect(() => {
@@ -1149,6 +1191,7 @@ function AppShellTab({
     customItems: tab.contextMenuItems,
     canCloseOtherTabs: hasOtherClosableTabs,
     canCloseTabsToRight: hasClosableTabsToRight,
+    canCloseAllTabs,
     canPinTab: tab.preview === true && Boolean(onPin),
     canMoveTab: Boolean(onMove) && tab.preview !== true,
     canSplitTab: Boolean(onSplit) && tab.splittable === true,
@@ -1162,15 +1205,63 @@ function AppShellTab({
     onClose: closeCurrentTab,
     onCloseOtherTabs: closeOtherTabs,
     onCloseTabsToRight: closeTabsToRight,
+    onCloseAllTabs: () => setConfirmingCloseAll(true),
     onPin: pinCurrentTab,
+    paneMoves,
     onMove: moveCurrentTab,
     onSplit: splitCurrentTab,
   });
 
   return (
-    <AppShellTabContextMenu items={contextMenuItems} onOpen={onCloseModeExit}>
-      {chrome}
-    </AppShellTabContextMenu>
+    <>
+      <AppShellTabContextMenu items={contextMenuItems} onOpen={onCloseModeExit}>
+        {chrome}
+      </AppShellTabContextMenu>
+      {confirmingCloseAll ? (
+        <CloseAllTabsDialog
+          onCancel={() => setConfirmingCloseAll(false)}
+          onConfirm={() => {
+            setConfirmingCloseAll(false);
+            closeAllTabs();
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** Closing every tab at once is confirmed, as one stray click would otherwise clear the group. */
+function CloseAllTabsDialog({
+  onCancel,
+  onConfirm,
+}: {
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}) {
+  return (
+    <NodexDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
+      <NodexDialogContent size="narrow" showCloseButton={false}>
+        <NodexDialogFrame>
+          <NodexDialogHeader>
+            <NodexDialogTitle>Close all tabs?</NodexDialogTitle>
+          </NodexDialogHeader>
+          <NodexDialogBody>
+            <NodexDialogDescription>All tabs in this group will close.</NodexDialogDescription>
+          </NodexDialogBody>
+          <NodexDialogFooter>
+            <NodexDialogAction onClick={onCancel}>Cancel</NodexDialogAction>
+            <NodexDialogAction tone="primary" onClick={onConfirm} autoFocus>
+              Close
+            </NodexDialogAction>
+          </NodexDialogFooter>
+        </NodexDialogFrame>
+      </NodexDialogContent>
+    </NodexDialog>
   );
 }
 
@@ -1376,6 +1467,7 @@ function buildAppShellTabContextMenuItems({
   customItems,
   canCloseOtherTabs,
   canCloseTabsToRight,
+  canCloseAllTabs,
   canPinTab,
   canMoveTab,
   canSplitTab,
@@ -1383,13 +1475,16 @@ function buildAppShellTabContextMenuItems({
   onClose,
   onCloseOtherTabs,
   onCloseTabsToRight,
+  onCloseAllTabs,
   onPin,
+  paneMoves,
   onMove,
   onSplit,
 }: {
   customItems: AppShellTabContextMenuItem[] | undefined;
   canCloseOtherTabs: boolean;
   canCloseTabsToRight: boolean;
+  canCloseAllTabs: boolean;
   canPinTab: boolean;
   canMoveTab: boolean;
   canSplitTab: boolean;
@@ -1397,7 +1492,9 @@ function buildAppShellTabContextMenuItems({
   onClose: () => void;
   onCloseOtherTabs: () => void;
   onCloseTabsToRight: () => void;
+  onCloseAllTabs: () => void;
   onPin: () => void;
+  paneMoves: readonly { side: WorkbenchPanelSide; onSelect: () => void }[];
   onMove: () => void;
   onSplit: (side: AppShellTabSplitSide) => void;
 }): AppShellTabContextMenuItem[] {
@@ -1410,6 +1507,14 @@ function buildAppShellTabContextMenuItems({
       label: "Pin tab",
       iconKey: "pin",
       onSelect: onPin,
+    });
+  }
+  for (const move of paneMoves) {
+    placementItems.push({
+      id: `move-tab-${move.side}-pane`,
+      label: `Move to ${move.side} pane`,
+      iconKey: move.side === "left" ? "moveLeft" : "moveRight",
+      onSelect: move.onSelect,
     });
   }
   if (canMoveTab) {
@@ -1447,6 +1552,13 @@ function buildAppShellTabContextMenuItems({
       iconKey: "close",
       disabled: !canCloseTabsToRight,
       onSelect: onCloseTabsToRight,
+    },
+    {
+      id: "close-all-tabs",
+      label: "Close all tabs",
+      iconKey: "close",
+      disabled: !canCloseAllTabs,
+      onSelect: onCloseAllTabs,
     },
   );
   if (canSplitTab) {

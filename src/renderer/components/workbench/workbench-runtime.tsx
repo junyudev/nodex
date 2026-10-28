@@ -5111,7 +5111,11 @@ export function WorkbenchRuntime({
         panelGroupTabs={panelGroupTabs}
         panelLifecycle={panelLifecycle}
         panelCommands={panelCommands}
-        workspace={{ presentation: sessionWorkspace, chatTab: sessionChatTab }}
+        workspace={{
+          presentation: sessionWorkspace,
+          chatTab: sessionChatTab,
+          moveConversationToSide: moveSessionConversationToSide,
+        }}
         layout={{
           appShellMainContentLayout,
           rightPanelTargetWidth,

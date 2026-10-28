@@ -4,6 +4,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type SetStateAction,
+  useMemo,
 } from "react";
 import { type MotionValue } from "motion/react";
 import { filterAvailablePanelActions, PANEL_NEW_TAB_ACTIONS } from "@/lib/workbench-panel-actions";
@@ -21,8 +22,16 @@ import {
   WorkbenchSessionScopePath,
   resolveProjectSessionThreadScopeDescriptor,
 } from "@/lib/workbench-ui-scopes";
-import type { SessionWorkspacePresentation } from "@/lib/workbench-session-workspace";
-import { AppShellContentPanelSideContext, type AppShellLeadingTab } from "./app-shell-tabs";
+import {
+  oppositeWorkbenchPanelSide,
+  type SessionWorkspacePresentation,
+  type WorkbenchPanelSide,
+} from "@/lib/workbench-session-workspace";
+import {
+  AppShellContentPaneContext,
+  type AppShellContentPane,
+  type AppShellLeadingTab,
+} from "./app-shell-tabs";
 import type { PanelGroupTabsByPanel } from "./use-workbench-panel-projection";
 import { ReviewRouteOpenAdapter } from "./workbench-review-route-adapter";
 import { SessionThreadPage } from "./workbench-session-thread-route";
@@ -66,6 +75,8 @@ interface WorkbenchSessionSceneProps {
   readonly workspace: {
     readonly presentation: SessionWorkspacePresentation;
     readonly chatTab: AppShellLeadingTab | null;
+    /** Returns to split view with the Conversation in the pane on `side`. */
+    readonly moveConversationToSide: (side: WorkbenchPanelSide) => void;
   };
   readonly layout: {
     readonly appShellMainContentLayout: AppShellMainContentLayout;
@@ -243,13 +254,26 @@ export function WorkbenchSessionScene({
     );
   };
 
+  const { presentation: workspacePresentation, moveConversationToSide } = workspace;
+  const contentPane = useMemo<AppShellContentPane>(
+    () => ({
+      presentation: workspacePresentation,
+      presentTab: (tabId, side) => {
+        void selectPanelTab("right", tabId).then(() =>
+          moveConversationToSide(oppositeWorkbenchPanelSide(side)),
+        );
+      },
+    }),
+    [moveConversationToSide, selectPanelTab, workspacePresentation],
+  );
+
   return (
     <WorkbenchSessionScopePath
       thread={threadScopeDescriptor}
       route={{ routeKey: "/thread", kind: "thread" }}
       selected
     >
-      <AppShellContentPanelSideContext.Provider value={workspace.presentation.contentSide}>
+      <AppShellContentPaneContext.Provider value={contentPane}>
         <WorkbenchSceneFrame
           ownerKey={sceneKey}
           primaryTestId="session-thread-page"
@@ -303,7 +327,7 @@ export function WorkbenchSessionScene({
           }}
           chrome={chrome}
         />
-      </AppShellContentPanelSideContext.Provider>
+      </AppShellContentPaneContext.Provider>
     </WorkbenchSessionScopePath>
   );
 }

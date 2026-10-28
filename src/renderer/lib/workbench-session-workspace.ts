@@ -52,6 +52,21 @@ export function isSessionConversationVisible(presentation: SessionWorkspacePrese
   return presentation.fullViewSurface !== "content";
 }
 
+/**
+ * The panes a content tab can be presented in beside the Conversation: both, except the pane
+ * it already shows in. Only the selected tab of a split view occupies a pane.
+ */
+export function resolveContentTabPaneMoves(input: {
+  readonly presentation: SessionWorkspacePresentation;
+  readonly tabSelected: boolean;
+}): readonly WorkbenchPanelSide[] {
+  const occupied =
+    input.presentation.layout === "split" && input.tabSelected
+      ? input.presentation.contentSide
+      : null;
+  return (["left", "right"] as const).filter((side) => side !== occupied);
+}
+
 function isWorkbenchPanelSide(value: unknown): value is WorkbenchPanelSide {
   return value === "left" || value === "right";
 }

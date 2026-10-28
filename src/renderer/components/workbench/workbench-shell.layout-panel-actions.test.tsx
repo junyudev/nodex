@@ -133,6 +133,46 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toBe("true");
   });
 
+  test("a full-view content tab's menu presents it in a pane beside the Chat", async () => {
+    const session = makeAttachedSession({ title: "Present content", rightFullWidth: true });
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [session] },
+      initialSelectedSessionId: session.id,
+    });
+    const content = await screen.findByRole("tab", { name: "DB View", selected: true });
+    await act(async () => {
+      fireEvent.contextMenu(content);
+      await Promise.resolve();
+    });
+    const menu = await screen.findByRole("menu");
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent)
+        .filter((label) => label?.startsWith("Move to")),
+    ).toEqual(["Move to left pane", "Move to right pane", "Move to bottom panel"]);
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Move to left pane" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(invokeCalls).toContainEqual([
+        "window-session-view:panel-patch",
+        session.id,
+        "right",
+        expect.objectContaining({
+          side: "left",
+          size: expect.objectContaining({ fullWidth: false }),
+        }),
+      ]);
+      expect(screen.getByTestId("session-right-panel").getAttribute("data-right-panel-side")).toBe(
+        "left",
+      );
+    });
+    expect(screen.getByRole("tab", { name: "DB View", selected: true })).toBeTruthy();
+  });
+
   test("the full-view Chat context menu moves the Conversation into the right pane", async () => {
     const session = makeAttachedSession({
       title: "Move this Chat",

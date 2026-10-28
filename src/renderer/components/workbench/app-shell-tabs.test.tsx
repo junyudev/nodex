@@ -5,13 +5,26 @@ import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
   AppShellTabs,
-  AppShellContentPanelSideContext,
+  AppShellContentPaneContext,
   buildTabRowEdgeMask,
   shouldShowAppShellTabSeparator,
   type AppShellLeadingTab,
   type AppShellTabItem,
 } from "./app-shell-tabs";
 import { hoverWithMouse, render, settleAsyncRender, textContent } from "@/test/dom";
+import { resolveSessionWorkspacePresentation } from "@/lib/workbench-session-workspace";
+
+function splitContentPane(side: "left" | "right", presentTab = vi.fn()) {
+  return {
+    presentation: resolveSessionWorkspacePresentation({
+      collapsed: false,
+      fullWidth: false,
+      side,
+      preferredSide: "right",
+    }),
+    presentTab,
+  };
+}
 
 const motionPreference = vi.hoisted(() => ({ reduced: false }));
 
@@ -1104,6 +1117,7 @@ describe("AppShellTabs", () => {
             enabled: false,
             iconKey: "close",
           },
+          { id: "close-all-tabs", label: "Close all tabs", enabled: true, iconKey: "close" },
         ],
         undefined,
       );
@@ -1128,6 +1142,63 @@ describe("AppShellTabs", () => {
     expect(iconOf("Close")).toBe("close");
     expect(iconOf("Split tab left")).toBe("splitLeft");
     expect(iconOf("Split tab down")).toBe("splitDown");
+  });
+
+  test("offers a content tab the panes it is not already shown in", async () => {
+    const presentTab = vi.fn();
+    const view = render(
+      <AppShellContentPaneContext value={splitContentPane("right", presentTab)}>
+        <AppShellTabs
+          tabs={makeTabs()}
+          activeTabId="one"
+          controllerId="session-right"
+          onSelect={() => undefined}
+          onCloseTab={() => undefined}
+          onMoveTab={() => undefined}
+        />
+      </AppShellContentPaneContext>,
+    );
+    const paneMoves = async (tabId: string) => {
+      await interact(() => fireEvent.contextMenu(getTabController(view, tabId)));
+      const menu = await view.findByRole("menu");
+      return within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => textContent(item))
+        .filter((label) => label.startsWith("Move to"));
+    };
+
+    // The selected tab already fills the right pane beside the Chat.
+    expect(await paneMoves("one")).toEqual(["Move to left pane", "Move to bottom panel"]);
+    await interact(() => fireEvent.keyDown(view.getByRole("menu"), { key: "Escape" }));
+    expect(await paneMoves("two")).toEqual([
+      "Move to left pane",
+      "Move to right pane",
+      "Move to bottom panel",
+    ]);
+    await interact(() =>
+      fireEvent.click(view.getByRole("menuitem", { name: "Move to right pane" })),
+    );
+    expect(presentTab).toHaveBeenCalledExactlyOnceWith("two", "right");
+  });
+
+  test("asks before closing every closable tab in the group", async () => {
+    const closed: string[] = [];
+    const view = renderAppShellTabs({ onCloseTab: (tabId) => closed.push(tabId) });
+    const chooseCloseAll = async () => {
+      await interact(() => fireEvent.contextMenu(getTabController(view, "one")));
+      await interact(() => fireEvent.click(view.getByRole("menuitem", { name: "Close all tabs" })));
+      return await view.findByRole("dialog", { name: "Close all tabs?" });
+    };
+
+    const cancel = within(await chooseCloseAll()).getByRole("button", { name: "Cancel" });
+    await interact(() => fireEvent.click(cancel));
+    await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+    expect(closed).toEqual([]);
+
+    const confirm = within(await chooseCloseAll()).getByRole("button", { name: "Close" });
+    await interact(() => fireEvent.click(confirm));
+    await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+    expect(closed).toEqual(["two", "one"]);
   });
 
   test("context menu disables close-tabs-to-right when only non-closable tabs follow", async () => {
@@ -1555,7 +1626,7 @@ describe("bottom tab content-panel destination", () => {
     async (side) => {
       const onMoveTab = vi.fn();
       const view = render(
-        <AppShellContentPanelSideContext value={side}>
+        <AppShellContentPaneContext value={splitContentPane(side)}>
           <AppShellTabs
             tabs={makeTabs()}
             activeTabId="one"
@@ -1563,7 +1634,7 @@ describe("bottom tab content-panel destination", () => {
             onSelect={() => undefined}
             onMoveTab={onMoveTab}
           />
-        </AppShellContentPanelSideContext>,
+        </AppShellContentPaneContext>,
       );
       await interact(() => fireEvent.contextMenu(view.getByRole("tab", { name: "One" })));
       const move = await view.findByRole("menuitem", { name: `Move to ${side} panel` });

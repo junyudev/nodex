@@ -3,6 +3,7 @@ import {
   DEFAULT_SESSION_CONTENT_SIDE,
   isSessionConversationVisible,
   oppositeWorkbenchPanelSide,
+  resolveContentTabPaneMoves,
   resolveSessionWorkspacePresentation,
 } from "./workbench-session-workspace";
 
@@ -64,4 +65,32 @@ describe("Session workspace presentation", () => {
     expect(oppositeWorkbenchPanelSide(contentSide)).toBe(chatSide);
     expect(oppositeWorkbenchPanelSide(chatSide)).toBe(contentSide);
   });
+});
+
+describe("content tab pane moves", () => {
+  const presentation = (layout: "chat" | "split" | "full", contentSide: "left" | "right") =>
+    resolveSessionWorkspacePresentation({
+      collapsed: layout === "chat",
+      fullWidth: layout === "full",
+      side: contentSide,
+      preferredSide: "right",
+    });
+
+  test.each([
+    { layout: "split", contentSide: "right", tabSelected: true, moves: ["left"] },
+    { layout: "split", contentSide: "left", tabSelected: true, moves: ["right"] },
+    { layout: "split", contentSide: "right", tabSelected: false, moves: ["left", "right"] },
+    { layout: "full", contentSide: "right", tabSelected: true, moves: ["left", "right"] },
+    { layout: "chat", contentSide: "left", tabSelected: true, moves: ["left", "right"] },
+  ] as const)(
+    "$layout view, content on the $contentSide, selected $tabSelected offers $moves",
+    ({ layout, contentSide, tabSelected, moves }) => {
+      expect(
+        resolveContentTabPaneMoves({
+          presentation: presentation(layout, contentSide),
+          tabSelected,
+        }),
+      ).toEqual(moves);
+    },
+  );
 });
