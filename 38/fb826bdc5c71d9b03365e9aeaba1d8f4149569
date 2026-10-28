@@ -1,0 +1,27 @@
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderReplayHarness.ts
+  s_6c9891f66c664a::t_8aaeb44e3b150a 181-201,208,236,261,485-489,491-492
+  s_6c9891f66c664a::t_8be3eb51d0641a 490
+packages/agent-runtime/src/orchestration-v2/testkit/OrchestratorReplayRecovery.integration.test.ts
+  s_6c9891f66c664a::t_bf50ee5c4e1957 148,177-179
+  s_6c9891f66c664a::t_c522c24ecb8675 3,7,21,41-45,99,145-147,149-158,160-175,181-182,215-217
+  s_6c9891f66c664a::t_59025f64545d68 140,254
+  s_6c9891f66c664a::t_6010d2bc079227 176
+docs/agent-runtime-testing.md
+  s_6c9891f66c664a::t_59025f64545d68 81-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "38fb826bdc5c71d9b03365e9aeaba1d8f4149569",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

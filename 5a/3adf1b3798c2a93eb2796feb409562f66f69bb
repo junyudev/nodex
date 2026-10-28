@@ -1,0 +1,27 @@
+pnpm-lock.yaml
+  s_6c9891f66c664a::t_f12043c9379fee 13092
+scripts/ci/icon-inline-svg-baseline.json
+  s_6c9891f66c664a::t_f0e545876b5867 35-38
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_6c9891f66c664a::t_f8f82d16884f3b 26-27,227,232-233,235,238
+src/renderer/lib/terminal-theme.browser.test.ts
+  s_6c9891f66c664a::t_8f927d4e44dcf7 2-6,11,26,39
+src/renderer/features/workspace-files/workspace-pierre-editor.browser.test.tsx
+  s_6c9891f66c664a::t_d0ab0edd821844 83-84,90-92,130,315,331-332,335-339,430
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5a3adf1b3798c2a93eb2796feb409562f66f69bb",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

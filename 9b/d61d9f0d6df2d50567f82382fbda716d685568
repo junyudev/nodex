@@ -1,0 +1,39 @@
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.tsx
+  s_6c9891f66c664a::t_4fe3f20219c922 82,224,256,277,359-361,363,365-368,813,846
+  s_6c9891f66c664a::t_2506e76b754faf 362,364
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_6c9891f66c664a::t_c2abdc86052d93 1018
+src/renderer/features/local-conversation/view/automatic-history.browser.test.tsx
+  s_6c9891f66c664a::t_802301751dfd6d 12,454-456,458
+  s_6c9891f66c664a::t_37ff579cbce946 394-403,457
+  s_6c9891f66c664a::t_f94b41cc7b5234 464,472
+  s_6c9891f66c664a::t_ea5669356b813f 10-11,29,279-288,292,310,328,355,392,411-433,441-442,444-453,459-460,461-463,469,473,490-494
+  s_6c9891f66c664a::t_60d6301ffcf0cb 443,465-468,470-471,474
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.test.tsx
+  s_6c9891f66c664a::t_3f94e755ad1f3a 706
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_6c9891f66c664a::t_82f34698a9a4ce 1751-1756
+  s_6c9891f66c664a::t_d42a2147ca2f5d 1998-1999
+  s_6c9891f66c664a::t_8850761d264160 2003
+  s_6c9891f66c664a::t_7e8d821c4841e6 680,737,1209,1458
+  s_6c9891f66c664a::t_f95633de2a0fc8 1757
+  s_6c9891f66c664a::t_51511639a31454 2004
+src/renderer/features/local-conversation/view/ordinary-history-position.browser.test.tsx
+  s_6c9891f66c664a::t_b6c503113e0f0f 165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9bd61d9f0d6df2d50567f82382fbda716d685568",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
