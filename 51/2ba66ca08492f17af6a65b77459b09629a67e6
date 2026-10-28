@@ -1,0 +1,61 @@
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.tsx
+  s_6c9891f66c664a::t_4fe3f20219c922 82,224,256,277,359-361,363,365-368,813,846
+  s_6c9891f66c664a::t_2506e76b754faf 362,364
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.tsx
+  s_6c9891f66c664a::t_3db3195493d782 2,33-36,76,107,109,220-256
+  s_6c9891f66c664a::t_b7baa8c2ade2a8 257-260,369-370
+src/renderer/features/local-conversation/view/local-conversation-user-viewport-snapshot.tsx
+  s_6c9891f66c664a::t_337beb14b663aa 23-26,35-36
+  s_6c9891f66c664a::t_2f3895d71485d2 1-4,7,9-10,12-14,21-22,27-28,32,34,54-60,62-67
+  s_6c9891f66c664a::t_ea023857b18840 5,40-41,44-52
+  s_6c9891f66c664a::t_3db3195493d782 6,8,11,15-20,29-31,33,37-39,42-43,53,61
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_6c9891f66c664a::t_461162d342a5e3 1019,1034
+  s_6c9891f66c664a::t_42861ec70afc46 1020
+  s_6c9891f66c664a::t_bd142bd2b6ad7e 1021
+  s_6c9891f66c664a::t_c2abdc86052d93 1018
+src/renderer/features/local-conversation/view/automatic-history.browser.test.tsx
+  s_6c9891f66c664a::t_802301751dfd6d 12,442-444,446
+  s_6c9891f66c664a::t_37ff579cbce946 394-403,445
+  s_6c9891f66c664a::t_f94b41cc7b5234 453,461
+  s_6c9891f66c664a::t_ea5669356b813f 10-11,29,279-288,292,310,328,355,392-393,404-426,428-430,432-441,447-448,450-452,458,462,464-468
+  s_6c9891f66c664a::t_60d6301ffcf0cb 427,431,449,454-457,459-460,463
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.test.tsx
+  s_6c9891f66c664a::t_3f94e755ad1f3a 706
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_6c9891f66c664a::t_82f34698a9a4ce 1721-1728
+  s_6c9891f66c664a::t_3ed76fc1f1d14f 1150-1151,1211-1222,1282-1283,1392-1394
+  s_6c9891f66c664a::t_851349d30e5ef4 586,922,924,926-930,932,937,1305
+  s_6c9891f66c664a::t_f8b268d8b5bc85 78,80
+  s_6c9891f66c664a::t_830afee47b0b25 923,925,1296-1299,2040-2043
+  s_6c9891f66c664a::t_bc84df58be1064 1625,2045
+  s_6c9891f66c664a::t_4fa02244c78b6a 1989-1994
+  s_6c9891f66c664a::t_d42a2147ca2f5d 839,911-918,2032-2038,2057-2058,2060
+  s_6c9891f66c664a::t_8850761d264160 1965-1988,1995-2031,2061
+  s_6c9891f66c664a::t_aa6bc4b3617a64 2049-2056,2059
+  s_6c9891f66c664a::t_7e8d821c4841e6 683-684,740,1141,1411,1882
+  s_6c9891f66c664a::t_1f7b1f95eb7f47 79,504,541,840,921,931,947,949-957,1295,1300-1304,1306-1313,1419,2238
+  s_6c9891f66c664a::t_ff14362e9185b6 919-920,933-936,938,948,958,2039,2044,2046-2048
+  s_6c9891f66c664a::t_51b12f8f5cd232 939-946,1314
+  s_6c9891f66c664a::t_8533e59b25df4b 77
+  s_6c9891f66c664a::t_f95633de2a0fc8 1729
+  s_6c9891f66c664a::t_51511639a31454 2062
+src/renderer/features/local-conversation/view/ordinary-history-position.browser.test.tsx
+  s_6c9891f66c664a::t_b6c503113e0f0f 165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "512ba66ca08492f17af6a65b77459b09629a67e6",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
