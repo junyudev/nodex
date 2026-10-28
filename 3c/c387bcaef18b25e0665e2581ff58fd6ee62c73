@@ -1,0 +1,23 @@
+src/renderer/features/local-conversation/view/shared/thought-surface.tsx
+  s_342ad0d77c000c::t_51b8bc6733ad74 25-27,119,143
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_342ad0d77c000c::t_51b8bc6733ad74 314
+src/renderer/features/local-conversation/view/thought-layout.browser.test.tsx
+  s_342ad0d77c000c::t_51b8bc6733ad74 116,123-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3cc387bcaef18b25e0665e2581ff58fd6ee62c73",
+  "prompts": {},
+  "sessions": {
+    "s_342ad0d77c000c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180a7-7048-7e93-bdc9-092c68dbd562",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
