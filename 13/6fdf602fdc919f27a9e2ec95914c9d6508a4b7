@@ -1,0 +1,31 @@
+docs/references/nodex-markdown.md
+  s_bd424b6fc7edbf::t_4b44dd7e0c217d 369-370,456-457
+  s_4b53f1a3b989a8::t_3bdedb4df8a372 390-391
+  s_4b53f1a3b989a8::t_404e6b8d95a326 3-5,24,27
+crates/nodex-markdown/src/write/blocks.rs
+  s_4b53f1a3b989a8::t_3bdedb4df8a372 143-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "136fdf602fdc919f27a9e2ec95914c9d6508a4b7",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_bd424b6fc7edbf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180df-f5a2-7b81-ab9d-5f7674030e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
