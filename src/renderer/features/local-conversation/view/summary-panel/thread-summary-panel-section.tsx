@@ -108,7 +108,7 @@ function ThreadSummaryPanelSectionHeader({
   const button = (
     <button
       aria-expanded={isExpanded}
-      className="group/section-toggle inline-flex min-w-0 shrink-0 cursor-interaction items-center gap-1.5 rounded-md py-0.5 pr-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2"
+      className="group/section-toggle -ms-[3.5px] inline-flex min-w-0 flex-1 cursor-interaction items-center gap-1 rounded-xl py-0.5 ps-[3.5px] pe-1 text-start focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
       onClick={handleToggle}
       type="button"
     >
@@ -131,9 +131,9 @@ function ThreadSummaryPanelSectionHeader({
     );
 
   return (
-    <header className="sticky top-0 z-10 flex h-7 w-full min-w-0 items-center justify-start gap-2 bg-token-dropdown-background ps-4 pe-2.5 pb-0.5 text-base text-token-text-tertiary">
+    <header className="sticky top-2 z-10 flex h-7 w-full min-w-0 items-center justify-start gap-2 bg-token-dropdown-background ps-5 pe-3.5 pb-0.5 text-sm font-normal text-token-text-secondary before:pointer-events-none before:absolute before:inset-x-0 before:-top-2 before:h-2 before:bg-token-dropdown-background before:content-['']">
       {trigger}
-      {after == null ? null : <div className="flex min-w-0 flex-1">{after}</div>}
+      {after == null ? null : <div className="relative flex shrink-0">{after}</div>}
     </header>
   );
 }
@@ -233,7 +233,7 @@ export const ThreadSummaryPanelSection = forwardRef<
 
   const staticContent = (
     <div className="relative z-0 mt-0.5 overflow-hidden">
-      <div className="flex min-w-0 flex-col gap-0.5 px-4">{children}</div>
+      <div className="flex min-w-0 flex-col gap-0.5 px-5">{children}</div>
     </div>
   );
   const content = shouldUseReducedMotion ? (
@@ -249,7 +249,7 @@ export const ThreadSummaryPanelSection = forwardRef<
           transition={CODEX_SUMMARY_PANEL_TRANSITION}
           className="relative z-0 overflow-hidden"
         >
-          <div className="flex min-w-0 flex-col gap-0.5 px-4">{children}</div>
+          <div className="flex min-w-0 flex-col gap-0.5 px-5">{children}</div>
         </motion.div>
       ) : null}
     </AnimatePresence>
@@ -257,7 +257,10 @@ export const ThreadSummaryPanelSection = forwardRef<
 
   return (
     <section
-      className="relative z-0 flex flex-col pb-3 after:absolute after:inset-x-4 after:bottom-0 after:h-[0.5px] after:bg-token-border-default after:content-[''] last:pb-0 last:after:hidden"
+      className={cn(
+        "relative z-0 flex flex-col pb-2 after:absolute after:inset-x-5 after:bottom-0 after:h-[0.5px] after:bg-token-border-default after:content-[''] last:after:hidden",
+        mode === "accordion" && !isExpanded ? "last:pb-0.5" : "last:pb-0",
+      )}
       onClick={autoCollapseActive ? cancelAutoCollapse : undefined}
     >
       {header}

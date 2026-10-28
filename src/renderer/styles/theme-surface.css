@@ -29,8 +29,8 @@
 .app-shell-main-content-viewport {
   --app-shell-main-content-frame-top-offset: 0px;
   --thread-content-top-inset: calc(var(--spacing) * 8);
-  --thread-floating-content-top-inset: calc(var(--spacing) * 3);
-  --thread-floating-content-bottom-inset: calc(var(--spacing) * 3);
+  --thread-floating-content-top-inset: calc(var(--spacing) * 2);
+  --thread-floating-content-bottom-inset: calc(var(--spacing) * 2);
   container: app-shell-main-content / inline-size;
 }
 
@@ -206,12 +206,7 @@ mark.codex-thread-find-active {
 
 :root,
 :host {
-  --color-token-elevation-stroke: color-mix(
-    in srgb,
-    var(--color-token-foreground) 20%,
-    transparent
-  );
-  --elevation-stroke: 0 0 0 0.5px var(--color-token-elevation-stroke);
+  --elevation-stroke: 0 0 0 0.5px var(--color-border-strong);
   --elevation-prominent: var(--elevation-stroke), 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
 }
 

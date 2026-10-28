@@ -382,7 +382,7 @@ function SummarySourceIconStrip({
   onOpenSource: (action: ThreadSummaryPanelSourceOpenAction) => void;
 }) {
   if (items.length === 0) {
-    return <div className="py-1 text-base text-token-description-foreground">No sources yet</div>;
+    return <div className="py-1 text-sm text-token-description-foreground">No sources yet</div>;
   }
 
   return (
@@ -403,7 +403,12 @@ function SummarySourceIconStrip({
 function SummaryCountBadge({ count }: { count: number }) {
   if (count === 0) return null;
 
-  return <span className="text-base text-token-description-foreground opacity-50">{count}</span>;
+  return (
+    <span className="inline-flex items-center gap-1 text-sm text-token-text-tertiary">
+      <span aria-hidden="true">·</span>
+      <span>{count}</span>
+    </span>
+  );
 }
 
 function SummaryDropdownRowLabel({ label }: { label: string }) {
@@ -444,7 +449,7 @@ function SummaryScheduledAutomationLabel({
     <>
       <span className="min-w-0 flex-1 truncate">{row.name}</span>
       {row.scheduleSummary ? (
-        <span className="max-w-48 shrink-0 truncate text-size-chat text-token-text-secondary">
+        <span className="max-w-48 shrink-0 truncate text-sm text-token-text-secondary">
           {row.scheduleSummary}
         </span>
       ) : null}
@@ -541,7 +546,7 @@ function SummaryBrowserRowLabel({ row }: { row: ThreadSummaryPanelBrowserRow }) 
     <>
       <span className={cn("min-w-0 truncate", displayUrl && "max-w-[60%]")}>{row.title}</span>
       {displayUrl ? (
-        <span className="min-w-0 max-w-[40%] truncate text-size-chat text-token-text-tertiary">
+        <span className="min-w-0 max-w-[40%] truncate text-sm text-token-text-tertiary">
           {displayUrl}
         </span>
       ) : null}
@@ -581,7 +586,7 @@ function BackgroundSubagentRowLabel({ row }: { row: ThreadComposerShellBackgroun
       {active ? (
         <CodexShimmerText
           variant="classic"
-          className="shrink-0 whitespace-nowrap text-size-chat text-token-text-tertiary"
+          className="shrink-0 whitespace-nowrap text-sm text-token-text-tertiary"
         >
           is working
         </CodexShimmerText>
@@ -601,7 +606,7 @@ function BackgroundSubagentRowTrailing({
     <DiffStats
       additions={row.diffStats.linesAdded}
       deletions={row.diffStats.linesRemoved}
-      className="shrink-0 text-size-chat"
+      className="shrink-0 text-sm"
     />
   );
 }
@@ -661,12 +666,12 @@ function BackgroundSubagentCompactStrip({
         )}
       </span>
       {model.workingCount > 0 ? (
-        <span className="text-base whitespace-nowrap text-token-foreground">
+        <span className="text-sm whitespace-nowrap text-token-foreground">
           {model.workingCount} working
         </span>
       ) : null}
       {model.doneCount > 0 ? (
-        <span className="text-base whitespace-nowrap text-token-text-tertiary">
+        <span className="text-sm whitespace-nowrap text-token-text-tertiary">
           {model.doneCount} done
         </span>
       ) : null}
@@ -1349,468 +1354,476 @@ export function ThreadSummaryPanelSurface({
             : undefined,
           [REMOTE_HOSTED_PIP_OBSTACLE_ATTRIBUTE]: isVisible ? "thread-summary-panel" : undefined,
         }}
-        className="relative flex max-h-full min-h-0 flex-col overflow-hidden rounded-3xl bg-token-dropdown-background pt-3 electron:elevation-prominent extension:border extension:border-token-border-default extension:shadow-md"
+        className="group/summary-panel relative flex max-h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-token-dropdown-background electron:elevation-prominent extension:border extension:border-token-border-default extension:shadow-md"
       >
-        <div className="flex h-fit max-h-full min-h-0 flex-col gap-3 overflow-y-auto pb-3">
-          {summarySections.map((section: ThreadSummaryPanelSectionModel) => {
-            switch (section.kind) {
-              case "scheduled":
-                if (!scheduledAutomation) return null;
-                return (
-                  <ThreadSummaryPanelSection
-                    key={section.kind}
-                    sectionKey="automation"
-                    title="Scheduled"
-                  >
-                    <ThreadSummaryPanelRow
-                      aria-label="Open scheduled task"
-                      icon={<ClockIcon className="icon-xs shrink-0" />}
-                      label={<SummaryScheduledAutomationLabel row={scheduledAutomation} />}
-                      labelClassName="flex min-w-0 flex-1 items-baseline gap-2"
-                      title={getScheduledAutomationTitle(scheduledAutomation)}
-                      interactive={Boolean(onOpenScheduledAutomation)}
-                      onClick={
-                        onOpenScheduledAutomation
-                          ? () => handleOpenScheduledAutomation(scheduledAutomation)
-                          : undefined
-                      }
-                    />
-                  </ThreadSummaryPanelSection>
-                );
-
-              case "environment":
-                return (
-                  <ThreadSummaryPanelSection
-                    key={section.kind}
-                    sectionKey="environment"
-                    title="Environment"
-                  >
-                    <ThreadSummaryPanelRow
-                      label="Changes"
-                      icon={<ThreadSummaryChangesIcon className="icon-sm shrink-0" />}
-                      interactive={Boolean(hasRepository && actions?.onOpenSummaryGitReview)}
-                      disabled={
-                        !hasRepository || gitSummary.loading || !actions?.onOpenSummaryGitReview
-                      }
-                      onClick={() => handleOpenGitReview(primaryGitSource)}
-                      trailing={
-                        gitSummary.loading ? (
-                          <ActivitySpinnerIcon className="icon-xs shrink-0 text-token-text-tertiary" />
-                        ) : changes.additions > 0 || changes.deletions > 0 ? (
-                          <DiffStats
-                            additions={changes.additions}
-                            deletions={changes.deletions}
-                            className="text-size-chat"
-                          />
-                        ) : null
-                      }
-                      trailingVisible
-                    />
-                    {executionLocation ? (
-                      <ThreadExecutionLocationSelector
-                        key={executionLocation.threadId}
-                        model={executionLocation}
-                        disabled={!isVisible}
-                        worktreeAvailable={worktreeAvailable}
-                        onErrorMessage={onErrorMessage}
-                      />
-                    ) : (
+        <div className="flex h-fit max-h-full min-h-0 min-w-0 flex-col overflow-x-hidden overflow-y-auto">
+          <div className="flex flex-col gap-2 py-2.5">
+            {summarySections.map((section: ThreadSummaryPanelSectionModel) => {
+              switch (section.kind) {
+                case "scheduled":
+                  if (!scheduledAutomation) return null;
+                  return (
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="automation"
+                      title="Scheduled"
+                    >
                       <ThreadSummaryPanelRow
-                        label={runTargetLabel}
-                        icon={<LocalStatusIcon className="icon-sm text-token-foreground" />}
-                      />
-                    )}
-                    {isDetachedHead ? (
-                      <ThreadSummaryPanelRow
-                        label="Create branch"
-                        title="Create branch"
-                        icon={<BranchStatusIcon className="icon-sm shrink-0" />}
-                        interactive
-                        disabled={!isVisible || branchBusy}
-                        onClick={() => handleOpenBranchSetup(null)}
-                      />
-                    ) : (
-                      <BranchSelectorPopover
-                        cwd={branchCwd}
-                        state={branchState}
-                        busy={branchBusy}
-                        loading={branchLoading}
-                        error={branchError}
-                        onRefresh={refreshBranchState}
-                        onCheckout={checkoutBranch}
-                        onCreate={createBranch}
-                        selectedBranch={currentBranch}
-                        disabled={!isVisible || !branchCwd || branchBusy}
-                        side="left"
-                        align="start"
-                        sideOffset={4}
-                        contentClassName="!w-[296px]"
-                        renderTrigger={({ triggerLabel, title, disabled }) => (
-                          <ThreadSummaryPanelRow
-                            label={<SummaryDropdownRowLabel label={triggerLabel} />}
-                            labelClassName="flex min-w-0 items-center"
-                            title={title}
-                            icon={<BranchStatusIcon className="icon-sm shrink-0" />}
-                            disabled={disabled}
-                            interactive
-                          />
-                        )}
-                      />
-                    )}
-                    {isManagedWorktreeDefaultBranch ? (
-                      <ThreadSummaryPanelRow
-                        label="Create branch"
-                        title="Create branch"
-                        icon={<BranchStatusIcon className="icon-sm shrink-0" />}
-                        interactive
-                        disabled={!isVisible || branchBusy}
-                        onClick={() => handleOpenBranchSetup(null)}
-                      />
-                    ) : null}
-                    <ThreadSummaryPanelRow
-                      label={commitOrPushRowLabel}
-                      title={commitOrPushRowDisplayTitle}
-                      icon={
-                        commitOrPushMode === "push" ? (
-                          <ThreadSummaryPushIcon className="icon-sm shrink-0" />
-                        ) : (
-                          <ThreadSummaryCommitIcon className="icon-sm shrink-0" />
-                        )
-                      }
-                      interactive={Boolean(
-                        hasRepository &&
-                        commitOrPushMode &&
-                        !commitOrPushWorkflow &&
-                        (commitOrPushNeedsBranchSetup || !commitOrPushBlockerLabel),
-                      )}
-                      disabled={
-                        !hasRepository ||
-                        !commitOrPushMode ||
-                        Boolean(commitOrPushWorkflow) ||
-                        (!commitOrPushNeedsBranchSetup && Boolean(commitOrPushBlockerLabel))
-                      }
-                      trailing={
-                        commitOrPushWorkflow ? (
-                          <NodexTooltip tooltipContent="Cancel git action">
-                            <button
-                              type="button"
-                              aria-label="Cancel git action"
-                              className="cursor-interaction flex size-4 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-token-text-tertiary hover:text-token-foreground focus:outline-none"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleCancelGitAction(commitOrPushWorkflow.operationId);
-                              }}
-                            >
-                              <CloseIcon className="icon-xs" aria-hidden="true" />
-                            </button>
-                          </NodexTooltip>
-                        ) : undefined
-                      }
-                      trailingVisible={Boolean(commitOrPushWorkflow)}
-                      onClick={() => {
-                        if (commitOrPushNeedsBranchSetup) {
-                          handleOpenBranchSetup("commit");
-                          return;
-                        }
-
-                        handleOpenGitActionDialog(commitOrPushMode);
-                      }}
-                    />
-                    <ThreadSummaryPanelRow
-                      label={createPullRequestRowLabel}
-                      title={createPullRequestRowDisplayTitle}
-                      icon={
-                        <ThreadSummaryCreatePullRequestIcon className="icon-sm shrink-0 text-token-text-tertiary" />
-                      }
-                      interactive={Boolean(
-                        hasRepository &&
-                        !createPullRequestWorkflow &&
-                        !createPullRequestGhBlockerLabel &&
-                        (existingPullRequestUrl ||
-                          currentBranch ||
-                          createPullRequestNeedsBranchSetup),
-                      )}
-                      disabled={
-                        !hasRepository ||
-                        Boolean(createPullRequestWorkflow) ||
-                        gitSummary.loading ||
-                        pullRequestStatus.loading ||
-                        Boolean(createPullRequestGhBlockerLabel) ||
-                        (!existingPullRequestUrl &&
-                          !currentBranch &&
-                          !createPullRequestNeedsBranchSetup)
-                      }
-                      trailing={
-                        createPullRequestWorkflow ? (
-                          <NodexTooltip tooltipContent="Cancel git action">
-                            <button
-                              type="button"
-                              aria-label="Cancel git action"
-                              className="cursor-interaction flex size-4 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-token-text-tertiary hover:text-token-foreground focus:outline-none"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleCancelGitAction(createPullRequestWorkflow.operationId);
-                              }}
-                            >
-                              <CloseIcon className="icon-xs" aria-hidden="true" />
-                            </button>
-                          </NodexTooltip>
-                        ) : undefined
-                      }
-                      trailingVisible={Boolean(createPullRequestWorkflow)}
-                      onClick={() => {
-                        if (existingPullRequestUrl) {
-                          window.open(existingPullRequestUrl, "_blank", "noopener,noreferrer");
-                          return;
-                        }
-
-                        if (createPullRequestNeedsBranchSetup) {
-                          handleOpenBranchSetup("create-pull-request");
-                          return;
-                        }
-
-                        handleOpenCreatePullRequestDialog();
-                      }}
-                    />
-                  </ThreadSummaryPanelSection>
-                );
-
-              case "plan":
-                if (!planRow) return null;
-                return (
-                  <ThreadSummaryPanelSection key={section.kind} sectionKey="plan" title="Plan">
-                    <ThreadSummaryPanelRow
-                      icon={<ComposerPlanModeIcon className="icon-xs shrink-0" />}
-                      label={planRow.label}
-                      labelClassName="min-w-0 truncate"
-                      title={planRow.title}
-                      interactive={Boolean(onOpenPlanInSidePanel)}
-                      onClick={onOpenPlanInSidePanel ? () => handleOpenPlan(planRow) : undefined}
-                    />
-                  </ThreadSummaryPanelSection>
-                );
-
-              case "outputs":
-                return (
-                  <ThreadSummaryPanelSection
-                    key={section.kind}
-                    sectionKey="artifacts"
-                    title="Outputs"
-                    titleSuffix={<SummaryCountBadge count={section.count ?? outputRows.length} />}
-                  >
-                    {outputRows.map((row) => (
-                      <ThreadSummaryPanelRow
-                        key={row.id}
-                        label={<SummaryOutputLabel row={row} />}
-                        labelClassName={row.kind === "appgen-app" ? "min-w-0" : undefined}
-                        title={row.title}
-                        icon={<SummaryOutputIcon row={row} />}
-                        interactive
-                        onClick={(event) => handleOpenOutput(row, event.currentTarget)}
-                      />
-                    ))}
-                  </ThreadSummaryPanelSection>
-                );
-
-              case "sideChats":
-                return (
-                  <ThreadSummaryPanelSection
-                    key={section.kind}
-                    sectionKey="side-chats"
-                    title="Side chats"
-                    titleSuffix={<SummaryCountBadge count={section.count ?? sideChatRows.length} />}
-                  >
-                    {sideChatRows.slice(0, 4).map((row) => (
-                      <ThreadSummaryPanelRow
-                        key={row.id}
-                        label={row.title}
-                        title={row.title}
-                        icon={
-                          row.isResponseInProgress ? (
-                            <ActivitySpinnerIcon className="icon-sm shrink-0" />
-                          ) : (
-                            <SidePanelSideChatIcon className="icon-sm shrink-0" />
-                          )
-                        }
-                        interactive={Boolean(actions?.onOpenSummarySideChatRow && row.panelId)}
+                        aria-label="Open scheduled task"
+                        icon={<ClockIcon className="icon-xs shrink-0" />}
+                        label={<SummaryScheduledAutomationLabel row={scheduledAutomation} />}
+                        labelClassName="flex min-w-0 flex-1 items-baseline gap-2"
+                        title={getScheduledAutomationTitle(scheduledAutomation)}
+                        interactive={Boolean(onOpenScheduledAutomation)}
                         onClick={
-                          actions?.onOpenSummarySideChatRow && row.panelId
-                            ? () => handleOpenAuxiliaryRow(row, actions.onOpenSummarySideChatRow)
+                          onOpenScheduledAutomation
+                            ? () => handleOpenScheduledAutomation(scheduledAutomation)
                             : undefined
                         }
                       />
-                    ))}
-                  </ThreadSummaryPanelSection>
-                );
+                    </ThreadSummaryPanelSection>
+                  );
 
-              case "subagents":
-                return (
-                  <ThreadSummaryPanelSection
-                    key={section.kind}
-                    sectionKey="background-subagents"
-                    title="Subagents"
-                    titleSuffix={
-                      section.count === null ? null : <SummaryCountBadge count={section.count} />
-                    }
-                    autoCollapse={section.autoCollapse}
-                  >
-                    <BackgroundSubagentCompactStrip
-                      model={compactBackgroundSubagentModel}
-                      onOpenSubagentsPanel={actions?.onOpenSubagentsPanel}
-                    />
-                    {listedBackgroundSubagentRows.map((row) => (
+                case "environment":
+                  return (
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="environment"
+                      title="Environment"
+                    >
                       <ThreadSummaryPanelRow
-                        key={row.conversationId}
-                        label={<BackgroundSubagentRowLabel row={row} />}
-                        title={getBackgroundSubagentTitle(row)}
-                        interactive={Boolean(
-                          taskDetailsKind === "observation"
-                            ? actions?.onOpenTaskObservation
-                            : onOpenThread,
-                        )}
-                        onClick={
-                          taskDetailsKind === "observation"
-                            ? actions?.onOpenTaskObservation
-                              ? () => actions.onOpenTaskObservation?.(row.conversationId)
-                              : undefined
-                            : onOpenThread
-                              ? () => {
-                                  void onOpenThread(
-                                    row.conversationId,
-                                    buildBackgroundAgentOpenContext(row, sourceRoot),
-                                  );
-                                }
-                              : undefined
+                        label="Changes"
+                        icon={<ThreadSummaryChangesIcon className="icon-sm shrink-0" />}
+                        interactive={Boolean(hasRepository && actions?.onOpenSummaryGitReview)}
+                        disabled={
+                          !hasRepository || gitSummary.loading || !actions?.onOpenSummaryGitReview
                         }
-                        trailing={<BackgroundSubagentRowTrailing row={row} />}
-                        trailingVisible={Boolean(row.diffStats)}
-                      />
-                    ))}
-                  </ThreadSummaryPanelSection>
-                );
-
-              case "tasks":
-                return (
-                  <ThreadSummaryPanelSection
-                    key={section.kind}
-                    sectionKey="background-tasks"
-                    title="Tasks"
-                    titleSuffix={
-                      <SummaryCountBadge count={section.count ?? backgroundTerminalRows.length} />
-                    }
-                    after={processManagerAction}
-                  >
-                    {backgroundTerminalRows.slice(0, 4).map((row) => (
-                      <ThreadSummaryPanelRow
-                        key={row.id}
-                        label={row.command}
-                        title={row.command}
-                        icon={<TerminalIcon className="icon-sm shrink-0" />}
-                        interactive={Boolean(onOpenBackgroundTerminalOutput)}
-                        onClick={
-                          onOpenBackgroundTerminalOutput
-                            ? () => handleOpenBackgroundTerminalOutput(row)
-                            : undefined
-                        }
+                        onClick={() => handleOpenGitReview(primaryGitSource)}
                         trailing={
-                          row.previewLine ? (
-                            <span className="block max-w-24 truncate text-size-chat text-token-text-tertiary">
-                              {row.previewLine}
-                            </span>
+                          gitSummary.loading ? (
+                            <ActivitySpinnerIcon className="icon-xs shrink-0 text-token-text-tertiary" />
+                          ) : changes.additions > 0 || changes.deletions > 0 ? (
+                            <DiffStats
+                              additions={changes.additions}
+                              deletions={changes.deletions}
+                              className="text-sm"
+                            />
                           ) : null
                         }
-                        trailingVisible={Boolean(row.previewLine)}
+                        trailingVisible
                       />
-                    ))}
-                  </ThreadSummaryPanelSection>
-                );
-
-              case "computerUsePip": {
-                if (!computerUsePip || !onToggleComputerUsePip) return null;
-
-                const title = computerUsePip.visible ? "Hide PiP" : "Show PiP";
-                return (
-                  <ThreadSummaryPanelSection
-                    key={section.kind}
-                    sectionKey="computer-use-pip"
-                    mode="headerless"
-                    title="Computer Use"
-                  >
-                    <ThreadSummaryPanelRow
-                      aria-label={title}
-                      icon={
-                        <ToolActivityIcon
-                          descriptor={{ kind: "semantic", icon: "computer-use" }}
-                          className="icon-xs shrink-0"
+                      {executionLocation ? (
+                        <ThreadExecutionLocationSelector
+                          key={executionLocation.threadId}
+                          model={executionLocation}
+                          disabled={!isVisible}
+                          worktreeAvailable={worktreeAvailable}
+                          onErrorMessage={onErrorMessage}
                         />
-                      }
-                      label="Computer Use"
-                      title={title}
-                      interactive
-                      onClick={() => {
-                        void onToggleComputerUsePip(!computerUsePip.visible);
-                      }}
-                      trailing={<SummaryComputerUsePipTrailing visible={computerUsePip.visible} />}
-                      trailingVisible
-                    />
-                  </ThreadSummaryPanelSection>
-                );
-              }
-
-              case "browser":
-                return (
-                  <ThreadSummaryPanelSection
-                    key={section.kind}
-                    sectionKey="browser-tabs"
-                    title="Browser"
-                    titleSuffix={<SummaryCountBadge count={section.count ?? browserRows.length} />}
-                  >
-                    {browserRows.map((row) => (
+                      ) : (
+                        <ThreadSummaryPanelRow
+                          label={runTargetLabel}
+                          icon={<LocalStatusIcon className="icon-sm text-token-foreground" />}
+                        />
+                      )}
+                      {isDetachedHead ? (
+                        <ThreadSummaryPanelRow
+                          label="Create branch"
+                          title="Create branch"
+                          icon={<BranchStatusIcon className="icon-sm shrink-0" />}
+                          interactive
+                          disabled={!isVisible || branchBusy}
+                          onClick={() => handleOpenBranchSetup(null)}
+                        />
+                      ) : (
+                        <BranchSelectorPopover
+                          cwd={branchCwd}
+                          state={branchState}
+                          busy={branchBusy}
+                          loading={branchLoading}
+                          error={branchError}
+                          onRefresh={refreshBranchState}
+                          onCheckout={checkoutBranch}
+                          onCreate={createBranch}
+                          selectedBranch={currentBranch}
+                          disabled={!isVisible || !branchCwd || branchBusy}
+                          side="left"
+                          align="start"
+                          sideOffset={4}
+                          contentClassName="!w-[296px]"
+                          renderTrigger={({ triggerLabel, title, disabled }) => (
+                            <ThreadSummaryPanelRow
+                              label={<SummaryDropdownRowLabel label={triggerLabel} />}
+                              labelClassName="flex min-w-0 items-center"
+                              title={title}
+                              icon={<BranchStatusIcon className="icon-sm shrink-0" />}
+                              disabled={disabled}
+                              interactive
+                            />
+                          )}
+                        />
+                      )}
+                      {isManagedWorktreeDefaultBranch ? (
+                        <ThreadSummaryPanelRow
+                          label="Create branch"
+                          title="Create branch"
+                          icon={<BranchStatusIcon className="icon-sm shrink-0" />}
+                          interactive
+                          disabled={!isVisible || branchBusy}
+                          onClick={() => handleOpenBranchSetup(null)}
+                        />
+                      ) : null}
                       <ThreadSummaryPanelRow
-                        key={row.browserTabId}
-                        label={<SummaryBrowserRowLabel row={row} />}
-                        title={getBrowserRowTitle(row)}
-                        aria-label={getBrowserRowAriaLabel(row)}
-                        icon={<SummaryBrowserRowIcon row={row} />}
-                        labelClassName={cn(
-                          "min-w-0 flex-1",
-                          !row.isAgentWorking && "flex items-baseline gap-2",
-                        )}
-                        interactive={Boolean(actions?.onOpenSummaryBrowserRow)}
-                        onClick={
-                          actions?.onOpenSummaryBrowserRow
-                            ? () => handleOpenBrowserRow(row)
-                            : undefined
+                        label={commitOrPushRowLabel}
+                        title={commitOrPushRowDisplayTitle}
+                        icon={
+                          commitOrPushMode === "push" ? (
+                            <ThreadSummaryPushIcon className="icon-sm shrink-0" />
+                          ) : (
+                            <ThreadSummaryCommitIcon className="icon-sm shrink-0" />
+                          )
                         }
+                        interactive={Boolean(
+                          hasRepository &&
+                          commitOrPushMode &&
+                          !commitOrPushWorkflow &&
+                          (commitOrPushNeedsBranchSetup || !commitOrPushBlockerLabel),
+                        )}
+                        disabled={
+                          !hasRepository ||
+                          !commitOrPushMode ||
+                          Boolean(commitOrPushWorkflow) ||
+                          (!commitOrPushNeedsBranchSetup && Boolean(commitOrPushBlockerLabel))
+                        }
+                        trailing={
+                          commitOrPushWorkflow ? (
+                            <NodexTooltip tooltipContent="Cancel git action">
+                              <button
+                                type="button"
+                                aria-label="Cancel git action"
+                                className="cursor-interaction flex size-4 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-token-text-tertiary hover:text-token-foreground focus:outline-none"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleCancelGitAction(commitOrPushWorkflow.operationId);
+                                }}
+                              >
+                                <CloseIcon className="icon-xs" aria-hidden="true" />
+                              </button>
+                            </NodexTooltip>
+                          ) : undefined
+                        }
+                        trailingVisible={Boolean(commitOrPushWorkflow)}
+                        onClick={() => {
+                          if (commitOrPushNeedsBranchSetup) {
+                            handleOpenBranchSetup("commit");
+                            return;
+                          }
+
+                          handleOpenGitActionDialog(commitOrPushMode);
+                        }}
                       />
-                    ))}
-                  </ThreadSummaryPanelSection>
-                );
+                      <ThreadSummaryPanelRow
+                        label={createPullRequestRowLabel}
+                        title={createPullRequestRowDisplayTitle}
+                        icon={
+                          <ThreadSummaryCreatePullRequestIcon className="icon-sm shrink-0 text-token-text-tertiary" />
+                        }
+                        interactive={Boolean(
+                          hasRepository &&
+                          !createPullRequestWorkflow &&
+                          !createPullRequestGhBlockerLabel &&
+                          (existingPullRequestUrl ||
+                            currentBranch ||
+                            createPullRequestNeedsBranchSetup),
+                        )}
+                        disabled={
+                          !hasRepository ||
+                          Boolean(createPullRequestWorkflow) ||
+                          gitSummary.loading ||
+                          pullRequestStatus.loading ||
+                          Boolean(createPullRequestGhBlockerLabel) ||
+                          (!existingPullRequestUrl &&
+                            !currentBranch &&
+                            !createPullRequestNeedsBranchSetup)
+                        }
+                        trailing={
+                          createPullRequestWorkflow ? (
+                            <NodexTooltip tooltipContent="Cancel git action">
+                              <button
+                                type="button"
+                                aria-label="Cancel git action"
+                                className="cursor-interaction flex size-4 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-token-text-tertiary hover:text-token-foreground focus:outline-none"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleCancelGitAction(createPullRequestWorkflow.operationId);
+                                }}
+                              >
+                                <CloseIcon className="icon-xs" aria-hidden="true" />
+                              </button>
+                            </NodexTooltip>
+                          ) : undefined
+                        }
+                        trailingVisible={Boolean(createPullRequestWorkflow)}
+                        onClick={() => {
+                          if (existingPullRequestUrl) {
+                            window.open(existingPullRequestUrl, "_blank", "noopener,noreferrer");
+                            return;
+                          }
 
-              case "sources":
-                return (
-                  <ThreadSummaryPanelSection
-                    key={section.kind}
-                    sectionKey="tool-sources"
-                    title="Sources"
-                    titleSuffix={<SummaryCountBadge count={section.count ?? sourceModel.count} />}
-                  >
-                    <SummarySourceIconStrip
-                      items={sourceModel.items}
-                      canOpenMcpApps={Boolean(actions?.onOpenMcpAppSidePanel)}
-                      onOpenSource={handleOpenSource}
-                    />
-                  </ThreadSummaryPanelSection>
-                );
+                          if (createPullRequestNeedsBranchSetup) {
+                            handleOpenBranchSetup("create-pull-request");
+                            return;
+                          }
 
-              case "emptyHint":
-                return (
-                  <div key={section.kind} className="px-4 text-size-chat text-token-text-tertiary">
-                    Start a thread to populate live summary rows.
-                  </div>
-                );
-            }
-          })}
+                          handleOpenCreatePullRequestDialog();
+                        }}
+                      />
+                    </ThreadSummaryPanelSection>
+                  );
+
+                case "plan":
+                  if (!planRow) return null;
+                  return (
+                    <ThreadSummaryPanelSection key={section.kind} sectionKey="plan" title="Plan">
+                      <ThreadSummaryPanelRow
+                        icon={<ComposerPlanModeIcon className="icon-xs shrink-0" />}
+                        label={planRow.label}
+                        labelClassName="min-w-0 truncate"
+                        title={planRow.title}
+                        interactive={Boolean(onOpenPlanInSidePanel)}
+                        onClick={onOpenPlanInSidePanel ? () => handleOpenPlan(planRow) : undefined}
+                      />
+                    </ThreadSummaryPanelSection>
+                  );
+
+                case "outputs":
+                  return (
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="artifacts"
+                      title="Outputs"
+                      titleSuffix={<SummaryCountBadge count={section.count ?? outputRows.length} />}
+                    >
+                      {outputRows.map((row) => (
+                        <ThreadSummaryPanelRow
+                          key={row.id}
+                          label={<SummaryOutputLabel row={row} />}
+                          labelClassName={row.kind === "appgen-app" ? "min-w-0" : undefined}
+                          title={row.title}
+                          icon={<SummaryOutputIcon row={row} />}
+                          interactive
+                          onClick={(event) => handleOpenOutput(row, event.currentTarget)}
+                        />
+                      ))}
+                    </ThreadSummaryPanelSection>
+                  );
+
+                case "sideChats":
+                  return (
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="side-chats"
+                      title="Side chats"
+                      titleSuffix={
+                        <SummaryCountBadge count={section.count ?? sideChatRows.length} />
+                      }
+                    >
+                      {sideChatRows.slice(0, 4).map((row) => (
+                        <ThreadSummaryPanelRow
+                          key={row.id}
+                          label={row.title}
+                          title={row.title}
+                          icon={
+                            row.isResponseInProgress ? (
+                              <ActivitySpinnerIcon className="icon-sm shrink-0" />
+                            ) : (
+                              <SidePanelSideChatIcon className="icon-sm shrink-0" />
+                            )
+                          }
+                          interactive={Boolean(actions?.onOpenSummarySideChatRow && row.panelId)}
+                          onClick={
+                            actions?.onOpenSummarySideChatRow && row.panelId
+                              ? () => handleOpenAuxiliaryRow(row, actions.onOpenSummarySideChatRow)
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </ThreadSummaryPanelSection>
+                  );
+
+                case "subagents":
+                  return (
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="background-subagents"
+                      title="Subagents"
+                      titleSuffix={
+                        section.count === null ? null : <SummaryCountBadge count={section.count} />
+                      }
+                      autoCollapse={section.autoCollapse}
+                    >
+                      <BackgroundSubagentCompactStrip
+                        model={compactBackgroundSubagentModel}
+                        onOpenSubagentsPanel={actions?.onOpenSubagentsPanel}
+                      />
+                      {listedBackgroundSubagentRows.map((row) => (
+                        <ThreadSummaryPanelRow
+                          key={row.conversationId}
+                          label={<BackgroundSubagentRowLabel row={row} />}
+                          title={getBackgroundSubagentTitle(row)}
+                          interactive={Boolean(
+                            taskDetailsKind === "observation"
+                              ? actions?.onOpenTaskObservation
+                              : onOpenThread,
+                          )}
+                          onClick={
+                            taskDetailsKind === "observation"
+                              ? actions?.onOpenTaskObservation
+                                ? () => actions.onOpenTaskObservation?.(row.conversationId)
+                                : undefined
+                              : onOpenThread
+                                ? () => {
+                                    void onOpenThread(
+                                      row.conversationId,
+                                      buildBackgroundAgentOpenContext(row, sourceRoot),
+                                    );
+                                  }
+                                : undefined
+                          }
+                          trailing={<BackgroundSubagentRowTrailing row={row} />}
+                          trailingVisible={Boolean(row.diffStats)}
+                        />
+                      ))}
+                    </ThreadSummaryPanelSection>
+                  );
+
+                case "tasks":
+                  return (
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="background-tasks"
+                      title="Tasks"
+                      titleSuffix={
+                        <SummaryCountBadge count={section.count ?? backgroundTerminalRows.length} />
+                      }
+                      after={processManagerAction}
+                    >
+                      {backgroundTerminalRows.slice(0, 4).map((row) => (
+                        <ThreadSummaryPanelRow
+                          key={row.id}
+                          label={row.command}
+                          title={row.command}
+                          icon={<TerminalIcon className="icon-sm shrink-0" />}
+                          interactive={Boolean(onOpenBackgroundTerminalOutput)}
+                          onClick={
+                            onOpenBackgroundTerminalOutput
+                              ? () => handleOpenBackgroundTerminalOutput(row)
+                              : undefined
+                          }
+                          trailing={
+                            row.previewLine ? (
+                              <span className="block max-w-24 truncate text-sm text-token-text-tertiary">
+                                {row.previewLine}
+                              </span>
+                            ) : null
+                          }
+                          trailingVisible={Boolean(row.previewLine)}
+                        />
+                      ))}
+                    </ThreadSummaryPanelSection>
+                  );
+
+                case "computerUsePip": {
+                  if (!computerUsePip || !onToggleComputerUsePip) return null;
+
+                  const title = computerUsePip.visible ? "Hide PiP" : "Show PiP";
+                  return (
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="computer-use-pip"
+                      mode="headerless"
+                      title="Computer Use"
+                    >
+                      <ThreadSummaryPanelRow
+                        aria-label={title}
+                        icon={
+                          <ToolActivityIcon
+                            descriptor={{ kind: "semantic", icon: "computer-use" }}
+                            className="icon-xs shrink-0"
+                          />
+                        }
+                        label="Computer Use"
+                        title={title}
+                        interactive
+                        onClick={() => {
+                          void onToggleComputerUsePip(!computerUsePip.visible);
+                        }}
+                        trailing={
+                          <SummaryComputerUsePipTrailing visible={computerUsePip.visible} />
+                        }
+                        trailingVisible
+                      />
+                    </ThreadSummaryPanelSection>
+                  );
+                }
+
+                case "browser":
+                  return (
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="browser-tabs"
+                      title="Browser"
+                      titleSuffix={
+                        <SummaryCountBadge count={section.count ?? browserRows.length} />
+                      }
+                    >
+                      {browserRows.map((row) => (
+                        <ThreadSummaryPanelRow
+                          key={row.browserTabId}
+                          label={<SummaryBrowserRowLabel row={row} />}
+                          title={getBrowserRowTitle(row)}
+                          aria-label={getBrowserRowAriaLabel(row)}
+                          icon={<SummaryBrowserRowIcon row={row} />}
+                          labelClassName={cn(
+                            "min-w-0 flex-1",
+                            !row.isAgentWorking && "flex items-baseline gap-2",
+                          )}
+                          interactive={Boolean(actions?.onOpenSummaryBrowserRow)}
+                          onClick={
+                            actions?.onOpenSummaryBrowserRow
+                              ? () => handleOpenBrowserRow(row)
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </ThreadSummaryPanelSection>
+                  );
+
+                case "sources":
+                  return (
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="tool-sources"
+                      title="Sources"
+                      titleSuffix={<SummaryCountBadge count={section.count ?? sourceModel.count} />}
+                    >
+                      <SummarySourceIconStrip
+                        items={sourceModel.items}
+                        canOpenMcpApps={Boolean(actions?.onOpenMcpAppSidePanel)}
+                        onOpenSource={handleOpenSource}
+                      />
+                    </ThreadSummaryPanelSection>
+                  );
+
+                case "emptyHint":
+                  return (
+                    <div key={section.kind} className="px-5 text-sm text-token-text-tertiary">
+                      Start a thread to populate live summary rows.
+                    </div>
+                  );
+              }
+            })}
+          </div>
         </div>
       </div>
       {previewImage ? (

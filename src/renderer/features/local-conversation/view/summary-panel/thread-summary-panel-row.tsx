@@ -73,7 +73,7 @@ export const ThreadSummaryPanelRow = forwardRef<HTMLDivElement, ThreadSummaryPan
     };
 
     const labelContent = (
-      <span className={cn("text-base", labelClassName ?? "truncate")}>{label}</span>
+      <span className={cn("text-sm", labelClassName ?? "truncate")}>{label}</span>
     );
 
     const accessoryContent = accessory ? (
@@ -119,7 +119,9 @@ export const ThreadSummaryPanelRow = forwardRef<HTMLDivElement, ThreadSummaryPan
 
     const rowContent = (
       <>
-        {icon ?? null}
+        {icon ? (
+          <span className="me-2 flex w-[18px] shrink-0 items-center justify-center">{icon}</span>
+        ) : null}
         <span className="flex min-w-0 flex-1 items-center gap-2">
           {labelContent}
           {accessoryContent}
@@ -130,12 +132,15 @@ export const ThreadSummaryPanelRow = forwardRef<HTMLDivElement, ThreadSummaryPan
     );
 
     const rowClassName = cn(
-      "group/summary-panel-row relative isolate flex w-full min-w-0 items-center gap-2 rounded-sm border-0 bg-transparent px-0 text-left",
-      density === "comfortable" ? "min-h-8 py-1.5" : "h-7 py-1",
+      "group/summary-panel-row relative isolate flex w-full min-w-0 items-center gap-1 rounded-sm border-0 bg-transparent px-0 text-start",
+      density === "comfortable" ? "min-h-8 py-1.5" : "min-h-7 py-1",
       isVisuallyInteractive
         ? "cursor-interaction text-token-foreground before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-sm before:content-[''] hover:before:bg-token-list-hover-background"
-        : "cursor-default text-token-text-secondary",
-      disabled && "cursor-not-allowed",
+        : disabled
+          ? "cursor-not-allowed text-token-text-tertiary"
+          : "cursor-default text-token-text-secondary",
+      isActionable &&
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
       className,
     );
 
