@@ -1,0 +1,47 @@
+src/shared/markdown/html.ts
+  s_819b31638169c3::t_a4d5fb16f7cf93 73-75,78-101,157
+  s_819b31638169c3::t_b9ec805296ae21 7,47
+  s_819b31638169c3::t_c8800230e2d968 102-110,155-156,158
+src/shared/markdown/rich-html-blocks.ts
+  s_819b31638169c3::t_b9ec805296ae21 1-39,42-48,51-54
+  s_819b31638169c3::t_4810aff8a8481d 40-41,49-50
+src/shared/markdown/html-import.test.ts
+  s_819b31638169c3::t_4810aff8a8481d 32
+  s_819b31638169c3::t_e3b80831f823cd 4-5,10-18,42,53-57
+  s_819b31638169c3::t_7f675d9c100ba5 19-31,33-41,43-52,64-67
+  s_819b31638169c3::t_38d0d63b9f3290 68
+docs/references/markdown-interchange.md
+  s_819b31638169c3::t_e3b80831f823cd 51-57
+src/renderer/components/board/editor/nfm-rich-html-paste.browser.test.tsx
+  s_819b31638169c3::t_30ccd86cbb4542 3,13,48,75,175,179-183
+  s_819b31638169c3::t_e3b80831f823cd 1-2,4-12,14-26,28-32,36-47,49-74,76-114,126-131,136-140,143-158,163,165-174,176-178,184-185
+  s_819b31638169c3::t_4810aff8a8481d 33-35,115-125,160-162
+  s_819b31638169c3::t_7f675d9c100ba5 27,132-135,141-142,159,164
+src/shared/markdown/markdown-paste.test.ts
+  s_819b31638169c3::t_e3b80831f823cd 4
+  s_819b31638169c3::t_759878aa3aa45c 5-8,16-25
+src/renderer/components/board/editor/nfm-editor-extensions.test.ts
+  s_819b31638169c3::t_30ccd86cbb4542 107,113,141,148,184,215-216,218-219
+  s_819b31638169c3::t_7f675d9c100ba5 108-112,195-201,217,223-224,292-299
+src/renderer/components/board/editor/nfm-editor-extensions.ts
+  s_819b31638169c3::t_b9ec805296ae21 2,644-647,746-748,760-771,776-780
+  s_819b31638169c3::t_6b9587a72b668b 781-784
+src/shared/markdown/__fixtures__/rich-html-paste.ts
+  s_819b31638169c3::t_e3b80831f823cd 1-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "91807a82e116e5432f4b29629d5f425f2d2e7070",
+  "prompts": {},
+  "sessions": {
+    "s_819b31638169c3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a182f8-d543-7650-87dc-1980827d6ca4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
