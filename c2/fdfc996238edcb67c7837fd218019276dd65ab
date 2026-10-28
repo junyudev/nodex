@@ -1,0 +1,40 @@
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_52c7d635525c94::t_9fa7f4dc756abf 136-175
+src/renderer/components/workbench/app-shell-tabs.tsx
+  s_52c7d635525c94::t_7662e49a55934a 1002
+  s_52c7d635525c94::t_d59fbf5094249b 25-35
+  s_52c7d635525c94::t_c0bedcc8fed567 54-58,80-90,957-964,966-974,1194,1208,1210,1216-1264,1470,1478,1480,1487,1495,1497,1512-1519,1556-1561
+  s_52c7d635525c94::t_f608c0cf88a0ba 1562
+src/renderer/lib/workbench-session-workspace.node.test.ts
+  s_52c7d635525c94::t_4ce6f5d17c5868 6,69-95
+  s_52c7d635525c94::t_9de98054e57b48 96
+src/renderer/components/workbench/workbench-session-scene.tsx
+  s_52c7d635525c94::t_fb3d41d36d992b 25-34,78-79,269,276,330
+  s_52c7d635525c94::t_5f8382b1d35340 7
+  s_52c7d635525c94::t_1c45d6592b6102 257-268
+src/renderer/components/workbench/app-shell-tabs.test.tsx
+  s_52c7d635525c94::t_c76b751f5e455e 8,15-27,1120,1147-1192,1195-1197,1200-1203,1629,1637
+  s_52c7d635525c94::t_7662e49a55934a 1193-1194,1198-1199
+src/renderer/lib/workbench-session-workspace.ts
+  s_52c7d635525c94::t_accbac62dc541c 55-69
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_52c7d635525c94::t_fb3d41d36d992b 5114-5118
+docs/product-specs/workbench-shell.md
+  s_52c7d635525c94::t_4dc35b5b42536c 222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c2fdfc996238edcb67c7837fd218019276dd65ab",
+  "prompts": {},
+  "sessions": {
+    "s_52c7d635525c94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aff2e8a0-50dd-4019-aa85-7b5ade99e79e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
