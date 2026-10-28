@@ -11,6 +11,7 @@ import {
   groupInboxItemsByDay,
   inboxAwaitingIndicatorPageId,
   inboxBuriedImportant,
+  inboxPageStatusMark,
   inboxRowOffers,
   inboxPageRoutingContext,
   inboxTimestampSeparators,
@@ -482,6 +483,27 @@ describe("inboxBuriedImportant", () => {
   it("points nowhere while every important message is in view", () => {
     expect(inboxBuriedImportant(important, 3, () => true)).toBeNull();
     expect(inboxBuriedImportant([], 0, () => false)).toBeNull();
+  });
+});
+
+describe("inboxPageStatusMark", () => {
+  it("marks a message only once its Page has left Triage", () => {
+    expect(inboxPageStatusMark(item({ pageStatus: { id: "triage", label: "Triage" } }))).toBeNull();
+    expect(inboxPageStatusMark(item({ pageStatus: null }))).toBeNull();
+    expect(inboxPageStatusMark(item({ pageStatus: { id: "build", label: "Build" } }))).toEqual({
+      id: "build",
+      label: "Build",
+    });
+  });
+
+  it("follows the status option, not its name, so a renamed Triage stays quiet", () => {
+    expect(
+      inboxPageStatusMark(item({ pageStatus: { id: "triage", label: "Incoming" } })),
+    ).toBeNull();
+    expect(inboxPageStatusMark(item({ pageStatus: { id: "review", label: "Triage" } }))).toEqual({
+      id: "review",
+      label: "Triage",
+    });
   });
 });
 

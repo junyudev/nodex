@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
 import { NfmDocument, markdownImageAlt } from "@/components/board/nfm-renderer";
 import { useMarkdownImage } from "@/components/board/markdown-image";
@@ -19,27 +19,34 @@ import type { MarkdownBlock } from "../../../shared/nodex-markdown";
  * above its text, and the text in chat typography, collapsed after as many lines as a chat
  * message. `contentKey` identifies the message, so an expanded message collapses again when it
  * changes. `fileAuthority` reads the message's Library Files; without it, images show as
- * unavailable.
+ * unavailable. `lead` opens the first line of text, which flows on after it and wraps beneath it.
  */
 export function MessageDocument({
   blocks,
   contentKey,
   fileAuthority,
   collapsedLineCount,
+  lead,
 }: {
   readonly blocks: readonly MarkdownBlock[];
   readonly contentKey: string;
   readonly fileAuthority: FileReadAuthority | null;
   readonly collapsedLineCount?: number;
+  readonly lead?: ReactNode;
 }) {
   const { text, attachments } = splitMessageContent(blocks);
   return (
     <FileReadBoundary authority={fileAuthority}>
       <div className="flex min-w-0 flex-col gap-2">
+        {/* With no text, the lead opens the message on a line of its own. */}
+        {lead != null && text.length === 0 ? (
+          <span className="flex h-lh items-center">{lead}</span>
+        ) : null}
         {attachments.length > 0 ? <MessageImages images={attachments} /> : null}
         {text.length > 0 ? (
           <UserMessageCollapse contentKey={contentKey} collapsedLineCount={collapsedLineCount}>
             <NfmDocument
+              lead={lead}
               blocks={[...text]}
               density="message"
               className="codex-markdown codex-markdown-user text-size-chat"

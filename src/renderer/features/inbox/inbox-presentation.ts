@@ -6,10 +6,12 @@ import type {
   InboxFiring,
   InboxImportantMessage,
   InboxItem,
+  InboxPageStatus,
   InboxProposal,
   InboxWindowFilter,
 } from "../../../shared/inbox";
 import type { CodexScheduledAutomation } from "../../../shared/types";
+import { DEFAULT_WORKFLOW_STATUS } from "../../../shared/workflow-status";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import { USER_TURN_TIMESTAMP_GAP_MS } from "../local-conversation/projection/conversation-turn-timestamps";
 import type { SessionLiveIndicator } from "@/lib/session-execution";
@@ -150,6 +152,13 @@ export function inboxPageRoutingContext(item: InboxItem): ContentRoutingContext 
 /** The kind the user set, else the one the current suggestion proposes. */
 export const inboxEntryKind = (item: InboxItem): InboxEntryKind | null =>
   item.kind ?? item.proposal?.kind ?? null;
+
+/**
+ * The Board status a message shows beside it. Every message waits in Triage, so only a Page that
+ * has moved on says anything: its work has already started somewhere else.
+ */
+export const inboxPageStatusMark = (item: InboxItem): InboxPageStatus | null =>
+  item.pageStatus && item.pageStatus.id !== DEFAULT_WORKFLOW_STATUS ? item.pageStatus : null;
 
 export type InboxOutcomeIcon = "chat" | "pending" | "move" | "keep" | "done" | "inbox";
 

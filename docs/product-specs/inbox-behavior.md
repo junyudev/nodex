@@ -169,10 +169,23 @@ a failed delivery leaves the Page in Build.
 The Inbox reads like a conversation: newest at the bottom, resting against the
 composer, with time shown the way a chat shows it. A centered time appears above
 the first message once it is over an hour old, and above any message sent over an
-hour after the one before it. A message's own time appears beneath its checkbox
-and star, on the bubble's side, after the pointer rests on the message for about
-a second, without moving anything; a star never moves it. Once it shows, the
-time is the message's link to its Page: choosing it opens the Page, as
+hour after the one before it.
+
+A message's first line opens with where its Page already stands outside the
+Inbox, since a Page moved on its Board or linked to a chat stays in the Inbox
+until the message is handled: the Page's Board status in its Board color, once it
+has left Triage, then the chats the Page is linked to, with their live state.
+Choosing that mark opens the chat, or lists them when there are several. The
+words follow on the same line, and the lines after it take the message's full
+width. A message only waiting in Triage shows neither, and while it is rewritten
+neither shows. The status only says where the Page stands; it is changed on the
+Board or the Page. A row that already offers `Open chat`, after a decision or an
+unconfirmed delivery, keeps that way to the chat for itself.
+
+A message's own time appears beneath its checkbox and star, on the bubble's
+side, after the pointer rests on the message for about a second, without moving
+anything; a star never moves it. Once it shows, the time is the message's link to
+its Page: choosing it opens the Page, as
 `Open page` in the menu does. Hidden, it cannot be chosen. A message never
 simply vanishes: once decided, its card first says where it went, in its own
 place: `Starting a chat in <Project>` or `Sending to “<chat>”` with

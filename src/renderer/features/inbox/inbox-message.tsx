@@ -1,4 +1,9 @@
-import { INBOX_ENTRY_KINDS, type InboxEntryKind, type InboxItem } from "../../../shared/inbox";
+import {
+  INBOX_ENTRY_KINDS,
+  type InboxEntryKind,
+  type InboxItem,
+  type InboxPageStatus,
+} from "../../../shared/inbox";
 import {
   AutomationMoreIcon,
   AutomationsIcon,
@@ -21,6 +26,9 @@ import {
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexCheckbox } from "@/components/ui/settings";
+import { PageChatActivityControl } from "@/components/workbench/page-chat-activity-control";
+import { StatusIcon } from "@/lib/status-presentation";
+import type { PageChatActivitySummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { INBOX_KIND_ICONS } from "./inbox-icon-action";
 import { InboxArrivalRing, InboxImportantStar } from "./inbox-important";
@@ -29,6 +37,7 @@ import {
   INBOX_KIND_LABELS,
   formatInboxTime,
   inboxEntryKind,
+  inboxPageStatusMark,
   type InboxRowOffers,
 } from "./inbox-presentation";
 
@@ -146,6 +155,21 @@ export function InboxMessageMenu({
   );
 }
 
+/** The Board status of a Page that has moved on; it only says where the Page stands. */
+function InboxPageStatusMark({ status }: { readonly status: InboxPageStatus }) {
+  return (
+    <NodexTooltip tooltipContent={status.label} side="top">
+      <span
+        role="img"
+        aria-label={`Status: ${status.label}`}
+        className="flex h-5 items-center pr-1"
+      >
+        <StatusIcon statusId={status.id} label={status.label} className="size-3.5" />
+      </span>
+    </NodexTooltip>
+  );
+}
+
 /**
  * One captured message in the Inbox: a card holding the message and, joined beneath it, what
  * Nodex made of it, with the ways to act in one row under the card. The user's own messages
@@ -157,7 +181,8 @@ export function InboxMessage({
   selected,
   selectionActive,
   onToggleSelected,
-  onOpenSource,
+  linkedChats,
+  onOpenChat,
   onOpenScheduledTask,
   onOpenPage,
   onUnmarkImportant,
@@ -172,7 +197,13 @@ export function InboxMessage({
   /** While any message is selected, every row shows its checkbox. */
   readonly selectionActive: boolean;
   readonly onToggleSelected: () => void;
-  readonly onOpenSource: (sessionId: string) => void;
+  /**
+   * The chats the message's Page is linked to, shown at the start of its text; null when its row
+   * already opens the chat.
+   */
+  readonly linkedChats: PageChatActivitySummary | null;
+  /** Opens a chat: the one that sent the message, or one its Page is linked to. */
+  readonly onOpenChat: (sessionId: string) => void;
   /** Opens the scheduled task a waiting run came from. */
   readonly onOpenScheduledTask?: (automationId: string) => void;
   /** Opens the message's Page; its time is the link. */
@@ -190,6 +221,24 @@ export function InboxMessage({
   readonly actions: React.ReactNode;
 }) {
   const fromUser = item.source.kind === "user";
+  const status = inboxPageStatusMark(item);
+  const chats = linkedChats && linkedChats.relatedCount > 0 ? linkedChats : null;
+  // Where the message's Page already stands, read before its words: its Board status once it
+  // has left Triage, then its chats.
+  const marks =
+    status || chats ? (
+      <span data-testid="inbox-page-marks" className="flex items-center">
+        {status ? <InboxPageStatusMark status={status} /> : null}
+        {chats ? (
+          <PageChatActivityControl
+            pageId={item.pageId}
+            summary={chats}
+            onOpenChat={onOpenChat}
+            className="hover:bg-current/10"
+          />
+        ) : null}
+      </span>
+    ) : null;
   // The checkbox and, beside the bubble, an important message's star. The time hangs beneath on
   // the bubble's side, so a star never moves it.
   const gutter = (
@@ -250,7 +299,7 @@ export function InboxMessage({
           onClick={() =>
             item.source.kind === "agent" &&
             item.source.sessionId &&
-            onOpenSource(item.source.sessionId)
+            onOpenChat(item.source.sessionId)
           }
           className="cursor-interaction max-w-[80%] truncate pl-1 text-xs text-token-description-foreground hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
         >
@@ -305,14 +354,15 @@ export function InboxMessage({
                 !fromUser && strip != null && "border-b border-token-border",
               )}
             >
-              {editor ?? <InboxMessageDocument item={item} />}
+              {editor ?? <InboxMessageDocument item={item} lead={marks} />}
               {editor == null && messageActions != null ? (
                 // Floats over the end of the last line on the text's own color, so showing it
-                // never moves the text.
+                // never moves the text. It stays above all of the text, even beside a live mark
+                // animating in the first line, which can lift that line into its own layer.
                 <div
                   data-testid="inbox-message-actions"
                   className={cn(
-                    "pointer-events-none absolute right-1.5 bottom-1 flex items-center gap-0.5 rounded-md opacity-0 transition-opacity",
+                    "pointer-events-none absolute right-1.5 bottom-1 z-10 flex items-center gap-0.5 rounded-md opacity-0 transition-opacity",
                     "group-hover/message:pointer-events-auto group-hover/message:opacity-100 focus-within:opacity-100",
                     fromUser ? "bg-background-user-message" : "bg-token-main-surface-primary",
                   )}

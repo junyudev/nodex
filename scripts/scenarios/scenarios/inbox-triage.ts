@@ -1,6 +1,10 @@
 import { agentRuntimeProviderId } from "../../../src/shared/agent-runtime-provider";
 import { defaultClaudeInstance } from "../../../src/shared/claude-agent-settings";
-import { projectInbox } from "../../../src/shared/inbox";
+import {
+  parseDataSourceOptionId,
+  type DataSourceId,
+} from "../../../src/shared/database-identities";
+import { projectInbox, type InboxScope } from "../../../src/shared/inbox";
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
 import {
   parseScenarioFacts,
@@ -11,7 +15,7 @@ import {
 } from "../contracts";
 
 export const INBOX_TRIAGE_SCENARIO_ID = "inbox/triage" as const;
-export const INBOX_TRIAGE_SCENARIO_REVISION = 4 as const;
+export const INBOX_TRIAGE_SCENARIO_REVISION = 5 as const;
 /** The Claude Code account every Profile starts with. */
 const DEFAULT_CLAUDE_INSTANCE_ID = agentRuntimeProviderId({
   kind: "claude",
@@ -29,11 +33,23 @@ const PAGE_KEYS = {
   projectNewChat: "projectNewChatSuggestion",
   projectSendToChat: "projectSendToChatSuggestion",
   projectMove: "projectMoveSuggestion",
+  inboxMovedWithChat: "inboxMovedWithChat",
+  inboxMovedNoChat: "inboxMovedNoChat",
+  inboxTriageTwoChats: "inboxTriageTwoChats",
+  inboxTriageOneIdleChat: "inboxTriageOneIdleChat",
+  inboxPlainTriage: "inboxPlainTriage",
+  libraryInboxMovedWithChat: "libraryInboxMovedWithChat",
 } as const;
 const WORKING_SESSION_KEY = "workingSession";
 const WORKING_THREAD_KEY = "workingThread";
 const WEBSITE_PROJECT_KEY = "websiteProject";
 const SCREENSHOT_FILE_KEY = "screenshotFile";
+const CHAT_KEYS = {
+  moved: "inboxMovedWorkingSession",
+  idle: "inboxTriageIdleSession",
+  waiting: "inboxTriageWaitingSession",
+  single: "inboxSingleIdleSession",
+} as const;
 // A 192 by 96 PNG, enough for a thumbnail to show its real pixels.
 const SCREENSHOT_BYTES = new Uint8Array(
   Buffer.from(
@@ -41,6 +57,11 @@ const SCREENSHOT_BYTES = new Uint8Array(
     "base64",
   ),
 );
+
+interface InboxTriageMessageFacts {
+  readonly pageId: string;
+  readonly sessionIds: readonly string[];
+}
 
 export interface InboxTriageScenarioFacts extends ScenarioFacts {
   readonly entryCount: number;
@@ -51,7 +72,24 @@ export interface InboxTriageScenarioFacts extends ScenarioFacts {
   readonly failedSuggestionCount: number;
   /** Messages waiting in the Nodex Project's own Inbox. */
   readonly projectInboxCount: number;
+  readonly inboxMovedWithChat: InboxTriageMessageFacts;
+  readonly inboxMovedNoChat: InboxTriageMessageFacts;
+  readonly inboxTriageTwoChats: InboxTriageMessageFacts;
+  readonly inboxTriageOneIdleChat: InboxTriageMessageFacts;
+  readonly inboxPlainTriage: InboxTriageMessageFacts;
+  readonly libraryInboxMovedWithChat: InboxTriageMessageFacts;
 }
+
+const isMessageFacts = (value: unknown): value is InboxTriageMessageFacts => {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.pageId === "string" &&
+    candidate.pageId.length > 0 &&
+    Array.isArray(candidate.sessionIds) &&
+    candidate.sessionIds.every((sessionId) => typeof sessionId === "string" && sessionId.length > 0)
+  );
+};
 
 export const requireInboxTriageScenarioFacts = (value: unknown): InboxTriageScenarioFacts => {
   const envelope = parseScenarioFacts(value);
@@ -67,17 +105,100 @@ export const requireInboxTriageScenarioFacts = (value: unknown): InboxTriageScen
       "dispatchedCount",
       "failedSuggestionCount",
       "projectInboxCount",
-    ].every((key) => typeof candidate[key] === "number")
+    ].every((key) => typeof candidate[key] === "number") ||
+    ![
+      "inboxMovedWithChat",
+      "inboxMovedNoChat",
+      "inboxTriageTwoChats",
+      "inboxTriageOneIdleChat",
+      "inboxPlainTriage",
+      "libraryInboxMovedWithChat",
+    ].every((key) => isMessageFacts(candidate[key]))
   ) {
     throw new Error("inbox/triage facts are invalid");
   }
   return value as InboxTriageScenarioFacts;
 };
 
+const requireSuccess = <Value>(
+  result:
+    | { readonly ok: true; readonly value: Value }
+    | { readonly ok: false; readonly error: { readonly message: string } },
+): Value => {
+  if (result.ok) return result.value;
+  throw new Error(`inbox/triage seed failed: ${result.error.message}`);
+};
+
+const captureOpenNote = async (port: ScenarioSeedPort, body: string, scope?: InboxScope) => {
+  const message = await port.sendInboxMessage(body, scope);
+  // Advice settles suggestion work; only confirming it would handle the message.
+  await port.proposeInboxDispatch({
+    pageIds: [message.pageId],
+    action: { type: "keep" },
+    kind: "note",
+    summary: "Keep this note for later.",
+    rationale: null,
+  });
+  return message;
+};
+
+const setInboxPageStatus = async (
+  port: ScenarioSeedPort,
+  projectId: string,
+  pageId: string,
+  dataSourceId: DataSourceId,
+  status: "build" | "review",
+) => {
+  const snapshot = requireSuccess(
+    await port.readDatabase({
+      projectId,
+      read: { target: { kind: "data_source", dataSourceId }, mode: "data_source" },
+    }),
+  );
+  if (snapshot.value.kind !== "data_source") throw new Error("inbox/triage expected a Data Source");
+  const property = snapshot.value.value.properties.find(
+    (item) =>
+      item.systemRole === "status" && item.lifecycle === "active" && item.schema.kind === "select",
+  );
+  if (!property) throw new Error("inbox/triage Inbox has no Status property");
+  requireSuccess(
+    await port.applyDatabase({
+      projectId,
+      storeEpoch: snapshot.storeEpoch,
+      operationId: createUuidV7(),
+      actor: { kind: "scenario_seed" },
+      operations: [
+        {
+          kind: "edit_property_values",
+          edits: [
+            {
+              pageId,
+              dataSourceId,
+              propertyId: property.propertyId,
+              edit: {
+                kind: "replace",
+                // Capture initializes defaults, then commits the Inbox's Triage placement.
+                expectedValueRevision: 2,
+                value: {
+                  kind: "select",
+                  optionId: parseDataSourceOptionId({
+                    propertyId: property.propertyId,
+                    value: status,
+                  }),
+                },
+              },
+            },
+          ],
+        },
+      ],
+    }),
+  );
+};
+
 /**
  * Every Inbox reply state in one stream, without anything left for a live Agent to do: each
- * message is already suggested, kept, delivered, or failed. The Nodex Project's own Inbox holds
- * suggestions that stay inside that Project or file into another one.
+ * message is already suggested, kept, delivered, or failed. New open messages also show Page
+ * Status and linked Chat activity independently of whether an Inbox decision was confirmed.
  */
 const materializeInboxTriage = async (
   port: ScenarioSeedPort,
@@ -272,6 +393,121 @@ const materializeInboxTriage = async (
     rationale: "It is about the marketing site, not the app.",
   });
 
+  const catalog = requireSuccess(
+    await port.readDatabase({
+      projectId: project.id,
+      read: { target: { kind: "project_default" }, mode: "catalog_window", window: { first: 100 } },
+    }),
+  );
+  if (catalog.value.kind !== "catalog_window")
+    throw new Error("inbox/triage expected a Database catalog");
+  const databases = catalog.value.value.databases;
+  const projectSource = databases.find((item) =>
+    item.views.some((view) => view.viewId === project.defaultDatabaseViewId),
+  )?.dataSources[0];
+  const librarySource = databases.find((item) => item.database.name === "Inbox")?.dataSources[0];
+  if (!projectSource || !librarySource)
+    throw new Error("inbox/triage Inbox Data Sources are missing");
+
+  const movedNote = "Keep the drag handle visible while moving a block.";
+  const libraryInboxMovedWithChat = await captureOpenNote(port, movedNote);
+  const inboxMovedWithChat = await captureOpenNote(port, movedNote, nodexInbox);
+  const inboxMovedNoChat = await captureOpenNote(
+    port,
+    "Review the empty search results copy.",
+    nodexInbox,
+  );
+  const inboxPlainTriage = await captureOpenNote(
+    port,
+    "Try a quieter notification sound.",
+    nodexInbox,
+  );
+  const inboxTriageTwoChats = await captureOpenNote(
+    port,
+    "Check keyboard focus after closing search.",
+    nodexInbox,
+  );
+  const inboxTriageOneIdleChat = await captureOpenNote(
+    port,
+    "The export preview needs a final look.",
+    nodexInbox,
+  );
+
+  await setInboxPageStatus(
+    port,
+    project.id,
+    libraryInboxMovedWithChat.pageId,
+    librarySource.dataSourceId,
+    "build",
+  );
+  await setInboxPageStatus(
+    port,
+    project.id,
+    inboxMovedWithChat.pageId,
+    projectSource.dataSourceId,
+    "build",
+  );
+  await setInboxPageStatus(
+    port,
+    project.id,
+    inboxMovedNoChat.pageId,
+    projectSource.dataSourceId,
+    "review",
+  );
+
+  const movedChat = await port.createRelatedChat({
+    projectId: project.id,
+    initialPageIds: [inboxMovedWithChat.pageId, libraryInboxMovedWithChat.pageId],
+    noThreadFallbackTitle: "Block drag handle",
+    thread: {
+      threadId: createUuidV7(),
+      threadName: "Block drag handle",
+      threadPreview: "Keeping the handle visible throughout a drag",
+      statusType: "active",
+      statusActiveFlags: [],
+      unread: false,
+    },
+  });
+  const idleChat = await port.createRelatedChat({
+    projectId: project.id,
+    initialPageIds: [inboxTriageTwoChats.pageId],
+    noThreadFallbackTitle: "Search keyboard review",
+    thread: {
+      threadId: createUuidV7(),
+      threadName: "Search keyboard review",
+      threadPreview: "Reviewed the current focus behavior",
+      statusType: "idle",
+      statusActiveFlags: [],
+      unread: false,
+    },
+  });
+  const waitingChat = await port.createRelatedChat({
+    projectId: project.id,
+    initialPageIds: [inboxTriageTwoChats.pageId],
+    noThreadFallbackTitle: "Search focus behavior",
+    thread: {
+      threadId: createUuidV7(),
+      threadName: "Search focus behavior",
+      threadPreview: "Should focus return to the search button?",
+      statusType: "active",
+      statusActiveFlags: ["waitingOnUserInput"],
+      unread: false,
+    },
+  });
+  const singleChat = await port.createRelatedChat({
+    projectId: project.id,
+    initialPageIds: [inboxTriageOneIdleChat.pageId],
+    noThreadFallbackTitle: "Export preview review",
+    thread: {
+      threadId: createUuidV7(),
+      threadName: "Export preview review",
+      threadPreview: "The preview is ready for your review.",
+      statusType: "idle",
+      statusActiveFlags: [],
+      unread: false,
+    },
+  });
+
   return {
     version: 1,
     scenarioId: INBOX_TRIAGE_SCENARIO_ID,
@@ -289,12 +525,22 @@ const materializeInboxTriage = async (
       [PAGE_KEYS.projectNewChat]: projectNewChat.pageId,
       [PAGE_KEYS.projectSendToChat]: projectSendToChat.pageId,
       [PAGE_KEYS.projectMove]: projectMove.pageId,
+      [PAGE_KEYS.inboxMovedWithChat]: inboxMovedWithChat.pageId,
+      [PAGE_KEYS.inboxMovedNoChat]: inboxMovedNoChat.pageId,
+      [PAGE_KEYS.inboxTriageTwoChats]: inboxTriageTwoChats.pageId,
+      [PAGE_KEYS.inboxTriageOneIdleChat]: inboxTriageOneIdleChat.pageId,
+      [PAGE_KEYS.inboxPlainTriage]: inboxPlainTriage.pageId,
+      [PAGE_KEYS.libraryInboxMovedWithChat]: libraryInboxMovedWithChat.pageId,
     },
     entityIdsByKey: {
       [WORKING_SESSION_KEY]: working.sessionId,
       [WORKING_THREAD_KEY]: workingThreadId,
       [WEBSITE_PROJECT_KEY]: website.id,
       [SCREENSHOT_FILE_KEY]: screenshotFileId,
+      [CHAT_KEYS.moved]: movedChat.sessionId,
+      [CHAT_KEYS.idle]: idleChat.sessionId,
+      [CHAT_KEYS.waiting]: waitingChat.sessionId,
+      [CHAT_KEYS.single]: singleChat.sessionId,
     },
     minimumCommitSeq: 0,
     materializedAt: new Date().toISOString(),
@@ -306,7 +552,84 @@ const inspectInboxTriage = async (
   manifest: ScenarioManifest,
 ): Promise<InboxTriageScenarioFacts> => {
   const inbox = (await port.readInbox("inbox")).items;
+  const projectScope = projectInbox(manifest.projectId);
+  const projectItems = (await port.readInbox("inbox", projectScope)).items;
   const items = [...inbox, ...(await port.readInbox("processed")).items];
+  const inspectOpenMessage = async (
+    key: string,
+    status: string,
+    sessionKeys: readonly string[],
+    expectedActivity: {
+      readonly workingCount?: number;
+      readonly waitingOnUserInputCount?: number;
+    } = {},
+    library = false,
+  ): Promise<InboxTriageMessageFacts> => {
+    const pageId = manifest.pageIdsByKey[key];
+    if (!pageId) throw new Error(`inbox/triage manifest has no ${key}`);
+    const sessionIds = sessionKeys.map((sessionKey) => {
+      const sessionId = manifest.entityIdsByKey?.[sessionKey];
+      if (!sessionId) throw new Error(`inbox/triage manifest has no ${sessionKey}`);
+      return sessionId;
+    });
+    const item = (library ? inbox : projectItems).find((entry) => entry.pageId === pageId);
+    const [chats, activity] = await Promise.all([
+      port.readPageChats(pageId),
+      port.readPageChatActivity([pageId]),
+    ]);
+    const summary = activity.summaries.find((entry) => entry.pageId === pageId);
+    if (
+      !item ||
+      item.state !== "open" ||
+      item.outcome !== null ||
+      item.suggestionState !== "settled" ||
+      item.proposal?.state !== "open" ||
+      item.proposal.action.type !== "keep" ||
+      item.pageStatus?.id !== status ||
+      chats.items.length !== sessionIds.length ||
+      !sessionIds.every((sessionId) => chats.items.some((chat) => chat.sessionId === sessionId)) ||
+      !summary ||
+      summary.relatedCount !== sessionIds.length ||
+      summary.workingCount !== (expectedActivity.workingCount ?? 0) ||
+      summary.waitingOnUserInputCount !== (expectedActivity.waitingOnUserInputCount ?? 0) ||
+      summary.waitingOnApprovalCount !== 0 ||
+      summary.errorCount !== 0 ||
+      summary.unreadCount !== 0
+    ) {
+      throw new Error(
+        `inbox/triage ${key} did not retain its open message, Status and linked Chats`,
+      );
+    }
+    return { pageId, sessionIds };
+  };
+  const [
+    inboxMovedWithChat,
+    inboxMovedNoChat,
+    inboxTriageTwoChats,
+    inboxTriageOneIdleChat,
+    inboxPlainTriage,
+    libraryInboxMovedWithChat,
+  ] = await Promise.all([
+    inspectOpenMessage(PAGE_KEYS.inboxMovedWithChat, "build", [CHAT_KEYS.moved], {
+      workingCount: 1,
+    }),
+    inspectOpenMessage(PAGE_KEYS.inboxMovedNoChat, "review", []),
+    inspectOpenMessage(
+      PAGE_KEYS.inboxTriageTwoChats,
+      "triage",
+      [CHAT_KEYS.idle, CHAT_KEYS.waiting],
+      { waitingOnUserInputCount: 1 },
+    ),
+    inspectOpenMessage(PAGE_KEYS.inboxTriageOneIdleChat, "triage", [CHAT_KEYS.single]),
+    inspectOpenMessage(PAGE_KEYS.inboxPlainTriage, "triage", []),
+    inspectOpenMessage(
+      PAGE_KEYS.libraryInboxMovedWithChat,
+      "build",
+      [CHAT_KEYS.moved],
+      { workingCount: 1 },
+      true,
+    ),
+  ]);
   const facts: InboxTriageScenarioFacts = {
     scenarioId: manifest.scenarioId,
     scenarioRevision: manifest.scenarioRevision,
@@ -318,17 +641,33 @@ const inspectInboxTriage = async (
     keptCount: items.filter((item) => item.state === "kept").length,
     dispatchedCount: items.filter((item) => item.proposal?.state === "completed").length,
     failedSuggestionCount: items.filter((item) => item.suggestionState === "failed").length,
-    projectInboxCount: (await port.readInbox("inbox", projectInbox(manifest.projectId))).items
-      .length,
+    projectInboxCount: projectItems.length,
+    inboxMovedWithChat,
+    inboxMovedNoChat,
+    inboxTriageTwoChats,
+    inboxTriageOneIdleChat,
+    inboxPlainTriage,
+    libraryInboxMovedWithChat,
   };
   if (
-    facts.entryCount !== 7 ||
-    facts.inboxCount !== 5 ||
-    facts.needsDecisionCount !== 4 ||
+    facts.entryCount !== 8 ||
+    facts.inboxCount !== 6 ||
+    facts.needsDecisionCount !== 5 ||
     facts.keptCount !== 1 ||
     facts.dispatchedCount !== 1 ||
     facts.failedSuggestionCount !== 1 ||
-    facts.projectInboxCount !== 3
+    facts.projectInboxCount !== 8 ||
+    projectItems
+      .slice(0, 5)
+      .map((item) => item.pageId)
+      .join(",") !==
+      [
+        inboxTriageOneIdleChat.pageId,
+        inboxTriageTwoChats.pageId,
+        inboxPlainTriage.pageId,
+        inboxMovedNoChat.pageId,
+        inboxMovedWithChat.pageId,
+      ].join(",")
   ) {
     throw new Error(
       `inbox/triage materialized facts do not match revision ${INBOX_TRIAGE_SCENARIO_REVISION}`,

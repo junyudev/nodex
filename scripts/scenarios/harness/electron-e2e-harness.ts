@@ -25,6 +25,7 @@ import { cleanupIsolatedProfile, createIsolatedProfile } from "../profile/isolat
 import { getScenario } from "../registry";
 import { prepareScenarioAgentRuntime } from "../runtime/agent-runtime-fixture";
 import { inspectScenario, materializeScenario } from "../seed/scenario-seed";
+import { materializeDevelopmentSeed } from "./development-seed";
 import { isolatedElectronArguments } from "../../isolated-run/electron-arguments";
 import { prepareElectronRuntime } from "../../prepare-electron-runtime";
 
@@ -580,6 +581,12 @@ export interface ElectronScenarioFailureContext {
 
 export interface ElectronScenarioInput extends ElectronHarnessInput {
   readonly scenarioId: string | null;
+  /**
+   * Where the scenario is written. The renderer is the default, so seeding exercises the
+   * product's own operations; `core` writes before Electron starts, as a development seed does,
+   * for scenarios holding state only Core may create, such as settled Inbox suggestions.
+   */
+  readonly seedThrough?: "renderer" | "core";
   readonly onFailure?: (context: ElectronScenarioFailureContext) => Promise<void>;
 }
 
@@ -599,9 +606,17 @@ export const withElectronScenario = async <Value>(
   let facts: ScenarioFacts | null = null;
   const readRuntimeLogs = () => readBoundedElectronRuntimeLogs(harness.profile);
   try {
+    if (input.scenarioId && input.seedThrough === "core") {
+      manifest = await materializeDevelopmentSeed({
+        environment: input.environment,
+        scenarioId: input.scenarioId,
+        nodexHome: harness.profile.nodexHome,
+        workspace: harness.profile.initialProjectsDirectory,
+      });
+    }
     page = await harness.launch();
     const seed = new RendererIpcSeedAdapter(page);
-    manifest = input.scenarioId
+    manifest ??= input.scenarioId
       ? await materializeScenario(input.scenarioId, seed, harness.profile.initialProjectsDirectory)
       : null;
     facts = manifest ? await inspectScenario(manifest, seed) : null;

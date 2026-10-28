@@ -89,6 +89,9 @@ const actions = (): InboxActions => ({
   retryDispatch: vi.fn(async () => true),
 });
 
+/** Whether the last rendered row already opens the message's chat. */
+let rowOpensChat = false;
+
 const renderTriage = (
   overrides: Partial<Parameters<typeof InboxTriage>[0]> = {},
   commands: InboxActions = actions(),
@@ -110,14 +113,17 @@ const renderTriage = (
         onManualDraftChange={vi.fn()}
         {...overrides}
       >
-        {({ editor, messageActions, strip, actions: row }) => (
-          <>
-            {editor ?? <p>{overrides.item?.body ?? item().body}</p>}
-            {messageActions}
-            {strip}
-            {row}
-          </>
-        )}
+        {({ editor, messageActions, strip, actions: row, opensChat }) => {
+          rowOpensChat = opensChat;
+          return (
+            <>
+              {editor ?? <p>{overrides.item?.body ?? item().body}</p>}
+              {messageActions}
+              {strip}
+              {row}
+            </>
+          );
+        }}
       </InboxTriage>
     </QueryClientProvider>,
   );
@@ -339,6 +345,8 @@ describe("InboxTriage", () => {
       onManualDraftChange,
     });
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    // The row is where the chat is checked, so the message does not offer it a second time.
+    expect(rowOpensChat).toBe(true);
     await click("Open chat");
     expect(onOpenSession).toHaveBeenCalledWith("session:remote");
     await click("Send again");
@@ -625,12 +633,15 @@ describe("InboxTriage", () => {
     expect(screen.queryByText("Compare both positions.")).toBeNull();
     expect(screen.queryByRole("button", { name: /Start chat/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(rowOpensChat).toBe(true);
     await click("Open chat");
     expect(onOpenSession).toHaveBeenCalledWith("session:new");
   });
 
   test("keep and done clear the message without dispatching it", async () => {
     const commands = renderTriage();
+    // Nothing in this row opens a chat, so the message may offer its own linked chats.
+    expect(rowOpensChat).toBe(false);
     await click("Keep");
     await waitFor(() => expect(commands.keep).toHaveBeenCalledWith(["page:1"]));
     await click("Mark done");
@@ -769,7 +780,8 @@ describe("Importance", () => {
         selected={false}
         selectionActive={false}
         onToggleSelected={vi.fn()}
-        onOpenSource={vi.fn()}
+        linkedChats={null}
+        onOpenChat={vi.fn()}
         onOpenPage={handlers.onOpenPage ?? vi.fn()}
         onUnmarkImportant={handlers.onUnmarkImportant ?? vi.fn()}
         editor={null}
@@ -1002,7 +1014,7 @@ describe("InboxMessage source navigation", () => {
   test.each(["run:child", null])(
     "opens the owning product Session for a child source with Run %s",
     async (runId) => {
-      const onOpenSource = vi.fn();
+      const onOpenChat = vi.fn();
       render(
         <TestQueryProvider>
           <InboxMessage
@@ -1019,7 +1031,8 @@ describe("InboxMessage source navigation", () => {
             selected={false}
             selectionActive={false}
             onToggleSelected={vi.fn()}
-            onOpenSource={onOpenSource}
+            linkedChats={null}
+            onOpenChat={onOpenChat}
             onOpenPage={vi.fn()}
             onUnmarkImportant={vi.fn()}
             editor={null}
@@ -1030,12 +1043,12 @@ describe("InboxMessage source navigation", () => {
         </TestQueryProvider>,
       );
       await click("From Research Agent");
-      expect(onOpenSource).toHaveBeenCalledExactlyOnceWith("session:owner");
+      expect(onOpenChat).toHaveBeenCalledExactlyOnceWith("session:owner");
     },
   );
 
   test("an unavailable Session cannot be replaced with a native Thread lookup", async () => {
-    const onOpenSource = vi.fn();
+    const onOpenChat = vi.fn();
     render(
       <TestQueryProvider>
         <InboxMessage
@@ -1052,7 +1065,8 @@ describe("InboxMessage source navigation", () => {
           selected={false}
           selectionActive={false}
           onToggleSelected={vi.fn()}
-          onOpenSource={onOpenSource}
+          linkedChats={null}
+          onOpenChat={onOpenChat}
           onOpenPage={vi.fn()}
           onUnmarkImportant={vi.fn()}
           editor={null}
@@ -1066,6 +1080,6 @@ describe("InboxMessage source navigation", () => {
       screen.getByRole("button", { name: "From Research Agent" }).hasAttribute("disabled"),
     ).toBe(true);
     await click("From Research Agent");
-    expect(onOpenSource).not.toHaveBeenCalled();
+    expect(onOpenChat).not.toHaveBeenCalled();
   });
 });

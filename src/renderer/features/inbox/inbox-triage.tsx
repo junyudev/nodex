@@ -293,7 +293,13 @@ export interface InboxTriageParts {
   readonly strip: ReactNode;
   /** Icon actions and the menu, then the decision at the right; null while an editor is open. */
   readonly actions: ReactNode;
+  /** Whether the row already opens the message's chat, so the message need not offer it again. */
+  readonly opensChat: boolean;
 }
+
+// Only a row that opens the chat says so; every other row leaves it to the message.
+type InboxRowParts = Omit<InboxTriageParts, "editor" | "messageActions" | "opensChat"> &
+  Partial<Pick<InboxTriageParts, "opensChat">>;
 
 /**
  * What Nodex made of one message: a concrete suggestion, a generation failure, or a manual
@@ -457,32 +463,31 @@ export function InboxTriage({
     />
   );
 
-  const outcomeParts = (
-    outcome: InboxOutcome,
-  ): Omit<InboxTriageParts, "editor" | "messageActions"> => {
+  const outcomeParts = (outcome: InboxOutcome): InboxRowParts => {
     const target = outcome.open;
+    const chatId = target?.kind === "session" && onOpenSession ? target.sessionId : null;
     return {
       strip: (
         <Settle id="outcome">
           <InboxOutcomeLine outcome={outcome} />
         </Settle>
       ),
-      actions:
-        target?.kind === "session" && onOpenSession ? (
-          <Row>
-            <InboxIconActions>
-              <InboxIconAction
-                label="Open chat"
-                icon={ThreadIcon}
-                onClick={() => onOpenSession(target.sessionId)}
-              />
-            </InboxIconActions>
-          </Row>
-        ) : null,
+      opensChat: chatId != null,
+      actions: chatId ? (
+        <Row>
+          <InboxIconActions>
+            <InboxIconAction
+              label="Open chat"
+              icon={ThreadIcon}
+              onClick={() => onOpenSession?.(chatId)}
+            />
+          </InboxIconActions>
+        </Row>
+      ) : null,
     };
   };
 
-  const parts = (): Omit<InboxTriageParts, "editor" | "messageActions"> => {
+  const parts = (): InboxRowParts => {
     if (decided) return outcomeParts(decided);
     if (manualDraft) {
       return {
@@ -644,8 +649,11 @@ export function InboxTriage({
             </Row>
           ),
         };
-      case "dispatch-failed":
+      case "dispatch-failed": {
+        const uncertainChat =
+          model.proposal.failureKind === "unknown" && onOpenSession ? model.proposal.chat : null;
         return {
+          opensChat: uncertainChat != null,
           strip: (
             <Settle id="dispatch-failed">
               <Notice tone="error">
@@ -663,11 +671,11 @@ export function InboxTriage({
               <InboxIconActions>
                 {menuNode}
                 {model.proposal.failureKind === "unknown" ? (
-                  model.proposal.chat && onOpenSession ? (
+                  uncertainChat ? (
                     <InboxIconAction
                       label="Open chat"
                       icon={ThreadIcon}
-                      onClick={() => onOpenSession(model.proposal.chat!.sessionId)}
+                      onClick={() => onOpenSession?.(uncertainChat.sessionId)}
                     />
                   ) : null
                 ) : model.proposal.failureKind === "rejected" &&
@@ -693,6 +701,7 @@ export function InboxTriage({
             </Row>
           ),
         };
+      }
       case "firing-withdrawn":
         return {
           strip: (
@@ -765,6 +774,7 @@ export function InboxTriage({
       messageActions: null,
       strip: null,
       actions: null,
+      opensChat: false,
     });
   }
   // A delivered or failed delivery's text is settled, and a dispatch editor is already open.
@@ -772,6 +782,7 @@ export function InboxTriage({
     !manualDraft && !decided && model.kind !== "handled" && model.kind !== "dispatch-failed";
   return children({
     editor: null,
+    opensChat: false,
     messageActions: (
       <>
         {copyAction}

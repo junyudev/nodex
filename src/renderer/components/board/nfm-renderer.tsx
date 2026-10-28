@@ -65,25 +65,46 @@ const NfmDensityContext = createContext<NfmDensity>("page");
 
 /**
  * Read-only rendering of parsed Nodex Markdown Blocks. Library File images resolve through the
- * enclosing File runtime.
+ * enclosing File runtime. `lead` opens the first line: the words follow it on that line, and the
+ * lines after it take the full width.
  */
 export function NfmDocument({
   blocks,
   className,
   projectWorkspacePath,
   density = "page",
+  lead,
 }: {
   readonly blocks: readonly MarkdownBlock[];
   readonly className?: string;
   readonly projectWorkspacePath?: string | null;
   readonly density?: NfmDensity;
+  readonly lead?: ReactNode;
 }) {
   return (
     <NfmDensityContext.Provider value={density}>
       <div className={cn("nfm-render", MARKDOWN_CONTENT_CLASS_NAME, className)}>
-        <BlockList blocks={blocks} projectWorkspacePath={projectWorkspacePath} />
+        <BlockList blocks={blocks} projectWorkspacePath={projectWorkspacePath} lead={lead} />
       </div>
     </NfmDensityContext.Provider>
+  );
+}
+
+/** Blocks whose first line is their own text, which a lead can open in place. */
+const opensWithText = (block: MarkdownBlock | undefined) =>
+  block?.type === "paragraph" || (block?.type === "heading" && !block.props?.isToggleable);
+
+/**
+ * A document's lead, one line tall so it sits level with the words beside it. Within a line it
+ * counts toward the text's width, so it never pushes a line that fits onto the next one.
+ */
+function NfmLead({ children, float = false }: { children: ReactNode; float?: boolean }) {
+  return (
+    <span
+      className={cn("mr-1 h-lh items-center", float ? "float-left flex" : "inline-flex align-top")}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -124,18 +145,34 @@ const MESSAGE_STYLES = {
 function BlockList({
   blocks,
   projectWorkspacePath,
+  lead,
 }: {
   blocks: readonly MarkdownBlock[];
   projectWorkspacePath?: string | null;
+  lead?: ReactNode;
 }) {
   const children: ReactNode[] = [];
+  const leadsInline = lead != null && opensWithText(blocks[0]);
+  // A list, quote or code block keeps its own first line; the lead floats beside it instead.
+  if (lead != null && !leadsInline) {
+    children.push(
+      <NfmLead key="lead" float>
+        {lead}
+      </NfmLead>,
+    );
+  }
 
   for (let index = 0; index < blocks.length; index += 1) {
     const block = blocks[index];
 
     if (block.type !== "numberedListItem") {
       children.push(
-        <BlockComponent key={index} block={block} projectWorkspacePath={projectWorkspacePath} />,
+        <BlockComponent
+          key={index}
+          block={block}
+          projectWorkspacePath={projectWorkspacePath}
+          lead={leadsInline && index === 0 ? lead : undefined}
+        />,
       );
       continue;
     }
@@ -183,18 +220,23 @@ function BlockList({
 function BlockComponent({
   block,
   projectWorkspacePath,
+  lead,
 }: {
   block: MarkdownBlock;
   projectWorkspacePath?: string | null;
+  /** Opens this Block's text; only a Block that `opensWithText` receives one. */
+  lead?: ReactNode;
 }) {
   const colorClass = blockColorClass(block);
   const density = useContext(NfmDensityContext);
+  const leading = lead == null ? null : <NfmLead>{lead}</NfmLead>;
 
   switch (block.type) {
     case "paragraph":
       return (
         <div className={cn(PARAGRAPH_SPACING[density], "leading-relaxed", colorClass)}>
           <p className="whitespace-pre-wrap">
+            {leading}
             <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
           </p>
           <ChildBlocks
@@ -234,6 +276,7 @@ function BlockComponent({
 
       return (
         <Tag className={cn(sizes[level], colorClass, INLINE_MARKDOWN_HEADING_CLASS_NAME)}>
+          {leading}
           <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
         </Tag>
       );

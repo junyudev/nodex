@@ -6,6 +6,7 @@ import { expect, test, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 import "@/globals.css";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import type { PageChatActivitySummary } from "@/lib/types";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
 import { inboxNewChatAction, type InboxItem, type InboxProposal } from "../../../shared/inbox";
 import { InboxMessage } from "./inbox-message";
@@ -48,10 +49,12 @@ const actions = new Proxy({} as InboxActions, { get: () => vi.fn(async () => tru
 function StreamMessage({
   item,
   selected = false,
+  linkedChats = null,
   onOpenPage = openNothing,
 }: {
   item: InboxItem;
   selected?: boolean;
+  linkedChats?: PageChatActivitySummary | null;
   onOpenPage?: () => void;
 }) {
   return (
@@ -75,7 +78,8 @@ function StreamMessage({
             selected={selected}
             selectionActive={selected}
             onToggleSelected={vi.fn()}
-            onOpenSource={vi.fn()}
+            linkedChats={linkedChats}
+            onOpenChat={vi.fn()}
             onOpenPage={onOpenPage}
             onUnmarkImportant={vi.fn()}
             editor={triage.editor}
@@ -265,6 +269,108 @@ test("the time keeps its place on the bubble's side whether or not the message i
   const plain = timeOffset(waiting);
   expect(plain).toBeGreaterThan(0);
   expect(timeOffset({ ...waiting, important: true })).toBeCloseTo(plain, 0);
+});
+
+/** Each line the text of a message lays out, top to bottom. */
+const textLines = (text: Element) => {
+  const range = document.createRange();
+  range.selectNodeContents(text);
+  const lines: DOMRect[] = [];
+  for (const rect of range.getClientRects()) {
+    const line = lines.find((seen) => Math.abs(seen.top - rect.top) < 2);
+    if (!line) lines.push(rect);
+  }
+  return lines.toSorted((a, b) => a.top - b.top);
+};
+
+test("a Page that has moved on opens its first line with its status and chats, and its text wraps beneath them", () => {
+  const chats: PageChatActivitySummary = {
+    pageId: "page:1",
+    relatedCount: 1,
+    workingCount: 1,
+    waitingOnApprovalCount: 0,
+    waitingOnUserInputCount: 0,
+    errorCount: 0,
+    unreadCount: 0,
+    soleSessionId: "session:1",
+    runtimeSessionIds: [],
+  };
+  const body =
+    "Keep the drag handle visible while moving a block, and keep it in place when the pointer leaves the row during a long drag.";
+  render(
+    <Stream>
+      <StreamMessage
+        key="page:1"
+        item={{ ...waiting, body, important: true, pageStatus: { id: "build", label: "Build" } }}
+        linkedChats={chats}
+      />
+    </Stream>,
+  );
+  const marks = screen.getByTestId("inbox-page-marks");
+  const status = screen.getByRole("img", { name: "Status: Build" }).getBoundingClientRect();
+  const chat = screen.getByRole("button", { name: /1 linked chat/ }).getBoundingClientRect();
+  const lines = textLines(screen.getByText(body));
+  const [first, next] = [lines[0]!, lines[1]!];
+  // They belong to the message itself, inside its bubble, and stay shown.
+  expect(screen.getByTestId("inbox-message-unit").contains(marks)).toBe(true);
+  expect(shownOpacity(marks)).toBe(1);
+  // Status, then the way to its chats, then the words, all on the first line.
+  expect(chat.left).toBeGreaterThanOrEqual(status.right);
+  expect(first.left).toBeGreaterThanOrEqual(chat.right);
+  for (const mark of [status, chat]) {
+    expect(Math.abs(mark.top + mark.height / 2 - (first.top + first.height / 2))).toBeLessThan(2);
+  }
+  // The rest of the message takes the bubble's full width again, starting where the marks do.
+  expect(lines.length).toBeGreaterThan(1);
+  expect(Math.abs(next.left - marks.getBoundingClientRect().left)).toBeLessThan(1);
+});
+
+test("marks never push a message that fits on one line onto a second", () => {
+  const body = "Review the empty search results copy.";
+  render(
+    <Stream>
+      <StreamMessage
+        key="page:1"
+        item={{ ...waiting, body, pageStatus: { id: "review", label: "Review" } }}
+        linkedChats={{
+          pageId: "page:1",
+          relatedCount: 2,
+          workingCount: 0,
+          waitingOnApprovalCount: 0,
+          waitingOnUserInputCount: 1,
+          errorCount: 0,
+          unreadCount: 0,
+          soleSessionId: null,
+          runtimeSessionIds: [],
+        }}
+      />
+    </Stream>,
+  );
+  expect(screen.getByRole("img", { name: "Status: Review" })).toBeTruthy();
+  expect(textLines(screen.getByText(body))).toHaveLength(1);
+});
+
+test("a message still waiting in Triage with no chats shows no marks", () => {
+  render(
+    <Stream>
+      <StreamMessage
+        key="page:1"
+        item={{ ...waiting, pageStatus: { id: "triage", label: "Triage" } }}
+        linkedChats={{
+          pageId: "page:1",
+          relatedCount: 0,
+          workingCount: 0,
+          waitingOnApprovalCount: 0,
+          waitingOnUserInputCount: 0,
+          errorCount: 0,
+          unreadCount: 0,
+          soleSessionId: null,
+          runtimeSessionIds: [],
+        }}
+      />
+    </Stream>,
+  );
+  expect(screen.queryByTestId("inbox-page-marks")).toBeNull();
 });
 
 test("the time becomes the message's link to its Page once it shows", async () => {

@@ -15,6 +15,7 @@ import { toast } from "@/components/ui/toast";
 import { usePageChatActivity, usePageChatItemActivity } from "@/lib/use-page-chat-activity";
 import { pageChatWindowQueryOptions } from "@/lib/query-options";
 import type { PageChatActivitySummary, PageChatItem } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export interface PageChatActivityDetailOverride {
   readonly items: readonly PageChatItem[];
@@ -31,6 +32,8 @@ export interface PageChatActivityControlProps {
   readonly onOpenChat: (sessionId: string) => Promise<void> | void;
   readonly onRemoveRelation?: (sessionId: string) => Promise<void> | void;
   readonly detailOverride?: PageChatActivityDetailOverride;
+  /** Adapts the trigger to the surface it sits on, such as a hover tint inside a message. */
+  readonly className?: string;
 }
 
 function RelatedChatRow({
@@ -96,6 +99,7 @@ export function PageChatActivityControl({
   onOpenChat,
   onRemoveRelation,
   detailOverride,
+  className,
 }: PageChatActivityControlProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [removingSessionId, setRemovingSessionId] = useState<string | null>(null);
@@ -177,7 +181,10 @@ export function PageChatActivityControl({
             type="button"
             aria-label={activity.accessibleLabel}
             data-page-chat-activity-control="true"
-            className="relative flex size-5 shrink-0 items-center justify-center rounded outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
+            className={cn(
+              "relative flex size-5 shrink-0 items-center justify-center rounded outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border",
+              className,
+            )}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={handleTriggerClick}
             onDoubleClick={(event) => event.stopPropagation()}

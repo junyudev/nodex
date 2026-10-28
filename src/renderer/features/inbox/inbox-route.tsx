@@ -31,6 +31,7 @@ import {
 } from "@/components/workbench/surface-toolbar";
 import { ToolbarIconButton } from "@/components/workbench/workbench-panel-controls";
 import type { ShowPagesInChatInput } from "@/lib/page-chat-actions";
+import { usePageChatActivitySummaries } from "@/lib/use-page-chat-activity-summaries";
 import { cn } from "@/lib/utils";
 import { ThreadTimestampSeparator } from "@/features/local-conversation/view/shared/thread-timestamp-separator";
 import { InboxComposer } from "./inbox-composer";
@@ -312,6 +313,7 @@ export function InboxRoute({
   const contentRef = useRef<HTMLDivElement>(null);
   // The Inbox reads like a conversation, oldest first; History reads newest first.
   const inboxItems = view === "inbox" ? departures.items.toReversed() : [];
+  const linkedChats = usePageChatActivitySummaries(inboxItems.map((item) => item.pageId));
   // The last messages decided still say where they went before the Inbox reads as clear.
   const shownItems = view === "inbox" ? inboxItems : stream.items;
   const nowMs = Date.now();
@@ -477,7 +479,8 @@ export function InboxRoute({
             selected={selected.has(item.pageId)}
             selectionActive={selected.size > 0}
             onToggleSelected={() => toggleSelected(item.pageId)}
-            onOpenSource={onOpenSession}
+            linkedChats={triage.opensChat ? null : (linkedChats.get(item.pageId) ?? null)}
+            onOpenChat={onOpenSession}
             onOpenScheduledTask={onOpenScheduledTask}
             onOpenPage={() => onOpenPage(item.pageId)}
             onUnmarkImportant={() => void actions.setImportant(item.pageId, false)}
