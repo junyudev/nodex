@@ -1,0 +1,29 @@
+crates/nodex-core/src/document/integrity.rs
+  s_4b53f1a3b989a8::t_15b0eff338c266 205-211,227
+crates/nodex-core/src/domain/block_materialization.rs
+  s_4b53f1a3b989a8::t_22a1bcb3364933 776-779,1138,1166,1168,1198-1203
+  s_4b53f1a3b989a8::t_5b204485cb2cff 1188-1192
+  s_4b53f1a3b989a8::t_15b0eff338c266 662-663,787-794,796-798,802,804-847,852
+  s_4b53f1a3b989a8::t_24b460d248d164 651,656-661,673,676,740-743,795,799-801,803
+  s_4b53f1a3b989a8::t_441e2d68bd3222 1179
+  s_4b53f1a3b989a8::t_eebb88f0d62b23 1167,1171-1174
+  s_4b53f1a3b989a8::t_069136faf9ec3f 664-670,672,737-739,744-775,780-786,848-851
+  s_4b53f1a3b989a8::t_4faaf012d1e012 1139-1165,1169-1170,1175-1178,1180-1187,1193-1197,1204-1215
+  s_4b53f1a3b989a8::t_fe21e72457e60d 853,1137,1216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7958baf1a86763930c14db458aaa63f9b6e1a04d",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
