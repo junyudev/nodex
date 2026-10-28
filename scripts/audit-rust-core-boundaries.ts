@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { build } from "esbuild";
+import { auditDesktopImportBoundaries } from "./desktop-import-boundaries";
 
 const repositoryRoot = path.resolve(".");
 const failures: string[] = [];
@@ -121,36 +121,9 @@ for (const file of productionMainFiles) {
   );
 }
 
-const productionMainBundlePromise = build({
-  entryPoints: [path.join(repositoryRoot, "src/main/bootstrap.ts")],
-  bundle: true,
-  platform: "node",
-  format: "esm",
-  packages: "external",
-  write: false,
-  metafile: true,
-  logLevel: "silent",
-});
-const retiredDocumentAuthorityInputs = ["document-operation-engine.ts", "block-document-codec.ts"];
-const auditProductionMainBundle = (
-  productionMainBundle: Awaited<typeof productionMainBundlePromise>,
-): void => {
-  for (const [input, metadata] of Object.entries(productionMainBundle.metafile.inputs)) {
-    const normalizedInput = input.replaceAll("\\", "/");
-    for (const retiredInput of retiredDocumentAuthorityInputs) {
-      if (normalizedInput.endsWith(`/${retiredInput}`)) {
-        failures.push(
-          `Desktop bootstrap transitively includes retired Document authority: ${input}`,
-        );
-      }
-    }
-    for (const imported of metadata.imports) {
-      if (imported.path === "yjs" || imported.path.startsWith("yjs/")) {
-        failures.push(`Desktop bootstrap transitively imports Yjs from ${input}`);
-      }
-    }
-  }
-};
+const productionMainBundlePromise = auditDesktopImportBoundaries(
+  path.join(repositoryRoot, "src/main/bootstrap.ts"),
+);
 
 for (const file of ["src/shared/ipc-api.ts"]) {
   assertAbsent(
@@ -256,8 +229,8 @@ for (const axis of ["manifest_version", "transport", "event_versions", "modules"
   }
 }
 
-void productionMainBundlePromise.then((productionMainBundle) => {
-  auditProductionMainBundle(productionMainBundle);
+void productionMainBundlePromise.then((importFailures) => {
+  failures.push(...importFailures);
   if (failures.length > 0) {
     throw new Error(`Rust Core boundary audit failed:\n${failures.join("\n")}`);
   }
