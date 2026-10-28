@@ -133,6 +133,24 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toBe("true");
   });
 
+  test("the Chat tab carries unread news only while content hides the conversation", async () => {
+    const session = makeAttachedSession({
+      title: "Background chat",
+      rightFullWidth: true,
+      unread: true,
+    });
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [session] },
+      initialSelectedSessionId: session.id,
+    });
+    const chat = await screen.findByRole("tab", { name: "Background chat, Unread" });
+    expect(chat.querySelector('[data-chat-tab-status="unread"]')).toBeTruthy();
+
+    await pointerActivate(chat);
+    const selected = await screen.findByRole("tab", { name: "Background chat", selected: true });
+    expect(selected.querySelector("[data-chat-tab-status]")).toBeNull();
+  });
+
   test("a full-view content tab's menu presents it in a pane beside the Chat", async () => {
     const session = makeAttachedSession({ title: "Present content", rightFullWidth: true });
     const screen = renderWorkbench({

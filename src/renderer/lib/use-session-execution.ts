@@ -5,8 +5,12 @@ import type { ThreadExecutionLocationView } from "../../shared/codex-thread-hand
 import {
   useAgentRuntimeConnectionState,
   useAgentRuntimeSessionActivity,
+  useAgentRuntimeSessionStatus,
   type AgentRuntimeActivityStore,
 } from "./agent-runtime-session-activity";
+import { runtimeSessionTarget } from "./session-execution";
+import { resolveSidebarRowStatus, type SidebarRowStatus } from "./sidebar-status";
+import type { ProjectSession } from "./types";
 import { queryKeys } from "./query-keys";
 import { readThreadExecutionLocation } from "./thread-handoff-runtime";
 
@@ -72,4 +76,23 @@ function useInvalidateLocationAfterActivity(rootThreadId: string | null, live: b
       exact: true,
     });
   }, [live, queryClient, rootThreadId]);
+}
+
+/**
+ * The one live status a Session's sidebar row shows, for other surfaces that stand for the
+ * chat: a Runtime Session's activity, otherwise its native thread status, then unread news.
+ */
+export function useSessionRowStatus(
+  session: Pick<ProjectSession, "id" | "executionRef" | "thread" | "unread"> | null,
+  store?: AgentRuntimeActivityStore,
+): SidebarRowStatus | null {
+  const runtime = runtimeSessionTarget(session);
+  const indicator = useAgentRuntimeSessionStatus(runtime?.sessionId, store);
+  if (!session) return null;
+  return resolveSidebarRowStatus({
+    unread: session.unread,
+    running: runtime ? indicator === "running" : session.thread?.statusType === "active",
+    background: indicator === "background",
+    needsAttention: indicator === "waiting",
+  });
 }

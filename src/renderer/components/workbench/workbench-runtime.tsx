@@ -25,6 +25,8 @@ import { WorkbenchRailFoot } from "./workbench-rail-account-controls";
 import { WorkbenchTitlebarProvider } from "./workbench-titlebar-context";
 import { WorkspaceFullViewToggle, WorkspaceTabsControl } from "./workspace-tabs-control";
 import type { AppShellLeadingTab } from "./app-shell-tabs";
+import { SESSION_CHAT_TAB_STATUS_LABELS, SessionChatTabIcon } from "./session-chat-tab-icon";
+import { useSessionRowStatus } from "@/lib/use-session-execution";
 import {
   ThreadStageHeaderSlotContext,
   type ThreadStageHeaderSlot,
@@ -309,7 +311,6 @@ import type { PageStageSessionSnapshot } from "@/components/board/page-stage/typ
 import { getCodexSidebarFloatingOuterClassName } from "@/lib/codex-sidebar-auto-reveal";
 import {
   CloseIcon,
-  ConversationIcon,
   EnterFullViewIcon,
   MoveToLeftPaneIcon,
   MoveToRightPaneIcon,
@@ -3644,12 +3645,19 @@ export function WorkbenchRuntime({
     }),
     [moveSessionConversationToSide, sessionWorkspace],
   );
+  // The Chat tab carries the chat's live status while content hides the conversation.
+  const sessionChatStatus = useSessionRowStatus(
+    sessionWorkspace?.fullViewSurface === "content" ? activeSession : null,
+  );
   const sessionChatTab: AppShellLeadingTab | null =
     sessionWorkspace?.layout === "full" && activeSession
       ? {
           id: "session-chat",
           title: activeSession.displayTitle.trim() || "Chat",
-          icon: <ConversationIcon className="icon-xs" />,
+          icon: <SessionChatTabIcon status={sessionChatStatus} />,
+          statusLabel: sessionChatStatus
+            ? SESSION_CHAT_TAB_STATUS_LABELS[sessionChatStatus]
+            : undefined,
           selected: sessionConversationFillsFullView,
           actions: (
             <ThreadStageHeaderSlotContext.Provider value={CHAT_TAB_THREAD_HEADER_SLOT}>

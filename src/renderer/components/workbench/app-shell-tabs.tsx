@@ -164,6 +164,8 @@ export interface AppShellLeadingTab {
   readonly panelId?: string;
   /** Always-visible trailing actions, such as the Chat actions menu. */
   readonly actions?: ReactNode;
+  /** Names a live status the icon shows, such as a running chat, for assistive technology. */
+  readonly statusLabel?: string;
   readonly contextMenuItems?: readonly AppShellTabContextMenuActionItem[];
   readonly onSelect: () => void;
   readonly onDoubleClick?: () => void;
@@ -1389,7 +1391,7 @@ function AppShellLeadingTabChrome({
           role="tab"
           aria-selected={tab.selected}
           aria-controls={tab.selected ? tab.panelId : undefined}
-          aria-label={tab.title}
+          aria-label={tab.statusLabel ? `${tab.title}, ${tab.statusLabel}` : tab.title}
           className={cn(
             "no-drag relative z-10 flex h-full min-w-0 flex-1 items-center gap-2 py-1 ps-2.5 pe-1 text-sm",
             tab.selected ? "text-(--color-text)" : "text-tertiary",

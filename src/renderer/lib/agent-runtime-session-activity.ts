@@ -196,6 +196,20 @@ export function useAgentRuntimeSessionActivity(
   );
 }
 
+/**
+ * Only a Session's status, for surfaces outside its row: they re-render when it starts, waits,
+ * or settles rather than on every activity update. Null while idle or not Runtime-bound.
+ */
+export function useAgentRuntimeSessionStatus(
+  sessionId: string | null | undefined,
+  store: AgentRuntimeActivityStore = agentRuntimeActivityStore,
+): AgentRuntimeSessionActivity["status"] | null {
+  return useSyncExternalStore(
+    (listener) => (sessionId ? store.subscribeSession(sessionId, listener) : () => {}),
+    () => (sessionId ? (store.read(sessionId)?.status ?? null) : null),
+  );
+}
+
 /** Every non-idle Session; prefer the per-Session hook for leaf rows. */
 export function useAgentRuntimeActivities(
   store: AgentRuntimeActivityStore = agentRuntimeActivityStore,
