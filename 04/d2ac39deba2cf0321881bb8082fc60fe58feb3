@@ -1,0 +1,40 @@
+src/renderer/lib/workbench-panel-actions.node.test.ts
+  s_3e827337b8c92d::t_180a0af0f325f2 3,13-23
+  s_28aeb0c36d82d6::t_d917f5bab943e0 24-25
+src/shared/command-keybindings.test.ts
+  s_3e827337b8c92d::t_180a0af0f325f2 82,91-117,138,220
+src/renderer/lib/workbench-panel-actions.ts
+  s_3e827337b8c92d::t_180a0af0f325f2 4,193-195,197
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_3e827337b8c92d::t_180a0af0f325f2 2497
+src/shared/command-keybindings.ts
+  s_3e827337b8c92d::t_180a0af0f325f2 255,1910-1913
+docs/KEYBOARD_SHORTCUTS.md
+  s_3e827337b8c92d::t_2d4ad1802153de 71
+src/renderer/components/workbench/command-palette.test.tsx
+  s_28aeb0c36d82d6::t_bcc8135d354e22 227,1897
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "04d2ac39deba2cf0321881bb8082fc60fe58feb3",
+  "prompts": {},
+  "sessions": {
+    "s_28aeb0c36d82d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180f8-3de0-7ef2-9837-a115bb6686ad",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3e827337b8c92d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1816c-8412-7bd0-9230-e7710168fae0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
