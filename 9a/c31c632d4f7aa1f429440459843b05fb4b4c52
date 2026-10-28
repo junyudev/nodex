@@ -1,0 +1,33 @@
+tests/e2e/composer-portal-radius.spec.ts
+  s_0eb8085b5125f4::t_c3cba8c43dbff0 25
+  s_0eb8085b5125f4::t_4c8b089ea9b051 46-48,51-53,64-67,72,85-103,107,132-141,143
+  s_0eb8085b5125f4::t_a6f2bd8b6a52a8 58-61,142
+  s_0eb8085b5125f4::t_5449a7d387800a 1-24,26-45,49-50,54-57,62-63,68-71,73-84,104-106,108-131,144-147
+tests/e2e/fixtures/codex-queue-app-server.mjs
+  s_0eb8085b5125f4::t_a73c63b64330e5 258
+  s_0eb8085b5125f4::t_5449a7d387800a 252-257,259-261
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_0eb8085b5125f4::t_19c7150df81308 634
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.tsx
+  s_0eb8085b5125f4::t_a420583921cb52 194,196,497,565,719,1026-1031,1033
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-goal-status-row.tsx
+  s_0eb8085b5125f4::t_8df95b6593f8f3 350-351
+src/renderer/features/local-conversation/view/local-conversation-footer.tsx
+  s_0eb8085b5125f4::t_c730b8a2f9e65f 75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ac31c632d4f7aa1f429440459843b05fb4b4c52",
+  "prompts": {},
+  "sessions": {
+    "s_0eb8085b5125f4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180f6-6a0e-7e41-a870-8cfa7df2fd28",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
