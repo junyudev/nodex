@@ -1,0 +1,19 @@
+src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx
+  s_6c9891f66c664a::t_cb4e9922b322c9 268-273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d37b3af66eff27a54aed05a4ff6ed5c9acc3e8d",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
