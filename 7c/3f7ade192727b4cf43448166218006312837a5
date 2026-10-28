@@ -1,0 +1,95 @@
+src/main/platform/node/MainFatalIncidentStore.ts
+  s_fd4cb1040ce91e::t_dac3a9b74349c8 17,26-30,64-70,82-86
+  s_fd4cb1040ce91e::t_041884ade834d1 1-16,18-25,31-63,71-81,87-116
+  s_fd4cb1040ce91e::t_122139c6f75089 117-119
+crates/nodex-core-server/Cargo.toml
+  s_fd4cb1040ce91e::t_c6d00cd67481b2 26
+src/main/core-runtime/CoreEventHub.node.test.ts
+  s_fd4cb1040ce91e::t_e06e4547839260 26,35,102-111,392-436
+docs/SECURITY.md
+  s_fd4cb1040ce91e::t_aadba6774ce544 525-529,533
+  s_fd4cb1040ce91e::t_189c89676f2638 530-532
+tests/e2e/core-recovery-inbox.spec.ts
+  s_fd4cb1040ce91e::t_b5186ef569c69f 1-200
+docs/ARCHITECTURE.md
+  s_fd4cb1040ce91e::t_aadba6774ce544 217
+src/main/app/MainFatalIncident.ts
+  s_fd4cb1040ce91e::t_189c89676f2638 9,12-20,84,86-90,95,105,110-116,139,141-142,146
+  s_fd4cb1040ce91e::t_dac3a9b74349c8 2,69,74-78,85,92
+  s_fd4cb1040ce91e::t_3b58044a48c8d9 8,10-11,33-37,62
+  s_fd4cb1040ce91e::t_1dc24f0092f036 153-156,165-171
+  s_fd4cb1040ce91e::t_3cbb8b61415496 1,3-7,21-32,38-61,63-68,70-73,79-83,91,93-94,96-104,106-109,117-138,140,143-145,147-152,157-164,175-201
+  s_fd4cb1040ce91e::t_56f841420caa67 172-174
+  s_fd4cb1040ce91e::t_2abbd28ca653df 202
+docs/RELIABILITY.md
+  s_fd4cb1040ce91e::t_189c89676f2638 372-374
+  s_fd4cb1040ce91e::t_aadba6774ce544 362-371
+docs/reliability/core-lifecycle-and-store.md
+  s_fd4cb1040ce91e::t_aadba6774ce544 12-18,59-66
+  s_79f58a542f5eeb::t_f5ac4d8fc6f2ef 67
+src/main/platform/node/MainFatalIncidentStore.node.test.ts
+  s_fd4cb1040ce91e::t_74ee14b631c9c9 1-104
+src/main/app/MainObservability.ts
+  s_fd4cb1040ce91e::t_3b58044a48c8d9 82-85,87-93,96-111
+  s_fd4cb1040ce91e::t_1dc24f0092f036 1,9-16,24,52-56,63-65,81,112
+  s_fd4cb1040ce91e::t_189c89676f2638 94-95
+src/main/app/MainExit.ts
+  s_fd4cb1040ce91e::t_3cbb8b61415496 19-23
+src/main/app/MainFoundationLive.ts
+  s_fd4cb1040ce91e::t_1dc24f0092f036 12,50,57-59
+  s_6c9891f66c664a::t_94a7cd52d733d7 60
+src/main/core-client/uds-http.ts
+  s_fd4cb1040ce91e::t_c6d00cd67481b2 752-755,757,762-763
+  s_fd4cb1040ce91e::t_88ab4324c5e6a6 756,758-761
+crates/nodex-core-server/tests/native_cli_client.rs
+  s_fd4cb1040ce91e::t_1abefc012b1f79 481-567
+src/main/app/MainFatalIncident.test.ts
+  s_fd4cb1040ce91e::t_0e17cac2eb681f 1-117
+  s_fd4cb1040ce91e::t_71587ab1cf3d24 118-141
+src/main/app/MainObservability.node.test.ts
+  s_fd4cb1040ce91e::t_71587ab1cf3d24 67,78-80,126-129
+  s_fd4cb1040ce91e::t_c1e5c9fc6484a5 1-66,68-77,81-125,130-179
+src/main/core-client/uds-http.node.test.ts
+  s_fd4cb1040ce91e::t_e07d2b8e6468cd 1,109-126,872-917
+src/main/bootstrap.ts
+  s_fd4cb1040ce91e::t_189c89676f2638 2,177
+  s_fd4cb1040ce91e::t_1dc24f0092f036 20,169-172,196,279-281
+  s_fd4cb1040ce91e::t_d2da09ee78662b 282-283
+CHANGELOG.md
+  s_fd4cb1040ce91e::t_aadba6774ce544 51
+crates/nodex-core-server/src/main.rs
+  s_fd4cb1040ce91e::t_aa5ece2a45ec7a 3,42,51-55
+  s_fd4cb1040ce91e::t_c6d00cd67481b2 40-41,43-49,56-59,67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7c3f7ade192727b4cf43448166218006312837a5",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_79f58a542f5eeb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180fd-f036-70d1-ba01-12e1eaeb0930",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fd4cb1040ce91e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180f9-810c-7112-bb34-8be7f72daf6b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
