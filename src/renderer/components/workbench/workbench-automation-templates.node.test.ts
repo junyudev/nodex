@@ -19,4 +19,15 @@ describe("workbench automation templates", () => {
     expect(draft.rrule).toBe("FREQ=DAILY;BYHOUR=9;BYMINUTE=0");
     expect(draft.cwds.length).toBe(0);
   });
+
+  test("work that changes the repository asks in the Inbox first; reports run on their own", () => {
+    const launchOf = (id: string) => {
+      const template = WORKBENCH_AUTOMATION_TEMPLATES.find((candidate) => candidate.id === id);
+      if (!template) throw new Error(`Expected template ${id}`);
+      return createWorkbenchAutomationDraftFromTemplate(template).launch;
+    };
+    expect(launchOf("bump-dependency-versions")).toBe("ask");
+    expect(launchOf("security-check")).toBe("automatic");
+    expect(launchOf("daily-bug-scan")).toBe("automatic");
+  });
 });

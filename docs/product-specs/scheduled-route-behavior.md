@@ -155,7 +155,8 @@ error with `Try again`.
 
 Without a selection, the landing page offers suggested tasks from the system
 template catalog. Choosing one opens the create dialog seeded with its name,
-instructions, and schedule; `Show more` reveals the whole catalog.
+instructions, schedule and launch: templates that change the repository ask in
+the Inbox first. `Show more` reveals the whole catalog.
 
 A selected cron task reads as the conversation that set it up: its instructions
 as the user's message, then `Your task is scheduled. Its next run is …`, which

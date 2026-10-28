@@ -1,3 +1,4 @@
+import type { CodexScheduledAutomationLaunch } from "@/lib/types";
 import {
   createWorkbenchAutomationDraft,
   type WorkbenchAutomationDraft,
@@ -9,6 +10,8 @@ export interface WorkbenchAutomationTemplate {
   name: string;
   prompt: string;
   rrule: string;
+  /** Work that changes the repository asks in the Inbox first; reports run on their own. */
+  launch?: CodexScheduledAutomationLaunch;
 }
 
 export const WORKBENCH_AUTOMATION_TEMPLATES: readonly WorkbenchAutomationTemplate[] = [
@@ -19,6 +22,23 @@ export const WORKBENCH_AUTOMATION_TEMPLATES: readonly WorkbenchAutomationTemplat
     prompt:
       "Scan recent commits (since the last run, or last 24h) for likely bugs and propose minimal fixes.\n\nGrounding rules:\n- Use ONLY concrete repo evidence (commit SHAs, PRs, file paths, diffs, failing tests, CI signals).\n- Do NOT invent bugs; if evidence is weak, say so and skip.\n- Prefer the smallest safe fix; avoid refactors and unrelated cleanup.",
     rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+  },
+  {
+    id: "bump-dependency-versions",
+    iconName: "block-stack",
+    name: "Bump dependency versions",
+    prompt:
+      "Bump outdated dependencies to their latest compatible versions, run the project's checks, and open one draft PR per ecosystem.\n\nRules:\n- Skip major upgrades unless they need no code changes; list the skipped ones with their breaking changes.\n- Keep each PR to version bumps and the minimal fixes they require.",
+    rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
+    launch: "ask",
+  },
+  {
+    id: "security-check",
+    iconName: "checkmark-circle",
+    name: "Security check",
+    prompt:
+      "Check dependencies and recent changes for known vulnerabilities, exposed secrets, and risky configuration.\n\nRules:\n- Report only findings you can confirm, with the advisory, file, or commit as evidence.\n- When something needs me, send it to my Inbox with what to do about it; otherwise finish with a one-line all-clear.",
+    rrule: "FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
   },
   {
     id: "weekly-release-notes",
@@ -91,6 +111,7 @@ export const WORKBENCH_AUTOMATION_TEMPLATES: readonly WorkbenchAutomationTemplat
     prompt:
       "Identify untested paths from recent changes; add focused tests and use $yeet for draft PRs.\n\nConstraints:\n- Keep scope tight to the changed areas; avoid broad refactors.\n- Prefer small, reliable tests that fail before and pass after.",
     rrule: "FREQ=DAILY;BYHOUR=15;BYMINUTE=0",
+    launch: "ask",
   },
   {
     id: "pre-release-check",
@@ -107,6 +128,7 @@ export const WORKBENCH_AUTOMATION_TEMPLATES: readonly WorkbenchAutomationTemplat
     prompt:
       "Update AGENTS.md with newly discovered workflows and commands.\n\nConstraints:\n- Keep edits minimal, accurate, and grounded in repo usage.\n- Do not touch unrelated sections or auto-generated files.\n- If you are unsure, prefer adding a TODO with a short note rather than inventing.",
     rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=11;BYMINUTE=0",
+    launch: "ask",
   },
   {
     id: "weekly-pr-summary",
@@ -155,6 +177,7 @@ export const WORKBENCH_AUTOMATION_TEMPLATES: readonly WorkbenchAutomationTemplat
     prompt:
       "Update the changelog with this week's highlights and key PR links.\n\nConstraints:\n- Only include items supported by repo history.\n- Keep structure simple and consistent with existing changelog format.",
     rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0",
+    launch: "ask",
   },
 ] as const;
 
@@ -167,5 +190,6 @@ export function createWorkbenchAutomationDraftFromTemplate(
     name: template.name,
     prompt: template.prompt,
     rrule: template.rrule,
+    launch: template.launch ?? draft.launch,
   };
 }
