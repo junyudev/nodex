@@ -260,7 +260,7 @@ test.each(paintCases)(
       color(styles["--color-background-text-selection"]!),
     );
     expect(getComputedStyle(surfaces.getByTestId("drop-cursor")).backgroundColor).toBe(
-      color(styles["--app-color-border-focus"]!),
+      variant === "light" ? "rgb(160, 202, 242)" : "rgb(29, 75, 119)",
     );
     const categoricalBlue = getComputedStyle(surfaces.getByTestId("categorical-blue"));
     expect(categoricalBlue.color).toBe("rgb(51, 156, 255)");

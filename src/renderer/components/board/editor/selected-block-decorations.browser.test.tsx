@@ -827,6 +827,15 @@ describe("selected Block presentation in Chromium", () => {
         throw new Error("Expected Search actions to own focus");
       }
       expect(editor.prosemirrorState.selection.empty).toBe(false);
+      const mountedView = requireMountedEditorView(editor);
+      const parentOuter = view.container.querySelector<HTMLElement>(
+        '.bn-block-outer[data-id="parent"]',
+      );
+      const parentSubtree = parentOuter?.querySelector<HTMLElement>(":scope > .bn-block");
+      if (!parentOuter || !parentSubtree) throw new Error("Expected the selected parent subtree");
+
+      expect(mountedView.dom.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(false);
+      expect(getComputedStyle(parentSubtree, "::after").opacity).toBe("1");
 
       const copiedData = new DataTransfer();
       const copyEvent = new ClipboardEvent("copy", {
@@ -846,6 +855,11 @@ describe("selected Block presentation in Chromium", () => {
       expect(copiedData.getData("text/plain")).not.toContain("outside block");
       await waitFor(() => expect(firstMenu.isConnected).toBe(false));
       await waitFor(() => expect(requireMountedEditorView(editor).hasFocus()).toBe(true));
+      expect(mountedView.dom.hasAttribute(BLOCK_ACTION_SELECTION_PRESENTATION_ATTRIBUTE)).toBe(
+        false,
+      );
+      expect(parentOuter.dataset.nodexSelectionKind).toBe("structural");
+      expect(getComputedStyle(parentSubtree, "::after").opacity).toBe("1");
 
       await act(async () => {
         await userEvent.keyboard("x");

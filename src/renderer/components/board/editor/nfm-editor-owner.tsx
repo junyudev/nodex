@@ -21,6 +21,7 @@ import {
   NFM_DISABLED_EXTENSIONS,
 } from "./nfm-editor-extensions";
 import { createNfmLinkExtension } from "./nfm-link-extension";
+import { NFM_DROP_CURSOR_OPTIONS } from "./nfm-drop-indicator";
 import {
   NfmStructuralEditingController,
   type NfmStructuralEditingSession,
@@ -107,6 +108,7 @@ export class NfmEditorOwner {
       schema: nfmSchema,
       generateBlockId: createUuidV7,
       tabBehavior: "prefer-indent" as const,
+      dropCursor: NFM_DROP_CURSOR_OPTIONS,
       placeholders: createNfmEditorPlaceholders(input.placeholder ?? PAGE_DESCRIPTION_PLACEHOLDER),
       uploadFile: (file: File) => this.requireCallbacks().uploadFile(file),
       resolveFileUrl: (url: string) => this.requireCallbacks().resolveFileUrl(url),

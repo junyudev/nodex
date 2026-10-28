@@ -122,6 +122,7 @@ import {
   type SideMenuSelectionIntent,
 } from "./nfm-side-menu-selection";
 import { createSideMenuFreezeController } from "./side-menu-freeze-controller";
+import { useNfmRetainedSelectionPresentation } from "./nfm-retained-selection-presentation";
 
 interface SideMenuBlock {
   id?: string;
@@ -1445,6 +1446,11 @@ function NfmSideMenuPopup({
   const topLevelSelectedBlocks = useMemo(
     () => getTopLevelSideMenuActionBlocks(selectedActionBlocks),
     [selectedActionBlocks],
+  );
+  useNfmRetainedSelectionPresentation(
+    openState && visible ? "blocks" : "none",
+    "nfm-side-menu",
+    topLevelSelectedBlocks.flatMap((selectedBlock) => getCurrentBlockId(selectedBlock) ?? []),
   );
   const selectedTopLevelBlock = topLevelSelectedBlocks[0] ?? block ?? null;
   const currentBlockId = selectedTopLevelBlock ? getCurrentBlockId(selectedTopLevelBlock) : null;

@@ -190,6 +190,7 @@ This post-removal contract must stay identical across:
 ### NFM editor -> NFM editor
 
 - An explicit side-menu drag between different Card Documents carries stable root Block IDs and logical Document coordinates through the same window-local session. The destination renders the horizontal block insertion line and suppresses ProseMirror's vertical text caret.
+- Native editor placement and cross-surface transfers share a thin, rounded, soft-blue insertion line. Its feedback color is independent of the chosen accent and focus-ring color; inline and vertical cursors retain their own orientation and geometry.
 - The target does not insert a serialized ProseMirror/HTML slice, and the source does not later delete its selection. One `BlockTransfer` commits both Document updates and Block locations or leaves both unchanged. File identities remain Library-owned and unchanged while their Page body relationships move with the selected Blocks.
 - Moving the final root out of the source uses the same stable empty-paragraph remainder as Database promotion, so every persisted source stays editable without changing Copy semantics.
 - Both mounted editors settle transient drag/focus state and supply causal

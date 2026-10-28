@@ -5,8 +5,13 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 import "../../../globals.css";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE } from "@/lib/editor-selection-presentation";
 import { NfmSideMenuOpenProvider, useNfmSideMenuOpenController } from "./nfm-side-menu";
 import { NfmSideMenuRuntimeProvider } from "./nfm-side-menu-runtime";
+import {
+  BLOCK_ACTION_SELECTION_PRESENTATION_ATTRIBUTE,
+  selectedBlockDecorationsExtension,
+} from "./selected-block-decorations";
 
 const settleFloatingSurface = async (): Promise<void> => {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -57,6 +62,7 @@ async function openSideMenu({
   await page.viewport(width, height);
   const editor = BlockNoteEditor.create({
     initialContent: [{ id: "block-1", type: "paragraph", content: "A block" }],
+    extensions: [selectedBlockDecorationsExtension()],
   });
   const deleteBlocks = vi.fn(() => true);
   const view = render(
@@ -112,6 +118,7 @@ async function openSideMenu({
       trigger,
       dialog,
       popup,
+      editor,
       deleteBlocks,
       close: () => {
         view.unmount();
@@ -146,6 +153,40 @@ function requireScrollContainer(element: HTMLElement): HTMLElement {
 }
 
 describe("NFM side menu viewport collisions in Chromium", () => {
+  test("keeps its Block target visible across menu focus and releases it when dismissed", async () => {
+    const fixture = await openSideMenu({ left: 600 });
+    try {
+      await waitFor(() => expect(document.activeElement).toBe(fixture.view.getByRole("combobox")));
+      const editorDom = fixture.editor.prosemirrorView?.dom;
+      if (!editorDom) throw new Error("Expected a mounted editor view");
+      const blockContent = editorDom.querySelector<HTMLElement>(
+        '.bn-block-outer[data-id="block-1"] .bn-block-content',
+      );
+      if (!blockContent) throw new Error("Expected the menu's selected Block");
+
+      expect(editorDom.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(false);
+      expect(getComputedStyle(blockContent, "::after").opacity).toBe("1");
+
+      await act(async () => {
+        await userEvent.click(fixture.view.getByRole("option", { name: /^Turn into/ }));
+        await settleFloatingSurface();
+      });
+      await fixture.view.findByRole("dialog", { name: "Turn into" });
+      expect(getComputedStyle(blockContent, "::after").opacity).toBe("1");
+
+      await act(async () => {
+        fireEvent.pointerDown(document.body);
+        await settleFloatingSurface();
+      });
+      expect(editorDom.hasAttribute(BLOCK_ACTION_SELECTION_PRESENTATION_ATTRIBUTE)).toBe(false);
+      expect(getComputedStyle(blockContent, "::after").opacity).toBe("0");
+      expect(fixture.editor.prosemirrorState.selection.empty).toBe(false);
+      await waitFor(() => expect(fixture.dialog.isConnected).toBe(false));
+    } finally {
+      fixture.close();
+    }
+  });
+
   test("keeps the menu on the preferred left side when it fits", async () => {
     const fixture = await openSideMenu({ left: 600 });
     try {

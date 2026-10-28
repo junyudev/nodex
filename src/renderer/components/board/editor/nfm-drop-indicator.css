@@ -1,0 +1,24 @@
+/* Block placement feedback keeps its own soft blue instead of borrowing focus/accent paint. */
+.nfm-editor {
+  --nfm-drop-indicator-color: #a0caf2;
+}
+
+.dark .nfm-editor {
+  --nfm-drop-indicator-color: #1d4b77;
+}
+
+/* Native text/block cursors and typed transfers share paint, not positioning geometry. */
+.nfm-editor
+  :is(
+    .prosemirror-dropcursor-block,
+    .prosemirror-dropcursor-inline,
+    .prosemirror-dropcursor-vertical
+  ) {
+  background-color: var(--nfm-drop-indicator-color);
+  border-radius: 999px;
+}
+
+.nfm-editor > [data-block-transfer-drop-indicator] {
+  height: 3px;
+  transform: translateY(-50%);
+}

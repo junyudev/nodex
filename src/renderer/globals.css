@@ -1,5 +1,6 @@
 @import "tailwindcss" source(".");
 @import "./components/ui/inline-tinted-chip.css";
+@import "./components/board/editor/nfm-drop-indicator.css";
 @import "streamdown/styles.css";
 @import "@xterm/xterm/css/xterm.css";
 @import "tw-animate-css";
@@ -1222,11 +1223,6 @@
 }
 
 /* ===== ProseMirror / DnD Overrides ===== */
-
-.prosemirror-dropcursor-block {
-  background-color: var(--color-token-focus-border) !important;
-  height: 3.5px !important;
-}
 
 /*
  * Whole-Block selection and embedded-context focus are separate layers:

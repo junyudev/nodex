@@ -115,8 +115,11 @@ interaction from a serialized DOM snapshot.
 
 Opening the menu establishes one structural Block selection. Its blue overlay
 covers the complete selected subtree, while media Blocks remain bounded to
-their own visual width. The menu never adds a second inline text-selection
-paint over that overlay.
+their own visual width. That frozen Block target stays visible while Search
+actions or any submenu owns focus. Dismissing the menu releases its retained
+selection presentation as exit motion begins; the underlying editor selection
+remains authoritative. The menu never adds a second inline text-selection paint
+over that overlay.
 
 Footer metadata is optional. Production hides the footer when there is no real metadata.
 
