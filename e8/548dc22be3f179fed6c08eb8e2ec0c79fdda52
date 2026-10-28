@@ -1,0 +1,97 @@
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_950dcf4ed6dc42::t_74590beb6daec7 164-169
+  s_950dcf4ed6dc42::t_e3a3e726ae50d7 1350,1353
+docs/references/markdown-interchange.md
+  s_950dcf4ed6dc42::t_ee983e9a286a5e 15,46-50,56-60,67-70,95-98
+  s_950dcf4ed6dc42::t_21c5a061567433 99
+src/renderer/components/board/editor/nfm-editor-extensions.test.ts
+  s_950dcf4ed6dc42::t_96fb3fd831c746 251-257,259-275
+  s_950dcf4ed6dc42::t_59bebfca9b0971 20,240-250,258
+  s_950dcf4ed6dc42::t_439840c374e50b 276
+src/renderer/lib/nfm/index.ts
+  s_950dcf4ed6dc42::t_e3a3e726ae50d7 9-14
+src/shared/markdown/index.ts
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 6
+docs/product-specs/nfm-editor-copy-behavior.md
+  s_950dcf4ed6dc42::t_d624e47d00525c 4,17,134-136,143-144,202-206,223-224,226-228,244,307,317,327,337,358,362,371-374,388,390,402,404,419,427,437-438,441,459,463,469,471-473,475-481,524,528,536,543
+src/shared/clipboard-file-references.node.test.ts
+  s_950dcf4ed6dc42::t_95cb99c06e2d2c 8-9,13-16,44,52,54-61
+crates/nodex-core/tests/fixtures/markdown/import.json
+  s_950dcf4ed6dc42::t_3544591159335b 43,48
+src/shared/markdown/markdown-export.test.ts
+  s_950dcf4ed6dc42::t_cbad8f805a0b25 54-55
+  s_950dcf4ed6dc42::t_26deb1e65a07e7 7,11,13,30-31,48
+src/renderer/components/board/editor/special-block-copy.ts
+  s_950dcf4ed6dc42::t_552832745ff8c2 2-4,11-12,135,431,500,505-506
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 13
+src/renderer/lib/nfm/parser.node.test.ts
+  s_950dcf4ed6dc42::t_5ff113646f18e5 439,441-443
+  s_950dcf4ed6dc42::t_9a2e3da9fb3369 104,110-111,134,271
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 7,440
+  s_950dcf4ed6dc42::t_0718effbbae37b 3-5
+  s_950dcf4ed6dc42::t_983bf1948df1da 6,109,133,272,315,393,415
+  s_950dcf4ed6dc42::t_96fb3fd831c746 245,291,352
+  s_950dcf4ed6dc42::t_ec03d96fe9a96b 398
+src/shared/markdown/paste.ts
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 30
+crates/nodex-core/src/domain/markdown_import.rs
+  s_950dcf4ed6dc42::t_b941a0c58cd5e9 19-22,36-37,39,45-46,52-53,98-99,102,105,114,134-135,145,158,250,323,328,330-331,345,374,381,383,403,451-452,460,464,675
+crates/nodex-core/src/workspace/inbox.rs
+  s_950dcf4ed6dc42::t_b941a0c58cd5e9 312
+src/renderer/components/board/editor/special-block-copy.test.ts
+  s_950dcf4ed6dc42::t_125bc83d53921c 106,210,238,271,476,657,660,719,781,837,995,1044,1117,1154,1174,1178,1187,1229,1258,1263
+  s_950dcf4ed6dc42::t_96fb3fd831c746 1271
+src/renderer/lib/codex-prompt-input.ts
+  s_950dcf4ed6dc42::t_f4163b64004ba7 13,30-31
+src/renderer/components/board/editor/thread-section.test.ts
+  s_950dcf4ed6dc42::t_654adc8776e08e 270,311
+src/shared/markdown/html-import.test.ts
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 4
+src/renderer/lib/page-prompt-context.node.test.ts
+  s_950dcf4ed6dc42::t_654adc8776e08e 37
+src/renderer/lib/nfm/blocknote-adapter.ts
+  s_950dcf4ed6dc42::t_89f780e77f05fb 6,28,30-32
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 29,33
+  s_950dcf4ed6dc42::t_433ca8db578884 34-35
+src/shared/markdown/markdown-import.test.ts
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 12
+src/shared/message-content.ts
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 21,32,80
+  s_950dcf4ed6dc42::t_96fb3fd831c746 13
+docs/product-specs/message-content-behavior.md
+  s_950dcf4ed6dc42::t_21c5a061567433 64-66
+src/shared/markdown/html.ts
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 20
+src/renderer/components/board/editor/nfm-codex-prompt-input.test.ts
+  s_950dcf4ed6dc42::t_654adc8776e08e 37
+src/shared/markdown/export.ts
+  s_950dcf4ed6dc42::t_afc0c469823338 214-219
+  s_950dcf4ed6dc42::t_e78e86c71651e5 243-246,249,251,299-303,323-326,328-335
+  s_950dcf4ed6dc42::t_59f52c02331770 73-79,446,448-453,462
+  s_950dcf4ed6dc42::t_c6e35bdc1c3dcb 18,27,29,362
+  s_950dcf4ed6dc42::t_96fb3fd831c746 327
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 36,47,60,72,143-144,442-443
+  s_950dcf4ed6dc42::t_a1c8c802978aac 336-337
+src/renderer/components/board/editor/nfm-editor-extensions.ts
+  s_950dcf4ed6dc42::t_8634b588120468 790-791
+  s_950dcf4ed6dc42::t_e3a3e726ae50d7 11,657,667,672-679,763,765-766,768-769
+  s_950dcf4ed6dc42::t_00bdb82c263dd1 764
+src/shared/markdown/import.ts
+  s_950dcf4ed6dc42::t_f6e6f82ab8ec48 37-41,44,68,73-74,76,79-80,123,362
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e8548dc22be3f179fed6c08eb8e2ec0c79fdda52",
+  "prompts": {},
+  "sessions": {
+    "s_950dcf4ed6dc42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447a25ca-824f-4258-9113-30ad561f7686",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

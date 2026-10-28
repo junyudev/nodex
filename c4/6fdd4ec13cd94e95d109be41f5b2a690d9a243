@@ -1,0 +1,128 @@
+crates/nodex-core/src/library/page_write_semantic.rs
+  s_950dcf4ed6dc42::t_b0ed1dc868c17a 5
+  s_950dcf4ed6dc42::t_b4ed99bae5a6c3 41,94
+src/shared/nfm/agent-guide.ts
+  s_950dcf4ed6dc42::t_eb4ecc049b333b 12
+scripts/official-agent-skills.ts
+  s_950dcf4ed6dc42::t_eb4ecc049b333b 304-306
+crates/nodex-core-contracts/src/document.rs
+  s_950dcf4ed6dc42::t_9f9d199c42507c 471-479,507,510
+  s_950dcf4ed6dc42::t_400004ef6fd75f 480-488
+src/shared/nodex-agent-tools/v3-write-schemas.ts
+  s_950dcf4ed6dc42::t_d83b4bd704fe40 47
+  s_950dcf4ed6dc42::t_cdc5625d67e672 16-17,27-33,53,98-104,106-108,114-120,122-124
+  s_950dcf4ed6dc42::t_6e2bcce0c1473b 21,34-37,105,121
+docs/CLI.md
+  s_950dcf4ed6dc42::t_9ac1fb9f2c64ee 235-237,273-275
+src/shared/nodex-agent-tools/v3-contracts.test.ts
+  s_950dcf4ed6dc42::t_2a705cb62f4efc 320-342
+docs/adr/0016-agent-interface-budgets-the-common-path.md
+  s_950dcf4ed6dc42::t_33cd4e4d3e4bab 10-12
+crates/nodex-core/src/library/page_copy.rs
+  s_950dcf4ed6dc42::t_d83b4bd704fe40 2232-2234,2239-2241
+crates/nodex-core/src/document/mod.rs
+  s_950dcf4ed6dc42::t_b4ed99bae5a6c3 27
+src/shared/nodex-agent-tools/v3-base-schemas.ts
+  s_950dcf4ed6dc42::t_cdc5625d67e672 43-58,60-61,63
+  s_950dcf4ed6dc42::t_6e2bcce0c1473b 59,62
+crates/nodex-cli/src/page_batch.rs
+  s_950dcf4ed6dc42::t_ac5f408443cd51 115
+  s_950dcf4ed6dc42::t_c780d92878f92e 45-50,87-102,104
+  s_950dcf4ed6dc42::t_20bb9357e52912 8
+crates/nodex-core/src/library/mutation.rs
+  s_950dcf4ed6dc42::t_d83b4bd704fe40 5909-5911,5916-5918,6668-6670,7069-7071
+  s_950dcf4ed6dc42::t_aa67e75e5878ec 5988,6511
+  s_950dcf4ed6dc42::t_ac5f408443cd51 274-275,5903,5986,6509,6666,7067
+  s_950dcf4ed6dc42::t_b4ed99bae5a6c3 277,288
+crates/nodex-cli/src/cli.rs
+  s_950dcf4ed6dc42::t_c780d92878f92e 627-628,631-634,646-647,650-653,750-751,754-757
+src/main/core-client/native-nodex-agent-page-update.ts
+  s_950dcf4ed6dc42::t_0e86c9fc0ef5ed 33-39,331,340
+  s_950dcf4ed6dc42::t_d83b4bd704fe40 16
+crates/nodex-cli/tests/data_primitives.rs
+  s_950dcf4ed6dc42::t_be2cff09a1f246 959-961,979
+  s_950dcf4ed6dc42::t_c7bd4fbd24f0cc 943-958,962-978,980-989,991-992
+  s_950dcf4ed6dc42::t_7c50d7d13a6d71 990
+docs/references/nested-markdown-spec.md
+  s_950dcf4ed6dc42::t_eb4ecc049b333b 86
+docs/references/markdown-interchange.md
+  s_950dcf4ed6dc42::t_eb4ecc049b333b 46-50
+crates/nodex-core/src/library/structural_edit.rs
+  s_950dcf4ed6dc42::t_d83b4bd704fe40 10079-10081
+  s_950dcf4ed6dc42::t_ac5f408443cd51 10077
+packages/core-protocol/openapi.json
+  s_950dcf4ed6dc42::t_be19bf004b53de 15953,15960-15962,15974,15979-15981,16584,16588-16589,27772,27784,27789-27791,27798,37022-37047
+  s_950dcf4ed6dc42::t_dc234f9c69461d 37048
+crates/nodex-core/src/document/semantic.rs
+  s_950dcf4ed6dc42::t_b4ed99bae5a6c3 19,147-148,169,182,194,203
+packages/core-protocol/src/generated.ts
+  s_950dcf4ed6dc42::t_be19bf004b53de 3859,3863,4040,6656,6659,6662,8754-8761
+  s_950dcf4ed6dc42::t_ffbc7cf5485421 8762
+crates/nodex-core/src/document/nfm_input.rs
+  s_950dcf4ed6dc42::t_efdd53bcad4957 101-117
+  s_950dcf4ed6dc42::t_b4ed99bae5a6c3 1-3,7-8,25-31
+  s_9cccd37e800d7a::t_7e672ca8ab2402 32-33,100
+crates/nodex-core/src/administration/tests.rs
+  s_950dcf4ed6dc42::t_b0ed1dc868c17a 6-7
+  s_950dcf4ed6dc42::t_ac5f408443cd51 1117,1119
+crates/nodex-core/src/document/module.rs
+  s_950dcf4ed6dc42::t_b0ed1dc868c17a 5836
+  s_950dcf4ed6dc42::t_400004ef6fd75f 11119,11229,11369,11423,11429,11435,11484,11516,11589,12238,12480
+crates/nodex-cli/src/page_mutation.rs
+  s_950dcf4ed6dc42::t_c780d92878f92e 8,69-72,94-101,114-123,127,283,287,341,347,890,894
+crates/nodex-core/src/library/agent_page_create.rs
+  s_950dcf4ed6dc42::t_d83b4bd704fe40 1174-1176
+  s_950dcf4ed6dc42::t_b4ed99bae5a6c3 995
+src/main/core-client/rust-core-runtime-benchmark.node.test.ts
+  s_950dcf4ed6dc42::t_fa88a05dabd3c7 234,236-238,283,285,288
+  s_950dcf4ed6dc42::t_d83b4bd704fe40 286-287
+docs/adr/0070-markdown-at-the-boundary.md
+  s_950dcf4ed6dc42::t_cac358718bad4b 1-52
+crates/nodex-core/src/database/tests/sql.rs
+  s_950dcf4ed6dc42::t_b0ed1dc868c17a 4
+  s_950dcf4ed6dc42::t_ac5f408443cd51 20,32,249,251
+crates/nodex-cli/src/page_lifecycle.rs
+  s_950dcf4ed6dc42::t_ac5f408443cd51 154
+  s_950dcf4ed6dc42::t_c780d92878f92e 21,126-137,156
+crates/nodex-core-contracts/src/library.rs
+  s_950dcf4ed6dc42::t_9f9d199c42507c 14,243,2974,2977,2979
+crates/nodex-core/src/library/tests/projectless_agent_authority.rs
+  s_950dcf4ed6dc42::t_aa67e75e5878ec 197
+src/main/core-client/native-nodex-agent-page-create.ts
+  s_950dcf4ed6dc42::t_0e86c9fc0ef5ed 23,69
+docs/product-specs/agent-interface-behavior.md
+  s_950dcf4ed6dc42::t_eb4ecc049b333b 601-604
+src/main/core-client/native-nodex-agent-page-update.node.test.ts
+  s_950dcf4ed6dc42::t_54cb81c6bccdf7 14,16-42,44-50,55-92,94-95,97-104,106-132,258-280
+  s_950dcf4ed6dc42::t_cc0beeb6e8e134 281
+crates/nodex-core/src/library/tests/effective_view_query.rs
+  s_950dcf4ed6dc42::t_aa67e75e5878ec 254
+  s_950dcf4ed6dc42::t_ac5f408443cd51 137
+  s_950dcf4ed6dc42::t_d83b4bd704fe40 810-812
+agent-skills/nodex/references/nested-markdown.md
+  s_950dcf4ed6dc42::t_9ac1fb9f2c64ee 8,13-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c46fdd4ec13cd94e95d109be41f5b2a690d9a243",
+  "prompts": {},
+  "sessions": {
+    "s_950dcf4ed6dc42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447a25ca-824f-4258-9113-30ad561f7686",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
