@@ -79,7 +79,7 @@ export function UserMessageCollapse({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="contentKey-size-chat relative w-full min-w-0 leading-relaxed">
+      <div className="text-size-chat relative w-full min-w-0 leading-relaxed">
         <div ref={clipRef} style={collapsedStyle}>
           <div ref={contentRef}>{children}</div>
         </div>
@@ -101,7 +101,7 @@ export function UserMessageCollapse({
           data-thread-find-skip="true"
           data-content-search-skip="true"
           data-markdown-copy="exclude"
-          className="contentKey-size-chat mt-1.5 inline-flex cursor-interaction items-center gap-1 self-start contentKey-token-description-foreground hover:contentKey-token-foreground"
+          className="text-size-chat mt-1.5 inline-flex cursor-interaction items-center gap-1 self-start text-token-description-foreground hover:text-token-foreground"
           onClick={() => setExpandedKey((current) => (current === contentKey ? null : contentKey))}
         >
           <span>{expanded ? "Show less" : "Show more"}</span>
