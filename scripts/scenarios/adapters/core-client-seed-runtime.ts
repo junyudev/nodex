@@ -74,6 +74,19 @@ const runWithScenarioCore = <A, E>(
     ),
   );
 
+/** Applies or reads Automation state for a scenario, outside Electron Main. */
+export const runScenarioAutomation = <A, E>(
+  runtime: RustDataAuthorityRuntime,
+  use: (automation: CoreModules["Service"]["automation"]) => Effect.Effect<A, E>,
+): Promise<A> =>
+  runWithScenarioCore(
+    runtime,
+    Effect.gen(function* () {
+      const context = yield* Layer.build(coreModulesLive);
+      return yield* use(Context.get(context, CoreModules).automation);
+    }),
+  );
+
 /** One-shot Effect root for scenario tooling that runs outside Electron Main. */
 export const runScenarioDatabase = <A, E>(
   runtime: RustDataAuthorityRuntime,

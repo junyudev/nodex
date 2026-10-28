@@ -333,6 +333,26 @@ class RecordingSeedPort implements ScenarioSeedPort {
   async readInbox(): Promise<never> {
     throw new Error("Inbox inspection is not part of this scenario");
   }
+
+  async createScheduledTask(): Promise<never> {
+    throw new Error("Scheduled tasks are not part of this scenario");
+  }
+
+  async holdScheduledTaskNow(): Promise<never> {
+    throw new Error("Scheduled firings are not part of this scenario");
+  }
+
+  async failScheduledRunNow(): Promise<never> {
+    throw new Error("Scheduled failures are not part of this scenario");
+  }
+
+  async skipScheduledFiring(): Promise<never> {
+    throw new Error("Scheduled firings are not part of this scenario");
+  }
+
+  async readScheduledTasks(): Promise<never> {
+    throw new Error("Scheduled task inspection is not part of this scenario");
+  }
 }
 
 describe("board/dense authoritative scenario", () => {

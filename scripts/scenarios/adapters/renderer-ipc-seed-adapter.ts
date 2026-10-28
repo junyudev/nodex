@@ -488,6 +488,26 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     throw new Error("Inbox delivery is seeded only through Core");
   }
 
+  async createScheduledTask(): Promise<never> {
+    throw new Error("Scheduled tasks are seeded only through Core");
+  }
+
+  async holdScheduledTaskNow(): Promise<never> {
+    throw new Error("Scheduled firings are seeded only through Core");
+  }
+
+  async failScheduledRunNow(): Promise<void> {
+    throw new Error("Scheduled failures are seeded only through Core");
+  }
+
+  async skipScheduledFiring(): Promise<void> {
+    throw new Error("Scheduled firings are seeded only through Core");
+  }
+
+  async readScheduledTasks() {
+    return (await this.#invoke("codex:scheduled-automations:list")).items;
+  }
+
   async readInbox(
     filter: InboxWindowFilter,
     scope: InboxScope = LIBRARY_INBOX,

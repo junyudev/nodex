@@ -6,6 +6,8 @@ import type {
   InboxWindowFilter,
 } from "../../src/shared/inbox";
 import type {
+  CodexScheduledAutomation,
+  CodexScheduledAutomationCreateInput,
   CodexThreadActiveFlag,
   CodexThreadStatusType,
   PageChatActivitySummaryResult,
@@ -203,6 +205,14 @@ export interface ScenarioSeedPort {
   /** Marks a confirmed chat dispatch delivered without launching a runtime. Core seeding only. */
   completeInboxDispatch(proposalId: string, threadId: string | null): Promise<void>;
   readInbox(filter: InboxWindowFilter, scope?: InboxScope): Promise<InboxWindow>;
+  /** Scheduled task transitions use Core and the Inbox application without starting Agents. */
+  createScheduledTask(
+    input: CodexScheduledAutomationCreateInput,
+  ): Promise<CodexScheduledAutomation>;
+  holdScheduledTaskNow(automationId: string): Promise<{ readonly pageId: string }>;
+  failScheduledRunNow(automationId: string): Promise<void>;
+  skipScheduledFiring(pageId: string): Promise<void>;
+  readScheduledTasks(): Promise<readonly CodexScheduledAutomation[]>;
 }
 
 export interface ScenarioManifest {

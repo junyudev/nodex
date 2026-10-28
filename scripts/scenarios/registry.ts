@@ -16,6 +16,7 @@ import { pageRelatedChatActivityScenario } from "./scenarios/page-related-chat-a
 import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sections";
 import { libraryFilesScenario } from "./scenarios/library-files";
 import { inboxTriageScenario } from "./scenarios/inbox-triage";
+import { scheduledAskInInboxScenario } from "./scenarios/scheduled-ask-in-inbox";
 import { spaceContentScenario } from "./scenarios/space-content";
 
 const scenarios = new Map<string, ScenarioDomainRecipe>([
@@ -35,6 +36,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [sidebarCustomSectionsScenario.id, sidebarCustomSectionsScenario],
   [libraryFilesScenario.id, libraryFilesScenario],
   [inboxTriageScenario.id, inboxTriageScenario],
+  [scheduledAskInInboxScenario.id, scheduledAskInInboxScenario],
   [spaceContentScenario.id, spaceContentScenario],
 ]);
 

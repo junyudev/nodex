@@ -356,6 +356,16 @@ UI behavior belongs in a dedicated Playwright spec such as
 `tests/e2e/board-dense.spec.ts`; `vp run dev --seed ...` never starts
 Playwright, focuses a Page, or performs assertions.
 
+`scheduled/ask-in-inbox` creates five scheduled tasks, a Dependency policy runbook,
+and Inbox messages for waiting, skipped, and failed runs. The dependency task has
+fallen due three times while waiting; a projectless reading list waits in the
+Library Inbox. A security task runs automatically and has no firing. Seeding
+never starts an Agent:
+
+```bash
+vp run dev --home "$HOME/repo/nodex/runs.local/scheduled-ask-in-inbox" --seed scheduled/ask-in-inbox
+```
+
 ### Real Profile snapshots
 
 Some defects and performance cliffs only appear with real document shapes,
