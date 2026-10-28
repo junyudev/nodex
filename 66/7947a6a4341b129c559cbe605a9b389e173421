@@ -1,0 +1,23 @@
+src/renderer/components/workbench/codex-sidebar-actions.browser.test.tsx
+  s_6c9891f66c664a::t_880ffcd326518d 9,53,116
+src/renderer/components/workbench/sidebar-thread-reorder.browser.test.tsx
+  s_6c9891f66c664a::t_880ffcd326518d 10,1140
+src/renderer/test/session-linked-page.ts
+  s_6c9891f66c664a::t_880ffcd326518d 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "667947a6a4341b129c559cbe605a9b389e173421",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

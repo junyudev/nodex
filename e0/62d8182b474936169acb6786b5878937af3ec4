@@ -1,0 +1,21 @@
+crates/nodex-core/src/workspace/read.rs
+  s_6c9891f66c664a::t_e01fdd1eea1f73 409-414
+crates/nodex-core/src/workspace/agent_runtime_binding.rs
+  s_6c9891f66c664a::t_e01fdd1eea1f73 387-393,399,401-406,412
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e062d8182b474936169acb6786b5878937af3ec4",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

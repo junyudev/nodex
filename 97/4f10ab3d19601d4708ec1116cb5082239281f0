@@ -1,0 +1,24 @@
+scripts/desktop-import-boundaries.ts
+  s_6c9891f66c664a::t_a416a9335a745a 1-37
+  s_6c9891f66c664a::t_561b3aca48f078 38-39
+scripts/audit-rust-core-boundaries.ts
+  s_6c9891f66c664a::t_a416a9335a745a 3,124-126,232-233
+scripts/desktop-import-boundaries.test.ts
+  s_6c9891f66c664a::t_a416a9335a745a 1-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "974f10ab3d19601d4708ec1116cb5082239281f0",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

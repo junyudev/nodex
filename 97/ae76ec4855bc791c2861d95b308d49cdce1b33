@@ -1,0 +1,22 @@
+packages/agent-runtime/src/persistence/Migrations/081_ConversationDiscovery.test.ts
+  s_6c9891f66c664a::t_910e5fd037a975 53-54,56-61,63-65
+  s_6c9891f66c664a::t_ab1b2da84dedb0 55,62
+docs/agent-runtime-testing.md
+  s_6c9891f66c664a::t_910e5fd037a975 97-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97ae76ec4855bc791c2861d95b308d49cdce1b33",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
