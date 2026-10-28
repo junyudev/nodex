@@ -1,0 +1,116 @@
+src/main/inbox-application/inbox-naming.node.test.ts
+  s_1909bde4935cde::t_ffea54ced2d9c1 45
+src/renderer/features/local-conversation/view/shared/tools/dynamic-tool-call.test.tsx
+  s_1909bde4935cde::t_6aa90f382ee294 439-440
+src/renderer/components/board/editor/nfm-clipboard-selection.browser.test.tsx
+  s_f51fe1dc262455::t_1768e81f8e7d7c 556,662,820
+src/shared/codex-thread-title.test.ts
+  s_1909bde4935cde::t_6aa90f382ee294 21
+src/main/core-client/agent-eval-cases.node.test.ts
+  s_1909bde4935cde::t_6aa90f382ee294 102,125,131
+  s_1909bde4935cde::t_ffea54ced2d9c1 25-36,103,128
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_61396783918569::t_473fd5702b3473 7-8,224-252
+  s_61396783918569::t_92f5b6cf3aa76d 253-254
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_61396783918569::t_5d6827120d2cc6 219-223
+src/shared/block-documents/yjs-yrs-conformance.test.ts
+  s_1909bde4935cde::t_8b7f413d2ebed8 390,400-401
+scripts/scenarios/scenarios/structural-interactions.ts
+  s_f51fe1dc262455::t_bd3008b1ac012e 114
+  s_f51fe1dc262455::t_0eaa9413f7d908 98-103
+  s_61396783918569::t_480673a536a3e7 97,104-106,109-111,119-134,208
+scripts/scenarios/contracts.ts
+  s_f51fe1dc262455::t_a9e217ffd108f3 36
+  s_f51fe1dc262455::t_0eaa9413f7d908 164
+  s_f51fe1dc262455::t_7b357ffa71ce4d 160
+scripts/scenarios/scenarios/database-context-menu-performance.test.ts
+  s_61396783918569::t_b61c1b67d3e4bc 84-87
+scripts/scenarios/scenarios/nfm-equation-and-mermaid.ts
+  s_1909bde4935cde::t_af862ef9771109 20
+  s_1909bde4935cde::t_ffea54ced2d9c1 56,59
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_61396783918569::t_2e51785ac975dc 2-3,255-277
+  s_61396783918569::t_296cd34ae3ee33 278-279
+src/main/core-client/structural-interactions-scenario.node.test.ts
+  s_61396783918569::t_f103d4acc731fd 6,11-15,28-33
+  s_f51fe1dc262455::t_0eaa9413f7d908 16-25
+  s_f51fe1dc262455::t_5f438a3cca3bce 26-27,34
+src/main/inbox-application/inbox-editing.node.test.ts
+  s_1909bde4935cde::t_ffea54ced2d9c1 17,33
+src/main/core-client/inbox-triage-scenario.node.test.ts
+  s_1909bde4935cde::t_ffea54ced2d9c1 57,60-61
+scripts/scenarios/scenarios/board-dense.ts
+  s_61396783918569::t_0ecdd39eb5d324 184
+scripts/scenarios/scenarios/document-sync-recovery.ts
+  s_f51fe1dc262455::t_bd3008b1ac012e 43,51-52
+  s_1909bde4935cde::t_8111a30af1b5d3 32
+  s_1909bde4935cde::t_8b7f413d2ebed8 49
+scripts/scenarios/scenarios/board-dense.test.ts
+  s_61396783918569::t_b61c1b67d3e4bc 255-258
+src/main/core-client/block-promotion-history-scenario.node.test.ts
+  s_1909bde4935cde::t_af862ef9771109 320
+src/renderer/features/local-conversation/projection/tool-metadata/nodex-dynamic-tool-call-presentation.test.ts
+  s_1909bde4935cde::t_6aa90f382ee294 69-70,105-106,110
+scripts/scenarios/scenarios/nfm-equation-and-mermaid.test.ts
+  s_1909bde4935cde::t_868fa97deb633c 1-35
+src/main/rust-data-authority.integration.ts
+  s_1909bde4935cde::t_6aa90f382ee294 1659-1660,1669-1670,1784-1785
+scripts/agent-eval/cases.ts
+  s_1909bde4935cde::t_6aa90f382ee294 227
+src/main/core-client/inbox-workspace.node.test.ts
+  s_1909bde4935cde::t_ffea54ced2d9c1 42
+src/renderer/components/board/editor/readonly-file-preview.test.tsx
+  s_1909bde4935cde::t_6aa90f382ee294 23
+src/main/core-client/native-nodex-agent-page-update.node.test.ts
+  s_1909bde4935cde::t_af862ef9771109 131
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_61396783918569::t_b025855324f861 727
+  s_f51fe1dc262455::t_a5db8b1dc92861 726
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_1909bde4935cde::t_ffea54ced2d9c1 4088,4102
+src/renderer/components/board/page-stage/raw-content.browser.test.tsx
+  s_f51fe1dc262455::t_0eaa9413f7d908 14
+src/renderer/components/workbench/database-view-page-context-menu.test.tsx
+  s_1909bde4935cde::t_6aa90f382ee294 1,119
+scripts/scenarios/scenarios/inbox-triage.ts
+  s_1909bde4935cde::t_8b7f413d2ebed8 188
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.test.tsx
+  s_f51fe1dc262455::t_3e92b0a9da364f 247-248
+src/shared/block-documents/block-document-codec.test.ts
+  s_1909bde4935cde::t_5e7f89db77b689 11,31,89,118,121-124,139,148
+src/shared/block-documents/document-operations.test.ts
+  s_1909bde4935cde::t_1eb690c2cdb238 249,252,254,257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf645f44b5d60fbb0a5d89dd0234968086f7429c",
+  "prompts": {},
+  "sessions": {
+    "s_1909bde4935cde": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18165-6ad1-7d83-982b-cee4a0373b01",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_61396783918569": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1817b-1179-7ee0-b3b6-9bc311eec607",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f51fe1dc262455": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18182-c660-7763-b92f-ce0d7f0fe0d7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
