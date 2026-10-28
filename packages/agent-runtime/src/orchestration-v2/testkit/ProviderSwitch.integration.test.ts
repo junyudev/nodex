@@ -59,6 +59,7 @@ import * as EffectOutbox from "../EffectOutbox.ts";
 import * as ProjectionMaintenance from "../ProjectionMaintenance.ts";
 import * as ProjectionStore from "../ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
+import * as ProviderSessionManager from "../ProviderSessionManager.ts";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import {
   CLAUDE_MODEL_SELECTION,
@@ -107,6 +108,10 @@ function makeTestAdapter(input: {
   readonly rollback?: ProviderAdapter.ProviderAdapterV2SessionRuntime["rollbackThread"];
   readonly fork?: ProviderAdapter.ProviderAdapterV2SessionRuntime["forkThread"];
   readonly nativeHistories?: Map<string, string[]>;
+  readonly discardedThreads?: Ref.Ref<readonly ThreadId[]>;
+  readonly openedThreads?: Ref.Ref<
+    readonly { readonly threadId: ThreadId; readonly ephemeral: boolean }[]
+  >;
   readonly failStartOnce?: Ref.Ref<boolean>;
   /** Starts left to refuse the way Claude does while background work runs. */
   readonly refuseStarts?: Ref.Ref<number>;
@@ -133,6 +138,22 @@ function makeTestAdapter(input: {
     driver: input.driver,
     getCapabilities: () => Effect.succeed(input.capabilities),
     planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
+    ...(input.discardedThreads === undefined
+      ? {}
+      : {
+          discardThread: ({
+            providerThread,
+          }: ProviderAdapter.ProviderAdapterV2DiscardThreadInput) =>
+            Effect.gen(function* () {
+              const nativeId = providerThread.nativeThreadRef?.nativeId;
+              if (nativeId) input.nativeHistories?.delete(nativeId);
+              if (providerThread.appThreadId)
+                yield* Ref.update(input.discardedThreads!, (threads) => [
+                  ...threads,
+                  providerThread.appThreadId!,
+                ]);
+            }),
+        }),
     openSession: (sessionInput) =>
       Effect.gen(function* () {
         if (input.failNativeOpen && sessionInput.initialNativeThreadId !== undefined) {
@@ -162,6 +183,7 @@ function makeTestAdapter(input: {
           driver: input.driver,
           providerSessionId: sessionInput.providerSessionId,
           providerSession,
+          ...(input.discardedThreads === undefined ? {} : { unloadThread: () => Effect.void }),
           ...(input.nativeResumeFailurePolicy === undefined
             ? {}
             : { nativeResumeFailurePolicy: input.nativeResumeFailurePolicy }),
@@ -174,6 +196,11 @@ function makeTestAdapter(input: {
             : { canReuseContextUsage: input.canReuseContextUsage }),
           ensureThread: (threadInput) =>
             Effect.gen(function* () {
+              if (input.openedThreads)
+                yield* Ref.update(input.openedThreads, (threads) => [
+                  ...threads,
+                  { threadId: threadInput.threadId, ephemeral: threadInput.ephemeral === true },
+                ]);
               const createdAt = yield* DateTime.now;
               const generation =
                 input.nativeThreadGeneration === undefined
@@ -429,6 +456,244 @@ const waitForIdle = Effect.fn("ProviderSwitchTest.waitForIdle")(function* (
 });
 
 describe("orchestration v2 provider switching", () => {
+  it.live.each([
+    { ownRun: false, switchAgent: false },
+    { ownRun: true, switchAgent: false },
+    { ownRun: false, switchAgent: true },
+    { ownRun: true, switchAgent: true },
+  ])(
+    "saves side context before native disposal and restart (own Run $ownRun, switch $switchAgent)",
+    ({ ownRun, switchAgent }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const cwd = yield* checkpointWorkspace("saved-side-context");
+          const source = ThreadId.make("saved-side:source");
+          const side = ThreadId.make("saved-side:temporary");
+          const saved = ThreadId.make("saved-side:durable");
+          const sourceText = `SOURCE_FACT_ORCHID ${"complete source detail ".repeat(40)}`;
+          const sideText = `SIDE_FACT_SIDECAR ${"complete side detail ".repeat(40)}`;
+          const sideAnswer = "SIDE_ANSWER The source marker is ORCHID.";
+          const capturedTurns = yield* Ref.make<readonly CapturedTurn[]>([]);
+          const openedThreads = yield* Ref.make<
+            readonly { readonly threadId: ThreadId; readonly ephemeral: boolean }[]
+          >([]);
+          const discardedThreads = yield* Ref.make<readonly ThreadId[]>([]);
+          const injectedHistory = yield* Ref.make<readonly unknown[]>([]);
+          const nativeHistories = new Map<string, string[]>();
+          const nativeForks = yield* Ref.make(0);
+          const fork: ProviderAdapter.ProviderAdapterV2SessionRuntime["forkThread"] = (input) =>
+            Effect.gen(function* () {
+              yield* Ref.update(nativeForks, (count) => count + 1);
+              const sourceNative = input.sourceProviderThread.nativeThreadRef!.nativeId!;
+              const history = nativeHistories.get(sourceNative);
+              assert.isDefined(history, "a native fork cannot read a discarded source");
+              const nativeId = `native-fork:${input.targetThreadId}`;
+              nativeHistories.set(nativeId, [...history!]);
+              return {
+                ...input.sourceProviderThread,
+                id: ProviderThreadId.make(nativeId),
+                appThreadId: input.targetThreadId,
+                nativeThreadRef: { driver: CODEX_DRIVER, nativeId, strength: "strong" as const },
+                nativeConversationHeadRef: null,
+                firstRunOrdinal: null,
+                lastRunOrdinal: null,
+                handoffIds: [],
+                forkedFrom: { providerThreadId: input.sourceProviderThread.id },
+              };
+            });
+          const registry = ProviderAdapterRegistry.layerFromAdapters([
+            makeTestAdapter({
+              instanceId: CODEX_MODEL_SELECTION.instanceId,
+              driver: CODEX_DRIVER,
+              capabilities: CodexProviderCapabilitiesV2,
+              modelSelection: CODEX_MODEL_SELECTION,
+              responseByRunOrdinal: {},
+              responseByThreadId: { [side]: { 1: sideAnswer } },
+              capturedTurns,
+              nativeHistories,
+              injectedHistory,
+              discardedThreads,
+              openedThreads,
+              fork,
+            }),
+            makeTestAdapter({
+              instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+              driver: CLAUDE_DRIVER,
+              capabilities: ClaudeProviderCapabilitiesV2,
+              modelSelection: CLAUDE_MODEL_SELECTION,
+              responseByRunOrdinal: {},
+              capturedTurns,
+              nativeHistories,
+              openedThreads,
+            }),
+          ]);
+          const runtime = () =>
+            ProviderReplayHarness.layerWithRegistry(
+              { name: "saved-side-context", runtimePolicyOverride: { cwd } },
+              registry,
+              {
+                databaseLayer: SqlitePersistence.layerFromPath(`${cwd}/runtime.sqlite`).pipe(
+                  Layer.provide(NodeServices.layer),
+                ),
+                checkpointStoreLayer: CheckpointStore.layerWithoutWorkspaceState,
+                recoverOnStartup: true,
+              },
+            );
+          const send = Effect.fnUntraced(function* (
+            threadId: ThreadId,
+            text: string,
+            modelSelection = CODEX_MODEL_SELECTION,
+          ) {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make(`send:${threadId}:${text.slice(0, 24)}`),
+              threadId,
+              messageId: MessageId.make(`message:${threadId}:${text.slice(0, 24)}`),
+              text,
+              attachments: [],
+              modelSelection,
+              dispatchMode: { type: "start_immediately" },
+              createdBy: "user",
+              creationSource: "web",
+            });
+            yield* waitForIdle(threadId);
+            yield* worker.drain();
+            const projection = yield* orchestrator.getThreadProjection(threadId);
+            assert.equal(projection.runs.at(-1)?.status, "completed");
+            return projection;
+          });
+          const saveCommand = {
+            type: "thread.fork" as const,
+            saveSideChat: true as const,
+            commandId: CommandId.make("save-side"),
+            sourceThreadId: side,
+            targetThreadId: saved,
+            sourcePoint: { type: "latest_stable" as const },
+            rootPolicy: "independent_root" as const,
+            createdBy: "user" as const,
+            creationSource: "web" as const,
+          };
+          const saveSequence = yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("saved-side:create"),
+              threadId: source,
+              projectId,
+              title: "Context",
+              modelSelection: CODEX_MODEL_SELECTION,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: "topic",
+              worktreePath: cwd,
+              createdBy: "user",
+              creationSource: "web",
+            });
+            yield* send(source, sourceText);
+            yield* orchestrator.dispatch({
+              ...saveCommand,
+              commandId: CommandId.make("create-side"),
+              saveSideChat: undefined,
+              sideChat: true,
+              sourceThreadId: source,
+              targetThreadId: side,
+            });
+            if (ownRun) yield* send(side, sideText);
+            const before = yield* orchestrator.getThreadProjection(side);
+            const turnsBefore = (yield* Ref.get(capturedTurns)).length;
+            const accepted = yield* orchestrator.dispatch(saveCommand);
+            assert.deepEqual(yield* orchestrator.getThreadProjection(side), before);
+            assert.equal((yield* Ref.get(capturedTurns)).length, turnsBefore);
+            const savedProjection = yield* orchestrator.getThreadProjection(saved);
+            assert.isUndefined(savedProjection.thread.sideChat);
+            assert.isTrue(savedProjection.thread.capturedContext);
+            assert.deepEqual(savedProjection.thread.modelSelection, before.thread.modelSelection);
+            assert.equal(savedProjection.thread.worktreePath, cwd);
+            assert.equal(savedProjection.thread.branch, "topic");
+            assert.equal(savedProjection.thread.lineage.rootThreadId, saved);
+            assert.lengthOf(savedProjection.runs, 0);
+            assert.lengthOf(savedProjection.contextTransfers, 0);
+            assert.equal((yield* orchestrator.dispatch(saveCommand)).sequence, accepted.sequence);
+            yield* orchestrator.dispatch({
+              type: "thread.delete",
+              commandId: CommandId.make("discard-side"),
+              threadId: side,
+            });
+            const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
+            yield* sessions.discardSideChatNative(side);
+            yield* worker.drain();
+            if (ownRun) {
+              assert.include(yield* Ref.get(discardedThreads), side);
+              assert.isFalse(nativeHistories.has(`native-fork:${side}`));
+            }
+            yield* send(source, "LATER_SOURCE must not enter the saved context");
+            return accepted.sequence;
+          }).pipe(Effect.provide(runtime()));
+          // Provider memory is gone before a new Runtime generation reads the saved chat.
+          nativeHistories.clear();
+          const forkCount = yield* Ref.get(nativeForks);
+          yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const store = yield* ProjectionStore.ProjectionStoreV2;
+            const frozen = yield* store.getSideChatContext(saved);
+            assert.isNotNull(frozen);
+            assert.include(frozen!.history.messages.map((m) => m.text).join("\n"), sourceText);
+            assert.isFalse(frozen!.history.messages.some((m) => m.kind === "side_chat_boundary"));
+            const replay = yield* orchestrator.dispatch(saveCommand);
+            assert.equal(replay.sequence, saveSequence);
+            assert.lengthOf((yield* orchestrator.getThreadProjection(saved)).runs, 0);
+            if (ownRun) {
+              const window = yield* orchestrator.getThreadSnapshotWindow(saved, { rowLimit: 100 });
+              const visible = window.projection.visibleTurnItems.map((row) => row.item);
+              assert.isTrue(
+                visible.some((item) => item.type === "user_message" && item.text === sideText),
+              );
+              assert.isTrue(
+                visible.some(
+                  (item) => item.type === "assistant_message" && item.text === sideAnswer,
+                ),
+              );
+            }
+            const projection = yield* send(
+              saved,
+              "NEW_SAVED_REQUEST recall all facts",
+              switchAgent ? CLAUDE_MODEL_SELECTION : CODEX_MODEL_SELECTION,
+            );
+            const provider = projection.providerThreads.find(
+              (p) => p.id === projection.thread.activeProviderThreadId,
+            )!;
+            const native = nativeHistories.get(provider.nativeThreadRef!.nativeId!)!.join("\n");
+            assert.include(native, sourceText);
+            assert.notInclude(native, "LATER_SOURCE");
+            assert.notInclude(native, "Do not use subagents");
+            if (ownRun) {
+              assert.include(native, sideText);
+              assert.include(native, sideAnswer);
+            }
+            assert.equal(yield* Ref.get(nativeForks), forkCount);
+            assert.deepEqual(
+              (yield* Ref.get(openedThreads)).filter((p) => p.threadId === saved),
+              [{ threadId: saved, ephemeral: false }],
+            );
+            yield* send(
+              saved,
+              "FOLLOW_UP remember the saved context",
+              switchAgent ? CODEX_MODEL_SELECTION : CLAUDE_MODEL_SELECTION,
+            );
+            const next = (yield* Ref.get(capturedTurns)).findLast((t) => t.threadId === saved)!;
+            const history = nativeHistories.get(next.nativeThreadId!)!.join("\n");
+            assert.include(history, sourceText);
+            assert.include(history, "NEW_SAVED_REQUEST");
+            if (ownRun) assert.include(history, sideText);
+            assert.notInclude(history, "Do not use subagents");
+          }).pipe(Effect.provide(runtime()));
+        }),
+      ),
+  );
+
   it.live.each([0, 1])(
     "preserves inherited fork history when rewinding into a fresh native conversation (retain %s local Runs)",
     (retainedOrdinal) =>

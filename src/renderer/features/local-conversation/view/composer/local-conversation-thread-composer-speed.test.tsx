@@ -44,21 +44,33 @@ import {
   ThreadComposer,
   __composerAddContextTestUtils,
 } from "./local-conversation-thread-composer";
-import { TestComposerScopePath } from "@/test/maitai-scope-harness";
+import { TestComposerScopePath, TestThreadRouteScopePath } from "@/test/maitai-scope-harness";
 import type { CodexAppModelContextAttachment } from "../../../../../shared/codex-untrusted-app-input";
-import { appScope, useScopeHandle } from "@/lib/maitai";
+import { appScope, ScopeProvider, useScopeHandle, type ScopeHandle } from "@/lib/maitai";
+import { ComposerScope } from "@/lib/workbench-ui-scopes";
 import {
+  composerGoalModeActiveAtom,
+  composerImageAttachmentsAtom,
+  composerPastedTextAttachmentsAtom,
   createComposerDraftTransfer,
   publishComposerDraftTransfer,
   useComposerPromptDraft,
+  type ComposerImageAttachment,
+  type ComposerPromptDocument,
 } from "./composer-draft-state";
 import {
+  acquireComposerDraftCapture,
+  type ComposerDraftCaptureLease,
+} from "./composer-draft-capture";
+import {
   ComposerAppModelContextProvider,
+  restoreComposerAppModelContextSnapshot,
   useComposerAppModelContextRecipient,
   type ComposerAppModelContextRecipient,
 } from "./composer-app-model-context";
 import { McpAppHostDispatcher } from "@/lib/mcp-app/mcp-app-host-dispatcher";
 import { createCommandKeymapState } from "../../../../../shared/command-keybindings";
+import { useThreadTextSelectionDraft } from "../../thread-text-selection-draft";
 
 const RESTORED_APP_CONTEXT = {
   id: "queued-context-original",
@@ -743,6 +755,251 @@ test("a completed draft transfer preserves the captured app context identity", a
   await waitFor(() =>
     expect(view.queryByRole("button", { name: "Remove Fixture app context" })).toBeNull(),
   );
+});
+
+test("saving a mounted Claude side draft freezes input and restores its complete draft without sending", async () => {
+  resetStorage();
+  installAsyncRequestAnimationFrame();
+  document.documentElement.dataset.codexWindowType = "electron";
+  const copiedPastedFile = {
+    label: "notes.txt",
+    path: "/attachments/copied/notes.txt",
+    fsPath: "/attachments/copied/notes.txt",
+    hostId: "local",
+  };
+  const removePasted = vi.fn();
+  installComposerWindowApi(async (channel, ...args) => {
+    if (channel === "codex:pasted-text:read") return "notes";
+    if (channel === "codex:pasted-text:create")
+      return { file: copiedPastedFile, preview: "notes", characterCount: 5 };
+    if (channel === "codex:pasted-text:remove") {
+      removePasted(args[0]);
+      return null;
+    }
+    return undefined;
+  });
+  const sourceIdentity = "side-chat-session:capture-test";
+  const sourceTarget = { threadId: "thread_1", composerScopeIdentity: sourceIdentity };
+  const destinationTarget = {
+    threadId: "thread_saved",
+    composerScopeIdentity: "thread:thread_saved",
+  };
+  const richDocument: ComposerPromptDocument = {
+    text: "Review docs with @skill",
+    links: [{ from: 7, to: 11, href: "https://example.com/docs" }],
+    mentions: [
+      {
+        from: 17,
+        to: 23,
+        kind: "skill",
+        id: "skill:review",
+        label: "skill",
+        path: "/skills/review",
+      },
+    ],
+  };
+  const image: ComposerImageAttachment = {
+    id: "draft-image",
+    filename: "context.png",
+    mimeType: "image/png",
+    src: "nodex://assets/context.png",
+    origin: "browser",
+    materialization: {
+      hostId: "local",
+      managedSource: "nodex://assets/context.png",
+      localPath: null,
+    },
+    materializationStatus: "ready",
+    uploadStatus: "idle",
+    generation: 1,
+  };
+  const pasted = {
+    id: "draft-pasted",
+    status: "ready" as const,
+    preview: "notes",
+    characterCount: 5,
+    attachment: {
+      preview: "notes",
+      characterCount: 5,
+      file: { label: "notes.txt", path: "notes.txt", fsPath: "/work/notes.txt" },
+    },
+  };
+  const send = vi.fn<ThreadStageActions["onSendPrompt"]>(async () => {});
+  const setGoal = vi.fn<NonNullable<ThreadStageActions["onSetThreadGoal"]>>(async () => null);
+  let mounted: {
+    scope: ScopeHandle;
+    app: ScopeHandle;
+    writeDocument: (value: ComposerPromptDocument) => Promise<void>;
+    selection: ReturnType<typeof useThreadTextSelectionDraft>;
+  } | null = null;
+  let openSaved: (() => void) | null = null;
+  function Probe({ threadId }: { threadId: string }) {
+    const scope = useScopeHandle(ComposerScope);
+    const app = useScopeHandle(appScope);
+    const draft = useComposerPromptDraft(threadId);
+    const selection = useThreadTextSelectionDraft("local", threadId);
+    useLayoutEffect(() => {
+      mounted = { scope, app, writeDocument: draft.setDocument, selection };
+    }, [app, draft.setDocument, scope, selection]);
+    return null;
+  }
+  function Harness() {
+    const [saved, setSaved] = useState(false);
+    const target = saved ? destinationTarget : sourceTarget;
+    useLayoutEffect(() => {
+      openSaved = () => setSaved(true);
+    }, []);
+    const base = buildModel();
+    return (
+      <ScopeProvider
+        key={target.composerScopeIdentity}
+        scope={ComposerScope}
+        descriptor={{ identity: target.composerScopeIdentity, focusComposerNonce: null }}
+      >
+        <Probe threadId={target.threadId} />
+        <ThreadComposer
+          model={buildModel({
+            threadId: target.threadId,
+            composerScopeIdentity: target.composerScopeIdentity,
+            conversation: { ...base.conversation!, threadId: target.threadId },
+            provider: {
+              kind: "claude",
+              label: "Claude",
+              selection: "claude",
+              commands: [],
+              controls: { images: true, goals: true },
+              error: null,
+            },
+          })}
+          actions={buildActions({ onSendPrompt: send, onSetThreadGoal: setGoal })}
+          errorMessage={null}
+          onErrorMessage={() => {}}
+        />
+      </ScopeProvider>
+    );
+  }
+  const view = render(
+    <AppProviders>
+      <TestThreadRouteScopePath>
+        <Harness />
+      </TestThreadRouteScopePath>
+    </AppProviders>,
+  );
+  await settleComposerFrame();
+  const current = () => {
+    if (!mounted) throw new Error("Expected a mounted Composer");
+    return mounted;
+  };
+  await act(async () => {
+    await current().writeDocument(richDocument);
+    current().scope.set(composerImageAttachmentsAtom, [image]);
+    current().scope.set(composerGoalModeActiveAtom, true);
+    restoreComposerAppModelContextSnapshot(current().scope, [RESTORED_APP_CONTEXT]);
+    current().selection.addAnnotation({
+      id: "unfinished-annotation",
+      text: "The selected reply",
+      source: {
+        threadId: "thread_1",
+        messageId: "message_1",
+        startOffset: 0,
+        endOffset: 18,
+        rangeText: "The selected reply",
+      },
+    });
+    current().selection.updateAnnotation("unfinished-annotation", "An unfinished annotation note");
+    current().scope.set(composerPastedTextAttachmentsAtom, [
+      { id: pasted.id, status: "pending", generation: 1, preview: "notes", characterCount: 5 },
+    ]);
+  });
+  expect(acquireComposerDraftCapture(sourceTarget)).toMatchObject({
+    status: "blocked",
+    reason: "pending-attachments",
+  });
+  await act(async () => {
+    current().scope.set(composerPastedTextAttachmentsAtom, [
+      {
+        id: pasted.id,
+        status: "failed",
+        generation: 1,
+        preview: "notes",
+        characterCount: 5,
+        error: "Upload failed",
+      },
+    ]);
+  });
+  expect(acquireComposerDraftCapture(sourceTarget)).toMatchObject({
+    status: "blocked",
+    reason: "attachment-error",
+  });
+  await act(async () => {
+    current().scope.set(composerPastedTextAttachmentsAtom, [pasted]);
+  });
+  let lease: ComposerDraftCaptureLease | undefined;
+  try {
+    await act(async () => {
+      const acquired = acquireComposerDraftCapture(sourceTarget);
+      if (acquired.status !== "ready") throw new Error(acquired.message);
+      lease = acquired.lease;
+    });
+    expect(lease!.capture()).toMatchObject({
+      status: "ready",
+      snapshot: {
+        promptDocument: richDocument,
+        imageAttachments: [image],
+        pastedTextAttachments: [pasted],
+        appModelContextAttachments: [RESTORED_APP_CONTEXT],
+        goalModeActive: true,
+        activeAnnotationId: "unfinished-annotation",
+        annotationMode: "create",
+        annotationDraft: "An unfinished annotation note",
+      },
+    });
+    expect(
+      view.container.querySelector('[data-codex-composer="true"]')?.getAttribute("contenteditable"),
+    ).toBe("false");
+    await keyDownComposer(view, { key: "Enter" });
+    expect(send).not.toHaveBeenCalled();
+    expect(setGoal).not.toHaveBeenCalled();
+    await act(async () => {
+      const transfer = await lease!.persistTransfer(destinationTarget.threadId);
+      publishComposerDraftTransfer(current().app, transfer);
+      lease!.commitTransfer(transfer);
+      if (!openSaved) throw new Error("Expected navigation to saved chat");
+      openSaved();
+    });
+    await waitFor(() => expect(readComposerText(view)).toBe(richDocument.text));
+    await view.findByRole("button", { name: "context.png" });
+    let destination: ComposerDraftCaptureLease | undefined;
+    await act(async () => {
+      const acquired = acquireComposerDraftCapture(destinationTarget);
+      if (acquired.status !== "ready") throw new Error(acquired.message);
+      destination = acquired.lease;
+    });
+    try {
+      expect(destination!.capture()).toMatchObject({
+        status: "ready",
+        snapshot: {
+          promptDocument: richDocument,
+          imageAttachments: [expect.objectContaining({ id: image.id })],
+          pastedTextAttachments: [
+            { ...pasted, attachment: { ...pasted.attachment, file: copiedPastedFile } },
+          ],
+          appModelContextAttachments: [RESTORED_APP_CONTEXT],
+          goalModeActive: true,
+          activeAnnotationId: "unfinished-annotation",
+          annotationMode: "create",
+          annotationDraft: "An unfinished annotation note",
+        },
+      });
+      expect(send).not.toHaveBeenCalled();
+      expect(setGoal).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => destination?.release());
+    }
+  } finally {
+    await act(async () => lease?.release());
+  }
+  expect(removePasted).not.toHaveBeenCalled();
 });
 
 test("hidden app context alone cannot send a blank prompt but accompanies actual prose", async () => {

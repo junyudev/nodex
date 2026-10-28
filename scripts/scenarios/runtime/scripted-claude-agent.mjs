@@ -277,7 +277,9 @@ for await (const line of createInterface({ input: process.stdin })) {
       typeof incoming.message.content === "string"
         ? [incoming.message.content]
         : incoming.message.content.flatMap((part) => (part.type === "text" ? [part.text] : []))
-    ).find((text) => text.startsWith("Verify handoff "));
+    )
+      .map((text) => text.split("\n\nUser message:\n").at(-1) ?? text)
+      .find((text) => text.startsWith("Verify handoff "));
     if (handoffPrompt !== undefined) {
       const message = {
         id: `handoff-check-${randomUUID()}`,

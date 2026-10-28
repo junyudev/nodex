@@ -161,6 +161,7 @@ import type {
 import {
   addReviewDiffCommentAttachment,
   clearReviewDiffCommentAttachments,
+  getReviewDiffCommentAttachmentsSnapshot,
   removeReviewDiffCommentAttachment,
 } from "@/lib/review-diff-comment-attachment-store";
 import {
@@ -198,6 +199,9 @@ import {
   composerFileAttachmentsAtom,
   composerGoalModeActiveAtom,
   composerImageAttachmentsAtom,
+  composerImageDraftsAtom,
+  composerPromptDraftsAtom,
+  persistComposerDraftTransfer,
   persistableComposerImages,
   restoreComposerImages,
   useComposerImageDraft,
@@ -208,7 +212,15 @@ import {
   type ComposerCompletedDraftSnapshot,
   type ComposerFileAttachment,
   type ComposerPastedTextAttachment,
+  type ComposerPromptDocument,
 } from "./composer-draft-state";
+import {
+  isComposerDraftCaptureLocked,
+  registerComposerDraftCapture,
+  subscribeComposerDraftCapture,
+  type ComposerDraftCaptureResult,
+} from "./composer-draft-capture";
+import { prepareComposerDraftTransferAttachments } from "./composer-draft-transfer-attachments";
 import {
   buildComposerImagePromptInputs,
   classifyComposerDataTransfer,
@@ -228,6 +240,8 @@ import {
   useScopedAtomValue,
   useScopeHandle,
   useSetScopedAtom,
+  useMaitaiStore,
+  getConcretePersistedAtom,
   type ScopeHandle,
 } from "@/lib/maitai";
 import { ComposerScope, ThreadScope } from "@/lib/workbench-ui-scopes";
@@ -280,6 +294,7 @@ import { registerComposerImageAttachmentTarget } from "@/lib/composer-image-atta
 import {
   restoreComposerAppModelContext,
   restoreComposerAppModelContextSnapshot,
+  readComposerAppModelContext,
   useComposerAppModelContext,
 } from "./composer-app-model-context";
 import { ComposerAppModelContextAttachments } from "./composer-app-model-context-attachments";
@@ -1026,6 +1041,12 @@ function applyCompletedDraftSnapshot(input: {
     input.snapshot.appModelContextAttachments ?? [],
   );
   replaceReviewCommentAttachments(input.threadId, input.snapshot.commentAttachments);
+  if (input.threadId) {
+    replaceBrowserAnnotationAttachments(
+      input.threadId,
+      input.snapshot.browserAnnotationAttachments ?? [],
+    );
+  }
 }
 
 interface HydratedThreadComposerProps extends ThreadComposerProps {
@@ -1033,6 +1054,7 @@ interface HydratedThreadComposerProps extends ThreadComposerProps {
   readonly onIntentFocused: (nonce: number) => void;
   readonly prompt: string;
   readonly readPrompt: () => string;
+  readonly readPromptDocument: () => ComposerPromptDocument;
   readonly setPrompt: (prompt: string) => void;
   readonly clearSubmittedDraft: () => void;
   readonly intelligenceController: ComposerIntelligenceController;
@@ -1089,6 +1111,7 @@ function ControlledThreadComposer(
     onErrorMessage,
   });
   const composerHandle = useScopeHandle(ComposerScope);
+  const threadScopePath = useScopeHandle(ThreadScope).path;
   const transferDefinition = composerDraftTransferFamily(
     composerThreadId ?? `inactive:${composerHandle.path}`,
   );
@@ -1120,9 +1143,12 @@ function ControlledThreadComposer(
       consumedTransferIdRef.current !== transfer.transferId
     ) {
       consumedTransferIdRef.current = transfer.transferId;
-      selectionDraft.replace({
+      selectionDraft.restore({
         responseTextAnnotations: transfer.responseTextAnnotations ?? [],
         selectedTextAttachments: transfer.selectedTextAttachments ?? [],
+        activeAnnotationId: transfer.activeAnnotationId ?? null,
+        annotationMode: transfer.annotationMode ?? "create",
+        annotationDraft: transfer.annotationDraft ?? "",
       });
       applyCompletedDraftSnapshot({
         snapshot: transfer,
@@ -1135,9 +1161,27 @@ function ControlledThreadComposer(
         setGoalModeActive,
         threadId: composerThreadId,
       });
-      void promptDraft.setPrompt(transfer.prompt).catch((error: unknown) => {
-        onErrorMessage(error instanceof Error ? error.message : "Could not restore composer draft");
-      });
+      if (transfer.imageEditDraft) {
+        const target = resolveImageEditComposerTarget({
+          composerScopeIdentity: model.composerScopeIdentity,
+          isSideChat: model.conversation?.source?.sideConversation === true,
+          threadScopePath,
+        });
+        replaceImageEditComposerDraft(target.channelId, transfer.imageEditDraft);
+      }
+      void promptDraft
+        .setDocument(
+          transfer.promptDocument ?? {
+            text: transfer.prompt,
+            links: [],
+            mentions: [],
+          },
+        )
+        .catch((error: unknown) => {
+          onErrorMessage(
+            error instanceof Error ? error.message : "Could not restore composer draft",
+          );
+        });
       setTransfer(null);
     }
 
@@ -1280,6 +1324,9 @@ function ControlledThreadComposer(
     setTransfer,
     selectionDraft,
     transfer,
+    threadScopePath,
+    model.composerScopeIdentity,
+    model.conversation?.source?.sideConversation,
   ]);
 
   const setPrompt = useCallback(
@@ -1344,6 +1391,7 @@ function ControlledThreadComposer(
       }
       prompt={promptDraft.prompt}
       readPrompt={promptDraft.readPrompt}
+      readPromptDocument={promptDraft.readDocument}
       setPrompt={setPrompt}
       clearSubmittedDraft={clearSubmittedDraft}
       queuedFollowUpEdit={queuedFollowUpEdit}
@@ -1361,6 +1409,7 @@ function HydratedThreadComposer({
   backgroundAgentRows,
   prompt,
   readPrompt,
+  readPromptDocument,
   setPrompt,
   clearSubmittedDraft,
   queuedFollowUpEdit,
@@ -1371,7 +1420,9 @@ function HydratedThreadComposer({
 }: HydratedThreadComposerProps) {
   const { floating: isFloatingComposer, visible: composerVisible } =
     useRightPanelComposerPresentation();
-  const composerScopeKey = useScopeHandle(ComposerScope).path;
+  const composerHandle = useScopeHandle(ComposerScope);
+  const composerScopeKey = composerHandle.path;
+  const maitaiStore = useMaitaiStore();
   const [globalDictationTargetId] = useState(() => `composer:${crypto.randomUUID()}`);
   const threadScopePath = useScopeHandle(ThreadScope).path;
   const canStartNewThread = canStartNewThreadTarget(model);
@@ -1441,6 +1492,7 @@ function HydratedThreadComposer({
   const pastedTextOperationGenerationRef = useRef(new Map<string, number>());
   const pastedTextOperationCounterRef = useRef(0);
   const composerMountedRef = useRef(true);
+  const ordinaryFileUploadsRef = useRef({ pending: 0, error: null as string | null });
   const [resumeAttemptGate] = useState(createInterruptedTurnResumeGate);
   const { serviceTierSettings, setServiceTier } = useCodexServiceTierSettings();
   const commandKeymapQuery = useCommandKeymapState();
@@ -1450,6 +1502,33 @@ function HydratedThreadComposer({
     "Ctrl+M",
   );
   const composerThreadId = model.conversation?.threadId ?? model.threadId;
+  const captureScopeIdentity = model.composerScopeIdentity?.trim() || composerScopeKey;
+  const isDraftCaptureLocked = useCallback(
+    () =>
+      Boolean(
+        composerThreadId &&
+        isComposerDraftCaptureLocked({
+          threadId: composerThreadId,
+          composerScopeIdentity: captureScopeIdentity,
+        }),
+      ),
+    [captureScopeIdentity, composerThreadId],
+  );
+  const subscribeDraftCapture = useCallback(
+    (listener: () => void) =>
+      composerThreadId
+        ? subscribeComposerDraftCapture(
+            { threadId: composerThreadId, composerScopeIdentity: captureScopeIdentity },
+            listener,
+          )
+        : () => {},
+    [captureScopeIdentity, composerThreadId],
+  );
+  const draftCaptureLocked = useSyncExternalStore(
+    subscribeDraftCapture,
+    isDraftCaptureLocked,
+    isDraftCaptureLocked,
+  );
   const imageEditComposerTarget = resolveImageEditComposerTarget({
     composerScopeIdentity: model.composerScopeIdentity,
     isSideChat: model.conversation?.source?.sideConversation === true,
@@ -1569,7 +1648,8 @@ function HydratedThreadComposer({
         threadId: composerThreadId,
         scopeKey: composerScopeKey,
         append: (images) => {
-          if (!imageInputSupported || !composerMountedRef.current) return false;
+          if (!imageInputSupported || !composerMountedRef.current || isDraftCaptureLocked())
+            return false;
           imageAttachmentController.addResolvedImages(images);
           return true;
         },
@@ -1581,6 +1661,7 @@ function HydratedThreadComposer({
       composerScopeKey,
       imageInputSupported,
       imageAttachmentController,
+      isDraftCaptureLocked,
     ],
   );
   useEffect(() => {
@@ -1765,6 +1846,7 @@ function HydratedThreadComposer({
 
   const handleLargeTextPaste = useCallback(
     (text: string): boolean => {
+      if (isDraftCaptureLocked()) return true;
       const id = createComposerAttachmentId("pasted_text");
       pastedTextOperationCounterRef.current += 1;
       const generation = pastedTextOperationCounterRef.current;
@@ -1790,17 +1872,18 @@ function HydratedThreadComposer({
       });
       return true;
     },
-    [runPastedTextMaterialization, setPastedTextAttachments],
+    [isDraftCaptureLocked, runPastedTextMaterialization, setPastedTextAttachments],
   );
 
   const addOrdinaryComposerFiles = useCallback(
     async (files: readonly File[], source: "paste" | "drop"): Promise<void> => {
-      if (files.length === 0) return;
+      if (files.length === 0 || isDraftCaptureLocked()) return;
       if (model.isCloudNewThreadTarget) {
         onErrorMessage("Only images can be added to this composer");
         return;
       }
 
+      ordinaryFileUploadsRef.current.pending += 1;
       const results = await Promise.allSettled(
         files.map(async (file) => {
           let localPath =
@@ -1820,6 +1903,7 @@ function HydratedThreadComposer({
           } satisfies ComposerFileAttachment;
         }),
       );
+      ordinaryFileUploadsRef.current.pending -= 1;
       if (!composerMountedRef.current) return;
 
       const completed = results.flatMap((result): ComposerFileAttachment[] =>
@@ -1838,6 +1922,11 @@ function HydratedThreadComposer({
       const failure = results.find(
         (result): result is PromiseRejectedResult => result.status === "rejected",
       );
+      ordinaryFileUploadsRef.current.error = failure
+        ? failure.reason instanceof Error
+          ? failure.reason.message
+          : "Could not add one or more files"
+        : null;
       if (failure) {
         onErrorMessage(
           failure.reason instanceof Error
@@ -1846,11 +1935,12 @@ function HydratedThreadComposer({
         );
       }
     },
-    [model.isCloudNewThreadTarget, onErrorMessage, setFileAttachments],
+    [isDraftCaptureLocked, model.isCloudNewThreadTarget, onErrorMessage, setFileAttachments],
   );
 
   const handlePasteFiles = useCallback(
     (payload: ComposerPastedFiles): boolean => {
+      if (isDraftCaptureLocked()) return true;
       if (payload.imageFiles.length > 0) {
         void imageAttachmentController.addFiles(payload.imageFiles, "paste");
       }
@@ -1859,7 +1949,7 @@ function HydratedThreadComposer({
       }
       return payload.imageFiles.length > 0 || payload.otherFiles.length > 0;
     },
-    [addOrdinaryComposerFiles, imageAttachmentController],
+    [addOrdinaryComposerFiles, imageAttachmentController, isDraftCaptureLocked],
   );
 
   const handleRetryPastedTextAttachment = useCallback(
@@ -1995,6 +2085,7 @@ function HydratedThreadComposer({
 
   const submitThreadGoalDraft = useCallback(
     async (draft: ThreadGoalSubmissionDraft): Promise<boolean> => {
+      if (isDraftCaptureLocked()) return false;
       if (draft.hasUnsupportedAttachments) {
         toast.danger(getThreadGoalMessage("composer.threadGoal.materializeError"), {
           id: "thread-goal-materialize-failed",
@@ -2121,6 +2212,7 @@ function HydratedThreadComposer({
       clearAdmittedSubmission,
       completeSuccessfulSubmission,
       imageEditDraft,
+      isDraftCaptureLocked,
       model.conversation,
       model.hostId,
       model.isCloudNewThreadTarget,
@@ -2154,6 +2246,7 @@ function HydratedThreadComposer({
       imageEditIntent?: ImageEditSubmissionIntent;
       pausedQueueResolution?: "resume" | "clear";
     }): Promise<boolean> => {
+      if (isDraftCaptureLocked()) return false;
       if (hasPendingPastedTextAttachments) return false;
       const executionHostId = model.isCloudNewThreadTarget ? null : model.hostId;
       const intentImageAttachments = input.imageEditIntent
@@ -2546,6 +2639,7 @@ function HydratedThreadComposer({
       imageEditDraft,
       imageInputSupported,
       imageInputUnavailableReason,
+      isDraftCaptureLocked,
       intelligenceController,
       model.activeTurn,
       model.composerShell,
@@ -3760,7 +3854,150 @@ function HydratedThreadComposer({
               ? newThreadPromptPlaceholder
               : "Select a thread";
   const isPromptEditorDisabled =
-    (model.conversation === null && !canStartNewThread) || busyAction !== null;
+    (model.conversation === null && !canStartNewThread) ||
+    busyAction !== null ||
+    draftCaptureLocked;
+  const captureReaderRef = useRef<() => ComposerDraftCaptureResult>(() => ({
+    status: "blocked",
+    reason: "unavailable",
+    message: "This conversation's draft is unavailable.",
+  }));
+  useLayoutEffect(() => {
+    captureReaderRef.current = () => {
+      if (
+        busyAction !== null ||
+        model.isThreadRunning ||
+        isStarting ||
+        isDictating ||
+        isTranscribing ||
+        isRealtimeVoiceActive
+      ) {
+        return {
+          status: "blocked",
+          reason: "busy",
+          message: "Wait for this conversation's current action to finish before saving.",
+        };
+      }
+      const promptState = maitaiStore.jotaiStore.get(
+        getConcretePersistedAtom(maitaiStore, composerPromptDraftsAtom),
+      );
+      const imageState = maitaiStore.jotaiStore.get(
+        getConcretePersistedAtom(maitaiStore, composerImageDraftsAtom),
+      );
+      if (promptState.status === "loading" || imageState.status === "loading") {
+        return {
+          status: "blocked",
+          reason: "draft-loading",
+          message: "Wait for the draft to finish loading.",
+        };
+      }
+      if (promptState.status === "error" || imageState.status === "error") {
+        return {
+          status: "blocked",
+          reason: "draft-error",
+          message:
+            promptState.error?.message ??
+            imageState.error?.message ??
+            "The draft could not be saved. Try again.",
+        };
+      }
+      const images = composerHandle.get(composerImageAttachmentsAtom);
+      const pasted = composerHandle.get(composerPastedTextAttachmentsAtom);
+      if (
+        images.some(
+          (image) => image.materializationStatus === "failed" || image.uploadStatus === "failed",
+        ) ||
+        pasted.some((attachment) => attachment.status === "failed") ||
+        ordinaryFileUploadsRef.current.error
+      ) {
+        return {
+          status: "blocked",
+          reason: "attachment-error",
+          message: "An attachment could not be added. Retry or remove it before saving.",
+        };
+      }
+      if (
+        images.some(
+          (image) => image.materializationStatus !== "ready" || image.uploadStatus === "uploading",
+        ) ||
+        pasted.some((attachment) => attachment.status === "pending") ||
+        ordinaryFileUploadsRef.current.pending > 0 ||
+        getBrowserImageAttachmentsSnapshot(browserAnnotationConversationId).length > 0
+      ) {
+        return {
+          status: "blocked",
+          reason: "pending-attachments",
+          message: "Wait for attachments to finish uploading before saving.",
+        };
+      }
+      if (persistableComposerImages(images).length !== images.length) {
+        return {
+          status: "blocked",
+          reason: "attachment-error",
+          message: "An image cannot be saved with this draft. Add it again before saving.",
+        };
+      }
+      const storedDocument = readPromptDocument();
+      const text = promptEditorRef.current?.getPersistedText() ?? readPrompt();
+      const promptDocument =
+        storedDocument.text === text ? storedDocument : { text, links: [], mentions: [] };
+      return {
+        status: "ready",
+        snapshot: {
+          prompt: text,
+          promptDocument,
+          fileAttachments: composerHandle.get(composerFileAttachmentsAtom),
+          addedFiles: composerHandle.get(composerAddedFilesAtom),
+          imageAttachments: images,
+          appshotContexts: composerHandle.get(composerAppshotContextsAtom),
+          pastedTextAttachments: pasted,
+          commentAttachments: getReviewDiffCommentAttachmentsSnapshot(composerThreadId),
+          browserAnnotationAttachments: getBrowserAnnotationAttachmentsSnapshot(
+            browserAnnotationConversationId,
+          ),
+          ...selectionDraft.readSnapshot(),
+          appModelContextAttachments: readComposerAppModelContext(composerHandle),
+          imageEditDraft: getImageEditComposerDraftSnapshot(imageEditComposerChannelId),
+          goalModeActive: composerHandle.get(composerGoalModeActiveAtom),
+        },
+      };
+    };
+  }, [
+    browserAnnotationConversationId,
+    busyAction,
+    composerHandle,
+    composerThreadId,
+    imageEditComposerChannelId,
+    isDictating,
+    isRealtimeVoiceActive,
+    isStarting,
+    isTranscribing,
+    maitaiStore,
+    model.isThreadRunning,
+    readPrompt,
+    readPromptDocument,
+    selectionDraft,
+  ]);
+  useLayoutEffect(() => {
+    if (!composerThreadId) return;
+    return registerComposerDraftCapture(
+      { threadId: composerThreadId, composerScopeIdentity: captureScopeIdentity },
+      {
+        read: () => captureReaderRef.current(),
+        prepare: (transfer) =>
+          prepareComposerDraftTransferAttachments(
+            transfer,
+            {
+              read: readPastedTextAttachment,
+              create: createPastedTextAttachment,
+              remove: removePastedTextAttachment,
+            },
+            model.hostId,
+          ),
+        persist: (transfer) => persistComposerDraftTransfer(maitaiStore, transfer),
+      },
+    );
+  }, [captureScopeIdentity, composerThreadId, maitaiStore, model.hostId]);
   const primaryShortcutKeys = resolveShortcutKeycapTokens({
     accelerator: resolveThreadComposerPrimaryShortcutAccelerator({
       enterBehavior: model.composerEnterBehavior,
@@ -4115,6 +4352,7 @@ function HydratedThreadComposer({
         />
       </ComposerContextRailSlot>
       <div
+        inert={draftCaptureLocked}
         className={cn(
           "relative",
           (browserImageDrag || isFileDragActive) &&

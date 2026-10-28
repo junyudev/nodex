@@ -140,6 +140,7 @@ async function callTool(server, name, args, native) {
 async function answer(prompt, server, native) {
   const plan = JSON.parse(fs.readFileSync(path.join(home, "plan.json"), "utf8"));
   const delegation = plan[prompt];
+  if (typeof delegation?.reply === "string") return delegation.reply;
   if (!delegation) {
     // One finished task or a batch of siblings that finished before the parent woke.
     const terminalNotice = /^Delegated tasks? (\S+(?:, \S+)*) reached (?:a terminal state|terminal states)\./u.exec(prompt);
@@ -245,7 +246,7 @@ async function handleCodex(message) {
     case "thread/start": {
       const threadId = randomUUID();
       state = load();
-      const thread = { ...nativeThread(threadId, params.cwd), turns: [] };
+      const thread = { ...nativeThread(threadId, params.cwd), ephemeral: params.ephemeral === true, turns: [] };
       state.threads[threadId] = thread;
       persist();
       servers.set(threadId, configValue(params.config, "mcp_servers.nodex_app"));
@@ -266,7 +267,7 @@ async function handleCodex(message) {
       if (!source) { emit({ id, error: { code: -32001, message: "Thread missing" } }); return; }
       const last = params.lastTurnId === undefined ? source.turns.length : source.turns.findIndex((turn) => turn.id === params.lastTurnId) + 1;
       const threadId = randomUUID();
-      const thread = { ...nativeThread(threadId, params.cwd ?? source.cwd), forkedFromId: source.id, turns: source.turns.slice(0, last), injectedItems: source.injectedItems ?? [] };
+      const thread = { ...nativeThread(threadId, params.cwd ?? source.cwd), ephemeral: params.ephemeral === true, forkedFromId: source.id, turns: source.turns.slice(0, last), injectedItems: source.injectedItems ?? [] };
       state.threads[threadId] = thread;
       persist();
       servers.set(threadId, configValue(params.config, "mcp_servers.nodex_app"));
@@ -318,6 +319,16 @@ async function handleCodex(message) {
       return;
     }
     case "turn/interrupt": reply({}); finishCodex(params.threadId, params.turnId, "interrupted"); return;
+    case "thread/unsubscribe": {
+      state = load();
+      if (state.threads[params.threadId]?.ephemeral) {
+        delete state.threads[params.threadId];
+        servers.delete(params.threadId);
+        persist();
+        record({ event: "ephemeral.removed", threadId: params.threadId });
+      }
+      reply({ status: "unsubscribed" }); return;
+    }
     // History another Agent produced joins the model-visible thread before the next turn.
     case "thread/inject_items": {
       state = load();

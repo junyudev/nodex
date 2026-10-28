@@ -7,9 +7,11 @@ import {
   OrchestrationV2CreationSource,
   OrchestrationV2ProviderThread,
   OrchestrationV2Run,
+  OrchestrationV2SideChatCapture,
   OrchestrationV2ThreadProjection,
   ThreadId,
 } from "@t3tools/contracts";
+import { selectHistory } from "@t3tools/provider-core/server/handoffBudget";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -131,6 +133,28 @@ export function forkThread(input: ForkThreadInput): OrchestrationV2AppThread {
     snoozedAt: null,
     lastVisitedAt: null,
     deletedAt: null,
+  };
+}
+
+/** Temporary execution instructions end when the captured conversation becomes an ordinary chat. */
+export function savedSideChatCapture(
+  capture: OrchestrationV2SideChatCapture,
+  budget: number,
+): OrchestrationV2SideChatCapture {
+  const messages = capture.history.messages.filter(
+    (message) => message.kind !== "side_chat_boundary",
+  );
+  const removed = capture.history.messages.length - messages.length;
+  const selected = selectHistory({ ...capture.history, messages, budget });
+  return {
+    ...capture,
+    history: {
+      ...capture.history,
+      messages: selected.messages,
+      omittedItems: selected.omittedItems,
+    },
+    context: selected.context,
+    sourceItemCount: Math.max(0, capture.sourceItemCount - removed),
   };
 }
 

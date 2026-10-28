@@ -85,6 +85,7 @@ export interface AppShellTabItem {
   contextLabel?: string;
   icon?: ComponentType<{ className?: string }>;
   iconElement?: ReactNode;
+  actions?: ReactNode;
   closable?: boolean;
   preview?: boolean;
   pinBehavior?: "automatic" | "disabled";
@@ -1015,6 +1016,7 @@ function AppShellTab({
           className={cn(
             "no-drag relative z-10 flex h-full min-w-0 flex-1 items-center gap-2 py-1 ps-2.5 pe-1.75 text-sm",
             onClose && (isActive ? "pe-8" : "group-focus-within/tab:pe-8 group-hover/tab:pe-8"),
+            tab.actions && "pe-14",
             isActive ? "text-(--color-text)" : "text-tertiary",
           )}
           onMouseDown={(event) => {
@@ -1046,6 +1048,19 @@ function AppShellTab({
           ) : null}
           {label}
         </button>
+        {tab.actions ? (
+          <div
+            data-app-shell-tab-no-drag="true"
+            className="no-drag absolute end-7 top-1/2 z-30 -translate-y-1/2"
+            onMouseDown={(event) => {
+              event.stopPropagation();
+              onSelect(tab.id);
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {tab.actions}
+          </div>
+        ) : null}
         {onClose ? (
           <button
             type="button"

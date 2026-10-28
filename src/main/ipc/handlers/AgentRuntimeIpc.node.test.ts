@@ -64,6 +64,16 @@ const setup = Effect.gen(function* () {
       }),
   };
   const application = {
+    saveSideChat: (input: unknown) =>
+      Effect.sync(() => {
+        calls.push(input);
+        return {
+          sourceSessionId: "side",
+          sessionId: "saved",
+          threadId: "saved-thread",
+          projectId: null,
+        };
+      }),
     launch: (input: unknown) =>
       Effect.sync(() => {
         calls.push(input);
@@ -135,6 +145,34 @@ const setup = Effect.gen(function* () {
     PubSub.publish(bus, { delivery: (delivery += gap ? 2 : 1), notification });
   return { handlers, received, releases, calls, event, send, backend: () => backendId };
 });
+
+it.effect("admits save-side-chat through its strict semantic boundary", () =>
+  Effect.gen(function* () {
+    const f = yield* setup;
+    const save = f.handlers.get("agent-runtime:session:save-side-chat")!;
+    const input = {
+      source: { sessionId: "side" },
+      sessionId: "saved",
+      requestId: "save",
+      acceptedAt: 1,
+    };
+    assert.deepEqual(yield* save(f.event(1), input), {
+      sourceSessionId: "side",
+      sessionId: "saved",
+      threadId: "saved-thread",
+      projectId: null,
+    });
+    yield* save(f.event(1), { ...input, source: { sessionId: "side", extra: true } }).pipe(
+      Effect.flip,
+    );
+    yield* save(f.event(1), { ...input, sideChat: true }).pipe(Effect.flip);
+    yield* save(
+      { ...f.event(1), senderFrame: { url: "https://example.com" } } as IpcMainInvokeEvent,
+      input,
+    ).pipe(Effect.flip);
+    assert.deepEqual(f.calls, [input]);
+  }).pipe(Effect.scoped),
+);
 
 it.effect(
   "rejects untrusted renderer origins and malformed launch identity before application dispatch",

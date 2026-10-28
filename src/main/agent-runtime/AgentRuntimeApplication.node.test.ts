@@ -213,6 +213,9 @@ const setup = (
     runtimeId: "engine",
     failMessage: false,
     failThreadCreate: false,
+    refuseSideChatSave: false,
+    failSideChatSave: false,
+    loseSideChatSaveReply: false,
     failCodexImportBeforeCommit: false,
     nativeSession: null as ProjectSession | null,
     nativeBackendSession: null as Awaited<
@@ -570,6 +573,10 @@ const setup = (
           state.failMessage = false;
           return yield* Effect.fail(new Error("Connection closed after Thread creation"));
         }
+        if (command.type === "thread.fork" && command.saveSideChat && state.failSideChatSave) {
+          state.failSideChatSave = false;
+          return yield* Effect.fail(new Error("Save transport unavailable"));
+        }
         if (commands.has(command.commandId))
           return { sequence: commands.size } as AgentRuntimeOperations[M]["output"];
         commands.set(command.commandId, command);
@@ -697,6 +704,10 @@ const setup = (
               thread: {
                 ...source.projection.thread,
                 id: command.targetThreadId,
+                sideChat: command.sideChat
+                  ? { sourceThreadId: command.sourceThreadId, sourceRunId: null, nativeFork: false }
+                  : undefined,
+                capturedContext: command.sideChat || command.saveSideChat ? true : undefined,
                 lineage: {
                   rootThreadId: independent
                     ? command.targetThreadId
@@ -713,6 +724,10 @@ const setup = (
               runs: [],
             },
           });
+          if (command.saveSideChat && state.loseSideChatSaveReply) {
+            state.loseSideChatSaveReply = false;
+            return yield* Effect.fail(new Error("Save reply lost after commit"));
+          }
         }
         return { sequence: commands.size } as AgentRuntimeOperations[M]["output"];
       }
@@ -736,6 +751,14 @@ const setup = (
             (request.runId === undefined || run.id === request.runId) &&
             ["completed", "waiting", "failed", "interrupted", "cancelled"].includes(run.status),
         )?.id ?? null) as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "thread.side-chat-save-source") {
+        if (state.refuseSideChatSave)
+          return yield* Effect.fail(new Error("Side chat has pending work"));
+        const { threadId } =
+          input as AgentRuntimeOperations["thread.side-chat-save-source"]["input"];
+        return (snapshots.get(threadId)?.projection.runs.at(-1)?.id ??
+          null) as AgentRuntimeOperations[M]["output"];
       }
       if (method === "thread.rollback") {
         const request = input as AgentRuntimeOperations["thread.rollback"]["input"];
@@ -5356,6 +5379,180 @@ it.effect(
       assert.isTrue(f.bindings.has(source.sessionId));
       assert.isNotNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
       assert.deepEqual(f.snapshots.get(source.threadId), sourceBefore);
+    }),
+);
+
+it.effect.each(["unused", "finished"] as const)(
+  "saves an %s side chat as a durable Session and replays after source disposal",
+  (state) =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      const source = yield* owner.launch(launch);
+      const side = yield* owner.createSideChat({
+        source: { sessionId: source.sessionId },
+        sessionId: "side:save",
+        requestId: "side:create",
+        acceptedAt: launch.acceptedAt,
+      });
+      if (state === "finished") {
+        const current = f.snapshots.get(side.threadId)!;
+        f.snapshots.set(side.threadId, {
+          ...current,
+          projection: {
+            ...current.projection,
+            runs: [
+              { ...f.snapshots.get(source.threadId)!.projection.runs[0]!, status: "completed" },
+            ],
+          },
+        });
+      }
+      const before = structuredClone(f.snapshots.get(side.threadId));
+      const input = {
+        source: { sessionId: side.sessionId, threadId: side.threadId },
+        sessionId: "saved",
+        requestId: "side:save",
+        acceptedAt: launch.acceptedAt,
+      };
+      const saved = yield* owner.saveSideChat(input);
+      assert.equal(saved.sourceSessionId, side.sessionId);
+      assert.equal(saved.projectId, source.projectId);
+      assert.isUndefined(f.bindings.get(saved.sessionId)!.side_chat_source_session_id);
+      assert.deepEqual(f.snapshots.get(side.threadId), before);
+      assert.lengthOf(f.snapshots.get(saved.threadId)!.projection.runs, 0);
+      assert.isUndefined(f.snapshots.get(saved.threadId)!.projection.thread.sideChat);
+      assert.deepEqual(
+        f.snapshots.get(saved.threadId)!.projection.thread.modelSelection,
+        before!.projection.thread.modelSelection,
+      );
+      assert.equal(
+        [...f.commands.values()].filter((c) => c.type === "thread.fork" && c.saveSideChat).length,
+        1,
+      );
+      yield* owner.discardSideChat({ sessionId: side.sessionId, requestId: "discard" });
+      const calls = f.calls.length;
+      assert.deepEqual(yield* owner.saveSideChat(input), saved);
+      assert.deepEqual(
+        yield* owner.saveSideChat({ ...input, source: { sessionId: side.sessionId } }),
+        saved,
+      );
+      assert.isFalse(
+        f.calls.slice(calls).some((call) => call.method === "thread.side-chat-save-source"),
+      );
+      yield* owner.saveSideChat({ ...input, requestId: "different" }).pipe(Effect.flip);
+      yield* owner
+        .saveSideChat({ ...input, source: { sessionId: source.sessionId } })
+        .pipe(Effect.flip);
+    }),
+);
+
+it.effect("rejects non-side and pending-work saves before destination admission", () =>
+  Effect.gen(function* () {
+    const f = setup();
+    const owner = yield* f.owner;
+    const source = yield* owner.launch(launch);
+    const input = {
+      source: { sessionId: source.sessionId },
+      sessionId: "saved",
+      requestId: "save",
+      acceptedAt: launch.acceptedAt,
+    };
+    const before = { applied: f.applied.length, commands: f.commands.size };
+    yield* owner.saveSideChat(input).pipe(Effect.flip);
+    assert.equal(f.applied.length, before.applied);
+    assert.equal(f.commands.size, before.commands);
+    const side = yield* owner.createSideChat({ ...input, sessionId: "side" });
+    const sourceBefore = structuredClone(f.snapshots.get(side.threadId));
+    f.state.refuseSideChatSave = true;
+    const applied = f.applied.length;
+    const commands = f.commands.size;
+    yield* owner
+      .saveSideChat({ ...input, source: { sessionId: side.sessionId } })
+      .pipe(Effect.flip);
+    assert.equal(f.applied.length, applied);
+    assert.equal(f.commands.size, commands);
+    assert.isFalse(f.bindings.has("saved"));
+    assert.deepEqual(f.snapshots.get(side.threadId), sourceBefore);
+  }),
+);
+
+it.effect(
+  "revalidates save authority before reading execution and when replaying a saved chat",
+  () =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      const source = yield* owner.launch(launch);
+      const side = yield* owner.createSideChat({
+        source: { sessionId: source.sessionId },
+        sessionId: "side",
+        requestId: "side:create",
+        acceptedAt: launch.acceptedAt,
+      });
+      const input = {
+        source: { sessionId: side.sessionId },
+        sessionId: "saved",
+        requestId: "side:save",
+        acceptedAt: launch.acceptedAt,
+      };
+      f.state.denyAgent = true;
+      const calls = f.calls.length;
+      yield* owner
+        .saveSideChat(input)
+        .pipe(Effect.provideService(CoreApplicationAgent, agent), Effect.flip);
+      assert.isFalse(
+        f.calls.slice(calls).some((call) => call.method === "thread.side-chat-save-source"),
+      );
+      assert.isFalse(f.bindings.has(input.sessionId));
+      f.state.denyAgent = false;
+      yield* owner.saveSideChat(input);
+      f.state.denyAgent = true;
+      const afterSave = f.calls.length;
+      yield* owner
+        .saveSideChat(input)
+        .pipe(Effect.provideService(CoreApplicationAgent, agent), Effect.flip);
+      assert.isFalse(f.calls.slice(afterSave).some((call) => call.method === "thread.read"));
+    }),
+);
+
+it.effect.each(["before-commit", "lost-reply"] as const)(
+  "preserves the source and retries the same save after %s failure",
+  (failure) =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      const source = yield* owner.launch(launch);
+      const side = yield* owner.createSideChat({
+        source: { sessionId: source.sessionId },
+        sessionId: "side",
+        requestId: "side:create",
+        acceptedAt: launch.acceptedAt,
+      });
+      const before = structuredClone(f.snapshots.get(side.threadId));
+      const input = {
+        source: { sessionId: side.sessionId },
+        sessionId: "saved",
+        requestId: "side:save",
+        acceptedAt: launch.acceptedAt,
+      };
+      f.state.failSideChatSave = failure === "before-commit";
+      f.state.loseSideChatSaveReply = failure === "lost-reply";
+      yield* owner.saveSideChat(input).pipe(Effect.flip);
+      assert.deepEqual(f.snapshots.get(side.threadId), before);
+      const saved = yield* owner.saveSideChat(input);
+      assert.equal(saved.sessionId, "saved");
+      assert.equal(
+        f.applied.filter(
+          (op) =>
+            op.intent.kind === "create_agent_runtime_session" && op.intent.session_id === "saved",
+        ).length,
+        1,
+      );
+      assert.equal(
+        [...f.commands.values()].filter((c) => c.type === "thread.fork" && c.saveSideChat).length,
+        1,
+      );
+      assert.deepEqual(f.snapshots.get(side.threadId), before);
     }),
 );
 

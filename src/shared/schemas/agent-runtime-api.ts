@@ -182,6 +182,7 @@ export const AgentRuntimeSideChatCreateSchema = z
 export const AgentRuntimeSideChatDiscardSchema = z
   .object({ sessionId: id, requestId: id })
   .strict();
+export const AgentRuntimeSideChatSaveSchema = AgentRuntimeSideChatCreateSchema;
 export const AgentRuntimeForkSchema = z
   .object({
     source: AgentRuntimeTargetSchema,

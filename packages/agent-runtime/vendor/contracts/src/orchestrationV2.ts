@@ -410,6 +410,7 @@ export const OrchestrationV2SideChatCapture = Schema.Struct({
     sourceRunCount: NonNegativeInt,
     sourceSelections: Schema.Array(Schema.Struct({ providerInstanceId: ProviderInstanceId, modelSelection: ModelSelection })),
   });
+export type OrchestrationV2SideChatCapture = typeof OrchestrationV2SideChatCapture.Type;
 export const OrchestrationV2SideChat = Schema.Struct({
   sourceThreadId: ThreadId,
   sourceRunId: Schema.NullOr(RunId),
@@ -3377,6 +3378,8 @@ export const OrchestrationV2Command = Schema.Union([
     targetThreadId: ThreadId,
     sourcePoint: OrchestrationV2ThreadForkSourcePoint,
     sideChat: Schema.optional(Schema.Literal(true)),
+    /** Saves an idle side chat with independent portable context, never a deferred native fork. */
+    saveSideChat: Schema.optional(Schema.Literal(true)),
     /** A visible independent Session owns a new execution root while retaining captured history. */
     rootPolicy: Schema.optional(Schema.Literals(["same_root", "independent_root"])),
     title: Schema.optional(TrimmedNonEmptyString),

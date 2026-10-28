@@ -20,9 +20,11 @@ import {
   usePersistedAtomValue,
   useMaitaiStore,
   getConcretePersistedAtom,
+  preloadPersistedAtom,
   useScopeHandle,
   useSetPersistedAtom,
   type PersistedLoadable,
+  type MaitaiStore,
   type ScopeHandle,
 } from "@/lib/maitai";
 import {
@@ -32,6 +34,8 @@ import {
   type ComposerImageAttachment,
 } from "./image-attachments/composer-image-attachment-model";
 import type { CodexAppModelContextAttachment } from "../../../../../shared/codex-untrusted-app-input";
+import type { BrowserAnnotationAttachment } from "../../../../../shared/browser-annotation";
+import type { ImageEditComposerDraftSnapshot } from "@/lib/image-edit-composer-channel";
 
 export type { ComposerImageAttachment } from "./image-attachments/composer-image-attachment-model";
 
@@ -62,9 +66,10 @@ export type ComposerPastedTextAttachment =
     });
 
 export interface ComposerCompletedDraftSnapshot extends Partial<
-  import("../../../../../shared/thread-text-selection").ThreadTextSelectionContext
+  import("../../thread-text-selection-draft").ThreadTextSelectionDraftSnapshot
 > {
   readonly prompt: string;
+  readonly promptDocument?: ComposerPromptDocument;
   readonly fileAttachments: readonly ComposerFileAttachment[];
   readonly addedFiles: readonly ComposerFileAttachment[];
   readonly imageAttachments: readonly ComposerImageAttachment[];
@@ -72,6 +77,8 @@ export interface ComposerCompletedDraftSnapshot extends Partial<
   readonly pastedTextAttachments: readonly ComposerPastedTextAttachment[];
   readonly commentAttachments: readonly CodexReviewDiffCommentAttachment[];
   readonly appModelContextAttachments?: readonly CodexAppModelContextAttachment[];
+  readonly browserAnnotationAttachments?: readonly BrowserAnnotationAttachment[];
+  readonly imageEditDraft?: ImageEditComposerDraftSnapshot;
   readonly goalModeActive: boolean;
 }
 
@@ -340,14 +347,89 @@ export function createComposerDraftTransfer(
   const normalizedConversationId = targetConversationId.trim();
   if (!normalizedConversationId)
     throw new Error("Composer transfer requires a target conversation id");
+  assertComposerDraftTransferReady(snapshot);
   return {
     ...snapshot,
-    pastedTextAttachments: snapshot.pastedTextAttachments.filter(
-      (attachment) => attachment.status === "ready",
-    ),
     transferId: createTransferId(),
     targetConversationId: normalizedConversationId,
   };
+}
+
+function assertComposerDraftTransferReady(snapshot: ComposerCompletedDraftSnapshot): void {
+  if (snapshot.pastedTextAttachments.some((attachment) => attachment.status !== "ready")) {
+    throw new Error("Finish or remove pasted text attachments before saving this draft");
+  }
+  if (
+    snapshot.imageAttachments.some(
+      (attachment) =>
+        attachment.materializationStatus !== "ready" ||
+        attachment.materialization === null ||
+        attachment.uploadStatus !== "idle",
+    )
+  ) {
+    throw new Error("Finish or remove image attachments before saving this draft");
+  }
+}
+
+/** Saves the target's restart-safe draft before its conversation is mounted. */
+export async function persistComposerDraftTransfer(
+  store: MaitaiStore,
+  transfer: ComposerDraftTransfer,
+): Promise<void> {
+  const targetConversationId = transfer.targetConversationId.trim();
+  if (!targetConversationId) throw new Error("Composer transfer requires a target conversation id");
+  assertComposerDraftTransferReady(transfer);
+  const images = persistableComposerImages(transfer.imageAttachments);
+  if (
+    images.length !== transfer.imageAttachments.length ||
+    images.some((image) => decodePersistedComposerImage(image).length !== 1)
+  ) {
+    throw new Error("Image attachments must be saved locally before saving this draft");
+  }
+  await Promise.all([
+    preloadPersistedAtom(store, composerPromptDraftsAtom),
+    preloadPersistedAtom(store, composerImageDraftsAtom),
+  ]);
+  const promptAtom = getConcretePersistedAtom(store, composerPromptDraftsAtom);
+  const imageAtom = getConcretePersistedAtom(store, composerImageDraftsAtom);
+  for (const loadable of [store.jotaiStore.get(promptAtom), store.jotaiStore.get(imageAtom)]) {
+    if (loadable.status !== "ready") {
+      throw loadable.error ?? new Error("Composer draft storage is not ready");
+    }
+  }
+  const aliases = [`local:${targetConversationId}`];
+  const document = transfer.promptDocument ?? { text: transfer.prompt, links: [], mentions: [] };
+  const expectedDocument = JSON.stringify(
+    deserializeComposerPromptDraft(serializeComposerPromptDraft(document)),
+  );
+  const expectedImages = JSON.stringify(images.flatMap(decodePersistedComposerImage));
+  const assertPromptUnchanged = (drafts: ComposerPromptDraftMap): void => {
+    const existing = readComposerPromptDocument(drafts, aliases);
+    if (existing.text.length > 0 && JSON.stringify(existing) !== expectedDocument) {
+      throw new Error("The saved conversation's draft changed. Keep this side chat open.");
+    }
+  };
+  const assertImagesUnchanged = (drafts: ComposerImageDraftMap): void => {
+    const existing = drafts[aliases[0]!] ?? [];
+    if (existing.length > 0 && JSON.stringify(existing) !== expectedImages) {
+      throw new Error("The saved conversation's images changed. Keep this side chat open.");
+    }
+  };
+  assertPromptUnchanged(store.jotaiStore.get(promptAtom).value);
+  assertImagesUnchanged(store.jotaiStore.get(imageAtom).value);
+  const writes = await Promise.allSettled([
+    store.jotaiStore.set(promptAtom, (drafts) => {
+      assertPromptUnchanged(drafts);
+      return updateComposerPromptDocumentDrafts(drafts, aliases, document);
+    }),
+    store.jotaiStore.set(imageAtom, (drafts) => {
+      assertImagesUnchanged(drafts);
+      return updateComposerImageDrafts(drafts, aliases, images);
+    }),
+  ]);
+  for (const write of writes) {
+    if (write.status === "rejected") throw write.reason;
+  }
 }
 
 export function publishComposerDraftTransfer(
@@ -382,12 +464,19 @@ export function readComposerPromptDraft(
   drafts: ComposerPromptDraftMap,
   aliases: readonly string[],
 ): string {
+  return readComposerPromptDocument(drafts, aliases).text;
+}
+
+export function readComposerPromptDocument(
+  drafts: ComposerPromptDraftMap,
+  aliases: readonly string[],
+): ComposerPromptDocument {
   for (const alias of aliases) {
     if (Object.prototype.hasOwnProperty.call(drafts, alias)) {
-      return deserializeComposerPromptDraft(drafts[alias] ?? "").text;
+      return deserializeComposerPromptDraft(drafts[alias] ?? "");
     }
   }
-  return "";
+  return { text: "", links: [], mentions: [] };
 }
 
 export function updateComposerPromptDrafts(
@@ -395,12 +484,24 @@ export function updateComposerPromptDrafts(
   aliases: readonly string[],
   prompt: string,
 ): ComposerPromptDraftMap {
+  return updateComposerPromptDocumentDrafts(drafts, aliases, {
+    text: prompt,
+    links: [],
+    mentions: [],
+  });
+}
+
+export function updateComposerPromptDocumentDrafts(
+  drafts: ComposerPromptDraftMap,
+  aliases: readonly string[],
+  document: ComposerPromptDocument,
+): ComposerPromptDraftMap {
   const next = { ...drafts };
-  if (prompt.length === 0) {
+  if (document.text.length === 0) {
     for (const alias of aliases) delete next[alias];
     return next;
   }
-  const serialized = serializeComposerPromptDraft({ text: prompt, links: [], mentions: [] });
+  const serialized = serializeComposerPromptDraft(document);
   for (const alias of aliases) next[alias] = serialized;
   return next;
 }
@@ -456,7 +557,9 @@ export interface ComposerPromptDraftController {
   readonly aliases: readonly string[];
   readonly prompt: string;
   readPrompt(): string;
+  readDocument(): ComposerPromptDocument;
   setPrompt(prompt: string): Promise<void>;
+  setDocument(document: ComposerPromptDocument): Promise<void>;
   clear(): Promise<void>;
 }
 
@@ -483,6 +586,11 @@ export function useComposerPromptDraft(
       setDrafts((current) => updateComposerPromptDrafts(current, aliases, nextPrompt)),
     [aliases, setDrafts],
   );
+  const setDocument = useCallback(
+    (document: ComposerPromptDocument) =>
+      setDrafts((current) => updateComposerPromptDocumentDrafts(current, aliases, document)),
+    [aliases, setDrafts],
+  );
   const clear = useCallback(() => setPrompt(""), [setPrompt]);
   const readPrompt = useCallback(
     () =>
@@ -492,9 +600,17 @@ export function useComposerPromptDraft(
       ),
     [aliases, store],
   );
+  const readDocument = useCallback(
+    () =>
+      readComposerPromptDocument(
+        store.jotaiStore.get(getConcretePersistedAtom(store, composerPromptDraftsAtom)).value,
+        aliases,
+      ),
+    [aliases, store],
+  );
   return useMemo(
-    () => ({ loadable, aliases, prompt, readPrompt, setPrompt, clear }),
-    [aliases, clear, loadable, prompt, readPrompt, setPrompt],
+    () => ({ loadable, aliases, prompt, readPrompt, readDocument, setPrompt, setDocument, clear }),
+    [aliases, clear, loadable, prompt, readPrompt, readDocument, setPrompt, setDocument],
   );
 }
 

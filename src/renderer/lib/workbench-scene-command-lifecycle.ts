@@ -15,6 +15,7 @@ import type { WorkbenchWindowOwner } from "./workbench-window-owner";
 import { agentRuntimeRuntime } from "./agent-runtime-runtime";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import type { SideChatPanelTab } from "./workbench-panel-tab-model";
+import { sideChatSaveStore } from "./side-chat-save";
 
 const closeBrowserTab = defineRendererCommand({
   key: "workbench.close_browser_tab",
@@ -62,12 +63,19 @@ export function createWorkbenchSceneCommandLifecycle(input: {
   return {
     async prepareClose(sceneOwner, tab) {
       const sideChat = tab.auxiliary && "sideChat" in tab.auxiliary ? tab.auxiliary : null;
+      const saveDecision = () =>
+        sideChat?.runtimeSession
+          ? sideChatSaveStore.closeDecision(sideChat.runtimeSession.id, sideChat.id)
+          : "normal";
+      if (saveDecision() === "defer") return "cancelled";
       if (
         sideChat?.threadId &&
+        saveDecision() !== "saved" &&
         input.confirmSideChatClose &&
         !(await input.confirmSideChatClose(sideChat))
       )
         return "cancelled";
+      if (saveDecision() === "defer") return "cancelled";
       return tab.surface ? prepareWorkbenchSceneSurfaceClose(sceneOwner, tab.surface) : true;
     },
     async close(sceneOwner, tab) {

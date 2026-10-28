@@ -1,14 +1,23 @@
-import { appScope, scopedAtom, scopedAtomFamily, useScopedAtom } from "@/lib/maitai";
+import {
+  appScope,
+  scopedAtom,
+  scopedAtomFamily,
+  useScopeHandle,
+  useScopedAtom,
+} from "@/lib/maitai";
 import {
   EMPTY_THREAD_TEXT_SELECTION_CONTEXT,
   type ResponseTextAnnotation,
   type ThreadTextSelectionContext,
 } from "../../../shared/thread-text-selection";
 
-interface ThreadTextSelectionDraft extends ThreadTextSelectionContext {
+export interface ThreadTextSelectionDraftSnapshot extends ThreadTextSelectionContext {
   readonly activeAnnotationId: string | null;
   readonly annotationMode: "create" | "edit";
   readonly annotationDraft: string;
+}
+
+interface ThreadTextSelectionDraft extends ThreadTextSelectionDraftSnapshot {
   readonly focusNonce: number;
   readonly submitNonce: number;
 }
@@ -37,11 +46,24 @@ export function useThreadTextSelectionDraft(
   hostId: string | null | undefined,
   conversationId: string | null | undefined,
 ) {
-  const [draft, setDraft] = useScopedAtom(
-    draftFamily(JSON.stringify([hostId ?? "local", conversationId ?? ""])),
-  );
+  const app = useScopeHandle(appScope);
+  const definition = draftFamily(JSON.stringify([hostId ?? "local", conversationId ?? ""]));
+  const [draft, setDraft] = useScopedAtom(definition);
   return {
     draft,
+    readSnapshot(): ThreadTextSelectionDraftSnapshot {
+      const current = app.get(definition);
+      return {
+        responseTextAnnotations: current.responseTextAnnotations,
+        selectedTextAttachments: current.selectedTextAttachments,
+        activeAnnotationId: current.activeAnnotationId,
+        annotationMode: current.annotationMode,
+        annotationDraft: current.annotationDraft,
+      };
+    },
+    restore(snapshot: ThreadTextSelectionDraftSnapshot) {
+      setDraft({ ...snapshot, focusNonce: 0, submitNonce: 0 });
+    },
     addAnnotation(annotation: ResponseTextAnnotation) {
       if (!conversationId) return;
       setDraft((current) => ({

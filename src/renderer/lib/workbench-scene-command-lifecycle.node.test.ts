@@ -17,6 +17,8 @@ import { getWorkbenchWindowOwner } from "./workbench-window-owner";
 import { createWorkbenchSceneCommands } from "./workbench-scene-commands";
 import { createWorkbenchSceneCommandLifecycle } from "./workbench-scene-command-lifecycle";
 import { readWorkbenchAgentContext } from "./workbench-agent-context";
+import { sideChatSaveStore } from "./side-chat-save";
+import type { WorkbenchCommandTab } from "./workbench-scene-commands";
 
 const runtime = vi.hoisted(() => ({
   flushFile: vi.fn(),
@@ -117,6 +119,71 @@ function fixture(sceneOwner: WorkbenchSceneOwner, surfaces: readonly WorkbenchSu
 }
 
 const common = (id: string) => ({ id, titleSnapshot: id, stateKey: 0, state: null });
+
+test.each(["normal", "defer", "saved"] as const)(
+  "side-chat closing respects the exact save lifecycle (%s)",
+  async (decision) => {
+    const { owner } = fixture({ kind: "session", sessionId: "source" }, []);
+    const confirm = vi.fn(async () => true);
+    const lifecycle = createWorkbenchSceneCommandLifecycle({
+      owner,
+      windowSessionId: "window-a",
+      discardSideChat: runtime.discardSideChat,
+      confirmSideChatClose: confirm,
+    });
+    const tab = {
+      auxiliary: {
+        sideChat: true,
+        id: "side-tab",
+        threadId: "side-thread",
+        runtimeSession: { id: "side" },
+      },
+      surface: null,
+    } as WorkbenchCommandTab;
+    const guard = vi.spyOn(sideChatSaveStore, "closeDecision").mockReturnValue(decision);
+    try {
+      expect(await lifecycle.prepareClose({ kind: "session", sessionId: "source" }, tab)).toBe(
+        decision === "defer" ? "cancelled" : true,
+      );
+      expect(confirm).toHaveBeenCalledTimes(decision === "normal" ? 1 : 0);
+      expect(guard).toHaveBeenCalledWith("side", "side-tab");
+    } finally {
+      guard.mockRestore();
+    }
+  },
+);
+
+test("a close confirmation already open cannot discard a side chat that starts saving", async () => {
+  const { owner } = fixture({ kind: "session", sessionId: "source" }, []);
+  let confirm!: (value: boolean) => void;
+  const lifecycle = createWorkbenchSceneCommandLifecycle({
+    owner,
+    windowSessionId: "window-a",
+    discardSideChat: runtime.discardSideChat,
+    confirmSideChatClose: () =>
+      new Promise((resolve) => {
+        confirm = resolve;
+      }),
+  });
+  const tab = {
+    auxiliary: {
+      sideChat: true,
+      id: "side-tab",
+      threadId: "side-thread",
+      runtimeSession: { id: "side" },
+    },
+    surface: null,
+  } as WorkbenchCommandTab;
+  const guard = vi.spyOn(sideChatSaveStore, "closeDecision").mockReturnValue("normal");
+  try {
+    const result = lifecycle.prepareClose({ kind: "session", sessionId: "source" }, tab);
+    guard.mockReturnValue("defer");
+    confirm(true);
+    expect(await result).toBe("cancelled");
+  } finally {
+    guard.mockRestore();
+  }
+});
 
 describe("Workbench Scene content and runtime close boundary", () => {
   test("requires a completed Page flush and checkpoint before descriptor removal and lease disposal", async () => {

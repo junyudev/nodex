@@ -592,6 +592,11 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     readonly input: { readonly threadId: string; readonly runId?: string };
     readonly output: string | null;
   };
+  /** Validates side-chat save admission without accepting a command or changing history. */
+  readonly "thread.side-chat-save-source": {
+    readonly input: { readonly threadId: string };
+    readonly output: string | null;
+  };
   readonly "thread.history": {
     readonly input: {
       readonly threadId: string;

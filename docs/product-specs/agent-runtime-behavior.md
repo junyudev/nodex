@@ -220,6 +220,18 @@ side Sessions stay out of ordinary chat catalogs and disappear on close or appli
 Their Agent's native history is discarded when the Agent supports deletion.
 Closing a side chat with messages asks for confirmation, with a saved Don’t ask again choice;
 untouched side chats close immediately. Switching panel tabs preserves the conversation.
+
+Save as chat creates an ordinary durable chat in the same Project with the side chat's
+Agent settings, working directory and complete side transcript. It freezes independent
+portable conversation context before returning, so closing the side chat, discarding its
+native history or restarting Nodex before the next Send cannot invalidate the saved chat.
+Saving starts no Run. The temporary side chat stays available until the saved chat and
+its draft are ready; successful navigation closes it without another disposal confirmation.
+The saved chat follows ordinary execution rules; temporary side-chat restrictions do not carry over. Unused side chats
+can also be saved. Replies, queued messages, pending requests and background or delegated
+work must finish before saving. Retrying the same save request and destination returns
+the same chat, including after the side chat has been discarded.
+
 Connected local native conversations use the same captured side-chat route while their
 history stays passive. Runtime forks retain the selected source Run and prepare
 the chosen workspace and environment for the new Session; they do not

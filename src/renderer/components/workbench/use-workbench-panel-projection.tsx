@@ -84,6 +84,8 @@ import { McpAppSessionTab, ProcessOutputPanelTabView } from "./workbench-runtime
 import { PlanSidePanelTab } from "./plan-side-panel-tab";
 import type { PanelTabPresentationRegistry } from "./panel-tab-presentation-registry";
 import { ReviewRouteOpenAdapter } from "./workbench-review-route-adapter";
+import { SideChatTabActions } from "./side-chat-tab-actions";
+import type { SideChatPanelTab } from "@/lib/workbench-panel-tab-model";
 
 const ScheduledTaskSidePanel = lazy(async () => ({
   default: (await import("@/features/scheduled/scheduled-task-side-panel")).ScheduledTaskSidePanel,
@@ -133,6 +135,7 @@ export type PanelGroupTabsByPanel = Record<
 >;
 
 interface WorkbenchPanelProjectionInput {
+  readonly saveSideChat: (tab: SideChatPanelTab) => Promise<void>;
   readonly activeRenderSession: ProjectSession | null;
   readonly activeSessionPanelModel: SessionPanelRenderModel | null;
   readonly projects: Project[];
@@ -255,6 +258,7 @@ function resolveTerminalTabIndex(session: ProjectSession, tab: WorkbenchTabProje
  * icon, context menu, and runtime command belongs to each renderable tab kind.
  */
 export function useWorkbenchPanelProjection({
+  saveSideChat,
   activeRenderSession,
   activeSessionPanelModel,
   projects,
@@ -412,6 +416,10 @@ export function useWorkbenchPanelProjection({
               />
             ) : undefined,
           closable: isPanelTabClosable(tab),
+          actions:
+            isSideChatPanelTab(tab) && tab.runtimeSession ? (
+              <SideChatTabActions tab={tab} onSave={saveSideChat} />
+            ) : undefined,
           preview: isImageEditorPanelTab(tab)
             ? tab.preview
             : transientPanelTab
@@ -828,6 +836,7 @@ export function useWorkbenchPanelProjection({
       panelTabPresentationRegistry,
       projects,
       recreateSideChatPanelTab,
+      saveSideChat,
       reloadBrowserTab,
       surface,
       terminalSessionVersion,

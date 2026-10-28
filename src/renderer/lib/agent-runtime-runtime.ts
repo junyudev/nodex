@@ -20,6 +20,7 @@ import type {
   AgentRuntimeForkInput,
   AgentRuntimeSideChatCreateInput,
   AgentRuntimeSideChatDiscardInput,
+  AgentRuntimeSideChatSaveInput,
   AgentRuntimeHistoryInput,
   AgentRuntimeQueueReadInput,
   AgentRuntimeQueuePage,
@@ -109,6 +110,14 @@ const createSideChat = defineRendererCommand({
 const discardSideChat = defineRendererCommand({
   key: "agent_runtime.session.discard_side_chat",
   channel: "agent-runtime:session:discard-side-chat",
+  authority: "external",
+  owner: "AgentRuntimeConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
+const saveSideChat = defineRendererCommand({
+  key: "agent_runtime.session.save_side_chat",
+  channel: "agent-runtime:session:save-side-chat",
   authority: "external",
   owner: "AgentRuntimeConversationOwner",
   protocol: { kind: "returned_value" },
@@ -220,6 +229,9 @@ export interface AgentRuntimeRendererTransport {
   readonly discardSideChat: (
     input: AgentRuntimeSideChatDiscardInput,
   ) => Promise<{ readonly discarded: boolean }>;
+  readonly saveSideChat: (
+    input: AgentRuntimeSideChatSaveInput,
+  ) => Promise<AgentRuntimeLaunchResult & { readonly sourceSessionId: string }>;
   readonly stop: (input: AgentRuntimeStopInput) => Promise<{ readonly stopped: boolean }>;
   readonly respond: (input: AgentRuntimeResponseInput) => Promise<{ readonly sequence: number }>;
   readonly setModes: (input: AgentRuntimeModeInput) => Promise<{ readonly changed: boolean }>;
@@ -280,6 +292,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   mergeBack: (input) => invokePlainCommand(mergeBack, input),
   createSideChat: (input) => invokePlainCommand(createSideChat, input),
   discardSideChat: (input) => invokePlainCommand(discardSideChat, input),
+  saveSideChat: (input) => invokePlainCommand(saveSideChat, input),
   stop: (input) => invokePlainCommand(stop, input),
   respond: (input) => invokePlainCommand(respond, input),
   setModes: (input) => invokePlainCommand(setModes, input),

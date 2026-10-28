@@ -4,9 +4,11 @@ import {
   CommandId,
   EventId,
   MessageId,
+  NodeId,
   type OrchestrationV2Run,
   ProjectId,
   RunId,
+  RuntimeRequestId,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -602,6 +604,212 @@ it.effect.each(providers)(
       assert.isNull(yield* store.getSideChatContext(targetThreadId));
       assert.isUndefined((yield* orchestrator.getThreadProjection(sourceThreadId)).thread.sideChat);
     }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each([
+  "preparing",
+  "queued",
+  "starting",
+  "running",
+  "waiting",
+  "request",
+  "background",
+  "task-pending",
+  "task-claimed",
+  "ordinary",
+] as const)("refuses saving a $0 source without changing its conversation", (state) =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const sink = yield* EventSink.EventSinkV2;
+    const now = yield* DateTime.now;
+    const source = ThreadId.make("save-guard-source");
+    const side = ThreadId.make("save-guard-side");
+    const target = ThreadId.make("save-guard-target");
+    const modelSelection = { instanceId: CLAUDE_DEFAULT_INSTANCE_ID, model: "test-model" };
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("guard:create"),
+      threadId: source,
+      projectId: ProjectId.make("guard-project"),
+      title: "Source",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* orchestrator.dispatch({
+      type: "thread.fork",
+      commandId: CommandId.make("guard:side"),
+      sourceThreadId: source,
+      targetThreadId: side,
+      sourcePoint: { type: "latest_stable" },
+      sideChat: true,
+      rootPolicy: "independent_root",
+      createdBy: "user",
+      creationSource: "web",
+    });
+    assert.isNull(yield* orchestrator.getSideChatSaveSource(side));
+    yield* orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("guard:send"),
+      threadId: side,
+      messageId: MessageId.make("guard:message"),
+      text: "Side question",
+      attachments: [],
+      modelSelection,
+      dispatchMode: { type: "start_immediately" },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const sent = yield* orchestrator.getThreadProjection(side);
+    const run = sent.runs[0]!;
+    yield* sink.write({
+      events: [
+        {
+          id: EventId.make("guard:run-state"),
+          type: "run.updated",
+          threadId: side,
+          runId: run.id,
+          occurredAt: now,
+          payload: {
+            ...run,
+            status:
+              state === "preparing" ||
+              state === "queued" ||
+              state === "starting" ||
+              state === "running" ||
+              state === "waiting"
+                ? state
+                : "completed",
+            completedAt: now,
+          },
+        },
+      ],
+    });
+    if (state === "request")
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("guard:request"),
+            type: "runtime-request.updated",
+            threadId: side,
+            runId: run.id,
+            occurredAt: now,
+            payload: {
+              id: RuntimeRequestId.make("guard:request"),
+              nodeId: run.rootNodeId!,
+              providerTurnId: null,
+              nativeRequestRef: null,
+              kind: "user_input",
+              status: "pending",
+              responseCapability: { type: "message" },
+              createdAt: now,
+              resolvedAt: null,
+            },
+          },
+        ],
+      });
+    if (state === "background")
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("guard:background"),
+            type: "provider-thread.updated",
+            threadId: side,
+            occurredAt: now,
+            payload: {
+              ...sent.providerThreads[0]!,
+              pendingBackgroundTasks: [{ taskId: "background", kind: "command" }],
+            },
+          },
+        ],
+      });
+    if (state === "task-pending" || state === "task-claimed")
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("guard:task"),
+            type: "subagent.updated",
+            threadId: side,
+            runId: run.id,
+            occurredAt: now,
+            payload: {
+              id: NodeId.make("guard:task"),
+              threadId: side,
+              runId: run.id,
+              parentNodeId: run.rootNodeId!,
+              origin: "app_owned",
+              createdBy: "agent",
+              driver: sent.providerThreads[0]!.driver,
+              providerInstanceId: CLAUDE_DEFAULT_INSTANCE_ID,
+              providerThreadId: null,
+              childThreadId: null,
+              nativeTaskRef: null,
+              prompt: "Inspect",
+              title: null,
+              model: null,
+              status: "completed",
+              result: "done",
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+              completionDelivery: {
+                state: state === "task-pending" ? "pending" : "claimed",
+                observedByRunId: null,
+              },
+            },
+          },
+        ],
+      });
+    const selectedSource = state === "ordinary" ? source : side;
+    const before = yield* orchestrator.getThreadProjection(selectedSource);
+    yield* orchestrator.getSideChatSaveSource(selectedSource).pipe(Effect.flip);
+    yield* orchestrator
+      .dispatch({
+        type: "thread.fork",
+        commandId: CommandId.make("guard:save"),
+        sourceThreadId: selectedSource,
+        targetThreadId: target,
+        sourcePoint: { type: "latest_stable" },
+        saveSideChat: true,
+        rootPolicy: "independent_root",
+        createdBy: "user",
+        creationSource: "web",
+      })
+      .pipe(Effect.flip);
+    assert.deepEqual(yield* orchestrator.getThreadProjection(selectedSource), before);
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    assert.isNull(yield* store.getThreadShell(target));
+    if (state === "queued") {
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("guard:settled"),
+            type: "run.updated",
+            threadId: side,
+            runId: run.id,
+            occurredAt: now,
+            payload: { ...run, status: "completed", completedAt: now },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.fork",
+        commandId: CommandId.make("guard:save"),
+        sourceThreadId: side,
+        targetThreadId: target,
+        sourcePoint: { type: "latest_stable" },
+        saveSideChat: true,
+        rootPolicy: "independent_root",
+        createdBy: "user",
+        creationSource: "web",
+      });
+      assert.isUndefined((yield* orchestrator.getThreadProjection(target)).thread.sideChat);
+    }
+  }).pipe(Effect.provide(providers[0]!.layer)),
 );
 
 const sideSwitchLayer = ProviderReplayHarness.layerWithRegistry(

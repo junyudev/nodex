@@ -299,6 +299,7 @@ const AgentRequest = Schema.Union([
     "thread.fork-source",
     Schema.Struct({ threadId: ThreadId, runId: Schema.optional(RunId) }),
   ),
+  request("thread.side-chat-save-source", Schema.Struct({ threadId: ThreadId })),
   request(
     "providers.read",
     Schema.Struct({
@@ -1080,6 +1081,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           .pipe(Effect.flatMap(encodeShell));
       case "thread.fork-source":
         return yield* orchestrator.getThreadForkSource(input.input.threadId, input.input.runId);
+      case "thread.side-chat-save-source":
+        return yield* orchestrator.getSideChatSaveSource(input.input.threadId);
       case "thread.control":
       case "thread.snapshot": {
         const snapshot = yield* orchestrator.getThreadSnapshotWindow(input.input.threadId, {
@@ -1462,6 +1465,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "thread.snapshot":
       case "thread.control":
       case "thread.fork-source":
+      case "thread.side-chat-save-source":
       case "run.outcome":
       case "thread.history":
       case "thread.timeline":
