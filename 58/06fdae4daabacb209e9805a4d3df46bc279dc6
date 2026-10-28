@@ -1,0 +1,65 @@
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_87d2db5bcedf88::t_ac190d2e92158d 2922-2925,2927-2930
+  s_87d2db5bcedf88::t_ef7e39b557b149 3100-3101
+  s_87d2db5bcedf88::t_f8fc4ef9a4a4ea 1322,1324-1327,2958-2981,3239
+  s_f2e3c034e2bc1d::t_fd3d572a87b407 2982
+src/renderer/components/workbench/workbench-agent-runtime-panels.tsx
+  s_87d2db5bcedf88::t_60bedc7cccfb6d 41,88-91,99-107,112-132,134-142
+  s_87d2db5bcedf88::t_7182e1ec528103 35-38,50,94-98,108-111,143-144
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.tsx
+  s_87d2db5bcedf88::t_7182e1ec528103 7,513-516,536-547
+src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx
+  s_87d2db5bcedf88::t_7182e1ec528103 219-220,222-223,225-234
+  s_87d2db5bcedf88::t_a35767cabfde30 218,235-250,293
+packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.test.ts
+  s_87d2db5bcedf88::t_dfd15466ada425 1883,1887-1890,1905-1920,1922,1930
+tests/e2e/subagents.spec.ts
+  s_87d2db5bcedf88::t_b6acc85791f60e 84-92,96-98,122,147-152,161,164,180-181,184-190,192-200,203-215,217-228,231,237-243,448,478-480,590
+  s_87d2db5bcedf88::t_da1406123745ba 182-183,216,229-230
+  s_87d2db5bcedf88::t_12475317698512 168
+  s_87d2db5bcedf88::t_7895914e868e31 93-95,191,201-202,232-236
+docs/product-specs/agent-runtime-behavior.md
+  s_87d2db5bcedf88::t_e2a23a6cdf1d53 761-769
+tests/e2e/fixtures/codex-subagent-app-server.mjs
+  s_87d2db5bcedf88::t_81e5a0b3f3cb61 436
+  s_87d2db5bcedf88::t_b6acc85791f60e 48,374
+docs/product-specs/codex-fast-mode-core-enablement.md
+  s_87d2db5bcedf88::t_e2a23a6cdf1d53 39-40,85,88-90,152-153
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.test.tsx
+  s_87d2db5bcedf88::t_dfd15466ada425 16,90-112
+  s_87d2db5bcedf88::t_3edc5c672b83a2 113-114
+docs/product-specs/codex-subagent-behavior.md
+  s_87d2db5bcedf88::t_e2a23a6cdf1d53 127-130
+src/renderer/components/workbench/workbench-agent-runtime-panels.test.tsx
+  s_87d2db5bcedf88::t_10ca74849f9c62 10-72
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_87d2db5bcedf88::t_0babc968ce584a 1609-1610,1705-1706,8732-8736,8740,8992-9004
+  s_87d2db5bcedf88::t_76ccc70d1df761 9154-9159
+  s_87d2db5bcedf88::t_de3af50d3446f3 8943,9068-9074,9080,9135,9144-9153,9160-9161,9182
+  s_87d2db5bcedf88::t_b98025c34d9770 9029-9047,9053-9058
+  s_87d2db5bcedf88::t_7bbfe7b9203176 8892-8898,8901-8939,8941,8944,8947-8948,8950-8955,8967,8970-8975,8984-8985,8989,9005,9010-9026,9048,9051-9052,9059
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5806fdae4daabacb209e9805a4d3df46bc279dc6",
+  "prompts": {},
+  "sessions": {
+    "s_87d2db5bcedf88": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a182fd-90f6-72b1-a164-6a3748e1efc2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
