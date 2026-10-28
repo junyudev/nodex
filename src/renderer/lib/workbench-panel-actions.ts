@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import {
   createCommandKeymapState,
+  formatAcceleratorLabel,
   formatCommandShortcutLabel,
   getCommandEntry,
   matchesKeyboardEventToCommand,
@@ -189,10 +190,11 @@ export function resolvePanelShortcutLabel(
   isMac: boolean,
 ): string | null {
   if (!shortcut) return null;
-  if (shortcut === "mod+shift+e") return isMac ? "⇧⌘E" : "Ctrl+Shift+E";
-  if (shortcut === "mod+t") return isMac ? "⌘T" : "Ctrl+T";
+  if (isMac) return formatAcceleratorLabel(shortcut.replace("mod", "CmdOrCtrl"), "macOS");
+  if (shortcut === "mod+shift+e") return "Ctrl+Shift+E";
+  if (shortcut === "mod+t") return "Ctrl+T";
   if (shortcut === "ctrl+shift+g") return "⌃⇧G";
-  if (shortcut === "alt+mod+s") return isMac ? "⌥⌘S" : "Alt+Ctrl+S";
+  if (shortcut === "alt+mod+s") return "Alt+Ctrl+S";
   return "⌃`";
 }
 

@@ -79,13 +79,40 @@ describe("command keybindings", () => {
 
   test("formats platform labels and normalizes CmdOrCtrl accelerators", () => {
     expect(normalizeAccelerator("CommandOrControl+Alt+r")).toBe("CmdOrCtrl+Alt+R");
-    expect(formatAcceleratorLabel("CmdOrCtrl+Alt+R", "macOS")).toBe("⌘⌥R");
+    expect(formatAcceleratorLabel("CmdOrCtrl+Alt+R", "macOS")).toBe("⌥⌘R");
     expect(formatAcceleratorLabel("CmdOrCtrl+Alt+R", "windows")).toBe("Ctrl+Alt+R");
     expect(formatAcceleratorAriaKeyShortcut("CmdOrCtrl+Alt+R", "macOS")).toBe("Meta+Alt+R");
     expect(formatAcceleratorAriaKeyShortcut("Ctrl+Shift+M", "macOS")).toBe("Control+Shift+M");
     expect(formatAcceleratorLabel("LeftControl", "macOS")).toBe("Left ⌃");
     expect(formatAcceleratorLabel("DoubleOption", "macOS")).toBe("⌥ + ⌥");
     expect(formatAcceleratorLabel("RightCommand", "windows")).toBe("Right Command");
+  });
+
+  test.each([
+    ["CmdOrCtrl+Alt+R", "⌥⌘R"],
+    ["Alt+CmdOrCtrl+R", "⌥⌘R"],
+    ["CmdOrCtrl+Shift+A", "⇧⌘A"],
+    ["CmdOrCtrl+Shift+F", "⇧⌘F"],
+    ["Command+Ctrl+L", "⌃⌘L"],
+    ["Shift+Alt+F", "⌥⇧F"],
+    ["Command+Shift+Alt+Ctrl+F", "⌃⌥⇧⌘F"],
+    ["Shift+Option+Control+Meta+F", "⌃⌥⇧⌘F"],
+    ["Ctrl+Alt+Shift+CmdOrCtrl+F", "⌃⌥⇧⌘F"],
+    ["Shift+Command", "⇧⌘"],
+    ["CmdOrCtrl+Shift+Left", "⇧⌘←"],
+    ["CmdOrCtrl+Alt+K CmdOrCtrl+Shift+F", "⌥⌘K ⇧⌘F"],
+  ])("formats %s with canonical macOS modifier order", (accelerator, label) => {
+    expect(formatAcceleratorLabel(accelerator, "macOS")).toBe(label);
+  });
+
+  test.each([
+    ["CmdOrCtrl+Shift+F", "Ctrl+Shift+F"],
+    ["Shift+Ctrl+F", "Ctrl+Shift+F"],
+    ["CmdOrCtrl+Alt+R", "Ctrl+Alt+R"],
+    ["Command+Shift+Alt+Ctrl+F", "Meta+Ctrl+Alt+Shift+F"],
+  ])("preserves non-mac modifier labels for %s", (accelerator, label) => {
+    expect(formatAcceleratorLabel(accelerator, "windows")).toBe(label);
+    expect(formatAcceleratorLabel(accelerator, "linux")).toBe(label);
   });
 
   test("projects command shortcuts for visible and assistive labels", () => {
@@ -108,7 +135,7 @@ describe("command keybindings", () => {
       ariaKeyShortcuts: "Control+Shift+M",
     });
     expect(resolveCommandShortcutPresentation(customState, "openModelPicker")).toEqual({
-      label: "⌘⌥M",
+      label: "⌥⌘M",
       ariaKeyShortcuts: "Meta+Alt+M",
     });
     expect(resolveCommandShortcutPresentation(unassignedState, "openModelPicker")).toBeNull();
@@ -190,7 +217,7 @@ describe("command keybindings", () => {
     expect(toElectronAccelerator(getPrimaryCommandAccelerator(macState, "closeWindow"))).toBe(
       "CommandOrControl+Shift+W",
     );
-    expect(formatAcceleratorLabel("CmdOrCtrl+Shift+W", "macOS")).toBe("⌘⇧W");
+    expect(formatAcceleratorLabel("CmdOrCtrl+Shift+W", "macOS")).toBe("⇧⌘W");
     expect(
       matchesKeyboardEventToCommand(keyboardEvent("w", { metaKey: true }), macState, "closeWindow"),
     ).toBe(false);

@@ -252,6 +252,7 @@ const MODIFIER_ALIASES = new Map<string, string>([
 ]);
 
 const MODIFIER_ORDER = ["CmdOrCtrl", "Command", "Ctrl", "Alt", "Shift"];
+const MAC_MODIFIER_ORDER = ["Ctrl", "Alt", "Shift", "CmdOrCtrl", "Command"];
 const MODIFIER_SET = new Set(MODIFIER_ORDER);
 const GLOBAL_PRIMARY_MODIFIER_SET = new Set(["CmdOrCtrl", "Command", "Ctrl", "Alt"]);
 
@@ -1906,7 +1907,10 @@ function formatChordLabel(chord: string, platform: RuntimePlatform): string {
 
   const keyLabel = parsed.key ? formatKeyLabel(parsed.key, platform) : "";
   if (platform === "macOS") {
-    return `${parsed.modifiers.map(formatMacModifierLabel).join("")}${keyLabel}`;
+    const modifierLabels = parsed.modifiers
+      .toSorted((a, b) => MAC_MODIFIER_ORDER.indexOf(a) - MAC_MODIFIER_ORDER.indexOf(b))
+      .map(formatMacModifierLabel);
+    return `${modifierLabels.join("")}${keyLabel}`;
   }
   const modifierLabels = parsed.modifiers.map(formatNonMacModifierLabel);
   return [...modifierLabels, keyLabel].filter(Boolean).join("+");

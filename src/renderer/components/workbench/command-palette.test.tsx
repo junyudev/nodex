@@ -224,7 +224,7 @@ describe("buildCommandPaletteCommands", () => {
     );
     const sidebarCommand = commands.find((command) => command.id === TOGGLE_SIDEBAR_COMMAND_ID);
 
-    expect(sidebarCommand?.shortcut).toBe("⌘⌥B");
+    expect(sidebarCommand?.shortcut).toBe("⌥⌘B");
   });
 
   test("omits the shortcut label when a shell command is explicitly unassigned", () => {
@@ -1894,7 +1894,7 @@ describe("buildCommandPaletteCommands navigation", () => {
     const disabled = disabledCommands.find((command) => command.id === RENAME_THREAD_COMMAND_ID);
 
     expect(enabled?.title).toBe("Rename chat");
-    expect(enabled?.shortcut).toBe("⌘⌥R");
+    expect(enabled?.shortcut).toBe("⌥⌘R");
     expect(enabled?.disabled).toBe(false);
     expect(disabled?.shortcut).toBe("Ctrl+Alt+R");
     expect(disabled?.disabled).toBe(true);

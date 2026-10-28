@@ -2751,7 +2751,7 @@ describe("ThreadComposer speed menu", () => {
   test("projects model picker shortcut metadata and respects unassignment", async () => {
     const customizedView = await renderComposer({
       modelPickerShortcut: {
-        label: "⌘⌥M",
+        label: "⌥⌘M",
         ariaKeyShortcuts: "Meta+Alt+M",
       },
     });
