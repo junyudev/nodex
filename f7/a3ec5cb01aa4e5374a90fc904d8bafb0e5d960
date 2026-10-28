@@ -1,0 +1,42 @@
+src/renderer/lib/conversation-media/conversation-media.tsx
+  s_28aeb0c36d82d6::t_67fac70ce58c71 199,201
+  s_28aeb0c36d82d6::t_23db7183199fb9 190-192,206-210,643-663,666-671
+  s_28aeb0c36d82d6::t_ae87c1d88a15f7 185,193-198,200,202-205
+tests/e2e/thread-text-context-menu.spec.ts
+  s_28aeb0c36d82d6::t_e2d26584070546 73-74,88,90,101-103,105-109,111-118,160-166,174-181,189-191,205-207
+  s_28aeb0c36d82d6::t_71458ecde6ec2c 93-96
+  s_28aeb0c36d82d6::t_3dfeb249e6af5d 1-72,75-87,89,91-92,97-100,104,110,119-159,167-173,182-188,192-204,208-222
+config/electron-main-runtime-closure.ts
+  s_28aeb0c36d82d6::t_847896ebbcf99a 7
+src/main/window-runtime/ApplicationWindowShellRuntime.ts
+  s_28aeb0c36d82d6::t_847896ebbcf99a 345
+  s_28aeb0c36d82d6::t_38e45a4405d397 84,344,584,591-602
+src/renderer/lib/conversation-media/conversation-media.test.tsx
+  s_28aeb0c36d82d6::t_487d28a810dc5b 2-10,92-118
+  s_28aeb0c36d82d6::t_c5263a300c98d0 89-91,130-133,159-203
+  s_28aeb0c36d82d6::t_1957c4e65687e9 119,204
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_28aeb0c36d82d6::t_856612d0f05109 362-370
+src/main/window-runtime/ApplicationWindowShellRuntime.test.ts
+  s_28aeb0c36d82d6::t_38e45a4405d397 145,196-198,223,232-233,235-237,239-242,279
+package.json
+  s_28aeb0c36d82d6::t_ec9f3f7caf792f 199
+pnpm-lock.yaml
+  s_28aeb0c36d82d6::t_6230084402d099 266-268,5400-5403,5412-5415,5634-5637,6066-6077,6110-6112,6191-6194,6296-6303,6692-6695,6703-6706,7641-7644,7893-7896,8318-8321,8361-8368,8420-8423,8434-8437,8709-8712,12181-12182,12189-12190,12458-12462,12911-12924,12977-12978,13061-13062,13212-13220,13714-13715,13722-13723,14903-14904,15139-15142,15678-15682,15724-15731,15793-15798,15812-15815,16108-16112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f7a3ec5cb01aa4e5374a90fc904d8bafb0e5d960",
+  "prompts": {},
+  "sessions": {
+    "s_28aeb0c36d82d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180f8-3de0-7ef2-9837-a115bb6686ad",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
