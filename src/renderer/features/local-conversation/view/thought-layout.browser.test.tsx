@@ -113,18 +113,21 @@ describe("Thought layout", () => {
     expectOneLineWithin(header, view.container.firstElementChild as HTMLElement);
   });
 
-  test("streaming prose stays within a few lines under the Thinking status", async () => {
+  test("streaming prose shows five lines under the Thinking status", async () => {
     const view = renderStreamingTurn(
       item("thought", { status: "inProgress", markdownText: longProse }),
     );
     const header = await view.findByRole("button", { name: "Thinking" });
     expectOneLineWithin(header, view.container.firstElementChild as HTMLElement);
     const preview = view.getByTestId("thought-live-preview");
-    const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
-    await waitFor(() => expect(preview.getBoundingClientRect().height).toBeGreaterThan(0));
-    await waitFor(() =>
-      expect(preview.getBoundingClientRect().height).toBeLessThanOrEqual(rootFontSize * 5),
-    );
-    expect(preview.textContent).toContain("I need to check whether the status label");
+    await waitFor(() => {
+      const paragraph = preview.querySelector("p");
+      const scroll = preview.querySelector<HTMLElement>(".vertical-scroll-fade-mask");
+      if (!paragraph || !scroll) throw new Error("expected streaming Thought prose");
+      const lineHeight = Number.parseFloat(getComputedStyle(paragraph).lineHeight);
+      expect(scroll.getBoundingClientRect().height).toBeCloseTo(lineHeight * 5, 0);
+      expect(scroll.scrollHeight).toBeGreaterThan(scroll.clientHeight);
+      expect(scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight).toBeLessThanOrEqual(1);
+    });
   });
 });

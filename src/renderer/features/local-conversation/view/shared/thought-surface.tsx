@@ -22,6 +22,9 @@ interface ThoughtMarkdownProps {
 const THOUGHT_MARKDOWN_CLASS_NAME =
   "break-words text-size-chat text-token-foreground/60 [&_*]:text-size-chat [&_*]:text-token-foreground/50 [&_h1]:m-0 [&_h1]:mt-2 [&_h1]:font-semibold [&_h1+*]:mt-1 [&_h2]:m-0 [&_h2]:mt-2 [&_h2]:font-semibold [&_h2+*]:mt-1 [&_h3]:m-0 [&_h3]:mt-2 [&_h3]:font-semibold [&_h3+*]:mt-1 [&_li]:m-0 [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:m-0 [&_p]:has-[.inline-markdown]:py-0.5 [&_p+p]:mt-1 [&_ul]:my-0 [&_ul]:list-disc [&_ul]:pl-4";
 
+const LIVE_THOUGHT_MAX_HEIGHT_CLASS_NAME =
+  "max-h-[calc(var(--codex-chat-font-size)*var(--leading-relaxed)*5)]";
+
 function ThoughtMarkdown({
   markdown,
   streaming,
@@ -113,7 +116,7 @@ export function ThoughtLivePreview({
           <ThoughtScroll
             markdown={markdown}
             streaming={visible}
-            maxHeightClassName="max-h-[4.5rem]"
+            maxHeightClassName={LIVE_THOUGHT_MAX_HEIGHT_CLASS_NAME}
             {...markdownProps}
           />
         ) : null}
@@ -137,7 +140,7 @@ export function ThoughtRow({
       <ThoughtScroll
         markdown={markdown}
         streaming
-        maxHeightClassName="max-h-[4.5rem]"
+        maxHeightClassName={LIVE_THOUGHT_MAX_HEIGHT_CLASS_NAME}
         {...markdownProps}
       />
     );
