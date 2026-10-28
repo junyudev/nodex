@@ -1,0 +1,240 @@
+docs/product-specs/nfm-editor-child-group-keyboard-behavior.md
+  s_67c3121555c705::t_24d70441ccbe20 4
+src/shared/block-documents/additional-document-bearing-blocks.ts
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 4
+docs/product-specs/nfm-editor-slash-menu-behavior.md
+  s_7db290b3e7f7f9::t_c8baffd89974b6 25
+src/renderer/components/board/editor/modify-block-shortcut.ts
+  s_7db290b3e7f7f9::t_9698221fd38101 148
+crates/nodex-core/tests/fixtures/yjs-yrs/root-materializations.json
+  s_7db290b3e7f7f9::t_c8baffd89974b6 3,26,37
+src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx
+  s_7db290b3e7f7f9::t_0c00d5baec9177 841,843-844,846,850,884,897,901-902
+crates/nodex-core/src/document/module.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 5932,5971,6035,6045,6074,6106,6150,8357-8359,10170,10520,10649,10916,11104,11215,11402,11464,11540,11571,11649,11739,12196,12383,12449
+crates/nodex-core/examples/yjs_yrs_bridge.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 237,399,475,513,544
+docs/product-specs/nfm-editor-table-block-behavior.md
+  s_7db290b3e7f7f9::t_c8baffd89974b6 14,35
+crates/nodex-core/src/domain/block_tree.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 172-173,202-206
+  s_7db290b3e7f7f9::t_cade91c9097f84 834
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-materialization.json
+  s_7db290b3e7f7f9::t_c8baffd89974b6 2,393-395,571,578,585,592,599,606
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_67c3121555c705::t_8e6a675de98620 2482-2548
+crates/nodex-core/src/document/materialization.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 363,372,381,396,436,469
+crates/nodex-core/src/library/block_transfer.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 4882,7429
+  s_7db290b3e7f7f9::t_2d8821bd9d6d92 4694,4696-4701,4847,4849
+docs/product-specs/nfm-editor-thread-mention-behavior.md
+  s_67c3121555c705::t_24d70441ccbe20 4
+  s_7db290b3e7f7f9::t_c8baffd89974b6 58,67
+src/renderer/components/board/editor/nfm-editor-extensions.test.ts
+  s_67c3121555c705::t_8e6a675de98620 12
+crates/nodex-core/src/document/block_document.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 14,16,18,23-25,60-62,69-71,77-79,84,222,226,235,251,275,285
+docs/product-specs/nfm-block-side-menu-behavior.md
+  s_7db290b3e7f7f9::t_c8baffd89974b6 65,67,150
+docs/product-specs/nfm-editor-block-children-behavior.md
+  s_7db290b3e7f7f9::t_c8baffd89974b6 26
+  s_c472db5d79d352::t_51c4828058daf3 67-69,72,77-83
+docs/product-specs/index.md
+  s_4b53f1a3b989a8::t_0d4f233e4829b3 73
+  s_c472db5d79d352::t_9dfc0555320567 65
+crates/nodex-core/src/document/module/tests/asset_migration.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 31,83
+crates/nodex-core/src/document/operations.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 1843,1872,1885,1898,1916,1931,2008,2035,2051,2062,2090,2113,2149,2224,2263,2274,2323,2341,2348,2380,2410,2422,2427,2448,2455,2465,2507,2567,2583,2615,2652,2664,2669,2705,2718
+crates/nodex-core/src/library/mutation.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 2089
+src/shared/markdown/nodex-markdown-fixture.test.ts
+  s_7db290b3e7f7f9::t_0c00d5baec9177 285
+src/renderer/components/board/editor/nfm-editor-mod-enter-shortcut.jsdom.test.ts
+  s_7db290b3e7f7f9::t_b6241967e006f0 45
+  s_7db290b3e7f7f9::t_0c00d5baec9177 6-7,10,16-17,20-21,31,33-34,37,39,41,44
+  s_67c3121555c705::t_8e6a675de98620 13,24
+src/renderer/components/board/editor/nfm-text-action-menu-model.test.ts
+  s_7db290b3e7f7f9::t_0c00d5baec9177 90
+src/renderer/components/board/editor/automatic-transform-history.jsdom.test.ts
+  s_67c3121555c705::t_8e6a675de98620 5
+  s_7db290b3e7f7f9::t_0c00d5baec9177 347,351,362
+  s_4b53f1a3b989a8::t_0d4f233e4829b3 366-367
+src/renderer/components/board/editor/nfm-side-menu-model.test.ts
+  s_7db290b3e7f7f9::t_0c00d5baec9177 194,197-198,209-211
+crates/nodex-core/src/domain/subtree.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 692
+docs/KEYBOARD_SHORTCUTS.md
+  s_67c3121555c705::t_8e6a675de98620 130-140,146-151,190-194,201,249-259
+crates/nodex-core/tests/yjs_yrs_conformance.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 64,89,177,180,185,229,254
+src/shared/block-documents/yjs-yrs-fixture-generator.test.ts
+  s_67c3121555c705::t_8e6a675de98620 20-22
+  s_67c3121555c705::t_862a475ae32091 11,19,360,380
+src/shared/block-documents/synced-block-document.ts
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 14
+docs/references/nested-markdown-spec.md
+  s_7db290b3e7f7f9::t_c8baffd89974b6 69
+crates/nodex-core/src/infrastructure/migration.rs
+  s_67c3121555c705::t_8f6db2dcf9f124 1401
+  s_67c3121555c705::t_e309de0b4fe5db 24-26,368-372,637,2480,2493-2508
+docs/product-specs/renderer-view-state-ownership.md
+  s_67c3121555c705::t_8e6a675de98620 142
+crates/nodex-core/src/document/integrity.rs
+  s_67c3121555c705::t_24d70441ccbe20 37-47,73,86-89,154-171,176-184
+  s_7db290b3e7f7f9::t_517c8b6de4cf9e 35-36,185-186
+crates/nodex-core/tests/fixtures/yjs-yrs/nfm-parser-oracle.json
+  s_7db290b3e7f7f9::t_c8baffd89974b6 2,353,359,367,376,384,393
+docs/product-specs/nfm-editor-text-action-menu-behavior.md
+  s_7db290b3e7f7f9::t_c8baffd89974b6 49
+crates/nodex-core/src/document/mod.rs
+  s_67c3121555c705::t_24d70441ccbe20 135-136
+  s_7db290b3e7f7f9::t_4c41f468b61d87 115-116,137
+crates/nodex-core/src/library/structural_edit.rs
+  s_67c3121555c705::t_04ec5dff4d767e 7847
+  s_67c3121555c705::t_ffdc4740289812 7845-7846,7848
+crates/nodex-core/src/document/module/tests/file_placements.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 42,184,221
+docs/product-specs/nfm-page-prompt-image-inputs.md
+  s_7db290b3e7f7f9::t_c8baffd89974b6 1-161
+crates/nodex-core/src/document/schema_compatibility.rs
+  s_c472db5d79d352::t_0a22e109fae308 110-112,126-128
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 14-15,26-28,40-47,64,81-93,106-109,114-125,130,132-137,154-158,160-165,170,176-179,210,215,220,301
+  s_67c3121555c705::t_24d70441ccbe20 94-105,138-153,159,166-169,171-175,241-300
+  s_c472db5d79d352::t_3388f67f2ad2a8 113,129,131,239-240
+crates/nodex-core/src/document/owners.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 104,129,324
+docs/product-specs/database-pages-and-views-behavior.md
+  s_7db290b3e7f7f9::t_c8baffd89974b6 84,928,961
+src/renderer/components/board/editor/nfm-editor-extensions.ts
+  s_67c3121555c705::t_8e6a675de98620 559
+crates/nodex-core/src/library/files.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 1548
+crates/nodex-core/src/document/genesis.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 77,82,105,110
+crates/nodex-core/src/document/schema_migration.rs
+  s_4b53f1a3b989a8::t_0d4f233e4829b3 33,151-154,156,801-802
+  s_c472db5d79d352::t_0a22e109fae308 447-449
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 44,65,100,108,162-165,180-185,251,257,267,360,464,574,837,1287
+  s_67c3121555c705::t_24d70441ccbe20 8-10,12,157,330-344,441-443,518,521,544-548,551-552,613,812,838-843,1099-1103,1106-1108,1119-1130,1155,1202-1207,1229-1242,1266-1267,1269,1379-1381,1385-1709,1711-1729,1741-1742,1748,1750-1752,1754
+  s_67c3121555c705::t_8e6a675de98620 305-313,488-496,563-573,825-832
+  s_67c3121555c705::t_8f6db2dcf9f124 72,119,125-126,167-177,542,549-550,897,902,910,1063
+  s_67c3121555c705::t_04ec5dff4d767e 61-62,155,158,356-357,641-650,690,699,712
+  s_c472db5d79d352::t_cf8e295432de9c 38,101-107,114,131,138,166,178-179,281,427,439-440,444-445,471,498-504,516-517,519-520,522,528,562,575,594-600,608-612,614,797,803-811,813-824,834-836,890,1082,1268,1270-1271,1281,1301,1311,1378,1382-1384,1730-1740,1743-1747,1749,1753,1755-1797
+src/renderer/components/board/editor/nfm-codex-prompt-input.test.ts
+  s_67c3121555c705::t_8f6db2dcf9f124 49-50,56-58,66-74
+  s_67c3121555c705::t_8e6a675de98620 51-55,59-65
+crates/nodex-core/src/library/page_lifecycle_mutation.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 502
+crates/nodex-core/src/document/editor_history.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 379,385
+crates/nodex-core/src/infrastructure/migration_derivation_tests.rs
+  s_67c3121555c705::t_6d46895b7a9d44 210
+  s_67c3121555c705::t_04ec5dff4d767e 82-111,117-118,130-132
+  s_7db290b3e7f7f9::t_ee46b07b5360be 208-209,211
+src/renderer/components/board/editor/nfm-editor-mod-enter-shortcut.ts
+  s_7db290b3e7f7f9::t_9698221fd38101 9,11
+crates/nodex-core/src/document/module/tests/reference_lifecycle.rs
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 87,124
+CHANGELOG.md
+  s_7db290b3e7f7f9::t_c8baffd89974b6 51
+src/shared/block-documents/block-children-policy.test.ts
+  s_7db290b3e7f7f9::t_0c00d5baec9177 118,120
+crates/nodex-core/tests/fixtures/yjs-yrs/manifest.json
+  s_7db290b3e7f7f9::t_c8baffd89974b6 3,14
+src/shared/block-documents/page-document.ts
+  s_7db290b3e7f7f9::t_af8d5bd8b36fc1 7
+docs/product-specs/nfm-editor-automatic-transform-history-behavior.md
+  s_67c3121555c705::t_24d70441ccbe20 4
+  s_7db290b3e7f7f9::t_c8baffd89974b6 37
+crates/nodex-core/src/document/persistence.rs
+  s_7db290b3e7f7f9::t_830ceb8963ed84 1670-1675,1699-1712,1716-1726,1741-1748
+  s_67c3121555c705::t_6d46895b7a9d44 1713-1715
+crates/nodex-core/schema/current.sql
+  s_67c3121555c705::t_3f72b89ca3b60a 4493
+crates/nodex-core/src/administration/profile_clone.rs
+  s_7db290b3e7f7f9::t_fe0ed03a81dd11 570,579,588
+crates/nodex-core/src/administration/restore.rs
+  s_7db290b3e7f7f9::t_3b888b2699a94c 917,963
+crates/nodex-core/src/database/page_key.rs
+  s_7db290b3e7f7f9::t_4656836d914c07 944
+crates/nodex-core/src/document/maintenance.rs
+  s_7db290b3e7f7f9::t_aca7233e69d4f4 395,462
+crates/nodex-core/src/document/retention.rs
+  s_7db290b3e7f7f9::t_9779bcd5b7e10e 1257,2181,2257,2402,2997,3145
+crates/nodex-core/src/domain/nfm_parser.rs
+  s_7db290b3e7f7f9::t_a448297b1cf924 1680-1681
+crates/nodex-core/src/infrastructure/document_repository.rs
+  s_7db290b3e7f7f9::t_16d327359b91d8 991
+crates/nodex-core/src/infrastructure/event_log.rs
+  s_7db290b3e7f7f9::t_edd8de83f0b52f 2991,2993
+crates/nodex-core/src/infrastructure/library_files_migration.rs
+  s_7db290b3e7f7f9::t_3b1c4ecc64abf5 104-106
+crates/nodex-core/src/infrastructure/local_commit.rs
+  s_7db290b3e7f7f9::t_ef6ef74793e202 2620,2625,2630
+crates/nodex-core/src/infrastructure/store_validation.rs
+  s_7db290b3e7f7f9::t_b43d320c21bfeb 1229,1253,1263,1288
+crates/nodex-core/src/library/history.rs
+  s_7db290b3e7f7f9::t_3be775685046cd 1379,1406
+crates/nodex-core/src/library/mod.rs
+  s_7db290b3e7f7f9::t_e7abf1ccf5f0fa 1943,2025,2040
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-state-vector.bin
+  s_7db290b3e7f7f9::t_8b1331402e24ec 1
+crates/nodex-store-format/src/lib.rs
+  s_67c3121555c705::t_269800ea2c9005 233-236
+docs/product-specs/card-stage-rich-editor-performance.md
+  s_c472db5d79d352::t_e4e66431874ccf 7
+src/renderer/components/board/editor/nfm-text-action-menu-model.ts
+  s_7db290b3e7f7f9::t_cb487cdde6c5b1 42
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_7db290b3e7f7f9::t_8ccbdb3cb3384e 643,1070
+src/renderer/test/page-detail-fixture.ts
+  s_c472db5d79d352::t_cb5ffb0b88e545 1-4,167-168
+src/shared/block-documents/block-documents.test.ts
+  s_7db290b3e7f7f9::t_8126b6610bcdb1 140,208-210
+src/shared/block-documents/headless-blocknote-schema.test.ts
+  s_7db290b3e7f7f9::t_88e0cf9f36c56c 135
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_7db290b3e7f7f9::t_e5392ae5bdb9b3 1434
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "768a6c42390206e9a71f49f38cb80f97b8bd109b",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_67c3121555c705": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180b2-ee71-76a1-afca-3f9ec2125c0b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7db290b3e7f7f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180b6-7ac8-7df1-90a1-0a639fd4731d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c472db5d79d352": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180d6-40dd-7261-92c4-5c569a137127",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
