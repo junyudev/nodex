@@ -285,18 +285,6 @@ const VERSION_SURFACES: readonly Surface[] = [
     "migrate the exact legacy Page schema",
   ],
   [
-    "crates/nodex-core/src/document/schema_migration.rs:BASELINE_REUSABLE_TEMPLATE_SCHEMA_VERSION",
-    "durableFormat",
-    "Block children migration reusable-template baseline",
-    "migrate the exact legacy reusable-template schema",
-  ],
-  [
-    "crates/nodex-core/src/document/schema_migration.rs:BASELINE_SYNCED_BLOCK_SCHEMA_VERSION",
-    "durableFormat",
-    "Block children migration synced-Block baseline",
-    "migrate the exact legacy synced-Block schema",
-  ],
-  [
     "crates/nodex-core/src/document/materialization.rs:CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION",
     "durableFormat",
     "Document materialization derivation",
