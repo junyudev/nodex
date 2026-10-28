@@ -10,7 +10,10 @@ import {
 import { createLocalConversationSearchHighlightOwner } from "./local-conversation-search-highlight-owner";
 import type { LocalConversationSearchTarget } from "./local-conversation-persisted-search";
 
-vi.mock("@/lib/native-context-menu", () => ({ showNativeContextMenu: async () => null }));
+vi.mock("@/lib/native-context-menu", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/native-context-menu")>()),
+  showNativeContextMenu: async () => null,
+}));
 
 describe("compiled native message target lifetime", () => {
   test.each([

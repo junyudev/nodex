@@ -154,16 +154,18 @@ describe("useResolvedImageAsset", () => {
   });
 
   test("replaces a failed remote source with fetched image data on retry", async () => {
-    const fetchSource = vi
+    const readResource = vi
       .fn()
-      .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(
-        new Response(new Uint8Array([1, 2, 3]), {
-          status: 200,
-          headers: { "content-type": "image/png" },
-        }),
-      );
-    vi.stubGlobal("fetch", fetchSource);
+      .mockRejectedValueOnce(new Error("Image request failed with status 503"))
+      .mockResolvedValueOnce({ contentsBase64: "AQID", mimeType: "image/png" });
+    installWindowApi({
+      invoke: async (channel: string, input: unknown) => {
+        invokeCalls.push([channel, input]);
+        if (channel === "native-resource:read") return readResource(input);
+        throw new Error(`Unexpected channel: ${channel}`);
+      },
+      on: () => () => undefined,
+    });
     const view = render(
       <TestQueryProvider>
         <AssetProbe source="https://example.test/hero.png" />
@@ -185,6 +187,9 @@ describe("useResolvedImageAsset", () => {
       expect(view.getByTestId("preview").textContent).toBe("data:image/png;base64,AQID");
     });
     expect(view.getByTestId("status").textContent).toBe("ready");
-    expect(fetchSource).toHaveBeenCalledTimes(2);
+    expect(invokeCalls).toEqual([
+      ["native-resource:read", { url: "https://example.test/hero.png" }],
+      ["native-resource:read", { url: "https://example.test/hero.png" }],
+    ]);
   });
 });
