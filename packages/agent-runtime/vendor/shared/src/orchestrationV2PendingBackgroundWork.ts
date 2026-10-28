@@ -229,9 +229,12 @@ function providerRosterTasks(
   providerThreads: ReadonlyArray<PendingBackgroundWorkProviderThread>,
 ): ReadonlyArray<PendingBackgroundWorkTask> {
   const byTaskId = new Map<string, PendingBackgroundWorkTask>();
+  const turnItemIds = new Set<string>();
   for (const providerThread of providerThreads) {
     for (const task of providerThread.pendingBackgroundTasks ?? []) {
       if (task.taskId.length === 0 || byTaskId.has(task.taskId)) continue;
+      if (task.turnItemId != null && turnItemIds.has(task.turnItemId)) continue;
+      if (task.turnItemId != null) turnItemIds.add(task.turnItemId);
       const { description: rawDescription, ...named } = task;
       const description = rawDescription?.trim();
       byTaskId.set(task.taskId, {
@@ -248,14 +251,14 @@ function providerRosterTasks(
  * Session task lists and targeted Stop use liveBackgroundWork instead.
  *
  * Sources:
- * - Provider-thread roster (Claude SDK background tasks)
+ * - Provider-thread roster
  * - Active command_execution / dynamic_tool / subagent turn items
  * - Pull request watches, as monitors: a watch wakes the agent, so the thread
  *   stays working between wakes instead of returning to the inbox. Callers
  *   that pick a run to interrupt leave `pullRequests` out; Stop ends watches
  *   on its own.
  *
- * Gated on latest root run settlement. Dedupes by native task ID. Excludes
+ * Gated on latest root run settlement. Dedupes by task and projected item IDs. Excludes
  * the roster while any interruptible foreground run remains active. Excludes
  * Grok persistent monitors (`dynamic_tool` input with `persistent: true`).
  * Excludes turn items whose run resolves to `rolled_back` (abandoned work);
@@ -298,10 +301,13 @@ export function derivePendingBackgroundWork(input: {
       ? input.providerThreads
       : input.providerThreads.filter((thread) => thread.id === input.activeProviderThreadId);
   const byTaskId = new Map(providerRosterTasks(providerThreads).map((task) => [task.taskId, task]));
+  const rosterItemIds = new Set(
+    [...byTaskId.values()].flatMap((task) => task.turnItemId == null ? [] : [String(task.turnItemId)]),
+  );
 
   for (const item of pendingBackgroundTurnItems(input)) {
     const taskId = nativeTaskIdFromTurnItem(item);
-    if (byTaskId.has(taskId)) {
+    if (byTaskId.has(taskId) || rosterItemIds.has(String(item.id))) {
       continue;
     }
 

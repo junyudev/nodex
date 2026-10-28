@@ -173,8 +173,9 @@ and the section's `View all processes` action opens that Workbench-owned
 dialog. Process status and action behavior remain summarized in
 [Codex Workspace Behavior](codex-workspace-behavior.md).
 
-For a Runtime Chat, such as Claude Code, Background lists the background
-shells, monitors and other tasks the Session's Agents reported as still running,
+For a Runtime Chat, such as Claude Code or a local Codex Chat, Background lists
+the background shells, terminals, monitors and other tasks the Session's Agents
+reported as still running,
 including while the Agent is replying and including work a delegated
 conversation left running, which names that conversation after the task. These
 are the same facts that keep the Chat's sidebar spinner turning, so the list

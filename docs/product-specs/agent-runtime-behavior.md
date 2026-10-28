@@ -808,6 +808,20 @@ Thread, active Run, pending question count, its provider and model, and the live
 tasks of the root and its delegated conversations (at most 25, each with its owning
 conversation, name, command and start time). Core never stores these facts.
 
+Each Agent reports its own background tasks. Claude Code reports background shells, Monitors
+and workflows as it starts and ends them. Codex background terminals appear as command tasks
+with their exact command text (up to 2,000 characters); the Runtime reconciles the native
+terminal list when commands start or a Turn finishes. Command completion and stop responses
+update the list immediately. Safety refreshes run only for live terminal rosters, backing off
+from 2 to 30 seconds while unchanged and resetting when command activity changes. Stopping one
+task ends only that task; a conversation's Stop ends all of its background work. Output reads
+return at most the last 8 KiB of a task's output: Claude Code supplies it, and Codex keeps a
+bounded in-memory command output tail while the command runs, including after its Turn
+finishes, with the matching item's projected aggregate as a fallback. Streamed deltas never
+enter execution history; the live buffer is discarded when the command exits or the Agent
+process restarts. Resuming a native Codex Thread replaces its stored roster with the current
+native list.
+
 Each execution process generation is read once in bounded pages. One execution observation
 then reports which roots changed, and only those roots are re-read and mapped to their Session
 through the Core binding, so idle Sessions cost no execution or Core reads. Changes carry one

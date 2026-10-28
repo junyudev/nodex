@@ -90,7 +90,11 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as Queue from "effect/Queue";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
+import type { ThreadBackgroundTerminalsListResponse } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminalsListResponse";
+import type { ThreadBackgroundTerminalsTerminateResponse } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminalsTerminateResponse";
 
 import { resolveAttachmentPath, resolveAttachmentPathById } from "../../attachmentStore.ts";
 import { getCodexServiceTierOptionValue } from "../../codexModelOptions.ts";
@@ -231,19 +235,69 @@ export function codexProviderTurnTokenUsage(
 }
 const DEFAULT_CODEX_SETTINGS = Schema.decodeSync(CodexSettings)({});
 const CODEX_ASSISTANT_DELTA_FLUSH_INTERVAL_MS = 50;
+const CODEX_COMMAND_OUTPUT_TAIL_BYTES = 8 * 1024;
+
+export interface CodexCommandOutputTail {
+  readonly bytes: Buffer;
+  readonly totalBytes: number;
+}
+
+/** Retains a UTF-8 suffix without allocating an unbounded encoded chunk or accumulator. */
+export function appendCodexCommandOutput(
+  previous: CodexCommandOutputTail | undefined,
+  delta: string,
+): CodexCommandOutputTail {
+  const deltaBytes = Buffer.byteLength(delta, "utf8");
+  const totalBytes = (previous?.totalBytes ?? 0) + deltaBytes;
+  let start = 0;
+  if (deltaBytes > CODEX_COMMAND_OUTPUT_TAIL_BYTES) {
+    start = delta.length;
+    let retainedBytes = 0;
+    while (start > 0) {
+      let next = start - 1;
+      const code = delta.charCodeAt(next);
+      let width = code <= 0x7f ? 1 : code <= 0x7ff ? 2 : 3;
+      const lead = delta.charCodeAt(next - 1);
+      if (code >= 0xdc00 && code <= 0xdfff && lead >= 0xd800 && lead <= 0xdbff) {
+        next -= 1;
+        width = 4;
+      }
+      if (retainedBytes + width > CODEX_COMMAND_OUTPUT_TAIL_BYTES) break;
+      retainedBytes += width;
+      start = next;
+    }
+  }
+  const chunk = Buffer.from(delta.slice(start), "utf8");
+  if (previous === undefined || deltaBytes >= CODEX_COMMAND_OUTPUT_TAIL_BYTES)
+    return { bytes: chunk, totalBytes };
+  let prefixStart = Math.max(
+    0,
+    previous.bytes.length + chunk.length - CODEX_COMMAND_OUTPUT_TAIL_BYTES,
+  );
+  while (prefixStart < previous.bytes.length && (previous.bytes[prefixStart]! & 0xc0) === 0x80)
+    prefixStart += 1;
+  return { bytes: Buffer.concat([previous.bytes.subarray(prefixStart), chunk]), totalBytes };
+}
+
 const CodexBackgroundTerminalTerminateResponse = Schema.Struct({
   terminated: Schema.Boolean,
-});
+}) satisfies Schema.Codec<ThreadBackgroundTerminalsTerminateResponse>;
 const CodexBackgroundTerminalsListResponse = Schema.Struct({
   data: Schema.Array(
     Schema.Struct({
       processId: Schema.String,
       itemId: Schema.String,
+      command: Schema.String,
     }),
   ),
   nextCursor: Schema.NullOr(Schema.String),
-});
+}) satisfies Schema.Codec<
+  Omit<ThreadBackgroundTerminalsListResponse, "data"> & {
+    readonly data: ReadonlyArray<CodexBackgroundTerminal>;
+  }
+>;
 type CodexBackgroundTerminalsListPage = typeof CodexBackgroundTerminalsListResponse.Type;
+type CodexBackgroundTerminal = Pick<ThreadBackgroundTerminal, "processId" | "itemId" | "command">;
 const decodeCodexBackgroundTerminalTerminateResponse = Schema.decodeUnknownEffect(
   CodexBackgroundTerminalTerminateResponse,
 );
@@ -1955,26 +2009,6 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }),
         });
         const nativeSessionRetired = yield* Ref.make(false);
-        if (client.raw.termination !== undefined) {
-          yield* client.raw.termination.pipe(
-            Effect.catch((cause) =>
-              Ref.set(nativeSessionRetired, true).pipe(
-                Effect.andThen(PubSub.shutdown(nativeInputs)),
-                Effect.andThen(
-                  BoundedQueue.failAfterDrain(
-                    events,
-                    new ProviderAdapter.ProviderAdapterEventStreamError({
-                      driver: CODEX_PROVIDER,
-                      providerSessionId: input.providerSessionId,
-                      cause,
-                    }),
-                  ),
-                ),
-              ),
-            ),
-            Effect.forkIn(scope),
-          );
-        }
         const rateLimitSnapshot = yield* Ref.make<CodexRateLimitSnapshot | undefined>(undefined);
         const limitedTurnItems = yield* Ref.make(
           new Map<ProviderThreadId, Extract<OrchestrationV2TurnItem, { type: "error" }>>(),
@@ -2101,8 +2135,246 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         const latestGoalTurnId = (providerTurnId: ProviderTurnId) =>
           goalRuns.get(providerTurnId)?.at(-1)?.providerTurnId ?? providerTurnId;
 
+        const backgroundThreads = new Map<string, OrchestrationV2ProviderThread>();
+        const backgroundTerminals = new Map<string, ReadonlyArray<CodexBackgroundTerminal>>();
+        const commandOutputTails = new Map<string, Map<string, CodexCommandOutputTail>>();
+        yield* Effect.addFinalizer(() => Effect.sync(() => commandOutputTails.clear()));
+        const dropCommandOutput = (nativeThreadId: string, nativeItemId: string) => {
+          const outputs = commandOutputTails.get(nativeThreadId);
+          outputs?.delete(nativeItemId);
+          if (outputs?.size === 0) commandOutputTails.delete(nativeThreadId);
+        };
+        const backgroundPermit = yield* Semaphore.make(1);
+        const backgroundRevisions = new Map<string, number>();
+        type BackgroundRefresh = { readonly wake: Queue.Queue<void>; refresh: boolean };
+        const backgroundRefreshes = new Map<string, BackgroundRefresh>();
         const emitProviderEvent = (event: ProviderAdapter.ProviderAdapterV2Event) =>
-          BoundedQueue.offer(events, event).pipe(Effect.asVoid);
+          Effect.sync(() => {
+            if (event.type !== "provider_thread.updated") return;
+            const nativeId = event.providerThread.nativeThreadRef?.nativeId;
+            if (nativeId == null) return;
+            backgroundThreads.set(nativeId, event.providerThread);
+            if (rootProviderThreads.has(nativeId))
+              rootProviderThreads.set(nativeId, event.providerThread);
+          }).pipe(Effect.andThen(BoundedQueue.offer(events, event)), Effect.asVoid);
+
+        const publishBackgroundTerminals = Effect.fnUntraced(function* (
+          nativeThreadId: string,
+          terminals: ReadonlyArray<CodexBackgroundTerminal>,
+        ) {
+          const thread = backgroundThreads.get(nativeThreadId);
+          if (thread === undefined) return;
+          const liveItemIds = new Set(terminals.map((terminal) => terminal.itemId));
+          for (const previous of backgroundTerminals.get(nativeThreadId) ?? []) {
+            if (!liveItemIds.has(previous.itemId))
+              dropCommandOutput(nativeThreadId, previous.itemId);
+          }
+          backgroundTerminals.set(nativeThreadId, terminals);
+          const now = yield* DateTime.now;
+          const contexts = [
+            ...(yield* Ref.get(activeTurns)).values(),
+            ...(yield* Ref.get(settledTurns)).values(),
+          ];
+          const pendingBackgroundTasks = terminals.map((terminal) => {
+            const turnItemId = idAllocator.derive.turnItemFromProviderItem({
+              driver: CODEX_PROVIDER,
+              nativeItemId: terminal.itemId,
+            });
+            const previous = thread.pendingBackgroundTasks?.find(
+              (task) => task.taskId === terminal.itemId,
+            );
+            const context = contexts.find(
+              (context) =>
+                context.providerThread.id === thread.id &&
+                context.itemPositions.has(terminal.itemId),
+            );
+            return {
+              taskId: terminal.itemId,
+              kind: "command" as const,
+              command: terminal.command.slice(0, 2_000),
+              startedAt:
+                context?.itemPositions.get(terminal.itemId)?.startedAt ??
+                previous?.startedAt ??
+                now,
+              turnItemId,
+            };
+          });
+          if (
+            JSON.stringify(thread.pendingBackgroundTasks ?? []) ===
+            JSON.stringify(pendingBackgroundTasks)
+          )
+            return;
+          yield* emitProviderEvent({
+            type: "provider_thread.updated",
+            driver: CODEX_PROVIDER,
+            providerThread: { ...thread, pendingBackgroundTasks, updatedAt: now },
+          });
+          yield* requestBackgroundRefresh(nativeThreadId, false);
+        });
+
+        const listBackgroundTerminals = Effect.fnUntraced(function* (
+          nativeThreadId: string,
+          discovery = false,
+        ) {
+          const terminals = new Map<string, CodexBackgroundTerminal>();
+          let cursor: string | null = null;
+          const cursors = new Set<string>();
+          while (true) {
+            const response: unknown = yield* client.raw
+              .request("thread/backgroundTerminals/list", {
+                threadId: nativeThreadId,
+                ...(discovery ? { limit: 100 } : {}),
+                ...(cursor === null ? {} : { cursor }),
+              })
+              .pipe(
+                Effect.catchTags({
+                  CodexAppServerProcessExitedError: () =>
+                    Effect.succeed({ data: [], nextCursor: null }),
+                  CodexAppServerInputStreamEndedError: () =>
+                    Effect.succeed({ data: [], nextCursor: null }),
+                  CodexAppServerRequestError: (error) =>
+                    error.code === -32600 && error.errorMessage.startsWith("thread not found:")
+                      ? Effect.succeed({ data: [], nextCursor: null })
+                      : Effect.fail(error),
+                }),
+              );
+            const page: CodexBackgroundTerminalsListPage =
+              yield* decodeCodexBackgroundTerminalsListResponse(response);
+            for (const terminal of page.data) terminals.set(terminal.itemId, terminal);
+            if (page.nextCursor === null) return [...terminals.values()];
+            if (cursors.has(page.nextCursor))
+              return yield* toProtocolError("Codex repeated a background terminal cursor.");
+            cursors.add(page.nextCursor);
+            cursor = page.nextCursor;
+          }
+        }, Effect.timeout("10 seconds"));
+
+        const settleMissingBackgroundCommands = Effect.fnUntraced(function* (
+          nativeThreadId: string,
+          terminals: ReadonlyArray<CodexBackgroundTerminal>,
+        ) {
+          const liveItemIds = new Set(terminals.map((terminal) => terminal.itemId));
+          for (const context of (yield* Ref.get(settledTurns)).values()) {
+            if (context.providerThread.nativeThreadRef?.nativeId !== nativeThreadId) continue;
+            const items = (yield* Ref.get(runningCommandItemsByTurn)).get(context.nativeTurnId);
+            for (const item of items?.values() ?? []) {
+              if (liveItemIds.has(item.id)) continue;
+              // Native evidence proves it ended, but supplies no exit code.
+              yield* terminalizeRunningCommandItems(
+                context,
+                context.nativeTurnId,
+                "completed",
+                yield* DateTime.now,
+                item.id,
+              );
+              yield* clearRunningCommandItem(context.nativeTurnId, item.id);
+            }
+            yield* releaseSettledTurnIfIdle(context.nativeTurnId);
+          }
+        });
+
+        const refreshBackgroundTerminals = (nativeThreadId: string) =>
+          backgroundPermit.withPermit(
+            Effect.gen(function* () {
+              const revision = backgroundRevisions.get(nativeThreadId) ?? 0;
+              const terminals = yield* listBackgroundTerminals(nativeThreadId, true);
+              if ((backgroundRevisions.get(nativeThreadId) ?? 0) !== revision) return;
+              yield* publishBackgroundTerminals(nativeThreadId, terminals);
+              yield* settleMissingBackgroundCommands(nativeThreadId, terminals);
+            }),
+          );
+        const refreshBackgroundTerminalsSafely = (nativeThreadId: string) =>
+          refreshBackgroundTerminals(nativeThreadId).pipe(
+            Effect.catch((cause) =>
+              Effect.logWarning("Could not refresh Codex background terminals", {
+                nativeThreadId,
+                cause,
+              }),
+            ),
+          );
+        // Item lifecycle events are authoritative. Poll only live rosters to recover lost events.
+        const watchBackgroundTerminals = Effect.fnUntraced(function* (
+          nativeThreadId: string,
+          pending: BackgroundRefresh,
+        ) {
+          let delay = 2_000;
+          let polling = false;
+          while (true) {
+            if (yield* Ref.get(nativeSessionRetired)) return;
+            if (!pending.refresh && (backgroundTerminals.get(nativeThreadId)?.length ?? 0) === 0) {
+              if (backgroundRefreshes.get(nativeThreadId) === pending)
+                backgroundRefreshes.delete(nativeThreadId);
+              return;
+            }
+            const refresh = pending.refresh;
+            pending.refresh = false;
+            yield* Queue.clear(pending.wake);
+            if (refresh || polling) {
+              const previous = backgroundThreads.get(nativeThreadId)?.pendingBackgroundTasks;
+              yield* refreshBackgroundTerminalsSafely(nativeThreadId);
+              const unchanged =
+                previous === backgroundThreads.get(nativeThreadId)?.pendingBackgroundTasks;
+              delay = polling && unchanged ? Math.min(delay * 2, 30_000) : 2_000;
+            }
+            if (pending.refresh) {
+              polling = false;
+              delay = 2_000;
+              continue;
+            }
+            if ((backgroundTerminals.get(nativeThreadId)?.length ?? 0) === 0) {
+              if (backgroundRefreshes.get(nativeThreadId) === pending)
+                backgroundRefreshes.delete(nativeThreadId);
+              return;
+            }
+            const signal = yield* Queue.take(pending.wake).pipe(Effect.timeoutOption(delay));
+            polling = Option.isNone(signal);
+            if (!polling) delay = 2_000;
+          }
+        });
+        const requestBackgroundRefresh = Effect.fnUntraced(function* (
+          nativeThreadId: string,
+          refresh = true,
+        ): Effect.fn.Return<void> {
+          if (yield* Ref.get(nativeSessionRetired)) return;
+          const existing = backgroundRefreshes.get(nativeThreadId);
+          if (existing !== undefined) {
+            existing.refresh ||= refresh;
+            yield* Queue.offer(existing.wake, undefined);
+            return;
+          }
+          if (!refresh && (backgroundTerminals.get(nativeThreadId)?.length ?? 0) === 0) return;
+          const wake = yield* Queue.sliding<void>(1);
+          const concurrent = backgroundRefreshes.get(nativeThreadId);
+          if (concurrent !== undefined) {
+            concurrent.refresh ||= refresh;
+            yield* Queue.shutdown(wake);
+            yield* Queue.offer(concurrent.wake, undefined);
+            return;
+          }
+          const pending = { wake, refresh };
+          backgroundRefreshes.set(nativeThreadId, pending);
+          yield* watchBackgroundTerminals(nativeThreadId, pending).pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (backgroundRefreshes.get(nativeThreadId) === pending)
+                  backgroundRefreshes.delete(nativeThreadId);
+              }).pipe(Effect.andThen(Queue.shutdown(wake))),
+            ),
+            Effect.forkIn(scope),
+          );
+        });
+        const resetBackgroundTerminals = Effect.gen(function* () {
+          commandOutputTails.clear();
+          for (const nativeThreadId of backgroundThreads.keys()) {
+            backgroundRevisions.set(
+              nativeThreadId,
+              (backgroundRevisions.get(nativeThreadId) ?? 0) + 1,
+            );
+            yield* publishBackgroundTerminals(nativeThreadId, []);
+          }
+          yield* Ref.set(runningCommandItemsByTurn, new Map());
+          yield* Ref.set(settledTurns, new Map());
+        });
 
         /** Writes the thread's current native goal onto its root provider thread. */
         const emitGoalUpdate = Effect.fnUntraced(function* (nativeThreadId: string) {
@@ -2124,9 +2396,37 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         ) {
           const nativeThreadId = providerThread.nativeThreadRef?.nativeId;
           if (nativeThreadId == null) return;
-          rootProviderThreads.set(nativeThreadId, providerThread);
+          const remembered = backgroundThreads.get(nativeThreadId);
+          const current = {
+            ...providerThread,
+            pendingBackgroundTasks: remembered?.pendingBackgroundTasks ?? [],
+          };
+          backgroundThreads.set(nativeThreadId, current);
+          rootProviderThreads.set(nativeThreadId, current);
           yield* emitGoalUpdate(nativeThreadId);
         });
+
+        if (client.raw.termination !== undefined) {
+          yield* client.raw.termination.pipe(
+            Effect.catch((cause) =>
+              Ref.set(nativeSessionRetired, true).pipe(
+                Effect.andThen(resetBackgroundTerminals),
+                Effect.andThen(PubSub.shutdown(nativeInputs)),
+                Effect.andThen(
+                  BoundedQueue.failAfterDrain(
+                    events,
+                    new ProviderAdapter.ProviderAdapterEventStreamError({
+                      driver: CODEX_PROVIDER,
+                      providerSessionId: input.providerSessionId,
+                      cause,
+                    }),
+                  ),
+                ),
+              ),
+            ),
+            Effect.forkIn(scope),
+          );
+        }
 
         // Call only for new model-output activity. A local item/completed can
         // arrive while the upstream response stream is still retrying.
@@ -2436,8 +2736,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         const terminalizeRunningCommandItems = (
           context: ActiveCodexTurnContext,
           nativeTurnId: string,
-          status: "interrupted" | "failed",
+          status: "completed" | "interrupted" | "failed",
           completedAt: DateTime.Utc,
+          nativeItemId?: string,
         ) =>
           Effect.gen(function* () {
             const items = (yield* Ref.get(runningCommandItemsByTurn)).get(nativeTurnId);
@@ -2445,6 +2746,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               return;
             }
             for (const tracked of items.values()) {
+              if (nativeItemId !== undefined && tracked.id !== nativeItemId) continue;
+              dropCommandOutput(context.providerThread.nativeThreadRef?.nativeId ?? "", tracked.id);
               const nodeId = idAllocator.derive.nodeFromProviderItem({
                 driver: CODEX_PROVIDER,
                 nativeItemId: tracked.id,
@@ -2528,7 +2831,19 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 }),
               );
             const result = yield* decodeCodexBackgroundTerminalTerminateResponse(response);
-            if (result.terminated) return;
+            if (result.terminated) {
+              backgroundRevisions.set(
+                nativeThreadId,
+                (backgroundRevisions.get(nativeThreadId) ?? 0) + 1,
+              );
+              yield* publishBackgroundTerminals(
+                nativeThreadId,
+                (backgroundTerminals.get(nativeThreadId) ?? []).filter(
+                  (terminal) => terminal.processId !== processId,
+                ),
+              );
+              return;
+            }
             let cursor: string | null = null;
             while (true) {
               const response: unknown = yield* client.raw.request(
@@ -2545,7 +2860,15 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   `Codex background terminal ${processId} remained active after termination.`,
                 );
               }
-              if (page.nextCursor === null) return;
+              if (page.nextCursor === null) {
+                yield* publishBackgroundTerminals(
+                  nativeThreadId,
+                  (backgroundTerminals.get(nativeThreadId) ?? []).filter(
+                    (terminal) => terminal.processId !== processId,
+                  ),
+                );
+                return;
+              }
               cursor = page.nextCursor;
             }
           },
@@ -4568,6 +4891,34 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         yield* registerNotification("item/autoApprovalReview/started", emitApprovalReview);
         yield* registerNotification("item/autoApprovalReview/completed", emitApprovalReview);
 
+        // Command output survives Turn settlement and never enters the durable event stream.
+        yield* client.handleServerNotification("item/commandExecution/outputDelta", (payload) =>
+          Effect.gen(function* () {
+            if (payload.delta.length === 0 || (yield* Ref.get(nativeSessionRetired))) return;
+            const rostered =
+              backgroundTerminals
+                .get(payload.threadId)
+                ?.some((terminal) => terminal.itemId === payload.itemId) ?? false;
+            const context =
+              (yield* Ref.get(activeTurns)).get(trackedNativeTurnId(payload.turnId)) ??
+              (yield* Ref.get(settledTurns)).get(trackedNativeTurnId(payload.turnId));
+            const tracked =
+              context?.providerThread.nativeThreadRef?.nativeId === payload.threadId &&
+              ((yield* Ref.get(runningCommandItemsByTurn))
+                .get(context.nativeTurnId)
+                ?.has(payload.itemId) ??
+                false);
+            if (!rostered && !tracked) return;
+            const outputs =
+              commandOutputTails.get(payload.threadId) ?? new Map<string, CodexCommandOutputTail>();
+            outputs.set(
+              payload.itemId,
+              appendCodexCommandOutput(outputs.get(payload.itemId), payload.delta),
+            );
+            commandOutputTails.set(payload.threadId, outputs);
+          }),
+        );
+
         yield* registerNotification("item/agentMessage/delta", (payload) =>
           Effect.gen(function* () {
             const context = (yield* Ref.get(activeTurns)).get(payload.turnId);
@@ -5081,6 +5432,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 driver: CODEX_PROVIDER,
                 turnItem: artifacts.turnItem,
               });
+              if (!codexItemStatus(payload.item.status).completed)
+                yield* requestBackgroundRefresh(payload.threadId);
               return;
             }
 
@@ -5158,6 +5511,21 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               }
               yield* updateSubagentStates({ item: payload.item });
               return;
+            }
+            if (payload.item.type === "commandExecution") {
+              dropCommandOutput(payload.threadId, payload.item.id);
+              backgroundRevisions.set(
+                payload.threadId,
+                (backgroundRevisions.get(payload.threadId) ?? 0) + 1,
+              );
+              yield* publishBackgroundTerminals(
+                payload.threadId,
+                (backgroundTerminals.get(payload.threadId) ?? []).filter(
+                  (terminal) => terminal.itemId !== payload.item.id,
+                ),
+              );
+              if ((backgroundTerminals.get(payload.threadId)?.length ?? 0) > 0)
+                yield* requestBackgroundRefresh(payload.threadId);
             }
             const resolved = yield* resolveItemEventContext(payload.turnId);
             if (resolved === undefined) {
@@ -6141,6 +6509,13 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               (yield* Ref.get(interruptingNativeTurns)).has(payload.turn.id)
                 ? "interrupted"
                 : nativeStatus;
+            if (
+              status === "completed" &&
+              ((yield* Ref.get(runningCommandItemsByTurn)).has(payload.turn.id) ||
+                (backgroundThreads.get(payload.threadId)?.pendingBackgroundTasks?.length ?? 0) > 0)
+            ) {
+              yield* requestBackgroundRefresh(payload.threadId);
+            }
             yield* finalizeCodexTurn({
               context,
               nativeTurnId: payload.turn.id,
@@ -6594,6 +6969,41 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             ),
             request: (method, params) =>
               client.raw.request(method, params).pipe(
+                Effect.tap((response) =>
+                  Effect.gen(function* () {
+                    if (
+                      method !== "thread/backgroundTerminals/clean" &&
+                      method !== "thread/backgroundTerminals/terminate"
+                    )
+                      return;
+                    const target = yield* Schema.decodeUnknownEffect(
+                      Schema.Struct({
+                        threadId: Schema.String,
+                        processId: Schema.optional(Schema.String),
+                      }),
+                    )(params);
+                    if (method === "thread/backgroundTerminals/terminate") {
+                      const result =
+                        yield* decodeCodexBackgroundTerminalTerminateResponse(response);
+                      if (!result.terminated) {
+                        yield* requestBackgroundRefresh(target.threadId);
+                        return;
+                      }
+                    }
+                    backgroundRevisions.set(
+                      target.threadId,
+                      (backgroundRevisions.get(target.threadId) ?? 0) + 1,
+                    );
+                    const terminals =
+                      method === "thread/backgroundTerminals/clean"
+                        ? []
+                        : (backgroundTerminals.get(target.threadId) ?? []).filter(
+                            (terminal) => terminal.processId !== target.processId,
+                          );
+                    yield* publishBackgroundTerminals(target.threadId, terminals);
+                    yield* settleMissingBackgroundCommands(target.threadId, terminals);
+                  }),
+                ),
                 Effect.map((value) => value as never),
                 Effect.mapError(
                   (cause) =>
@@ -6679,44 +7089,37 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   "Codex can stop individual background terminals only.",
                 );
               const nativeThreadId = yield* getNativeThreadId(providerThread);
-              let cursor: string | null = null;
-              while (true) {
-                const response: unknown = yield* client.raw
-                  .request("thread/backgroundTerminals/list", {
-                    threadId: nativeThreadId,
-                    ...(cursor === null ? {} : { cursor }),
-                  })
-                  .pipe(
-                    Effect.catchTags({
-                      CodexAppServerProcessExitedError: () =>
-                        Effect.succeed({ data: [], nextCursor: null }),
-                      CodexAppServerInputStreamEndedError: () =>
-                        Effect.succeed({ data: [], nextCursor: null }),
-                      CodexAppServerRequestError: (error) =>
-                        error.code === -32600 && error.errorMessage.startsWith("thread not found:")
-                          ? Effect.succeed({ data: [], nextCursor: null })
-                          : Effect.fail(error),
-                    }),
+              yield* backgroundPermit.withPermit(
+                Effect.gen(function* () {
+                  backgroundThreads.set(
+                    nativeThreadId,
+                    backgroundThreads.get(nativeThreadId) ?? providerThread,
                   );
-                const page: CodexBackgroundTerminalsListPage =
-                  yield* decodeCodexBackgroundTerminalsListResponse(response);
-                const terminal = page.data.find((entry) => entry.itemId === taskId);
-                if (terminal !== undefined) {
-                  yield* terminateBackgroundTerminal(nativeThreadId, terminal.processId);
-                  break;
-                }
-                if (page.nextCursor === null) break;
-                cursor = page.nextCursor;
-              }
-              yield* Ref.update(
-                runningCommandItemsByTurn,
-                (current) =>
-                  new Map(
-                    Array.from(current, ([turnId, items]) => [
-                      turnId,
-                      new Map(Array.from(items).filter(([id]) => id !== taskId)),
-                    ]),
-                  ),
+                  const terminals = yield* listBackgroundTerminals(nativeThreadId);
+                  const terminal = terminals.find((entry) => entry.itemId === taskId);
+                  if (terminal !== undefined)
+                    yield* terminateBackgroundTerminal(nativeThreadId, terminal.processId);
+                  yield* publishBackgroundTerminals(
+                    nativeThreadId,
+                    terminals.filter((entry) => entry.itemId !== taskId),
+                  );
+                  const contexts = [
+                    ...(yield* Ref.get(activeTurns)).values(),
+                    ...(yield* Ref.get(settledTurns)).values(),
+                  ];
+                  for (const context of contexts) {
+                    if (context.providerThread.id !== providerThread.id) continue;
+                    yield* terminalizeRunningCommandItems(
+                      context,
+                      context.nativeTurnId,
+                      "interrupted",
+                      yield* DateTime.now,
+                      taskId,
+                    );
+                    yield* clearRunningCommandItem(context.nativeTurnId, taskId);
+                    yield* releaseSettledTurnIfIdle(context.nativeTurnId);
+                  }
+                }),
               );
             },
             Effect.timeout("10 seconds"),
@@ -6729,6 +7132,33 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 }),
             ),
           ),
+          readTaskOutput: ({ providerThread, taskId, turnItem }) =>
+            Effect.sync(() => {
+              const nativeId = providerThread.nativeThreadRef?.nativeId;
+              const tail =
+                nativeId == null || backgroundThreads.get(nativeId)?.id !== providerThread.id
+                  ? undefined
+                  : commandOutputTails.get(nativeId)?.get(taskId);
+              if (tail !== undefined)
+                return {
+                  text: tail.bytes.toString("utf8"),
+                  truncated: tail.totalBytes > tail.bytes.length,
+                  totalBytes: tail.totalBytes,
+                };
+              if (
+                turnItem?.type !== "command_execution" ||
+                turnItem.providerThreadId !== providerThread.id ||
+                turnItem.nativeItemRef?.nativeId !== taskId ||
+                typeof turnItem.output !== "string"
+              )
+                return null;
+              const projected = appendCodexCommandOutput(undefined, turnItem.output);
+              return {
+                text: projected.bytes.toString("utf8"),
+                truncated: projected.totalBytes > projected.bytes.length,
+                totalBytes: projected.totalBytes,
+              };
+            }),
           canReuseContextUsage: canReuseCodexContextUsage,
           // Known gap: a subagent that Codex resumes later reads as completed
           // (not pending) between turns, so idle release can win the race
@@ -6736,6 +7166,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           // signal to pin on.
           hasPendingBackgroundWork: Effect.gen(function* () {
             if (retainedNativeThreads.size > 0 || pendingVoiceTurns.size > 0) return true;
+            if ([...backgroundTerminals.values()].some((terminals) => terminals.length > 0))
+              return true;
             for (const items of (yield* Ref.get(runningCommandItemsByTurn)).values()) {
               if (items.size > 0) {
                 return true;
@@ -6758,6 +7190,13 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           }),
           hasPendingBackgroundWorkForThread: (providerThread) =>
             Effect.gen(function* () {
+              // Keep ingestion alive until its own snapshot consumes the queued roster clear.
+              if ((providerThread.pendingBackgroundTasks?.length ?? 0) > 0) return true;
+              if (
+                (backgroundTerminals.get(providerThread.nativeThreadRef?.nativeId ?? "")?.length ??
+                  0) > 0
+              )
+                return true;
               if (
                 providerThread.nativeThreadRef?.nativeId &&
                 (retainedNativeThreads.has(providerThread.nativeThreadRef.nativeId) ||
@@ -6805,6 +7244,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   thread: response.thread,
                 }),
               ),
+              Effect.tap(rememberRootProviderThread),
               Effect.mapError(
                 (cause) =>
                   new ProviderAdapter.ProviderAdapterEnsureThreadError({
@@ -6890,11 +7330,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               }
               // Codex follows a resume with a goal snapshot notification; the
               // run's first turn writes it if it differs from the stored goal.
-              return {
+              const resumed = {
                 ...threadInput.providerThread,
                 providerSessionId: input.providerSessionId,
                 providerInstanceId: adapterOptions.instanceId,
                 status: "idle",
+                pendingBackgroundTasks: [],
                 nativeThreadRef: {
                   driver: CODEX_PROVIDER,
                   nativeId: response.thread.id,
@@ -6903,6 +7344,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 nativeConversationHeadRef: threadInput.providerThread.nativeConversationHeadRef,
                 updatedAt: codexTimestamp(response.thread.updatedAt),
               } satisfies OrchestrationV2ProviderThread;
+              commandOutputTails.delete(nativeThreadId);
+              backgroundThreads.set(nativeThreadId, resumed);
+              rootProviderThreads.set(nativeThreadId, resumed);
+              yield* refreshBackgroundTerminals(nativeThreadId);
+              return backgroundThreads.get(nativeThreadId)!;
             }).pipe(
               Effect.mapError(
                 (cause) =>
@@ -7198,6 +7644,20 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                       inLineage(candidate)),
                 ),
               ];
+              if (turnInput.requestRuntimeRestart === true || strict) {
+                const nativeId = yield* getNativeThreadId(turnInput.providerThread);
+                const trackedProcessIds = new Set(
+                  [...(yield* Ref.get(runningCommandItemsByTurn)).values()].flatMap((items) =>
+                    [...items.values()].flatMap((item) =>
+                      item.processId === undefined ? [] : [item.processId],
+                    ),
+                  ),
+                );
+                for (const terminal of backgroundTerminals.get(nativeId) ?? []) {
+                  if (trackedProcessIds.has(terminal.processId)) continue;
+                  yield* terminateBackgroundTerminal(nativeId, terminal.processId);
+                }
+              }
               if (interruptTargetContexts.length === 0) {
                 // Stop on a settled turn this process retains nothing for
                 // (released, restarted, or every command already reported).

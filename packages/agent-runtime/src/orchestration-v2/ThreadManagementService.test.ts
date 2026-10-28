@@ -17,6 +17,8 @@ import {
   ProviderInstanceId,
   RunId,
   ThreadId,
+  TurnItemId,
+  type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as DateTime from "effect/DateTime";
@@ -960,6 +962,13 @@ it.effect(
       const providerSessionId = ProviderSessionId.make("session:background-output");
       const ownerId = ProviderThreadId.make("provider-thread:background-output");
       const calls: string[] = [];
+      const itemId = TurnItemId.make("turn-item:output");
+      const turnItem = {
+        id: itemId,
+        threadId,
+        type: "command_execution",
+        output: "Ready",
+      } as OrchestrationV2TurnItem;
       const owner: OrchestrationV2ProviderThread = {
         id: ownerId,
         appThreadId: threadId,
@@ -977,7 +986,7 @@ it.effect(
         createdAt: yield* DateTime.now,
         updatedAt: yield* DateTime.now,
         pendingBackgroundTasks: [
-          { taskId: "shell", kind: "command" },
+          { taskId: "shell", kind: "command", turnItemId: itemId },
           { taskId: "agent", kind: "subagent" },
         ],
       };
@@ -985,9 +994,11 @@ it.effect(
         readTaskOutput: (input: {
           providerThread: OrchestrationV2ProviderThread;
           taskId: string;
+          turnItem?: OrchestrationV2TurnItem | null;
         }) =>
           Effect.sync(() => {
             expect(input.providerThread.id).toBe(ownerId);
+            expect(input.turnItem).toBe(turnItem);
             calls.push(input.taskId);
             return { text: "Ready", truncated: false, totalBytes: 5 };
           }),
@@ -996,6 +1007,10 @@ it.effect(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(Orchestrator.OrchestratorV2)({
+              getTurnItem: (input) => {
+                expect(input).toEqual({ threadId, itemId });
+                return Effect.succeed(turnItem);
+              },
               getThreadRecords: () =>
                 Effect.succeed({
                   thread: {

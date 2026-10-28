@@ -1268,7 +1268,8 @@ const make = Effect.gen(function* () {
     }),
     backgroundOutput: Effect.fn("ThreadManagementService.backgroundOutput")(function* (input) {
       const projection = yield* orchestrator.getThreadRecords(input.threadId, ["providerThreads"]);
-      if (!liveBackgroundWork(projection).some((task) => task.taskId === input.taskId)) return null;
+      const task = liveBackgroundWork(projection).find((task) => task.taskId === input.taskId);
+      if (task === undefined) return null;
       const providerThread = projection.providerThreads.find(
         (thread) =>
           thread.appThreadId === input.threadId &&
@@ -1279,10 +1280,16 @@ const make = Effect.gen(function* () {
         .get(providerThread.providerSessionId)
         .pipe(Effect.catch(() => Effect.succeed(Option.none())));
       if (Option.isNone(runtime) || runtime.value.readTaskOutput === undefined) return null;
-      return yield* runtime.value.readTaskOutput({ providerThread, taskId: input.taskId }).pipe(
-        Effect.timeout("3 seconds"),
-        Effect.catch(() => Effect.succeed(null)),
-      );
+      const turnItem =
+        task.turnItemId == null
+          ? null
+          : yield* orchestrator.getTurnItem({ threadId: input.threadId, itemId: task.turnItemId });
+      return yield* runtime.value
+        .readTaskOutput({ providerThread, taskId: input.taskId, turnItem })
+        .pipe(
+          Effect.timeout("3 seconds"),
+          Effect.catch(() => Effect.succeed(null)),
+        );
     }),
     searchThreadStream: (input) =>
       Stream.unwrap(

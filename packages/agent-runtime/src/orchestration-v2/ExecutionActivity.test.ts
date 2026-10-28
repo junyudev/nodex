@@ -14,7 +14,12 @@ import {
   RunId,
   RuntimeRequestId,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
+import {
+  derivePendingBackgroundWork,
+  liveBackgroundWork,
+} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -477,5 +482,71 @@ it.effect("reads activity from live-state indexes only at 10,000 historical Runs
       );
     }
     assert.deepEqual(historyWideReads([...page.plans, ...point.plans]), []);
+  }).pipe(Effect.provide(layer)),
+);
+
+it("deduplicates a terminal roster and active command by their projected item identity", () => {
+  const threadId = ThreadId.make("thread:codex-dedupe");
+  const turnItemId = TurnItemId.make("item:codex-terminal");
+  const task = { taskId: "process-42", kind: "command" as const, turnItemId, command: "sleep 60" };
+  const providerThreads = [
+    {
+      id: ProviderThreadId.make("provider:codex-one"),
+      appThreadId: threadId,
+      pendingBackgroundTasks: [task],
+    },
+    {
+      id: ProviderThreadId.make("provider:codex-two"),
+      appThreadId: threadId,
+      pendingBackgroundTasks: [{ ...task, taskId: "duplicate" }],
+    },
+  ];
+  assert.deepEqual(liveBackgroundWork({ thread: { id: threadId }, providerThreads }), [task]);
+  assert.deepEqual(
+    derivePendingBackgroundWork({
+      latestRun: { id: RunId.make("run:codex-terminal"), ordinal: 1, status: "completed" },
+      providerThreads,
+      turnItems: [
+        {
+          id: turnItemId,
+          type: "command_execution",
+          status: "running",
+          title: null,
+          nativeItemRef: { nativeId: "native-command-item" },
+        },
+      ],
+    }),
+    [task],
+  );
+});
+
+it.effect("lists a settled Codex terminal as Session background activity using its command", () =>
+  Effect.gen(function* () {
+    const { thread, run, roster } = yield* fixture;
+    const root = yield* thread("root:codex-terminal");
+    yield* run(root, "completed");
+    const startedAt = DateTime.makeUnsafe("2026-10-01T00:00:00.000Z");
+    yield* roster(root, [
+      {
+        taskId: "native-command-item",
+        kind: "command",
+        command: "npm run dev",
+        startedAt,
+        turnItemId: TurnItemId.make("item:codex-terminal"),
+      },
+    ]);
+    const result = yield* readRootActivity({ rootThreadIds: [root] });
+    assert.equal(result.items[0]?.status, "background");
+    assert.deepEqual(result.items[0]?.backgroundTasks, [
+      {
+        threadId: root,
+        threadTitle: null,
+        taskId: "native-command-item",
+        kind: "command",
+        description: null,
+        command: "npm run dev",
+        startedAt: DateTime.formatIso(startedAt),
+      },
+    ]);
   }).pipe(Effect.provide(layer)),
 );

@@ -78,6 +78,37 @@ const encodeReplayTranscriptJson = Schema.encodeEffect(replayTranscriptJson);
 const decodeReplayTranscriptJson = Schema.decodeUnknownEffect(replayTranscriptJson);
 const encodeStringJson = Schema.encodeEffect(Schema.fromJsonString(Schema.String));
 
+describe("Codex command output buffers", () => {
+  it.each(["a", "中", "😀"])(
+    "bounds an oversized %s delta before retaining its bytes",
+    (character) => {
+      const output = character.repeat(20_000) + "\nready\n";
+      const tail = CodexAdapterV2.appendCodexCommandOutput(undefined, output);
+      assert.isAtMost(tail.bytes.length, 8 * 1024);
+      assert.equal(tail.totalBytes, Buffer.byteLength(output));
+      assert.isTrue(output.endsWith(tail.bytes.toString("utf8")));
+      assert.isFalse(tail.bytes.toString("utf8").includes("�"));
+    },
+  );
+
+  it("bounds storage on every append while counting all received UTF-8 bytes", () => {
+    const chunks = Array.from(
+      { length: 100 },
+      (_, index) => `${index}:` + ["a", "中", "😀"][index % 3]!.repeat(300),
+    );
+    let tail: CodexAdapterV2.CodexCommandOutputTail | undefined;
+    let totalBytes = 0;
+    for (const chunk of chunks) {
+      tail = CodexAdapterV2.appendCodexCommandOutput(tail, chunk);
+      totalBytes += Buffer.byteLength(chunk);
+      assert.isAtMost(tail.bytes.length, 8 * 1024);
+      assert.equal(tail.totalBytes, totalBytes);
+    }
+    assert.isTrue(chunks.join("").endsWith(tail!.bytes.toString("utf8")));
+    assert.isFalse(tail!.bytes.toString("utf8").includes("�"));
+  });
+});
+
 describe("Codex context usage compatibility", () => {
   const previous: ModelSelection = {
     instanceId: ProviderInstanceId.make("codex"),
@@ -2062,6 +2093,9 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       Effect.void,
     onRequest: (method: string, params: unknown) => Effect.Effect<void> = () => Effect.void,
     readChildMetadata?: Parameters<typeof withCodexReplayChildMetadata>[2],
+    transformClient?: (
+      client: CodexClient.CodexAppServerClient["Service"],
+    ) => CodexClient.CodexAppServerClient["Service"],
   ) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -2082,9 +2116,14 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             ),
             Effect.flatMap((context) =>
               Effect.service(CodexClient.CodexAppServerClient).pipe(
-                Effect.map((client) =>
-                  withCodexReplayChildMetadata(client, transcript, readChildMetadata),
-                ),
+                Effect.map((client) => {
+                  const replay = withCodexReplayChildMetadata(
+                    client,
+                    transcript,
+                    readChildMetadata,
+                  );
+                  return transformClient?.(replay) ?? replay;
+                }),
                 Effect.map(
                   (client) =>
                     ({
@@ -2204,8 +2243,8 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               id: 3,
               result: {
                 data: [
-                  { itemId: "first", processId: "42" },
-                  { itemId: "second", processId: "43" },
+                  { itemId: "first", processId: "42", command: "sleep 60" },
+                  { itemId: "second", processId: "43", command: "sleep 60" },
                 ],
                 nextCursor: null,
               },
@@ -2232,7 +2271,10 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             type: "emit_inbound",
             frame: {
               id: 5,
-              result: { data: [{ itemId: "second", processId: "43" }], nextCursor: null },
+              result: {
+                data: [{ itemId: "second", processId: "43", command: "sleep 60" }],
+                nextCursor: null,
+              },
             },
           },
         ],
@@ -5763,6 +5805,799 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ],
   });
 
+  const commandOutputDelta = (
+    delta: string,
+    afterMs = 0,
+  ): CodexReplay.CodexAppServerReplayEntry => ({
+    type: "emit_inbound",
+    afterMs,
+    frame: {
+      method: "item/commandExecution/outputDelta",
+      params: {
+        threadId: BG_NATIVE_THREAD,
+        turnId: BG_NATIVE_TURN,
+        itemId: BG_COMMAND_ITEM,
+        delta,
+      },
+    },
+  });
+
+  const backgroundRoster = (events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>) =>
+    events
+      .flatMap((event) =>
+        event.type === "provider_thread.updated"
+          ? [event.providerThread.pendingBackgroundTasks ?? []]
+          : [],
+      )
+      .at(-1) ?? [];
+
+  const recordBackgroundLists =
+    (
+      calls: number[],
+      terminals?: () => ReadonlyArray<{ itemId: string; processId: string; command: string }>,
+    ) =>
+    (
+      client: CodexClient.CodexAppServerClient["Service"],
+    ): CodexClient.CodexAppServerClient["Service"] => ({
+      ...client,
+      raw: {
+        ...client.raw,
+        request: (method, params) =>
+          method !== "thread/backgroundTerminals/list"
+            ? client.raw.request(method, params)
+            : DateTime.now.pipe(
+                Effect.tap((now) =>
+                  Effect.sync(() => {
+                    calls.push(DateTime.toEpochMillis(now));
+                  }),
+                ),
+                Effect.andThen(
+                  terminals === undefined
+                    ? client.raw.request(method, params)
+                    : Effect.sync(() => ({ data: terminals(), nextCursor: null })),
+                ),
+              ),
+      },
+    });
+
+  it.effect(
+    "removes an exited terminal immediately on item completion and stops polling the idle thread",
+    () =>
+      Effect.gen(function* () {
+        const calls: number[] = [];
+        const transcript = makeCodexReplayTranscript({
+          scenario: "codex-terminal-exit-notification",
+          entries: backgroundExecTranscript.entries.map((entry) =>
+            entry.type === "emit_inbound" && entry.label === "item/completed/command-late"
+              ? { ...entry, afterMs: 1_000 }
+              : entry,
+          ),
+        });
+        const harness = yield* makeCodexReplayHarness(
+          transcript,
+          undefined,
+          undefined,
+          undefined,
+          recordBackgroundLists(calls),
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("exit-notification"),
+            text: BG_PROMPT,
+          }),
+        );
+        yield* harness.firstTerminal;
+        yield* awaitUntil(
+          () => backgroundRoster(harness.events).length === 1,
+          "live terminal roster",
+        );
+        const discoveryCalls = calls.length;
+        yield* TestClock.adjust("1 second");
+        yield* awaitUntil(
+          () => backgroundRoster(harness.events).length === 0,
+          "exit notification roster clear",
+        );
+        assert.lengthOf(calls, discoveryCalls);
+        assert.isFalse(yield* harness.hasPendingBackgroundWork);
+        yield* TestClock.adjust("1 hour");
+        assert.lengthOf(calls, discoveryCalls);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect("never lists background terminals for a thread that stays idle", () =>
+    Effect.gen(function* () {
+      const calls: number[] = [];
+      const transcript = makeCodexReplayTranscript({
+        scenario: "codex-idle-terminal-roster",
+        entries: codexReplayPreamble({
+          nativeThreadId: "idle",
+          nativeTurnId: "unused",
+          prompt: "unused",
+        }).slice(0, 5),
+      });
+      const harness = yield* makeCodexReplayHarness(
+        transcript,
+        undefined,
+        undefined,
+        undefined,
+        recordBackgroundLists(calls),
+      );
+      yield* TestClock.adjust("1 hour");
+      assert.deepEqual(calls, []);
+      assert.isFalse(yield* harness.hasPendingBackgroundWork);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect("backs off unchanged terminal rosters to 30 seconds and resets on a command exit", () =>
+    Effect.gen(function* () {
+      const calls: number[] = [];
+      const startedAt = DateTime.toEpochMillis(yield* DateTime.now);
+      let terminals = [
+        { itemId: BG_COMMAND_ITEM, processId: "4242", command: BG_COMMAND },
+        { itemId: "sibling", processId: "4243", command: "npm run dev" },
+      ];
+      const transcript = makeCodexReplayTranscript({
+        scenario: "codex-terminal-backoff",
+        entries: backgroundExecTranscript.entries.map((entry) =>
+          entry.type === "emit_inbound" && entry.label === "item/completed/command-late"
+            ? { ...entry, afterMs: 91_000 }
+            : entry,
+        ),
+      });
+      const harness = yield* makeCodexReplayHarness(
+        transcript,
+        undefined,
+        undefined,
+        undefined,
+        recordBackgroundLists(calls, () => terminals),
+      );
+      yield* harness.runtime.startTurn(
+        makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("terminal-backoff"),
+          text: BG_PROMPT,
+        }),
+      );
+      yield* harness.firstTerminal;
+      yield* awaitUntil(
+        () => backgroundRoster(harness.events).length === 2,
+        "live terminal roster",
+      );
+      const discoveryCalls = calls.length;
+      for (const delay of [2_000, 4_000, 8_000, 16_000, 30_000, 30_000])
+        yield* TestClock.adjust(delay);
+      assert.deepEqual(
+        calls.slice(discoveryCalls).map((time) => time - startedAt),
+        [2_000, 6_000, 14_000, 30_000, 60_000, 90_000],
+      );
+      terminals = terminals.slice(1);
+      yield* TestClock.adjust("1 second");
+      yield* awaitUntil(
+        () => backgroundRoster(harness.events).length === 1,
+        "exited terminal removal",
+      );
+      assert.equal(calls.at(-1)! - startedAt, 91_000);
+      yield* TestClock.adjust("1999 millis");
+      assert.equal(calls.at(-1)! - startedAt, 91_000);
+      yield* TestClock.adjust("1 millis");
+      assert.equal(calls.at(-1)! - startedAt, 93_000);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect.each(["clean", "terminate"] as const)(
+    "updates the roster immediately after a native %s response",
+    (operation) =>
+      Effect.gen(function* () {
+        const calls: number[] = [];
+        let terminals = [
+          { itemId: BG_COMMAND_ITEM, processId: "4242", command: BG_COMMAND },
+          { itemId: "sibling", processId: "4243", command: "npm run dev" },
+        ];
+        const transcript = makeCodexReplayTranscript({
+          scenario: `codex-native-terminal-${operation}`,
+          entries: [
+            ...backgroundExecTranscript.entries.slice(0, -1),
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 4,
+                method: `thread/backgroundTerminals/${operation}`,
+                params: {
+                  threadId: BG_NATIVE_THREAD,
+                  ...(operation === "terminate" ? { processId: "4242" } : {}),
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: { id: 4, result: operation === "clean" ? {} : { terminated: true } },
+            },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(
+          transcript,
+          undefined,
+          undefined,
+          undefined,
+          recordBackgroundLists(calls, () => terminals),
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make(`native-${operation}`),
+            text: BG_PROMPT,
+          }),
+        );
+        yield* harness.firstTerminal;
+        yield* TestClock.adjust(0);
+        yield* awaitUntil(
+          () => backgroundRoster(harness.events).length === 2,
+          "live terminal roster",
+        );
+        const discoveryCalls = calls.length;
+        terminals = operation === "clean" ? [] : terminals.slice(1);
+        if (operation === "clean")
+          yield* harness.runtime.codexNative!.request("thread/backgroundTerminals/clean", {
+            threadId: BG_NATIVE_THREAD,
+          });
+        else
+          yield* harness.runtime.codexNative!.request("thread/backgroundTerminals/terminate", {
+            threadId: BG_NATIVE_THREAD,
+            processId: "4242",
+          });
+        yield* awaitUntil(
+          () => backgroundRoster(harness.events).length === terminals.length,
+          "native response roster update",
+        );
+        assert.deepEqual(
+          backgroundRoster(harness.events).map((task) => task.taskId),
+          terminals.map((terminal) => terminal.itemId),
+        );
+        assert.lengthOf(calls, discoveryCalls);
+        if (operation !== "clean") return;
+        assert.isFalse(yield* harness.hasPendingBackgroundWork);
+        yield* TestClock.adjust("1 hour");
+        assert.lengthOf(calls, discoveryCalls);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect(
+    "reconciles paginated Codex terminals and removes exited work without an item notification",
+    () =>
+      Effect.gen(function* () {
+        const longCommand = " printf 'exact  spacing'\n" + "x".repeat(2_100);
+        const transcript = makeCodexReplayTranscript({
+          scenario: "codex-terminal-roster",
+          entries: [
+            ...backgroundExecTranscript.entries.slice(0, -1),
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 4,
+                method: "thread/backgroundTerminals/list",
+                params: { threadId: BG_NATIVE_THREAD, limit: 100 },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                id: 4,
+                result: {
+                  data: [{ itemId: BG_COMMAND_ITEM, processId: "4242", command: longCommand }],
+                  nextCursor: "page-2",
+                },
+              },
+            },
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 5,
+                method: "thread/backgroundTerminals/list",
+                params: { threadId: BG_NATIVE_THREAD, limit: 100, cursor: "page-2" },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                id: 5,
+                result: {
+                  data: [
+                    { itemId: BG_COMMAND_ITEM, processId: "4242", command: longCommand },
+                    { itemId: "unobserved", processId: "4243", command: "npm run dev" },
+                  ],
+                  nextCursor: null,
+                },
+              },
+            },
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 6,
+                method: "thread/backgroundTerminals/list",
+                params: { threadId: BG_NATIVE_THREAD, limit: 100 },
+              },
+            },
+            { type: "emit_inbound", frame: { id: 6, result: { data: [], nextCursor: null } } },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript);
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("roster"),
+            text: BG_PROMPT,
+          }),
+        );
+        yield* awaitUntil(
+          () => backgroundRoster(harness.events).length === 2,
+          "paginated background roster",
+        );
+        const tasks = backgroundRoster(harness.events);
+        assert.deepEqual(
+          tasks.map((task) => task.taskId),
+          [BG_COMMAND_ITEM, "unobserved"],
+        );
+        assert.equal(tasks[0]?.command, longCommand.slice(0, 2_000));
+        assert.isUndefined(tasks[0]?.description);
+        assert.equal(
+          tasks[0]?.turnItemId,
+          `turn-item:provider:codex:native-item:${BG_COMMAND_ITEM}`,
+        );
+        assert.equal(DateTime.formatIso(tasks[0]!.startedAt!), "2026-06-28T04:54:00.500Z");
+        assert.isTrue(yield* harness.hasPendingBackgroundWork);
+        yield* TestClock.adjust("2 seconds");
+        yield* awaitUntil(
+          () => backgroundRoster(harness.events).length === 0,
+          "empty background roster",
+        );
+        yield* awaitUntil(
+          () =>
+            harness.events.some(
+              (event) =>
+                event.type === "turn_item.updated" &&
+                event.turnItem.type === "command_execution" &&
+                event.turnItem.status === "completed",
+            ),
+          "exited command projection",
+        );
+        assert.isFalse(yield* harness.hasPendingBackgroundWork);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect(
+    "replaces persisted Codex rosters on resume and stops terminals without retained turn contexts",
+    () =>
+      Effect.gen(function* () {
+        const nativeThreadId = "codex-resumed-terminals";
+        const transcript = makeCodexReplayTranscript({
+          scenario: "codex-resumed-terminals",
+          entries: [
+            ...codexReplayPreamble({
+              nativeThreadId,
+              nativeTurnId: "unused",
+              prompt: "unused",
+            }).slice(0, 5),
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 3,
+                method: "thread/resume",
+                params: {
+                  threadId: nativeThreadId,
+                  excludeTurns: true,
+                  config: CodexAdapterV2.CODEX_THREAD_CONFIG,
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: { id: 3, result: { thread: { id: nativeThreadId, updatedAt: 1782622440 } } },
+            },
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 4,
+                method: "thread/backgroundTerminals/list",
+                params: { threadId: nativeThreadId, limit: 100 },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                id: 4,
+                result: {
+                  data: [{ itemId: "survivor", processId: "42", command: "sleep 60" }],
+                  nextCursor: null,
+                },
+              },
+            },
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 5,
+                method: "thread/backgroundTerminals/terminate",
+                params: { threadId: nativeThreadId, processId: "42" },
+              },
+            },
+            { type: "emit_inbound", frame: { id: 5, result: { terminated: true } } },
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 6,
+                method: "thread/resume",
+                params: {
+                  threadId: nativeThreadId,
+                  excludeTurns: true,
+                  config: CodexAdapterV2.CODEX_THREAD_CONFIG,
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: { id: 6, result: { thread: { id: nativeThreadId, updatedAt: 1782622441 } } },
+            },
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 7,
+                method: "thread/backgroundTerminals/list",
+                params: { threadId: nativeThreadId, limit: 100 },
+              },
+            },
+            { type: "emit_inbound", frame: { id: 7, result: { data: [], nextCursor: null } } },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript);
+        const stale = {
+          ...harness.providerThread,
+          pendingBackgroundTasks: [
+            { taskId: "stale-process", kind: "command" as const, command: "old" },
+          ],
+        };
+        const resumed = yield* harness.runtime.resumeThread({ providerThread: stale });
+        assert.deepEqual(
+          resumed.pendingBackgroundTasks?.map((task) => task.taskId),
+          ["survivor"],
+        );
+        yield* harness.runtime.interruptTurn({
+          providerThread: resumed,
+          providerTurnId: ProviderTurnId.make("not-retained"),
+          requestRuntimeRestart: true,
+        });
+        assert.isFalse(yield* harness.hasPendingBackgroundWork);
+        const reopened = yield* harness.runtime.resumeThread({ providerThread: resumed });
+        assert.deepEqual(reopened.pendingBackgroundTasks, []);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect("clears the Codex roster before reporting an app-server process exit", () =>
+    Effect.gen(function* () {
+      const processExit = yield* Deferred.make<
+        never,
+        CodexError.CodexAppServerProcessExitedError
+      >();
+      const harness = yield* makeCodexReplayHarness(
+        makeCodexReplayTranscript({
+          scenario: "codex-output-process-exit",
+          entries: backgroundExecTranscript.entries.flatMap((entry) =>
+            entry.type === "emit_inbound" && entry.label === "turn/completed"
+              ? [commandOutputDelta("before process exit\n"), entry]
+              : [entry],
+          ),
+        }),
+        undefined,
+        undefined,
+        undefined,
+        (client) => ({
+          ...client,
+          raw: { ...client.raw, termination: Deferred.await(processExit) },
+        }),
+      );
+      yield* harness.runtime.startTurn(
+        makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("process-exit"),
+          text: BG_PROMPT,
+        }),
+      );
+      yield* awaitUntil(
+        () => backgroundRoster(harness.events).length === 1,
+        "live command before process exit",
+      );
+      assert.equal(
+        (yield* harness.runtime.readTaskOutput!({
+          providerThread: harness.providerThread,
+          taskId: BG_COMMAND_ITEM,
+        }))?.text,
+        "before process exit\n",
+      );
+      yield* Deferred.fail(
+        processExit,
+        new CodexError.CodexAppServerProcessExitedError({ code: 1 }),
+      );
+      yield* awaitUntil(
+        () => backgroundRoster(harness.events).length === 0,
+        "cleared process roster",
+      );
+      assert.isTrue(yield* harness.runtime.nativeSessionRetired!);
+      assert.isFalse(yield* harness.hasPendingBackgroundWork);
+      assert.isNull(
+        yield* harness.runtime.readTaskOutput!({
+          providerThread: harness.providerThread,
+          taskId: BG_COMMAND_ITEM,
+        }),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect(
+    "reads deltas after Turn settlement without projecting them and drops output on exit",
+    () =>
+      Effect.gen(function* () {
+        const transcript = makeCodexReplayTranscript({
+          scenario: "codex-live-output",
+          entries: [
+            ...backgroundExecTranscript.entries
+              .slice(0, -1)
+              .flatMap((entry) =>
+                entry.type === "emit_inbound" && entry.label === "turn/completed"
+                  ? [commandOutputDelta("before\n"), entry]
+                  : [entry],
+              ),
+            commandOutputDelta("after\n", 500),
+            {
+              ...backgroundExecTranscript.entries.at(-1)!,
+              afterMs: 1_000,
+            } as CodexReplay.CodexAppServerReplayEntry,
+            commandOutputDelta("late after exit\n", 500),
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript);
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("live-output"),
+            text: BG_PROMPT,
+          }),
+        );
+        yield* harness.firstTerminal;
+        yield* awaitUntil(
+          () => backgroundRoster(harness.events).length === 1,
+          "live output roster",
+        );
+        yield* TestClock.adjust(0);
+        const item = harness.events
+          .flatMap((event) =>
+            event.type === "turn_item.updated" && event.turnItem.type === "command_execution"
+              ? [event.turnItem]
+              : [],
+          )
+          .at(-1)!;
+        assert.isUndefined(item.output);
+        const read = () =>
+          harness.runtime.readTaskOutput!({
+            providerThread: harness.providerThread,
+            taskId: BG_COMMAND_ITEM,
+          });
+        assert.deepEqual(yield* read(), { text: "before\n", truncated: false, totalBytes: 7 });
+        const eventCount = harness.events.length;
+        yield* TestClock.adjust(500);
+        assert.deepEqual(yield* read(), {
+          text: "before\nafter\n",
+          truncated: false,
+          totalBytes: 13,
+        });
+        assert.lengthOf(harness.events, eventCount);
+        assert.deepEqual(
+          yield* harness.runtime.readTaskOutput!({
+            providerThread: harness.providerThread,
+            taskId: BG_COMMAND_ITEM,
+            turnItem: { ...item, output: "older aggregate" },
+          }),
+          { text: "before\nafter\n", truncated: false, totalBytes: 13 },
+        );
+        assert.isNull(
+          yield* harness.runtime.readTaskOutput!({
+            providerThread: {
+              ...harness.providerThread,
+              id: ProviderThreadId.make("foreign-output-owner"),
+            },
+            taskId: BG_COMMAND_ITEM,
+          }),
+        );
+        yield* TestClock.adjust(1_000);
+        yield* awaitUntil(
+          () => backgroundRoster(harness.events).length === 0,
+          "exited command roster",
+        );
+        assert.isNull(yield* read());
+        const completed = harness.events
+          .flatMap((event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.type === "command_execution" &&
+            event.turnItem.status === "completed"
+              ? [event.turnItem]
+              : [],
+          )
+          .at(-1)!;
+        assert.deepEqual(
+          yield* harness.runtime.readTaskOutput!({
+            providerThread: harness.providerThread,
+            taskId: BG_COMMAND_ITEM,
+            turnItem: completed,
+          }),
+          { text: "CODEX_BG_WAKE_DONE\n", truncated: false, totalBytes: 19 },
+        );
+        yield* TestClock.adjust(500);
+        assert.isNull(yield* read());
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect("bounds a running terminal's streamed output tail across large Unicode deltas", () =>
+    Effect.gen(function* () {
+      const first = "😀".repeat(10_000) + "中".repeat(10_000);
+      const second = "\nnewest output\n";
+      const transcript = makeCodexReplayTranscript({
+        scenario: "codex-live-output-bound",
+        entries: [
+          ...backgroundExecTranscript.entries.slice(0, -1),
+          commandOutputDelta(first, 500),
+          commandOutputDelta(second, 500),
+        ],
+      });
+      const harness = yield* makeCodexReplayHarness(transcript);
+      yield* harness.runtime.startTurn(
+        makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("live-output-bound"),
+          text: BG_PROMPT,
+        }),
+      );
+      yield* harness.firstTerminal;
+      yield* awaitUntil(() => backgroundRoster(harness.events).length === 1, "live output roster");
+      yield* TestClock.adjust(500);
+      const read = () =>
+        harness.runtime.readTaskOutput!({
+          providerThread: harness.providerThread,
+          taskId: BG_COMMAND_ITEM,
+        });
+      const initial = yield* read();
+      assert.isNotNull(initial);
+      assert.isAtMost(Buffer.byteLength(initial!.text), 8 * 1024);
+      assert.isTrue(first.endsWith(initial!.text));
+      assert.equal(initial!.totalBytes, Buffer.byteLength(first));
+      yield* TestClock.adjust(500);
+      const result = yield* read();
+      assert.isNotNull(result);
+      assert.isAtMost(Buffer.byteLength(result!.text), 8 * 1024);
+      assert.isTrue((first + second).endsWith(result!.text));
+      assert.isFalse(result!.text.includes("�"));
+      assert.equal(result!.totalBytes, Buffer.byteLength(first + second));
+      assert.isTrue(result!.truncated);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect("returns a UTF-8 bounded Codex output tail from only the named projected command", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeCodexReplayHarness(backgroundExecTranscript);
+      yield* harness.runtime.startTurn(
+        makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("output-tail"),
+          text: BG_PROMPT,
+        }),
+      );
+      yield* harness.firstTerminal;
+      const item = harness.events
+        .flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.type === "command_execution"
+            ? [event.turnItem]
+            : [],
+        )
+        .at(-1)!;
+      const output = "old output\n" + "中".repeat(4_000) + "\nready\n";
+      const result = yield* harness.runtime.readTaskOutput!({
+        providerThread: harness.providerThread,
+        taskId: BG_COMMAND_ITEM,
+        turnItem: { ...item, output },
+      });
+      assert.isNotNull(result);
+      assert.isAtMost(Buffer.byteLength(result!.text), 8 * 1024);
+      assert.isTrue(output.endsWith(result!.text));
+      assert.isFalse(result!.text.includes("�"));
+      assert.equal(result!.totalBytes, Buffer.byteLength(output));
+      assert.isTrue(result!.truncated);
+      assert.deepEqual(
+        yield* harness.runtime.readTaskOutput!({
+          providerThread: harness.providerThread,
+          taskId: BG_COMMAND_ITEM,
+          turnItem: { ...item, output: "" },
+        }),
+        { text: "", truncated: false, totalBytes: 0 },
+      );
+      assert.isNull(
+        yield* harness.runtime.readTaskOutput!({
+          providerThread: harness.providerThread,
+          taskId: BG_COMMAND_ITEM,
+        }),
+      );
+      assert.isNull(
+        yield* harness.runtime.readTaskOutput!({
+          providerThread: harness.providerThread,
+          taskId: "sibling",
+          turnItem: { ...item, output },
+        }),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect(
     "projects a post-settle background command completion and requests a continuation",
     () =>
@@ -5879,7 +6714,9 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 frame: {
                   id: 5,
                   result: {
-                    data: stillRunning ? [{ itemId: "background-command", processId: "4242" }] : [],
+                    data: stillRunning
+                      ? [{ itemId: "background-command", processId: "4242", command: "sleep 60" }]
+                      : [],
                     nextCursor: null,
                   },
                 },
@@ -5913,7 +6750,9 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 frame: {
                   id: 7,
                   result: {
-                    data: [{ itemId: "background-command", processId: "4242" }],
+                    data: [
+                      { itemId: "background-command", processId: "4242", command: "sleep 60" },
+                    ],
                     nextCursor: null,
                   },
                 },
@@ -6003,134 +6842,193 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       );
     },
   );
-  it.effect("interrupts a completed run's background command through orchestration", () => {
-    const transcript = makeBackgroundStopTranscript(true);
-    return Effect.scoped(
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-bg-stop-workspace-" });
-        const localTranscript = yield* decodeReplayTranscriptJson(
-          (yield* encodeReplayTranscriptJson(transcript)).replaceAll(
-            yield* encodeStringJson("/workspace"),
-            yield* encodeStringJson(cwd),
-          ),
-        );
-        const replayDriver = yield* CodexReplay.makeReplayDriver(localTranscript);
-        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-        assert.equal(
-          Number(yield* spawner.exitCode(ChildProcess.make("git", ["init", "--quiet"], { cwd }))),
-          0,
-        );
-        assert.equal(
-          Number(
-            yield* spawner.exitCode(
-              ChildProcess.make(
-                "git",
-                [
-                  "-c",
-                  "user.name=Test",
-                  "-c",
-                  "user.email=test@example.com",
-                  "commit",
-                  "--allow-empty",
-                  "--quiet",
-                  "-m",
-                  "Initial commit",
-                ],
-                { cwd },
+  it.effect.each(["run.interrupt", "thread.stop", "background.stop"] as const)(
+    "%s ends a completed Codex run's background command through orchestration",
+    (stopType) => {
+      const original = makeBackgroundStopTranscript(true);
+      const transcript =
+        stopType !== "background.stop"
+          ? original
+          : makeCodexReplayTranscript({
+              scenario: "codex-targeted-background-stop",
+              entries: original.entries.flatMap((entry) => {
+                if (!("frame" in entry)) return [entry];
+                if (
+                  entry.type === "expect_outbound" &&
+                  Predicate.isObject(entry.frame) &&
+                  entry.frame.method === "thread/backgroundTerminals/terminate" &&
+                  entry.frame.id === 4
+                )
+                  return [
+                    {
+                      type: "expect_outbound" as const,
+                      frame: {
+                        id: 4,
+                        method: "thread/backgroundTerminals/list",
+                        params: { threadId: BG_NATIVE_THREAD },
+                      },
+                    },
+                    {
+                      type: "emit_inbound" as const,
+                      frame: {
+                        id: 4,
+                        result: {
+                          data: [
+                            { itemId: BG_COMMAND_ITEM, processId: "4242", command: BG_COMMAND },
+                          ],
+                          nextCursor: null,
+                        },
+                      },
+                    },
+                    withReplayRequestId(entry, 5),
+                  ];
+                return [
+                  Predicate.isObject(entry.frame) &&
+                  typeof entry.frame.id === "number" &&
+                  entry.frame.id >= 4
+                    ? withReplayRequestId(entry, entry.frame.id + 1)
+                    : entry,
+                ];
+              }),
+            });
+      return Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-bg-stop-workspace-" });
+          const localTranscript = yield* decodeReplayTranscriptJson(
+            (yield* encodeReplayTranscriptJson(transcript)).replaceAll(
+              yield* encodeStringJson("/workspace"),
+              yield* encodeStringJson(cwd),
+            ),
+          );
+          const replayDriver = yield* CodexReplay.makeReplayDriver(localTranscript);
+          const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+          assert.equal(
+            Number(yield* spawner.exitCode(ChildProcess.make("git", ["init", "--quiet"], { cwd }))),
+            0,
+          );
+          assert.equal(
+            Number(
+              yield* spawner.exitCode(
+                ChildProcess.make(
+                  "git",
+                  [
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.com",
+                    "commit",
+                    "--allow-empty",
+                    "--quiet",
+                    "-m",
+                    "Initial commit",
+                  ],
+                  { cwd },
+                ),
               ),
             ),
-          ),
-          0,
-        );
-        yield* Effect.gen(function* () {
-          const orchestrator = yield* Orchestrator.OrchestratorV2;
-          const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
-          const threadId = ThreadId.make("thread:background-stop");
-          yield* orchestrator.dispatch({
-            type: "thread.create",
-            commandId: CommandId.make("create-background-stop"),
-            threadId,
-            projectId: ProjectId.make("project:background-stop"),
-            title: "Background stop",
-            modelSelection: CODEX_TEST_MODEL_SELECTION,
-            runtimeMode: "full-access",
-            interactionMode: "default",
-            branch: null,
-            worktreePath: cwd,
-            createdBy: "user",
-            creationSource: "web",
-          });
-          const waiting = yield* orchestrator.streamDomainEvents.pipe(
-            Stream.filter(
-              (event) => event.type === "run.updated" && event.payload.status === "waiting",
+            0,
+          );
+          yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            const threadId = ThreadId.make("thread:background-stop");
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("create-background-stop"),
+              threadId,
+              projectId: ProjectId.make("project:background-stop"),
+              title: "Background stop",
+              modelSelection: CODEX_TEST_MODEL_SELECTION,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: cwd,
+              createdBy: "user",
+              creationSource: "web",
+            });
+            const waiting = yield* orchestrator.streamDomainEvents.pipe(
+              Stream.filter(
+                (event) => event.type === "run.updated" && event.payload.status === "waiting",
+              ),
+              Stream.runHead,
+              Effect.forkChild({ startImmediately: true }),
+            );
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make("start-background-stop"),
+              threadId,
+              messageId: MessageId.make("message:background-stop"),
+              text: BG_PROMPT,
+              attachments: [],
+              createdBy: "user",
+              creationSource: "web",
+              dispatchMode: { type: "start_immediately" },
+            });
+            yield* worker.drain();
+            assert.isNull((yield* Ref.get(replayDriver.state)).failure);
+            yield* Fiber.join(waiting);
+            yield* worker.drain();
+            const projection = yield* orchestrator.getThreadProjection(threadId);
+            const run = projection.runs.at(-1)!;
+            assert.equal(run.status, "completed");
+            assert.equal(
+              (yield* orchestrator.getThreadShell(threadId))?.pendingBackgroundTasks?.length,
+              1,
+            );
+            const stopped = yield* orchestrator.streamDomainEvents.pipe(
+              Stream.filter(
+                (event) =>
+                  event.type === "turn-item.updated" &&
+                  event.payload.type === "command_execution" &&
+                  event.payload.status === "interrupted",
+              ),
+              Stream.runHead,
+              Effect.forkChild({ startImmediately: true }),
+            );
+            const rosterCleared = yield* orchestrator.streamDomainEvents.pipe(
+              Stream.filter(
+                (event) =>
+                  event.type === "provider-thread.updated" &&
+                  event.payload.pendingBackgroundTasks?.length === 0,
+              ),
+              Stream.runHead,
+              Effect.forkChild({ startImmediately: true }),
+            );
+            yield* orchestrator.dispatch({
+              type: stopType,
+              commandId: CommandId.make("stop-background-command"),
+              threadId,
+              ...(stopType === "run.interrupt" ? { runId: run.id } : {}),
+              ...(stopType === "background.stop" ? { taskIds: [BG_COMMAND_ITEM] } : {}),
+            } as Parameters<typeof orchestrator.dispatch>[0]);
+            yield* worker.drain();
+            yield* Fiber.join(stopped);
+            yield* Fiber.join(rosterCleared);
+            assert.equal(
+              (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)?.status,
+              "completed",
+            );
+            assert.deepEqual(
+              (yield* orchestrator.getThreadShell(threadId))?.pendingBackgroundTasks,
+              [],
+            );
+          }).pipe(
+            Effect.provide(
+              ProviderReplayHarness.layerWithRegistry(
+                { name: "codex-background-stop", runtimePolicyOverride: { cwd } },
+                CodexAdapterV2Testkit.layer({
+                  transcript: localTranscript,
+                  driver: replayDriver,
+                }),
+                { runEffectWorker: false },
+              ),
             ),
-            Stream.runHead,
-            Effect.forkChild({ startImmediately: true }),
           );
-          yield* orchestrator.dispatch({
-            type: "message.dispatch",
-            commandId: CommandId.make("start-background-stop"),
-            threadId,
-            messageId: MessageId.make("message:background-stop"),
-            text: BG_PROMPT,
-            attachments: [],
-            createdBy: "user",
-            creationSource: "web",
-            dispatchMode: { type: "start_immediately" },
-          });
-          yield* worker.drain();
-          assert.isNull((yield* Ref.get(replayDriver.state)).failure);
-          yield* Fiber.join(waiting);
-          yield* worker.drain();
-          const projection = yield* orchestrator.getThreadProjection(threadId);
-          const run = projection.runs.at(-1)!;
-          assert.equal(run.status, "completed");
-          assert.equal(
-            (yield* orchestrator.getThreadShell(threadId))?.pendingBackgroundTasks?.length,
-            1,
-          );
-          const stopped = yield* orchestrator.streamDomainEvents.pipe(
-            Stream.filter(
-              (event) =>
-                event.type === "turn-item.updated" &&
-                event.payload.type === "command_execution" &&
-                event.payload.status === "interrupted",
-            ),
-            Stream.runHead,
-            Effect.forkChild({ startImmediately: true }),
-          );
-          yield* orchestrator.dispatch({
-            type: "run.interrupt",
-            commandId: CommandId.make("stop-background-command"),
-            threadId,
-            runId: run.id,
-          });
-          yield* worker.drain();
-          yield* Fiber.join(stopped);
-          assert.equal(
-            (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)?.status,
-            "completed",
-          );
-          assert.deepEqual(
-            (yield* orchestrator.getThreadShell(threadId))?.pendingBackgroundTasks,
-            [],
-          );
-        }).pipe(
-          Effect.provide(
-            ProviderReplayHarness.layerWithRegistry(
-              { name: "codex-background-stop", runtimePolicyOverride: { cwd } },
-              CodexAdapterV2Testkit.layer({
-                transcript: localTranscript,
-                driver: replayDriver,
-              }),
-              { runEffectWorker: false },
-            ),
-          ),
-        );
-      }).pipe(Effect.provide(NodeServices.layer)),
-    );
-  });
+        }).pipe(Effect.provide(NodeServices.layer)),
+      );
+    },
+  );
 
   // The app-server exits after the root turn, before the command's own
   // item/completed (Codex always sends one, so only a lost notification or a
@@ -7805,7 +8703,9 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 frame: {
                   id: 6,
                   result: {
-                    data: [{ itemId: "interrupt-command-one", processId: "57680" }],
+                    data: [
+                      { itemId: "interrupt-command-one", processId: "57680", command: "sleep 60" },
+                    ],
                     nextCursor: null,
                   },
                 },
@@ -7841,7 +8741,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         frame: {
           id: 9,
           result: {
-            data: [{ itemId: "interrupt-command-one", processId: "57680" }],
+            data: [{ itemId: "interrupt-command-one", processId: "57680", command: "sleep 60" }],
             nextCursor: null,
           },
         },

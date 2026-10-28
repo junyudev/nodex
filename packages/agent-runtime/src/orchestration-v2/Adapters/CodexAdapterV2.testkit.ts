@@ -66,18 +66,104 @@ export function withCodexReplayChildMetadata(
         : [];
     }),
   );
+  // Older transcripts predate roster discovery. Model their command lifecycle;
+  // explicit discovery transcripts still verify the exact paginated RPC exchange.
+  const commands = new Map<
+    string,
+    Map<string, { itemId: string; processId: string; command: string; turnId: string }>
+  >();
+  const settledTurns = new Set<string>();
+  const hasDiscovery = transcript.entries.some(
+    (entry) =>
+      entry.type === "expect_outbound" &&
+      Predicate.isObject(entry.frame) &&
+      entry.frame.method === "thread/backgroundTerminals/list" &&
+      Predicate.isObject(entry.frame.params) &&
+      entry.frame.params.limit === 100,
+  );
   return {
     ...client,
+    handleServerNotification: (method, handler) =>
+      client.handleServerNotification(method, (payload) =>
+        Effect.sync(() => {
+          if (
+            method === "turn/completed" &&
+            Predicate.isObject(payload) &&
+            Predicate.isObject(payload.turn) &&
+            payload.turn.status === "completed" &&
+            typeof payload.turn.id === "string"
+          ) {
+            settledTurns.add(payload.turn.id);
+            return;
+          }
+          if (
+            (method !== "item/started" && method !== "item/completed") ||
+            !Predicate.isObject(payload)
+          )
+            return;
+          const item = payload.item;
+          if (
+            !Predicate.isObject(item) ||
+            item.type !== "commandExecution" ||
+            typeof item.id !== "string" ||
+            typeof payload.threadId !== "string" ||
+            typeof payload.turnId !== "string"
+          )
+            return;
+          const items = commands.get(payload.threadId) ?? new Map();
+          commands.set(payload.threadId, items);
+          if (method === "item/completed") {
+            items.delete(item.id);
+            return;
+          }
+          if (typeof item.command !== "string" || typeof item.processId !== "string") return;
+          items.set(item.id, {
+            itemId: item.id,
+            processId: item.processId,
+            command: item.command,
+            turnId: payload.turnId,
+          });
+        }).pipe(Effect.andThen(handler(payload))),
+      ),
     raw: {
       ...client.raw,
       request: (method, params) =>
-        (method === "thread/read" || method === "thread/resume") &&
+        method === "thread/backgroundTerminals/list" &&
+        !hasDiscovery &&
         Predicate.isObject(params) &&
-        (method === "thread/read" ? params.includeTurns === false : params.excludeTurns === true) &&
-        typeof params.threadId === "string" &&
-        childThreadIds.has(params.threadId)
-          ? readMetadata(params.threadId, method)
-          : client.raw.request(method, params),
+        params.limit === 100 &&
+        typeof params.threadId === "string"
+          ? Effect.succeed({
+              data: [...(commands.get(params.threadId)?.values() ?? [])].filter((item) =>
+                settledTurns.has(item.turnId),
+              ),
+              nextCursor: null,
+            })
+          : (method === "thread/read" || method === "thread/resume") &&
+              Predicate.isObject(params) &&
+              (method === "thread/read"
+                ? params.includeTurns === false
+                : params.excludeTurns === true) &&
+              typeof params.threadId === "string" &&
+              childThreadIds.has(params.threadId)
+            ? readMetadata(params.threadId, method)
+            : client.raw.request(method, params).pipe(
+                Effect.tap((response) =>
+                  Effect.sync(() => {
+                    if (
+                      method !== "thread/backgroundTerminals/terminate" ||
+                      !Predicate.isObject(params) ||
+                      typeof params.threadId !== "string" ||
+                      !Predicate.isObject(response) ||
+                      response.terminated !== true
+                    )
+                      return;
+                    const items = commands.get(params.threadId);
+                    for (const [id, item] of items ?? [])
+                      if (item.processId === params.processId) items?.delete(id);
+                  }),
+                ),
+              ),
     },
   };
 }

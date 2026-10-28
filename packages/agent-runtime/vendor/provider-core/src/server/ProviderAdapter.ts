@@ -602,7 +602,7 @@ export interface ProviderAdapterV2SessionRuntime {
    * unrelated root subscription open.
    */
   readonly hasPendingBackgroundWorkForThread?: (
-    providerThread: Pick<OrchestrationV2ProviderThread, "id" | "nativeThreadRef">,
+    providerThread: Pick<OrchestrationV2ProviderThread, "id" | "nativeThreadRef" | "pendingBackgroundTasks">,
   ) => Effect.Effect<boolean>;
   /**
    * Capacity for the requested model/options, independent of native thread usage.
@@ -651,6 +651,8 @@ export interface ProviderAdapterV2SessionRuntime {
   readonly readTaskOutput?: (input: {
     readonly providerThread: OrchestrationV2ProviderThread;
     readonly taskId: string;
+    /** Exact projected item named by the roster; callers never load transcript history. */
+    readonly turnItem?: OrchestrationV2TurnItem | null;
   }) => Effect.Effect<
     { readonly text: string; readonly truncated: boolean; readonly totalBytes: number } | null,
     ProviderAdapterV2Error

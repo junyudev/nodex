@@ -12,6 +12,8 @@ import type {
   ThreadReadParams, ThreadReadResponse, ThreadTurnsListParams, ThreadTurnsListResponse,
   ThreadItemsListParams, ThreadItemsListResponse,
   ThreadTimelineListParams, ThreadTimelineListResponse,
+  ThreadBackgroundTerminalsCleanParams, ThreadBackgroundTerminalsCleanResponse,
+  ThreadBackgroundTerminalsTerminateParams, ThreadBackgroundTerminalsTerminateResponse,
 } from "@nodex/codex-app-server-protocol/v2";
 import type { ProviderAdapterV2Error } from "./ProviderAdapter.ts";
 
@@ -21,6 +23,8 @@ export interface CodexNativeMethods {
   "thread/turns/list": [ThreadTurnsListParams, ThreadTurnsListResponse];
   "thread/items/list": [ThreadItemsListParams, ThreadItemsListResponse];
   "thread/timeline/list": [ThreadTimelineListParams, ThreadTimelineListResponse];
+  "thread/backgroundTerminals/clean": [ThreadBackgroundTerminalsCleanParams, ThreadBackgroundTerminalsCleanResponse];
+  "thread/backgroundTerminals/terminate": [ThreadBackgroundTerminalsTerminateParams, ThreadBackgroundTerminalsTerminateResponse];
   "thread/realtime/start": [ThreadRealtimeStartParams, ThreadRealtimeStartResponse];
   "thread/realtime/stop": [ThreadRealtimeStopParams, ThreadRealtimeStopResponse];
   "thread/realtime/appendText": [ThreadRealtimeAppendTextParams, ThreadRealtimeAppendTextResponse];
