@@ -145,7 +145,9 @@ export const ThreadSummaryPanelRow = forwardRef<HTMLDivElement, ThreadSummaryPan
     );
 
     return (
-      <NodexTooltip tooltipContent={title}>
+      <NodexTooltip
+        tooltipContent={title ? <span className="whitespace-pre-line">{title}</span> : undefined}
+      >
         <div
           {...props}
           ref={ref}

@@ -363,3 +363,99 @@ it.effect(
       assert.equal(interrupted?.nativeThreadRef?.nativeId, "native-thread:restart-session");
     }),
 );
+
+it.effect.each(["live", "gone", "rebound", "unsupported", "no-native-thread"] as const)(
+  "stops a background task through its recorded runtime: %s",
+  (state) =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:background-control");
+      const providerSessionId = ProviderSessionId.make("session:background-control");
+      const providerThread: OrchestrationV2ProviderThread = {
+        id: ProviderThreadId.make("provider-thread:background-control"),
+        driver,
+        providerInstanceId,
+        appThreadId: threadId,
+        ownerNodeId: null,
+        providerSessionId:
+          state === "rebound" ? ProviderSessionId.make("replacement") : providerSessionId,
+        nativeThreadRef:
+          state === "no-native-thread"
+            ? null
+            : { driver, nativeId: "native-background", strength: "strong" },
+        nativeConversationHeadRef: null,
+        status: "idle",
+        firstRunOrdinal: null,
+        lastRunOrdinal: null,
+        handoffIds: [],
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const projection = makeProjection({
+        now,
+        threadId,
+        providerThread,
+        providerTurnId: ProviderTurnId.make("turn:background-control"),
+        attemptId: RunAttemptId.make("attempt:background-control"),
+      });
+      const stopped: Array<string> = [];
+      const runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime = {
+        instanceId: providerInstanceId,
+        driver,
+        providerSessionId,
+        providerSession: {
+          id: providerSessionId,
+          driver,
+          providerInstanceId,
+          status: "running",
+          cwd: "/workspace",
+          model: modelSelection.model,
+          capabilities: CodexProviderCapabilitiesV2,
+          createdAt: now,
+          updatedAt: now,
+          lastError: null,
+        },
+        events: Stream.empty,
+        ensureThread: () => Effect.die("unused"),
+        resumeThread: () => Effect.die("unused"),
+        startTurn: () => Effect.die("unused"),
+        steerTurn: () => Effect.die("unused"),
+        respondToRuntimeRequest: () => Effect.die("unused"),
+        readThreadSnapshot: () => Effect.die("unused"),
+        rollbackThread: () => Effect.die("unused"),
+        forkThread: () => Effect.die("unused"),
+        ...(state === "unsupported"
+          ? {}
+          : {
+              stopTask: ({ taskId }: { taskId: string }) =>
+                Effect.sync(() => {
+                  stopped.push(taskId);
+                }),
+            }),
+        interruptTurn: () => Effect.die("Background work must not interrupt a Run"),
+      };
+      const dependencies = Layer.mergeAll(
+        Layer.mock(ProjectionStore.ProjectionStoreV2)({
+          getThreadRecords: () => Effect.succeed(projection),
+        }),
+        Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({
+          get: () => Effect.succeed(state === "gone" ? Option.none() : Option.some(runtime)),
+        }),
+      );
+      const result = yield* Effect.gen(function* () {
+        const controls = yield* ProviderTurnControlService.ProviderTurnControlServiceV2;
+        return yield* controls
+          .stopBackgroundTask({
+            threadId,
+            providerSessionId,
+            providerThreadId: providerThread.id,
+            taskId: "shell",
+            kind: "command",
+          })
+          .pipe(Effect.result);
+      }).pipe(Effect.provide(ProviderTurnControlService.layer.pipe(Layer.provide(dependencies))));
+      assert.equal(result._tag, state === "unsupported" ? "Failure" : "Success");
+      assert.deepEqual(stopped, state === "live" ? ["shell"] : []);
+    }),
+);

@@ -243,7 +243,7 @@ export interface ThreadOpenThreadContext {
   subagent?: ThreadOpenSubagentPayload;
 }
 
-/** A status line beside the composer, such as background work that will resume the chat. */
+/** A status line beside the composer, such as a workspace that could not be prepared. */
 export interface ConversationProviderStatusAction {
   readonly label: string;
   readonly pendingLabel: string;
@@ -256,9 +256,42 @@ export interface ConversationProviderStatus {
   readonly actions?: readonly ConversationProviderStatusAction[];
 }
 
+/** Work the Agent left running after the tool call that started it, such as a dev server. */
+export interface ConversationBackgroundTask {
+  readonly id: string;
+  readonly kind: "command" | "monitor" | "task";
+  /** What the Agent called the work; never empty. */
+  readonly label: string;
+  /** The exact command or watch the Agent started, when it reported one. */
+  readonly command: string | null;
+  /** The delegated conversation running it; null for the chat's own work. */
+  readonly owner: string | null;
+  readonly startedAtMs: number | null;
+  /** A Stop request is in flight; the task leaves the list once it has ended. */
+  readonly stopping: boolean;
+}
+
+/** The end of a background task's output, as its Agent reports it. */
+export interface ConversationBackgroundTaskOutput {
+  readonly text: string;
+  /** Earlier output exists that is not included. */
+  readonly truncated: boolean;
+}
+
+/** One conversation's live background work and how its Agent stops it. */
+export interface ConversationBackgroundTasks {
+  readonly tasks: readonly ConversationBackgroundTask[];
+  /** Stops one task, or every listed task when `taskId` is omitted. */
+  readonly stop: (taskId?: string) => Promise<void>;
+  /** Null when the Agent cannot show this task's output. */
+  readonly readOutput?: (taskId: string) => Promise<ConversationBackgroundTaskOutput | null>;
+}
+
 /** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */
 export interface ConversationProviderPresentation {
   readonly status?: ConversationProviderStatus | null;
+  /** Live background work of the opened conversation; subagents are listed separately. */
+  readonly backgroundTasks?: ConversationBackgroundTasks | null;
   /** What an empty transcript means here, such as imported history the Agent hasn't restored. */
   readonly emptyHistory?: { readonly title: string; readonly description: string } | null;
   readonly modelCatalog?: import("@/components/shared/agent-runtime/agent-model-picker").AgentModelCatalogPresentation;

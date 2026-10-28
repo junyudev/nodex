@@ -20,12 +20,18 @@ import {
 
 vi.mock("@anthropic-ai/claude-agent-sdk", { spy: true });
 
-it.effect("logs successful task stops for replay and omits failed stops", () =>
+it.effect("logs task stops and decodes bounded native output tails", () =>
   Effect.gen(function* () {
     const writes: unknown[] = [];
     const stopTask = vi.fn(async (_taskId: string) => {});
+    const getTaskOutput = vi.fn(async (_taskId: string) => ({
+      output: "recent output",
+      total_bytes: 9000,
+      truncated: true,
+    }));
     const query = vi.spyOn(ClaudeSdk, "query").mockReturnValue({
       stopTask,
+      getTaskOutput,
     } as unknown as ClaudeSdk.Query);
     yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
     const threadId = ThreadId.make("thread-stop");
@@ -61,6 +67,18 @@ it.effect("logs successful task stops for replay and omits failed stops", () =>
       stopTask.mockRejectedValueOnce(new Error("Stop failed"));
       assert.isTrue(Exit.isFailure(yield* Effect.exit(session.stopTask("failed-task"))));
       assert.equal(writes.length, 1);
+      assert.deepEqual(yield* session.getTaskOutput!("shell-task"), {
+        output: "recent output",
+        total_bytes: 9000,
+        truncated: true,
+      });
+      assert.deepEqual(getTaskOutput.mock.calls, [["shell-task"]]);
+      getTaskOutput.mockResolvedValueOnce({
+        output: "x".repeat(8193),
+        total_bytes: 8193,
+        truncated: false,
+      });
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(session.getTaskOutput!("oversized"))));
     }).pipe(
       Effect.provide(
         layerQueryRunner.pipe(

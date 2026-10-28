@@ -951,3 +951,173 @@ it.effect.each([
     expect(dispatched).toEqual(settles ? ["thread.settle"] : []);
   }),
 );
+
+it.effect(
+  "reads output from the live task's owning provider thread instead of the foreground owner",
+  () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread:background-output");
+      const providerSessionId = ProviderSessionId.make("session:background-output");
+      const ownerId = ProviderThreadId.make("provider-thread:background-output");
+      const calls: string[] = [];
+      const owner: OrchestrationV2ProviderThread = {
+        id: ownerId,
+        appThreadId: threadId,
+        providerSessionId,
+        driver: ProviderDriverKind.make("claude"),
+        providerInstanceId: ProviderInstanceId.make("claude"),
+        ownerNodeId: null,
+        nativeThreadRef: null,
+        nativeConversationHeadRef: null,
+        status: "idle",
+        firstRunOrdinal: 1,
+        lastRunOrdinal: 1,
+        handoffIds: [],
+        forkedFrom: null,
+        createdAt: yield* DateTime.now,
+        updatedAt: yield* DateTime.now,
+        pendingBackgroundTasks: [
+          { taskId: "shell", kind: "command" },
+          { taskId: "agent", kind: "subagent" },
+        ],
+      };
+      const runtime = {
+        readTaskOutput: (input: {
+          providerThread: OrchestrationV2ProviderThread;
+          taskId: string;
+        }) =>
+          Effect.sync(() => {
+            expect(input.providerThread.id).toBe(ownerId);
+            calls.push(input.taskId);
+            return { text: "Ready", truncated: false, totalBytes: 5 };
+          }),
+      } as unknown as ProviderAdapter.ProviderAdapterV2SessionRuntime;
+      const layerTest = ThreadManagementService.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(Orchestrator.OrchestratorV2)({
+              getThreadRecords: () =>
+                Effect.succeed({
+                  thread: {
+                    id: threadId,
+                    activeProviderThreadId: ProviderThreadId.make("foreground"),
+                  },
+                  providerThreads: [
+                    {
+                      ...owner,
+                      id: ProviderThreadId.make("foreign"),
+                      appThreadId: null,
+                      pendingBackgroundTasks: [{ taskId: "foreign", kind: "command" }],
+                    },
+                    {
+                      ...owner,
+                      id: ProviderThreadId.make("foreground"),
+                      pendingBackgroundTasks: [],
+                    },
+                    owner,
+                  ],
+                } as unknown as OrchestrationV2ThreadProjection),
+            }),
+            Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({
+              get: (id) => {
+                expect(id).toBe(providerSessionId);
+                return Effect.succeed(Option.some(runtime));
+              },
+            }),
+          ),
+        ),
+        Layer.provide(ServerSettings.layerTest()),
+        Layer.provide(layerReceiptsTest),
+      );
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadManagementService.ThreadManagementService;
+        expect(yield* service.backgroundOutput({ threadId, taskId: "shell" })).toEqual({
+          text: "Ready",
+          truncated: false,
+          totalBytes: 5,
+        });
+        for (const taskId of ["gone", "agent", "foreign"])
+          expect(yield* service.backgroundOutput({ threadId, taskId })).toBeNull();
+        expect(calls).toEqual(["shell"]);
+      }).pipe(Effect.provide(layerTest));
+    }),
+);
+
+it.effect.each(["interrupted", "completed", "terminal"] as const)(
+  "preserves waiting versus terminal cancellation semantics after disposal fails: %s",
+  (status) =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("parent:restart-cancel");
+      const childThreadId = ThreadId.make("child:restart-cancel");
+      const taskId = NodeId.make("task:restart-cancel");
+      const run = {
+        id: RunId.make("run:restart-cancel"),
+        ordinal: 1,
+        status: status === "terminal" ? "completed" : status,
+        delegatedTaskId: taskId,
+      } as OrchestrationV2Run;
+      const task = {
+        id: taskId,
+        threadId,
+        origin: "app_owned",
+        childThreadId,
+        status: status === "terminal" ? "completed" : "running",
+        result: status === "terminal" ? "Final result" : null,
+        completionDelivery: { state: "pending", observedByRunId: null },
+      } as unknown as OrchestrationV2Subagent;
+      const commands: string[] = [];
+      const layerTest = ThreadManagementService.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(Orchestrator.OrchestratorV2)({
+              getThreadRecords: (id) =>
+                Effect.succeed({
+                  thread: { id },
+                  runs: [run],
+                  subagents: id === threadId ? [task] : [],
+                  contextTransfers: [],
+                } as unknown as OrchestrationV2ThreadProjection),
+              delegatedTaskResultPending: () => Effect.succeed(status !== "terminal"),
+              getThreadShell: () => Effect.die("Waiting delegated work has no foreground Run"),
+              dispatch: (command) => {
+                commands.push(command.type);
+                return command.type === "delegated_task.completion-delivery.dispose"
+                  ? Effect.fail(
+                      new Orchestrator.OrchestratorDispatchError({
+                        commandId: command.commandId,
+                        commandType: command.type,
+                        cause: "Delivery is not ready",
+                      }),
+                    )
+                  : Effect.succeed({ sequence: 1, storedEvents: [] });
+              },
+            }),
+            Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({}),
+          ),
+        ),
+        Layer.provide(ServerSettings.layerTest()),
+        Layer.provide(layerReceiptsTest),
+      );
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadManagementService.ThreadManagementService;
+        const result = yield* service
+          .cancelDelegatedTask({
+            threadId,
+            taskId,
+            commandId: CommandId.make("command:restart-cancel"),
+          })
+          .pipe(Effect.result);
+        if (status === "terminal")
+          expect(result).toMatchObject({
+            _tag: "Failure",
+            failure: { reason: "orchestration-error" },
+          });
+        else
+          expect(result).toMatchObject({
+            _tag: "Success",
+            success: { taskId, status: "cancel_requested" },
+          });
+        expect(commands).toEqual(["thread.stop", "delegated_task.completion-delivery.dispose"]);
+      }).pipe(Effect.provide(layerTest));
+    }),
+);

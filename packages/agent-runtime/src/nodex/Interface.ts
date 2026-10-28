@@ -210,6 +210,9 @@ export type AgentExecutionLocation = AgentWire<
   import("@t3tools/contracts").OrchestrationV2AppThread["executionLocation"]
 > & {};
 
+export type AgentBackgroundTask =
+  import("../orchestration-v2/ExecutionActivity.ts").RootActivityBackgroundTask;
+
 /** Live execution facts for one non-idle root Thread. */
 export interface AgentRootActivity {
   readonly rootThreadId: string;
@@ -217,8 +220,7 @@ export interface AgentRootActivity {
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
-  readonly activeTaskCount: number;
-  readonly resumesAutomatically: boolean;
+  readonly backgroundTasks: ReadonlyArray<AgentBackgroundTask>;
   readonly providerInstanceId: string;
   readonly model: string;
   readonly updatedAt: string;
@@ -368,6 +370,31 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     readonly output: AgentWire<
       import("../orchestration-v2/ProjectionStore.ts").ProjectionRunOutcome
     > | null;
+  };
+  readonly "background.stop": {
+    readonly input: {
+      readonly threadId: string;
+      readonly commandId: string;
+      readonly taskIds: ReadonlyArray<string>;
+    };
+    readonly output: { readonly stopping: ReadonlyArray<string> };
+  };
+  readonly "background.output": {
+    readonly input: { readonly threadId: string; readonly taskId: string };
+    readonly output: {
+      readonly text: string;
+      readonly truncated: boolean;
+      readonly totalBytes: number;
+    } | null;
+  };
+  readonly "tasks.cancel": {
+    readonly input: {
+      readonly threadId: string;
+      readonly taskId: string;
+      readonly commandId: string;
+      readonly reason?: string;
+    };
+    readonly output: { readonly taskId: string; readonly status: string };
   };
   readonly "tasks.overview": {
     readonly input: {

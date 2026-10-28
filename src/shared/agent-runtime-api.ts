@@ -1,5 +1,6 @@
 import type {
   AgentCommand,
+  AgentRootActivity,
   AgentEvent,
   AgentHistoryPage,
   AgentRuntimeOperations,
@@ -160,6 +161,22 @@ export type AgentRuntimeTaskStopInput = AgentRuntimeSessionTarget & {
   readonly runId: string;
   readonly taskId: string;
 };
+export type AgentRuntimeBackgroundStopInput = AgentRuntimeSessionTarget & {
+  readonly requestId: string;
+  readonly taskIds: readonly string[];
+};
+export type AgentRuntimeBackgroundOutputInput = AgentRuntimeSessionTarget & {
+  readonly taskId: string;
+};
+export interface AgentRuntimeBackgroundOutput {
+  readonly text: string;
+  readonly truncated: boolean;
+  readonly totalBytes: number;
+}
+export type AgentRuntimeTaskCancelInput = AgentRuntimeSessionTarget & {
+  readonly requestId: string;
+  readonly taskId: string;
+};
 /** Changes product placement; the Session keeps its execution root and working directory. */
 export interface AgentRuntimeSessionMoveInput {
   readonly operationId: string;
@@ -256,8 +273,7 @@ export interface AgentRuntimeSessionActivity {
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
-  readonly activeTaskCount: number;
-  readonly resumesAutomatically: boolean;
+  readonly backgroundTasks: AgentRootActivity["backgroundTasks"];
   readonly providerInstanceId: string;
   readonly model: string;
   readonly updatedAt: string;
@@ -394,6 +410,18 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:stop-task": {
     args: [input: AgentRuntimeTaskStopInput];
     result: { readonly sequence: number };
+  };
+  "agent-runtime:session:stop-background": {
+    args: [input: AgentRuntimeBackgroundStopInput];
+    result: { readonly stopping: readonly string[] };
+  };
+  "agent-runtime:session:background-output": {
+    args: [input: AgentRuntimeBackgroundOutputInput];
+    result: AgentRuntimeBackgroundOutput | null;
+  };
+  "agent-runtime:session:cancel-task": {
+    args: [input: AgentRuntimeTaskCancelInput];
+    result: { readonly taskId: string; readonly status: string };
   };
   "agent-runtime:session:move": {
     args: [input: AgentRuntimeSessionMoveInput];

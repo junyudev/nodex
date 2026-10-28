@@ -35,6 +35,7 @@ import type { ProjectWorkspaceApplyInput, ProjectWorkspaceRead } from "../core-c
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { ProjectWorkspace, ProjectWorkspaceError } from "../project-application/ProjectWorkspace";
 import type { ProjectSession } from "../../shared/types";
+import type { AgentRuntimeTaskCancelInput } from "../../shared/agent-runtime-api";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { NativeConversationImportInput } from "../../shared/native-session-catalog";
 import { agentRuntimeSnapshotFixture } from "../../shared/testing/agent-runtime-snapshot";
@@ -48,6 +49,9 @@ import {
 import { make as makeProviderCatalog } from "./AgentRuntimeProviderCatalog";
 
 type Binding = components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"];
+type TaskOperation = (
+  input: AgentRuntimeTaskCancelInput & { readonly taskIds: readonly string[] },
+) => Effect.Effect<unknown, AgentRuntimeApplicationError>;
 const launch: AgentRuntimeLaunch = {
   launchId: "launch:one",
   acceptedAt: 1791993600000,
@@ -227,6 +231,7 @@ const setup = (
     mode: "auto",
     runtimeId: "engine",
     failMessage: false,
+    taskOperationError: null as AgentRuntimeProcessError | null,
     admitMessageRuns: false,
     holdMessages: false,
     failTitleWrite: false,
@@ -448,6 +453,34 @@ const setup = (
       );
       calls.push({ method, input });
       order.push(method);
+      if (
+        state.taskOperationError &&
+        (method === "background.stop" ||
+          method === "background.output" ||
+          method === "tasks.cancel")
+      )
+        return yield* state.taskOperationError;
+      if (method === "background.stop") {
+        const request = input as AgentRuntimeOperations["background.stop"]["input"];
+        return {
+          stopping: request.taskIds,
+        } as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "background.output") {
+        const request = input as AgentRuntimeOperations["background.output"]["input"];
+        return (
+          request.taskId === "missing"
+            ? null
+            : { text: "Output tail", truncated: true, totalBytes: 9000 }
+        ) as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "tasks.cancel") {
+        const request = input as AgentRuntimeOperations["tasks.cancel"]["input"];
+        return {
+          taskId: request.taskId,
+          status: "cancelled",
+        } as AgentRuntimeOperations[M]["output"];
+      }
       if (method === "acp.sessions.prepareImport")
         return {
           threadId: `nodex:thread:acp-${state.acpSourceFingerprint}`,
@@ -893,8 +926,7 @@ const setup = (
                     status: "running",
                     activeRunId: active.id,
                     pendingRequestCount: 0,
-                    activeTaskCount: 0,
-                    resumesAutomatically: false,
+                    backgroundTasks: [],
                     providerInstanceId: "codex",
                     model: "model-a",
                     updatedAt: "2026-10-14T00:00:00Z",
@@ -2163,6 +2195,181 @@ it.effect("control reads retain Session ownership without hydrating transcript h
     );
     assert.equal(fixture.calls.filter((call) => call.method === "thread.control").length, before);
   }),
+);
+
+it.effect("background operations route exact Session targets with stable write identities", () =>
+  Effect.gen(function* () {
+    let writes = 0;
+    const fixture = setup({
+      withWriter: (effect) =>
+        Effect.sync(() => {
+          writes += 1;
+        }).pipe(Effect.andThen(effect)),
+    });
+    const owner = yield* fixture.owner;
+    const opened = yield* owner.launch(launch);
+    fixture.snapshots.set("child", snapshot("child", opened.threadId));
+    const target = { sessionId: opened.sessionId };
+    const child = { ...target, threadId: "child" };
+    const before = writes;
+    const stop = { ...target, requestId: "stop:one", taskIds: ["background:one"] };
+    assert.deepEqual(yield* owner.stopBackground(stop), { stopping: ["background:one"] });
+    yield* owner.stopBackground({ ...stop, threadId: opened.threadId });
+    const stopChild = { ...child, requestId: stop.requestId, taskIds: ["background:child"] };
+    assert.deepEqual(yield* owner.stopBackground(stopChild), { stopping: ["background:child"] });
+    yield* owner.stopBackground({ ...stopChild, requestId: "stop:two" });
+    const cancel = { ...child, requestId: stop.requestId, taskId: "delegated:one" };
+    assert.deepEqual(yield* owner.cancelTask(cancel), {
+      taskId: cancel.taskId,
+      status: "cancelled",
+    });
+    yield* owner.cancelTask(cancel);
+    assert.equal(writes, before + 6);
+    assert.deepEqual(yield* owner.backgroundOutput({ ...target, taskId: "background:one" }), {
+      text: "Output tail",
+      truncated: true,
+      totalBytes: 9000,
+    });
+    assert.equal(yield* owner.backgroundOutput({ ...child, taskId: "missing" }), null);
+    assert.equal(writes, before + 6, "Output reads do not acquire write authority");
+    const stops = fixture.calls
+      .filter((call) => call.method === "background.stop")
+      .map((call) => call.input as AgentRuntimeOperations["background.stop"]["input"]);
+    assert.deepEqual(stops[0], {
+      threadId: opened.threadId,
+      taskIds: ["background:one"],
+      commandId: stops[0]!.commandId,
+    });
+    assert.deepEqual(stops[1], stops[0]);
+    assert.deepEqual(stops[2], {
+      threadId: "child",
+      taskIds: ["background:child"],
+      commandId: stops[2]!.commandId,
+    });
+    assert.isNotEmpty(stops[0]!.commandId);
+    assert.notEqual(stops[0]!.commandId, stops[2]!.commandId);
+    assert.notEqual(stops[2]!.commandId, stops[3]!.commandId);
+    const cancellations = fixture.calls
+      .filter((call) => call.method === "tasks.cancel")
+      .map((call) => call.input as AgentRuntimeOperations["tasks.cancel"]["input"]);
+    assert.deepEqual(cancellations[0], {
+      threadId: "child",
+      taskId: cancel.taskId,
+      commandId: cancellations[0]!.commandId,
+    });
+    assert.deepEqual(cancellations[1], cancellations[0]);
+    assert.notEqual(cancellations[0]!.commandId, stops[2]!.commandId);
+    assert.deepEqual(
+      fixture.calls.filter((call) => call.method === "background.output").map((call) => call.input),
+      [
+        { threadId: opened.threadId, taskId: "background:one" },
+        { threadId: "child", taskId: "missing" },
+      ],
+    );
+    assert.isFalse(fixture.calls.some((call) => call.method === "thread.snapshot"));
+  }),
+);
+
+it.effect(
+  "task operations reject foreign Threads and revoked Session authority before routing",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const opened = yield* owner.launch(launch);
+      fixture.snapshots.set("foreign", snapshot("foreign"));
+      const input = {
+        sessionId: opened.sessionId,
+        threadId: "foreign",
+        requestId: "stop:one",
+        taskId: "task:one",
+        taskIds: ["task:one"],
+      };
+      const operations: ReadonlyArray<TaskOperation> = [
+        owner.stopBackground,
+        owner.backgroundOutput,
+        owner.cancelTask,
+      ];
+      for (const operation of operations) {
+        const error = yield* operation(input).pipe(Effect.flip);
+        assert.instanceOf(error, AgentRuntimeApplicationError);
+        assert.equal(error.message, "Thread does not belong to this Session");
+        fixture.state.denyAgent = true;
+        yield* operation({ ...input, threadId: opened.threadId }).pipe(
+          Effect.provideService(CoreApplicationAgent, agent),
+          Effect.flip,
+        );
+      }
+      assert.isFalse(
+        fixture.calls.some((call) =>
+          ["background.stop", "background.output", "tasks.cancel"].includes(call.method),
+        ),
+      );
+    }),
+);
+
+it.effect(
+  "task operations reject malformed identities and expose actionable runtime failures",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const opened = yield* owner.launch(launch);
+      const input = {
+        sessionId: opened.sessionId,
+        requestId: "stop:one",
+        taskId: "task:one",
+        taskIds: ["task:one"],
+      };
+      const operations: ReadonlyArray<TaskOperation> = [
+        owner.stopBackground,
+        owner.backgroundOutput,
+        owner.cancelTask,
+      ];
+      for (const operation of operations) {
+        for (const invalid of [
+          operation === owner.stopBackground ? { taskIds: [" "] } : { taskId: " " },
+          { threadId: " foreign" },
+          { sessionId: "" },
+        ]) {
+          const error = yield* operation({ ...input, ...invalid }).pipe(Effect.flip);
+          assert.instanceOf(error, AgentRuntimeApplicationError);
+        }
+      }
+      for (const taskIds of [
+        undefined,
+        [],
+        ["same", "same"],
+        Array.from({ length: 26 }, (_, i) => `task:${i}`),
+      ])
+        yield* owner.stopBackground({ ...input, taskIds } as never).pipe(Effect.flip);
+      const writes: ReadonlyArray<TaskOperation> = [owner.stopBackground, owner.cancelTask];
+      for (const operation of writes)
+        yield* operation({ ...input, requestId: "" }).pipe(Effect.flip);
+      assert.isFalse(
+        fixture.calls.some((call) =>
+          ["background.stop", "background.output", "tasks.cancel"].includes(call.method),
+        ),
+      );
+      fixture.state.taskOperationError = new AgentRuntimeProcessError({
+        reason: "rejected",
+        message: "Provider connection closed",
+      });
+      const failures: ReadonlyArray<readonly [TaskOperation, string]> = [
+        [owner.stopBackground, "Could not stop background tasks: Provider connection closed"],
+        [
+          owner.backgroundOutput,
+          "Could not read background task output: Provider connection closed",
+        ],
+        [owner.cancelTask, "Could not stop delegated task: Provider connection closed"],
+      ];
+      for (const [operation, message] of failures) {
+        const error = yield* operation(input).pipe(Effect.flip);
+        assert.instanceOf(error, AgentRuntimeApplicationError);
+        assert.equal(error.message, message);
+        assert.equal(error.cause, fixture.state.taskOperationError);
+      }
+    }),
 );
 
 it.effect(

@@ -4,7 +4,10 @@ import type {
   ThreadSummaryPanelMode,
   ThreadSummaryPanelScheduledAutomationRow,
 } from "../../thread-stage-types";
-import { ThreadSummaryPanelPopover } from "./thread-floating-summary-panel";
+import {
+  ThreadSummaryPanelPopover,
+  threadSummaryBackgroundCount,
+} from "./thread-floating-summary-panel";
 import { useThreadSummaryContent } from "./thread-summary-content";
 import { ThreadSummaryPanelToggle } from "./thread-summary-panel-toggle";
 
@@ -64,6 +67,7 @@ export function ThreadSummaryPanelHeaderAction({
   return (
     <ThreadSummaryPanelToggle
       label="Toggle pinned summary"
+      backgroundCount={content ? threadSummaryBackgroundCount(content) : 0}
       pressed={pinnedOpen}
       onClick={onPinnedOpenToggle}
     />

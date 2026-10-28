@@ -181,7 +181,7 @@ function nativeTaskIdFromTurnItem(item: PendingBackgroundWorkTurnItem): string {
 
 /**
  * The turn items the pending-work list names, without its settled-run gate.
- * Stop ends exactly these, so the list and Stop cannot disagree.
+ * Whole-thread Stop settles these after stopping their provider execution.
  */
 export function pendingBackgroundTurnItems<Item extends PendingBackgroundWorkTurnItem>(input: {
   readonly turnItems: ReadonlyArray<Item>;
@@ -202,8 +202,50 @@ export function pendingBackgroundTurnItems<Item extends PendingBackgroundWorkTur
   );
 }
 
+export type LiveBackgroundWorkTask = Exclude<
+  PendingBackgroundWorkTask,
+  { readonly kind: "subagent" }
+>;
+
 /**
- * Derive one normalized pending-background-work list for post-settlement UI.
+ * Live background tasks of one conversation are its non-subagent provider rosters.
+ * Every retained roster belongs to a live provider-thread fact under the activity
+ * predicate, even when another provider thread currently owns the foreground Run.
+ * Session activity rolls these same facts up through the root's tree. PR watches
+ * and transcript items belong to completion waiting and whole-thread Stop instead.
+ */
+export function liveBackgroundWork(input: {
+  readonly thread: { readonly id: ThreadId };
+  readonly providerThreads: ReadonlyArray<
+    PendingBackgroundWorkProviderThread & Pick<OrchestrationV2ProviderThread, "appThreadId">
+  >;
+}): ReadonlyArray<LiveBackgroundWorkTask> {
+  return providerRosterTasks(
+    input.providerThreads.filter((thread) => thread.appThreadId === input.thread.id),
+  ).filter((task): task is LiveBackgroundWorkTask => task.kind !== "subagent");
+}
+
+function providerRosterTasks(
+  providerThreads: ReadonlyArray<PendingBackgroundWorkProviderThread>,
+): ReadonlyArray<PendingBackgroundWorkTask> {
+  const byTaskId = new Map<string, PendingBackgroundWorkTask>();
+  for (const providerThread of providerThreads) {
+    for (const task of providerThread.pendingBackgroundTasks ?? []) {
+      if (task.taskId.length === 0 || byTaskId.has(task.taskId)) continue;
+      const { description: rawDescription, ...named } = task;
+      const description = rawDescription?.trim();
+      byTaskId.set(task.taskId, {
+        ...named,
+        ...(description === undefined || description.length === 0 ? {} : { description }),
+      });
+    }
+  }
+  return Array.from(byTaskId.values());
+}
+
+/**
+ * Derive post-settlement work for completion waiting and whole-thread Stop.
+ * Session task lists and targeted Stop use liveBackgroundWork instead.
  *
  * Sources:
  * - Provider-thread roster (Claude SDK background tasks)
@@ -251,26 +293,11 @@ export function derivePendingBackgroundWork(input: {
     return [];
   }
 
-  const byTaskId = new Map<string, PendingBackgroundWorkTask>();
-
   const providerThreads =
-    input.activeProviderThreadId === undefined || input.activeProviderThreadId === null
+    input.activeProviderThreadId == null
       ? input.providerThreads
       : input.providerThreads.filter((thread) => thread.id === input.activeProviderThreadId);
-
-  for (const providerThread of providerThreads) {
-    for (const task of providerThread.pendingBackgroundTasks ?? []) {
-      if (task.taskId.length === 0 || byTaskId.has(task.taskId)) {
-        continue;
-      }
-      const { description: rawDescription, ...named } = task;
-      const description = rawDescription?.trim();
-      byTaskId.set(task.taskId, {
-        ...named,
-        ...(description === undefined || description.length === 0 ? {} : { description }),
-      });
-    }
-  }
+  const byTaskId = new Map(providerRosterTasks(providerThreads).map((task) => [task.taskId, task]));
 
   for (const item of pendingBackgroundTurnItems(input)) {
     const taskId = nativeTaskIdFromTurnItem(item);

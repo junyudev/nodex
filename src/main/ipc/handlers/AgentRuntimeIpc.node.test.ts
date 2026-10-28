@@ -64,6 +64,21 @@ const setup = Effect.gen(function* () {
       }),
   };
   const application = {
+    stopBackground: (input: { taskIds: readonly string[] }) =>
+      Effect.sync(() => {
+        calls.push(input);
+        return { stopping: input.taskIds };
+      }),
+    backgroundOutput: (input: unknown) =>
+      Effect.sync(() => {
+        calls.push(input);
+        return { text: "Output", truncated: false, totalBytes: 6 };
+      }),
+    cancelTask: (input: { taskId: string }) =>
+      Effect.sync(() => {
+        calls.push(input);
+        return { taskId: input.taskId, status: "cancelled" };
+      }),
     saveSideChat: (input: unknown) =>
       Effect.sync(() => {
         calls.push(input);
@@ -171,6 +186,78 @@ it.effect("admits save-side-chat through its strict semantic boundary", () =>
       input,
     ).pipe(Effect.flip);
     assert.deepEqual(f.calls, [input]);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("admits background and delegated task operations through strict trusted boundaries", () =>
+  Effect.gen(function* () {
+    const fixture = yield* setup;
+    const target = { sessionId: "session", threadId: "child" };
+    const stop = { ...target, requestId: "stop:all", taskIds: ["background", "another"] };
+    const stopOne = { ...stop, taskIds: ["background"] };
+    const output = { ...target, taskId: "background" };
+    const cancel = { ...target, requestId: "cancel:one", taskId: "delegate" };
+    const event = fixture.event(1);
+    assert.deepEqual(
+      yield* fixture.handlers.get("agent-runtime:session:stop-background")!(event, stop),
+      { stopping: ["background", "another"] },
+    );
+    assert.deepEqual(
+      yield* fixture.handlers.get("agent-runtime:session:stop-background")!(event, stopOne),
+      { stopping: ["background"] },
+    );
+    assert.deepEqual(
+      yield* fixture.handlers.get("agent-runtime:session:background-output")!(event, output),
+      { text: "Output", truncated: false, totalBytes: 6 },
+    );
+    assert.deepEqual(
+      yield* fixture.handlers.get("agent-runtime:session:cancel-task")!(event, cancel),
+      { taskId: "delegate", status: "cancelled" },
+    );
+    const stopHandler = fixture.handlers.get("agent-runtime:session:stop-background")!;
+    for (const taskIds of [
+      undefined,
+      [],
+      ["same", "same"],
+      [" task"],
+      ["a".repeat(513)],
+      Array.from({ length: 26 }, (_, i) => `task:${i}`),
+    ])
+      yield* stopHandler(event, { ...stop, taskIds }).pipe(Effect.flip);
+    yield* stopHandler(event, { ...target, requestId: "legacy", taskId: "background" }).pipe(
+      Effect.flip,
+    );
+    const foreign = {
+      ...event,
+      senderFrame: { url: "https://example.com" },
+    } as IpcMainInvokeEvent;
+    for (const [channel, input] of [
+      ["agent-runtime:session:stop-background", stopOne],
+      ["agent-runtime:session:background-output", output],
+      ["agent-runtime:session:cancel-task", cancel],
+    ] as const) {
+      const handler = fixture.handlers.get(channel)!;
+      yield* handler(foreign, input).pipe(Effect.flip);
+      for (const malformed of [
+        { ...input, sessionId: "" },
+        { ...input, threadId: " child" },
+        { ...input, taskId: "" },
+        { ...input, taskId: "a".repeat(513) },
+        { ...input, runId: "unrelated" },
+      ])
+        yield* handler(event, malformed).pipe(Effect.flip);
+      if (channel === "agent-runtime:session:background-output") {
+        yield* handler(event, target).pipe(Effect.flip);
+        continue;
+      }
+      yield* handler(event, { ...input, requestId: " " }).pipe(Effect.flip);
+      yield* handler(event, { ...target, taskId: "task" }).pipe(Effect.flip);
+      if (channel === "agent-runtime:session:cancel-task")
+        yield* handler(event, stop).pipe(Effect.flip);
+    }
+    const maximum = { ...stop, taskIds: Array.from({ length: 25 }, (_, i) => `task:${i}`) };
+    assert.deepEqual(yield* stopHandler(event, maximum), { stopping: maximum.taskIds });
+    assert.deepEqual(fixture.calls, [stop, stopOne, output, cancel, maximum]);
   }).pipe(Effect.scoped),
 );
 

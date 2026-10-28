@@ -12,6 +12,7 @@ import {
   RunId,
   RuntimeRequestId,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -50,6 +51,14 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     providerThreadId: ProviderThreadId,
     providerTurnId: ProviderTurnId,
     subagent: Schema.optional(Schema.Struct({ id: NodeId, nativeTaskId: Schema.String })),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("provider-task.stop"),
+    providerSessionId: Schema.NullOr(ProviderSessionId),
+    providerThreadId: ProviderThreadId,
+    taskId: Schema.String,
+    kind: Schema.Literals(["subagent", "command", "monitor", "background_task"]),
+    turnItemIds: Schema.Array(TurnItemId),
   }),
   Schema.Struct({
     type: Schema.Literal("provider-turn.steer"),
@@ -132,6 +141,8 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
   "attachment.cleanup",
   "thread-title.generate",
   "delegated-tasks.stop",
+  // Replays after process loss settle the vanished owner; ordinary Stop attempts never retry.
+  "provider-task.stop",
 ] as const satisfies ReadonlyArray<OrchestrationEffectRequestV2["type"]>;
 
 export const PROCESS_BOUND_EFFECT_TYPES = [

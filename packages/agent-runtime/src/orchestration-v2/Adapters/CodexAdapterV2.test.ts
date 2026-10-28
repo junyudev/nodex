@@ -2179,6 +2179,84 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       };
     });
 
+  it.effect("stops one background terminal by its process id and leaves its sibling alone", () =>
+    Effect.gen(function* () {
+      const nativeThreadId = "background-individual";
+      const transcript = makeCodexReplayTranscript({
+        scenario: "background-individual",
+        entries: [
+          ...codexReplayPreamble({
+            nativeThreadId,
+            nativeTurnId: "unused",
+            prompt: "unused",
+          }).slice(0, 5),
+          {
+            type: "expect_outbound",
+            frame: {
+              id: 3,
+              method: "thread/backgroundTerminals/list",
+              params: { threadId: nativeThreadId },
+            },
+          },
+          {
+            type: "emit_inbound",
+            frame: {
+              id: 3,
+              result: {
+                data: [
+                  { itemId: "first", processId: "42" },
+                  { itemId: "second", processId: "43" },
+                ],
+                nextCursor: null,
+              },
+            },
+          },
+          {
+            type: "expect_outbound",
+            frame: {
+              id: 4,
+              method: "thread/backgroundTerminals/terminate",
+              params: { threadId: nativeThreadId, processId: "42" },
+            },
+          },
+          { type: "emit_inbound", frame: { id: 4, result: { terminated: true } } },
+          {
+            type: "expect_outbound",
+            frame: {
+              id: 5,
+              method: "thread/backgroundTerminals/list",
+              params: { threadId: nativeThreadId },
+            },
+          },
+          {
+            type: "emit_inbound",
+            frame: {
+              id: 5,
+              result: { data: [{ itemId: "second", processId: "43" }], nextCursor: null },
+            },
+          },
+        ],
+      });
+      const harness = yield* makeCodexReplayHarness(transcript);
+      yield* harness.runtime.stopTask!({
+        providerThread: harness.providerThread,
+        taskId: "first",
+        kind: "command",
+      });
+      yield* harness.runtime.stopTask!({
+        providerThread: harness.providerThread,
+        taskId: "first",
+        kind: "command",
+      });
+      assert.equal(harness.terminalEvents().length, 0);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect("does not recreate canceled native input when its terminal notification arrives", () =>
     Effect.gen(function* () {
       const nativeThreadId = "voice-cancel";
@@ -5800,7 +5878,10 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 type: "emit_inbound" as const,
                 frame: {
                   id: 5,
-                  result: { data: stillRunning ? [{ processId: "4242" }] : [], nextCursor: null },
+                  result: {
+                    data: stillRunning ? [{ itemId: "background-command", processId: "4242" }] : [],
+                    nextCursor: null,
+                  },
                 },
               },
             ]
@@ -5829,7 +5910,13 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               },
               {
                 type: "emit_inbound" as const,
-                frame: { id: 7, result: { data: [{ processId: "4242" }], nextCursor: null } },
+                frame: {
+                  id: 7,
+                  result: {
+                    data: [{ itemId: "background-command", processId: "4242" }],
+                    nextCursor: null,
+                  },
+                },
               },
               {
                 type: "expect_outbound" as const,
@@ -7718,7 +7805,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 frame: {
                   id: 6,
                   result: {
-                    data: [{ processId: "57680" }],
+                    data: [{ itemId: "interrupt-command-one", processId: "57680" }],
                     nextCursor: null,
                   },
                 },
@@ -7753,7 +7840,10 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         label: "thread/backgroundTerminals/list/after-false-retry",
         frame: {
           id: 9,
-          result: { data: [{ processId: "57680" }], nextCursor: null },
+          result: {
+            data: [{ itemId: "interrupt-command-one", processId: "57680" }],
+            nextCursor: null,
+          },
         },
       },
       { type: "runtime_exit", status: "success" },

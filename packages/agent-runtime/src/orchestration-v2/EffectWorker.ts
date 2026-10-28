@@ -220,6 +220,42 @@ export const layerExecutor: Layer.Layer<
                     }),
                 ),
               );
+          case "provider-task.stop": {
+            const taskId = effect.request.taskId;
+            return providerTurnControl
+              .stopBackgroundTask({
+                threadId: effect.threadId,
+                providerSessionId: effect.request.providerSessionId,
+                providerThreadId: effect.request.providerThreadId,
+                taskId: effect.request.taskId,
+                kind: effect.request.kind,
+              })
+              .pipe(
+                Effect.timeout(ProviderTurnControlService.BACKGROUND_TASK_STOP_TIMEOUT_MS),
+                Effect.andThen(
+                  threads.dispatch({
+                    type: "background-task.settle",
+                    commandId: CommandId.make(`${effect.id}:settled`),
+                    threadId: effect.threadId,
+                    providerThreadId: effect.request.providerThreadId,
+                    taskId: effect.request.taskId,
+                    turnItemIds: effect.request.turnItemIds,
+                  }),
+                ),
+                Effect.asVoid,
+                // Stop is a single user attempt. A failed/unknown stop leaves its roster
+                // visible for another explicit request, without holding later turn effects.
+                Effect.catchCause((cause) =>
+                  Cause.hasInterruptsOnly(cause)
+                    ? Effect.interrupt
+                    : Effect.logWarning("Background task stop did not settle", {
+                        effectId: effect.id,
+                        taskId,
+                        cause,
+                      }),
+                ),
+              );
+          }
           case "provider-turn.steer": {
             const steerRequest = effect.request;
             const recordDelivery = (delivery: "accepted" | "unknown") =>
@@ -721,6 +757,7 @@ export const layerWithOptions = (
         effect: EffectOutbox.OrchestrationEffectV2,
         cause: Cause.Cause<unknown>,
       ) =>
+        effect.request.type !== "provider-task.stop" &&
         EffectOutbox.REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS.some(
           (effectType) => effectType === effect.request.type,
         )
@@ -777,8 +814,9 @@ export const layerWithOptions = (
           }).pipe(Effect.onError((cause) => requeueClaim(effect, cause)));
           if (cancelledBeforeExecution) return true;
 
+          const singleAttempt = effect.request.type === "provider-task.stop";
           const execution = executor
-            .execute(effect, { willRetry: effect.attemptCount < maxAttempts })
+            .execute(effect, { willRetry: !singleAttempt && effect.attemptCount < maxAttempts })
             .pipe(Effect.as("executed" as const));
           const exit = yield* Effect.exit(Effect.raceFirst(execution, cancellation)).pipe(
             Effect.ensuring(outbox.clearCancellation(effect.id)),
@@ -804,7 +842,8 @@ export const layerWithOptions = (
           const error = Cause.pretty(exit.cause);
           const failure = Cause.findErrorOption(exit.cause);
           const retryable = Option.isNone(failure) || failure.value.retryable !== false;
-          const nonRetryable = isNonRetryableProviderTurnControlFailure(effect.request.type, error);
+          const nonRetryable =
+            singleAttempt || isNonRetryableProviderTurnControlFailure(effect.request.type, error);
           yield* Effect.logWarning("Orchestration effect execution failed", {
             effectId: effect.id,
             effectType: effect.request.type,

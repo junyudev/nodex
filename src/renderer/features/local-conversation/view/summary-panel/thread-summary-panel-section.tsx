@@ -21,6 +21,18 @@ type ThreadSummaryPanelSectionMode = "accordion" | "dropdown" | "headerless";
 type ThreadSummaryPanelSectionAutoCollapseState = "pending" | "collapsed" | "canceled";
 type ThreadSummaryPanelSectionAfter = ReactNode | ((state: { isExpanded: boolean }) => ReactNode);
 
+/** A section's count, shown beside its title while the section is collapsed. */
+export function ThreadSummaryPanelCountBadge({ count }: { count: number }) {
+  if (count === 0) return null;
+
+  return (
+    <span className="inline-flex items-center gap-1 text-sm text-token-text-tertiary">
+      <span aria-hidden="true">·</span>
+      <span>{count}</span>
+    </span>
+  );
+}
+
 export interface ThreadSummaryPanelSectionHandle {
   collapse: () => void;
   expand: () => void;

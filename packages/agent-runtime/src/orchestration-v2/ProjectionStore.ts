@@ -1662,6 +1662,8 @@ export function applyToProjection(
   };
 
   switch (event.type) {
+    case "background-work.stop-requested":
+      return base;
     case "thread.created":
     case "thread.archived":
     case "thread.unarchived":

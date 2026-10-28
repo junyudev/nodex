@@ -1,3 +1,4 @@
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
@@ -16,6 +17,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
@@ -86,12 +88,14 @@ function layerExecutorFor(input: {
   readonly continueAfterRestart?: boolean;
   readonly interrupt?: ProviderTurnControlService.ProviderTurnControlServiceV2Shape["interrupt"];
   readonly steer?: ProviderTurnControlService.ProviderTurnControlServiceV2Shape["steer"];
+  readonly stopBackgroundTask?: ProviderTurnControlService.ProviderTurnControlServiceV2Shape["stopBackgroundTask"];
 }) {
   const record = (event: string) => Ref.update(input.events, (events) => [...events, event]);
   const layerDependencies = Layer.mergeAll(
     Layer.succeed(
       ProviderTurnControlService.ProviderTurnControlServiceV2,
       ProviderTurnControlService.ProviderTurnControlServiceV2.of({
+        stopBackgroundTask: input.stopBackgroundTask ?? (() => Effect.void),
         interrupt: input.interrupt ?? (() => Effect.void),
         steer: input.steer ?? (() => Effect.void),
         interruptAndAwaitTerminal: (request) =>
@@ -573,62 +577,74 @@ it.effect("terminalizes a process-bound claim when success settlement fails", ()
   }),
 );
 
-it.effect("requeues a replay-safe claim when success settlement fails", () =>
-  Effect.gen(function* () {
-    const now = DateTime.formatIso(yield* DateTime.now);
-    const effectId = "effect:worker-replay-safe-settlement-failure";
-    const workerId = "worker-replay-safe-settlement-failure";
-    const claimedEffect: EffectOutbox.OrchestrationEffectV2 = {
-      id: effectId,
-      commandId: CommandId.make("command:worker-replay-safe-settlement-failure"),
-      threadId: ThreadId.make("thread:worker-replay-safe-settlement-failure"),
-      request: { type: "terminal.cleanup" },
-      status: "running",
-      attemptCount: 1,
-      availableAt: now,
-      leaseOwner: workerId,
-      leaseExpiresAt: now,
-      createdAt: now,
-      updatedAt: now,
-      completedAt: null,
-      lastError: null,
-    };
-    const retries = yield* Ref.make(0);
-    const terminalizations = yield* Ref.make(0);
-    const layerOutbox = Layer.mock(EffectOutbox.EffectOutboxV2)({
-      claimNext: () => Effect.succeed(Option.some(claimedEffect)),
-      get: () => Effect.succeed(Option.some(claimedEffect)),
-      awaitCancellation: () => Effect.never,
-      clearCancellation: () => Effect.void,
-      succeed: () =>
-        Effect.fail(
-          new EffectOutbox.EffectOutboxError({
-            operation: "succeed",
-            effectId,
-            cause: "simulated replay-safe settlement failure",
-          }),
-        ),
-      retry: () => Ref.update(retries, (count) => count + 1).pipe(Effect.as(true)),
-      fail: () => Ref.update(terminalizations, (count) => count + 1).pipe(Effect.as(true)),
-    });
-    const layerExecutor = Layer.succeed(
-      EffectWorker.OrchestrationEffectExecutorV2,
-      EffectWorker.OrchestrationEffectExecutorV2.of({ execute: () => Effect.void }),
-    );
-    const layerWorker = EffectWorker.layerWithOptions({ workerId }).pipe(
-      Layer.provide(Layer.merge(layerOutbox, layerExecutor)),
-    );
+it.effect.each(["terminal.cleanup", "provider-task.stop"] as const)(
+  "settles a successful %s claim without repeating a background stop",
+  (type) =>
+    Effect.gen(function* () {
+      const now = DateTime.formatIso(yield* DateTime.now);
+      const effectId = "effect:worker-replay-safe-settlement-failure";
+      const workerId = "worker-replay-safe-settlement-failure";
+      const claimedEffect: EffectOutbox.OrchestrationEffectV2 = {
+        id: effectId,
+        commandId: CommandId.make("command:worker-replay-safe-settlement-failure"),
+        threadId: ThreadId.make("thread:worker-replay-safe-settlement-failure"),
+        request:
+          type === "terminal.cleanup"
+            ? { type }
+            : {
+                type,
+                providerSessionId: oldSessionId,
+                providerThreadId,
+                taskId: "shell",
+                kind: "command",
+                turnItemIds: [],
+              },
+        status: "running",
+        attemptCount: 1,
+        availableAt: now,
+        leaseOwner: workerId,
+        leaseExpiresAt: now,
+        createdAt: now,
+        updatedAt: now,
+        completedAt: null,
+        lastError: null,
+      };
+      const retries = yield* Ref.make(0);
+      const terminalizations = yield* Ref.make(0);
+      const layerOutbox = Layer.mock(EffectOutbox.EffectOutboxV2)({
+        claimNext: () => Effect.succeed(Option.some(claimedEffect)),
+        get: () => Effect.succeed(Option.some(claimedEffect)),
+        awaitCancellation: () => Effect.never,
+        clearCancellation: () => Effect.void,
+        succeed: () =>
+          Effect.fail(
+            new EffectOutbox.EffectOutboxError({
+              operation: "succeed",
+              effectId,
+              cause: "simulated replay-safe settlement failure",
+            }),
+          ),
+        retry: () => Ref.update(retries, (count) => count + 1).pipe(Effect.as(true)),
+        fail: () => Ref.update(terminalizations, (count) => count + 1).pipe(Effect.as(true)),
+      });
+      const layerExecutor = Layer.succeed(
+        EffectWorker.OrchestrationEffectExecutorV2,
+        EffectWorker.OrchestrationEffectExecutorV2.of({ execute: () => Effect.void }),
+      );
+      const layerWorker = EffectWorker.layerWithOptions({ workerId }).pipe(
+        Layer.provide(Layer.merge(layerOutbox, layerExecutor)),
+      );
 
-    const exit = yield* EffectWorker.OrchestrationEffectWorkerV2.pipe(
-      Effect.flatMap((worker) => worker.runOnce),
-      Effect.provide(layerWorker),
-      Effect.exit,
-    );
+      const exit = yield* EffectWorker.OrchestrationEffectWorkerV2.pipe(
+        Effect.flatMap((worker) => worker.runOnce),
+        Effect.provide(layerWorker),
+        Effect.exit,
+      );
 
-    assert.isTrue(Exit.isFailure(exit));
-    assert.equal(yield* Ref.get(retries), 1);
-    assert.equal(yield* Ref.get(terminalizations), 0);
-  }),
+      assert.isTrue(Exit.isFailure(exit));
+      assert.equal(yield* Ref.get(retries), type === "terminal.cleanup" ? 1 : 0);
+      assert.equal(yield* Ref.get(terminalizations), type === "terminal.cleanup" ? 0 : 1);
+    }),
 );
 
 it.effect("keeps a process-bound executor failure retryable when retry settlement fails", () =>
@@ -999,4 +1015,119 @@ it.effect("a native subagent stop does not settle its owner's background work", 
     }).pipe(Effect.provide(layer));
     assert.deepEqual(yield* Ref.get(events), ["stop-child"]);
   }),
+);
+
+it.effect("a background task stop settles only its captured task after the provider returns", () =>
+  Effect.gen(function* () {
+    const events = yield* Ref.make<ReadonlyArray<string>>([]);
+    const commands: Array<OrchestrationV2ServerCommand> = [];
+    const now = yield* DateTime.now;
+    const executorLayer = layerExecutorFor({
+      events,
+      stopBackgroundTask: (input) => {
+        assert.equal(input.taskId, "shell");
+        return Ref.update(events, (current) => [...current, "stop-shell"]);
+      },
+      interrupt: () => Effect.die("A background Stop must not interrupt the foreground Run"),
+      threads: {
+        dispatch: (command) =>
+          Effect.sync(() => {
+            commands.push(command);
+            return { sequence: 1, storedEvents: [] };
+          }),
+      },
+    });
+    yield* Effect.gen(function* () {
+      const executor = yield* EffectWorker.OrchestrationEffectExecutorV2;
+      yield* executor.execute({
+        ...restartEffect(now, { type: "detach" }),
+        request: {
+          type: "provider-task.stop",
+          providerSessionId: oldSessionId,
+          providerThreadId,
+          taskId: "shell",
+          kind: "command",
+          turnItemIds: [],
+        },
+      });
+    }).pipe(Effect.provide(executorLayer));
+    assert.deepEqual(yield* Ref.get(events), ["stop-shell"]);
+    assert.equal(commands.length, 1);
+    assert.equal(commands[0]?.type, "background-task.settle");
+  }),
+);
+
+it.effect.each(["failure", "timeout"] as const)(
+  "a background stop %s releases the durable lane without retrying or settling a possibly live task",
+  (mode) =>
+    Effect.gen(function* () {
+      const events = yield* Ref.make<ReadonlyArray<string>>([]);
+      const began = yield* Deferred.make<void>();
+      let attempts = 0;
+      const executorLayer = layerExecutorFor({
+        events,
+        stopBackgroundTask: () =>
+          Effect.sync(() => {
+            attempts += 1;
+          }).pipe(
+            Effect.andThen(Deferred.succeed(began, undefined)),
+            Effect.andThen(
+              mode === "timeout"
+                ? Effect.never
+                : Effect.fail(
+                    new ProviderTurnControlService.ProviderBackgroundWorkError({
+                      threadId,
+                      taskId: "shell",
+                      cause: "Provider rejected stop",
+                    }),
+                  ),
+            ),
+          ),
+        threads: { dispatch: () => Effect.die("An uncertain stop must preserve the task roster") },
+      });
+      const outboxLayer = EffectOutbox.layer.pipe(Layer.provide(SqlitePersistence.layerMemory));
+      const workerLayer = EffectWorker.layer.pipe(
+        Layer.provideMerge(Layer.merge(outboxLayer, executorLayer)),
+      );
+      yield* Effect.gen(function* () {
+        const outbox = yield* EffectOutbox.EffectOutboxV2;
+        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+        yield* outbox.enqueue([
+          {
+            id: "effect:background-stop",
+            commandId: CommandId.make("command:background-stop"),
+            threadId,
+            request: {
+              type: "provider-task.stop",
+              providerSessionId: oldSessionId,
+              providerThreadId,
+              taskId: "shell",
+              kind: "command",
+              turnItemIds: [],
+            },
+          },
+          {
+            id: "effect:following-turn",
+            commandId: CommandId.make("command:following-turn"),
+            threadId,
+            request: { type: "provider-turn.start", runId },
+          },
+        ]);
+        const stopping = yield* worker.runOnce.pipe(Effect.forkChild);
+        yield* Deferred.await(began);
+        if (mode === "timeout")
+          yield* TestClock.adjust(ProviderTurnControlService.BACKGROUND_TASK_STOP_TIMEOUT_MS);
+        yield* Fiber.join(stopping);
+        assert.isTrue(yield* worker.runOnce);
+        assert.isFalse(yield* worker.runOnce);
+        assert.equal(attempts, 1);
+        const stopped = yield* outbox.get("effect:background-stop");
+        assert.isTrue(Option.isSome(stopped));
+        if (Option.isSome(stopped)) {
+          assert.equal(stopped.value.status, "succeeded");
+          assert.equal(stopped.value.attemptCount, 1);
+        }
+        assert.deepEqual(yield* Ref.get(events), ["start"]);
+      }).pipe(Effect.provide(workerLayer));
+    }),
 );

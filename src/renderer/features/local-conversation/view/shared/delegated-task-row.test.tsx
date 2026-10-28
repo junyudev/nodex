@@ -37,18 +37,10 @@ function setup() {
   );
   let finishStop: () => void = () => {};
   const transport: AgentRuntimeTaskStopTransport = {
-    inspect: vi.fn(async () => ({
-      sessionId: "session",
-      projectId: null,
-      threadId: "child",
-      runtimeId: "runtime",
-      rootThreadId: "root",
-      thread: { activeRunId: "child-run" } as never,
-    })),
-    stop: vi.fn(
-      () =>
-        new Promise<{ stopped: boolean }>((resolve) => {
-          finishStop = () => resolve({ stopped: true });
+    cancelTask: vi.fn(
+      (input: { readonly taskId: string }) =>
+        new Promise<{ taskId: string; status: string }>((resolve) => {
+          finishStop = () => resolve({ taskId: input.taskId, status: "cancelled" });
         }),
     ),
     stopTask: vi.fn(async () => ({ sequence: 1 })),
@@ -115,11 +107,9 @@ describe("Delegated task row", () => {
     });
     expect(await screen.findByRole("status", { name: "Subagents is stopping…" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Stop Audit auth" })).toBeNull();
-    expect(transport.stop).toHaveBeenCalledWith({
-      sessionId: "session",
-      threadId: "child",
-      runId: "child-run",
-    });
+    expect(transport.cancelTask).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session", threadId: "root", taskId: "task" }),
+    );
     await act(async () => {
       finishStop();
       await Promise.resolve();
@@ -179,7 +169,7 @@ describe("Delegated task row", () => {
   test("restores Stop and the current task state when the request fails", async () => {
     const { transport, wrap } = setup();
     const reportError = vi.spyOn(toast, "danger").mockImplementation(() => ({ close: () => {} }));
-    vi.mocked(transport.stop).mockRejectedValueOnce(new Error("Agent disconnected"));
+    vi.mocked(transport.cancelTask).mockRejectedValueOnce(new Error("Agent disconnected"));
     render(
       wrap(<DelegatedTaskGroup tasks={[task]} parentThreadId="root" onOpenThread={vi.fn()} />),
     );

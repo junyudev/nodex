@@ -3,6 +3,7 @@ import type { OrchestrationV2PendingBackgroundTask } from "@t3tools/contracts";
 import {
   backgroundWorkHoldsCompletion,
   derivePendingBackgroundWork,
+  liveBackgroundWork,
   turnItemUpdateCanEndBackgroundWork,
 } from "./orchestrationV2PendingBackgroundWork.ts";
 
@@ -61,7 +62,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([]);
+    expect(tasks).toMatchObject([]);
   });
 
   it("does not keep a settled parent waiting for an idle child", () => {
@@ -71,7 +72,7 @@ describe("derivePendingBackgroundWork", () => {
         providerThreads: [],
         turnItems: [{ id: "idle-child", type: "subagent", status: "idle", title: "Review" }],
       }),
-    ).toEqual([]);
+    ).toMatchObject([]);
   });
 
   it("returns pending work when the latest run is waiting (post-success, pre-checkpoint)", () => {
@@ -89,7 +90,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([{ taskId: "cmd-1", description: "npm test", kind: "command" }]);
+    expect(tasks).toMatchObject([{ taskId: "cmd-1", description: "npm test", kind: "command" }]);
   });
 
   it("still returns empty when the latest run is running even with background items", () => {
@@ -112,7 +113,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([]);
+    expect(tasks).toMatchObject([]);
   });
 
   it("excludes rolled_back items when the latest run is waiting", () => {
@@ -144,7 +145,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([
+    expect(tasks).toMatchObject([
       {
         taskId: "cmd-new",
         description: "still pending",
@@ -167,7 +168,9 @@ describe("derivePendingBackgroundWork", () => {
       turnItems: [],
       activeProviderThreadId: "pt-1",
     });
-    expect(tasks).toEqual([{ taskId: "bg-1", description: "Run Codex review", kind: "command" }]);
+    expect(tasks).toMatchObject([
+      { taskId: "bg-1", description: "Run Codex review", kind: "command" },
+    ]);
   });
 
   it("includes nonterminal turn items and excludes completed ones", () => {
@@ -193,7 +196,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([{ taskId: "cmd-1", description: "npm test", kind: "command" }]);
+    expect(tasks).toMatchObject([{ taskId: "cmd-1", description: "npm test", kind: "command" }]);
   });
 
   it("trims normalized background-work descriptions", () => {
@@ -233,7 +236,7 @@ describe("derivePendingBackgroundWork", () => {
           } as never,
         ],
       }),
-    ).toEqual([
+    ).toMatchObject([
       {
         taskId: "native-task",
         description: "native background work",
@@ -274,7 +277,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([
+    expect(tasks).toMatchObject([
       { taskId: "task-9", description: "Agent review", kind: "background_task" },
     ]);
   });
@@ -302,7 +305,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([
+    expect(tasks).toMatchObject([
       { taskId: "mon-2", description: "finite monitor", kind: "background_task" },
     ]);
   });
@@ -330,7 +333,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks.map((task) => task.taskId)).toEqual(["bg-1", "bg-2", "cmd-3"]);
+    expect(tasks.map((task) => task.taskId)).toMatchObject(["bg-1", "bg-2", "cmd-3"]);
   });
 
   it("excludes turn items owned by a rolled_back run", () => {
@@ -350,7 +353,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([]);
+    expect(tasks).toMatchObject([]);
   });
 
   it("returns empty when the latest run is rolled_back even with a nonempty roster", () => {
@@ -374,7 +377,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([]);
+    expect(tasks).toMatchObject([]);
   });
 
   it("excludes an older rolled_back nonterminal item when the latest run is completed", () => {
@@ -406,7 +409,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([
+    expect(tasks).toMatchObject([
       {
         taskId: "cmd-new",
         description: "still pending",
@@ -441,7 +444,7 @@ describe("derivePendingBackgroundWork", () => {
       ],
     });
 
-    expect(tasks).toEqual([]);
+    expect(tasks).toMatchObject([]);
   });
 
   it("includes items with a null run id even when runs list has rolled_back rows", () => {
@@ -461,7 +464,7 @@ describe("derivePendingBackgroundWork", () => {
         },
       ],
     });
-    expect(tasks).toEqual([
+    expect(tasks).toMatchObject([
       {
         taskId: "cmd-null",
         description: "orphan item",
@@ -504,7 +507,7 @@ describe("derivePendingBackgroundWork kinds", () => {
         },
       ],
     });
-    expect(tasks).toEqual([
+    expect(tasks).toMatchObject([
       { taskId: "bash", kind: "command" },
       { taskId: "watch", kind: "monitor" },
       { taskId: "workflow", kind: "background_task" },
@@ -554,7 +557,7 @@ describe("derivePendingBackgroundWork kinds", () => {
         turnItems: [],
         pullRequests,
       });
-      expect(tasks).toEqual([
+      expect(tasks).toMatchObject([
         {
           taskId: "pull-request-watch:github.com/acme/app#1",
           description: "Watching pull request #1",
@@ -572,7 +575,7 @@ describe("derivePendingBackgroundWork kinds", () => {
           turnItems: [],
           pullRequests,
         }).map((task) => task.taskId),
-      ).toEqual(["pull-request-watch:github.com/acme/app#1"]);
+      ).toMatchObject(["pull-request-watch:github.com/acme/app#1"]);
     });
 
     it("lists no watch while a run is active", () => {
@@ -583,7 +586,62 @@ describe("derivePendingBackgroundWork kinds", () => {
           turnItems: [],
           pullRequests,
         }),
-      ).toEqual([]);
+      ).toMatchObject([]);
     });
+  });
+});
+
+describe("liveBackgroundWork", () => {
+  it("lists every provider roster and excludes subagents", () => {
+    expect(
+      liveBackgroundWork({
+        thread: { id: "thread" as never },
+        providerThreads: [
+          {
+            id: "unattached" as never,
+            appThreadId: null,
+            pendingBackgroundTasks: [{ taskId: "foreign", kind: "command" }],
+          },
+          {
+            id: "old" as never,
+            appThreadId: "thread" as never,
+            pendingBackgroundTasks: [{ taskId: "old-shell", kind: "command" }],
+          },
+          {
+            id: "current" as never,
+            appThreadId: "thread" as never,
+            pendingBackgroundTasks: [
+              { taskId: "monitor", kind: "monitor", description: " Deploy " },
+              { taskId: "child", kind: "subagent" },
+              { taskId: "workflow", kind: "background_task" },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      { taskId: "old-shell", kind: "command" },
+      { taskId: "monitor", kind: "monitor", description: "Deploy" },
+      { taskId: "workflow", kind: "background_task" },
+    ]);
+  });
+
+  it("deduplicates native ids across provider rosters", () => {
+    expect(
+      liveBackgroundWork({
+        thread: { id: "thread" as never },
+        providerThreads: [
+          {
+            id: "one" as never,
+            appThreadId: "thread" as never,
+            pendingBackgroundTasks: [{ taskId: "shell", kind: "command" }],
+          },
+          {
+            id: "two" as never,
+            appThreadId: "thread" as never,
+            pendingBackgroundTasks: [{ taskId: "shell", kind: "command" }],
+          },
+        ],
+      }),
+    ).toEqual([{ taskId: "shell", kind: "command" }]);
   });
 });

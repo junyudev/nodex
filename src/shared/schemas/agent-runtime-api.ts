@@ -131,6 +131,21 @@ export const AgentRuntimeTaskStopSchema = AgentRuntimeTargetSchema.extend({
   runId: id,
   taskId: id,
 });
+export const AgentRuntimeBackgroundStopSchema = AgentRuntimeTargetSchema.extend({
+  requestId: id,
+  taskIds: z
+    .array(id)
+    .min(1)
+    .max(25)
+    .refine((ids) => new Set(ids).size === ids.length),
+});
+export const AgentRuntimeBackgroundOutputSchema = AgentRuntimeTargetSchema.extend({
+  taskId: id,
+});
+export const AgentRuntimeTaskCancelSchema = AgentRuntimeTargetSchema.extend({
+  requestId: id,
+  taskId: id,
+});
 export const AgentRuntimePreparationRetrySchema = AgentRuntimeTargetSchema.extend({
   requestId: id,
   runId: id,

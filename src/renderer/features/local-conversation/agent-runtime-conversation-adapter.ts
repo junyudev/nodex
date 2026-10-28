@@ -93,9 +93,8 @@ import {
   agentRuntimeAgentLabels,
   agentRuntimeDelegatedTasks,
   createAgentRuntimeDelegatedTaskPort,
-  stopAgentRuntimeBackgroundTasks,
 } from "./agent-runtime-delegated-tasks";
-import { agentRuntimeBackgroundStatus } from "./agent-runtime-composer-status";
+import { useAgentRuntimeBackgroundTasks } from "./agent-runtime-background-tasks";
 import { useOpenCodeModelSetup } from "../opencode-setup/use-opencode-setup";
 import { useAcpComposerSetup } from "../acp-agents/use-acp-composer-setup";
 import {
@@ -107,7 +106,6 @@ import type { AgentRuntimeRun } from "./agent-runtime-transcript-projection";
 import {
   agentRuntimeActivityStore,
   useAgentRuntimeConnectionState,
-  useAgentRuntimeSessionActivity,
 } from "../../lib/agent-runtime-session-activity";
 import { useWorkbenchWindowOwner } from "../../lib/use-workbench-window-state";
 import {
@@ -1486,14 +1484,14 @@ export function useAgentRuntimeConversationAdapter(input: {
       ],
     });
   };
-  // Background status belongs to the Session's root; an opened child shows its own Runs.
-  const activity = useAgentRuntimeSessionActivity(
+  // Background work belongs to the Session's root, which also lists what its delegated
+  // conversations left running; an opened child shows only its own Runs.
+  const backgroundTasks = useAgentRuntimeBackgroundTasks(
     input.executionRef &&
       (input.threadId === undefined || input.threadId === input.executionRef.threadId)
       ? input.sessionId
       : null,
   );
-  const backgroundMessage = agentRuntimeBackgroundStatus(activity);
   const preparationFailure = target
     ? failedWorkspacePreparation(state.conversation?.snapshot.projection.runs ?? [])
     : null;
@@ -1628,29 +1626,8 @@ export function useAgentRuntimeConversationAdapter(input: {
             },
           ],
         }
-      : acpSetup.status
-        ? acpSetup.status
-        : backgroundMessage
-          ? {
-              message: backgroundMessage,
-              ...(activity && activity.activeTaskCount > 0
-                ? {
-                    actions: [
-                      {
-                        label: "Stop",
-                        pendingLabel: "Stopping…",
-                        run: () =>
-                          stopAgentRuntimeBackgroundTasks(
-                            activity.sessionId,
-                            activity.threadId,
-                            agentRuntimeRuntime,
-                          ),
-                      },
-                    ],
-                  }
-                : {}),
-            }
-          : null,
+      : (acpSetup.status ?? null),
+    backgroundTasks,
   };
   return {
     runtime,

@@ -125,7 +125,7 @@ export function buildThreadSummaryPanelSectionModel(
       : null,
     countSection("sideChats", "side-chats", "Side chats", input.sideChatCount),
     buildSubagentsSection(input.backgroundSubagentRows),
-    countSection("tasks", "background-tasks", "Tasks", input.taskCount),
+    countSection("tasks", "background-tasks", "Background", input.taskCount),
     input.hasComputerUsePip
       ? {
           kind: "computerUsePip",

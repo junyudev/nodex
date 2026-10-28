@@ -186,6 +186,15 @@ export const live = Layer.effectDiscard(
     yield* ipc.handlePlainCommand("agent-runtime:session:stop-task", (event, value) =>
       handle(event, Inputs.AgentRuntimeTaskStopSchema, value, application.stopTask),
     );
+    yield* ipc.handlePlainCommand("agent-runtime:session:stop-background", (event, value) =>
+      handle(event, Inputs.AgentRuntimeBackgroundStopSchema, value, application.stopBackground),
+    );
+    yield* ipc.handleQuery("agent-runtime:session:background-output", (event, value) =>
+      handle(event, Inputs.AgentRuntimeBackgroundOutputSchema, value, application.backgroundOutput),
+    );
+    yield* ipc.handlePlainCommand("agent-runtime:session:cancel-task", (event, value) =>
+      handle(event, Inputs.AgentRuntimeTaskCancelSchema, value, application.cancelTask),
+    );
     yield* ipc.handlePlainCommand("agent-runtime:session:move", (event, value) =>
       handle(event, Inputs.AgentRuntimeSessionMoveSchema, value, application.moveSession),
     );

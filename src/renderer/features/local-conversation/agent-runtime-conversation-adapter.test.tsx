@@ -87,8 +87,17 @@ beforeEach(() => {
         status: "background",
         activeRunId: null,
         pendingRequestCount: 0,
-        activeTaskCount: 1,
-        resumesAutomatically: true,
+        backgroundTasks: [
+          {
+            threadId: "engine-thread",
+            threadTitle: null,
+            taskId: "shell",
+            kind: "command",
+            description: "Serve docs preview",
+            command: "pnpm docs:dev",
+            startedAt: "2026-10-15T00:00:00.000Z",
+          },
+        ],
         providerInstanceId: "codex",
         model: "model",
         updatedAt: "2026-10-15T00:00:00Z",
@@ -1114,8 +1123,8 @@ describe("Agent Runtime Agent switching", () => {
   });
 });
 
-describe("Agent Runtime background status", () => {
-  it("explains a root waiting on subagents and stops them all from the composer", async () => {
+describe("Agent Runtime background work", () => {
+  it("lists the Session's background tasks and stops or reads them through the Runtime", async () => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([provider]);
     vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
       sessionId: "background-session",
@@ -1124,36 +1133,14 @@ describe("Agent Runtime background status", () => {
       snapshot,
     });
     vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
-    const overview = vi.spyOn(agentRuntimeRuntime, "overview").mockResolvedValue({
-      active: {
-        items: [
-          {
-            id: "native-task",
-            threadId: "engine-thread",
-            runId: "parent-run",
-            parentNodeId: "node",
-            origin: "provider_native",
-            driver: "claudeAgent",
-            providerInstanceId: "codex",
-            providerThreadId: null,
-            childThreadId: null,
-            childRunId: null,
-            title: "Audit",
-            model: "model",
-            status: "running",
-            startedAt: null,
-            completedAt: null,
-            updatedAt: "2026-10-15T00:00:00Z",
-            resultAvailable: false,
-          },
-        ],
-        nextCursor: null,
-        hasMore: false,
-        totalCount: 1,
-      },
-      terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
+    const stopBackground = vi
+      .spyOn(agentRuntimeRuntime, "stopBackground")
+      .mockResolvedValue({ stopping: ["shell"] });
+    vi.spyOn(agentRuntimeRuntime, "backgroundOutput").mockResolvedValue({
+      text: "ready on :4321",
+      truncated: true,
+      totalBytes: 9000,
     });
-    const stopTask = vi.spyOn(agentRuntimeRuntime, "stopTask").mockResolvedValue({ sequence: 3 });
     const { result, unmount } = renderHook(
       () =>
         useAgentRuntimeConversationAdapter({
@@ -1169,20 +1156,37 @@ describe("Agent Runtime background status", () => {
         }),
       { wrapper: RuntimeWorkbench },
     );
+    // The composer no longer carries a background status line.
     await waitFor(() =>
-      expect(result.current.provider.status?.message).toBe(
-        "Waiting for 1 background task · resumes automatically",
-      ),
+      expect(result.current.provider.backgroundTasks?.tasks).toEqual([
+        {
+          id: "shell",
+          kind: "command",
+          label: "Serve docs preview",
+          command: "pnpm docs:dev",
+          owner: null,
+          startedAtMs: Date.parse("2026-10-15T00:00:00.000Z"),
+          stopping: false,
+        },
+      ]),
     );
+    expect(result.current.provider.status).toBeNull();
+    await expect(result.current.provider.backgroundTasks!.readOutput!("shell")).resolves.toEqual({
+      text: "ready on :4321",
+      truncated: true,
+    });
     await act(async () => {
-      await result.current.provider.status!.actions![0]!.run();
+      await result.current.provider.backgroundTasks!.stop("shell");
     });
-    expect(overview).toHaveBeenCalledWith({
-      sessionId: "background-session",
-      threadId: "engine-thread",
-    });
-    expect(stopTask).toHaveBeenCalledWith(
-      expect.objectContaining({ runId: "parent-run", taskId: "native-task" }),
+    expect(stopBackground).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "background-session",
+        threadId: "engine-thread",
+        taskIds: ["shell"],
+      }),
+    );
+    await waitFor(() =>
+      expect(result.current.provider.backgroundTasks?.tasks[0]?.stopping).toBe(true),
     );
     await act(async () => unmount());
   });

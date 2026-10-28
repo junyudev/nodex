@@ -13,7 +13,10 @@ import {
 } from "@/lib/codex-panel-motion";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "@/lib/utils";
-import { ThreadSummaryPanelToggleButton } from "./thread-summary-panel-toggle";
+import {
+  ThreadSummaryPanelToggleButton,
+  threadSummaryToggleLabel,
+} from "./thread-summary-panel-toggle";
 
 const VISIBLE = { opacity: 1, transform: "translateX(0%)" };
 const HIDDEN = { opacity: 0, transform: "translateX(100%)" };
@@ -157,10 +160,12 @@ function SummaryPopoverContent({
 export function ThreadSummaryPanelPopoverShell({
   open,
   onOpenChange,
+  backgroundCount = 0,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  backgroundCount?: number;
   children: ReactNode;
 }) {
   const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
@@ -201,9 +206,17 @@ export function ThreadSummaryPanelPopoverShell({
         onOpenChange(nextOpen);
       }}
     >
-      <NodexTooltip tooltipContent="Toggle summary" side="bottom">
+      <NodexTooltip
+        tooltipContent={threadSummaryToggleLabel("Toggle summary", backgroundCount)}
+        side="bottom"
+      >
         <NodexPopoverTrigger>
-          <ThreadSummaryPanelToggleButton ref={setTrigger} label="Toggle summary" pressed={open} />
+          <ThreadSummaryPanelToggleButton
+            ref={setTrigger}
+            label="Toggle summary"
+            backgroundCount={backgroundCount}
+            pressed={open}
+          />
         </NodexPopoverTrigger>
       </NodexTooltip>
       <AnimatePresence>

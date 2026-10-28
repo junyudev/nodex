@@ -1,3 +1,8 @@
+import {
+  delegatedTaskExecutionState,
+  delegatedTaskRun,
+  isTerminalTaskStatus,
+} from "./DelegatedTaskState.ts";
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -11,6 +16,7 @@ import {
   type ChatAttachment,
   CommandId,
   MessageId,
+  NodeId,
   OrchestrationV2StopWorkflowError,
   type OrchestrationV2StopWorkflowInput,
   type ModelSelection,
@@ -49,6 +55,7 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import { projectTurnItemForDetail } from "./WireProjection.ts";
+import { liveBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
@@ -279,6 +286,15 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
   }
 }
 
+export class ThreadManagementTaskCancelError extends Schema.TaggedError<ThreadManagementTaskCancelError>()(
+  "ThreadManagementTaskCancelError",
+  {
+    taskId: NodeId,
+    reason: Schema.Literals(["not-found", "not-cancellable", "orchestration-error"]),
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
 export const ThreadManagementError = Schema.Union([
   ThreadManagementThreadNotFoundError,
   ThreadManagementRunNotFoundError,
@@ -294,6 +310,30 @@ export type ThreadManagementError = typeof ThreadManagementError.Type;
 type ThreadManagementFailure = ThreadManagementError | Orchestrator.OrchestratorV2Error;
 
 export interface ThreadManagementServiceShape {
+  readonly stopBackgroundWork: (input: {
+    readonly threadId: ThreadId;
+    readonly commandId: CommandId;
+    readonly taskIds: ReadonlyArray<string>;
+  }) => Effect.Effect<{ readonly stopping: ReadonlyArray<string> }, ThreadManagementFailure>;
+  readonly backgroundOutput: (input: {
+    readonly threadId: ThreadId;
+    readonly taskId: string;
+  }) => Effect.Effect<
+    { readonly text: string; readonly truncated: boolean; readonly totalBytes: number } | null,
+    ThreadManagementFailure
+  >;
+  readonly cancelDelegatedTask: (input: {
+    readonly threadId: ThreadId;
+    readonly taskId: NodeId;
+    readonly commandId: CommandId;
+    readonly reason?: string | undefined;
+  }) => Effect.Effect<
+    {
+      readonly taskId: NodeId;
+      readonly status: "completed" | "failed" | "cancelled" | "interrupted" | "cancel_requested";
+    },
+    ThreadManagementTaskCancelError
+  >;
   readonly searchThreadStream: (
     input: OrchestrationV2SearchThreadInput,
   ) => Stream.Stream<OrchestrationV2SearchThreadResult, Orchestrator.OrchestratorV2Error>;
@@ -1084,8 +1124,166 @@ const make = Effect.gen(function* () {
       if (failures[0] !== undefined) return yield* Effect.fail(failures[0]);
     });
 
+  const cancelDelegatedTask: ThreadManagementServiceShape["cancelDelegatedTask"] = Effect.fn(
+    "ThreadManagementService.cancelDelegatedTask",
+  )(
+    function* (input) {
+      const parent = yield* orchestrator.getThreadRecords(input.threadId, ["subagents"], {
+        subagentIds: [input.taskId],
+      });
+      const task = parent.subagents.find(
+        (task) => task.id === input.taskId && task.origin === "app_owned",
+      );
+      if (task?.childThreadId == null)
+        return yield* new ThreadManagementTaskCancelError({
+          taskId: input.taskId,
+          reason: "not-found",
+        });
+      const childThreadId = task.childThreadId;
+      const taskRuns = yield* orchestrator.getThreadRecords(childThreadId, ["runs"], {
+        runDelegatedTaskId: task.id,
+        runOrder: "desc",
+        runLimit: 1,
+      });
+      const latest =
+        taskRuns.runs[0] ??
+        (yield* orchestrator.getThreadRecords(childThreadId, ["runs"], {
+          runOrder: "desc",
+          runLimit: 1,
+        })).runs[0];
+      const originalTask = yield* orchestrator.getThreadRecords(childThreadId, ["runs"], {
+        runDelegatedTaskId: task.id,
+        runOrder: "asc",
+        runLimit: 1,
+      });
+      const original =
+        originalTask.runs[0] ??
+        (yield* orchestrator.getThreadRecords(childThreadId, ["runs"], {
+          runOrder: "asc",
+          runLimit: 1,
+        })).runs[0];
+      const runs = [
+        ...new Map(
+          [original, latest]
+            .filter((run): run is OrchestrationV2Run => run !== undefined)
+            .map((run) => [run.id, run]),
+        ).values(),
+      ].toSorted((a, b) => a.ordinal - b.ordinal);
+      const transfers = yield* orchestrator.getThreadRecords(input.threadId, ["contextTransfers"], {
+        contextTransferThreadIds: [childThreadId],
+        contextTransferRunIds: runs.map((run) => run.id),
+        contextTransferLimit: 16,
+      });
+      const childRun = delegatedTaskRun(
+        { runs, contextTransfers: transfers.contextTransfers },
+        task,
+      );
+      const resultPending = yield* orchestrator.delegatedTaskResultPending(childThreadId, task.id);
+      const { status, workState } = delegatedTaskExecutionState({
+        task,
+        childRun,
+        latestRun: latest,
+        resultPending,
+      });
+      const terminalStatus = isTerminalTaskStatus(status) ? status : undefined;
+      const terminal = terminalStatus !== undefined;
+      if (!terminal && workState !== "waiting_for_children") {
+        const shell = yield* orchestrator.getThreadShell(childThreadId);
+        if (shell?.activeRunId == null)
+          return yield* new ThreadManagementTaskCancelError({
+            taskId: input.taskId,
+            reason: "not-cancellable",
+            cause: `Delegated task ${input.taskId} has no interruptible child run.`,
+          });
+      }
+      yield* dispatch({
+        type: "thread.stop",
+        commandId: input.commandId,
+        threadId: childThreadId,
+        ...(input.reason === undefined ? {} : { reason: input.reason }),
+      });
+      yield* stopDelegatedTasks({
+        threadId: childThreadId,
+        commandId: input.commandId,
+        reason: input.reason,
+      });
+      if (task.completionDelivery?.state !== "disposed") {
+        const dispose = dispatch({
+          type: "delegated_task.completion-delivery.dispose",
+          commandId: CommandId.make(`${input.commandId}:completion-delivery`),
+          parentThreadId: input.threadId,
+          taskId: input.taskId,
+        });
+        yield* terminal
+          ? dispose.pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ThreadManagementTaskCancelError({
+                    taskId: input.taskId,
+                    reason: "orchestration-error",
+                    cause,
+                  }),
+              ),
+            )
+          : dispose.pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("delegated-task.cancel.delivery-dispose-failed", {
+                  taskId: input.taskId,
+                  cause,
+                }),
+              ),
+            );
+      }
+      return { taskId: input.taskId, status: terminalStatus ?? "cancel_requested" } as const;
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.mapError((cause) =>
+          cause instanceof ThreadManagementTaskCancelError
+            ? cause
+            : new ThreadManagementTaskCancelError({
+                taskId: input.taskId,
+                reason: "not-cancellable",
+                cause,
+              }),
+        ),
+      ),
+  );
+
   return ThreadManagementService.of({
     ensureLegacyTranscript,
+    cancelDelegatedTask,
+    stopBackgroundWork: Effect.fn("ThreadManagementService.stopBackgroundWork")(function* (input) {
+      const result = yield* dispatch({
+        type: "background.stop",
+        commandId: input.commandId,
+        threadId: input.threadId,
+        taskIds: input.taskIds,
+      });
+      return {
+        stopping: result.storedEvents.flatMap(({ event }) =>
+          event.type === "background-work.stop-requested" ? event.payload.stopping : [],
+        ),
+      };
+    }),
+    backgroundOutput: Effect.fn("ThreadManagementService.backgroundOutput")(function* (input) {
+      const projection = yield* orchestrator.getThreadRecords(input.threadId, ["providerThreads"]);
+      if (!liveBackgroundWork(projection).some((task) => task.taskId === input.taskId)) return null;
+      const providerThread = projection.providerThreads.find(
+        (thread) =>
+          thread.appThreadId === input.threadId &&
+          thread.pendingBackgroundTasks?.some((task) => task.taskId === input.taskId),
+      );
+      if (providerThread?.providerSessionId == null) return null;
+      const runtime = yield* sessions
+        .get(providerThread.providerSessionId)
+        .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+      if (Option.isNone(runtime) || runtime.value.readTaskOutput === undefined) return null;
+      return yield* runtime.value.readTaskOutput({ providerThread, taskId: input.taskId }).pipe(
+        Effect.timeout("3 seconds"),
+        Effect.catch(() => Effect.succeed(null)),
+      );
+    }),
     searchThreadStream: (input) =>
       Stream.unwrap(
         ensureProjectionTranscript(input.threadId).pipe(

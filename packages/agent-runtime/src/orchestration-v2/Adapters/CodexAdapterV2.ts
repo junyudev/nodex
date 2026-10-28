@@ -238,6 +238,7 @@ const CodexBackgroundTerminalsListResponse = Schema.Struct({
   data: Schema.Array(
     Schema.Struct({
       processId: Schema.String,
+      itemId: Schema.String,
     }),
   ),
   nextCursor: Schema.NullOr(Schema.String),
@@ -6671,6 +6672,63 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 else hiddenNativeHelpers.delete(nativeThreadId);
               }),
           },
+          stopTask: Effect.fn("CodexAdapterV2.stopTask")(
+            function* ({ providerThread, taskId, kind }) {
+              if (kind !== undefined && kind !== "command")
+                return yield* toProtocolError(
+                  "Codex can stop individual background terminals only.",
+                );
+              const nativeThreadId = yield* getNativeThreadId(providerThread);
+              let cursor: string | null = null;
+              while (true) {
+                const response: unknown = yield* client.raw
+                  .request("thread/backgroundTerminals/list", {
+                    threadId: nativeThreadId,
+                    ...(cursor === null ? {} : { cursor }),
+                  })
+                  .pipe(
+                    Effect.catchTags({
+                      CodexAppServerProcessExitedError: () =>
+                        Effect.succeed({ data: [], nextCursor: null }),
+                      CodexAppServerInputStreamEndedError: () =>
+                        Effect.succeed({ data: [], nextCursor: null }),
+                      CodexAppServerRequestError: (error) =>
+                        error.code === -32600 && error.errorMessage.startsWith("thread not found:")
+                          ? Effect.succeed({ data: [], nextCursor: null })
+                          : Effect.fail(error),
+                    }),
+                  );
+                const page: CodexBackgroundTerminalsListPage =
+                  yield* decodeCodexBackgroundTerminalsListResponse(response);
+                const terminal = page.data.find((entry) => entry.itemId === taskId);
+                if (terminal !== undefined) {
+                  yield* terminateBackgroundTerminal(nativeThreadId, terminal.processId);
+                  break;
+                }
+                if (page.nextCursor === null) break;
+                cursor = page.nextCursor;
+              }
+              yield* Ref.update(
+                runningCommandItemsByTurn,
+                (current) =>
+                  new Map(
+                    Array.from(current, ([turnId, items]) => [
+                      turnId,
+                      new Map(Array.from(items).filter(([id]) => id !== taskId)),
+                    ]),
+                  ),
+              );
+            },
+            Effect.timeout("10 seconds"),
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapter.ProviderAdapterProtocolError({
+                  driver: CODEX_PROVIDER,
+                  detail: "Cannot stop background terminal",
+                  cause,
+                }),
+            ),
+          ),
           canReuseContextUsage: canReuseCodexContextUsage,
           // Known gap: a subagent that Codex resumes later reads as completed
           // (not pending) between turns, so idle release can win the race

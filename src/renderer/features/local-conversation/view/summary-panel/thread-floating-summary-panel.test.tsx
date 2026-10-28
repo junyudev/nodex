@@ -2175,7 +2175,7 @@ describe("ThreadFloatingSummaryPanel", () => {
       "Outputs",
       "Side chats",
       "Subagents",
-      "Tasks",
+      "Background",
       "Browser",
       "Sources",
     ];
@@ -2345,7 +2345,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(terminalCall?.turnId).toBe("turn-terminal-1");
     expect(terminalCall?.command).toBe("bun dev");
     expect(String(processManagerOpenCount)).toBe("1");
-    expect(textContent(view.container).includes("Tasks")).toBe(true);
+    expect(textContent(view.container).includes("Background")).toBe(true);
     expect(textContent(view.container).includes("Background tasks")).toBe(false);
   });
 
@@ -2437,7 +2437,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     );
 
     const content = textContent(view.container);
-    const tasksIndex = content.indexOf("Tasks");
+    const tasksIndex = content.indexOf("Background");
     const computerUseIndex = content.indexOf("Computer Use");
     const browserIndex = content.indexOf("Browser");
     expect(tasksIndex >= 0).toBe(true);

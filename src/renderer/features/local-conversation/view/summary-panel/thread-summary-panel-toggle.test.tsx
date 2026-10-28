@@ -54,4 +54,25 @@ describe("ThreadSummaryPanelToggle", () => {
     expect(svg?.getAttribute("viewBox")).toBe("0 0 20 20");
     expect(path?.getAttribute("d")?.startsWith("M5.693 11.056")).toBe(true);
   });
+
+  test("names the background work a closed summary holds and marks it", () => {
+    const view = render(
+      <NodexTooltipProvider>
+        <ThreadSummaryPanelToggle pressed={false} backgroundCount={2} onClick={() => undefined} />
+      </NodexTooltipProvider>,
+    );
+    const button = view.getByRole("button", {
+      name: "Toggle pinned summary · 2 background tasks",
+    });
+    expect(button.querySelector("[data-thread-summary-background-indicator]")).not.toBeNull();
+
+    // An open summary already shows the work, so the mark goes away.
+    view.rerender(
+      <NodexTooltipProvider>
+        <ThreadSummaryPanelToggle pressed backgroundCount={1} onClick={() => undefined} />
+      </NodexTooltipProvider>,
+    );
+    const open = view.getByRole("button", { name: "Toggle pinned summary · 1 background task" });
+    expect(open.querySelector("[data-thread-summary-background-indicator]")).toBeNull();
+  });
 });

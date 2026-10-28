@@ -2149,6 +2149,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly close?: (sdkMessages: Queue.Queue<SDKMessage>) => Effect.Effect<void>;
     readonly interrupt?: Effect.Effect<void>;
     readonly stopTask?: (taskId: string) => Effect.Effect<void>;
+    readonly getTaskOutput?: ClaudeAdapterV2.ClaudeAgentSdkQuerySession["getTaskOutput"];
     readonly environment?: NodeJS.ProcessEnv;
     readonly subagentLaunchToolUseId?: string;
     readonly nativeSessionId?: string;
@@ -2228,6 +2229,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* Queue.unbounded<
           Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "turn.terminal" }>
         >();
+      const providerThreadReceipts =
+        yield* Queue.unbounded<
+          Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "provider_thread.updated" }>
+        >();
       const subagentReceipts =
         yield* Queue.unbounded<
           Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "subagent.updated" }>
@@ -2272,6 +2277,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   ...liveQuery,
                   setPermissionMode: () => Effect.void,
                   stopTask: options?.stopTask ?? (() => Effect.void),
+                  ...(options?.getTaskOutput === undefined
+                    ? {}
+                    : { getTaskOutput: options.getTaskOutput }),
                   interrupt: Effect.void,
                   close: Queue.shutdown(processMessages),
                 };
@@ -2307,6 +2315,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     permissionModeChanges.push(mode);
                   }),
                 stopTask: options?.stopTask ?? (() => Effect.void),
+                ...(options?.getTaskOutput === undefined
+                  ? {}
+                  : { getTaskOutput: options.getTaskOutput }),
                 interrupt: options?.interrupt ?? Effect.void,
                 close: options?.close?.(sdkMessages) ?? Effect.void,
               };
@@ -2334,6 +2345,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         Stream.runForEach((event) =>
           Effect.gen(function* () {
             events.push(event);
+            if (event.type === "provider_thread.updated")
+              yield* Queue.offer(providerThreadReceipts, event);
             if (event.type === "subagent.updated") {
               yield* Queue.offer(subagentReceipts, event);
             }
@@ -2378,6 +2391,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         events,
         terminalReceipts,
         subagentReceipts,
+        providerThreadReceipts,
         systemNoticeReceipts,
         getOpenedOptions: () => openedOptions,
         liveChanges,
@@ -4998,6 +5012,191 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     );
 
   it.effect(
+    "stops a background shell through its live query and reads only its bounded output",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const stops: Array<string> = [];
+          const reads: Array<string> = [];
+          const harness = yield* makeWakeHarnessWithOptions({
+            stopTask: (taskId) =>
+              Effect.sync(() => {
+                stops.push(taskId);
+              }),
+            getTaskOutput: (taskId) =>
+              Effect.sync(() => {
+                reads.push(taskId);
+                return { output: "tail\n", total_bytes: 9000, truncated: true };
+              }),
+            interrupt: Effect.die("Stopping a task must not interrupt its foreground turn"),
+          });
+          const now = yield* DateTime.now;
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now,
+              attemptId: RunAttemptId.make("attempt-background-stop"),
+              text: "Start a shell",
+              attachments: [],
+            }),
+          );
+          const command = "printf '%s\\n' ready; sleep 60";
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              type: "assistant",
+              message: {
+                model: "claude-sonnet-4-6",
+                id: "msg-background-command",
+                type: "message",
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool_use",
+                    id: WAKE_TOOL_USE_ID,
+                    name: "Bash",
+                    input: { command, run_in_background: true },
+                  },
+                ],
+                stop_reason: null,
+                stop_sequence: null,
+                usage: { input_tokens: 1, output_tokens: 1 },
+              },
+              parent_tool_use_id: null,
+              uuid: "00000000-0000-4000-8000-000000001900",
+              session_id: WAKE_NATIVE_SESSION,
+            }),
+          );
+          yield* harness.offerAndWait(wakeTaskStarted);
+          let receipt = yield* Queue.take(harness.providerThreadReceipts);
+          while (
+            !receipt.providerThread.pendingBackgroundTasks?.some(
+              (task) => task.taskId === WAKE_TASK_ID,
+            )
+          )
+            receipt = yield* Queue.take(harness.providerThreadReceipts);
+          const before = receipt.providerThread;
+          const facts = before.pendingBackgroundTasks![0]!;
+          assert.isDefined(facts.startedAt);
+          assert.equal(facts.command, command);
+          const ids = yield* IdAllocator.IdAllocatorV2;
+          assert.equal(
+            facts.turnItemId,
+            ids.derive.turnItemFromProviderItem({
+              driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+              nativeItemId: WAKE_TOOL_USE_ID,
+            }),
+          );
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              type: "system",
+              subtype: "background_tasks_changed",
+              tasks: [
+                {
+                  task_id: WAKE_TASK_ID,
+                  task_type: "local_bash",
+                  description: WAKE_TASK_DESCRIPTION,
+                },
+              ],
+              uuid: "00000000-0000-4000-8000-000000001901",
+              session_id: WAKE_NATIVE_SESSION,
+            }),
+          );
+          const level = yield* Queue.take(harness.providerThreadReceipts);
+          assert.deepEqual(
+            level.providerThread.pendingBackgroundTasks,
+            before.pendingBackgroundTasks,
+          );
+          assert.deepEqual(
+            yield* harness.runtime.readTaskOutput!({
+              providerThread: before,
+              taskId: WAKE_TASK_ID,
+            }),
+            { text: "tail\n", totalBytes: 9000, truncated: true },
+          );
+          yield* harness.runtime.stopTask!({
+            providerThread: before,
+            taskId: WAKE_TASK_ID,
+            kind: "command",
+          });
+          assert.deepEqual(stops, [WAKE_TASK_ID]);
+          assert.deepEqual(reads, [WAKE_TASK_ID]);
+          assert.equal(harness.terminalEvents().length, 0);
+          yield* harness.offerAndWait(claudeSdkFrame({ ...wakeNotification, status: "stopped" }));
+          let stopped = yield* Queue.take(harness.providerThreadReceipts);
+          while ((stopped.providerThread.pendingBackgroundTasks?.length ?? 0) > 0)
+            stopped = yield* Queue.take(harness.providerThreadReceipts);
+          assert.deepEqual(stopped.providerThread.pendingBackgroundTasks, []);
+          assert.isNull(
+            yield* harness.runtime.readTaskOutput!({
+              providerThread: before,
+              taskId: "not-a-shell",
+            }),
+          );
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      ),
+  );
+
+  it.effect("returns no output when the owning query is absent or does not answer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const readStarted = yield* Deferred.make<void>();
+        const harness = yield* makeWakeHarnessWithOptions({
+          getTaskOutput: () =>
+            Deferred.succeed(readStarted, undefined).pipe(Effect.andThen(Effect.never)),
+        });
+        assert.isNull(
+          yield* harness.runtime.readTaskOutput!({
+            providerThread: harness.providerThread,
+            taskId: WAKE_TASK_ID,
+          }),
+        );
+        yield* harness.runtime.stopTask!({
+          providerThread: {
+            ...harness.providerThread,
+            pendingBackgroundTasks: [{ taskId: "stale", kind: "command" }],
+          },
+          taskId: "stale",
+          kind: "command",
+        });
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-output-timeout"),
+            text: "Start a shell",
+            attachments: [],
+          }),
+        );
+        yield* harness.offerAndWait(wakeTaskStarted);
+        let receipt = yield* Queue.take(harness.providerThreadReceipts);
+        while (
+          !receipt.providerThread.pendingBackgroundTasks?.some(
+            (task) => task.taskId === WAKE_TASK_ID,
+          )
+        )
+          receipt = yield* Queue.take(harness.providerThreadReceipts);
+        const pending = yield* harness.runtime.readTaskOutput!({
+          providerThread: receipt.providerThread,
+          taskId: WAKE_TASK_ID,
+        }).pipe(Effect.forkChild);
+        yield* Deferred.await(readStarted);
+        yield* TestClock.adjust("3 seconds");
+        assert.isNull(yield* Fiber.join(pending));
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it.effect(
     "uses task_started as an incremental roster fallback and clears on empty snapshot",
     () =>
       Effect.scoped(
@@ -5182,9 +5381,17 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
         const roster = providerThreadRosterEvents(harness.events).at(-1)?.providerThread
           .pendingBackgroundTasks;
-        assert.deepEqual(roster, [
-          { taskId: longRunning.taskId, kind: "monitor", description: "Monitor 0" },
-        ]);
+        assert.deepEqual(
+          roster?.map(({ startedAt: _startedAt, turnItemId: _turnItemId, ...task }) => task),
+          [
+            {
+              taskId: longRunning.taskId,
+              kind: "monitor",
+              description: "Monitor 0",
+              command: "sleep 8 && echo MONITOR_DONE",
+            },
+          ],
+        );
       }).pipe(
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
@@ -5703,9 +5910,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           const rosterAAfterSettle = providerThreadRosterEvents(events).findLast(
             (event) => event.providerThread.id === providerThreadA.id,
           )?.providerThread.pendingBackgroundTasks;
-          assert.deepEqual(rosterAAfterSettle ?? [], [
-            { taskId: taskA, description: "work on A", kind: "command" },
-          ]);
+          assert.deepEqual(
+            rosterAAfterSettle?.map(
+              ({ startedAt: _startedAt, turnItemId: _turnItemId, ...task }) => task,
+            ) ?? [],
+            [{ taskId: taskA, description: "work on A", kind: "command" }],
+          );
           assert.isTrue(yield* hasPendingBackgroundWork);
           assert.isTrue(yield* hasPendingBackgroundWorkForThread(providerThreadA));
           assert.isFalse(yield* hasPendingBackgroundWorkForThread(providerThreadB));
@@ -11991,6 +12201,14 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           );
           assert.isTrue(Exit.isFailure(exit));
         }
+        assert.isTrue(
+          Exit.isFailure(
+            yield* harness.runtime.stopSubagent!({
+              providerThread: harness.providerThread,
+              nativeTaskId: "missing-native-agent",
+            }).pipe(Effect.exit),
+          ),
+        );
         const wrongThread = {
           ...harness.providerThread,
           nativeThreadRef: {
@@ -12033,14 +12251,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             "cancelled",
           );
         }
-        assert.isTrue(
-          Exit.isFailure(
-            yield* stopTask({
-              providerThread: harness.providerThread,
-              taskId: WORKFLOW_TASK_ID,
-            }).pipe(Effect.exit),
-          ),
-        );
+        yield* stopTask({ providerThread: harness.providerThread, taskId: WORKFLOW_TASK_ID });
         assert.deepEqual(stoppedTasks, [WORKFLOW_TASK_ID]);
       }).pipe(
         Effect.provide(

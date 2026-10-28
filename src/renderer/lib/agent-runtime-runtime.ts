@@ -14,6 +14,10 @@ import type {
   AgentRuntimeCompactInput,
   AgentRuntimeRollbackInput,
   AgentRuntimeTaskStopInput,
+  AgentRuntimeBackgroundStopInput,
+  AgentRuntimeBackgroundOutputInput,
+  AgentRuntimeBackgroundOutput,
+  AgentRuntimeTaskCancelInput,
   AgentRuntimePreparationRetryInput,
   AgentRuntimeQueueInput,
   AgentRuntimeMergeBackInput,
@@ -180,6 +184,22 @@ const stopTask = defineRendererCommand({
   protocol: { kind: "returned_value" },
   trace: { scopeKind: "session" },
 });
+const stopBackground = defineRendererCommand({
+  key: "agent_runtime.session.stop_background",
+  channel: "agent-runtime:session:stop-background",
+  authority: "external",
+  owner: "AgentRuntimeConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
+const cancelTask = defineRendererCommand({
+  key: "agent_runtime.session.cancel_task",
+  channel: "agent-runtime:session:cancel-task",
+  authority: "external",
+  owner: "AgentRuntimeConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
 
 const retryPreparation = defineRendererCommand({
   key: "agent_runtime.session.retry_preparation",
@@ -248,6 +268,15 @@ export interface AgentRuntimeRendererTransport {
   ) => Promise<{ readonly cleared: true }>;
   readonly rollback: (input: AgentRuntimeRollbackInput) => Promise<{ readonly rolledBack: true }>;
   readonly stopTask: (input: AgentRuntimeTaskStopInput) => Promise<{ readonly sequence: number }>;
+  readonly stopBackground: (
+    input: AgentRuntimeBackgroundStopInput,
+  ) => Promise<{ readonly stopping: readonly string[] }>;
+  readonly backgroundOutput: (
+    input: AgentRuntimeBackgroundOutputInput,
+  ) => Promise<AgentRuntimeBackgroundOutput | null>;
+  readonly cancelTask: (
+    input: AgentRuntimeTaskCancelInput,
+  ) => Promise<{ readonly taskId: string; readonly status: string }>;
   readonly retryPreparation: (
     input: AgentRuntimePreparationRetryInput,
   ) => Promise<{ readonly retried: true }>;
@@ -305,6 +334,10 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   clearContext: (input) => invokePlainCommand(clearContext, input),
   rollback: (input) => invokePlainCommand(rollback, input),
   stopTask: (input) => invokePlainCommand(stopTask, input),
+  stopBackground: (input) => invokePlainCommand(stopBackground, input),
+  backgroundOutput: (input) =>
+    invokeRendererQuery("agent-runtime:session:background-output", input),
+  cancelTask: (input) => invokePlainCommand(cancelTask, input),
   retryPreparation: (input) => invokePlainCommand(retryPreparation, input),
   moveSession: (input) => invokePlainCommand(moveSession, input),
   catalog: (input) => invokeRendererQuery("agent-runtime:providers:read", input),

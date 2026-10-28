@@ -1,5 +1,5 @@
 import { assert } from "@effect/vitest";
-import type { ProviderReplayTranscript } from "@t3tools/contracts";
+import { TurnItemId, type ProviderReplayTranscript } from "@t3tools/contracts";
 
 import type { OrchestratorV2ScenarioResult } from "../../OrchestratorScenario.ts";
 import {
@@ -37,11 +37,18 @@ export function assertClaudeBackgroundMonitorWakeOutput(
     .filter((task) => task.taskId === MONITOR_TASK_ID);
   // Claude's first roster snapshot lands one frame before the task_started
   // that links the task to its Monitor call, so only that entry reads command.
+  // From then on the entry also carries the watch it runs, when it started and
+  // the call that started it.
   assert.isAbove(rosterTasks.length, 1);
-  for (const task of rosterTasks.slice(1)) {
+  for (const { startedAt, ...task } of rosterTasks.slice(1)) {
+    assert.isDefined(startedAt);
     assert.deepEqual(task, {
       taskId: MONITOR_TASK_ID,
       description: "Background monitor test",
+      command: "sleep 8 && echo MONITOR_DONE",
+      turnItemId: TurnItemId.make(
+        "turn-item:provider:claudeAgent:native-item:toolu_019b4EUbhEcYP4TS7vZn27N1",
+      ),
       kind: "monitor",
     });
   }

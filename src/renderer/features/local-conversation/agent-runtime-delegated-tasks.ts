@@ -20,16 +20,13 @@ export interface AgentRuntimeTaskStopTarget {
 
 export type AgentRuntimeTaskStopTransport = Pick<
   AgentRuntimeRendererTransport,
-  "inspect" | "stop" | "stopTask"
+  "cancelTask" | "stopTask"
 >;
 
-/** Explicit Stop reads task metadata pages only, never task bodies. */
-const BACKGROUND_STOP_PAGE_LIMIT = 25;
-
 /**
- * An application-owned task runs in its own conversation, so Stop interrupts that
- * conversation's active Run; the Runtime then settles the task as stopped and drops its
- * pending result delivery. A provider-native task is stopped through its owning parent Run.
+ * An application-owned task is cancelled the way its delegating Agent cancels it: its
+ * conversation stops whatever it is doing, the tasks it delegated stop too, and its pending
+ * result delivery is dropped. A provider-native task is stopped through its owning parent Run.
  */
 export async function stopAgentRuntimeTask(
   sessionId: string,
@@ -37,10 +34,12 @@ export async function stopAgentRuntimeTask(
   transport: AgentRuntimeTaskStopTransport,
 ): Promise<void> {
   if (task.childThreadId !== null) {
-    const child = await transport.inspect({ sessionId, threadId: task.childThreadId });
-    const runId = child.thread.activeRunId;
-    if (runId === null) throw new Error("This subagent has no running turn to stop");
-    await transport.stop({ sessionId, threadId: task.childThreadId, runId });
+    await transport.cancelTask({
+      sessionId,
+      threadId: task.parentThreadId,
+      requestId: createUuidV7(),
+      taskId: task.taskId,
+    });
     return;
   }
   if (task.ownerRunId === null) throw new Error("This subagent can no longer be stopped");
@@ -66,6 +65,17 @@ export interface AgentRuntimeProviderLabel {
   readonly models: ReadonlyMap<string, string>;
 }
 
+const stopKey = (sessionId: string, taskId: string) => JSON.stringify([sessionId, taskId]);
+
+/** Reads a `readStopping` snapshot, so a render consumes the value it subscribed to. */
+export function isAgentRuntimeTaskStopping(
+  stopping: ReadonlySet<string>,
+  sessionId: string,
+  taskId: string,
+): boolean {
+  return stopping.has(stopKey(sessionId, taskId));
+}
+
 export function createAgentRuntimeDelegatedTaskStore() {
   let labels: ReadonlyMap<string, AgentRuntimeProviderLabel> = new Map();
   let stopping: ReadonlySet<string> = new Set();
@@ -73,7 +83,7 @@ export function createAgentRuntimeDelegatedTaskStore() {
   const notify = () => {
     for (const listener of [...listeners]) listener();
   };
-  const key = (sessionId: string, taskId: string) => JSON.stringify([sessionId, taskId]);
+  const key = stopKey;
   return {
     subscribe: (listener: () => void) => {
       listeners.add(listener);
@@ -176,48 +186,4 @@ export function createAgentRuntimeDelegatedTaskPort(
     stop: (parentThreadId, task) =>
       requestAgentRuntimeTaskStop(sessionId, { ...task, parentThreadId }, transport, store),
   };
-}
-
-/**
- * Stops every live delegated task of a root conversation. The task list comes from the
- * bounded metadata overview; each task stops through its own execution owner.
- */
-export async function stopAgentRuntimeBackgroundTasks(
-  sessionId: string,
-  rootThreadId: string,
-  transport: AgentRuntimeTaskStopTransport & Pick<AgentRuntimeRendererTransport, "overview">,
-  store: AgentRuntimeDelegatedTaskStore = agentRuntimeDelegatedTasks,
-): Promise<void> {
-  const tasks: AgentRuntimeTaskStopTarget[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < BACKGROUND_STOP_PAGE_LIMIT; page += 1) {
-    const overview = await transport.overview({
-      sessionId,
-      threadId: rootThreadId,
-      ...(cursor === undefined ? {} : { activeCursor: cursor }),
-    });
-    for (const task of overview.active.items)
-      tasks.push({
-        taskId: task.id,
-        parentThreadId: task.threadId,
-        ownerRunId: task.runId,
-        childThreadId: task.childThreadId,
-      });
-    if (!overview.active.nextCursor) break;
-    cursor = overview.active.nextCursor;
-  }
-  const results = await Promise.allSettled(
-    tasks.map((task) => requestAgentRuntimeTaskStop(sessionId, task, transport, store)),
-  );
-  const failed = results.filter(
-    (result): result is PromiseRejectedResult => result.status === "rejected",
-  );
-  if (failed.length === 0) return;
-  const reason = failed[0]!.reason;
-  const detail = reason instanceof Error ? reason.message : String(reason);
-  throw new Error(
-    failed.length === tasks.length
-      ? `Could not stop background tasks: ${detail}`
-      : `Could not stop ${failed.length} of ${tasks.length} background tasks: ${detail}`,
-  );
 }

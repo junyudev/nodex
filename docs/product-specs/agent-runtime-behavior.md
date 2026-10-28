@@ -571,10 +571,17 @@ appears as a compact row that opens the one subagent it names. When
 a report starts an automatic Run, that row opens the Run's response, so the reason the
 Agent continued is visible before its answer.
 
-When a chat has no foreground Run but background work is still live, or a delegated result
-will start the Agent again on its own, the composer says so in one line, such as "Waiting
-for 2 background tasks · resumes automatically", with Stop for every live subagent. The line
-belongs to the Session's root conversation; an opened subagent shows its own Runs.
+Background work an Agent leaves running, such as a Claude Code background shell or Monitor,
+belongs to the Session: its Thread Summary lists every such task in the Session's
+conversations under Background, by name, with its command, age and the end of its output.
+The list is the same set of facts that keeps the chat's sidebar spinner turning. Stop ends
+the named tasks through the conversation and Agent that own them: Claude Code stops the task
+in its running process, and a task whose process has already exited leaves the list. Stop all
+sends exactly the listed tasks and never interrupts the Agent's reply or its subagents. The
+composer carries no background status; the sidebar's muted spinner and the summary action's
+dot show that work is live. A delegated task's Stop cancels it the way its delegating Agent
+would: its conversation stops, the tasks it delegated stop, and its pending result is no
+longer delivered.
 
 Completed image-file reads, including Claude Code `Read`, appear as image-view activity.
 Consecutive reads share one collapsed `Viewed N images` row; expanding it loads thumbnails
@@ -797,8 +804,9 @@ Main keeps one projection of live execution for Runtime-bound Sessions and serve
 window. A Session is running while its root has an active Run, waiting while an information
 question awaits the user, and background while delegated or native background work is live
 or a delegated result will wake it; idle Sessions are absent. Each activity names the root
-Thread, active Run, pending question and live task counts, whether the Session resumes
-automatically, and its provider and model. Core never stores these facts.
+Thread, active Run, pending question count, its provider and model, and the live background
+tasks of the root and its delegated conversations (at most 25, each with its owning
+conversation, name, command and start time). Core never stores these facts.
 
 Each execution process generation is read once in bounded pages. One execution observation
 then reports which roots changed, and only those roots are re-read and mapped to their Session

@@ -5,6 +5,7 @@ import {
   NodeId,
   type OrchestrationV2AppThread,
   type OrchestrationV2Run,
+  type OrchestrationV2PendingBackgroundTask,
   type OrchestrationV2Subagent,
   ProjectId,
   ProviderDriverKind,
@@ -155,14 +156,18 @@ const fixture = Effect.gen(function* () {
         resolvedAt: status === "pending" ? null : now,
       },
     });
-  const roster = (threadId: ThreadId, tasks: number) =>
+  const roster = (
+    threadId: ThreadId,
+    tasks: number | ReadonlyArray<OrchestrationV2PendingBackgroundTask>,
+    providerSuffix = "",
+  ) =>
     apply({
       type: "provider-thread.updated",
       threadId,
       driver,
       providerInstanceId,
       payload: {
-        id: ProviderThreadId.make(`provider-thread:${threadId}`),
+        id: ProviderThreadId.make(`provider-thread:${threadId}${providerSuffix}`),
         appThreadId: threadId,
         ownerNodeId: null,
         driver,
@@ -177,11 +182,14 @@ const fixture = Effect.gen(function* () {
         forkedFrom: null,
         createdAt: now,
         updatedAt: now,
-        pendingBackgroundTasks: Array.from({ length: tasks }, (_, index) => ({
-          taskId: `background-${index}`,
-          description: "Still running",
-          kind: "command" as const,
-        })),
+        pendingBackgroundTasks:
+          typeof tasks === "number"
+            ? Array.from({ length: tasks }, (_, index) => ({
+                taskId: `background-${index}`,
+                description: "Still running",
+                kind: "command" as const,
+              }))
+            : tasks,
       },
     });
   return { thread, run, task, request, roster, now };
@@ -197,8 +205,6 @@ const activity = (rootThreadIds?: ReadonlyArray<string>) =>
             status: item.status,
             activeRunId: item.activeRunId,
             pendingRequestCount: item.pendingRequestCount,
-            activeTaskCount: item.activeTaskCount,
-            resumesAutomatically: item.resumesAutomatically,
           },
         ]),
       ),
@@ -232,32 +238,132 @@ it.effect("reports running, waiting and background roots and rolls descendants u
         status: "running",
         activeRunId: null,
         pendingRequestCount: 0,
-        activeTaskCount: 1,
-        resumesAutomatically: true,
       },
       "root:roster": {
         status: "background",
         activeRunId: null,
         pendingRequestCount: 0,
-        activeTaskCount: 2,
-        resumesAutomatically: false,
       },
       "root:running": {
         status: "running",
         activeRunId: runningRun.id,
         pendingRequestCount: 0,
-        activeTaskCount: 0,
-        resumesAutomatically: false,
       },
       "root:waiting": {
         status: "waiting",
         activeRunId: RunId.make("run:root:waiting:1"),
         pendingRequestCount: 1,
-        activeTaskCount: 0,
-        resumesAutomatically: false,
       },
     });
   }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "lists only native background roster tasks across the root tree during foreground work",
+  () =>
+    Effect.gen(function* () {
+      const { thread, run, roster } = yield* fixture;
+      const root = yield* thread("root:tasks");
+      yield* run(root, "running");
+      const child = yield* thread("child:tasks", root);
+      const earlier = DateTime.makeUnsafe("2026-10-01T00:00:00.000Z");
+      const later = DateTime.makeUnsafe("2026-10-02T00:00:00.000Z");
+      yield* roster(root, [
+        {
+          taskId: "shell",
+          kind: "command",
+          description: "Dev server",
+          command: "vp run dev",
+          startedAt: later,
+        },
+        { taskId: "native-agent", kind: "subagent" },
+      ]);
+      // A prior provider thread's roster stays live even after a different thread owns the Run.
+      yield* roster(root, [{ taskId: "old-provider", kind: "background_task" }], ":earlier");
+      yield* roster(child, [
+        { taskId: "monitor", kind: "monitor", command: "watch deploy", startedAt: earlier },
+      ]);
+      const result = yield* readRootActivity({ rootThreadIds: [root] });
+      assert.equal(result.items[0]?.status, "running");
+      assert.deepEqual(result.items[0]?.backgroundTasks, [
+        {
+          threadId: root,
+          threadTitle: null,
+          taskId: "old-provider",
+          kind: "background_task",
+          description: null,
+          command: null,
+          startedAt: null,
+        },
+        {
+          threadId: child,
+          threadTitle: "child:tasks",
+          taskId: "monitor",
+          kind: "monitor",
+          description: null,
+          command: "watch deploy",
+          startedAt: DateTime.formatIso(earlier),
+        },
+        {
+          threadId: root,
+          threadTitle: null,
+          taskId: "shell",
+          kind: "command",
+          description: "Dev server",
+          command: "vp run dev",
+          startedAt: DateTime.formatIso(later),
+        },
+      ]);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect("bounds each root to its oldest 25 tasks with a stable native-id tie break", () =>
+  Effect.gen(function* () {
+    const { thread, roster } = yield* fixture;
+    const root = yield* thread("root:bounded");
+    const child = yield* thread("child:bounded", root);
+    const startedAt = DateTime.makeUnsafe("2026-10-01T00:00:00.000Z");
+    const tasks = Array.from({ length: 30 }, (_, index) => ({
+      taskId: `task:${String(index).padStart(2, "0")}`,
+      kind: "command" as const,
+      startedAt,
+    }));
+    yield* roster(root, tasks.slice(15).reverse());
+    yield* roster(child, tasks.slice(0, 15).reverse());
+    const other = yield* thread("root:other");
+    yield* roster(other, 2);
+    const page = yield* readRootActivity({});
+    const point = yield* readRootActivity({ rootThreadIds: [root] });
+    const listed = page.items.find((item) => item.rootThreadId === root)!.backgroundTasks;
+    assert.deepEqual(
+      listed.map((task) => task.taskId),
+      tasks.slice(0, 25).map((task) => task.taskId),
+    );
+    assert.deepEqual(point.items[0]?.backgroundTasks, listed);
+    assert.equal(page.items.find((item) => item.rootThreadId === other)?.backgroundTasks.length, 2);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "deduplicates task ids within a thread before bounding a root, while retaining the same id in a child",
+  () =>
+    Effect.gen(function* () {
+      const { thread, roster } = yield* fixture;
+      const root = yield* thread("root:dedupe");
+      const child = yield* thread("child:dedupe", root);
+      const task = { taskId: "shared", kind: "command" as const, command: "sleep 60" };
+      yield* roster(root, [task]);
+      yield* roster(root, [task], ":duplicate");
+      yield* roster(child, [task]);
+      const page = yield* readRootActivity({ rootThreadIds: [root] });
+      assert.deepEqual(
+        page.items[0]!.backgroundTasks.map(({ threadId, taskId }) => ({ threadId, taskId })),
+        [
+          { threadId: child, taskId: "shared" },
+          { threadId: root, taskId: "shared" },
+        ],
+      );
+    }).pipe(Effect.provide(layer)),
 );
 
 it.effect("keeps a finished parent in the background until its delegated result wakes it", () =>
@@ -271,7 +377,8 @@ it.effect("keeps a finished parent in the background until its delegated result 
       childThreadId: yield* thread("child:waited", parent),
       completionWake: "settled_only",
     });
-    assert.isFalse((yield* activity(["root:wake"]))["root:wake"]?.resumesAutomatically);
+    // The waited child is live work, so the root is in the background while it runs.
+    assert.equal((yield* activity(["root:wake"]))["root:wake"]?.status, "background");
     yield* task(parentRun, "task:waited", { ...waited, status: "completed", result: "done" });
 
     const live = yield* task(parentRun, "task:wake", {
@@ -282,8 +389,6 @@ it.effect("keeps a finished parent in the background until its delegated result 
       status: "background",
       activeRunId: null,
       pendingRequestCount: 0,
-      activeTaskCount: 1,
-      resumesAutomatically: true,
     });
 
     // The finished child's result is claimed for an open delivery: the root still resumes.
@@ -300,7 +405,7 @@ it.effect("keeps a finished parent in the background until its delegated result 
         delivery: { generation: 1, messageId: MessageId.make("message:wake"), taskIds: [live.id] },
       },
     });
-    assert.isTrue((yield* activity(["root:wake"]))["root:wake"]?.resumesAutomatically);
+    assert.equal((yield* activity(["root:wake"]))["root:wake"]?.status, "background");
 
     // Once delivered and the cohort settles, the root is idle and absent.
     yield* task(parentRun, "task:wake", {
@@ -336,11 +441,12 @@ it.effect("pages non-idle roots by cursor", () =>
 
 it.effect("reads activity from live-state indexes only at 10,000 historical Runs", () =>
   Effect.gen(function* () {
-    const { thread, run, now } = yield* fixture;
+    const { thread, run, roster, now } = yield* fixture;
     const settled = yield* thread("root:history");
     yield* seedUndecodableHistory({ threadId: settled, at: DateTime.formatIso(now) });
     const live = yield* thread("root:live");
     yield* run(live, "running", { ordinal: 1 });
+    yield* roster(live, 1);
     const page = yield* explainExecutedSql(readRootActivity({}));
     const point = yield* explainExecutedSql(readRootActivity({ rootThreadIds: ["root:live"] }));
     assert.deepEqual(
@@ -351,8 +457,25 @@ it.effect("reads activity from live-state indexes only at 10,000 historical Runs
       point.result.items.map((item) => item.rootThreadId),
       ["root:live"],
     );
-    for (const { plan } of [...page.plans, ...point.plans])
-      assert.deepEqual(fullHistoryScans(plan, ["facts", "rooted"]), []);
+    assert.equal(page.result.items[0]?.backgroundTasks[0]?.taskId, "background-0");
+    for (const { plan } of [...page.plans, ...point.plans]) {
+      // Window/aggregate subqueries consume only the indexed live facts above.
+      const boundedSubqueries = plan.flatMap(({ detail }) =>
+        /^SCAN \(subquery-\d+\)$/.test(detail) ? [detail.slice(5)] : [],
+      );
+      assert.deepEqual(
+        fullHistoryScans(plan, [
+          "facts",
+          "rooted",
+          "task",
+          "activity",
+          "roster_tasks",
+          "ranked_tasks",
+          ...boundedSubqueries,
+        ]),
+        [],
+      );
+    }
     assert.deepEqual(historyWideReads([...page.plans, ...point.plans]), []);
   }).pipe(Effect.provide(layer)),
 );

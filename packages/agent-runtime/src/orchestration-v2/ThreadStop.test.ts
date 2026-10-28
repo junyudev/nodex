@@ -8,6 +8,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderSessionId,
+  ProviderThreadId,
   ProviderTurnId,
   ThreadId,
   TurnItemId,
@@ -26,6 +27,7 @@ import { CLAUDE_PROVIDER } from "./Adapters/ClaudeAdapterV2.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import { OrchestrationEffectRequestV2 } from "./EffectOutbox.ts";
+import { readRootActivity } from "./ExecutionActivity.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
@@ -757,4 +759,192 @@ it.effect(
       );
       assert.isTrue(Exit.isFailure(unrelated));
     }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "stops explicit roster ids idempotently without touching the Run, watches or subagents",
+  () =>
+    Effect.gen(function* () {
+      const threads = yield* ThreadManagementService.ThreadManagementService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread:background-stop");
+      yield* createWatchingThread(threadId, 31);
+      yield* watch(threadId, 32);
+      yield* send(threadId, "foreground", "start_immediately");
+      yield* delegate(threadId, "keeps-working");
+      const before = yield* orchestrator.getThreadProjection(threadId);
+      const owner = before.providerThreads[0]!;
+      const now = yield* DateTime.now;
+      yield* projections.apply({
+        id: EventId.make("event:background-stop:roster"),
+        type: "provider-thread.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          ...owner,
+          providerSessionId: ProviderSessionId.make("session:background-stop"),
+          pendingBackgroundTasks: [
+            {
+              taskId: "shell",
+              kind: "command",
+              startedAt: now,
+              turnItemId: TurnItemId.make("launch"),
+            },
+            { taskId: "monitor", kind: "monitor" },
+            { taskId: "opaque", kind: "background_task" },
+            { taskId: "native-child", kind: "subagent" },
+          ],
+        },
+      });
+      const previousProviderId = ProviderThreadId.make("provider-thread:previous-background");
+      yield* projections.apply({
+        id: EventId.make("event:background-stop:previous-roster"),
+        type: "provider-thread.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          ...owner,
+          id: previousProviderId,
+          providerSessionId: ProviderSessionId.make("session:previous-background"),
+          pendingBackgroundTasks: [{ taskId: "previous-shell", kind: "command" }],
+        },
+      });
+      const savedRoster = yield* sql<{
+        payload_json: string;
+      }>`SELECT payload_json FROM orchestration_v2_projection_provider_threads WHERE provider_thread_id = ${owner.id}`;
+      assert.equal(
+        JSON.parse(savedRoster[0]!.payload_json).pendingBackgroundTasks[0].startedAt,
+        DateTime.formatIso(now),
+      );
+      const one = {
+        threadId,
+        commandId: CommandId.make("command:background-one"),
+        taskIds: ["shell"],
+      };
+      assert.deepEqual(yield* threads.stopBackgroundWork(one), { stopping: ["shell"] });
+      const oneEffects = yield* sql<{
+        payload_json: string;
+      }>`SELECT payload_json FROM orchestration_v2_effect_outbox WHERE command_id = ${one.commandId}`;
+      assert.equal(oneEffects.length, 1);
+      assert.deepEqual(JSON.parse(oneEffects[0]!.payload_json), {
+        type: "provider-task.stop",
+        providerThreadId: owner.id,
+        providerSessionId: "session:background-stop",
+        taskId: "shell",
+        kind: "command",
+        turnItemIds: [],
+      });
+      yield* threads.dispatch({
+        type: "background-task.settle",
+        commandId: CommandId.make("command:background-one-settled"),
+        threadId,
+        providerThreadId: owner.id,
+        taskId: "shell",
+        turnItemIds: [],
+      });
+      assert.deepEqual(yield* threads.stopBackgroundWork(one), { stopping: ["shell"] });
+      assert.equal(
+        (yield* sql`SELECT effect_id FROM orchestration_v2_effect_outbox WHERE command_id = ${one.commandId}`)
+          .length,
+        1,
+      );
+      assert.deepEqual(
+        yield* threads.stopBackgroundWork({
+          threadId,
+          commandId: CommandId.make("command:background-gone"),
+          taskIds: ["gone"],
+        }),
+        { stopping: [] },
+      );
+      const allCommandId = CommandId.make("command:background-all");
+      const shown = (yield* readRootActivity({ rootThreadIds: [threadId] })).items[0]!
+        .backgroundTasks;
+      assert.deepEqual(
+        shown.map((task) => task.taskId),
+        ["monitor", "opaque", "previous-shell"],
+      );
+      const all = yield* threads.stopBackgroundWork({
+        threadId,
+        commandId: allCommandId,
+        taskIds: [
+          ...shown.map((task) => task.taskId),
+          "native-child",
+          "gone",
+          "pull-request-watch:github.com/pingdotgg/t3code#31",
+        ],
+      });
+      assert.deepEqual([...all.stopping].sort(), ["monitor", "opaque", "previous-shell"]);
+      const allEffects = yield* sql<{
+        payload_json: string;
+      }>`SELECT payload_json FROM orchestration_v2_effect_outbox WHERE command_id = ${allCommandId}`;
+      assert.deepEqual(
+        allEffects
+          .map((row) => String(JSON.parse(row.payload_json).taskId))
+          .toSorted((left, right) => left.localeCompare(right)),
+        ["monitor", "opaque", "previous-shell"],
+      );
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.deepEqual(after.runs, before.runs);
+      assert.deepEqual(after.subagents, before.subagents);
+      assert.deepEqual(after.thread.pullRequests, before.thread.pullRequests);
+      assert.isTrue(
+        after.providerThreads
+          .find((thread) => thread.id === owner.id)!
+          .pendingBackgroundTasks!.some((task) => task.taskId === "native-child"),
+      );
+      assert.deepEqual(
+        yield* threads.stopBackgroundWork({
+          threadId,
+          commandId: CommandId.make("command:background-native-child"),
+          taskIds: ["native-child"],
+        }),
+        { stopping: [] },
+      );
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("internal task settlement rejects a child-owned provider thread", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:settle-ownership");
+    yield* createWatchingThread(threadId, 41);
+    yield* send(threadId, "parent", "start_immediately");
+    const childThreadId = yield* delegate(threadId, "child-owner");
+    const parent = yield* orchestrator.getThreadProjection(threadId);
+    const now = yield* DateTime.now;
+    const owner = {
+      ...parent.providerThreads[0]!,
+      id: ProviderThreadId.make("provider-thread:child-owned"),
+      appThreadId: childThreadId,
+      ownerNodeId: parent.runs[0]!.rootNodeId!,
+      pendingBackgroundTasks: [{ taskId: "child-shell", kind: "command" as const }],
+    };
+    yield* projections.apply({
+      id: EventId.make("event:child-owned-roster"),
+      type: "provider-thread.updated",
+      threadId: childThreadId,
+      occurredAt: now,
+      payload: owner,
+    });
+    const result = yield* orchestrator
+      .dispatch({
+        type: "background-task.settle",
+        commandId: CommandId.make("command:wrong-owner-settle"),
+        threadId,
+        providerThreadId: owner.id,
+        taskId: "child-shell",
+        turnItemIds: [],
+      })
+      .pipe(Effect.result);
+    assert.equal(result._tag, "Failure");
+    assert.deepEqual(
+      (yield* projections.getThreadRecords(childThreadId, [
+        "providerThreads",
+      ])).providerThreads.find((thread) => thread.id === owner.id)?.pendingBackgroundTasks,
+      owner.pendingBackgroundTasks,
+    );
+  }).pipe(Effect.provide(layerTest)),
 );

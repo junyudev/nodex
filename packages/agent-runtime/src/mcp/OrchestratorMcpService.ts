@@ -1,3 +1,9 @@
+import {
+  delegatedTaskExecutionState,
+  delegatedTaskRun,
+  isTerminalTaskStatus,
+  taskStatusForRun,
+} from "../orchestration-v2/DelegatedTaskState.ts";
 import { createHash } from "node:crypto";
 import {
   CommandId,
@@ -78,11 +84,6 @@ const DEFAULT_THREAD_ITEM_MAX_CHARS = 20_000;
 interface ResolvedTarget {
   readonly modelSelection: ModelSelection;
 }
-
-type TerminalTaskStatus = Extract<
-  OrchestratorMcpDelegateTaskResult["status"],
-  "completed" | "failed" | "cancelled" | "interrupted"
->;
 
 export interface OrchestratorMcpServiceShape {
   /** Only complete, canonically verified final results consume a direct child's delivery. */
@@ -234,52 +235,6 @@ function invalidOptionSelections(
   return problems;
 }
 
-function taskStatusForRun(
-  run: Pick<OrchestrationV2Run, "status"> | undefined,
-): OrchestratorMcpDelegateTaskResult["status"] {
-  switch (run?.status) {
-    case "queued":
-      return "queued";
-    case "waiting":
-      return "waiting";
-    case "completed":
-      return "completed";
-    case "failed":
-      return "failed";
-    case "cancelled":
-    case "rolled_back":
-      return "cancelled";
-    case "interrupted":
-      return "interrupted";
-    case "preparing":
-    case "starting":
-    case "running":
-    case undefined:
-      return "running";
-  }
-}
-
-export function delegatedTaskRun(
-  childProjection: Pick<OrchestrationV2ThreadProjection, "runs" | "contextTransfers">,
-  task: OrchestrationV2Subagent,
-): OrchestrationV2Run | undefined {
-  const taskRun = childProjection.runs.find((run) => run.delegatedTaskId === task.id);
-  if (taskRun !== undefined) return taskRun;
-  const spawnTransfer = childProjection.contextTransfers.find(
-    (transfer) =>
-      transfer.type === "subagent_spawn" &&
-      transfer.sourceThreadId === task.threadId &&
-      transfer.targetThreadId === task.childThreadId,
-  );
-  if (spawnTransfer === undefined) {
-    // Legacy delegated-task projections predate the durable spawn transfer.
-    return childProjection.runs[0];
-  }
-  return spawnTransfer.targetRunId === null
-    ? undefined
-    : childProjection.runs.find((run) => run.id === spawnTransfer.targetRunId);
-}
-
 export function hasPendingChildRuns(
   childProjection: Pick<OrchestrationV2ThreadProjection, "runs">,
   delegatedRun: OrchestrationV2Run | undefined,
@@ -290,17 +245,6 @@ export function hasPendingChildRuns(
       !ThreadManagementService.isTerminalRunStatus(run.status) &&
       !(run.status === "queued" && run.queueHeld === true) &&
       (delegatedRun === undefined || run.ordinal > delegatedRun.ordinal),
-  );
-}
-
-function isTerminalTaskStatus(
-  status: OrchestratorMcpDelegateTaskResult["status"],
-): status is TerminalTaskStatus {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "cancelled" ||
-    status === "interrupted"
   );
 }
 
@@ -948,11 +892,6 @@ export const make = Effect.gen(function* () {
         .delegatedTaskResultPending(task.childThreadId, task.id)
         .pipe(Effect.mapError(threadManagementFailure));
       const taskResultRun = latest;
-      const taskWorkState = !isTerminalTaskStatus(taskStatusForRun(taskResultRun))
-        ? "working"
-        : resultPending
-          ? "waiting_for_children"
-          : "result_available";
       const resultRunIds = [
         ...new Set(
           [taskResultRun?.id, terminalRun?.id].filter((id): id is RunId => id !== undefined),
@@ -971,24 +910,12 @@ export const make = Effect.gen(function* () {
         messages: [...childControls.messages, ...resultRecords.messages],
         turnItems: resultRecords.turnItems,
       };
-      // A restart cut the child's run and its continuation has not settled, or
-      // the child started working again after this read.
-      const workState = task.result !== null ? "result_available" : taskWorkState;
-      const status =
-        task.result !== null
-          ? taskStatusForRun(
-              task.status === "completed" ||
-                task.status === "failed" ||
-                task.status === "cancelled" ||
-                task.status === "interrupted"
-                ? { status: task.status }
-                : childRun,
-            )
-          : workState === "result_available"
-            ? taskStatusForRun(taskResultRun ?? childRun)
-            : taskStatusForRun(taskResultRun ?? childRun) === "queued"
-              ? "queued"
-              : "running";
+      const { status, workState } = delegatedTaskExecutionState({
+        task,
+        childRun,
+        latestRun: taskResultRun,
+        resultPending,
+      });
       const derivedResult =
         task.result !== null
           ? task.result
@@ -1466,106 +1393,30 @@ export const make = Effect.gen(function* () {
         }
         return task.childThreadId;
       }),
-    cancelTask: (callerScope, input) =>
+    cancelTask: (scope, input) =>
       Effect.gen(function* () {
-        const scope = callerScope;
-        const current = yield* readTask(scope, input.taskId);
+        yield* readTask(scope, input.taskId);
         const key = yield* requestKey(input.clientRequestId);
-        const parentId = yield* taskOwner(input.taskId);
-        const parentProjection = yield* threadManagement
-          .getThreadRecords(parentId, ["subagents"], { subagentIds: [input.taskId] })
-          .pipe(Effect.mapError(threadManagementFailure));
-        const parentTask = parentProjection.subagents.find(
-          (task) => task.id === input.taskId && task.origin === "app_owned",
-        );
-        const disposeCompletionDelivery =
-          parentTask?.completionDelivery?.state === "disposed"
-            ? Effect.void
-            : threadManagement
-                .dispatch({
-                  type: "delegated_task.completion-delivery.dispose",
-                  commandId: stableCommandId({
-                    scope,
-                    requestKey: key,
-                    operation: "cancel-task-completion-delivery",
-                  }),
-                  parentThreadId: parentId,
-                  taskId: input.taskId,
-                })
-                .pipe(
-                  Effect.asVoid,
-                  Effect.mapError((error) =>
-                    failure(
-                      "orchestration_error",
-                      `Unable to dispose delegated task ${input.taskId} completion delivery: ${errorMessage(error)}`,
-                    ),
-                  ),
-                );
-        // Cancelling stops the child thread the way Stop does, including work that came
-        // after a published result: follow-up runs, pull request watch wakes, and the
-        // tasks it delegated. The published result stays terminal.
-        const stopChild = Effect.gen(function* () {
-          const commandId = stableCommandId({ scope, requestKey: key, operation: "cancel-task" });
-          const reason = input.reason;
-          yield* threadManagement
-            .dispatch({
-              type: "thread.stop",
-              commandId,
-              threadId: current.childThreadId,
-              ...(reason === undefined ? {} : { reason }),
-            })
-            .pipe(
-              Effect.mapError((error) =>
-                failure(
-                  "task_not_cancellable",
-                  `Unable to stop delegated task ${input.taskId}: ${errorMessage(error)}`,
-                ),
-              ),
-            );
-          // A retry with the same clientRequestId repeats only the stops that failed.
-          yield* threadManagement
-            .stopDelegatedTasks({ threadId: current.childThreadId, commandId, reason })
-            .pipe(
-              Effect.mapError((error) =>
-                failure(
-                  "task_not_cancellable",
-                  `Stopped delegated task ${input.taskId}, but not every task it delegated: ${errorMessage(error)}`,
-                ),
-              ),
-            );
-        });
-        if (isTerminalTaskStatus(current.status)) {
-          yield* stopChild;
-          yield* disposeCompletionDelivery;
-          return {
+        const threadId = yield* taskOwner(input.taskId);
+        return yield* threadManagement
+          .cancelDelegatedTask({
+            threadId,
             taskId: input.taskId,
-            status: current.status,
-          } satisfies OrchestratorMcpTaskCancelResult;
-        }
-        // A task waiting on its own delegates has work to stop below it. One with neither
-        // a running turn nor delegates (such as one awaiting a restart) keeps its delivery.
-        const shell = yield* threadManagement
-          .getThreadShell(current.childThreadId)
-          .pipe(Effect.mapError(threadManagementFailure));
-        if (current.workState !== "waiting_for_children" && shell?.activeRunId == null) {
-          return yield* failure(
-            "task_not_cancellable",
-            `Delegated task ${input.taskId} has no interruptible child run.`,
+            commandId: stableCommandId({ scope, requestKey: key, operation: "cancel-task" }),
+            ...(input.reason === undefined ? {} : { reason: input.reason }),
+          })
+          .pipe(
+            Effect.mapError((error) =>
+              failure(
+                error.reason === "not-found"
+                  ? "task_not_found"
+                  : error.reason === "orchestration-error"
+                    ? "orchestration_error"
+                    : "task_not_cancellable",
+                `Unable to stop delegated task ${input.taskId}: ${errorMessage(error.cause ?? error)}`,
+              ),
+            ),
           );
-        }
-        yield* stopChild;
-        yield* disposeCompletionDelivery.pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("orchestrator-mcp.cancel-task.delivery-dispose-failed", {
-              taskId: input.taskId,
-              cause,
-            }),
-          ),
-        );
-        return {
-          taskId: input.taskId,
-          status: "cancel_requested",
-        };
       }),
     readThread: (scope, input) =>
       Effect.gen(function* () {

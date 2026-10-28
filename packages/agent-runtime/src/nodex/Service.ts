@@ -14,6 +14,7 @@ import {
   ProviderInteractionMode,
   ModelSelection,
   MessageId,
+  NodeId,
   OrchestrationV2Command,
   OrchestrationV2StoredEvent,
   OrchestrationV2ThreadHistoryPage,
@@ -29,6 +30,7 @@ import {
   ServerProvider,
   OrchestrationV2ThreadShell,
   OrchestrationV2DomainEvent,
+  OrchestrationV2BackgroundTaskIds,
   PersistChatAttachmentsInput,
   PersistChatAttachmentsResult,
   ProviderInstanceConfigMap,
@@ -237,6 +239,27 @@ const AgentRequest = Schema.Union([
           }),
         ),
       ),
+    }),
+  ),
+  request(
+    "background.stop",
+    Schema.Struct({
+      threadId: ThreadId,
+      commandId: CommandId,
+      taskIds: OrchestrationV2BackgroundTaskIds,
+    }),
+  ),
+  request(
+    "background.output",
+    Schema.Struct({ threadId: ThreadId, taskId: Schema.String.check(Schema.isMinLength(1)) }),
+  ),
+  request(
+    "tasks.cancel",
+    Schema.Struct({
+      threadId: ThreadId,
+      taskId: NodeId,
+      commandId: CommandId,
+      reason: Schema.optional(Schema.String),
     }),
   ),
   request(
@@ -858,6 +881,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* projections
           .getOpeningRequest(input.input.threadId)
           .pipe(Effect.flatMap(encodeQueuedMessage));
+      case "background.stop":
+        return yield* threads.stopBackgroundWork(input.input);
+      case "background.output":
+        return yield* threads.backgroundOutput(input.input);
+      case "tasks.cancel":
+        return yield* threads.cancelDelegatedTask(input.input);
       case "tasks.overview":
         return yield* projections
           .getThreadSubagentOverview({
@@ -1455,6 +1484,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "storage.snapshot.acquire":
       case "storage.snapshot.release":
       case "thread.read":
+      case "background.output":
       case "tasks.overview":
       case "native-session.authority":
       case "thread.authority":

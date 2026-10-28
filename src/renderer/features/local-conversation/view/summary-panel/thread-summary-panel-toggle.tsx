@@ -32,16 +32,31 @@ type ThreadSummaryPanelToggleButtonProps = Omit<
 > & {
   pressed: boolean;
   label?: string;
+  /** Live background tasks the summary lists; a closed summary marks that work is running. */
+  backgroundCount?: number;
 };
+
+/** The toggle's name also says what the closed summary is holding. */
+export function threadSummaryToggleLabel(label: string, backgroundCount: number): string {
+  if (backgroundCount === 0) return label;
+  return `${label} · ${backgroundCount} background ${backgroundCount === 1 ? "task" : "tasks"}`;
+}
 
 export const ThreadSummaryPanelToggleButton = forwardRef<
   HTMLButtonElement,
   ThreadSummaryPanelToggleButtonProps
 >(function ThreadSummaryPanelToggleButton(
-  { pressed, label = "Toggle pinned summary", className, type = "button", ...buttonProps },
+  {
+    pressed,
+    label = "Toggle pinned summary",
+    backgroundCount = 0,
+    className,
+    type = "button",
+    ...buttonProps
+  },
   ref,
 ) {
-  const ariaLabel = buttonProps["aria-label"] ?? label;
+  const ariaLabel = buttonProps["aria-label"] ?? threadSummaryToggleLabel(label, backgroundCount);
   const density = useContext(ThreadSummaryToggleDensityContext);
   return (
     <button
@@ -58,9 +73,18 @@ export const ThreadSummaryPanelToggleButton = forwardRef<
         className,
       )}
     >
-      <PinnedSummaryIcon
-        className={density === "compact" ? "icon-xs shrink-0" : "shrink-0 overflow-visible"}
-      />
+      <span className="relative inline-flex">
+        <PinnedSummaryIcon
+          className={density === "compact" ? "icon-xs shrink-0" : "shrink-0 overflow-visible"}
+        />
+        {backgroundCount > 0 && !pressed ? (
+          <span
+            aria-hidden="true"
+            data-thread-summary-background-indicator=""
+            className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-current"
+          />
+        ) : null}
+      </span>
     </button>
   );
 });
@@ -71,14 +95,16 @@ export function ThreadSummaryPanelToggle({
   pressed,
   onClick,
   label = "Toggle pinned summary",
+  backgroundCount = 0,
   className,
   ...buttonProps
 }: ThreadSummaryPanelToggleProps) {
   return (
-    <NodexTooltip tooltipContent={label} side="bottom">
+    <NodexTooltip tooltipContent={threadSummaryToggleLabel(label, backgroundCount)} side="bottom">
       <ThreadSummaryPanelToggleButton
         {...buttonProps}
         label={label}
+        backgroundCount={backgroundCount}
         pressed={pressed}
         onClick={onClick}
         className={className}

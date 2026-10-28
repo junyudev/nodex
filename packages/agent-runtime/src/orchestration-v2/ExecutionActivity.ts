@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import {
@@ -10,14 +11,29 @@ export const EXECUTION_ACTIVITY_PAGE_LIMIT = 200;
 export const EXECUTION_ACTIVITY_MAX_PAGE_LIMIT = 500;
 export const EXECUTION_ACTIVITY_MAX_POINT_READS = 64;
 
+export const EXECUTION_ACTIVITY_BACKGROUND_TASK_LIMIT = 25;
+
+const BackgroundTask = Schema.Struct({
+  threadId: Schema.String,
+  threadTitle: Schema.NullOr(Schema.String),
+  taskId: Schema.String,
+  kind: Schema.Literals(["command", "monitor", "background_task"]),
+  description: Schema.NullOr(Schema.String),
+  command: Schema.NullOr(Schema.String),
+  startedAt: Schema.NullOr(Schema.String),
+});
+export type RootActivityBackgroundTask = typeof BackgroundTask.Type;
+const decodeBackgroundTasks = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Array(BackgroundTask)),
+);
+
 /** Live execution facts for one non-idle root Thread; descendants roll up to their root. */
 export interface RootActivity {
   readonly rootThreadId: string;
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
-  readonly activeTaskCount: number;
-  readonly resumesAutomatically: boolean;
+  readonly backgroundTasks: ReadonlyArray<RootActivityBackgroundTask>;
   readonly providerInstanceId: string;
   readonly model: string;
   readonly updatedAt: string;
@@ -83,39 +99,43 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         readonly active_tasks: number;
         readonly resumes: number;
         readonly fact_at: string | null;
+        readonly background_tasks_json: string;
       }>`
-        WITH facts(thread_id, kind, at, amount) AS MATERIALIZED (
-          SELECT thread_id, 'run', requested_at, 1 FROM orchestration_v2_projection_runs
+        WITH facts(thread_id, kind, at, amount, background_task) AS MATERIALIZED (
+          SELECT thread_id, 'run', requested_at, 1, NULL FROM orchestration_v2_projection_runs
           WHERE ${sql.literal(LIVE_RUN_PREDICATE)}
           UNION ALL
-          SELECT thread_id, 'request', created_at, 1
+          SELECT thread_id, 'request', created_at, 1, NULL
           FROM orchestration_v2_projection_runtime_requests
           WHERE status = 'pending' AND kind NOT IN ('dynamic_tool_call', 'auth_refresh')
           UNION ALL
-          SELECT thread_id, 'task', updated_at, 1 FROM orchestration_v2_projection_subagents
+          SELECT thread_id, 'task', updated_at, 1, NULL FROM orchestration_v2_projection_subagents
           WHERE status IN ('pending', 'running', 'waiting')
           UNION ALL
-          SELECT thread_id, 'task', updated_at,
-            CASE WHEN json_valid(payload_json)
-              THEN json_array_length(payload_json, '$.pendingBackgroundTasks') ELSE 0 END
-          FROM orchestration_v2_projection_provider_threads
-          WHERE thread_id IS NOT NULL AND (${sql.literal(LIVE_PROVIDER_THREAD_PREDICATE)})
+          SELECT provider.thread_id, 'task', provider.updated_at, 1, task.value
+          FROM orchestration_v2_projection_provider_threads AS provider
+          CROSS JOIN json_each(
+            CASE WHEN json_valid(provider.payload_json) THEN provider.payload_json ELSE '{}' END,
+            '$.pendingBackgroundTasks'
+          ) AS task
+          WHERE provider.thread_id IS NOT NULL AND (${sql.literal(LIVE_PROVIDER_THREAD_PREDICATE)})
           UNION ALL
-          SELECT thread_id, 'wake', NULL, 1 FROM orchestration_v2_projection_runs
+          SELECT thread_id, 'wake', NULL, 1, NULL FROM orchestration_v2_projection_runs
           WHERE ${sql.literal(OPEN_DELIVERY_RUN_PREDICATE)}
           UNION ALL
-          SELECT thread_id, 'wake', updated_at, 1 FROM orchestration_v2_projection_subagents
+          SELECT thread_id, 'wake', updated_at, 1, NULL FROM orchestration_v2_projection_subagents
           WHERE ${sql.literal(WAKING_LIVE_TASK_PREDICATE)}
         ), rooted AS MATERIALIZED (
           SELECT json_extract(thread.payload_json, '$.lineage.rootThreadId') AS root_thread_id,
-            facts.thread_id, facts.kind, facts.at, facts.amount
+            facts.thread_id, facts.kind, facts.at, facts.amount, facts.background_task,
+            json_extract(thread.payload_json, '$.title') AS thread_title
           FROM facts
           -- Keep the live fact set outermost; discovery indexes must never turn this into
           -- a scan of retained Threads before their live facts are looked up.
           CROSS JOIN orchestration_v2_projection_threads AS thread
             ON thread.thread_id = facts.thread_id
           WHERE thread.deleted_at IS NULL
-        )
+        ), activity AS MATERIALIZED (
         SELECT root_thread_id,
           SUM(kind = 'run') AS active_runs,
           SUM(CASE WHEN kind = 'request' THEN amount ELSE 0 END) AS pending_requests,
@@ -129,7 +149,37 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         GROUP BY root_thread_id
         HAVING active_runs > 0 OR pending_requests > 0 OR active_tasks > 0 OR resumes > 0
         ORDER BY root_thread_id
-        LIMIT ${roots === undefined ? limit + 1 : roots.length}`;
+        LIMIT ${roots === undefined ? limit + 1 : roots.length}
+        ), roster_tasks AS MATERIALIZED (
+          SELECT rooted.root_thread_id, rooted.thread_id,
+            CASE WHEN rooted.thread_id = rooted.root_thread_id THEN NULL ELSE rooted.thread_title END AS thread_title,
+            json_extract(background_task, '$.taskId') AS task_id,
+            CASE json_extract(background_task, '$.kind') WHEN 'command' THEN 'command' WHEN 'monitor' THEN 'monitor' ELSE 'background_task' END AS task_kind,
+            json_extract(background_task, '$.description') AS description,
+            json_extract(background_task, '$.command') AS command,
+            json_extract(background_task, '$.startedAt') AS started_at,
+            ROW_NUMBER() OVER (PARTITION BY rooted.thread_id, json_extract(background_task, '$.taskId')
+              ORDER BY json_extract(background_task, '$.startedAt'), rooted.at DESC, background_task) AS duplicate_position
+          FROM rooted
+          INNER JOIN activity ON activity.root_thread_id = rooted.root_thread_id
+          WHERE background_task IS NOT NULL AND json_extract(background_task, '$.kind') IS NOT 'subagent'
+        ), ranked_tasks AS MATERIALIZED (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY root_thread_id
+            ORDER BY started_at, task_id, thread_id) AS position
+          FROM roster_tasks WHERE duplicate_position = 1
+        ), background_tasks AS MATERIALIZED (
+          SELECT root_thread_id,
+            json_group_array(json_object('threadId', thread_id, 'threadTitle', thread_title,
+              'taskId', task_id, 'kind', task_kind, 'description', description,
+              'command', command, 'startedAt', started_at)) AS background_tasks_json
+          FROM (SELECT * FROM ranked_tasks WHERE position <= ${EXECUTION_ACTIVITY_BACKGROUND_TASK_LIMIT}
+            ORDER BY root_thread_id, position)
+          GROUP BY root_thread_id
+        )
+        SELECT activity.*, COALESCE(background_tasks.background_tasks_json, '[]') AS background_tasks_json
+        FROM activity LEFT JOIN background_tasks ON background_tasks.root_thread_id = activity.root_thread_id
+        ORDER BY activity.root_thread_id`;
+
       const page = roots === undefined ? rows.slice(0, limit) : rows;
       const heads =
         page.length === 0
@@ -152,25 +202,23 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
               FROM orchestration_v2_projection_threads AS thread
               WHERE thread.thread_id IN ${sql.in(page.map((row) => row.root_thread_id))}`;
       const headOf = new Map(heads.map((head) => [head.thread_id, head]));
-      const items = page.flatMap((row): ReadonlyArray<RootActivity> => {
+      const items: Array<RootActivity> = [];
+      for (const row of page) {
         const head = headOf.get(row.root_thread_id);
-        if (head === undefined) return [];
-        return [
-          {
-            rootThreadId: row.root_thread_id,
-            status:
-              row.pending_requests > 0 ? "waiting" : row.active_runs > 0 ? "running" : "background",
-            activeRunId: head.active_run_id,
-            pendingRequestCount: row.pending_requests,
-            activeTaskCount: row.active_tasks,
-            resumesAutomatically: row.resumes > 0,
-            providerInstanceId: head.provider_instance_id ?? "",
-            model: head.model ?? "",
-            updatedAt:
-              row.fact_at !== null && row.fact_at > head.updated_at ? row.fact_at : head.updated_at,
-          },
-        ];
-      });
+        if (head === undefined) continue;
+        items.push({
+          rootThreadId: row.root_thread_id,
+          status:
+            row.pending_requests > 0 ? "waiting" : row.active_runs > 0 ? "running" : "background",
+          activeRunId: head.active_run_id,
+          pendingRequestCount: row.pending_requests,
+          backgroundTasks: yield* decodeBackgroundTasks(row.background_tasks_json),
+          providerInstanceId: head.provider_instance_id ?? "",
+          model: head.model ?? "",
+          updatedAt:
+            row.fact_at !== null && row.fact_at > head.updated_at ? row.fact_at : head.updated_at,
+        });
+      }
       return {
         snapshotSequence,
         items,

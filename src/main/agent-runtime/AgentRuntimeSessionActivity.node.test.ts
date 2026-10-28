@@ -25,8 +25,7 @@ const root = (
   status,
   activeRunId: status === "background" ? null : `run:${rootThreadId}`,
   pendingRequestCount: status === "waiting" ? 1 : 0,
-  activeTaskCount: status === "background" ? 1 : 0,
-  resumesAutomatically: status === "background",
+  backgroundTasks: [],
   providerInstanceId: "codex",
   model: "gpt",
   updatedAt: "2026-10-15T10:00:00.000Z",
@@ -206,6 +205,45 @@ it.live("follows running, waiting, background and idle with ordered Session chan
       ],
     );
   }).pipe(Effect.scoped),
+);
+
+it.live(
+  "publishes structural background roster changes even when activity scalars stay equal",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture({ "thread:a": "session:a" });
+      const runtime = yield* fakeRuntime("1");
+      yield* f.attach(runtime.connection);
+      yield* f.until(() => f.changes.some((change) => change.type === "reset"));
+      const task: AgentRootActivity["backgroundTasks"][number] = {
+        threadId: "child",
+        threadTitle: "Deploy",
+        taskId: "shell",
+        kind: "command",
+        description: "Dev server",
+        command: "vp run dev",
+        startedAt: "2026-10-15T09:00:00.000Z",
+      };
+      const base = root("thread:a", "background", { backgroundTasks: [task] });
+      yield* runtime.commit("thread:a", base);
+      yield* f.until(() => f.changes.length === 2);
+      assert.deepEqual((yield* f.activity.read).items[0]?.backgroundTasks, [task]);
+      const reads = runtime.requests.length;
+      yield* runtime.commit("thread:a", { ...base, backgroundTasks: [{ ...task }] });
+      yield* f.until(() => runtime.requests.length > reads);
+      const changed = { ...task, command: "vp run build", threadTitle: "Build" };
+      yield* runtime.commit("thread:a", { ...base, backgroundTasks: [changed] });
+      yield* f.until(() => f.changes.length === 3);
+      assert.deepEqual((yield* f.activity.read).items[0]?.backgroundTasks, [changed]);
+      yield* runtime.commit("thread:a", { ...base, backgroundTasks: [] });
+      yield* f.until(() => f.changes.length === 4);
+      assert.deepEqual(
+        f.changes.flatMap((change) =>
+          change.type === "upsert" ? [change.activity.backgroundTasks] : [],
+        ),
+        [[task], [changed], []],
+      );
+    }).pipe(Effect.scoped),
 );
 
 it.live("a replacement process resets the projection and reloads its live roots", () =>

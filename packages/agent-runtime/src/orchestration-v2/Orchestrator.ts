@@ -74,6 +74,7 @@ import {
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import {
   derivePendingBackgroundWork,
+  liveBackgroundWork,
   pendingBackgroundTurnItems,
 } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as Context from "effect/Context";
@@ -495,6 +496,8 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "prepared-run.progress":
     case "prepared-run.fail":
     case "prepared-run.retry":
+    case "background.stop":
+    case "background-task.settle":
     case "subagent.stop":
     case "run.interrupt":
     case "queued-message.promote-to-steer":
@@ -9668,6 +9671,142 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
     });
 
+  const dispatchBackgroundTaskSettle = Effect.fn("Orchestrator.dispatchBackgroundTaskSettle")(
+    function* (
+      command: Extract<OrchestrationV2ServerCommand, { readonly type: "background-task.settle" }>,
+      events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    ) {
+      const projection = yield* projectionStore
+        .getThreadRecords(command.threadId, ["providerThreads", "turnItems"], {
+          turnItemIds: command.turnItemIds,
+        })
+        .pipe(mapDispatchError(command));
+      const { nodes } = yield* projectionStore
+        .getThreadRecords(command.threadId, ["nodes"], {
+          nodeIds: projection.turnItems.flatMap((item) =>
+            item.nodeId === null ? [] : [item.nodeId],
+          ),
+        })
+        .pipe(mapDispatchError(command));
+      const providerThread = projection.providerThreads.find(
+        (thread) => thread.id === command.providerThreadId,
+      );
+      if (providerThread === undefined) return;
+      if (providerThread.appThreadId !== command.threadId)
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "Background task provider thread does not belong to this thread.",
+        });
+      const now = yield* DateTime.now;
+      if (providerThread?.pendingBackgroundTasks?.some((task) => task.taskId === command.taskId)) {
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "provider-thread.updated",
+          threadId: command.threadId,
+          occurredAt: now,
+          payload: {
+            ...providerThread,
+            pendingBackgroundTasks: providerThread.pendingBackgroundTasks.filter(
+              (task) => task.taskId !== command.taskId,
+            ),
+            updatedAt: now,
+          },
+        });
+      }
+      for (const item of projection.turnItems) {
+        if (
+          item.providerThreadId !== command.providerThreadId ||
+          !isOrchestrationV2WorkActive(item.status)
+        )
+          continue;
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "turn-item.updated",
+          threadId: command.threadId,
+          occurredAt: now,
+          payload: { ...item, status: "interrupted", completedAt: now, updatedAt: now },
+        });
+        const node = nodes.find((candidate) => candidate.id === item.nodeId);
+        if (node !== undefined && isOrchestrationV2WorkActive(node.status))
+          yield* emit(
+            events,
+            command,
+          )({
+            type: "node.updated",
+            threadId: command.threadId,
+            occurredAt: now,
+            payload: { ...node, status: "interrupted", completedAt: now },
+          });
+      }
+    },
+  );
+
+  const dispatchBackgroundStop = Effect.fn("Orchestrator.dispatchBackgroundStop")(function* (
+    command: Extract<OrchestrationV2Command, { readonly type: "background.stop" }>,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+  ) {
+    const projection = yield* loadProjectionForCommand(command, ["providerThreads", "turnItems"], {
+      turnItemStatuses: ["pending", "running", "waiting"],
+      turnItemTypes: ["command_execution", "dynamic_tool", "subagent"],
+    });
+    const requested = new Set(command.taskIds);
+    const tasks = liveBackgroundWork(projection).filter((task) => requested.has(task.taskId));
+    const stopping: Array<string> = [];
+    const now = yield* DateTime.now;
+    for (const task of tasks) {
+      const item = projection.turnItems.find(
+        (item) => item.id === task.turnItemId || item.nativeItemRef?.nativeId === task.taskId,
+      );
+      if (item?.type === "subagent" && item.origin === "app_owned") continue;
+      const owner = projection.providerThreads.find(
+        (thread) =>
+          thread.appThreadId === command.threadId &&
+          thread.pendingBackgroundTasks?.some((entry) => entry.taskId === task.taskId),
+      );
+      if (owner === undefined) continue;
+      const turnItemIds = projection.turnItems
+        .filter(
+          (entry) =>
+            entry.providerThreadId === owner.id &&
+            (entry.id === task.turnItemId || entry.nativeItemRef?.nativeId === task.taskId),
+        )
+        .map((entry) => entry.id);
+      stopping.push(task.taskId);
+      yield* Ref.update(effects, (current) => [
+        ...current,
+        {
+          id: `effect:${command.commandId}:background.stop:${task.taskId}`,
+          commandId: command.commandId,
+          threadId: command.threadId,
+          request: {
+            type: "provider-task.stop",
+            providerThreadId: owner.id,
+            providerSessionId: owner.providerSessionId,
+            taskId: task.taskId,
+            kind: task.kind,
+            turnItemIds,
+          },
+        } satisfies PendingOrchestrationEffectV2,
+      ]);
+    }
+    if (stopping.length > 0)
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "background-work.stop-requested",
+        threadId: command.threadId,
+        occurredAt: now,
+        payload: { stopping },
+      });
+  });
+
   const dispatchSubagentStop = (
     command: Extract<OrchestrationV2Command, { readonly type: "subagent.stop" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
@@ -11715,6 +11854,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.user-input.dismiss":
         yield* dispatchThreadUserInputDismiss(command, events, effects);
         break;
+      case "background.stop":
+        yield* dispatchBackgroundStop(command, events, effects);
+        break;
+      case "background-task.settle":
+        yield* dispatchBackgroundTaskSettle(command, events);
+        break;
       case "subagent.stop":
         yield* dispatchSubagentStop(command, events, effects);
         break;
@@ -12017,7 +12162,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         command.type === "thread.stop" ||
         command.type === "thread.clear_context" ||
         command.type === "runtime-request.respond" ||
-        command.type === "subagent.stop"
+        command.type === "subagent.stop" ||
+        command.type === "background.stop" ||
+        command.type === "background-task.settle"
           ? Effect.succeed(planned)
           : Effect.fail(
               new OrchestratorDispatchError({

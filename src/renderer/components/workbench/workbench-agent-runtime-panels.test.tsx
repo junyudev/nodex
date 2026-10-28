@@ -234,18 +234,12 @@ it("stops a native task through its owning Session and Run without inventing a c
   expect(release).toHaveBeenCalledOnce();
 });
 
-it("stops an application-owned subagent through its own conversation and settles from events", async () => {
+it("cancels an application-owned subagent through its parent and settles from events", async () => {
   vi.spyOn(agentRuntimeRuntime, "overview").mockResolvedValue(overviewOf([task("one")]));
   const { update } = observe();
-  const inspect = vi.spyOn(agentRuntimeRuntime, "inspect").mockResolvedValue({
-    sessionId: "session",
-    projectId: null,
-    runtimeId: "runtime",
-    rootThreadId: "root",
-    threadId: "child:one",
-    thread: { activeRunId: "child-active-run" } as never,
-  });
-  const stop = vi.spyOn(agentRuntimeRuntime, "stop").mockResolvedValue({ stopped: true });
+  const cancelTask = vi
+    .spyOn(agentRuntimeRuntime, "cancelTask")
+    .mockResolvedValue({ taskId: "one", status: "cancelled" });
   const view = render(
     <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
   );
@@ -256,13 +250,10 @@ it("stops an application-owned subagent through its own conversation and settles
   });
   expect(await screen.findByText("Stopping…")).toBeTruthy();
   await waitFor(() =>
-    expect(stop).toHaveBeenCalledWith({
-      sessionId: "session",
-      threadId: "child:one",
-      runId: "child-active-run",
-    }),
+    expect(cancelTask).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session", threadId: "root", taskId: "one" }),
+    ),
   );
-  expect(inspect).toHaveBeenCalledWith({ sessionId: "session", threadId: "child:one" });
   await act(async () => {
     update({ ...task("one"), status: "interrupted", updatedAt: "2026-10-13T20:05:00Z" }, 2);
     await Promise.resolve();

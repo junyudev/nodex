@@ -11,6 +11,7 @@ import {
   OrchestrationV2ExecutionNode,
   OrchestrationV2ProviderSession,
   OrchestrationV2PlanArtifact,
+  type OrchestrationV2PendingBackgroundTask,
   OrchestrationV2ProviderCapabilities,
   OrchestrationV2ProviderFailure,
   OrchestrationV2ProviderRetry,
@@ -49,7 +50,6 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   cwd: Schema.NullOr(Schema.String),
-
 
   reasoningEffort: Schema.optional(Schema.String),
 });
@@ -645,7 +645,16 @@ export interface ProviderAdapterV2SessionRuntime {
   readonly stopTask?: (input: {
     readonly providerThread: OrchestrationV2ProviderThread;
     readonly taskId: string;
+    readonly kind?: OrchestrationV2PendingBackgroundTask["kind"];
   }) => Effect.Effect<void, ProviderAdapterV2Error>;
+  /** Bounded native output tail; absence means this provider cannot read it. */
+  readonly readTaskOutput?: (input: {
+    readonly providerThread: OrchestrationV2ProviderThread;
+    readonly taskId: string;
+  }) => Effect.Effect<
+    { readonly text: string; readonly truncated: boolean; readonly totalBytes: number } | null,
+    ProviderAdapterV2Error
+  >;
   readonly interruptTurn: (
     input: ProviderAdapterV2InterruptInput,
   ) => Effect.Effect<void, ProviderAdapterV2Error>;

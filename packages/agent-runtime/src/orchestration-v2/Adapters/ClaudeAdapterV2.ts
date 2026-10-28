@@ -407,6 +407,14 @@ export interface ClaudeAgentSdkQuerySession {
     mode: PermissionMode,
   ) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly stopTask: (taskId: string) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
+  readonly getTaskOutput?: (taskId: string) => Effect.Effect<
+    {
+      readonly output: string;
+      readonly total_bytes: number;
+      readonly truncated: boolean;
+    },
+    ClaudeAgentSdkQueryRunnerError
+  >;
   readonly interrupt: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly close: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
 }
@@ -1013,6 +1021,24 @@ export const layerQueryRunner: Layer.Layer<
                 }),
               ),
             ),
+          getTaskOutput: (taskId) =>
+            Effect.tryPromise({
+              try: async () => {
+                // The pinned SDK implements this control request but omits it from Query's public type.
+                const getTaskOutput = Reflect.get(queryRuntime, "getTaskOutput");
+                if (typeof getTaskOutput !== "function")
+                  throw new Error("Task output is unavailable.");
+                const output: unknown = await Reflect.apply(getTaskOutput, queryRuntime, [taskId]);
+                return Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    output: Schema.String.check(Schema.isMaxLength(8192)),
+                    total_bytes: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
+                    truncated: Schema.Boolean,
+                  }),
+                )(output);
+              },
+              catch: (cause) => queryRunnerError(cause, "getTaskOutput"),
+            }),
           interrupt: Effect.tryPromise({
             try: () => queryRuntime.interrupt(),
             catch: (cause) => queryRunnerError(cause, "interrupt"),
@@ -2023,9 +2049,15 @@ function claudePendingBackgroundTask(input: {
   // that started it tells it apart from a background Bash command.
   readonly startedByMonitor: boolean;
   readonly description: string | undefined;
+  readonly command?: string;
+  readonly startedAt?: DateTime.Utc;
+  readonly turnItemId?: OrchestrationV2TurnItem["id"];
 }): OrchestrationV2PendingBackgroundTask {
   return {
     taskId: input.taskId,
+    ...(input.command === undefined ? {} : { command: input.command }),
+    ...(input.startedAt === undefined ? {} : { startedAt: input.startedAt }),
+    ...(input.turnItemId === undefined ? {} : { turnItemId: input.turnItemId }),
     kind: input.startedByMonitor
       ? "monitor"
       : ((input.taskType === null
@@ -2050,11 +2082,7 @@ function isClaudeNonSubagentTask(message: SDKMessage): boolean {
 }
 
 function isClaudeBackgroundTasksChangedMessage(message: SDKMessage): boolean {
-  return (
-    message.type === "system" &&
-    // Undeclared SDK subtype: full roster snapshot of live background tasks.
-    (message.subtype as string) === "background_tasks_changed"
-  );
+  return message.type === "system" && message.subtype === "background_tasks_changed";
 }
 
 // Claude opens every turn it runs with a root `init` frame. Outside a T3 turn
@@ -6572,6 +6600,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               return false;
             }
             const nextTasks: OrchestrationV2PendingBackgroundTask[] = [];
+            const knownTasks = yield* Ref.get(lastKnownOpaqueTasks);
+            const currentRoster = rosterForNativeThread(
+              yield* Ref.get(pendingBackgroundTasksByNativeThread),
+              input.nativeThreadId,
+            );
             const listedTaskIds = new Set(
               roster.flatMap((entry) => {
                 const taskId =
@@ -6588,7 +6621,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             for (const entry of roster) {
               const task = parseClaudeBackgroundTaskEntry(entry, monitorTasks);
               if (task !== null) {
-                nextTasks.push(task);
+                const previous = currentRoster.get(task.taskId) ?? knownTasks.get(task.taskId);
+                nextTasks.push({ ...previous, ...task });
               }
             }
             yield* replacePendingBackgroundTasks(input.nativeThreadId, nextTasks);
@@ -6603,9 +6637,27 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             if (!isClaudeNonSubagentTask(message) || message.is_backgrounded === false) {
               return false;
             }
+            const toolCall =
+              message.tool_use_id == null || input.activeContext === null
+                ? undefined
+                : findToolCall(input.activeContext, message.tool_use_id);
+            const command =
+              toolCall === undefined
+                ? undefined
+                : firstStringInputField(toolCall.input, ["command", "cmd", "script"]);
             yield* upsertPendingBackgroundTask(
               input.nativeThreadId,
               claudePendingBackgroundTask({
+                ...(command === undefined ? {} : { command: command.slice(0, 2000).trimEnd() }),
+                startedAt: toolCall?.startedAt ?? (yield* DateTime.now),
+                ...(message.tool_use_id == null
+                  ? {}
+                  : {
+                      turnItemId: idAllocator.derive.turnItemFromProviderItem({
+                        driver: CLAUDE_PROVIDER,
+                        nativeItemId: message.tool_use_id,
+                      }),
+                    }),
                 taskId: message.task_id,
                 taskType: claudeTaskTypeFromSdkMessage(message),
                 startedByMonitor: yield* isClaudeMonitorTask({
@@ -9130,6 +9182,70 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         });
         yield* Effect.addFinalizer(() => closeSession());
 
+        const stopNativeTask = Effect.fn("ClaudeAdapterV2.stopTask")(function* ({
+          providerThread,
+          taskId,
+          kind,
+        }: {
+          readonly providerThread: OrchestrationV2ProviderThread;
+          readonly taskId: string;
+          readonly kind?: OrchestrationV2PendingBackgroundTask["kind"];
+        }) {
+          const backgroundStop = kind !== undefined && kind !== "subagent";
+          const live = yield* Ref.get(queryContext);
+          const nativeId = providerThread.nativeThreadRef?.nativeId;
+          const roster =
+            nativeId == null
+              ? undefined
+              : (yield* Ref.get(pendingBackgroundTasksByNativeThread)).get(nativeId);
+          const subagent = (yield* Ref.get(sessionSubagentsByTaskId)).get(taskId);
+          const persistedTask =
+            providerThread.pendingBackgroundTasks?.some((task) => task.taskId === taskId) ?? false;
+          const isOwnedSubagent =
+            subagent?.task.threadId === providerThread.appThreadId &&
+            subagent.task.status === "running";
+          if (!roster?.has(taskId) && !isOwnedSubagent && !persistedTask) {
+            if (
+              backgroundStop ||
+              (subagent !== undefined && subagent.task.threadId === providerThread.appThreadId)
+            )
+              return;
+            return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+              driver: CLAUDE_PROVIDER,
+              detail: "Claude no longer tracks this task.",
+            });
+          }
+          if (
+            live === null ||
+            live.stopping ||
+            live.nativeThreadId !== nativeId ||
+            (persistedTask && !roster?.has(taskId) && !isOwnedSubagent) ||
+            (subagent !== undefined && live.subagentsFromEarlierProcesses.has(subagent))
+          ) {
+            if (backgroundStop) {
+              if (nativeId != null && (roster?.has(taskId) || persistedTask)) {
+                yield* clearPendingBackgroundTask(nativeId, taskId);
+                yield* emitProviderThreadRoster({ nativeThreadId: nativeId, providerThread });
+              }
+              return;
+            }
+            return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+              driver: CLAUDE_PROVIDER,
+              detail: "Claude task has no live owning query.",
+            });
+          }
+          yield* live.query.stopTask(taskId).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapter.ProviderAdapterProtocolError({
+                  driver: CLAUDE_PROVIDER,
+                  detail: "Claude task stop failed.",
+                  cause,
+                }),
+            ),
+          );
+        });
+
         const runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime = {
           instanceId: adapterOptions.instanceId,
           driver: CLAUDE_PROVIDER,
@@ -9235,63 +9351,40 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               message: { ...turnInput.message, text: "/compact" },
             }),
           steerTurn,
-          stopTask: ({ providerThread, taskId }) =>
-            Effect.gen(function* () {
-              const liveQuery = yield* Ref.get(queryContext);
-              const task = (yield* Ref.get(sessionSubagentsByTaskId)).get(taskId);
-              if (
-                liveQuery === null ||
-                liveQuery.stopping ||
-                liveQuery.nativeThreadId !== providerThread.nativeThreadRef?.nativeId ||
-                task === undefined ||
-                task.task.threadId !== providerThread.appThreadId ||
-                task.task.workflow === undefined ||
-                task.task.status !== "running" ||
-                liveQuery.subagentsFromEarlierProcesses.has(task)
-              ) {
-                return yield* new ProviderAdapter.ProviderAdapterProtocolError({
-                  driver: CLAUDE_PROVIDER,
-                  detail: "No running workflow task belongs to this provider thread",
-                });
-              }
-              yield* liveQuery.query.stopTask(taskId).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new ProviderAdapter.ProviderAdapterProtocolError({
-                      driver: CLAUDE_PROVIDER,
-                      detail: "Workflow stop request failed",
-                      cause,
-                    }),
-                ),
-              );
-            }),
+          stopTask: stopNativeTask,
           interruptTurn,
-          stopSubagent: Effect.fn("ClaudeAdapterV2.stopSubagent")(function* (input) {
-            const existing = yield* Ref.get(queryContext);
-            const nativeThreadId = input.providerThread.nativeThreadRef?.nativeId;
-            const subagent = (yield* Ref.get(sessionSubagentsByTaskId)).get(input.nativeTaskId);
-            if (subagent === undefined || subagent.task.status !== "running") return;
+          stopSubagent: Effect.fn("ClaudeAdapterV2.stopSubagent")(function* ({
+            providerThread,
+            nativeTaskId,
+          }) {
+            yield* stopNativeTask({ providerThread, taskId: nativeTaskId, kind: "subagent" });
+          }),
+          readTaskOutput: Effect.fn("ClaudeAdapterV2.readTaskOutput")(function* ({
+            providerThread,
+            taskId,
+          }) {
+            const live = yield* Ref.get(queryContext);
             if (
-              existing === null ||
-              existing.nativeThreadId !== nativeThreadId ||
-              subagent.task.threadId !== input.providerThread.appThreadId ||
-              existing.subagentsFromEarlierProcesses.has(subagent) ||
-              existing.query.stopTask === undefined
-            ) {
-              return yield* new ProviderAdapter.ProviderAdapterProtocolError({
-                driver: CLAUDE_PROVIDER,
-                detail: "Claude subagent has no live owning query with task stopping support.",
-              });
-            }
-            yield* existing.query.stopTask(input.nativeTaskId).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ProviderAdapter.ProviderAdapterProtocolError({
-                    driver: CLAUDE_PROVIDER,
-                    detail: "Claude native subagent stop failed.",
-                    cause,
-                  }),
-              ),
+              live === null ||
+              live.stopping ||
+              live.nativeThreadId !== providerThread.nativeThreadRef?.nativeId ||
+              live.query.getTaskOutput === undefined
+            )
+              return null;
+            const task =
+              rosterForNativeThread(
+                yield* Ref.get(pendingBackgroundTasksByNativeThread),
+                live.nativeThreadId,
+              ).get(taskId) ?? (yield* Ref.get(lastKnownOpaqueTasks)).get(taskId);
+            if (task?.kind !== "command" && task?.kind !== "monitor") return null;
+            return yield* live.query.getTaskOutput(taskId).pipe(
+              Effect.timeout("3 seconds"),
+              Effect.map((tail) => ({
+                text: tail.output,
+                truncated: tail.truncated,
+                totalBytes: tail.total_bytes,
+              })),
+              Effect.catch(() => Effect.succeed(null)),
             );
           }),
           respondToRuntimeRequest: Effect.fn("ClaudeAdapterV2.respondToRuntimeRequest")(

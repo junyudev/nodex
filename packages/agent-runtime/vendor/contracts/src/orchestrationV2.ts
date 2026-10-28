@@ -86,7 +86,11 @@ export const OrchestrationV2CreationSource = Schema.Literals([
 ]);
 export type OrchestrationV2CreationSource = typeof OrchestrationV2CreationSource.Type;
 
-export const OrchestrationV2ThreadHistoryOrigin = Schema.Literals(["native", "v1_import", "native_import"]);
+export const OrchestrationV2ThreadHistoryOrigin = Schema.Literals([
+  "native",
+  "v1_import",
+  "native_import",
+]);
 export const hasImportedThreadHistory = (
   origin: typeof OrchestrationV2ThreadHistoryOrigin.Type | undefined,
 ): boolean => origin === "v1_import" || origin === "native_import";
@@ -397,19 +401,21 @@ export const OrchestrationV2HistoricalMessage = Schema.Struct({
 export type OrchestrationV2HistoricalMessage = typeof OrchestrationV2HistoricalMessage.Type;
 
 export const OrchestrationV2SideChatCapture = Schema.Struct({
-    history: Schema.Struct({
-      messages: Schema.Array(OrchestrationV2HistoricalMessage),
-      coverage: Schema.String,
-      omittedItems: NonNegativeInt,
-      omittedItemIds: Schema.optional(Schema.Array(TurnItemId)),
-    }),
-    context: Schema.String,
-    coveredRunOrdinals: Schema.Struct({ from: NonNegativeInt, to: NonNegativeInt }),
-    fromProviderThreadIds: Schema.Array(ProviderThreadId),
-    sourceItemCount: NonNegativeInt,
-    sourceRunCount: NonNegativeInt,
-    sourceSelections: Schema.Array(Schema.Struct({ providerInstanceId: ProviderInstanceId, modelSelection: ModelSelection })),
-  });
+  history: Schema.Struct({
+    messages: Schema.Array(OrchestrationV2HistoricalMessage),
+    coverage: Schema.String,
+    omittedItems: NonNegativeInt,
+    omittedItemIds: Schema.optional(Schema.Array(TurnItemId)),
+  }),
+  context: Schema.String,
+  coveredRunOrdinals: Schema.Struct({ from: NonNegativeInt, to: NonNegativeInt }),
+  fromProviderThreadIds: Schema.Array(ProviderThreadId),
+  sourceItemCount: NonNegativeInt,
+  sourceRunCount: NonNegativeInt,
+  sourceSelections: Schema.Array(
+    Schema.Struct({ providerInstanceId: ProviderInstanceId, modelSelection: ModelSelection }),
+  ),
+});
 export type OrchestrationV2SideChatCapture = typeof OrchestrationV2SideChatCapture.Type;
 export const OrchestrationV2SideChat = Schema.Struct({
   sourceThreadId: ThreadId,
@@ -624,8 +630,10 @@ export const ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE = "workspace_pr
 
 export const OrchestrationV2NativeInput = Schema.Struct({
   runtimeGeneration: TrimmedNonEmptyString,
-  providerSessionId: ProviderSessionId, nativeGeneration: PositiveInt,
-  nativeThreadId: Schema.String, nativeTurnId: Schema.String,
+  providerSessionId: ProviderSessionId,
+  nativeGeneration: PositiveInt,
+  nativeThreadId: Schema.String,
+  nativeTurnId: Schema.String,
 });
 export const OrchestrationV2Run = Schema.Struct({
   /** Observed native work is adopted; it is never sent to the provider twice. */
@@ -977,6 +985,9 @@ const PendingBackgroundTaskFields = {
   taskId: TrimmedNonEmptyString,
   /** The work's name: a subagent's title, a command's description, a monitor's. */
   description: Schema.optional(TrimmedNonEmptyString),
+  command: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(2000))),
+  startedAt: Schema.optional(Schema.DateTimeUtc),
+  turnItemId: Schema.optional(TurnItemId),
 };
 
 /**
@@ -999,13 +1010,22 @@ export const OrchestrationV2PendingBackgroundTask = kindUnionWithFallback(
     Schema.Struct({ ...PendingBackgroundTaskFields, kind: Schema.Literal("background_task") }),
   ],
   (kind) => Schema.Struct({ ...PendingBackgroundTaskFields, kind }),
-  ({ taskId, description }) => ({
+  ({ taskId, description, command, startedAt, turnItemId }) => ({
     taskId,
     ...(description === undefined ? {} : { description }),
+    ...(command === undefined ? {} : { command }),
+    ...(startedAt === undefined ? {} : { startedAt }),
+    ...(turnItemId === undefined ? {} : { turnItemId }),
     kind: "background_task",
   }),
 );
 export type OrchestrationV2PendingBackgroundTask = typeof OrchestrationV2PendingBackgroundTask.Type;
+
+export const OrchestrationV2BackgroundTaskIds = Schema.Array(TrimmedNonEmptyString).check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(25),
+  Schema.isUnique(),
+);
 
 /** Provider and adapter metadata that should not overwrite the app thread's title. */
 export const OrchestrationV2ProviderThreadNativeMetadata = Schema.Struct({
@@ -1670,8 +1690,12 @@ const OrchestrationV2SecretRequestFields = {
 // Retain Codex's generated MCP payload, including typed content and provider metadata.
 const CodexMcpToolCall = V2ItemCompletedNotification__ThreadItem.pipe(
   Schema.refine(
-    (item): item is Extract<typeof V2ItemCompletedNotification__ThreadItem.Type, { readonly type: "mcpToolCall" }> =>
-      item.type === "mcpToolCall",
+    (
+      item,
+    ): item is Extract<
+      typeof V2ItemCompletedNotification__ThreadItem.Type,
+      { readonly type: "mcpToolCall" }
+    > => item.type === "mcpToolCall",
   ),
 );
 
@@ -1970,7 +1994,16 @@ const OrchestrationV2EventBase = Schema.Struct({
 });
 
 export const OrchestrationV2DomainEvent = Schema.Union([
-  Schema.Struct({ ...OrchestrationV2EventBase.fields, type: Schema.Literal("side-chat.context-captured"), payload: OrchestrationV2SideChatCapture }),
+  Schema.Struct({
+    ...OrchestrationV2EventBase.fields,
+    type: Schema.Literal("background-work.stop-requested"),
+    payload: Schema.Struct({ stopping: Schema.Array(Schema.String) }),
+  }),
+  Schema.Struct({
+    ...OrchestrationV2EventBase.fields,
+    type: Schema.Literal("side-chat.context-captured"),
+    payload: OrchestrationV2SideChatCapture,
+  }),
   Schema.Struct({
     ...OrchestrationV2EventBase.fields,
     type: Schema.Literal("thread.created"),
@@ -2417,6 +2450,9 @@ export type OrchestrationV2ProviderSessionDetachedJson =
 export const OrchestrationV2ProviderThreadJson = OrchestrationV2ProviderThread.mapFields(
   (fields) => ({
     ...fields,
+    pendingBackgroundTasks: Schema.optional(
+      Schema.Array(Schema.toCodecJson(OrchestrationV2PendingBackgroundTask)),
+    ).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
     createdAt: Schema.DateTimeUtcFromString,
     updatedAt: Schema.DateTimeUtcFromString,
   }),
@@ -2702,7 +2738,10 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     outputOmitted: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({ ...OrchestrationV2TurnItemJsonBaseFields, ...OrchestrationV2HookRunFields }),
-  Schema.Struct({ ...OrchestrationV2TurnItemJsonBaseFields, ...OrchestrationV2ApprovalReviewFields }),
+  Schema.Struct({
+    ...OrchestrationV2TurnItemJsonBaseFields,
+    ...OrchestrationV2ApprovalReviewFields,
+  }),
 ]);
 export type OrchestrationV2TurnItemJson = typeof OrchestrationV2TurnItemJson.Type;
 
@@ -2763,6 +2802,9 @@ export type OrchestrationV2LatestVisibleMessageSummaryJson =
 
 export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFields((fields) => ({
   ...fields,
+  pendingBackgroundTasks: Schema.optional(
+    Schema.Array(Schema.toCodecJson(OrchestrationV2PendingBackgroundTask)),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   latestRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
@@ -2816,7 +2858,16 @@ export const OrchestrationV2RawProviderEventJson = OrchestrationV2RawProviderEve
 export type OrchestrationV2RawProviderEventJson = typeof OrchestrationV2RawProviderEventJson.Type;
 
 export const OrchestrationV2DomainEventJson = Schema.Union([
-  Schema.Struct({ ...OrchestrationV2JsonEventBaseFields, type: Schema.Literal("side-chat.context-captured"), payload: OrchestrationV2SideChatCapture }),
+  Schema.Struct({
+    ...OrchestrationV2JsonEventBaseFields,
+    type: Schema.Literal("background-work.stop-requested"),
+    payload: Schema.Struct({ stopping: Schema.Array(Schema.String) }),
+  }),
+  Schema.Struct({
+    ...OrchestrationV2JsonEventBaseFields,
+    type: Schema.Literal("side-chat.context-captured"),
+    payload: OrchestrationV2SideChatCapture,
+  }),
   Schema.Struct({
     ...OrchestrationV2JsonEventBaseFields,
     type: Schema.Literal("thread.created"),
@@ -3280,6 +3331,13 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     runId: RunId,
   }),
+  /** Stops provider-owned background work without interrupting the foreground Run. */
+  Schema.Struct({
+    type: Schema.Literal("background.stop"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    taskIds: OrchestrationV2BackgroundTaskIds,
+  }),
   /** Stops one provider-native child while its owning run keeps working. */
   Schema.Struct({
     type: Schema.Literal("subagent.stop"),
@@ -3294,10 +3352,12 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     runId: RunId,
     /** Internal execution transaction proof; ordinary Stop keeps its existing path. */
-    sourceRetirement: Schema.optional(Schema.Struct({
-      operationId: Schema.String,
-      effectId: Schema.NullOr(Schema.String),
-    })),
+    sourceRetirement: Schema.optional(
+      Schema.Struct({
+        operationId: Schema.String,
+        effectId: Schema.NullOr(Schema.String),
+      }),
+    ),
     reason: Schema.optional(Schema.String),
     /**
      * Set by the Stop button. Stop also holds the queue, ends the thread's pull request
@@ -3514,6 +3574,15 @@ const OrchestrationV2InternalCommand = Schema.Union([
     threadId: ThreadId,
     providerThreadId: ProviderThreadId,
     providerTurnId: ProviderTurnId,
+  }),
+  /** Settles one provider task only after the effect worker stops it or proves its process gone. */
+  Schema.Struct({
+    type: Schema.Literal("background-task.settle"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    providerThreadId: ProviderThreadId,
+    taskId: TrimmedNonEmptyString,
+    turnItemIds: Schema.Array(TurnItemId),
   }),
   /**
    * Stop for one thread, whatever it is doing: interrupts its running turn, holds its queue,

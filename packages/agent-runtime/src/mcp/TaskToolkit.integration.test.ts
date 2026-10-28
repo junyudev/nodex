@@ -496,10 +496,38 @@ describe("task tools", () => {
           ProviderContinuationRequests.ProviderContinuationRequests,
           { offer: () => Effect.void, take: Effect.never },
         );
-        const layerOrchestrator = ProviderReplayHarness.layerWithRegistry(
+        const failingDisposals = new Set<string>();
+        let rejectedDisposals = 0;
+        const stoppedThreadIds: string[] = [];
+        const layerEngine = ProviderReplayHarness.layerWithRegistry(
           { name: "mcp-task-tools", runtimePolicyOverride: { cwd } },
           layerRegistry,
         ).pipe(Layer.provide(layerContinuationProbe));
+        const layerOrchestrator = Layer.effect(
+          Orchestrator.OrchestratorV2,
+          Orchestrator.OrchestratorV2.use((engine) =>
+            Effect.succeed({
+              ...engine,
+              dispatch: (command: Parameters<typeof engine.dispatch>[0]) => {
+                if (command.type === "thread.stop") stoppedThreadIds.push(command.threadId);
+                if (
+                  command.type === "delegated_task.completion-delivery.dispose" &&
+                  failingDisposals.has(command.taskId)
+                ) {
+                  rejectedDisposals += 1;
+                  return Effect.fail(
+                    new Orchestrator.OrchestratorDispatchError({
+                      commandId: command.commandId,
+                      commandType: command.type,
+                      cause: "Completion delivery is not ready",
+                    }),
+                  );
+                }
+                return engine.dispatch(command);
+              },
+            }),
+          ),
+        ).pipe(Layer.provideMerge(layerEngine));
         const layerOrchestration = Layer.merge(
           layerOrchestrator,
           ThreadManagementService.layer.pipe(
@@ -831,6 +859,58 @@ describe("task tools", () => {
             yield* call("task_wait", { taskId: blocking.taskId }),
           ).pipe(Effect.orDie);
           expect(["cancelled", "interrupted"]).toContain(stopped.status);
+
+          const restartCut = yield* decodeTaskView(
+            yield* call("delegate_task", {
+              task: cancellationPrompt,
+              target: { providerInstanceId: claudeInstanceId },
+              mode: "async",
+              clientRequestId: "delegate-restart-cut",
+            }),
+          ).pipe(Effect.orDie);
+          const cutChildId = yield* childThreadOf(orchestrator, restartCut.taskId);
+          const cutChild = yield* waitForProjection(orchestrator, cutChildId, (projection) =>
+            projection.runs.some((run) => run.status === "running"),
+          );
+          const cutRun = cutChild.runs.at(-1)!;
+          const cutAt = yield* DateTime.now;
+          const sink = yield* EventSink.EventSinkV2;
+          yield* sink.writeWithEffects({
+            commandId: CommandId.make("command:mcp-restart-cut"),
+            events: [
+              {
+                id: EventId.make("event:mcp-restart-cut"),
+                type: "run.updated",
+                threadId: cutChildId,
+                runId: cutRun.id,
+                occurredAt: cutAt,
+                payload: { ...cutRun, status: "interrupted", completedAt: cutAt },
+              },
+            ],
+            effects: [
+              {
+                id: `effect:restart-continuation:${cutRun.id}`,
+                commandId: CommandId.make("command:mcp-restart-cut"),
+                threadId: cutChildId,
+                request: { type: "provider-runtime.continue", sourceRunId: cutRun.id },
+                availableAt: DateTime.add(cutAt, { days: 1 }),
+              },
+            ],
+          });
+          expect(
+            yield* decodeTaskView(yield* call("task_status", { taskId: restartCut.taskId })),
+          ).toMatchObject({ status: "running", workState: "waiting_for_children" });
+          failingDisposals.add(restartCut.taskId);
+          expect(
+            yield* decodeTaskCancel(
+              yield* call("task_cancel", {
+                taskId: restartCut.taskId,
+                clientRequestId: "cancel-restart-cut",
+              }),
+            ),
+          ).toEqual({ taskId: restartCut.taskId, status: "cancel_requested" });
+          expect(rejectedDisposals).toBe(1);
+          expect(stoppedThreadIds).toContain(cutChildId);
 
           const clamped = yield* decodeTaskRead(
             yield* call("task_read", { limit: 1000, maxCharsPerItem: 1000000 }),

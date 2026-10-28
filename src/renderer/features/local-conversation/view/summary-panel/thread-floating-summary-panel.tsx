@@ -83,6 +83,7 @@ import {
   type ThreadSummaryPanelSectionModel,
 } from "../../projection/thread-summary-panel-section-model";
 import type {
+  ConversationBackgroundTasks,
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadStageActions,
   ThreadSummaryPanelComputerUsePipState,
@@ -91,7 +92,10 @@ import type {
   ThreadSummaryPanelScheduledAutomationRow,
 } from "../../thread-stage-types";
 import { ThreadSummaryPanelRow } from "./thread-summary-panel-row";
-import { ThreadSummaryPanelSection } from "./thread-summary-panel-section";
+import {
+  ThreadSummaryPanelCountBadge,
+  ThreadSummaryPanelSection,
+} from "./thread-summary-panel-section";
 import {
   ThreadSummaryGitActionDialog,
   type SummaryGitActionDialogMode,
@@ -99,6 +103,7 @@ import {
   type SummaryGitActionWorkflowState,
 } from "./thread-summary-git-action-dialog";
 import { ThreadSummaryCreatePullRequestDialog } from "./thread-summary-create-pull-request-dialog";
+import { ThreadSummaryBackgroundSection } from "./thread-summary-background-section";
 import { ThreadSummaryBranchSetupDialog } from "./thread-summary-branch-setup-dialog";
 import {
   ThreadPinnedSummaryPanelShell,
@@ -138,6 +143,8 @@ export interface ThreadSummaryPanelContentProps {
   projectWorkspacePath: string | null;
   turns: readonly CodexConversationTurn[];
   backgroundTerminalRows?: readonly CodexBackgroundTerminalRow[];
+  /** Live background work with Stop and output; replaces terminal rows where present. */
+  backgroundTasks?: ConversationBackgroundTasks | null;
   backgroundAgentRows?: readonly CodexSubagentRow[];
   childMemberships?: readonly CodexConversationChildMembership[];
   knownConversationsById?: Record<string, CodexConversationSnapshot>;
@@ -397,17 +404,6 @@ function SummarySourceIconStrip({
         </li>
       ))}
     </ul>
-  );
-}
-
-function SummaryCountBadge({ count }: { count: number }) {
-  if (count === 0) return null;
-
-  return (
-    <span className="inline-flex items-center gap-1 text-sm text-token-text-tertiary">
-      <span aria-hidden="true">·</span>
-      <span>{count}</span>
-    </span>
   );
 }
 
@@ -930,6 +926,7 @@ export function ThreadSummaryPanelSurface({
   projectWorkspacePath,
   turns,
   backgroundTerminalRows = EMPTY_BACKGROUND_TERMINAL_ROWS,
+  backgroundTasks = null,
   backgroundAgentRows: projectedBackgroundAgentRows,
   childMemberships = EMPTY_CHILD_MEMBERSHIPS,
   knownConversationsById = EMPTY_KNOWN_CONVERSATIONS_BY_ID,
@@ -1138,7 +1135,7 @@ export function ThreadSummaryPanelSurface({
         suppressOutputs: hasGitEnvironmentSummary,
         sideChatCount: sideChatRows.length,
         backgroundSubagentRows,
-        taskCount: backgroundTerminalRows.length,
+        taskCount: backgroundTasks?.tasks.length ?? backgroundTerminalRows.length,
         hasComputerUsePip,
         browserCount: browserRows.length,
         sourceCount: sourceModel.count,
@@ -1146,6 +1143,7 @@ export function ThreadSummaryPanelSurface({
     [
       activeThreadId,
       backgroundSubagentRows,
+      backgroundTasks,
       backgroundTerminalRows.length,
       browserRows.length,
       hasComputerUsePip,
@@ -1602,7 +1600,9 @@ export function ThreadSummaryPanelSurface({
                       key={section.kind}
                       sectionKey="artifacts"
                       title="Outputs"
-                      titleSuffix={<SummaryCountBadge count={section.count ?? outputRows.length} />}
+                      titleSuffix={
+                        <ThreadSummaryPanelCountBadge count={section.count ?? outputRows.length} />
+                      }
                     >
                       {outputRows.map((row) => (
                         <ThreadSummaryPanelRow
@@ -1625,7 +1625,9 @@ export function ThreadSummaryPanelSurface({
                       sectionKey="side-chats"
                       title="Side chats"
                       titleSuffix={
-                        <SummaryCountBadge count={section.count ?? sideChatRows.length} />
+                        <ThreadSummaryPanelCountBadge
+                          count={section.count ?? sideChatRows.length}
+                        />
                       }
                     >
                       {sideChatRows.slice(0, 4).map((row) => (
@@ -1658,7 +1660,9 @@ export function ThreadSummaryPanelSurface({
                       sectionKey="background-subagents"
                       title="Subagents"
                       titleSuffix={
-                        section.count === null ? null : <SummaryCountBadge count={section.count} />
+                        section.count === null ? null : (
+                          <ThreadSummaryPanelCountBadge count={section.count} />
+                        )
                       }
                       autoCollapse={section.autoCollapse}
                     >
@@ -1698,13 +1702,22 @@ export function ThreadSummaryPanelSurface({
                   );
 
                 case "tasks":
-                  return (
+                  return backgroundTasks ? (
+                    <ThreadSummaryBackgroundSection
+                      key={section.kind}
+                      background={backgroundTasks}
+                      autoCollapse={section.autoCollapse}
+                      onErrorMessage={onErrorMessage}
+                    />
+                  ) : (
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="background-tasks"
-                      title="Tasks"
+                      title="Background"
                       titleSuffix={
-                        <SummaryCountBadge count={section.count ?? backgroundTerminalRows.length} />
+                        <ThreadSummaryPanelCountBadge
+                          count={section.count ?? backgroundTerminalRows.length}
+                        />
                       }
                       after={processManagerAction}
                     >
@@ -1774,7 +1787,7 @@ export function ThreadSummaryPanelSurface({
                       sectionKey="browser-tabs"
                       title="Browser"
                       titleSuffix={
-                        <SummaryCountBadge count={section.count ?? browserRows.length} />
+                        <ThreadSummaryPanelCountBadge count={section.count ?? browserRows.length} />
                       }
                     >
                       {browserRows.map((row) => (
@@ -1805,7 +1818,9 @@ export function ThreadSummaryPanelSurface({
                       key={section.kind}
                       sectionKey="tool-sources"
                       title="Sources"
-                      titleSuffix={<SummaryCountBadge count={section.count ?? sourceModel.count} />}
+                      titleSuffix={
+                        <ThreadSummaryPanelCountBadge count={section.count ?? sourceModel.count} />
+                      }
                     >
                       <SummarySourceIconStrip
                         items={sourceModel.items}
@@ -1872,6 +1887,13 @@ export function ThreadSummaryPanelSurface({
   );
 }
 
+/** Live background work the summary lists, for the toggle that opens it. */
+export function threadSummaryBackgroundCount(
+  content: Pick<ThreadSummaryPanelContentProps, "backgroundTasks" | "backgroundTerminalRows">,
+): number {
+  return content.backgroundTasks?.tasks.length ?? content.backgroundTerminalRows?.length ?? 0;
+}
+
 export function ThreadSummaryPanelPopover({
   onOpenChange,
   open: controlledOpen,
@@ -1893,7 +1915,11 @@ export function ThreadSummaryPanelPopover({
   );
 
   return (
-    <ThreadSummaryPanelPopoverShell open={open} onOpenChange={handleOpenChange}>
+    <ThreadSummaryPanelPopoverShell
+      open={open}
+      onOpenChange={handleOpenChange}
+      backgroundCount={threadSummaryBackgroundCount(props)}
+    >
       <ThreadSummaryPanelSurface {...props} isVisible={open} />
     </ThreadSummaryPanelPopoverShell>
   );

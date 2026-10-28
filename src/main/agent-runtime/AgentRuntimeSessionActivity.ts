@@ -93,8 +93,19 @@ const sameActivity = (left: SessionActivity | null, right: SessionActivity | nul
     left.status === right.status &&
     left.activeRunId === right.activeRunId &&
     left.pendingRequestCount === right.pendingRequestCount &&
-    left.activeTaskCount === right.activeTaskCount &&
-    left.resumesAutomatically === right.resumesAutomatically &&
+    left.backgroundTasks.length === right.backgroundTasks.length &&
+    left.backgroundTasks.every((task, index) => {
+      const other = right.backgroundTasks[index]!;
+      return (
+        task.threadId === other.threadId &&
+        task.threadTitle === other.threadTitle &&
+        task.taskId === other.taskId &&
+        task.kind === other.kind &&
+        task.description === other.description &&
+        task.command === other.command &&
+        task.startedAt === other.startedAt
+      );
+    }) &&
     left.providerInstanceId === right.providerInstanceId &&
     left.model === right.model &&
     left.updatedAt === right.updatedAt);
@@ -105,8 +116,7 @@ const toSessionActivity = (sessionId: string, root: AgentRootActivity): SessionA
   status: root.status,
   activeRunId: root.activeRunId,
   pendingRequestCount: root.pendingRequestCount,
-  activeTaskCount: root.activeTaskCount,
-  resumesAutomatically: root.resumesAutomatically,
+  backgroundTasks: root.backgroundTasks,
   providerInstanceId: root.providerInstanceId,
   model: root.model,
   updatedAt: root.updatedAt,

@@ -834,6 +834,10 @@ function makeReplayQueryRunner(
               mode,
             });
           }),
+        getTaskOutput: () =>
+          Effect.fail(
+            replayQueryRunnerError(transcript, "Task output is unavailable in this replay."),
+          ),
         stopTask: (taskId) =>
           replayEffect(() => {
             assertNextOutboundFrame({ type: "query.stop_task", taskId });

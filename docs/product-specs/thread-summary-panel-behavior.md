@@ -14,7 +14,9 @@ model, row behavior, and navigation outcomes. Canonical conversation, Git,
 Automation, Browser, Computer Use, and process Modules remain the data owners.
 
 The summary action is available only for an attached root Chat. A full-width
-right panel hides it. Pinned mode persists its open preference; the responsive
+right panel hides it. While the summary is closed and the Chat has live
+background tasks, the action carries a small dot in its icon's color and its
+name counts them, such as `Toggle summary · 2 background tasks`. Pinned mode persists its open preference; the responsive
 popover is dismissible presentation and does not rewrite that preference. A
 resize changes placement according to the remaining chat-pane width. The
 transcript and Composer share the same animated horizontal offset; the summary
@@ -31,7 +33,7 @@ The summary projects keyed sections in this order:
 4. Outputs
 5. Side chats
 6. Subagents
-7. Tasks
+7. Background
 8. Computer Use
 9. Browser
 10. Sources
@@ -138,7 +140,7 @@ Sources is an icon-only accessible list. It does not add a duplicate text-pill
 representation of the same integrations, and it shows `No sources yet` when no
 source has been projected.
 
-## Side chats, Subagents, and Tasks
+## Side chats, Subagents, and Background
 
 A Side chat row uses only the side-chat tab title. It opens the owning panel tab
 and replaces its ordinary icon with the shared activity spinner only while that
@@ -164,11 +166,27 @@ interactive only when its child and writer state permit it and otherwise stays
 read-only. Avatar identity and row preview text remain static across status
 changes.
 
-Tasks represents registered background processes, not child-agent metadata.
-Rows can open the same live Process output surface as Process Manager, and the
-section's `View all processes` action opens that Workbench-owned dialog. Process
-status and action behavior remain summarized in
+Background lists work the Agent left running after the tool call that started
+it, not child-agent metadata. For a Codex Chat these are registered background
+processes: rows open the same live Process output surface as Process Manager,
+and the section's `View all processes` action opens that Workbench-owned
+dialog. Process status and action behavior remain summarized in
 [Codex Workspace Behavior](codex-workspace-behavior.md).
+
+For a Runtime Chat, such as Claude Code, Background lists the background
+shells, monitors and other tasks the Session's Agents reported as still running,
+including while the Agent is replying and including work a delegated
+conversation left running, which names that conversation after the task. These
+are the same facts that keep the Chat's sidebar spinner turning, so the list
+always explains it. Each row shows the name the Agent gave the work, a shell,
+bell or generic icon for its kind, and how long it has run; its tooltip adds the
+exact command. Selecting a row opens the end of its output beneath it, following
+new output every two seconds, or says the Agent cannot show output for that
+task. Hovering a row reveals Stop; with two or more tasks the section header
+offers Stop all, which stops exactly the listed tasks and never the Agent's
+reply or its subagents. A stopped row reads `Stopping…` until the Agent ends the
+task, and a task still listed fifteen seconds after an accepted Stop can be
+stopped again. See [Agent Runtime Behavior](agent-runtime-behavior.md).
 
 ## Computer Use and Browser
 

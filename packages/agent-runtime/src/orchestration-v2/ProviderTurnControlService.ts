@@ -3,6 +3,7 @@ import {
   MessageId,
   type NodeId,
   ProviderSessionId,
+  type OrchestrationV2PendingBackgroundTask,
   ProviderThreadId,
   ProviderTurnId,
   RunAttemptId,
@@ -49,7 +50,21 @@ export class ProviderTurnControlError extends Schema.TaggedError<ProviderTurnCon
 
 const isProviderTurnControlError = Schema.is(ProviderTurnControlError);
 
+export const BACKGROUND_TASK_STOP_TIMEOUT_MS = 15_000;
+
+export class ProviderBackgroundWorkError extends Schema.TaggedError<ProviderBackgroundWorkError>()(
+  "ProviderBackgroundWorkError",
+  { threadId: ThreadId, taskId: Schema.String, cause: Schema.Defect() },
+) {}
+
 export interface ProviderTurnControlServiceV2Shape {
+  readonly stopBackgroundTask: (input: {
+    readonly threadId: ThreadId;
+    readonly providerSessionId: ProviderSessionId | null;
+    readonly providerThreadId: ProviderThreadId;
+    readonly taskId: string;
+    readonly kind: OrchestrationV2PendingBackgroundTask["kind"];
+  }) => Effect.Effect<void, ProviderBackgroundWorkError>;
   readonly interrupt: (input: {
     readonly subagent?: { readonly id: NodeId; readonly nativeTaskId: string };
     readonly threadId: ThreadId;
@@ -182,6 +197,36 @@ export const layer: Layer.Layer<
       });
 
     return ProviderTurnControlServiceV2.of({
+      stopBackgroundTask: Effect.fn("ProviderTurnControlServiceV2.stopBackgroundTask")(
+        function* (input) {
+          if (input.providerSessionId === null) return;
+          const records = yield* projections.getThreadRecords(input.threadId, ["providerThreads"]);
+          const providerThread = records.providerThreads.find(
+            (thread) => thread.id === input.providerThreadId,
+          );
+          // A replacement runtime cannot own a previous incarnation's background work.
+          if (providerThread?.providerSessionId !== input.providerSessionId) return;
+          if (providerThread.appThreadId !== input.threadId)
+            return yield* Effect.fail(new Error("Background task belongs to a different thread."));
+          if (providerThread.nativeThreadRef?.nativeId == null) return;
+          const session = yield* sessions.get(input.providerSessionId);
+          if (Option.isNone(session)) return;
+          if (input.kind === "subagent" && session.value.stopSubagent !== undefined) {
+            yield* session.value.stopSubagent({ providerThread, nativeTaskId: input.taskId });
+            return;
+          }
+          if (session.value.stopTask === undefined)
+            return yield* Effect.fail(
+              new Error("This provider cannot stop an individual background task."),
+            );
+          yield* session.value.stopTask({ providerThread, taskId: input.taskId, kind: input.kind });
+        },
+        Effect.timeout(BACKGROUND_TASK_STOP_TIMEOUT_MS),
+        (effect, input) =>
+          effect.pipe(
+            Effect.mapError((cause) => new ProviderBackgroundWorkError({ ...input, cause })),
+          ),
+      ),
       interrupt: (input) =>
         Effect.gen(function* () {
           const loaded = yield* load({ ...input, operation: "interrupt" });

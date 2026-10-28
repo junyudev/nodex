@@ -58,6 +58,9 @@ import type {
   AgentRuntimeConversation,
   AgentRuntimeControlInput,
   AgentRuntimeResponseInput,
+  AgentRuntimeBackgroundStopInput,
+  AgentRuntimeBackgroundOutputInput,
+  AgentRuntimeTaskCancelInput,
   AgentRuntimeSendMessageResult,
   AgentRuntimeIpcApi,
 } from "../../shared/agent-runtime-api";
@@ -3714,6 +3717,99 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             runId: input.runId,
             subagentId: input.taskId,
           });
+        }),
+      ),
+    stopBackground: (input: AgentRuntimeBackgroundStopInput) =>
+      ownedWrite(
+        "stop-background",
+        Effect.gen(function* () {
+          if (!validId(input.requestId))
+            return yield* failure("stop-background", "Request identity is invalid");
+          if (
+            !Array.isArray(input.taskIds) ||
+            input.taskIds.length < 1 ||
+            input.taskIds.length > 25 ||
+            new Set(input.taskIds).size !== input.taskIds.length ||
+            input.taskIds.some((taskId) => !validId(taskId))
+          )
+            return yield* failure("stop-background", "Task identity is invalid");
+          if (input.threadId !== undefined && !validId(input.threadId))
+            return yield* failure("thread", "Thread identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input, true);
+          return yield* connection
+            .request("background.stop", {
+              threadId: loaded.threadId,
+              commandId: commandId("stop-background", {
+                requestId: input.requestId,
+                threadId: loaded.threadId,
+              }),
+              taskIds: input.taskIds,
+            })
+            .pipe(
+              Effect.mapError((cause) =>
+                failure(
+                  "stop-background",
+                  `Could not stop background tasks: ${agentRuntimeFailureReason(cause)}`,
+                  cause,
+                ),
+              ),
+            );
+        }),
+      ),
+    backgroundOutput: (input: AgentRuntimeBackgroundOutputInput) =>
+      owned(
+        "background-output",
+        Effect.gen(function* () {
+          if (!validId(input.taskId))
+            return yield* failure("background-output", "Task identity is invalid");
+          if (input.threadId !== undefined && !validId(input.threadId))
+            return yield* failure("thread", "Thread identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection
+            .request("background.output", { threadId: loaded.threadId, taskId: input.taskId })
+            .pipe(
+              Effect.mapError((cause) =>
+                failure(
+                  "background-output",
+                  `Could not read background task output: ${agentRuntimeFailureReason(cause)}`,
+                  cause,
+                ),
+              ),
+            );
+        }),
+      ),
+    cancelTask: (input: AgentRuntimeTaskCancelInput) =>
+      ownedWrite(
+        "cancel-task",
+        Effect.gen(function* () {
+          if (!validId(input.requestId))
+            return yield* failure("cancel-task", "Request identity is invalid");
+          if (!validId(input.taskId))
+            return yield* failure("cancel-task", "Task identity is invalid");
+          if (input.threadId !== undefined && !validId(input.threadId))
+            return yield* failure("thread", "Thread identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input, true);
+          return yield* connection
+            .request("tasks.cancel", {
+              threadId: loaded.threadId,
+              taskId: input.taskId,
+              commandId: commandId("cancel-task", {
+                requestId: input.requestId,
+                threadId: loaded.threadId,
+              }),
+            })
+            .pipe(
+              Effect.mapError((cause) =>
+                failure(
+                  "cancel-task",
+                  `Could not stop delegated task: ${agentRuntimeFailureReason(cause)}`,
+                  cause,
+                ),
+              ),
+            );
         }),
       ),
     stop: (input: Parameters<typeof stop>[0]) => ownedWrite("stop", stop(input)),
