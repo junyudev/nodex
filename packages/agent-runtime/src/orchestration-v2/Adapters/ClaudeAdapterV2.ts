@@ -2085,9 +2085,9 @@ function isClaudeBackgroundTasksChangedMessage(message: SDKMessage): boolean {
   return message.type === "system" && message.subtype === "background_tasks_changed";
 }
 
-// Claude opens every turn it runs with a root `init` frame. Outside a T3 turn
-// that turn is a wake, and `init` comes 20-110 ms after the notification that
-// caused it but seconds before its first output (model thinking time).
+// Claude opens native turns with a root `init`, seconds before model output.
+// Resume's zero-turn orphan summaries also emit init; their lifecycle is
+// filtered before it can be treated as a wake.
 function isClaudeTurnStartMessage(message: SDKMessage): boolean {
   return message.type === "system" && message.subtype === "init";
 }
@@ -3136,6 +3136,9 @@ interface ClaudeLiveQueryContext {
   // is gone and never reports their end; any later task_started replaces the
   // entry, so an entry still in this set runs nowhere.
   readonly subagentsFromEarlierProcesses: ReadonlySet<ActiveClaudeSubagent>;
+  // Resume reports stopped tasks from the previous process before answering
+  // the next prompt. Their init and zero-turn result are lifecycle cleanup.
+  orphanedTaskSummaryPending: boolean;
 }
 
 interface ActiveClaudeToolCall {
@@ -6985,6 +6988,41 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           const message = input.message;
+          if (message.type === "system" && message.subtype === "task_notification") {
+            const subagent = (yield* Ref.get(sessionSubagentsByTaskId)).get(message.task_id);
+            const hasCurrentSubagent =
+              subagent !== undefined && !liveQuery.subagentsFromEarlierProcesses.has(subagent);
+            const hasBufferedStart = (yield* Ref.get(wakeBuffers))
+              .get(liveQuery.nativeThreadId)
+              ?.messages.some(
+                (entry) =>
+                  entry.type === "system" &&
+                  entry.subtype === "task_started" &&
+                  entry.task_id === message.task_id,
+              );
+            const isUnownedStoppedTask =
+              message.status === "stopped" &&
+              !hasCurrentSubagent &&
+              !hasBufferedStart &&
+              !(yield* isKnownOpaqueBackgroundTaskOnNativeThread(
+                liveQuery.nativeThreadId,
+                message.task_id,
+              ));
+            liveQuery.orphanedTaskSummaryPending = isUnownedStoppedTask;
+            // The process-scoped roster was reset on open. An unowned stopped
+            // task cannot be live work; Claude reports its orphaned transcript
+            // entry with init and an empty result, without invoking the model.
+            if (isUnownedStoppedTask) return;
+          }
+          if (message.type === "result") {
+            const isOrphanedTaskSummary =
+              liveQuery.orphanedTaskSummaryPending &&
+              isClaudeTaskNotificationOriginResult(message) &&
+              message.num_turns === 0;
+            liveQuery.orphanedTaskSummaryPending = false;
+            if (isOrphanedTaskSummary) return;
+          }
+          if (isClaudeTurnStartMessage(message) && liveQuery.orphanedTaskSummaryPending) return;
           // Before any routing: a Monitor started during an idle wake turn
           // reports its task before the drain replays the tool call.
           yield* trackClaudeMonitorCalls(message);
@@ -8684,6 +8722,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             openedPermissionMode: queryOptions.permissionMode,
             permissionMode: queryOptions.permissionMode,
             stopping: false,
+            orphanedTaskSummaryPending: false,
             subagentsFromEarlierProcesses: new Set(
               [...(yield* Ref.get(sessionSubagentsByTaskId)).values()].filter(
                 (subagent) => subagent.task.status === "running",

@@ -87,6 +87,7 @@ import { SIDE_CHAT_BOUNDARY_TEXT } from "../../nodex/SideChat.ts";
 import type { ClaudeAppliedSettings } from "../../provider/ClaudeAppliedSettings.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { ClaudeOrchestratorReplayHarness } from "./ClaudeAdapterV2.testkit.ts";
+import { readProviderReplayTranscript } from "@t3tools/provider-testing/replayTranscript";
 import { provideDeterministicTestRuntime } from "../testkit/DeterministicRuntime.ts";
 import { runOrchestratorV2Scenario } from "../testkit/OrchestratorScenario.ts";
 import { layerProviderReplay } from "../testkit/ProviderReplayHarness.ts";
@@ -2161,6 +2162,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly appliedSettings?: ClaudeAppliedSettings;
     readonly refuseLiveSelectionOnce?: boolean;
     readonly refuseSourceRootsOnce?: boolean;
+    readonly startupFrames?: ReadonlyArray<SDKMessage>;
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -2190,12 +2192,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       const sourceRootsAtOffer: string[][] = [];
       let nativeSourceRoots: string[] = [];
       let refuseSourceRoots = options?.refuseSourceRootsOnce === true;
+      let startupFrames = options?.startupFrames ?? [];
       const liveQuery = {
         setSourceRoots: (roots: readonly string[]) =>
           Effect.suspend(() => {
             nativeSourceRoots = [...roots];
             sourceRootChanges.push([...roots]);
-            if (!refuseSourceRoots) return Effect.void;
+            const frames = startupFrames;
+            startupFrames = [];
+            if (!refuseSourceRoots)
+              return Effect.forEach(frames, (frame) => offerAndWait(frame), { discard: true });
             refuseSourceRoots = false;
             return Effect.fail(
               new ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerError({
@@ -6641,6 +6647,105 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         ),
       ),
     ),
+  );
+
+  it.effect.each(["opening", "active", "idle"] as const)(
+    "does not wake for orphaned tasks reported while the resumed process is %s",
+    (arrival) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const transcript = yield* readProviderReplayTranscript(
+            new URL(
+              "../testkit/fixtures/claude_background_tasks_resume/claude_transcript.ndjson",
+              import.meta.url,
+            ),
+          );
+          const frames = transcript.entries.flatMap((entry) =>
+            entry.type === "emit_inbound"
+              ? [claudeSdkFrame({ ...(entry.frame as object), session_id: WAKE_NATIVE_SESSION })]
+              : [],
+          );
+          // Source synchronization yields after openQuery starts reading the
+          // CLI stream, before the first real turn attaches. This is where
+          // the resumed CLI reports tasks its previous process left behind.
+          const harness = yield* makeWakeHarnessWithOptions({
+            startupFrames: arrival === "opening" ? frames : [],
+          });
+          const now = yield* DateTime.now;
+          yield* harness.runtime.startTurn({
+            ...makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now,
+              attemptId: RunAttemptId.make(`attempt-claude-orphan-${arrival}`),
+              text: "Start two new background commands and reply: started.",
+              attachments: [],
+              nativeThreadHasTurns: true,
+            }),
+            hostSourceRoots: ["/workspace"],
+          });
+          if (arrival === "active") {
+            for (const frame of frames) yield* harness.offerAndWait(frame);
+          }
+          assert.lengthOf(harness.terminalEvents(), 0);
+          yield* harness.offerAndWait(
+            makeAssistantTextFrame({
+              uuid: "00000000-0000-4000-8000-0000000007a1",
+              text: "started.",
+            }),
+          );
+          yield* harness.offerAndWait(
+            makeResultFrame({
+              uuid: "00000000-0000-4000-8000-0000000007a2",
+              result: "started.",
+            }),
+          );
+          yield* Queue.take(harness.terminalReceipts);
+          if (arrival === "idle") {
+            for (const frame of frames) yield* harness.offerAndWait(frame);
+          }
+          assert.lengthOf(harness.continuationRequests, 0);
+          assert.isFalse(yield* harness.hasPendingBackgroundWork);
+          assert.deepEqual(
+            harness.events.flatMap((event) =>
+              event.type === "message.updated" ? [event.message.text] : [],
+            ),
+            ["started."],
+          );
+          assert.isFalse(harness.events.some((event) => event.type === "subagent.updated"));
+
+          // The same process still wakes for a task it actually started,
+          // including before the model's first output arrives.
+          yield* harness.offerAndWait(wakeTaskStarted);
+          yield* harness.offerAndWait(wakeNotification);
+          yield* harness.offerAndWait(wakeTurnInit);
+          assert.lengthOf(harness.continuationRequests, 1);
+          assert.equal(harness.continuationRequests[0]?.detail, WAKE_SUMMARY);
+          yield* harness.offerAndWait(wakeAssistant);
+          yield* harness.offerAndWait(wakeResult);
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now,
+              attemptId: RunAttemptId.make(`attempt-claude-live-wake-${arrival}`),
+              text: "Background task completed.",
+              attachments: [],
+              providerTurnOrdinal: 2,
+              messageCreatedBy: "agent",
+              messageCreationSource: "provider",
+            }),
+          );
+          yield* Queue.take(harness.terminalReceipts);
+          assert.lengthOf(harness.terminalEvents(), 2);
+          assert.lengthOf(harness.offeredMessages, 1);
+          assert.isFalse(yield* harness.hasPendingBackgroundWork);
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      ),
   );
 
   it.effect("buffers wake output and requests a single continuation run", () =>

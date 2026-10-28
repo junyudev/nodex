@@ -819,8 +819,9 @@ return at most the last 8 KiB of a task's output: Claude Code supplies it, and C
 bounded in-memory command output tail while the command runs, including after its Turn
 finishes, with the matching item's projected aggregate as a fallback. Streamed deltas never
 enter execution history; the live buffer is discarded when the command exits or the Agent
-process restarts. Resuming a native Codex Thread replaces its stored roster with the current
-native list.
+process restarts. Restarting an Agent's process ends the tasks it owned; they leave the list,
+and the Agent learns of it with its next Turn instead of being woken for it. Resuming a native
+Codex Thread replaces its stored roster with the current native list.
 
 Each execution process generation is read once in bounded pages. One execution observation
 then reports which roots changed, and only those roots are re-read and mapped to their Session
