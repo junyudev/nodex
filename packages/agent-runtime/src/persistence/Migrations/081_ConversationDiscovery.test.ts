@@ -50,9 +50,19 @@ it.effect(
           payload_json: JSON.stringify({ text, createdBy: "user" }),
         })}`;
       }
-      const upgraded = yield* runMigrations();
-      assert.deepEqual(upgraded[0], [81, "ConversationDiscovery"]);
-      assert.isTrue(upgraded.every(([id]) => id > 80));
+      const upgraded = yield* runMigrations({ toMigrationInclusive: 81 });
+      assert.deepEqual(upgraded, [[81, "ConversationDiscovery"]]);
+      assert.deepEqual(
+        yield* sql<{
+          readonly preview: string;
+          readonly recencyAt: string;
+        }>`SELECT conversation_preview AS preview, conversation_recency_at AS "recencyAt"
+          FROM orchestration_v2_projection_threads WHERE thread_id = ${thread}`,
+        [{ preview: "二次元".repeat(300).slice(0, 512), recencyAt: "2026-10-03T00:00:00.000Z" }],
+      );
+
+      // The current reader needs the full schema, independently of this migration's boundary.
+      yield* runMigrations();
       assert.deepEqual(yield* runMigrations(), []);
       const result = yield* readSessionCatalog({});
       assert.equal(result.items[0]?.preview, "二次元".repeat(300).slice(0, 512));

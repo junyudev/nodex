@@ -94,6 +94,15 @@ the hold with a Deferred and the scenario's `afterSteps` boundary, then close
 the first runtime. Assert the durable claim and the resumed behavior instead
 of relying on scheduling delays or repeated runs.
 
+## Persistence migrations
+
+Seed the immediate predecessor with `runMigrations({ toMigrationInclusive: id - 1 })`,
+then run only the migration under test and assert its stored result before later
+migrations can change it. If the test also uses a current Runtime reader, upgrade
+to the current schema afterward and verify that reader's behavior. Do not make a
+historical migration test enumerate unrelated later migrations; their addition
+must not require rewriting the historical contract.
+
 ## Paid provider canaries
 
 The explicit commands in [Paid Agent smoke tests](./paid-agent-smoke.md) add the
