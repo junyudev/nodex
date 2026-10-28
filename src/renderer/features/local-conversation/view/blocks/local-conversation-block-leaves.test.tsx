@@ -2196,6 +2196,7 @@ describe("image-view and completed elicitation leaves", () => {
       await Promise.resolve();
     });
     await waitFor(() => {
+      expect(view.getByRole("dialog", { name: "Image preview" })).toBe(preview);
       expect(
         within(view.getByRole("dialog", { name: "Image preview" }))
           .getByRole("img", { name: "Inspected image" })

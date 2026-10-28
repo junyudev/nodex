@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageEditorTabIcon } from "@/components/shared/icons";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import type { CodexUnavailableImage } from "@/lib/types";
@@ -7,48 +7,49 @@ import { NO_UNAVAILABLE_IMAGES, UnavailableImageTile } from "./unavailable-image
 import { useConversationImageAsset } from "./use-conversation-image-asset";
 import { ConversationImageThumbnail } from "./user-message-attachments";
 
+interface InspectedImagePreview {
+  readonly source: string;
+  readonly src: string;
+  readonly downloadSrc?: string;
+  readonly trigger: HTMLButtonElement;
+}
+
+type RegisterImagePreview = (index: number, preview: InspectedImagePreview) => () => void;
+
 function InspectedImageThumbnail({
   source,
-  open,
-  onOpenChange,
-  onPreviousImage,
-  onNextImage,
+  index,
+  onOpenPreview,
+  registerPreview,
 }: {
   source: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onPreviousImage?: () => void;
-  onNextImage?: () => void;
+  index: number;
+  onOpenPreview: () => void;
+  registerPreview: RegisterImagePreview;
 }) {
   const asset = useConversationImageAsset(source);
   const trigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const element = trigger.current;
+    if (!asset.previewSrc || !element) return;
+    return registerPreview(index, {
+      source,
+      src: asset.previewSrc,
+      downloadSrc: asset.downloadSrc ?? undefined,
+      trigger: element,
+    });
+  }, [asset.downloadSrc, asset.previewSrc, index, registerPreview, source]);
+
   return (
-    <>
-      <ConversationImageThumbnail
-        src={asset.previewSrc}
-        isLoading={asset.isLoading}
-        isError={asset.isError}
-        alt="Inspected image"
-        previewLabel="Inspected image"
-        buttonRef={trigger}
-        onOpenPreview={() => onOpenChange(true)}
-      />
-      {open && asset.previewSrc ? (
-        <ImagePreviewDialog
-          open
-          onOpenChange={onOpenChange}
-          src={asset.previewSrc}
-          downloadSrc={asset.downloadSrc ?? undefined}
-          alt="Inspected image"
-          onPreviousImage={onPreviousImage}
-          onNextImage={onNextImage}
-          finalFocus={() => {
-            trigger.current?.focus();
-            return false;
-          }}
-        />
-      ) : null}
-    </>
+    <ConversationImageThumbnail
+      src={asset.previewSrc}
+      isLoading={asset.isLoading}
+      isError={asset.isError}
+      alt="Inspected image"
+      previewLabel="Inspected image"
+      buttonRef={trigger}
+      onOpenPreview={onOpenPreview}
+    />
   );
 }
 
@@ -69,6 +70,28 @@ export function ImageViewSurface({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [previews, setPreviews] = useState<ReadonlyMap<number, InspectedImagePreview>>(
+    () => new Map(),
+  );
+  const registerPreview = useCallback<RegisterImagePreview>((index, preview) => {
+    setPreviews((current) => new Map(current).set(index, preview));
+    return () => {
+      setPreviews((current) => {
+        if (current.get(index) !== preview) return current;
+        const next = new Map(current);
+        next.delete(index);
+        return next;
+      });
+    };
+  }, []);
+  const availablePreviews = imagePaths.flatMap((source, index) => {
+    const preview = previews.get(index);
+    return preview?.source === source ? [{ ...preview, index }] : [];
+  });
+  const activeIndex = availablePreviews.findIndex((preview) => preview.index === openIndex);
+  const activePreview = availablePreviews[activeIndex];
+  const previousPreview = availablePreviews[activeIndex - 1];
+  const nextPreview = availablePreviews[activeIndex + 1];
   const canExpand = imagePaths.length + unavailableImages.length > 0;
   const summary = imageViewSummary(imagePaths.length, unavailableImages.length);
 
@@ -110,12 +133,9 @@ export function ImageViewSurface({
                   <InspectedImageThumbnail
                     key={`${source}:${index}`}
                     source={source}
-                    open={openIndex === index}
-                    onOpenChange={(open) => setOpenIndex(open ? index : null)}
-                    onPreviousImage={index > 0 ? () => setOpenIndex(index - 1) : undefined}
-                    onNextImage={
-                      index < imagePaths.length - 1 ? () => setOpenIndex(index + 1) : undefined
-                    }
+                    index={index}
+                    onOpenPreview={() => setOpenIndex(index)}
+                    registerPreview={registerPreview}
                   />
                 ))}
                 {unavailableImages.map((image, index) => (
@@ -123,6 +143,24 @@ export function ImageViewSurface({
                 ))}
               </div>
             </div>
+            {activePreview ? (
+              <ImagePreviewDialog
+                open
+                onOpenChange={(open) => {
+                  if (!open) setOpenIndex(null);
+                }}
+                src={activePreview.src}
+                downloadSrc={activePreview.downloadSrc}
+                alt="Inspected image"
+                onPreviousImage={
+                  previousPreview ? () => setOpenIndex(previousPreview.index) : undefined
+                }
+                onNextImage={nextPreview ? () => setOpenIndex(nextPreview.index) : undefined}
+                finalFocus={() =>
+                  activePreview.trigger.isConnected ? activePreview.trigger : false
+                }
+              />
+            ) : null}
           </div>
         ) : null
       }
