@@ -361,15 +361,24 @@ export function createAgentRuntimeStageActions(input: {
     intent?: "steer",
     submitted?: WorkbenchSubmitPresentation,
     appMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
-    admission?: { readonly assertCurrent: () => void; readonly messageId: string },
+    admission?: {
+      readonly assertCurrent?: () => void;
+      readonly messageId: string;
+      readonly presentationTicket?: CodexTurnPresentationTicket;
+    },
   ) => {
     const target = requireTarget();
     const messageId = admission?.messageId ?? createUuidV7();
-    const presentationTicket = target.threadId
-      ? await input.capturePresentation?.({ kind: "thread", threadId: target.threadId }, submitted)
-      : undefined;
+    const presentationTicket =
+      admission?.presentationTicket ??
+      (target.threadId
+        ? await input.capturePresentation?.(
+            { kind: "thread", threadId: target.threadId },
+            submitted,
+          )
+        : undefined);
     const prepared = await input.prepare(text, promptInput, appMessage);
-    admission?.assertCurrent();
+    admission?.assertCurrent?.();
     const owner = input.owner();
     const accepted = await transport.message({
       ...target,
@@ -582,6 +591,12 @@ export function createAgentRuntimeStageActions(input: {
         undefined,
         options?.submittedPresentation,
         options?.untrustedAppMessage,
+        options?.submissionIdentity
+          ? {
+              messageId: options.submissionIdentity.clientUserMessageId,
+              presentationTicket: options.presentationTicket,
+            }
+          : undefined,
       ),
     onContinueAfterFailure: continueAfterFailure,
     onManageFailedProvider: manageFailedProvider,

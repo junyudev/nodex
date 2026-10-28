@@ -4322,6 +4322,34 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     driver,
     getCapabilities: () => Effect.succeed(OpenCode2ProviderCapabilities),
     planSelectionTransition: () => Effect.succeed(turnScopedSelectionTransition()),
+    discardThread: Effect.fn("OpenCode2Adapter.discardThread")(
+      function* ({ providerThread }: ProviderAdapter.ProviderAdapterV2DiscardThreadInput) {
+        if (
+          providerThread.providerInstanceId !== instanceId ||
+          providerThread.driver !== driver ||
+          providerThread.nativeThreadRef?.driver !== driver
+        ) {
+          return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+            driver,
+            detail: "Cannot discard a thread owned by another OpenCode instance",
+          });
+        }
+        const sessionID = Session.ID.make(yield* sessionIdOf(providerThread));
+        yield* server.withConnection(({ client }) =>
+          client.session
+            .remove({ sessionID })
+            .pipe(Effect.catchTags({ SessionNotFoundError: () => Effect.void })),
+        );
+      },
+      Effect.mapError(
+        (cause) =>
+          new ProviderAdapter.ProviderAdapterProtocolError({
+            driver,
+            detail: "Failed to discard the OpenCode conversation",
+            cause,
+          }),
+      ),
+    ),
     // The session borrows the instance's server for as long as it is open, so a
     // spawned server is not idle-stopped under a long tool call.
     openSession: (input) =>

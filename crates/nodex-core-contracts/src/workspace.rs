@@ -126,6 +126,8 @@ pub enum ProjectWorkspaceRead {
     AgentRuntimeSessionBindingWindow {
         runtime_id: String,
         project_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        temporary_only: Option<bool>,
         window: CollectionWindowRequest,
     },
     /// Host-owned durable cleanup after a product Session has been deleted.
@@ -1297,6 +1299,8 @@ pub struct ProjectWorkspaceAgentRuntimeSessionBinding {
     pub runtime_thread_id: String,
     pub launch_request_id: String,
     pub bound_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_chat_source_session_id: Option<String>,
 }
 
 /// Deleting a Session retains only the exact execution identity needed for idempotent cleanup.
@@ -1543,6 +1547,8 @@ pub enum ProjectWorkspaceIntent {
         runtime_id: String,
         runtime_thread_id: String,
         launch_request_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        side_chat_source_session_id: Option<String>,
     },
     /// Replaces one exact Native root relation after its history is durably imported.
     /// The product Session, placement and Page links retain their identity.

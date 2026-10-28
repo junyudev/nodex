@@ -537,6 +537,8 @@ type PlainResultCommandEndpointPolicy =
   | "agent-runtime:session:message"
   | "agent-runtime:session:queue-message"
   | "agent-runtime:session:queue"
+  | "agent-runtime:session:create-side-chat"
+  | "agent-runtime:session:discard-side-chat"
   | "agent-runtime:session:fork"
   | "agent-runtime:session:merge-back"
   | "agent-runtime:session:stop"

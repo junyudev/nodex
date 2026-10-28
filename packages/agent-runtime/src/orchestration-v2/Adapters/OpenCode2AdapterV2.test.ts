@@ -49,7 +49,7 @@ import {
   OPENCODE_PROVIDER,
   nodexAppMcpServerName,
 } from "@t3tools/provider-opencode/testing";
-import { openCode2ReplayRuntime } from "./OpenCode2AdapterV2.testkit.ts";
+import { openCode2ReplayAdapter, openCode2ReplayRuntime } from "./OpenCode2AdapterV2.testkit.ts";
 import {
   makeProviderReplayGate,
   type ProviderReplayGate,
@@ -342,6 +342,80 @@ const terminalOf = (runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime) =>
     Stream.runHead,
     Effect.map(Option.getOrUndefined),
   );
+
+it.layer(McpProviderSessions.layer)("OpenCode2 native cleanup", (it) => {
+  it.effect(
+    "discards only the saved native child without activating or creating a provider session",
+    () =>
+      Effect.gen(function* () {
+        const childID = "ses_sidechat0000000000000000";
+        const borrowers = { current: 0 };
+        const adapter = yield* openCode2ReplayAdapter(
+          [
+            out("session.remove", { sessionID: childID }),
+            reply("session.remove", null),
+            out("session.remove", { sessionID: childID }),
+            reply("session.remove", {
+              status: 404,
+              body: {
+                _tag: "SessionNotFoundError",
+                sessionID: childID,
+                message: "Session not found",
+              },
+            }),
+          ],
+          { borrowers },
+        );
+        const source = providerThread(yield* DateTime.now);
+        const child = {
+          ...source,
+          id: ProviderThreadId.make("provider-thread:side-chat"),
+          nativeThreadRef: { ...source.nativeThreadRef!, nativeId: childID },
+          forkedFrom: { providerThreadId: source.id },
+        };
+        const discard = {
+          providerThread: child,
+          runtimePolicy: { ...policy(), cwd: "/saved/side-chat" },
+        };
+        yield* adapter.discardThread!(discard);
+        assert.equal(borrowers.current, 0);
+        yield* adapter.discardThread!(discard);
+        assert.equal(borrowers.current, 0);
+        const foreign = {
+          ...child,
+          providerInstanceId: ProviderInstanceId.make("another-account"),
+        };
+        assert.equal(
+          (yield* Effect.exit(adapter.discardThread!({ ...discard, providerThread: foreign })))
+            ._tag,
+          "Failure",
+        );
+        assert.equal(
+          (yield* Effect.exit(
+            adapter.discardThread!({
+              ...discard,
+              providerThread: { ...child, nativeThreadRef: null },
+            }),
+          ))._tag,
+          "Failure",
+        );
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("reports OpenCode native cleanup failures so discarded history can be retried", () =>
+    Effect.gen(function* () {
+      const adapter = yield* openCode2ReplayAdapter([
+        out("session.remove", { sessionID: SESSION }),
+        reply("session.remove", { status: 503, body: { message: "Service unavailable" } }),
+      ]);
+      const error = yield* adapter.discardThread!({
+        providerThread: providerThread(yield* DateTime.now),
+        runtimePolicy: policy(),
+      }).pipe(Effect.flip);
+      assert.equal(error._tag, "ProviderAdapterProtocolError");
+    }).pipe(Effect.scoped),
+  );
+});
 
 // The history the spike read back after its `simple` turn (recordings/simple.ndjson).
 const history = {

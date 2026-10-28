@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivitySpinnerIcon, NodexLogoMarkIcon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
+import { ConversationContentFrame } from "@/components/ui/conversation-content-frame";
 import {
   ConnectedThreadStage,
   useCodexAppServerControl,
@@ -502,8 +503,9 @@ function BackgroundAgentLoadingPanel({ title }: { title: string }) {
 
 export function SideChatSessionTab(props: Parameters<typeof NativeSideChatSessionTab>[0]) {
   const session = props.tab.runtimeSession;
-  if (!session) return <NativeSideChatSessionTab {...props} />;
-  return (
+  const content = !session ? (
+    <NativeSideChatSessionTab {...props} />
+  ) : (
     <AgentRuntimeSideChatPanel
       session={session}
       parentThreadId={props.tab.parentThreadId}
@@ -529,6 +531,11 @@ export function SideChatSessionTab(props: Parameters<typeof NativeSideChatSessio
       }}
       turnDiffHoverPreviewDisabled={props.turnDiffHoverPreviewDisabled}
     />
+  );
+  return (
+    <ConversationContentFrame topFade className="h-full">
+      {content}
+    </ConversationContentFrame>
   );
 }
 

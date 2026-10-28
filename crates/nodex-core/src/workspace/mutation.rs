@@ -801,6 +801,7 @@ pub(super) fn apply(
                     runtime_id,
                     runtime_thread_id,
                     launch_request_id,
+                    side_chat_source_session_id,
                 } => super::agent_runtime_binding::create_session(
                     transaction,
                     &library_id,
@@ -817,6 +818,7 @@ pub(super) fn apply(
                     launch_request_id,
                     "create_agent_runtime_session",
                     None,
+                    side_chat_source_session_id.as_deref(),
                 ),
                 ProjectWorkspaceIntent::AdoptNativeSessionExecution {
                     session_id,project_id,expected_native_thread_id,expected_native_host_id,

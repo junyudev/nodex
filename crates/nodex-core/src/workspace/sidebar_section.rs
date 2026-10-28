@@ -1060,7 +1060,7 @@ fn effective_session_ids(
     connection
         .prepare(
             "SELECT session.id FROM project_sessions session \
-             WHERE (?3 = 1 OR session.archived = 0) AND ( \
+             WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND (?3 = 1 OR session.archived = 0) AND ( \
                EXISTS (SELECT 1 FROM workspace_sidebar_section_items direct \
                  WHERE direct.library_id = ?1 AND direct.section_id = ?2 \
                    AND direct.session_id = session.id) \

@@ -28,6 +28,10 @@ const runtime = vi.hoisted(() => ({
   releaseTerminal: vi.fn(),
   invoke: vi.fn(),
   discardSideChat: vi.fn(),
+  discardRuntimeSideChat: vi.fn(),
+}));
+vi.mock("./agent-runtime-runtime", () => ({
+  agentRuntimeRuntime: { discardSideChat: runtime.discardRuntimeSideChat },
 }));
 vi.mock("../features/workspace-files/workspace-text-document-controller", () => ({
   workspaceTextDocumentRegistry: { flush: runtime.flushFile },
@@ -70,6 +74,7 @@ beforeEach(() => {
   runtime.disposeCanvas.mockResolvedValue(undefined);
   runtime.invoke.mockResolvedValue(undefined);
   runtime.discardSideChat.mockResolvedValue(undefined);
+  runtime.discardRuntimeSideChat.mockResolvedValue({ discarded: true });
 });
 
 function fixture(sceneOwner: WorkbenchSceneOwner, surfaces: readonly WorkbenchSurfaceDescriptor[]) {

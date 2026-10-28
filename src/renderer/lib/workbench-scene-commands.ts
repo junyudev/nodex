@@ -94,11 +94,11 @@ export interface WorkbenchSceneCommandLifecycle {
     panelId: PanelId,
     groupId: string,
   ) => WorkbenchPanelTabOpenerState;
-  /** Saves pending content without releasing the live lease; failed preparation leaves the tab intact. */
+  /** Saves pending content or confirms disposal; cancellation leaves the tab intact without an error. */
   readonly prepareClose: (
     sceneOwner: WorkbenchSceneOwner,
     tab: WorkbenchCommandTab,
-  ) => Promise<boolean>;
+  ) => Promise<boolean | "cancelled">;
   /** Runs only after the exact owner removed the descriptor. Uses runtime-owner intents, never guest/PTY destruction. */
   readonly close: (sceneOwner: WorkbenchSceneOwner, tab: WorkbenchCommandTab) => Promise<void>;
 }
@@ -867,8 +867,9 @@ export function createWorkbenchSceneCommands(
         if (!WorkbenchSceneSnapshotSchema.safeParse(prepared.scene).success)
           return receipt({ error: "invalid_command" });
         for (const tab of prepared.closing) {
-          if (!(await lifecycle.prepareClose(input.sceneOwner, tab)))
-            return receipt({ error: "save_failed" });
+          const closePreparation = await lifecycle.prepareClose(input.sceneOwner, tab);
+          if (closePreparation === "cancelled") return receipt();
+          if (!closePreparation) return receipt({ error: "save_failed" });
           if (!isCurrent()) return receipt({ error: "revoked_generation" });
         }
         if (!isCurrent()) return receipt({ error: "revoked_generation" });

@@ -51,7 +51,9 @@ export interface SideChatPanelTab {
   status: SideChatPanelTabStatus;
   errorMessage?: string;
   stateKey: number;
-  /** An independent product Session owns execution separately from the source chat. */
+  /** Retried creation retains the original context capture and child identity. */
+  creation?: import("../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
+  /** A temporary bound Session owns the captured context and independent execution. */
   runtimeSession?: ProjectSession;
   draftPrompt?: string;
   draftPromptInput?: CodexPromptInput;
@@ -279,7 +281,7 @@ export function isSideChatPanelTab(tab: ProjectSessionRenderableTab): tab is Sid
 
 export function isPanelTabClosable(tab: ProjectSessionRenderableTab): boolean {
   if (!isSideChatPanelTab(tab)) return true;
-  return tab.status !== "loading";
+  return tab.status !== "loading" || tab.creation !== undefined;
 }
 
 export function isMcpAppPanelTab(tab: ProjectSessionRenderableTab): tab is McpAppPanelTab {

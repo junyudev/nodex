@@ -770,29 +770,70 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
   const executionHost = yield* ExecutionHost.ExecutionHost;
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
   const messageIdClock = yield* Ref.make({ epochMillis: -1, counter: 0 });
+  const connectClient = Effect.fnUntraced(function* (cwd: string) {
+    const connection = yield* runtime.connectToOpenCodeServer({
+      binaryPath: options.settings.binaryPath,
+      directory: cwd,
+      serverUrl: options.settings.serverUrl,
+      environment: options.environment,
+    });
+    const client = runtime.createOpenCodeSdkClient({
+      baseUrl: connection.url,
+      directory: cwd,
+      ...(connection.external && options.settings.serverPassword
+        ? { serverPassword: options.settings.serverPassword }
+        : {}),
+    });
+    return { client, connection };
+  });
 
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: options.instanceId,
     driver: OPENCODE_PROVIDER,
     getCapabilities: () => Effect.succeed(OpenCodeProviderCapabilitiesV2),
     planSelectionTransition: () => Effect.succeed(turnScopedSelectionTransition()),
+    discardThread: Effect.fn("OpenCodeAdapterV2.discardThread")(
+      function* ({
+        providerThread,
+        runtimePolicy,
+      }: ProviderAdapter.ProviderAdapterV2DiscardThreadInput) {
+        if (
+          providerThread.providerInstanceId !== options.instanceId ||
+          providerThread.driver !== OPENCODE_PROVIDER ||
+          providerThread.nativeThreadRef?.driver !== OPENCODE_PROVIDER
+        ) {
+          return yield* protocolError("Cannot discard a thread owned by another OpenCode instance");
+        }
+        const sessionID = providerThread.nativeThreadRef.nativeId;
+        if (sessionID === null || sessionID === undefined) {
+          return yield* protocolError(
+            `Provider thread ${providerThread.id} has no OpenCode session id`,
+          );
+        }
+        const { client } = yield* connectClient(runtimePolicy.cwd ?? host.paths.cwd);
+        yield* OpenCodeRuntime.runOpenCodeSdk("session.delete", (signal) =>
+          client.session.delete({ sessionID }, { signal }),
+        ).pipe(
+          Effect.catch((cause) =>
+            isOpenCodeNotFound(cause) ? Effect.void : Effect.fail(cause),
+          ),
+        );
+      },
+      Effect.scoped,
+      Effect.mapError(
+        (cause) =>
+          new ProviderAdapter.ProviderAdapterProtocolError({
+            driver: OPENCODE_PROVIDER,
+            detail: "Failed to discard the OpenCode conversation",
+            cause,
+          }),
+      ),
+    ),
     openSession: Effect.fn("OpenCodeAdapterV2.openSession")(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
         const scope = yield* Effect.scope;
         const cwd = input.runtimePolicy.cwd ?? host.paths.cwd;
-        const connection = yield* runtime.connectToOpenCodeServer({
-          binaryPath: options.settings.binaryPath,
-          directory: cwd,
-          serverUrl: options.settings.serverUrl,
-          environment: options.environment,
-        });
-        const client = runtime.createOpenCodeSdkClient({
-          baseUrl: connection.url,
-          directory: cwd,
-          ...(connection.external && options.settings.serverPassword
-            ? { serverPassword: options.settings.serverPassword }
-            : {}),
-        });
+        const { client, connection } = yield* connectClient(cwd);
 
         const mcpSession = yield* mcpSessions.read(input.threadId);
         const hasT3Mcp = mcpSession !== undefined && !connection.external;
@@ -2813,12 +2854,15 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             .join("\n")
             .trim();
           const match = text?.match(/^\/([^\s/]+)(?:\s+([\s\S]*))?$/);
-          const command = match
-            ? (yield* OpenCodeRuntime.loadOpenCodeCommands(client).pipe(
-                Effect.timeout("10 seconds"),
-                Effect.orElseSucceed(() => []),
-              )).find((entry) => entry.name === match[1])
-            : undefined;
+          // Native commands cannot carry system instructions. Side chats must
+          // retain their boundary even when their first request is a command.
+          const command =
+            match && turn.appThread.sideChat === undefined
+              ? (yield* OpenCodeRuntime.loadOpenCodeCommands(client).pipe(
+                  Effect.timeout("10 seconds"),
+                  Effect.orElseSucceed(() => []),
+                )).find((entry) => entry.name === match[1])
+              : undefined;
           if (!command) {
             return yield* sdkCall("session.promptAsync", payload, (signal) =>
               client.session.promptAsync(payload, {

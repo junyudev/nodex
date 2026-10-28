@@ -152,6 +152,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import { NODEX_APP_MCP_SERVER } from "../../mcp/NodexAppMcpServer.ts";
 import { APP_TOOLS_PROVIDER_TIMEOUT_MS } from "@t3tools/shared/nodexAppMcp";
 import { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "../../nodex/CodexThreadSource.ts";
+import { SIDE_CHAT_BOUNDARY_TEXT } from "../../nodex/SideChat.ts";
 import {
   codexAsyncQuestionId,
   parseSteerTurnMismatchActualTurnId,
@@ -6758,6 +6759,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               Effect.flatMap((params) =>
                 client.request("thread/start", {
                   ...params,
+                  ...(threadInput.ephemeral ? { ephemeral: true } : {}),
                   threadSource: AGENT_RUNTIME_CODEX_THREAD_SOURCE,
                 }),
               ),
@@ -6974,8 +6976,27 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               turnInput.restartContinuationOfRunId === undefined
                 ? parseCodexGoalCommand(turnInput.message.text)
                 : null;
-            if (goalCommand !== null) return runGoalCommand(turnInput, goalCommand);
             return Effect.gen(function* () {
+              // Inject after inherited history and before the first new request. This
+              // changes model context without adding a user Run to the side chat.
+              if (
+                turnInput.appThread.sideChat?.nativeFork &&
+                turnInput.providerThread.forkedFrom &&
+                turnInput.providerTurnOrdinal === 1
+              ) {
+                const threadId = yield* getNativeThreadId(turnInput.providerThread);
+                yield* client.request("thread/inject_items", {
+                  threadId,
+                  items: [
+                    {
+                      type: "message",
+                      role: "user",
+                      content: [{ type: "input_text", text: SIDE_CHAT_BOUNDARY_TEXT }],
+                    },
+                  ],
+                });
+              }
+              if (goalCommand !== null) return yield* runGoalCommand(turnInput, goalCommand);
               yield* startNativeTurn(
                 turnInput,
                 turnInput.restartContinuationOfRunId === undefined
@@ -7707,6 +7728,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                       ? {}
                       : { lastTurnId: boundary.lastTurnId }),
                     ...(yield* threadRuntimeParams(threadInput.targetThreadId, threadInput)),
+                    ...(threadInput.ephemeral ? { ephemeral: true, excludeTurns: true } : {}),
                   }),
                 ),
                 Effect.mapError(

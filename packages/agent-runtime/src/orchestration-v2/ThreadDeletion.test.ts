@@ -297,3 +297,42 @@ it.effect("queues provider and resource cleanup and preserves an earlier deletio
     );
   }).pipe(Effect.provide(IdAllocator.layer)),
 );
+
+it.effect("only side-chat deletion retains a retryable native-discard effect", () =>
+  Effect.gen(function* () {
+    const projection = makeProjection();
+    const allocator = yield* IdAllocator.IdAllocatorV2;
+    const ordinary = yield* planThreadDeletion({
+      command,
+      projection,
+      attachmentIds: [],
+      now: deletedAt,
+      idAllocator: allocator,
+    });
+    assert.isFalse(
+      ordinary.effects.some((effect) => effect.request.type === "side-chat.discard-native"),
+    );
+    const side = yield* planThreadDeletion({
+      command,
+      projection: {
+        ...projection,
+        thread: {
+          ...projection.thread,
+          sideChat: {
+            sourceThreadId: ThreadId.make("source"),
+            sourceRunId: null,
+            nativeFork: false,
+          },
+        },
+      },
+      attachmentIds: [],
+      now: deletedAt,
+      idAllocator: allocator,
+    });
+    const cleanup = side.effects.find(
+      (effect) => effect.request.type === "side-chat.discard-native",
+    )!;
+    assert.equal(cleanup.threadId, threadId);
+    assert.equal(cleanup.commandId, command.commandId);
+  }).pipe(Effect.provide(IdAllocator.layer)),
+);

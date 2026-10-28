@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { FetchHttpClient } from "effect/http";
-import { ProviderInstanceConfigMap } from "@t3tools/contracts";
+import { CommandId, ProviderInstanceConfigMap } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
@@ -246,12 +246,41 @@ export const acquireExecution = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const sessions = yield* ProviderSessions.ProviderSessionManagerV2;
   yield* settings.start;
+  const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+  const discardSideChats = Effect.suspend(() =>
+    projectionStore.getSideChatThreadIds.pipe(
+      Effect.flatMap((threadIds) =>
+        Effect.forEach(
+          threadIds,
+          (threadId) =>
+            orchestrator
+              .dispatch({
+                type: "thread.delete",
+                threadId,
+                commandId: CommandId.make(`side-chat-lifetime-ended:${threadId}`),
+              })
+              .pipe(
+                Effect.andThen(sessions.discardSideChatNative(threadId)),
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Temporary native conversation cleanup will retry", {
+                    threadId,
+                    cause,
+                  }),
+                ),
+              ),
+          { discard: true },
+        ),
+      ),
+    ),
+  );
+  yield* discardSideChats;
   yield* recovery.recover;
   yield* orchestrator.recoverDelegatedTasks;
   const worker = yield* EffectWorker.runDaemon.pipe(Effect.forkScoped);
   yield* Deferred.succeed(yield* ExecutionActivation, undefined);
   yield* Effect.addFinalizer(() =>
-    Fiber.interrupt(worker).pipe(
+    discardSideChats.pipe(
+      Effect.andThen(Fiber.interrupt(worker)),
       Effect.andThen(recovery.prepareForShutdown),
       Effect.ensuring(sessions.shutdown),
       Effect.andThen(recovery.reconcile("shutdown")),

@@ -113,6 +113,7 @@ async function read(
 export function createClaudeSessionStores() {
   const stores = new Map<string, SessionStore>();
   const lanes = new Map<string, Promise<void>>();
+  const retiredSessions = new Set<string>();
   const indices = new Map<string, { stamp: string; records: number; uuids: Map<string, string> }>();
   const hash = (entry: SessionStoreEntry) =>
     createHash("sha256").update(JSON.stringify(entry)).digest("hex");
@@ -185,6 +186,17 @@ export function createClaudeSessionStores() {
       }
       return selected;
     };
+    // Mirroring and deletion share one session lane, including every child transcript.
+    const inSessionLane = (key: SessionKey, run: () => Promise<void>) => {
+      validateSegment(key.sessionId);
+      const laneKey = JSON.stringify([home, key.sessionId]);
+      const previous = lanes.get(laneKey) ?? Promise.resolve();
+      const next = previous.catch(() => undefined).then(run);
+      lanes.set(laneKey, next);
+      return next.finally(() => {
+        if (lanes.get(laneKey) === next) lanes.delete(laneKey);
+      });
+    };
     const store: SessionStore = {
       load: async (key) => {
         const file = await locate(key);
@@ -250,89 +262,100 @@ export function createClaudeSessionStores() {
         }
         return keys;
       },
-      append: (key, entries) => {
-        // One lane covers retries, root messages and native child mirrors for each exact file.
-        const laneKey = JSON.stringify([home, key.sessionId, key.subpath]);
-        const previous = lanes.get(laneKey) ?? Promise.resolve();
-        const next = previous
-          .catch(() => undefined)
-          .then(async () => {
-            const file = (await locate(key)) ?? (await locate(key, true));
-            if (file === null)
-              throw new Error("Claude history could not create its project directory.");
-            const stat = await fs.lstat(file).catch((cause: unknown) => {
-              if (absent(cause)) return null;
-              throw cause;
-            });
-            const stamp =
-              stat === null ? "" : `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.size}`;
-            let index = indices.get(file);
-            if (index?.stamp !== stamp) {
-              const existing = await read(file);
-              index = {
-                stamp,
-                records: existing?.entries.length ?? 0,
-                uuids: new Map(
-                  existing?.entries.flatMap((entry) =>
-                    entry.uuid === undefined ? [] : [[entry.uuid, hash(entry)]],
-                  ),
-                ),
-              };
-            }
-            // Failed persistence cannot poison the retry dedupe evidence.
-            index = { ...index, uuids: new Map(index.uuids) };
-            const accepted: string[] = [];
-            for (const entry of entries) {
-              if (
-                typeof entry.type !== "string" ||
-                (entry.uuid !== undefined && typeof entry.uuid !== "string")
-              )
-                throw new Error("Claude mirror supplied an invalid transcript entry.");
-              const digest = hash(entry);
-              if (entry.uuid !== undefined && index.uuids.get(entry.uuid) === digest) continue;
-              accepted.push(JSON.stringify(entry) + "\n");
-              if (entry.uuid !== undefined) index.uuids.set(entry.uuid, digest);
-            }
-            if (accepted.length === 0) return;
-            const handle = await fs.open(
-              file,
-              constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND | constants.O_NOFOLLOW,
-              0o600,
-            );
-            try {
-              const opened = await handle.stat();
-              const bytes = accepted.reduce((total, value) => total + Buffer.byteLength(value), 0);
-              if (
-                !opened.isFile() ||
-                opened.nlink !== 1 ||
-                opened.size + bytes > MAX_SESSION_BYTES ||
-                index.records + accepted.length > MAX_RECORDS
-              )
-                throw new Error("Claude mirrored history exceeds its native persistence boundary.");
-              try {
-                for (const text of accepted) await handle.writeFile(text);
-                await handle.sync();
-                if (stat === null) await syncDirectory(path.dirname(file));
-              } catch (cause) {
-                await handle.truncate(opened.size);
-                await handle.sync();
-                throw cause;
-              }
-              const saved = await handle.stat();
-              index.stamp = `${saved.dev}:${saved.ino}:${saved.mtimeMs}:${saved.size}`;
-              index.records += accepted.length;
-              indices.delete(file);
-              if (indices.size >= 4) indices.delete(indices.keys().next().value!);
-              indices.set(file, index);
-            } finally {
-              await handle.close();
-            }
+      delete: (key) =>
+        inSessionLane(key, async () => {
+          if (key.subpath !== undefined)
+            throw new Error("Claude session deletion requires a root transcript.");
+          const file = await locate(key);
+          if (file === null) {
+            retiredSessions.add(JSON.stringify([home, key.sessionId]));
+            return;
+          }
+          const stat = await fs.lstat(file);
+          if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1)
+            throw new Error("Claude session deletion requires an owned transcript.");
+          const relative = path.relative(home, path.dirname(file)).split(path.sep);
+          const children = await directory(home, [...relative, key.sessionId]);
+          if (children !== null) await fs.rm(children, { recursive: true });
+          await fs.unlink(file);
+          await syncDirectory(path.dirname(file));
+          indices.delete(file);
+          retiredSessions.add(JSON.stringify([home, key.sessionId]));
+        }),
+      append: (key, entries) =>
+        inSessionLane(key, async () => {
+          if (retiredSessions.has(JSON.stringify([home, key.sessionId])))
+            throw new Error("Claude temporary session has been discarded.");
+          const file = (await locate(key)) ?? (await locate(key, true));
+          if (file === null)
+            throw new Error("Claude history could not create its project directory.");
+          const stat = await fs.lstat(file).catch((cause: unknown) => {
+            if (absent(cause)) return null;
+            throw cause;
           });
-        lanes.set(laneKey, next);
-        return next.finally(() => {
-          if (lanes.get(laneKey) === next) lanes.delete(laneKey);
-        });
-      },
+          const stamp = stat === null ? "" : `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.size}`;
+          let index = indices.get(file);
+          if (index?.stamp !== stamp) {
+            const existing = await read(file);
+            index = {
+              stamp,
+              records: existing?.entries.length ?? 0,
+              uuids: new Map(
+                existing?.entries.flatMap((entry) =>
+                  entry.uuid === undefined ? [] : [[entry.uuid, hash(entry)]],
+                ),
+              ),
+            };
+          }
+          // Failed persistence cannot poison the retry dedupe evidence.
+          index = { ...index, uuids: new Map(index.uuids) };
+          const accepted: string[] = [];
+          for (const entry of entries) {
+            if (
+              typeof entry.type !== "string" ||
+              (entry.uuid !== undefined && typeof entry.uuid !== "string")
+            )
+              throw new Error("Claude mirror supplied an invalid transcript entry.");
+            const digest = hash(entry);
+            if (entry.uuid !== undefined && index.uuids.get(entry.uuid) === digest) continue;
+            accepted.push(JSON.stringify(entry) + "\n");
+            if (entry.uuid !== undefined) index.uuids.set(entry.uuid, digest);
+          }
+          if (accepted.length === 0) return;
+          const handle = await fs.open(
+            file,
+            constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND | constants.O_NOFOLLOW,
+            0o600,
+          );
+          try {
+            const opened = await handle.stat();
+            const bytes = accepted.reduce((total, value) => total + Buffer.byteLength(value), 0);
+            if (
+              !opened.isFile() ||
+              opened.nlink !== 1 ||
+              opened.size + bytes > MAX_SESSION_BYTES ||
+              index.records + accepted.length > MAX_RECORDS
+            )
+              throw new Error("Claude mirrored history exceeds its native persistence boundary.");
+            try {
+              for (const text of accepted) await handle.writeFile(text);
+              await handle.sync();
+              if (stat === null) await syncDirectory(path.dirname(file));
+            } catch (cause) {
+              await handle.truncate(opened.size);
+              await handle.sync();
+              throw cause;
+            }
+            const saved = await handle.stat();
+            index.stamp = `${saved.dev}:${saved.ino}:${saved.mtimeMs}:${saved.size}`;
+            index.records += accepted.length;
+            indices.delete(file);
+            if (indices.size >= 4) indices.delete(indices.keys().next().value!);
+            indices.set(file, index);
+          } finally {
+            await handle.close();
+          }
+        }),
     };
     stores.set(home, store);
     return requireSession(store, requiredSessionId);

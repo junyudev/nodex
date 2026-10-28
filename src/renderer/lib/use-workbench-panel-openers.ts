@@ -53,7 +53,8 @@ import {
 } from "./workbench-panel-preview";
 import { getRenderablePanelPreviewTab } from "./workbench-panel-projection";
 import { makeWorkbenchSessionPanelSlotKey } from "./workbench-panel-slot-key";
-import { workspaceSessionCommands } from "./workspace-catalog-commands";
+import { agentRuntimeRuntime } from "./agent-runtime-runtime";
+import { readCurrentProjectSessionDetail } from "./project-session-query-cache";
 import { listWorkbenchPanelLeaves } from "../../shared/workbench-panel-layout";
 import type { WorkbenchPanelController } from "./use-workbench-panel-controller";
 import type { WorkbenchSessionRenderProjection } from "./workbench-session-presentation";
@@ -436,7 +437,7 @@ export function useWorkbenchPanelOpeners({
             [makeWorkbenchSessionPanelSlotKey(activeSession.id, reusable.panelId, leafId)]:
               reusable.id,
           }));
-          if (reusable.threadId)
+          if (reusable.threadId && !reusable.runtimeSession)
             workbenchCodexControl.setComposerIntent(reusable.threadId, {
               prompt: "",
               promptInput: input.promptInput,
@@ -456,20 +457,27 @@ export function useWorkbenchPanelOpeners({
         (activeSession.executionRef || sourceHostId === "local")
       ) {
         const submittedPresentation = readCodexSubmissionPresentation(workbenchOwner);
+        const prior = (
+          panelControllerRef.current.sideChatTabsBySession[activeSession.id] ?? []
+        ).find((tab) => tab.id === input.retryTabId);
         const initialSubmission =
-          input.kind !== "draft" && input.prompt?.trim()
+          prior?.initialSubmission ??
+          (input.kind !== "draft" && input.prompt?.trim()
             ? {
                 launchId: createUuidV7(),
                 clientUserMessageId: createUuidV7(),
                 acceptedAt: Date.now(),
               }
-            : undefined;
+            : undefined);
+        const creation = prior?.creation ?? {
+          source: { sessionId: activeSession.id, threadId: localSourceThreadId },
+          sessionId: createUuidV7(),
+          requestId: createUuidV7(),
+          acceptedAt: Date.now(),
+        };
         const panelId = input.targetPanelId ?? "right";
         const leafId =
           input.targetLeafId ?? resolveSessionPanelActiveLeafId(activeSession, panelId);
-        const prior = (sideChatTabsBySession[activeSession.id] ?? []).find(
-          (tab) => tab.id === input.retryTabId,
-        );
         const index = (sideChatTabsBySession[activeSession.id] ?? []).length + 1;
         const title = prior?.title ?? getSideChatTabTitle(index);
         const loadingId = prior?.id ?? `sidechat-session-loading:${localSourceThreadId}:${index}`;
@@ -485,24 +493,45 @@ export function useWorkbenchPanelOpeners({
           title,
           status: "loading",
           stateKey: Date.now(),
+          creation,
+          initialSubmission,
           draftPrompt: input.kind === "draft" ? input.draftPrompt : input.prompt,
           draftPromptInput: input.promptInput,
           draftAttachmentMode: request.kind === "selection" ? "append" : undefined,
         });
         await ensureActivePanelOpenWithoutRefresh(panelId);
         try {
-          const session = await workspaceSessionCommands.create({
-            projectId: activeSession.projectId,
-            noThreadFallbackTitle: title,
-            initialPageIds: [],
-          });
+          const result = await agentRuntimeRuntime.createSideChat(creation);
+          const session = await readCurrentProjectSessionDetail(result.sessionId);
+          if (session?.executionRef?.threadId !== result.threadId)
+            throw new Error("The side chat execution binding changed");
+          const isCurrent = () =>
+            workbenchOwner
+              .read()
+              .ephemeralPanels.sideChatTabsBySession[activeSession.id]?.some(
+                (tab) => tab.id === loadingId && tab.creation?.requestId === creation.requestId,
+              );
+          if (!isCurrent()) {
+            await agentRuntimeRuntime.discardSideChat({
+              sessionId: result.sessionId,
+              requestId: createUuidV7(),
+            });
+            return;
+          }
           const presentationTicket = initialSubmission
             ? await captureCodexTurnPresentation(
                 workbenchOwner,
-                { kind: "session", sessionId: session.id, launchId: initialSubmission.launchId },
+                { kind: "thread", threadId: result.threadId },
                 submittedPresentation,
               )
             : undefined;
+          if (!isCurrent()) {
+            await agentRuntimeRuntime.discardSideChat({
+              sessionId: result.sessionId,
+              requestId: createUuidV7(),
+            });
+            return;
+          }
           const readyId = `sidechat-session:${session.id}`;
           panelControllerRef.current.updateSideChatTabsBySession((current) => ({
             ...current,
@@ -512,6 +541,7 @@ export function useWorkbenchPanelOpeners({
                     ...tab,
                     id: readyId,
                     status: "ready",
+                    threadId: result.threadId,
                     runtimeSession: session,
                     draftPromptInput: tab.draftPromptInput,
                     initialSubmission: initialSubmission
@@ -526,7 +556,6 @@ export function useWorkbenchPanelOpeners({
             ...current,
             [makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, leafId)]: readyId,
           }));
-          await refreshProjectSessions(session.projectId);
         } catch (error) {
           panelControllerRef.current.updateSideChatTabsBySession((current) => ({
             ...current,
@@ -656,7 +685,6 @@ export function useWorkbenchPanelOpeners({
       sideChatTabsBySession,
       workbenchCodexControl,
       workbenchOwner,
-      refreshProjectSessions,
     ],
   );
 
@@ -831,8 +859,9 @@ export function useWorkbenchPanelOpeners({
         (activeSession.thread?.executionHostId ?? "local") === "local"
       ) {
         await openSideChat({
-          kind: "draft",
-          draftPrompt: existingTab.draftPrompt ?? "",
+          ...(existingTab.initialSubmission
+            ? { prompt: existingTab.draftPrompt ?? "" }
+            : { kind: "draft" as const, draftPrompt: existingTab.draftPrompt ?? "" }),
           promptInput: existingTab.draftPromptInput,
           targetPanelId: existingTab.panelId,
           targetLeafId: existingTab.leafId,

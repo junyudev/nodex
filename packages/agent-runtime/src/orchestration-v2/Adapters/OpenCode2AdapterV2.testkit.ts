@@ -290,10 +290,10 @@ function layerRegistry(
 }
 
 /**
- * An open 2.x session runtime whose server answers from `entries`, for
- * adapter-level tests of failures a real server cannot produce on demand.
+ * A 2.x adapter whose instance server answers from `entries`, without opening
+ * a provider session until the caller requests one.
  */
-export const openCode2ReplayRuntime = (
+export const openCode2ReplayAdapter = (
   entries: ReadonlyArray<ProviderReplayEntry>,
   options?: {
     readonly external?: boolean;
@@ -302,17 +302,23 @@ export const openCode2ReplayRuntime = (
     readonly replayGate?: ProviderReplayGate;
   },
 ) =>
+  makeReplayAdapter(
+    {
+      provider: OPENCODE_PROVIDER,
+      protocol: OPENCODE2_HTTP_PROTOCOL,
+      version: "2.0.18",
+      scenario: "opencode2_adapter",
+      entries,
+    },
+    options,
+  ).pipe(Effect.provide(Layer.mergeAll(layerReplayHost, IdAllocator.layer, NodeServices.layer)));
+
+export const openCode2ReplayRuntime = (
+  entries: ReadonlyArray<ProviderReplayEntry>,
+  options?: Parameters<typeof openCode2ReplayAdapter>[1],
+) =>
   Effect.gen(function* () {
-    const adapter = yield* makeReplayAdapter(
-      {
-        provider: OPENCODE_PROVIDER,
-        protocol: OPENCODE2_HTTP_PROTOCOL,
-        version: "2.0.18",
-        scenario: "opencode2_adapter",
-        entries,
-      },
-      options,
-    );
+    const adapter = yield* openCode2ReplayAdapter(entries, options);
     return yield* adapter.openSession({
       threadId: ThreadId.make("thread:opencode2-adapter"),
       providerSessionId: ProviderSessionId.make("provider-session:opencode2-adapter"),

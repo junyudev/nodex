@@ -86,7 +86,7 @@ export const openCodexImportSource = Effect.fn("CodexImportSource.open")(functio
         return yield* fail(
           "This is a subagent conversation or one Nodex runs itself, so it can’t be imported.",
         );
-      if (source.ephemeral || source.status.type === "active")
+      if (source.ephemeral || (!input.sideChatCapture && source.status.type === "active"))
         return yield* new NativeImportSourceBusyError({
           reason: "active_source_busy",
           message: "This Native conversation is still running. Continue after it finishes.",
@@ -100,7 +100,7 @@ export const openCodexImportSource = Effect.fn("CodexImportSource.open")(functio
         itemsView: "full",
       });
       const turn = latest.data[0];
-      if (turn?.status === "inProgress")
+      if (!input.sideChatCapture && turn?.status === "inProgress")
         return yield* new NativeImportSourceBusyError({
           reason: "active_source_busy",
           message: "This Native conversation is still running. Continue after it finishes.",

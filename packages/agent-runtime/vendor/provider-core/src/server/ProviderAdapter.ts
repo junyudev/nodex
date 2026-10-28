@@ -407,6 +407,8 @@ export interface ProviderAdapterV2OpenSessionInput {
 
 export interface ProviderAdapterV2EnsureThreadInput {
   readonly threadId: ThreadId;
+  /** Temporary conversations may not enter the provider's ordinary saved history. */
+  readonly ephemeral?: boolean;
   /** The app thread's title, for providers that name their native sessions. */
   readonly title?: string;
   readonly modelSelection: ModelSelection;
@@ -501,6 +503,7 @@ export interface ProviderAdapterV2RollbackThreadInput {
 }
 
 export interface ProviderAdapterV2ForkThreadInput {
+  readonly ephemeral?: boolean;
   readonly sourceProviderThread: OrchestrationV2ProviderThread;
   readonly sourceProviderTurns?: ReadonlyArray<OrchestrationV2ProviderTurn>;
   /** Exact persisted terminal-turn count beyond the captured source boundary. */
@@ -516,6 +519,12 @@ export interface ProviderAdapterV2ForkThreadInput {
   readonly ownerNodeId?: NodeId;
   readonly modelSelection?: ModelSelection;
   readonly runtimePolicy?: ProviderAdapterV2RuntimePolicy;
+}
+
+/** Disposes only a verified temporary conversation after its execution has stopped. */
+export interface ProviderAdapterV2DiscardThreadInput {
+  readonly providerThread: OrchestrationV2ProviderThread;
+  readonly runtimePolicy: ProviderAdapterV2RuntimePolicy;
 }
 
 export interface ProviderAdapterV2EventSubscription {
@@ -693,6 +702,9 @@ export class ProviderAdapterV2 extends Context.Service<
     readonly planSelectionTransition: (
       input: ProviderSelectionTransitionInput,
     ) => Effect.Effect<ProviderSelectionTransitionPlan, ProviderAdapterV2Error>;
+    readonly discardThread?: (
+      input: ProviderAdapterV2DiscardThreadInput,
+    ) => Effect.Effect<void, ProviderAdapterV2Error>;
     readonly openSession: (
       input: ProviderAdapterV2OpenSessionInput,
     ) => Effect.Effect<ProviderAdapterV2SessionRuntime, ProviderAdapterV2Error, Scope.Scope>;

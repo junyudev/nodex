@@ -9,6 +9,7 @@
     "./src/testUtils/*.setup.ts"
   ],
   "exports": {
+    "./side-chat": "./src/nodex/SideChat.ts",
     "./contracts": "./src/nodex/contracts.ts",
     "./codex-conventions": "./src/nodex/CodexConventions.ts",
     "./opencode-catalog": "./src/nodex/OpenCodeCatalog.ts",

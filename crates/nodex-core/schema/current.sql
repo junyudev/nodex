@@ -1014,6 +1014,10 @@ CREATE TABLE project_sessions (
   CHECK (archived IN (0, 1)),
   CHECK (unread IN (0, 1))
 );
+CREATE TABLE project_session_side_chats (
+  session_id TEXT PRIMARY KEY REFERENCES project_sessions(id) ON DELETE CASCADE,
+  source_session_id TEXT NOT NULL
+) WITHOUT ROWID, STRICT;
 CREATE TABLE project_session_threads (
   session_id TEXT PRIMARY KEY REFERENCES project_sessions(id) ON DELETE CASCADE,
   thread_id TEXT NOT NULL REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
@@ -4490,7 +4494,7 @@ CREATE TABLE inbox_decision_undo (
   consumed INTEGER NOT NULL DEFAULT 0 CHECK(consumed IN (0,1))
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version = 190;
+PRAGMA user_version = 191;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

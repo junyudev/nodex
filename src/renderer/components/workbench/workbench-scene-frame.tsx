@@ -3,6 +3,7 @@ import { motion, type MotionStyle, type MotionValue } from "motion/react";
 import { APP_SHELL_RIGHT_PANEL_LAYER_CLASS } from "@/lib/app-shell-layers";
 import type { AppShellMainContentLayout } from "@/lib/codex-panel-motion";
 import { cn } from "@/lib/utils";
+import { ConversationContentFrame } from "@/components/ui/conversation-content-frame";
 
 export interface WorkbenchSceneFrameProps {
   readonly ownerKey: string;
@@ -72,16 +73,12 @@ export function WorkbenchSceneFrame({
             primaryHidden ? "w-0 flex-none overflow-hidden" : "flex-1",
           )}
         >
-          <div className="app-shell-main-content-frame relative mt-(--app-shell-main-content-frame-top-offset) flex min-h-0 flex-1 flex-col">
-            <div
-              aria-hidden="true"
-              data-app-shell-main-content-top-fade={
-                layout.appShellMainContentLayout === "thread-edge-scroll" ? "visible" : "hidden"
-              }
-              className="app-shell-main-content-top-fade pointer-events-none absolute inset-x-0 top-0 z-20 h-10 opacity-0 transition-opacity duration-200 browser:hidden"
-            />
+          <ConversationContentFrame
+            className="app-shell-main-content-frame mt-(--app-shell-main-content-frame-top-offset) flex flex-1 flex-col"
+            topFade={layout.appShellMainContentLayout === "thread-edge-scroll"}
+          >
             {primary}
-          </div>
+          </ConversationContentFrame>
         </section>
 
         {layout.rightPanel.mounted ? (

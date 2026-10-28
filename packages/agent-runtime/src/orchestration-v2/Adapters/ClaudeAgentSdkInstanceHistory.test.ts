@@ -7,6 +7,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { ProviderSessionId, ThreadId } from "@t3tools/contracts";
 import { ProviderEventLoggers } from "@t3tools/provider-core/server/ProviderEventLoggers";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { createClaudeSessionStores } from "../../provider/ClaudeSessionStore.ts";
@@ -174,4 +175,84 @@ it.live("gives restored history precedence over the configured account for fork 
       expect(await f.readMessages(configDirectory, fork.sessionId)).toBeNull();
     });
   }).pipe(Effect.provide(runnerLayer)),
+);
+
+it.live(
+  "deletes a temporary native fork from its account and restored mirror while retaining every source",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const runner = yield* ClaudeAgentSdkQueryRunner;
+      const beforeEnvironment = accountEnvironment();
+      const configDirectory = f.homes[0]!;
+      const restoredHistoryPath = f.homes[2]!;
+      const fork = yield* runner.forkSession({
+        ...f.identity,
+        configDirectory,
+        restoredHistoryPath,
+        options: { dir: f.cwd },
+      });
+      // The CLI writes locally even when the SDK mirrors a restored transcript.
+      yield* Effect.promise(async () => {
+        const stores = createClaudeSessionStores();
+        const entries = await stores(restoredHistoryPath).load({
+          projectKey: "source-workspace",
+          sessionId: fork.sessionId,
+        });
+        for (const home of f.homes.slice(0, 2)) {
+          await stores(home).append(
+            { projectKey: "source-workspace", sessionId: fork.sessionId },
+            entries!,
+          );
+        }
+      });
+      yield* runner.deleteSession({
+        ...f.identity,
+        sessionId: fork.sessionId,
+        configDirectory: f.accountAlias,
+        restoredHistoryPath,
+        options: { dir: f.cwd },
+      });
+      yield* Effect.promise(async () => {
+        expect(await f.readMessages(configDirectory, fork.sessionId)).toBeNull();
+        expect(await f.readMessages(restoredHistoryPath, fork.sessionId)).toBeNull();
+        expect(await f.readMessages(f.homes[1]!, fork.sessionId)).not.toBeNull();
+        for (const home of f.homes) {
+          expect(await f.readMessages(home, f.sessionId)).not.toBeNull();
+        }
+      });
+      expect(accountEnvironment()).toEqual(beforeEnvironment);
+    }).pipe(Effect.provide(runnerLayer)),
+);
+
+it.live(
+  "discards a default-home fork without changing source history or the host environment",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const runner = yield* ClaudeAgentSdkQueryRunner;
+      const beforeEnvironment = accountEnvironment();
+      const configDirectory = path.join(f.homes[0]!, ".claude");
+      const stores = createClaudeSessionStores();
+      const key = { projectKey: "source-workspace", sessionId: f.sessionId };
+      yield* Effect.promise(async () => {
+        const entries = await stores(f.homes[0]!).load(key);
+        await stores(configDirectory).append(key, entries!);
+      });
+      const fork = yield* runner.forkSession({
+        ...f.identity,
+        configDirectory,
+        options: { dir: f.cwd },
+      });
+      yield* runner
+        .deleteSession({ sessionId: fork.sessionId, options: { dir: f.cwd } })
+        .pipe(Effect.provideService(HostProcess.HomeDirectory, f.homes[0]!));
+      yield* Effect.promise(async () => {
+        expect(
+          await stores(configDirectory).load({ ...key, sessionId: fork.sessionId }),
+        ).toBeNull();
+        expect(await stores(configDirectory).load(key)).not.toBeNull();
+      });
+      expect(accountEnvironment()).toEqual(beforeEnvironment);
+    }).pipe(Effect.provide(runnerLayer)),
 );

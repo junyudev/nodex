@@ -241,7 +241,8 @@ export function layerProviderReplay<Transcript extends ProviderReplayTranscript,
   | EffectWorker.OrchestrationEffectWorkerV2
   | EffectOutbox.EffectOutboxV2
   | EventSink.EventSinkV2
-  | ProviderSessionManager.ProviderSessionManagerV2,
+  | ProviderSessionManager.ProviderSessionManagerV2
+  | ProjectionStore.ProjectionStoreV2,
   Error | MigrationError | PlatformError.PlatformError | SqlError
 > {
   const layerRegistry = harness.makeProviderAdapterRegistryLayer(
@@ -264,7 +265,8 @@ export function layerWithRegistry<Error>(
   | EffectWorker.OrchestrationEffectWorkerV2
   | EffectOutbox.EffectOutboxV2
   | EventSink.EventSinkV2
-  | ProviderSessionManager.ProviderSessionManagerV2,
+  | ProviderSessionManager.ProviderSessionManagerV2
+  | ProjectionStore.ProjectionStoreV2,
   Error | MigrationError | PlatformError.PlatformError | SqlError
 > {
   const layerServerConfig = Layer.effect(
@@ -493,6 +495,7 @@ export function layerWithRegistry<Error>(
     Layer.provide(Layer.merge(layerStores, layerEffectExecutorProvided)),
   );
   const layerReplayRuntime = Layer.mergeAll(
+    layerStores,
     layerOrchestratorProvided,
     layerProviderSessionManagerProvided,
     layerEffectWorkerProvided,
@@ -539,5 +542,9 @@ export function layerWithRegistry<Error>(
       yield* EffectWorker.runDaemon.pipe(Effect.forkScoped);
       return orchestrator;
     }),
-  ).pipe(Layer.provideMerge(layerReplayRuntime), Layer.provide(layerStartupRecovery));
+  ).pipe(
+    Layer.provideMerge(layerReplayRuntime),
+    Layer.provide(layerStartupRecovery),
+    Layer.provideMerge(layerStores),
+  );
 }

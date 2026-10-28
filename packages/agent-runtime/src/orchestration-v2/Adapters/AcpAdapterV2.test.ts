@@ -97,6 +97,7 @@ import {
   extractClaudeSubagentSessionEvent,
   isClaudeProvisionalSubagentTool,
 } from "../../../vendor/provider-acp-registry/src/server/claudeAcp.ts";
+import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "../../nodex/SideChat.ts";
 
 const layerHost = TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer));
 
@@ -640,6 +641,196 @@ function makeTurnInput(input: {
 }
 
 describe("AcpAdapterV2", () => {
+  it.effect(
+    "guards first and later side commands without changing the source's native commands",
+    () =>
+      Effect.gen(function* () {
+        const instanceId = ProviderInstanceId.make("acp-side-command-policy");
+        const sourceThreadId = ThreadId.make("acp-side-command-source");
+        const sideThreadId = ThreadId.make("acp-side-command-child");
+        const prompts: EffectAcpSchema.PromptRequest["prompt"][] = [];
+        const adapter = yield* makeAcpAdapterV2({
+          instanceId,
+          selfInvocation: yield* resolveSelfInvocation(),
+          flavor: {
+            driver: ACP_TEST_DRIVER,
+            capabilities: AcpProviderCapabilitiesV2,
+            makeRuntime: makeMockRuntime({
+              childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
+              mockAgentPath: yield* (yield* Path.Path).fromFileUrl(
+                new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+              ),
+              wrapRuntime: (runtime) => ({
+                ...runtime,
+                prompt: (payload, options) =>
+                  Effect.sync(() => {
+                    prompts.push(payload.prompt);
+                  }).pipe(Effect.andThen(runtime.prompt(payload, options))),
+              }),
+            }),
+          },
+        });
+        const modelSelection = { instanceId, model: "default" };
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const runtime = yield* adapter.openSession({
+          threadId: sourceThreadId,
+          providerSessionId: ProviderSessionId.make("acp-side-command-session"),
+          modelSelection,
+          runtimePolicy,
+        });
+        const source = yield* runtime.ensureThread({
+          threadId: sourceThreadId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const child = yield* runtime.forkThread({
+          sourceProviderThread: source,
+          targetThreadId: sideThreadId,
+        });
+        for (const request of [
+          { threadId: sideThreadId, providerThread: child, side: true, ordinal: 1 },
+          { threadId: sideThreadId, providerThread: child, side: true, ordinal: 2 },
+          { threadId: sourceThreadId, providerThread: source, side: false, ordinal: 1 },
+        ]) {
+          const input = makeTurnInput({
+            ...request,
+            instanceId,
+            runtimePolicy,
+            now: yield* DateTime.now,
+            messageText: "/audit src",
+          });
+          yield* runtime.startTurn({
+            ...input,
+            appThread: {
+              ...input.appThread,
+              ...(request.side
+                ? { sideChat: { sourceThreadId, sourceRunId: null, nativeFork: true } }
+                : {}),
+            },
+            hostInstructions: request.side
+              ? SIDE_CHAT_DEVELOPER_INSTRUCTIONS
+              : "Use the current source context.",
+          });
+          yield* runtime.events.pipe(
+            Stream.filter((event) => event.type === "turn.terminal"),
+            Stream.take(1),
+            Stream.runDrain,
+          );
+        }
+        assert.equal(prompts.length, 3);
+        for (const prompt of prompts.slice(0, 2)) {
+          const first = prompt[0];
+          assert.equal(first?.type, "text");
+          if (first?.type !== "text") return yield* Effect.die("Missing guarded request");
+          assert.include(first.text, SIDE_CHAT_DEVELOPER_INSTRUCTIONS);
+          assert.include(first.text, "<user_request>\n/audit src\n</user_request>");
+        }
+        assert.deepEqual(prompts[2]?.[0], { type: "text", text: "/audit src" });
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect.each([
+    { kind: "supported", advertised: true, errorCode: undefined, succeeds: true },
+    { kind: "unadvertised", advertised: false, errorCode: undefined, succeeds: true },
+    { kind: "unimplemented", advertised: true, errorCode: -32601, succeeds: true },
+    { kind: "already removed", advertised: true, errorCode: -32002, succeeds: true },
+    { kind: "provider failure", advertised: true, errorCode: -32603, succeeds: false },
+  ])("discards only the selected native child when ACP deletion is $kind", (testCase) =>
+    Effect.gen(function* () {
+      const sourceId = "native-acp-source";
+      const childId = "native-acp-side";
+      const histories = [new Set([sourceId, childId]), new Set([sourceId, childId])];
+      const runtimeInputs: AcpAdapterV2RuntimeInput[] = [];
+      const deleted: string[] = [];
+      let released = 0;
+      const instanceId = ProviderInstanceId.make("acp-discard-selected-instance");
+      const threadId = ThreadId.make("acp-discard-side");
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: "/selected-instance/workspace",
+      });
+      const now = yield* DateTime.now;
+      const providerThread: OrchestrationV2ProviderThread = {
+        id: ProviderThreadId.make("provider-thread:acp-discard-side"),
+        driver: ACP_TEST_DRIVER,
+        providerInstanceId: instanceId,
+        providerSessionId: null,
+        appThreadId: threadId,
+        ownerNodeId: null,
+        nativeThreadRef: { driver: ACP_TEST_DRIVER, nativeId: childId, strength: "strong" },
+        nativeConversationHeadRef: null,
+        status: "idle",
+        firstRunOrdinal: null,
+        lastRunOrdinal: null,
+        handoffIds: [],
+        forkedFrom: {
+          providerThreadId: ProviderThreadId.make("provider-thread:acp-discard-source"),
+        },
+        createdAt: now,
+        updatedAt: now,
+      };
+      const adapter = yield* makeAcpAdapterV2({
+        instanceId,
+        selfInvocation: yield* resolveSelfInvocation(),
+        flavor: {
+          driver: ACP_TEST_DRIVER,
+          capabilities: AcpProviderCapabilitiesV2,
+          makeRuntime: (input) =>
+            Effect.gen(function* () {
+              runtimeInputs.push(input);
+              yield* Effect.addFinalizer(() =>
+                Effect.sync(() => {
+                  released++;
+                }),
+              );
+              return {
+                initialize: () =>
+                  Effect.succeed({
+                    protocolVersion: 1,
+                    agentCapabilities: {
+                      ...(testCase.advertised ? { sessionCapabilities: { delete: {} } } : {}),
+                    },
+                  }),
+                deleteSession: (sessionId: string) =>
+                  Effect.gen(function* () {
+                    deleted.push(sessionId);
+                    if (testCase.errorCode !== undefined) {
+                      return yield* new EffectAcpErrors.AcpRequestError({
+                        code: testCase.errorCode,
+                        errorMessage: testCase.kind,
+                        method: "session/delete",
+                      });
+                    }
+                    histories[0]!.delete(sessionId);
+                    return {};
+                  }),
+                start: () => Effect.die("Discard must not activate a session"),
+              } as unknown as AcpSessionRuntime.AcpSessionRuntime["Service"];
+            }),
+        },
+      });
+      const result = yield* adapter.discardThread!({ providerThread, runtimePolicy }).pipe(
+        Effect.exit,
+      );
+      assert.equal(Exit.isSuccess(result), testCase.succeeds);
+      assert.deepEqual(deleted, testCase.advertised ? [childId] : []);
+      assert.isTrue(histories[0]!.has(sourceId));
+      assert.deepEqual([...histories[1]!], [sourceId, childId]);
+      if (testCase.advertised && testCase.errorCode === undefined)
+        assert.isFalse(histories[0]!.has(childId));
+      assert.equal(released, 1);
+      assert.equal(runtimeInputs[0]?.cwd, runtimePolicy.cwd);
+      assert.equal(runtimeInputs[0]?.resumeSessionId, undefined);
+      assert.deepEqual(runtimeInputs[0]?.mcpServers, []);
+      assert.equal(runtimeInputs[0]?.processEnvironment, undefined);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
   it("maps complete Droid choice forms and preserves custom answers", () => {
     const request = {
       sessionId: "droid-session",

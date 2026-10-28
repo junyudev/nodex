@@ -1,3 +1,4 @@
+import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "../nodex/SideChat.ts";
 import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 import { AgentScope } from "@t3tools/shared/AgentScope";
@@ -142,6 +143,14 @@ export class ProviderSessionActivityError extends Schema.TaggedError<ProviderSes
   }
 }
 
+export class ProviderSideChatDiscardError extends Schema.TaggedError<ProviderSideChatDiscardError>()(
+  "ProviderSideChatDiscardError",
+  {
+    threadId: ThreadId,
+    cause: Schema.Defect(),
+  },
+) {}
+
 export const ProviderSessionManagerV2Error = Schema.Union([
   ProviderSessionOpenError,
   ProviderWorkspaceMissingError,
@@ -149,6 +158,7 @@ export const ProviderSessionManagerV2Error = Schema.Union([
   ProviderSessionCloseError,
   ProviderSessionReleaseError,
   ProviderSessionActivityError,
+  ProviderSideChatDiscardError,
 ]);
 export type ProviderSessionManagerV2Error = typeof ProviderSessionManagerV2Error.Type;
 
@@ -161,6 +171,7 @@ export interface ProviderSessionManagerV2Shape {
   readonly isSnapshotIdle: Effect.Effect<boolean>;
   readonly shutdown: Effect.Effect<void>;
   readonly open: (input: {
+    readonly ephemeral?: boolean;
     readonly threadId: ThreadId;
     readonly providerSessionId: ProviderSessionId;
     readonly modelSelection: ModelSelection;
@@ -178,6 +189,9 @@ export interface ProviderSessionManagerV2Shape {
     Option.Option<ProviderAdapter.ProviderAdapterV2SessionRuntime>,
     ProviderSessionManagerV2Error
   >;
+  readonly discardSideChatNative: (
+    threadId: ThreadId,
+  ) => Effect.Effect<void, ProviderSideChatDiscardError>;
   readonly close: (
     providerSessionId: ProviderSessionId,
   ) => Effect.Effect<void, ProviderSessionManagerV2Error>;
@@ -2115,13 +2129,23 @@ export const layerWithOptions = (
                                 ...(host.identity === undefined
                                   ? {}
                                   : { hostExecutionIdentity: host.identity }),
-                                ...(host.instructions === undefined
+                                ...(host.instructions === undefined && !input.appThread.sideChat
                                   ? {}
-                                  : { hostInstructions: host.instructions }),
+                                  : {
+                                      hostInstructions: [
+                                        host.instructions,
+                                        ...(input.appThread.sideChat
+                                          ? [SIDE_CHAT_DEVELOPER_INSTRUCTIONS]
+                                          : []),
+                                      ]
+                                        .filter(Boolean)
+                                        .join("\n\n"),
+                                    }),
                                 ...(host.sourceRoots === undefined
                                   ? {}
                                   : { hostSourceRoots: host.sourceRoots }),
-                                ...(executionHost.orchestrationInstructions === undefined
+                                ...(input.appThread.sideChat ||
+                                executionHost.orchestrationInstructions === undefined
                                   ? {}
                                   : {
                                       hostOrchestrationInstructions:
@@ -2397,7 +2421,47 @@ export const layerWithOptions = (
         ),
       );
 
-      return ProviderSessionManagerV2.of({
+      const service: ProviderSessionManagerV2Shape = ProviderSessionManagerV2.of({
+        discardSideChatNative: (threadId) =>
+          Effect.gen(function* () {
+            const records = yield* projectionStore.getThreadRecords(threadId, ["providerThreads"]);
+            if (!records.thread.sideChat || records.thread.deletedAt === null) return;
+            const owned = records.providerThreads.filter(
+              (thread) =>
+                thread.appThreadId === threadId &&
+                thread.ownerNodeId === null &&
+                thread.nativeThreadRef !== null,
+            );
+            for (const sessionId of new Set(
+              owned.flatMap((thread) =>
+                thread.providerSessionId === null ? [] : [thread.providerSessionId],
+              ),
+            ))
+              yield* service.detach({
+                providerSessionId: sessionId,
+                threadId,
+                detail: "Temporary side chat discarded.",
+                revokeMcpCredential: true,
+              });
+            const seen = new Set<string>();
+            for (const providerThread of owned) {
+              const key = `${providerThread.providerInstanceId}:${providerThread.nativeThreadRef!.nativeId}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              const adapter = yield* registry.get(providerThread.providerInstanceId);
+              if (!adapter.discardThread) continue;
+              yield* adapter.discardThread({
+                providerThread,
+                runtimePolicy: {
+                  runtimeMode: "full-access",
+                  interactionMode: records.thread.interactionMode,
+                  cwd: records.thread.worktreePath,
+                },
+              });
+            }
+          }).pipe(
+            Effect.mapError((cause) => new ProviderSideChatDiscardError({ threadId, cause })),
+          ),
         isSnapshotIdle: Effect.gen(function* () {
           for (const entry of (yield* Ref.get(sessions)).values()) {
             if (entry.busyTurns.size > 0 || entry.runtime.hasPendingBackgroundWork === undefined)
@@ -2513,6 +2577,7 @@ export const layerWithOptions = (
               yield* agentScope.clear(input.threadId);
               const runtime = yield* adapter
                 .openSession({
+                  ...(input.ephemeral ? { ephemeral: true } : {}),
                   threadId: input.threadId,
                   providerSessionId: input.providerSessionId,
                   modelSelection: input.modelSelection,
@@ -2944,6 +3009,7 @@ export const layerWithOptions = (
             ),
           ),
       } satisfies ProviderSessionManagerV2Shape);
+      return service;
     }),
   );
 

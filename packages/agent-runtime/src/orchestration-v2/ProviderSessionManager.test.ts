@@ -54,6 +54,7 @@ import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
+import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "../nodex/SideChat.ts";
 
 const layerTestDatabase = SqlitePersistence.layerMemory;
 const layerTestStores = Layer.merge(EventStore.layer, ProjectionStore.layer).pipe(
@@ -310,6 +311,7 @@ function unimplemented(detail: string) {
 const makeProviderAdapter = Effect.fnUntraced(function* (
   state: Ref.Ref<TestProviderRuntimeState>,
   options: {
+    readonly discardThread?: ProviderAdapter.ProviderAdapterV2["Service"]["discardThread"];
     readonly failEventStream?: boolean;
     readonly capabilities?: OrchestrationV2ProviderCapabilities;
     readonly mcpConfigs?: Ref.Ref<
@@ -365,6 +367,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
   );
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: ProviderInstanceId.make("codex"),
+    ...(options.discardThread ? { discardThread: options.discardThread } : {}),
     driver: CODEX_DRIVER,
     getCapabilities: () => Effect.succeed(options.capabilities ?? CodexCapabilities),
     planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
@@ -474,6 +477,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
 });
 
 function layerTest(input: {
+  readonly discardThread?: ProviderAdapter.ProviderAdapterV2["Service"]["discardThread"];
   readonly state: Ref.Ref<TestProviderRuntimeState>;
   readonly idleTimeoutMs: number;
   readonly maxIdlePinMs?: number;
@@ -519,6 +523,7 @@ function layerTest(input: {
           : layerTestEventSink;
   const layerRegistry = Layer.unwrap(
     makeProviderAdapter(input.state, {
+      ...(input.discardThread ? { discardThread: input.discardThread } : {}),
       failEventStream: input.failEventStream ?? false,
       ...(input.scopeClosed === undefined ? {} : { scopeClosed: input.scopeClosed }),
       ...(input.scopeCloseRelease === undefined
@@ -5180,6 +5185,92 @@ it.effect("awaits admission of the exact host Turn before native execution", () 
   }),
 );
 
+it.effect.each([true, false])(
+  "ProviderSessionManagerV2 supplies one side policy and preserves ordinary guidance, side=%s",
+  (side) =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const turnInputs = yield* Ref.make<readonly ProviderAdapter.ProviderAdapterV2TurnInput[]>([]);
+      yield* Effect.gen(function* () {
+        const ids = yield* IdAllocator.IdAllocatorV2;
+        const sink = yield* EventSink.EventSinkV2;
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make("host-side-policy");
+        const created = yield* makeThreadCreatedEvent({ idAllocator: ids, threadId, now });
+        const appThread: OrchestrationV2AppThread = {
+          ...created.payload,
+          ...(side
+            ? {
+                sideChat: {
+                  sourceThreadId: ThreadId.make("policy-source"),
+                  sourceRunId: null,
+                  nativeFork: false,
+                },
+              }
+            : {}),
+        };
+        yield* sink.write({ events: [{ ...created, payload: appThread }] });
+        const providerSessionId = yield* ids.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+        });
+        const runtime = yield* manager.open({
+          threadId,
+          providerSessionId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const runId = ids.derive.run({ threadId, ordinal: 1 });
+        yield* runtime.startTurn({
+          appThread,
+          threadId,
+          runId,
+          attemptId: ids.derive.runAttempt({ runId, attemptOrdinal: 1 }),
+          runOrdinal: 1,
+          providerTurnOrdinal: 1,
+          rootNodeId: ids.derive.rootNode({ runId }),
+          providerThread: makeProviderThread({
+            idAllocator: ids,
+            threadId,
+            providerSessionId,
+            now,
+          }),
+          message: {
+            createdBy: "user",
+            creationSource: "web",
+            messageId: yield* ids.allocate.message({ threadId, ordinal: 1 }),
+            text: "Explain the captured finding.",
+            attachments: [],
+          },
+          modelSelection,
+          runtimePolicy,
+        });
+        const [turn] = yield* Ref.get(turnInputs);
+        assert.isDefined(turn);
+        assert.equal(
+          turn!.hostInstructions,
+          side
+            ? `Host context ready.\n\n${SIDE_CHAT_DEVELOPER_INSTRUCTIONS}`
+            : "Host context ready.",
+        );
+        assert.equal(
+          turn!.hostOrchestrationInstructions,
+          side ? undefined : "Use delegate_task for delegated work.",
+        );
+        const combined = [turn!.hostInstructions, turn!.hostOrchestrationInstructions].join("\n");
+        assert.equal(combined.split(SIDE_CHAT_DEVELOPER_INSTRUCTIONS).length - 1, side ? 1 : 0);
+      }).pipe(
+        Effect.provide(layerTest({ state, idleTimeoutMs: 60_000, turnInputs })),
+        Effect.provideService(ExecutionHost.ExecutionHost, {
+          runtimeGeneration: "policy-runtime",
+          orchestrationInstructions: "Use delegate_task for delegated work.",
+          prepareTurn: () => Effect.succeed({ instructions: "Host context ready." }),
+        }),
+      );
+    }),
+);
+
 it.effect(
   "ProviderSessionManagerV2 retires an overflowing subscription and opens a fresh native generation",
   () =>
@@ -5452,6 +5543,94 @@ it.effect(
           }),
         ),
         Effect.scoped,
+      );
+    }),
+);
+
+it.effect(
+  "discard retries only side-owned native incarnations without starting a provider runtime",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const discarded: string[] = [];
+      let fail = true;
+      const effect = Effect.gen(function* () {
+        const sink = yield* EventSink.EventSinkV2;
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const ids = yield* IdAllocator.IdAllocatorV2;
+        const now = yield* DateTime.now;
+        const sourceId = ThreadId.make("source-kept");
+        const sideId = ThreadId.make("side-discarded");
+        const source = yield* makeThreadCreatedEvent({ idAllocator: ids, threadId: sourceId, now });
+        const side = yield* makeThreadCreatedEvent({ idAllocator: ids, threadId: sideId, now });
+        const thread = {
+          ...side.payload,
+          sideChat: { sourceThreadId: sourceId, sourceRunId: null, nativeFork: false },
+        };
+        yield* sink.write({ events: [source, { ...side, payload: thread }] });
+        for (const [owner, nativeId] of [
+          [sourceId, "parent-native"],
+          [sideId, "side-old"],
+          [sideId, "side-new"],
+        ] as const) {
+          const sessionId = yield* ids.allocate.providerSession({
+            threadId: owner,
+            providerInstanceId: modelSelection.instanceId,
+          });
+          const providerThread = makeProviderThread({
+            idAllocator: ids,
+            threadId: owner,
+            providerSessionId: sessionId,
+            now,
+            nativeThreadId: nativeId,
+          });
+          yield* sink.write({
+            events: [
+              {
+                id: yield* ids.allocate.event({ threadId: owner }),
+                type: "provider-thread.updated",
+                threadId: owner,
+                occurredAt: now,
+                payload: providerThread,
+              },
+            ],
+          });
+        }
+        yield* manager.discardSideChatNative(sourceId);
+        yield* manager.discardSideChatNative(sideId);
+        assert.deepEqual(discarded, []);
+        yield* sink.write({
+          events: [
+            {
+              id: yield* ids.allocate.event({ threadId: sideId }),
+              type: "thread.deleted",
+              threadId: sideId,
+              occurredAt: now,
+              payload: { ...thread, deletedAt: now },
+            },
+          ],
+        });
+        assert.equal(
+          (yield* manager.discardSideChatNative(sideId).pipe(Effect.result))._tag,
+          "Failure",
+        );
+        fail = false;
+        yield* manager.discardSideChatNative(sideId);
+        assert.deepEqual(new Set(discarded), new Set(["side-old", "side-new"]));
+        assert.equal((yield* Ref.get(state)).openCount, 0);
+      });
+      yield* effect.pipe(
+        Effect.provide(
+          layerTest({
+            state,
+            idleTimeoutMs: 1000,
+            discardThread: ({ providerThread }) =>
+              Effect.suspend(() => {
+                discarded.push(providerThread.nativeThreadRef!.nativeId!);
+                return fail ? unimplemented("temporary delete failed") : Effect.void;
+              }),
+          }),
+        ),
       );
     }),
 );

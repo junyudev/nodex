@@ -18,6 +18,8 @@ import type {
   AgentRuntimeQueueInput,
   AgentRuntimeMergeBackInput,
   AgentRuntimeForkInput,
+  AgentRuntimeSideChatCreateInput,
+  AgentRuntimeSideChatDiscardInput,
   AgentRuntimeHistoryInput,
   AgentRuntimeQueueReadInput,
   AgentRuntimeQueuePage,
@@ -91,6 +93,22 @@ const fork = defineRendererCommand({
 const mergeBack = defineRendererCommand({
   key: "agent_runtime.session.merge_back",
   channel: "agent-runtime:session:merge-back",
+  authority: "external",
+  owner: "AgentRuntimeConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
+const createSideChat = defineRendererCommand({
+  key: "agent_runtime.session.create_side_chat",
+  channel: "agent-runtime:session:create-side-chat",
+  authority: "external",
+  owner: "AgentRuntimeConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
+const discardSideChat = defineRendererCommand({
+  key: "agent_runtime.session.discard_side_chat",
+  channel: "agent-runtime:session:discard-side-chat",
   authority: "external",
   owner: "AgentRuntimeConversationOwner",
   protocol: { kind: "returned_value" },
@@ -196,6 +214,12 @@ export interface AgentRuntimeRendererTransport {
     input: AgentRuntimeForkInput,
   ) => Promise<AgentRuntimeLaunchResult & { readonly sourceSessionId: string }>;
   readonly mergeBack: (input: AgentRuntimeMergeBackInput) => Promise<AgentRuntimeLaunchResult>;
+  readonly createSideChat: (
+    input: AgentRuntimeSideChatCreateInput,
+  ) => Promise<AgentRuntimeLaunchResult>;
+  readonly discardSideChat: (
+    input: AgentRuntimeSideChatDiscardInput,
+  ) => Promise<{ readonly discarded: boolean }>;
   readonly stop: (input: AgentRuntimeStopInput) => Promise<{ readonly stopped: boolean }>;
   readonly respond: (input: AgentRuntimeResponseInput) => Promise<{ readonly sequence: number }>;
   readonly setModes: (input: AgentRuntimeModeInput) => Promise<{ readonly changed: boolean }>;
@@ -254,6 +278,8 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   queue: (input) => invokePlainCommand(queue, input),
   fork: (input) => invokePlainCommand(fork, input),
   mergeBack: (input) => invokePlainCommand(mergeBack, input),
+  createSideChat: (input) => invokePlainCommand(createSideChat, input),
+  discardSideChat: (input) => invokePlainCommand(discardSideChat, input),
   stop: (input) => invokePlainCommand(stop, input),
   respond: (input) => invokePlainCommand(respond, input),
   setModes: (input) => invokePlainCommand(setModes, input),

@@ -1,6 +1,8 @@
 import type { AgentSnapshot } from "@nodex/agent-runtime/contracts";
 
-type Projection = Pick<AgentSnapshot["projection"], "runs" | "providerThreads" | "subagents">;
+type Projection = Pick<AgentSnapshot["projection"], "runs" | "providerThreads" | "subagents"> & {
+  readonly thread?: Pick<AgentSnapshot["projection"]["thread"], "sideChat">;
+};
 
 const UNSETTLED_RUN_STATUSES = new Set(["preparing", "queued", "starting", "running", "waiting"]);
 const ACTIVE_TASK_STATUSES = new Set(["pending", "running", "waiting"]);
@@ -17,7 +19,7 @@ export function agentRuntimeContextClearRefusal(projection: Projection): string 
     return "Stop background work before clearing the context.";
   if (projection.subagents.some((task) => ACTIVE_TASK_STATUSES.has(task.status)))
     return "Wait for subagents to report back before clearing the context.";
-  if (!projection.runs.some((run) => run.status !== "rolled_back"))
+  if (!projection.thread?.sideChat && !projection.runs.some((run) => run.status !== "rolled_back"))
     return "Send a message before clearing the context.";
   return null;
 }

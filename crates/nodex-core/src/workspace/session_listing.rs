@@ -169,7 +169,7 @@ pub(super) fn read_session_window(
          LEFT JOIN workspace_sidebar_sections project_section
            ON project_section.section_id = project_item.section_id
            AND project_section.library_id = ?1 AND project_section.lifecycle = 'active'
-         WHERE session.archived = ?2
+         WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND session.archived = ?2
            AND (session.project_id IS NULL OR (project.library_id = ?1
              AND (?2 = 1 OR project.lifecycle <> 'archived')))
            AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL)
@@ -579,6 +579,7 @@ mod tests {
             &workspace.module,
             "runtime",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                side_chat_source_session_id: None,
                 session_id: "session:runtime".into(),
                 project_id: Some("project:default".into()),
                 title: "Runtime chat".into(),

@@ -34,10 +34,14 @@ export function acpPromptWithInstructions(input: {
   readonly previousState?: AcpInstructionState;
   readonly hostInstructions?: string;
   readonly hostOrchestrationInstructions?: string;
+  /** Native command dispatch cannot carry the instruction wrapper. */
+  readonly preserveNativeCommands?: boolean;
 }): string {
   // Native slash commands must remain at the start of the prompt.
-  if (input.prompt.trimStart().startsWith("/")) return input.prompt;
+  if (input.preserveNativeCommands !== false && input.prompt.trimStart().startsWith("/"))
+    return input.prompt;
   if (
+    input.preserveNativeCommands !== false &&
     input.hostInstructions === undefined &&
     input.hostOrchestrationInstructions === undefined &&
     input.previousState?.interactionMode === input.state.interactionMode &&

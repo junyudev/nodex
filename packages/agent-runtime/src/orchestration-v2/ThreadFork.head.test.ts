@@ -17,6 +17,8 @@ import {
 } from "@t3tools/provider-opencode/testing";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 
 import { CLAUDE_DEFAULT_INSTANCE_ID, CLAUDE_PROVIDER } from "./Adapters/ClaudeAdapterV2.ts";
 import {
@@ -30,6 +32,9 @@ import {
 } from "./Adapters/OpenCodeAdapterV2.testkit.ts";
 import * as EventSink from "./EventSink.ts";
 import * as Orchestrator from "./Orchestrator.ts";
+import * as ProjectionStore from "./ProjectionStore.ts";
+import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
+import { deliverContextHandoffs } from "./ContextHandoffDelivery.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 
 const providers = [
@@ -55,11 +60,11 @@ const providers = [
       entries: [],
     }),
   },
-].map(({ registry, ...provider }) => ({
+].map((provider) => ({
   ...provider,
   layer: ProviderReplayHarness.layerWithRegistry<
     ClaudeOrchestratorReplayHarnessError | OpenCodeOrchestratorReplayHarnessError
-  >({ name: "head-fork" }, registry, {
+  >({ name: "head-fork" }, provider.registry, {
     runEffectWorker: false,
   }),
 }));
@@ -266,4 +271,481 @@ it.effect.each(cases)(
         );
       }
     }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each(providers)(
+  "captures a running $driver side chat once without continuing its source",
+  ({ instanceId, layer }) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const source = ThreadId.make("side-source");
+      const child = ThreadId.make("side-child");
+      const runId = RunId.make("source-running");
+      const messageId = MessageId.make("source-request");
+      const modelSelection = { instanceId, model: "test-model" };
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("side-source-create"),
+        threadId: source,
+        projectId: ProjectId.make("side-project"),
+        title: "Main task",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: "/work/current",
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const run: OrchestrationV2Run = {
+        id: runId,
+        threadId: source,
+        ordinal: 1,
+        providerInstanceId: instanceId,
+        modelSelection,
+        providerThreadId: null,
+        userMessageId: messageId,
+        rootNodeId: null,
+        activeAttemptId: null,
+        status: "running",
+        queuePosition: null,
+        requestedAt: now,
+        startedAt: now,
+        completedAt: null,
+        checkpointId: null,
+        contextHandoffId: null,
+      };
+      const partial = {
+        id: TurnItemId.make("partial-reply"),
+        threadId: source,
+        runId,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 2,
+        status: "running" as const,
+        title: null,
+        startedAt: now,
+        completedAt: null,
+        updatedAt: now,
+        type: "assistant_message" as const,
+        messageId: MessageId.make("partial-message"),
+        streaming: true,
+        text: `CAPTURED_PARTIAL ${"detailed context ".repeat(60)}`,
+        attachments: [],
+      };
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("source-run"),
+            type: "run.created",
+            threadId: source,
+            runId,
+            occurredAt: now,
+            payload: run,
+          },
+          {
+            id: EventId.make("partial-before"),
+            type: "turn-item.updated",
+            threadId: source,
+            runId,
+            occurredAt: now,
+            payload: partial,
+          },
+        ],
+      });
+      const create = {
+        type: "thread.fork" as const,
+        sideChat: true as const,
+        commandId: CommandId.make("side-capture"),
+        sourceThreadId: source,
+        targetThreadId: child,
+        sourcePoint: { type: "latest_stable" as const },
+        rootPolicy: "independent_root" as const,
+        title: "Side chat",
+        createdBy: "user" as const,
+        creationSource: "web" as const,
+      };
+      yield* orchestrator.dispatch(create);
+      const captured = yield* orchestrator.getThreadProjection(child);
+      assert.lengthOf(captured.runs, 0);
+      assert.equal(captured.thread.worktreePath, "/work/current");
+      assert.equal(captured.thread.lineage.rootThreadId, child);
+      assert.isNull(captured.thread.lineage.parentThreadId);
+      assert.isFalse(captured.thread.sideChat!.nativeFork);
+      assert.include(
+        (yield* store.getSideChatContext(child))!.history.messages[0]!.text,
+        "detailed context ".repeat(60).trim(),
+      );
+      const zeroBudget = yield* store.getHandoffHistory({
+        threadId: child,
+        scope: "conversation",
+        budget: 0,
+      });
+      assert.lengthOf(zeroBudget.history.messages, 0);
+      assert.isAbove(zeroBudget.history.omittedItems, 0);
+      assert.notInclude(zeroBudget.context, "CAPTURED_PARTIAL");
+      assert.lengthOf(
+        (yield* orchestrator.getThreadSnapshotWindow(child, { rowLimit: 100 })).projection
+          .visibleTurnItems,
+        0,
+      );
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("partial-after"),
+            type: "turn-item.updated",
+            threadId: source,
+            runId,
+            occurredAt: now,
+            payload: { ...partial, text: `${partial.text} LATE_PARENT_TEXT` },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch(create);
+      assert.deepEqual(
+        (yield* orchestrator.getThreadProjection(child)).thread.sideChat,
+        captured.thread.sideChat,
+      );
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("side-question"),
+        threadId: child,
+        messageId: MessageId.make("side-question"),
+        text: "Explain this detail",
+        attachments: [],
+        modelSelection,
+        dispatchMode: { type: "start_immediately" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const started = yield* orchestrator.getThreadProjection(child);
+      const handed = started.contextHandoffs
+        .flatMap((h) => h.history?.messages ?? [])
+        .map((m) => m.text)
+        .join("\n");
+      assert.include(handed, "CAPTURED_PARTIAL");
+      assert.notInclude(handed, "LATE_PARENT_TEXT");
+      assert.equal((yield* orchestrator.getThreadProjection(source)).runs[0]!.status, "running");
+      const sideRun = started.runs[0]!;
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("side-completed"),
+            type: "run.updated",
+            threadId: child,
+            runId: sideRun.id,
+            occurredAt: now,
+            payload: { ...sideRun, status: "completed", completedAt: now },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.fork",
+        commandId: CommandId.make("regular-fork-of-side"),
+        sourceThreadId: child,
+        targetThreadId: ThreadId.make("regular-fork"),
+        sourcePoint: { type: "latest_stable" },
+        rootPolicy: "independent_root",
+        createdBy: "user",
+        creationSource: "web",
+      });
+      assert.isUndefined(
+        (yield* orchestrator.getThreadProjection(ThreadId.make("regular-fork"))).thread.sideChat,
+      );
+      const independent = yield* store.getHandoffHistory({
+        threadId: ThreadId.make("regular-fork"),
+        scope: "conversation",
+        budget: 16000,
+      });
+      const inherited = independent.history.messages;
+      assert.include(inherited.map((m) => m.text).join("\n"), "CAPTURED_PARTIAL");
+      assert.notInclude(inherited.map((m) => m.text).join("\n"), "LATE_PARENT_TEXT");
+      assert.isBelow(
+        inherited.findIndex((m) => m.kind === "side_chat_boundary"),
+        inherited.findIndex((m) => m.text === "Explain this detail"),
+      );
+      const portable = yield* store.getHandoffHistory({
+        threadId: child,
+        scope: "conversation",
+        budget: 16000,
+      });
+      assert.include(portable.history.messages.map((m) => m.text).join("\n"), "CAPTURED_PARTIAL");
+      assert.notInclude(
+        portable.history.messages.map((m) => m.text).join("\n"),
+        "LATE_PARENT_TEXT",
+      );
+      yield* orchestrator.dispatch({
+        type: "thread.clear_context",
+        threadId: child,
+        commandId: CommandId.make("side-clear"),
+      });
+      const cleared = yield* store.getHandoffHistory({
+        threadId: child,
+        scope: "conversation",
+        budget: 16000,
+      });
+      assert.notInclude(cleared.history.messages.map((m) => m.text).join("\n"), "CAPTURED_PARTIAL");
+      const beforeClear = yield* store.getHandoffHistory({
+        threadId: child,
+        scope: "conversation",
+        runOrdinalTo: sideRun.ordinal,
+        asOfRunOrdinalTo: true,
+        historyRevision: 0,
+        budget: 16000,
+      });
+      assert.include(
+        beforeClear.history.messages.map((m) => m.text).join("\n"),
+        "CAPTURED_PARTIAL",
+      );
+      const currentSide = (yield* orchestrator.getThreadProjection(child)).thread;
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("rewind-clear-run"),
+            type: "run.updated",
+            threadId: child,
+            runId: sideRun.id,
+            occurredAt: now,
+            payload: {
+              ...sideRun,
+              status: "rolled_back",
+              rolledBackAtRevision: 1,
+              completedAt: now,
+            },
+          },
+          {
+            id: EventId.make("rewind-side-revision"),
+            type: "thread.metadata-updated",
+            threadId: child,
+            occurredAt: now,
+            payload: { ...currentSide, historyRevision: 1 },
+          },
+        ],
+      });
+      const rewound = yield* store.getHandoffHistory({
+        threadId: child,
+        scope: "conversation",
+        budget: 16000,
+      });
+      assert.include(rewound.history.messages.map((m) => m.text).join("\n"), "CAPTURED_PARTIAL");
+      yield* orchestrator.dispatch({
+        type: "thread.delete",
+        threadId: child,
+        commandId: CommandId.make("side-dispose"),
+      });
+      const afterDispose = yield* store.getHandoffHistory({
+        threadId: ThreadId.make("regular-fork"),
+        scope: "conversation",
+        budget: 16000,
+      });
+      assert.deepEqual(afterDispose.history.messages, independent.history.messages);
+      assert.equal(
+        (yield* orchestrator.getThreadProjection(source)).turnItems[0]!.type,
+        "assistant_message",
+      );
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each(providers)(
+  "opens an idle $driver side chat when the source has no Runs",
+  ({ instanceId, layer }) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sourceThreadId = ThreadId.make("empty-source");
+      const targetThreadId = ThreadId.make("empty-side");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("empty-create"),
+        threadId: sourceThreadId,
+        projectId: ProjectId.make("empty-project"),
+        title: "Empty",
+        modelSelection: { instanceId, model: "test-model" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.fork",
+        sideChat: true,
+        commandId: CommandId.make("empty-side-create"),
+        sourceThreadId,
+        targetThreadId,
+        sourcePoint: { type: "latest_stable" },
+        rootPolicy: "independent_root",
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const side = yield* orchestrator.getThreadProjection(targetThreadId);
+      assert.lengthOf(side.runs, 0);
+      assert.deepEqual(
+        (yield* store.getSideChatContext(targetThreadId))!.history.messages.map(
+          (message) => message.kind,
+        ),
+        ["side_chat_boundary"],
+      );
+      assert.isNull(side.thread.forkedFrom);
+      yield* orchestrator.dispatch({
+        type: "thread.clear_context",
+        threadId: targetThreadId,
+        commandId: CommandId.make("empty-side-clear"),
+      });
+      assert.isNull(yield* store.getSideChatContext(targetThreadId));
+      assert.isUndefined((yield* orchestrator.getThreadProjection(sourceThreadId)).thread.sideChat);
+    }).pipe(Effect.provide(layer)),
+);
+
+const sideSwitchLayer = ProviderReplayHarness.layerWithRegistry(
+  { name: "side-provider-switch" },
+  ProviderAdapterRegistry.layerFromAdaptersEffect(
+    Effect.gen(function* () {
+      const adapters = [];
+      for (const provider of providers) {
+        const services = yield* Layer.build<
+          Layer.Services<typeof provider.registry>,
+          Layer.Error<typeof provider.registry>,
+          ProviderAdapterRegistry.ProviderAdapterRegistryV2
+        >(provider.registry);
+        const registry = Context.get(services, ProviderAdapterRegistry.ProviderAdapterRegistryV2);
+        adapters.push(yield* registry.get(provider.instanceId));
+      }
+      return adapters;
+    }),
+  ),
+  { runEffectWorker: false },
+);
+
+it.effect("delivers frozen source facts and side-local history once when switching Agent", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const sink = yield* EventSink.EventSinkV2;
+    const now = yield* DateTime.now;
+    const source = ThreadId.make("switch-source");
+    const child = ThreadId.make("switch-side");
+    const sourceSelection = { instanceId: CLAUDE_DEFAULT_INSTANCE_ID, model: "source-model" };
+    const targetSelection = { instanceId: OPENCODE_DEFAULT_INSTANCE_ID, model: "target-model" };
+    const sourceText = "The source marker is ORCHID. Keep it as conversation context.";
+    const sideText = "The side marker is SIDECAR. What was the source marker?";
+    const send = Effect.fnUntraced(function* (
+      threadId: ThreadId,
+      id: string,
+      text: string,
+      modelSelection = sourceSelection,
+    ) {
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make(id),
+        threadId,
+        messageId: MessageId.make(id),
+        text,
+        attachments: [],
+        modelSelection,
+        dispatchMode: { type: "start_immediately" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+    });
+    const complete = Effect.fnUntraced(function* (threadId: ThreadId) {
+      const run = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make(`complete:${run.id}`),
+            type: "run.updated",
+            threadId,
+            runId: run.id,
+            occurredAt: now,
+            payload: { ...run, status: "completed", completedAt: now },
+          },
+        ],
+      });
+    });
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("switch-source-create"),
+      threadId: source,
+      projectId: ProjectId.make("switch-project"),
+      title: "Source",
+      modelSelection: sourceSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* send(source, "source-fact", sourceText);
+    yield* complete(source);
+    yield* orchestrator.dispatch({
+      type: "thread.fork",
+      sideChat: true,
+      commandId: CommandId.make("switch-side-create"),
+      sourceThreadId: source,
+      targetThreadId: child,
+      sourcePoint: { type: "latest_stable" },
+      rootPolicy: "independent_root",
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* send(source, "later-parent-fact", "The later parent marker is LATER.");
+    yield* complete(source);
+    yield* send(child, "side-fact", sideText);
+    yield* complete(child);
+    yield* send(child, "switch-and-recall", "Recall the source and side markers.", targetSelection);
+    const switched = yield* orchestrator.getThreadProjection(child);
+    const run = switched.runs.at(-1)!;
+    const handoff = switched.contextHandoffs.find((candidate) => candidate.targetRunId === run.id)!;
+    assert.isDefined(handoff);
+    assert.equal(handoff.strategy, "full_thread_summary");
+    assert.deepEqual(
+      handoff
+        .history!.messages.map((message) => message.text)
+        .filter((text) => text === sourceText || text === sideText),
+      [sourceText, sideText],
+    );
+    const providerThread = {
+      ...switched.providerThreads.find((candidate) => candidate.id === run.providerThreadId)!,
+      nativeThreadRef: {
+        driver: OPENCODE_PROVIDER,
+        nativeId: "switched-native",
+        strength: "strong" as const,
+      },
+    };
+    let delivered = handoff;
+    const deliveryInput = {
+      handoffs: [handoff],
+      providerThread,
+      budget: 16_000,
+      alreadyDeliveredItemIds: new Set<string>(),
+      persist: (next: typeof handoff) =>
+        Effect.sync(() => {
+          delivered = next;
+        }),
+    };
+    const delivery = yield* deliverContextHandoffs(deliveryInput);
+    assert.include(delivery.context, sourceText);
+    assert.include(delivery.context, sideText);
+    assert.notInclude(delivery.context, "LATER");
+    assert.isBelow(
+      delivery.context.indexOf(sourceText),
+      delivery.context.indexOf("Side conversation boundary."),
+    );
+    assert.isBelow(
+      delivery.context.indexOf("Side conversation boundary."),
+      delivery.context.indexOf(sideText),
+    );
+    yield* delivery.delivered;
+    assert.lengthOf(delivered.delivery!.itemIds, handoff.history!.messages.length);
+    const next = yield* deliverContextHandoffs({ ...deliveryInput, handoffs: [delivered] });
+    assert.equal(next.context, "");
+  }).pipe(Effect.provide(sideSwitchLayer)),
 );

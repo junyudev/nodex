@@ -77,7 +77,7 @@ describe("workbench panel tab model", () => {
     ).toBe(false);
   });
 
-  test("keeps loading side chats non-closable", () => {
+  test("allows cancelling a side capture only when its pending identity is retained", () => {
     const sideChat = {
       sideChat: true,
       id: "side-chat",
@@ -91,6 +91,17 @@ describe("workbench panel tab model", () => {
       stateKey: 0,
     } satisfies SideChatPanelTab;
     expect(isPanelTabClosable(sideChat)).toBe(false);
+    expect(
+      isPanelTabClosable({
+        ...sideChat,
+        creation: {
+          source: { sessionId: "source" },
+          sessionId: "side",
+          requestId: "capture",
+          acceptedAt: 0,
+        },
+      }),
+    ).toBe(true);
     expect(isPanelTabClosable({ ...sideChat, status: "ready" })).toBe(true);
     expect(isPanelTabClosable({ ...sideChat, status: "expired" })).toBe(true);
     expect(isPanelTabClosable({ ...sideChat, status: "failed" })).toBe(true);

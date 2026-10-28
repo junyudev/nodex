@@ -106,6 +106,7 @@ function layerExecutorFor(input: {
       ProviderSessionManager.ProviderSessionManagerV2,
       ProviderSessionManager.ProviderSessionManagerV2.of({
         shutdown: Effect.void,
+        discardSideChatNative: () => Effect.void,
         busyInstances: Effect.succeed(new Set()),
         busyThreads: Effect.succeed(new Map()),
         isSnapshotIdle: Effect.succeed(true),

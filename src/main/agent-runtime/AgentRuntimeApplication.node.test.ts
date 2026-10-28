@@ -215,6 +215,9 @@ const setup = (
     failThreadCreate: false,
     failCodexImportBeforeCommit: false,
     nativeSession: null as ProjectSession | null,
+    nativeBackendSession: null as Awaited<
+      Effect.Success<ReturnType<ProjectWorkspace["Service"]["readThreadBackendSession"]>>
+    >,
     failCodexImportAcknowledgment: false,
     codexModelsAvailable: true,
     nativeImportSourceHome: codexImport.expectedHome,
@@ -320,7 +323,9 @@ const setup = (
                       items: [...bindings.values()].filter(
                         (binding) =>
                           binding.runtime_id === input.runtime_id &&
-                          (binding.project_id ?? null) === (input.project_id ?? null),
+                          (input.temporary_only
+                            ? binding.side_chat_source_session_id !== undefined
+                            : (binding.project_id ?? null) === (input.project_id ?? null)),
                       ),
                       next_cursor: null,
                       authority: { projection_revision: 1 },
@@ -384,6 +389,9 @@ const setup = (
         runtime_thread_id: intent.runtime_thread_id,
         launch_request_id: intent.launch_request_id,
         bound_at: "2026-10-14T00:00:00Z",
+        ...(intent.kind === "create_agent_runtime_session" && intent.side_chat_source_session_id
+          ? { side_chat_source_session_id: intent.side_chat_source_session_id }
+          : {}),
       });
       order.push("core.bind");
       if (state.failCoreAcknowledgment)
@@ -958,6 +966,10 @@ const setup = (
           state.nativeSession?.id === id && !bindings.has(id)
             ? state.nativeSession
             : sessionValue(id),
+        ),
+      readThreadBackendSession: (id: string) =>
+        Effect.succeed(
+          state.nativeBackendSession?.threadId === id ? state.nativeBackendSession : null,
         ),
       renameProjectSession: (command) =>
         mutateSession("rename", () => ({
@@ -5302,5 +5314,242 @@ it.effect(
       assert.isFalse(
         fixture.calls.slice(beforeRead).some((call) => call.method === "native-message.receipt"),
       );
+    }),
+);
+
+it.effect(
+  "side chats create an idle independent binding, replay without recapturing and discard only their own execution",
+  () =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      const source = yield* owner.launch(launch);
+      const sourceBefore = structuredClone(f.snapshots.get(source.threadId));
+      const input = {
+        source: { sessionId: source.sessionId },
+        sessionId: "side",
+        requestId: "side:one",
+        acceptedAt: launch.acceptedAt,
+      };
+      const side = yield* owner.createSideChat(input);
+      assert.equal(f.bindings.get(side.sessionId)?.side_chat_source_session_id, source.sessionId);
+      const fork = [...f.commands.values()].find((c) => c.type === "thread.fork");
+      assert.isTrue(fork?.type === "thread.fork" && fork.sideChat);
+      assert.lengthOf(f.snapshots.get(side.threadId)!.projection.runs, 0);
+      assert.deepEqual(f.snapshots.get(source.threadId), sourceBefore);
+      const before = f.calls.length;
+      assert.deepEqual(yield* owner.createSideChat(input), side);
+      assert.isFalse(f.calls.slice(before).some((c) => c.method === "thread.fork-source"));
+      assert.equal([...f.commands.values()].filter((c) => c.type === "thread.fork").length, 1);
+      yield* owner.createSideChat({ ...input, requestId: "changed" }).pipe(Effect.flip);
+      yield* owner
+        .discardSideChat({ sessionId: source.sessionId, requestId: "not-side" })
+        .pipe(Effect.flip);
+      assert.deepEqual(
+        yield* owner.discardSideChat({ sessionId: side.sessionId, requestId: "discard" }),
+        { discarded: true },
+      );
+      assert.deepEqual(
+        yield* owner.discardSideChat({ sessionId: side.sessionId, requestId: "discard" }),
+        { discarded: false },
+      );
+      assert.isTrue(f.bindings.has(source.sessionId));
+      assert.isNotNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
+      assert.deepEqual(f.snapshots.get(source.threadId), sourceBefore);
+    }),
+);
+
+it.effect.each(["stored", "live", "standard"] as const)(
+  "native side capture preserves current settings without adopting its source or reopening history (%s)",
+  (settings) =>
+    Effect.gen(function* () {
+      const f = setup({
+        ...(settings === "stored"
+          ? {}
+          : {
+              nativeCodexSettings: (threadId) => {
+                assert.equal(threadId, codexImport.nativeSessionId);
+                return {
+                  model: "model-b",
+                  reasoningEffort: settings === "standard" ? null : "low",
+                  serviceTier: settings === "standard" ? null : "fast",
+                  personality: null,
+                  collaborationMode: {
+                    mode: "plan",
+                    settings: {
+                      model: "model-b",
+                      reasoning_effort: "low",
+                      developer_instructions: null,
+                    },
+                  },
+                };
+              },
+            }),
+      });
+      f.state.nativeSession = {
+        id: "native-source",
+        projectId: "project",
+        displayTitle: "Native source",
+        archived: false,
+        thread: {
+          threadId: codexImport.nativeSessionId,
+          executionHostId: "local",
+          backendBinding: { kind: "codex" },
+          cwd: "/native/work",
+          statusType: "active",
+          executionProfile: { modelId: "model-b", reasoningEffort: "low", serviceTier: "fast" },
+        },
+      } as ProjectSession;
+      const original = structuredClone(f.state.nativeSession);
+      const owner = yield* f.owner;
+      const input = {
+        source: { sessionId: "native-source", threadId: codexImport.nativeSessionId },
+        sessionId: "native-side",
+        requestId: "native-side:create",
+        acceptedAt: launch.acceptedAt,
+      };
+      const side = yield* owner.createSideChat(input);
+      assert.isFalse(f.bindings.has("native-source"));
+      assert.deepEqual(f.state.nativeSession, original);
+      const capture = [...f.imports.values()][0]!;
+      assert.isTrue(capture.sideChatCapture);
+      assert.equal(capture.sourceNativeThreadId, codexImport.nativeSessionId);
+      assert.equal(capture.interactionMode, settings === "stored" ? undefined : "plan");
+      assert.deepEqual(capture.modelSelection, {
+        instanceId: "codex",
+        model: "model-b",
+        options:
+          settings === "standard"
+            ? [{ id: "serviceTier", value: "default" }]
+            : [
+                { id: "reasoningEffort", value: "low" },
+                { id: "serviceTier", value: "fast" },
+              ],
+      });
+      assert.isNotNull(f.snapshots.get(capture.threadId)!.projection.thread.deletedAt);
+      assert.equal(f.bindings.size, 1);
+      const reads = f.calls.filter((c) => c.method === "thread.import-native").length;
+      f.state.nativeSession = null;
+      assert.deepEqual(yield* owner.createSideChat(input), side);
+      assert.equal(f.calls.filter((c) => c.method === "thread.import-native").length, reads);
+    }),
+);
+
+it.effect.each(["current", "missing", "account", "home"] as const)(
+  "captures passive Claude history with its native identity and choices only from the current profile (%s)",
+  (profile) =>
+    Effect.gen(function* () {
+      const backendBinding = { kind: "claude" as const, instanceConfigId: "personal" };
+      const instanceId = agentRuntimeProviderId(backendBinding)!;
+      const f = setup({}, [
+        {
+          instanceId,
+          driver: "claudeAgent",
+          enabled: true,
+          models: [
+            { slug: "claude-default", isDefault: true },
+            {
+              slug: "claude-current",
+              capabilities: {
+                optionDescriptors: [
+                  { id: "effort", type: "select", options: [{ id: "high" }] },
+                  { id: "fastMode", type: "boolean" },
+                  { id: "thinking", type: "boolean" },
+                  { id: "contextWindow", type: "select", options: [{ id: "1m" }] },
+                ],
+              },
+            },
+          ],
+        },
+      ] as unknown as AgentRuntimeOperations["providers.read"]["output"]);
+      f.state.nativeImportSourceHome = "/native/claude";
+      f.state.nativeSession = {
+        id: "native-source",
+        projectId: "project",
+        displayTitle: "Claude source",
+        archived: false,
+        thread: {
+          threadId: "claude-product-thread",
+          executionHostId: "local",
+          backendBinding,
+          cwd: "/native/work",
+          statusType: "idle",
+        },
+      } as ProjectSession;
+      f.state.nativeBackendSession = {
+        threadId: "claude-product-thread",
+        backendBinding:
+          profile === "account" ? { ...backendBinding, instanceConfigId: "other" } : backendBinding,
+        backendSessionId: codexImport.nativeSessionId,
+        nativeHome: profile === "home" ? "/different/claude" : "/native/claude",
+        updatedAt: 0,
+        runtimeOptions: null,
+        nativeState: {
+          ever_saved: true,
+          preferences: {
+            model: "claude-current",
+            effort: "high",
+            fast: true,
+            thinking: false,
+            context: "1m",
+            interaction_mode: "plan",
+          },
+        },
+      };
+      if (profile === "missing") f.state.nativeBackendSession = null;
+      const original = structuredClone(f.state.nativeBackendSession);
+      const owner = yield* f.owner;
+      const create = owner.createSideChat({
+        source: { sessionId: "native-source" },
+        sessionId: "native-side",
+        requestId: "native-side:create",
+        acceptedAt: launch.acceptedAt,
+      });
+      if (profile !== "current") {
+        yield* create.pipe(Effect.flip);
+        assert.equal(f.imports.size, 0);
+        assert.equal(f.bindings.size, 0);
+        return;
+      }
+      yield* create;
+      const capture = [...f.imports.values()][0]!;
+      assert.equal(capture.sourceNativeThreadId, codexImport.nativeSessionId);
+      assert.equal(capture.sourceHome, "/native/claude");
+      assert.equal(capture.interactionMode, "plan");
+      assert.deepEqual(capture.modelSelection, {
+        instanceId,
+        model: "claude-current",
+        options: [
+          { id: "fastMode", value: true },
+          { id: "thinking", value: false },
+          { id: "contextWindow", value: "1m" },
+          { id: "effort", value: "high" },
+        ],
+      });
+      assert.isFalse(f.bindings.has("native-source"));
+      assert.deepEqual(f.state.nativeBackendSession, original);
+    }),
+);
+
+it.effect(
+  "startup reclaims hidden side Sessions while retaining regular chats for normal recovery",
+  () =>
+    Effect.gen(function* () {
+      const f = setup();
+      const owner = yield* f.owner;
+      const source = yield* owner.launch(launch);
+      const side = yield* owner.createSideChat({
+        source: { sessionId: source.sessionId },
+        sessionId: "orphan-side",
+        requestId: "orphan:create",
+        acceptedAt: launch.acceptedAt,
+      });
+      yield* owner.discardOrphanSideChats("engine");
+      assert.isTrue(f.bindings.has(source.sessionId));
+      assert.isFalse(f.bindings.has(side.sessionId));
+      assert.equal(f.cleanups.size, 1);
+      yield* owner.cleanupDeletedSessions;
+      assert.isNotNull(f.snapshots.get(side.threadId)!.projection.thread.deletedAt);
+      assert.isNull(f.snapshots.get(source.threadId)!.projection.thread.deletedAt);
     }),
 );

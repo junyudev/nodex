@@ -1208,6 +1208,7 @@ fn runtime_session(module: &ProjectWorkspaceModule) {
         module,
         "runtime-session",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            side_chat_source_session_id: None,
             session_id: "session:runtime-source".into(),
             project_id: Some("project:default".into()),
             title: "Background work".into(),

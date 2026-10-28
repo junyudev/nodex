@@ -55,6 +55,7 @@ export const NativeImportInput = Schema.Struct({
   modelSelection: ModelSelection,
   cwd: Schema.NonEmptyString,
   interactionMode: Schema.optional(ProviderInteractionMode),
+  sideChatCapture: Schema.optional(Schema.Literal(true)),
 });
 export const NativeImportsFindInput = Schema.Struct({
   backendKind: Schema.Literals(["codex", "claude"]),
@@ -168,6 +169,15 @@ export const make = Effect.gen(function* () {
         worktreePath: input.cwd,
         activeProviderThreadId: null,
         historyOrigin: "native_import",
+        ...(input.sideChatCapture
+          ? {
+              sideChat: {
+                sourceThreadId: ThreadId.make(input.sourceNativeThreadId),
+                sourceRunId: null,
+                nativeFork: false,
+              },
+            }
+          : {}),
         executionHandoff: { operationId, recoveryRequired: true },
         lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: input.threadId },
         forkedFrom: null,

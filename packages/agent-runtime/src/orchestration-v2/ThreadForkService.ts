@@ -76,6 +76,64 @@ export class ThreadForkServiceV2 extends Context.Service<
   ThreadForkServiceV2Shape
 >()("t3/orchestration-v2/ThreadForkService/ThreadForkServiceV2") {}
 
+type ForkThreadInput = Pick<
+  Parameters<ThreadForkServiceV2Shape["plan"]>[0],
+  | "sourceProjection"
+  | "targetThreadId"
+  | "rootPolicy"
+  | "title"
+  | "createdBy"
+  | "creationSource"
+  | "createdAt"
+> & {
+  readonly sourceRun?: OrchestrationV2Run;
+};
+
+export function forkThread(input: ForkThreadInput): OrchestrationV2AppThread {
+  const {
+    sideChat: _sideChat,
+    capturedContext: _capturedContext,
+    ...source
+  } = input.sourceProjection.thread;
+  return {
+    ...source,
+    executionHandoff: null,
+    createdBy: input.createdBy,
+    creationSource: input.creationSource,
+    id: input.targetThreadId,
+    title: input.title ?? `${input.sourceProjection.thread.title} fork`,
+    activeProviderThreadId: null,
+    historyRevision: 0,
+    lineage: {
+      parentThreadId:
+        input.rootPolicy === "independent_root" ? null : input.sourceProjection.thread.id,
+      relationshipToParent: input.rootPolicy === "independent_root" ? null : "fork",
+      rootThreadId:
+        input.rootPolicy === "independent_root"
+          ? input.targetThreadId
+          : input.sourceProjection.thread.lineage.rootThreadId,
+    },
+    forkedFrom:
+      input.sourceRun === undefined
+        ? null
+        : {
+            type: "run",
+            threadId: input.sourceProjection.thread.id,
+            runId: input.sourceRun!.id,
+            sourceHistoryRevision: input.sourceProjection.thread.historyRevision ?? 0,
+          },
+    createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+    archivedAt: null,
+    settledOverride: null,
+    settledAt: null,
+    snoozedUntil: null,
+    snoozedAt: null,
+    lastVisitedAt: null,
+    deletedAt: null,
+  };
+}
+
 export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
   ThreadForkServiceV2,
   ThreadForkServiceV2.of({
@@ -88,40 +146,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
             cause: forkableSourceRunStatusError(input.sourceRun),
           });
         }
-        const targetThread: OrchestrationV2AppThread = {
-          ...input.sourceProjection.thread,
-          executionHandoff: null,
-          createdBy: input.createdBy,
-          creationSource: input.creationSource,
-          id: input.targetThreadId,
-          title: input.title ?? `${input.sourceProjection.thread.title} fork`,
-          activeProviderThreadId: null,
-          historyRevision: 0,
-          lineage: {
-            parentThreadId:
-              input.rootPolicy === "independent_root" ? null : input.sourceProjection.thread.id,
-            relationshipToParent: input.rootPolicy === "independent_root" ? null : "fork",
-            rootThreadId:
-              input.rootPolicy === "independent_root"
-                ? input.targetThreadId
-                : input.sourceProjection.thread.lineage.rootThreadId,
-          },
-          forkedFrom: {
-            type: "run",
-            threadId: input.sourceProjection.thread.id,
-            runId: input.sourceRun.id,
-            sourceHistoryRevision: input.sourceProjection.thread.historyRevision ?? 0,
-          },
-          createdAt: input.createdAt,
-          updatedAt: input.createdAt,
-          archivedAt: null,
-          settledOverride: null,
-          settledAt: null,
-          snoozedUntil: null,
-          snoozedAt: null,
-          lastVisitedAt: null,
-          deletedAt: null,
-        };
+        const targetThread = forkThread(input);
         const transfer: OrchestrationV2ContextTransfer = {
           id: input.transferId,
           type: "fork",

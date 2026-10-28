@@ -218,6 +218,13 @@ export const planThreadDeletion = Effect.fn("ThreadDeletion.planThreadDeletion")
       },
     });
   }
+  if (projection.thread.sideChat)
+    effects.push({
+      id: `effect:${command.commandId}:side-chat.discard-native`,
+      commandId: command.commandId,
+      threadId: command.threadId,
+      request: { type: "side-chat.discard-native" },
+    });
   effects.push({
     id: `effect:${command.commandId}:terminal.cleanup`,
     commandId: command.commandId,

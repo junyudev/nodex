@@ -433,6 +433,8 @@ export interface ThreadStageActions {
     opts?: {
       untrustedAppMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage;
       submittedPresentation?: WorkbenchSubmitPresentation;
+      submissionIdentity?: { readonly clientUserMessageId: string };
+      presentationTicket?: import("../../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
       collaborationMode?: CodexCollaborationModeKind;
       promptInput?: CodexPromptInput;
       model?: string;

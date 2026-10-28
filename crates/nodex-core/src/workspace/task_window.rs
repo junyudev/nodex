@@ -195,7 +195,7 @@ fn read_task_window_in_scope(
            LEFT JOIN workspace_sidebar_positions position \
              ON position.scope_key = lane.scope_key \
              AND position.thread_id = thread.thread_id \
-           WHERE ((?4 = 1 AND session.pinned = 1) OR (?4 = 0 AND \
+           WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) AND ((?4 = 1 AND session.pinned = 1) OR (?4 = 0 AND \
              ((?1 IS NULL AND session.project_id IS NULL) OR session.project_id = ?1))) \
              AND (session.project_id IS NULL OR EXISTS (\
                SELECT 1 FROM projects project \

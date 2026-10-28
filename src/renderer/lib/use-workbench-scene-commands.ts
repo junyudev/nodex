@@ -15,6 +15,7 @@ import type { WorkbenchWindowOwner } from "./workbench-window-owner";
 import type { WorkbenchPanelTabOpenerStore } from "./workbench-panel-tab-opener-state";
 import { workbenchSceneCommandOpenerLifecycle } from "./workbench-scene-command-opener";
 import { createWorkbenchSceneSurfacePresenter } from "./workbench-scene-surface-presenter";
+import { useSideChatCloseConfirmation } from "./use-side-chat-close-confirmation";
 
 export type ExecuteWorkbenchUiCommand = (
   sceneOwner: WorkbenchSceneOwner,
@@ -28,6 +29,7 @@ export function useWorkbenchSceneCommands(
   discardSideChat: (threadId: string) => Promise<unknown>,
   tabOpenerStore: WorkbenchPanelTabOpenerStore,
 ) {
+  const confirmSideChatClose = useSideChatCloseConfirmation();
   const discardRef = useRef(discardSideChat);
   discardRef.current = discardSideChat;
   const generationRef = useRef({ active: true });
@@ -45,10 +47,11 @@ export function useWorkbenchSceneCommands(
           owner,
           windowSessionId,
           discardSideChat: (threadId) => discardRef.current(threadId),
+          confirmSideChatClose,
         }),
         ...workbenchSceneCommandOpenerLifecycle(tabOpenerStore),
       }),
-    [owner, windowSessionId, tabOpenerStore],
+    [owner, windowSessionId, tabOpenerStore, confirmSideChatClose],
   );
   const execute = useMemo<ExecuteWorkbenchUiCommand>(
     () => async (sceneOwner, command, options) => {

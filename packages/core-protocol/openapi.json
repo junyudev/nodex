@@ -6777,6 +6777,12 @@
                 },
                 "session_id": {
                   "type": "string"
+                },
+                "side_chat_source_session_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               }
             }
@@ -29648,6 +29654,12 @@
                   "session_id": {
                     "type": "string"
                   },
+                  "side_chat_source_session_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "title": {
                     "type": "string"
                   }
@@ -35709,6 +35721,12 @@
                   "runtime_id": {
                     "type": "string"
                   },
+                  "temporary_only": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
                   "window": {
                     "$ref": "#/components/schemas/CollectionWindowRequest"
                   }
@@ -37903,6 +37921,12 @@
           },
           "session_id": {
             "type": "string"
+          },
+          "side_chat_source_session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -40300,6 +40324,12 @@
               },
               "session_id": {
                 "type": "string"
+              },
+              "side_chat_source_session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "title": {
                 "type": "string"

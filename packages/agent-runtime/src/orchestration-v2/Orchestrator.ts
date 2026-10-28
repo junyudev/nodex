@@ -1,3 +1,4 @@
+import { SIDE_CHAT_BOUNDARY_TEXT } from "../nodex/SideChat.ts";
 import {
   selectAsyncQuestionReplyBatch,
   type AsyncQuestionReply,
@@ -68,7 +69,7 @@ import {
   RunId,
   ThreadLinkedPullRequest,
   ThreadId,
-  type TurnItemId,
+  TurnItemId,
 } from "@t3tools/contracts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import {
@@ -137,6 +138,7 @@ import {
   subagentThreadTitle,
 } from "@t3tools/provider-core/server/subagentProjection";
 import {
+  forkThread,
   forkableSourceRunStatuses,
   forkableSourceRunStatusError,
   isForkableSourceRunStatus,
@@ -3736,26 +3738,90 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       "orchestration_v2.source_point_type": command.sourcePoint.type,
     });
 
-    const { projection: sourceProjection, sourceRun } = yield* readSourcePointControl(
-      command.sourceThreadId,
-      command.sourcePoint,
-      "fork",
-    );
-    if (sourceRun === null) {
+    const source = command.sideChat
+      ? yield* projectionStore
+          .getThreadRecords(command.sourceThreadId, ["runs"], {
+            runLimit: 1,
+            runOrder: "desc",
+            runStatuses: [
+              "completed",
+              "waiting",
+              "failed",
+              "interrupted",
+              "cancelled",
+              "preparing",
+              "starting",
+              "running",
+            ],
+          })
+          .pipe(mapDispatchError(command))
+      : null;
+    const { projection: sourceProjection, sourceRun } =
+      source === null
+        ? yield* readSourcePointControl(command.sourceThreadId, command.sourcePoint, "fork")
+        : {
+            projection: yield* projectionStore
+              .getMessageDispatchProjection({
+                threadId: command.sourceThreadId,
+                runIds: source.runs.map((run) => run.id),
+                taskIds: [],
+              })
+              .pipe(mapDispatchError(command)),
+            sourceRun: source.runs[0] ?? null,
+          };
+    if (sourceRun === null && !command.sideChat) {
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
         cause: `No stable source run was found for fork source ${command.sourcePoint.type}.`,
       });
     }
-    if (!isForkableSourceRunStatus(sourceRun.status)) {
+    if (sourceRun !== null && !command.sideChat && !isForkableSourceRunStatus(sourceRun.status)) {
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
         cause: forkableSourceRunStatusError(sourceRun),
       });
     }
-    const sourceProviderThread = providerThreadForRun(sourceProjection, sourceRun);
+    const capturedPrefix =
+      command.sideChat || sourceProjection.thread.capturedContext
+        ? yield* readHandoffHistory(command.sourceThreadId, {
+            scope: "conversation",
+            includeImported: true,
+            ...(sourceRun === null ? {} : { runOrdinalTo: sourceRun.ordinal }),
+            ...(command.sideChat
+              ? {}
+              : {
+                  asOfRunOrdinalTo: true,
+                  historyRevision: sourceProjection.thread.historyRevision,
+                }),
+          })
+        : null;
+    const captured =
+      capturedPrefix === null || !command.sideChat
+        ? capturedPrefix
+        : {
+            ...capturedPrefix,
+            sourceItemCount: capturedPrefix.sourceItemCount + 1,
+            history: {
+              ...capturedPrefix.history,
+              messages: [
+                ...capturedPrefix.history.messages,
+                {
+                  role: "user" as const,
+                  text: SIDE_CHAT_BOUNDARY_TEXT,
+                  kind: "side_chat_boundary",
+                  status: "completed",
+                  threadId: command.targetThreadId,
+                  runId: null,
+                  providerThreadId: null,
+                  itemId: TurnItemId.make(`side-chat-boundary:${command.targetThreadId}`),
+                },
+              ],
+            },
+          };
+    const sourceProviderThread =
+      sourceRun === null ? undefined : providerThreadForRun(sourceProjection, sourceRun);
     const now = command.createdAt ?? (yield* DateTime.now);
     const emitEvent = emit(events, command);
     const transferId = yield* mapDispatchError(command)(
@@ -3765,22 +3831,53 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         type: "fork",
       }),
     );
-    const { targetThread, transfer } = yield* threadForkService
-      .plan({
-        sourceProjection,
-        sourceRun,
-        sourceProviderThread,
-        canonicalSourcePoint: contextSourcePointForRun(sourceProjection, sourceRun),
-        transferId,
-        targetThreadId: command.targetThreadId,
-        ...(command.rootPolicy === undefined ? {} : { rootPolicy: command.rootPolicy }),
-        ...(command.title === undefined ? {} : { title: command.title }),
-        createdBy: command.createdBy,
-        creationSource: command.creationSource,
-        createdAt: now,
-      })
-      .pipe(mapDispatchError(command));
+    const planned =
+      sourceRun === null || (command.sideChat && !isForkableSourceRunStatus(sourceRun.status))
+        ? {
+            targetThread: forkThread({
+              sourceProjection,
+              targetThreadId: command.targetThreadId,
+              rootPolicy: "independent_root",
+              ...(command.title === undefined ? {} : { title: command.title }),
+              createdBy: command.createdBy,
+              creationSource: command.creationSource,
+              createdAt: now,
+            }),
+            transfer: null,
+          }
+        : yield* threadForkService
+            .plan({
+              sourceProjection,
+              sourceRun,
+              sourceProviderThread,
+              canonicalSourcePoint: contextSourcePointForRun(sourceProjection, sourceRun),
+              transferId,
+              targetThreadId: command.targetThreadId,
+              ...(command.rootPolicy === undefined ? {} : { rootPolicy: command.rootPolicy }),
+              ...(command.title === undefined ? {} : { title: command.title }),
+              createdBy: command.createdBy,
+              creationSource: command.creationSource,
+              createdAt: now,
+            })
+            .pipe(mapDispatchError(command));
 
+    const targetThread =
+      captured === null
+        ? planned.targetThread
+        : {
+            ...planned.targetThread,
+            capturedContext: true as const,
+            ...(command.sideChat
+              ? {
+                  sideChat: {
+                    sourceThreadId: command.sourceThreadId,
+                    sourceRunId: sourceRun?.id ?? null,
+                    nativeFork: sourceRun !== null && isForkableSourceRunStatus(sourceRun.status),
+                  },
+                }
+              : {}),
+          };
+    const transfer = planned.transfer;
     yield* emitEvent({
       type: "thread.created",
       threadId: command.targetThreadId,
@@ -3788,10 +3885,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       occurredAt: now,
       payload: targetThread,
     });
+    if (captured !== null)
+      yield* emitEvent({
+        type: "side-chat.context-captured",
+        threadId: command.targetThreadId,
+        occurredAt: now,
+        payload: captured,
+      });
+    if (transfer === null || (command.sideChat && !targetThread.sideChat?.nativeFork)) return;
     yield* emitEvent({
       type: "context-transfer.created",
       threadId: command.targetThreadId,
-      providerInstanceId: sourceRun.providerInstanceId,
+      providerInstanceId: transfer.sourceProviderInstanceId ?? targetThread.providerInstanceId,
       occurredAt: now,
       payload: transfer,
     });
@@ -3968,14 +4073,43 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           runOrder: "desc",
           runLimit: 1,
           contextTransferTargetThreadId: command.threadId,
-          contextTransferTypes: ["merge_back"],
+          contextTransferTypes: ["merge_back", "fork"],
           contextTransferStatuses: ["pending"],
           contextTransferLimit: 128,
         },
       );
       const afterRun = projection.runs[0];
-      if (afterRun === undefined)
-        return yield* refuse("Send a message before clearing the context.");
+      if (afterRun === undefined) {
+        if (!projection.thread.sideChat)
+          return yield* refuse("Send a message before clearing the context.");
+        const now = command.createdAt ?? (yield* DateTime.now);
+        const emitEvent = emit(events, command);
+        yield* emitEvent({
+          type: "thread.metadata-updated",
+          threadId: command.threadId,
+          occurredAt: now,
+          payload: {
+            ...projection.thread,
+            sideChat: { ...projection.thread.sideChat, contextCleared: true, nativeFork: false },
+            updatedAt: now,
+          },
+        });
+        for (const transfer of projection.contextTransfers.filter(
+          (transfer) => transfer.status === "pending",
+        ))
+          yield* emitEvent({
+            type: "context-transfer.updated",
+            threadId: command.threadId,
+            occurredAt: now,
+            payload: {
+              ...transfer,
+              status: "superseded",
+              error: "Superseded by clearing the context.",
+              updatedAt: now,
+            },
+          });
+        return;
+      }
       if (
         projection.providerThreads.some(
           (thread) => (thread.pendingBackgroundTasks?.length ?? 0) > 0,
@@ -4085,6 +4219,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         payload: {
           ...projection.thread,
           activeProviderThreadId: fresh?.id ?? null,
+          ...(projection.thread.sideChat
+            ? { sideChat: { ...projection.thread.sideChat, nativeFork: false } }
+            : {}),
           updatedAt: now,
         },
       });
@@ -5590,15 +5727,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const latestCompletedRun = projection.runs.findLast((run) => run.status === "completed");
       const latestHandoffRun = projection.runs.findLast(isHandoffSourceRun);
       const legacyImportHistory =
-        hasImportedThreadHistory(projection.thread.historyOrigin) &&
-        latestCompletedRun === undefined
-          ? yield* readHandoffHistory(command.threadId, {
-              scope: "local",
-              runIds: [],
-              includeImported: true,
-              includeConversationSummary: true,
-            })
-          : null;
+        projection.thread.sideChat &&
+        activeProviderThread === undefined &&
+        pendingForkTransfer === undefined
+          ? yield* projectionStore
+              .getSideChatContext(command.threadId)
+              .pipe(mapDispatchError(command))
+          : hasImportedThreadHistory(projection.thread.historyOrigin) &&
+              latestCompletedRun === undefined
+            ? yield* readHandoffHistory(command.threadId, {
+                scope: "local",
+                runIds: [],
+                includeImported: true,
+                includeConversationSummary: true,
+              })
+            : null;
       // Account overlays share native history. Selection commands may already
       // have updated the app thread, so classify against the native thread's owner.
       const canResumeAcrossInstances =
@@ -5652,23 +5795,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             driver: adapter.driver,
             nativeThreadId: `pending:${runId}`,
           });
-        const legacyImportHandoff = shouldPrepareLegacyImportHandoff({
-          historyOrigin: projection.thread.historyOrigin,
-          hasCompletedRun: latestCompletedRun !== undefined,
-          legacyImportItemCount: legacyImportHistory?.sourceItemCount ?? 0,
-        })
-          ? yield* contextHandoffService
-              .prepareLegacyImport({
-                threadId: command.threadId,
-                targetRunId: runId,
-                toProviderThreadId: providerThreadId,
-                toProviderInstanceId: modelSelection.instanceId,
-                items: [],
-                preparedHistory: legacyImportHistory!,
-                createdAt: now,
-              })
-              .pipe(mapDispatchError(command))
-          : null;
+        const legacyImportHandoff =
+          (projection.thread.sideChat !== undefined &&
+            (legacyImportHistory?.sourceItemCount ?? 0) > 0) ||
+          shouldPrepareLegacyImportHandoff({
+            historyOrigin: projection.thread.historyOrigin,
+            hasCompletedRun: latestCompletedRun !== undefined,
+            legacyImportItemCount: legacyImportHistory?.sourceItemCount ?? 0,
+          })
+            ? yield* contextHandoffService
+                .prepareLegacyImport({
+                  threadId: command.threadId,
+                  targetRunId: runId,
+                  toProviderThreadId: providerThreadId,
+                  toProviderInstanceId: modelSelection.instanceId,
+                  items: [],
+                  preparedHistory: legacyImportHistory!,
+                  createdAt: now,
+                })
+                .pipe(mapDispatchError(command))
+            : null;
         const providerThread: OrchestrationV2ProviderThread =
           activeProviderThread === undefined
             ? {
@@ -6145,7 +6291,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const portableForkHistory =
         !requiresPortableFork || sourceProjection === null || sourceRun === null
           ? null
-          : yield* readHandoffHistory(sourceProjection.thread.id, {
+          : ((projection.thread.capturedContext
+              ? yield* projectionStore
+                  .getSideChatContext(command.threadId)
+                  .pipe(mapDispatchError(command))
+              : null) ??
+            (yield* readHandoffHistory(sourceProjection.thread.id, {
               scope: "conversation",
               runOrdinalTo: sourceRun.ordinal,
               asOfRunOrdinalTo: true,
@@ -6154,7 +6305,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                   ? projection.thread.forkedFrom.sourceHistoryRevision
                   : undefined,
               includeImported: hasImportedThreadHistory(sourceProjection.thread.historyOrigin),
-            });
+            })));
       const portableForkHandoff =
         !requiresPortableFork ||
         pendingForkTransfer === undefined ||

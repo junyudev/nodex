@@ -1564,6 +1564,7 @@ export interface components {
                 readonly runtime_id: string;
                 readonly runtime_thread_id: string;
                 readonly session_id: string;
+                readonly side_chat_source_session_id?: string | null;
             }[];
             readonly next_cursor?: string | null;
         };
@@ -7091,6 +7092,7 @@ export interface components {
                 readonly runtime_id: string;
                 readonly runtime_thread_id: string;
                 readonly session_id: string;
+                readonly side_chat_source_session_id?: string | null;
                 readonly title: string;
             } | {
                 readonly expected_native_host_id: string;
@@ -8434,6 +8436,7 @@ export interface components {
                 readonly kind: "agent_runtime_session_binding_window";
                 readonly project_id?: string | null;
                 readonly runtime_id: string;
+                readonly temporary_only?: boolean | null;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
@@ -9053,6 +9056,7 @@ export interface components {
             readonly runtime_id: string;
             readonly runtime_thread_id: string;
             readonly session_id: string;
+            readonly side_chat_source_session_id?: string | null;
         };
         /** @enum {string} */
         readonly ProjectWorkspaceAgentRuntimeTurnKind: "run" | "native_connection";
@@ -9624,6 +9628,7 @@ export interface components {
             readonly runtime_id: string;
             readonly runtime_thread_id: string;
             readonly session_id: string;
+            readonly side_chat_source_session_id?: string | null;
             readonly title: string;
         } | {
             readonly expected_native_host_id: string;

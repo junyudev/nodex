@@ -849,7 +849,10 @@ after the Runtime facade, before protocol consumers, within the same Main Scope.
 Composer prediction policy belongs to Main's Profile settings. Background preparation
 consumes the existing Session activity projection and shares Runtime's native prediction
 owner with renderer catch-up; it does not introduce another execution observer or cache.
-The detailed contract is [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
+Temporary side Sessions keep the same Core execution-binding boundary. Runtime owns their
+frozen source context and independent provider conversations; Core owns temporary placement
+and exclusion from ordinary Session catalogs. Renderer-local panel lifetime requests disposal
+through the semantic Session Interface. The detailed contract is [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
 
 ACP instance configuration and encrypted environment references belong to Main. Typed management
 operations delegate installation, authentication, connection probes and native-session work to

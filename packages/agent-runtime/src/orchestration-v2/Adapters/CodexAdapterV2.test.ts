@@ -70,6 +70,7 @@ import * as CodexAdapterV2 from "./CodexAdapterV2.ts";
 import { makeReplayServerConfig, withCodexReplayChildMetadata } from "./CodexAdapterV2.testkit.ts";
 import * as CodexAdapterV2Testkit from "./CodexAdapterV2.testkit.ts";
 import { codexAsyncQuestionId } from "../../nodex/CodexConventions.ts";
+import { SIDE_CHAT_BOUNDARY_TEXT } from "../../nodex/SideChat.ts";
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const replayTranscriptJson = Schema.fromJsonString(CodexReplay.CodexAppServerReplayTranscript);
@@ -10170,6 +10171,123 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           "thread/rollback",
           "thread/rollback must not be sent to a legacy Codex fork",
         );
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect(
+    "keeps a side fork temporary and separates inherited history from its first request",
+    () =>
+      Effect.gen(function* () {
+        const sourceId = "side-source";
+        const childId = "side-child";
+        const prompt = "Explain the captured context";
+        const preamble = codexReplayPreamble({
+          nativeThreadId: sourceId,
+          nativeTurnId: "unused",
+          prompt,
+        });
+        const childTurn = codexReplayPreamble({
+          nativeThreadId: childId,
+          nativeTurnId: "side-turn",
+          prompt,
+        });
+        const transcript = makeCodexReplayTranscript({
+          scenario: "side-chat-fork",
+          entries: [
+            ...preamble.slice(0, 5),
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 3,
+                method: "thread/fork",
+                params: {
+                  threadId: sourceId,
+                  lastTurnId: "captured-turn",
+                  config: CodexAdapterV2.CODEX_THREAD_CONFIG,
+                  ephemeral: true,
+                  excludeTurns: true,
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                id: 3,
+                result: codexReplayThreadResult({
+                  nativeThreadId: childId,
+                  forkedFromId: sourceId,
+                }),
+              },
+            },
+            {
+              type: "expect_outbound",
+              frame: {
+                id: 4,
+                method: "thread/inject_items",
+                params: {
+                  threadId: childId,
+                  items: [
+                    {
+                      type: "message",
+                      role: "user",
+                      content: [{ type: "input_text", text: SIDE_CHAT_BOUNDARY_TEXT }],
+                    },
+                  ],
+                },
+              },
+            },
+            { type: "emit_inbound", frame: { id: 4, result: {} } },
+            ...childTurn.slice(5, 7).map((entry) => withReplayRequestId(entry, 5)),
+            ...childTurn.slice(7),
+          ],
+        });
+        const requests: Array<{ method: string; params: unknown }> = [];
+        const harness = yield* makeCodexReplayHarness(transcript, undefined, (method, params) =>
+          Effect.sync(() => {
+            requests.push({ method, params });
+          }),
+        );
+        const now = yield* DateTime.now;
+        const sourceTurn = codexReplaySourceTurn({
+          id: "captured-provider-turn",
+          ordinal: 1,
+          nativeId: "captured-turn",
+          providerThreadId: harness.providerThread.id,
+          now,
+        });
+        const child = yield* harness.runtime.forkThread({
+          sourceProviderThread: harness.providerThread,
+          sourceProviderTurns: [sourceTurn],
+          providerTurnId: sourceTurn.id,
+          targetThreadId: ThreadId.make("side-chat-child"),
+          ephemeral: true,
+        });
+        assert.equal(child.nativeThreadRef?.nativeId, childId);
+        assert.equal(requests.filter(({ method }) => method === "turn/start").length, 0);
+        const input = makeCodexTestTurnInput({
+          threadId: child.appThreadId!,
+          providerThread: child,
+          now,
+          attemptId: RunAttemptId.make("side-first"),
+          text: prompt,
+        });
+        yield* harness.runtime.startTurn({
+          ...input,
+          appThread: {
+            ...input.appThread,
+            sideChat: { sourceThreadId: harness.threadId, sourceRunId: null, nativeFork: true },
+          },
+        });
+        assert.deepEqual(
+          requests.slice(-2).map(({ method }) => method),
+          ["thread/inject_items", "turn/start"],
+        );
+        assert.equal(harness.providerThread.nativeThreadRef?.nativeId, sourceId);
       }).pipe(
         Effect.scoped,
         Effect.provide(

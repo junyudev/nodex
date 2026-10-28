@@ -615,10 +615,10 @@ describe("workbench session shell / panel-commands", () => {
     await settleAsyncRender();
 
     expect(startSideChatCalls).toHaveLength(0);
-    const createdSideChat = rendererCommandPayload(
-      invokeCalls.find(([channel]) => channel === "project-sessions:create"),
-    );
-    expect(createdSideChat?.input).toMatchObject({ projectId: "alpha", initialPageIds: [] });
+    const createdSideChat = invokeCalls.find(
+      ([channel]) => channel === "agent-runtime:session:create-side-chat",
+    )?.[1];
+    expect(createdSideChat).toMatchObject({ source: { threadId: "thread-alpha" } });
     await waitFor(() => {
       expect(screen.queryAllByRole("tab", { name: "Side chat" }).length).toBe(1);
     });

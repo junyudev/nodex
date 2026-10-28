@@ -364,6 +364,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 190,
         apply: migrate_v189_to_v190,
     },
+    MigrationStep {
+        from_revision: 190,
+        to_revision: 191,
+        apply: migrate_v190_to_v191,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2476,6 +2481,21 @@ fn migrate_v188_to_v189(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             json!({"document_materialization_derivation": 3, "rebuilt_documents": rebuilt}).to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v190_to_v191(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v190_to_v191.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"temporary_side_chats":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())

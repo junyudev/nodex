@@ -211,6 +211,8 @@ it.effect(
         ProjectionStore.ProjectionStoreV2,
         ProjectionStore.ProjectionStoreV2.of({
           apply: () => Effect.void,
+          getSideChatThreadIds: Effect.succeed([]),
+          getSideChatContext: () => Effect.succeed(null),
           getRunOutcome: () => Effect.succeed(null),
           getExecutionActors: () => Effect.die("unused execution actors"),
           getExecutionHandoffs: () => Effect.die("unused execution handoffs"),
@@ -298,6 +300,7 @@ it.effect(
           busyThreads: Effect.succeed(new Map()),
           isSnapshotIdle: Effect.succeed(true),
           shutdown: Effect.void,
+          discardSideChatNative: () => Effect.void,
           open: () => Effect.die("unused open"),
           get: (providerSessionId) =>
             Effect.succeed(

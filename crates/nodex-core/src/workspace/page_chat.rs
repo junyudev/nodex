@@ -1050,6 +1050,7 @@ mod tests {
             &workspace.module,
             "launch-runtime-chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                side_chat_source_session_id: None,
                 session_id: "session:runtime".to_owned(),
                 project_id: Some("project:default".to_owned()),
                 title: "Runtime chat".to_owned(),

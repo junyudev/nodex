@@ -1535,6 +1535,62 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
     driver,
     getCapabilities: () => Effect.succeed(flavor.capabilities),
     planSelectionTransition: (input) => Effect.succeed(acpSelectionTransition(input)),
+    discardThread: Effect.fn("AcpAdapterV2.discardThread")(
+      function* (discardInput) {
+        const sessionId = yield* nativeThreadId(driver, discardInput.providerThread);
+        const threadId = discardInput.providerThread.appThreadId;
+        const nativeLogging = threadId === null ? undefined : options.nativeLogging?.(threadId);
+        const discard = Effect.gen(function* () {
+          // Deletion needs only initialize: never create or activate a session,
+          // and never give a discarded conversation fresh application credentials.
+          const runtime = yield* flavor.makeRuntime({
+            cwd: discardInput.runtimePolicy.cwd ?? host.paths.cwd,
+            runtimePolicy: discardInput.runtimePolicy,
+            mcpServers: [],
+            clientCapabilities: {},
+            clientInfo: { name: "nodex", version: "0.0.0" },
+            onTermination: () => Effect.void,
+            ...(nativeLogging?.requestLogger === undefined
+              ? {}
+              : { requestLogger: nativeLogging.requestLogger }),
+            protocolLogging: nativeLogging?.protocolLogging ?? {
+              logIncoming: true,
+              logOutgoing: true,
+              logger: () => Effect.void,
+            },
+          });
+          const initialized = yield* runtime.initialize();
+          if (initialized.agentCapabilities?.sessionCapabilities?.delete == null) return;
+          yield* runtime.deleteSession(sessionId).pipe(
+            Effect.catch((cause) =>
+              Schema.is(EffectAcpErrors.AcpRequestError)(cause) &&
+              (cause.code === -32601 || cause.code === -32002)
+                ? Effect.void
+                : Effect.fail(cause),
+            ),
+          );
+        }).pipe(
+          Effect.provideService(Crypto.Crypto, crypto),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
+          Effect.provideService(AgentScope, agentScope),
+          Effect.provideService(AgentScopeThreadId, threadId ?? undefined),
+        );
+        yield* flavor.withRuntimeStartup?.(discard) ?? discard;
+      },
+      (effect) =>
+        effect.pipe(
+          Effect.scoped,
+          Effect.timeout("15 seconds"),
+          Effect.mapError(
+            (cause) =>
+              new ProviderAdapter.ProviderAdapterProtocolError({
+                driver,
+                detail: "Failed to discard the temporary ACP conversation.",
+                payload: cause,
+              }),
+          ),
+        ),
+    ),
     openSession: Effect.fn("AcpAdapterV2.openSession")(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
         const sessionScope = yield* Effect.scope;
@@ -7088,6 +7144,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const text = acpPromptWithInstructions({
             prompt: messageText,
             state: instructionState,
+            ...(turnInput.appThread.sideChat ? { preserveNativeCommands: false } : {}),
             ...(turnInput.hostInstructions === undefined
               ? {}
               : { hostInstructions: turnInput.hostInstructions }),

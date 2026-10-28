@@ -420,6 +420,26 @@ describe("Agent Runtime stage commands", () => {
       }),
     );
   });
+  it("retains an accepted side-chat submission and origin across a retry", async () => {
+    const f = fixture();
+    const ticket = { ticketId: "018f0097-a39b-7000-8000-000000000000" };
+    const options = {
+      submissionIdentity: { clientUserMessageId: "side-opening" },
+      presentationTicket: ticket,
+    };
+    await f.actions.onSendPrompt!("Side question", options);
+    await f.actions.onSendPrompt!("Side question", options);
+    expect(
+      f.message.mock.calls.map(([input]) => ({
+        messageId: input.message.messageId,
+        presentationTicket: input.presentationTicket,
+      })),
+    ).toEqual([
+      { messageId: "side-opening", presentationTicket: ticket },
+      { messageId: "side-opening", presentationTicket: ticket },
+    ]);
+  });
+
   it("answers the original Session question without borrowing the foreground Run", async () => {
     const f = fixture();
     f.sessionQuestion();

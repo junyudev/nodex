@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -111,6 +111,42 @@ it("requires captured history for managed resume and counts entries without UUID
   expect(await required.load(key)).toHaveLength(1);
 });
 
+it("discards a native fork and its children without changing source history or accepting late mirrors", async () => {
+  const { root, store } = await fixture();
+  const source = {
+    type: "user",
+    uuid: "message:source",
+    sessionId: id,
+    message: { role: "user", content: "source context" },
+  };
+  await store.append(key, [source]);
+  let childKey = key;
+  const fork = await ClaudeSdk.forkSession(id, {
+    dir: "/moved/workspace",
+    sessionStore: {
+      ...store,
+      append: (forkKey, entries) => {
+        childKey = forkKey;
+        return store.append(forkKey, entries);
+      },
+    },
+  });
+  const child = { ...childKey, subpath: "subagents/agent-child" };
+  const pendingMirror = store.append(child, [{ type: "assistant", uuid: "message:child" }]);
+  await ClaudeSdk.deleteSession(fork.sessionId, { dir: "/moved/workspace", sessionStore: store });
+  await pendingMirror;
+
+  expect(await store.load(childKey)).toBeNull();
+  expect(await store.load(child)).toBeNull();
+  expect(await store.listSubkeys?.(childKey)).toEqual([]);
+  expect(await store.load(key)).toEqual([source]);
+  expect(
+    await stat(path.join(root, "projects", childKey.projectKey, fork.sessionId)).catch(() => null),
+  ).toBeNull();
+  await expect(store.append(childKey, [{ type: "user" }])).rejects.toThrow("discarded");
+  await ClaudeSdk.deleteSession(fork.sessionId, { dir: "/moved/workspace", sessionStore: store });
+});
+
 it("rejects traversal and file or directory aliases instead of reading outside managed history", async () => {
   const { root, store } = await fixture();
   const outside = await mkdtemp(path.join(os.tmpdir(), "nodex-claude-outside-"));
@@ -124,6 +160,7 @@ it("rejects traversal and file or directory aliases instead of reading outside m
     path.join(root, "projects", key.projectKey, `${id}.jsonl`),
   );
   await expect(store.load(key)).rejects.toBeDefined();
+  await expect(store.delete?.(key)).rejects.toBeDefined();
   await expect(store.load({ ...key, projectKey: "../outside" })).rejects.toBeDefined();
   await expect(
     store.append({ ...key, subpath: "../outside" }, [{ type: "user" }]),

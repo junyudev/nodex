@@ -99,7 +99,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     if (!base) throw new Error("Expected Core Session transport");
     let failure = true;
     setMockInvokeImpl(async (channel, ...args) => {
-      if (channel === "project-sessions:create" && failure)
+      if (channel === "agent-runtime:session:create-side-chat" && failure)
         throw new Error("Session creation timed out");
       return base(channel, ...args);
     });
@@ -116,12 +116,61 @@ describe("workbench session shell / layout-panel-actions", () => {
       await Promise.resolve();
     });
     await waitFor(() =>
-      expect(invokeCalls.filter(([channel]) => channel === "project-sessions:create")).toHaveLength(
-        2,
-      ),
+      expect(
+        invokeCalls.filter(([channel]) => channel === "agent-runtime:session:create-side-chat"),
+      ).toHaveLength(2),
     );
+    const attempts = invokeCalls.filter(
+      ([channel]) => channel === "agent-runtime:session:create-side-chat",
+    );
+    expect(attempts[1]?.[1]).toEqual(attempts[0]?.[1]);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("button", { name: "Close Side chat tab" })).toBeTruthy();
+  });
+
+  test("discards side context that finishes materializing after its loading tab closes", async () => {
+    const source = makeAttachedSession({ id: "source:late-side", tabs: [] });
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [source] },
+      initialSelectedSessionId: source.id,
+    });
+    const actions = await waitForLastThreadStageActions();
+    const base = mockInvokeImpl;
+    if (!base) throw new Error("Expected Session transport");
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    setMockInvokeImpl(async (channel, ...args) => {
+      if (channel === "agent-runtime:session:create-side-chat") await pending;
+      return base(channel, ...args);
+    });
+    let opening!: Promise<void>;
+    await act(async () => {
+      opening =
+        (actions.onOpenSideChat as import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onOpenSideChat"])!(
+          { kind: "draft", draftPrompt: "Keep this local" },
+        );
+      await Promise.resolve();
+    });
+    const close = await screen.findByRole("button", { name: "Close Side chat tab" });
+    await act(async () => {
+      fireEvent.click(close);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      release();
+      await opening;
+    });
+    await waitFor(() =>
+      expect(
+        invokeCalls.filter(([channel]) => channel === "agent-runtime:session:discard-side-chat"),
+      ).toHaveLength(1),
+    );
+    expect(screen.queryByRole("tab", { name: "Side chat" })).toBeNull();
+    expect(
+      invokeCalls.filter(([channel]) => channel === "agent-runtime:session:message"),
+    ).toHaveLength(0);
   });
 
   test("collapsed right panel opens from the global side-panel toggle", async () => {
@@ -2294,10 +2343,12 @@ describe("workbench session shell / layout-panel-actions", () => {
 
     await clickMenuItem(menu, "Side chat");
     await settleAsyncRender();
-    const created = rendererCommandPayload(
-      invokeCalls.find(([channel]) => channel === "project-sessions:create"),
-    );
-    expect(created?.input).toMatchObject({ projectId: null, initialPageIds: [] });
+    const created = invokeCalls.find(
+      ([channel]) => channel === "agent-runtime:session:create-side-chat",
+    )?.[1];
+    expect(created).toMatchObject({
+      source: { sessionId: projectlessSession.id, threadId: "thread-projectless-tools" },
+    });
     expect(agentRuntimeLaunchCalls).toHaveLength(0);
     expect(screen.getByRole("button", { name: "Close Side chat tab" })).toBeTruthy();
     await act(async () => {
@@ -2825,9 +2876,9 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
     expect(screen.getByRole("tab", { name: "Side chat" }) !== null).toBe(true);
     expect(screen.container.querySelector('[data-app-shell-tabpanel-preview="true"]')).toBe(null);
-    expect(invokeCalls.filter(([channel]) => channel === "project-sessions:create")).toHaveLength(
-      1,
-    );
+    expect(
+      invokeCalls.filter(([channel]) => channel === "agent-runtime:session:create-side-chat"),
+    ).toHaveLength(1);
     expect(agentRuntimeLaunchCalls).toHaveLength(0);
     expect(invokeCalls.filter((call) => call[0] === "window-session-view:tab-create")).toHaveLength(
       durableTabCreateCount,
@@ -2851,6 +2902,9 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
 
     expect(discardSideChatCalls).toHaveLength(0);
+    expect(
+      invokeCalls.filter(([channel]) => channel === "agent-runtime:session:discard-side-chat"),
+    ).toHaveLength(1);
     expect(invokeCalls.filter(([channel]) => channel === "project-sessions:delete")).toHaveLength(
       0,
     );
@@ -2875,17 +2929,18 @@ describe("workbench session shell / layout-panel-actions", () => {
         actions.onOpenSideChat as import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onOpenSideChat"]
       )?.({ kind: "draft", draftPrompt: "Independent context" });
     });
+    await settleAsyncRender();
     await screen.findByDisplayValue("Independent context");
-    const created = rendererCommandPayload(
-      invokeCalls.find(([channel]) => channel === "project-sessions:create"),
-    );
+    const created = invokeCalls.find(
+      ([channel]) => channel === "agent-runtime:session:create-side-chat",
+    )?.[1] as import("../../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
     expect(created?.sessionId).not.toBe(source.id);
-    expect(created?.input).toMatchObject({ projectId: null, initialPageIds: [] });
+    expect(created?.source).toEqual({ sessionId: source.id, threadId: "source-thread" });
     expect(agentRuntimeLaunchCalls).toHaveLength(0);
   });
 
   test.each(["runtime", "native-import"] as const)(
-    "selected-text side chat from %s starts only after Send and keeps its product Session",
+    "selected-text side chat from %s captures context before Send and keeps its bound Session",
     async (sourceKind) => {
       const browserTab = makeSessionTab({
         id: "selection-source:browser",
@@ -2919,24 +2974,30 @@ describe("workbench session shell / layout-panel-actions", () => {
         )?.({ kind: "draft", draftPrompt: "Use this selected paragraph" });
       });
       await screen.findByDisplayValue("Use this selected paragraph");
-      const created = rendererCommandPayload(
-        invokeCalls.find(([channel]) => channel === "project-sessions:create"),
-      );
+      const created = invokeCalls.find(
+        ([channel]) => channel === "agent-runtime:session:create-side-chat",
+      )?.[1] as import("../../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
       expect(created?.sessionId).not.toBe(source.id);
       expect(agentRuntimeLaunchCalls).toHaveLength(0);
       expect(startSideChatCalls).toHaveLength(0);
+      expect(created.source).toMatchObject({ sessionId: source.id });
       expect(
-        invokeCalls.filter(([channel]) => channel === "agent-runtime:session:read"),
+        invokeCalls.filter(([channel]) => channel === "agent-runtime:session:message"),
       ).toHaveLength(0);
       await act(async () => {
         fireEvent.click(screen.getByRole("button", { name: "Send" }));
         await Promise.resolve();
       });
-      await waitFor(() => expect(agentRuntimeLaunchCalls).toHaveLength(1));
-      expect(agentRuntimeLaunchCalls[0]).toMatchObject({
+      await waitFor(() =>
+        expect(
+          invokeCalls.filter(([channel]) => channel === "agent-runtime:session:message"),
+        ).toHaveLength(1),
+      );
+      expect(
+        invokeCalls.find(([channel]) => channel === "agent-runtime:session:message")?.[1],
+      ).toMatchObject({
         sessionId: created?.sessionId,
-        projectId: "alpha",
-        runInTarget: "localProject",
+        threadId: `engine:${created.sessionId}`,
         message: { text: "Use this selected paragraph" },
       });
       expect(screen.queryByRole("tab", { name: "Side chat" })).toBeTruthy();
@@ -2949,16 +3010,17 @@ describe("workbench session shell / layout-panel-actions", () => {
         await Promise.resolve();
       });
       await waitFor(() => {
-        const sideChat = getConnectedThreadStagePropsByThreadId(
-          `engine:${agentRuntimeLaunchCalls[0]!.sessionId}`,
-        );
+        const sideChat = getConnectedThreadStagePropsByThreadId(`engine:${created.sessionId}`);
         expect(sideChat?.isNewThreadTab).toBe(false);
       });
-      expect(agentRuntimeLaunchCalls).toHaveLength(1);
+      expect(agentRuntimeLaunchCalls).toHaveLength(0);
+      expect(
+        invokeCalls.filter(([channel]) => channel === "agent-runtime:session:message"),
+      ).toHaveLength(1);
     },
   );
 
-  test("an explicit side-chat prompt launches its new Session without sending the parent history", async () => {
+  test("an explicit side-chat prompt sends once in the captured conversation", async () => {
     const source = makeAttachedSession({ id: "explicit-side-source", tabs: [] });
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [source] },
@@ -2970,19 +3032,24 @@ describe("workbench session shell / layout-panel-actions", () => {
         actions.onOpenSideChat as import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onOpenSideChat"]
       )?.({ prompt: "Answer this separate question" });
     });
-    await waitFor(() => expect(agentRuntimeLaunchCalls).toHaveLength(1));
-    const created = rendererCommandPayload(
-      invokeCalls.find(([channel]) => channel === "project-sessions:create"),
+    await waitFor(() =>
+      expect(
+        invokeCalls.filter(([channel]) => channel === "agent-runtime:session:message"),
+      ).toHaveLength(1),
     );
-    expect(agentRuntimeLaunchCalls[0]).toMatchObject({
+    const created = invokeCalls.find(
+      ([channel]) => channel === "agent-runtime:session:create-side-chat",
+    )?.[1] as import("../../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
+    expect(
+      invokeCalls.find(([channel]) => channel === "agent-runtime:session:message")?.[1],
+    ).toMatchObject({
       sessionId: created?.sessionId,
-      projectId: "alpha",
+      threadId: `engine:${created.sessionId}`,
       message: { text: "Answer this separate question" },
     });
     expect(startSideChatCalls).toHaveLength(0);
-    expect(
-      invokeCalls.filter(([channel]) => channel === "agent-runtime:session:read"),
-    ).toHaveLength(0);
+    expect(agentRuntimeLaunchCalls).toHaveLength(0);
+    expect(created.source).toMatchObject({ sessionId: source.id });
     expect(screen.getByRole("tab", { name: "Side chat" })).toBeTruthy();
   });
 

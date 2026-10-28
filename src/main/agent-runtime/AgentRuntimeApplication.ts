@@ -3,6 +3,7 @@ import type { AcpConversationImportResult } from "../../shared/acp-api";
 import { createHash } from "node:crypto";
 import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "@nodex/agent-runtime/contracts";
 import type { NativeSessionWorkspace } from "../agent-backend/NativeSessionWorkspace";
+import { nativeSelectionFromState } from "../agent-backend/NativeSessionState";
 import type { components } from "@nodex/core-protocol";
 import type {
   AgentCommand,
@@ -64,7 +65,10 @@ export type {
   AgentRuntimeConversation,
 } from "../../shared/agent-runtime-api";
 import { agentExecutionThreadId } from "../../shared/agent-runtime-api";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
+import {
+  agentRuntimeProviderId,
+  applyAgentRuntimeOptionIntent,
+} from "../../shared/agent-runtime-provider";
 import { agentRuntimeAgentSwitchRefusal } from "../../shared/agent-runtime-agent-switch";
 import { agentRuntimeContextClearRefusal } from "../../shared/agent-runtime-context-clear";
 import { agentRuntimeImageInputUnavailableReason } from "../../shared/agent-runtime-image-input";
@@ -109,6 +113,10 @@ export interface AgentRuntimeApplicationOptions {
     connection: AgentRuntimeApplicationConnection,
     input: Pick<NativeConversationImportInput, "backendKind" | "instanceConfigId">,
   ) => Effect.Effect<string, unknown>;
+  /** Reads already-observed native settings without resuming or taking over the source. */
+  readonly nativeCodexSettings?: (
+    threadId: string,
+  ) => import("../../shared/types").CodexConversationThreadSettings | null;
   /** Lets product-only draft deletion leave an unused Profile runtime cold. */
   readonly runtimeExists?: Effect.Effect<boolean, unknown>;
   /** Serves the last live provider catalog while execution is stopped. */
@@ -1892,8 +1900,139 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     });
   });
 
+  const sideChatSource = Effect.fn("AgentRuntimeApplication.sideChatSource")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    input: import("../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput,
+  ) {
+    if (yield* lookupDestinationBinding(input.source.sessionId))
+      return yield* targetInfo(connection, input.source, true);
+    yield* authorizeSession(input.source.sessionId);
+    const session = yield* workspace.getProjectSession(input.source.sessionId);
+    const native = session?.thread;
+    if (
+      !session ||
+      session.archived ||
+      !native ||
+      native.parentThreadId ||
+      native.executionHostId !== "local" ||
+      (input.source.threadId !== undefined && input.source.threadId !== native.threadId) ||
+      (native.backendBinding.kind !== "codex" && native.backendBinding.kind !== "claude") ||
+      !native.cwd ||
+      !options.nativeImportSourceHome
+    )
+      return yield* failure(
+        "create-side-chat",
+        "Choose an active local conversation with readable history",
+      );
+    const kind = native.backendBinding.kind;
+    const codexSettings = kind === "codex" ? options.nativeCodexSettings?.(native.threadId) : null;
+    const providerId = agentRuntimeProviderId(native.backendBinding);
+    const backend =
+      kind === "claude" ? yield* workspace.readThreadBackendSession(native.threadId) : null;
+    if (
+      kind === "claude" &&
+      (!backend ||
+        backend.threadId !== native.threadId ||
+        agentRuntimeProviderId(backend.backendBinding) !== providerId ||
+        !validId(backend.backendSessionId))
+    )
+      return yield* failure("create-side-chat", "The source Agent history is unavailable");
+    const selection = backend ? nativeSelectionFromState(backend.nativeState) : null;
+    const providers = yield* connection.request("providers.read", {});
+    const provider = providers.find(
+      (provider) => provider.instanceId === providerId && provider.enabled,
+    );
+    const model =
+      provider?.models.find(
+        (model) =>
+          model.slug ===
+          (selection?.model ?? codexSettings?.model ?? native.executionProfile?.modelId),
+      ) ??
+      provider?.models.find((model) => model.isDefault) ??
+      provider?.models[0];
+    if (!provider || !model)
+      return yield* failure("create-side-chat", "The source Agent has no available model");
+    const sourceHome = yield* options.nativeImportSourceHome(connection, {
+      backendKind: kind,
+      ...(native.backendBinding.kind === "claude"
+        ? { instanceConfigId: native.backendBinding.instanceConfigId }
+        : {}),
+    });
+    if (backend?.nativeHome && backend.nativeHome !== sourceHome)
+      return yield* failure("create-side-chat", "The source Agent profile changed");
+    const modelOptions = applyAgentRuntimeOptionIntent(
+      model.capabilities?.optionDescriptors ?? [],
+      selection
+        ? [
+            ...(selection.fast === undefined ? [] : [{ id: "fastMode", value: selection.fast }]),
+            ...(selection.thinking === undefined
+              ? []
+              : [{ id: "thinking", value: selection.thinking }]),
+            ...(selection.context === undefined
+              ? []
+              : [{ id: "contextWindow", value: selection.context }]),
+          ]
+        : undefined,
+      {
+        reasoningEffort:
+          selection?.effort ??
+          (codexSettings
+            ? codexSettings.reasoningEffort
+            : native.executionProfile?.reasoningEffort) ??
+          undefined,
+        ...(selection
+          ? {}
+          : {
+              serviceTier: codexSettings
+                ? codexSettings.serviceTier
+                : native.executionProfile?.serviceTier,
+            }),
+      },
+    );
+    const interactionMode =
+      codexSettings?.collaborationMode?.mode ?? backend?.nativeState?.preferences?.interaction_mode;
+    const scope = yield* projectScope(session.projectId, true, false);
+    yield* upsertProject(connection, scope);
+    const threadId = agentExecutionThreadId(
+      hash({
+        nativeSideChatCapture: input.requestId,
+        sessionId: input.sessionId,
+        sourceThreadId: native.threadId,
+        providerId,
+      }),
+    );
+    yield* connection.request("thread.import-native", {
+      commandId: commandId("side-chat-native-capture", { requestId: input.requestId, threadId }),
+      threadId,
+      projectId: scope.id,
+      title: "Side chat context",
+      backendKind: kind,
+      sourceHome,
+      sourceNativeThreadId: backend?.backendSessionId ?? native.threadId,
+      modelSelection: {
+        instanceId: provider.instanceId,
+        model: model.slug,
+        ...(modelOptions.length ? { options: modelOptions } : {}),
+      },
+      cwd: native.cwd,
+      ...(interactionMode ? { interactionMode } : {}),
+      sideChatCapture: true,
+    });
+    const thread = yield* connection.request("thread.read", { threadId });
+    if (!thread || thread.executionHandoff)
+      return yield* failure("create-side-chat", "The source context is unavailable");
+    return {
+      binding: { project_id: session.projectId },
+      threadId,
+      thread,
+      nativeCapture: true as const,
+    };
+  });
+
   const fork = Effect.fn("AgentRuntimeApplication.fork")(function* (
-    input: import("../../shared/agent-runtime-api").AgentRuntimeForkInput,
+    input: import("../../shared/agent-runtime-api").AgentRuntimeForkInput & {
+      readonly sideChat?: true;
+    },
   ) {
     if (
       !validId(input.sessionId) ||
@@ -1908,7 +2047,31 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "A distinct destination Session and stable fork identity are required",
       );
     const connection = yield* options.connect;
-    const source = yield* targetInfo(connection, input.source, true);
+    const replayBinding = input.sideChat ? yield* lookupDestinationBinding(input.sessionId) : null;
+    if (replayBinding) {
+      if (
+        replayBinding.launch_request_id !== input.requestId ||
+        replayBinding.runtime_id !== connection.identity.runtimeId ||
+        replayBinding.side_chat_source_session_id !== input.source.sessionId
+      )
+        return yield* failure(
+          "create-side-chat",
+          "This side chat belongs to another creation request",
+        );
+      const replay = yield* connection.request("thread.read", {
+        threadId: replayBinding.runtime_thread_id,
+      });
+      if (replay && !replay.deletedAt)
+        return {
+          sourceSessionId: input.source.sessionId,
+          sessionId: input.sessionId,
+          threadId: replay.id,
+          projectId: replayBinding.project_id ?? null,
+        };
+    }
+    const source = input.sideChat
+      ? yield* sideChatSource(connection, input)
+      : yield* targetInfo(connection, input.source, true);
     const provenance = yield* CoreApplicationAgent;
 
     const projectId = source.binding.project_id ?? null;
@@ -1927,28 +2090,36 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
       Effect.orElseSucceed(() => null),
     );
-    const title = forkTitle(sourceTitle);
+    const title = input.sideChat ? "Side chat" : forkTitle(sourceTitle);
     const binding = {
       session_id: input.sessionId,
       project_id: projectId,
       runtime_id: connection.identity.runtimeId,
       runtime_thread_id: threadId,
       launch_request_id: input.requestId,
+      ...(input.sideChat ? { side_chat_source_session_id: input.source.sessionId } : {}),
     };
     yield* validateCaller();
     const previous = yield* lookupDestinationBinding(input.sessionId);
-    if (previous && !matchesBinding(previous, binding))
+    if (
+      previous &&
+      (!matchesBinding(previous, binding) ||
+        (previous.side_chat_source_session_id ?? null) !==
+          (binding.side_chat_source_session_id ?? null))
+    )
       return yield* failure("fork", "Session is already bound to another fork request");
     if (input.environment === "worktree" && !options.prepareWorkspace)
       return yield* failure("workspace", "Worktree preparation is unavailable");
     const existing = yield* connection.request("thread.read", { threadId });
     const sourceRunId = existing
       ? null
-      : yield* connection.request("thread.fork-source", {
-          threadId: source.threadId,
-          ...(input.sourceRunId === undefined ? {} : { runId: input.sourceRunId }),
-        });
-    if (!existing && sourceRunId === null)
+      : input.sideChat
+        ? undefined
+        : yield* connection.request("thread.fork-source", {
+            threadId: source.threadId,
+            ...(input.sourceRunId === undefined ? {} : { runId: input.sourceRunId }),
+          });
+    if (!existing && !input.sideChat && sourceRunId === null)
       return yield* failure("fork", "This chat has no finished Run to fork from");
     // The product Session is admitted before any Thread or worktree exists.
     const scope = yield* lifecycle.runExclusive(
@@ -1973,7 +2144,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         return scope;
       }),
     );
-    if (sourceRunId !== null)
+    if (!existing && (input.sideChat || sourceRunId !== null))
       yield* dispatch(connection, {
         type: "thread.fork",
         commandId: commandId("fork-thread", {
@@ -1982,7 +2153,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
         sourceThreadId: source.threadId,
         targetThreadId: threadId,
-        sourcePoint: { type: "run", runId: sourceRunId },
+        sourcePoint:
+          sourceRunId == null ? { type: "latest_stable" } : { type: "run", runId: sourceRunId },
+        ...(input.sideChat ? { sideChat: true } : {}),
         rootPolicy: "independent_root",
         title,
         createdBy: provenance ? "agent" : "user",
@@ -2024,6 +2197,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       );
     }
+    if ("nativeCapture" in source)
+      yield* dispatch(connection, {
+        type: "thread.delete",
+        threadId: source.threadId,
+        commandId: commandId("side-chat-capture-release", {
+          requestId: input.requestId,
+          threadId: source.threadId,
+        }),
+      });
     yield* targetInfo(connection, { sessionId: input.sessionId, threadId }, true);
     return {
       sourceSessionId: input.source.sessionId,
@@ -2624,7 +2806,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const thread = yield* connection.request("thread.read", {
       threadId: cleanup.runtime_thread_id,
     });
-    if (thread?.deletedAt === null)
+    if (thread)
       yield* dispatch(connection, {
         type: "thread.delete",
         threadId: cleanup.runtime_thread_id,
@@ -3021,6 +3203,35 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           return { sessionId: input.sessionId, projectId: input.projectId };
         }),
       ),
+    discardOrphanSideChats: (runtimeId: string) =>
+      ownedWrite(
+        "discard-orphan-side-chats",
+        Effect.gen(function* () {
+          let after: string | null = null;
+          do {
+            const read: import("../core-client/types").ProjectWorkspaceReadSnapshot = yield* host(
+              core.workspace.read({
+                kind: "agent_runtime_session_binding_window",
+                runtime_id: runtimeId,
+                project_id: null,
+                temporary_only: true,
+                window: { first: 200, after },
+              }),
+            );
+            if (read.value.kind !== "agent_runtime_session_binding_window")
+              return yield* failure(
+                "discard-orphan-side-chats",
+                "Temporary Session metadata is unavailable",
+              );
+            for (const binding of read.value.bindings.items)
+              yield* workspace.deleteProjectSession({
+                operationId: createOperationId("agent-runtime.reclaim-side-chat"),
+                payload: { sessionId: binding.session_id },
+              });
+            after = read.value.bindings.next_cursor ?? null;
+          } while (after !== null);
+        }),
+      ),
     cleanupDeletedSessions: ownedWrite("cleanup", cleanupDeletedSessions()),
     closeProjectExecution: (projectId: string) =>
       ownedWrite(
@@ -3037,6 +3248,49 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           yield* reconcileProject(connection, projectId);
           return yield* connection.request("project.close", { projectId });
         }),
+      ),
+    createSideChat: (
+      input: import("../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput,
+    ) =>
+      withSessionLane(
+        input.sessionId,
+        ownedWrite(
+          "create-side-chat",
+          fork({ ...input, environment: "same-directory", sideChat: true }).pipe(Effect.scoped),
+        ),
+      ),
+    discardSideChat: (
+      input: import("../../shared/agent-runtime-api").AgentRuntimeSideChatDiscardInput,
+    ) =>
+      withSessionLane(
+        input.sessionId,
+        ownedWrite(
+          "discard-side-chat",
+          Effect.gen(function* () {
+            if (!validId(input.sessionId) || !validId(input.requestId))
+              return yield* failure(
+                "discard-side-chat",
+                "Session and request identities are required",
+              );
+            yield* validateCaller();
+            const binding = yield* lookupDestinationBinding(input.sessionId);
+            if (!binding) {
+              if (!options.runtimeExists || (yield* options.runtimeExists))
+                yield* host(cleanupDeletedSessions());
+              return { discarded: false };
+            }
+            if (!binding.side_chat_source_session_id)
+              return yield* failure(
+                "discard-side-chat",
+                "Only a temporary side chat may be discarded",
+              );
+            yield* deleteSession({
+              operationId: createOperationId("agent-runtime.discard-side-chat"),
+              payload: { sessionId: input.sessionId },
+            });
+            return { discarded: true };
+          }),
+        ),
       ),
     fork: (input: Parameters<typeof fork>[0]) =>
       ownedWrite("fork", fork(input).pipe(Effect.scoped)),

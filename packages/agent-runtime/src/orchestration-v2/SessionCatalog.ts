@@ -94,7 +94,7 @@ export const readSessionCatalog = Effect.fn("SessionCatalog.read")(function* (
           AND request.kind NOT IN ('dynamic_tool_call', 'auth_refresh')
         ORDER BY request.created_at DESC LIMIT 1) AS pending_kind
     FROM orchestration_v2_projection_threads thread INDEXED BY orchestration_v2_conversation_discovery_idx
-    WHERE thread.deleted_at IS NULL
+    WHERE thread.deleted_at IS NULL AND json_extract(thread.payload_json, '$.sideChat') IS NULL
       AND (${input.includeSubagents ? 1 : 0} OR COALESCE(json_extract(thread.payload_json, '$.lineage.relationshipToParent'),'') <> 'subagent')
       AND (${query} = '' OR instr(lower(thread.title), lower(${query})) > 0
         OR instr(lower(thread.conversation_preview), lower(${query})) > 0)

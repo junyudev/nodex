@@ -386,6 +386,7 @@ pub(super) fn read(
         ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
             runtime_id,
             project_id,
+            temporary_only,
             window,
         } => Ok(
             ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow {
@@ -396,6 +397,7 @@ pub(super) fn read(
                     commit_head,
                     &runtime_id,
                     project_id.as_deref(),
+                    temporary_only.unwrap_or(false),
                     &window,
                 )?,
             },

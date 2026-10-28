@@ -147,6 +147,7 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
   suffix: string,
   nativeSessionId: string,
   client: object,
+  onConnect?: (directory: string) => void,
 ) {
   const instanceId = ProviderInstanceId.make(`opencode-${suffix}`);
   const threadId = ThreadId.make(`thread-opencode-${suffix}`);
@@ -162,7 +163,10 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
     environment: {},
   }).pipe(
     Effect.provideService(OpenCodeRuntime.OpenCodeRuntime, {
-      connectToOpenCodeServer: () => Effect.succeed({ url: "http://test.invalid", external: true }),
+      connectToOpenCodeServer: ({ directory }: { directory: string }) => Effect.sync(() => {
+        onConnect?.(directory);
+        return { url: "http://test.invalid", external: true };
+      }),
       createOpenCodeSdkClient: () => client,
     } as unknown as OpenCodeRuntime.OpenCodeRuntime["Service"]),
     Effect.provideService(ProviderHost.ProviderHost, {
@@ -185,7 +189,8 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
   const startTurn = (
     text = "hello",
     startProviderThread: OrchestrationV2ProviderThread = providerThread,
-    source: Partial<Pick<ProviderAdapter.ProviderAdapterV2TurnInput, "hostExecutionIdentity" | "runId" | "attemptId">> = {},
+    source: Partial<Pick<ProviderAdapter.ProviderAdapterV2TurnInput, "hostExecutionIdentity" | "hostInstructions" | "runId" | "attemptId">> = {},
+    sideChat = false,
   ) =>
     runtime.startTurn({
       appThread: {
@@ -210,6 +215,7 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
         settledAt: null,
         lastVisitedAt: null,
         deletedAt: null,
+        ...(sideChat ? { sideChat: { sourceThreadId: ThreadId.make("source-thread"), sourceRunId: null, nativeFork: true } } : {}),
       },
       threadId,
       runId: RunId.make(`run-opencode-${suffix}`),
@@ -230,6 +236,7 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
       ...source,
     });
   return {
+    adapter,
     nativeSessionId,
     now,
     policy,
@@ -242,6 +249,41 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
 });
 
 describe("OpenCodeAdapterV2", () => {
+  it.effect("discards only the selected native child in its instance and directory after release", () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const nativeEvents = asyncEventStream();
+      const saved = new Set(["source", "side-chat", "unrelated"]);
+      const removed: string[] = [];
+      const connections: string[] = [];
+      let createCalls = 0;
+      const harness = yield* makeOpenCodeRuntimeHarness("discard", "side-chat", {
+        event: { subscribe: async (_input: unknown, { signal }: { signal: AbortSignal }) => {
+          signal.addEventListener("abort", () => nativeEvents.close(), { once: true });
+          return { stream: nativeEvents.stream };
+        } },
+        session: {
+          create: async () => { createCalls++; return { data: { id: "side-chat", time: { created: 1, updated: 1 } } }; },
+          delete: async ({ sessionID }: { sessionID: string }) => {
+            removed.push(sessionID);
+            if (!saved.delete(sessionID)) throw { response: { status: 404 } };
+            return { data: true };
+          },
+        },
+      }, (directory) => connections.push(directory)).pipe(Effect.provideService(Scope.Scope, scope));
+      yield* Scope.close(scope, Exit.void);
+      const discard = { providerThread: harness.providerThread, runtimePolicy: { ...harness.policy, cwd: "/saved/side-chat" } };
+      yield* harness.adapter.discardThread!(discard);
+      yield* harness.adapter.discardThread!(discard);
+      assert.deepEqual(removed, ["side-chat", "side-chat"]);
+      assert.deepEqual([...saved], ["source", "unrelated"]);
+      assert.equal(createCalls, 1);
+      assert.deepEqual(connections, ["/workspace", "/saved/side-chat", "/saved/side-chat"]);
+      const foreign = { ...harness.providerThread, providerInstanceId: ProviderInstanceId.make("another-account") };
+      assert.equal((yield* Effect.exit(harness.adapter.discardThread!({ ...discard, providerThread: foreign })))._tag, "Failure");
+      assert.deepEqual(removed, ["side-chat", "side-chat"]);
+    }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)), Effect.scoped),
+  );
   it.effect("keeps native calls on their original Run and releases them on completion and cancellation", () =>
     Effect.gen(function* () {
       const events = asyncEventStream();
@@ -1382,6 +1424,32 @@ describe("OpenCodeAdapterV2", () => {
       Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
       Effect.scoped,
     ),
+  );
+
+  it.effect("keeps side-chat commands and their boundary instructions in the same prompt", () =>
+    Effect.gen(function* () {
+      const nativeEvents = asyncEventStream();
+      const prompts: Array<{ parts: unknown; system: string }> = [];
+      let commandCalls = 0;
+      const harness = yield* makeOpenCodeRuntimeHarness("side-command", "side-command", {
+        event: { subscribe: async (_input: unknown, { signal }: { signal: AbortSignal }) => {
+          signal.addEventListener("abort", () => nativeEvents.close(), { once: true });
+          return { stream: nativeEvents.stream };
+        } },
+        command: { list: async () => ({ data: [{ name: "review" }] }) },
+        session: {
+          create: async () => ({ data: { id: "side-command", time: { created: 1, updated: 1 } } }),
+          command: async () => { commandCalls++; return { data: true }; },
+          promptAsync: async (input: { parts: unknown; system: string }) => { prompts.push(input); return { data: true }; },
+        },
+      });
+      const boundary = "Treat this as a side conversation. Do not continue the original task.";
+      yield* harness.startTurn("/review staged changes", harness.providerThread, { hostInstructions: boundary }, true);
+      assert.equal(commandCalls, 0);
+      assert.equal(prompts.length, 1);
+      assert.deepEqual(prompts[0]?.parts, [{ type: "text", text: "/review staged changes" }]);
+      assert.include(prompts[0]?.system ?? "", boundary);
+    }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)), Effect.scoped),
   );
 
   it.effect("compacts with the native summarize API and emits a completed compaction", () =>

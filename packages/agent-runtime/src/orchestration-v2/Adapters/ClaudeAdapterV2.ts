@@ -30,11 +30,13 @@ import {
   type ClaudeAppliedSettings,
 } from "../../provider/ClaudeAppliedSettings.ts";
 import { createClaudeSessionStores } from "../../provider/ClaudeSessionStore.ts";
+import { SIDE_CHAT_BOUNDARY_TEXT } from "../../nodex/SideChat.ts";
 import type {
   CanUseTool,
   HookCallback,
   ForkSessionOptions,
   ForkSessionResult,
+  SessionMutationOptions,
   Options as ClaudeQueryOptions,
   PermissionMode,
   PermissionResult,
@@ -451,6 +453,9 @@ export interface ClaudeAgentSdkQueryRunnerShape {
   readonly forkSession: (
     input: ClaudeAgentSdkSessionForkInput,
   ) => Effect.Effect<ForkSessionResult, ClaudeAgentSdkQueryRunnerError>;
+  readonly deleteSession: (
+    input: ClaudeAgentSdkSessionDeleteInput,
+  ) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   /** The tool call that launched a subagent, read from the CLI's session storage. */
   readonly subagentLaunchToolUseId: (
     input: ClaudeAgentSdkSubagentLookupInput,
@@ -470,6 +475,13 @@ export interface ClaudeAgentSdkSessionForkInput {
   readonly options: ForkSessionOptions;
   readonly threadId: ThreadId;
   readonly providerSessionId: OrchestrationV2ProviderSession["id"];
+}
+
+export interface ClaudeAgentSdkSessionDeleteInput extends Omit<
+  ClaudeAgentSdkSessionForkInput,
+  "options" | "threadId" | "providerSessionId"
+> {
+  readonly options: SessionMutationOptions;
 }
 
 export interface ClaudeAgentSdkSubagentLookupInput {
@@ -1080,6 +1092,36 @@ export const layerQueryRunner: Layer.Layer<
         });
         return result;
       }),
+      deleteSession: Effect.fn("ClaudeAgentSdkQueryRunner.deleteSession")(function* (
+        input: ClaudeAgentSdkSessionDeleteInput,
+      ) {
+        const configuredHome = path.resolve(
+          input.options.dir ?? ".",
+          input.configDirectory?.trim() || path.join(yield* HostProcess.HomeDirectory, ".claude"),
+        );
+        const nativeHistoryPath = yield* fileSystem.realPath(configuredHome).pipe(
+          Effect.catch((cause) =>
+            cause.reason._tag === "NotFound" ? Effect.succeed(configuredHome) : Effect.fail(cause),
+          ),
+          Effect.mapError((cause) => queryRunnerError(cause, "deleteSession")),
+        );
+        // Restored history is mirrored: the CLI also persists its local copy.
+        const historyPaths = new Set(
+          [nativeHistoryPath, input.restoredHistoryPath].filter(
+            (value): value is string => value !== undefined,
+          ),
+        );
+        for (const historyPath of historyPaths) {
+          yield* Effect.tryPromise({
+            try: async () =>
+              (await loadClaudeAgentSdk()).deleteSession(input.sessionId, {
+                ...input.options,
+                sessionStore: sessionStores(historyPath),
+              }),
+            catch: (cause) => queryRunnerError(cause, "deleteSession"),
+          });
+        }
+      }),
       subagentLaunchToolUseId: Effect.fn("ClaudeAgentSdkQueryRunner.subagentLaunchToolUseId")(
         function* (input: ClaudeAgentSdkSubagentLookupInput) {
           const protocolLogger = makeClaudeAgentSdkProtocolLogger({
@@ -1618,6 +1660,21 @@ export function makeClaudeUserMessage(input: {
     parent_tool_use_id: null,
     ...(input.priority === undefined ? {} : { priority: input.priority }),
     ...(input.uuid === undefined ? {} : { uuid: input.uuid }),
+  };
+}
+
+function withClaudeSideChatBoundary(message: SDKUserMessage): SDKUserMessage {
+  const content = message.message.content;
+  return {
+    ...message,
+    message: {
+      ...message.message,
+      // Native commands and skills must remain in the last text block.
+      content: [
+        { type: "text", text: SIDE_CHAT_BOUNDARY_TEXT },
+        ...(typeof content === "string" ? [{ type: "text" as const, text: content }] : content),
+      ],
+    },
   };
 }
 
@@ -3416,6 +3473,36 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
     driver: CLAUDE_PROVIDER,
     getCapabilities: () => Effect.succeed(ClaudeProviderCapabilitiesV2),
     planSelectionTransition: () => Effect.succeed(turnScopedSelectionTransition()),
+    discardThread: Effect.fn("ClaudeAdapterV2.discardThread")(
+      function* (discardInput) {
+        const nativeThreadId = yield* getNativeThreadId(discardInput.providerThread);
+        yield* queryRunner.deleteSession({
+          ...(adapterOptions.environment.CLAUDE_CONFIG_DIR === undefined
+            ? {}
+            : { configDirectory: adapterOptions.environment.CLAUDE_CONFIG_DIR }),
+          ...(adapterOptions.settings.restoredHistoryPath === undefined
+            ? {}
+            : { restoredHistoryPath: adapterOptions.settings.restoredHistoryPath }),
+          sessionId: nativeThreadId,
+          options: {
+            ...(discardInput.runtimePolicy.cwd === null
+              ? {}
+              : { dir: discardInput.runtimePolicy.cwd }),
+          },
+        });
+      },
+      (effect) =>
+        effect.pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProviderAdapter.ProviderAdapterProtocolError({
+                driver: CLAUDE_PROVIDER,
+                detail: "Failed to discard the temporary Claude conversation.",
+                payload: cause,
+              }),
+          ),
+        ),
+    ),
     openSession: Effect.fn("ClaudeAdapterV2.openSession")(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
         const sessionScope = yield* Effect.scope;
@@ -8704,7 +8791,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     fileSystem,
                     skillNames: yield* userInvocableSkillNames(turnInput.runtimePolicy.cwd),
                     uuid: promptUuid,
-                  });
+                  }).pipe(
+                    Effect.map((message) =>
+                      turnInput.appThread.sideChat?.nativeFork &&
+                      !turnInput.appThread.sideChat.contextCleared &&
+                      turnInput.providerThread.forkedFrom !== null &&
+                      turnInput.providerTurnOrdinal === 1
+                        ? withClaudeSideChatBoundary(message)
+                        : message,
+                    ),
+                  );
             const querySession = yield* openQuery(turnInput, nativeThreadId);
             if (userMessage !== null)
               yield* syncSourceRoots(querySession, turnInput.hostSourceRoots);

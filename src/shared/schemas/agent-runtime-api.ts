@@ -171,6 +171,17 @@ export const AgentRuntimeQueueSchema = z.discriminatedUnion("action", [
     targetRunId: id,
   }).strict(),
 ]);
+export const AgentRuntimeSideChatCreateSchema = z
+  .object({
+    source: AgentRuntimeTargetSchema,
+    sessionId: id,
+    requestId: id,
+    acceptedAt: z.number().int().nonnegative(),
+  })
+  .strict();
+export const AgentRuntimeSideChatDiscardSchema = z
+  .object({ sessionId: id, requestId: id })
+  .strict();
 export const AgentRuntimeForkSchema = z
   .object({
     source: AgentRuntimeTargetSchema,

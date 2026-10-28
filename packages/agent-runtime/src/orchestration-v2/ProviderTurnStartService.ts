@@ -70,6 +70,18 @@ const permanentNativeRecoveryFailure = (error: unknown): boolean =>
     error.retryable === false) ||
   (Predicate.hasProperty(error, "cause") && permanentNativeRecoveryFailure(error.cause));
 
+/** Native fork failure is recoverable before the side chat has dispatched any user Turn. */
+export const withSideChatForkFallback = Effect.fnUntraced(function* <A, E, R, B, E2, R2>(
+  nativeFork: Effect.Effect<A, E, R>,
+  portable: () => Effect.Effect<B, E2, R2>,
+  sideChat: boolean,
+): Effect.fn.Return<A | B, E | E2, R | R2> {
+  const attempt = yield* Effect.result(nativeFork);
+  if (attempt._tag === "Success") return attempt.success;
+  if (!sideChat) return yield* Effect.fail(attempt.failure);
+  return yield* portable();
+});
+
 export interface ProviderTurnStartServiceV2Shape {
   /**
    * Starts the run's provider turn. Retryable startup failures return to the
@@ -557,6 +569,7 @@ export const layer: Layer.Layer<
       );
       const sessionResult = yield* Effect.result(
         providerSessions.open({
+          ...(projection.thread.sideChat ? { ephemeral: true } : {}),
           threadId: projection.thread.id,
           providerSessionId,
           modelSelection: run.modelSelection,
@@ -652,6 +665,100 @@ export const layer: Layer.Layer<
       let forkedNatively = nativeForkTransfer !== undefined;
       const loadedProviderThread = yield* Effect.gen(function* () {
         if (nativeForkTransfer !== undefined) {
+          const portableFork = Effect.fnUntraced(function* (sourceRunOrdinal: number | null) {
+            forkedNatively = false;
+            const preparedHistory =
+              (projection.thread.capturedContext
+                ? yield* projectionStore.getSideChatContext(input.threadId)
+                : null) ??
+              (yield* projectionStore.getHandoffHistory({
+                scope: "conversation",
+                threadId: nativeForkTransfer.sourceThreadId,
+                ...(sourceRunOrdinal === null ? {} : { runOrdinalTo: sourceRunOrdinal }),
+                asOfRunOrdinalTo: true,
+                historyRevision:
+                  projection.thread.forkedFrom?.type === "run"
+                    ? projection.thread.forkedFrom.sourceHistoryRevision
+                    : undefined,
+                includeImported: true,
+                budget: handoffBudget({
+                  tokenCap: contextHandoffService.historyBudget,
+                  userText: message.text,
+                  attachments: message.attachments,
+                  providerThread: { ...providerThread, contextUsage: null },
+                  nativeContextEstimate: 0,
+                  modelContextWindow: session.getModelContextWindow?.(
+                    run.modelSelection,
+                    resolvedRuntimePolicy.cwd,
+                  ),
+                }),
+              }));
+            const createdAt = yield* DateTime.now;
+            const handoff = yield* contextHandoffService.prepareProviderHandoff({
+              threadId: input.threadId,
+              targetRunId: run.id,
+              transferId: nativeForkTransfer.id,
+              fromProviderThreadIds: preparedHistory.fromProviderThreadIds,
+              toProviderThreadId: providerThread.id,
+              fromProviderInstanceId:
+                nativeForkTransfer.sourceProviderInstanceId ?? run.providerInstanceId,
+              toProviderInstanceId: run.providerInstanceId,
+              coveredRunOrdinals: preparedHistory.coveredRunOrdinals,
+              strategy: "full_thread_summary",
+              items: [],
+              preparedHistory,
+              createdAt,
+            });
+            const portableWrite = yield* eventSink.writeIfRunCurrent({
+              threadId: input.threadId,
+              runId: run.id,
+              activeAttemptId: attempt.id,
+              expectedStatus: "starting",
+              events: [
+                {
+                  id: yield* idAllocator.allocate.event({ threadId: input.threadId }),
+                  type: "context-handoff.updated",
+                  threadId: input.threadId,
+                  runId: run.id,
+                  providerInstanceId: run.providerInstanceId,
+                  occurredAt: createdAt,
+                  payload: handoff,
+                },
+                {
+                  id: yield* idAllocator.allocate.event({ threadId: input.threadId }),
+                  type: "context-transfer.updated",
+                  threadId: input.threadId,
+                  runId: run.id,
+                  providerInstanceId: run.providerInstanceId,
+                  occurredAt: createdAt,
+                  payload: {
+                    ...nativeForkTransfer,
+                    status: "resolved_portable",
+                    resolution: { strategy: "portable_context", contextHandoffId: handoff.id },
+                    error: null,
+                    updatedAt: createdAt,
+                  },
+                },
+              ],
+            });
+            if (!portableWrite.committed) return undefined;
+            effectiveHandoffs = [handoff, ...effectiveHandoffs];
+            return yield* loadFromProvider(
+              session.ensureThread({
+                ...(projection.thread.sideChat ? { ephemeral: true } : {}),
+                threadId: input.threadId,
+                title: projection.thread.title,
+                modelSelection: run.modelSelection,
+                runtimePolicy: resolvedRuntimePolicy,
+                providerSessionId,
+                existingProviderThread: {
+                  ...providerThread,
+                  nativeThreadRef: null,
+                  forkedFrom: null,
+                },
+              }),
+            );
+          });
           // The source boundary and its native copy must observe one history revision.
           return yield* threadCommands.withLock(
             nativeForkTransfer.sourceThreadId,
@@ -668,91 +775,8 @@ export const layer: Layer.Layer<
               );
               // A source row may have rebound while this fork was queued. Its old
               // accepted turn cannot be combined with the replacement native thread.
-              if (!boundary.nativeIncarnationMatches && boundary.sourceRunOrdinal !== null) {
-                forkedNatively = false;
-                const preparedHistory = yield* projectionStore.getHandoffHistory({
-                  scope: "conversation",
-                  threadId: nativeForkTransfer.sourceThreadId,
-                  runOrdinalTo: boundary.sourceRunOrdinal,
-                  asOfRunOrdinalTo: true,
-                  historyRevision:
-                    projection.thread.forkedFrom?.type === "run"
-                      ? projection.thread.forkedFrom.sourceHistoryRevision
-                      : undefined,
-                  includeImported: true,
-                  budget: handoffBudget({
-                    tokenCap: contextHandoffService.historyBudget,
-                    userText: message.text,
-                    attachments: message.attachments,
-                    providerThread: { ...providerThread, contextUsage: null },
-                    nativeContextEstimate: 0,
-                    modelContextWindow: session.getModelContextWindow?.(
-                      run.modelSelection,
-                      resolvedRuntimePolicy.cwd,
-                    ),
-                  }),
-                });
-                const createdAt = yield* DateTime.now;
-                const handoff = yield* contextHandoffService.prepareProviderHandoff({
-                  threadId: input.threadId,
-                  targetRunId: run.id,
-                  transferId: nativeForkTransfer.id,
-                  fromProviderThreadIds: preparedHistory.fromProviderThreadIds,
-                  toProviderThreadId: providerThread.id,
-                  fromProviderInstanceId:
-                    nativeForkTransfer.sourceProviderInstanceId ?? run.providerInstanceId,
-                  toProviderInstanceId: run.providerInstanceId,
-                  coveredRunOrdinals: preparedHistory.coveredRunOrdinals,
-                  strategy: "full_thread_summary",
-                  items: [],
-                  preparedHistory,
-                  createdAt,
-                });
-                const portableWrite = yield* eventSink.writeIfRunCurrent({
-                  threadId: input.threadId,
-                  runId: run.id,
-                  activeAttemptId: attempt.id,
-                  expectedStatus: "starting",
-                  events: [
-                    {
-                      id: yield* idAllocator.allocate.event({ threadId: input.threadId }),
-                      type: "context-handoff.updated",
-                      threadId: input.threadId,
-                      runId: run.id,
-                      providerInstanceId: run.providerInstanceId,
-                      occurredAt: createdAt,
-                      payload: handoff,
-                    },
-                    {
-                      id: yield* idAllocator.allocate.event({ threadId: input.threadId }),
-                      type: "context-transfer.updated",
-                      threadId: input.threadId,
-                      runId: run.id,
-                      providerInstanceId: run.providerInstanceId,
-                      occurredAt: createdAt,
-                      payload: {
-                        ...nativeForkTransfer,
-                        status: "resolved_portable",
-                        resolution: { strategy: "portable_context", contextHandoffId: handoff.id },
-                        error: null,
-                        updatedAt: createdAt,
-                      },
-                    },
-                  ],
-                });
-                if (!portableWrite.committed) return undefined;
-                effectiveHandoffs = [handoff, ...effectiveHandoffs];
-                return yield* loadFromProvider(
-                  session.ensureThread({
-                    threadId: input.threadId,
-                    title: projection.thread.title,
-                    modelSelection: run.modelSelection,
-                    runtimePolicy: resolvedRuntimePolicy,
-                    providerSessionId,
-                    existingProviderThread: { ...providerThread, nativeThreadRef: null },
-                  }),
-                );
-              }
+              if (!boundary.nativeIncarnationMatches && boundary.sourceRunOrdinal !== null)
+                return yield* portableFork(boundary.sourceRunOrdinal);
               const sourceProviderThread = boundary.providerThread;
               const sourceProviderTurn = boundary.providerTurn;
               if (sourceProviderThread === null) {
@@ -761,46 +785,52 @@ export const layer: Layer.Layer<
                   cause: `Native fork transfer ${nativeForkTransfer.id} has no source provider execution.`,
                 });
               }
-              return yield* loadFromProvider(
-                session.forkThread({
-                  sourceProviderThread,
-                  sourceProviderTurns: sourceProviderTurn === null ? [] : [sourceProviderTurn],
-                  sourceRollbackTurnCount: boundary.rollbackTurnCount,
-                  loadSourceFollowingTurns: (following) =>
-                    projectionStore
-                      .getNativeForkBoundary(
-                        nativeForkTransfer.sourceThreadId,
-                        nativeForkTransfer.sourcePoint.runId!,
-                        following,
-                      )
-                      .pipe(
-                        Effect.flatMap((current) =>
-                          current.nativeIncarnationMatches
-                            ? Effect.succeed(current.followingProviderTurns)
-                            : Effect.fail(
-                                new ProviderAdapter.ProviderAdapterProtocolError({
-                                  driver: session.driver,
-                                  detail:
-                                    "Native fork source incarnation changed before its boundary was read.",
-                                }),
-                              ),
-                        ),
-                        Effect.mapError((cause) =>
-                          Schema.is(ProviderAdapter.ProviderAdapterV2Error)(cause)
-                            ? cause
-                            : new ProviderAdapter.ProviderAdapterProtocolError({
+              const nativeFork = session.forkThread({
+                ...(projection.thread.sideChat ? { ephemeral: true } : {}),
+                sourceProviderThread,
+                sourceProviderTurns: sourceProviderTurn === null ? [] : [sourceProviderTurn],
+                sourceRollbackTurnCount: boundary.rollbackTurnCount,
+                loadSourceFollowingTurns: (following) =>
+                  projectionStore
+                    .getNativeForkBoundary(
+                      nativeForkTransfer.sourceThreadId,
+                      nativeForkTransfer.sourcePoint.runId!,
+                      following,
+                    )
+                    .pipe(
+                      Effect.flatMap((current) =>
+                        current.nativeIncarnationMatches
+                          ? Effect.succeed(current.followingProviderTurns)
+                          : Effect.fail(
+                              new ProviderAdapter.ProviderAdapterProtocolError({
                                 driver: session.driver,
-                                detail: "Native fork source boundary could not be read.",
-                                cause,
+                                detail:
+                                  "Native fork source incarnation changed before its boundary was read.",
                               }),
-                        ),
+                            ),
                       ),
-                  targetThreadId: projection.thread.id,
-                  modelSelection: run.modelSelection,
-                  runtimePolicy: resolvedRuntimePolicy,
-                  ...(sourceProviderTurn === null ? {} : { providerTurnId: sourceProviderTurn.id }),
-                }),
-              );
+                      Effect.mapError((cause) =>
+                        Schema.is(ProviderAdapter.ProviderAdapterV2Error)(cause)
+                          ? cause
+                          : new ProviderAdapter.ProviderAdapterProtocolError({
+                              driver: session.driver,
+                              detail: "Native fork source boundary could not be read.",
+                              cause,
+                            }),
+                      ),
+                    ),
+                targetThreadId: projection.thread.id,
+                modelSelection: run.modelSelection,
+                runtimePolicy: resolvedRuntimePolicy,
+                ...(sourceProviderTurn === null ? {} : { providerTurnId: sourceProviderTurn.id }),
+              });
+              if (projection.thread.sideChat)
+                return yield* withSideChatForkFallback(
+                  nativeFork,
+                  () => portableFork(boundary.sourceRunOrdinal),
+                  true,
+                );
+              return yield* loadFromProvider(nativeFork);
             }),
           );
         }
@@ -895,6 +925,7 @@ export const layer: Layer.Layer<
           // `activeProviderThreadId` then flaps between them on every update.
           const fresh = yield* loadFromProvider(
             session.ensureThread({
+              ...(projection.thread.sideChat ? { ephemeral: true } : {}),
               threadId: projection.thread.id,
               title: projection.thread.title,
               modelSelection: run.modelSelection,
@@ -959,6 +990,7 @@ export const layer: Layer.Layer<
         });
         const replacement = yield* loadFromProvider(
           session.ensureThread({
+            ...(projection.thread.sideChat ? { ephemeral: true } : {}),
             threadId: projection.thread.id,
             title: projection.thread.title,
             modelSelection: run.modelSelection,

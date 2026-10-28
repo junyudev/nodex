@@ -1,3 +1,4 @@
+import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
 import {
   ImportChatAttachmentsInput,
   importChatAttachments,
@@ -655,6 +656,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
 ) {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const threads = yield* ThreadManagementService;
+  const providerSessions = yield* ProviderSessionManagerV2;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const sql = yield* SqlClient.SqlClient;
   // A Thread's root never changes; observation resolves it once per Thread.
@@ -1022,6 +1024,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         const result = yield* threads
           .dispatch(input.input.command)
           .pipe(Effect.provideService(DispatchModeLimit, input.input.modeLimit));
+        if (input.input.command.type === "thread.delete")
+          yield* providerSessions.discardSideChatNative(input.input.command.threadId);
         return { sequence: result.sequence };
       }
       case "command.receipt": {

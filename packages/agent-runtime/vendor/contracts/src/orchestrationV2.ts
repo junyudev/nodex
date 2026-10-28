@@ -383,6 +383,40 @@ const ExecutionHandoff = Schema.Struct({
   sourceLocation: Schema.optional(OrchestrationV2ExecutionLocation),
 });
 
+export const OrchestrationV2HistoricalMessage = Schema.Struct({
+  role: Schema.Literals(["user", "assistant"]),
+  text: Schema.String,
+  runStatus: Schema.optional(Schema.String),
+  threadId: ThreadId,
+  runId: Schema.NullOr(RunId),
+  itemId: TurnItemId,
+  providerThreadId: Schema.NullOr(ProviderThreadId),
+  status: Schema.String,
+  kind: Schema.String,
+});
+export type OrchestrationV2HistoricalMessage = typeof OrchestrationV2HistoricalMessage.Type;
+
+export const OrchestrationV2SideChatCapture = Schema.Struct({
+    history: Schema.Struct({
+      messages: Schema.Array(OrchestrationV2HistoricalMessage),
+      coverage: Schema.String,
+      omittedItems: NonNegativeInt,
+      omittedItemIds: Schema.optional(Schema.Array(TurnItemId)),
+    }),
+    context: Schema.String,
+    coveredRunOrdinals: Schema.Struct({ from: NonNegativeInt, to: NonNegativeInt }),
+    fromProviderThreadIds: Schema.Array(ProviderThreadId),
+    sourceItemCount: NonNegativeInt,
+    sourceRunCount: NonNegativeInt,
+    sourceSelections: Schema.Array(Schema.Struct({ providerInstanceId: ProviderInstanceId, modelSelection: ModelSelection })),
+  });
+export const OrchestrationV2SideChat = Schema.Struct({
+  sourceThreadId: ThreadId,
+  sourceRunId: Schema.NullOr(RunId),
+  nativeFork: Schema.Boolean,
+  contextCleared: Schema.optional(Schema.Literal(true)),
+});
+
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -407,6 +441,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   /** Monotonic conversation rewind revision; native contexts do not own this boundary. */
   historyRevision: Schema.optional(NonNegativeInt),
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
+  sideChat: Schema.optional(OrchestrationV2SideChat),
+  capturedContext: Schema.optional(Schema.Literal(true)),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(
     Schema.Union([
@@ -1052,19 +1088,6 @@ export const OrchestrationV2ProviderThread = Schema.Struct({
   updatedAt: Schema.DateTimeUtc,
 });
 export type OrchestrationV2ProviderThread = typeof OrchestrationV2ProviderThread.Type;
-
-export const OrchestrationV2HistoricalMessage = Schema.Struct({
-  role: Schema.Literals(["user", "assistant"]),
-  text: Schema.String,
-  runStatus: Schema.optional(Schema.String),
-  threadId: ThreadId,
-  runId: Schema.NullOr(RunId),
-  itemId: TurnItemId,
-  providerThreadId: Schema.NullOr(ProviderThreadId),
-  status: Schema.String,
-  kind: Schema.String,
-});
-export type OrchestrationV2HistoricalMessage = typeof OrchestrationV2HistoricalMessage.Type;
 
 export const OrchestrationV2ContextHandoff = Schema.Struct({
   id: ContextHandoffId,
@@ -1946,6 +1969,7 @@ const OrchestrationV2EventBase = Schema.Struct({
 });
 
 export const OrchestrationV2DomainEvent = Schema.Union([
+  Schema.Struct({ ...OrchestrationV2EventBase.fields, type: Schema.Literal("side-chat.context-captured"), payload: OrchestrationV2SideChatCapture }),
   Schema.Struct({
     ...OrchestrationV2EventBase.fields,
     type: Schema.Literal("thread.created"),
@@ -2791,6 +2815,7 @@ export const OrchestrationV2RawProviderEventJson = OrchestrationV2RawProviderEve
 export type OrchestrationV2RawProviderEventJson = typeof OrchestrationV2RawProviderEventJson.Type;
 
 export const OrchestrationV2DomainEventJson = Schema.Union([
+  Schema.Struct({ ...OrchestrationV2JsonEventBaseFields, type: Schema.Literal("side-chat.context-captured"), payload: OrchestrationV2SideChatCapture }),
   Schema.Struct({
     ...OrchestrationV2JsonEventBaseFields,
     type: Schema.Literal("thread.created"),
@@ -3351,6 +3376,7 @@ export const OrchestrationV2Command = Schema.Union([
     sourceThreadId: ThreadId,
     targetThreadId: ThreadId,
     sourcePoint: OrchestrationV2ThreadForkSourcePoint,
+    sideChat: Schema.optional(Schema.Literal(true)),
     /** A visible independent Session owns a new execution root while retaining captured history. */
     rootPolicy: Schema.optional(Schema.Literals(["same_root", "independent_root"])),
     title: Schema.optional(TrimmedNonEmptyString),

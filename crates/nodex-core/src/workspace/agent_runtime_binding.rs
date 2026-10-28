@@ -37,10 +37,26 @@ pub(super) fn create_session(
     launch_request_id: &str,
     operation_kind: &'static str,
     detached_native_thread_id: Option<&str>,
+    side_chat_source_session_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     // Agent adapters reach this function only after AgentCommand has verified Turn provenance.
     if !matches!(context.adapter, AdapterKind::Agent) {
         require_host(context)?;
+    }
+    if let Some(source_id) = side_chat_source_session_id {
+        require_host(context)?;
+        let source = require_session(connection, library_id, source_id)?;
+        if source_id == session_id
+            || source.project_id.as_deref() != project_id
+            || source.archived
+            || !initial_page_ids.is_empty()
+        {
+            return Err(StoreError::new(
+                StoreErrorCode::InvalidInput,
+                "Side chat source must be a distinct active Session in the same Project",
+                false,
+            ));
+        }
     }
     validate_id("runtime_id", runtime_id)?;
     validate_id("runtime_thread_id", runtime_thread_id)?;
@@ -57,6 +73,7 @@ pub(super) fn create_session(
         if binding.runtime_id != runtime_id
             || binding.runtime_thread_id != runtime_thread_id
             || binding.launch_request_id != launch_request_id
+            || binding.side_chat_source_session_id.as_deref() != side_chat_source_session_id
         {
             return Err(StoreError::new(
                 StoreErrorCode::Conflict,
@@ -151,6 +168,12 @@ pub(super) fn create_session(
             None,
         )?
     };
+    if let Some(source_id) = side_chat_source_session_id {
+        connection.execute(
+            "INSERT INTO project_session_side_chats(session_id, source_session_id) VALUES (?1, ?2)",
+            params![session_id, source_id],
+        )?;
+    }
     connection.execute(
         "INSERT INTO project_session_execution_bindings(\
            session_id, runtime_id, runtime_thread_id, launch_request_id, bound_at\
@@ -247,6 +270,7 @@ pub(super) fn adopt_native_session(
         launch_request_id,
         "adopt_native_session_execution",
         Some(expected_native_thread_id),
+        None,
     )
 }
 
@@ -271,7 +295,7 @@ pub(super) fn read_binding(
         .ok_or_else(|| StoreError::new(StoreErrorCode::NotFound, "Session is unavailable in this Library", false))?;
     connection
         .query_row(
-            "SELECT runtime_id, runtime_thread_id, launch_request_id, bound_at \
+            "SELECT runtime_id, runtime_thread_id, launch_request_id, bound_at, (SELECT source_session_id FROM project_session_side_chats WHERE session_id = ?1) \
              FROM project_session_execution_bindings WHERE session_id = ?1",
             [session_id],
             |row| {
@@ -282,6 +306,7 @@ pub(super) fn read_binding(
                     runtime_thread_id: row.get(1)?,
                     launch_request_id: row.get(2)?,
                     bound_at: row.get(3)?,
+                    side_chat_source_session_id: row.get(4)?,
                 })
             },
         )
@@ -366,6 +391,7 @@ pub(super) fn read_binding_window(
     commit_head: i64,
     runtime_id: &str,
     project_id: Option<&str>,
+    temporary_only: bool,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceAgentRuntimeSessionBinding>, StoreError> {
     require_host(context)?;
@@ -374,8 +400,12 @@ pub(super) fn read_binding_window(
         validate_id("project_id", project_id)?;
     }
     let normalized = normalize_request(request)?;
-    let fingerprint =
-        cursor::query_fingerprint(&("agent_runtime_session_binding_v1", runtime_id, project_id))?;
+    let fingerprint = cursor::query_fingerprint(&(
+        "agent_runtime_session_binding_v2",
+        runtime_id,
+        project_id,
+        temporary_only,
+    ))?;
     let subject = CollectionCursorSubject {
         kind: "agent_runtime_session_binding",
         library_id,
@@ -397,13 +427,13 @@ pub(super) fn read_binding_window(
         })
         .transpose()?;
     let rows = connection.prepare(
-        "SELECT session.id, session.project_id, binding.runtime_id, binding.runtime_thread_id, binding.launch_request_id, binding.bound_at \
+        "SELECT session.id, session.project_id, binding.runtime_id, binding.runtime_thread_id, binding.launch_request_id, binding.bound_at, (SELECT source_session_id FROM project_session_side_chats WHERE session_id = session.id) \
          FROM project_sessions session JOIN project_session_execution_bindings binding ON binding.session_id = session.id \
-         WHERE session.project_id IS ?1 AND binding.runtime_id = ?2 AND session.id > ?3 \
+         WHERE ((?6 = 0 AND session.project_id IS ?1) OR (?6 = 1 AND EXISTS(SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id))) AND binding.runtime_id = ?2 AND session.id > ?3 \
            AND (session.project_id IS NULL OR EXISTS(SELECT 1 FROM projects project WHERE project.id = session.project_id AND project.library_id = ?4)) \
          ORDER BY session.id LIMIT ?5"
-    )?.query_map(params![project_id, runtime_id, after.as_deref().unwrap_or(""), library_id, (normalized.first + 1) as i64], |row| Ok(ProjectWorkspaceAgentRuntimeSessionBinding {
-        session_id: row.get(0)?, project_id: row.get(1)?, runtime_id: row.get(2)?, runtime_thread_id: row.get(3)?, launch_request_id: row.get(4)?, bound_at: row.get(5)?,
+    )?.query_map(params![project_id, runtime_id, after.as_deref().unwrap_or(""), library_id, (normalized.first + 1) as i64, temporary_only], |row| Ok(ProjectWorkspaceAgentRuntimeSessionBinding {
+        session_id: row.get(0)?, project_id: row.get(1)?, runtime_id: row.get(2)?, runtime_thread_id: row.get(3)?, launch_request_id: row.get(4)?, bound_at: row.get(5)?, side_chat_source_session_id: row.get(6)?,
     }))?.collect::<rusqlite::Result<Vec<_>>>()?;
     assemble(
         rows.into_iter().map(|item| WindowCandidate {
@@ -440,6 +470,7 @@ mod tests {
     };
     fn create_intent(session_id: &str) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            side_chat_source_session_id: None,
             session_id: session_id.into(),
             project_id: Some("project:default".into()),
             title: "Task".into(),
@@ -448,6 +479,121 @@ mod tests {
             runtime_thread_id: format!("thread:{session_id}"),
             launch_request_id: format!("launch:{session_id}"),
         }
+    }
+
+    #[test]
+    fn side_chat_binding_stays_readable_but_out_of_discovery_until_discarded() {
+        use nodex_core_contracts::collection::CollectionWindowRequest;
+        let workspace = seeded_workspace();
+        apply(&workspace.module, "source:create", create_intent("source"));
+        let mut intent = create_intent("side");
+        let ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            side_chat_source_session_id,
+            ..
+        } = &mut intent
+        else {
+            unreachable!()
+        };
+        *side_chat_source_session_id = Some("source".into());
+        apply(&workspace.module, "side:create", intent.clone());
+        apply(&workspace.module, "side:create", intent);
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
+            binding: Some(binding),
+        } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::AgentRuntimeSessionBinding {
+                session_id: "side".into(),
+            },
+        )
+        else {
+            panic!("side binding")
+        };
+        assert_eq!(
+            binding.side_chat_source_session_id.as_deref(),
+            Some("source")
+        );
+        let ProjectWorkspaceReadValue::SessionWindow { sessions, .. } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::SessionWindow {
+                archived: false,
+                order: None,
+                projectless_only: None,
+                project_id: None,
+                query: None,
+                native_only: None,
+                execution_refs: None,
+                session_ids: None,
+                window: CollectionWindowRequest {
+                    first: Some(100),
+                    after: None,
+                },
+            },
+        ) else {
+            panic!("discovery")
+        };
+        assert!(
+            sessions
+                .items
+                .iter()
+                .any(|item| item.task.session.id == "source")
+        );
+        assert!(
+            !sessions
+                .items
+                .iter()
+                .any(|item| item.task.session.id == "side")
+        );
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow { bindings } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
+                runtime_id: "runtime:primary".into(),
+                project_id: None,
+                temporary_only: Some(true),
+                window: CollectionWindowRequest {
+                    first: Some(100),
+                    after: None,
+                },
+            },
+        ) else {
+            panic!("temporary bindings")
+        };
+        assert_eq!(
+            bindings
+                .items
+                .iter()
+                .map(|item| item.session_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["side"]
+        );
+        apply(
+            &workspace.module,
+            "side:discard",
+            ProjectWorkspaceIntent::DeleteSession {
+                session_id: "side".into(),
+            },
+        );
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionBinding { binding: Some(_) } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::AgentRuntimeSessionBinding {
+                session_id: "source".into(),
+            },
+        ) else {
+            panic!("source survives")
+        };
+        let ProjectWorkspaceReadValue::AgentRuntimeExecutionCleanupWindow { cleanups } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::AgentRuntimeExecutionCleanupWindow {
+                runtime_id: "runtime:primary".into(),
+                window: CollectionWindowRequest {
+                    first: Some(100),
+                    after: None,
+                },
+            },
+        ) else {
+            panic!("cleanup")
+        };
+        assert_eq!(cleanups.items.len(), 1);
+        assert_eq!(cleanups.items[0].runtime_thread_id, "thread:side");
     }
 
     #[test]
@@ -947,6 +1093,7 @@ mod tests {
         );
         let query = |project_id: Option<&str>, after: Option<String>| {
             ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
+                temporary_only: None,
                 runtime_id: "runtime:primary".into(),
                 project_id: project_id.map(str::to_owned),
                 window: CollectionWindowRequest {

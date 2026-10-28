@@ -182,6 +182,17 @@ export type AgentRuntimeQueueInput = AgentRuntimeSessionTarget & { readonly requ
       }
     | { readonly action: "steer"; readonly runId: string; readonly targetRunId: string }
   );
+/** Captures the source now; execution waits for the first side-chat message. */
+export interface AgentRuntimeSideChatCreateInput {
+  readonly source: AgentRuntimeSessionTarget;
+  readonly sessionId: string;
+  readonly requestId: string;
+  readonly acceptedAt: number;
+}
+export interface AgentRuntimeSideChatDiscardInput {
+  readonly sessionId: string;
+  readonly requestId: string;
+}
 export interface AgentRuntimeForkInput {
   readonly source: AgentRuntimeSessionTarget;
   readonly sessionId: string;
@@ -323,6 +334,14 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:queue": {
     args: [input: AgentRuntimeQueueInput];
     result: { readonly sequence: number };
+  };
+  "agent-runtime:session:create-side-chat": {
+    args: [input: AgentRuntimeSideChatCreateInput];
+    result: AgentRuntimeLaunchResult;
+  };
+  "agent-runtime:session:discard-side-chat": {
+    args: [input: AgentRuntimeSideChatDiscardInput];
+    result: { readonly discarded: boolean };
   };
   "agent-runtime:session:fork": {
     args: [input: AgentRuntimeForkInput];

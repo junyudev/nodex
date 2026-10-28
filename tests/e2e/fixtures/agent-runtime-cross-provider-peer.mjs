@@ -266,7 +266,7 @@ async function handleCodex(message) {
       if (!source) { emit({ id, error: { code: -32001, message: "Thread missing" } }); return; }
       const last = params.lastTurnId === undefined ? source.turns.length : source.turns.findIndex((turn) => turn.id === params.lastTurnId) + 1;
       const threadId = randomUUID();
-      const thread = { ...nativeThread(threadId, params.cwd ?? source.cwd), forkedFromId: source.id, turns: source.turns.slice(0, last) };
+      const thread = { ...nativeThread(threadId, params.cwd ?? source.cwd), forkedFromId: source.id, turns: source.turns.slice(0, last), injectedItems: source.injectedItems ?? [] };
       state.threads[threadId] = thread;
       persist();
       servers.set(threadId, configValue(params.config, "mcp_servers.nodex_app"));
@@ -277,12 +277,13 @@ async function handleCodex(message) {
       const turnId = randomUUID();
       const prompt = params.input?.filter((value) => value.type === "text").map((value) => value.text).join("\n") ?? "";
       state = load();
-      const turn = nativeTurn(turnId);
+      const priorItems = [...(state.threads[params.threadId].injectedItems ?? []), ...state.threads[params.threadId].turns.flatMap((entry) => entry.items)];
+      const turn = nativeTurn(turnId, "inProgress", [{ type: "userMessage", id: randomUUID(), clientId: params.clientUserMessageId ?? null, content: params.input ?? [] }]);
       state.threads[params.threadId].turns.push(turn);
       persist();
       reply({ turn });
       notify("turn/started", { threadId: params.threadId, turn });
-      record({ event: "prompt", threadId: params.threadId, turnId, prompt });
+      record({ event: "prompt", threadId: params.threadId, turnId, prompt, priorItems });
       if (prompt.startsWith("Hold child")) return;
       if (prompt.startsWith("Hold async")) {
         const timer = setInterval(() => {
@@ -318,7 +319,13 @@ async function handleCodex(message) {
     }
     case "turn/interrupt": reply({}); finishCodex(params.threadId, params.turnId, "interrupted"); return;
     // History another Agent produced joins the model-visible thread before the next turn.
-    case "thread/inject_items": record({ event: "inject", threadId: params.threadId, items: params.items }); reply({}); return;
+    case "thread/inject_items": {
+      state = load();
+      const thread = state.threads[params.threadId];
+      thread.injectedItems = [...(thread.injectedItems ?? []), ...params.items];
+      persist();
+      record({ event: "inject", threadId: params.threadId, items: params.items }); reply({}); return;
+    }
     default: reply({});
   }
 }

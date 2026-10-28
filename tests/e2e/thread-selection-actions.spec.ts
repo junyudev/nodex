@@ -6,6 +6,7 @@ import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { openNewChatDraft } from "./support/new-chat-draft";
+import { captureRendererErrors } from "./support/renderer-errors";
 
 async function selectResponse(page: Page, response: Locator) {
   await response.scrollIntoViewIfNeeded();
@@ -25,22 +26,21 @@ async function selectResponse(page: Page, response: Locator) {
 test("annotates selected replies and reuses a side chat without replacing its draft", async ({}, testInfo) => {
   test.setTimeout(180_000);
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-thread-selection-"));
-  const log = path.join(fixture, "provider.jsonl");
-  const peer = path.join(fixture, "codex.mjs");
+  const log = path.join(fixture, "native.jsonl");
+  const peer = path.join(fixture, "codex");
   const version = "0.145.0-alpha.15";
   fs.writeFileSync(
     peer,
-    `#!/usr/bin/env node\nif (process.argv.includes("--version")) { console.log("codex-cli ${version}"); process.exit(0); }\n${fs.readFileSync("tests/e2e/fixtures/codex-queue-app-server.mjs", "utf8").replace(/^#![^\n]*\n/u, "")}`,
+    `#!${process.execPath}\n${fs.readFileSync("tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs", "utf8").replace(/^#![^\n]*\n/u, "")}`,
+    { mode: 0o755 },
   );
+  fs.writeFileSync(path.join(fixture, "plan.json"), "{}");
   const harness = await ElectronScenarioHarness.create({
     label: "thread-selection-actions",
     prepareAgentRuntime: false,
     environment: {
       NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
-      NODEX_FAKE_CODEX_STATE_PATH: path.join(fixture, "state.json"),
-      NODEX_FAKE_CODEX_LOG_PATH: log,
-      NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
-      NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "300",
+      NODEX_TEST_CROSS_PROVIDER_HOME: fixture,
     },
   });
   prepareScenarioCodexAppServerRuntimeSync(harness.profile.runRoot, peer, version);
@@ -51,11 +51,14 @@ test("annotates selected replies and reuses a side chat without replacing its dr
           .trim()
           .split("\n")
           .filter(Boolean)
-          .map((line) => JSON.parse(line) as { method: string; params: unknown })
-          .filter((record) => record.method === "turn/start")
+          .map((line) => JSON.parse(line) as { event: string; prompt: string })
+          .filter((record) => record.event === "prompt")
+          .map((record) => record.prompt)
       : [];
+  let readRendererErrors = async () => "";
   try {
     let page = await harness.launch({ phase: "first-window" });
+    readRendererErrors = captureRendererErrors(page);
     await harness.waitForApplicationReady();
     await page.evaluate(() =>
       window.api!.invoke("agent-runtime:providers:read", { refresh: true }),
@@ -65,7 +68,7 @@ test("annotates selected replies and reuses a side chat without replacing its dr
     await mainComposer.fill("Explain how this task completed.");
     await mainComposer.press("Enter");
     const response = scene.locator("[data-response-annotation-target] .codex-markdown").first();
-    await expect(response).toContainText("The task completed successfully.", { timeout: 30_000 });
+    await expect(response).toContainText("Codex child report", { timeout: 30_000 });
     await mainComposer.fill("Keep my main draft");
     await selectResponse(page, response);
     await page.screenshot({ path: testInfo.outputPath("selection-toolbar.png") });
@@ -81,9 +84,9 @@ test("annotates selected replies and reuses a side chat without replacing its dr
     await page.screenshot({ path: testInfo.outputPath("response-annotation.png") });
     await mainComposer.press("Enter");
     await expect.poll(() => turns().length).toBe(2);
-    const submitted = JSON.stringify(turns()[1]?.params);
+    const submitted = turns()[1];
     expect(submitted).toContain("Explain the completion criteria");
-    expect(submitted).toContain("The task completed successfully.");
+    expect(submitted).toContain("Codex child report");
     expect(submitted).toContain("Response annotations:");
     await expect(scene.locator('[data-user-message-bubble="true"]').last()).toHaveText(
       "Keep my main draft",
@@ -108,8 +111,8 @@ test("annotates selected replies and reuses a side chat without replacing its dr
     await page.screenshot({ path: testInfo.outputPath("side-chat-selections.png") });
     await sideComposer.press("Enter");
     await expect.poll(() => turns().length, { timeout: 30_000 }).toBe(3);
-    expect(JSON.stringify(turns()[2]?.params)).toContain("Selection 2");
-    expect(JSON.stringify(turns()[2]?.params)).toContain("Keep my side draft");
+    expect(turns()[2]).toContain("Selection 2");
+    expect(turns()[2]).toContain("Keep my side draft");
     await expect(
       scene.locator('[data-user-message-bubble="true"]', { hasText: "Keep my side draft" }),
     ).toHaveCount(1);
@@ -141,7 +144,7 @@ test("annotates selected replies and reuses a side chat without replacing its dr
       .fill("Send this annotation directly");
     await page.getByRole("textbox", { name: "Note", exact: true }).press("Meta+Enter");
     await expect.poll(() => turns().length, { timeout: 30_000 }).toBe(5);
-    expect(JSON.stringify(turns()[4]?.params)).toContain("Send this annotation directly");
+    expect(turns()[4]).toContain("Send this annotation directly");
     await expect(scene.locator("[data-response-annotation-target]")).toHaveCount(5);
     await harness.stopElectron();
     page = await harness.launch({ phase: "first-window" });
@@ -164,6 +167,10 @@ test("annotates selected replies and reuses a side chat without replacing its dr
     });
     throw error;
   } finally {
+    await testInfo.attach("renderer-errors", {
+      body: await readRendererErrors(),
+      contentType: "text/plain",
+    });
     await harness.close();
     fs.rmSync(fixture, { recursive: true, force: true });
   }

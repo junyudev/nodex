@@ -1,5 +1,7 @@
 import { acpProviderStorageScopes } from "../platform/node/AcpProfilePaths";
 import { CodexVisualizationState } from "../codex-application/CodexVisualizationState";
+import { CodexConversations } from "../codex-application/CodexConversations";
+import { projectCodexConversationThreadSettings } from "../codex-application/CodexConversationSnapshotProjection";
 import { codexVisualizationPassiveParts } from "../../shared/codex-visualization-passive-context";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
@@ -160,6 +162,7 @@ const supervisor = Layer.effectContext(
     const workspace = yield* NativeSessionWorkspace;
     const presentation = yield* CodexTurnPresentation;
     const visualizationState = yield* CodexVisualizationState;
+    const conversations = yield* CodexConversations;
     const desktop = makeDesktopTools({
       tools: yield* DesktopToolRuntime,
       browserUse: yield* BrowserUseRuntime,
@@ -261,6 +264,21 @@ const supervisor = Layer.effectContext(
           // provider refresh cannot replace this source after import admission.
           return yield* Effect.tryPromise(() => canonicalNativeSessionHome(sourceHome));
         }),
+      nativeCodexSettings: (threadId) => {
+        const view = conversations.read(threadId);
+        const current = view?.canonicalState;
+        const settings =
+          (current ? projectCodexConversationThreadSettings(current) : null) ??
+          view?.snapshot?.latestThreadSettings;
+        if (!settings) return null;
+        return {
+          ...settings,
+          collaborationMode:
+            current?.latestCollaborationMode ??
+            view?.snapshot?.latestCollaborationMode ??
+            settings.collaborationMode,
+        };
+      },
       providerCatalog,
       whileRunning: (effect) =>
         Deferred.await(ready).pipe(
@@ -637,6 +655,7 @@ const supervisor = Layer.effectContext(
                 ),
               ),
           ),
+          Effect.tap(() => product.discardOrphanSideChats(connection.identity.runtimeId)),
           Effect.tap(() =>
             Deferred.await(toolsReady).pipe(
               Effect.andThen(product.cleanupDeletedSessions),

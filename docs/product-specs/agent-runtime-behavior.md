@@ -199,12 +199,29 @@ Agent kind selects presentation, not the history store. Runtime Thread identitie
 stay inside the bound Session's Runtime reads; opening their history never requires
 a native Thread registration or acquires an execution writer.
 
-Selected-text side chats create independent product Sessions and prefill a draft.
-Explicit side-chat prompts submit immediately through the same launch owner. Neither
-route copies parent history. Panel remounts resolve the Session's cached canonical
-binding, and closing the panel keeps its product chat.
-Connected local native conversations use the same independent side-chat route while
-their history stays passive. Runtime forks retain the selected source Run and prepare
+Side chats capture the source conversation when opened, including the portion of an
+active reply already received. Later source messages, streaming updates and context changes
+do not enter that capture. They inherit the source Agent, model options, interaction mode
+and working directory, with independent execution and a transcript containing only their
+own messages. An exact native fork retains provider context when available; other Agents,
+provider changes and unavailable native forks receive the frozen portable Context Handoff.
+A source context clear bounds what is captured, and clearing the side chat retires its capture.
+
+Inherited instructions, plans, requests, approvals and tool activity are reference material.
+Only new side-chat requests define its task. Exploration is lightweight and non-mutating;
+changes require an explicit new request, and side chats do not use subagents.
+Side-chat commands retain these constraints. When an Agent's native command path cannot
+carry them, Nodex sends the command as an ordinary guarded request.
+
+Selected text appends to the side composer without replacing prose or sending. An explicit
+side-chat prompt sends immediately in the captured conversation. Opening and retrying never
+starts the source task; retries retain the same child identity and context capture. Temporary
+side Sessions stay out of ordinary chat catalogs and disappear on close or application exit.
+Their Agent's native history is discarded when the Agent supports deletion.
+Closing a side chat with messages asks for confirmation, with a saved Don’t ask again choice;
+untouched side chats close immediately. Switching panel tabs preserves the conversation.
+Connected local native conversations use the same captured side-chat route while their
+history stays passive. Runtime forks retain the selected source Run and prepare
 the chosen workspace and environment for the new Session; they do not
 resume a connected read-only native conversation or hydrate history to choose a workspace.
 Native forks use the source Run's captured native incarnation. If its provider binding
@@ -231,8 +248,8 @@ them by Agent name. Fork, Merge back, Clear context, Side, Compact, Project and 
 appear when their owning callbacks and conversation state permit them. Agent-native
 commands supplement those actions without replacing an available Nodex action with
 the same name. Status and MCP use the selected Agent's inspector; Codex-specific
-controls remain scoped to their actual capabilities. Side opens an independent
-chat and does not imply inherited fork history.
+controls remain scoped to their actual capabilities. Side opens a temporary
+chat with the current conversation captured as reference context.
 
 A fork can bring its work back into the chat it was forked from with Merge back (`/merge`)
 or `merge_session_back`. The fork's newest finished Run is merged: a reply still working in

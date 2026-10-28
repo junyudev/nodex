@@ -1651,6 +1651,7 @@ vi.mock("@/features/local-conversation", () => ({
     const actions = props.actions as
       | {
           onOpenSummaryGitReview?: (input: { source: GitReviewSource }) => void | Promise<void>;
+          onSendPrompt?: (prompt: string) => Promise<void>;
           onStartThreadForSession?: (input: {
             projectId: string;
             sessionId: string;
@@ -1672,7 +1673,7 @@ vi.mock("@/features/local-conversation", () => ({
         }
       | null
       | undefined;
-    const composerIntent = props.newThreadComposerIntent as
+    const composerIntent = (props.newThreadComposerIntent ?? props.composerIntent) as
       | {
           prompt?: string;
           clearText?: boolean;
@@ -1681,13 +1682,13 @@ vi.mock("@/features/local-conversation", () => ({
       | null
       | undefined;
     useEffect(() => {
-      if (!props.isNewThreadTab || !target?.sessionId || !composerIntent) return;
+      if ((!props.isNewThreadTab && !props.sideChatContext) || !composerIntent) return;
       if (!composerIntent.prompt && !composerIntent.clearText) return;
       setMockPrompt(composerIntent.clearText ? "" : (composerIntent.prompt ?? ""));
-      if (typeof composerIntent.focusNonce === "number") {
+      if (typeof composerIntent.focusNonce === "number" && target?.sessionId) {
         actions?.onConsumeNewThreadComposerIntent?.(target.sessionId, composerIntent.focusNonce);
       }
-    }, [actions, composerIntent, props.isNewThreadTab, target?.sessionId]);
+    }, [actions, composerIntent, props.isNewThreadTab, props.sideChatContext, target?.sessionId]);
     return createElement(
       Fragment,
       null,
@@ -1700,7 +1701,7 @@ vi.mock("@/features/local-conversation", () => ({
         "div",
         { "data-thread-stage": "true" },
         createElement("span", null, `Thread:${String(props.activeThreadId)}`),
-        props.isNewThreadTab
+        props.isNewThreadTab || props.sideChatContext
           ? createElement("textarea", {
               "aria-label": "Prompt",
               placeholder: "Write the first prompt for this new thread...",
@@ -1708,12 +1709,16 @@ vi.mock("@/features/local-conversation", () => ({
               value: mockPrompt,
             })
           : null,
-        props.isNewThreadTab
+        props.isNewThreadTab || props.sideChatContext
           ? createElement(
               "button",
               {
                 type: "button",
                 onClick: () => {
+                  if (props.sideChatContext) {
+                    void actions?.onSendPrompt?.(mockPrompt);
+                    return;
+                  }
                   if (!target?.projectId || !target.sessionId) return;
                   void actions?.onStartThreadForSession?.({
                     projectId: target.projectId,
@@ -2648,6 +2653,7 @@ export function renderWorkbench({
     return result;
   };
   const defaultDraftSessionIds = new Map(Object.entries(defaultDraftSessionIdsByScope));
+  const sideChatSessions = new Map<string, ProjectSession>();
   const createMockSession = (input: {
     sessionId: string;
     projectId: string | null;
@@ -2754,9 +2760,11 @@ export function renderWorkbench({
     }
     if (channel === "agent-runtime:session:control" || channel === "agent-runtime:session:read") {
       const input = args[0] as { sessionId: string; threadId: string };
-      const session = Object.values(sessionState)
-        .flat()
-        .find((session) => session.id === input.sessionId);
+      const session =
+        sideChatSessions.get(input.sessionId) ??
+        Object.values(sessionState)
+          .flat()
+          .find((session) => session.id === input.sessionId);
       const rootThreadId = session?.executionRef?.threadId ?? input.threadId;
       const source = sideChatConversations[input.threadId]?.source as
         | CodexThreadSummary["source"]
@@ -2881,6 +2889,31 @@ export function renderWorkbench({
       workspaceCommitSeq += 1;
       publishProjectSessionChanges(previousSessionState);
       return { sessionId, projectId: source.projectId, threadId };
+    }
+    if (channel === "agent-runtime:session:create-side-chat") {
+      const input =
+        args[0] as import("../../../../shared/agent-runtime-api").AgentRuntimeSideChatCreateInput;
+      const source = Object.values(sessionState)
+        .flat()
+        .find((session) => session.id === input.source.sessionId);
+      if (!source) throw new Error("Source conversation is unavailable");
+      const threadId = `engine:${input.sessionId}`;
+      const session = makeSession({
+        id: input.sessionId,
+        projectId: source.projectId,
+        displayTitle: "Side chat",
+        noThreadFallbackTitle: "Side chat",
+        thread: null,
+        tabs: [],
+        executionRef: { runtimeId: "runtime:test", threadId },
+      });
+      sideChatSessions.set(session.id, session);
+      return { sessionId: session.id, projectId: source.projectId, threadId };
+    }
+    if (channel === "agent-runtime:session:discard-side-chat") {
+      const input =
+        args[0] as import("../../../../shared/agent-runtime-api").AgentRuntimeSideChatDiscardInput;
+      return { discarded: sideChatSessions.delete(input.sessionId) };
     }
     if (channel === "agent-runtime:session:overview")
       return {
@@ -3299,9 +3332,11 @@ export function renderWorkbench({
       const sessionId = String(args[0]);
       if (sessionGetOverride) return await sessionGetOverride(sessionId);
       return (
+        sideChatSessions.get(sessionId) ??
         Object.values(sessionState)
           .flat()
-          .find((session) => session.id === sessionId) ?? null
+          .find((session) => session.id === sessionId) ??
+        null
       );
     }
     if (channel === "page-chats:activity-summaries") {

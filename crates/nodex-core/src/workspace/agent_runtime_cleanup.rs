@@ -136,6 +136,7 @@ mod tests {
     };
     fn binding(session_id: &str, thread_id: &str) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            side_chat_source_session_id: None,
             session_id: session_id.into(),
             project_id: Some("project:default".into()),
             title: "Task".into(),

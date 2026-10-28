@@ -237,6 +237,7 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
       readonly modelSelection: AgentWire<ModelSelection>;
       readonly cwd: string;
       readonly interactionMode?: "default" | "plan";
+      readonly sideChatCapture?: true;
     };
     readonly output: { readonly threadId: string };
   };

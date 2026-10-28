@@ -8,12 +8,8 @@ import type { Project, ProjectSession, CodexComposerIntent } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { projectSessionDetailQueryOptions } from "@/lib/query-options";
-import {
-  readCurrentProjectSessionDetail,
-  seedProjectSessionDetail,
-} from "@/lib/project-session-query-cache";
 import { toast } from "@/components/ui/toast";
 import type { FirstSubmissionIdentity } from "@/features/conversation-launch/session-first-submission-owner";
 import type { AgentSubagentOverview } from "@nodex/agent-runtime/contracts";
@@ -121,7 +117,7 @@ export function AgentRuntimeChildPanel(input: {
   );
 }
 
-/** Side chat drafts have their own Core Session and use ordinary launch defaults. */
+/** A side chat is already bound to its captured context before its first message. */
 export function AgentRuntimeSideChatPanel(input: {
   readonly session: ProjectSession;
   readonly parentThreadId: string;
@@ -139,7 +135,6 @@ export function AgentRuntimeSideChatPanel(input: {
   readonly turnDiffHoverPreviewDisabled: boolean;
 }) {
   const instances = useAgentInstances();
-  const queryClient = useQueryClient();
   const sessionQuery = useQuery({
     ...projectSessionDetailQueryOptions(input.session.id),
     initialData: input.session,
@@ -159,27 +154,20 @@ export function AgentRuntimeSideChatPanel(input: {
       instances: instances.instances,
       onRefresh: input.onRefresh,
       onOpenThread: input.onOpenThread,
-      onLaunched: async (result) => {
-        const current = await readCurrentProjectSessionDetail(result.sessionId);
-        if (current?.executionRef?.threadId !== result.threadId)
-          throw new Error("The side chat execution binding changed");
-        seedProjectSessionDetail(queryClient, current);
+      ensureDraft: async () => {
+        throw new Error("A side chat uses its captured conversation");
       },
-      ensureDraft: async () => session,
     });
   const summary = agent.summary;
   const startedInitialSubmission = useRef<string | null>(null);
   const submitInitialPrompt = useEffectEvent(async () => {
     try {
-      await agent.actions.onStartThreadForSession?.({
-        projectId: session.projectId,
-        sessionId: session.id,
-        prompt: input.draft?.prompt ?? "",
+      await agent.actions.onSendPrompt?.(input.draft?.prompt ?? "", {
         promptInput: input.draft?.promptInput,
         submissionIdentity: input.initialSubmission,
         presentationTicket: input.initialSubmission?.presentationTicket,
-        runInTarget: "localProject",
       });
+      if (input.draft) setConsumedDraftNonce(input.draft.focusNonce);
     } catch (cause) {
       toast.danger(cause instanceof Error ? cause.message : "The side chat could not start.", {
         id: `side-chat-submit:${session.id}`,
@@ -189,7 +177,7 @@ export function AgentRuntimeSideChatPanel(input: {
   const catalog = agent.provider.modelCatalog;
   useEffect(() => {
     const identity = input.initialSubmission;
-    if (!identity || session.executionRef) return;
+    if (!identity || !agent.summary) return;
     if (startedInitialSubmission.current === identity.launchId) return;
     const ready = agent.models.length > 0 && Boolean(agent.selectedModel);
     // Waiting is only correct while the catalog loads; afterwards the draft stays for a manual send.
@@ -206,7 +194,7 @@ export function AgentRuntimeSideChatPanel(input: {
     );
   }, [
     input.initialSubmission,
-    session.executionRef,
+    agent.summary,
     session.id,
     agent.models.length,
     agent.selectedModel,
@@ -236,20 +224,9 @@ export function AgentRuntimeSideChatPanel(input: {
         projectId={session.projectId}
         composerScopeIdentity={`side-chat-session:${session.id}`}
         projectWorkspacePath={projectWorkspaceRootOrNull(input.project)}
-        isNewThreadTab={!summary}
-        newThreadTarget={
-          summary
-            ? null
-            : {
-                projectId: session.projectId,
-                projectName: input.project?.name ?? "No project",
-                sessionId: session.id,
-                threadTitle: input.title,
-                runInTarget: "localProject",
-              }
-        }
-        newThreadComposerIntent={summary ? null : draft}
-        composerIntent={summary ? draft : null}
+        isNewThreadTab={false}
+        newThreadTarget={null}
+        composerIntent={draft}
         newThreadProjectSelector={null}
         newThreadStartInSelector={null}
         threadStartProgress={null}

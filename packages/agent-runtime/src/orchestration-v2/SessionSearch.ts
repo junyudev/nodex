@@ -119,7 +119,7 @@ WHERE ${
     AND CASE WHEN json_valid(message.payload_json) THEN json_extract(message.payload_json,'$.notification') IS NULL
     AND json_extract(message.payload_json,'$.text') IS NOT NULL ELSE 0 END`
 }
-  AND thread.deleted_at IS NULL AND COALESCE(json_extract(thread.payload_json,'$.lineage.relationshipToParent'),'') <> 'subagent'
+  AND thread.deleted_at IS NULL AND json_extract(thread.payload_json, '$.sideChat') IS NULL AND COALESCE(json_extract(thread.payload_json,'$.lineage.relationshipToParent'),'') <> 'subagent'
   AND (run.status IS NULL OR run.status <> 'rolled_back')
   AND NOT (item.type='user_message' AND run.status IS 'cancelled'
     AND json_extract(item.payload_json,'$.inputIntent')='queued_turn')`;
@@ -293,7 +293,7 @@ export const readSessionSearch = Effect.fn("SessionSearch.read")(function* (
         JOIN orchestration_v2_projection_threads thread ON thread.thread_id=message.thread_id
         WHERE orchestration_v2_session_message_search MATCH ${textQuery}
           AND message.rowid <= ${position.through} AND thread.rowid <= ${position.threadsThrough}
-          AND thread.rowid < ${position.thread} AND thread.deleted_at IS NULL
+          AND thread.rowid < ${position.thread} AND thread.deleted_at IS NULL AND json_extract(thread.payload_json, '$.sideChat') IS NULL
           AND ${admitted}
           AND COALESCE(json_extract(thread.payload_json,'$.lineage.relationshipToParent'),'') <> 'subagent'
         GROUP BY thread.rowid ORDER BY thread.rowid DESC LIMIT ${THREAD_LIMIT + 1}`
@@ -302,7 +302,7 @@ export const readSessionSearch = Effect.fn("SessionSearch.read")(function* (
         WHERE thread.rowid <= ${position.threadsThrough}
           AND (thread.rowid < ${position.thread} OR (thread.rowid=${position.thread} AND ${position.after} > 0))
           AND ${admitted}
-          AND deleted_at IS NULL AND COALESCE(json_extract(payload_json,'$.lineage.relationshipToParent'),'') <> 'subagent'
+          AND deleted_at IS NULL AND json_extract(payload_json, '$.sideChat') IS NULL AND COALESCE(json_extract(payload_json,'$.lineage.relationshipToParent'),'') <> 'subagent'
         ORDER BY rowid DESC LIMIT ${THREAD_LIMIT + 1}`;
       const items: SessionMessageMatch[] = [];
       const finish = () => {

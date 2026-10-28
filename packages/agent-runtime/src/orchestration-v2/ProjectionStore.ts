@@ -1,3 +1,4 @@
+import { OrchestrationV2SideChatCapture } from "@t3tools/contracts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { providerThreadActivatesThread } from "@t3tools/provider-core/contextUsage";
 import {
@@ -1160,6 +1161,10 @@ export interface ProjectionStoreV2Shape {
     ProjectionStoreV2Error
   >;
   /** Select metadata before reading intact historical text; no Run payloads or transcript snapshots. */
+  readonly getSideChatThreadIds: Effect.Effect<readonly ThreadId[], ProjectionStoreV2Error>;
+  readonly getSideChatContext: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ProjectionHandoffHistory | null, ProjectionStoreV2Error>;
   readonly getHandoffHistory: (
     input: ProjectionHandoffHistoryInput,
   ) => Effect.Effect<ProjectionHandoffHistory, ProjectionStoreV2Error>;
@@ -1822,6 +1827,8 @@ export function applyToProjection(
         checkpoints: upsertById(base.checkpoints, event.payload),
       };
     case "checkpoint.rollback-requested":
+      return base;
+    case "side-chat.context-captured":
       return base;
     case "context-handoff.updated":
       return {
@@ -3005,6 +3012,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           case "thread.interaction-mode-updated":
           case "thread.model-selection-updated":
           case "thread.provider-switched": {
+            if (event.type === "thread.deleted")
+              yield* sql`DELETE FROM orchestration_v2_side_chat_contexts WHERE thread_id = ${event.threadId}`;
             const previousProject =
               event.type === "thread.metadata-updated" &&
               event.payload.lineage.rootThreadId === event.payload.id
@@ -4032,6 +4041,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           }
           case "checkpoint.rollback-requested":
             break;
+          case "side-chat.context-captured": {
+            const payload = yield* Schema.encodeEffect(
+              Schema.fromJsonString(OrchestrationV2SideChatCapture),
+            )(event.payload);
+            yield* sql`INSERT INTO orchestration_v2_side_chat_contexts(thread_id, payload_json) VALUES (${event.threadId}, ${payload})
+              ON CONFLICT(thread_id) DO NOTHING`;
+            break;
+          }
           case "context-handoff.updated": {
             const payloadJson = yield* encodeContextHandoffPayload(event.payload);
             const payload = parseEncodedPayload(payloadJson);
@@ -5050,7 +5067,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             LIMIT 1
           `;
         const forkedFrom = projection.thread.forkedFrom;
-        if (forkedFrom?.type !== "run" || seenThreadIds.has(forkedFrom.threadId)) {
+        if (
+          projection.thread.sideChat ||
+          forkedFrom?.type !== "run" ||
+          seenThreadIds.has(forkedFrom.threadId)
+        ) {
           if (historyAnchor !== undefined && historyAnchor.threadId !== threadId)
             return yield* new ProjectionStoreReadError({
               threadId,
@@ -5952,12 +5973,31 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         )
         .pipe(Effect.mapError(controlReadError(threadId)));
 
+    const getSideChatContext: ProjectionStoreV2Shape["getSideChatContext"] = (threadId) =>
+      sql<{
+        payload_json: string;
+      }>`SELECT captured.payload_json FROM orchestration_v2_side_chat_contexts captured
+        JOIN orchestration_v2_projection_threads thread ON thread.thread_id = captured.thread_id
+        WHERE captured.thread_id = ${threadId} AND json_extract(thread.payload_json, '$.sideChat.contextCleared') IS NULL`.pipe(
+        Effect.flatMap((rows) =>
+          rows[0]
+            ? Schema.decodeUnknownEffect(Schema.fromJsonString(OrchestrationV2SideChatCapture))(
+                rows[0].payload_json,
+              )
+            : Effect.succeed(null),
+        ),
+        Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
+      );
+
     const getHandoffHistory: ProjectionStoreV2Shape["getHandoffHistory"] = (requested) =>
       sql
         .withTransaction(
           Effect.gen(function* () {
             const { threadId } = requested;
             yield* requireThread(threadId);
+            const threadRows =
+              yield* sql<PayloadRow>`SELECT payload_json FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId}`;
+            const thread = yield* decodeThreadPayload(threadRows[0]!.payload_json);
             // The conversation's context begins after its latest retained clear. Nothing before
             // it, including captured fork ancestry or imported history, reaches another Agent.
             const floor = yield* sql<{ ordinal: number | null }>`
@@ -5980,18 +6020,23 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     runOrdinalFrom: Math.max(requested.runOrdinalFrom ?? 1, floor + 1),
                     includeImported: false,
                   };
+            const captured =
+              floor === 0 && includesInheritedHandoffHistory(input) && thread.capturedContext
+                ? ((yield* getSideChatContext(threadId)) ?? undefined)
+                : undefined;
             // A full prefix includes each captured fork prefix. Read only ancestry metadata,
             // then apply the same global item/body budget across every source.
-            const inherited = !includesInheritedHandoffHistory(input)
-              ? []
-              : yield* sql<{
-                  thread_id: string;
-                  max_run_ordinal: number;
-                  history_revision: number | null;
-                  depth: number;
-                  imported: number;
-                  floor: number;
-                }>`
+            const inherited =
+              thread.capturedContext || !includesInheritedHandoffHistory(input)
+                ? []
+                : yield* sql<{
+                    thread_id: string;
+                    max_run_ordinal: number;
+                    history_revision: number | null;
+                    depth: number;
+                    imported: number;
+                    floor: number;
+                  }>`
                 WITH RECURSIVE sources(thread_id, max_run_ordinal, history_revision, depth, visited, floor) AS (
                   SELECT ${threadId}, 0, NULL, 0, json_array(${threadId}), 0
                   UNION ALL
@@ -6113,6 +6158,31 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             };
             const budget = Math.max(0, Math.min(64_000, Math.floor(input.budget)));
             if ((range[0]?.run_count ?? 0) === 0 && importedSourceIds.length === 0) {
+              if (captured !== undefined) {
+                const selected = selectHistory({
+                  messages: captured.history.messages,
+                  coverage: captured.history.coverage,
+                  omittedItems: captured.history.omittedItems,
+                  budget,
+                });
+                return {
+                  ...captured,
+                  history: {
+                    ...captured.history,
+                    messages: selected.messages,
+                    omittedItems: selected.omittedItems,
+                    ...(captured.history.omittedItemIds === undefined
+                      ? {}
+                      : {
+                          omittedItemIds: [
+                            ...captured.history.omittedItemIds,
+                            ...selected.omittedItemIds,
+                          ],
+                        }),
+                  },
+                  context: selected.context,
+                };
+              }
               const coverage = handoffCoverage({
                 threadId,
                 coveredRunOrdinals,
@@ -6329,12 +6399,21 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ), bounded AS (
                 SELECT *, SUM(length(CAST(payload_json AS BLOB))) OVER (ORDER BY depth ASC,ordinal DESC,id DESC) AS body_bytes FROM bodies
               ) SELECT payload_json, truncated FROM bounded WHERE body_bytes <= 262144 ORDER BY depth DESC,ordinal ASC,id ASC`;
+            const combined =
+              captured === undefined
+                ? selected
+                : selectHistory({
+                    messages: [...captured.history.messages, ...selected.messages],
+                    coverage: `${captured.history.coverage}\n${coverage}`,
+                    omittedItems: captured.history.omittedItems + selected.omittedItems,
+                    budget: input.budget,
+                  });
             return {
               history: {
-                messages: selected.messages,
+                messages: combined.messages,
                 coverage,
-                omittedItems: selected.omittedItems,
-                ...(total === knownItemIds.size
+                omittedItems: combined.omittedItems,
+                ...(captured === undefined && total === knownItemIds.size
                   ? {
                       omittedItemIds: [...knownItemIds].filter(
                         (id) => !selected.messages.some((message) => message.itemId === id),
@@ -6342,11 +6421,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     }
                   : {}),
               },
-              context: selected.context,
+              context: combined.context,
               coveredRunOrdinals,
               fromProviderThreadIds: providers.map((row) => row.id as ProviderThreadId),
-              sourceItemCount: counts[0]?.total ?? 0,
-              sourceRunCount: range[0]?.run_count ?? 0,
+              sourceItemCount: (counts[0]?.total ?? 0) + (captured?.sourceItemCount ?? 0),
+              sourceRunCount: (range[0]?.run_count ?? 0) + (captured?.sourceRunCount ?? 0),
               ...(input.includeConversationSummary === true
                 ? {
                     conversationSummary: {
@@ -9637,6 +9716,16 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getDeliveredHandoffItemIds,
       getNativeForkBoundary,
       getRelatedNativeThread,
+      getSideChatThreadIds: sql<{
+        thread_id: string;
+      }>`SELECT thread_id FROM orchestration_v2_projection_threads
+        WHERE json_extract(payload_json, '$.sideChat') IS NOT NULL AND deleted_at IS NULL`.pipe(
+        Effect.map((rows) => rows.map((row) => ThreadId.make(row.thread_id))),
+        Effect.mapError(
+          (cause) => new ProjectionStoreReadError({ threadId: ThreadId.make("side-chats"), cause }),
+        ),
+      ),
+      getSideChatContext,
       getHandoffHistory,
       getLastDeliveredRun,
       getRuntimeRecoveryProjection,
@@ -9716,6 +9805,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getDeliveredHandoffItemIds: readOnReader(service.getDeliveredHandoffItemIds),
       getNativeForkBoundary: readOnReader(service.getNativeForkBoundary),
       getRelatedNativeThread: readOnReader(service.getRelatedNativeThread),
+      getSideChatThreadIds: service.getSideChatThreadIds.pipe(NodeSqliteClient.readOnly),
+      getSideChatContext: readOnReader(service.getSideChatContext),
       getHandoffHistory: readOnReader(service.getHandoffHistory),
       getLastDeliveredRun: readOnReader(service.getLastDeliveredRun),
       getRuntimeRecoveryProjection: readOnReader(service.getRuntimeRecoveryProjection),
@@ -9774,29 +9865,52 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
     const replayState = yield* Ref.make(makeProjectionReplayState());
     const sequence = yield* Ref.make(0);
 
+    const sideChatContexts = new Map<ThreadId, ProjectionHandoffHistory>();
     const service: ProjectionStoreV2Shape = {
+      getSideChatThreadIds: Ref.get(replayState).pipe(
+        Effect.map((state) =>
+          [...state.projections.values()]
+            .filter((p) => p.thread.sideChat && !p.thread.deletedAt)
+            .map((p) => p.thread.id),
+        ),
+      ),
+      getSideChatContext: (threadId) =>
+        Ref.get(replayState).pipe(
+          Effect.map((state) =>
+            state.projections.get(threadId)?.thread.sideChat?.contextCleared
+              ? null
+              : (sideChatContexts.get(threadId) ?? null),
+          ),
+        ),
       apply: (event) =>
-        Effect.gen(function* () {
-          const result = yield* Ref.modify(replayState, (existing) => {
-            const next: ProjectionReplayState = {
-              projections: new Map(existing.projections),
-              providerSessionThreadIds: new Map(existing.providerSessionThreadIds),
-              executionRetirementTargets: new Map(existing.executionRetirementTargets),
-            };
-            if (!applyToProjectionReplayState(next, event)) {
-              return [
-                new ProjectionStoreThreadNotFoundError({ threadId: event.threadId }),
-                existing,
-              ] as const;
-            }
-            return [undefined, next] as const;
-          });
+        Effect.sync(() => {
+          if (event.type === "side-chat.context-captured")
+            sideChatContexts.set(event.threadId, event.payload);
+        }).pipe(
+          Effect.andThen(
+            Effect.gen(function* () {
+              const result = yield* Ref.modify(replayState, (existing) => {
+                const next: ProjectionReplayState = {
+                  projections: new Map(existing.projections),
+                  providerSessionThreadIds: new Map(existing.providerSessionThreadIds),
+                  executionRetirementTargets: new Map(existing.executionRetirementTargets),
+                };
+                if (!applyToProjectionReplayState(next, event)) {
+                  return [
+                    new ProjectionStoreThreadNotFoundError({ threadId: event.threadId }),
+                    existing,
+                  ] as const;
+                }
+                return [undefined, next] as const;
+              });
 
-          if (result) {
-            return yield* result;
-          }
-          yield* Ref.update(sequence, (current) => current + 1);
-        }),
+              if (result) {
+                return yield* result;
+              }
+              yield* Ref.update(sequence, (current) => current + 1);
+            }),
+          ),
+        ),
       getShellSnapshot: (options) =>
         Effect.gen(function* () {
           const existing = (yield* Ref.get(replayState)).projections;

@@ -273,16 +273,21 @@ for await (const line of createInterface({ input: process.stdin })) {
         worktreeEnv: process.env.NODEX_E2E_WORKTREE_ENV,
       },
     });
-    if (
-      typeof incoming.message.content === "string" &&
-      incoming.message.content.startsWith("Verify handoff ")
-    ) {
+    const handoffPrompt = (
+      typeof incoming.message.content === "string"
+        ? [incoming.message.content]
+        : incoming.message.content.flatMap((part) => (part.type === "text" ? [part.text] : []))
+    ).find((text) => text.startsWith("Verify handoff "));
+    if (handoffPrompt !== undefined) {
       const message = {
         id: `handoff-check-${randomUUID()}`,
         role: "assistant",
         model,
         content: [
-          { type: "text", text: `Native handoff verified: ${incoming.message.content.slice(15)}` },
+          {
+            type: "text",
+            text: `Native handoff verified: ${handoffPrompt.slice(15).split("\n", 1)[0]}`,
+          },
         ],
         usage: { input_tokens: 12, output_tokens: 4 },
       };
