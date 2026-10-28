@@ -1,0 +1,41 @@
+src/renderer/components/board/nfm-renderer.tsx
+  s_a37b0317070510::t_0f9300c90e1fd8 68-69,76,82,87,93-110,148,152,155-163,170-175,223,227-228,232,239,279
+CHANGELOG.md
+  s_a37b0317070510::t_95247077b65166 31
+src/renderer/features/inbox/inbox-message.browser.test.tsx
+  s_a37b0317070510::t_8af6e7eefc88ab 327-349
+  s_a37b0317070510::t_1c012d17ba7fec 273-285,297-298,303,308,311-324
+  s_a37b0317070510::t_56133eb71aaa7c 325-326
+src/renderer/features/inbox/inbox-message.tsx
+  s_a37b0317070510::t_507e8f03472433 163,165,221-238,242-243,246-258,260,340
+  s_a37b0317070510::t_286adfd13ea392 348
+  s_a37b0317070510::t_2077153072b5de 343-344
+src/renderer/features/inbox/inbox-message-document.tsx
+  s_a37b0317070510::t_021d522bef55b1 1,8-18,24
+tests/e2e/inbox-page-marks.spec.ts
+  s_a37b0317070510::t_65af46c3e2de77 93-94,106,110-112
+  s_a37b0317070510::t_02bb7447dffa2e 95-104,108,113
+docs/product-specs/inbox-behavior.md
+  s_a37b0317070510::t_006df0298240b2 171-185
+src/renderer/components/message/message-document.tsx
+  s_a37b0317070510::t_021d522bef55b1 1,22,29,35
+  s_a37b0317070510::t_0f9300c90e1fd8 41-44,49
+src/renderer/components/workbench/page-chat-activity-control.tsx
+  s_a37b0317070510::t_50efecd9806ff0 18,35-36,102,184-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "040869e59944afdd503d679cb9c5800d9ef51c3e",
+  "prompts": {},
+  "sessions": {
+    "s_a37b0317070510": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fe4073a4-ebfb-4c93-97db-00f93107b7a5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
