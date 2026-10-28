@@ -87,6 +87,9 @@ intents, and selection.
   - **Command line:** sent with `nodex inbox send`. Renders left-aligned and
     labeled `From Command line`. The label names the Project only when a message
     sent from inside one could not land in that Project's Inbox.
+  - **Scheduled task:** a run of a task that asks first; see
+    [Scheduled runs](#scheduled-runs). Renders left-aligned and labeled
+    `From <task>` with the Scheduled glyph; the label opens the task.
 - A suggestion is fenced by the Page revision it was computed from. After the
   Page is edited, confirming that suggestion fails; `Suggest again` produces a
   fresh one.
@@ -466,6 +469,43 @@ chat run by Agent Runtime reports its live Session activity.
 Before admission it shows that Nodex is starting or sending to the chat and
 already links to its Session. Failed or uncertain delivery returns to the Inbox
 with its reason and the recovery action appropriate to that result.
+
+## Scheduled runs
+
+A scheduled task that asks in the Inbox before it runs sends each due run as a
+message; [Scheduled Route Behavior](./scheduled-route-behavior.md#tasks-that-ask-before-running)
+owns when that happens and how the run executes. The message is a todo titled
+`<task> · <date>`, its body is the task's instructions, and its decision comes
+from the task rather than the suggestion Agent. Suggestions never consider it,
+its menu offers no `Suggest again`, and no suggestion can write a run decision.
+
+- The text is this run's instructions, so `Edit` adjusts this run. A Page that
+  only the task has written still follows the task's own edits.
+- The strip under it says when the task fell due, how many times it has since
+  (`Due 3 times since Mon, 9:00 AM`), and where it runs: `Worktree`, `Local`, a
+  folder count, `New workspace` for a projectless task, or `Continues its chat`
+  for a Heartbeat. It never repeats the instructions.
+- The decision reads `Run in <Project>`, `Run without a Project`, or for a
+  Heartbeat `Run in “<chat>”`. Hovering it adds `Runs on` with what the run uses
+  and `From your scheduled task`. Its menu half opens the model menu for this run
+  alone, starting from the task's own choice, and names a different choice on
+  the button. A Heartbeat runs on its chat's Agent, so its decision has no menu.
+- The row offers the message menu and `Skip this run`, the `Mark done` check.
+  There is no Keep: a run is run, skipped, or handed elsewhere.
+- `Handle manually` adds `Run task` to the dispatch editor, with the run's model
+  menu and `Edit task`, which opens the task where its folders, workspace and
+  schedule change for every run. Choosing another action hands the message on
+  as any message and withdraws the run.
+
+Running it shows `Starting “<task>”` until the run reaches a chat, then
+`Ran “<task>”` with that chat's live status, in History's `In progress` until
+the user marks it done. A run that fails before reaching a chat returns with
+`Couldn’t run — <reason>` and `Retry`. A skipped run reads `Skipped` in History.
+A run whose task was deleted says `Its scheduled task was deleted, so it can’t run`
+and offers `Mark done` and `Handle manually`.
+
+A run that needs the user after it starts says so with `send_to_inbox`; a
+message from a scheduled run's chat is labeled with its task's name.
 
 ## Deleting a message
 

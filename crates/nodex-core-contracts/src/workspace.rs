@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 49;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 50;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1895,6 +1895,22 @@ pub enum ProjectWorkspaceIntent {
     },
     RetryInboxDispatch {
         proposal_id: String,
+    },
+    /// Places the firing of an `Ask` task, claimed under a hold lease, in its Inbox as a
+    /// message whose body is the task's instructions, with a `RunTask` proposal. A firing that
+    /// falls due while another of the task's firings waits folds into it instead. The hold
+    /// lease settles in the same commit. Only the Desktop Host holds firings.
+    HoldScheduledFiring {
+        lease_id: String,
+        page_id: String,
+        document_id: String,
+        /// The message title, formatted by the Host in the user's time zone.
+        title: String,
+    },
+    /// Rewrites a waiting firing's message to its task's current instructions, only while the
+    /// message is still exactly as the firing wrote it.
+    RefreshScheduledFiring {
+        dispatch_id: String,
     },
 }
 

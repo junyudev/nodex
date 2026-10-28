@@ -9,6 +9,7 @@ const definitionSnapshot = z.object({
   kind: z.enum(["cron", "heartbeat"]),
   name: z.string(),
   rrule: z.string().nullable(),
+  launch: z.enum(["automatic", "ask"]).optional(),
 });
 
 /** Project only successful native results; proposals carry the target resolved by Main. */

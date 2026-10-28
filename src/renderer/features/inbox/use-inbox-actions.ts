@@ -187,6 +187,15 @@ export function useInboxActions(
           chatTitle: chat?.sessionId === action.sessionId ? chat.displayTitle : null,
           projectName: null,
         };
+      case "run_task": {
+        const source = visibleItems.find(
+          (item) => item.firing?.dispatchId === action.dispatchId,
+        )?.source;
+        return {
+          kind: "run",
+          taskName: source?.kind === "scheduled_task" ? source.label : "scheduled task",
+        };
+      }
     }
   };
 

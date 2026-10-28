@@ -230,6 +230,7 @@ it.effect("uses a warm model catalog without refreshing any Provider", () =>
       options: [{ id: "reasoningEffort", value: "medium" }],
     });
     assert.deepEqual(catalog.mock.calls, [[]]);
+    // An effort the model does not offer falls back to the model's own.
     const withoutOptions = yield* resolveInboxModel(
       { catalog },
       choice("codex", "first-model", "medium"),

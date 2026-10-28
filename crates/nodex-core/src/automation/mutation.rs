@@ -5,10 +5,10 @@ use nodex_core_contracts::agent::AgentBackendBinding;
 use nodex_core_contracts::automation::{
     AutomationCommitValue, AutomationDefinition, AutomationDefinitionInput,
     AutomationDefinitionKind, AutomationDefinitionStatus, AutomationDueWorkPlan, AutomationEvent,
-    AutomationEventKind, AutomationExecutionEnvironment, AutomationIntent, AutomationLease,
-    AutomationLeaseStatus, AutomationNotificationPolicy, AutomationNotificationPreference,
-    AutomationReceipt, AutomationRun, AutomationRunBulkResult, PageOccurrenceMutationResult,
-    ReminderLease, ReminderSnooze,
+    AutomationEventKind, AutomationExecutionEnvironment, AutomationIntent, AutomationLaunch,
+    AutomationLease, AutomationLeaseStatus, AutomationNotificationPolicy,
+    AutomationNotificationPreference, AutomationReceipt, AutomationRun, AutomationRunBulkResult,
+    PageOccurrenceMutationResult, ReminderLease, ReminderSnooze,
 };
 use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, CoreModuleEventPayload, ModuleApplyRequest,
@@ -112,16 +112,19 @@ pub(super) fn plan_definition_due_work(
     )?;
     let candidate = connection
         .query_row(
-            "SELECT definition.automation_id, definition.next_run_at, \
-                    MAX(definition.next_run_at, COALESCE((\
-                      SELECT MAX(lease.expires_at_ms) FROM core_automation_leases lease \
-                      WHERE lease.automation_id = definition.automation_id \
-                        AND lease.scheduled_for_ms = definition.next_run_at \
-                        AND lease.status = 'claimed'\
-                    ), definition.next_run_at)) AS eligible_at \
-             FROM codex_scheduled_automations definition \
-             WHERE definition.status = 'ACTIVE' AND definition.next_run_at IS NOT NULL \
-             ORDER BY eligible_at, definition.automation_id LIMIT 1",
+            "SELECT identity, scheduled_for, eligible_at FROM (
+               SELECT 'definition:' || definition.automation_id AS identity, definition.next_run_at AS scheduled_for,
+                 MAX(definition.next_run_at, COALESCE((SELECT MAX(lease.expires_at_ms) FROM core_automation_leases lease
+                   WHERE lease.automation_id=definition.automation_id AND lease.scheduled_for_ms=definition.next_run_at
+                     AND lease.status='claimed' AND NOT EXISTS (SELECT 1 FROM core_automation_firings firing WHERE firing.dispatch_id=lease.dispatch_id)), definition.next_run_at)) AS eligible_at
+               FROM codex_scheduled_automations definition WHERE definition.status='ACTIVE' AND definition.next_run_at IS NOT NULL
+               UNION ALL
+               SELECT 'firing:' || firing.dispatch_id, firing.due_at_ms,
+                 MAX(firing.due_at_ms, COALESCE((SELECT MAX(expires_at_ms) FROM core_automation_leases lease
+                    WHERE lease.dispatch_id=firing.dispatch_id AND lease.status='claimed'), firing.due_at_ms))
+               FROM core_automation_firings firing JOIN codex_scheduled_automations definition USING(automation_id)
+               WHERE firing.status='admitted' AND definition.status<>'DELETED'
+             ) ORDER BY eligible_at, identity LIMIT 1",
             [],
             |row| {
                 Ok((
@@ -204,7 +207,11 @@ pub(super) fn apply(
             validate_id("operation_id", &request.operation_id)?;
             let intent =
                 super::agent_command::admit(transaction, &library_id, &context, &request.intent)?;
-            require_trusted_host(&context, intent)?;
+            require_trusted_host(
+                &context,
+                intent,
+                matches!(&request.intent, AutomationIntent::AgentCommand { .. }),
+            )?;
             // Current Turn authority is revalidated above; retries bind the semantic
             // command to its actor Project, not to a particular Turn episode.
             let fingerprint =
@@ -265,6 +272,27 @@ pub(super) fn apply(
                 });
             }
 
+            let agent_input;
+            let intent = if matches!(&request.intent, AutomationIntent::AgentCommand { .. }) {
+                agent_input = match intent {
+                    AutomationIntent::CreateDefinition {
+                        automation_id,
+                        definition,
+                    } => {
+                        let mut definition = definition.clone();
+                        definition.launch =
+                            Some(definition.launch.unwrap_or(AutomationLaunch::Ask));
+                        AutomationIntent::CreateDefinition {
+                            automation_id: automation_id.clone(),
+                            definition,
+                        }
+                    }
+                    _ => intent.clone(),
+                };
+                &agent_input
+            } else {
+                intent
+            };
             match intent {
                 AutomationIntent::AgentCommand { .. } => {
                     Err(invalid("Nested Agent Automation commands are unavailable"))
@@ -640,6 +668,13 @@ fn dispatch_now(
     if definition.status == AutomationDefinitionStatus::Deleted {
         return Err(not_found("Scheduled Automation is unavailable"));
     }
+    if definition.held_firing.is_some() {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "This task has a run waiting in the Inbox",
+            false,
+        ));
+    }
     let (now_ms, committed_at) = core_now(connection)?;
     let next_run = if definition.status == AutomationDefinitionStatus::Active {
         scheduled_next_for_stored(connection, &definition, now_ms)?
@@ -700,6 +735,13 @@ fn create_definition(
     }
     require_active_definition_capacity(connection)?;
     let definition = normalize_definition(connection, input, None)?;
+    let launch = input.launch.unwrap_or({
+        if matches!(context.adapter, AdapterKind::Agent) {
+            AutomationLaunch::Ask
+        } else {
+            AutomationLaunch::Automatic
+        }
+    });
     require_unique_active_heartbeat(
         connection,
         automation_id,
@@ -718,9 +760,9 @@ fn create_definition(
            reasoning_effort, service_tier, cwds_json, agent_backend_kind, \
            agent_backend_definition_id, agent_backend_instance_config_id, \
            execution_environment, local_environment_config_path, next_run_at, last_run_at, \
-           created_at, updated_at, definition_revision, notification_policy, project_id\
+           created_at, updated_at, definition_revision, notification_policy, project_id, launch\
          ) VALUES (?1, ?2, 'ACTIVE', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
-           ?13, ?14, ?15, ?16, NULL, ?17, ?17, 1, ?18, ?19)",
+           ?13, ?14, ?15, ?16, NULL, ?17, ?17, 1, ?18, ?19, ?20)",
         params![
             automation_id,
             kind_string(definition.kind),
@@ -741,6 +783,7 @@ fn create_definition(
             now_ms,
             definition.notification_policy.map(|_| "failed_runs_only"),
             definition.project_id,
+            launch_literal(launch),
         ],
     )?;
     let stored = read_definition(connection, automation_id)?
@@ -833,7 +876,7 @@ fn update_definition(
            agent_backend_kind = ?11, agent_backend_definition_id = ?12, \
            agent_backend_instance_config_id = ?13, execution_environment = ?14, \
            local_environment_config_path = ?15, next_run_at = ?16, updated_at = ?17, \
-           definition_revision = definition_revision + 1, notification_policy = ?20, project_id = ?21 \
+           definition_revision = definition_revision + 1, notification_policy = ?20, project_id = ?21, launch = ?22 \
          WHERE automation_id = ?18 AND definition_revision = ?19",
         params![
             kind_string(definition.kind),
@@ -857,6 +900,7 @@ fn update_definition(
             expected_revision,
             definition.notification_policy.map(|_| "failed_runs_only"),
             definition.project_id,
+            launch_literal(input.launch.unwrap_or(current.launch)),
         ],
     )?;
     if changed != 1 {
@@ -932,6 +976,7 @@ fn delete_definition(
          WHERE automation_id = ?2 AND definition_revision = ?3",
         params![now_ms, automation_id, expected_revision],
     )?;
+    super::firing::withdraw_definition(connection, automation_id, now_ms)?;
     let lease_ids = cancel_claimed_leases(connection, automation_id, now_ms, "definition_deleted")?;
     let deleted_run_ids = super::run::delete_for_automation(connection, automation_id)?;
     let stored = read_definition(connection, automation_id)?
@@ -992,8 +1037,11 @@ fn claim_due(
         .ok_or_else(|| invalid("Automation lease expiry exceeds the timestamp range"))?;
     let due = {
         let mut statement = connection.prepare(
-            "SELECT automation_id, next_run_at, definition_revision FROM codex_scheduled_automations \
+            "SELECT automation_id, next_run_at, definition_revision FROM codex_scheduled_automations definition \
              WHERE status = 'ACTIVE' AND next_run_at IS NOT NULL AND next_run_at <= ?1 \
+               AND NOT EXISTS (SELECT 1 FROM core_automation_leases lease WHERE lease.automation_id=definition.automation_id \
+                 AND lease.scheduled_for_ms=definition.next_run_at AND lease.status='claimed' AND lease.expires_at_ms>?1 \
+                 AND NOT EXISTS (SELECT 1 FROM core_automation_firings firing WHERE firing.dispatch_id=lease.dispatch_id)) \
              ORDER BY next_run_at, automation_id LIMIT ?2",
         )?;
         statement
@@ -1012,7 +1060,7 @@ fn claim_due(
         let expired_ids = {
             let mut statement = connection.prepare(
                 "SELECT lease_id FROM core_automation_leases \
-                 WHERE automation_id = ?1 AND scheduled_for_ms = ?2 AND status = 'claimed' \
+                 WHERE automation_id = ?1 AND scheduled_for_ms = ?2 AND status = 'claimed' AND NOT EXISTS (SELECT 1 FROM core_automation_firings firing WHERE firing.dispatch_id=core_automation_leases.dispatch_id) \
                    AND expires_at_ms <= ?3 ORDER BY lease_id",
             )?;
             statement
@@ -1025,14 +1073,14 @@ fn claim_due(
             "UPDATE core_automation_leases SET status = 'failed', settled_at_ms = ?1, \
                retry_at_ms = ?1, reason_code = 'lease_expired' \
              WHERE automation_id = ?2 AND scheduled_for_ms = ?3 AND status = 'claimed' \
-               AND expires_at_ms <= ?1",
+               AND expires_at_ms <= ?1 AND NOT EXISTS (SELECT 1 FROM core_automation_firings firing WHERE firing.dispatch_id=core_automation_leases.dispatch_id)",
             params![now_ms, automation_id, scheduled_for_ms],
         )?;
         affected_lease_ids.extend(expired_ids);
         let active = connection
             .query_row(
                 "SELECT 1 FROM core_automation_leases \
-                 WHERE automation_id = ?1 AND scheduled_for_ms = ?2 AND status = 'claimed'",
+                 WHERE automation_id = ?1 AND scheduled_for_ms = ?2 AND status = 'claimed' AND NOT EXISTS (SELECT 1 FROM core_automation_firings firing WHERE firing.dispatch_id=core_automation_leases.dispatch_id)",
                 params![automation_id, scheduled_for_ms],
                 |_| Ok(()),
             )
@@ -1044,12 +1092,12 @@ fn claim_due(
         let prior_dispatch = connection.query_row(
             "SELECT dispatch_id FROM ( \
                SELECT * FROM (SELECT dispatch_id, claimed_at_ms, attempt FROM core_automation_leases \
-                 WHERE automation_id = ?1 AND definition_revision = ?2 AND status = 'failed' AND retry_at_ms = ?3 \
+                 WHERE automation_id = ?1 AND definition_revision = ?2 AND status = 'failed' AND retry_at_ms = ?3 AND NOT EXISTS (SELECT 1 FROM core_automation_firings firing WHERE firing.dispatch_id=core_automation_leases.dispatch_id) \
                  ORDER BY claimed_at_ms DESC, attempt DESC LIMIT 1) \
                UNION ALL \
                SELECT * FROM (SELECT dispatch_id, claimed_at_ms, attempt FROM core_automation_leases \
                  WHERE automation_id = ?1 AND definition_revision = ?2 AND status = 'failed' \
-                   AND scheduled_for_ms = ?3 AND reason_code = 'lease_expired' AND retry_at_ms IS NOT NULL \
+                   AND scheduled_for_ms = ?3 AND reason_code = 'lease_expired' AND NOT EXISTS (SELECT 1 FROM core_automation_firings firing WHERE firing.dispatch_id=core_automation_leases.dispatch_id) AND retry_at_ms IS NOT NULL \
                  ORDER BY claimed_at_ms DESC, attempt DESC LIMIT 1) \
              ) ORDER BY claimed_at_ms DESC, attempt DESC LIMIT 1",
             params![automation_id, definition_revision, scheduled_for_ms], |row| row.get::<_, String>(0),
@@ -1077,8 +1125,8 @@ fn claim_due(
         connection.execute(
             "INSERT INTO core_automation_leases(\
                lease_id, automation_id, scheduled_for_ms, attempt, status, claimed_at_ms, \
-               expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision\
-             ) VALUES (?1, ?2, ?3, ?4, 'claimed', ?5, ?6, NULL, NULL, NULL, ?7, ?8)",
+               expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision, purpose\
+             ) VALUES (?1, ?2, ?3, ?4, 'claimed', ?5, ?6, NULL, NULL, NULL, ?7, ?8, (SELECT CASE launch WHEN 'ask' THEN 'hold' ELSE 'run' END FROM codex_scheduled_automations WHERE automation_id=?2))",
             params![
                 lease_id,
                 automation_id,
@@ -1096,6 +1144,12 @@ fn claim_due(
         );
         affected_lease_ids.push(lease_id);
     }
+    let remaining = limit.saturating_sub(leases.len() as u32);
+    let (admitted, expired) =
+        super::firing::claim_admitted(connection, operation_id, now_ms, expires_at_ms, remaining)?;
+    affected_lease_ids.extend(expired);
+    affected_lease_ids.extend(admitted.iter().map(|lease| lease.lease_id.clone()));
+    leases.extend(admitted);
     let mut automation_ids = leases
         .iter()
         .map(|lease| lease.automation_id.clone())
@@ -1172,6 +1226,11 @@ fn settle_lease(
     let definition = read_definition(connection, &lease.automation_id)?
         .ok_or_else(|| corrupt("Automation lease definition is unavailable"))?;
     let failed = reason_code.is_some();
+    if !failed && lease.purpose == nodex_core_contracts::automation::AutomationLeasePurpose::Hold {
+        return Err(conflict(
+            "Hold this firing in the Inbox before completing its lease",
+        ));
+    }
     let retry_at_ms =
         retry_delay_ms
             .map(|delay| {
@@ -1193,26 +1252,40 @@ fn settle_lease(
             lease_id,
         ],
     )?;
-    let next_scheduled = if definition.status == AutomationDefinitionStatus::Active {
-        scheduled_next_for_stored(connection, &definition, now_ms)?
+    if lease.purpose == nodex_core_contracts::automation::AutomationLeasePurpose::Run
+        && super::firing::exists(connection, &lease.dispatch_id)?
+    {
+        super::firing::settle(
+            connection,
+            &lease.dispatch_id,
+            failed,
+            retry_at_ms,
+            reason_code.as_deref(),
+            now_ms,
+            &committed_at,
+        )?;
     } else {
-        None
-    };
-    let next_run = if failed {
-        match (retry_at_ms, next_scheduled) {
-            (Some(retry), Some(scheduled)) => Some(retry.min(scheduled)),
-            (Some(retry), None) => Some(retry),
-            (None, scheduled) => scheduled,
-        }
-    } else {
-        next_scheduled
-    };
-    connection.execute(
-        "UPDATE codex_scheduled_automations SET next_run_at = ?1, \
+        let next_scheduled = if definition.status == AutomationDefinitionStatus::Active {
+            scheduled_next_for_stored(connection, &definition, now_ms)?
+        } else {
+            None
+        };
+        let next_run = if failed {
+            match (retry_at_ms, next_scheduled) {
+                (Some(retry), Some(scheduled)) => Some(retry.min(scheduled)),
+                (Some(retry), None) => Some(retry),
+                (None, scheduled) => scheduled,
+            }
+        } else {
+            next_scheduled
+        };
+        connection.execute(
+            "UPDATE codex_scheduled_automations SET next_run_at = ?1, \
            last_run_at = CASE WHEN ?2 THEN last_run_at ELSE ?3 END, updated_at = ?3 \
          WHERE automation_id = ?4",
-        params![next_run, failed, now_ms, lease.automation_id],
-    )?;
+            params![next_run, failed, now_ms, lease.automation_id],
+        )?;
+    }
     let stored = read_definition(connection, &lease.automation_id)?
         .ok_or_else(|| corrupt("Settled Automation definition is unavailable"))?;
     finish_mutation(
@@ -1334,6 +1407,18 @@ fn seal_mutation(
     let connection = scope.connection();
     let store_epoch = scope.store_epoch();
     let commit = scope.evidence();
+    let linked_pages = crate::workspace::record_automation_changes(
+        scope,
+        context,
+        operation_id,
+        &effects.automation_ids,
+        &effects.run_ids,
+    )?;
+    for page in linked_pages {
+        if !effects.page_ids.contains(&page) {
+            effects.page_ids.push(page);
+        }
+    }
     let project_id = event_project_id(connection, library_id, context)?;
     let payload = json!({
         "module": MODULE_NAME,
@@ -1838,7 +1923,7 @@ fn scheduled_next(
     .map_err(schedule_invalid)
 }
 
-fn scheduled_next_for_stored(
+pub(super) fn scheduled_next_for_stored(
     connection: &Connection,
     definition: &AutomationDefinition,
     now_ms: i64,
@@ -1950,6 +2035,7 @@ fn hex_digest(bytes: &[u8]) -> String {
 fn require_trusted_host(
     context: &BoundModuleContext,
     intent: &AutomationIntent,
+    agent_command: bool,
 ) -> Result<(), StoreError> {
     if !matches!(
         intent,
@@ -1973,10 +2059,12 @@ fn require_trusted_host(
             | AutomationIntent::ClaimDueReminders { .. }
             | AutomationIntent::CompleteReminderLease { .. }
             | AutomationIntent::FailReminderLease { .. }
-    ) || matches!(
-        context.adapter,
-        AdapterKind::ElectronHost | AdapterKind::Test
-    ) {
+    ) || (!agent_command
+        && matches!(
+            context.adapter,
+            AdapterKind::ElectronHost | AdapterKind::Test
+        ))
+    {
         return Ok(());
     }
     Err(StoreError::new(
@@ -2057,6 +2145,13 @@ fn sqlite_now(connection: &Connection) -> Result<String, StoreError> {
             row.get(0)
         })
         .map_err(StoreError::from)
+}
+
+fn launch_literal(launch: AutomationLaunch) -> &'static str {
+    match launch {
+        AutomationLaunch::Automatic => "automatic",
+        AutomationLaunch::Ask => "ask",
+    }
 }
 
 #[cfg(test)]
@@ -2171,6 +2266,7 @@ mod tests {
 
     fn definition() -> AutomationDefinitionInput {
         AutomationDefinitionInput {
+            launch: None,
             kind: AutomationDefinitionKind::Cron,
             project_id: Some("project:default".to_owned()),
             target_session_id: None,
@@ -2493,9 +2589,9 @@ mod tests {
                 connection.execute(
                     "INSERT INTO core_automation_leases(\
                        lease_id, automation_id, scheduled_for_ms, attempt, status, claimed_at_ms, \
-                       expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision\
+                       expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision, purpose\
                      ) VALUES ('lease:idle', 'daily-report', 10, 1, 'claimed', 0, 20, \
-                       NULL, NULL, NULL, 'dispatch:idle', 1)",
+                       NULL, NULL, NULL, 'dispatch:idle', 1, 'run')",
                     [],
                 )?;
                 Ok(())
@@ -2829,6 +2925,7 @@ mod tests {
             },
         );
         let begin = |run_id: &str, session_id: Option<&str>| AutomationIntent::BeginRun {
+            dispatch_id: None,
             run_id: run_id.to_owned(),
             automation_id: "heartbeat".to_owned(),
             session_id: session_id.map(str::to_owned),
@@ -3201,6 +3298,7 @@ mod tests {
                     operation_id: "untrusted-run".to_owned(),
                     store_epoch: harness.store_epoch.clone(),
                     intent: AutomationIntent::BeginRun {
+                        dispatch_id: None,
                         session_id: None,
                         run_id: "pending:untrusted".to_owned(),
                         automation_id: "daily-report".to_owned(),
@@ -3518,6 +3616,7 @@ mod tests {
             &harness,
             "begin-run",
             AutomationIntent::BeginRun {
+                dispatch_id: None,
                 session_id: None,
                 run_id: "run:review".to_owned(),
                 automation_id: "daily-report".to_owned(),
@@ -3535,6 +3634,7 @@ mod tests {
             &harness,
             "begin-run",
             AutomationIntent::BeginRun {
+                dispatch_id: None,
                 session_id: None,
                 run_id: "run:review".to_owned(),
                 automation_id: "daily-report".to_owned(),
@@ -3724,6 +3824,7 @@ mod tests {
         seed_session(&harness, "session:first");
         seed_session(&harness, "session:other");
         let begin = AutomationIntent::BeginRun {
+            dispatch_id: None,
             run_id: "run:stable".to_owned(),
             automation_id: "daily-report".to_owned(),
             session_id: None,
@@ -3797,6 +3898,7 @@ mod tests {
         let harness = harness();
         create(&harness);
         let begin = AutomationIntent::BeginRun {
+            dispatch_id: None,
             run_id: "run:retry".to_owned(),
             automation_id: "daily-report".to_owned(),
             session_id: None,
@@ -3854,6 +3956,7 @@ mod tests {
             AutomationRunStatus::PendingReview
         );
         let explicit = AutomationIntent::BeginRun {
+            dispatch_id: None,
             run_id: "run:user-archived".to_owned(),
             automation_id: "daily-report".to_owned(),
             session_id: None,
@@ -3923,6 +4026,7 @@ mod tests {
             &harness,
             "admit-guarded",
             AutomationIntent::BeginRun {
+                dispatch_id: None,
                 run_id: "run:guarded".to_owned(),
                 automation_id: "daily-report".to_owned(),
                 session_id: None,
@@ -3992,6 +4096,7 @@ mod tests {
                 &harness,
                 operation_id,
                 AutomationIntent::BeginRun {
+                    dispatch_id: None,
                     session_id: (thread_id == "thread:interrupted")
                         .then(|| "session:interrupted".to_owned()),
                     run_id: thread_id.to_owned(),

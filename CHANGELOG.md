@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Scheduled tasks can ask in the Inbox before each run. The run waits as a message you can run, edit for that run, give another model, or skip.
 - Desktop context menus offer image and text actions, file and link destinations, diff commands, and editor clipboard actions. Save as uses a native destination dialog, including for remote files.
 - Every panel's `+` opens a New tab in one click, listing the tools it can become, local servers and your recent pages; whatever you pick opens right where the New tab was. Typing in its address bar suggests tools, open tabs and pages before searching the web. Right-click `+` for the full panel menu.
 - New page, in the New tab and panel menus, creates a page in Space and opens it beside your chat with its title ready to type, for quick drafts and notes.

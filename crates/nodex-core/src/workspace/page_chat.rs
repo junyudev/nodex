@@ -71,7 +71,7 @@ pub(super) fn insert_initial_page_links(
 
 /// Adds each Page to an existing Session's Linked chats as part of another decision; Pages
 /// already linked stay as they are.
-pub(super) fn link_pages(
+pub(crate) fn link_pages(
     connection: &Connection,
     session_id: &str,
     page_ids: &[String],

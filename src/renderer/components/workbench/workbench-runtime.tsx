@@ -2759,6 +2759,11 @@ export function WorkbenchRuntime({
         buildAutomationsPath({ automationId: task.id, runSessionId: sessionId }),
       );
     },
+    onOpenInbox: (projectId) => {
+      setAutomationsPath(null);
+      if (projectId === null) openInbox();
+      else selectProject(projectId);
+    },
     onCreateTask: () => navigateScheduled(buildAutomationsPath({ automationMode: "create" })),
     onEditTask: (task) =>
       navigateScheduled(buildAutomationsPath({ automationId: task.id, automationMode: "edit" })),
@@ -4185,6 +4190,9 @@ export function WorkbenchRuntime({
             focusComposerToken={inboxFocusToken}
             onOpenSession={sessionCommands.openProjectSessionById}
             onShowPagesInChat={sessionCommands.showPagesInChat}
+            onOpenScheduledTask={(automationId) =>
+              navigateScheduled(buildAutomationsPath({ automationId }))
+            }
             onOpenPage={(pageId) => {
               const peek = inboxPagePeek(surface.id);
               void openProjectScenePage(projectId, pageId, "Page", {
@@ -4528,6 +4536,7 @@ export function WorkbenchRuntime({
       bottomPanelMotion.animatedSize,
       ensureDefaultDraftSessionForProject,
       inboxFocusToken,
+      navigateScheduled,
       onLeavePageStage,
       openAttachedThreadSessionById,
       openResourceTarget,
@@ -4603,6 +4612,9 @@ export function WorkbenchRuntime({
             focusComposerToken={inboxFocusToken}
             onOpenSession={sessionCommands.openProjectSessionById}
             onShowPagesInChat={sessionCommands.showPagesInChat}
+            onOpenScheduledTask={(automationId) =>
+              navigateScheduled(buildAutomationsPath({ automationId }))
+            }
             onOpenPage={(pageId) =>
               void presentLibraryTarget(
                 { kind: "page", pageId },
@@ -4714,6 +4726,7 @@ export function WorkbenchRuntime({
       executeSceneCommand,
       activeLibraryScene,
       inboxFocusToken,
+      navigateScheduled,
       openSettingsAt,
       presentLibraryTarget,
       librarySceneKey,

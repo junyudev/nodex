@@ -39,6 +39,13 @@ export const inboxDispatchActionFromCore = (
   action: CoreInboxDispatchAction,
 ): InboxDispatchAction => {
   switch (action.type) {
+    case "run_task":
+      return {
+        type: "run_task",
+        automationId: action.automation_id,
+        dispatchId: action.dispatch_id,
+        agent: action.agent ? inboxChatAgentFromCore(action.agent) : null,
+      };
     case "keep":
       return { type: "keep" };
     case "new_chat":
@@ -46,10 +53,10 @@ export const inboxDispatchActionFromCore = (
         type: "new_chat",
         projectId: action.project_id ?? null,
         prompt: action.prompt,
-        agent: action.agent ? chatAgentFromCore(action.agent) : null,
+        agent: action.agent ? inboxChatAgentFromCore(action.agent) : null,
         delegates: (action.delegates ?? []).map((delegate) => ({
           work: delegate.work,
-          agent: chatAgentFromCore(delegate.agent),
+          agent: inboxChatAgentFromCore(delegate.agent),
         })),
         plan: action.plan ?? null,
       };
@@ -60,7 +67,7 @@ export const inboxDispatchActionFromCore = (
   }
 };
 
-const chatAgentFromCore = (agent: CoreInboxChatAgent): InboxChatAgent => ({
+export const inboxChatAgentFromCore = (agent: CoreInboxChatAgent): InboxChatAgent => ({
   instanceId: agent.instance_id,
   model: agent.model ?? null,
   reasoningEffort: agent.reasoning_effort ?? null,
@@ -76,6 +83,13 @@ const chatAgentToCore = (agent: InboxChatAgent): CoreInboxChatAgent => ({
 
 export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInboxDispatchAction => {
   switch (action.type) {
+    case "run_task":
+      return {
+        type: "run_task",
+        automation_id: action.automationId,
+        dispatch_id: action.dispatchId,
+        agent: action.agent ? chatAgentToCore(action.agent) : null,
+      };
     case "keep":
       return { type: "keep" };
     case "new_chat":
@@ -136,6 +150,14 @@ export const inboxScopeToCore = (scope: InboxScope): CoreInboxScope =>
 
 export const inboxSourceFromCore = (source: CoreInboxSource): InboxSource => {
   switch (source.kind) {
+    case "scheduled_task":
+      return {
+        kind: "scheduled_task",
+        automationId: source.automation_id,
+        dispatchId: source.dispatch_id,
+        projectId: source.project_id ?? null,
+        label: source.label,
+      };
     case "user":
       return { kind: "user" };
     case "agent":
@@ -224,6 +246,17 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   scope: inboxScopeFromCore(item.scope),
   location: locationFromCore(item.location),
   proposal: item.proposal ? proposalFromCore(item.proposal) : null,
+  firing: item.firing
+    ? {
+        automationId: item.firing.automation_id,
+        dispatchId: item.firing.dispatch_id,
+        status: item.firing.status,
+        firstScheduledFor: item.firing.first_scheduled_for_ms,
+        lastScheduledFor: item.firing.last_scheduled_for_ms,
+        missedCount: item.firing.missed_count,
+        failureMessage: item.firing.failure_message ?? null,
+      }
+    : null,
   revision: item.revision,
   basis: inboxPageBasisFromCore(item.basis),
 });

@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { InboxDispatchAction, InboxEntryKind } from "../../../shared/inbox";
 import {
   ArchiveIcon,
+  AutomationRunNowIcon,
   MoveToIcon,
   NewChatIcon,
   NoteIcon,
@@ -21,6 +22,7 @@ export const INBOX_ACTION_ICONS: Readonly<Record<InboxDispatchAction["type"], In
   new_chat: NewChatIcon,
   send_to_chat: SendToChatIcon,
   move_to_project: MoveToIcon,
+  run_task: AutomationRunNowIcon,
 };
 
 /** What a message is, wherever its kind is named or changed. */

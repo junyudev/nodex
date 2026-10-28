@@ -37,6 +37,7 @@ export interface CodexScheduledAutomationModelSettings {
 
 export function buildCodexScheduledAutomationRunPrompt(
   automation: Pick<CodexScheduledAutomation, "id" | "name" | "prompt" | "lastRunAt">,
+  instructions = automation.prompt,
 ): string {
   const lastRun =
     automation.lastRunAt === null ? "never" : new Date(automation.lastRunAt).toISOString();
@@ -46,20 +47,21 @@ export function buildCodexScheduledAutomationRunPrompt(
     `Automation ID: ${automation.id}`,
     `Last run: ${lastRun}`,
     "",
-    automation.prompt,
+    instructions,
   ].join("\n");
 }
 
 export function buildCodexScheduledAutomationHeartbeatPrompt(
   automation: Pick<CodexScheduledAutomation, "id" | "prompt">,
   now = Date.now(),
+  instructions = automation.prompt,
 ): string {
   return [
     "<heartbeat>",
     `  <automation_id>${automation.id}</automation_id>`,
     `  <current_time_iso>${new Date(now).toISOString()}</current_time_iso>`,
     "  <instructions>",
-    automation.prompt,
+    instructions,
     "  </instructions>",
     "</heartbeat>",
   ].join("\n");

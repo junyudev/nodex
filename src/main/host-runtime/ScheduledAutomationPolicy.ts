@@ -2,6 +2,7 @@ import type {
   CodexHeartbeatAutomationCollaborationMode,
   CodexScheduledAutomation,
 } from "../../shared/types";
+import type { AutomationFiringAdmission } from "../automation-application/AutomationApplication";
 
 export const SCHEDULED_AUTOMATION_INTERVAL_MS = 30_000;
 export const SCHEDULED_AUTOMATION_MAX_PER_TICK = 3;
@@ -13,6 +14,7 @@ export interface CodexScheduledAutomationRunContext {
   readonly reason: "scheduled";
   readonly leaseId?: string;
   readonly dispatchId?: string;
+  readonly admission?: AutomationFiringAdmission | null;
   readonly definitionRevision?: number;
   readonly heartbeat?: CodexScheduledAutomationHeartbeatRunContext;
 }

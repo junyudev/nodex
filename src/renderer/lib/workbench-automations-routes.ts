@@ -5,8 +5,8 @@ export type WorkbenchAutomationMode = "create" | "edit";
 
 /**
  * Scheduled route state. `automationId` selects a task; `automationMode` opens the create or
- * edit dialog, and `templateId` seeds a new task; `runSessionId` presents a run or Heartbeat chat
- * in place.
+ * edit dialog, and `templateId` seeds a new task; `runSessionId` presents a
+ * run or Heartbeat chat in place.
  */
 export interface WorkbenchAutomationsRouteState {
   automationId: string | null;

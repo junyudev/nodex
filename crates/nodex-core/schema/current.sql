@@ -167,6 +167,7 @@ CREATE TABLE core_automation_runs (
   updated_at INTEGER NOT NULL,
   run_revision INTEGER NOT NULL DEFAULT 1 CHECK (run_revision >= 1),
   admission_hash TEXT NOT NULL CHECK (length(admission_hash) = 64 AND admission_hash NOT GLOB '*[^0-9a-f]*'),
+  dispatch_id TEXT,
   CHECK (length(run_id) BETWEEN 1 AND 512 AND run_id = trim(run_id)),
   CHECK (session_id IS NULL OR (length(session_id) BETWEEN 1 AND 512 AND session_id = trim(session_id))),
   CHECK (status IN ('IN_PROGRESS', 'PENDING_REVIEW', 'ACCEPTED', 'ARCHIVED'))
@@ -740,6 +741,7 @@ CREATE TABLE core_automation_leases (
   settled_at_ms INTEGER,
   retry_at_ms INTEGER,
   reason_code TEXT,
+  purpose TEXT NOT NULL DEFAULT 'run' CHECK (purpose IN ('run','hold')),
   UNIQUE (dispatch_id, attempt),
   CHECK (length(lease_id) BETWEEN 1 AND 512),
   CHECK (settled_at_ms IS NULL OR settled_at_ms >= claimed_at_ms),
@@ -767,6 +769,7 @@ CREATE TABLE "codex_scheduled_automations" (
            updated_at INTEGER NOT NULL,
            definition_revision INTEGER NOT NULL DEFAULT 1 CHECK (definition_revision >= 1),
            notification_policy TEXT CHECK (notification_policy IS NULL OR notification_policy = 'failed_runs_only'), project_id TEXT CHECK (project_id IS NULL OR (project_id = trim(project_id) AND length(project_id) BETWEEN 1 AND 512)), agent_backend_kind TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_kind IN ('codex', 'acp', 'claude', 'opencode')), agent_backend_definition_id TEXT CHECK (agent_backend_definition_id IS NULL OR (agent_backend_definition_id = trim(agent_backend_definition_id) AND length(agent_backend_definition_id) BETWEEN 1 AND 512)), agent_backend_instance_config_id TEXT CHECK ((agent_backend_kind = 'codex' AND agent_backend_definition_id IS NULL AND agent_backend_instance_config_id IS NULL) OR (agent_backend_kind IN ('claude', 'opencode') AND agent_backend_definition_id IS NULL AND agent_backend_instance_config_id IS NOT NULL AND agent_backend_instance_config_id = trim(agent_backend_instance_config_id) AND length(agent_backend_instance_config_id) BETWEEN 1 AND 512) OR (agent_backend_kind = 'acp' AND agent_backend_definition_id IS NOT NULL AND (agent_backend_instance_config_id IS NULL OR (agent_backend_instance_config_id = trim(agent_backend_instance_config_id) AND length(agent_backend_instance_config_id) BETWEEN 1 AND 512)))),
+  launch TEXT NOT NULL DEFAULT 'automatic' CHECK (launch IN ('automatic','ask')),
            CHECK (kind IN ('cron', 'heartbeat')),
            CHECK (status IN ('ACTIVE', 'PAUSED', 'DELETED')),
            CHECK (execution_environment IN ('local', 'worktree')),
@@ -4385,7 +4388,7 @@ CREATE TABLE inbox_entries (
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
   seq INTEGER NOT NULL CHECK (seq >= 1),
   submitted_at TEXT NOT NULL,
-  source_kind TEXT NOT NULL CHECK (source_kind IN ('user', 'agent', 'command_line')),
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('user', 'agent', 'command_line', 'scheduled_task')),
   source_session_id TEXT CHECK (source_session_id IS NULL OR length(source_session_id) BETWEEN 1 AND 512),
   source_thread_id TEXT CHECK (source_thread_id IS NULL OR length(source_thread_id) BETWEEN 1 AND 512),
   source_turn_id TEXT CHECK (source_turn_id IS NULL OR length(source_turn_id) BETWEEN 1 AND 512),
@@ -4405,6 +4408,8 @@ CREATE TABLE inbox_entries (
   outcome TEXT CHECK (outcome IN ('kept','done','moved','chat')),
   suggestion_request_id TEXT,
   important INTEGER NOT NULL DEFAULT 0 CHECK (important IN (0, 1)),
+  source_automation_id TEXT,
+  source_dispatch_id TEXT,
   UNIQUE (library_id, seq),
   CHECK (source_kind = 'agent' OR (source_session_id IS NULL AND source_thread_id IS NULL AND source_turn_id IS NULL)),
   CHECK (source_kind <> 'user' OR (source_project_id IS NULL AND source_label IS NULL)),
@@ -4418,7 +4423,7 @@ CREATE INDEX idx_inbox_entries_scope ON inbox_entries(library_id, scope_project_
 CREATE TABLE inbox_proposals (
   proposal_id TEXT PRIMARY KEY,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
-  origin TEXT NOT NULL CHECK (origin IN ('agent', 'user')),
+  origin TEXT NOT NULL CHECK (origin IN ('agent', 'user', 'schedule')),
   state TEXT NOT NULL CHECK (state IN ('open', 'superseded', 'dismissed', 'dispatching', 'completed', 'failed')),
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
   action_json TEXT NOT NULL CHECK (json_valid(action_json) AND length(action_json) <= 65536),
@@ -4494,7 +4499,23 @@ CREATE TABLE inbox_decision_undo (
   consumed INTEGER NOT NULL DEFAULT 0 CHECK(consumed IN (0,1))
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version = 192;
+-- Page lifecycle is shared by Library, document ownership and erasure paths.
+CREATE TRIGGER core_automation_firing_page_inactive
+AFTER UPDATE OF lifecycle ON blocks WHEN NEW.lifecycle<>'active' AND OLD.lifecycle='active'
+BEGIN
+  UPDATE core_automation_firings SET status='withdrawn',waiting_in_inbox=0,due_at_ms=NULL,
+    updated_at_ms=CAST(unixepoch(NEW.updated_at,'subsec')*1000 AS INTEGER)
+  WHERE page_id=NEW.id AND waiting_in_inbox=1;
+END;
+CREATE TRIGGER core_automation_firing_page_deleted
+BEFORE DELETE ON blocks
+BEGIN
+  UPDATE core_automation_firings SET status='withdrawn',waiting_in_inbox=0,due_at_ms=NULL,
+    updated_at_ms=CAST(unixepoch('subsec')*1000 AS INTEGER)
+  WHERE page_id=OLD.id AND waiting_in_inbox=1;
+END;
+
+PRAGMA user_version = 193;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -4901,3 +4922,26 @@ CREATE TRIGGER session_search_codex_threads_update
 AFTER UPDATE OF thread_name, parent_thread_id, archived, created_at, recency_at, agent_backend_kind, agent_backend_definition_id, agent_backend_instance_config_id, execution_host_id ON codex_threads
 WHEN (OLD.thread_name IS NOT NEW.thread_name OR OLD.parent_thread_id IS NOT NEW.parent_thread_id OR OLD.archived IS NOT NEW.archived OR OLD.created_at IS NOT NEW.created_at OR OLD.recency_at IS NOT NEW.recency_at OR OLD.agent_backend_kind IS NOT NEW.agent_backend_kind OR OLD.agent_backend_definition_id IS NOT NEW.agent_backend_definition_id OR OLD.agent_backend_instance_config_id IS NOT NEW.agent_backend_instance_config_id OR OLD.execution_host_id IS NOT NEW.execution_host_id) AND EXISTS (SELECT 1 FROM project_session_threads WHERE thread_id = NEW.thread_id)
 BEGIN UPDATE session_search_revision SET revision = revision + 1 WHERE id = 1; END;
+CREATE TABLE core_automation_firings (
+  dispatch_id TEXT PRIMARY KEY,
+  automation_id TEXT NOT NULL REFERENCES codex_scheduled_automations(automation_id),
+  status TEXT NOT NULL CHECK (status IN ('held','admitted','completed','failed','skipped','withdrawn')),
+  page_id TEXT NOT NULL,
+  inbox_project_id TEXT,
+  first_scheduled_for_ms INTEGER NOT NULL CHECK (first_scheduled_for_ms >= 0),
+  last_scheduled_for_ms INTEGER NOT NULL CHECK (last_scheduled_for_ms >= first_scheduled_for_ms),
+  missed_count INTEGER NOT NULL DEFAULT 0 CHECK (missed_count BETWEEN 0 AND 4294967295),
+  hold_basis_json TEXT NOT NULL CHECK (json_valid(hold_basis_json)),
+  admission_prompt TEXT,
+  admission_agent_json TEXT CHECK (admission_agent_json IS NULL OR json_valid(admission_agent_json)),
+  admitted_at_ms INTEGER,
+  due_at_ms INTEGER,
+  failure_message TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+, waiting_in_inbox INTEGER NOT NULL DEFAULT 0
+  CHECK (waiting_in_inbox IN (0,1) AND (waiting_in_inbox=0 OR status IN ('held','failed')))) WITHOUT ROWID, STRICT;
+CREATE UNIQUE INDEX idx_core_automation_firings_waiting ON core_automation_firings(automation_id) WHERE waiting_in_inbox=1;
+CREATE UNIQUE INDEX idx_core_automation_firings_page ON core_automation_firings(page_id);
+CREATE INDEX idx_core_automation_firings_due ON core_automation_firings(due_at_ms) WHERE status='admitted';
+CREATE INDEX idx_core_automation_runs_dispatch ON core_automation_runs(dispatch_id,created_at,run_id);

@@ -67,6 +67,8 @@ pub enum ProjectWorkspaceInboxSuggestionState {
 pub enum ProjectWorkspaceInboxProposalOrigin {
     Agent,
     User,
+    /// Written by a scheduled task for its own firing, from the user's saved definition.
+    Schedule,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -105,6 +107,15 @@ pub enum ProjectWorkspaceInboxDispatchAction {
     /// File the entries into one active Project: their Pages move into its primary
     /// Database and the entries are kept, without reopening there.
     MoveToProject { project_id: String },
+    /// Run one waiting firing of a scheduled task. The message's reviewed text is the run's
+    /// instructions; everything else comes from the task when it runs.
+    RunTask {
+        automation_id: String,
+        dispatch_id: String,
+        /// What this run uses instead of the task's own Agent selection.
+        #[serde(default)]
+        agent: Option<ProjectWorkspaceInboxChatAgent>,
+    },
 }
 
 /// An Agent instance and, when chosen, its model, effort and speed. Unset choices use the
@@ -152,6 +163,28 @@ pub enum ProjectWorkspaceInboxSource {
         project_id: Option<String>,
         label: String,
     },
+    /// A due firing of a scheduled task that asks before it runs.
+    ScheduledTask {
+        automation_id: String,
+        dispatch_id: String,
+        project_id: Option<String>,
+        /// The task's name when the firing arrived.
+        label: String,
+    },
+}
+
+/// The firing behind a scheduled task's message, as it stands now.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxFiring {
+    pub automation_id: String,
+    pub dispatch_id: String,
+    pub status: crate::automation::AutomationFiringStatus,
+    pub first_scheduled_for_ms: i64,
+    pub last_scheduled_for_ms: i64,
+    /// Later firings that fell due while this one waited.
+    pub missed_count: u32,
+    /// Why its execution failed before reaching a chat.
+    pub failure_message: Option<String>,
 }
 
 /// Where a message's Page lives, relative to the Inbox that received it.
@@ -243,6 +276,8 @@ pub struct ProjectWorkspaceInboxItem {
     pub scope: ProjectWorkspaceInboxScope,
     pub location: ProjectWorkspaceInboxLocation,
     pub proposal: Option<ProjectWorkspaceInboxProposal>,
+    /// Present for a scheduled task's firing.
+    pub firing: Option<ProjectWorkspaceInboxFiring>,
     pub revision: i64,
 }
 

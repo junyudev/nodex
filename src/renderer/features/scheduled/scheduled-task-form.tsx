@@ -28,6 +28,7 @@ import {
   ScheduledEnvironmentField,
   ScheduledFieldRow,
   ScheduledFieldTrigger,
+  ScheduledLaunchField,
   ScheduledProjectField,
   ScheduledScheduleFields,
   type ScheduledTaskChatOption,
@@ -215,6 +216,11 @@ export function ScheduledTaskForm({
           intervalStyle={isCron ? "default" : "heartbeat"}
           disabled={disabled}
           onRruleChange={(rrule) => patch({ rrule })}
+        />
+        <ScheduledLaunchField
+          launch={draft.launch}
+          disabled={disabled}
+          onLaunchChange={(launch) => patch({ launch })}
         />
       </div>
       <div className="flex flex-col">

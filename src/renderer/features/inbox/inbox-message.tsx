@@ -1,6 +1,7 @@
 import { INBOX_ENTRY_KINDS, type InboxEntryKind, type InboxItem } from "../../../shared/inbox";
 import {
   AutomationMoreIcon,
+  AutomationsIcon,
   CheckmarkIcon,
   DeleteIcon,
   DispatchIcon,
@@ -82,7 +83,8 @@ export function InboxMessageMenu({
           Handle manually
         </NodexDropdownItem>
       )}
-      {item.state === "open" && !rowOffers.suggest ? (
+      {/* A scheduled run takes its decision from its task, never from advice. */}
+      {item.state === "open" && !rowOffers.suggest && !item.firing ? (
         <NodexDropdownItem
           leftSlot={<AskAiIcon className="icon-xs" />}
           onSelect={handlers.onSuggestAgain}
@@ -156,6 +158,7 @@ export function InboxMessage({
   selectionActive,
   onToggleSelected,
   onOpenSource,
+  onOpenScheduledTask,
   onOpenPage,
   onUnmarkImportant,
   arrivalToken = null,
@@ -170,6 +173,8 @@ export function InboxMessage({
   readonly selectionActive: boolean;
   readonly onToggleSelected: () => void;
   readonly onOpenSource: (sessionId: string) => void;
+  /** Opens the scheduled task a waiting run came from. */
+  readonly onOpenScheduledTask?: (automationId: string) => void;
   /** Opens the message's Page; its time is the link. */
   readonly onOpenPage: () => void;
   readonly onUnmarkImportant: () => void;
@@ -250,6 +255,18 @@ export function InboxMessage({
           className="cursor-interaction max-w-[80%] truncate pl-1 text-xs text-token-description-foreground hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
         >
           From {item.source.label}
+        </button>
+      ) : item.source.kind === "scheduled_task" ? (
+        <button
+          type="button"
+          disabled={!onOpenScheduledTask}
+          onClick={() =>
+            item.source.kind === "scheduled_task" && onOpenScheduledTask?.(item.source.automationId)
+          }
+          className="cursor-interaction flex max-w-[80%] min-w-0 items-center gap-1 pl-1 text-xs text-token-description-foreground hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
+        >
+          <AutomationsIcon className="icon-2xs shrink-0" />
+          <span className="min-w-0 truncate">From {item.source.label}</span>
         </button>
       ) : item.source.kind === "command_line" ? (
         <span className="max-w-[80%] truncate pl-1 text-xs text-token-description-foreground">

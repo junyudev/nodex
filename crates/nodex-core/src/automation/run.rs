@@ -42,7 +42,7 @@ pub(super) fn read_run(
         .query_row(
             "SELECT run_id, automation_id, run_revision, status, read_at, session_title, \
                     source_cwd, inbox_title, inbox_summary, archived_user_message, \
-                    archived_assistant_message, archived_reason, created_at, updated_at, session_id \
+                    archived_assistant_message, archived_reason, created_at, updated_at, session_id, dispatch_id \
              FROM core_automation_runs WHERE run_id = ?1",
             [run_id],
             run_from_row,
@@ -96,7 +96,7 @@ pub(super) fn read_runs_window(
     let mut statement = connection.prepare(
         "SELECT run_id, automation_id, run_revision, status, read_at, session_title, \
                 source_cwd, inbox_title, inbox_summary, archived_user_message, \
-                archived_assistant_message, archived_reason, created_at, updated_at, session_id \
+                archived_assistant_message, archived_reason, created_at, updated_at, session_id, dispatch_id \
          FROM core_automation_runs \
          WHERE (?1 IS NULL OR automation_id = ?1) AND (?2 OR status <> 'ARCHIVED') \
            AND (?3 IS NULL OR created_at < ?3 OR (created_at = ?3 AND run_id > ?4)) \
@@ -262,6 +262,7 @@ pub(super) fn apply(
         AutomationIntent::BeginRun {
             run_id,
             automation_id,
+            dispatch_id,
             session_id,
             session_title,
             source_cwd,
@@ -269,6 +270,7 @@ pub(super) fn apply(
             connection,
             run_id,
             automation_id,
+            dispatch_id.as_deref(),
             session_id.as_deref(),
             session_title.as_deref(),
             source_cwd.as_deref(),
@@ -372,6 +374,7 @@ fn begin_run(
     connection: &Connection,
     run_id: &str,
     automation_id: &str,
+    dispatch_id: Option<&str>,
     session_id: Option<&str>,
     session_title: Option<&str>,
     source_cwd: Option<&str>,
@@ -379,6 +382,16 @@ fn begin_run(
     validate_id("run_id", run_id)?;
     validate_id("automation_id", automation_id)?;
     require_definition(connection, automation_id)?;
+    if let Some(dispatch) = dispatch_id {
+        validate_id("dispatch_id", dispatch)?;
+        super::firing::require_admitted(connection, dispatch)?;
+        let mismatched: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM core_automation_firings WHERE dispatch_id=?1 AND automation_id<>?2)",params![dispatch,automation_id],|row|row.get(0))?;
+        if mismatched {
+            return Err(conflict(
+                "The Run does not match this scheduled task's firing",
+            ));
+        }
+    }
     let session_title = normalize_text(session_title, MAX_TITLE_BYTES, "run Session title")?;
     let source_cwd = source_cwd
         .map(|value| super::mutation::normalize_absolute_path(value, "run source cwd"))
@@ -386,6 +399,7 @@ fn begin_run(
     let payload = serde_json::to_vec(&(
         run_id,
         automation_id,
+        dispatch_id,
         session_id,
         &session_title,
         &source_cwd,
@@ -428,10 +442,13 @@ fn begin_run(
     connection.execute(
         "INSERT INTO core_automation_runs(\
            run_id, automation_id, session_id, status, session_title, source_cwd, created_at, updated_at, \
-           run_revision, admission_hash\
-         ) VALUES (?1, ?2, ?3, 'IN_PROGRESS', ?4, ?5, ?6, ?6, 1, ?7)",
-        params![run_id, automation_id, session_id, session_title, source_cwd, now_ms, request_hash],
+           run_revision, admission_hash, dispatch_id\
+         ) VALUES (?1, ?2, ?3, 'IN_PROGRESS', ?4, ?5, ?6, ?6, 1, ?7, ?8)",
+        params![run_id, automation_id, session_id, session_title, source_cwd, now_ms, request_hash, dispatch_id],
     )?;
+    if let Some(session) = session_id {
+        link_run_pages(connection, dispatch_id, session, &committed_at)?;
+    }
     single_run_effects(connection, "begin_run", run_id, committed_at)
 }
 
@@ -464,6 +481,9 @@ fn bind_run_session(
     {
         return Err(conflict("Pending Automation run changed concurrently"));
     }
+    if let Some(dispatch) = &current.dispatch_id {
+        super::firing::require_admitted(connection, dispatch)?;
+    }
     require_session(connection, &current.automation_id, session_id)?;
     update_one(
         connection,
@@ -471,6 +491,12 @@ fn bind_run_session(
          WHERE run_id = ?3 AND run_revision = ?4 AND status = 'IN_PROGRESS' AND session_id IS NULL",
         params![session_id, now_ms, run_id, expected_revision],
         "Pending Automation run changed concurrently",
+    )?;
+    link_run_pages(
+        connection,
+        current.dispatch_id.as_deref(),
+        session_id,
+        &committed_at,
     )?;
     single_run_effects(connection, "bind_run_session", run_id, committed_at)
 }
@@ -942,6 +968,7 @@ fn run_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationRun> {
         run_id: row.get(0)?,
         session_id: row.get(14)?,
         automation_id: row.get(1)?,
+        dispatch_id: row.get(15)?,
         run_revision: row.get(2)?,
         status: parse_status(&row.get::<_, String>(3)?).map_err(conversion)?,
         read_at_ms: row.get(4)?,
@@ -1110,4 +1137,24 @@ fn corrupt(message: &str) -> StoreError {
 
 fn internal(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Internal, message, false)
+}
+
+fn link_run_pages(
+    connection: &Connection,
+    dispatch: Option<&str>,
+    session: &str,
+    now: &str,
+) -> Result<(), StoreError> {
+    let mut pages = Vec::new();
+    if let Some(page) = connection
+        .query_row(
+            "SELECT page_id FROM core_automation_firings WHERE dispatch_id=?1",
+            [dispatch],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+    {
+        pages.push(page);
+    }
+    crate::workspace::link_pages(connection, session, &pages, now)
 }

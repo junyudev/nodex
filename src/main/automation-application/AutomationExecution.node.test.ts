@@ -25,6 +25,7 @@ import { CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import { CoreModules, live as coreModulesLive } from "../core-runtime/CoreModules";
 import { live as routingLive } from "../core-runtime/AutomationRoutingIndex";
 import { classifyCoreOperationFailure } from "../core-runtime/CoreRuntimeError";
+import { InboxApplication } from "../inbox-application/InboxApplication";
 import { createUuidV7 } from "../../shared/uuid-v7";
 
 const definition: CodexScheduledAutomation = {
@@ -35,6 +36,8 @@ const definition: CodexScheduledAutomation = {
   projectId: "project",
   targetSessionId: null,
   notificationPolicy: null,
+  launch: "automatic",
+  heldFiring: null,
   name: "Report",
   prompt: "Build a report",
   rrule: "FREQ=DAILY",
@@ -76,16 +79,25 @@ const setup = (
     agentDefinitionId: binding.kind === "acp" ? binding.agentDefinitionId : "",
     targetProviderId: agentRuntimeProviderId(binding),
     targetArchived: false,
+    dispatches: 0,
   };
   const runs = new Map<string, CodexAutomationRun>();
   const launches: AgentRuntimeLaunch[] = [];
   const physical = new Set<string>();
   const completions: string[] = [];
   const stops: string[] = [];
+  const admissions: Array<{ dispatchId?: string }> = [];
+  const confirmations: string[] = [];
   const messages: AgentRuntimeMessage[] = [];
   const layer = live.pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.succeed(InboxApplication, {
+          confirmScheduledFiring: (firing: NonNullable<CodexScheduledAutomation["heldFiring"]>) =>
+            Effect.sync(() => {
+              confirmations.push(firing.dispatchId);
+            }),
+        } as unknown as InboxApplication["Service"]),
         backendRegistryLive.pipe(
           Layer.provide(
             Layer.succeed(ApplicationSettings, {
@@ -126,16 +138,22 @@ const setup = (
                       : state.definition,
                   ),
                 get: () => Effect.succeed(state.definition),
-                dispatchNow: () => Effect.succeed(state.definition),
+                dispatchNow: () =>
+                  Effect.sync(() => {
+                    state.dispatches++;
+                    return state.definition;
+                  }),
               },
               runs: {
                 begin: (input: {
                   runId: string;
+                  dispatchId?: string;
                   automationId: string;
                   sessionTitle: string;
                   sourceCwd: string | null;
                 }) =>
                   Effect.sync(() => {
+                    admissions.push(input);
                     const previous = runs.get(input.runId);
                     if (previous) {
                       if (previous.sessionId === null && previous.archivedReason === "auto")
@@ -203,6 +221,24 @@ const setup = (
             Effect.succeed([
               {
                 instanceId: agentRuntimeProviderId(binding),
+                enabled: true,
+                installed: true,
+                status: "ready",
+                models: [
+                  { slug: "model", capabilities: { optionDescriptors: [] } },
+                  {
+                    slug: "reviewed-model",
+                    capabilities: {
+                      optionDescriptors: [
+                        { id: "effort", type: "select", options: [{ id: "high" }] },
+                        { id: "serviceTier", type: "select", options: [{ id: "fast" }] },
+                      ],
+                    },
+                  },
+                ],
+              },
+              {
+                instanceId: "other",
                 enabled: true,
                 installed: true,
                 status: "ready",
@@ -281,8 +317,151 @@ const setup = (
       ),
     ),
   );
-  return { state, runs, launches, physical, completions, stops, messages, layer };
+  return {
+    state,
+    runs,
+    launches,
+    physical,
+    completions,
+    stops,
+    messages,
+    admissions,
+    confirmations,
+    layer,
+  };
 };
+
+const admission = {
+  pageId: "inbox-message",
+  prompt: "Only run the reviewed instructions.",
+  admittedAt: 100,
+  agent: {
+    instanceId: "codex",
+    model: "reviewed-model",
+    reasoningEffort: "high",
+    serviceTier: "fast",
+  },
+};
+
+it.effect.each(["cron", "heartbeat"] as const)(
+  "%s admission freezes instructions and selection and retains its dispatch",
+  (kind) => {
+    const fixture = setup();
+    fixture.state.definition = {
+      ...fixture.state.definition,
+      kind,
+      launch: "ask",
+      ...(kind === "heartbeat"
+        ? { targetSessionId: "heartbeat-session", projectId: null, cwds: [] }
+        : {}),
+    };
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      yield* execution.executeClaimed(fixture.state.definition, { ...context, admission });
+      const submitted = kind === "cron" ? fixture.launches[0]!.message : fixture.messages[0]!;
+      const selection =
+        kind === "cron" ? fixture.launches[0]!.modelSelection : fixture.messages[0]!.modelSelection;
+      assert.include(submitted.text, admission.prompt);
+      assert.notInclude(submitted.text, definition.prompt);
+      assert.deepEqual(selection, {
+        instanceId: "codex",
+        model: "reviewed-model",
+        options: [
+          { id: "effort", value: "high" },
+          { id: "serviceTier", value: "fast" },
+        ],
+      });
+      assert.equal(fixture.admissions[0]?.dispatchId, context.dispatchId);
+      assert.equal([...fixture.runs.values()][0]?.status, "PENDING_REVIEW");
+    }).pipe(Effect.provide(fixture.layer));
+  },
+);
+
+it.effect("unavailable overrides fail before launching", () => {
+  const fixture = setup();
+  return Effect.gen(function* () {
+    const execution = yield* AutomationExecution;
+    for (const [agent, reason] of [
+      [{ ...admission.agent, instanceId: "removed" }, /Agent is unavailable/],
+      [{ ...admission.agent, model: "retired" }, /selected model is unavailable/],
+    ] as const) {
+      assert.match(
+        yield* refusal(
+          execution.executeClaimed(fixture.state.definition, {
+            ...context,
+            admission: { ...admission, agent },
+          }),
+        ),
+        reason,
+      );
+    }
+    assert.equal(fixture.launches.length, 0);
+    assert.equal(fixture.runs.size, 0);
+  }).pipe(Effect.provide(fixture.layer));
+});
+
+it.effect("an override's effort the model does not offer runs at the model's own", () => {
+  const fixture = setup();
+  return Effect.gen(function* () {
+    const execution = yield* AutomationExecution;
+    yield* execution.executeClaimed(fixture.state.definition, {
+      ...context,
+      admission: { ...admission, agent: { ...admission.agent, reasoningEffort: "max" } },
+    });
+    assert.deepEqual(fixture.launches[0]?.modelSelection.options, [
+      { id: "serviceTier", value: "fast" },
+    ]);
+  }).pipe(Effect.provide(fixture.layer));
+});
+
+it.effect("a Heartbeat's reviewed override must retain its chat's Agent instance", () => {
+  const fixture = setup();
+  fixture.state.definition = {
+    ...fixture.state.definition,
+    kind: "heartbeat",
+    targetSessionId: "heartbeat-session",
+  };
+  return Effect.gen(function* () {
+    const execution = yield* AutomationExecution;
+    assert.match(
+      yield* refusal(
+        execution.executeClaimed(fixture.state.definition, {
+          ...context,
+          admission: {
+            ...admission,
+            agent: {
+              instanceId: "other",
+              model: "model",
+              reasoningEffort: null,
+              serviceTier: null,
+            },
+          },
+        }),
+      ),
+      /heartbeat runs on its chat's Agent/,
+    );
+    assert.equal(fixture.messages.length, 0);
+  }).pipe(Effect.provide(fixture.layer));
+});
+
+it.effect("Run now confirms a waiting firing without dispatching another one", () => {
+  const fixture = setup();
+  fixture.state.definition.heldFiring = {
+    dispatchId: "held-dispatch",
+    pageId: "message",
+    inboxProjectId: null,
+    firstScheduledFor: 1,
+    lastScheduledFor: 2,
+    missedCount: 1,
+  };
+  return Effect.gen(function* () {
+    const execution = yield* AutomationExecution;
+    yield* execution.runNow({ id: definition.id });
+    assert.deepEqual(fixture.confirmations, ["held-dispatch"]);
+    assert.equal(fixture.state.dispatches, 0);
+    assert.equal(fixture.launches.length, 0);
+  }).pipe(Effect.provide(fixture.layer));
+});
 /** The message a refused create, save or Run now shows in its toast. */
 const refusal = <A, E>(effect: Effect.Effect<A, E>) =>
   effect.pipe(
@@ -363,7 +542,7 @@ it.effect(
       assert.equal(fixture.messages.length, 1);
       assert.equal(fixture.physical.size, 1);
       assert.equal(fixture.launches.length, 0);
-      assert.equal(fixture.runs.size, 0);
+      assert.equal(fixture.runs.size, 1);
     }).pipe(Effect.provide(fixture.layer));
   },
 );

@@ -2171,6 +2171,25 @@ export type CodexScheduledAutomationReasoningEffort = string;
 export type CodexScheduledAutomationNotificationPolicy =
   CoreProtocolComponents["schemas"]["AutomationNotificationPolicy"];
 
+/**
+ * What happens when a task falls due: `automatic` runs it; `ask` places the firing in the Inbox
+ * until the user runs, adjusts, or skips it. Only the user grants `automatic`.
+ */
+export type CodexScheduledAutomationLaunch = "automatic" | "ask";
+
+/** The firing of an `ask` task waiting in the Inbox. At most one waits per task. */
+export interface CodexScheduledAutomationHeldFiring {
+  dispatchId: string;
+  /** The Inbox message that holds the firing. */
+  pageId: string;
+  /** The Project whose Inbox holds it; null for the Library Inbox. */
+  inboxProjectId: string | null;
+  firstScheduledFor: number;
+  lastScheduledFor: number;
+  /** Later firings that fell due while this one waited. */
+  missedCount: number;
+}
+
 export interface CodexScheduledAutomation {
   id: string;
   definitionRevision: number;
@@ -2179,6 +2198,8 @@ export interface CodexScheduledAutomation {
   projectId: string | null;
   targetSessionId: string | null;
   notificationPolicy: CodexScheduledAutomationNotificationPolicy | null;
+  launch: CodexScheduledAutomationLaunch;
+  heldFiring: CodexScheduledAutomationHeldFiring | null;
   name: string;
   prompt: string;
   rrule: string | null;
@@ -2200,6 +2221,8 @@ export interface CodexScheduledAutomationCreateInput {
   projectId?: string | null;
   targetSessionId?: string | null;
   notificationPolicy?: CodexScheduledAutomationNotificationPolicy | null;
+  /** Omitted keeps the current launch; a new task launches `automatic`. */
+  launch?: CodexScheduledAutomationLaunch;
   name: string;
   prompt?: string | null;
   rrule?: string | null;
@@ -3205,6 +3228,7 @@ export interface CodexAutomationUpdateView {
       kind: "cron" | "heartbeat";
       name: string;
       rrule: string;
+      launch?: CodexScheduledAutomationLaunch;
     } | null;
   } | null;
 }

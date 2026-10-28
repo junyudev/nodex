@@ -10,7 +10,10 @@
 
 #[path = "inbox_reliable.rs"]
 pub(super) mod reliable;
+#[path = "inbox_scheduled.rs"]
+pub(crate) mod scheduled;
 pub(super) use reliable::{apply_reliable, read_requests};
+pub(super) use scheduled::{hold_scheduled_firing, refresh_scheduled_firing};
 use std::collections::BTreeSet;
 
 use nodex_core_contracts::agent::AgentTurnProvenance;
@@ -274,12 +277,7 @@ pub(super) fn message_page(body: &str, title: Option<&str>) -> Result<MessagePag
     let message = message_body(body)?;
     let (title, provisional_title) = match title {
         Some(title) => {
-            let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
-            if title.is_empty() || title.chars().count() > MAX_GIVEN_TITLE_CHARS {
-                return Err(invalid(
-                    "Inbox message title must contain 1 to 200 characters",
-                ));
-            }
+            let title = normalize_given_title(title)?;
             (title, None)
         }
         None => {
@@ -292,6 +290,16 @@ pub(super) fn message_page(body: &str, title: Option<&str>) -> Result<MessagePag
         body_markdown: message.markdown,
         provisional_title,
     })
+}
+
+fn normalize_given_title(title: &str) -> Result<String, StoreError> {
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    if title.is_empty() || title.chars().count() > MAX_GIVEN_TITLE_CHARS {
+        return Err(invalid(
+            "Inbox message title must contain 1 to 200 characters",
+        ));
+    }
+    Ok(title)
 }
 
 /// A message body as Core keeps it: canonical Nodex Markdown, and the text a
@@ -483,6 +491,8 @@ fn plain_text(text: &str) -> Inline {
 #[derive(Default)]
 struct EntrySource {
     kind: &'static str,
+    automation_id: Option<String>,
+    dispatch_id: Option<String>,
     session_id: Option<String>,
     thread_id: Option<String>,
     turn_id: Option<String>,
@@ -651,7 +661,7 @@ fn agent_source(
     };
     let label = if let Some(session_id) = &session_id {
         connection.query_row(
-            "SELECT COALESCE(thread.thread_name,NULLIF(substr(thread.thread_preview,1,240),''), \
+            "SELECT COALESCE((SELECT definition.name FROM core_automation_runs run JOIN codex_scheduled_automations definition ON definition.automation_id=run.automation_id WHERE run.session_id=session.id AND definition.status<>'DELETED' ORDER BY run.created_at,run.run_id LIMIT 1), thread.thread_name,NULLIF(substr(thread.thread_preview,1,240),''), \
                session.no_thread_fallback_title) \
              FROM project_sessions session LEFT JOIN project_session_threads link ON link.session_id=session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE session.id=?1",
@@ -662,6 +672,8 @@ fn agent_source(
     };
     Ok(EntrySource {
         kind: "agent",
+        automation_id: None,
+        dispatch_id: None,
         session_id,
         thread_id: Some(thread_id),
         turn_id,
@@ -708,50 +720,83 @@ pub(super) fn send_message(
         request_hash,
         &now,
         |scope| {
-            require_turn_capacity(connection, library_id, &source)?;
-            // The Library Inbox registry also allocates every Inbox's message sequence.
-            let (registry, created) = ensure_registry(connection, library_id, operation_id, &now)?;
-            let home = match inbox_project.as_deref() {
-                None => None,
-                Some(project_id) => Some(
-                    project_home(connection, library_id, project_id)?
-                        .ok_or_else(|| not_found("The Project has no active Database"))?,
-                ),
-            };
-            let home_ref = home.as_ref().unwrap_or(&registry);
-            let destination = resolve_page_transfer_data_source_destination(
+            capture_message_in_scope(
                 connection,
                 library_id,
+                context,
+                store_epoch,
+                operation_id,
+                scope,
+                page_id,
+                document_id,
+                &message,
+                &source,
                 inbox_project.as_deref(),
-                &home_ref.data_source_id,
-                &home_ref.view_id,
-                Some(INBOX_STATUS_GROUP_KEY),
-                None,
-            )?;
-            let created_page = crate::library::page_genesis::create_page_in_data_source(
-                connection,
-                crate::library::page_genesis::PageGenesisInput {
-                    context,
-                    commit_context: scope.evidence(),
-                    library_id,
-                    actor_project_id: inbox_project.as_deref(),
-                    operation_id,
-                    store_epoch,
-                    page_id,
-                    document_id,
-                    title_markdown: &message.title_markdown,
-                    markdown: &message.body_markdown,
-                    destination: &destination,
-                    now: &now,
-                },
-            )?;
-            let seq = allocate_seq(connection, library_id, &now)?;
-            connection.execute(
+                &now,
+            )
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn capture_message_in_scope(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    scope: &crate::infrastructure::durable_mutation::DurableMutationScope<'_>,
+    page_id: &str,
+    document_id: &str,
+    message: &MessagePage,
+    source: &EntrySource,
+    inbox_project: Option<&str>,
+    now: &str,
+) -> Result<WorkspaceMutationEffects, StoreError> {
+    require_turn_capacity(connection, library_id, source)?;
+    // The Library Inbox registry also allocates every Inbox's message sequence.
+    let (registry, created) = ensure_registry(connection, library_id, operation_id, now)?;
+    let home = match inbox_project {
+        None => None,
+        Some(project_id) => Some(
+            project_home(connection, library_id, project_id)?
+                .ok_or_else(|| not_found("The Project has no active Database"))?,
+        ),
+    };
+    let home_ref = home.as_ref().unwrap_or(&registry);
+    let destination = resolve_page_transfer_data_source_destination(
+        connection,
+        library_id,
+        inbox_project,
+        &home_ref.data_source_id,
+        &home_ref.view_id,
+        Some(INBOX_STATUS_GROUP_KEY),
+        None,
+    )?;
+    let created_page = crate::library::page_genesis::create_page_in_data_source(
+        connection,
+        crate::library::page_genesis::PageGenesisInput {
+            context,
+            commit_context: scope.evidence(),
+            library_id,
+            actor_project_id: inbox_project,
+            operation_id,
+            store_epoch,
+            page_id,
+            document_id,
+            title_markdown: &message.title_markdown,
+            markdown: &message.body_markdown,
+            destination: &destination,
+            now,
+        },
+    )?;
+    let seq = allocate_seq(connection, library_id, now)?;
+    connection.execute(
                 "INSERT INTO inbox_entries(\
                    page_id, library_id, seq, submitted_at, source_kind, source_session_id, \
-                   source_thread_id, source_turn_id, source_project_id, source_label, source_budget_key, \
+                   source_thread_id, source_turn_id, source_project_id, source_label, source_budget_key, source_automation_id, source_dispatch_id, \
                    provisional_title, scope_project_id, updated_at\
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?4)",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?4)",
                 params![
                     page_id,
                     library_id,
@@ -764,34 +809,34 @@ pub(super) fn send_message(
                     source.project_id,
                     source.label,
                     source.budget_key,
+                    source.automation_id,
+                    source.dispatch_id,
                     message.provisional_title,
                     inbox_project,
                 ],
             )?;
-            let mut block_ids = vec![created_page.page_create.page_id.clone()];
-            block_ids.extend(created_page.page_create.block_ids.iter().cloned());
-            let mut database_ids = Vec::new();
-            let mut view_ids = created_page.affected_view_ids.clone();
-            if created {
-                block_ids.push(registry.database_id.clone());
-                database_ids.push(registry.database_id.clone());
-                view_ids.push(registry.view_id.clone());
-            }
-            Ok(inbox_effects(
-                "inbox_send_message",
-                InboxEffectResources {
-                    block_ids,
-                    document_ids: vec![created_page.page_create.document_id.clone()],
-                    database_ids,
-                    page_ids: vec![page_id.to_owned()],
-                    data_source_ids: vec![created_page.data_source_id.clone()],
-                    view_ids,
-                    document_heads: vec![created_page.document_head.clone()],
-                },
-                &now,
-            ))
+    let mut block_ids = vec![created_page.page_create.page_id.clone()];
+    block_ids.extend(created_page.page_create.block_ids.iter().cloned());
+    let mut database_ids = Vec::new();
+    let mut view_ids = created_page.affected_view_ids.clone();
+    if created {
+        block_ids.push(registry.database_id.clone());
+        database_ids.push(registry.database_id.clone());
+        view_ids.push(registry.view_id.clone());
+    }
+    Ok(inbox_effects(
+        "inbox_send_message",
+        InboxEffectResources {
+            block_ids,
+            document_ids: vec![created_page.page_create.document_id.clone()],
+            database_ids,
+            page_ids: vec![page_id.to_owned()],
+            data_source_ids: vec![created_page.data_source_id.clone()],
+            view_ids,
+            document_heads: vec![created_page.document_head.clone()],
         },
-    )
+        now,
+    ))
 }
 
 fn allocate_seq(connection: &Connection, library_id: &str, now: &str) -> Result<i64, StoreError> {
@@ -858,7 +903,7 @@ fn implied_status(connection: &Connection, page_id: &str) -> Result<String, Stor
         "SELECT CASE entry.state WHEN 'done' THEN 'ship' WHEN 'kept' THEN 'plan' \
            ELSE CASE WHEN COALESCE(proposal.state, '') IN ('dispatching', 'completed', 'failed') \
              AND COALESCE(json_extract(proposal.action_json, '$.type'), '') \
-               IN ('new_chat', 'send_to_chat') \
+               IN ('new_chat', 'send_to_chat', 'run_task') \
            THEN 'build' ELSE 'triage' END END \
          FROM inbox_entries entry \
          LEFT JOIN inbox_proposals proposal ON proposal.proposal_id = entry.current_proposal_id \
@@ -961,6 +1006,15 @@ pub(super) fn propose(
     require_host(context)?;
     validate_id("proposal_id", input.proposal_id)?;
     let page_ids = unique_page_ids(input.page_ids, MAX_PROPOSAL_PAGES)?;
+    for page in &page_ids {
+        if crate::automation::firing::item(connection, page)?.is_some_and(|firing| {
+            firing.status == nodex_core_contracts::automation::AutomationFiringStatus::Held
+        }) {
+            return Err(conflict(
+                "This scheduled task already has its own Run task decision",
+            ));
+        }
+    }
     require_open_entries(connection, library_id, &page_ids)?;
     require_basis(connection, &page_ids, input.basis)?;
     let scope = require_one_scope(connection, &page_ids)?;
@@ -1165,6 +1219,7 @@ fn supersede_failed_proposals(
 
 fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
     match action {
+        ProjectWorkspaceInboxDispatchAction::RunTask { .. } => "Run task".to_owned(),
         ProjectWorkspaceInboxDispatchAction::Keep => "Keep as a note".to_owned(),
         ProjectWorkspaceInboxDispatchAction::NewChat { .. } => "Start a new chat".to_owned(),
         ProjectWorkspaceInboxDispatchAction::SendToChat { .. } => {
@@ -1183,8 +1238,40 @@ fn apply_confirmation(
     session_id: Option<&str>,
     now: &str,
 ) -> Result<WorkspaceMutationEffects, StoreError> {
+    if !matches!(action, ProjectWorkspaceInboxDispatchAction::RunTask { .. }) {
+        scheduled::consume(
+            connection,
+            page_ids,
+            if matches!(action, ProjectWorkspaceInboxDispatchAction::Keep) {
+                "skipped"
+            } else {
+                "withdrawn"
+            },
+            now,
+        )?;
+    }
     let encoded_action = action_json(action)?;
     match action {
+        ProjectWorkspaceInboxDispatchAction::RunTask {
+            automation_id,
+            dispatch_id,
+            agent,
+        } => {
+            scheduled::admit(
+                connection,
+                library_id,
+                page_ids,
+                automation_id,
+                dispatch_id,
+                agent.as_ref(),
+                now,
+            )?;
+            finish_proposal(connection, proposal_id, &encoded_action, now)?;
+            connection.execute("UPDATE inbox_entries SET outcome='chat',revision=revision+1,updated_at=?2 WHERE page_id=?1",params![page_ids[0],now])?;
+            let mut effects = simple_effects("inbox_confirm_scheduled", now);
+            effects.page_ids = page_ids.to_vec();
+            Ok(effects)
+        }
         ProjectWorkspaceInboxDispatchAction::Keep => {
             finish_proposal(connection, proposal_id, &encoded_action, now)?;
             set_entries_state(connection, library_id, page_ids, "kept", now)?;
@@ -1365,6 +1452,7 @@ pub(super) fn keep_entries(
             supersede_open_proposals(connection, &page_ids, "dismissed", &now)?;
             set_entries_state(connection, library_id, &page_ids, "kept", &now)?;
             let mut effects = simple_effects("inbox_keep_entries", &now);
+            effects.page_ids = page_ids.clone();
             before.follow(connection, library_id, context, operation_id, &mut effects)?;
             Ok(effects)
         },
@@ -1421,6 +1509,10 @@ pub(super) fn delete_messages(
                         "This message was filed elsewhere; delete its Page there",
                     ));
                 }
+            }
+            scheduled::consume(connection, &page_ids, "withdrawn", &now)?;
+            for page in &page_ids {
+                connection.execute("UPDATE core_automation_firings SET status='withdrawn',waiting_in_inbox=0,admission_prompt=NULL,admission_agent_json=NULL,admitted_at_ms=NULL,due_at_ms=NULL WHERE page_id=?1",[page])?;
             }
             forget_proposals(connection, &page_ids, &now)?;
             let page_ids_json = serde_json::to_string(&page_ids)
@@ -1546,6 +1638,7 @@ pub(super) fn set_state(
                 &now,
             )?;
             let mut effects = simple_effects("inbox_set_entry_state", &now);
+            effects.page_ids = page_ids.clone();
             before.follow(connection, library_id, context, operation_id, &mut effects)?;
             Ok(effects)
         },
@@ -1559,6 +1652,11 @@ fn set_entries_state(
     state: &str,
     now: &str,
 ) -> Result<(), StoreError> {
+    if state == "open" {
+        scheduled::reopen(connection, page_ids, now)?;
+    } else {
+        scheduled::consume(connection, page_ids, "skipped", now)?;
+    }
     if state != "open" {
         let ids = serde_json::to_string(page_ids)
             .map_err(|_| internal("Inbox identities cannot be encoded"))?;
@@ -1568,7 +1666,10 @@ fn set_entries_state(
     for page_id in page_ids {
         connection.execute(
             // Work handed to a chat cannot be recalled; marking it done or not only closes it.
-            "UPDATE inbox_entries SET state = ?2, outcome=CASE WHEN outcome = 'chat' THEN outcome \
+            "UPDATE inbox_entries SET state = ?2, outcome=CASE \
+               WHEN ?2 IN ('kept','done') AND EXISTS (SELECT 1 FROM core_automation_firings firing \
+                 WHERE firing.page_id=inbox_entries.page_id AND firing.status='skipped') THEN 'done' \
+               WHEN outcome = 'chat' THEN outcome \
                WHEN ?2 = 'kept' THEN 'kept' WHEN ?2 = 'done' THEN 'done' ELSE NULL END, \
                suggestion_state = CASE WHEN suggestion_state = 'pending' AND ?2 <> 'open' \
                  THEN 'settled' ELSE suggestion_state END, \
@@ -1704,6 +1805,9 @@ pub(super) fn revise_message(
         request_hash,
         &now,
         |_| {
+            if scheduled::refence(connection, page_id, &now)? {
+                return Ok(simple_effects("inbox_revise_message", &now));
+            }
             supersede_open_proposals(connection, &covered, "superseded", &now)?;
             for covered_page_id in &covered {
                 connection.execute(
@@ -1772,6 +1876,27 @@ pub(super) fn retry_dispatch(
     proposal_id: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let proposal = require_proposal(connection, library_id, proposal_id)?;
+    if matches!(
+        proposal.action,
+        ProjectWorkspaceInboxDispatchAction::RunTask { .. }
+    ) {
+        require_host(context)?;
+        let now = sqlite_now(connection)?;
+        return run_mutation(
+            connection,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            &now,
+            |_| {
+                scheduled::retry(connection, library_id, &proposal, proposal_id, &now)?;
+                let mut effects = simple_effects("inbox_retry_scheduled", &now);
+                effects.page_ids = proposal.page_ids.clone();
+                Ok(effects)
+            },
+        );
+    }
     if proposal.state != "failed" || proposal.dispatch_session_id.is_none() {
         return Err(conflict("Only a failed chat dispatch can be retried"));
     }
@@ -2086,6 +2211,19 @@ fn normalize_action(
     action: &ProjectWorkspaceInboxDispatchAction,
 ) -> Result<ProjectWorkspaceInboxDispatchAction, StoreError> {
     match action {
+        ProjectWorkspaceInboxDispatchAction::RunTask {
+            automation_id,
+            dispatch_id,
+            agent,
+        } => {
+            validate_id("automation_id", automation_id)?;
+            validate_id("dispatch_id", dispatch_id)?;
+            Ok(ProjectWorkspaceInboxDispatchAction::RunTask {
+                automation_id: automation_id.clone(),
+                dispatch_id: dispatch_id.clone(),
+                agent: agent.as_ref().map(normalize_chat_agent).transpose()?,
+            })
+        }
         ProjectWorkspaceInboxDispatchAction::Keep => Ok(ProjectWorkspaceInboxDispatchAction::Keep),
         ProjectWorkspaceInboxDispatchAction::NewChat {
             project_id,
@@ -2273,6 +2411,7 @@ fn origin_literal(origin: ProjectWorkspaceInboxProposalOrigin) -> &'static str {
     match origin {
         ProjectWorkspaceInboxProposalOrigin::Agent => "agent",
         ProjectWorkspaceInboxProposalOrigin::User => "user",
+        ProjectWorkspaceInboxProposalOrigin::Schedule => "schedule",
     }
 }
 

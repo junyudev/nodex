@@ -19,6 +19,8 @@ function makeAutomation(id: string): CodexScheduledAutomation {
     definitionRevision: 1,
     projectId: null,
     notificationPolicy: null,
+    launch: "automatic",
+    heldFiring: null,
     kind: "cron",
     status: "ACTIVE",
     targetSessionId: null,

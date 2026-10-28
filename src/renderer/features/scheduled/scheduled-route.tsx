@@ -219,7 +219,12 @@ function ScheduledTaskConversation({
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="truncate text-sm text-token-foreground">{task.name}</span>
                   <span className="truncate text-xs text-token-description-foreground">
-                    {paused ? "Paused" : formatScheduledTaskScheduleLabel(task)}
+                    {[
+                      paused ? "Paused" : formatScheduledTaskScheduleLabel(task),
+                      task.launch === "ask" ? "Asks in Inbox" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 </span>
                 <ChevronRightIcon className="icon-xs shrink-0 text-token-text-tertiary" />
@@ -282,7 +287,10 @@ export function ScheduledRoute({
 
   let request: ScheduledTaskDialogRequest | null = null;
   if (route.automationMode === "create") {
-    request = { kind: "create", template: findTemplate(route.templateId) };
+    request = {
+      kind: "create",
+      template: findTemplate(route.templateId),
+    };
   } else if (route.automationMode === "edit" && selected) {
     request = { kind: "edit", task: selected };
   }

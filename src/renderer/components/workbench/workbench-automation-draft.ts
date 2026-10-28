@@ -2,6 +2,7 @@ import type {
   CodexScheduledAutomation,
   CodexScheduledAutomationExecutionEnvironment,
   CodexScheduledAutomationKind,
+  CodexScheduledAutomationLaunch,
   AgentModelOption,
   CodexScheduledAutomationCreateInput,
   CodexScheduledAutomationReasoningEffort,
@@ -29,6 +30,8 @@ export interface WorkbenchAutomationDraft {
   projectId: string | null;
   targetSessionId: string;
   notificationPolicy?: CodexScheduledAutomationCreateInput["notificationPolicy"];
+  /** Whether a due run starts on its own or waits in the Inbox first. */
+  launch: CodexScheduledAutomationLaunch;
   expectedRevision?: number;
   name: string;
   prompt: string;
@@ -124,6 +127,7 @@ export function createWorkbenchAutomationDraft(
     projectId: automation?.projectId ?? null,
     targetSessionId: automation?.targetSessionId ?? "",
     notificationPolicy: automation?.notificationPolicy,
+    launch: automation?.launch ?? "automatic",
     name: automation?.name ?? "",
     prompt: automation?.prompt ?? "",
     rrule: automation?.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
@@ -156,6 +160,7 @@ export function createWorkbenchAutomationDraftFromCreateInput(
     projectId: kind === "cron" ? (input.projectId ?? null) : null,
     targetSessionId: kind === "heartbeat" ? (input.targetSessionId ?? "") : "",
     notificationPolicy: input.notificationPolicy,
+    launch: input.launch ?? "automatic",
     name: input.name ?? "",
     prompt: input.prompt ?? "",
     rrule: input.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
@@ -190,6 +195,7 @@ export function createWorkbenchAutomationDraftFromUpdateInput(input: {
     backendBinding: update.backendBinding ?? base.backendBinding,
     expectedRevision: update.expectedRevision,
     notificationPolicy: update.notificationPolicy,
+    launch: update.launch ?? base.launch,
     kind,
     status: normalizeStatus(update.status ?? base.status),
     projectId:
@@ -415,6 +421,7 @@ function buildCodexScheduledAutomationDraftPayload(
     ...(draft.notificationPolicy !== undefined
       ? { notificationPolicy: draft.notificationPolicy }
       : {}),
+    launch: draft.launch,
     name,
     prompt,
     rrule,
@@ -444,6 +451,7 @@ export function buildCodexScheduledAutomationCreateInput(input: {
     ...(payload.notificationPolicy !== undefined
       ? { notificationPolicy: payload.notificationPolicy }
       : {}),
+    launch: payload.launch,
     name: payload.name,
     prompt: payload.prompt,
     rrule: payload.rrule,
@@ -490,6 +498,7 @@ export function isWorkbenchAutomationDraftDirty(input: {
       existing.targetSessionId ||
     (draft.notificationPolicy !== undefined &&
       draft.notificationPolicy !== existing.notificationPolicy) ||
+    draft.launch !== existing.launch ||
     normalizeOptionalText(draft.name) !== existing.name ||
     normalizeOptionalText(draft.prompt) !== existing.prompt ||
     normalizeOptionalText(draft.rrule) !== existing.rrule ||
@@ -521,6 +530,7 @@ export function hasWorkbenchAutomationCreateDraftChanges(
       normalizeStatus(draft.status) !== normalizeStatus(initialDraft.status) ||
       normalizeOptionalText(draft.targetSessionId) !==
         normalizeOptionalText(initialDraft.targetSessionId) ||
+      draft.launch !== initialDraft.launch ||
       normalizeOptionalText(draft.name) !== normalizeOptionalText(initialDraft.name) ||
       normalizeOptionalText(draft.prompt) !== normalizeOptionalText(initialDraft.prompt) ||
       normalizeOptionalText(draft.rrule) !== normalizeOptionalText(initialDraft.rrule) ||
@@ -543,6 +553,7 @@ export function hasWorkbenchAutomationCreateDraftChanges(
     draft.projectId !== null ||
     normalizeStatus(draft.status) !== "ACTIVE" ||
     normalizeOptionalText(draft.targetSessionId) !== null ||
+    draft.launch !== "automatic" ||
     normalizeOptionalText(draft.name) !== null ||
     normalizeOptionalText(draft.prompt) !== null ||
     normalizeOptionalText(draft.rrule) !== DEFAULT_WORKBENCH_AUTOMATION_RRULE ||

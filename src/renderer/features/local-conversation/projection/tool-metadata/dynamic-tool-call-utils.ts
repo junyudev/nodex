@@ -411,6 +411,12 @@ function buildAutomationUpdateCreateInput(
   const prompt = normalizeOptionalString(args.prompt);
   const rrule = normalizeOptionalString(args.rrule);
   if (!kind || !name || !prompt || !rrule) return null;
+  // A proposal may ask to run automatically; only the user's apply grants it.
+  const launch: CodexScheduledAutomationCreateInput["launch"] =
+    args.launch === "ask" || args.launch === "automatic" ? args.launch : undefined;
+  const plan = {
+    ...(launch ? { launch } : {}),
+  };
 
   if (kind === "heartbeat") {
     const targetSessionId = normalizeOptionalString(args.targetSessionId);
@@ -423,6 +429,7 @@ function buildAutomationUpdateCreateInput(
       rrule,
       model: null,
       reasoningEffort: null,
+      ...plan,
     };
   }
 
@@ -443,6 +450,7 @@ function buildAutomationUpdateCreateInput(
     localEnvironmentConfigPath: localEnvironmentConfigPath ?? null,
     model,
     reasoningEffort,
+    ...plan,
   };
 }
 

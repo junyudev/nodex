@@ -29,6 +29,10 @@ export interface ScheduledTaskRowModel {
   readonly isPaused: boolean;
   readonly isRunning: boolean;
   readonly hasUnreadRuns: boolean;
+  /** Each due run waits in the Inbox for the user before it starts. */
+  readonly asksFirst: boolean;
+  /** A due run is waiting in the Inbox now. */
+  readonly waitingInInbox: boolean;
   /** Cron tasks with runs open as a folder of their runs; Heartbeats open their chat. */
   readonly canExpand: boolean;
   /** Visible runs, newest first. */
@@ -72,6 +76,7 @@ export function formatScheduledTaskSubtitle(
   now: Date,
 ): string {
   const scheduleLabel = formatScheduledTaskScheduleLabel(automation);
+  if (automation.heldFiring) return `Waiting in Inbox · ${scheduleLabel}`;
   if (automation.status === "PAUSED") return `Paused · ${scheduleLabel}`;
   if (automation.nextRunAt === null || !Number.isFinite(automation.nextRunAt)) return scheduleLabel;
   return `${formatScheduledTaskNextRunDate(automation.nextRunAt, now)} · ${scheduleLabel}`;
@@ -79,8 +84,9 @@ export function formatScheduledTaskSubtitle(
 
 /** What the Scheduled page answers after a task's instructions. */
 export function formatScheduledTaskConfirmation(
-  automation: Pick<CodexScheduledAutomation, "status" | "nextRunAt">,
+  automation: Pick<CodexScheduledAutomation, "status" | "nextRunAt" | "launch" | "heldFiring">,
 ): string {
+  if (automation.heldFiring) return "A run of this task is waiting for you in the Inbox.";
   if (automation.status !== "ACTIVE" || automation.nextRunAt === null) {
     return "Your task is saved. You can review its schedule and settings in task details.";
   }
@@ -91,7 +97,9 @@ export function formatScheduledTaskConfirmation(
     minute: "2-digit",
     timeZoneName: "short",
   }).format(new Date(automation.nextRunAt));
-  return `Your task is scheduled. Its next run is ${nextRun}.`;
+  return automation.launch === "ask"
+    ? `Your task is scheduled. Its next run is ${nextRun}, and it will wait for you in the Inbox.`
+    : `Your task is scheduled. Its next run is ${nextRun}.`;
 }
 
 /** A reply names the task it is about, so the Agent can read or update that task. */
@@ -192,7 +200,10 @@ export function buildScheduledTaskRows({
         isPaused: automation.status === "PAUSED",
         isRunning: runs.some((run) => run.isRunning),
         hasUnreadRuns: unreadAutomationIds.has(automation.id),
-        canExpand: automation.kind === "cron" && runs.length > 0,
+        asksFirst: automation.launch === "ask",
+        waitingInInbox: automation.heldFiring !== null,
+        canExpand:
+          automation.kind === "cron" && (runs.length > 0 || automation.heldFiring !== null),
         runs,
       };
     });

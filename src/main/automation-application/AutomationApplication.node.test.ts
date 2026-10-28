@@ -20,6 +20,7 @@ const definition = (
   overrides: Partial<CoreAutomationDefinition> = {},
 ): CoreAutomationDefinition => ({
   automation_id: "daily-report",
+  launch: "automatic",
   definition_revision: 1,
   kind: "heartbeat",
   status: "ACTIVE",
@@ -205,6 +206,122 @@ const agentProvenance = {
   },
 } as const;
 
+it.effect(
+  "projects held firings and admissions, refreshes after an Agent edit, and passes Run dispatch identity",
+  () =>
+    Effect.gen(function* () {
+      const intents: AutomationApplyInput["intent"][] = [];
+      const refreshes: unknown[] = [];
+      const task = definition({
+        launch: "ask",
+        held_firing: {
+          dispatch_id: "dispatch",
+          page_id: "inbox-page",
+          inbox_project_id: null,
+          first_scheduled_for_ms: 100,
+          last_scheduled_for_ms: 200,
+          missed_count: 1,
+        },
+      });
+      const application = yield* make.pipe(
+        Effect.provideService(
+          CoreModules,
+          coreModules(
+            {
+              read: () => Effect.succeed(readSnapshot({ kind: "definition", item: task })),
+              apply: ({ intent }) => {
+                intents.push(intent);
+                return Effect.succeed(
+                  committed({
+                    definitions: [task],
+                    ...(intent.kind === "claim_due"
+                      ? {
+                          claimed_leases: [
+                            {
+                              lease_id: "physical",
+                              automation_id: task.automation_id,
+                              definition_revision: 1,
+                              dispatch_id: "dispatch",
+                              scheduled_for_ms: 100,
+                              claimed_at_ms: 200,
+                              expires_at_ms: 300,
+                              attempt: 1,
+                              status: "claimed",
+                              purpose: "run",
+                              admission: {
+                                page_id: "inbox-page",
+                                prompt: "Reviewed prompt",
+                                admitted_at_ms: 150,
+                                agent: {
+                                  instance_id: "codex",
+                                  model: "reviewed",
+                                  reasoning_effort: "high",
+                                },
+                              },
+                            },
+                          ],
+                        }
+                      : {}),
+                    ...(intent.kind === "begin_run" ? { runs: [run()] } : {}),
+                  }),
+                );
+              },
+            },
+            {
+              read: () => Effect.die("unused"),
+              apply: (input) =>
+                Effect.gen(function* () {
+                  refreshes.push({ intent: input.intent, provenance: yield* CoreApplicationAgent });
+                  return yield* Effect.fail(lostCommandResponse);
+                }),
+            },
+          ),
+        ),
+        Effect.provideService(AutomationRoutingIndex, routingIndex()),
+      );
+      const [claim] = yield* application.definitions.claimDue("token", 1, 100);
+      assert.equal(claim?.purpose, "run");
+      assert.deepEqual(claim?.admission, {
+        pageId: "inbox-page",
+        prompt: "Reviewed prompt",
+        admittedAt: 150,
+        agent: {
+          instanceId: "codex",
+          model: "reviewed",
+          reasoningEffort: "high",
+          serviceTier: null,
+        },
+      });
+      assert.equal(claim?.definition.heldFiring?.missedCount, 1);
+      const updated = yield* application.definitions
+        .update(
+          {
+            id: task.automation_id,
+            kind: "heartbeat",
+            status: "ACTIVE",
+            name: "Updated",
+            targetSessionId: "session:source",
+            launch: "ask",
+          },
+          { expectedRevision: 1, operationId: "stable-edit" },
+        )
+        .pipe(Effect.provideService(CoreApplicationAgent, agentProvenance));
+      assert.equal(updated?.launch, "ask");
+      assert.deepEqual(refreshes, [
+        { intent: { kind: "refresh_scheduled_firing", dispatch_id: "dispatch" }, provenance: null },
+      ]);
+      yield* application.runs.begin({
+        runId: "run:one",
+        automationId: task.automation_id,
+        dispatchId: "dispatch",
+      });
+      assert.deepInclude(
+        intents.find((intent) => intent.kind === "begin_run"),
+        { dispatch_id: "dispatch" },
+      );
+    }),
+);
+
 it.effect("returns duplicate creation receipts without restoring stale Heartbeat routing", () =>
   Effect.gen(function* () {
     let creation: AutomationApplyResult | undefined;
@@ -371,6 +488,7 @@ it.effect("replays complete Definition replacements with the original revision a
             project_id: null,
             target_session_id: null,
             notification_policy: { kind: "preserve" },
+            launch: null,
             name: "Replacement",
             prompt: null,
             rrule: null,

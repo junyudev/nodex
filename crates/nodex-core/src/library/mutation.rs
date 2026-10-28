@@ -2752,6 +2752,18 @@ pub(super) fn seal_mutation_with(
             },
         ));
     }
+    let lifecycle_pages = effects
+        .affected_page_ids
+        .iter()
+        .chain(&effects.affected_block_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    crate::automation::firing::record_page_lifecycle_changes(
+        scope,
+        context,
+        operation_id,
+        &lifecycle_pages,
+    )?;
     let (committed, event_sequence) = build_mutation_result(
         scope.connection(),
         context,

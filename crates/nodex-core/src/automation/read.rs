@@ -1,8 +1,9 @@
 use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::automation::{
     AutomationDefinition, AutomationDefinitionKind, AutomationDefinitionStatus,
-    AutomationDueWorkLane, AutomationExecutionEnvironment, AutomationLease, AutomationLeaseStatus,
-    AutomationNotificationPolicy, AutomationRead, AutomationReadValue,
+    AutomationDueWorkLane, AutomationExecutionEnvironment, AutomationLaunch, AutomationLease,
+    AutomationLeasePurpose, AutomationLeaseStatus, AutomationNotificationPolicy, AutomationRead,
+    AutomationReadValue,
 };
 use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
@@ -278,7 +279,7 @@ fn read_definition_window(
                 agent_backend_kind, agent_backend_definition_id, \
                 agent_backend_instance_config_id, execution_environment, \
                 local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                project_id \
+                project_id, launch \
          FROM codex_scheduled_automations \
          WHERE (?1 OR status <> 'DELETED') \
            AND (?2 IS NULL OR created_at > ?2 OR (created_at = ?2 AND automation_id > ?3)) \
@@ -306,7 +307,7 @@ fn read_definition_window(
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|_| corrupt("Scheduled Automation definition column types are invalid"))?
         .into_iter()
-        .map(validate_definition)
+        .map(|item| enrich_definition(connection, item))
         .collect::<Result<Vec<_>, _>>()?;
     let candidates = rows.into_iter().map(|item| WindowCandidate {
         coordinate: KeysetCoordinate {
@@ -345,14 +346,16 @@ pub(super) fn read_definition(
                     agent_backend_kind, agent_backend_definition_id, \
                     agent_backend_instance_config_id, execution_environment, \
                     local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                project_id \
+                project_id, launch \
              FROM codex_scheduled_automations WHERE automation_id = ?1",
             [automation_id],
             definition_from_row,
         )
         .optional()
         .map_err(|_| corrupt("Scheduled Automation definition column types are invalid"))?;
-    definition.map(validate_definition).transpose()
+    definition
+        .map(|item| enrich_definition(connection, item))
+        .transpose()
 }
 
 fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDefinition> {
@@ -378,6 +381,16 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDe
                 ));
             }
         },
+        launch: match row.get::<_, String>(23)?.as_str() {
+            "ask" => AutomationLaunch::Ask,
+            "automatic" => AutomationLaunch::Automatic,
+            _ => {
+                return Err(rusqlite_conversion(
+                    "Invalid scheduled launch choice".into(),
+                ));
+            }
+        },
+        held_firing: None,
         name: row.get(5)?,
         prompt: row.get(6)?,
         rrule: row.get(7)?,
@@ -398,6 +411,14 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDe
         created_at_ms: row.get(19)?,
         updated_at_ms: row.get(20)?,
     })
+}
+
+fn enrich_definition(
+    connection: &Connection,
+    mut item: AutomationDefinition,
+) -> Result<AutomationDefinition, StoreError> {
+    item.held_firing = super::firing::held(connection, &item.automation_id)?;
+    validate_definition(item)
 }
 
 fn validate_definition(
@@ -474,7 +495,7 @@ fn read_lease_window(
         .transpose()?;
     let mut statement = connection.prepare(
         "SELECT lease_id, automation_id, scheduled_for_ms, attempt, status, claimed_at_ms, \
-                expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision \
+                expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision, purpose \
          FROM core_automation_leases \
          WHERE (?1 IS NULL OR automation_id = ?1) AND (?2 OR status = 'claimed') \
            AND (?3 IS NULL OR scheduled_for_ms < ?3 \
@@ -498,7 +519,7 @@ fn read_lease_window(
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|_| corrupt("Automation lease column types are invalid"))?
         .into_iter()
-        .map(validate_lease)
+        .map(|item| enrich_lease(connection, item))
         .collect::<Result<Vec<_>, _>>()?;
     let candidates = rows.into_iter().map(|item| WindowCandidate {
         coordinate: KeysetCoordinate {
@@ -538,14 +559,14 @@ pub(super) fn read_lease(
     connection
         .query_row(
             "SELECT lease_id, automation_id, scheduled_for_ms, attempt, status, claimed_at_ms, \
-                    expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision \
+                    expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision, purpose \
              FROM core_automation_leases WHERE lease_id = ?1",
             [lease_id],
             lease_from_row,
         )
         .optional()
         .map_err(|_| corrupt("Automation lease column types are invalid"))?
-        .map(validate_lease)
+        .map(|item| enrich_lease(connection, item))
         .transpose()
 }
 
@@ -566,7 +587,27 @@ fn lease_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationLease> 
         settled_at_ms: row.get(7)?,
         retry_at_ms: row.get(8)?,
         reason_code: row.get(9)?,
+        purpose: match row.get::<_, String>(12)?.as_str() {
+            "hold" => AutomationLeasePurpose::Hold,
+            "run" => AutomationLeasePurpose::Run,
+            _ => {
+                return Err(rusqlite_conversion(
+                    "Invalid scheduled lease purpose".into(),
+                ));
+            }
+        },
+        admission: None,
     })
+}
+
+fn enrich_lease(
+    connection: &Connection,
+    mut lease: AutomationLease,
+) -> Result<AutomationLease, StoreError> {
+    if lease.purpose == AutomationLeasePurpose::Run {
+        lease.admission = super::firing::admission(connection, &lease.dispatch_id)?;
+    }
+    validate_lease(lease)
 }
 
 fn validate_lease(lease: AutomationLease) -> Result<AutomationLease, StoreError> {

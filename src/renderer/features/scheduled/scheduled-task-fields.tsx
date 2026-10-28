@@ -13,10 +13,15 @@ import {
   NodexDropdownSeparator,
   NodexDropdownTitle,
   NodexOptionPicker,
+  type NodexOptionPickerOption,
 } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useLocalEnvironmentOptions } from "@/lib/use-local-environment-queries";
-import type { Project, WorktreeEnvironmentOption } from "@/lib/types";
+import type {
+  CodexScheduledAutomationLaunch,
+  Project,
+  WorktreeEnvironmentOption,
+} from "@/lib/types";
 import {
   buildWorkbenchAutomationScheduleRrule,
   formatWorkbenchAutomationScheduleModeLabel,
@@ -87,7 +92,7 @@ function ScheduledPickerField({
 }: {
   label: string;
   value: string;
-  options: readonly { value: string; label: string }[];
+  options: readonly NodexOptionPickerOption[];
   disabled: boolean;
   searchable?: boolean;
   display?: ReactNode;
@@ -268,6 +273,33 @@ export function ScheduledScheduleFields({
         </div>
       ) : null}
     </>
+  );
+}
+
+const LAUNCH_CHOICES = [
+  { value: "automatic", label: "Run automatically", subText: "Starts on schedule" },
+  { value: "ask", label: "Ask in Inbox", subText: "Waits in the Inbox until you run it" },
+] as const satisfies readonly NodexOptionPickerOption[];
+
+/** What happens when the task falls due: it runs, or it waits in the Inbox for you. */
+export function ScheduledLaunchField({
+  launch,
+  disabled,
+  onLaunchChange,
+}: {
+  launch: CodexScheduledAutomationLaunch;
+  disabled: boolean;
+  onLaunchChange: (launch: CodexScheduledAutomationLaunch) => void;
+}) {
+  return (
+    <ScheduledPickerField
+      label="When due"
+      value={launch}
+      disabled={disabled}
+      options={LAUNCH_CHOICES}
+      display={launch === "ask" ? "Ask in Inbox" : "Run automatically"}
+      onValueChange={(value) => onLaunchChange(value === "ask" ? "ask" : "automatic")}
+    />
   );
 }
 

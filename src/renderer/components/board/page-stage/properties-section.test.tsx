@@ -19,6 +19,8 @@ const api = vi.hoisted(() => ({
   readFileBytes: vi.fn(),
   saveFile: vi.fn(),
   readLibraryModule: vi.fn(),
+  subscribeCodexScheduledAutomationChanges: vi.fn(() => () => undefined),
+  subscribeCodexAutomationRunsUpdates: vi.fn(() => () => undefined),
 }));
 const modal = vi.hoisted(() => ({ openModal: vi.fn() }));
 

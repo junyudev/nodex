@@ -78,6 +78,9 @@ import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
 import { renderInboxOrchestration } from "./inbox-orchestration";
 import { createOperationId } from "../core-runtime/operation-identity";
+import { scheduledFiringCapture, scheduledFiringTitle } from "./scheduled-firing";
+import type { AutomationDefinitionClaim } from "../automation-application/AutomationApplication";
+import type { CodexScheduledAutomationHeldFiring } from "../../shared/types";
 
 export class InboxApplicationError extends Schema.TaggedError<InboxApplicationError>()(
   "InboxApplicationError",
@@ -122,6 +125,10 @@ export type InboxDispatchFence = Pick<
 export class InboxApplication extends Context.Service<
   InboxApplication,
   {
+    readonly holdScheduledFiring: (claim: AutomationDefinitionClaim) => InboxEffect<void>;
+    readonly confirmScheduledFiring: (
+      firing: CodexScheduledAutomationHeldFiring,
+    ) => InboxEffect<void>;
     readonly chatTargets: (input: InboxChatTargetsInput) => InboxEffect<InboxChatTargets>;
     readonly summary: (input: InboxSummaryInput) => InboxEffect<InboxSummary>;
     /** Messages waiting in the Library Inbox and in each Project's Inbox. */
@@ -373,6 +380,10 @@ export const make = Effect.gen(function* () {
       return yield* fail("prepare-confirmation")(
         new Error("Review this suggestion before deciding"),
       );
+    if (action.type === "run_task" && action.agent)
+      yield* resolveInboxModel(runtime, action.agent).pipe(
+        Effect.mapError(fail("prepare-confirmation")),
+      );
     // A new chat runs on the Agent its decision chose, or else the Inbox's own. Its delegation
     // instructions are written now, against the catalog that resolved it, and frozen with it.
     const modelSelection =
@@ -418,6 +429,14 @@ export const make = Effect.gen(function* () {
 
   const confirm = Effect.fn("InboxApplication.confirm")(function* (input: InboxConfirmInput) {
     const parsed = yield* parse("confirm", () => InboxConfirmInputSchema.parse(input));
+    const context = yield* dispatchContext(parsed.basis.map((basis) => basis.pageId));
+    const proposal = context.open_proposals.find(
+      (proposal) => proposal.proposal_id === parsed.proposalId,
+    );
+    const action =
+      parsed.action ?? (proposal ? inboxDispatchActionFromCore(proposal.action) : null);
+    if (action?.type === "run_task" && action.agent)
+      yield* resolveInboxModel(runtime, action.agent).pipe(Effect.mapError(fail("confirm")));
     return yield* decision(
       "confirm",
       {
@@ -436,6 +455,10 @@ export const make = Effect.gen(function* () {
 
   const dispatch = Effect.fn("InboxApplication.dispatch")(function* (input: InboxDispatchInput) {
     const parsed = yield* parse("dispatch", () => InboxDispatchInputSchema.parse(input));
+    if (parsed.action.type === "run_task" && parsed.action.agent)
+      yield* resolveInboxModel(runtime, parsed.action.agent).pipe(
+        Effect.mapError(fail("dispatch")),
+      );
     return yield* decision(
       "dispatch",
       {
@@ -561,6 +584,7 @@ export const make = Effect.gen(function* () {
           () => expectVariant(snapshot, "inbox_pending_suggestions").entries,
         ),
       ),
+      Effect.map((entries) => entries.filter((entry) => entry.source.kind !== "scheduled_task")),
     );
 
   const dispatchContext = (pageIds: readonly string[]) =>
@@ -642,6 +666,63 @@ export const make = Effect.gen(function* () {
       message,
     }).pipe(Effect.asVoid);
 
+  const holdScheduledFiring = Effect.fn("InboxApplication.holdScheduledFiring")(function* (
+    claim: AutomationDefinitionClaim,
+  ) {
+    const capture = scheduledFiringCapture(claim.dispatchId);
+    yield* apply(
+      "hold-scheduled-firing",
+      {
+        kind: "hold_scheduled_firing",
+        lease_id: claim.leaseId,
+        page_id: capture.pageId,
+        document_id: capture.documentId,
+        title: scheduledFiringTitle(claim.definition.name, claim.scheduledFor),
+      },
+      capture.operationId,
+    );
+  });
+
+  const confirmScheduledFiring = Effect.fn("InboxApplication.confirmScheduledFiring")(function* (
+    firing: CodexScheduledAutomationHeldFiring,
+  ) {
+    const scope = firing.inboxProjectId
+      ? { kind: "project" as const, projectId: firing.inboxProjectId }
+      : { kind: "library" as const };
+    let after: string | null = null;
+    do {
+      const snapshot: InboxWindow = yield* window({ scope, filter: "inbox", first: 200, after });
+      const item = snapshot.items.find((item) => item.pageId === firing.pageId);
+      const proposal = item?.proposal;
+      if (
+        item &&
+        proposal?.origin === "schedule" &&
+        proposal.action.type === "run_task" &&
+        proposal.action.dispatchId === firing.dispatchId
+      ) {
+        if (proposal.state === "failed" && item.firing?.status === "failed") {
+          return yield* retryDispatch({ proposalId: proposal.proposalId }).pipe(Effect.asVoid);
+        }
+        if (proposal.state !== "open") break;
+        const prepared = yield* prepareConfirmation({
+          kind: "proposal",
+          storeEpoch: snapshot.storeEpoch,
+          proposalId: proposal.proposalId,
+          expectedRevision: proposal.revision,
+          basis: [item.basis],
+        });
+        if (prepared.kind === "proposal") {
+          const { kind: _kind, ...input } = prepared;
+          return yield* confirm(input).pipe(Effect.asVoid);
+        }
+      }
+      after = snapshot.nextCursor;
+    } while (after !== null);
+    return yield* fail("confirm-scheduled-firing")(
+      new Error("This scheduled task's waiting run changed. Review it in the Inbox."),
+    );
+  });
+
   const outbox = (limit: number) =>
     read("outbox", { kind: "inbox_dispatch_outbox", limit }).pipe(
       Effect.flatMap((snapshot) =>
@@ -677,6 +758,8 @@ export const make = Effect.gen(function* () {
     }).pipe(Effect.asVoid);
 
   return InboxApplication.of({
+    holdScheduledFiring,
+    confirmScheduledFiring,
     summary,
     chatTargets,
     counts,

@@ -41,6 +41,52 @@ updates replace the complete definition, so omitted optional fields reset to the
 defaults. Every retry revalidates its captured execution identity before returning its
 original committed result.
 
+## Tasks that ask before running
+
+A scheduled task is the only thing that starts Agent work on a schedule. When it
+falls due, its launch decides what happens: `Run automatically` runs it, and
+`Ask in Inbox` places that run in the Inbox for the user. A Page's recurrence and
+reminders never start Agent work.
+
+Only the user grants unattended execution. Tasks the desktop app creates default
+to `Run automatically`, and tasks an Agent creates default to `Ask in Inbox`. An
+Agent may switch a task to `Ask in Inbox` directly. Creating a task that runs
+automatically, or switching a task to it, needs a suggested change the user
+applies. Editing a task that already runs automatically keeps that choice, and an
+update that omits the launch keeps the current one.
+
+A run that waits is an ordinary Inbox message. A Cron task's run goes to its
+Project's Inbox, and appears on that Project's Board in Triage. A projectless
+task's run goes to the Library Inbox. A Heartbeat's run goes to its chat's
+Project, or to the Library Inbox for a projectless chat. The message is titled
+`<task> · <date>`, its body is the task's instructions, and it carries a
+`Run task` decision written from the task itself. Scheduled messages do not take
+suggestions. While a run waits, later due times fold into it, so a task never
+has more than one run waiting, including a failed run awaiting Retry. The
+message records how many times the task has fallen due, and the task's next run
+keeps advancing.
+
+The message is that run's instructions: editing it changes this run only. Before
+running, the user may choose another Agent or model for this run. A Heartbeat
+keeps its chat's Agent. Running freezes the reviewed text and choice and moves
+the Page from Triage to Build. The run then starts through the same schedule,
+workspace preparation and run record as an automatic run, and its chat links to
+the message Page. Images in the message stay on its Page. Running, retrying, or
+finishing a waiting run never moves the task's schedule. A run that fails before
+reaching a chat returns its message to the Inbox with the reason, and `Retry`
+runs the same reviewed instructions again.
+
+Skipping a waiting run (`Mark done`) records it as Skipped. `Return to Inbox`
+makes it wait again only while its task exists and has no other run waiting.
+Handing a waiting message to a chat, filing it, deleting it, or archiving its Page
+withdraws the run, and the next due time creates a fresh message. Marking done a
+run that has already started only closes its Inbox work; the run continues.
+Deleting the task withdraws its waiting and confirmed-but-unstarted runs. Their
+messages stay readable and say the task is gone. `Run now` on a task with a
+waiting run runs that waiting run with its current message. While the user has
+not edited a waiting message, editing the task's instructions rewrites the
+message to match. Once the user has edited it, the message keeps their text.
+
 ## Entry points and route state
 
 The rail's `Scheduled` entry, command palette `Manage automations`, and Thread
@@ -51,8 +97,8 @@ user leaves. Scheduled lists only tasks owned by the current Profile.
 Route state is canonical URL state:
 
 - `automationId` selects a task;
-- `automationMode=create` opens the create dialog, seeded by `templateId` when
-  present; `automationMode=edit` opens the edit dialog for the selected task;
+- `automationMode=create` opens the create dialog, seeded by `templateId`;
+  `automationMode=edit` opens the edit dialog for the selected task;
 - `runSessionId` presents a run's or Heartbeat's chat in place.
 
 A selected task that no longer exists returns to the landing page. A selected
@@ -69,13 +115,18 @@ and returns focus to the toggle.
 `Upcoming` lists active tasks by next run, then paused tasks, then by name. Its
 `Filter tasks` menu shows or hides Active and Paused tasks. Each row shows the
 task name over its next run date and schedule (`Oct 19 · Mondays at 9:00 AM`), or
-`Paused · {schedule}`. A spinner marks a running task and a dot marks unread runs.
+`Paused · {schedule}`. A task that asks first carries an Inbox glyph after its
+schedule; while one of its runs waits, the row reads `Waiting in Inbox · {schedule}`
+and shows an attention dot. A spinner marks a running task and a dot marks unread
+runs.
 Hovering or focusing a row reveals `More task actions`: Pause or Resume, Run now,
 Edit, and Delete, which asks for confirmation. Pause and Resume update the list
 optimistically and roll back with an error toast when the save fails.
 
-A cron task with runs is a folder. Selecting it opens its conversation and its
-newest unarchived runs; selecting it again folds the runs. A run row is titled by
+A cron task with runs, or with a run waiting, is a folder. Selecting it opens its
+conversation and its newest unarchived runs; selecting it again folds the runs. A
+waiting run leads the folder as `Waiting in Inbox`, which opens the Inbox holding
+it. A run row is titled by
 its summary, `Running now`, or `Run completed`; opening it marks it read and
 presents its chat in place. Runs can be archived from their row. Heartbeats never
 fold; selecting one opens its chat.
@@ -90,9 +141,11 @@ template catalog. Choosing one opens the create dialog seeded with its name,
 instructions, and schedule; `Show more` reveals the whole catalog.
 
 A selected cron task reads as the conversation that set it up: its instructions
-as the user's message, then `Your task is scheduled. Its next run is …` (or a
-pointer to task details when no next run is known), then a card with the task's
-name and schedule that opens the edit dialog. `Reply about this task…` starts a
+as the user's message, then `Your task is scheduled. Its next run is …`, which
+adds `and it will wait for you in the Inbox` for a task that asks first. A task
+with a run waiting says so instead, and one without a known next run points to
+its details. A card with the task's name and schedule, followed by
+`Asks in Inbox` when it applies, opens the edit dialog. `Reply about this task…` starts a
 chat about the task in its Project and presents it in place; the message names
 the task so the Agent can read or update it.
 
@@ -104,6 +157,8 @@ The dialog edits one draft:
 - instructions;
 - `Repeat` (Interval, Daily, Weekdays, Weekly, Custom) with `Every`, `On`, `Time`
   in the local time zone, or a custom rule;
+- `When due`, the last row of the schedule card: `Run automatically` or
+  `Ask in Inbox`;
 - `Advanced`: Notifications, `Start each run in new chat`, the Heartbeat's chat,
   Project, Workspace, Environment, the Agent, and for cron tasks its model and effort.
 
@@ -156,11 +211,14 @@ when creating or replacing a definition. Page-linked Sessions keep their existin
 links while their Heartbeat continues the selected instance.
 
 Each Cron run receives its task name, stable Automation ID, previous run time,
-and saved instructions in a new Session. Nodex does not provision an implicit
-cross-run memory file or require an Agent-specific home environment variable.
+and its instructions in a new Session: the saved ones, or for a run that waited in
+the Inbox, the reviewed message. Nodex does not provision an implicit cross-run
+memory file or require an Agent-specific home environment variable.
 Persistent notes must be explicitly requested in the task's instructions at a
 location accessible to its selected Agent. Heartbeats continue the existing
-Session and its available conversation context.
+Session and its available conversation context. A Heartbeat run the user
+confirmed in the Inbox still waits for a busy chat, but not for the chat's window
+or its usual cadence.
 
 Scheduled turns do not wait for interactive approvals or questions. They are
 bounded within the due lease; failure, timeout and interruption cancel only their exact
@@ -213,7 +271,9 @@ result, removes its owned run rows atomically, and returns a selected task to th
 landing page.
 
 The `automation_update` tool may list/search definitions, read one, create,
-update, or delete directly, or return a suggested change for user review.
+update, or delete directly, or return a suggested change for user review. Direct
+changes cannot make a task run automatically: Core refuses them, and the tool
+tells the Agent to suggest the change instead.
 Suggested cards open the same editor in the Chat's side panel and remain unsaved
 until the user explicitly selects Create or Apply changes. Native MCP proposals retain the resolved Session
 target, notification-policy presence, and observed definition revision through review,

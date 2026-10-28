@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import type {
   CodexAutomationRunsUpdatedEvent,
+  CodexScheduledAutomationCreateInput,
   CodexScheduledAutomationUpdateInput,
   PageOccurrenceActionInput,
   PageOccurrenceCompleteInput,
@@ -27,12 +28,22 @@ export class AutomationIpcError extends Schema.TaggedError<AutomationIpcError>()
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
 
+const validateTaskOptions = (input: CodexScheduledAutomationCreateInput) =>
+  Effect.try({
+    try: () => {
+      if (input.launch !== undefined && input.launch !== "ask" && input.launch !== "automatic")
+        throw new Error("Choose whether this task asks first or runs automatically.");
+    },
+    catch: (cause) => new AutomationIpcError({ operation: "validate-task-options", cause }),
+  });
+
 /** A reviewed proposal keeps its observed revision through preparation and the Core commit. */
 export const updateAutomationFromRenderer = Effect.fn("AutomationIpc.updateDefinition")(function* (
   input: CodexScheduledAutomationUpdateInput,
 ) {
   const automation = yield* AutomationApplication;
   const execution = yield* AutomationExecution;
+  yield* validateTaskOptions(input);
   const { expectedRevision, ...definition } = input;
   if (
     expectedRevision !== undefined &&
@@ -218,7 +229,8 @@ export const live: Layer.Layer<
       automation.definitions.list().pipe(Effect.map((items) => ({ items: [...items] }))),
     );
     yield* handlePlainCommand("codex:scheduled-automations:create", (_, input) =>
-      execution.prepareDefinition(input).pipe(
+      validateTaskOptions(input).pipe(
+        Effect.andThen(execution.prepareDefinition(input)),
         Effect.flatMap(automation.definitions.create),
         Effect.tap((item) => broadcastDefinitionChanged(item.id, item.targetSessionId, "upsert")),
         Effect.map((item) => ({ item })),

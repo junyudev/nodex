@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import { subscribeToBackendLogs, type BackendLogEntry } from "../logging/logger";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -20,6 +21,7 @@ import {
   AutomationExecution,
   AutomationExecutionError,
 } from "../automation-application/AutomationExecution";
+import { InboxApplication, InboxApplicationError } from "../inbox-application/InboxApplication";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreAuthority, type CoreAuthorityState } from "../core-runtime/CoreAuthority";
@@ -76,6 +78,8 @@ const automationDefinition = (
   projectId: null,
   targetSessionId: kind === "heartbeat" ? "session-follow-up" : null,
   notificationPolicy: null,
+  launch: "automatic",
+  heldFiring: null,
   kind,
   status: "ACTIVE",
   name: id,
@@ -97,6 +101,8 @@ const automationDefinition = (
 const automationClaim = (id: string) => ({
   leaseId: `lease:${id}`,
   dispatchId: `dispatch:${id}`,
+  purpose: "run" as const,
+  admission: null,
   definitionRevision: 1,
   scheduledFor: 100,
   attempt: 1,
@@ -224,6 +230,7 @@ const waitUntil = (label: string, predicate: () => boolean): Effect.Effect<void>
 
 const buildHarness = (input: {
   readonly automation?: AutomationApplication["Service"];
+  readonly holdScheduledFiring?: InboxApplication["Service"]["holdScheduledFiring"];
   readonly administration?: StoreAdministration["Service"];
   readonly executeScheduled?: (
     automation: CodexScheduledAutomation,
@@ -320,6 +327,9 @@ const buildHarness = (input: {
           Layer.mergeAll(
             automationLayer,
             executionLayer,
+            Layer.succeed(InboxApplication, {
+              holdScheduledFiring: input.holdScheduledFiring ?? (() => Effect.void),
+            } as unknown as InboxApplication["Service"]),
             automationEventsLayer,
             Layer.succeed(CoreAuthority, authority),
           ),
@@ -602,6 +612,143 @@ it.effect("settles scheduled claims once and preserves explicit retry intent", (
     assert.strictEqual(settlementRuns, 1);
     yield* Scope.close(harness.scope, Exit.void);
   }),
+);
+
+it.effect("hold leases go to the Inbox and retry failed captures without starting execution", () =>
+  Effect.gen(function* () {
+    const held: string[] = [];
+    const failed: Array<{ leaseId: string; delay: number | null; reason: string }> = [];
+    let claimed = false;
+    const harness = yield* buildHarness({
+      automation: defaultAutomation({
+        definitions: {
+          claimDue: () =>
+            Effect.sync(() => {
+              if (claimed) return [];
+              claimed = true;
+              return ["hold", "retry"].map((id) => ({
+                ...automationClaim(id),
+                purpose: "hold" as const,
+              }));
+            }),
+          completeLease: () =>
+            Effect.die("Core settles successful hold leases with their messages"),
+          failLease: (leaseId, delay, reason) =>
+            Effect.sync(() => {
+              failed.push({ leaseId, delay, reason });
+            }),
+        },
+      }),
+      executeScheduled: () => Effect.die("A hold lease must not execute"),
+      holdScheduledFiring: (claim) =>
+        claim.definition.id === "retry"
+          ? Effect.fail(
+              new InboxApplicationError({
+                operation: "hold",
+                message: "Core is unavailable",
+                cause: null,
+              }),
+            )
+          : Effect.sync(() => {
+              held.push(claim.dispatchId);
+            }),
+    });
+    yield* harness.scheduled.activate;
+    yield* waitUntil("hold settlement", () => held.length + failed.length === 2);
+    assert.deepEqual(held, ["dispatch:hold"]);
+    assert.deepEqual(failed, [
+      { leaseId: "lease:retry", delay: 30_000, reason: "Core is unavailable" },
+    ]);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+it.effect("logs the actionable reason when a scheduled Inbox hold fails validation", () =>
+  Effect.gen(function* () {
+    const logs: BackendLogEntry[] = [];
+    const unsubscribe = subscribeToBackendLogs(
+      (entry) => {
+        if (entry.component === "scheduled-automation-runtime") logs.push(entry);
+      },
+      { level: "warn" },
+    );
+    yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+    let claimed = false;
+    const failures: string[] = [];
+    const harness = yield* buildHarness({
+      automation: defaultAutomation({
+        definitions: {
+          claimDue: () =>
+            Effect.sync(() => {
+              if (claimed) return [];
+              claimed = true;
+              return [{ ...automationClaim("validation"), purpose: "hold" as const }];
+            }),
+          failLease: (_leaseId, _delay, reason) =>
+            Effect.sync(() => {
+              failures.push(reason);
+            }),
+        },
+      }),
+      holdScheduledFiring: () =>
+        Effect.fail(
+          new InboxApplicationError({
+            operation: "hold",
+            message: "Inbox title must be at most 200 characters",
+            cause: null,
+          }),
+        ),
+    });
+    yield* harness.scheduled.activate;
+    yield* waitUntil("hold failure logged", () => logs.length > 0);
+    assert.equal(logs[0]?.reason, "Inbox title must be at most 200 characters");
+    assert.deepEqual(failures, ["Inbox title must be at most 200 characters"]);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+it.effect(
+  "admitted leases retain their reviewed prompt and settle with the actionable failure",
+  () =>
+    Effect.gen(function* () {
+      let claimed = false;
+      const failures: string[] = [];
+      const admission = {
+        pageId: "reviewed",
+        prompt: "Reviewed instructions",
+        admittedAt: 100,
+        agent: null,
+      };
+      const harness = yield* buildHarness({
+        automation: defaultAutomation({
+          definitions: {
+            claimDue: () =>
+              Effect.sync(() => {
+                if (claimed) return [];
+                claimed = true;
+                return [{ ...automationClaim("admitted"), admission }];
+              }),
+            failLease: (_leaseId, _delay, reason) =>
+              Effect.sync(() => {
+                failures.push(reason);
+              }),
+          },
+        }),
+        executeScheduled: (_definition, context) => {
+          assert.deepEqual(context.admission, admission);
+          return Effect.fail(
+            new AutomationExecutionError({
+              operation: "execute",
+              cause: new Error("The selected model is unavailable"),
+            }),
+          );
+        },
+      });
+      yield* harness.scheduled.activate;
+      yield* waitUntil("admitted failure", () => failures.length === 1);
+      assert.deepEqual(failures, ["The selected model is unavailable"]);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
 );
 
 it.effect("skips overlapping scheduled ticks while a claimed run is active", () =>

@@ -7,7 +7,8 @@ import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 export type InboxEntryKind = "note" | "todo" | "question";
 export type InboxEntryState = "open" | "kept" | "done";
 export type InboxSuggestionState = "pending" | "settled" | "failed";
-export type InboxProposalOrigin = "agent" | "user";
+/** `schedule` proposals are written by a scheduled task for its own firing. */
+export type InboxProposalOrigin = "agent" | "user" | "schedule";
 export type InboxProposalState =
   | "open"
   | "superseded"
@@ -58,7 +59,15 @@ export type InboxDispatchAction =
       readonly plan: string | null;
     }
   | { readonly type: "send_to_chat"; readonly sessionId: string; readonly prompt: string }
-  | { readonly type: "move_to_project"; readonly projectId: string };
+  | { readonly type: "move_to_project"; readonly projectId: string }
+  | {
+      /** Run a scheduled task's waiting firing; the message's reviewed text is its instructions. */
+      readonly type: "run_task";
+      readonly automationId: string;
+      readonly dispatchId: string;
+      /** What this run uses instead of the task's own Agent selection. */
+      readonly agent: InboxChatAgent | null;
+    };
 
 /** One part of a new chat's work that its Agent delegates to another Agent. */
 export interface InboxDelegate {
@@ -94,7 +103,37 @@ export type InboxSource =
       readonly kind: "command_line";
       readonly projectId: string | null;
       readonly label: string;
+    }
+  | {
+      /** A due firing of a scheduled task that asks before it runs. */
+      readonly kind: "scheduled_task";
+      readonly automationId: string;
+      readonly dispatchId: string;
+      readonly projectId: string | null;
+      /** The task's name when the firing arrived. */
+      readonly label: string;
     };
+
+export type InboxFiringStatus =
+  | "held"
+  | "admitted"
+  | "completed"
+  | "failed"
+  | "skipped"
+  | "withdrawn";
+
+/** The firing behind a scheduled task's message, as it stands now. */
+export interface InboxFiring {
+  readonly automationId: string;
+  readonly dispatchId: string;
+  readonly status: InboxFiringStatus;
+  readonly firstScheduledFor: number;
+  readonly lastScheduledFor: number;
+  /** Later firings that fell due while this one waited. */
+  readonly missedCount: number;
+  /** Why its execution failed before reaching a chat. */
+  readonly failureMessage: string | null;
+}
 
 export type InboxLocation =
   | { readonly kind: "inbox" }
@@ -165,6 +204,8 @@ export interface InboxItem {
   readonly scope: InboxScope;
   readonly location: InboxLocation;
   readonly proposal: InboxProposal | null;
+  /** Present for a scheduled task's firing. */
+  readonly firing: InboxFiring | null;
   readonly revision: number;
   readonly basis: InboxPageBasis;
 }
@@ -473,6 +514,7 @@ export function resolveInboxModel(
   const reasoningEffort =
     purpose === "suggestion" ? inboxSuggestionEffort(provider) : choice.reasoningEffort;
   const serviceTier = purpose === "suggestion" ? null : choice.serviceTier;
+  // An effort or speed the model does not offer falls back to the model's own.
   const options = applyAgentRuntimeOptionIntent(
     model.capabilities?.optionDescriptors ?? [],
     undefined,

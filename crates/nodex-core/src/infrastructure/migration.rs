@@ -375,6 +375,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 192,
         apply: migrate_v191_to_v192,
     },
+    MigrationStep {
+        from_revision: 192,
+        to_revision: 193,
+        apply: migrate_v192_to_v193,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2536,6 +2541,21 @@ fn migrate_v189_to_v190(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"session_search_usage":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v192_to_v193(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v192_to_v193.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"scheduled_inbox_firings":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -7416,6 +7436,34 @@ mod tests {
         );
     }
 
+    // These historical fixtures author the canonical Page closure through today's
+    // public writer, then remove its extra Inbox participants before validating the
+    // exact predecessor. Runtime writers never support an older physical schema.
+    fn prepare_historical_inbox_capture(connection: &mut Connection) -> Result<(), StoreError> {
+        let mut fresh = Connection::open_in_memory()?;
+        install_current_schema(&mut fresh)?;
+        let firing_schema: String = fresh.query_row(
+            "SELECT sql FROM sqlite_schema WHERE name='core_automation_firings'",
+            [],
+            |row| row.get(0),
+        )?;
+        connection.execute_batch(&firing_schema)?;
+        connection.execute_batch(
+            "ALTER TABLE inbox_entries ADD COLUMN source_automation_id TEXT;
+            ALTER TABLE inbox_entries ADD COLUMN source_dispatch_id TEXT;",
+        )?;
+        Ok(())
+    }
+
+    fn finish_historical_inbox_capture(connection: &Connection) -> Result<(), StoreError> {
+        connection.execute_batch(
+            "DROP TABLE core_automation_firings;
+            ALTER TABLE inbox_entries DROP COLUMN source_automation_id;
+            ALTER TABLE inbox_entries DROP COLUMN source_dispatch_id;",
+        )?;
+        Ok(())
+    }
+
     #[test]
     fn inbox_importance_migration_leaves_waiting_messages_unmarked() {
         use crate::infrastructure::store::SqliteStoreKernel;
@@ -7428,8 +7476,11 @@ mod tests {
 
         let profile = tempdir().expect("Profile");
         install_intermediate_fixture(profile.path(), 187);
-        // Current capture writes the same entry closure as v187, which has no importance.
         let predecessor = SqliteStoreKernel::open_test(profile.path()).expect("v187 runtime");
+        predecessor
+            .writer()
+            .call(prepare_historical_inbox_capture)
+            .unwrap();
         let (profile_id, library_id, epoch): (String, String, String) = predecessor
             .readers()
             .read_default(|connection| {
@@ -7470,6 +7521,7 @@ mod tests {
         predecessor
             .writer()
             .call(|connection| {
+                finish_historical_inbox_capture(connection)?;
                 super::derivation_tests::rewrite_as_predecessor(connection, 187);
                 Ok(())
             })
@@ -7600,8 +7652,6 @@ mod tests {
 
         let profile = tempdir().expect("Profile");
         install_intermediate_fixture(profile.path(), 184);
-        // Start the published predecessor without upgrading it. Current public operations
-        // produce the Page/Document and membership closure shared by v184 and v185.
         let predecessor = SqliteStoreKernel::open_test(profile.path()).expect("v184 runtime");
         // Current authoring operates on the successor's field names; restore the
         // exact historical physical schema before exercising migration admission.
@@ -7613,6 +7663,10 @@ mod tests {
                 )?;
                 Ok::<_, StoreError>(())
             })
+            .unwrap();
+        predecessor
+            .writer()
+            .call(prepare_historical_inbox_capture)
             .unwrap();
         let (profile_id, library_id, epoch): (String, String, String) = predecessor
             .readers()
@@ -7727,6 +7781,7 @@ mod tests {
                 )?;
                 Ok(())
             })?;
+            finish_historical_inbox_capture(connection)?;
             super::derivation_tests::rewrite_as_predecessor(connection, 184);
             connection.execute_batch("ALTER TABLE document_materializations RENAME COLUMN markdown TO nfm")?;
             validate_migration_source(connection, 184)
@@ -7842,6 +7897,117 @@ mod tests {
                     .get::<_, i64>(0))
                 .unwrap(),
             0
+        );
+    }
+
+    #[test]
+    fn waiting_firing_schema_enforces_one_waiting_message_and_tracks_page_lifecycle() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_current_schema(&mut connection).unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .unwrap();
+        super::super::legacy_visibility_migration::install_test_maintenance_context(&connection)
+            .unwrap();
+        connection.execute("INSERT INTO codex_scheduled_automations(automation_id,kind,status,name,created_at,updated_at) VALUES ('task','cron','ACTIVE','Report',1,1)",[]).unwrap();
+        for (index, status) in [(1, "failed"), (2, "held")] {
+            let page = format!("page:{index}");
+            let dispatch = format!("dispatch:{index}");
+            connection.execute("INSERT INTO blocks(id,library_id,type,lifecycle,created_at,updated_at) VALUES (?1,'library','page','active','2026-10-27T00:00:00Z','2026-10-27T00:00:00Z')",[&page]).unwrap();
+            connection.execute("INSERT INTO core_automation_firings(dispatch_id,automation_id,status,page_id,first_scheduled_for_ms,last_scheduled_for_ms,missed_count,hold_basis_json,created_at_ms,updated_at_ms) VALUES (?1,'task',?2,?3,?4,?4,2,'{}',?4,?4)",params![dispatch,status,page,index]).unwrap();
+        }
+        connection
+            .execute(
+                "UPDATE core_automation_firings SET waiting_in_inbox=1 WHERE dispatch_id='dispatch:1'",
+                [],
+            )
+            .unwrap();
+        let conflict = connection
+            .execute(
+                "UPDATE core_automation_firings SET waiting_in_inbox=1 WHERE dispatch_id='dispatch:2'",
+                [],
+            )
+            .unwrap_err();
+        assert_eq!(
+            conflict.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::ConstraintViolation)
+        );
+
+        // Leaving the Inbox releases the slot for the task's next waiting firing.
+        connection
+            .execute_batch(
+                "UPDATE core_automation_firings SET waiting_in_inbox=0 WHERE dispatch_id='dispatch:1';
+                 UPDATE core_automation_firings SET waiting_in_inbox=1,due_at_ms=3 WHERE dispatch_id='dispatch:2';
+                 UPDATE blocks SET lifecycle='archived' WHERE id='page:2';",
+            )
+            .unwrap();
+        let firing_state = |dispatch: &str| {
+            connection
+                .query_row(
+                    "SELECT status,waiting_in_inbox,due_at_ms FROM core_automation_firings WHERE dispatch_id=?1",
+                    [dispatch],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, Option<i64>>(2)?)),
+                )
+                .unwrap()
+        };
+        assert_eq!(firing_state("dispatch:2"), ("withdrawn".into(), 0, None));
+        connection
+            .execute_batch(
+                "UPDATE core_automation_firings SET waiting_in_inbox=1,due_at_ms=3 WHERE dispatch_id='dispatch:1';
+                 DELETE FROM blocks WHERE id='page:1';",
+            )
+            .unwrap();
+        assert_eq!(firing_state("dispatch:1"), ("withdrawn".into(), 0, None));
+    }
+
+    #[test]
+    fn scheduled_firing_migration_converges_from_v192_and_preserves_saved_tasks() {
+        let profile = tempdir().unwrap();
+        install_intermediate_fixture(profile.path(), 192);
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        connection.execute("INSERT INTO codex_scheduled_automations(automation_id,kind,status,name,created_at,updated_at) VALUES ('saved-task','cron','PAUSED','Saved task',1,1)",[]).unwrap();
+        validate_schema_identity(&connection, 192).unwrap();
+        let preparation = prepare_profile_store(&mut connection, profile.path()).unwrap();
+        assert_eq!(preparation.migrated_from_version, Some(192));
+        assert_eq!(preparation.schema_version, 193);
+        validate_schema_identity(&connection, 193).unwrap();
+        let history = connection
+            .prepare(
+                "SELECT source_revision,target_revision FROM core_store_migration_history \
+                 WHERE target_revision = 193",
+            )
+            .unwrap()
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(history, vec![(192, 193)]);
+        let mut fresh = Connection::open_in_memory().unwrap();
+        install_current_schema(&mut fresh).unwrap();
+        assert_eq!(
+            super::super::schema::read_schema_inventory(&connection).unwrap(),
+            super::super::schema::read_schema_inventory(&fresh).unwrap()
+        );
+        let launch: String = connection
+            .query_row(
+                "SELECT launch FROM codex_scheduled_automations WHERE automation_id='saved-task'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(launch, "automatic");
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM core_automation_firings", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            prepare_profile_store(&mut connection, profile.path())
+                .unwrap()
+                .migrated_from_version,
+            None
         );
     }
 
@@ -7983,7 +8149,7 @@ mod tests {
                 .unwrap(),
             4
         );
-        validate_schema_identity(&connection, 192).unwrap();
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).unwrap();
         let fresh = tempdir().unwrap();
         let mut fresh_connection = open_writer(&fresh.path().join("nodex.db")).unwrap();
         prepare_profile_store(&mut fresh_connection, fresh.path()).unwrap();

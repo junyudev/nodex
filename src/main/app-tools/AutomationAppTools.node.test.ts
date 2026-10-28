@@ -21,6 +21,7 @@ import { createHostedAppToolCaller, captureHostedAppToolAuthority } from "./AppT
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
+import { CoreModuleResponseError } from "../core-client/core-client";
 
 const authority: NodexAgentTurnContext = {
   threadId: "thread:a",
@@ -68,6 +69,8 @@ const cron = {
   serviceTier: "priority",
 };
 const item: CodexScheduledAutomation = {
+  launch: "automatic",
+  heldFiring: null,
   id: "automation:a",
   definitionRevision: 1,
   kind: "cron",
@@ -112,6 +115,52 @@ const setup = (
       capture: () => Effect.succeed({ ...authority }),
     } as never),
   );
+
+it.effect("an Agent refused automatic execution is directed to a user-reviewed suggestion", () =>
+  Effect.gen(function* () {
+    const execute = yield* setup({
+      create: () =>
+        Effect.fail(
+          new AutomationApplicationError({
+            operation: "create",
+            cause: new CoreModuleResponseError({
+              code: "unauthorized",
+              message: "Only the user may enable automatic runs.",
+              retryable: false,
+              recovery: { kind: "none" },
+            }),
+          }),
+        ),
+    });
+    const refused = yield* execute(input({ ...cron, mode: "create", launch: "automatic" }));
+    assert.isTrue(refused.isError);
+    assert.deepEqual(refused.structuredContent, {
+      error: {
+        code: "unauthorized",
+        details: {
+          operationId: createStableOperationId("app.automation_update", authority.admittedAtMs, [
+            "profile:a",
+            "thread:a",
+            "turn:a",
+            "call:a",
+          ]),
+        },
+      },
+    });
+    const text = refused.content[0];
+    assert.match(text?.type === "text" ? text.text : "", /Return a suggested_create change/);
+    const proposed = yield* execute(
+      input({ ...cron, mode: "suggested_create", launch: "automatic" }),
+    );
+    assert.isUndefined(proposed.isError);
+    assert.deepEqual(proposed.structuredContent?.proposal, {
+      ...cron,
+      mode: "suggested_create",
+      launch: "automatic",
+      backendBinding: { kind: "codex" },
+    });
+  }),
+);
 
 it.effect("reads definition windows with execution provenance and rejects forged authority", () =>
   Effect.gen(function* () {

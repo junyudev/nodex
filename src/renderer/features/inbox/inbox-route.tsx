@@ -61,6 +61,7 @@ import { useInboxCapture } from "./use-inbox-capture";
 import { useInboxImageAccess } from "./use-inbox-image-access";
 import { useInboxJump, useInboxMessagesInView } from "./use-inbox-important";
 import { useInboxActions } from "./use-inbox-actions";
+import { useCodexScheduledAutomations } from "@/lib/use-codex-scheduled-automations";
 import { useInboxDepartures } from "./use-inbox-departures";
 import { useInboxStream, useInboxSummary } from "./use-inbox";
 import { INBOX_STICK_TO_BOTTOM_PX } from "./inbox-viewport";
@@ -78,6 +79,8 @@ export interface InboxRouteProps {
   readonly projects: readonly Project[];
   readonly focusComposerToken?: number;
   readonly onOpenSession: (sessionId: string) => void;
+  /** Opens a scheduled task in Scheduled, from a run of it waiting here. */
+  readonly onOpenScheduledTask?: (automationId: string) => void;
   readonly onOpenPage: (pageId: string) => void;
   /** Shows a new chat's message Pages beside it, without leaving the Inbox. */
   readonly onShowPagesInChat: (input: ShowPagesInChatInput) => Promise<void>;
@@ -243,12 +246,15 @@ export function InboxRoute({
   projects,
   focusComposerToken,
   onOpenSession,
+  onOpenScheduledTask,
   onOpenPage,
   onShowPagesInChat,
   onOpenDatabase,
   onOpenSettings,
   visible = true,
 }: InboxRouteProps) {
+  // Keeps the scheduled tasks behind waiting runs current while the Inbox shows them.
+  useCodexScheduledAutomations();
   const scopeKey = inboxScopeKey(scope);
   const inboxProjectId = inboxScopeProjectId(scope);
   const projectName = inboxProjectId
@@ -462,6 +468,7 @@ export function InboxRoute({
         })}
         onOpenPage={onOpenPage}
         onOpenSession={onOpenSession}
+        onOpenScheduledTask={onOpenScheduledTask}
         onManualDraftChange={(draft) => setManualDraft(item.pageId, draft)}
       >
         {(triage) => (
@@ -471,6 +478,7 @@ export function InboxRoute({
             selectionActive={selected.size > 0}
             onToggleSelected={() => toggleSelected(item.pageId)}
             onOpenSource={onOpenSession}
+            onOpenScheduledTask={onOpenScheduledTask}
             onOpenPage={() => onOpenPage(item.pageId)}
             onUnmarkImportant={() => void actions.setImportant(item.pageId, false)}
             arrivalToken={jump.arrival.pageId === item.pageId ? jump.arrival.token : null}

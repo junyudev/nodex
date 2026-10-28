@@ -529,8 +529,8 @@ provisional excerpt that the suggestion Agent may replace with a name once.
 
 An Inbox entry is the Workspace-owned record beside a message Page. It holds:
 
-- the message's immutable source: the user, an Agent Turn's chat and Project, or
-  the command line with an optional Project;
+- the message's immutable source: the user, an Agent Turn's chat and Project,
+  the command line with an optional Project, or a Scheduled task's Firing;
 - a user-editable kind: note, todo, or question;
 - whether the user marked it important, which keeps it within reach while it
   waits;
@@ -552,13 +552,35 @@ a Project went, while the Project's own Properties apply to the Page.
 ### Dispatch proposal
 
 A Dispatch proposal is one typed action for one or more Inbox entries: keep,
-new chat, send to chat, or move to Project. A new chat may also name the Agent it
+new chat, send to chat, move to Project, or run a Scheduled task's held Firing. A new chat may also name the Agent it
 runs on, the parts of its work that Agent delegates to other Agents, and a plan. It is versioned and fenced by the
 message revisions it was computed from. A proposal is advice. Only the user's
 confirmation, or a user-written dispatch, makes it Dispatch work. Confirmed chat
-work stays in the `dispatching` state until the Desktop Host delivers it.
+work stays in the `dispatching` state until the Desktop Host delivers it. A
+Scheduled task writes the run proposal for its own Firing; the suggestion Agent
+never does.
 
 _Avoid_: task, job, routing rule.
+
+### Scheduled task
+
+A Scheduled task is a Profile-owned definition that starts Agent work on a
+schedule: a Cron task starts a new chat for each run, and a Heartbeat continues
+one chat. It is the only thing that starts Agent work on a schedule. A Page's
+recurrence and reminders schedule a person's work and never start an Agent.
+Its Launch is `Automatic`, which runs when due, or `Ask`, which holds each due
+Firing in the Inbox. Only the user grants `Automatic`.
+
+_Avoid_: automation (in product copy), job, routine.
+
+### Firing
+
+A Firing is one due occurrence of a Scheduled task, with a stable dispatch
+identity across lease retries. An `Ask` task's Firing is held as one Inbox
+message, and later due times fold into it while it waits. Confirming it admits
+the reviewed message text as that run's instructions. An admitted Firing runs
+through the task's ordinary lease. Skipping it, handing its message elsewhere,
+or deleting its task ends it.
 
 ### Conversation recency
 
@@ -782,6 +804,8 @@ state is rejected rather than replayed.
     itself. Agent and command-line Inbox workflow endpoints append entries; their
     backing Pages follow the same full-Profile content model. Core records each
     entry's actual execution source, and confirmed triage owns dispatch intent.
+29. Only the user grants a Scheduled task unattended execution. Agent commands may
+    create or move tasks toward `Ask`, never toward `Automatic`.
 
 ## Operation semantics
 
@@ -957,6 +981,9 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
 - `docs/adr/0072-inbox-page-peek-and-primary-inbox-database.md`: Inbox Pages
   open beside their Inbox, and each Inbox's primary Database is protected
   Library content listed in Space.
+- `docs/adr/0073-scheduled-runs-that-ask-in-the-inbox.md`: Scheduled tasks as
+  the only Agent scheduler, held Firings reviewed in the Inbox, user-granted
+  unattended execution.
 - `docs/adr/0043-database-scoped-page-keys.md`: Database-owned Page-key
   namespaces, Library-unique prefix history, monotonic allocation, UUID
   identity boundary, resolution, and presentation projection.

@@ -6,7 +6,7 @@ use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const AUTOMATION_CONTRACT_VERSION: u32 = 10;
+pub const AUTOMATION_CONTRACT_VERSION: u32 = 11;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -46,6 +46,17 @@ pub enum AutomationExecutionEnvironment {
     Worktree,
 }
 
+/// What happens when a task falls due: it runs, or its firing waits in the Inbox until the
+/// user confirms, adjusts, or skips it. Only the user grants `Automatic`; an Agent may create
+/// or move a task toward `Ask` but never escalate one to `Automatic`.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationLaunch {
+    #[default]
+    Automatic,
+    Ask,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AutomationNotificationPolicy {
@@ -69,6 +80,10 @@ pub struct AutomationDefinitionInput {
     pub target_session_id: Option<String>,
     #[serde(default)]
     pub notification_policy: AutomationNotificationPreference,
+    /// Absent preserves the current launch on update. A new task launches `Automatic` when the
+    /// Desktop Host creates it and `Ask` when an Agent does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch: Option<AutomationLaunch>,
     pub name: String,
     pub prompt: Option<String>,
     pub rrule: Option<String>,
@@ -92,6 +107,9 @@ pub struct AutomationDefinition {
     pub target_session_id: Option<String>,
     #[serde(default)]
     pub notification_policy: Option<AutomationNotificationPolicy>,
+    pub launch: AutomationLaunch,
+    /// The firing of an `Ask` task waiting in the Inbox, if any. At most one waits per task.
+    pub held_firing: Option<AutomationHeldFiring>,
     pub name: String,
     pub prompt: String,
     pub rrule: String,
@@ -106,6 +124,62 @@ pub struct AutomationDefinition {
     pub last_run_at_ms: Option<i64>,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
+}
+
+/// One firing of an `Ask` task while it waits in the Inbox. Firings that fall due while it
+/// waits fold into it instead of adding messages.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct AutomationHeldFiring {
+    pub dispatch_id: String,
+    /// The Inbox message that holds the firing.
+    pub page_id: String,
+    /// The Project whose Inbox holds the message; None for the Library Inbox.
+    pub inbox_project_id: Option<String>,
+    pub first_scheduled_for_ms: i64,
+    pub last_scheduled_for_ms: i64,
+    /// Later firings that fell due while this one waited.
+    pub missed_count: u32,
+}
+
+/// Lifecycle of a firing that went through the Inbox.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationFiringStatus {
+    /// Waiting in the Inbox for the user.
+    Held,
+    /// Confirmed; waiting for, or holding, its execution lease.
+    Admitted,
+    /// Its execution settled; its Runs carry the outcome.
+    Completed,
+    /// Its execution failed before any Run reached a chat.
+    Failed,
+    /// The user skipped it.
+    Skipped,
+    /// Its task or message is gone, so it can no longer run.
+    Withdrawn,
+}
+
+/// Why a lease was claimed.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationLeasePurpose {
+    /// Execute the firing.
+    #[default]
+    Run,
+    /// Place the firing of an `Ask` task in its Inbox; nothing runs until the user confirms.
+    Hold,
+}
+
+/// What the user confirmed for a firing that waited in the Inbox, frozen at confirmation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct AutomationFiringAdmission {
+    /// The Inbox message whose reviewed text became the run's instructions.
+    pub page_id: String,
+    /// The instructions for this run, frozen from the reviewed message.
+    pub prompt: String,
+    /// What this run uses instead of the task's own Agent selection.
+    pub agent: Option<crate::inbox::ProjectWorkspaceInboxChatAgent>,
+    pub admitted_at_ms: i64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -131,6 +205,11 @@ pub struct AutomationLease {
     pub settled_at_ms: Option<i64>,
     pub retry_at_ms: Option<i64>,
     pub reason_code: Option<String>,
+    #[serde(default)]
+    pub purpose: AutomationLeasePurpose,
+    /// Present when the lease executes a firing the user confirmed in the Inbox.
+    #[serde(default)]
+    pub admission: Option<AutomationFiringAdmission>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -147,6 +226,8 @@ pub struct AutomationRun {
     pub run_id: String,
     pub session_id: Option<String>,
     pub automation_id: String,
+    /// The firing this Run executes.
+    pub dispatch_id: Option<String>,
     pub run_revision: i64,
     pub status: AutomationRunStatus,
     pub read_at_ms: Option<i64>,
@@ -503,6 +584,8 @@ pub enum AutomationIntent {
     BeginRun {
         run_id: String,
         automation_id: String,
+        #[serde(default)]
+        dispatch_id: Option<String>,
         session_id: Option<String>,
         session_title: Option<String>,
         source_cwd: Option<String>,

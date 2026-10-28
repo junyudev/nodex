@@ -4,6 +4,7 @@ import {
   describeInboxAction,
   describeInboxChatStatus,
   describeInboxDecision,
+  describeInboxFiring,
   describeInboxOutcome,
   formatInboxTime,
   formatInboxWhen,
@@ -33,6 +34,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   state: "open",
   suggestionState: "settled",
   suggestionError: null,
+  firing: null,
   scope: { kind: "library" },
   location: { kind: "inbox" },
   proposal: null,
@@ -521,5 +523,131 @@ describe("inboxRowOffers", () => {
     const nothing = { done: false, handleManually: false, suggest: false };
     expect(offers({ kind: "suggestion", proposal }, true)).toEqual(nothing);
     expect(offers({ kind: "handled" })).toEqual(nothing);
+  });
+});
+
+describe("a scheduled task's waiting run", () => {
+  const firingSource = {
+    kind: "scheduled_task" as const,
+    automationId: "automation:deps",
+    dispatchId: "dispatch:1",
+    projectId: "project:nodex",
+    label: "Bump dependency versions",
+  };
+  const firing = {
+    automationId: "automation:deps",
+    dispatchId: "dispatch:1",
+    status: "held" as const,
+    firstScheduledFor: new Date(2026, 9, 26, 9, 0).getTime(),
+    lastScheduledFor: new Date(2026, 9, 26, 9, 0).getTime(),
+    missedCount: 0,
+    failureMessage: null,
+  };
+  const runTask = proposal({
+    origin: "schedule",
+    action: {
+      type: "run_task",
+      automationId: "automation:deps",
+      dispatchId: "dispatch:1",
+      agent: null,
+    },
+    kind: "todo",
+    summary: "Run Bump dependency versions",
+    producedBy: null,
+  });
+  const waiting = (overrides: Partial<InboxItem> = {}) =>
+    item({ source: firingSource, firing, proposal: runTask, ...overrides });
+
+  it("asks to run in its Project, or in its chat for a Heartbeat", () => {
+    expect(describeInboxAction(runTask.action, { targetProjectName: "Nodex", chat: null })).toEqual(
+      { verb: "Run", target: "Run in Nodex" },
+    );
+    expect(
+      describeInboxAction(runTask.action, { targetProjectName: null, chat: null }).target,
+    ).toBe("Run without a Project");
+    expect(describeInboxAction(runTask.action, { targetProjectName: null, chat }).target).toBe(
+      "Run in “Homepage positioning”",
+    );
+  });
+
+  it("waits in the Inbox until it runs, and returns when its run fails before reaching a chat", () => {
+    expect(inboxTriageModel(waiting(), true)).toEqual({ kind: "suggestion", proposal: runTask });
+    const admitted = waiting({
+      outcome: "chat",
+      firing: { ...firing, status: "admitted" },
+      proposal: { ...runTask, state: "completed" },
+    });
+    expect(isInboxItemHandled(admitted)).toBe(true);
+    expect(describeInboxOutcome(admitted)).toMatchObject({
+      icon: "pending",
+      label: "Starting “Bump dependency versions”",
+      inProgress: true,
+    });
+    const failed = waiting({
+      outcome: "chat",
+      firing: { ...firing, status: "failed", failureMessage: "The Agent is off" },
+      proposal: { ...runTask, state: "failed", failureKind: "rejected", failureMessage: null },
+    });
+    expect(isInboxItemHandled(failed)).toBe(false);
+    expect(inboxTriageModel(failed, true)).toMatchObject({
+      kind: "dispatch-failed",
+      message: "The Agent is off",
+    });
+  });
+
+  it("follows its run's chat in History as soon as the run reaches one", () => {
+    // The firing stays admitted while its run works; the chat's own status tells how it goes.
+    const ran = waiting({
+      outcome: "chat",
+      firing: { ...firing, status: "admitted" },
+      proposal: { ...runTask, state: "completed", chat },
+    });
+    expect(describeInboxOutcome(ran)).toMatchObject({
+      icon: "chat",
+      label: "Ran “Bump dependency versions”",
+      open: { kind: "session", sessionId: "session:1" },
+      status: { label: "New reply" },
+      inProgress: true,
+    });
+  });
+
+  it("reads as skipped when the user marks it done instead of running it", () => {
+    const skipped = waiting({
+      state: "done",
+      outcome: "done",
+      firing: { ...firing, status: "skipped" },
+    });
+    expect(describeInboxOutcome(skipped).label).toBe("Skipped");
+    expect(describeInboxDecision(waiting(), { kind: "done" }).label).toBe("Skipped");
+    expect(describeInboxDecision(waiting(), { kind: "run", taskName: "Deps" })).toMatchObject({
+      icon: "pending",
+      label: "Starting “Deps”",
+    });
+  });
+
+  it("can no longer run once its task is deleted", () => {
+    expect(inboxTriageModel(waiting({ firing: { ...firing, status: "withdrawn" } }), true)).toEqual(
+      {
+        kind: "firing-withdrawn",
+      },
+    );
+  });
+
+  it("says when it fell due, how often since, and where it runs", () => {
+    const now = new Date(2026, 9, 27, 12, 0);
+    const task = {
+      kind: "cron" as const,
+      projectId: "project:nodex",
+      executionEnvironment: "worktree" as const,
+      cwds: ["/repo"],
+    };
+    expect(describeInboxFiring(firing, task, now)).toMatch(/^Due Yesterday, .+ · Worktree$/u);
+    expect(describeInboxFiring({ ...firing, missedCount: 2 }, task, now)).toMatch(
+      /^Due 3 times since Yesterday, .+ · Worktree$/u,
+    );
+    expect(
+      describeInboxFiring(firing, { ...task, kind: "heartbeat" as const, projectId: null }, now),
+    ).toMatch(/· Continues its chat$/u);
+    expect(describeInboxFiring(firing, null, now)).toMatch(/^Due Yesterday, /u);
   });
 });

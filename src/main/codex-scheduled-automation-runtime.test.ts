@@ -17,6 +17,8 @@ function makeAutomation(
     projectId: null,
     targetSessionId: null,
     notificationPolicy: null,
+    launch: "automatic",
+    heldFiring: null,
     kind: "cron",
     status: "ACTIVE",
     name: "Daily report",

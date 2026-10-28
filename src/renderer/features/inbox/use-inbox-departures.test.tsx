@@ -24,6 +24,7 @@ const message = (pageId: string, submittedAt: string): InboxItem => ({
   state: "open",
   suggestionState: "settled",
   suggestionError: null,
+  firing: null,
   scope: { kind: "library" },
   location: { kind: "inbox" },
   proposal: null,

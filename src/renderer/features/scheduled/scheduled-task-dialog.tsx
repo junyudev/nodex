@@ -35,7 +35,10 @@ import { deriveScheduledTaskName } from "./scheduled-task-model";
 import type { ScheduledTasks } from "./use-scheduled-tasks";
 
 export type ScheduledTaskDialogRequest =
-  | { readonly kind: "create"; readonly template: WorkbenchAutomationTemplate | null }
+  | {
+      readonly kind: "create";
+      readonly template: WorkbenchAutomationTemplate | null;
+    }
   | { readonly kind: "edit"; readonly task: CodexScheduledAutomation };
 
 interface ScheduledTaskDialogProps {

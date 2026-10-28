@@ -1,4 +1,5 @@
 mod agent_command;
+pub(crate) mod firing;
 mod mutation;
 mod occurrence;
 mod occurrence_mutation;
@@ -152,6 +153,8 @@ impl AutomationModule {
                            SELECT 1 FROM codex_scheduled_automations \
                              WHERE status = 'ACTIVE' AND next_run_at IS NOT NULL \
                                AND next_run_at <= ?1 \
+                           UNION ALL \
+                           SELECT 1 FROM core_automation_firings WHERE status='admitted' AND due_at_ms <= ?1 \
                            UNION ALL \
                            SELECT 1 FROM core_automation_leases \
                              WHERE status = 'claimed' AND expires_at_ms > ?1 \

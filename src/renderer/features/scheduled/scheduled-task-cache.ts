@@ -30,6 +30,7 @@ export function applyOptimisticScheduledTaskUpdate(
       ...automation,
       kind: update.kind,
       status: update.status,
+      launch: update.launch ?? automation.launch,
       projectId: isCron ? (update.projectId ?? null) : null,
       targetSessionId: isCron ? null : (update.targetSessionId ?? null),
       name: update.name,
@@ -51,7 +52,10 @@ export function applyOptimisticScheduledTaskUpdate(
   });
 }
 
-/** The full update that changes only a task's status. */
+/**
+ * The full update that changes only a task's status. An update replaces the whole definition,
+ * so every optional field it keeps is restated.
+ */
 export function buildScheduledTaskStatusUpdate(
   automation: CodexScheduledAutomation,
   status: CodexScheduledAutomation["status"],
@@ -61,6 +65,7 @@ export function buildScheduledTaskStatusUpdate(
     kind: automation.kind,
     projectId: automation.projectId,
     status,
+    launch: automation.launch,
     targetSessionId: automation.targetSessionId,
     name: automation.name,
     prompt: automation.prompt,

@@ -16,6 +16,12 @@ const operationFields = {
   operationId: z.string().max(512).refine(isBoundedOperationId).optional(),
 };
 const definitionFields = {
+  launch: z
+    .enum(["automatic", "ask"])
+    .optional()
+    .describe(
+      "Ask before running or run automatically. Agents may create ask tasks or switch to ask; automatic requires a suggested change the user applies. Omitted on create defaults to ask; omitted on update preserves the current choice.",
+    ),
   backendBinding: z
     .discriminatedUnion("kind", [
       z.strictObject({ kind: z.literal("codex") }),
@@ -121,7 +127,7 @@ export type AutomationProposal = Extract<
 export const automationTool: Tool = {
   name: "automation_update",
   description:
-    "List, view, propose, create, replace, or delete a scheduled Agent task. suggested_create and suggested_update return review proposals without saving or scheduling; the user reviews and explicitly saves them. Use heartbeat for follow-ups in a Session; its omitted targetSessionId defaults to the calling Session. Use cron for standalone runs in an explicit Project or with projectId null; Project runs require cwds from that Project, and projectless runs require local execution with no folders or Environment. Creation starts ACTIVE. Use list with an optional name/prompt/ID query and follow nextCursor to find existing tasks. View before update or delete and supply the returned definitionRevision as expectedRevision. Update replaces the complete definition: preserve existing values explicitly; omitted optional fields reset to defaults except backendBinding and notificationPolicy, which keep their current values when omitted; pass notificationPolicy null to restore normal notifications. Reuse operationId and identical arguments to reconcile an uncertain mutation. Scheduled tasks do not wait for interactive approval.",
+    "List, view, propose, create, replace, or delete a scheduled Agent task. suggested_create and suggested_update return review proposals without saving or scheduling; the user reviews and explicitly saves them. Use heartbeat for follow-ups in a Session; its omitted targetSessionId defaults to the calling Session. Use cron for standalone runs in an explicit Project or with projectId null; Project runs require cwds from that Project, and projectless runs require local execution with no folders or Environment. Creation starts ACTIVE. Use list with an optional name/prompt/ID query and follow nextCursor to find existing tasks. View before update or delete and supply the returned definitionRevision as expectedRevision. Update replaces the complete definition: preserve existing values explicitly; omitted optional fields reset to defaults except backendBinding, notificationPolicy and launch, which keep their current values when omitted; pass notificationPolicy null to restore normal notifications. Reuse operationId and identical arguments to reconcile an uncertain mutation. Agents may create tasks that ask first or switch a task to ask. Making a task run automatically requires suggested_create or suggested_update for the user to apply. An ask task waits for confirmation in the Inbox before each run. Once launched, scheduled turns do not wait for interactive approval.",
   inputSchema: { ...z.toJSONSchema(automationSchema), type: "object" } as Tool["inputSchema"],
   annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
 };

@@ -63,6 +63,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   state: "open",
   suggestionState: "settled",
   suggestionError: null,
+  firing: null,
   scope: { kind: "library" },
   location: { kind: "inbox" },
   proposal: proposal(),
@@ -245,6 +246,51 @@ describe("InboxTriage", () => {
       (screen.getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement).value,
     ).toBe("B");
     expect(screen.getByText("C")).toBeTruthy();
+  });
+
+  test("a scheduled task's waiting run runs in its Project, or is skipped, never kept", async () => {
+    const runTask = proposal({
+      origin: "schedule",
+      action: {
+        type: "run_task",
+        automationId: "automation:deps",
+        dispatchId: "dispatch:1",
+        agent: null,
+      },
+      kind: "todo",
+      summary: "Run Bump dependency versions",
+      rationale: null,
+      producedBy: null,
+    });
+    const commands = renderTriage({
+      item: item({
+        kind: "todo",
+        source: {
+          kind: "scheduled_task",
+          automationId: "automation:deps",
+          dispatchId: "dispatch:1",
+          projectId: "project:nodex",
+          label: "Bump dependency versions",
+        },
+        firing: {
+          automationId: "automation:deps",
+          dispatchId: "dispatch:1",
+          status: "held",
+          firstScheduledFor: Date.parse("2026-10-26T09:00:00.000Z"),
+          lastScheduledFor: Date.parse("2026-10-26T09:00:00.000Z"),
+          missedCount: 0,
+          failureMessage: null,
+        },
+        proposal: runTask,
+      }),
+    });
+    // The strip says when it fell due; the instructions are the message itself.
+    expect(screen.getByTestId("inbox-suggestion").textContent).toMatch(/^Due /u);
+    expect(screen.queryByRole("button", { name: "Keep" })).toBeNull();
+    await click("Run in Nodex");
+    await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(runTask));
+    await click("Skip this run");
+    await waitFor(() => expect(commands.setState).toHaveBeenCalledWith(["page:1"], "done"));
   });
 
   test("a note gets a concrete Keep decision without asking the user to dispatch", async () => {

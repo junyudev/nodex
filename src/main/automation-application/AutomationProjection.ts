@@ -67,6 +67,17 @@ export const projectAutomationDefinition = (
     projectId: definition.project_id ?? null,
     targetSessionId: definition.target_session_id ?? null,
     notificationPolicy: definition.notification_policy ?? null,
+    launch: definition.launch,
+    heldFiring: definition.held_firing
+      ? {
+          dispatchId: definition.held_firing.dispatch_id,
+          pageId: definition.held_firing.page_id,
+          inboxProjectId: definition.held_firing.inbox_project_id ?? null,
+          firstScheduledFor: definition.held_firing.first_scheduled_for_ms,
+          lastScheduledFor: definition.held_firing.last_scheduled_for_ms,
+          missedCount: definition.held_firing.missed_count,
+        }
+      : null,
     name: definition.name,
     prompt: definition.prompt,
     rrule: definition.rrule || null,
@@ -215,6 +226,7 @@ export const toCoreAutomationDefinitionInput = (input: CodexScheduledAutomationC
   );
   return {
     kind: input.kind,
+    launch: input.launch ?? null,
     project_id: input.projectId ?? null,
     target_session_id: input.targetSessionId ?? null,
     notification_policy:

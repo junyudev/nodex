@@ -24,6 +24,7 @@ const definition = (input: {
   target_session_id: input.targetSessionId,
   project_id: null,
   notification_policy: null,
+  launch: "automatic",
   name: input.automationId,
   prompt: "Check for updates",
   rrule: "FREQ=HOURLY",

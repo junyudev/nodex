@@ -72,6 +72,34 @@ const output = (suggestions: unknown[], titles: unknown[] = []) =>
   }) as Parameters<typeof validateInboxSuggestions>[0];
 
 describe("validateInboxSuggestions", () => {
+  it("keeps scheduled firings out of suggestion context and refuses decisions for them", () => {
+    const held = {
+      ...entry("held", "Do not suggest this firing"),
+      source: {
+        kind: "scheduled_task" as const,
+        automation_id: "task",
+        dispatch_id: "dispatch",
+        label: "Task",
+      },
+    };
+    const data = context([held, entry("1", "Ordinary capture")]);
+    const prompt = buildInboxSuggestionPrompt({
+      context: data,
+      request,
+      instructions: "",
+      agents: null,
+    });
+    const payload = JSON.parse(
+      prompt.slice(prompt.lastIndexOf("JSON data:\n") + "JSON data:\n".length),
+    );
+    expect(payload.messages.map((message: { page_id: string }) => message.page_id)).toEqual(["1"]);
+    expect(() =>
+      validateInboxSuggestions(output([raw({ page_ids: ["held"] })]), data, [held], request),
+    ).toThrow(/scheduled tasks already have a run decision/);
+    expect(
+      parseInboxSuggestionOutput(JSON.stringify(output([raw({ action: "run_task" })]))),
+    ).toBeNull();
+  });
   it("accepts an exact group and preserves its full prompt", () => {
     const entries = [entry("1", "Homepage copy"), entry("2", "Homepage hero")];
     const result = validateInboxSuggestions(

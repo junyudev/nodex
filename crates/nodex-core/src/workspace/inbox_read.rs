@@ -76,7 +76,7 @@ pub(super) fn read_summary(
                 "SELECT count(*), \
                    COALESCE(SUM({IN_INBOX}), 0), \
                    COALESCE(SUM(entry.state = 'open' AND proposal.state = 'open'), 0), \
-                   COALESCE(SUM(entry.state = 'open' AND entry.suggestion_state = 'pending'), 0), \
+                   COALESCE(SUM(entry.state = 'open' AND entry.suggestion_state = 'pending' AND entry.source_kind <> 'scheduled_task'), 0), \
                    COALESCE(SUM(entry.important = 1 AND {IN_INBOX}), 0) \
                  FROM inbox_entries entry \
                  JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
@@ -149,7 +149,7 @@ pub(super) const IN_INBOX: &str = "(entry.state = 'open' \
     AND NOT (COALESCE(proposal.state, '') = 'dispatching' AND COALESCE(proposal.failure_kind,'') <> 'unknown') \
     AND NOT (COALESCE(proposal.state, '') = 'completed' \
       AND COALESCE(json_extract(proposal.action_json, '$.type'), '') \
-        IN ('new_chat', 'send_to_chat')))";
+        IN ('new_chat', 'send_to_chat', 'run_task')))";
 
 /// Messages still waiting in the Library Inbox and in each active Project's Inbox.
 pub(super) fn read_counts(
@@ -298,6 +298,8 @@ struct EntryRow {
     source_run_id: Option<String>,
     source_project_id: Option<String>,
     source_label: Option<String>,
+    source_automation_id: Option<String>,
+    source_dispatch_id: Option<String>,
     provisional_title: Option<String>,
     kind: Option<String>,
     state: String,
@@ -334,7 +336,7 @@ fn read_entry(
                  THEN materialization.markdown ELSE NULL END, \
                substr(COALESCE(materialization.plain_text, ''),1,?3), document.generation, document.head_seq, \
                entry.provisional_title, entry.source_turn_id, \
-               COALESCE(octet_length(materialization.plain_text),0) > ?3, entry.scope_project_id, (SELECT placement_revision FROM blocks WHERE id=entry.page_id) \
+               COALESCE(octet_length(materialization.plain_text),0) > ?3, entry.scope_project_id, (SELECT placement_revision FROM blocks WHERE id=entry.page_id), entry.source_automation_id, entry.source_dispatch_id \
              FROM inbox_entries entry \
              JOIN pages page ON page.block_id = entry.page_id \
              JOIN documents document ON document.id = page.document_id \
@@ -344,6 +346,8 @@ fn read_entry(
             params![page_id, (body_budget * 8) as i64, body_budget as i64],
             |row| {
                 Ok(EntryRow {
+                    source_automation_id: row.get(25)?,
+                    source_dispatch_id: row.get(26)?,
                     seq: row.get(0)?,
                     submitted_at: row.get(1)?,
                     source_kind: row.get(2)?,
@@ -462,6 +466,20 @@ fn message_text(row: &EntryRow) -> String {
         .unwrap_or_else(|_| row.plain_text.clone())
 }
 
+/// Freeze model-visible text at the reviewed Document head. Images remain on the Page.
+pub(super) fn frozen_message_text(
+    connection: &Connection,
+    page_id: &str,
+) -> Result<String, StoreError> {
+    let row = read_entry(connection, page_id, 1024 * 1024)?;
+    if row.source_body_truncated {
+        return Err(invalid(
+            "The complete message exceeds the scheduled prompt limit",
+        ));
+    }
+    Ok(message_text(&row))
+}
+
 fn bounded_utf8(value: &str, maximum: usize) -> (String, bool) {
     if value.len() <= maximum {
         return (value.to_owned(), false);
@@ -475,6 +493,12 @@ fn bounded_utf8(value: &str, maximum: usize) -> (String, bool) {
 
 fn source(row: &EntryRow) -> ProjectWorkspaceInboxSource {
     match row.source_kind.as_str() {
+        "scheduled_task" => ProjectWorkspaceInboxSource::ScheduledTask {
+            automation_id: row.source_automation_id.clone().unwrap_or_default(),
+            dispatch_id: row.source_dispatch_id.clone().unwrap_or_default(),
+            project_id: row.source_project_id.clone(),
+            label: row.source_label.clone().unwrap_or_default(),
+        },
         "agent" => ProjectWorkspaceInboxSource::Agent {
             session_id: row.source_session_id.clone(),
             thread_id: row.source_thread_id.clone(),
@@ -551,6 +575,7 @@ fn read_item(
             scope: scope_of(row.scope_project_id.clone()),
             location,
             proposal,
+            firing: crate::automation::firing::item(connection, page_id)?,
             revision: row.revision,
         },
         row.seq,
@@ -642,11 +667,25 @@ fn read_proposal(
         return Ok(None);
     }
     let action = parse_action(&action_json)?;
+    let task_target = match &action {
+        ProjectWorkspaceInboxDispatchAction::RunTask { automation_id, .. } => connection
+            .query_row(
+                "SELECT kind, project_id, target_session_id FROM codex_scheduled_automations WHERE automation_id=?1",
+                [automation_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, Option<String>>(2)?)),
+            )
+            .optional()?,
+        _ => None,
+    };
     let target_project_id = match &action {
         ProjectWorkspaceInboxDispatchAction::NewChat { project_id, .. } => project_id.clone(),
         ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } => {
             Some(project_id.clone())
         }
+        ProjectWorkspaceInboxDispatchAction::RunTask { .. } => task_target
+            .as_ref()
+            .filter(|(kind, ..)| kind == "cron")
+            .and_then(|(_, project_id, _)| project_id.clone()),
         _ => None,
     };
     let target_project_name = target_project_id
@@ -661,6 +700,18 @@ fn read_proposal(
         })
         .transpose()?
         .flatten();
+    let dispatch_session_id = if let ProjectWorkspaceInboxDispatchAction::RunTask {
+        dispatch_id,
+        ..
+    } = &action
+    {
+        match task_target.as_ref() {
+            Some((kind, _, session_id)) if kind == "heartbeat" => session_id.clone(),
+            _ => connection.query_row("SELECT session_id FROM core_automation_runs WHERE dispatch_id=?1 AND session_id IS NOT NULL ORDER BY created_at,run_id LIMIT 1",[dispatch_id],|r|r.get::<_,String>(0)).optional()?,
+        }
+    } else {
+        dispatch_session_id
+    };
     let chat_session_id = dispatch_session_id.or_else(|| match &action {
         ProjectWorkspaceInboxDispatchAction::SendToChat { session_id, .. } => {
             Some(session_id.clone())
@@ -686,7 +737,9 @@ fn read_proposal(
         basis: super::inbox::require_proposal(connection, library_id, proposal_id)?.basis,
         proposal_id: proposal_id.to_owned(),
         revision,
-        origin: if origin == "user" {
+        origin: if origin == "schedule" {
+            ProjectWorkspaceInboxProposalOrigin::Schedule
+        } else if origin == "user" {
             ProjectWorkspaceInboxProposalOrigin::User
         } else {
             ProjectWorkspaceInboxProposalOrigin::Agent
@@ -792,7 +845,7 @@ pub(super) fn read_pending_suggestions(
                SELECT entry.page_id, entry.seq, entry.scope_project_id FROM inbox_entries entry \
                JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
                WHERE entry.library_id = ?1 AND entry.state = 'open' \
-                 AND entry.suggestion_state = 'pending'), \
+                 AND entry.suggestion_state = 'pending' AND entry.source_kind <> 'scheduled_task'), \
              oldest AS (SELECT scope_project_id FROM waiting ORDER BY seq LIMIT 1) \
              SELECT waiting.page_id FROM waiting, oldest \
              WHERE waiting.scope_project_id IS oldest.scope_project_id \

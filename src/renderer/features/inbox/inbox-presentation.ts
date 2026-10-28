@@ -3,11 +3,13 @@ import type {
   InboxChat,
   InboxDispatchAction,
   InboxEntryKind,
+  InboxFiring,
   InboxImportantMessage,
   InboxItem,
   InboxProposal,
   InboxWindowFilter,
 } from "../../../shared/inbox";
+import type { CodexScheduledAutomation } from "../../../shared/types";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import { USER_TURN_TIMESTAMP_GAP_MS } from "../local-conversation/projection/conversation-turn-timestamps";
 import type { SessionLiveIndicator } from "@/lib/session-execution";
@@ -18,6 +20,8 @@ export type InboxTriageModel =
   | { readonly kind: "suggestion"; readonly proposal: InboxProposal }
   | { readonly kind: "suggestion-failed"; readonly message: string }
   | { readonly kind: "dispatch-failed"; readonly proposal: InboxProposal; readonly message: string }
+  /** A scheduled task's waiting run whose task is gone, so it can no longer run. */
+  | { readonly kind: "firing-withdrawn" }
   /** No advice has arrived, or suggestions are disabled. */
   | { readonly kind: "undecided" }
   /** Handled; the message is on its way to History. */
@@ -29,18 +33,25 @@ export const isChatAction = (
 ): action is Extract<InboxDispatchAction, { type: "new_chat" | "send_to_chat" }> =>
   action.type === "new_chat" || action.type === "send_to_chat";
 
+/** Hands the work on: to a chat, or to a run of the scheduled task the message came from. */
+export const isWorkAction = (
+  action: InboxDispatchAction,
+): action is Extract<InboxDispatchAction, { type: "new_chat" | "send_to_chat" | "run_task" }> =>
+  isChatAction(action) || action.type === "run_task";
+
 /**
- * Mirrors Core's Inbox membership: a message is handled once a chat dispatch is confirmed, or
- * once it is filed, kept, or done. Where its Page lives never decides it. Failed or
- * uncertain delivery remains in the Inbox for a reviewed decision.
+ * Mirrors Core's Inbox membership: a message is handled once its work is handed on, or once it
+ * is filed, kept, or done. Where its Page lives never decides it. Failed or uncertain delivery,
+ * and a scheduled run that failed before reaching a chat, remain in the Inbox for a decision.
  */
 export function isInboxItemHandled(item: InboxItem): boolean {
   if (item.state !== "open") return true;
   const proposal = item.proposal;
   return Boolean(
     proposal &&
-    isChatAction(proposal.action) &&
+    isWorkAction(proposal.action) &&
     proposal.failureKind !== "unknown" &&
+    item.firing?.status !== "failed" &&
     (proposal.state === "dispatching" || proposal.state === "completed"),
   );
 }
@@ -49,17 +60,24 @@ export function inboxTriageModel(item: InboxItem, suggestionsEnabled: boolean): 
   const proposal = item.proposal;
   if (
     proposal &&
-    isChatAction(proposal.action) &&
+    isWorkAction(proposal.action) &&
     (proposal.state === "failed" ||
+      (proposal.action.type === "run_task" && item.firing?.status === "failed") ||
       (proposal.state === "dispatching" && proposal.failureKind === "unknown"))
   ) {
     return {
       kind: "dispatch-failed",
       proposal,
-      message: proposal.failureMessage ?? "The chat could not be started",
+      message:
+        proposal.failureMessage ??
+        item.firing?.failureMessage ??
+        (proposal.action.type === "run_task"
+          ? "The run could not be started"
+          : "The chat could not be started"),
     };
   }
   if (isInboxItemHandled(item)) return { kind: "handled" };
+  if (item.firing?.status === "withdrawn") return { kind: "firing-withdrawn" };
   if (proposal?.state === "open") return { kind: "suggestion", proposal };
   if (item.suggestionState === "pending" && suggestionsEnabled) return { kind: "suggesting" };
   if (item.suggestionState === "failed") {
@@ -93,6 +111,8 @@ export function inboxRowOffers(
   switch (model.kind) {
     case "suggesting":
     case "dispatch-failed":
+      return { done: true, handleManually: true, suggest: false };
+    case "firing-withdrawn":
       return { done: true, handleManually: true, suggest: false };
     case "suggestion":
       // Changing a suggestion happens in `Handle manually`, which stays in the menu.
@@ -160,6 +180,11 @@ const keptLabel = (kind: InboxEntryKind | null) =>
 
 const KEPT = { icon: "keep", status: null, open: null, canReturn: true, done: null } as const;
 const DONE = { icon: "done", label: "Done", status: null, open: null, canReturn: true } as const;
+const SKIPPED = { ...DONE, label: "Skipped" } as const;
+
+/** The task a scheduled run came from, as the message names it. */
+const firingTaskName = (item: InboxItem): string =>
+  item.source.kind === "scheduled_task" ? item.source.label : "scheduled task";
 
 const chatLabel = (
   type: "new_chat" | "send_to_chat",
@@ -185,8 +210,44 @@ export function describeInboxOutcome(
   if (item.outcome === "kept") {
     return { ...KEPT, label: keptLabel(item.kind), inProgress: false };
   }
-  if (item.outcome === "done") return { ...DONE, done: null, inProgress: false };
+  if (item.outcome === "done") {
+    return {
+      ...(item.firing?.status === "skipped" ? SKIPPED : DONE),
+      done: null,
+      inProgress: false,
+    };
+  }
   const proposal = item.proposal;
+  if (
+    proposal?.action.type === "run_task" &&
+    (item.outcome === "chat" || proposal.state === "completed")
+  ) {
+    const chat = proposal.chat;
+    const done = item.state === "done";
+    const title = `“${firingTaskName(item)}”`;
+    // A Cron run reaches a chat once its workspace is ready; a Heartbeat already has its chat.
+    if (!chat) {
+      return {
+        icon: done ? "done" : "pending",
+        label: `Starting ${title}`,
+        status: done ? DONE_STATUS : null,
+        open: null,
+        canReturn: false,
+        done,
+        inProgress: !done,
+      };
+    }
+    const status = done ? DONE_STATUS : describeInboxChatStatus(chat, live);
+    return {
+      icon: "chat",
+      label: `Ran ${title}`,
+      status,
+      open: { kind: "session", sessionId: chat.sessionId },
+      canReturn: false,
+      done,
+      inProgress: status.inProgress,
+    };
+  }
   if (
     proposal &&
     isChatAction(proposal.action) &&
@@ -257,6 +318,8 @@ export function describeInboxOutcome(
 export type InboxDecision =
   | { readonly kind: "keep" }
   | { readonly kind: "done" }
+  /** A scheduled task's waiting run, confirmed to run now. */
+  | { readonly kind: "run"; readonly taskName: string }
   | { readonly kind: "move"; readonly projectName: string | null }
   | {
       readonly kind: "chat";
@@ -273,7 +336,17 @@ export function describeInboxDecision(item: InboxItem, decision: InboxDecision):
     case "keep":
       return { ...KEPT, label: keptLabel(inboxEntryKind(item)), inProgress: false };
     case "done":
-      return { ...DONE, done: null, inProgress: false };
+      return { ...(item.firing ? SKIPPED : DONE), done: null, inProgress: false };
+    case "run":
+      return {
+        icon: "pending",
+        label: `Starting “${decision.taskName}”`,
+        status: null,
+        open: null,
+        canReturn: false,
+        done: false,
+        inProgress: true,
+      };
     case "move":
       return {
         icon: "move",
@@ -333,7 +406,57 @@ export function describeInboxAction(
     }
     case "move_to_project":
       return { verb: "Move", target: `Move to ${context.targetProjectName ?? "Project"}` };
+    case "run_task":
+      return {
+        verb: "Run",
+        // A Heartbeat continues its chat; a Cron run starts in its Project or on its own.
+        target: context.chat
+          ? `Run in “${context.chat.displayTitle}”`
+          : context.targetProjectName
+            ? `Run in ${context.targetProjectName}`
+            : "Run without a Project",
+      };
   }
+}
+
+const formatFiringTime = (at: number, now: Date): string => {
+  const date = new Date(at);
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const day = startOfDay(date).getTime();
+  if (day === startOfDay(now).getTime()) return time;
+  return `${inboxDayLabel(date, now)}, ${time}`;
+};
+
+/**
+ * How a scheduled task's waiting run will go, in one quiet line beneath its instructions: when it
+ * fell due, how often it has since, and where it runs. Its instructions are the message itself.
+ */
+export function describeInboxFiring(
+  firing: InboxFiring,
+  task: Pick<
+    CodexScheduledAutomation,
+    "kind" | "projectId" | "executionEnvironment" | "cwds"
+  > | null,
+  now: Date,
+): string {
+  const dueCount = firing.missedCount + 1;
+  const due =
+    dueCount > 1
+      ? `Due ${dueCount} times since ${formatFiringTime(firing.firstScheduledFor, now)}`
+      : `Due ${formatFiringTime(firing.firstScheduledFor, now)}`;
+  if (!task) return due;
+  const where =
+    task.kind === "heartbeat"
+      ? "Continues its chat"
+      : task.projectId === null
+        ? "New workspace"
+        : [
+            task.executionEnvironment === "worktree" ? "Worktree" : "Local",
+            task.cwds.length > 1 ? `${task.cwds.length} folders` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+  return `${due} · ${where}`;
 }
 
 export type InboxChatTone = "working" | "attention" | "error" | "quiet";

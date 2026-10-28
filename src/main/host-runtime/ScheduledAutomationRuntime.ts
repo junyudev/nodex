@@ -15,9 +15,16 @@ import {
   type AutomationDefinitionClaim,
 } from "../automation-application/AutomationApplication";
 import { AutomationExecution } from "../automation-application/AutomationExecution";
+import {
+  InboxApplication,
+  type InboxApplicationError,
+} from "../inbox-application/InboxApplication";
+import type { AutomationApplicationError } from "../automation-application/AutomationApplication";
+import type { AutomationExecutionError } from "../automation-application/AutomationExecution";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { getLogger } from "../logging/logger";
+import { readActionableErrorMessage } from "../actionable-error-message";
 import {
   SCHEDULED_AUTOMATION_INTERVAL_MS,
   SCHEDULED_AUTOMATION_LEASE_DURATION_MS,
@@ -55,13 +62,18 @@ export const live = (
 ): Layer.Layer<
   ScheduledAutomationRuntime,
   never,
-  AutomationApplication | AutomationExecution | CodexApplicationEventHub | CoreAuthority
+  | AutomationApplication
+  | AutomationExecution
+  | InboxApplication
+  | CodexApplicationEventHub
+  | CoreAuthority
 > =>
   Layer.effect(
     ScheduledAutomationRuntime,
     Effect.gen(function* () {
       const automation = yield* AutomationApplication;
       const execution = yield* AutomationExecution;
+      const inbox = yield* InboxApplication;
       const authority = yield* CoreAuthority;
       const events = yield* CodexApplicationEventHub;
       const activation = yield* Deferred.make<void>();
@@ -138,32 +150,49 @@ export const live = (
           if (!(yield* authorityReady)) {
             return yield* failClaim(claim.leaseId, intervalMs, "core_authority_unavailable");
           }
-          const claimedRun = execution
-            .executeClaimed(claim.definition, {
-              now: tickNow,
-              reason: "scheduled",
-              leaseId: claim.leaseId,
-              dispatchId: claim.dispatchId,
-              definitionRevision: claim.definitionRevision,
-              ...(claim.definition.kind === "heartbeat"
-                ? {
-                    heartbeat: heartbeatRunContext({
-                      automation: claim.definition,
-                      state,
-                      now: tickNow,
-                    }),
-                  }
-                : {}),
-            })
-            .pipe(Effect.andThen(automation.definitions.completeLease(claim.leaseId)));
+          const claimedRun: Effect.Effect<
+            void,
+            InboxApplicationError | AutomationApplicationError | AutomationExecutionError
+          > =
+            claim.purpose === "hold"
+              ? inbox.holdScheduledFiring(claim)
+              : execution
+                  .executeClaimed(claim.definition, {
+                    now: tickNow,
+                    reason: "scheduled",
+                    leaseId: claim.leaseId,
+                    dispatchId: claim.dispatchId,
+                    admission: claim.admission,
+                    definitionRevision: claim.definitionRevision,
+                    ...(claim.definition.kind === "heartbeat"
+                      ? {
+                          heartbeat: heartbeatRunContext({
+                            automation: claim.definition,
+                            state,
+                            now: tickNow,
+                          }),
+                        }
+                      : {}),
+                  })
+                  .pipe(Effect.andThen(automation.definitions.completeLease(claim.leaseId)));
           const result = yield* Effect.exit(claimedRun);
           if (Exit.isSuccess(result)) return;
-          const cause = Option.getOrNull(Cause.findErrorOption(result.cause))?.cause;
+          const failure = Option.getOrNull(Cause.findErrorOption(result.cause));
+          const cause = failure?.cause;
           const retry = cause instanceof CodexScheduledAutomationRetryError ? cause : null;
+          const failureReason = readActionableErrorMessage(failure, {
+            fallback: claim.purpose === "hold" ? "hold_failed" : "execution_failed",
+            maximumLength: 2_000,
+          });
+          let reasonCode =
+            retry?.reasonCode ??
+            (claim.purpose === "hold" || claim.admission ? failureReason : "execution_failed");
+          // Core bounds this field by UTF-8 bytes, including model names in localized failures.
+          while (Buffer.byteLength(reasonCode, "utf8") > 128) reasonCode = reasonCode.slice(0, -1);
           yield* failClaim(
             claim.leaseId,
-            retry?.retryDelayMs ?? null,
-            retry?.reasonCode ?? "execution_failed",
+            retry?.retryDelayMs ?? (claim.purpose === "hold" ? intervalMs : null),
+            reasonCode,
           );
           yield* Effect.sync(() => {
             if (retry?.reasonCode === "heartbeat_disabled") {
@@ -174,6 +203,8 @@ export const live = (
             }
             logger.warn("Scheduled automation run failed", {
               automationId: claim.definition.id,
+              purpose: claim.purpose,
+              reason: failureReason,
               error: cause ?? result.cause,
             });
           });

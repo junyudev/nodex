@@ -4109,3 +4109,1389 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
     keep(module, "page:loose");
     assert_eq!(status_of(&workspace, "page:loose").as_deref(), Some("plan"));
 }
+
+mod scheduled {
+    use super::*;
+    use crate::automation::AutomationModule;
+    use nodex_core_contracts::automation::*;
+
+    pub(super) fn task_input() -> AutomationDefinitionInput {
+        AutomationDefinitionInput {
+            kind: AutomationDefinitionKind::Cron,
+            project_id: None,
+            target_session_id: None,
+            notification_policy: AutomationNotificationPreference::Preserve,
+            launch: Some(AutomationLaunch::Ask),
+            name: "Daily report".into(),
+            prompt: Some("Prepare the report".into()),
+            rrule: Some("FREQ=MINUTELY;INTERVAL=5".into()),
+            model: None,
+            reasoning_effort: None,
+            service_tier: None,
+            backend_binding: nodex_core_contracts::agent::AgentBackendBinding::Codex,
+            cwds: None,
+            execution_environment: None,
+            local_environment_config_path: None,
+        }
+    }
+    fn automation(
+        workspace: &TestWorkspace,
+        op: &str,
+        intent: AutomationIntent,
+    ) -> crate::automation::AutomationApplyOutcome {
+        AutomationModule::new("profile-1", "library-1", &workspace.kernel)
+            .apply(
+                &host(),
+                ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::AUTOMATION_CONTRACT_VERSION,
+                    operation_id: op.into(),
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    intent,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{op}: {}", e.message))
+    }
+    fn due(workspace: &TestWorkspace) {
+        workspace.kernel.writer().call(|c|{c.execute("UPDATE codex_scheduled_automations SET next_run_at=(SELECT COALESCE(MAX(scheduled_for_ms)+1,0) FROM core_automation_leases WHERE automation_id='task') WHERE automation_id='task'",[])?;Ok(())}).unwrap();
+    }
+    fn claim(workspace: &TestWorkspace, op: &str) -> AutomationLease {
+        let module = AutomationModule::new("profile-1", "library-1", &workspace.kernel);
+        let snapshot = module
+            .read(
+                &host(),
+                ModuleReadRequest {
+                    contract_version: nodex_core_contracts::AUTOMATION_CONTRACT_VERSION,
+                    read: AutomationRead::DueWork {
+                        lane: AutomationDueWorkLane::Definitions,
+                    },
+                },
+            )
+            .unwrap();
+        let AutomationReadValue::DueWork { plan } = snapshot.value else {
+            panic!("due work")
+        };
+        assert!(plan.due_now);
+        automation(
+            workspace,
+            op,
+            AutomationIntent::ClaimDue {
+                work_token: plan.work_token.unwrap(),
+                limit: 10,
+                lease_duration_ms: 60_000,
+            },
+        )
+        .committed
+        .value
+        .claimed_leases
+        .remove(0)
+    }
+    fn hold(workspace: &TestWorkspace, op: &str, lease: &AutomationLease) {
+        apply_host(
+            &workspace.module,
+            op,
+            ProjectWorkspaceIntent::HoldScheduledFiring {
+                lease_id: lease.lease_id.clone(),
+                page_id: "page:firing".into(),
+                document_id: "document:firing".into(),
+                title: "Daily report · today".into(),
+            },
+        );
+    }
+    fn setup(workspace: &TestWorkspace, input: AutomationDefinitionInput) -> AutomationLease {
+        automation(
+            workspace,
+            "create-task",
+            AutomationIntent::CreateDefinition {
+                automation_id: "task".into(),
+                definition: input,
+            },
+        );
+        due(workspace);
+        let lease = claim(workspace, "claim-hold");
+        assert_eq!(lease.purpose, AutomationLeasePurpose::Hold);
+        hold(workspace, "hold", &lease);
+        lease
+    }
+    fn item(workspace: &TestWorkspace) -> ProjectWorkspaceInboxItem {
+        window(&workspace.module, ProjectWorkspaceInboxWindowFilter::Inbox)
+            .into_iter()
+            .chain(window(
+                &workspace.module,
+                ProjectWorkspaceInboxWindowFilter::Processed,
+            ))
+            .find(|item| item.page_id == "page:firing")
+            .unwrap()
+    }
+    fn confirm(workspace: &TestWorkspace) {
+        confirm_item(workspace, item(workspace));
+    }
+    fn confirm_item(workspace: &TestWorkspace, item: ProjectWorkspaceInboxItem) {
+        let proposal = item.proposal.unwrap();
+        apply_host(
+            &workspace.module,
+            "confirm-task",
+            ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                expected_store_epoch: "epoch-1".into(),
+                proposal_id: proposal.proposal_id,
+                expected_revision: proposal.revision,
+                action: Some(ProjectWorkspaceInboxDispatchAction::RunTask {
+                    automation_id: "task".into(),
+                    dispatch_id: item.firing.unwrap().dispatch_id,
+                    agent: Some(
+                        nodex_core_contracts::inbox::ProjectWorkspaceInboxChatAgent {
+                            instance_id: "agent:chosen".into(),
+                            model: Some("model:chosen".into()),
+                            reasoning_effort: None,
+                            service_tier: None,
+                        },
+                    ),
+                }),
+                session_id: None,
+                basis: vec![item.basis],
+                execution_selection: None,
+            },
+        );
+    }
+    fn next_run(workspace: &TestWorkspace) -> i64 {
+        count(
+            workspace,
+            "SELECT next_run_at FROM codex_scheduled_automations WHERE automation_id='task'",
+        )
+    }
+
+    fn fail_before_chat(workspace: &TestWorkspace, lease: &AutomationLease) {
+        automation(
+            workspace,
+            "fail-before-chat",
+            AutomationIntent::FailLease {
+                lease_id: lease.lease_id.clone(),
+                retry_delay_ms: None,
+                reason_code: "model_unavailable".into(),
+            },
+        );
+    }
+
+    fn hold_successor(workspace: &TestWorkspace, lease: &AutomationLease) {
+        apply_host(
+            &workspace.module,
+            "hold-successor",
+            ProjectWorkspaceIntent::HoldScheduledFiring {
+                lease_id: lease.lease_id.clone(),
+                page_id: "page:successor".into(),
+                document_id: "document:successor".into(),
+                title: "Next report".into(),
+            },
+        );
+    }
+
+    #[test]
+    fn ordinary_page_lifecycle_withdraws_waiting_firings_and_next_due_creates_a_message() {
+        for change in ["archive", "delete"] {
+            for failed in [false, true] {
+                let workspace = seeded_workspace();
+                setup(&workspace, task_input());
+                if failed {
+                    confirm(&workspace);
+                    let lease = claim(&workspace, "claim-to-fail");
+                    fail_before_chat(&workspace, &lease);
+                }
+                change_message_lifecycle(&workspace, "page:firing", change);
+                let operation = format!("{change}:page:firing");
+                workspace.kernel.writer().call(move |c| {
+                    let events: i64 = c.query_row("SELECT count(*) FROM change_log WHERE operation_id=?1 AND kind='automation.changed'", [&operation], |row| row.get(0))?;
+                    assert_eq!(events, 1);
+                    let commits: i64 = c.query_row("SELECT count(DISTINCT commit_seq) FROM local_commit_effects WHERE change_log_seq IN (SELECT seq FROM change_log WHERE operation_id=?1)", [&operation], |row| row.get(0))?;
+                    assert_eq!(commits, 1);
+                    Ok(())
+                }).unwrap();
+                assert_eq!(
+                    count(
+                        &workspace,
+                        "SELECT count(*) FROM core_automation_firings WHERE page_id='page:firing' AND status='withdrawn'"
+                    ),
+                    1,
+                    "{change}, failed={failed}"
+                );
+                due(&workspace);
+                let next = claim(&workspace, "claim-successor");
+                hold_successor(&workspace, &next);
+                let waiting = window(&workspace.module, ProjectWorkspaceInboxWindowFilter::Inbox);
+                assert_eq!(waiting.len(), 1);
+                assert_eq!(waiting[0].page_id, "page:successor");
+                assert_eq!(waiting[0].firing.as_ref().unwrap().missed_count, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn done_and_keep_preserve_admission_and_allow_the_next_folder_to_begin() {
+        for keep in [false, true] {
+            let workspace = seeded_workspace();
+            apply_host(
+                &workspace.module,
+                "create-folder-project",
+                ProjectWorkspaceIntent::CreateProject {
+                    project_id: "project:folders".into(),
+                    name: "Folders".into(),
+                    description: String::new(),
+                    appearance: None,
+                    source_roots: vec!["/workspace/first".into(), "/workspace/second".into()],
+                    page_key_prefix: None,
+                },
+            );
+            let mut input = task_input();
+            input.project_id = Some("project:folders".into());
+            input.cwds = Some(vec!["/workspace/first".into(), "/workspace/second".into()]);
+            setup(&workspace, input);
+            let scope = ProjectWorkspaceInboxScope::Project {
+                project_id: "project:folders".into(),
+            };
+            confirm_item(
+                &workspace,
+                window_in(
+                    &workspace.module,
+                    scope.clone(),
+                    ProjectWorkspaceInboxWindowFilter::Inbox,
+                )
+                .remove(0),
+            );
+            let lease = claim(&workspace, "claim-folders");
+            automation(
+                &workspace,
+                "begin-first",
+                AutomationIntent::BeginRun {
+                    run_id: "run:first".into(),
+                    automation_id: "task".into(),
+                    dispatch_id: Some(lease.dispatch_id.clone()),
+                    session_id: None,
+                    session_title: None,
+                    source_cwd: Some("/workspace/first".into()),
+                },
+            );
+            create_session_thread(
+                &workspace.module,
+                "first",
+                "session:first",
+                "thread:first",
+                Some("project:folders"),
+                1,
+            );
+            automation(
+                &workspace,
+                "bind-first",
+                AutomationIntent::BindRunSession {
+                    run_id: "run:first".into(),
+                    session_id: "session:first".into(),
+                    expected_revision: 1,
+                },
+            );
+            let intent = if keep {
+                ProjectWorkspaceIntent::KeepInboxEntries {
+                    page_ids: vec!["page:firing".into()],
+                }
+            } else {
+                ProjectWorkspaceIntent::SetInboxEntryState {
+                    page_ids: vec!["page:firing".into()],
+                    state: ProjectWorkspaceInboxEntryState::Done,
+                }
+            };
+            apply_host(&workspace.module, "close-work", intent);
+            assert_eq!(
+                window_in(
+                    &workspace.module,
+                    scope,
+                    ProjectWorkspaceInboxWindowFilter::Processed
+                )[0]
+                .firing
+                .as_ref()
+                .unwrap()
+                .status,
+                AutomationFiringStatus::Admitted
+            );
+            automation(
+                &workspace,
+                "begin-second",
+                AutomationIntent::BeginRun {
+                    run_id: "run:second".into(),
+                    automation_id: "task".into(),
+                    dispatch_id: Some(lease.dispatch_id),
+                    session_id: None,
+                    session_title: None,
+                    source_cwd: Some("/workspace/second".into()),
+                },
+            );
+            assert_eq!(
+                count(&workspace, "SELECT count(*) FROM core_automation_runs"),
+                2
+            );
+            assert_eq!(summary(&workspace.module).inbox_count, 0);
+        }
+    }
+
+    #[test]
+    fn deleting_a_claimed_but_unstarted_admission_withdraws_and_cancels_its_lease() {
+        let workspace = seeded_workspace();
+        setup(&workspace, task_input());
+        confirm(&workspace);
+        let lease = claim(&workspace, "claim-unstarted");
+        automation(
+            &workspace,
+            "delete-claimed",
+            AutomationIntent::DeleteDefinition {
+                automation_id: "task".into(),
+                expected_revision: 1,
+            },
+        );
+        assert_eq!(
+            item(&workspace).firing.unwrap().status,
+            AutomationFiringStatus::Withdrawn
+        );
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM core_automation_leases WHERE purpose='run' AND status='cancelled'"
+            ),
+            1
+        );
+        assert_eq!(
+            count(&workspace, "SELECT count(*) FROM core_automation_runs"),
+            0
+        );
+        let error = workspace
+            .kernel
+            .writer()
+            .call(move |c| crate::automation::firing::require_admitted(c, &lease.dispatch_id))
+            .unwrap_err();
+        assert_eq!(
+            error.code,
+            crate::infrastructure::sqlite::StoreErrorCode::Conflict
+        );
+    }
+
+    #[test]
+    fn failed_waiting_firing_folds_due_times_and_retries_the_same_admission() {
+        for hold_first in [false, true] {
+            let workspace = seeded_workspace();
+            setup(&workspace, task_input());
+            confirm(&workspace);
+            let admitted = claim(&workspace, "claim-admitted");
+            due(&workspace);
+            let successor = claim(&workspace, "claim-successor");
+            assert_eq!(successor.purpose, AutomationLeasePurpose::Hold);
+            if hold_first {
+                hold_successor(&workspace, &successor);
+            }
+            fail_before_chat(&workspace, &admitted);
+            if !hold_first {
+                hold_successor(&workspace, &successor);
+            }
+            let waiting = window(&workspace.module, ProjectWorkspaceInboxWindowFilter::Inbox);
+            assert_eq!(waiting.len(), 1, "hold_first={hold_first}");
+            let message = &waiting[0];
+            let firing = message.firing.as_ref().unwrap();
+            assert_eq!(message.page_id, "page:firing");
+            assert_eq!(firing.status, AutomationFiringStatus::Failed);
+            assert_eq!(firing.missed_count, 1);
+            assert_eq!(
+                firing.last_scheduled_for_ms,
+                successor.scheduled_for_ms.max(admitted.scheduled_for_ms)
+            );
+            due(&workspace);
+            let another = claim(&workspace, "claim-another");
+            apply_host(
+                &workspace.module,
+                "fold-another",
+                ProjectWorkspaceIntent::HoldScheduledFiring {
+                    lease_id: another.lease_id,
+                    page_id: "page:another".into(),
+                    document_id: "document:another".into(),
+                    title: "Another report".into(),
+                },
+            );
+            assert_eq!(item(&workspace).firing.unwrap().missed_count, 2);
+            assert_eq!(summary(&workspace.module).inbox_count, 1);
+            if hold_first {
+                // The partial unique index must include a failed run waiting for Retry.
+                assert!(workspace.kernel.writer().call(|c| {
+                    c.execute("UPDATE core_automation_firings SET status='held',waiting_in_inbox=1 WHERE page_id='page:successor'", [])?;
+                    Ok(())
+                }).is_err());
+            }
+            apply_host(
+                &workspace.module,
+                "retry-failed",
+                ProjectWorkspaceIntent::RetryInboxDispatch {
+                    proposal_id: message.proposal.as_ref().unwrap().proposal_id.clone(),
+                },
+            );
+            let retried = claim(&workspace, "claim-retry");
+            assert_eq!(retried.dispatch_id, admitted.dispatch_id);
+            assert_eq!(retried.admission, admitted.admission);
+            assert_eq!(summary(&workspace.module).inbox_count, 0);
+        }
+    }
+
+    #[test]
+    fn scheduled_messages_reject_explicit_suggestions_with_the_task_decision_reason() {
+        let workspace = seeded_workspace();
+        setup(&workspace, task_input());
+        let message = item(&workspace);
+        let error = workspace.module.apply(&host(), request("suggest-firing", ProjectWorkspaceIntent::RequestInboxSuggestion {
+            request_id: "suggest:task".into(), mode: nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode::Grouped,
+            page_ids: vec![message.page_id], basis: vec![message.basis], proposal_id: None, expected_revision: None, correction: None,
+        })).unwrap_err();
+        assert_eq!(
+            error.message,
+            "A scheduled run takes its decision from its task."
+        );
+        assert!(requests(&workspace.module).is_empty());
+        assert!(pending(&workspace.module).is_empty());
+    }
+
+    #[test]
+    fn hold_folds_and_edited_confirmation_admits_only_the_reviewed_text() {
+        let workspace = seeded_workspace();
+        let lease = setup(&workspace, task_input());
+        let first = item(&workspace);
+        assert_eq!(first.title, "Daily report · today");
+        assert_eq!(first.proposal.as_ref().unwrap().target_project_name, None);
+        assert!(first.proposal.as_ref().unwrap().chat.is_none());
+        assert_eq!(first.kind, Some(ProjectWorkspaceInboxEntryKind::Todo));
+        assert_eq!(
+            first.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Settled
+        );
+        assert_eq!(
+            first.proposal.as_ref().unwrap().origin,
+            ProjectWorkspaceInboxProposalOrigin::Schedule
+        );
+        assert!(
+            matches!(first.source,ProjectWorkspaceInboxSource::ScheduledTask {ref label,..} if label=="Daily report")
+        );
+        assert!(next_run(&workspace) > 0);
+        assert_eq!(
+            status_of(&workspace, "page:firing").as_deref(),
+            Some("triage")
+        );
+        let error = AutomationModule::new("profile-1", "library-1", &workspace.kernel)
+            .apply(
+                &host(),
+                ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::AUTOMATION_CONTRACT_VERSION,
+                    operation_id: "run-now-held".into(),
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    intent: AutomationIntent::DispatchNow {
+                        automation_id: "task".into(),
+                    },
+                },
+            )
+            .unwrap_err();
+        assert_eq!(error.code, CoreErrorCode::Conflict);
+        assert!(pending(&workspace.module).is_empty());
+        hold(&workspace, "hold-lost-reply", &lease);
+        assert_eq!(count(&workspace, "SELECT count(*) FROM inbox_entries"), 1);
+        due(&workspace);
+        let second = claim(&workspace, "claim-fold");
+        hold(&workspace, "fold", &second);
+        assert_eq!(count(&workspace, "SELECT count(*) FROM inbox_entries"), 1);
+        assert_eq!(count(&workspace, "SELECT count(*) FROM inbox_proposals"), 1);
+        assert_eq!(item(&workspace).firing.unwrap().missed_count, 1);
+        let before = item(&workspace);
+        apply_host(
+            &workspace.module,
+            "edit-firing",
+            ProjectWorkspaceIntent::EditInboxMessage {
+                page_id: before.page_id.clone(),
+                basis: before.basis.clone(),
+                original_body: before.body,
+                body: "Report only the regression fixes".into(),
+            },
+        );
+        let after = item(&workspace);
+        assert_eq!(
+            after.proposal.as_ref().unwrap().basis,
+            vec![after.basis.clone()]
+        );
+        assert_eq!(
+            after.proposal.as_ref().unwrap().proposal_id,
+            first.proposal.unwrap().proposal_id
+        );
+        assert_eq!(after.title, "Daily report · today");
+        confirm(&workspace);
+        assert_eq!(
+            status_of(&workspace, "page:firing").as_deref(),
+            Some("build")
+        );
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM change_log WHERE operation_id='confirm-task' AND kind='automation.changed'"
+            ),
+            1
+        );
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(DISTINCT commit_seq) FROM local_commit_effects WHERE change_log_seq IN (SELECT seq FROM change_log WHERE operation_id='confirm-task')"
+            ),
+            1
+        );
+        assert_eq!(summary(&workspace.module).inbox_count, 0);
+        assert_eq!(count(&workspace, "SELECT count(*) FROM inbox_handoffs"), 0);
+        assert_eq!(
+            count(&workspace, "SELECT count(*) FROM project_sessions"),
+            0
+        );
+        let scheduled = next_run(&workspace);
+        let run = claim(&workspace, "claim-run");
+        assert_eq!(run.dispatch_id, lease.dispatch_id);
+        assert_eq!(run.purpose, AutomationLeasePurpose::Run);
+        let admission = run.admission.unwrap();
+        assert_eq!(admission.prompt, "Report only the regression fixes");
+        assert_eq!(
+            admission.agent.unwrap().model.as_deref(),
+            Some("model:chosen")
+        );
+        automation(
+            &workspace,
+            "complete",
+            AutomationIntent::CompleteLease {
+                lease_id: run.lease_id,
+            },
+        );
+        assert_eq!(
+            item(&workspace).firing.unwrap().status,
+            AutomationFiringStatus::Completed
+        );
+        assert_eq!(next_run(&workspace), scheduled);
+    }
+
+    #[test]
+    fn cron_proposal_names_its_project_before_a_run_has_a_chat() {
+        let workspace = seeded_workspace();
+        super::super::test_support::create_project(
+            &workspace.module,
+            "project-for-task",
+            "project:scheduled",
+        );
+        let mut input = task_input();
+        input.project_id = Some("project:scheduled".into());
+        input.cwds = Some(vec!["/workspace/project:scheduled".into()]);
+        setup(&workspace, input);
+        let held = window_in(
+            &workspace.module,
+            ProjectWorkspaceInboxScope::Project {
+                project_id: "project:scheduled".into(),
+            },
+            ProjectWorkspaceInboxWindowFilter::Inbox,
+        )
+        .remove(0);
+        let proposal = held.proposal.as_ref().unwrap();
+        assert_eq!(
+            proposal.target_project_name.as_deref(),
+            Some("project:scheduled")
+        );
+        assert!(proposal.chat.is_none());
+        confirm_item(&workspace, held);
+        let confirmed = window_in(
+            &workspace.module,
+            ProjectWorkspaceInboxScope::Project {
+                project_id: "project:scheduled".into(),
+            },
+            ProjectWorkspaceInboxWindowFilter::Processed,
+        )
+        .remove(0);
+        let proposal = confirmed.proposal.unwrap();
+        assert_eq!(
+            proposal.target_project_name.as_deref(),
+            Some("project:scheduled")
+        );
+        assert!(proposal.chat.is_none());
+    }
+
+    #[test]
+    fn heartbeat_proposal_links_its_destination_without_an_automation_run() {
+        let workspace = seeded_workspace();
+        super::super::test_support::create_project(
+            &workspace.module,
+            "heartbeat-project",
+            "project:heartbeat",
+        );
+        create_session_thread(
+            &workspace.module,
+            "heartbeat-chat",
+            "session:heartbeat",
+            "thread:heartbeat",
+            Some("project:heartbeat"),
+            1,
+        );
+        let mut input = task_input();
+        input.kind = AutomationDefinitionKind::Heartbeat;
+        input.target_session_id = Some("session:heartbeat".into());
+        setup(&workspace, input);
+        let scope = ProjectWorkspaceInboxScope::Project {
+            project_id: "project:heartbeat".into(),
+        };
+        let held = window_in(
+            &workspace.module,
+            scope.clone(),
+            ProjectWorkspaceInboxWindowFilter::Inbox,
+        )
+        .remove(0);
+        let proposal = held.proposal.as_ref().unwrap();
+        assert_eq!(proposal.target_project_name, None);
+        assert_eq!(
+            proposal.chat.as_ref().unwrap().session_id,
+            "session:heartbeat"
+        );
+        confirm_item(&workspace, held);
+        let confirmed = window_in(
+            &workspace.module,
+            scope.clone(),
+            ProjectWorkspaceInboxWindowFilter::Processed,
+        )
+        .remove(0);
+        let proposal = confirmed.proposal.unwrap();
+        assert_eq!(proposal.target_project_name, None);
+        assert_eq!(proposal.chat.unwrap().session_id, "session:heartbeat");
+        let lease = claim(&workspace, "heartbeat-run");
+        automation(
+            &workspace,
+            "complete-heartbeat",
+            AutomationIntent::CompleteLease {
+                lease_id: lease.lease_id,
+            },
+        );
+        let completed = window_in(
+            &workspace.module,
+            scope,
+            ProjectWorkspaceInboxWindowFilter::Processed,
+        )
+        .remove(0);
+        assert_eq!(
+            completed.proposal.unwrap().chat.unwrap().session_id,
+            "session:heartbeat"
+        );
+        assert_eq!(
+            count(&workspace, "SELECT count(*) FROM core_automation_runs"),
+            0
+        );
+    }
+
+    #[test]
+    fn closing_admitted_work_does_not_revoke_admission_on_a_late_failure() {
+        let workspace = seeded_workspace();
+        setup(&workspace, task_input());
+        confirm(&workspace);
+        let lease = claim(&workspace, "claim-before-skip");
+        apply_host(
+            &workspace.module,
+            "keep-admission",
+            ProjectWorkspaceIntent::KeepInboxEntries {
+                page_ids: vec!["page:firing".into()],
+            },
+        );
+        automation(
+            &workspace,
+            "fail-after-skip",
+            AutomationIntent::FailLease {
+                lease_id: lease.lease_id,
+                retry_delay_ms: None,
+                reason_code: "runtime_unavailable".into(),
+            },
+        );
+        let skipped = item(&workspace);
+        assert_eq!(
+            skipped.firing.unwrap().status,
+            AutomationFiringStatus::Failed
+        );
+        assert_eq!(skipped.outcome, Some(ProjectWorkspaceInboxOutcome::Chat));
+        assert_eq!(
+            skipped.proposal.unwrap().state,
+            ProjectWorkspaceInboxProposalState::Completed
+        );
+        assert_eq!(summary(&workspace.module).inbox_count, 0);
+    }
+
+    #[test]
+    fn retryable_and_terminal_failures_keep_the_schedule_and_retry_the_same_admission() {
+        let workspace = seeded_workspace();
+        setup(&workspace, task_input());
+        confirm(&workspace);
+        let scheduled = next_run(&workspace);
+        let first = claim(&workspace, "run:1");
+        automation(
+            &workspace,
+            "retry-delay",
+            AutomationIntent::FailLease {
+                lease_id: first.lease_id,
+                retry_delay_ms: Some(0),
+                reason_code: "runtime_unavailable".into(),
+            },
+        );
+        assert_eq!(
+            item(&workspace).firing.unwrap().status,
+            AutomationFiringStatus::Admitted
+        );
+        let second = claim(&workspace, "run:2");
+        assert_eq!(second.attempt, first.attempt + 1);
+        assert_eq!(second.dispatch_id, first.dispatch_id);
+        automation(
+            &workspace,
+            "fail-terminal",
+            AutomationIntent::FailLease {
+                lease_id: second.lease_id,
+                retry_delay_ms: None,
+                reason_code: "runtime_unavailable".into(),
+            },
+        );
+        let failed = item(&workspace);
+        let firing = failed.firing.unwrap();
+        assert_eq!(firing.status, AutomationFiringStatus::Failed);
+        assert_eq!(
+            firing.failure_message.as_deref(),
+            Some("runtime_unavailable")
+        );
+        assert_eq!(summary(&workspace.module).inbox_count, 1);
+        assert_eq!(next_run(&workspace), scheduled);
+        let proposal = failed.proposal.unwrap();
+        assert_eq!(proposal.state, ProjectWorkspaceInboxProposalState::Failed);
+        assert_eq!(
+            proposal.failure_kind,
+            Some(nodex_core_contracts::inbox::ProjectWorkspaceInboxFailureKind::Rejected)
+        );
+        assert_eq!(
+            proposal.failure_message.as_deref(),
+            Some("runtime_unavailable")
+        );
+        apply_host(
+            &workspace.module,
+            "retry-inbox",
+            ProjectWorkspaceIntent::RetryInboxDispatch {
+                proposal_id: proposal.proposal_id,
+            },
+        );
+        assert_eq!(summary(&workspace.module).inbox_count, 0);
+        let retried = item(&workspace);
+        assert_eq!(
+            retried.firing.unwrap().status,
+            AutomationFiringStatus::Admitted
+        );
+        let proposal = retried.proposal.unwrap();
+        assert_eq!(
+            proposal.state,
+            ProjectWorkspaceInboxProposalState::Completed
+        );
+        assert_eq!(proposal.failure_kind, None);
+        assert_eq!(proposal.failure_message, None);
+        let third = claim(&workspace, "run:3");
+        assert_eq!(third.attempt, second.attempt + 1);
+        assert_eq!(third.admission, second.admission);
+        // Expiry reclaims the same dispatch without re-reading the current definition.
+        let id = third.lease_id.clone();
+        workspace.kernel.writer().call(move |c|{c.execute("UPDATE core_automation_leases SET claimed_at_ms=0,expires_at_ms=1 WHERE lease_id=?1",[id])?;Ok(())}).unwrap();
+        let fourth = claim(&workspace, "run:4");
+        assert_eq!(fourth.attempt, third.attempt + 1);
+        assert_eq!(fourth.admission, third.admission);
+    }
+
+    #[test]
+    fn skip_reopen_and_task_deletion_fence_future_admission() {
+        let workspace = seeded_workspace();
+        setup(&workspace, task_input());
+        apply_host(
+            &workspace.module,
+            "skip",
+            ProjectWorkspaceIntent::SetInboxEntryState {
+                page_ids: vec!["page:firing".into()],
+                state: ProjectWorkspaceInboxEntryState::Done,
+            },
+        );
+        assert_eq!(
+            item(&workspace).firing.unwrap().status,
+            AutomationFiringStatus::Skipped
+        );
+        assert_eq!(
+            item(&workspace).outcome,
+            Some(ProjectWorkspaceInboxOutcome::Done)
+        );
+        apply_host(
+            &workspace.module,
+            "reopen",
+            ProjectWorkspaceIntent::SetInboxEntryState {
+                page_ids: vec!["page:firing".into()],
+                state: ProjectWorkspaceInboxEntryState::Open,
+            },
+        );
+        assert_eq!(
+            item(&workspace).firing.unwrap().status,
+            AutomationFiringStatus::Held
+        );
+        automation(
+            &workspace,
+            "delete-task",
+            AutomationIntent::DeleteDefinition {
+                automation_id: "task".into(),
+                expected_revision: 1,
+            },
+        );
+        let withdrawn = item(&workspace);
+        assert_eq!(
+            withdrawn.firing.unwrap().status,
+            AutomationFiringStatus::Withdrawn
+        );
+        let proposal = withdrawn.proposal.unwrap();
+        let error = workspace
+            .module
+            .apply(
+                &host(),
+                request(
+                    "confirm-deleted",
+                    ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                        expected_store_epoch: "epoch-1".into(),
+                        proposal_id: proposal.proposal_id,
+                        expected_revision: proposal.revision,
+                        action: None,
+                        session_id: None,
+                        basis: vec![withdrawn.basis],
+                        execution_selection: None,
+                    },
+                ),
+            )
+            .unwrap_err();
+        assert_eq!(error.code, CoreErrorCode::Conflict);
+        assert!(error.message.contains("no longer exists"));
+    }
+
+    #[test]
+    fn deleting_an_unclaimed_admission_withdraws_it_without_creating_a_run() {
+        let workspace = seeded_workspace();
+        setup(&workspace, task_input());
+        confirm(&workspace);
+        automation(
+            &workspace,
+            "delete-admitted",
+            AutomationIntent::DeleteDefinition {
+                automation_id: "task".into(),
+                expected_revision: 1,
+            },
+        );
+        assert_eq!(
+            item(&workspace).firing.unwrap().status,
+            AutomationFiringStatus::Withdrawn
+        );
+        assert_eq!(
+            count(&workspace, "SELECT count(*) FROM core_automation_runs"),
+            0
+        );
+        let module = AutomationModule::new("profile-1", "library-1", &workspace.kernel);
+        let snapshot = module
+            .read(
+                &host(),
+                ModuleReadRequest {
+                    contract_version: nodex_core_contracts::AUTOMATION_CONTRACT_VERSION,
+                    read: AutomationRead::DueWork {
+                        lane: AutomationDueWorkLane::Definitions,
+                    },
+                },
+            )
+            .unwrap();
+        let AutomationReadValue::DueWork { plan } = snapshot.value else {
+            panic!("due work")
+        };
+        assert!(!plan.due_now);
+        assert_eq!(plan.next_wake_at_ms, None);
+    }
+
+    #[test]
+    fn reopening_a_skip_refuses_a_second_held_firing_and_deleting_withdraws_the_message() {
+        let workspace = seeded_workspace();
+        setup(&workspace, task_input());
+        apply_host(
+            &workspace.module,
+            "keep-first",
+            ProjectWorkspaceIntent::KeepInboxEntries {
+                page_ids: vec!["page:firing".into()],
+            },
+        );
+        assert_eq!(
+            item(&workspace).firing.unwrap().status,
+            AutomationFiringStatus::Skipped
+        );
+        assert_eq!(
+            item(&workspace).outcome,
+            Some(ProjectWorkspaceInboxOutcome::Done)
+        );
+        due(&workspace);
+        let second = claim(&workspace, "second-hold");
+        apply_host(
+            &workspace.module,
+            "hold-second",
+            ProjectWorkspaceIntent::HoldScheduledFiring {
+                lease_id: second.lease_id,
+                page_id: "page:second".into(),
+                document_id: "document:second".into(),
+                title: "Next report".into(),
+            },
+        );
+        let code = apply_host_error(
+            &workspace.module,
+            "reopen-conflict",
+            ProjectWorkspaceIntent::SetInboxEntryState {
+                page_ids: vec!["page:firing".into()],
+                state: ProjectWorkspaceInboxEntryState::Open,
+            },
+        );
+        assert_eq!(code, CoreErrorCode::Conflict);
+        assert_eq!(
+            item(&workspace).firing.unwrap().status,
+            AutomationFiringStatus::Skipped
+        );
+        apply_host(
+            &workspace.module,
+            "delete-message",
+            ProjectWorkspaceIntent::DeleteInboxMessages {
+                page_ids: vec!["page:second".into()],
+            },
+        );
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM core_automation_firings WHERE page_id='page:second' AND status='withdrawn'"
+            ),
+            1
+        );
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM inbox_entries WHERE page_id='page:second'"
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn deleting_an_admitted_message_erases_its_frozen_prompt_and_fences_pending_runs() {
+        let workspace = seeded_workspace();
+        setup(&workspace, task_input());
+        confirm(&workspace);
+        let lease = claim(&workspace, "claim-before-delete");
+        let scheduled = next_run(&workspace);
+        automation(
+            &workspace,
+            "begin-pending",
+            AutomationIntent::BeginRun {
+                run_id: "pending-run".into(),
+                automation_id: "task".into(),
+                dispatch_id: Some(lease.dispatch_id),
+                session_id: None,
+                session_title: None,
+                source_cwd: None,
+            },
+        );
+        apply_host(
+            &workspace.module,
+            "erase-admission",
+            ProjectWorkspaceIntent::DeleteInboxMessages {
+                page_ids: vec!["page:firing".into()],
+            },
+        );
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM core_automation_firings WHERE admission_prompt IS NOT NULL OR admission_agent_json IS NOT NULL OR admitted_at_ms IS NOT NULL"
+            ),
+            0
+        );
+        automation(
+            &workspace,
+            "settle-erased",
+            AutomationIntent::FailLease {
+                lease_id: lease.lease_id,
+                retry_delay_ms: None,
+                reason_code: "message_deleted".into(),
+            },
+        );
+        assert_eq!(next_run(&workspace), scheduled);
+        create_session_thread(
+            &workspace.module,
+            "late",
+            "session:late",
+            "thread:late",
+            None,
+            1,
+        );
+        let error = AutomationModule::new("profile-1", "library-1", &workspace.kernel)
+            .apply(
+                &host(),
+                ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::AUTOMATION_CONTRACT_VERSION,
+                    operation_id: "late-bind".into(),
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    intent: AutomationIntent::BindRunSession {
+                        run_id: "pending-run".into(),
+                        session_id: "session:late".into(),
+                        expected_revision: 1,
+                    },
+                },
+            )
+            .unwrap_err();
+        assert_eq!(error.code, CoreErrorCode::Conflict);
+    }
+
+    #[test]
+    fn hold_is_atomic_with_its_receipt_and_reclaimed_leases_keep_the_dispatch() {
+        let workspace = seeded_workspace();
+        automation(
+            &workspace,
+            "create-task",
+            AutomationIntent::CreateDefinition {
+                automation_id: "task".into(),
+                definition: task_input(),
+            },
+        );
+        due(&workspace);
+        let lease = claim(&workspace, "claim-expiring");
+        let id = lease.lease_id.clone();
+        workspace.kernel.writer().call(move |c| {
+            c.execute("UPDATE core_automation_leases SET claimed_at_ms=0,expires_at_ms=1 WHERE lease_id=?1",[id])?;
+            c.execute_batch("CREATE TEMP TRIGGER reject_hold_receipt BEFORE INSERT ON core_module_receipts WHEN NEW.operation_id='hold-fails' BEGIN SELECT RAISE(ABORT,'receipt fault'); END;")?;
+            Ok(())
+        }).unwrap();
+        let reclaimed = claim(&workspace, "reclaim-hold");
+        assert_eq!(reclaimed.dispatch_id, lease.dispatch_id);
+        assert_eq!(reclaimed.attempt, lease.attempt + 1);
+        let intent = ProjectWorkspaceIntent::HoldScheduledFiring {
+            lease_id: reclaimed.lease_id,
+            page_id: "page:firing".into(),
+            document_id: "document:firing".into(),
+            title: "Daily report".into(),
+        };
+        assert!(
+            workspace
+                .module
+                .apply(&host(), request("hold-fails", intent.clone()))
+                .is_err()
+        );
+        assert_eq!(
+            count(&workspace, "SELECT count(*) FROM core_automation_firings"),
+            0
+        );
+        assert_eq!(count(&workspace, "SELECT count(*) FROM inbox_entries"), 0);
+        assert_eq!(next_run(&workspace), 0);
+        workspace
+            .kernel
+            .writer()
+            .call(|c| {
+                c.execute_batch("DROP TRIGGER reject_hold_receipt")?;
+                Ok(())
+            })
+            .unwrap();
+        apply_host(&workspace.module, "hold-fails", intent.clone());
+        apply_host(&workspace.module, "hold-fails", intent);
+        assert_eq!(count(&workspace, "SELECT count(*) FROM inbox_entries"), 1);
+    }
+
+    #[test]
+    fn prompt_refresh_only_rewrites_the_original_message() {
+        let workspace = seeded_workspace();
+        let lease = setup(&workspace, task_input());
+        let mut input = task_input();
+        input.prompt = Some("Updated instructions".into());
+        automation(
+            &workspace,
+            "update-prompt",
+            AutomationIntent::UpdateDefinition {
+                automation_id: "task".into(),
+                expected_revision: 1,
+                status: AutomationDefinitionStatus::Active,
+                definition: input.clone(),
+            },
+        );
+        apply_host(
+            &workspace.module,
+            "refresh",
+            ProjectWorkspaceIntent::RefreshScheduledFiring {
+                dispatch_id: lease.dispatch_id.clone(),
+            },
+        );
+        let refreshed = item(&workspace);
+        apply_host(
+            &workspace.module,
+            "refresh-unchanged",
+            ProjectWorkspaceIntent::RefreshScheduledFiring {
+                dispatch_id: lease.dispatch_id.clone(),
+            },
+        );
+        assert_eq!(item(&workspace).basis, refreshed.basis);
+        assert_eq!(refreshed.body, "Updated instructions");
+        assert_eq!(
+            refreshed.proposal.unwrap().basis,
+            vec![refreshed.basis.clone()]
+        );
+        apply_host(
+            &workspace.module,
+            "edit",
+            ProjectWorkspaceIntent::EditInboxMessage {
+                page_id: refreshed.page_id,
+                basis: refreshed.basis,
+                original_body: refreshed.body,
+                body: "My instructions".into(),
+            },
+        );
+        input.prompt = Some("Further definition change".into());
+        automation(
+            &workspace,
+            "update-again",
+            AutomationIntent::UpdateDefinition {
+                automation_id: "task".into(),
+                expected_revision: 2,
+                status: AutomationDefinitionStatus::Active,
+                definition: input,
+            },
+        );
+        apply_host(
+            &workspace.module,
+            "refresh-edited",
+            ProjectWorkspaceIntent::RefreshScheduledFiring {
+                dispatch_id: lease.dispatch_id,
+            },
+        );
+        assert_eq!(item(&workspace).body, "My instructions");
+    }
+
+    #[test]
+    fn run_session_links_the_message_and_attributes_reports_to_the_task() {
+        let workspace = seeded_workspace();
+        setup(&workspace, task_input());
+        confirm(&workspace);
+        let lease = claim(&workspace, "claim-execution");
+        automation(
+            &workspace,
+            "begin",
+            AutomationIntent::BeginRun {
+                run_id: "run:task".into(),
+                automation_id: "task".into(),
+                dispatch_id: Some(lease.dispatch_id),
+                session_id: None,
+                session_title: None,
+                source_cwd: None,
+            },
+        );
+        create_session_thread(
+            &workspace.module,
+            "execution",
+            "session:task",
+            "thread:task",
+            None,
+            1,
+        );
+        automation(
+            &workspace,
+            "bind",
+            AutomationIntent::BindRunSession {
+                run_id: "run:task".into(),
+                session_id: "session:task".into(),
+                expected_revision: 1,
+            },
+        );
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM project_session_pages WHERE session_id='session:task' AND page_id='page:firing'"
+            ),
+            1
+        );
+        assert_eq!(
+            item(&workspace).proposal.unwrap().chat.unwrap().session_id,
+            "session:task"
+        );
+        super::super::test_support::apply(
+            &workspace.module,
+            "admit-report",
+            ProjectWorkspaceIntent::AdmitTurnAuthority {
+                thread_id: "thread:task".into(),
+                turn_id: "turn:report".into(),
+                root_thread_id: "thread:task".into(),
+                actor_project_id: None,
+            },
+        );
+        apply_host(
+            &workspace.module,
+            "send-report",
+            ProjectWorkspaceIntent::AgentCommand {
+                provenance: Box::new(AgentTurnProvenance {
+                    profile_id: "profile-1".into(),
+                    authority: ProjectWorkspaceTurnAuthority {
+                        thread_id: "thread:task".into(),
+                        turn_id: "turn:report".into(),
+                        root_thread_id: "thread:task".into(),
+                        actor_project_id: None,
+                        library_id: "library-1".into(),
+                        store_epoch: "epoch-1".into(),
+                        runtime: None,
+                    },
+                }),
+                intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+                    expected_store_epoch: None,
+                    page_id: "page:report".into(),
+                    document_id: "document:report".into(),
+                    body: "The report is ready".into(),
+                    title: Some("Report ready".into()),
+                    project_id: None,
+                }),
+            },
+        );
+        let report = window(&workspace.module, ProjectWorkspaceInboxWindowFilter::Inbox)
+            .into_iter()
+            .find(|i| i.page_id == "page:report")
+            .unwrap();
+        assert!(
+            matches!(report.source,ProjectWorkspaceInboxSource::Agent {ref label,..} if label=="Daily report")
+        );
+    }
+}
+
+#[test]
+fn scheduled_launch_defaults_and_agent_commands_cannot_escalate_execution() {
+    use crate::automation::AutomationModule;
+    use nodex_core_contracts::automation::*;
+    let workspace = seeded_workspace();
+    create_session_thread(
+        &workspace.module,
+        "scheduler-author",
+        "session:author",
+        "thread:author",
+        None,
+        1,
+    );
+    super::test_support::apply(
+        &workspace.module,
+        "task-authority",
+        ProjectWorkspaceIntent::AdmitTurnAuthority {
+            thread_id: "thread:author".into(),
+            turn_id: "turn:author".into(),
+            root_thread_id: "thread:author".into(),
+            actor_project_id: None,
+        },
+    );
+    let provenance = AgentTurnProvenance {
+        profile_id: "profile-1".into(),
+        authority: ProjectWorkspaceTurnAuthority {
+            thread_id: "thread:author".into(),
+            turn_id: "turn:author".into(),
+            root_thread_id: "thread:author".into(),
+            actor_project_id: None,
+            library_id: "library-1".into(),
+            store_epoch: "epoch-1".into(),
+            runtime: None,
+        },
+    };
+    let module = AutomationModule::new("profile-1", "library-1", &workspace.kernel);
+    let apply = |op: &str, intent: AutomationIntent, agent: bool| {
+        module.apply(
+            &host(),
+            ModuleApplyRequest {
+                contract_version: nodex_core_contracts::AUTOMATION_CONTRACT_VERSION,
+                operation_id: op.into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: if agent {
+                    AutomationIntent::AgentCommand {
+                        provenance: Box::new(provenance.clone()),
+                        intent: Box::new(intent),
+                    }
+                } else {
+                    intent
+                },
+            },
+        )
+    };
+    let mut input = scheduled::task_input();
+    input.launch = None;
+    let host_created = apply(
+        "host-task",
+        AutomationIntent::CreateDefinition {
+            automation_id: "host-task".into(),
+            definition: input.clone(),
+        },
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        host_created.committed.value.definitions[0].launch,
+        AutomationLaunch::Automatic
+    );
+    let agent_created = apply(
+        "agent-task",
+        AutomationIntent::CreateDefinition {
+            automation_id: "agent-task".into(),
+            definition: input.clone(),
+        },
+        true,
+    )
+    .unwrap();
+    assert_eq!(
+        agent_created.committed.value.definitions[0].launch,
+        AutomationLaunch::Ask
+    );
+    let update = apply(
+        "agent-preserves-launch",
+        AutomationIntent::UpdateDefinition {
+            automation_id: "agent-task".into(),
+            expected_revision: 1,
+            status: AutomationDefinitionStatus::Active,
+            definition: input.clone(),
+        },
+        true,
+    )
+    .unwrap();
+    assert_eq!(
+        update.committed.value.definitions[0].launch,
+        AutomationLaunch::Ask
+    );
+    input.launch = Some(AutomationLaunch::Automatic);
+    let create = apply(
+        "agent-auto",
+        AutomationIntent::CreateDefinition {
+            automation_id: "forbidden".into(),
+            definition: input.clone(),
+        },
+        true,
+    )
+    .unwrap_err();
+    assert_eq!(create.code, CoreErrorCode::Unauthorized);
+    let escalation = apply(
+        "agent-escalates",
+        AutomationIntent::UpdateDefinition {
+            automation_id: "agent-task".into(),
+            expected_revision: 2,
+            status: AutomationDefinitionStatus::Active,
+            definition: input.clone(),
+        },
+        true,
+    )
+    .unwrap_err();
+    assert_eq!(escalation.code, CoreErrorCode::Unauthorized);
+    assert!(escalation.message.contains("Only the user"));
+    // Editing an existing automatic definition does not grant a new permission.
+    apply(
+        "agent-edits-automatic",
+        AutomationIntent::UpdateDefinition {
+            automation_id: "host-task".into(),
+            expected_revision: 1,
+            status: AutomationDefinitionStatus::Active,
+            definition: input.clone(),
+        },
+        true,
+    )
+    .unwrap();
+    let execution = apply(
+        "agent-run-now",
+        AutomationIntent::DispatchNow {
+            automation_id: "agent-task".into(),
+        },
+        true,
+    )
+    .unwrap_err();
+    assert_eq!(execution.code, CoreErrorCode::Unauthorized);
+}

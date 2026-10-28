@@ -19,6 +19,8 @@ function automation(overrides: Partial<CodexScheduledAutomation> = {}): CodexSch
     projectId: null,
     targetSessionId: null,
     notificationPolicy: null,
+    launch: "automatic",
+    heldFiring: null,
     kind: "cron",
     status: "ACTIVE",
     name: "Report",

@@ -80,6 +80,14 @@ const InboxDelegateSchema = z
   .strict() satisfies z.ZodType<InboxDelegate>;
 
 export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("run_task"),
+      automationId: id,
+      dispatchId: id,
+      agent: InboxChatAgentSchema.nullable(),
+    })
+    .strict(),
   z.object({ type: z.literal("keep") }).strict(),
   z
     .object({

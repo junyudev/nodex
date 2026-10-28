@@ -60,6 +60,8 @@ function makeAutomation(
     definitionRevision: 1,
     projectId: null,
     notificationPolicy: null,
+    launch: "automatic",
+    heldFiring: null,
     kind: "heartbeat",
     status: "ACTIVE",
     targetSessionId: "thread-1",

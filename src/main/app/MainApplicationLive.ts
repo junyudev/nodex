@@ -32,7 +32,11 @@ import { ApplicationHostRuntimeError } from "../host-runtime/ApplicationHostRunt
 import { BrowserProfileRuntimeError } from "../host-runtime/BrowserProfileRuntime";
 import { BrowserUseRuntimeError } from "../host-runtime/BrowserUseRuntime";
 import { ReminderSchedulerRuntime } from "../host-runtime/ReminderSchedulerRuntime";
-import { ScheduledAutomationRuntime } from "../host-runtime/ScheduledAutomationRuntime";
+import {
+  ScheduledAutomationRuntime,
+  live as scheduledAutomationLive,
+} from "../host-runtime/ScheduledAutomationRuntime";
+import { live as automationExecutionLive } from "../automation-application/AutomationExecution";
 import { StoreAdministrationSchedulerRuntime } from "../host-runtime/StoreAdministrationSchedulerRuntime";
 import { live as storeAdministrationSchedulerLive } from "../host-runtime/StoreAdministrationSchedulerRuntime";
 import { layer as storeAdministrationLayer } from "../core-runtime/StoreAdministration";
@@ -156,7 +160,11 @@ const administration = Layer.unwrap(
 const administrationGraph = administration.pipe(Layer.provideMerge(operationsGraph));
 // Inbox erasure shares the snapshot-aware administration owner, after execution is composed.
 const inboxGraph = inboxApplicationLive.pipe(Layer.provideMerge(administrationGraph));
-const schedulesGraph = storeAdministrationSchedulerLive({}).pipe(Layer.provideMerge(inboxGraph));
+const automationGraph = automationExecutionLive.pipe(Layer.provideMerge(inboxGraph));
+const scheduledGraph = scheduledAutomationLive().pipe(Layer.provideMerge(automationGraph));
+const schedulesGraph = storeAdministrationSchedulerLive({}).pipe(
+  Layer.provideMerge(scheduledGraph),
+);
 const hostGraph = AgentRuntimeApplicationLive.hostTools.pipe(Layer.provideMerge(schedulesGraph));
 // Recovered Inbox work can call app tools as soon as its first provider starts.
 const inboxWorkersGraph = Layer.merge(inboxDispatcherLive, inboxDispatchRuntimeLive).pipe(

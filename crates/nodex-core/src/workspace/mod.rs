@@ -297,3 +297,7 @@ fn unavailable(message: &str) -> CoreError {
 fn corrupt(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::StoreCorrupt, message, false)
 }
+
+pub(crate) use page_chat::link_pages;
+
+pub(crate) use inbox::scheduled::record_automation_changes;

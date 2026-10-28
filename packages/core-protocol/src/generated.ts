@@ -785,9 +785,11 @@ export interface components {
             /** Format: int64 */
             readonly definition_revision: number;
             readonly execution_environment: components["schemas"]["AutomationExecutionEnvironment"];
+            readonly held_firing?: components["schemas"]["AutomationHeldFiring"] | null;
             readonly kind: components["schemas"]["AutomationDefinitionKind"];
             /** Format: int64 */
             readonly last_run_at_ms?: number | null;
+            readonly launch: components["schemas"]["AutomationLaunch"];
             readonly local_environment_config_path?: string | null;
             readonly model?: string | null;
             readonly name: string;
@@ -809,6 +811,7 @@ export interface components {
             readonly cwds?: readonly string[] | null;
             readonly execution_environment?: components["schemas"]["AutomationExecutionEnvironment"] | null;
             readonly kind: components["schemas"]["AutomationDefinitionKind"];
+            readonly launch?: components["schemas"]["AutomationLaunch"] | null;
             readonly local_environment_config_path?: string | null;
             readonly model?: string | null;
             readonly name: string;
@@ -851,6 +854,41 @@ export interface components {
         readonly AutomationEventKind: "automation_changed";
         /** @enum {string} */
         readonly AutomationExecutionEnvironment: "local" | "worktree";
+        /** @description What the user confirmed for a firing that waited in the Inbox, frozen at confirmation. */
+        readonly AutomationFiringAdmission: {
+            /** Format: int64 */
+            readonly admitted_at_ms: number;
+            readonly agent?: components["schemas"]["ProjectWorkspaceInboxChatAgent"] | null;
+            /** @description The Inbox message whose reviewed text became the run's instructions. */
+            readonly page_id: string;
+            /** @description The instructions for this run, frozen from the reviewed message. */
+            readonly prompt: string;
+        };
+        /**
+         * @description Lifecycle of a firing that went through the Inbox.
+         * @enum {string}
+         */
+        readonly AutomationFiringStatus: "held" | "admitted" | "completed" | "failed" | "skipped" | "withdrawn";
+        /**
+         * @description One firing of an `Ask` task while it waits in the Inbox. Firings that fall due while it
+         *     waits fold into it instead of adding messages.
+         */
+        readonly AutomationHeldFiring: {
+            readonly dispatch_id: string;
+            /** Format: int64 */
+            readonly first_scheduled_for_ms: number;
+            /** @description The Project whose Inbox holds the message; None for the Library Inbox. */
+            readonly inbox_project_id?: string | null;
+            /** Format: int64 */
+            readonly last_scheduled_for_ms: number;
+            /**
+             * Format: int32
+             * @description Later firings that fell due while this one waited.
+             */
+            readonly missed_count: number;
+            /** @description The Inbox message that holds the firing. */
+            readonly page_id: string;
+        };
         readonly AutomationIntent: {
             readonly intent: components["schemas"]["AutomationIntent"];
             /** @enum {string} */
@@ -910,6 +948,7 @@ export interface components {
             readonly retry_delay_ms?: number | null;
         } | {
             readonly automation_id: string;
+            readonly dispatch_id?: string | null;
             /** @enum {string} */
             readonly kind: "begin_run";
             readonly run_id: string;
@@ -1036,7 +1075,15 @@ export interface components {
             readonly scope: components["schemas"]["PageOccurrenceUpdateScope"];
             readonly updates: components["schemas"]["PageOccurrenceSchedulePatch"];
         };
+        /**
+         * @description What happens when a task falls due: it runs, or its firing waits in the Inbox until the
+         *     user confirms, adjusts, or skips it. Only the user grants `Automatic`; an Agent may create
+         *     or move a task toward `Ask` but never escalate one to `Automatic`.
+         * @enum {string}
+         */
+        readonly AutomationLaunch: "automatic" | "ask";
         readonly AutomationLease: {
+            readonly admission?: components["schemas"]["AutomationFiringAdmission"] | null;
             /** Format: int32 */
             readonly attempt: number;
             readonly automation_id: string;
@@ -1048,6 +1095,7 @@ export interface components {
             /** Format: int64 */
             readonly expires_at_ms: number;
             readonly lease_id: string;
+            readonly purpose?: components["schemas"]["AutomationLeasePurpose"];
             readonly reason_code?: string | null;
             /** Format: int64 */
             readonly retry_at_ms?: number | null;
@@ -1057,6 +1105,11 @@ export interface components {
             readonly settled_at_ms?: number | null;
             readonly status: components["schemas"]["AutomationLeaseStatus"];
         };
+        /**
+         * @description Why a lease was claimed.
+         * @enum {string}
+         */
+        readonly AutomationLeasePurpose: "run" | "hold";
         /** @enum {string} */
         readonly AutomationLeaseStatus: "claimed" | "completed" | "failed" | "cancelled";
         /** @enum {string} */
@@ -1078,6 +1131,8 @@ export interface components {
             readonly automation_id: string;
             /** Format: int64 */
             readonly created_at_ms: number;
+            /** @description The firing this Run executes. */
+            readonly dispatch_id?: string | null;
             readonly inbox_summary?: string | null;
             readonly inbox_title?: string | null;
             /** Format: int64 */
@@ -1208,9 +1263,11 @@ export interface components {
                 /** Format: int64 */
                 readonly definition_revision: number;
                 readonly execution_environment: components["schemas"]["AutomationExecutionEnvironment"];
+                readonly held_firing?: components["schemas"]["AutomationHeldFiring"] | null;
                 readonly kind: components["schemas"]["AutomationDefinitionKind"];
                 /** Format: int64 */
                 readonly last_run_at_ms?: number | null;
+                readonly launch: components["schemas"]["AutomationLaunch"];
                 readonly local_environment_config_path?: string | null;
                 readonly model?: string | null;
                 readonly name: string;
@@ -1253,6 +1310,7 @@ export interface components {
         readonly CollectionWindow_AutomationLease: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
+                readonly admission?: components["schemas"]["AutomationFiringAdmission"] | null;
                 /** Format: int32 */
                 readonly attempt: number;
                 readonly automation_id: string;
@@ -1264,6 +1322,7 @@ export interface components {
                 /** Format: int64 */
                 readonly expires_at_ms: number;
                 readonly lease_id: string;
+                readonly purpose?: components["schemas"]["AutomationLeasePurpose"];
                 readonly reason_code?: string | null;
                 /** Format: int64 */
                 readonly retry_at_ms?: number | null;
@@ -1284,6 +1343,8 @@ export interface components {
                 readonly automation_id: string;
                 /** Format: int64 */
                 readonly created_at_ms: number;
+                /** @description The firing this Run executes. */
+                readonly dispatch_id?: string | null;
                 readonly inbox_summary?: string | null;
                 readonly inbox_title?: string | null;
                 /** Format: int64 */
@@ -1620,6 +1681,7 @@ export interface components {
                  */
                 readonly body_editable: boolean;
                 readonly body_truncated: boolean;
+                readonly firing?: components["schemas"]["ProjectWorkspaceInboxFiring"] | null;
                 /** @description The user marked the message important, so it stays in view while it waits. */
                 readonly important: boolean;
                 readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
@@ -6465,6 +6527,7 @@ export interface components {
                 readonly retry_delay_ms?: number | null;
             } | {
                 readonly automation_id: string;
+                readonly dispatch_id?: string | null;
                 /** @enum {string} */
                 readonly kind: "begin_run";
                 readonly run_id: string;
@@ -7475,6 +7538,18 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "retry_inbox_dispatch";
                 readonly proposal_id: string;
+            } | {
+                readonly document_id: string;
+                /** @enum {string} */
+                readonly kind: "hold_scheduled_firing";
+                readonly lease_id: string;
+                readonly page_id: string;
+                /** @description The message title, formatted by the Host in the user's time zone. */
+                readonly title: string;
+            } | {
+                readonly dispatch_id: string;
+                /** @enum {string} */
+                readonly kind: "refresh_scheduled_firing";
             };
             readonly operation_id: string;
             readonly store_epoch: components["schemas"]["StoreEpoch"];
@@ -9213,6 +9288,12 @@ export interface components {
             readonly project_id: string;
             /** @enum {string} */
             readonly type: "move_to_project";
+        } | {
+            readonly agent?: components["schemas"]["ProjectWorkspaceInboxChatAgent"] | null;
+            readonly automation_id: string;
+            readonly dispatch_id: string;
+            /** @enum {string} */
+            readonly type: "run_task";
         };
         /**
          * @description Bounded routing context for the suggestion Agent. It intentionally carries
@@ -9272,6 +9353,23 @@ export interface components {
         };
         /** @enum {string} */
         readonly ProjectWorkspaceInboxFailureKind: "rejected" | "unavailable" | "unknown";
+        /** @description The firing behind a scheduled task's message, as it stands now. */
+        readonly ProjectWorkspaceInboxFiring: {
+            readonly automation_id: string;
+            readonly dispatch_id: string;
+            /** @description Why its execution failed before reaching a chat. */
+            readonly failure_message?: string | null;
+            /** Format: int64 */
+            readonly first_scheduled_for_ms: number;
+            /** Format: int64 */
+            readonly last_scheduled_for_ms: number;
+            /**
+             * Format: int32
+             * @description Later firings that fell due while this one waited.
+             */
+            readonly missed_count: number;
+            readonly status: components["schemas"]["AutomationFiringStatus"];
+        };
         /** @description An important message still waiting in its Inbox, as the stream points back to it. */
         readonly ProjectWorkspaceInboxImportantMessage: {
             readonly page_id: string;
@@ -9359,7 +9457,7 @@ export interface components {
             readonly updated_at: string;
         };
         /** @enum {string} */
-        readonly ProjectWorkspaceInboxProposalOrigin: "agent" | "user";
+        readonly ProjectWorkspaceInboxProposalOrigin: "agent" | "user" | "schedule";
         /** @enum {string} */
         readonly ProjectWorkspaceInboxProposalState: "open" | "superseded" | "dismissed" | "dispatching" | "completed" | "failed";
         /**
@@ -9389,6 +9487,14 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "command_line";
+            readonly label: string;
+            readonly project_id?: string | null;
+        } | {
+            readonly automation_id: string;
+            readonly dispatch_id: string;
+            /** @enum {string} */
+            readonly kind: "scheduled_task";
+            /** @description The task's name when the firing arrived. */
             readonly label: string;
             readonly project_id?: string | null;
         };
@@ -10011,6 +10117,18 @@ export interface components {
             /** @enum {string} */
             readonly kind: "retry_inbox_dispatch";
             readonly proposal_id: string;
+        } | {
+            readonly document_id: string;
+            /** @enum {string} */
+            readonly kind: "hold_scheduled_firing";
+            readonly lease_id: string;
+            readonly page_id: string;
+            /** @description The message title, formatted by the Host in the user's time zone. */
+            readonly title: string;
+        } | {
+            readonly dispatch_id: string;
+            /** @enum {string} */
+            readonly kind: "refresh_scheduled_firing";
         };
         readonly ProjectWorkspaceManagedWorktreeConsumer: {
             readonly archived: boolean;

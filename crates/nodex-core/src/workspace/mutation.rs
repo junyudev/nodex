@@ -380,6 +380,8 @@ pub(super) fn apply(
                     | ProjectWorkspaceIntent::FailInboxDispatch { .. }) => super::inbox::apply_reliable(
                         transaction, &library_id, &context, &store_epoch, &request.operation_id,
                         &request_hash, intent.clone(), &assets_root),
+                ProjectWorkspaceIntent::HoldScheduledFiring {lease_id,page_id,document_id,title} => super::inbox::hold_scheduled_firing(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, lease_id, page_id, document_id, title),
+                ProjectWorkspaceIntent::RefreshScheduledFiring {dispatch_id} => super::inbox::refresh_scheduled_firing(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, dispatch_id),
                 ProjectWorkspaceIntent::KeepInboxEntries { page_ids } => super::inbox::keep_entries(
                     transaction,
                     &library_id,
@@ -1614,6 +1616,14 @@ fn seal_mutation(
 > {
     let connection = scope.connection();
     let store_epoch = scope.store_epoch();
+    if effects.operation_kind.starts_with("inbox_") {
+        crate::automation::firing::record_inbox_changes(
+            scope,
+            context,
+            operation_id,
+            &effects.page_ids,
+        )?;
+    }
     let target_session_lifecycle = match effects.operation_kind {
         "archive_session" => Some(crate::automation::TargetSessionLifecycle::Archived),
         "delete_session" => Some(crate::automation::TargetSessionLifecycle::Deleted),

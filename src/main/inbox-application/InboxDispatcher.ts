@@ -52,6 +52,17 @@ export const make = Effect.gen(function* () {
     current: InboxSettings,
     request: CoreInboxSuggestionRequest,
   ) {
+    if (request.context.entries.some((entry) => entry.source.kind === "scheduled_task")) {
+      yield* inbox.settleSuggestion({
+        request_id: request.request_id,
+        generation: request.generation,
+        titles: [],
+        suggestions: [],
+        produced_by: null,
+        error: "A scheduled run takes its decision from its task.",
+      });
+      return;
+    }
     const identity = {
       requestId: request.request_id,
       generation: request.generation,

@@ -182,6 +182,7 @@ export const buildInboxSuggestionPrompt = (input: {
   readonly agents: InboxSuggestionAgents | null;
 }): string => {
   const { context, request, agents } = input;
+  const entries = context.entries.filter((entry) => entry.source.kind !== "scheduled_task");
   const data = {
     request: {
       request_id: request.requestId,
@@ -211,8 +212,10 @@ export const buildInboxSuggestionPrompt = (input: {
       title: clip(session.title, 120),
       preview: clip(session.preview, 600),
     })),
-    messages: context.entries,
-    current_proposals: context.open_proposals,
+    messages: entries,
+    current_proposals: context.open_proposals.filter(
+      (proposal) => proposal.action.type !== "run_task",
+    ),
     correction: request.correction ?? null,
   };
   const prompt = `You propose how to handle captured messages in Nodex.
@@ -285,6 +288,8 @@ export const validateInboxSuggestions = (
   const reject = (reason: string): never => {
     throw new Error(`Invalid Inbox suggestion: ${reason}`);
   };
+  if (entries.some((entry) => entry.source.kind === "scheduled_task"))
+    reject("scheduled tasks already have a run decision");
   if (output.request_id !== request.requestId || output.generation !== request.generation)
     reject("request identity changed");
   if (request.mode !== "auto" && output.suggestions.length !== 1)

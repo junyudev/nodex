@@ -287,7 +287,15 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           const cause = error.cause instanceof CoreRuntimeError ? error.cause.cause : error.cause;
           return Effect.succeed(
             cause instanceof CoreModuleResponseError
-              ? toolFailure(cause.coreError.code, cause.coreError.message, { operationId })
+              ? toolFailure(
+                  cause.coreError.code,
+                  cause.coreError.code === "unauthorized" &&
+                    (request.mode === "create" || request.mode === "update") &&
+                    request.launch === "automatic"
+                    ? `${cause.coreError.message} Return a ${request.mode === "create" ? "suggested_create" : "suggested_update"} change with launch: "automatic" for the user to apply instead.`
+                    : cause.coreError.message,
+                  { operationId },
+                )
               : toolFailure("automation_command_failed", undefined, { operationId }),
           );
         }),

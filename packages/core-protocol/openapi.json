@@ -3611,6 +3611,7 @@
           "definition_revision",
           "kind",
           "status",
+          "launch",
           "name",
           "prompt",
           "rrule",
@@ -3644,6 +3645,17 @@
           "execution_environment": {
             "$ref": "#/components/schemas/AutomationExecutionEnvironment"
           },
+          "held_firing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AutomationHeldFiring",
+                "description": "The firing of an `Ask` task waiting in the Inbox, if any. At most one waits per task."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "kind": {
             "$ref": "#/components/schemas/AutomationDefinitionKind"
           },
@@ -3653,6 +3665,9 @@
               "null"
             ],
             "format": "int64"
+          },
+          "launch": {
+            "$ref": "#/components/schemas/AutomationLaunch"
           },
           "local_environment_config_path": {
             "type": [
@@ -3756,6 +3771,17 @@
           },
           "kind": {
             "$ref": "#/components/schemas/AutomationDefinitionKind"
+          },
+          "launch": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AutomationLaunch",
+                "description": "Absent preserves the current launch on update. A new task launches `Automatic` when the\nDesktop Host creates it and `Ask` when an Agent does."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "local_environment_config_path": {
             "type": [
@@ -3940,6 +3966,93 @@
           "local",
           "worktree"
         ]
+      },
+      "AutomationFiringAdmission": {
+        "type": "object",
+        "description": "What the user confirmed for a firing that waited in the Inbox, frozen at confirmation.",
+        "required": [
+          "page_id",
+          "prompt",
+          "admitted_at_ms"
+        ],
+        "properties": {
+          "admitted_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxChatAgent",
+                "description": "What this run uses instead of the task's own Agent selection."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "page_id": {
+            "type": "string",
+            "description": "The Inbox message whose reviewed text became the run's instructions."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "The instructions for this run, frozen from the reviewed message."
+          }
+        }
+      },
+      "AutomationFiringStatus": {
+        "type": "string",
+        "description": "Lifecycle of a firing that went through the Inbox.",
+        "enum": [
+          "held",
+          "admitted",
+          "completed",
+          "failed",
+          "skipped",
+          "withdrawn"
+        ]
+      },
+      "AutomationHeldFiring": {
+        "type": "object",
+        "description": "One firing of an `Ask` task while it waits in the Inbox. Firings that fall due while it\nwaits fold into it instead of adding messages.",
+        "required": [
+          "dispatch_id",
+          "page_id",
+          "first_scheduled_for_ms",
+          "last_scheduled_for_ms",
+          "missed_count"
+        ],
+        "properties": {
+          "dispatch_id": {
+            "type": "string"
+          },
+          "first_scheduled_for_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "inbox_project_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Project whose Inbox holds the message; None for the Library Inbox."
+          },
+          "last_scheduled_for_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "missed_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Later firings that fell due while this one waited.",
+            "minimum": 0
+          },
+          "page_id": {
+            "type": "string",
+            "description": "The Inbox message that holds the firing."
+          }
+        }
       },
       "AutomationIntent": {
         "oneOf": [
@@ -4185,6 +4298,12 @@
             "properties": {
               "automation_id": {
                 "type": "string"
+              },
+              "dispatch_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "kind": {
                 "type": "string",
@@ -4702,6 +4821,14 @@
           }
         ]
       },
+      "AutomationLaunch": {
+        "type": "string",
+        "description": "What happens when a task falls due: it runs, or its firing waits in the Inbox until the\nuser confirms, adjusts, or skips it. Only the user grants `Automatic`; an Agent may create\nor move a task toward `Ask` but never escalate one to `Automatic`.",
+        "enum": [
+          "automatic",
+          "ask"
+        ]
+      },
       "AutomationLease": {
         "type": "object",
         "required": [
@@ -4716,6 +4843,17 @@
           "expires_at_ms"
         ],
         "properties": {
+          "admission": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AutomationFiringAdmission",
+                "description": "Present when the lease executes a firing the user confirmed in the Inbox."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "attempt": {
             "type": "integer",
             "format": "int32",
@@ -4741,6 +4879,9 @@
           },
           "lease_id": {
             "type": "string"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/AutomationLeasePurpose"
           },
           "reason_code": {
             "type": [
@@ -4770,6 +4911,14 @@
             "$ref": "#/components/schemas/AutomationLeaseStatus"
           }
         }
+      },
+      "AutomationLeasePurpose": {
+        "type": "string",
+        "description": "Why a lease was claimed.",
+        "enum": [
+          "run",
+          "hold"
+        ]
       },
       "AutomationLeaseStatus": {
         "type": "string",
@@ -4869,6 +5018,13 @@
           "created_at_ms": {
             "type": "integer",
             "format": "int64"
+          },
+          "dispatch_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The firing this Run executes."
           },
           "inbox_summary": {
             "type": [
@@ -5341,6 +5497,7 @@
                 "definition_revision",
                 "kind",
                 "status",
+                "launch",
                 "name",
                 "prompt",
                 "rrule",
@@ -5374,6 +5531,17 @@
                 "execution_environment": {
                   "$ref": "#/components/schemas/AutomationExecutionEnvironment"
                 },
+                "held_firing": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AutomationHeldFiring",
+                      "description": "The firing of an `Ask` task waiting in the Inbox, if any. At most one waits per task."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "kind": {
                   "$ref": "#/components/schemas/AutomationDefinitionKind"
                 },
@@ -5383,6 +5551,9 @@
                     "null"
                   ],
                   "format": "int64"
+                },
+                "launch": {
+                  "$ref": "#/components/schemas/AutomationLaunch"
                 },
                 "local_environment_config_path": {
                   "type": [
@@ -5590,6 +5761,17 @@
                 "expires_at_ms"
               ],
               "properties": {
+                "admission": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AutomationFiringAdmission",
+                      "description": "Present when the lease executes a firing the user confirmed in the Inbox."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "attempt": {
                   "type": "integer",
                   "format": "int32",
@@ -5615,6 +5797,9 @@
                 },
                 "lease_id": {
                   "type": "string"
+                },
+                "purpose": {
+                  "$ref": "#/components/schemas/AutomationLeasePurpose"
                 },
                 "reason_code": {
                   "type": [
@@ -5701,6 +5886,13 @@
                 "created_at_ms": {
                   "type": "integer",
                   "format": "int64"
+                },
+                "dispatch_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The firing this Run executes."
                 },
                 "inbox_summary": {
                   "type": [
@@ -7017,6 +7209,17 @@
                 },
                 "body_truncated": {
                   "type": "boolean"
+                },
+                "firing": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ProjectWorkspaceInboxFiring",
+                      "description": "Present for a scheduled task's firing."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "important": {
                   "type": "boolean",
@@ -26992,6 +27195,12 @@
                   "automation_id": {
                     "type": "string"
                   },
+                  "dispatch_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "kind": {
                     "type": "string",
                     "enum": [
@@ -31448,6 +31657,57 @@
                   },
                   "proposal_id": {
                     "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Places the firing of an `Ask` task, claimed under a hold lease, in its Inbox as a\nmessage whose body is the task's instructions, with a `RunTask` proposal. A firing that\nfalls due while another of the task's firings waits folds into it instead. The hold\nlease settles in the same commit. Only the Desktop Host holds firings.",
+                "required": [
+                  "lease_id",
+                  "page_id",
+                  "document_id",
+                  "title",
+                  "kind"
+                ],
+                "properties": {
+                  "document_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "hold_scheduled_firing"
+                    ]
+                  },
+                  "lease_id": {
+                    "type": "string"
+                  },
+                  "page_id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "The message title, formatted by the Host in the user's time zone."
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Rewrites a waiting firing's message to its task's current instructions, only while the\nmessage is still exactly as the firing wrote it.",
+                "required": [
+                  "dispatch_id",
+                  "kind"
+                ],
+                "properties": {
+                  "dispatch_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "refresh_scheduled_firing"
+                    ]
                   }
                 }
               }
@@ -38597,6 +38857,40 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Run one waiting firing of a scheduled task. The message's reviewed text is the run's\ninstructions; everything else comes from the task when it runs.",
+            "required": [
+              "automation_id",
+              "dispatch_id",
+              "type"
+            ],
+            "properties": {
+              "agent": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxChatAgent",
+                    "description": "What this run uses instead of the task's own Agent selection."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "automation_id": {
+                "type": "string"
+              },
+              "dispatch_id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "run_task"
+                ]
+              }
+            }
           }
         ],
         "description": "The exact action a proposal asks the user to authorize."
@@ -38820,6 +39114,50 @@
           "unavailable",
           "unknown"
         ]
+      },
+      "ProjectWorkspaceInboxFiring": {
+        "type": "object",
+        "description": "The firing behind a scheduled task's message, as it stands now.",
+        "required": [
+          "automation_id",
+          "dispatch_id",
+          "status",
+          "first_scheduled_for_ms",
+          "last_scheduled_for_ms",
+          "missed_count"
+        ],
+        "properties": {
+          "automation_id": {
+            "type": "string"
+          },
+          "dispatch_id": {
+            "type": "string"
+          },
+          "failure_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why its execution failed before reaching a chat."
+          },
+          "first_scheduled_for_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_scheduled_for_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "missed_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Later firings that fell due while this one waited.",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/AutomationFiringStatus"
+          }
+        }
       },
       "ProjectWorkspaceInboxImportantMessage": {
         "type": "object",
@@ -39152,7 +39490,8 @@
         "type": "string",
         "enum": [
           "agent",
-          "user"
+          "user",
+          "schedule"
         ]
       },
       "ProjectWorkspaceInboxProposalState": {
@@ -39280,6 +39619,40 @@
               },
               "label": {
                 "type": "string"
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A due firing of a scheduled task that asks before it runs.",
+            "required": [
+              "automation_id",
+              "dispatch_id",
+              "label",
+              "kind"
+            ],
+            "properties": {
+              "automation_id": {
+                "type": "string"
+              },
+              "dispatch_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "scheduled_task"
+                ]
+              },
+              "label": {
+                "type": "string",
+                "description": "The task's name when the firing arrived."
               },
               "project_id": {
                 "type": [
@@ -42119,6 +42492,57 @@
               },
               "proposal_id": {
                 "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Places the firing of an `Ask` task, claimed under a hold lease, in its Inbox as a\nmessage whose body is the task's instructions, with a `RunTask` proposal. A firing that\nfalls due while another of the task's firings waits folds into it instead. The hold\nlease settles in the same commit. Only the Desktop Host holds firings.",
+            "required": [
+              "lease_id",
+              "page_id",
+              "document_id",
+              "title",
+              "kind"
+            ],
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "hold_scheduled_firing"
+                ]
+              },
+              "lease_id": {
+                "type": "string"
+              },
+              "page_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string",
+                "description": "The message title, formatted by the Host in the user's time zone."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Rewrites a waiting firing's message to its task's current instructions, only while the\nmessage is still exactly as the firing wrote it.",
+            "required": [
+              "dispatch_id",
+              "kind"
+            ],
+            "properties": {
+              "dispatch_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "refresh_scheduled_firing"
+                ]
               }
             }
           }

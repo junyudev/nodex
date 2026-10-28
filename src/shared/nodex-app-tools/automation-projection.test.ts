@@ -15,6 +15,7 @@ const proposal = {
   rrule: "FREQ=DAILY",
   targetSessionId: "session:resolved",
   notificationPolicy: null,
+  launch: "automatic",
 } as const;
 function item(overrides: Partial<McpItem> = {}): McpItem {
   return {
@@ -97,6 +98,7 @@ describe("native Automation result projection", () => {
                 kind: "heartbeat",
                 name: "Current task",
                 rrule: "FREQ=WEEKLY",
+                launch: "ask",
               },
             },
           },
@@ -106,7 +108,11 @@ describe("native Automation result projection", () => {
     );
     expect(projected?.result).toMatchObject({
       automationId: "automation-1",
-      snapshot: { name: "Current task", rrule: "FREQ=WEEKLY" },
+      snapshot: {
+        name: "Current task",
+        rrule: "FREQ=WEEKLY",
+        launch: "ask",
+      },
     });
     expect(projected?.proposal).toBeUndefined();
   });

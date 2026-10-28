@@ -24,6 +24,7 @@ import { InboxChatPlan } from "./inbox-chat-plan";
 type ActionType = InboxDispatchAction["type"];
 
 const ACTION_LABELS: Readonly<Record<ActionType, string>> = {
+  run_task: "Run task",
   keep: "Keep",
   new_chat: "New chat",
   send_to_chat: "Send to chat",
@@ -31,11 +32,31 @@ const ACTION_LABELS: Readonly<Record<ActionType, string>> = {
 };
 
 const CONFIRM_LABELS: Readonly<Record<ActionType, string>> = {
+  run_task: "Run",
   keep: "Keep",
   new_chat: "Start chat",
   send_to_chat: "Send",
   move_to_project: "Move",
 };
+
+/** The scheduled task run a firing message can still be handed to. */
+export interface InboxDispatchFiring {
+  readonly automationId: string;
+  readonly dispatchId: string;
+  /** What the task runs on; a run may use another Agent for this time only. */
+  readonly taskAgent: InboxChatAgent | null;
+  /** A Heartbeat continues its own chat on its own Agent. */
+  readonly heartbeat: boolean;
+}
+
+/**
+ * A firing runs its task or is handed on like any message; skipping it is `Mark done`, so it
+ * offers no Keep. Other messages cannot run a task.
+ */
+const actionTypesFor = (firing: InboxDispatchFiring | null | undefined): readonly ActionType[] =>
+  (Object.keys(ACTION_LABELS) as ActionType[]).filter((type) =>
+    firing ? type !== "keep" : type !== "run_task",
+  );
 
 export interface InboxDispatchDraft {
   readonly proposal?: InboxProposal;
@@ -51,6 +72,8 @@ export interface InboxDispatchDraft {
   readonly delegates?: readonly InboxDelegate[];
   /** How a new chat's Agent should run the work. */
   readonly plan?: string | null;
+  /** Present for a scheduled task's waiting run, which can run its task. */
+  readonly firing?: InboxDispatchFiring | null;
 }
 
 export function draftFromAction(
@@ -84,6 +107,14 @@ export function draftFromAction(
         sessionId: null,
         prompt: fallbackPrompt,
       };
+    case "run_task":
+      return {
+        type: "run_task",
+        projectId: null,
+        sessionId: null,
+        prompt: fallbackPrompt,
+        agent: action.agent,
+      };
   }
 }
 
@@ -95,6 +126,7 @@ export function draftForInboxItem(
   item: InboxItem,
   projectId: string | null,
   edited: InboxDispatchAction | null = null,
+  firing: InboxDispatchFiring | null = null,
 ): InboxDispatchDraft {
   const proposal = item.proposal;
   const action = edited ?? proposal?.action;
@@ -105,6 +137,7 @@ export function draftForInboxItem(
     ),
     basis: proposal?.basis ?? [item.basis],
     chat: proposal?.chat ?? null,
+    firing,
     ...(proposal?.state === "open" ? { proposal } : {}),
   };
 }
@@ -132,6 +165,15 @@ export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction 
         : null;
     case "move_to_project":
       return draft.projectId ? { type: "move_to_project", projectId: draft.projectId } : null;
+    case "run_task":
+      return draft.firing
+        ? {
+            type: "run_task",
+            automationId: draft.firing.automationId,
+            dispatchId: draft.firing.dispatchId,
+            agent: draft.agent ?? null,
+          }
+        : null;
   }
 }
 
@@ -169,6 +211,7 @@ export function InboxDispatchEditor({
   embedded = false,
   onSubmit,
   onCancel,
+  onEditTask,
 }: {
   readonly initial: InboxDispatchDraft;
   /** What a new chat can run on, and the Inbox's own choice it starts from. */
@@ -181,6 +224,8 @@ export function InboxDispatchEditor({
   /** `chat` is the chosen chat when the action sends to one. */
   readonly onSubmit: (action: InboxDispatchAction, chat: InboxChat | null) => Promise<boolean>;
   readonly onCancel: () => void;
+  /** Opens a firing's task, where its folders, workspace and schedule change for every run. */
+  readonly onEditTask?: (automationId: string) => void;
 }) {
   const [draft, setDraft] = useState(() =>
     inboxProjectId !== null && initial.type === "new_chat"
@@ -246,7 +291,7 @@ export function InboxDispatchEditor({
       )}
     >
       <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Action">
-        {(Object.keys(ACTION_LABELS) as ActionType[]).map((type) => {
+        {actionTypesFor(draft.firing).map((type) => {
           const Icon = INBOX_ACTION_ICONS[type];
           return (
             <button
@@ -376,7 +421,43 @@ export function InboxDispatchEditor({
         />
       ) : null}
 
+      {draft.type === "run_task" && draft.firing ? (
+        // The message is this run's instructions; everything else is the task's own.
+        <div className="flex min-w-0 items-center gap-1 px-1 text-sm text-token-description-foreground">
+          <span className="min-w-0 truncate">Runs with this message as its instructions</span>
+          {onEditTask ? (
+            <NodexButton
+              size="xs"
+              variant="ghost"
+              className="shrink-0"
+              onClick={() => onEditTask(draft.firing!.automationId)}
+            >
+              Edit task
+            </NodexButton>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="flex min-w-0 items-center gap-1">
+        {draft.type === "run_task" && draft.firing?.taskAgent && !draft.firing.heartbeat ? (
+          // One run may use another model; the task keeps its own.
+          <InboxAgentPicker
+            agents={agents}
+            purpose="chat"
+            scope="message"
+            value={draft.agent ?? draft.firing.taskAgent}
+            trigger="inline"
+            onChange={(next) =>
+              setDraft((current) => ({
+                ...current,
+                agent:
+                  current.firing?.taskAgent && sameInboxChatAgent(next, current.firing.taskAgent)
+                    ? null
+                    : next,
+              }))
+            }
+          />
+        ) : null}
         {draft.type === "new_chat" ? (
           // What the chat starts on sits beside the button that starts it, as in the composer.
           <InboxAgentPicker

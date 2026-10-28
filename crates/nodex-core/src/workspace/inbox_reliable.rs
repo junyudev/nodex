@@ -279,7 +279,9 @@ pub(in crate::workspace) fn apply_reliable(
                         edit.title_markdown.as_deref(),
                         operation_id,
                     )?;
-                    invalidate(connection, std::slice::from_ref(&page_id), &now)?;
+                    if !scheduled::refence(connection, &page_id, &now)? {
+                        invalidate(connection, std::slice::from_ref(&page_id), &now)?;
+                    }
                     if edit.title_markdown.is_some() {
                         connection.execute("UPDATE inbox_entries SET provisional_title=(SELECT title FROM document_materializations WHERE document_id=(SELECT document_id FROM pages WHERE block_id=?1)) WHERE page_id=?1",[&page_id])?;
                     }
@@ -290,7 +292,7 @@ pub(in crate::workspace) fn apply_reliable(
                 ProjectWorkspaceIntent::PrepareInboxSuggestions { request_id, limit } => {
                     require_host(context)?;
                     reconcile_advice(connection, library_id, &now)?;
-                    let pages=connection.prepare("WITH waiting AS (SELECT entry.page_id,entry.seq,entry.scope_project_id FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.library_id=?1 AND entry.state='open' AND entry.suggestion_state='pending' AND entry.suggestion_request_id IS NULL), oldest AS (SELECT scope_project_id FROM waiting ORDER BY seq LIMIT 1) SELECT waiting.page_id FROM waiting,oldest WHERE waiting.scope_project_id IS oldest.scope_project_id ORDER BY waiting.seq LIMIT ?2")?.query_map(params![library_id,i64::from(limit.clamp(1,8))],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+                    let pages=connection.prepare("WITH waiting AS (SELECT entry.page_id,entry.seq,entry.scope_project_id FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.library_id=?1 AND entry.state='open' AND entry.suggestion_state='pending' AND entry.source_kind<>'scheduled_task' AND entry.suggestion_request_id IS NULL), oldest AS (SELECT scope_project_id FROM waiting ORDER BY seq LIMIT 1) SELECT waiting.page_id FROM waiting,oldest WHERE waiting.scope_project_id IS oldest.scope_project_id ORDER BY waiting.seq LIMIT ?2")?.query_map(params![library_id,i64::from(limit.clamp(1,8))],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
                     let mut complete = Vec::new();
                     for page in pages {
                         match super::super::inbox_read::suggestion_input(
@@ -334,6 +336,13 @@ pub(in crate::workspace) fn apply_reliable(
                     require_basis(connection, &pages, &basis)?;
                     if has_in_flight_dispatch(connection, &pages)? {
                         return Err(conflict("Wait for the current dispatch to finish"));
+                    }
+                    for page in &pages {
+                        if crate::automation::firing::item(connection, page)?.is_some() {
+                            return Err(conflict(
+                                "A scheduled run takes its decision from its task.",
+                            ));
+                        }
                     }
                     if mode == ProjectWorkspaceInboxSuggestionMode::Refine {
                         let id = proposal_id
@@ -626,6 +635,11 @@ fn decide(
         }
         _ => {}
     }
+    for page in pages {
+        if !effects.page_ids.contains(page) {
+            effects.page_ids.push(page.clone());
+        }
+    }
     statuses.follow(connection, library_id, context, operation_id, &mut effects)?;
     Ok(effects)
 }
@@ -722,6 +736,15 @@ fn undo_decision(
 
 /// A change to any member invalidates the whole suggestion/request, never a partial group.
 fn invalidate(connection: &Connection, pages: &[String], now: &str) -> Result<(), StoreError> {
+    let pages = pages
+        .iter()
+        .filter_map(|page| match scheduled::refence(connection, page, now) {
+            Ok(true) => None,
+            Ok(false) => Some(Ok(page.clone())),
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    let pages = pages.as_slice();
     let ids = encode(pages)?;
     connection.execute("UPDATE inbox_suggestion_requests SET state='superseded',generation=generation+1,updated_at=?2 WHERE state IN ('pending','failed') AND request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",params![ids,now])?;
     connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state='pending',suggestion_error=NULL,current_proposal_id=NULL,revision=revision+1,updated_at=?2 WHERE state='open' AND (page_id IN (SELECT value FROM json_each(?1)) OR suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_requests WHERE state='superseded') OR current_proposal_id IN (SELECT proposal_id FROM inbox_proposal_pages WHERE page_id IN (SELECT value FROM json_each(?1))))",params![ids,now])?;
@@ -996,7 +1019,7 @@ const STALE_REQUESTS: &str = "
         OR block.placement_revision IS NOT json_extract(basis.value,'$.placement_revision')
     )";
 fn needs_preparation(connection: &Connection, library_id: &str) -> Result<bool, StoreError> {
-    let waiting:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.library_id=?1 AND entry.state='open' AND entry.suggestion_state='pending' AND entry.suggestion_request_id IS NULL)",[library_id],|r|r.get(0))?;
+    let waiting:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.library_id=?1 AND entry.state='open' AND entry.suggestion_state='pending' AND entry.source_kind<>'scheduled_task' AND entry.suggestion_request_id IS NULL)",[library_id],|r|r.get(0))?;
     if waiting {
         return Ok(true);
     }
@@ -1022,6 +1045,13 @@ fn reconcile_advice(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for id in proposals {
         invalidate(connection, &proposal_page_ids(connection, &id)?, now)?;
+        if connection.query_row(
+            "SELECT origin='schedule' FROM inbox_proposals WHERE proposal_id=?1",
+            [&id],
+            |r| r.get::<_, bool>(0),
+        )? {
+            continue;
+        }
         // Page collection can already have removed every member through foreign keys.
         connection.execute(
             "UPDATE inbox_proposals SET state='superseded',revision=revision+1,updated_at=?2 \

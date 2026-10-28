@@ -179,7 +179,7 @@ nor content-retention roots. See [ADR 0059](adr/0059-complete-view-order-and-sem
 | Page–Project Session Linked chat edges and Page Chat activity                                             | Rust Core Workspace Module                                                   | Effect Main Workspace Adapter; renderer joins bounded Workspace activity with Database Page windows                                                                                  |
 | Inbox entries, Dispatch proposals and confirmed-dispatch outbox                                           | Rust Core Workspace Module                                                   | Main proposes and delivers confirmed work; renderer presents triage; Agent/CLI Inbox endpoints append entries                                                                        |
 | Profile content access                                                                                    | Rust Core authenticated Profile and resource lifecycle boundary              | Workspace supplies execution routing; Electron and CLI bind the current Profile                                                                                                      |
-| Automation definitions, runs, occurrences, reminder leases and receipts                                   | Rust Core Automation Module                                                  | Electron scheduler/executor and renderer queries                                                                                                                                     |
+| Automation definitions, Firings, runs, occurrences, reminder leases and receipts                          | Rust Core Automation Module                                                  | Electron scheduler/executor and renderer queries                                                                                                                                     |
 | Backups, restore, bounded operational journals, Store maintenance                                         | Rust Core Administration Module                                              | Electron administration adapter, background backup jobs, and controlled relaunch                                                                                                     |
 | Explicit remote Codex conversation document                                                               | Attached remote conversation owner peer, seeded from app-server state        | Main and window managers are ordinary peers; followers apply canonical snapshots and patches                                                                                         |
 | Codex wire protocol and remote Thread observations                                                        | Pinned Codex-compatible app-server                                           | Main validates and routes generated protocol envelopes                                                                                                                               |
@@ -1175,7 +1175,15 @@ Module's typed due-work plan and claims only the stable work token that plan
 returned. Core re-plans inside the writer transaction before applying the
 claim, so idle polling and stale ticks neither create semantic commits nor turn
 Main's clock into a second due-work authority. Core remains the durable
-definition and lease authority. `AutomationRoutingIndex` owns the synchronous routing
+definition, firing, and lease authority. A Scheduled task is the only scheduler of
+Agent work, and the Inbox is the only place work waits for the user: a due `Ask`
+task's hold lease is answered through the Inbox application Interface, and
+Workspace records its held Firing, Inbox Page and run proposal in the same
+LocalCommit. Confirmation admits the Firing in Core with its frozen instructions
+and Agent choice; Main executes it through the task's ordinary Automation lease,
+never through the Inbox chat outbox, and it never moves the recurring schedule.
+See [ADR 0073](adr/0073-scheduled-runs-that-ask-in-the-inbox.md).
+`AutomationRoutingIndex` owns the synchronous routing
 projection from Automation Run IDs to definitions and stable Session IDs to active heartbeat definitions.
 Automation Runs retain a stable identity and an immutable optional Session binding. Heartbeat
 definitions own a Session target; execution resolves its current Workspace execution reference.

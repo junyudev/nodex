@@ -19,6 +19,8 @@ function task(overrides: Partial<CodexScheduledAutomation> = {}): CodexScheduled
     projectId: null,
     targetSessionId: null,
     notificationPolicy: null,
+    launch: "automatic",
+    heldFiring: null,
     name: "Task",
     prompt: "Do the thing",
     rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
@@ -68,6 +70,33 @@ describe("scheduled task model", () => {
     expect(formatScheduledTaskNextRunDate(new Date(2026, 9, 17, 9).getTime(), NOW)).toBe(
       "Tomorrow",
     );
+  });
+
+  test("a task that asks first says when a run is waiting for the user in the Inbox", () => {
+    const heldFiring = {
+      dispatchId: "dispatch",
+      pageId: "page",
+      inboxProjectId: null,
+      firstScheduledFor: new Date(2026, 9, 12, 9).getTime(),
+      lastScheduledFor: new Date(2026, 9, 12, 9).getTime(),
+      missedCount: 0,
+    };
+    const waiting = task({ launch: "ask", heldFiring });
+    expect(formatScheduledTaskSubtitle(waiting, NOW)).toBe("Waiting in Inbox · Mondays at 9:00 AM");
+    expect(formatScheduledTaskConfirmation(waiting)).toBe(
+      "A run of this task is waiting for you in the Inbox.",
+    );
+    expect(formatScheduledTaskConfirmation(task({ launch: "ask" }))).toMatch(
+      /^Your task is scheduled\. Its next run is .+, and it will wait for you in the Inbox\.$/u,
+    );
+    const [row] = buildScheduledTaskRows({
+      automations: [waiting],
+      runItems: [],
+      unreadAutomationIds: new Set(),
+      now: NOW,
+    });
+    // A waiting run opens the folder even before the task has run.
+    expect(row).toMatchObject({ asksFirst: true, waitingInInbox: true, canExpand: true });
   });
 
   test("lists active tasks by next run before paused tasks, filtered by status and name", () => {

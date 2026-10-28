@@ -12,7 +12,6 @@ import {
   WorkbenchContentRouting,
   make as makeWorkbenchContentRouting,
 } from "../app-tools/WorkbenchContentRouting";
-import { live as automationExecutionLive } from "../automation-application/AutomationExecution";
 import {
   CodexBackgroundProcesses,
   make as makeCodexBackgroundProcesses,
@@ -27,7 +26,6 @@ import { live as projectSessionCommandsLive } from "../project-application/Proje
 import { live as initialProjectBootstrapLive } from "../initial-project/InitialProjectBootstrapRuntime";
 import { resolveInitialProjectProjectsDirectory } from "../initial-project/initial-project-filesystem";
 import { resolveInitialProjectJournalPath } from "../initial-project/initial-project-journal-store";
-import { live as scheduledAutomationLive } from "../host-runtime/ScheduledAutomationRuntime";
 import { live as coreApplicationProjectionLive } from "../core-runtime/CoreApplicationProjectionRuntime";
 import { live as projectionDeliveryLive } from "../core-runtime/ProjectionDeliveryRuntime";
 import { live as coreEventHubLive } from "../core-runtime/CoreEventHub";
@@ -60,13 +58,7 @@ const workspaceDependencies = Layer.unwrap(
   }),
 );
 
-const automationExecution = automationExecutionLive.pipe(
-  Layer.provideMerge(agentBackendRegistryLive),
-);
-const backgroundProcesses = Layer.effect(
-  CodexBackgroundProcesses,
-  makeCodexBackgroundProcesses,
-).pipe(Layer.provideMerge(automationExecution));
+const backgroundProcesses = Layer.effect(CodexBackgroundProcesses, makeCodexBackgroundProcesses);
 const projectArchiveBlockers = projectArchiveBlockersLive.pipe(
   Layer.provideMerge(backgroundProcesses),
 );
@@ -99,11 +91,8 @@ const initialProjectBootstrap = Layer.unwrap(
     });
   }),
 ).pipe(Layer.provideMerge(managedWorktreeCatalog));
-const scheduledAutomation = scheduledAutomationLive().pipe(
-  Layer.provideMerge(initialProjectBootstrap),
-);
 const coreApplicationProjection = coreApplicationProjectionLive.pipe(
-  Layer.provideMerge(scheduledAutomation),
+  Layer.provideMerge(initialProjectBootstrap),
 );
 const projectionDelivery = projectionDeliveryLive.pipe(
   Layer.provideMerge(coreApplicationProjection),

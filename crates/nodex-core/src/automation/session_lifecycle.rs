@@ -66,6 +66,9 @@ pub(crate) fn on_target_session_lifecycle(
                     params![target_status, now_ms, automation_id, status],
                 )?
             };
+            if matches!(lifecycle, TargetSessionLifecycle::Deleted) {
+                super::firing::withdraw_definition(connection, &automation_id, now_ms)?;
+            }
             let cancelled =
                 super::mutation::cancel_claimed_leases(connection, &automation_id, now_ms, reason)?;
             if changed != 0 || !cancelled.is_empty() {

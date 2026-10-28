@@ -32,6 +32,10 @@ import { computeCodexScheduledAutomationIntervalMs } from "../local-store/codex-
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AgentBackendRegistry } from "../agent-backend/AgentBackendRegistry";
 import { AutomationApplication } from "./AutomationApplication";
+import type { AutomationFiringAdmission } from "./AutomationApplication";
+import type { InboxChatAgent } from "../../shared/inbox";
+import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
+import { InboxApplication } from "../inbox-application/InboxApplication";
 import type { AutomationArchiveMessages } from "./AutomationArchiveExcerpt";
 
 type RunOutcome = NonNullable<AgentRuntimeOperations["run.outcome"]["output"]>;
@@ -40,6 +44,7 @@ interface RunContext {
   readonly reason: "scheduled" | "run-now";
   readonly leaseId?: string;
   readonly dispatchId?: string;
+  readonly admission?: AutomationFiringAdmission | null;
   readonly definitionRevision?: number;
   readonly heartbeat?: CodexScheduledAutomationHeartbeatRunContext;
 }
@@ -107,6 +112,7 @@ export const live: Layer.Layer<
   | AgentRuntimeSupervisor
   | ProjectWorkspace
   | AgentBackendRegistry
+  | InboxApplication
 > = Layer.effect(
   AutomationExecution,
   Effect.gen(function* () {
@@ -115,6 +121,7 @@ export const live: Layer.Layer<
     const supervisor = yield* AgentRuntimeSupervisor;
     const workspace = yield* ProjectWorkspace;
     const backends = yield* AgentBackendRegistry;
+    const inbox = yield* InboxApplication;
     const protect = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
       effect.pipe(Effect.mapError((cause) => new AutomationExecutionError({ operation, cause })));
     const fail = (operation: string, message: string) =>
@@ -124,13 +131,20 @@ export const live: Layer.Layer<
         CodexScheduledAutomation,
         "backendBinding" | "model" | "reasoningEffort" | "serviceTier"
       >,
+      override?: InboxChatAgent | null,
     ) {
+      if (override) return yield* resolveInboxModel(application, override);
       yield* backends.resolve(definition.backendBinding);
       const instanceId = agentRuntimeProviderId(definition.backendBinding);
       const provider = (yield* application.catalog()).find(
         (item) => item.instanceId === instanceId,
       );
-      if (!provider?.enabled || !provider.installed || provider.status === "error")
+      if (
+        !provider?.enabled ||
+        !provider.installed ||
+        provider.status === "error" ||
+        provider.availability === "unavailable"
+      )
         return yield* fail(
           "model",
           "This scheduled task's Agent is off or unavailable. Turn it on in Settings or choose another Agent.",
@@ -249,7 +263,8 @@ export const live: Layer.Layer<
       const dispatchId = context.dispatchId ?? (context.reason === "run-now" ? randomUUID() : null);
       if (!dispatchId)
         return yield* fail("execute", "Scheduled execution requires its durable dispatch identity");
-      const selected = yield* selection(definition);
+      const selected = yield* selection(definition, context.admission?.agent);
+      const instructions = context.admission?.prompt ?? definition.prompt;
       if (definition.kind === "heartbeat") {
         const sessionId = definition.targetSessionId;
         if (!sessionId)
@@ -268,11 +283,6 @@ export const live: Layer.Layer<
           );
         const messageId = identity("heartbeat", [definition.id, dispatchId]);
         const previous = yield* application.runOutcome({ sessionId, messageId });
-        if (previous) {
-          const changes = yield* subscribeExecutionChanges(supervisor.get());
-          yield* awaitResult(sessionId, messageId, changes);
-          return;
-        }
         const interval = computeCodexScheduledAutomationIntervalMs(definition.rrule);
         const cooldownAt =
           interval === null
@@ -281,15 +291,21 @@ export const live: Layer.Layer<
         const reason =
           target.thread.activeRunId || target.thread.pendingRuntimeRequest
             ? "heartbeat_busy"
-            : context.reason === "scheduled" && context.heartbeat?.automationsEnabled !== true
+            : context.reason === "scheduled" &&
+                !context.admission &&
+                context.heartbeat?.automationsEnabled !== true
               ? "heartbeat_disabled"
               : context.reason === "scheduled" &&
+                  !context.admission &&
                   context.heartbeat?.rendererState?.isEligible !== true
                 ? "renderer_ineligible"
-                : context.reason === "scheduled" && cooldownAt !== null && cooldownAt > context.now
+                : context.reason === "scheduled" &&
+                    !context.admission &&
+                    cooldownAt !== null &&
+                    cooldownAt > context.now
                   ? "heartbeat_cooldown"
                   : null;
-        if (reason)
+        if (!previous && reason)
           return yield* Effect.fail(
             new CodexScheduledAutomationRetryError(
               "Heartbeat is not eligible right now",
@@ -303,15 +319,52 @@ export const live: Layer.Layer<
         )
           return yield* fail("heartbeat", "This scheduled task changed before it ran. Try again.");
         const changes = yield* subscribeExecutionChanges(supervisor.get());
-        yield* application.queueMessage({
-          sessionId,
-          message: {
-            messageId,
-            text: buildCodexScheduledAutomationHeartbeatPrompt(definition, context.now),
-            modelSelection: selected,
-          },
-        });
-        yield* awaitResult(sessionId, messageId, changes);
+        const runId = identity("run", [definition.id, dispatchId, 0]);
+        if (
+          !(yield* automation.runs.begin({
+            runId,
+            automationId: definition.id,
+            dispatchId,
+            sessionTitle: definition.name,
+          }))
+        )
+          return yield* fail("heartbeat", "Automation Run admission changed");
+        yield* Effect.gen(function* () {
+          if (!(yield* automation.runs.bindSession({ runId, sessionId })))
+            return yield* fail("heartbeat", "Automation Session attachment changed");
+          if (!previous)
+            yield* application.queueMessage({
+              sessionId,
+              message: {
+                messageId,
+                text: buildCodexScheduledAutomationHeartbeatPrompt(
+                  definition,
+                  context.now,
+                  instructions,
+                ),
+                modelSelection: selected,
+              },
+            });
+          const summary = yield* awaitResult(sessionId, messageId, changes);
+          yield* automation.runs.completeForReview({
+            runId,
+            inboxTitle: definition.name,
+            inboxSummary: summary.slice(0, 2000),
+          });
+        }).pipe(
+          Effect.onExit((exit) =>
+            Exit.isSuccess(exit)
+              ? Effect.void
+              : automation.runs
+                  .archive({
+                    runId,
+                    archivedReason: "auto",
+                    archivedUserMessage: null,
+                    archivedAssistantMessage: null,
+                  })
+                  .pipe(Effect.ignore),
+          ),
+        );
         return;
       }
       if (
@@ -334,6 +387,7 @@ export const live: Layer.Layer<
           !(yield* automation.runs.begin({
             runId,
             automationId: definition.id,
+            dispatchId,
             sessionTitle: definition.name,
             sourceCwd: cwd,
           }))
@@ -355,7 +409,10 @@ export const live: Layer.Layer<
               definition.executionEnvironment === "worktree" ? "newWorktree" : "localProject",
             runInEnvironmentPath: definition.localEnvironmentConfigPath,
             ...(cwd === null ? {} : { sourceRoot: cwd }),
-            message: { messageId, text: buildCodexScheduledAutomationRunPrompt(definition) },
+            message: {
+              messageId,
+              text: buildCodexScheduledAutomationRunPrompt(definition, instructions),
+            },
           });
           if (!(yield* automation.runs.bindSession({ runId, sessionId })))
             return yield* fail("execute", "Automation Session attachment changed");
@@ -391,6 +448,8 @@ export const live: Layer.Layer<
           Effect.gen(function* () {
             const definition = yield* automation.definitions.get(input.id);
             if (!definition) return yield* fail("run-now", "This scheduled task no longer exists.");
+            if (definition.heldFiring)
+              return yield* inbox.confirmScheduledFiring(definition.heldFiring);
             const now = yield* Clock.currentTimeMillis;
             yield* execute(definition, {
               now,

@@ -9,6 +9,7 @@ import {
   DeleteIcon,
   EditIcon,
   FilterIcon,
+  InboxIcon,
   PlusIcon,
   SettingsSearchIcon,
 } from "@/components/shared/icons";
@@ -29,6 +30,7 @@ import {
   NodexDialogHeader,
   NodexDialogTitle,
 } from "@/components/ui/dialog";
+import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { resolveSidebarRowStatus } from "@/lib/sidebar-status";
 import { SidebarStatusIndicator } from "@/components/workbench/sidebar-status-indicator";
@@ -63,6 +65,8 @@ export interface ScheduledSidebarNavigation {
   readonly activeRunSessionId: string | null;
   readonly onSelectTask: (task: CodexScheduledAutomation) => void;
   readonly onOpenRun: (task: CodexScheduledAutomation, run: ScheduledRunRowModel) => void;
+  /** Opens the Inbox holding a task's waiting run: a Project's, or the Library's when null. */
+  readonly onOpenInbox: (projectId: string | null) => void;
   readonly onCreateTask: () => void;
   readonly onEditTask: (task: CodexScheduledAutomation) => void;
   readonly onTaskDeleted: (task: CodexScheduledAutomation) => void;
@@ -129,16 +133,51 @@ function TaskActionsMenu({
   );
 }
 
-function StatusSlot({ running, unread }: { running: boolean; unread: boolean }) {
+function StatusSlot({
+  running,
+  unread,
+  waiting = false,
+}: {
+  running: boolean;
+  unread: boolean;
+  /** A run is waiting for the user in the Inbox. */
+  waiting?: boolean;
+}) {
   const status = resolveSidebarRowStatus({
     unread,
     running,
     background: false,
-    needsAttention: false,
+    needsAttention: waiting,
   });
   if (!status) return null;
   return (
-    <SidebarStatusIndicator status={status} label={status === "unread" ? "Unread" : undefined} />
+    <SidebarStatusIndicator
+      status={status}
+      label={
+        status === "attention" ? "Waiting in Inbox" : status === "unread" ? "Unread" : undefined
+      }
+    />
+  );
+}
+
+/** A folder's first row while a due run waits in the Inbox for the user. */
+function WaitingRunRow({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div role="listitem">
+      <div
+        role="button"
+        tabIndex={0}
+        className={cn(CODEX_SIDEBAR_THREAD_ROW_CLASS, "flex items-center gap-2 ps-7 pe-row-x")}
+        onClick={onOpen}
+        onKeyDown={(event) => activateOnKey(event, onOpen)}
+      >
+        <InboxIcon className="icon-xs shrink-0 text-token-description-foreground" />
+        <span className="min-w-0 flex-1 truncate text-base leading-5 text-token-foreground">
+          Waiting in Inbox
+        </span>
+        <StatusSlot running={false} unread={false} waiting />
+      </div>
+    </div>
   );
 }
 
@@ -207,6 +246,7 @@ function ScheduledTaskRow({
   activeRunSessionId,
   onSelect,
   onOpenRun,
+  onOpenInbox,
   onEditTask,
   onRequestDelete,
   onMenuOpenChange,
@@ -218,6 +258,7 @@ function ScheduledTaskRow({
   activeRunSessionId: string | null;
   onSelect: () => void;
   onOpenRun: (run: ScheduledRunRowModel) => void;
+  onOpenInbox: () => void;
   onEditTask: (task: CodexScheduledAutomation) => void;
   onRequestDelete: (task: CodexScheduledAutomation) => void;
   onMenuOpenChange: (open: boolean) => void;
@@ -254,8 +295,19 @@ function ScheduledTaskRow({
               />
             ) : null}
           </span>
-          <span className="truncate text-xs leading-4 text-token-description-foreground">
-            {row.subtitle}
+          <span className="flex min-w-0 items-center gap-1 text-xs leading-4 text-token-description-foreground">
+            <span className="min-w-0 truncate">{row.subtitle}</span>
+            {row.asksFirst && !row.waitingInInbox ? (
+              <NodexTooltip tooltipContent="Asks in the Inbox before each run" side="bottom">
+                <span
+                  role="img"
+                  aria-label="Asks in the Inbox before each run"
+                  className="inline-flex shrink-0"
+                >
+                  <InboxIcon className="icon-2xs" />
+                </span>
+              </NodexTooltip>
+            ) : null}
           </span>
         </span>
         <span
@@ -265,7 +317,11 @@ function ScheduledTaskRow({
             menuOpen && "hidden",
           )}
         >
-          <StatusSlot running={row.isRunning && !expanded} unread={showUnread} />
+          <StatusSlot
+            running={row.isRunning && !expanded}
+            unread={showUnread}
+            waiting={row.waitingInInbox && !expanded}
+          />
         </span>
         {/* The menu renders in a portal, but its events still bubble to this row. */}
         <span
@@ -291,6 +347,7 @@ function ScheduledTaskRow({
       </div>
       {expanded ? (
         <div role="list" aria-label={`${row.title} runs`} className="flex flex-col gap-px pt-px">
+          {row.waitingInInbox ? <WaitingRunRow onOpen={onOpenInbox} /> : null}
           {row.runs.slice(0, visibleRuns).map((run) => (
             <ScheduledRunRow
               key={run.runId}
@@ -474,6 +531,9 @@ export function ScheduledSidebar({
               if (run.isUnread) void tasks.markRunRead(run.runId);
               navigation.onOpenRun(row.automation, run);
             }}
+            onOpenInbox={() =>
+              navigation.onOpenInbox(row.automation.heldFiring?.inboxProjectId ?? null)
+            }
             onEditTask={navigation.onEditTask}
             onRequestDelete={setDeleteTarget}
             onMenuOpenChange={(open) => setSurfaceOpen(`task:${row.automation.id}`, open)}

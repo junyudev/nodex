@@ -19,6 +19,9 @@ import type {
   PageOccurrenceMutationResult,
   PageOccurrenceUpdateInput,
 } from "../../shared/types";
+import type { InboxChatAgent } from "../../shared/inbox";
+import { inboxChatAgentFromCore } from "../core-client/inbox-adapter";
+import { getLogger } from "../logging/logger";
 import type {
   AutomationApplyInput,
   AutomationApplyResult,
@@ -59,11 +62,20 @@ export interface AutomationDefinitionDeleteResult extends CodexScheduledAutomati
 export interface AutomationDefinitionClaim {
   readonly leaseId: string;
   readonly dispatchId: string;
+  readonly purpose: "hold" | "run";
+  readonly admission: AutomationFiringAdmission | null;
   readonly definitionRevision: number;
   readonly scheduledFor: number;
   readonly attempt: number;
   readonly expiresAt: number;
   readonly definition: CodexScheduledAutomation;
+}
+
+export interface AutomationFiringAdmission {
+  readonly pageId: string;
+  readonly prompt: string;
+  readonly agent: InboxChatAgent | null;
+  readonly admittedAt: number;
 }
 
 export interface AutomationDueWork {
@@ -75,6 +87,7 @@ export interface AutomationDueWork {
 export interface AutomationRunMutationInput {
   readonly runId: string;
   readonly automationId: string;
+  readonly dispatchId?: string;
   readonly sessionTitle?: string | null;
   readonly sessionId?: string | null;
   readonly sourceCwd?: string | null;
@@ -576,10 +589,37 @@ export const make: Effect.Effect<
       undefined,
       input.status === "DELETED" ? { definitionIds: [input.id] } : undefined,
     );
-    return yield* projectDefinition(
+    const updated = yield* projectDefinition(
       "definitions.update",
       yield* requireDefinition("definitions.update", committed, input.id),
     );
+    if (updated.launch === "ask" && updated.heldFiring) {
+      // The admitted definition edit authorizes this Host-owned refresh, including Agent edits.
+      yield* core.workspace
+        .apply(
+          {
+            operationId: operationId(`refresh-firing:${updated.heldFiring.dispatchId}`),
+            intent: {
+              kind: "refresh_scheduled_firing",
+              dispatch_id: updated.heldFiring.dispatchId,
+            },
+          },
+          undefined,
+          null,
+        )
+        .pipe(
+          Effect.provideService(CoreApplicationAgent, null),
+          Effect.catch((cause) =>
+            Effect.sync(() => {
+              getLogger({ component: "automation-application" }).warn(
+                "Failed to refresh the scheduled task's waiting message",
+                { automationId: updated.id, cause },
+              );
+            }),
+          ),
+        );
+    }
+    return updated;
   });
 
   const deleteDefinition = Effect.fn("AutomationApplication.definitions.delete")(function* (
@@ -698,6 +738,15 @@ export const make: Effect.Effect<
         Effect.map((projectedDefinition) => ({
           leaseId: lease.lease_id,
           dispatchId: lease.dispatch_id,
+          purpose: lease.purpose ?? "run",
+          admission: lease.admission
+            ? {
+                pageId: lease.admission.page_id,
+                prompt: lease.admission.prompt,
+                agent: lease.admission.agent ? inboxChatAgentFromCore(lease.admission.agent) : null,
+                admittedAt: lease.admission.admitted_at_ms,
+              }
+            : null,
           definitionRevision: lease.definition_revision,
           scheduledFor: lease.scheduled_for_ms,
           attempt: lease.attempt,
@@ -1038,6 +1087,7 @@ export const make: Effect.Effect<
               kind: "begin_run",
               run_id: input.runId,
               automation_id: input.automationId,
+              dispatch_id: input.dispatchId ?? null,
               session_id: input.sessionId ?? null,
               session_title: input.sessionTitle ?? null,
               source_cwd: input.sourceCwd ?? null,

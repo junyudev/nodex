@@ -1,7 +1,7 @@
 //! Agent requests use captured execution identity, independent of the target Project.
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use nodex_core_contracts::agent::AgentTurnProvenance;
-use nodex_core_contracts::automation::AutomationIntent;
+use nodex_core_contracts::automation::{AutomationIntent, AutomationLaunch};
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::Connection;
 
@@ -40,6 +40,26 @@ pub(super) fn admit<'a>(
     admit_read(connection, library_id, context, provenance)?;
     if matches!(intent.as_ref(), AutomationIntent::AgentCommand { .. }) {
         return Err(denied("Agent command envelopes cannot be nested"));
+    }
+    let escalation = match intent.as_ref() {
+        AutomationIntent::CreateDefinition { definition, .. } => {
+            definition.launch == Some(AutomationLaunch::Automatic)
+        }
+        AutomationIntent::UpdateDefinition {
+            automation_id,
+            definition,
+            ..
+        } => {
+            definition.launch == Some(AutomationLaunch::Automatic)
+                && super::read::read_definition(connection, automation_id)?
+                    .is_some_and(|current| current.launch == AutomationLaunch::Ask)
+        }
+        _ => false,
+    };
+    if escalation {
+        return Err(denied(
+            "Only the user can let a scheduled task run without asking. Suggest this change so they can apply it.",
+        ));
     }
     Ok(intent)
 }
