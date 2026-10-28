@@ -162,7 +162,7 @@ describe("ordinary sparse history geometry", () => {
         placement.promise = source.scrollAdapter.scrollToTurn(unit.turnKey);
         await Promise.resolve();
       });
-      await placement.promise;
+      await waitFor(() => placement.promise);
       await act(async () => {
         await frames();
       });

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act } from "@testing-library/react";
 import { useCallback, useEffect, type ReactNode } from "react";
 import { motionValue } from "motion/react";
@@ -29,6 +29,35 @@ function ControllerProbe({
     onController(controller);
   }, [controller, onController]);
   return null;
+}
+
+function installContentResizeObserver() {
+  const observers: Array<{ callback: ResizeObserverCallback; targets: Element[] }> = [];
+  class TestResizeObserver {
+    private readonly record: { callback: ResizeObserverCallback; targets: Element[] };
+
+    constructor(callback: ResizeObserverCallback) {
+      this.record = { callback, targets: [] };
+      observers.push(this.record);
+    }
+
+    disconnect() {}
+
+    observe(target: Element) {
+      this.record.targets.push(target);
+    }
+
+    unobserve() {}
+  }
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    value: TestResizeObserver,
+    writable: true,
+  });
+  return (target: Element) => {
+    for (const observer of observers.filter((record) => record.targets.includes(target)))
+      observer.callback([], observer as unknown as ResizeObserver);
+  };
 }
 
 describe("LocalConversationThreadScrollLayout", () => {
@@ -88,37 +117,13 @@ describe("LocalConversationThreadScrollLayout", () => {
   });
 
   test("carries only a reader at the bottom along with content growth below", async () => {
-    const observers: Array<{ callback: ResizeObserverCallback; targets: Element[] }> = [];
-    class TestResizeObserver {
-      private readonly record: { callback: ResizeObserverCallback; targets: Element[] };
-
-      constructor(callback: ResizeObserverCallback) {
-        this.record = { callback, targets: [] };
-        observers.push(this.record);
-      }
-
-      disconnect() {}
-
-      observe(target: Element) {
-        this.record.targets.push(target);
-      }
-
-      unobserve() {}
-    }
-    Object.defineProperty(globalThis, "ResizeObserver", {
-      configurable: true,
-      value: TestResizeObserver,
-      writable: true,
-    });
+    const notifyResize = installContentResizeObserver();
 
     const fixture = await renderNativeFindController();
     const growContent = (scrollHeight: number) =>
       act(async () => {
         fixture.setScrollHeight(scrollHeight);
-        for (const observer of observers.filter((record) =>
-          record.targets.includes(fixture.viewport),
-        ))
-          observer.callback([], observer as unknown as ResizeObserver);
+        notifyResize(fixture.viewport);
         await Promise.resolve();
       });
     try {
@@ -148,6 +153,48 @@ describe("LocalConversationThreadScrollLayout", () => {
       expect(fixture.viewport.scrollTop).toBe(1_760);
       expect(fixture.scrollWrites).toHaveLength(writesWhileReading);
     } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("expires upward intent without native movement and resumes content following", async () => {
+    const notifyResize = installContentResizeObserver();
+    const now = vi.spyOn(performance, "now").mockReturnValue(0);
+    const fixture = await renderNativeFindController();
+    try {
+      await act(async () => {
+        fixture.controller.jumpToBottom();
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        notifyResize(fixture.viewport);
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -8 }));
+        await Promise.resolve();
+      });
+      expect(fixture.controller.getScrollMode()).toBe("stickToBottom");
+      now.mockReturnValue(1_001);
+      await act(async () => {
+        fixture.setScrollHeight(2_300);
+        notifyResize(fixture.viewport);
+        await Promise.resolve();
+      });
+      expect(fixture.viewport.scrollTop).toBe(1_800);
+      expect(fixture.controller.getScrollMode()).toBe("stickToBottom");
+      await act(async () => {
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -8 }));
+        fixture.viewport.scrollTop -= 8;
+        fixture.controller.reconcilePendingUserScroll();
+        await Promise.resolve();
+      });
+      expect(fixture.controller.getScrollMode()).toBe("user");
+      now.mockReturnValue(2_002);
+      await act(async () => {
+        fixture.setScrollHeight(2_600);
+        notifyResize(fixture.viewport);
+        await Promise.resolve();
+      });
+      expect(fixture.viewport.scrollTop).toBe(1_792);
+      expect(fixture.controller.getScrollMode()).toBe("user");
+    } finally {
+      now.mockRestore();
       await fixture.dispose();
     }
   });
@@ -703,6 +750,7 @@ describe("LocalConversationThreadScrollLayout", () => {
         fixture.viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -8 }));
         fixture.viewport.scrollTop = 1_392;
         expect(fixture.controller.getScrollDistanceFromBottomPx()).toBe(108);
+        expect(fixture.controller.getRetainedScrollDistanceFromBottomPx()).toBe(108);
         expect(fixture.controller.getLastScrollDistanceFromBottomPx()).toBe(100);
         fixture.viewport.dispatchEvent(new Event("scroll"));
         await Promise.resolve();
@@ -714,6 +762,67 @@ describe("LocalConversationThreadScrollLayout", () => {
       await fixture.dispose();
     }
   });
+
+  test.each([
+    { distance: 0, movement: -8, mode: "user", action: "hold" },
+    { distance: 28, movement: 8, mode: "stickToBottom", action: "resume" },
+  ] as const)(
+    "reconciles $action intent without publishing geometry before compensation",
+    async ({ distance, movement, mode, action }) => {
+      const fixture = await renderNativeFindController();
+      const positions = vi.fn();
+      const gestures = vi.fn();
+      const holdViewport = vi.fn();
+      const resumeFollowing = vi.fn();
+      let removePositionListener = () => {};
+      let removeGestureListener = () => {};
+      try {
+        await act(async () => {
+          fixture.controller.scrollToDistanceFromBottomPx(distance, "instant", "user");
+          fixture.controller.registerResponseSpacerState({
+            getHeightPx: () => 0,
+            scrollToBottom: () => {},
+            holdViewport,
+            resumeFollowing,
+          });
+          await Promise.resolve();
+        });
+        removePositionListener = fixture.controller.addScrollListener(positions);
+        removeGestureListener = fixture.controller.addUserScrollListener(gestures);
+        positions.mockClear();
+        await act(async () => {
+          fixture.viewport.dispatchEvent(
+            new WheelEvent("wheel", { bubbles: true, deltaY: movement }),
+          );
+          fixture.viewport.scrollTop += movement;
+          fixture.setScrollHeight(2_300);
+          fixture.controller.reconcilePendingUserScroll();
+          await Promise.resolve();
+        });
+        expect(fixture.controller.getScrollMode()).toBe(mode);
+        expect(fixture.controller.getLastScrollDistanceFromBottomPx()).toBe(distance);
+        expect(fixture.controller.getRetainedScrollDistanceFromBottomPx()).toBe(
+          distance - movement,
+        );
+        expect(positions).not.toHaveBeenCalled();
+        expect(gestures).not.toHaveBeenCalled();
+        expect(action === "hold" ? holdViewport : resumeFollowing).toHaveBeenCalledTimes(1);
+        await act(async () => {
+          fixture.controller.compensateScrollToDistanceFromBottomPx(distance - movement + 300);
+          fixture.controller.reconcilePendingUserScroll();
+          await Promise.resolve();
+        });
+        expect(fixture.controller.getScrollMode()).toBe(mode);
+        expect(positions).toHaveBeenCalledExactlyOnceWith(distance - movement + 300);
+        expect(gestures).not.toHaveBeenCalled();
+        expect(action === "hold" ? holdViewport : resumeFollowing).toHaveBeenCalledTimes(1);
+      } finally {
+        removePositionListener();
+        removeGestureListener();
+        await fixture.dispose();
+      }
+    },
+  );
 
   test("a zero-displacement scroll event preserves the pending upward gesture at the bottom", async () => {
     const fixture = await renderNativeFindController();
