@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import type { PropsWithChildren } from "react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { createDefaultWorkbenchLayoutSnapshot } from "../../shared/workbench-layout";
 import { parseDatabaseId } from "../../shared/database-identities";
@@ -21,6 +22,7 @@ import type { WorkbenchDatabaseViewReference } from "./workbench-database-view-p
 import { useWorkbenchDatabaseViewPresentation } from "./use-workbench-database-view-presentation";
 import { useWorkbenchSceneCommands } from "./use-workbench-scene-commands";
 import { createWorkbenchPanelTabOpenerStore } from "./workbench-panel-tab-opener-state";
+import { MaitaiProvider } from "./maitai";
 
 const lifecycle = vi.hoisted(() => ({ prepareClose: vi.fn(), close: vi.fn(), toast: vi.fn() }));
 vi.mock("./workbench-scene-command-lifecycle", () => ({
@@ -44,7 +46,7 @@ function fixture(sceneOwner: WorkbenchSceneOwner = { kind: "project", projectId:
     scenesByOwnerKey: { [makeWorkbenchSceneKey(sceneOwner)]: scene },
   });
   owner.initialize();
-  return { owner, sceneOwner, scene };
+  return { owner, sceneOwner, scene, store };
 }
 
 /** A Project's Board opens beside its Inbox Home as an ordinary, selected tab. */
@@ -129,7 +131,7 @@ describe("Workbench rendered presentation lifetime", () => {
   });
 
   test("an unmounted UI generation cannot finish a pending close against its old owner", async () => {
-    const { owner, sceneOwner } = fixture({ kind: "library" });
+    const { owner, sceneOwner, store } = fixture({ kind: "library" });
     owner.setScene(sceneOwner, (scene) =>
       createWorkbenchSceneSurface(scene!, {
         panelId: "right",
@@ -157,8 +159,13 @@ describe("Workbench rendered presentation lifetime", () => {
         }),
     );
     const opener = createWorkbenchPanelTabOpenerStore();
-    const view = renderHook(() =>
-      useWorkbenchSceneCommands(owner, "window-a", async () => {}, opener),
+    const view = renderHook(
+      () => useWorkbenchSceneCommands(owner, "window-a", async () => {}, opener),
+      {
+        wrapper: ({ children }: PropsWithChildren) => (
+          <MaitaiProvider store={store}>{children}</MaitaiProvider>
+        ),
+      },
     );
     const before = owner.read();
     let pending!: ReturnType<typeof view.result.current.execute>;

@@ -15,7 +15,10 @@ const menu = vi.hoisted(() => ({
   show: vi.fn<() => Promise<string | null>>(),
   copy: vi.fn(async (_text: string) => true),
 }));
-vi.mock("@/lib/native-context-menu", () => ({ showNativeContextMenu: menu.show }));
+vi.mock("@/lib/native-context-menu", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/native-context-menu")>()),
+  showNativeContextMenu: menu.show,
+}));
 vi.mock("@/lib/clipboard", () => ({ writeTextToClipboard: menu.copy }));
 const invoke = vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>(async () => null);
 async function click(element: Element) {
@@ -148,6 +151,7 @@ describe("ordinary message targets keep their mounted source", () => {
       invoke.mockImplementation(async (channel) => {
         if (channel === "read-file") return { contents: `${hostId} contents` };
         if (channel === "shell:open-file-link") return true;
+        if (channel === "shell:file-link-openers:list-available") return ["vscode", "fileManager"];
         throw new Error(`Unsupported fixture request ${channel}`);
       });
       const view = native.mount([]);
