@@ -1,0 +1,21 @@
+src/main/codex/nodex-dynamic-tool-registry.test.ts
+  s_4b53f1a3b989a8::t_ddb2833ed7f872 1,33-34
+src/main/codex/dynamic-tool-catalog-metrics.test.ts
+  s_4b53f1a3b989a8::t_ddb2833ed7f872 58-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0e6987ead7c3e13c0eec0588e3244ca113ab75a",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
