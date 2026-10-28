@@ -1,0 +1,28 @@
+docs/development.md
+  s_6c9891f66c664a::t_11c6ad3a5f2d5f 33-35
+src/renderer/components/ui/menu-keyboard.test.tsx
+  s_6c9891f66c664a::t_d995183cdcb94d 16-40,42,45-58,61
+  s_6c9891f66c664a::t_d47fca312602d9 59-60,62-71
+patches/@base-ui__react@1.9.0.patch
+  s_6c9891f66c664a::t_8020b111b8a5f5 1-56
+pnpm-lock.yaml
+  s_6c9891f66c664a::t_6138c652930477 229,342,1647,9165
+pnpm-workspace.yaml
+  s_6c9891f66c664a::t_2c81b5977a39bc 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0f59881bee9936b076a34c503b3152c137d015e",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
