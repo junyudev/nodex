@@ -4,10 +4,6 @@
   "private": true,
   "description": "Block-based Agent Orchestrator",
   "license": "Apache-2.0",
-  "workspaces": [
-    "packages/*",
-    "third_party/blocknote/packages/*"
-  ],
   "main": "out/main/bootstrap.js",
   "scripts": {
     "generate:code-languages": "node scripts/generate-code-language-artifacts.mjs",
