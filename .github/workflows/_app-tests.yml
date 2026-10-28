@@ -55,7 +55,7 @@ jobs:
         env:
           CI_GATE_PLAN_JSON: ${{ inputs.gate_plan_json }}
           APP_TEST_SUITE: ${{ matrix.suite }}
-          DEBUG: ${{ matrix.suite == 'browser' && 'pw:browser' || '' }}
+          DEBUG: ${{ matrix.suite == 'browser' && 'pw:browser,vitest:browser*,vite:deps,vite:hmr' || '' }}
           NEEDS_RUST: ${{ steps.suite.outputs.needs_rust }}
           NEEDS_XVFB: ${{ steps.suite.outputs.needs_xvfb }}
         shell: bash
@@ -78,6 +78,19 @@ jobs:
       - name: Show renderer memory state
         if: always() && matrix.suite == 'renderer'
         run: free -h
+      - name: Show failed browser runner resources
+        if: failure() && matrix.suite == 'browser'
+        run: |
+          free -h
+          df -h "${GITHUB_WORKSPACE}" /tmp /dev/shm
+          df -i "${GITHUB_WORKSPACE}" /tmp /dev/shm
+          ps -eo pid,ppid,stat,rss,comm --sort=-rss
+          for browser_cgroup_counter in memory.events memory.peak memory.max; do
+            browser_cgroup_file="/sys/fs/cgroup/${browser_cgroup_counter}"
+            if [[ ! -r "${browser_cgroup_file}" ]]; then continue; fi
+            printf '%s:\n' "${browser_cgroup_counter}"
+            cat "${browser_cgroup_file}"
+          done
       - name: Upload application diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

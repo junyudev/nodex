@@ -61,12 +61,40 @@ the correct runtime. Application cells do not regenerate third-party notices or
 other build resources; the generated static contract and real build/package
 flows own those artifacts.
 
+Browser contracts use Playwright's locked full Chromium through the `chromium`
+channel in both headed and headless runs. The browser revision remains tied to
+the lockfile; the system Chrome installation is not a prerequisite.
+
+The Linux CI browser runner collects retired isolated test realms after each
+completed file. Chromium can retain their shared-memory objects in anonymous
+`memfd` storage, which the upstream `/tmp` free-space guard cannot observe.
+The versioned Vitest patch makes `VITEST_CHROMIUM_GC_FORCE` bypass that disk guard;
+the typed suite runner enables it only for Linux browser contracts. Collection
+uses the existing CDP cleanup and remains best effort, with success or failure
+visible in `vitest:browser:gc` diagnostics. Other suites and local browser
+commands keep their normal environment.
+When upgrading Vitest, preserve this cleanup contract or replace it with verified
+upstream behavior, and inspect the uploaded live resource evidence.
+
 Linux Chromium setup bounds system dependency installation to eight minutes.
 Before a timed-out install may retry browser-only, its owned process groups,
 including root-owned package-manager descendants, must stop. Cleanup uses
 noninteractive `sudo` only for that installer and fails closed if ownership or
 termination cannot be verified; cancellation errors never permit a fallback.
 The browser suite still validates the installed Chromium and host libraries.
+
+Browser CI records Playwright process and Vitest browser transport/provider
+diagnostics, dependency optimization, and HMR through
+`DEBUG=pw:browser,vitest:browser*,vite:deps,vite:hmr`. Passive CI listeners record
+outer-page navigation, page/context closure, browser disconnection, and HTTP
+server errors or closure. Session identity and page/browser state distinguish
+these events from normal per-file iframe replacement; browser API disconnect
+logs retain the WebSocket close code and reason. Failed browser jobs also print
+runner memory, filesystem space and inodes, and process RSS after failure.
+Available cgroup counters also retain OOM events, peak memory and the memory limit.
+The Linux browser job's existing one-second process sampler retains live shared
+memory, mapped-region counts and kernel limits, and process-resource evidence in the uploaded timing artifact's
+`*-browser-resources.jsonl` file.
 
 CI implementation changes are routed by the same ownership rule. Ordinary
 workflow orchestration runs CI contracts only; changing

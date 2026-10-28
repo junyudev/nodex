@@ -1,0 +1,15 @@
+diff --git a/dist/index.js b/dist/index.js
+index d3cdc28d2d759eb9c292e277121986379f00cacf..388f9e04d31aececc050ae02f4810eb2f36e1ea9 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -2898,8 +2898,8 @@ function setupBrowserRpc(globalServer, defaultMockerRegistry) {
+ 				missedPongs++;
+ 				ws.ping();
+ 			}, heartbeatInterval).unref() : undefined;
+-			ws.on("close", () => {
+-				debug?.("[%s] Browser API disconnected from %s", rpcId, type);
++			ws.on("close", (code, reason) => {
++				debug?.("[%s] Browser API disconnected from %s (code: %s, reason: %s)", rpcId, type, code, reason.toString());
+ 				clearInterval(heartbeat);
+ 				offCancel();
+ 				clients.delete(rpcId);

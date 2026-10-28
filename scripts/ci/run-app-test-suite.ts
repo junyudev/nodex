@@ -35,6 +35,17 @@ export const commandForAppTestSuite = (
   throw new Error("A selected application suite requires full or related test mode.");
 };
 
+/** Reclaim detached Chromium realms between isolated files, including memfd-backed resources. */
+export const environmentForAppTestSuite = (
+  suiteValue: string,
+  environment: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv => {
+  const suite = parseAppTestSuite(suiteValue);
+  if (platform !== "linux" || suite !== "browser") return environment;
+  return { ...environment, VITEST_CHROMIUM_GC_FORCE: "1" };
+};
+
 const main = (): void => {
   const args = process.argv.slice(2);
   const suite = readOption(args, "--suite") ?? "";
@@ -43,7 +54,7 @@ const main = (): void => {
   const command = commandForAppTestSuite(suite, JSON.parse(planJson) as unknown);
   const result = spawnSync(command[0], command.slice(1), {
     cwd: path.resolve(import.meta.dirname, "../.."),
-    env: process.env,
+    env: environmentForAppTestSuite(suite, process.env),
     stdio: "inherit",
   });
   if (result.error) throw result.error;
