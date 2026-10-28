@@ -3,12 +3,16 @@ src/renderer/features/local-conversation/view/local-conversation-thread-scroll-c
   s_6c9891f66c664a::t_2506e76b754faf 362,364
 src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
   s_6c9891f66c664a::t_c2abdc86052d93 1018
+  s_6c9891f66c664a::t_dbbbe4d41e135f 1020-1025,1070-1074
+  s_6c9891f66c664a::t_a8644bbed44959 1019
 src/renderer/features/local-conversation/view/automatic-history.browser.test.tsx
   s_6c9891f66c664a::t_802301751dfd6d 12,454-456,458
   s_6c9891f66c664a::t_37ff579cbce946 394-403,457
   s_6c9891f66c664a::t_f94b41cc7b5234 464,472
   s_6c9891f66c664a::t_ea5669356b813f 10-11,29,279-288,292,310,328,355,392,411-433,441-442,444-453,459-460,461-463,469,473,490-494
   s_6c9891f66c664a::t_60d6301ffcf0cb 443,465-468,470-471,474
+  s_6c9891f66c664a::t_8b9d8116978071 393,404-410,434-440,475-487
+  s_6c9891f66c664a::t_b23d106d7e15e7 488-489
 src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.test.tsx
   s_6c9891f66c664a::t_3f94e755ad1f3a 706
 src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
@@ -18,6 +22,7 @@ src/renderer/features/local-conversation/view/local-conversation-virtualized-tur
   s_6c9891f66c664a::t_7e8d821c4841e6 680,737,1209,1458
   s_6c9891f66c664a::t_f95633de2a0fc8 1757
   s_6c9891f66c664a::t_51511639a31454 2004
+  s_6c9891f66c664a::t_c36acf68eaf7e9 501,538,582,681,836,1055-1081
 src/renderer/features/local-conversation/view/ordinary-history-position.browser.test.tsx
   s_6c9891f66c664a::t_b6c503113e0f0f 165
 ---
