@@ -1,0 +1,80 @@
+scripts/tooling/linux-browser-resources.test.ts
+  s_6c9891f66c664a::t_956cce36875ba4 23-26,37-38,63,66,91,116
+  s_6c9891f66c664a::t_1b8d93947aac77 103-115,117-121
+  s_6c9891f66c664a::t_a474588b4ea1f3 1-22,27-36,39-62,64-65,67-90,92-102
+docs/CI.md
+  s_6c9891f66c664a::t_166dd67b4e0d8f 95,97
+  s_6c9891f66c664a::t_55ed32369041a0 86,98
+  s_6c9891f66c664a::t_021fe629051c82 76-77
+  s_6c9891f66c664a::t_54e4aee79f4e4c 68-75,78
+  s_6c9891f66c664a::t_5eb445c41cb67b 87-93
+  s_6c9891f66c664a::t_51ab87feefc9ec 64-67
+  s_6c9891f66c664a::t_c9c2a224ec9cf9 94
+  s_6c9891f66c664a::t_b26097a02b4c6e 96
+scripts/tooling/linux-browser-resources.ts
+  s_6c9891f66c664a::t_fefb8a07ad9555 1-67,69,71-114,116-117,119-148,150-153,155-185
+  s_6c9891f66c664a::t_956cce36875ba4 68,115,149,154
+  s_6c9891f66c664a::t_1b8d93947aac77 70,118
+scripts/ci/run-timed.test.ts
+  s_6c9891f66c664a::t_dc5e1c4b7e0421 113-144
+patches/@vitest__browser@5.0.5.patch
+  s_6c9891f66c664a::t_f93c7f19d7aeaf 1-15
+scripts/tooling/process.test.ts
+  s_6c9891f66c664a::t_3e9a77a8ecd832 274-336
+docs/development.md
+  s_6c9891f66c664a::t_5eb445c41cb67b 36-38
+scripts/ci/run-timed.ts
+  s_6c9891f66c664a::t_1479ceb74d3401 115-118,120-131
+vitest.browser.config.ts
+  s_6c9891f66c664a::t_319ad270ebc7d4 3-6,19-20
+  s_6c9891f66c664a::t_6403e08a2fc150 21-23,52
+scripts/ci/run-app-test-suite.ts
+  s_6c9891f66c664a::t_f422704be41432 38-48,57
+pnpm-workspace.yaml
+  s_6c9891f66c664a::t_5eb445c41cb67b 13
+  s_6c9891f66c664a::t_61ff211ee0dbd1 14
+scripts/ci/run-app-test-suite.test.ts
+  s_6c9891f66c664a::t_f422704be41432 4,55-72
+  s_6c9891f66c664a::t_d1956efd61d121 73-76
+config/vitest-browser-diagnostics.ts
+  s_6c9891f66c664a::t_5d7c023e5f2642 59
+  s_6c9891f66c664a::t_c14291b35874ea 5
+  s_6c9891f66c664a::t_94c9a62ebdf834 2,49-52
+  s_6c9891f66c664a::t_122bda9e608f56 3,21-23,35,37-41,85-88
+  s_6c9891f66c664a::t_319ad270ebc7d4 1,4,7-13,25-28,36,42,45-48,53-58,60-70,72,97,99-108
+  s_6c9891f66c664a::t_7e3052c9f84fe8 6,14-20,24,29-34,43-44,71,73-84,89-96,98
+.github/workflows/_app-tests.yml
+  s_6c9891f66c664a::t_319ad270ebc7d4 58
+  s_6c9891f66c664a::t_55ed32369041a0 81-87
+  s_6c9891f66c664a::t_c9c2a224ec9cf9 88-93
+pnpm-lock.yaml
+  s_6c9891f66c664a::t_e924a33757cbda 232,234,710,9363,11770,11774,11785-11786,11793,11803,11841,16035
+  s_6c9891f66c664a::t_dcd28844249753 16046,16093
+scripts/tooling/process.ts
+  s_6c9891f66c664a::t_4dbdb668ce4577 4,15,146-150,153,161-164,169-189,220-230
+config/vitest-browser-diagnostics.test.ts
+  s_6c9891f66c664a::t_1bc12d2974e4da 1-4,11-40,51-54,62,77-84,87-98,100,181
+  s_6c9891f66c664a::t_40063e4b41a1cd 41-46
+  s_6c9891f66c664a::t_5236e3df7ee389 5-10,111-129,131-141,145-156,160-175,179-180
+  s_6c9891f66c664a::t_cf032c4eca331e 47-50,142-144,157-159,176-178
+  s_6c9891f66c664a::t_51d3498e13a6e6 130
+  s_6c9891f66c664a::t_5d7c023e5f2642 55-61,63-76,85-86,99,101-110
+patches/vitest@5.0.5.patch
+  s_6c9891f66c664a::t_488bab6652db56 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "35e56cf6a9cf1b879dd956ec9c5b6ab413869d64",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
