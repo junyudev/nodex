@@ -100,13 +100,11 @@ function renderAppShellTabs(props: {
   );
 }
 
-async function hoverTabThroughTooltipDelay(element: HTMLElement): Promise<void> {
-  const tooltipTrigger = element.parentElement;
-  if (!tooltipTrigger) throw new Error("Expected tab title tooltip trigger");
+async function hoverTabThroughTooltipDelay(tabTitle: HTMLElement): Promise<void> {
   vi.useFakeTimers();
   try {
     await act(async () => {
-      hoverWithMouse(tooltipTrigger);
+      hoverWithMouse(tabTitle);
       await vi.advanceTimersByTimeAsync(300);
     });
   } finally {
@@ -138,13 +136,13 @@ describe("AppShellTabs", () => {
     expect(tooltip?.textContent?.includes("card-two")).toBe(true);
   });
 
-  test("renders context labels in tab chrome, accessible names, and default tooltip", async () => {
+  test("names a tab's location for assistive technology and on hover without showing it", async () => {
     const tabs = makeTabs();
     tabs[1] = {
       ...tabs[1],
-      contextLabel: "Beta",
-      titleLabel: "Beta project, Two",
+      titleLabel: (title) => `Beta project, ${title}`,
       tooltip: undefined,
+      renderTooltip: (title) => `${title} in Beta`,
     };
     const view = renderAppShellTabs({
       tabs,
@@ -152,17 +150,14 @@ describe("AppShellTabs", () => {
       onCloseTab: () => undefined,
     });
 
-    expect(view.getByRole("tab", { name: "Beta project, Two" }) !== null).toBe(true);
-    expect(
-      view.container.querySelector('[data-app-shell-tab-context-label="two"]')?.textContent,
-    ).toBe("Beta");
+    expect(view.getByRole("tab", { name: "Beta project, Two" }).textContent).toBe("Two");
     expect(view.getByRole("tabpanel").getAttribute("aria-label")).toBe("Beta project, Two");
     expect(view.getByLabelText("Close Beta project, Two tab") !== null).toBe(true);
 
     await hoverTabThroughTooltipDelay(view.getByText("Two"));
 
     const tooltip = view.container.ownerDocument.body.querySelector('[role="tooltip"]');
-    expect(tooltip?.textContent).toBe("Beta · Two");
+    expect(tooltip?.textContent).toBe("Two in Beta");
   });
 
   test("subscribes tab chrome without re-rendering panel content", async () => {
@@ -183,7 +178,6 @@ describe("AppShellTabs", () => {
               };
             },
           },
-          contextLabel: "Beta",
           titleLabel: (resolvedTitle) => `Beta project, ${resolvedTitle}`,
           closable: true,
           renderPanel: () => {

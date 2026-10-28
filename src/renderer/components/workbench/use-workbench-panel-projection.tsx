@@ -199,11 +199,15 @@ function getTabIcon(kind: WorkbenchTabProjection["kind"]): ComponentType<{ class
   return getPanelNewTabAction(kind).Icon;
 }
 
-function resolveProjectTargetTabChromeContext(
+/**
+ * Content tabs show only their title. When the content lives outside the Session's Project, its
+ * Library or Project location moves to the tooltip and accessible name instead.
+ */
+function resolveContentLocationTabChrome(
   tab: ProjectSessionRenderableTab,
   activeSession: ProjectSession,
   projects: readonly Project[],
-): Pick<AppShellTabItem, "contextLabel" | "titleLabel" | "renderTooltip" | "tooltip"> {
+): Pick<AppShellTabItem, "titleLabel" | "renderTooltip"> {
   if (
     isSideChatPanelTab(tab) ||
     isMcpAppPanelTab(tab) ||
@@ -216,22 +220,24 @@ function resolveProjectTargetTabChromeContext(
   )
     return {};
   if (tab.kind !== "db_view" && tab.kind !== "page_stage" && tab.kind !== "canvas_stage") return {};
-  if (tab.config.routingContext.kind === "library") return { contextLabel: "Library" };
-  const targetProjectId = tab.config.routingContext.projectId;
-  if (targetProjectId === activeSession.projectId) return {};
+  const { routingContext } = tab.config;
+  if (routingContext.kind === "project" && routingContext.projectId === activeSession.projectId)
+    return {};
 
-  const targetProject = projects.find((project) => project.id === targetProjectId);
-  const projectLabel = targetProject?.name.trim() || targetProjectId;
+  const projectLabel =
+    routingContext.kind === "project"
+      ? projects.find((project) => project.id === routingContext.projectId)?.name.trim() ||
+        routingContext.projectId
+      : null;
+  const accessibleLocation = projectLabel === null ? "Library" : `${projectLabel} project`;
+  const tooltipLocation = projectLabel === null ? "Library" : `Project: ${projectLabel}`;
 
   return {
-    contextLabel: projectLabel,
-    titleLabel: (title) => `${projectLabel} project, ${title}`,
+    titleLabel: (title) => `${accessibleLocation}, ${title}`,
     renderTooltip: (title) => (
       <div className="flex max-w-80 flex-col gap-0.5">
         <div className="truncate font-medium">{title}</div>
-        <div className="truncate text-xs text-token-description-foreground">
-          Project: {projectLabel}
-        </div>
+        <div className="truncate text-xs text-token-description-foreground">{tooltipLocation}</div>
       </div>
     ),
   };
@@ -354,7 +360,7 @@ export function useWorkbenchPanelProjection({
                 title,
               )
             : undefined;
-        const chromeContext = resolveProjectTargetTabChromeContext(tab, session, projects);
+        const locationChrome = resolveContentLocationTabChrome(tab, session, projects);
         const filesIcon =
           !transientPanelTab && tab.kind === "files"
             ? resolveFileResourceIcon("path" in tab.config ? tab.config.path : undefined)
@@ -387,7 +393,7 @@ export function useWorkbenchPanelProjection({
             ? { tooltip: tab.tooltip }
             : durableImageEditorTab
               ? { tooltip: tab.config.tooltip }
-              : chromeContext),
+              : locationChrome),
           icon: isSideChatPanelTab(tab)
             ? SidePanelSideChatIcon
             : isMcpAppPanelTab(tab)

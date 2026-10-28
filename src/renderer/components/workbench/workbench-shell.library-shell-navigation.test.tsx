@@ -963,7 +963,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     ).toBe("true");
   });
 
-  test("labels cross-project page-stage tabs with their target project", async () => {
+  test("shows only the title on content tabs and names a Library or other Project location on hover", async () => {
     const session = makeSession({
       tabs: [
         {
@@ -988,8 +988,21 @@ describe("workbench session shell / library-shell-navigation", () => {
             titleSnapshot: "Stale Beta Card",
           },
         },
+        {
+          id: "library-tab",
+          sessionId: "session:alpha:database-view",
+          projectId: "alpha",
+          kind: "page_stage",
+          title: "Reading list",
+          panelId: "right",
+          config: {
+            routingContext: { kind: "library" },
+            pageId: "reading-list",
+            titleSnapshot: "Reading list",
+          },
+        },
       ],
-      rightLayout: makePanelLayout(["db-tab", "card-tab"], "card-tab"),
+      rightLayout: makePanelLayout(["db-tab", "card-tab", "library-tab"], "card-tab"),
     });
 
     const screen = renderWorkbench({
@@ -999,11 +1012,14 @@ describe("workbench session shell / library-shell-navigation", () => {
       ],
       sessionsByProject: { alpha: [session] },
     });
-    expect(await screen.findByRole("tab", { name: "Beta project, Beta Card" })).toBeTruthy();
-    expect(
-      screen.container.querySelector('[data-app-shell-tab-context-label="card-tab"]')?.textContent,
-    ).toBe("Beta");
+    expect((await screen.findByRole("tab", { name: "Beta project, Beta Card" })).textContent).toBe(
+      "Beta Card",
+    );
     expect(screen.getByLabelText("Close Beta project, Beta Card tab") !== null).toBe(true);
+    expect(screen.getByRole("tab", { name: "Library, Reading list" }).textContent).toBe(
+      "Reading list",
+    );
+    expect(screen.getByRole("tab", { name: "DB View" }).textContent).toBe("DB View");
 
     const pageStageProps = (
       globalThis as {
@@ -1031,12 +1047,9 @@ describe("workbench session shell / library-shell-navigation", () => {
     const renamedTitle = screen.container.querySelector('[data-app-shell-tab-title="card-tab"]');
     expect(renamedTitle?.textContent).toBe("Renamed card");
     if (!(renamedTitle instanceof HTMLElement)) throw new Error("Expected renamed card tab title");
-    if (!(renamedTitle.parentElement instanceof HTMLElement)) {
-      throw new Error("Expected renamed card tooltip trigger");
-    }
     vi.useFakeTimers();
     try {
-      hoverWithMouse(renamedTitle.parentElement);
+      hoverWithMouse(renamedTitle);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(300);
       });
@@ -1266,18 +1279,12 @@ describe("workbench session shell / library-shell-navigation", () => {
     await settleAsyncRender();
 
     expect(screen.getByRole("tab", { name: "Card One" }) !== null).toBe(true);
-    expect(
-      screen.container.querySelector('[data-app-shell-tab-context-label="card-tab"]') === null,
-    ).toBe(true);
 
     const tabTitle = screen.container.querySelector('[data-app-shell-tab-title="card-tab"]');
     if (!(tabTitle instanceof HTMLElement)) throw new Error("Expected card tab title");
-    if (!(tabTitle.parentElement instanceof HTMLElement)) {
-      throw new Error("Expected card tooltip trigger");
-    }
     vi.useFakeTimers();
     try {
-      hoverWithMouse(tabTitle.parentElement);
+      hoverWithMouse(tabTitle);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(300);
       });
@@ -1806,10 +1813,9 @@ describe("workbench session shell / library-shell-navigation", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    expect(screen.getByRole("tab", { name: "beta project, Beta Card" }) !== null).toBe(true);
-    expect(
-      screen.container.querySelector('[data-app-shell-tab-context-label="card-tab"]')?.textContent,
-    ).toBe("beta");
+    expect(screen.getByRole("tab", { name: "beta project, Beta Card" }).textContent).toBe(
+      "Beta Card",
+    );
   });
 
   test("marks pages active in the database view when selected Page Stage tabs are visible", async () => {

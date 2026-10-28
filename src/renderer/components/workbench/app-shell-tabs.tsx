@@ -99,7 +99,6 @@ export interface AppShellTabItem {
   domTabId?: string;
   title: string;
   titleSource?: AppShellTabTitleSource;
-  contextLabel?: string;
   icon?: ComponentType<{ className?: string }>;
   iconElement?: ReactNode;
   actions?: ReactNode;
@@ -124,15 +123,7 @@ export interface AppShellTabTitleSource {
 
 export type AppShellTabPresentation = Pick<
   AppShellTabItem,
-  | "id"
-  | "title"
-  | "titleSource"
-  | "contextLabel"
-  | "icon"
-  | "iconElement"
-  | "disabled"
-  | "titleLabel"
-  | "preview"
+  "id" | "title" | "titleSource" | "icon" | "iconElement" | "disabled" | "titleLabel" | "preview"
 >;
 
 /**
@@ -163,14 +154,12 @@ export function makeAppShellTabAccessibleLabel(
 ): string {
   if (typeof tab.titleLabel === "function") return tab.titleLabel(title);
   if (tab.titleLabel) return tab.titleLabel;
-  if (tab.contextLabel) return `${tab.contextLabel} · ${title}`;
   return title;
 }
 
 function makeAppShellTabTooltip(tab: AppShellTabItem, title: string): ReactNode {
   if (tab.renderTooltip) return tab.renderTooltip(title);
   if (tab.tooltip !== undefined) return tab.tooltip;
-  if (tab.contextLabel) return `${tab.contextLabel} · ${title}`;
   return title;
 }
 
@@ -906,22 +895,7 @@ function AppShellTab({
           maxWidth: "min(32rem, var(--nodex-floating-surface-available-width), calc(100vw - 16px))",
         }}
       >
-        <span className="flex min-w-0 items-center gap-1">
-          {tab.contextLabel ? (
-            <>
-              <span
-                data-app-shell-tab-context-label={tab.id}
-                className="max-w-20 shrink truncate text-xs text-token-description-foreground"
-              >
-                {tab.contextLabel}
-              </span>
-              <span aria-hidden="true" className="shrink-0 text-token-description-foreground">
-                ·
-              </span>
-            </>
-          ) : null}
-          {title}
-        </span>
+        {title}
       </NodexTooltip>
     </span>
   );
