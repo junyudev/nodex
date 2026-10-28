@@ -1,0 +1,54 @@
+config/workspace-package-exports.test.ts
+  s_cb8bbfdb133e81::t_446e8b4fa9bbf0 1-13,17-61
+  s_cb8bbfdb133e81::t_9de2c32205c69e 14-16
+packages/agent-runtime/vendor/contracts/package.json
+  s_cb8bbfdb133e81::t_b4b341821c12d8 10-12
+packages/agent-runtime/vendor/effect-acp/package.json
+  s_cb8bbfdb133e81::t_62e29e180061c6 6-13
+packages/agent-runtime/vendor/effect-codex-app-server/package.json
+  s_cb8bbfdb133e81::t_2d6e204226dce6 6-11
+packages/agent-runtime/vendor/provider-acp-registry/package.json
+  s_cb8bbfdb133e81::t_e7c1f98b9c8f87 6-11
+packages/agent-runtime/vendor/provider-acp/package.json
+  s_cb8bbfdb133e81::t_bcc2f9988f4da2 6-13
+packages/agent-runtime/vendor/provider-core/package.json
+  s_cb8bbfdb133e81::t_8878555f294820 6-53
+packages/agent-runtime/vendor/provider-opencode/package.json
+  s_cb8bbfdb133e81::t_f68244d24e06d4 6-15
+packages/agent-runtime/vendor/provider-testing/package.json
+  s_cb8bbfdb133e81::t_6a2f321b1fa1d1 6-10
+packages/agent-runtime/vendor/shared/package.json
+  s_cb8bbfdb133e81::t_d86393e58c2925 6-79
+packages/agent-runtime/vendor/source-control-azure-devops/package.json
+  s_cb8bbfdb133e81::t_d234c23452058f 6-14
+packages/agent-runtime/vendor/source-control-bitbucket/package.json
+  s_cb8bbfdb133e81::t_9e70b5b5ea6728 6-13
+packages/agent-runtime/vendor/source-control-core/package.json
+  s_cb8bbfdb133e81::t_24b8b02728b733 6-15
+packages/agent-runtime/vendor/source-control-forgejo/package.json
+  s_cb8bbfdb133e81::t_dd08afb18d2be6 6-12
+packages/agent-runtime/vendor/source-control-gitcafe/package.json
+  s_cb8bbfdb133e81::t_314c4d2870c7d7 6-13
+packages/agent-runtime/vendor/source-control-github/package.json
+  s_cb8bbfdb133e81::t_43e71439e59ac5 6-22
+packages/agent-runtime/vendor/source-control-gitlab/package.json
+  s_cb8bbfdb133e81::t_df49c76f409cf1 6-14
+packages/agent-runtime/vendor/source-control-testing/package.json
+  s_cb8bbfdb133e81::t_bf8a094c2b1837 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d2a53f4c59c7d73f5ca641dd2edd10dede13efa9",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
