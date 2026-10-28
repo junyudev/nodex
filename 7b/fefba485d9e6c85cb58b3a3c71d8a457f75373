@@ -1,0 +1,101 @@
+crates/nodex-markdown/src/write/inline.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-546
+crates/nodex-markdown/src/write/escapes/literal.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-450
+crates/nodex-markdown/tests/fixtures/cases.json
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-2184
+crates/nodex-markdown/src/write/escapes.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-915
+src/shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm.d.ts
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-17
+crates/nodex-markdown/src/text.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-269
+crates/nodex-markdown/src/read/locations.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-167
+crates/nodex-markdown/src/read/blocks.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-541
+crates/nodex-markdown/src/read/syntax.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-1035
+src/shared/generated/nodex-markdown-wasm/nodex_markdown.d.ts
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-87
+.config/ci/ignored-rust-tests.json
+  s_4b53f1a3b989a8::t_f72f570be0c356 22-37
+crates/nodex-markdown/src/located.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-24
+crates/nodex-markdown/src/write/portable.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-294
+src/shared/generated/nodex-markdown-wasm/nodex_markdown.js
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-419
+crates/nodex-markdown/src/read/columns.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-47
+crates/nodex-markdown/tests/corpus.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-54
+crates/nodex-markdown/tests/fixture.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-161
+crates/nodex-markdown/src/read/inline.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-504
+crates/nodex-markdown/src/code_languages.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-68
+crates/nodex-markdown/src/read.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-82
+Cargo.toml
+  s_4b53f1a3b989a8::t_f72f570be0c356 8,29,40,100-106
+  s_4b53f1a3b989a8::t_46519da7623b7f 107
+crates/nodex-markdown/src/wasm.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-108
+vite.config.ts
+  s_4b53f1a3b989a8::t_e878d2c6811010 30,39,43
+crates/nodex-markdown/src/links.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-103
+crates/nodex-markdown/src/read/tests.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-683
+docs/adr/0016-agent-interface-budgets-the-common-path.md
+  s_4b53f1a3b989a8::t_f72f570be0c356 10-11,43
+crates/nodex-markdown/src/write.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-37
+crates/nodex-markdown/Cargo.toml
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-24
+crates/nodex-markdown/src/read/values.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-293
+crates/nodex-markdown/src/model.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-1491
+crates/nodex-markdown/src/attributes.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-299
+scripts/build-nodex-markdown-wasm.ts
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-65
+crates/nodex-markdown/src/write/escapes/performance.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-256
+crates/nodex-markdown/src/write/tests.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-781
+docs/adr/0073-one-text-language-for-blocks.md
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-50
+docs/references/nodex-markdown.md
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-510
+scripts/rust-dev-runtime.ts
+  s_4b53f1a3b989a8::t_f72f570be0c356 48
+package.json
+  s_4b53f1a3b989a8::t_b64c2264941297 93
+  s_4b53f1a3b989a8::t_f72f570be0c356 188-192
+crates/nodex-markdown/src/lib.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-142
+crates/nodex-markdown/src/write/blocks.rs
+  s_4b53f1a3b989a8::t_f72f570be0c356 1-651
+Cargo.lock
+  s_4b53f1a3b989a8::t_2c031f40ece8a0 306-314,362,427-443,555-560,629-645,652-657,1079-1088,1241-1252,1451-1481,1493-1501,1646-1651,2150-2155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7bfefba485d9e6c85cb58b3a3c71d8a457f75373",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
