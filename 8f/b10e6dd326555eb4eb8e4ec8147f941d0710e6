@@ -1,0 +1,88 @@
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_ce448c49020622::t_a734ceb5bb3490 15904-15928
+  s_ce448c49020622::t_1580f862a041db 15901-15903
+  s_ce448c49020622::t_99fa5300460537 15929-15931
+  s_ce448c49020622::t_5d79c45cfdf9e8 15893-15900,15932-15935,15963-15966,17264-17267,17398
+CHANGELOG.md
+  s_ce448c49020622::t_ff3a26a268efd1 20
+docs/product-specs/agent-runtime-behavior.md
+  s_ce448c49020622::t_212fb4896fa31e 224-231
+docs/product-specs/workbench-shell.md
+  s_ce448c49020622::t_0838f7f9366c8a 206
+packages/agent-runtime/src/nodex/Application.test.ts
+  s_ce448c49020622::t_35754e0e7078da 530-602,659
+packages/agent-runtime/src/nodex/Interface.ts
+  s_ce448c49020622::t_e143ab4399c845 408-409,577-581
+packages/agent-runtime/src/nodex/Service.ts
+  s_ce448c49020622::t_01a5c0b7b7b6a3 267,371,857-860,903-904,1466
+packages/agent-runtime/src/orchestration-v2/Orchestrator.control-reads.test.ts
+  s_ce448c49020622::t_d3bef3b17f35b4 31-33,51,63,81,95-96,114,130-332
+packages/agent-runtime/src/orchestration-v2/ProjectionControlReads.test.ts
+  s_ce448c49020622::t_cbb92123c30ec1 340-509
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_ce448c49020622::t_93c813c53186aa 1237-1240,7252-7270,9762,9844,11296-11313
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_ce448c49020622::t_231462fd6d64d4 232
+scripts/scenarios/runtime/scripted-claude-agent.mjs
+  s_ce448c49020622::t_e832f354a1a6bb 6,285-292
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_ce448c49020622::t_c7e7a271ab29e3 16-17,22-30,147,150-153,230-232,329-332,382-387,410-415,432-433,639-644,646-655,665-670,678-705,790,923-954,1028-1079,1122,1153,1166-1170,1220,5553-6043
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_ce448c49020622::t_bc2ba581b58344 42,61-62,2126,2339-2401,2494,2496,2521-2534,2608,2635,2652-2663,2772,2795-2796,2801-2808
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_ce448c49020622::t_49acf4a2dd18a6 61,471-479
+src/renderer/components/workbench/workbench-agent-runtime-panels.tsx
+  s_ce448c49020622::t_4e17e02b95c5b7 125,150
+src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx
+  s_ce448c49020622::t_2596f52aba00d3 513,558,575,620
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_ce448c49020622::t_65e214bdc0e41d 3053
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_ce448c49020622::t_28a7f785c19627 346,400,519,656-657,662-663,701-709,789,1190
+src/renderer/features/local-conversation/agent-runtime-stage-actions.node.test.ts
+  s_ce448c49020622::t_636631eff1d1ef 22,45,80,84,142-174,393-402
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_ce448c49020622::t_80506760239b9c 2024-2029,6883-6886,6888,6894,6899-6919,6921-6923,6925,6929-6934,6936,10155-10159,10436
+src/renderer/features/local-conversation/remote-codex-stage-actions.node.test.ts
+  s_ce448c49020622::t_cadfe8a371ae47 4-23,51-109
+src/renderer/features/local-conversation/remote-codex-stage-actions.ts
+  s_ce448c49020622::t_e5078d12e08102 4-5,15,46,53-56,124-127
+src/renderer/lib/agent-runtime-runtime.ts
+  s_ce448c49020622::t_75fc03e178ccfa 39,218-220,223-226
+src/renderer/lib/use-workbench-panel-openers.ts
+  s_ce448c49020622::t_2e44f580cdc763 12,483-488,595-597
+src/renderer/lib/workbench-panel-tab-model.node.test.ts
+  s_ce448c49020622::t_a834476b37b210 20,44-55
+src/renderer/lib/workbench-panel-tab-model.ts
+  s_ce448c49020622::t_2d9cf9a6b5d4af 416-425
+src/shared/agent-runtime-api.ts
+  s_ce448c49020622::t_b3f97f737c9f41 124-129,336,340,344
+src/shared/side-chat-title.test.ts
+  s_ce448c49020622::t_7ef8d5990362cc 1-47
+src/shared/side-chat-title.ts
+  s_ce448c49020622::t_836d2b14027d0a 1-19
+tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs
+  s_ce448c49020622::t_21369f4a48c65e 7,289-294
+tests/e2e/side-chat-context.spec.ts
+  s_ce448c49020622::t_ec42ebb1b780d0 37,46-48,75-85,98-99,113-114,229,234,237-248,251-304,333-361,385-386,399,410,415-417,429-449
+tests/e2e/side-chat-save.spec.ts
+  s_ce448c49020622::t_fc7f19b2860615 132-134,140-143,216,219,270,327-331,422,438-441,492-495,513-523
+tests/e2e/thread-selection-actions.spec.ts
+  s_ce448c49020622::t_801c59d8316b6d 114,137,140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8fb10e6dd326555eb4eb8e4ec8147f941d0710e6",
+  "prompts": {},
+  "sessions": {
+    "s_ce448c49020622": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18061-1d5f-7ed2-bb94-1a917dfd5e09",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
