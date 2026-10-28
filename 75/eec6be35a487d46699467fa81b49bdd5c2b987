@@ -1,0 +1,23 @@
+docs/product-specs/scheduled-route-behavior.md
+  s_f621238646b415::t_15351d87907c6d 158-159
+src/renderer/components/workbench/workbench-automation-templates.node.test.ts
+  s_f621238646b415::t_7fa1cd13cc5844 22-32
+src/renderer/components/workbench/workbench-automation-templates.ts
+  s_f621238646b415::t_6be0a0774e23c9 1,13-14,26-42,114,131,180,193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "75eec6be35a487d46699467fa81b49bdd5c2b987",
+  "prompts": {},
+  "sessions": {
+    "s_f621238646b415": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18313-2fb3-77c2-970d-de312beb6c61",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
