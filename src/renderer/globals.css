@@ -1226,8 +1226,9 @@
 
 /*
  * Whole-Block selection and embedded-context focus are separate layers:
- * authoritative Block selection uses the selection fill over its visual scope, while
- * Page contexts use a quiet halo only while they own the active selection.
+ * authoritative Block selection paints beneath content in an isolated scope.
+ * Opaque Code and Image surfaces use a boundary without tinting their contents;
+ * Page contexts keep their independently owned focus halo.
  */
 [data-nodex-block-selection-presentation]
   :is(
@@ -1249,43 +1250,34 @@
 }
 
 [data-nodex-block-selection-presentation]
-  .bn-block-outer.nodex-selected-block[data-nodex-selected-block-scope="subtree"]
-  > .bn-block {
-  position: relative;
-}
-
-[data-nodex-block-selection-presentation]
-  .bn-block-outer.nodex-selected-block[data-nodex-selected-block-scope="subtree"]
-  > .bn-block::after {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  z-index: 81;
-  pointer-events: none;
-  background: var(--color-background-text-selection);
-  border-radius: 4px;
-  opacity: var(--nfm-block-selection-opacity);
-}
-
-[data-nodex-block-selection-presentation]
   :is(
-    .bn-block-content[data-nodex-selected-block-content]:not([data-content-type="image"]),
+    .bn-block-outer.nodex-selected-block[data-nodex-selected-block-scope="subtree"] > .bn-block,
+    .bn-block-content[data-nodex-selected-block-content]:not(
+        [data-content-type="image"],
+        [data-content-type="codeBlock"]
+      ),
     .bn-react-node-view-renderer[data-nodex-selected-block-content]
-      > .bn-block-content:not([data-content-type="image"])
+      > .bn-block-content:not([data-content-type="image"], [data-content-type="codeBlock"])
   ) {
   position: relative;
+  /* Keep the negative paint above this scope's backdrop and beneath every content child. */
+  isolation: isolate;
 }
 
 [data-nodex-block-selection-presentation]
   :is(
-    .bn-block-content[data-nodex-selected-block-content]:not([data-content-type="image"]),
+    .bn-block-outer.nodex-selected-block[data-nodex-selected-block-scope="subtree"] > .bn-block,
+    .bn-block-content[data-nodex-selected-block-content]:not(
+        [data-content-type="image"],
+        [data-content-type="codeBlock"]
+      ),
     .bn-react-node-view-renderer[data-nodex-selected-block-content]
-      > .bn-block-content:not([data-content-type="image"])
+      > .bn-block-content:not([data-content-type="image"], [data-content-type="codeBlock"])
   )::after {
   content: "";
   position: absolute;
   inset: 2px;
-  z-index: 81;
+  z-index: -1;
   pointer-events: none;
   background: var(--color-background-text-selection);
   border-radius: 4px;
@@ -1306,18 +1298,22 @@
 
 [data-nodex-block-selection-presentation]
   :is(
-    .bn-block-content[data-nodex-selected-block-content][data-content-type="image"],
-    .bn-react-node-view-renderer[data-nodex-selected-block-content]
-      > .bn-block-content[data-content-type="image"]
+    .bn-block-content[data-nodex-selected-block-content],
+    .bn-react-node-view-renderer[data-nodex-selected-block-content] > .bn-block-content
   )
-  > :is(.bn-file-block-content-wrapper, .nfm-image-file-block-content-wrapper)::after {
+  > :is(
+    .bn-file-block-content-wrapper,
+    .nfm-image-file-block-content-wrapper,
+    [data-nfm-code-block-surface]
+  )::after {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 81;
+  z-index: 1;
   pointer-events: none;
-  background: var(--color-background-text-selection);
-  border-radius: 4px;
+  background: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-token-focus-border) 65%, transparent);
+  border-radius: inherit;
   opacity: var(--nfm-block-selection-opacity);
 }
 

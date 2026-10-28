@@ -13,12 +13,14 @@ import type { EditorView } from "@tiptap/pm/view";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, test } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import "@blocknote/shadcn/style.css";
 import "../../../globals.css";
 import { PageOutlinerFrame } from "@/components/block-documents/page-outliner-surface";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { createMaitaiStore, MaitaiProvider } from "@/lib/maitai";
+import { nfmSyntaxHighlighter } from "@/lib/syntax-highlighting";
 import { ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE } from "@/lib/editor-selection-presentation";
 import {
   applySideMenuSelectionIntent,
@@ -160,7 +162,175 @@ function inlinePosition(doc: Node, blockId: string, offset: number) {
   return position;
 }
 
+async function capturePaint(element: HTMLElement): Promise<ImageData> {
+  const base64 = await page.screenshot({ element, save: false, caret: "hide", scale: "css" });
+  const image = new Image();
+  image.src = `data:image/png;base64,${base64}`;
+  await image.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Expected a screenshot canvas");
+  context.drawImage(image, 0, 0);
+  return context.getImageData(0, 0, image.width, image.height);
+}
+
+/** Compare solid glyph pixels rather than computed colors, which ignore overlaid paint. */
+function expectPreservedInk(before: ImageData, after: ImageData, colors: readonly string[]) {
+  expect([after.width, after.height]).toEqual([before.width, before.height]);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Expected a foreground-color canvas");
+
+  for (const color of new Set(colors)) {
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+    const rgb = context.getImageData(0, 0, 1, 1).data.slice(0, 3);
+    let solidPixels = 0;
+    let changedPixels = 0;
+    for (let offset = 0; offset < before.data.length; offset += 4) {
+      if (!rgb.every((channel, index) => before.data[offset + index] === channel)) continue;
+      solidPixels += 1;
+      if (rgb.some((channel, index) => after.data[offset + index] !== channel)) changedPixels += 1;
+    }
+    expect(solidPixels, `Solid foreground pixels for ${color}`).toBeGreaterThan(5);
+    expect(changedPixels, `Selected foreground pixels changed for ${color}`).toBe(0);
+  }
+}
+
 describe("selected Block presentation in Chromium", () => {
+  test.each(["light", "dark"] as const)(
+    "keeps rendered text, code, and image pixels clear while selecting Blocks in %s mode",
+    async (theme) => {
+      applyRendererThemeForTest(theme);
+      const editor = BlockNoteEditor.create({
+        schema: nfmSchema,
+        initialContent: [
+          {
+            id: "rich",
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Plain foreground ", styles: {} },
+              { type: "link", href: "https://example.com/", content: "Link foreground" },
+              { type: "text", text: " inline code ", styles: { code: true } },
+              { type: "text", text: "colored foreground", styles: { textColor: "red" } },
+            ],
+          },
+          {
+            id: "parent",
+            type: "callout",
+            content: "Parent foreground",
+            children: [
+              { id: "child", type: "paragraph", content: "Child foreground" },
+              {
+                id: "code",
+                type: "codeBlock",
+                props: { language: "typescript" },
+                content: "const clearForeground = true;",
+              },
+            ],
+          },
+          { id: "image", type: "image", props: { ...selectionImageProps, name: "sample.png" } },
+          { id: "after", type: "paragraph", content: "After selection" },
+        ],
+        extensions: [nfmSyntaxHighlighter, selectedBlockDecorationsExtension()],
+      });
+      const view = render(
+        <MaitaiProvider store={createMaitaiStore()}>
+          <BlockNoteView
+            editor={editor}
+            theme={theme}
+            className="nfm-editor bg-[var(--background)] text-[var(--foreground)]"
+            formattingToolbar={false}
+            linkToolbar={false}
+            slashMenu={false}
+            sideMenu={false}
+            tableHandles={false}
+          />
+        </MaitaiProvider>,
+      );
+
+      try {
+        await act(async () => {
+          editor.setTextCursorPosition("after");
+          editor.focus();
+          await settleEditor();
+        });
+        const rich = view.container.querySelector<HTMLElement>(
+          '.bn-block-outer[data-id="rich"] .bn-inline-content',
+        );
+        const parent = view.container.querySelector<HTMLElement>(
+          '.bn-block-outer[data-id="parent"] > .bn-block',
+        );
+        const code = view.container.querySelector<HTMLElement>("[data-nfm-code-block-surface]");
+        const image = view.container.querySelector<HTMLElement>(
+          '.bn-block-outer[data-id="image"] .bn-file-block-content-wrapper',
+        );
+        const renderedImage = image?.querySelector<HTMLImageElement>("img");
+        if (!rich || !parent || !code || !image || !renderedImage) {
+          throw new Error("Expected rich text, an enclosed subtree, Code, and Image Blocks");
+        }
+        await waitFor(() => expect(renderedImage.naturalWidth).toBe(320));
+        await waitFor(() => expect(code.querySelector(".shiki")).not.toBeNull());
+        const inkColors = [
+          rich,
+          ...rich.querySelectorAll<HTMLElement>('a, code, [data-style-type="textColor"]'),
+        ].map((element) => getComputedStyle(element).color);
+        const baseline = await capturePaint(rich);
+        const presentation = editor.getExtension(SelectedBlockDecorationsExtension);
+        if (!presentation) throw new Error("Expected Block selection presentation");
+        const select = async (blockId: string) => {
+          await act(async () => {
+            presentation.showSelectionAsBlocks(true, "paint-regression", [blockId]);
+            await settleEditor();
+          });
+        };
+
+        await select("rich");
+        const selectedRich = await capturePaint(rich);
+        expectPreservedInk(baseline, selectedRich, inkColors);
+        expect(selectedRich.data).not.toEqual(baseline.data);
+
+        const parentBaseline = await capturePaint(parent);
+        await select("parent");
+        const selectedParent = await capturePaint(parent);
+        expectPreservedInk(parentBaseline, selectedParent, [getComputedStyle(parent).color]);
+        expect(selectedParent.data).not.toEqual(parentBaseline.data);
+        expect(getComputedStyle(parent, "::after").opacity).toBe("1");
+
+        await select("rich");
+        const codeBaseline = await capturePaint(code);
+        await select("code");
+        const selectedCode = await capturePaint(code);
+        expectPreservedInk(
+          codeBaseline,
+          selectedCode,
+          [...code.querySelectorAll<HTMLElement>(".shiki")].map(
+            (token) => getComputedStyle(token).color,
+          ),
+        );
+        expect(selectedCode.data).not.toEqual(codeBaseline.data);
+
+        const imageBaseline = await capturePaint(image);
+        await select("image");
+        const selectedImage = await capturePaint(image);
+        expect(selectedImage.data).not.toEqual(imageBaseline.data);
+        // Exclude the rounded selection boundary, including its antialiased corners.
+        for (let y = 5; y < imageBaseline.height - 5; y += 1) {
+          const from = (y * imageBaseline.width + 5) * 4;
+          const to = ((y + 1) * imageBaseline.width - 5) * 4;
+          expect(selectedImage.data.slice(from, to)).toEqual(imageBaseline.data.slice(from, to));
+        }
+      } finally {
+        view.unmount();
+        editor._tiptapEditor.destroy();
+      }
+    },
+    20_000,
+  );
+
   test("ignores a stale React NodeView selection class after text selection moves away", async () => {
     const editor = BlockNoteEditor.create({
       schema: testSchema,
@@ -576,7 +746,7 @@ describe("selected Block presentation in Chromium", () => {
     },
   );
 
-  test("keeps the Image overlay in sync with the same authoritative selection", async () => {
+  test("keeps the Image boundary in sync with the same authoritative selection", async () => {
     const editor = BlockNoteEditor.create({
       schema: nfmSchema,
       initialContent: [
@@ -633,16 +803,14 @@ describe("selected Block presentation in Chromium", () => {
 
       expect(imageContainer.dataset.nodexSelectionKind).toBe("structural");
       expect(getComputedStyle(imageContent, "::after").content).toBe("none");
-      expect(getComputedStyle(imageWrapper, "::after").backgroundColor).toBe(
-        readRendererThemeColor("--color-background-text-selection"),
-      );
+      expect(getComputedStyle(imageWrapper, "::after").backgroundColor).toBe("rgba(0, 0, 0, 0)");
       expect(getComputedStyle(imageWrapper, "::after").opacity).toBe("1");
       expect(imageNodeView.getBoundingClientRect().width).toBeGreaterThan(
         imageWrapper.getBoundingClientRect().width,
       );
       expect(getComputedStyle(imageNodeView).outlineStyle).toBe("none");
       expect(getComputedStyle(imageNodeView, "::after").content).toBe("none");
-      expect(getComputedStyle(imageWrapper, "::after").boxShadow).toBe("none");
+      expect(getComputedStyle(imageWrapper, "::after").boxShadow).not.toBe("none");
 
       await act(async () => {
         await userEvent.click(view.getByRole("button", { name: "Outside editor" }));
@@ -677,7 +845,7 @@ describe("selected Block presentation in Chromium", () => {
     }
   });
 
-  test("presents a side-menu parent selection as one subtree overlay", async () => {
+  test("presents a side-menu parent selection as one subtree underlay", async () => {
     const editor = BlockNoteEditor.create({
       schema: testSchema,
       initialContent: [
@@ -1057,10 +1225,10 @@ describe("selected Block presentation in Chromium", () => {
       expect(Number.parseFloat(getComputedStyle(firstImageWrapper, "::after").width)).toBe(
         imageWidth,
       );
-      expect(getComputedStyle(firstImageWrapper, "::after").boxShadow).toBe("none");
+      expect(getComputedStyle(firstImageWrapper, "::after").boxShadow).not.toBe("none");
       expect(getComputedStyle(pageContent, "::after").opacity).toBe("0");
       expect(getComputedStyle(firstImageWrapper, "::after").backgroundColor).toBe(
-        readRendererThemeColor("--color-background-text-selection"),
+        "rgba(0, 0, 0, 0)",
       );
       expect(getComputedStyle(firstImageWrapper, "::after").opacity).toBe("1");
       expect(getComputedStyle(secondImageWrapper, "::after").content).toBe("none");

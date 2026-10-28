@@ -113,13 +113,14 @@ is inert and hidden from assistive technology until unmounted. It must never
 materialize an eventless `draggable`, link, button, input, or other native HTML
 interaction from a serialized DOM snapshot.
 
-Opening the menu establishes one structural Block selection. Its blue overlay
-covers the complete selected subtree, while media Blocks remain bounded to
-their own visual width. That frozen Block target stays visible while Search
-actions or any submenu owns focus. Dismissing the menu releases its retained
-selection presentation as exit motion begins; the underlying editor selection
-remains authoritative. The menu never adds a second inline text-selection paint
-over that overlay.
+Opening the menu establishes one structural Block selection. Its accent backdrop
+extends beneath the complete selected subtree without changing text or inline
+colors. Individually selected Code and Image Blocks use a thin boundary around
+their own surface without tinting their contents. That frozen Block target stays
+visible while Search actions or any submenu owns focus. Dismissing the menu
+releases its retained selection presentation as exit motion begins; the underlying
+editor selection remains authoritative. The menu never adds a second inline
+text-selection paint over the Block selection.
 
 Footer metadata is optional. Production hides the footer when there is no real metadata.
 
