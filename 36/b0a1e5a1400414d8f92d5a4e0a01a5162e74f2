@@ -1,0 +1,42 @@
+scripts/agent-eval/run.ts
+  s_6c9891f66c664a::t_0cb57f0d2be3ff 10,21
+  s_6c9891f66c664a::t_adab924ad27e81 22
+scripts/verify-native-runtime.ts
+  s_6c9891f66c664a::t_b4d133f838e6b5 21,66
+  s_74cb07b04fcdc2::t_3a5ef8cba5abe0 67
+scripts/verify-native-runtime.test.ts
+  s_6c9891f66c664a::t_b46fc2610c0ca6 1,43-69
+scripts/node-markdown.ts
+  s_6c9891f66c664a::t_b4d133f838e6b5 2,5-12
+  s_6c9891f66c664a::t_c4639cb6064b4a 1,3-4
+scripts/official-agent-skills.ts
+  s_6c9891f66c664a::t_b4d133f838e6b5 7,18
+  s_6c9891f66c664a::t_c4639cb6064b4a 13
+scripts/agent-eval/launch.test.ts
+  s_6c9891f66c664a::t_b4d133f838e6b5 2-3,8-13,20-55
+  s_6c9891f66c664a::t_3644de5a41eff1 56-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "36b0a1e5a1400414d8f92d5a4e0a01a5162e74f2",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_74cb07b04fcdc2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16c5e-90b2-7e40-92fb-3de257969ffd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
