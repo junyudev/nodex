@@ -63,7 +63,7 @@ export function buildDatabaseViewPageMenuEntries({
     ...(hasPageKey ? [entry("copy-id", "Copy ID", ["page", "key", "identifier"])] : []),
     entry("copy-deeplink", "Copy deeplink", ["link", "url", "reference"]),
     entry("copy-title", "Copy title", ["name", "heading"]),
-    entry("copy-markdown", "Copy content as Markdown", ["body", "document", "nfm", "text"], {
+    entry("copy-markdown", "Copy content as Markdown", ["body", "document", "markdown", "text"], {
       disabled: !canCopyMarkdown,
     }),
   ];

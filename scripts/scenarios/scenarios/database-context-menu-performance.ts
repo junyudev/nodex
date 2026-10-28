@@ -60,7 +60,7 @@ const materialize = async (
       projectId: project.id,
       status: statuses[index % statuses.length]!,
       title: `Performance Page ${String(index + 1).padStart(3, "0")}`,
-      nfm: `Representative local-first Page body ${index + 1}.`,
+      markdown: `Representative local-first Page body ${index + 1}.`,
     };
     await port.createPage(seed);
     pageIdsByKey[key] = seed.pageId;

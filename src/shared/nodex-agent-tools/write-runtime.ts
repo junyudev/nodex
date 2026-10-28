@@ -9,8 +9,6 @@ import type { AgentDocumentEditEffects } from "./document-edit-compiler";
 import type {
   CreateInput,
   CreateOutput,
-  EditDocumentInput,
-  EditDocumentOutput,
   TransferBlocksInput,
   TransferBlocksOutput,
 } from "./write-schemas";
@@ -23,38 +21,6 @@ export interface NodexAgentCallIdentity {
   readonly operationId?: string;
   readonly authority?: NodexAgentTurnContext;
 }
-
-export type NodexAgentDocumentEditTool = "edit_document" | "update_page" | "advanced_update_page";
-
-export interface PrepareNodexAgentDocumentEditRequest extends NodexAgentCallIdentity {
-  readonly tool: NodexAgentDocumentEditTool;
-  readonly projectId: string;
-  readonly input: EditDocumentInput;
-}
-
-export type PrepareNodexAgentDocumentEditResult =
-  | {
-      readonly ok: true;
-      readonly value:
-        | { readonly kind: "completed"; readonly output: EditDocumentOutput }
-        | {
-            readonly kind: "prepared";
-            readonly mutation: DocumentMutationRequest;
-            readonly effects: AgentDocumentEditEffects;
-            readonly targetNfm: string;
-          };
-    }
-  | { readonly ok: false; readonly error: ToolFailure["error"] };
-
-export interface CompleteNodexAgentDocumentEditRequest extends NodexAgentCallIdentity {
-  readonly tool: NodexAgentDocumentEditTool;
-  readonly projectId: string;
-  readonly result: DocumentOperationResult;
-}
-
-export type CompleteNodexAgentDocumentEditResult =
-  | { readonly ok: true; readonly output: EditDocumentOutput }
-  | { readonly ok: false; readonly error: ToolFailure["error"] };
 
 export interface NodexAgentDocumentHead {
   readonly documentId: string;
@@ -115,7 +81,7 @@ export type PrepareNodexAgentCreateResult =
             readonly command: NodexAgentCreatePageCommand;
             readonly documentHeads: readonly NodexAgentDocumentHead[];
             readonly createdBodyBlockIds: readonly string[];
-            readonly targetNfm: string;
+            readonly targetMarkdown: string;
           };
     }
   | { readonly ok: false; readonly error: ToolFailure["error"] };

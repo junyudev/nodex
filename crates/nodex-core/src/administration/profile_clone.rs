@@ -567,7 +567,7 @@ mod tests {
                         "INSERT INTO documents(id, library_id, generation, head_seq, schema_key,
                            schema_version, state_vector, state_hash, readiness, authority,
                            created_at, updated_at, sync_engine)
-                         VALUES ('unowned-source', 'library:clone-test', 1, 0, 'nodex.page', 3,
+                         VALUES ('unowned-source', 'library:clone-test', 1, 0, 'nodex.page', 4,
                            X'', '', 'ready', 'ydoc_primary', '2026-08-21T00:00:00.000Z',
                            '2026-08-21T00:00:00.000Z', 'yjs');",
                     )?;
@@ -576,18 +576,18 @@ mod tests {
                     transaction.execute(
                         "INSERT INTO document_snapshots(document_id, generation, snapshot_seq, state_vector,
                            snapshot_update, snapshot_hash, schema_version, created_at)
-                         VALUES ('unowned-source', 1, 0, ?1, ?2, ?3, 3, '2026-08-21T00:00:00.000Z')",
+                         VALUES ('unowned-source', 1, 0, ?1, ?2, ?3, 4, '2026-08-21T00:00:00.000Z')",
                         rusqlite::params![document.state_vector_v1, document.update_v1, crate::document::sha256(&document.update_v1)],
                     )?;
                     let materialization = &document.materialization;
                     let title = serde_json::to_string(&materialization.rich_title).unwrap();
                     transaction.execute(
                         "INSERT INTO document_materializations(document_id, generation, projected_seq,
-                           schema_version, title, title_rich_json, title_rich_hash, nfm, plain_text, preview,
-                           block_tree_json, updated_at)
-                         VALUES ('unowned-source', 1, 0, 3, ?1, ?2, ?3, ?4, ?5, ?6, ?7, '2026-08-21T00:00:00.000Z')",
+                           schema_version, title, title_rich_json, title_rich_hash, markdown, plain_text, preview,
+                           block_tree_json, updated_at, materialization_derivation_version)
+                         VALUES ('unowned-source', 1, 0, 4, ?1, ?2, ?3, ?4, ?5, ?6, ?7, '2026-08-21T00:00:00.000Z', 4)",
                         rusqlite::params![materialization.title, title, crate::document::sha256(title.as_bytes()),
-                            materialization.nfm, materialization.plain_text, materialization.preview,
+                            materialization.markdown, materialization.plain_text, materialization.preview,
                             serde_json::to_string(&materialization.block_tree).unwrap()],
                     )?;
                     Ok(())

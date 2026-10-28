@@ -1,13 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
 import * as Y from "yjs";
-import { parseNfm } from "../nfm/parser";
-import { serializeNfm } from "../nfm/serializer";
+import { readMarkdown } from "../nodex-markdown";
+import { writeMarkdown } from "../nodex-markdown";
 import {
   BlockDocumentCodecError,
   createPageDocumentGenesis,
   materializePageDocument,
 } from "./block-document-codec";
-import { blockNoteToNfm, nfmToBlockNote } from "./nfm-blocknote-adapter";
 
 const appendParagraphChild = (document: Y.Doc): void => {
   const root = document.getXmlFragment("body").get(0);
@@ -27,43 +26,22 @@ const appendParagraphChild = (document: Y.Doc): void => {
 };
 
 describe("Block-first reference codec", () => {
-  test("canonicalizes Page reference URLs and rejects non-Nodex targets", () => {
-    const [block] = parseNfm('<page-ref url="nodex:///pages/card%2Fone?block=ignored" />');
-    expect(block?.type).toBe("pageRef");
-    expect(serializeNfm(block ? [block] : [])).toBe('<page-ref url="nodex://pages/card%2Fone" />');
-    expect(() => parseNfm('<page-ref url="https://example.com/card" />')).toThrow(
-      "Page reference URL must identify a Nodex Page",
-    );
-  });
-
   test("requires owning Page identity", () => {
-    expect(() => parseNfm("<page />")).toThrow(
-      "Canonical Page NFM requires an exact non-empty uuid",
-    );
+    expect(() => readMarkdown("::page{}", "exact")).toThrow("id");
   });
 
   test("round-trips canonical references through the BlockNote adapter", () => {
-    const source = [
-      '<page-ref url="nodex://pages/card-1" />',
-      '<database-view-ref database-view="view-1" display-hint="Roadmap" />',
-      '<template-ref source-block="template-1" display-hint="Incident &amp; review" />',
-    ].join("\n");
-    const blockNoteBlocks = nfmToBlockNote(parseNfm(source));
+    const source =
+      '::page-ref{page="card-1"}\n\n::database-view-ref{view="view-1" hint="Roadmap"}\n\n::template-ref{source="template-1" hint="Incident & review"}';
+    const blockNoteBlocks = readMarkdown(source, "exact");
 
     expect(blockNoteBlocks.every((block) => (block.children?.length ?? 0) === 0)).toBe(true);
-    expect(serializeNfm(blockNoteToNfm(blockNoteBlocks))).toBe(source);
+    expect(writeMarkdown(blockNoteBlocks)).toBe(source);
   });
 
   test("hoists attempted children out of reference and resource Blocks", () => {
-    const blocks = parseNfm(
-      [
-        '<page-ref url="nodex://pages/card-1" />',
-        "\tPage child",
-        '<database-view-ref database-view="view-1" />',
-        "\tView child",
-        '<page uuid="page-shell" />',
-        "\tPage shell child",
-      ].join("\n"),
+    const blocks = readMarkdown(
+      '::page-ref{page="card-1"}\n\nPage child\n\n::database-view-ref{view="view-1"}\n\nView child\n\n::page{id="page-shell"}\n\nPage shell child',
     );
 
     expect(blocks.map((block) => block.type)).toEqual([
@@ -80,7 +58,7 @@ describe("Block-first reference codec", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "reference-children",
       title: "References",
-      nfm: '<page-ref url="nodex://pages/card-1" />',
+      markdown: '::page-ref{page="card-1"}',
     });
     appendParagraphChild(genesis.document);
 

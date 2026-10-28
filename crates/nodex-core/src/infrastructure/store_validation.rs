@@ -158,7 +158,7 @@ fn validate_current_document_projections(connection: &Connection) -> Result<(), 
     let mut statement = connection.prepare(
         "SELECT projection.page_block_id, projection.title, projection.description_preview, \
                 projection.description_length, projection.has_description, \
-                materialization.title, materialization.preview, materialization.nfm \
+                materialization.title, materialization.preview, materialization.markdown \
          FROM page_read_model projection \
          JOIN document_materializations materialization \
            ON materialization.document_id = projection.document_id \
@@ -185,14 +185,14 @@ fn validate_current_document_projections(connection: &Connection) -> Result<(), 
             has_description,
             source_title,
             source_preview,
-            nfm,
+            markdown,
         ) = row?;
-        let source_length = i64::try_from(nfm.len())
+        let source_length = i64::try_from(markdown.len())
             .map_err(|_| corrupt("Page materialization description length overflowed"))?;
         if title == source_title
             && preview == source_preview
             && description_length == source_length
-            && has_description == !nfm.trim().is_empty()
+            && has_description == !markdown.trim().is_empty()
         {
             continue;
         }
@@ -1226,7 +1226,7 @@ mod tests {
                     "INSERT INTO documents( \
                        id, library_id, generation, head_seq, schema_key, schema_version, \
                        state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine \
-                     ) VALUES ('document:p', 'library:p', 1, 0, 'nodex.page', 3, X'', '', \
+                     ) VALUES ('document:p', 'library:p', 1, 0, 'nodex.page', 4, X'', '', \
                        'ready', 'ydoc_primary', ?1, ?1, 'yjs')",
                     [NOW],
                 )?;
@@ -1248,9 +1248,9 @@ mod tests {
                 )?;
                 connection.execute(
                     "INSERT INTO document_materializations( \
-                       document_id, generation, projected_seq, schema_version, nfm, plain_text, \
-                       preview, block_tree_json, updated_at \
-                     ) VALUES ('document:p', 1, 0, 3, '', '', '', '[]', ?1)",
+                       document_id, generation, projected_seq, schema_version, markdown, plain_text, \
+                       preview, block_tree_json, updated_at, materialization_derivation_version \
+                     ) VALUES ('document:p', 1, 0, 4, '', '', '', '[]', ?1, 4)",
                     [NOW],
                 )?;
                 connection.execute(
@@ -1260,7 +1260,7 @@ mod tests {
                        document_projected_seq, document_schema_version, document_authority, title, \
                        description_preview, description_length, has_description, created_at, updated_at \
                      ) VALUES ('page:p', 'library:p', 'active', 'library', 'library:p', 'a0', \
-                       1, 1, 'document:p', 1, 0, 3, 'ydoc_primary', '', '', 0, 0, ?1, ?1)",
+                       1, 1, 'document:p', 1, 0, 4, 'ydoc_primary', '', '', 0, 0, ?1, ?1)",
                     [NOW],
                 )?;
                 validate_current_store(connection)?;
@@ -1285,7 +1285,7 @@ mod tests {
                 assert!(error.message.contains("Page read-model source coordinates"));
 
                 connection.execute(
-                    "UPDATE page_read_model SET document_schema_version = 3 \
+                    "UPDATE page_read_model SET document_schema_version = 4 \
                      WHERE page_block_id = 'page:p'",
                     [],
                 )?;

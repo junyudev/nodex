@@ -90,7 +90,7 @@ test("replays Board, List, and editor transfers through their content participan
       page,
       project,
       source,
-      "Picker history block\nIndependent text\nNative history block",
+      "Picker history block\n\nIndependent text\n\nNative history block",
     );
     const listViewId = await createConvergenceListView(page, project);
     await page.getByRole("button", { name: "Open Surface history", exact: true }).click();
@@ -253,7 +253,7 @@ test("replays Board, List, and editor transfers through their content participan
           pageId: promotedPageId,
           documentId: requireString(descriptor.documentId, "Promoted Document id"),
         },
-        "Independent Page edit\nKeep this content",
+        "Independent Page edit\n\nKeep this content",
       );
       const changed = await preparePromoted();
       await invokeHistoryMenu(harness, "undo", "Move to Database");

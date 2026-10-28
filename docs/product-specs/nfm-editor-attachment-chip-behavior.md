@@ -1,9 +1,9 @@
-# NFM Editor Attachment Chip Behavior
+# Page Editor Attachment Chip Behavior
 
 Status: Active
 Last Updated: 2026-10-20
 
-This document describes the current pasted-attachment behavior inside the NFM / BlockNote editor.
+This document describes the current pasted-attachment behavior inside the BlockNote Page editor.
 
 It is the detailed source of truth for:
 
@@ -11,7 +11,7 @@ It is the detailed source of truth for:
 - native file/folder paste prompting
 - inline attachment chip insertion
 - attachment chip rendering, hover, click, and preview behavior
-- attachment-related NFM serialization and clipboard plain-text behavior
+- attachment-related Nodex Markdown serialization and clipboard plain-text behavior
 
 The main product spec should stay high-level and defer to this document for exact behavior and examples.
 
@@ -21,7 +21,7 @@ Included:
 
 - paste interception for oversized text and native desktop file/folder pastes
 - dialog choices and when each choice is shown
-- persisted inline NFM syntax for attachments
+- inline Nodex Markdown syntax for attachments
 - attachment chip visual contract and interaction model
 - preview rules for saved text, files, and folders
 - plain-text clipboard output for attachments
@@ -50,46 +50,31 @@ User-facing copy uses:
 - `Keep as Link`
 - `Paste Anyway`
 
-Persisted data still uses:
+Stored attachment data uses:
 
 - `mode="materialized|link"`
 
 ## Data Model
 
-Attachments are persisted as inline NFM atoms, not blocks.
+Attachments are inline atoms in Blocks and Nodex Markdown.
 
-Syntax:
+Exact Nodex Markdown:
 
-```xml
-<attachment
-  kind="text|file|folder"
-  mode="materialized|link"
-  source="nodex://files/<file-id>|nodex://assets/...|/abs/path"
-  name="..."
-  mime="..."
-  bytes="..."
-  origin="/abs/path"
-/>
+```text
+:attachment{kind="file" source="nodex://files/0199134e-cbb0-7000-8000-000000000006" name="report.txt"}
+:attachment{kind="file" mode="link" source="/abs/path/report.txt" name="report.txt"}
 ```
 
 Attribute rules:
 
 - `kind` is required and must be `text`, `file`, or `folder`
-- `mode` is required and must be `materialized` or `link`
+- `mode` is `materialized` or `link`; exact text omits the default `materialized` value
 - `source` is required
 - `name` is required
-- `mime`, `bytes`, and `origin` are optional
+- `mime`, `bytes`, and `origin` are optional; folders do not take `bytes`
 - `origin` is typically present only for saved file/folder attachments that came from an original local path
 - new materialized attachments in a Page use `nodex://files/<file-id>`; the
   source is stable identity and does not change when the File is renamed
-
-Block-level `<resource ... />` is no longer a structured NFM element.
-
-If old `<resource ... />` text appears in content:
-
-- it is parsed as ordinary paragraph text
-- it is not migrated
-- it is not re-emitted as an attachment automatically
 
 ## Placement Model
 
@@ -278,7 +263,7 @@ Attachment chips are compact inline tokens, not embedded mini-cards.
 Current visual contract:
 
 - the same lightweight inline-reference visual as Page and chat mentions across
-  editable, read-only, and static NFM surfaces
+  editable, read-only, and static Page editor surfaces
 - inline, baseline-participating geometry with no resting fill or horizontal
   capsule padding
 - concise label only
@@ -442,11 +427,11 @@ They show:
 
 ## Copy And Export Behavior
 
-### Structured NFM
+### Nodex Markdown
 
-When serialized back to NFM:
+In exact Nodex Markdown:
 
-- attachments emit inline `<attachment ... />` tokens
+- attachments emit inline `:attachment{…}` directives
 - they remain inline adjacent to surrounding text
 
 ### Plain-text clipboard output
@@ -463,12 +448,12 @@ Linked files and folders retain their existing absolute paths regardless of the
 `Copy file references as local paths` preference. Saved attachments retain
 their Nodex locator by default; enabling the preference resolves that locator
 through the existing authorized File export flow. Copy always uses `source`,
-never the attachment's import `origin`. Paragraphs, nested Blocks, table cells,
-and image captions use the same attachment presentation, with literal filename
+never the attachment's import `origin`. Paragraphs, nested Blocks, and table cells
+use the same attachment presentation, with literal filename
 and destination escaping. A missing target retains `[Attachment: name]`.
 
 The complete plain-text export and clipboard ownership rules live in
-[NFM Editor Copy Behavior](nfm-editor-copy-behavior.md#plain-text-file-references).
+[Page Editor Copy Behavior](nfm-editor-copy-behavior.md#plain-text-file-references).
 
 ### HTML / internal clipboard output
 
@@ -503,7 +488,7 @@ Browser runtime:
 User pastes a large markdown incident note.
 Dialog shows Save a Copy / Paste Anyway / Cancel.
 User chooses Save a Copy.
-Result: inline <attachment kind="text" mode="materialized" ... />
+Result: an inline saved-text attachment chip.
 ```
 
 ### Native file paste kept as link
@@ -512,7 +497,7 @@ Result: inline <attachment kind="text" mode="materialized" ... />
 User copies a file in Finder and pastes into the editor.
 Dialog shows Save a Copy / Keep as Link / Cancel.
 User chooses Keep as Link.
-Result: inline <attachment kind="file" mode="link" source="/abs/path" ... />
+Result: an inline file attachment chip linking to the original path.
 ```
 
 ### Native folder paste kept as link
@@ -521,7 +506,7 @@ Result: inline <attachment kind="file" mode="link" source="/abs/path" ... />
 User copies a folder in Finder and pastes into the editor.
 Dialog shows Keep as Link / Cancel.
 User chooses Keep as Link.
-Result: inline <attachment kind="folder" mode="link" source="/abs/path" ... />
+Result: an inline folder attachment chip linking to the original path.
 ```
 
 ### Plain copied path should not trigger attachment prompt

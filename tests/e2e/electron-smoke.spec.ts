@@ -63,6 +63,7 @@ import {
   createConvergenceBoardPage,
   createConvergenceListView,
   seedConvergenceDocument,
+  readConvergenceDocumentBlockIds,
   createConvergenceSubpage,
   readConvergencePageFiles,
   invokeIpc,
@@ -229,22 +230,21 @@ const IDLE_CPU_SAMPLE_SECONDS = Math.max(
   Math.min(60, Number.parseInt(process.env.NODEX_IDLE_CPU_SAMPLE_SECONDS ?? "60", 10) || 60),
 );
 
-const buildHighPressureSourceNfm = (titlePrefix = "title-A"): string =>
+const buildHighPressureSourceMarkdown = (titlePrefix = "title-A"): string =>
   [
     ...Array.from(
       { length: HIGH_PRESSURE_SIBLING_BLOCK_COUNT },
       (_, index) => `before-placeholder-${index.toString().padStart(3, "0")}`,
     ),
-    titlePrefix,
-    ...Array.from(
+    `:::paragraph[${titlePrefix}]\n${Array.from(
       { length: HIGH_PRESSURE_CHILD_BLOCK_COUNT },
-      (_, index) => `\tchild-placeholder-${index.toString().padStart(3, "0")}`,
-    ),
+      (_, index) => `  child-placeholder-${index.toString().padStart(3, "0")}`,
+    ).join("\n\n")}\n:::`,
     ...Array.from(
       { length: HIGH_PRESSURE_SIBLING_BLOCK_COUNT },
       (_, index) => `after-placeholder-${index.toString().padStart(3, "0")}`,
     ),
-  ].join("\n");
+  ].join("\n\n");
 
 function readVisibilityFactCounts(
   nodexHome: string,
@@ -378,14 +378,14 @@ const durationMetricDelta = (
   };
 };
 
-const buildBoardFixtureNfm = (): string =>
+const buildBoardFixtureMarkdown = (): string =>
   [
     "Keep board fixture",
     ...Array.from(
       { length: HIGH_PRESSURE_BOARD_PAGE_COUNT },
       (_, index) => `board-fixture-${index.toString().padStart(3, "0")}`,
     ),
-  ].join("\n");
+  ].join("\n\n");
 
 interface SyntheticHistoryResult {
   readonly commitCountBefore: number;
@@ -1085,15 +1085,10 @@ test.describe("parallel functional Electron smoke", () => {
           project,
           source,
           [
-            "Parent",
-            "\tParent child",
-            `\t<image source="nodex://files/${fileId}">One</image>`,
-            `\t<image source="nodex://files/${fileId}">Two</image>`,
-            "\tAfter child",
-            "After root",
-            "\tAfter root child",
+            `:::paragraph[Parent]\n  Parent child\n\n  ![One](nodex://files/${fileId})\n\n  ![Two](nodex://files/${fileId})\n\n  After child\n:::`,
+            ":::paragraph[After root]\n  After root child\n:::",
             "Tail",
-          ].join("\n"),
+          ].join("\n\n"),
         );
         const targetSeeded = await seedConvergenceDocument(
           page,
@@ -1140,9 +1135,12 @@ test.describe("parallel functional Electron smoke", () => {
         await page.keyboard.press(
           `${process.platform === "darwin" ? "Meta" : "Control"}+${command === "copy" ? "C" : "X"}`,
         );
+        // Plain text is the Markdown outline of the copy, with each image at its local path.
         await expect
           .poll(() => harness.application.evaluate(({ clipboard }) => clipboard.readText()))
-          .toContain("![One](/");
+          .toMatch(
+            /^- Parent\n {2}- Parent child\n\n {2}!\[One\]\(<?\/[^\n]+\)\n\n {2}!\[Two\]\(<?\/[^\n]+\)\n\n {2}- After child$/u,
+          );
 
         await expect(
           sourceEditor.locator('.bn-block-content[data-content-type="image"]'),
@@ -1233,7 +1231,7 @@ test.describe("parallel functional Electron smoke", () => {
         "Structural target",
         "Target body",
       );
-      const seeded = await seedConvergenceDocument(page, project, source, "before\nafter");
+      const seeded = await seedConvergenceDocument(page, project, source, "before\n\nafter");
       const subpage = await createConvergenceSubpage(
         page,
         project,
@@ -1241,12 +1239,12 @@ test.describe("parallel functional Electron smoke", () => {
         "abc",
         seeded.blockIds[1],
       );
-      await seedConvergenceDocument(page, project, subpage, "abc owned body\nabc owned tail");
+      await seedConvergenceDocument(page, project, subpage, "abc owned body\n\nabc owned tail");
       const targetSeeded = await seedConvergenceDocument(
         page,
         project,
         target,
-        "target before\ntarget after",
+        "target before\n\ntarget after",
       );
       const nestedTarget = await createConvergenceSubpage(
         page,
@@ -1462,7 +1460,7 @@ test.describe("parallel functional Electron smoke", () => {
         "Turn into source",
         "Page containing the Turn into fixture",
       );
-      const seeded = await seedConvergenceDocument(page, project, source, "before\nafter");
+      const seeded = await seedConvergenceDocument(page, project, source, "before\n\nafter");
       const subpage = await createConvergenceSubpage(
         page,
         project,
@@ -1474,7 +1472,7 @@ test.describe("parallel functional Electron smoke", () => {
         page,
         project,
         subpage,
-        "owned body\nowned tail",
+        "owned body\n\nowned tail",
       );
       const pageErrors: string[] = [];
       page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -1577,7 +1575,7 @@ test.describe("parallel functional Electron smoke", () => {
         page,
         project,
         parent,
-        "source before\nsource after\nsource tail",
+        "source before\n\nsource after\n\nsource tail",
       );
       const copiedSubpage = await createConvergenceSubpage(
         page,
@@ -1597,13 +1595,13 @@ test.describe("parallel functional Electron smoke", () => {
         page,
         project,
         copiedSubpage,
-        "retained owned body\nretained owned tail",
+        "retained owned body\n\nretained owned tail",
       );
       const targetSeeded = await seedConvergenceDocument(
         page,
         project,
         targetSubpage,
-        "target before\ntarget after",
+        "target before\n\ntarget after",
       );
 
       await page
@@ -1698,7 +1696,7 @@ test.describe("parallel functional Electron smoke", () => {
         page,
         project,
         source,
-        "before one\nafter one\nbefore two\nafter two",
+        "before one\n\nafter one\n\nbefore two\n\nafter two",
       );
       const firstSubpage = await createConvergenceSubpage(
         page,
@@ -1714,13 +1712,18 @@ test.describe("parallel functional Electron smoke", () => {
         "Cut two",
         seeded.blockIds[3],
       );
-      await seedConvergenceDocument(page, project, firstSubpage, "first owned body\nfirst tail");
-      await seedConvergenceDocument(page, project, secondSubpage, "second owned body\nsecond tail");
+      await seedConvergenceDocument(page, project, firstSubpage, "first owned body\n\nfirst tail");
+      await seedConvergenceDocument(
+        page,
+        project,
+        secondSubpage,
+        "second owned body\n\nsecond tail",
+      );
       const targetSeeded = await seedConvergenceDocument(
         page,
         project,
         target,
-        "target before\ntarget after",
+        "target before\n\ntarget after",
       );
       const nestedTarget = await createConvergenceSubpage(
         page,
@@ -1815,7 +1818,7 @@ test.describe("parallel functional Electron smoke", () => {
       const project = await createConvergenceProject(page, "Structural subpage cut", workspace);
       const source = await createConvergenceBoardPage(page, project, "Cut source", "Source body");
       const target = await createConvergenceBoardPage(page, project, "Cut target", "Target body");
-      const seeded = await seedConvergenceDocument(page, project, source, "before\nafter");
+      const seeded = await seedConvergenceDocument(page, project, source, "before\n\nafter");
       const subpage = await createConvergenceSubpage(
         page,
         project,
@@ -2884,17 +2887,13 @@ test.describe("parallel functional Electron smoke", () => {
         project,
         fixturePage,
         [
-          "Callout body",
-          "\tCallout child",
-          "▶ Toggle body",
-          "\tToggle child",
-          "```ts",
-          "const value = 1",
-          "```",
+          ":::paragraph[Callout body]\n  Callout child\n:::",
+          ":::toggle[Toggle body]\n  Toggle child\n:::",
+          "```typescript\nconst value = 1\n```",
           "Code sibling",
-          '<image source="data:image/gif;base64,R0lGODlhAQABAAAAACw="></image>',
+          "![](data:image/gif;base64,R0lGODlhAQABAAAAACw=)",
           "Image sibling",
-        ].join("\n"),
+        ].join("\n\n"),
       );
       const openFixture = async (window: Page): Promise<Locator> => {
         await window.getByRole("button", { name: "Open Block children", exact: true }).click();
@@ -3022,7 +3021,7 @@ test.describe("parallel functional Electron smoke", () => {
         page,
         project,
         source,
-        ["Before picker sibling", "Picker promoted title", "After picker sibling"].join("\n"),
+        ["Before picker sibling", "Picker promoted title", "After picker sibling"].join("\n\n"),
       );
 
       await page
@@ -3113,7 +3112,7 @@ test.describe("parallel functional Electron smoke", () => {
         page,
         project,
         source,
-        ["1111", "\t222", "middle", "3333"].join("\n"),
+        [":::paragraph[1111]\n  222\n:::", "middle", "3333"].join("\n\n"),
       );
       const sourceRootId = requireString(seeded.blockIds[0], "Parent Block id");
       const childId = requireString(seeded.blockIds[1], "Child Block id");
@@ -3211,12 +3210,10 @@ test.describe("parallel functional Electron smoke", () => {
         project,
         source,
         [
-          "Dragged parent",
-          "\tDragged child",
-          "▶ Target toggle",
-          "\tExisting toggle child",
+          ":::paragraph[Dragged parent]\n  Dragged child\n:::",
+          ":::toggle[Target toggle]\n  Existing toggle child\n:::",
           "Tail",
-        ].join("\n"),
+        ].join("\n\n"),
       );
       const sourceRootId = requireString(seeded.blockIds[0], "Dragged parent Block id");
       const sourceChildId = requireString(seeded.blockIds[1], "Dragged child Block id");
@@ -3319,9 +3316,10 @@ test.describe("parallel functional Electron smoke", () => {
         page,
         project,
         source,
-        ["Before instant sibling", "Instant projected Page", "\tInstant projected child"].join(
-          "\n",
-        ),
+        [
+          "Before instant sibling",
+          ":::paragraph[Instant projected Page]\n  Instant projected child\n:::",
+        ].join("\n\n"),
       );
 
       await page.getByRole("button", { name: "Open Instant structural DnD", exact: true }).click();
@@ -3580,12 +3578,9 @@ test.describe("parallel functional Electron smoke", () => {
         source,
         [
           "Before smoke sibling",
-          "1XL(ui, unclear) DnD Board title",
-          "\tDnD smoke first child",
-          "\tDnD smoke middle child",
-          "\tDnD smoke last child",
+          ":::paragraph[1XL(ui, unclear) DnD Board title]\n  DnD smoke first child\n\n  DnD smoke middle child\n\n  DnD smoke last child\n:::",
           "1XL(ui, unclear) DnD List title",
-        ].join("\n"),
+        ].join("\n\n"),
       );
 
       await page
@@ -3823,7 +3818,10 @@ test.describe("parallel functional Electron smoke", () => {
         page,
         project,
         source,
-        ["Before image sibling", "Image placement promotion", "\tImage placement child"].join("\n"),
+        [
+          "Before image sibling",
+          ":::paragraph[Image placement promotion]\n  Image placement child\n:::",
+        ].join("\n\n"),
       );
 
       await page.getByRole("button", { name: "Open Page File placement", exact: true }).click();
@@ -3983,13 +3981,15 @@ test.describe("parallel functional Electron smoke", () => {
         page,
         project,
         target,
-        ["Target image owner", "\tTarget image child"].join("\n"),
+        ":::paragraph[Target image owner]\n  Target image child\n:::",
       );
       await seedConvergenceDocument(
         page,
         project,
         source,
-        ["Source image owner", "\tSource image child", "Source sibling"].join("\n"),
+        [":::paragraph[Source image owner]\n  Source image child\n:::", "Source sibling"].join(
+          "\n\n",
+        ),
       );
 
       await page.getByRole("button", { name: "Open Page File move", exact: true }).click();
@@ -4781,7 +4781,7 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
       page,
       project,
       boardFixture,
-      buildBoardFixtureNfm(),
+      buildBoardFixtureMarkdown(),
     );
     const boardTriageFixturePageIds = await transferBoardFixturePages(
       page,
@@ -4811,14 +4811,12 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
       page,
       project,
       "Cross-tab source",
-      buildHighPressureSourceNfm("title-A-cross-tab"),
+      buildHighPressureSourceMarkdown("title-A-cross-tab"),
     );
-    const seededSource = await seedConvergenceDocument(
-      page,
-      project,
-      source,
-      buildHighPressureSourceNfm("title-A-cross-tab"),
-    );
+    const seededSource = {
+      ...source,
+      blockIds: await readConvergenceDocumentBlockIds(page, project, source),
+    };
     expect(seededSource.blockIds).toHaveLength(
       HIGH_PRESSURE_SIBLING_BLOCK_COUNT * 2 + HIGH_PRESSURE_CHILD_BLOCK_COUNT + 1,
     );
@@ -5170,7 +5168,7 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
       documentId: seededSource.documentId,
       headSeq: expect.any(Number),
     });
-    expect(sourceDescriptorAfter.headSeq).toBeGreaterThan(2);
+    expect(sourceDescriptorAfter.headSeq).toBeGreaterThan(sourceHeadSeq);
 
     const detail = requireIpcValue<Record<string, unknown>>(
       await invokeIpc(page, "pages:detail:get", project.projectId, resultPageId),
@@ -5246,7 +5244,7 @@ test("measures high-pressure nested Block transfer into a populated Board @perfo
       page,
       project,
       boardSeedPage,
-      buildBoardFixtureNfm(),
+      buildBoardFixtureMarkdown(),
     );
     expect(seededBoard.blockIds).toHaveLength(HIGH_PRESSURE_BOARD_PAGE_COUNT + 1);
     const database = await readConvergenceDatabase(page, project);
@@ -5347,7 +5345,7 @@ test("measures high-pressure nested Block transfer into a populated Board @perfo
         page,
         project,
         sourcePage,
-        buildHighPressureSourceNfm(`title-A-${index}`),
+        buildHighPressureSourceMarkdown(`title-A-${index}`),
       );
       expect(seededSource.blockIds).toHaveLength(blocksPerRound);
       const titleBlockId = seededSource.blockIds[HIGH_PRESSURE_SIBLING_BLOCK_COUNT];

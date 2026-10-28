@@ -2,10 +2,10 @@ import type * as Y from "yjs";
 import { MAX_PAGE_TITLE_LENGTH } from "../page-limits";
 import {
   normalizeDateMention,
-  type NfmDateMentionDateFormat,
-  type NfmDateMentionTimeFormat,
-} from "../nfm/date-mention";
-import { NFM_COLORS, type NfmColor } from "../nfm/types";
+  type DateMentionDateFormat,
+  type DateMentionTimeFormat,
+} from "../rich-text/date-mention";
+import { RICH_TEXT_ALL_COLORS, type RichTextColor } from "../rich-text/colors";
 
 export const PORTABLE_RICH_TEXT_VERSION = 1;
 export const PORTABLE_RICH_TEXT_ATOM_CHARACTER = "\uFFFC";
@@ -37,7 +37,7 @@ export interface PortableRichTextStyles {
   readonly underline?: true;
   readonly strikethrough?: true;
   readonly code?: true;
-  readonly color?: NfmColor;
+  readonly color?: RichTextColor;
 }
 
 export interface PortableRichTextText {
@@ -72,8 +72,8 @@ export interface PortableRichTextDateMention {
   readonly start: string;
   readonly end?: string;
   readonly tz?: string;
-  readonly format?: NfmDateMentionDateFormat;
-  readonly timeFormat?: NfmDateMentionTimeFormat;
+  readonly format?: DateMentionDateFormat;
+  readonly timeFormat?: DateMentionTimeFormat;
   readonly reminder?: string;
 }
 
@@ -134,7 +134,7 @@ const readStyles = (value: unknown, label: string): PortableRichTextStyles => {
     underline?: true;
     strikethrough?: true;
     code?: true;
-    color?: NfmColor;
+    color?: RichTextColor;
   } = {};
   for (const key of ["bold", "italic", "underline", "strikethrough", "code"] as const) {
     if (value[key] === undefined || value[key] === false) continue;
@@ -144,10 +144,13 @@ const readStyles = (value: unknown, label: string): PortableRichTextStyles => {
     result[key] = true;
   }
   if (value.color !== undefined) {
-    if (typeof value.color !== "string" || !NFM_COLORS.includes(value.color as NfmColor)) {
+    if (
+      typeof value.color !== "string" ||
+      !RICH_TEXT_ALL_COLORS.includes(value.color as RichTextColor)
+    ) {
       throw new PortableRichTextError(`${label}.color is not supported`);
     }
-    result.color = value.color as NfmColor;
+    result.color = value.color as RichTextColor;
   }
   return result;
 };
@@ -246,10 +249,10 @@ const readItem = (value: unknown, index: number): PortableRichTextItem => {
       end: typeof value.end === "string" ? value.end : undefined,
       tz: typeof value.tz === "string" ? value.tz : undefined,
       format:
-        typeof value.format === "string" ? (value.format as NfmDateMentionDateFormat) : undefined,
+        typeof value.format === "string" ? (value.format as DateMentionDateFormat) : undefined,
       timeFormat:
         typeof value.timeFormat === "string"
-          ? (value.timeFormat as NfmDateMentionTimeFormat)
+          ? (value.timeFormat as DateMentionTimeFormat)
           : undefined,
       reminder: typeof value.reminder === "string" ? value.reminder : undefined,
     });
@@ -340,7 +343,7 @@ const attributesToStyles = (
     underline?: true;
     strikethrough?: true;
     code?: true;
-    color?: NfmColor;
+    color?: RichTextColor;
   } = {};
   for (const [attribute, key] of [
     ["bold", "bold"],
@@ -360,14 +363,14 @@ const attributesToStyles = (
     if (attributes.backgroundColor !== undefined && attributes.textColor !== undefined) {
       throw new PortableRichTextError("title Delta cannot contain two color attributes");
     }
-    if (typeof color !== "string" || !NFM_COLORS.includes(color as NfmColor)) {
+    if (typeof color !== "string" || !RICH_TEXT_ALL_COLORS.includes(color as RichTextColor)) {
       throw new PortableRichTextError("title Delta color is not supported");
     }
     const usesBackgroundAttribute = attributes.backgroundColor !== undefined;
     if (usesBackgroundAttribute !== color.endsWith("_bg")) {
       throw new PortableRichTextError("title Delta color uses the wrong attribute");
     }
-    styles.color = color as NfmColor;
+    styles.color = color as RichTextColor;
   }
   return styles;
 };

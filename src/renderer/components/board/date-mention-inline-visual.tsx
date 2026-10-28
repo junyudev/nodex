@@ -6,15 +6,18 @@ import {
   formatDateMentionLabel,
   isoDateToDate,
   todayIsoDate,
-} from "@/lib/nfm/date-mention";
-import { useDateMentionMinuteEpoch, useDateMentionTodayIso } from "@/lib/nfm/date-mention-clock";
-import type { NfmDateMentionInlineContent } from "@/lib/nfm/types";
+} from "../../../shared/rich-text/date-mention";
+import {
+  useDateMentionMinuteEpoch,
+  useDateMentionTodayIso,
+} from "@/lib/editor-model/date-mention-clock";
+import type { DateMentionInlineContent } from "../../../shared/rich-text/date-mention";
 import { cn } from "@/lib/utils";
 
 export type DateMentionReminderTone = "none" | "pending" | "overdue";
 
 interface DateMentionInlineVisualBaseProps {
-  payload: NfmDateMentionInlineContent;
+  payload: DateMentionInlineContent;
   interactive?: boolean;
   withGuards?: boolean;
   labelClassName?: string;
@@ -32,7 +35,7 @@ export type DateMentionInlineVisualProps =
   | DateMentionInlineVisualButtonProps;
 
 export function resolveDateMentionReminderTone(
-  payload: NfmDateMentionInlineContent,
+  payload: DateMentionInlineContent,
   now: Date,
 ): DateMentionReminderTone {
   if (!payload.reminder) return "none";
@@ -149,7 +152,7 @@ function DateMentionInlineVisualChildren({
   label,
   labelClassName,
 }: {
-  payload: NfmDateMentionInlineContent;
+  payload: DateMentionInlineContent;
   label: ReactNode;
   labelClassName?: string;
 }) {
@@ -164,6 +167,6 @@ function DateMentionInlineVisualChildren({
   );
 }
 
-function isRelativeDateMention(payload: NfmDateMentionInlineContent): boolean {
+function isRelativeDateMention(payload: DateMentionInlineContent): boolean {
   return !payload.format || payload.format === "relative";
 }

@@ -4,9 +4,10 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
   createDateMentionClockStore,
   setDateMentionClockStoreForTest,
-} from "@/lib/nfm/date-mention-clock";
+} from "@/lib/editor-model/date-mention-clock";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { settleAsyncRender, textContent, waitForCodeHighlight } from "../../test/dom";
+import { TestQueryProvider } from "../../test/query";
 import { NfmRenderer } from "./nfm-renderer";
 
 let restoreDateMentionClockStore: (() => void) | null = null;
@@ -36,11 +37,7 @@ function installDateMentionClock(start: string) {
 describe("NfmRenderer", () => {
   test("renders owning Page UUIDs and Page mention URLs", async () => {
     const { container } = render(
-      <NfmRenderer
-        content={['<page uuid="019f-card" />', '<page-ref url="nodex://pages/019f-target" />'].join(
-          "\n",
-        )}
-      />,
+      <NfmRenderer content={'::page{id="019f-card"}\n\n::page-ref{page="019f-target"}'} />,
     );
 
     await settleAsyncRender();
@@ -143,7 +140,7 @@ describe("NfmRenderer", () => {
 
   test("renders agent config chip model ids as readable labels", async () => {
     const { container } = render(
-      <NfmRenderer content={'Use <agent-config model="gpt-5.5" reasoning="high" /> now.'} />,
+      <NfmRenderer content={'Use :agent-config{model="gpt-5.5" reasoning="high"} now&#46;'} />,
     );
 
     await settleAsyncRender();
@@ -156,9 +153,7 @@ describe("NfmRenderer", () => {
   test("refreshes relative date mention labels while mounted", async () => {
     const clock = installDateMentionClock("2026-06-28T12:00:00");
     const { container } = render(
-      <NfmRenderer
-        content={'Plan around <mention-date start="2026-06-28" format="relative" />.'}
-      />,
+      <NfmRenderer content={'Plan around :date{start="2026-06-28" format="relative"}.'} />,
     );
 
     await settleAsyncRender();
@@ -174,9 +169,7 @@ describe("NfmRenderer", () => {
   });
 
   test("renders Page mentions as lightweight inline references", () => {
-    const { container } = render(
-      <NfmRenderer content={'See <mention-page url="nodex://pages/page-1" /> now.'} />,
-    );
+    const { container } = render(<NfmRenderer content={"See <nodex://pages/page-1> now."} />);
 
     expect(textContent(container).includes("page-1")).toBe(true);
     expect(container.querySelector('[href="nodex://pages/page-1"]')).toBeNull();
@@ -207,5 +200,34 @@ describe("NfmRenderer", () => {
     expect(orderedLists.length).toBe(2);
     expect(orderedLists[0]?.getAttribute("start")).toBe("99");
     expect(orderedLists[1]?.getAttribute("start")).toBe("100");
+  });
+
+  test("shows images within text in place, opening their link or a full-size preview", async () => {
+    const view = render(
+      <NfmRenderer
+        content={
+          "Status [![build|16](https://ci.example/badge.svg)](https://ci.example) and " +
+          "![diagram](https://example.com/diagram.png) and ![missing](nodex://files/file-1)"
+        }
+      />,
+      { wrapper: TestQueryProvider },
+    );
+
+    await settleAsyncRender();
+
+    const paragraph = view.container.querySelector("p");
+    const badge = view.getByAltText("build");
+    expect(paragraph?.contains(badge)).toBe(true);
+    expect(badge.closest("a")?.getAttribute("href")).toBe("https://ci.example");
+    expect((badge as HTMLImageElement).style.maxWidth).toBe("16px");
+    // A Library File without a File runtime cannot display; its description stands in.
+    expect(view.queryByAltText("missing")).toBeNull();
+    expect(textContent(view.container)).toContain("missing");
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Open diagram" }));
+      await Promise.resolve();
+    });
+    expect(await view.findByRole("dialog", { name: "Image preview" })).toBeTruthy();
   });
 });

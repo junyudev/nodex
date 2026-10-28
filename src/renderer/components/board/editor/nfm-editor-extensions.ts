@@ -1,14 +1,15 @@
+import { markdownBlocksForEditor } from "../../../../shared/nodex-markdown/blocknote";
 import { beginRendererStructuralSpan } from "@/lib/renderer-causal-trace";
 import { createExtension, getBlockInfo, getNodeById, type ExtensionOptions } from "@blocknote/core";
 import type { BlockNoteEditor } from "@blocknote/core";
 import { Plugin, TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "prosemirror-view";
 import {
-  extractNotionNfmBlocksFromClipboardData,
+  extractNotionBlocksFromClipboardData,
   handleNotionPasteFromClipboard,
 } from "./notion-paste";
-import { splitGfmTableRow } from "@/lib/nfm/table";
-import { nfmToBlockNote } from "@/lib/nfm";
+
+import { readMarkdown } from "../../../../shared/nodex-markdown";
 import { getNfmSearchState, nfmSearchExtension } from "./search-extension";
 import { selectCurrentBlockContent } from "./select-block-shortcut";
 import { selectedBlockDecorationsExtension } from "./selected-block-decorations";
@@ -23,7 +24,6 @@ import {
   resolveNfmClipboardSelection,
 } from "./nfm-clipboard-selection";
 import { type CopiedSelectionPayload } from "./special-block-copy";
-import { createEmptyThreadSectionBlock } from "./thread-section";
 import { canvasCreatePendingExtension } from "./canvas-create-pending-extension";
 import { nfmClipboardPastePendingExtension } from "./nfm-clipboard-paste-pending-extension";
 import { nfmPasteTargetExtension } from "./nfm-paste-target";
@@ -72,20 +72,6 @@ const quoteInputRule = createExtension({
       find: /^\|\s$/,
       replace() {
         return { type: "quote", props: {} };
-      },
-    },
-  ],
-});
-
-export const THREAD_SECTION_SHORTCUT_PATTERN = /^---$/;
-
-export const threadSectionInputRule = createExtension({
-  key: "thread-section-input-rule",
-  inputRules: [
-    {
-      find: THREAD_SECTION_SHORTCUT_PATTERN,
-      replace() {
-        return createEmptyThreadSectionBlock();
       },
     },
   ],
@@ -571,11 +557,7 @@ const atomicBoundaryBackspaceExt = createExtension({
   },
 });
 
-export const NFM_DISABLED_EXTENSIONS = [
-  "quote-block-shortcuts",
-  "heading-shortcuts",
-  "divider-block-shortcuts",
-] as const;
+export const NFM_DISABLED_EXTENSIONS = ["quote-block-shortcuts", "heading-shortcuts"] as const;
 
 export type NfmPasteHandler = (context: {
   event: ClipboardEvent;
@@ -613,7 +595,6 @@ export function createNfmEditorExtensions(options: NfmEditorExtensionOptions = {
     headingToggleAware,
     toggleInputRule,
     quoteInputRule,
-    threadSectionInputRule,
     mentionChipKeyboardNavigationExtension(),
     selectBlockShortcut,
     selectedBlockDecorationsExtension(),
@@ -643,9 +624,9 @@ const readPortableClipboardBlocks = (
   internalHtml: string | null,
 ): readonly NfmStructuralReplacementBlockLike[] | null => {
   if (!clipboardData) return null;
-  const notionBlocks = extractNotionNfmBlocksFromClipboardData(clipboardData);
+  const notionBlocks = extractNotionBlocksFromClipboardData(clipboardData);
   if (notionBlocks?.length) {
-    return nfmToBlockNote(notionBlocks) as readonly NfmStructuralReplacementBlockLike[];
+    return notionBlocks as readonly NfmStructuralReplacementBlockLike[];
   }
   const types = Array.from(clipboardData.types);
   if (internalHtml) {
@@ -654,7 +635,7 @@ const readPortableClipboardBlocks = (
     ) as readonly NfmStructuralReplacementBlockLike[];
   }
   if (types.includes("text/markdown")) {
-    return editor.tryParseMarkdownToBlocks(
+    return readClipboardMarkdown(
       clipboardData.getData("text/markdown"),
     ) as readonly NfmStructuralReplacementBlockLike[];
   }
@@ -664,10 +645,21 @@ const readPortableClipboardBlocks = (
     ) as readonly NfmStructuralReplacementBlockLike[];
   }
   if (!types.includes("text/plain")) return null;
-  return editor.tryParseMarkdownToBlocks(
+  return readClipboardMarkdown(
     clipboardData.getData("text/plain"),
   ) as readonly NfmStructuralReplacementBlockLike[];
 };
+
+/** Pastes Markdown as the Blocks the shared Markdown rules read, where the paste goes. */
+function pasteMarkdownAsBlocks(editor: BlockNoteEditor, markdown: string): boolean {
+  const blocks = readClipboardMarkdown(markdown);
+  if (blocks.length === 0) return false;
+  editor.pasteHTML(
+    editor.blocksToFullHTML(blocks as Parameters<typeof editor.blocksToFullHTML>[0]),
+    true,
+  );
+  return true;
+}
 
 export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): NfmPasteHandler {
   return ({ event, editor, defaultPasteHandler }) => {
@@ -752,12 +744,13 @@ export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): Nfm
       return true;
     }
 
-    if (clipboardTextLooksLikeGfmTable(clipboardData?.getData("text/plain") ?? "")) {
-      return defaultPasteHandler({
-        prioritizeMarkdownOverHTML: true,
-        plainTextAsMarkdown: true,
-      });
+    // Markdown a source provides, and a table written as Markdown, read by the shared rules.
+    if (types.includes("text/markdown") && !types.includes("vscode-editor-data") && !internalHtml) {
+      const markdown = clipboardData?.getData("text/markdown") ?? "";
+      if (markdown && pasteMarkdownAsBlocks(editor, markdown)) return true;
     }
+    const plain = clipboardData?.getData("text/plain") ?? "";
+    if (clipboardTextLooksLikeGfmTable(plain) && pasteMarkdownAsBlocks(editor, plain)) return true;
 
     return defaultPasteHandler();
   };
@@ -773,15 +766,22 @@ function clipboardTextLooksLikeGfmTable(text: string): boolean {
   if (lines.length < 2) return false;
 
   for (let index = 0; index < lines.length - 1; index += 1) {
-    const headerCells = splitGfmTableRow(lines[index]!);
-    const delimiterCells = splitGfmTableRow(lines[index + 1]!);
+    const headerCells = splitClipboardTableRow(lines[index]!);
+    const delimiterCells = splitClipboardTableRow(lines[index + 1]!);
     if (headerCells.length < 2 || headerCells.length !== delimiterCells.length) {
       continue;
     }
-    if (delimiterCells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()))) {
+    // GFM takes one hyphen or more in a delimiter cell.
+    if (delimiterCells.every((cell) => /^:?-+:?$/.test(cell.trim()))) {
       return true;
     }
   }
 
   return false;
 }
+
+const splitClipboardTableRow = (line: string): string[] =>
+  line.replace(/^\s*\||\|\s*$/gu, "").split(/(?<!\\)\|/u);
+
+const readClipboardMarkdown = (text: string) =>
+  markdownBlocksForEditor(readMarkdown(text, "boundary"));

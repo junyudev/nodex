@@ -1,4 +1,4 @@
-# NFM Editor Structural Editing Behavior
+# Page Editor Structural Editing Behavior
 
 Status: Active
 Last updated: 2026-10-15
@@ -167,7 +167,7 @@ recovery retries the identical ownership-transfer request. A receipt without a
 complete inverse leaves a whole-action barrier, never exposes older Undo, and
 releases any unused single-direction history token. It is not a Document-to-Document
 Block selection edit and does not borrow the source View's inverse Adapter.
-The NFM Adapter supplies native captures, semantic inverse evidence and typed
+The Page editor Adapter supplies native captures, semantic inverse evidence and typed
 request preparation; it does not keep a second command queue or history stack.
 A response that cannot confirm the outcome retains the original request and
 blocks dependent commands and earlier Undo. Local typing remains captured.

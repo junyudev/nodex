@@ -56,12 +56,12 @@ describe("workbench panel shortcut scope", () => {
     blockNote.className = "bn-editor";
     const blockNoteChild = document.createElement("span");
     blockNote.append(blockNoteChild);
-    const nfm = document.createElement("div");
-    nfm.className = "nfm-editor";
+    const markdown = document.createElement("div");
+    markdown.className = "nfm-editor";
     const nfmChild = document.createElement("span");
     nfmChild.contentEditable = "true";
-    nfm.append(nfmChild);
-    document.body.append(input, dialog, blockNote, nfm);
+    markdown.append(nfmChild);
+    document.body.append(input, dialog, blockNote, markdown);
 
     expect(isWorkbenchNewChatShortcutTargetEditable(input)).toBe(true);
     expect(isWorkbenchNewChatShortcutTargetEditable(dialogChild)).toBe(true);

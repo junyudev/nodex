@@ -110,7 +110,7 @@ const rowDetailSnapshot = (commitHead: number): DatabaseReadSnapshot => ({
   value: {
     kind: "row_detail",
     value: {
-      body_nfm: "Canonical details",
+      body_markdown: "Canonical details",
       summary: {
         created_at: "2026-08-23T00:00:00.000Z",
         database_value_revisions: { status: 1 },

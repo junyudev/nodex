@@ -51,7 +51,7 @@ function createFakeEditor() {
   return { calls, editor };
 }
 
-describe("nfm text action menu actions", () => {
+describe("markdown text action menu actions", () => {
   test("converts selected blocks inside the editor transaction boundary", () => {
     const { calls, editor } = createFakeEditor();
 

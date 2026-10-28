@@ -12,7 +12,7 @@ use crate::error::{CliError, CliErrorCode};
 pub const AGENT_API_MIN_REVISION: u32 = 1;
 pub const AGENT_API_MAX_REVISION: u32 = 1;
 const MACHINE_HELP_SCHEMA_VERSION: u32 = 4;
-const NESTED_MARKDOWN_REVISION: u32 = 2;
+const MARKDOWN_REVISION: u32 = 5;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -116,14 +116,14 @@ const COMMANDS: &[CommandMetadata] = &[
         example_argv: &["data-source", "configure", "--input", "-"],
     },
     CommandMetadata {
-        path: &["docs", "nested-markdown"],
-        capability: "nestedMarkdown",
+        path: &["docs", "markdown"],
+        capability: "markdown",
         effect: CommandEffect::Local,
         validators: &[],
-        result: "nested_markdown_reference",
+        result: "markdown_reference",
         errors: READ_ERRORS,
-        example: "nodex docs nested-markdown",
-        example_argv: &["docs", "nested-markdown"],
+        example: "nodex docs markdown",
+        example_argv: &["docs", "markdown"],
     },
     CommandMetadata {
         path: &["ls"],
@@ -1229,7 +1229,7 @@ pub struct AgentApiRange {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentFormatCapabilities {
-    pub nested_markdown_revision: u32,
+    pub markdown_revision: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
@@ -1278,7 +1278,7 @@ pub struct MachineHelp {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub payload_schemas: BTreeMap<String, Value>,
     pub exit_codes: BTreeMap<i32, &'static str>,
-    pub nested_markdown: &'static str,
+    pub markdown: &'static str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
@@ -1323,7 +1323,7 @@ pub fn capabilities() -> Result<Value, CliError> {
             maximum_revision: AGENT_API_MAX_REVISION,
         },
         formats: AgentFormatCapabilities {
-            nested_markdown_revision: NESTED_MARKDOWN_REVISION,
+            markdown_revision: MARKDOWN_REVISION,
         },
         commands: capability_revisions(),
         deep_links: vec!["pages", "views"],
@@ -1466,7 +1466,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
             "Unchanged Blocks retain their identities. Use page insert for pure insertion and page replace only when supplying a complete replacement body.",
         ],
         ["page", "insert"] => vec![
-            "Insert Nested Markdown at an anchor; existing Blocks retain their identities. Omitted --file reads stdin.",
+            "Insert Nodex Markdown at an anchor; existing Blocks retain their identities. Omitted --file reads stdin.",
         ],
         ["draft", "apply"] => vec![
             "Applies title and body edits atomically against the original Block identities. Unrelated concurrent edits may merge when targets remain unambiguous. Deleted or replaced targets fail even when their text is unchanged.",
@@ -1488,7 +1488,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
             "The text example assumes the Property has no value (revision 0); replace IDs and revisions with observed values. Use prepare-batch to preserve SQL-selected membership and value observations.",
         ],
         ["page", "create-batch"] => vec![
-            "Supply an explicit destination and 1–16 Page drafts. Each draft has title_markdown, nested_markdown and optional typed values. All Pages are created together or none are.",
+            "Supply an explicit destination and 1–16 Page drafts. Each draft has title_markdown, markdown and optional typed values. All Pages are created together or none are.",
         ],
         ["page", "move" | "delete"] => vec![
             "Run page prepare for the same operation and View to obtain its ETag. If the condition conflicts, reread and prepare again before deciding to retry.",
@@ -1586,7 +1586,7 @@ fn machine_help_for(
             (2, "rejected operation or invalid invocation"),
             (130, "interrupted"),
         ]),
-        nested_markdown: "nodex docs nested-markdown",
+        markdown: "nodex docs markdown",
     }
 }
 
@@ -1813,7 +1813,7 @@ fn command_purpose(path: &[&str]) -> String {
 fn command_examples(metadata: &CommandMetadata) -> Vec<&'static str> {
     let second = match metadata.path {
         ["sql", "query"] => Some(
-            "nodex sql query 'SELECT nested_markdown FROM page_documents WHERE page_id = :id' --param 'id=\"page-id\"' --raw",
+            "nodex sql query 'SELECT markdown FROM page_documents WHERE page_id = :id' --param 'id=\"page-id\"' --raw",
         ),
         ["sql", "schema"] => Some("nodex sql schema tasks --bind tasks=source-id"),
         ["read"] => Some("nodex read page-id"),
@@ -1825,7 +1825,7 @@ JSON"#,
         ),
         ["page", "create-batch"] => Some(
             r#"nodex page create-batch --idempotency-key release-pages-1 <<'JSON'
-{"destination":{"kind":"library"},"pages":[{"title_markdown":"Release plan","nested_markdown":"Release date: Friday."},{"title_markdown":"Release checks","nested_markdown":"Verify the release artifacts."}]}
+{"destination":{"kind":"library"},"pages":[{"title_markdown":"Release plan","markdown":"Release date: Friday."},{"title_markdown":"Release checks","markdown":"Verify the release artifacts."}]}
 JSON"#,
         ),
         ["page", "properties", "apply"] => Some(

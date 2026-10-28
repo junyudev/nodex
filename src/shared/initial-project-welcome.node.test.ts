@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { extractPlainText, parseNfm } from "./nfm";
+import { extractMarkdownText, readMarkdown } from "./nodex-markdown";
 import {
   INITIAL_PROJECT_WELCOME_TITLE,
   renderInitialProjectWelcomePage,
@@ -13,8 +13,8 @@ describe("initial Project welcome Page", () => {
     "/用户/文档/Nodex/默认",
   ])("round-trips the visible source root through valid NFM: %s", (sourceRoot) => {
     const page = renderInitialProjectWelcomePage({ sourceRoot });
-    const blocks = parseNfm(page.nfm);
-    const text = extractPlainText(page.nfm);
+    const blocks = readMarkdown(page.markdown);
+    const text = extractMarkdownText(page.markdown);
 
     expect(page.titleMarkdown).toBe(INITIAL_PROJECT_WELCOME_TITLE);
     expect(blocks.length).toBeGreaterThan(8);

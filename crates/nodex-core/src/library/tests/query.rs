@@ -59,7 +59,7 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 read: LibraryRead::PageProjectionFile {
                     page_id: "page:visible".into(),
-                    file_kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                    file_kind: LibraryPageProjectionFileKind::BodyMarkdown,
                     prepare: None,
                 },
             },
@@ -76,7 +76,7 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
                 AuthAction::Read {
                     table_name: "document_materializations",
                     column_name:
-                        "nfm" | "plain_text" | "preview" | "references_json" | "asset_refs_json",
+                        "markdown" | "plain_text" | "preview" | "references_json" | "asset_refs_json",
                 } => Authorization::Deny,
                 _ => Authorization::Allow,
             }))?;
@@ -140,7 +140,7 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
                         commit_head: query.commit_head,
                         requesting_project_id: Some("project-1"),
                         page_id: "page:visible",
-                        kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                        kind: LibraryPageProjectionFileKind::BodyMarkdown,
                         prepare: Some(operation),
                     },
                 )?;
@@ -161,7 +161,7 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
             assert_eq!(metadata["data_source_id"], Value::Null);
             assert_eq!(metadata["file_manifest_revision"], 0);
             let document = query.page_document("page:visible")?;
-            assert_eq!(document["nested_markdown"], expected.content);
+            assert_eq!(document["markdown"], expected.content);
             assert_eq!(document["body_etag"], json!(expected.validators.body_etag));
             let children = query.rows(
                 "library_children",
@@ -544,7 +544,7 @@ fn agent_sql_validates_exact_turn_and_preserves_project_visibility() {
             runtime: None,
         },
     };
-    let query = SqlQuery { scope: SqlScope::default(), sql: "SELECT pages.page_id, page_documents.nested_markdown FROM pages JOIN page_documents USING(page_id)".into(), parameters: BTreeMap::new() };
+    let query = SqlQuery { scope: SqlScope::default(), sql: "SELECT pages.page_id, page_documents.markdown FROM pages JOIN page_documents USING(page_id)".into(), parameters: BTreeMap::new() };
     let agent = BoundModuleContext {
         adapter: AdapterKind::Agent,
         ..bound.clone()

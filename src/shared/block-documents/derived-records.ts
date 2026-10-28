@@ -1,7 +1,6 @@
 import { parseAssetSource } from "../assets";
-import { parseNfm } from "../nfm/parser";
 import { parsePageDeepLink } from "../nodex-deeplink";
-import type { NfmBlock, NfmInlineContent } from "../nfm/types";
+import type { MarkdownInline } from "../nodex-markdown";
 import type { BlockTreeNode } from "./block-document-codec";
 import { MAX_BLOCK_ID_LENGTH, MAX_REFERENCE_DISPLAY_HINT_LENGTH, type BlockId } from "./contracts";
 
@@ -26,9 +25,9 @@ export type BlockDocumentReference =
       readonly displayHint?: string;
     }
   | {
-      readonly kind: "thread";
+      readonly kind: "session";
       readonly sourceBlockId: BlockId;
-      readonly targetThreadId: string;
+      readonly targetSessionId: string;
     };
 
 export interface BlockDocumentAssetReference {
@@ -108,152 +107,110 @@ const appendPageReference = (
 
 const collectInlineReferences = (
   sourceBlockId: BlockId,
-  inline: readonly NfmInlineContent[],
+  content: unknown,
   references: BlockDocumentReference[],
   assetRefs: BlockDocumentAssetReference[],
 ): void => {
-  for (const item of inline) {
+  if (!Array.isArray(content)) return;
+  for (const item of content as MarkdownInline[]) {
+    const props = item.props ?? {};
     if (item.type === "threadMention") {
-      references.push({
-        kind: "thread",
-        sourceBlockId,
-        targetThreadId: item.uuid,
-      });
-      continue;
-    }
-    if (item.type === "pageMention") {
-      assertCanonicalReferenceId(item.targetPageId, "targetPageId");
+      const targetSessionId = String(props.uuid ?? "");
+      assertCanonicalReferenceId(targetSessionId, "targetSessionId");
+      references.push({ kind: "session", sourceBlockId, targetSessionId });
+    } else if (item.type === "pageMention") {
+      const targetPageId = String(props.targetPageId ?? "");
+      assertCanonicalReferenceId(targetPageId, "targetPageId");
       appendPageReference(references, {
         kind: "page",
         sourceBlockId,
-        targetPageId: item.targetPageId,
+        targetPageId,
         presentation: "mention",
         occurrenceCount: 1,
       });
-      continue;
-    }
-    if (item.type === "link") {
-      const target = parsePageDeepLink(item.href);
-      if (!target) continue;
-      appendPageReference(references, {
-        kind: "page",
-        sourceBlockId,
-        targetPageId: target.pageId,
-        presentation: "link",
-        occurrenceCount: 1,
-      });
-      continue;
-    }
-    if (item.type !== "attachment") continue;
-    appendResolvedAssetReference(assetRefs, {
-      sourceBlockId,
-      kind: "attachment",
-      source: item.source,
-    });
-  }
-};
-
-const collectDerivedRecords = (
-  blockTree: readonly BlockTreeNode[],
-  nfmBlocks: readonly NfmBlock[],
-  references: BlockDocumentReference[],
-  assetRefs: BlockDocumentAssetReference[],
-): void => {
-  if (blockTree.length !== nfmBlocks.length) {
-    throw new BlockDocumentDerivedRecordsError(
-      "NFM projection does not match the materialized Block tree",
-    );
-  }
-
-  blockTree.forEach((block, index) => {
-    const nfmBlock = nfmBlocks[index];
-    if (!nfmBlock) {
-      throw new BlockDocumentDerivedRecordsError("NFM projection is missing a Block");
-    }
-    if ("content" in nfmBlock && Array.isArray(nfmBlock.content)) {
-      collectInlineReferences(block.id, nfmBlock.content, references, assetRefs);
-    }
-    if (nfmBlock.type === "table") {
-      for (const row of nfmBlock.rows) {
-        for (const cell of row.cells) {
-          collectInlineReferences(block.id, cell.content, references, assetRefs);
-        }
-      }
-    }
-    if (nfmBlock.type === "image") {
-      collectInlineReferences(block.id, nfmBlock.caption, references, assetRefs);
+    } else if (item.type === "link") {
+      const target = parsePageDeepLink(item.href ?? "");
+      if (target)
+        appendPageReference(references, {
+          kind: "page",
+          sourceBlockId,
+          targetPageId: target.pageId,
+          presentation: "link",
+          occurrenceCount: 1,
+        });
+      collectInlineReferences(sourceBlockId, item.content, references, assetRefs);
+    } else if (item.type === "attachment" || item.type === "inlineImage") {
       appendResolvedAssetReference(assetRefs, {
-        sourceBlockId: block.id,
-        kind: "image",
-        source: nfmBlock.source,
-      });
-    } else if (
-      nfmBlock.type === "page" &&
-      nfmBlock.uuid !== undefined &&
-      nfmBlock.uuid !== block.id
-    ) {
-      throw new BlockDocumentDerivedRecordsError(
-        `Owning Page NFM uuid ${nfmBlock.uuid} does not match Block ${block.id}`,
-      );
-    } else if (nfmBlock.type === "database" && nfmBlock.uuid !== block.id) {
-      throw new BlockDocumentDerivedRecordsError(
-        `Owning Database NFM uuid ${nfmBlock.uuid} does not match Block ${block.id}`,
-      );
-    } else if (nfmBlock.type === "canvas" && nfmBlock.uuid !== block.id) {
-      throw new BlockDocumentDerivedRecordsError(
-        `Owning Canvas NFM uuid ${nfmBlock.uuid} does not match Block ${block.id}`,
-      );
-    } else if (nfmBlock.type === "pageRef") {
-      assertCanonicalReferenceId(nfmBlock.targetBlockId, "targetBlockId");
-      appendPageReference(references, {
-        kind: "page",
-        sourceBlockId: block.id,
-        targetPageId: nfmBlock.targetBlockId,
-        presentation: "reference_block",
-        occurrenceCount: 1,
-      });
-    } else if (nfmBlock.type === "databaseViewRef") {
-      assertCanonicalReferenceId(nfmBlock.databaseViewId, "databaseViewId");
-      const displayHint = readDisplayHint(nfmBlock.displayHint);
-      references.push({
-        kind: "database_view",
-        sourceBlockId: block.id,
-        databaseViewId: nfmBlock.databaseViewId,
-        ...(displayHint !== undefined ? { displayHint } : {}),
-      });
-    } else if (nfmBlock.type === "syncedBlockRef") {
-      assertCanonicalReferenceId(nfmBlock.sourceBlockId, "sourceBlockId");
-      references.push({
-        kind: "block",
-        sourceBlockId: block.id,
-        targetBlockId: nfmBlock.sourceBlockId,
-      });
-    } else if (nfmBlock.type === "templateRef") {
-      assertCanonicalReferenceId(nfmBlock.sourceBlockId, "sourceBlockId");
-      const displayHint = readDisplayHint(nfmBlock.displayHint);
-      references.push({
-        kind: "block",
-        sourceBlockId: block.id,
-        targetBlockId: nfmBlock.sourceBlockId,
-        ...(displayHint !== undefined ? { displayHint } : {}),
+        sourceBlockId,
+        kind: item.type === "attachment" ? "attachment" : "image",
+        source: String(props[item.type === "attachment" ? "source" : "url"] ?? ""),
       });
     }
-
-    collectDerivedRecords(block.children, nfmBlock.children, references, assetRefs);
-  });
+  }
 };
 
+/** Derive references from canonical BlockNote JSON, including linked inline images and cells. */
 export const deriveBlockDocumentRecords = (
   blockTree: readonly BlockTreeNode[],
-  nfmBlocks: readonly NfmBlock[],
 ): BlockDocumentDerivedRecords => {
   const references: BlockDocumentReference[] = [];
   const assetRefs: BlockDocumentAssetReference[] = [];
-  collectDerivedRecords(blockTree, nfmBlocks, references, assetRefs);
+  const visit = (blocks: readonly BlockTreeNode[]): void => {
+    for (const block of blocks) {
+      collectInlineReferences(block.id, block.content, references, assetRefs);
+      if (
+        block.type === "table" &&
+        block.content &&
+        typeof block.content === "object" &&
+        !Array.isArray(block.content)
+      ) {
+        const table = block.content as { rows?: { cells: { content?: unknown }[] }[] };
+        for (const row of table.rows ?? [])
+          for (const cell of row.cells)
+            collectInlineReferences(block.id, cell.content, references, assetRefs);
+      }
+      if (block.type === "image")
+        appendResolvedAssetReference(assetRefs, {
+          sourceBlockId: block.id,
+          kind: "image",
+          source: String(block.props.url ?? ""),
+        });
+      if (block.type === "pageRef") {
+        const targetPageId = String(block.props.targetBlockId ?? "");
+        assertCanonicalReferenceId(targetPageId, "targetBlockId");
+        appendPageReference(references, {
+          kind: "page",
+          sourceBlockId: block.id,
+          targetPageId,
+          presentation: "reference_block",
+          occurrenceCount: 1,
+        });
+      }
+      if (block.type === "databaseViewRef") {
+        const databaseViewId = String(block.props.databaseViewId ?? "");
+        assertCanonicalReferenceId(databaseViewId, "databaseViewId");
+        const displayHint = readDisplayHint(block.props.displayHint as string | undefined);
+        references.push({
+          kind: "database_view",
+          sourceBlockId: block.id,
+          databaseViewId,
+          ...(displayHint ? { displayHint } : {}),
+        });
+      }
+      if (block.type === "syncedBlockRef" || block.type === "templateRef") {
+        const targetBlockId = String(block.props.sourceBlockId ?? "");
+        assertCanonicalReferenceId(targetBlockId, "sourceBlockId");
+        const displayHint = readDisplayHint(block.props.displayHint as string | undefined);
+        references.push({
+          kind: "block",
+          sourceBlockId: block.id,
+          targetBlockId,
+          ...(displayHint ? { displayHint } : {}),
+        });
+      }
+      visit(block.children);
+    }
+  };
+  visit(blockTree);
   return { references, assetRefs };
 };
-
-export const deriveBlockDocumentRecordsFromNfm = (
-  blockTree: readonly BlockTreeNode[],
-  nfm: string,
-): BlockDocumentDerivedRecords => deriveBlockDocumentRecords(blockTree, parseNfm(nfm));

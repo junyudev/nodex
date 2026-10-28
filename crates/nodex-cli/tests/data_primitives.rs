@@ -179,7 +179,7 @@ fn seed(client: &CoreClient, home: &Path) {
                         page_id: PAGE_A.to_owned(),
                         document_id: "document:cli-a".to_owned(),
                         title_markdown: "Page A".to_owned(),
-                        nfm: String::new(),
+                        markdown: String::new(),
                     },
                 },
             },
@@ -440,7 +440,7 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
     );
     let after = property_state(&home, PAGE_A);
     assert_eq!(after["values"], changed["values"]);
-    let batch = serde_json::json!({ "destination": { "kind": "data_source", "data_source_id": source_id, "values": [] }, "pages": [ { "title_markdown": "Batch twin", "nested_markdown": "One" }, { "title_markdown": "Batch twin", "nested_markdown": "Two" } ] });
+    let batch = serde_json::json!({ "destination": { "kind": "data_source", "data_source_id": source_id, "values": [] }, "pages": [ { "title_markdown": "Batch twin", "markdown": "One" }, { "title_markdown": "Batch twin", "markdown": "Two" } ] });
     let created = input(
         &home,
         &[
@@ -608,11 +608,11 @@ fn verify_direct_body_and_title_edits(home: &Path) {
     let initial = success(home, &["read", page]);
     let observation = sql_rows(
         home,
-        "SELECT p.title_etag,d.nested_markdown,d.body_etag FROM pages p JOIN page_documents d USING(page_id) WHERE p.page_id=:id",
+        "SELECT p.title_etag,d.markdown,d.body_etag FROM pages p JOIN page_documents d USING(page_id) WHERE p.page_id=:id",
         &[("id", page)],
         &[],
     );
-    assert_eq!(observation[0]["nested_markdown"], initial["content"]);
+    assert_eq!(observation[0]["markdown"], initial["content"]);
     assert_eq!(
         observation[0]["body_etag"],
         initial["validators"]["body_etag"]
@@ -785,7 +785,7 @@ fn sql_success_envelopes_freeze_batch_targets_and_preserve_value_revision_fences
         &["page", "create-batch"],
         &serde_json::json!({
             "destination":{"kind":"data_source","data_source_id":source,"values":[]},
-            "pages":[{"title_markdown":"Arrived after selection","nested_markdown":""}]
+            "pages":[{"title_markdown":"Arrived after selection","markdown":""}]
         }),
     );
     assert_eq!(added["ok"], true, "{added}");
@@ -938,6 +938,54 @@ fn verify_database_override(client: &CoreClient, home: &Path) {
             .iter()
             .any(|row| row[0] == PAGE_A)
     );
+}
+
+#[test]
+fn one_markdown_language_covers_page_insert_and_batch_drafts() {
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    let client = connect_or_launch(&home, "gfm-body-integration", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+
+    let inserted = input_text(
+        &home,
+        &["page", "insert", PAGE_A, "--at", "end"],
+        "- Plan\n  - nested\n\n> [!NOTE]\n> Rollback is a flag flip.",
+    );
+    assert_eq!(inserted["ok"], true, "{inserted}");
+    assert_eq!(
+        success(&home, &["read", PAGE_A])["content"],
+        "- Plan\n  - nested\n\n> [!NOTE]\n> Rollback is a flag flip.\n"
+    );
+
+    let batch = |page: Value| {
+        serde_json::json!({
+            "destination": { "kind": "page", "page_id": PAGE_A, "at": null },
+            "pages": [page],
+        })
+    };
+    let created = input(
+        &home,
+        &["page", "create-batch"],
+        &batch(
+            serde_json::json!({ "title_markdown": "Steps", "markdown": "## Steps\n\n1. Export\n2. Import" }),
+        ),
+    );
+    assert_eq!(created["ok"], true, "{created}");
+    let page_id = created["result"]["pages"][0]["page_id"].as_str().unwrap();
+    assert_eq!(
+        success(&home, &["read", page_id])["content"],
+        "## Steps\n\n1. Export\n2. Import\n"
+    );
+    let ambiguous = input(
+        &home,
+        &["page", "create-batch"],
+        &batch(serde_json::json!({ "title_markdown": "Both", "markdown": "One", "gfm": "One" })),
+    );
+    assert_eq!(ambiguous["ok"], false, "{ambiguous}");
 }
 
 #[test]
@@ -1182,7 +1230,7 @@ fn published_write_examples_preserve_existing_content_and_definitions() {
     let after_insert = success(&home, &["read", page]);
     assert_eq!(
         after_insert["content"],
-        "Release date: Monday.\n## Next steps\nFinish the release checks.\n"
+        "Release date: Monday.\n\n## Next steps\n\nFinish the release checks.\n"
     );
     let block = help_example(&home, &["block", "insert"], 1, &[("page-id", page)]);
     let block_id = block["affected"]["created_block_ids"][0].as_str().unwrap();
@@ -1201,7 +1249,7 @@ fn published_write_examples_preserve_existing_content_and_definitions() {
     );
     assert_eq!(
         success(&home, &["read", page])["content"],
-        "Release date: Monday.\n## Next steps\nFinish the release checks.\nReview complete.\n"
+        "Release date: Monday.\n\n## Next steps\n\nFinish the release checks.\n\nReview complete.\n"
     );
     assert_eq!(
         success(&home, &["read", PAGE_A])["content"],
@@ -1381,7 +1429,7 @@ fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets(
         connect_or_launch(&home, "draft-identity-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
     seed(&client, &home);
-    let body = "# First\nRelease date: Friday.\n- Keep backups\n\t- Verify restore\n# Second\nRelease date: Friday.\nOwner: Mina\n";
+    let body = "# First\n\nRelease date: Friday.\n\n- Keep backups\n  - Verify restore\n\n# Second\n\nRelease date: Friday.\nOwner: Mina\n";
     assert_eq!(
         input_text(&home, &["page", "insert", PAGE_A], body)["ok"],
         true
@@ -1403,7 +1451,7 @@ fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets(
     let date_id = before["blocks"][1]["block_id"].clone();
     let python = Command::new("python3").args(["-c",
         "from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); assert s.count('Release date: Friday.')==2; p.write_text(s.replace('Release date: Friday.', 'Release date: Monday.', 1))",
-        draft.join("work/body.nested.md").to_str().unwrap(),
+        draft.join("work/body.md").to_str().unwrap(),
     ]).output().unwrap();
     assert!(
         python.status.success(),
@@ -1463,26 +1511,30 @@ fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets(
     assert_eq!(retried["head_seq"], applied["head_seq"]);
     assert_eq!(retried["affected"], applied["affected"]);
 
-    // A same-text replacement changes Block identity without changing the text ETag.
-    let work_file = observed.join("work/body.nested.md");
+    // Delete/reinsert changes Block identity without changing the text ETag.
+    let work_file = observed.join("work/body.md");
     let saved = fs::read_to_string(&work_file).unwrap();
     fs::write(&work_file, saved.replace("Monday", "Tuesday")).unwrap();
     let metadata = observed.join("work/meta.yaml");
     let saved_meta = fs::read_to_string(&metadata).unwrap();
     fs::write(&metadata, saved_meta.replace("Page A", "Draft title")).unwrap();
     let read_before = success(&home, &["read", PAGE_A]);
-    let replacement = input_text(
-        &home,
-        &[
-            "page",
-            "replace",
-            PAGE_A,
-            "--if-match",
-            read_before["validators"]["body_etag"].as_str().unwrap(),
-        ],
-        &saved,
+    let removal = format!(
+        "*** Begin Patch\n*** Update Page: {PAGE_A}\n@@\n-Release date: Monday.\n*** End Patch\n"
     );
-    assert_eq!(replacement["ok"], true, "{replacement}");
+    assert_eq!(input_text(&home, &["patch"], &removal)["ok"], true);
+    let anchor = format!(
+        "after:{}",
+        before["blocks"][0]["block_id"].as_str().unwrap()
+    );
+    assert_eq!(
+        input_text(
+            &home,
+            &["page", "insert", PAGE_A, "--at", &anchor],
+            "Release date: Monday."
+        )["ok"],
+        true
+    );
     let read_replaced = success(&home, &["read", PAGE_A]);
     assert_eq!(
         read_replaced["validators"]["body_etag"],

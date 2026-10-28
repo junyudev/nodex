@@ -1,6 +1,6 @@
-import type { NfmBlock, NfmColor, NfmInlineContent, NfmStyleSet, NfmTable } from "../../../lib/nfm";
-import { nfmToBlockNote } from "../../../lib/nfm";
-
+import type { MarkdownBlock, MarkdownInline } from "../../../../shared/nodex-markdown";
+import type { RichTextColor } from "../../../../shared/rich-text/colors";
+import { normalizeCodeLanguageId } from "../../../../shared/code-languages/code-language-catalog";
 export const CHROMIUM_WEB_CUSTOM_DATA_MIME = "org.chromium.web-custom-data";
 export const NOTION_BLOCKS_MIME = "text/_notion-blocks-v3-production";
 export const NOTION_MULTI_TEXT_MIME = "text/_notion-multi-text-production";
@@ -58,23 +58,21 @@ export function handleNotionPasteFromClipboard(
     readonly onBeforeInsertBlocks?: (blocks: readonly PasteBlockLike[]) => boolean;
   } = {},
 ): boolean {
-  const blocks = extractNotionNfmBlocksFromClipboardData(clipboardData);
+  const blocks = extractNotionBlocksFromClipboardData(clipboardData);
   if (!blocks || blocks.length === 0) {
     return false;
   }
-  return insertNfmBlocksFromPaste(editor, blocks, options);
+  return insertMarkdownBlocksFromPaste(editor, blocks, options);
 }
 
-export function extractNotionNfmBlocksFromClipboardData(
+export function extractNotionBlocksFromClipboardData(
   clipboardData: ClipboardDataLike | null | undefined,
-): NfmBlock[] | null {
+): MarkdownBlock[] | null {
   if (!clipboardData) return null;
 
   for (const mimeType of [NOTION_BLOCKS_MIME, NOTION_MULTI_TEXT_MIME]) {
     const directPayload = readJsonClipboardData(clipboardData, mimeType);
-    const blocksFromDirect = directPayload
-      ? extractNotionNfmBlocksFromPayload(directPayload)
-      : null;
+    const blocksFromDirect = directPayload ? extractNotionBlocksFromPayload(directPayload) : null;
     if (blocksFromDirect && blocksFromDirect.length > 0) {
       return blocksFromDirect;
     }
@@ -90,26 +88,28 @@ export function extractNotionNfmBlocksFromClipboardData(
     const parsedNotionPayload = tryParseJson(rawNotionPayload);
     if (!parsedNotionPayload) continue;
 
-    const blocks = extractNotionNfmBlocksFromPayload(parsedNotionPayload);
+    const blocks = extractNotionBlocksFromPayload(parsedNotionPayload);
     if (blocks && blocks.length > 0) return blocks;
   }
 
   return null;
 }
 
-export function extractNotionNfmBlocksFromPayload(payload: unknown): NfmBlock[] | null {
+export function extractNotionBlocksFromPayload(payload: unknown): MarkdownBlock[] | null {
   const selectionPayload = extractSelectionPayload(payload);
   const roots = normalizeNotionRoots(selectionPayload);
   if (roots.length === 0) return null;
 
-  const blocks = roots.map(mapNotionNodeToNfm).filter((block): block is NfmBlock => block !== null);
+  const blocks = roots
+    .map(mapNotionNodeToBlocks)
+    .filter((block): block is MarkdownBlock => block !== null);
 
   return blocks.length > 0 ? blocks : null;
 }
 
-export function insertNfmBlocksFromPaste(
+export function insertMarkdownBlocksFromPaste(
   editor: ClipboardEditorLike,
-  blocks: NfmBlock[],
+  blocks: MarkdownBlock[],
   options: {
     readonly onBeforeReplaceBlocks?: (blocks: readonly ClipboardEditorBlock[]) => boolean;
     readonly onBeforeInsertBlocks?: (blocks: readonly PasteBlockLike[]) => boolean;
@@ -117,7 +117,7 @@ export function insertNfmBlocksFromPaste(
 ): boolean {
   if (blocks.length === 0) return false;
 
-  const bnBlocks = nfmToBlockNote(blocks);
+  const bnBlocks = blocks;
   if (bnBlocks.length === 0) return false;
   if (options.onBeforeInsertBlocks?.(bnBlocks)) return true;
 
@@ -322,10 +322,10 @@ function buildTreeNode(
   };
 }
 
-function mapNotionNodeToNfm(node: NotionTreeNode): NfmBlock | null {
+function mapNotionNodeToBlocks(node: NotionTreeNode): MarkdownBlock | null {
   const children = node.children
-    .map(mapNotionNodeToNfm)
-    .filter((block): block is NfmBlock => block !== null);
+    .map(mapNotionNodeToBlocks)
+    .filter((block): block is MarkdownBlock => block !== null);
   const content = notionRichTextToInlineContent(node.title) ?? textToInlineContent(node.text);
   const headingToggleable = children.length > 0;
 
@@ -339,7 +339,7 @@ function mapNotionNodeToNfm(node: NotionTreeNode): NfmBlock | null {
 
     case "toggle":
       return {
-        type: "toggle",
+        type: "toggleListItem",
         content,
         children,
       };
@@ -347,8 +347,7 @@ function mapNotionNodeToNfm(node: NotionTreeNode): NfmBlock | null {
     case "header":
       return {
         type: "heading",
-        level: 1,
-        ...(headingToggleable ? { isToggleable: true } : {}),
+        props: { level: 1, isToggleable: headingToggleable },
         content,
         children,
       };
@@ -356,8 +355,7 @@ function mapNotionNodeToNfm(node: NotionTreeNode): NfmBlock | null {
     case "sub_header":
       return {
         type: "heading",
-        level: 2,
-        ...(headingToggleable ? { isToggleable: true } : {}),
+        props: { level: 2, isToggleable: headingToggleable },
         content,
         children,
       };
@@ -365,8 +363,7 @@ function mapNotionNodeToNfm(node: NotionTreeNode): NfmBlock | null {
     case "sub_sub_header":
       return {
         type: "heading",
-        level: 3,
-        ...(headingToggleable ? { isToggleable: true } : {}),
+        props: { level: 3, isToggleable: headingToggleable },
         content,
         children,
       };
@@ -374,8 +371,7 @@ function mapNotionNodeToNfm(node: NotionTreeNode): NfmBlock | null {
     case "sub_sub_sub_header":
       return {
         type: "heading",
-        level: 4,
-        ...(headingToggleable ? { isToggleable: true } : {}),
+        props: { level: 4, isToggleable: headingToggleable },
         content,
         children,
       };
@@ -397,14 +393,14 @@ function mapNotionNodeToNfm(node: NotionTreeNode): NfmBlock | null {
     case "to_do":
       return {
         type: "checkListItem",
-        checked: getNotionPropertyBoolean(node.properties, "checked"),
+        props: { checked: getNotionPropertyBoolean(node.properties, "checked") },
         content,
         children,
       };
 
     case "quote":
       return {
-        type: "blockquote",
+        type: "quote",
         content,
         children,
       };
@@ -412,13 +408,15 @@ function mapNotionNodeToNfm(node: NotionTreeNode): NfmBlock | null {
     case "code":
       return {
         type: "codeBlock",
-        language: getNotionPropertyText(node.properties, "language"),
-        code: node.text,
+        props: {
+          language: normalizeCodeLanguageId(getNotionPropertyText(node.properties, "language")),
+        },
+        content: textToInlineContent(node.text),
         children,
       };
 
     case "table":
-      return mapNotionTableToNfm(node);
+      return mapNotionTableToBlocks(node);
 
     case "table_row":
       return null;
@@ -426,7 +424,7 @@ function mapNotionNodeToNfm(node: NotionTreeNode): NfmBlock | null {
     case "callout":
       return {
         type: "callout",
-        icon: asString(node.format?.page_icon) ?? undefined,
+        props: { icon: asString(node.format?.page_icon) ?? "💡" },
         content,
         children,
       };
@@ -447,40 +445,35 @@ function mapNotionNodeToNfm(node: NotionTreeNode): NfmBlock | null {
   }
 }
 
-function mapNotionTableToNfm(node: NotionTreeNode): NfmTable | null {
+function mapNotionTableToBlocks(node: NotionTreeNode): MarkdownBlock | null {
   const rows = node.children.filter((child) => child.type === "table_row");
-  if (rows.length === 0) return null;
-
+  if (!rows.length) return null;
   const columnOrder = readStringArray(node.format?.table_block_column_order);
-  const derivedColumnIds = columnOrder.length > 0 ? columnOrder : deriveTableColumnIds(rows);
-  if (derivedColumnIds.length === 0) return null;
-
+  const columns = columnOrder.length ? columnOrder : deriveTableColumnIds(rows);
+  if (!columns.length) return null;
   return {
     type: "table",
-    rows: rows.map((row) => ({
-      ...(mapNotionColor(asString(row.format?.block_color) ?? "")
-        ? { color: mapNotionColor(asString(row.format?.block_color) ?? "") }
-        : {}),
-      cells: derivedColumnIds.map((columnId) => ({
-        content: notionRichTextToInlineContent(row.properties?.[columnId]) ?? [],
+    content: {
+      type: "tableContent",
+      headerRows: node.format?.table_block_row_header === true ? 1 : 0,
+      headerCols: node.format?.table_block_column_header === true ? 1 : 0,
+      columnWidths: columns.map((id) => {
+        const width = resolveNotionTableColumnFormat(node.format, id)?.width;
+        return typeof width === "number" && width > 0 ? Math.floor(width) : undefined;
+      }),
+      rows: rows.map((row) => ({
+        cells: columns.map((id) => {
+          const color =
+            mapNotionColor(asString(row.format?.block_color) ?? "") ??
+            mapNotionColor(asString(resolveNotionTableColumnFormat(node.format, id)?.color) ?? "");
+          return {
+            type: "tableCell",
+            ...(color ? { props: { backgroundColor: color.replace(/_bg$/u, "") } } : {}),
+            content: notionRichTextToInlineContent(row.properties?.[id]) ?? [],
+          };
+        }),
       })),
-    })),
-    columns: derivedColumnIds.map((columnId) => {
-      const format = resolveNotionTableColumnFormat(node.format, columnId);
-      const width =
-        typeof format?.width === "number" && Number.isFinite(format.width) && format.width > 0
-          ? Math.floor(format.width)
-          : undefined;
-      const color = mapNotionColor(asString(format?.color) ?? "");
-      return {
-        ...(width !== undefined ? { width } : {}),
-        ...(color ? { color } : {}),
-      };
-    }),
-    ...(node.format?.table_block_row_header === true ? { headerRow: true } : {}),
-    ...(node.format?.table_block_column_header === true ? { headerColumn: true } : {}),
-    children: [],
-    sourceSyntax: "nfmTable",
+    },
   };
 }
 
@@ -545,11 +538,11 @@ function richTextToPlain(value: unknown): string {
   return parts.join("");
 }
 
-function notionRichTextToInlineContent(value: unknown): NfmInlineContent[] | null {
+function notionRichTextToInlineContent(value: unknown): MarkdownInline[] | null {
   if (typeof value === "string") return textToInlineContent(value);
   if (!Array.isArray(value)) return null;
 
-  const content: NfmInlineContent[] = [];
+  const content: MarkdownInline[] = [];
 
   for (const segment of value) {
     if (typeof segment === "string") {
@@ -568,8 +561,11 @@ function notionRichTextToInlineContent(value: unknown): NfmInlineContent[] | nul
   return content;
 }
 
-function parseNotionAnnotationArray(value: unknown): { styles: NfmStyleSet; href?: string } {
-  const styles: NfmStyleSet = {};
+function parseNotionAnnotationArray(value: unknown): {
+  styles: Record<string, boolean | string>;
+  href?: string;
+} {
+  const styles: Record<string, boolean | string> = {};
   if (!Array.isArray(value)) return { styles };
 
   let href: string | undefined;
@@ -586,7 +582,7 @@ function parseNotionAnnotationArray(value: unknown): { styles: NfmStyleSet; href
       continue;
     }
     if (key === "s") {
-      styles.strikethrough = true;
+      styles.strike = true;
       continue;
     }
     if (key === "c") {
@@ -603,16 +599,20 @@ function parseNotionAnnotationArray(value: unknown): { styles: NfmStyleSet; href
     }
     if (key === "h" && typeof token[1] === "string") {
       const mappedColor = mapNotionColor(token[1]);
-      if (mappedColor) styles.color = mappedColor;
+      if (mappedColor)
+        styles[mappedColor.endsWith("_bg") ? "backgroundColor" : "textColor"] = mappedColor.replace(
+          /_bg$/u,
+          "",
+        );
     }
   }
 
   return href ? { styles, href } : { styles };
 }
 
-function mapNotionColor(color: string): NfmColor | undefined {
+function mapNotionColor(color: string): RichTextColor | undefined {
   const normalized = color.toLowerCase();
-  const textColorMap: Record<string, NfmColor> = {
+  const textColorMap: Record<string, RichTextColor> = {
     gray: "gray",
     brown: "brown",
     orange: "orange",
@@ -625,7 +625,7 @@ function mapNotionColor(color: string): NfmColor | undefined {
     red: "red",
   };
 
-  const backgroundColorMap: Record<string, NfmColor> = {
+  const backgroundColorMap: Record<string, RichTextColor> = {
     gray_background: "gray_bg",
     brown_background: "brown_bg",
     orange_background: "orange_bg",
@@ -642,59 +642,16 @@ function mapNotionColor(color: string): NfmColor | undefined {
 }
 
 function pushInlineContentWithLinebreaks(
-  content: NfmInlineContent[],
+  content: MarkdownInline[],
   text: string,
-  styles: NfmStyleSet,
+  styles: Record<string, boolean | string>,
   href?: string,
 ) {
-  const parts = text.split("\n");
-
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index];
-    if (part.length > 0) {
-      if (href) {
-        content.push({
-          type: "link",
-          text: part,
-          href,
-          styles: { ...styles },
-        });
-      } else {
-        content.push({
-          type: "text",
-          text: part,
-          styles: { ...styles },
-        });
-      }
-    }
-
-    if (index < parts.length - 1) {
-      content.push({ type: "linebreak" });
-    }
-  }
+  const span = { type: "text", text, styles: { ...styles } };
+  content.push(href ? { type: "link", href, content: [span] } : span);
 }
-
-function textToInlineContent(text: string): NfmInlineContent[] {
-  if (!text) return [];
-
-  const parts = text.split("\n");
-  const content: NfmInlineContent[] = [];
-
-  for (let index = 0; index < parts.length; index += 1) {
-    if (parts[index]) {
-      content.push({
-        type: "text",
-        text: parts[index],
-        styles: {},
-      });
-    }
-
-    if (index < parts.length - 1) {
-      content.push({ type: "linebreak" });
-    }
-  }
-
-  return content;
+function textToInlineContent(text: string): MarkdownInline[] {
+  return text ? [{ type: "text", text, styles: {} }] : [];
 }
 
 function isRecord(value: unknown): value is JsonRecord {

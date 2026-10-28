@@ -1,3 +1,4 @@
+import type { MarkdownBlock, MarkdownInline } from "../../../../shared/nodex-markdown";
 import {
   BlockNoteEditor,
   BlockNoteSchema,
@@ -21,7 +22,6 @@ import {
 } from "../../../../shared/clipboard-paste";
 import { createNfmPasteHandler, NfmStructuredClipboardExtension } from "./nfm-editor-extensions";
 import { nfmSchema } from "./nfm-schema";
-import { blockNoteToNfm } from "../../../lib/nfm";
 
 const typedOwnerConfig = {
   type: "page",
@@ -165,15 +165,17 @@ describe("current Block clipboard behavior in Chromium", () => {
         const recovered = readNodexClipboardFragment(copied.data.getData("text/html"));
         expect(recovered).toBe(copied.data.getData("blocknote/html"));
         for (const html of [copied.data.getData("blocknote/html"), recovered!]) {
-          let blocks: ReturnType<typeof blockNoteToNfm> = [];
+          let blocks: MarkdownBlock[] = [];
           await act(async () => {
-            blocks = blockNoteToNfm(editor.tryParseHTMLToBlocks(html));
+            blocks = editor.tryParseHTMLToBlocks(html);
             await settleEditor();
           });
           const block = blocks[0];
           if (block?.type !== "paragraph") throw new Error("Expected the copied paragraph");
-          expect(block.content.find((item) => item.type === "attachment")).toEqual(
-            expect.objectContaining({ type: "attachment", ...props }),
+          expect(
+            (block.content as MarkdownInline[]).find((item) => item.type === "attachment"),
+          ).toEqual(
+            expect.objectContaining({ type: "attachment", props: expect.objectContaining(props) }),
           );
         }
       } finally {
@@ -551,7 +553,7 @@ describe("current Block clipboard behavior in Chromium", () => {
       const copied = await dispatchClipboardEvent(requireView(editor), "copy");
 
       expect(copied.dispatched).toBe(false);
-      expect(copied.data.getData("text/plain")).toBe("Current\n\tChild");
+      expect(copied.data.getData("text/plain")).toBe("- Current\n  - Child");
       expect(copied.data.getData("text/html")).toContain("Current");
       expect(copied.data.getData("text/html")).toContain("Child");
       expect(copied.data.getData("text/html")).not.toContain("Outside");
@@ -657,7 +659,7 @@ describe("current Block clipboard behavior in Chromium", () => {
       const cut = await dispatchClipboardEvent(requireView(editor), "cut");
 
       expect(cut.dispatched).toBe(false);
-      expect(cut.data.getData("text/plain")).toBe("Current\n\tChild");
+      expect(cut.data.getData("text/plain")).toBe("- Current\n  - Child");
       expect(editor.getBlock("current")).toBeUndefined();
       expect(editor.getBlock("child")).toBeUndefined();
       expect(editor.document.map((block) => block.id)).toEqual(["before", "outside"]);
@@ -815,7 +817,7 @@ describe("current Block clipboard behavior in Chromium", () => {
         "cut",
         expect.objectContaining({
           rootBlockIds: ["current"],
-          presentation: expect.objectContaining({ text: "Current\n\tChild" }),
+          presentation: expect.objectContaining({ text: "- Current\n  - Child" }),
         }),
       );
       expect(editor.getBlock("current")).toBeDefined();

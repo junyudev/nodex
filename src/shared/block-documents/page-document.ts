@@ -4,7 +4,7 @@ import type { DocumentId } from "./contracts";
 import { PortableRichTextError, readPortableRichTextFromYText } from "./portable-rich-text";
 
 export const PAGE_DOCUMENT_SCHEMA_KEY = "nodex.page";
-export const PAGE_DOCUMENT_SCHEMA_VERSION = 3;
+export const PAGE_DOCUMENT_SCHEMA_VERSION = 4;
 export const PAGE_DOCUMENT_TITLE_KEY = "title";
 export const PAGE_DOCUMENT_BODY_KEY = "body";
 

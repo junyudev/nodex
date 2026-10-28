@@ -488,7 +488,7 @@ export const parseDocumentVersionDetail = (value: unknown): DocumentVersionDetai
     const common = {
       schemaVersion: readInteger(materialization, "schemaVersion", `${label}.materialization`, 1),
       blockTree: portableArray<BlockTreeNode>("blockTree"),
-      nfm: readPossiblyEmptyString(materialization, "nfm", `${label}.materialization`),
+      markdown: readPossiblyEmptyString(materialization, "markdown", `${label}.materialization`),
       plainText: readPossiblyEmptyString(materialization, "plainText", `${label}.materialization`),
       preview: readPossiblyEmptyString(materialization, "preview", `${label}.materialization`),
       references: portableArray<BlockDocumentReference>("references"),

@@ -2537,7 +2537,7 @@ describe("Agent Runtime sent-image edit admission", () => {
         { wrapper: RuntimeWorkbench },
       );
       // This is the same raw config form accepted by splitCodexPromptAgentConfigLines.
-      const message = `<agent-config model="${configuredModel}" />\nInspect this again`;
+      const message = `:agent-config{model="${configuredModel}"}\nInspect this again`;
       try {
         await waitFor(() => expect(result.current.state.connection).toBe("ready"));
         await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));

@@ -1,417 +1,56 @@
-# Description History Revisions
+# Page History Revisions
 
-Status: Legacy internal compatibility model
-Last Updated: 2026-07-12
+Status: Active
+Last Updated: 2026-10-28
 
-This document describes the revision-based compatibility storage still used by legacy Card writers during Block-first cleanup. It is not the current content or public history authority: Card title/body live in the owned Y.Doc, canonical history reads immutable Document/Block evidence, and no IPC, HTTP, renderer, or CLI path exposes this snapshot undo/revert model.
+This document defines Page revision previews, restoration, and retention. The
+owned Document is the authority for the Page's rich title and body. History
+retains immutable semantic snapshots of that content.
 
-It is intentionally narrower than the main product spec. It explains how description history is stored, hydrated, pruned, and reclaimed on disk.
+## Revision Content
 
-## Purpose
+A revision preserves the stable-ID Block tree, rich Page title, and exact File
+versions and frozen default names used by the content. Markdown text, plain text,
+previews, references, and asset projections are derived from that snapshot.
+Markdown text is never restoration authority.
 
-This feature exists to stop repeated edits to large NFM descriptions from exploding SQLite storage.
+Human editing records bounded safety, active, and idle revisions. Semantic
+commands record immediate revisions linked to their mutation evidence. Reading a
+revision does not load or replace the live collaborative Document.
 
-Before the current revision-based schema, `history.previous_values`, `history.new_values`, and `history.card_snapshot` could each inline full `description` strings. Repeated edits to one large card could therefore duplicate large text blobs many times and push the SQLite file to grow rapidly.
+## Page History
 
-The current schema replaces that model with:
+Page History combines content revisions with property, Database, lifecycle, and
+relocation activity. The default view shows revisions grouped by date and a
+non-restorable `Current` item. Activity is available separately.
 
-- `cards.description` as the latest fully materialized description
-- `cards.description_revision_id` as the authoritative pointer to the latest revision
-- `description_revisions` as the revision log
-- `description_blocks` as deduplicated top-level NFM block blobs
-- `history` rows that store description revision ids instead of raw description text
-- `card_history_snapshots` as internal full-card checkpoints that point at description revisions instead of duplicating description strings
+The panel loads the selected revision's detail on demand and renders its body
+through the read-only Page preview. Revision previews and exact Nodex Markdown
+are projections of the retained Blocks. Only compatible Document revisions offer
+restoration; activity evidence alone cannot restore content.
 
-## Scope
+## Restoration
 
-Included:
+Restoration prepares against the current Document boundary, preserves current
+state in a safety revision, and applies the selected title and Blocks as a new
+forward mutation. It records the resulting receipt and revision without
+rewinding collaborative causality.
 
-- SQLite schema for description revisions
-- revision encoding and reconstruction model
-- history write behavior for create/update/delete/revert/restore/undo/redo
-- pruning, revision garbage collection, and incremental vacuum behavior
-- shared NFM parser/serializer extraction needed by the storage layer
+The same commit restores exact File content bindings. Matching live Files are
+reused; changed targets are forked, while Page paths remain independent. A
+preview without exact File evidence cannot silently restore current File bytes.
 
-Not included:
+## Retention
 
-- BlockNote editor UX details
-- general history panel UX unrelated to description hydration
-- backup UX
-- asset storage
+Named and restore revisions are pinned. Unpinned revisions follow the Document
+retention policy. Removing a revision can expire its content preview without
+rewriting immutable mutation evidence or removing its activity record.
 
-## Design Goals
-
-- Keep current card reads fast by preserving `cards.description`.
-- Remove full-description duplication from `history`.
-- Deduplicate repeated top-level NFM blocks across revisions.
-- Retain enough internal reconstruction behavior for remaining legacy writers without exposing it as an API/UI mutation authority.
-- Keep storage bounded over time through pruning, GC, and incremental vacuum.
-- Share one canonical NFM parser/serializer between main and renderer.
-
-## Storage Model
-
-### Materialized Current Value
-
-Each card still stores its current description directly:
-
-- `cards.description`
-- `cards.description_revision_id`
-
-`cards.description` remains the source used by normal board and card reads. The revision id exists so history and restoration logic can reason about description ancestry without diffing arbitrary historical JSON blobs.
-
-### Description Block Blobs
-
-`description_blocks` stores canonical serialized top-level NFM blocks:
-
-```sql
-CREATE TABLE description_blocks (
-  hash TEXT PRIMARY KEY,
-  content TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-```
-
-Rules:
-
-- Each top-level NFM block is serialized with `serializeNfm([block])`.
-- The serialized string is hashed with SHA-256.
-- Identical top-level blocks across cards or revisions share the same blob row.
-- Children remain inside the serialized parent block blob. v1 does not diff nested blocks independently.
-
-### Description Revisions
-
-`description_revisions` stores one revision row per persisted description state:
-
-```sql
-CREATE TABLE description_revisions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  card_id TEXT NOT NULL,
-  parent_revision_id INTEGER,
-  kind TEXT NOT NULL,
-  block_hashes_json TEXT,
-  ops_json TEXT,
-  created_at TEXT NOT NULL,
-  CHECK (kind IN ('snapshot', 'delta'))
-);
-```
-
-Revision kinds:
-
-- `snapshot`: stores the full ordered top-level block hash list in `block_hashes_json`
-- `delta`: stores ordered splice ops in `ops_json`
-
-`parent_revision_id` points to the previous revision for the same card description chain.
-
-### History Rows
-
-The `history` table no longer stores description text inline. Instead it stores revision ids:
-
-- `previous_description_revision_id`
-- `new_description_revision_id`
-- `snapshot_description_revision_id`
-
-The JSON payload columns remain, but `description` must be omitted from:
-
-- `previous_values`
-- `new_values`
-- `card_snapshot`
-
-### Full-Card History Checkpoints
-
-Description revision snapshots are only the description layer. They do not by themselves preserve the rest of a card's historical state after old `history` rows are pruned.
-
-Nodex also stores internal full-card checkpoints in `card_history_snapshots`:
-
-```sql
-CREATE TABLE card_history_snapshots (
-  history_id INTEGER PRIMARY KEY REFERENCES history(id) ON DELETE CASCADE,
-  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  card_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  archived INTEGER NOT NULL DEFAULT 0,
-  card_snapshot TEXT NOT NULL,
-  description_revision_id INTEGER,
-  created_at TEXT NOT NULL
-);
-```
-
-Rules:
-
-- checkpoint JSON uses the same `card_snapshot` convention as `history`: full card metadata, no raw `description`
-- `description_revision_id` points at the description state for the checkpointed card version
-- create and delete history rows are natural anchors because they already carry full card snapshots
-- update/move checkpoints are internal reconstruction anchors and are not shown as user-visible history entries
-- checkpoint rows do not count toward the user-configured `History retention` visible-row limit
-
-## Revision Encoding
-
-### Canonical Diff Boundary
-
-The diff unit is the top-level `NfmBlock[]` sequence.
-
-Why:
-
-- Nodex descriptions are block-structured, not plain text blobs.
-- Reordering/inserting/removing top-level blocks is common.
-- This keeps the model simpler than full CRDTs while still saving substantial space.
-
-Limitation:
-
-- Editing a nested child rewrites the containing top-level block blob.
-- v1 does not perform nested block-level structural diffing.
-
-### Delta Format
-
-Delta revisions store an ordered list of splice ops:
-
-```ts
-type DescriptionDeltaOp = {
-  startOrdinal: number;
-  deleteCount: number;
-  insertedHashes: string[];
-};
-```
-
-Interpretation:
-
-- start at `startOrdinal`
-- delete `deleteCount` existing top-level block hashes
-- insert `insertedHashes` at that position
-
-The current implementation computes these ops from the previous and next block-hash lists using an LCS-based diff.
-
-### Snapshot Policy
-
-Not every revision is a delta.
-
-Nodex writes a snapshot revision when either of these is true:
-
-- the chain since the previous snapshot reaches the checkpoint interval (`SNAPSHOT_INTERVAL = 20`)
-- the serialized delta payload is not smaller than the serialized snapshot payload
-
-This keeps reconstruction cost bounded and avoids storing deltas that are larger than the full state they describe.
-
-## Reconstruction
-
-To reconstruct a description for a revision id:
-
-1. Walk parent links backward until reaching a snapshot.
-2. Read the snapshot's full ordered block hash list.
-3. Replay forward delta ops until the target revision.
-4. Read the referenced `description_blocks`.
-5. Concatenate the serialized top-level block strings with newline separators.
-
-If a revision id is `NULL`, the hydrated description is the empty string.
-
-## Write Behavior
-
-### Card Create
-
-On card creation:
-
-- create an initial snapshot revision from the new description
-- write `cards.description`
-- write `cards.description_revision_id`
-- write a `create` history row whose:
-  - `new_values` excludes `description`
-  - `card_snapshot` excludes `description`
-  - `new_description_revision_id` points at the initial revision
-  - `snapshot_description_revision_id` points at the same initial revision
-
-### Card Update
-
-On updates that do not change description:
-
-- `cards.description_revision_id` is unchanged
-- history stores normal non-description field deltas
-- description revision pointers in that history row remain `NULL`
-
-On updates that change description:
-
-- compute the next revision from the current `cards.description_revision_id`
-- update `cards.description`
-- update `cards.description_revision_id`
-- write an `update` history row whose:
-  - `previous_values` excludes `description`
-  - `new_values` excludes `description`
-  - `previous_description_revision_id` points at the old description
-  - `new_description_revision_id` points at the new description
-
-### Card Delete
-
-On delete:
-
-- the card row is removed
-- the `delete` history row stores:
-  - `previous_values` without `description`
-  - `card_snapshot` without `description`
-  - `previous_description_revision_id`
-  - `snapshot_description_revision_id`
-
-### Revert / Restore / Undo / Redo
-
-These flows all operate through revision ids internally.
-
-Rules:
-
-- if the target state changes description text, a new revision may be created
-- if the operation is replaying or restoring an existing historical state, the relevant stored revision id is reused
-- generic history consumers can still hydrate full descriptions when needed
-- the card history overlay does not do that anymore; it reads a panel-specific display model derived from revision ids and block blobs
-
-The renderer no longer has to pretend description revisions are ordinary field-level before/after strings.
-
-## UI Contract
-
-There are now two read shapes:
-
-1. Internal/generic history reads may still hydrate the old `HistoryEntry` shape when full reconstruction is required for restore/revert-oriented flows.
-2. `history:card` returns a panel-specific display model for the card history overlay.
-
-The panel model includes:
-
-- metadata for the history row (`id`, `operation`, timestamps, undo state)
-- non-description field changes as explicit `fieldChanges`
-- description updates as block-level delta entries with `added` / `removed` / `replaced` operations
-- a default-collapsed full `before` / `after` description view for update entries
-- create/delete description snapshots as ordered top-level block cards
-
-For the panel model:
-
-- `previous_description_revision_id` and `new_description_revision_id` are interpreted into top-level block change cards
-- `snapshot_description_revision_id` is interpreted into ordered snapshot block cards
-- full description strings are not reconstructed by default for UI display
-
-## Shared NFM Core
-
-Because the revision layer needs to parse and serialize NFM in the main process, the pure NFM implementation now lives in:
-
-- `src/shared/nfm/types.ts`
-- `src/shared/nfm/parser.ts`
-- `src/shared/nfm/serializer.ts`
-- inline/helper modules beside them
-
-Renderer NFM modules under `src/renderer/lib/nfm/*` re-export this shared core and keep renderer-only logic, such as the BlockNote adapter, separate.
-
-This ensures:
-
-- one canonical parser/serializer behavior
-- identical block hashing across main and renderer
-- fewer parser drift bugs
-
-## Version Compatibility
-
-Current builds only support the latest SQLite schema at startup.
-
-Older local databases fail fast as unsupported instead of being rewritten in-app.
-
-## Pruning And Garbage Collection
-
-### History Retention
-
-The existing count-based history retention policy remains the only user-facing retention knob.
-
-Users can configure it in Settings -> Backups as `History retention`.
-
-The value counts visible per-project rows in `history`. Internal `card_history_snapshots` rows do not count against it.
-
-When history pruning removes old rows:
-
-- Nodex first attempts to checkpoint the earliest retained visible history row for each affected card
-- old visible history rows are then deleted
-- reachable description revisions are recomputed from:
-  - all current `cards.description_revision_id` values
-  - all retained history revision-pointer columns
-  - all `card_history_snapshots.description_revision_id` values
-- unreachable `description_revisions` rows are deleted
-- orphaned `description_blocks` rows are deleted afterward
-
-Rows that were already made unreconstructable by an older build cannot be recovered. They remain visible as audit rows, but restore-oriented actions are unavailable.
-
-### Redo-Stack Clearing
-
-Clearing undone history entries also triggers description revision GC, because those entries may be the last references to some revisions.
-
-## Disk Reclamation
-
-### Auto Vacuum Mode
-
-Nodex now sets:
-
-```sql
-PRAGMA auto_vacuum = INCREMENTAL;
-```
-
-and applies:
-
-```sql
-VACUUM;
-```
-
-when switching into that mode during migration or fresh schema bootstrap.
-
-### Why `INCREMENTAL` Instead Of `FULL`
-
-`FULL` auto-vacuum would try to reclaim free pages on every commit, which is a worse tradeoff for a write-heavy local SQLite app:
-
-- more page movement
-- more commit overhead
-- greater chance of fragmentation side effects
-
-`INCREMENTAL` is the intended compromise:
-
-- free pages are tracked automatically
-- reclamation happens deliberately after prune/GC work
-- normal writes stay cheaper than `FULL`
-
-### Opportunistic Reclamation
-
-After history pruning or redo-stack deletion removes history rows and GC removes unreachable revisions/blobs, Nodex runs:
-
-```sql
-PRAGMA incremental_vacuum;
-```
-
-This reclaims free pages gradually instead of requiring frequent full-file rewrites.
-
-Important consequence:
-
-- disk space may shrink over time rather than immediately after every delete
-
-## Invariants
-
-These invariants should always hold:
-
-- `cards.description_revision_id` is `NULL` only if the card has no tracked description state; normal created cards should have a non-`NULL` revision id
-- `cards.description` must reconstruct exactly from `cards.description_revision_id`
-- `history` JSON payloads must not inline `description`
-- any history row that semantically references description state must use one of the description revision id columns
-- `card_history_snapshots.card_snapshot` must not inline `description`; it must reference the historical description through `description_revision_id`
-- deleting history rows may make revisions unreachable; pruning code must run revision/blob GC
-- identical top-level serialized blocks must hash identically across main and renderer
-
-## Known Limitations
-
-- Nested edits rewrite the containing top-level block blob.
-- Revision reconstruction still requires walking a chain, though snapshots bound the cost.
-- There is no in-app compatibility path for historical pre-revision history formats.
-- `cards.description` is still fully materialized, so the latest card state itself is not compressed in-row; only the history path is compacted.
-
-## Testing Requirements
-
-Coverage for this feature should include:
-
-- stable canonical NFM serialization for hashing
-- deduplication of identical block blobs
-- snapshot-vs-delta selection
-- exact reconstruction from snapshot + delta chains
-- hydrated history reads exposing full descriptions
-- undo/redo/revert/restore correctness for description changes
-- startup version-guard behavior for unsupported older schemas
-- GC of unreachable revisions and orphaned block blobs
+The retention and collection contract is owned by
+[Document Sync, History, and Retention](../reliability/document-sync-history-and-retention.md).
 
 ## Related Documents
 
 - [Main product spec](./nodex-product-spec.md)
 - [Reliability](../RELIABILITY.md)
-- [Nested Markdown spec](../references/nested-markdown-spec.md)
+- [Nodex Markdown](../references/nodex-markdown.md)

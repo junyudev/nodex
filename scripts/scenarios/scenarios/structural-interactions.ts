@@ -66,24 +66,6 @@ const materialize = async (
   if (!project.defaultDatabaseViewId) throw new Error("Structural interactions requires a Board");
   const sourcePageId = createUuidV7();
   const targetPageId = createUuidV7();
-  const source = await port.createPage({
-    key: "source",
-    pageId: sourcePageId,
-    operationId: createUuidV7(),
-    projectId: project.id,
-    status: "triage",
-    title: "Structural source",
-    nfm: "",
-  });
-  await port.createPage({
-    key: "target",
-    pageId: targetPageId,
-    operationId: createUuidV7(),
-    projectId: project.id,
-    status: "build",
-    title: "Paste target",
-    nfm: "Paste here",
-  });
   const sharedFileId = createUuidV7();
   const secondFileId = createUuidV7();
   for (const [fileId, suffix] of [
@@ -103,37 +85,53 @@ const materialize = async (
         ...Array.from(
           { length: 256 },
           (_, index) =>
-            `	Pressure paragraph ${index + 1}: retained File references stay attached to their source Page.`,
+            `  Pressure paragraph ${index + 1}: retained File references stay attached to their source Page.`,
         ),
         ...Array.from(
           { length: 12 },
           (_, index) =>
-            `	<image source="nodex://files/${sharedFileId}">Repeated pressure picture ${index + 1}</image>`,
+            `  ![Repeated pressure picture ${index + 1}](nodex://files/${sharedFileId})`,
         ),
       ]
     : [];
-  const replaced = await port.replaceOwnedDocument({
-    projectId: project.id,
+  const children = [
+    `  ![Repeated picture](nodex://files/${sharedFileId})`,
+    `  ![Repeated picture again](nodex://files/${sharedFileId})`,
+    `  ![Second picture](nodex://files/${secondFileId})`,
+    `  Reference [picture](nodex://files/${sharedFileId})`,
+    ...pressureLines,
+    `  Child text remains editable`,
+  ];
+  const source = await port.createPage({
+    key: "source",
     pageId: sourcePageId,
-    mutationId: createUuidV7(),
     operationId: createUuidV7(),
-    clientSessionId: "scenario:structural-interactions",
-    nfm: [
+    projectId: project.id,
+    status: "triage",
+    title: "Structural source",
+    markdown: [
       "Before source",
-      "1XL Structural batch",
-      `\t<image source="nodex://files/${sharedFileId}">Repeated picture</image>`,
-      `\t<image source="nodex://files/${sharedFileId}">Repeated picture again</image>`,
-      `\t<image source="nodex://files/${secondFileId}">Second picture</image>`,
-      `\tReference [picture](nodex://files/${sharedFileId})`,
-      ...pressureLines,
-      `\tChild text remains editable`,
-      `<image source="nodex://files/${sharedFileId}">Standalone picture</image>`,
+      `:::paragraph[1XL Structural batch]\n${children.join("\n\n")}\n:::`,
+      `![Standalone picture](nodex://files/${sharedFileId})`,
       "After source",
-    ].join("\n"),
+    ].join("\n\n"),
   });
-  const paragraphRootId = replaced.createdBlockIds[1];
-  const imageRootId = replaced.createdBlockIds[7 + pressureLines.length];
-  if (!paragraphRootId || !imageRootId) throw new Error("Structural fixture omitted its roots");
+  await port.createPage({
+    key: "target",
+    pageId: targetPageId,
+    operationId: createUuidV7(),
+    projectId: project.id,
+    status: "build",
+    title: "Paste target",
+    markdown: "Paste here",
+  });
+  const roots = await port.readPageBlockTree(project.id, sourcePageId);
+  const paragraphRoot = roots[1];
+  const imageRoot = roots[2];
+  if (roots.length !== 4 || paragraphRoot?.type !== "paragraph" || imageRoot?.type !== "image")
+    throw new Error("Structural fixture omitted its roots");
+  const paragraphRootId = paragraphRoot.id;
+  const imageRootId = imageRoot.id;
   const embeddedPageId = createUuidV7();
   await port.createStandalonePage({
     projectId: project.id,
@@ -207,7 +205,7 @@ const materialize = async (
       sourceDocumentId: source.documentId,
       listViewId,
     },
-    minimumCommitSeq: replaced.commitSeq,
+    minimumCommitSeq: (await port.readPage(project.id, sourcePageId)).commitSeq,
     materializedAt: new Date().toISOString(),
   };
 };

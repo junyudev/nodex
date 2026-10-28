@@ -376,13 +376,13 @@ mod tests {
         let genesis = prepare_yjs_genesis_with_blocks(
             "editor-history-test",
             "page",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             current,
         )
         .unwrap();
         let applied = prepare_document_operation_update(
             "editor-history-test",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &genesis.update_v1,
             &genesis.state_vector_v1,
             &prepared.operations,

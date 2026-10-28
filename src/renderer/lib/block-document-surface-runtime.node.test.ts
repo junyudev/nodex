@@ -405,7 +405,7 @@ describe("BlockDocumentSurfaceRuntime", () => {
             return new FakeSurfaceProvider(options, []);
           },
         }),
-    ).toThrow("No owned Document Adapter is registered for database/nodex.page@3");
+    ).toThrow("No owned Document Adapter is registered for database/nodex.page@4");
     expect(providersCreated).toBe(0);
   });
 

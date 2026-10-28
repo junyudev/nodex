@@ -112,7 +112,7 @@ fn seed(client: &CoreClient, home: &Path) {
                         page_id: PAGE_A.to_owned(),
                         document_id: "document:cli-a".to_owned(),
                         title_markdown: "Page A".to_owned(),
-                        nfm: String::new(),
+                        markdown: String::new(),
                     },
                 },
             },

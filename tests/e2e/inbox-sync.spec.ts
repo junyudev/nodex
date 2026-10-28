@@ -37,7 +37,7 @@ test("keeps a Project Inbox current with its message Pages and keeps the reader'
     await seed.replaceOwnedDocument({
       projectId: project.id,
       pageId: pageId!,
-      nfm: "Message 14 rewritten in its Page",
+      markdown: "Message 14 rewritten in its Page",
       operationId: createUuidV7(),
       mutationId: createUuidV7(),
       clientSessionId: "inbox-sync",

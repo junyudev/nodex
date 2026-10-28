@@ -71,7 +71,7 @@ export interface PageStageHistoryModalContext {
   projectId: string;
   pageId: string;
   pageTitle?: string;
-  pageNfm?: string;
+  pageMarkdown?: string;
 }
 
 interface PageStageDatabaseCapability {
@@ -510,7 +510,7 @@ export function PageStageSessionTab({
                 projectId: pageAccessProjectId,
                 pageId: tab.config.pageId,
                 pageTitle: snapshot.title || tab.config.titleSnapshot,
-                pageNfm: snapshot.nfm,
+                pageMarkdown: snapshot.markdown,
               })
             }
             historyPanelActive={historyPanelActive}

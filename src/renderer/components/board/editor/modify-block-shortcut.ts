@@ -26,7 +26,6 @@ export interface ModifyShortcutEditor {
 
 export interface ModifyShortcutActions {
   openImagePreview?: (preview: FocusedImagePreview) => void;
-  openThread?: (threadId: string) => void | Promise<void>;
 }
 
 function readStringProp(props: Record<string, unknown> | undefined, key: string): string {
@@ -49,7 +48,6 @@ function isModifiableBlock(block: ModifyShortcutBlock | undefined): boolean {
   if (block.type === "checkListItem") return true;
   if (block.type === "image") return true;
   if (isPageOutlinerBlock(block)) return true;
-  if (block.type === "threadSection") return true;
   return isToggleLikeBlock(block);
 }
 
@@ -147,11 +145,5 @@ export function modifyCurrentBlock(
     return true;
   }
 
-  if (block.type !== "threadSection") return false;
-
-  const threadId = readStringProp(block.props, "threadId");
-  if (!threadId || !actions.openThread) return false;
-
-  void actions.openThread(threadId);
-  return true;
+  return false;
 }

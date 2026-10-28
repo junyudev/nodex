@@ -271,10 +271,10 @@ pub(super) fn apply(
                     mention_host,
                     destination,
                 ),
-                LibraryIntent::CreatePagesFromNfm { request: create_request } => super::agent_page_create::create_native_pages(transaction, &context, &store_epoch, &library_id, &request.operation_id, &request_hash, create_request, false, None),
-                LibraryIntent::CreatePageFromNfm {
+                LibraryIntent::CreatePagesFromText { request: create_request } => super::agent_page_create::create_native_pages(transaction, &context, &store_epoch, &library_id, &request.operation_id, &request_hash, create_request, false, None),
+                LibraryIntent::CreatePageFromText {
                     title_markdown,
-                    nfm,
+                    markdown,
                     destination,
                 } => {
                     super::page_write_semantic::create_page(
@@ -285,7 +285,7 @@ pub(super) fn apply(
                         &request.operation_id,
                         &request_hash,
                         title_markdown,
-                        nfm,
+                        markdown,
                         destination,
                     )
                 }
@@ -2010,13 +2010,15 @@ fn create_page_records_and_genesis(
 ) -> Result<LibraryPageCreateResult, StoreError> {
     let prepared = match genesis {
         PageGenesisInput::Retained {
-            rich_title, nfm, ..
+            rich_title,
+            markdown,
+            ..
         } => {
             let rich_title: Vec<crate::domain::rich_text::RichTextItem> =
                 serde_json::from_value(rich_title.clone())
                     .map_err(|_| invalid("Invalid retained title"))?;
             let mut ordinal = 0_u64;
-            prepare_page_yjs_genesis_with_content(document_id, &rich_title, nfm, &mut || {
+            prepare_page_yjs_genesis_with_content(document_id, &rich_title, markdown, &mut || {
                 let id = stable_uuid_v7(operation_id, "page_body_block", &ordinal.to_string());
                 ordinal += 1;
                 id
@@ -2086,7 +2088,7 @@ fn create_page_records_and_genesis(
     }
     let authority = read_document_authority(connection, document_id)?
         .ok_or_else(|| corrupt("Created Page has no Document authority"))?;
-    if authority.head.schema_key != BlockDocumentSchema::PageV3.schema_key()
+    if authority.head.schema_key != BlockDocumentSchema::PageV4.schema_key()
         || authority.head.schema_version != i64::from(PAGE_SCHEMA_VERSION)
     {
         return Err(corrupt("Created Page has the wrong Document schema"));
@@ -2655,7 +2657,7 @@ fn create_page_mention(
 enum PageGenesisInput<'a> {
     Retained {
         rich_title: &'a serde_json::Value,
-        nfm: &'a str,
+        markdown: &'a str,
     },
     PlainTitle(&'a str),
 }
@@ -3496,9 +3498,9 @@ pub(super) fn insert_page_read_model(
                 head_seq,
                 materialization.title,
                 materialization.preview,
-                i64::try_from(materialization.nfm.len())
+                i64::try_from(materialization.markdown.len())
                     .map_err(|_| internal("Page description length overflow"))?,
-                i64::from(!materialization.nfm.trim().is_empty()),
+                i64::from(!materialization.markdown.trim().is_empty()),
                 now,
             ],
         )
@@ -3819,7 +3821,7 @@ pub(super) fn create_recovery_page(
     page_id: &str,
     document_id: &str,
     rich_title: &serde_json::Value,
-    nfm: &str,
+    markdown: &str,
     restored_files: &super::RestoredFiles,
 ) -> Result<(), StoreError> {
     let connection = scope.connection();
@@ -3834,7 +3836,10 @@ pub(super) fn create_recovery_page(
         scope.evidence().operation_id(),
         page_id,
         document_id,
-        PageGenesisInput::Retained { rich_title, nfm },
+        PageGenesisInput::Retained {
+            rich_title,
+            markdown,
+        },
         &parent,
         &resolved,
         resolved.actor_project_id.clone(),
@@ -5900,18 +5905,18 @@ mod tests {
             contract_version: LIBRARY_CONTRACT_VERSION,
             operation_id: key.to_owned(),
             store_epoch: StoreEpoch("epoch-1".to_owned()),
-            intent: LibraryIntent::CreatePagesFromNfm {
+            intent: LibraryIntent::CreatePagesFromText {
                 request: LibraryAgentCreatePagesRequest {
                     destination: LibraryAgentPageDestination::Library { at: None },
                     pages: vec![
                         LibraryAgentCreatePageDraft {
                             title_markdown: "First batch Page".to_owned(),
-                            nfm: "First body".to_owned(),
+                            markdown: "First body".to_owned(),
                             values: Vec::new(),
                         },
                         LibraryAgentCreatePageDraft {
                             title_markdown: second.to_owned(),
-                            nfm: "Second body".to_owned(),
+                            markdown: "Second body".to_owned(),
                             values: Vec::new(),
                         },
                     ],
@@ -5979,9 +5984,9 @@ mod tests {
             contract_version: LIBRARY_CONTRACT_VERSION,
             operation_id: "native-cli:create-page".to_owned(),
             store_epoch: StoreEpoch("epoch-1".to_owned()),
-            intent: LibraryIntent::CreatePageFromNfm {
+            intent: LibraryIntent::CreatePageFromText {
                 title_markdown: "Native **Page**".to_owned(),
-                nfm: body.to_owned(),
+                markdown: body.to_owned(),
                 destination: LibraryPageWriteDestination::Library { at: None },
             },
         };
@@ -6000,8 +6005,8 @@ mod tests {
         assert_eq!(&created.page_id[14..15], "7");
         assert_eq!(&created.document_id[14..15], "7");
         assert_eq!(created.block_ids.len(), 2);
-        assert!(created.title_etag.starts_with("nxe1."));
-        assert!(created.body_etag.starts_with("nxe1."));
+        assert!(created.title_etag.starts_with("nxe2."));
+        assert!(created.body_etag.starts_with("nxe2."));
 
         let mut retry_context = context();
         retry_context.connection_id = "connection:native-cli-create-retry".to_owned();
@@ -6028,7 +6033,7 @@ mod tests {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::PageProjectionFile {
                         page_id: created.page_id.clone(),
-                        file_kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                        file_kind: LibraryPageProjectionFileKind::BodyMarkdown,
                         prepare: None,
                     },
                 },
@@ -6037,7 +6042,7 @@ mod tests {
         let LibraryReadValue::PageProjectionFile { value: body } = body.value else {
             panic!("Page body projection")
         };
-        assert_eq!(body.content, "## Runtime\nCore starts on demand.\n");
+        assert_eq!(body.content, "## Runtime\n\nCore starts on demand.\n");
         let metadata = module
             .read(
                 &context(),
@@ -6075,7 +6080,7 @@ mod tests {
         assert_eq!(draft.page_id, created.page_id);
         assert_eq!(draft.document_id, created.document_id);
         assert_eq!(draft.document_head_seq, created.document_head_seq);
-        assert_eq!(draft.body_nested_markdown, body.content);
+        assert_eq!(draft.body_markdown, body.content);
         assert!(draft.meta_yaml.contains("title: \"Native **Page**\""));
         assert_eq!(draft.title_etag, created.title_etag);
         assert_eq!(draft.body_etag, created.body_etag);
@@ -6502,9 +6507,9 @@ mod tests {
             contract_version: LIBRARY_CONTRACT_VERSION,
             operation_id: "native-cli:create-data-source-page".to_owned(),
             store_epoch: StoreEpoch("epoch-1".to_owned()),
-            intent: LibraryIntent::CreatePageFromNfm {
+            intent: LibraryIntent::CreatePageFromText {
                 title_markdown: "Database **Page**".to_owned(),
-                nfm: body.to_owned(),
+                markdown: body.to_owned(),
                 destination: LibraryPageWriteDestination::DataSource {
                     data_source_id: "018f0000-0000-7000-8000-000000000002".to_owned(),
                     view_id: None,
@@ -6659,9 +6664,9 @@ mod tests {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     operation_id: "native-cli:create-search-page".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::CreatePageFromNfm {
+                    intent: LibraryIntent::CreatePageFromText {
                         title_markdown: "Search **Page**".to_owned(),
-                        nfm: "## Runtime\n\nCore starts on demand.".to_owned(),
+                        markdown: "## Runtime\n\nCore starts on demand.".to_owned(),
                         destination: LibraryPageWriteDestination::Library { at: None },
                     },
                 },
@@ -6694,7 +6699,7 @@ mod tests {
         assert!(page.body.logical_path.contains(&created.page_id));
         assert_eq!(
             page.body.sha256,
-            crate::document::sha256(b"## Runtime\nCore starts on demand.\n")
+            crate::document::sha256(b"## Runtime\n\nCore starts on demand.\n")
         );
         let root = std::path::Path::new(&lease.physical_root);
         for file in [&page.meta, &page.body] {
@@ -6886,7 +6891,7 @@ mod tests {
         assert_ne!(renamed_page.meta.sha256, page.meta.sha256);
         assert_eq!(
             std::fs::read(&body_cache).expect("rebuilt body cache"),
-            b"## Runtime\nCore starts on demand.\n"
+            b"## Runtime\n\nCore starts on demand.\n"
         );
         assert_eq!(
             std::fs::metadata(&body_cache)
@@ -7058,9 +7063,9 @@ mod tests {
             contract_version: LIBRARY_CONTRACT_VERSION,
             operation_id: operation_id.to_owned(),
             store_epoch: StoreEpoch("epoch-1".to_owned()),
-            intent: LibraryIntent::CreatePageFromNfm {
+            intent: LibraryIntent::CreatePageFromText {
                 title_markdown: title.to_owned(),
-                nfm: "## Body\n\nDurable content.".to_owned(),
+                markdown: "## Body\n\nDurable content.".to_owned(),
                 destination: LibraryPageWriteDestination::Library { at: None },
             },
         };
@@ -7126,8 +7131,8 @@ mod tests {
         assert_eq!(copied.page_key, None);
         assert_eq!(copied.document_generation, 1);
         assert_eq!(copied.document_head_seq, 1);
-        assert!(copied.title_etag.starts_with("nxe1."));
-        assert!(copied.body_etag.starts_with("nxe1."));
+        assert!(copied.title_etag.starts_with("nxe2."));
+        assert!(copied.body_etag.starts_with("nxe2."));
 
         let copied_to_data_source = module
             .apply(
@@ -7208,7 +7213,7 @@ mod tests {
             .get(&copied.page_id)
             .cloned()
             .expect("post-move Page ETag");
-        assert!(moved_page_etag.starts_with("nxe1."));
+        assert!(moved_page_etag.starts_with("nxe2."));
         let move_replay = module
             .apply(&retry_context, move_request)
             .expect("move replay across a new connection");

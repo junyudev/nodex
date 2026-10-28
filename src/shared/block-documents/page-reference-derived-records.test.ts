@@ -1,55 +1,74 @@
 import { describe, expect, test } from "vite-plus/test";
-import { deriveBlockDocumentRecordsFromNfm } from "./derived-records";
+import { deriveBlockDocumentRecords } from "./derived-records";
+import { createPageDocumentGenesis } from "./block-document-codec";
 
-describe("Page reference derived records", () => {
-  test("classifies and aggregates Page mentions, links, and Reference Blocks", () => {
-    const records = deriveBlockDocumentRecordsFromNfm(
-      [
-        { id: "paragraph-1", type: "paragraph", props: {}, children: [] },
-        { id: "reference-1", type: "pageRef", props: {}, children: [] },
-      ],
-      [
-        'See <mention-page url="nodex://pages/page-1" /> and ' +
-          '<mention-page url="nodex://pages/page-1" /> or ' +
-          "[the Page](nodex://pages/page-1)",
-        '<page-ref url="nodex://pages/page-1" />',
-      ].join("\n"),
-    );
-
-    expect(records.references).toEqual([
+describe("Block references and asset occurrences", () => {
+  test("aggregates Page mentions separately from links and reference Blocks", () => {
+    const page = createPageDocumentGenesis({
+      documentId: "references",
+      markdown:
+        'See <nodex://pages/page-1> and <nodex://pages/page-1> or [the Page](nodex://pages/page-1)\n\n::page-ref{page="page-1"}',
+    });
+    try {
+      expect(
+        page.materialization.references.map(({ sourceBlockId: _, ...reference }) => reference),
+      ).toEqual([
+        { kind: "page", targetPageId: "page-1", presentation: "mention", occurrenceCount: 2 },
+        { kind: "page", targetPageId: "page-1", presentation: "link", occurrenceCount: 1 },
+        {
+          kind: "page",
+          targetPageId: "page-1",
+          presentation: "reference_block",
+          occurrenceCount: 1,
+        },
+      ]);
+    } finally {
+      page.document.destroy();
+    }
+  });
+  test("uses Session identity and finds linked inline images in table cells", () => {
+    const records = deriveBlockDocumentRecords([
       {
-        kind: "page",
-        sourceBlockId: "paragraph-1",
-        targetPageId: "page-1",
-        presentation: "mention",
-        occurrenceCount: 2,
-      },
-      {
-        kind: "page",
-        sourceBlockId: "paragraph-1",
-        targetPageId: "page-1",
-        presentation: "link",
-        occurrenceCount: 1,
-      },
-      {
-        kind: "page",
-        sourceBlockId: "reference-1",
-        targetPageId: "page-1",
-        presentation: "reference_block",
-        occurrenceCount: 1,
+        id: "table",
+        type: "table",
+        props: {},
+        children: [],
+        content: {
+          type: "tableContent",
+          rows: [
+            {
+              cells: [
+                {
+                  content: [
+                    { type: "threadMention", props: { uuid: "session-1" } },
+                    {
+                      type: "link",
+                      href: "https://example.com",
+                      content: [
+                        {
+                          type: "inlineImage",
+                          props: { url: "nodex://files/file-1", alt: "Diagram" },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       },
     ]);
-  });
-
-  test("does not classify web links or owning Page shells as references", () => {
-    const records = deriveBlockDocumentRecordsFromNfm(
-      [
-        { id: "paragraph-1", type: "paragraph", props: {}, children: [] },
-        { id: "page-1", type: "page", props: {}, children: [] },
-      ],
-      '[docs](https://example.com)\n<page uuid="page-1" />',
-    );
-
-    expect(records.references).toEqual([]);
+    expect(records.references).toEqual([
+      { kind: "session", sourceBlockId: "table", targetSessionId: "session-1" },
+    ]);
+    expect(records.assetRefs).toEqual([
+      {
+        sourceBlockId: "table",
+        kind: "image",
+        source: "nodex://files/file-1",
+        managedFileName: null,
+      },
+    ]);
   });
 });

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
-import { NfmDocument, nfmImageAlt, useNfmImage } from "@/components/board/nfm-renderer";
+import { NfmDocument, markdownImageAlt } from "@/components/board/nfm-renderer";
+import { useMarkdownImage } from "@/components/board/markdown-image";
 import { FileLinkWorkspaceProvider } from "@/components/shared/file-link-anchor";
 import {
   ImageErrorTile,
@@ -10,9 +11,8 @@ import {
 import { UserMessageCollapse } from "@/features/local-conversation/view/shared/user-message-collapse";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
-import { splitMessageContent } from "../../../shared/message-content";
-import { parseMessageText } from "../../../shared/message-text";
-import type { NfmBlock, NfmImage } from "../../../shared/nfm/types";
+import { parseMessageText, splitMessageContent } from "../../../shared/message-content";
+import type { MarkdownBlock } from "../../../shared/nodex-markdown";
 
 /**
  * A written message, read-only, as a bubble shows it: the images attached to it as thumbnails
@@ -27,7 +27,7 @@ export function MessageDocument({
   fileAuthority,
   collapsedLineCount,
 }: {
-  readonly blocks: readonly NfmBlock[];
+  readonly blocks: readonly MarkdownBlock[];
   readonly contentKey: string;
   readonly fileAuthority: FileReadAuthority | null;
   readonly collapsedLineCount?: number;
@@ -78,7 +78,7 @@ export function MessageText({
   );
 }
 
-function MessageImages({ images }: { readonly images: readonly NfmImage[] }) {
+function MessageImages({ images }: { readonly images: readonly MarkdownBlock[] }) {
   const [preview, setPreview] = useState<{
     readonly index: number;
     readonly trigger: HTMLButtonElement;
@@ -109,16 +109,16 @@ function MessageImage({
   image,
   onOpen,
 }: {
-  readonly image: NfmImage;
+  readonly image: MarkdownBlock;
   readonly onOpen: (trigger: HTMLButtonElement) => void;
 }) {
-  const { url, failed } = useNfmImage(image.source);
+  const { url, failed } = useMarkdownImage(String(image.props?.url ?? ""));
   if (failed) return <ImageErrorTile />;
   if (!url) return <ImageLoadingTile label="Loading image" />;
   return (
     <UserImageButton
       src={url}
-      alt={nfmImageAlt(image)}
+      alt={markdownImageAlt(image)}
       fit="cover"
       bordered
       onOpenPreview={onOpen}
@@ -134,7 +134,7 @@ export function MessageImagePreview({
   onClose,
   finalFocus,
 }: {
-  readonly images: readonly NfmImage[];
+  readonly images: readonly MarkdownBlock[];
   readonly index: number;
   readonly onIndexChange: (index: number) => void;
   readonly onClose: () => void;
@@ -142,7 +142,7 @@ export function MessageImagePreview({
   readonly finalFocus: HTMLElement | null;
 }) {
   const image = images[index]!;
-  const { url } = useNfmImage(image.source);
+  const { url } = useMarkdownImage(String(image.props?.url ?? ""));
   if (!url) return null;
   return (
     <ImagePreviewDialog
@@ -155,7 +155,7 @@ export function MessageImagePreview({
         return false;
       }}
       src={url}
-      alt={nfmImageAlt(image)}
+      alt={markdownImageAlt(image)}
       onPreviousImage={index > 0 ? () => onIndexChange(index - 1) : undefined}
       onNextImage={index < images.length - 1 ? () => onIndexChange(index + 1) : undefined}
     />

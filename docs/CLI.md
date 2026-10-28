@@ -72,7 +72,7 @@ package-manager installation may link the same bundled binary. Neither path
 copies a separately updatable executable or edits shell startup files.
 
 `nodex capabilities` is an optional, side-effect-free compatibility report used
-by packaged Skill verification. It reports the Agent API, Nested Markdown
+by packaged Skill verification. It reports the Agent API, Nodex Markdown
 revision, command capabilities, deep-link kinds, and packaged Skill identity
 without discovering or creating Profile/Project state. An unpackaged development
 binary reports an unavailable bundle. Ordinary Agent tasks use familiar commands
@@ -111,7 +111,7 @@ semantics where relevant. Complex writes include complete stdin examples;
 replace example resource IDs and revisions with actual observations. Ordinary
 help and machine help share command definitions, behavior and examples.
 `--help-schema input|result|error|all` retrieves only the requested schemas as
-JSON. `nodex docs nested-markdown` reads the same format reference bundled with
+JSON. `nodex docs markdown` reads the same format reference bundled with
 the official Skill. Read only the help needed for the current task.
 
 Short Page content and patches accept stdin. Block JSON file flags accept `-`
@@ -160,9 +160,10 @@ and `open view` produce validated Nodex deep links.
 
 `inbox send [TEXT]` appends one message to an Inbox from TEXT or redirected
 stdin and starts no work. The text is read as message text and becomes the Page
-body whole: Markdown becomes structure, lines written together stay one
-paragraph until a blank line, text that forms no markup stays literal, and
-images follow the text. `--title` names it, otherwise Nodex labels it and names
+body whole: GitHub Flavored Markdown becomes structure, a single newline is a
+line break and a blank line starts the next paragraph, text that forms no markup
+stays literal, and images written as `![](nodex://files/FILE_ID)` follow the
+text. `--title` names it, otherwise Nodex labels it and names
 it later. Inside a Project's
 source or managed worktree, or with `--project`, the message lands in that
 Project's Inbox as a Page on its Board. Anywhere else it lands in the Library
@@ -198,9 +199,9 @@ does not narrow `pages`. Start with the compact catalog, then describe a relatio
 or bound Source for exact columns, identities, types, options and examples.
 
 ```sh
-nodex sql query 'SELECT page_id,nested_markdown,body_etag FROM page_documents WHERE page_id=:id' --param 'id="PAGE_ID"'
+nodex sql query 'SELECT page_id,markdown,body_etag FROM page_documents WHERE page_id=:id' --param 'id="PAGE_ID"'
 nodex sql schema tasks --bind tasks=SOURCE_ID
-nodex sql query 'SELECT t.page_id,t.title,d.nested_markdown FROM tasks t JOIN page_documents d USING(page_id) WHERE t."Status"=:status LIMIT 10' --bind tasks=SOURCE_ID --param 'status="OPTION_ID"'
+nodex sql query 'SELECT t.page_id,t.title,d.markdown FROM tasks t JOIN page_documents d USING(page_id) WHERE t."Status"=:status LIMIT 10' --bind tasks=SOURCE_ID --param 'status="OPTION_ID"'
 ```
 
 Structured SQL results contain `columns`, `rows`, `returned_count` and `snapshot`.
@@ -231,8 +232,8 @@ conflicts reject the atomic apply. Conditions protect membership and edited
 fields, not arbitrary WHERE/JOIN dependencies.
 
 `page create-batch --input -` atomically creates 1–16 Pages at one destination,
-with at most 2 MiB of combined Nested Markdown. Drafts use `title_markdown`,
-`nested_markdown` and typed `values`. Separate commands are separate transactions.
+with at most 2 MiB of combined body text. Drafts use `title_markdown`, `markdown`, and typed `values`. Separate commands are
+separate transactions.
 See [Agent CLI queries and configuration](product-specs/agent-cli-queries.md)
 for the complete relation, execution identity, lifecycle and observation contracts.
 
@@ -243,7 +244,7 @@ base, editable work, a Page File relation inventory, and a private manifest. Fil
 bytes remain lazy and are read through explicit semantic commands; a draft is
 not a mounted checkout or authority.
 The immutable baseline includes the original Document identity and the exact
-mapping from Nested Markdown byte ranges to Block identities. `draft diff` is
+mapping from Nodex Markdown byte ranges to Block identities. `draft diff` is
 local and does not promise current applicability. `draft apply` derives edits
 from that baseline, verifies original target identities against current authority,
 and commits supported title/body changes atomically. Unrelated concurrent changes
@@ -267,8 +268,10 @@ conditions; View scope is valid only for move. Reuse these conditions without
 silently refreshing them before a write.
 
 Semantic mutation families create, duplicate, move, rename, replace, patch,
-insert, or delete Pages and stable Blocks. Nested Markdown is the normal bulk
-content format. Exact patches preserve unchanged Block identities and live nodes;
+insert, or delete Pages and stable Blocks. Bodies use Nodex Markdown in one
+`markdown` field. Fetches, exact patches and drafts use the same language;
+`nodex docs markdown` teaches GFM and its directives. Exact patches preserve
+unchanged Block identities and live nodes;
 one-to-one edits update the existing Block. Explicit identity-sensitive structure
 uses the bounded JSON Block form. Patches never fall back to whole-body replacement
 when correspondence is ambiguous; see [Agent content behavior](product-specs/agent-interface-behavior.md).

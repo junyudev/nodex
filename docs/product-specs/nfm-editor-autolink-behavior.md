@@ -1,9 +1,9 @@
-# NFM Editor Autolink Behavior
+# Page Editor Autolink Behavior
 
 Status: Active
 Last Updated: 2026-08-26
 
-This document describes the current automatic link-recognition behavior inside the NFM / BlockNote editor.
+This document describes the current automatic link-recognition behavior inside the BlockNote Page editor.
 
 It is the detailed source of truth for editor autolinking. The main product spec should stay high-level and defer to this document for exact rules and examples.
 
@@ -11,8 +11,8 @@ It is the detailed source of truth for editor autolinking. The main product spec
 
 Included:
 
-- Link recognition while typing in the NFM editor
-- Link recognition when pasting plain text into the NFM editor
+- Link recognition while typing in the Page editor
+- Link recognition when pasting plain text into the Page editor
 - User-configurable autolink settings
 - Protocol-less domain recognition rules
 - Separator-aware paste rules that prevent repo paths and file-like text from being partially linkified
@@ -145,7 +145,7 @@ This is a product decision, not a generic URL standard. The goal is to reduce fa
 ## Typing Behavior
 
 Typing autolink participates in the independent automatic-transform Undo and
-Redo contract defined by [NFM Editor Automatic Transform History
+Redo contract defined by [Page Editor Automatic Transform History
 Behavior](nfm-editor-automatic-transform-history-behavior.md). URL recognition
 and paste behavior remain owned by this document.
 

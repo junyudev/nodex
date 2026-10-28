@@ -4577,7 +4577,7 @@ pub(super) fn prepare_fresh_page_genesis(
     document_id: &str,
     body_block_id_role: &str,
     rich_title: &[RichTextItem],
-    nfm: &str,
+    markdown: &str,
 ) -> Result<PreparedFreshPageGenesis, StoreError> {
     let mut block_ordinal = 0usize;
     let mut allocate_block_id = || {
@@ -4588,7 +4588,7 @@ pub(super) fn prepare_fresh_page_genesis(
     let prepared = prepare_page_yjs_genesis_with_content(
         document_id,
         rich_title,
-        nfm,
+        markdown,
         &mut allocate_block_id,
     )?;
     let mut body_block_ids = Vec::new();
@@ -4600,7 +4600,7 @@ pub(super) fn prepare_fresh_page_genesis(
         .any(contains_owning_page)
     {
         return Err(invalid(
-            "Page creation Nested Markdown cannot create an owning nested Page; use create_pages",
+            "Page creation Nodex Markdown cannot create an owning nested Page; use create_pages",
         ));
     }
     Ok(PreparedFreshPageGenesis {
@@ -4622,7 +4622,7 @@ pub(super) fn stage_fresh_page_in_library(
     document_id: &str,
     body_block_id_role: &str,
     rich_title: &[RichTextItem],
-    nfm: &str,
+    markdown: &str,
     before_block_id: Option<&str>,
     now: &str,
 ) -> Result<StagedFreshPage, StoreError> {
@@ -4631,7 +4631,7 @@ pub(super) fn stage_fresh_page_in_library(
         document_id,
         body_block_id_role,
         rich_title,
-        nfm,
+        markdown,
     )?;
     stage_prepared_fresh_page_in_library(
         connection,
@@ -4691,9 +4691,14 @@ pub(super) fn stage_prepared_fresh_page_in_library(
            id, library_id, generation, head_seq, schema_key, schema_version, state_vector, \
            state_hash, readiness, authority, genesis_source_revision, created_at, updated_at, \
            sync_engine \
-         ) VALUES (?1, ?2, 1, 0, 'nodex.page', 3, X'', '', 'pending_genesis', \
+         ) VALUES (?1, ?2, 1, 0, 'nodex.page', ?4, X'', '', 'pending_genesis', \
            'legacy_shadow', NULL, ?3, ?3, 'yjs')",
-        params![document_id, library_id, now],
+        params![
+            document_id,
+            library_id,
+            now,
+            crate::document::PAGE_SCHEMA_VERSION
+        ],
     )?;
     connection.execute(
         "INSERT INTO block_documents(block_id, document_id, library_id, created_at) \
@@ -4839,9 +4844,9 @@ fn stage_page_parent_root(
         "INSERT INTO documents( \
            id, library_id, generation, head_seq, schema_key, schema_version, state_vector, \
            state_hash, readiness, authority, genesis_source_revision, created_at, updated_at, sync_engine \
-         ) VALUES (?1, ?2, 1, 0, 'nodex.page', 3, X'', '', 'pending_genesis', \
+         ) VALUES (?1, ?2, 1, 0, 'nodex.page', ?4, X'', '', 'pending_genesis', \
            'legacy_shadow', NULL, ?3, ?3, 'yjs')",
-        params![root.document_id, library_id, now],
+        params![root.document_id, library_id, now, crate::document::PAGE_SCHEMA_VERSION],
     )?;
     connection.execute(
         "INSERT INTO block_documents(block_id, document_id, library_id, created_at) \
@@ -4874,7 +4879,7 @@ fn stage_page_parent_root(
     let prepared_genesis = prepare_yjs_clone_genesis(
         &root.document_id,
         "page",
-        BlockDocumentSchema::PageV3,
+        BlockDocumentSchema::PageV4,
         Some(&title_delta),
         body_roots,
     )?;
@@ -7421,7 +7426,7 @@ mod tests {
 
     #[test]
     fn undo_restore_reinserts_every_top_level_component_lifted_from_a_moved_root() {
-        let schema = schema_metadata(BlockDocumentSchema::PageV3);
+        let schema = schema_metadata(BlockDocumentSchema::PageV4);
         let source_before_transfer = DocumentMaterialization {
             kind: BlockDocumentKind::Page,
             schema_version: schema.schema_version,
@@ -7433,7 +7438,7 @@ mod tests {
                 materialized_block("lifted", "paragraph", Vec::new()),
                 materialized_block("after", "paragraph", Vec::new()),
             ],
-            nfm: String::new(),
+            markdown: String::new(),
             plain_text: String::new(),
             preview: String::new(),
             references: Vec::new(),

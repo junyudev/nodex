@@ -6,11 +6,14 @@ import {
   getCodeBlockActionBarMode,
   getCodeBlockPlainText,
   type CodeBlockActionBarMode,
-} from "@/lib/nfm/code-block-model";
-import { codeLanguagePreference } from "@/lib/nfm/code-language-preference";
-import { codeBlockViewState, type MermaidCodePreviewMode } from "@/lib/nfm/code-block-view-state";
+} from "@/lib/editor-model/code-block-model";
+import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
+import {
+  codeBlockViewState,
+  type MermaidCodePreviewMode,
+} from "@/lib/editor-model/code-block-view-state";
 import { useTheme } from "@/lib/use-theme";
-import { normalizeCodeLanguageId } from "../../../../shared/nfm/code-language-catalog";
+import { normalizeCodeLanguageId } from "../../../../shared/code-languages/code-language-catalog";
 import { NfmCodeBlockActionBar } from "./nfm-code-block-action-bar";
 import { createNfmSideMenuElementReference } from "./nfm-side-menu-anchor";
 import { useNfmSideMenuOpenController } from "./nfm-side-menu";

@@ -30,8 +30,8 @@ use crate::database::{
 };
 use crate::domain::derived_records::parse_page_file_source;
 use crate::domain::identity::stable_uuid_v7;
-use crate::domain::nfm::{NfmBlock, NfmInlineContent, NfmStyleSet, serialize_nfm};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
+use nodex_markdown::{Block, BlockKind, Inline, ReadOptions, Style, write as serialize_markdown};
 
 use super::ProjectWorkspaceApplyOutcome;
 use super::mutation::{WorkspaceMutationEffects, project_session_scope, run_mutation};
@@ -259,13 +259,13 @@ fn ensure_registry(
     Ok((registry, true))
 }
 
-/// A message becomes a Page whose body is the message itself: a Nested Markdown document
+/// A message becomes a Page whose body is the message itself: a Nodex Markdown document
 /// with the message shape (see Message Content Behavior). Its title is the sender's own
 /// when one is given. Otherwise it is a short provisional label that the suggestion Agent
 /// may later replace with a name.
 pub(super) struct MessagePage {
     pub(super) title_markdown: String,
-    pub(super) body_nfm: String,
+    pub(super) body_markdown: String,
     /// Plain provisional title; absent when the sender chose the title.
     pub(super) provisional_title: Option<String>,
 }
@@ -289,31 +289,31 @@ pub(super) fn message_page(body: &str, title: Option<&str>) -> Result<MessagePag
     };
     Ok(MessagePage {
         title_markdown: title_markdown(&title),
-        body_nfm: message.nfm,
+        body_markdown: message.markdown,
         provisional_title,
     })
 }
 
-/// A message body as Core keeps it: canonical Nested Markdown, and the text a
+/// A message body as Core keeps it: canonical Nodex Markdown, and the text a
 /// provisional title is drawn from.
 pub(super) struct MessageBody {
-    pub(super) nfm: String,
+    pub(super) markdown: String,
     pub(super) title_text: String,
 }
 
-/// Reads written Nested Markdown as a message. Text that forms no markup stays literal,
-/// so everyday writing is always a valid body; a body must hold text or an image and
-/// keep the message shape a Composer writes and edits in place.
+/// Reads a message as message text: GitHub Flavored Markdown as people write messages, where
+/// a single newline is a line break. Text that forms no markup stays literal, so everyday
+/// writing is always a valid body; a body must hold text or an image and keep the message
+/// shape a Composer writes and edits in place.
 pub(super) fn message_body(body: &str) -> Result<MessageBody, StoreError> {
     if body.len() > MAX_MESSAGE_BYTES {
         return Err(invalid("Inbox message exceeds its 64 KiB bound"));
     }
-    let blocks = crate::domain::nfm_parser::parse_message_text(body).map_err(|error| {
-        invalid(&format!(
-            "Inbox message is not valid Nested Markdown: {error}"
-        ))
-    })?;
-    if blocks.is_empty() {
+    let blocks = nodex_markdown::read(body, ReadOptions::BOUNDARY)
+        .map_err(|error| invalid(&error.to_string()))?;
+    if nodex_markdown::text::plain_text(&blocks).trim().is_empty()
+        && !blocks.iter().any(contains_image)
+    {
         return Err(invalid("Inbox message must contain text or an image"));
     }
     if !has_message_shape(&blocks) {
@@ -323,112 +323,107 @@ pub(super) fn message_body(body: &str) -> Result<MessageBody, StoreError> {
     }
     Ok(MessageBody {
         title_text: message_title_text(&blocks),
-        nfm: serialize_nfm(&blocks),
+        markdown: serialize_markdown(&blocks),
     })
 }
 
 /// Text Blocks followed by Library File images: the shape a Composer writes and can
 /// therefore rewrite exactly. Images inside the text, with Blocks of their own, or from
 /// elsewhere belong to Pages.
-pub(super) fn has_message_shape(blocks: &[NfmBlock]) -> bool {
+pub(super) fn has_message_shape(blocks: &[Block]) -> bool {
     let attachments = blocks
         .iter()
-        .position(|block| matches!(block, NfmBlock::Image { .. }))
+        .position(|block| matches!(block.kind, BlockKind::Image { .. }))
         .unwrap_or(blocks.len());
-    blocks[..attachments]
-        .iter()
-        .all(|block| !contains_image(block))
-        && blocks[attachments..].iter().all(|block| {
-            matches!(
-                block,
-                NfmBlock::Image { source, children, .. }
-                    if children.is_empty() && parse_page_file_source(source).is_some()
-            )
-        })
+    blocks[..attachments].iter().all(|block| !contains_image(block)) && blocks[attachments..].iter().all(|block| matches!(&block.kind, BlockKind::Image { url, .. } if block.children.is_empty() && parse_page_file_source(url).is_some()))
 }
 
-/// Collects a message's Library images in reading order, each once, as a chat receives them.
-pub(super) fn collect_image_sources(blocks: &[NfmBlock], sources: &mut Vec<String>) {
-    for block in blocks {
-        if let NfmBlock::Image { source, .. } = block
-            && parse_page_file_source(source).is_some()
-            && !sources.contains(source)
-        {
-            sources.push(source.clone());
+/// Collects both Block images and inline images, including table cells.
+pub(super) fn collect_image_sources(blocks: &[Block], sources: &mut Vec<String>) {
+    let mut append = |url: &str| {
+        if parse_page_file_source(url).is_some() && !sources.iter().any(|source| source == url) {
+            sources.push(url.into());
         }
-        collect_image_sources(block_children(block), sources);
-    }
-}
-
-fn contains_image(block: &NfmBlock) -> bool {
-    matches!(block, NfmBlock::Image { .. }) || block_children(block).iter().any(contains_image)
-}
-
-fn block_children(block: &NfmBlock) -> &[NfmBlock] {
-    match block {
-        NfmBlock::Paragraph { children, .. }
-        | NfmBlock::EmptyBlock { children }
-        | NfmBlock::Heading { children, .. }
-        | NfmBlock::BulletListItem { children, .. }
-        | NfmBlock::NumberedListItem { children, .. }
-        | NfmBlock::CheckListItem { children, .. }
-        | NfmBlock::Toggle { children, .. }
-        | NfmBlock::Blockquote { children, .. }
-        | NfmBlock::CodeBlock { children, .. }
-        | NfmBlock::Callout { children, .. }
-        | NfmBlock::Image { children, .. }
-        | NfmBlock::ThreadSection { children, .. }
-        | NfmBlock::Divider { children } => children,
-        _ => &[],
-    }
-}
-
-/// The opening line of the message's text, or of its first image's caption when the
-/// message is only images.
-fn message_title_text(blocks: &[NfmBlock]) -> String {
-    let opening = |blocks: &[NfmBlock]| {
-        crate::domain::nfm::extract_block_lines(blocks)
-            .lines()
-            .map(str::trim)
-            .find(|line| !line.is_empty())
-            .map(str::to_owned)
     };
+    for block in blocks {
+        if let BlockKind::Image { url, .. } = &block.kind {
+            append(url);
+        }
+        for item in block_inline(block) {
+            if let Inline::Image(image) = item {
+                append(&image.url);
+            }
+        }
+    }
+    for block in blocks {
+        collect_image_sources(&block.children, sources);
+    }
+}
+
+fn block_inline(block: &Block) -> Vec<&Inline> {
+    match &block.kind {
+        BlockKind::Paragraph { text, .. }
+        | BlockKind::Heading { text, .. }
+        | BlockKind::Bullet { text, .. }
+        | BlockKind::Numbered { text, .. }
+        | BlockKind::Check { text, .. }
+        | BlockKind::Toggle { text, .. }
+        | BlockKind::Quote { text, .. }
+        | BlockKind::Callout { text, .. } => text.iter().collect(),
+        BlockKind::Table(table) => table
+            .rows
+            .iter()
+            .flatten()
+            .flat_map(|cell| &cell.text)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn contains_image(block: &Block) -> bool {
+    matches!(block.kind, BlockKind::Image { .. })
+        || block_inline(block)
+            .iter()
+            .any(|item| matches!(item, Inline::Image(_)))
+        || block.children.iter().any(contains_image)
+}
+
+fn message_title_text(blocks: &[Block]) -> String {
     let text = blocks
         .iter()
-        .filter(|block| !matches!(block, NfmBlock::Image { .. }))
-        .find_map(|block| opening(std::slice::from_ref(block)));
+        .filter(|block| !matches!(block.kind, BlockKind::Image { .. }))
+        .find_map(|block| {
+            nodex_markdown::text::block_lines(std::slice::from_ref(block))
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty())
+                .map(str::to_owned)
+        });
     text.or_else(|| {
-        blocks.iter().find_map(|block| match block {
-            NfmBlock::Image { caption, .. } => {
-                let caption = crate::domain::nfm::extract_plain_text(&[NfmBlock::Paragraph {
-                    content: caption.clone(),
-                    color: None,
-                    children: Vec::new(),
-                }]);
-                (!caption.is_empty()).then_some(caption)
-            }
+        blocks.iter().find_map(|block| match &block.kind {
+            BlockKind::Image { caption, .. } if !caption.is_empty() => Some(caption.clone()),
             _ => None,
         })
     })
-    .unwrap_or_else(|| "Image".to_owned())
+    .unwrap_or_else(|| "Image".into())
 }
 
-/// Plain text as Nested Markdown paragraphs, one per non-empty line, kept literal.
-pub(super) fn text_paragraphs_nfm(text: &str) -> String {
+pub(super) fn text_paragraphs_markdown(text: &str) -> String {
     let blocks = text
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| NfmBlock::Paragraph {
-            content: vec![plain_text(line.trim_end())],
-            color: None,
-            children: Vec::new(),
+        .map(|line| {
+            Block::new(BlockKind::Paragraph {
+                text: vec![plain_text(line.trim_end())],
+                colors: Default::default(),
+            })
         })
         .collect::<Vec<_>>();
-    serialize_nfm(&blocks)
+    serialize_markdown(&blocks)
 }
 
 pub(super) fn title_markdown(title: &str) -> String {
-    crate::domain::nfm::serialize_inline_content_for_adapter(&[plain_text(title)])
+    nodex_markdown::write_inline(&[plain_text(title)])
 }
 
 /// A label for the message until it is named: its opening words, cut to a
@@ -478,10 +473,10 @@ fn display_width(character: char) -> usize {
     }
 }
 
-fn plain_text(text: &str) -> NfmInlineContent {
-    NfmInlineContent::Text {
-        text: text.to_owned(),
-        styles: NfmStyleSet::default(),
+fn plain_text(text: &str) -> Inline {
+    Inline::Text {
+        text: text.into(),
+        style: Style::default(),
     }
 }
 
@@ -745,7 +740,7 @@ pub(super) fn send_message(
                     page_id,
                     document_id,
                     title_markdown: &message.title_markdown,
-                    nfm: &message.body_nfm,
+                    markdown: &message.body_markdown,
                     destination: &destination,
                     now: &now,
                 },

@@ -1,11 +1,11 @@
-# NFM Block Side Menu Behavior
+# Page Editor Block Side Menu Behavior
 
 Status: Active
 Last updated: 2026-10-01
 
 ## Purpose
 
-The NFM block side menu is the block-scoped action surface for Card Stage descriptions. It opens from the editor side handle and keyboard block-action path, advertises the current block scope, and runs only actions that are real in production.
+The Page editor block side menu is the block-scoped action surface for Card Stage descriptions. It opens from the editor side handle and keyboard block-action path, advertises the current block scope, and runs only actions that are real in production.
 
 Development builds may show disabled reference rows for future block links, collaboration, presentation, and AI actions. Production must not show unavailable actions.
 
@@ -36,7 +36,6 @@ Single-block labels:
 | `callout`                           | `Callout`              |
 | `table`                             | `Table`                |
 | `pageRef`                           | `Page reference`       |
-| `threadSection`                     | `Thread section`       |
 | unknown or unsupported              | `Block`                |
 
 ## Production Actions
@@ -53,7 +52,7 @@ Production row order for a normal editable block is:
 `Send to chat` belongs to the same action group as `Duplicate`, `Move to`, and
 `Delete`, immediately above `Move to`; it does not create a separate section.
 
-`Copy link to block` and `Copy links to all` are reference-only rows in development builds. Production hides them because NFM does not yet persist stable block identities across parse/serialize round trips, so generated block anchors could become stale.
+`Copy link to block` and `Copy links to all` are reference-only rows in development builds. Production hides these unavailable actions.
 
 `Duplicate`, `Move to`, and `Delete` operate on top-level selected roots. `Turn into` and `Color` operate on the expanded selection, including descendants. `Color` is enabled only when every selected target supports at least one color prop; text and background color submenu groups are hidden independently when unsupported.
 
@@ -62,10 +61,10 @@ modes as the text selection menu. It submits the retained top-level Block roots,
 including their descendants, even after focus moves into the picker. New and
 existing Chat targets establish the source Page relationship before submission.
 Wrapping happens only after successful submission and preserves the selected
-Blocks under the resulting Thread toggle. Image capture follows
-[NFM Thread Section Image Inputs](nfm-thread-section-image-inputs.md).
+Blocks under an ordinary toggle containing a chat mention. Image capture follows
+[Page Prompt Image Inputs](nfm-page-prompt-image-inputs.md).
 
-`Make thread section` appears only for one selected `divider` root when the Card Stage runtime can convert dividers. Table header row/column actions appear only for one selected `table` root when table headers are supported.
+Table header row/column actions appear only for one selected `table` root when table headers are supported.
 
 For one selected Code Block, the menu prepends this Code group:
 
@@ -74,12 +73,12 @@ For one selected Code Block, the menu prepends this Code group:
 3. `Language`
 4. `Format code`, only when the selected language has a registered formatter
 
-The generic production rows follow this group. `Wrap code` reads and writes renderer-local state without changing the Block Document or closing the menu. `Language` uses the canonical Code language catalog. Code Blocks do not expose a caption action. The full Code contract is defined by [NFM Editor Code Block Behavior](nfm-editor-code-block-behavior.md).
+The generic production rows follow this group. `Wrap code` reads and writes renderer-local state without changing the Block Document or closing the menu. `Language` uses the canonical Code language catalog. Code Blocks do not expose a caption action. The full Code contract is defined by [Page Editor Code Block Behavior](nfm-editor-code-block-behavior.md).
 
 ## Page connections
 
 Page Mention, Page Reference Block, Page Link, and owning Subpage behavior is
-defined by [NFM Editor Page Connection Behavior](nfm-editor-page-reference-behavior.md).
+defined by [Page Connections](nfm-editor-page-reference-behavior.md).
 Deleting a `pageRef` removes only its non-owning shell and never deletes the target Page.
 
 ## Layout
@@ -126,7 +125,7 @@ Footer metadata is optional. Production hides the footer when there is no real m
 
 ## Submenus
 
-`Turn into` includes supported non-destructive NFM block conversions:
+`Turn into` includes supported non-destructive Page editor block conversions:
 
 - Text
 - Heading 1/2/3
@@ -152,11 +151,11 @@ is present, Core commits the complete selected forest and all Page capability
 changes atomically. A Canvas or Database anywhere in the expanded selection
 rejects the complete action; ordinary neighbors are not partially converted.
 
-Divider is intentionally not part of the generic `Turn into` list because converting content blocks to dividers would discard content. Divider-related conversion stays under `Make thread section`.
+Divider is intentionally not part of the generic `Turn into` list because converting content blocks to dividers would discard content.
 
 `Color` exposes text and background color groups only when the current expanded selection supports the target prop.
 
-`Move to` reuses the NFM move-to popover contract: DB rows create destination cards, card rows append selected blocks into an existing card, and source roots are removed after a successful move.
+`Move to` reuses the Page editor move-to popover contract: DB rows create destination cards, card rows append selected blocks into an existing card, and source roots are removed after a successful move.
 
 ## Verification
 

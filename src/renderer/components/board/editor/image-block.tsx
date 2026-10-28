@@ -8,7 +8,7 @@ import {
   type ReactCustomBlockRenderProps,
 } from "@blocknote/react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { NfmImageBlockIcon } from "@/components/shared/icons";
+import { ImageBlockIcon } from "@/components/shared/icons";
 import { readManagedImageByteLength } from "@/lib/assets";
 import { parseAssetSource } from "../../../../shared/assets";
 import { parseFileSource } from "../../../../shared/file-resources";
@@ -245,7 +245,7 @@ function ImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) {
   return <FileImagePreview {...props} runtime={fileRuntime} />;
 }
 
-function NfmImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
+function ImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
   const fileRuntime = useFilePlacementRuntime();
   const snapshot = useFileReadSnapshot(fileRuntime, block.props.url, { metadata: true });
   const defaultName = snapshot.metadata?.default_name ?? null;
@@ -258,7 +258,7 @@ function NfmImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) 
       contentEditable={false}
       draggable={false}
     >
-      <NfmImageBlockIcon className="size-5 text-token-foreground" />
+      <ImageBlockIcon className="size-5 text-token-foreground" />
       <span className="min-w-0 truncate font-sans text-base leading-5 text-token-foreground">
         {name}
       </span>
@@ -271,7 +271,7 @@ function NfmImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) 
   );
 }
 
-function NfmImageFileBlock({
+function ImageFileBlock({
   block,
   children,
 }: Omit<ImageBlockRenderProps, "contentRef"> & {
@@ -291,7 +291,7 @@ function NfmImageFileBlock({
   );
 }
 
-function NfmImageBlock(props: ImageBlockRenderProps) {
+function ImageBlock(props: ImageBlockRenderProps) {
   const showLoader = useUploadLoading(props.block.id);
 
   if (showLoader) {
@@ -307,7 +307,7 @@ function NfmImageBlock(props: ImageBlockRenderProps) {
       <div className="nfm-image-file-block-content-wrapper flex w-full flex-col">
         <AddFileButton
           {...(props as unknown as Parameters<typeof AddFileButton>[0])}
-          buttonIcon={<NfmImageBlockIcon className="size-6" />}
+          buttonIcon={<ImageBlockIcon className="size-6" />}
         />
       </div>
     );
@@ -315,23 +315,23 @@ function NfmImageBlock(props: ImageBlockRenderProps) {
 
   if (props.block.props.showPreview === false) {
     return (
-      <NfmImageFileBlock {...props}>
-        <NfmImageFileName {...props} />
-      </NfmImageFileBlock>
+      <ImageFileBlock {...props}>
+        <ImageFileName {...props} />
+      </ImageFileBlock>
     );
   }
 
   return (
     <ResizableFileBlockWrapper
       {...(props as unknown as Parameters<typeof ResizableFileBlockWrapper>[0])}
-      buttonIcon={<NfmImageBlockIcon className="size-6" />}
+      buttonIcon={<ImageBlockIcon className="size-6" />}
     >
       <ImagePreview {...props} />
     </ResizableFileBlockWrapper>
   );
 }
 
-function NfmImageExternalHTML({
+function ImageExternalHTML({
   block,
 }: ImageBlockRenderProps & { context: { nestingLevel: number } }) {
   const source = resolveExternalImageSource(block.props.url);
@@ -388,7 +388,7 @@ export const imageBlockSpec = createReactBlockSpec(createImageBlockConfig, {
     fileBlockAccept: ["image/*"],
   },
   parse: imageParse(),
-  render: NfmImageBlock,
-  toExternalHTML: NfmImageExternalHTML,
+  render: ImageBlock,
+  toExternalHTML: ImageExternalHTML,
   runsBefore: ["file"],
 });

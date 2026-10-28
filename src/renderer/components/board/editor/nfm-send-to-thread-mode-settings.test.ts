@@ -50,7 +50,7 @@ function withMockLocalStorage(storage: typeof mockStorage, run: () => void): voi
   }
 }
 
-describe("nfm send-to-thread mode settings", () => {
+describe("markdown send-to-thread mode settings", () => {
   test("normalizes mode values", () => {
     expect(normalizeNfmSendToThreadMode("send")).toBe("send");
     expect(normalizeNfmSendToThreadMode("wrap-toggle")).toBe("wrap-toggle");

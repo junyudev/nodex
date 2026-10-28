@@ -941,7 +941,7 @@ mod tests {
         connection.execute(
             "INSERT INTO documents(\
                id, library_id, schema_key, schema_version, created_at, updated_at\
-             ) VALUES (?1, 'library-1', 'nodex.page', 3, ?2, ?2)",
+             ) VALUES (?1, 'library-1', 'nodex.page', 4, ?2, ?2)",
             params![document_id, NOW],
         )?;
         connection.execute(

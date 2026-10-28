@@ -1,4 +1,6 @@
 import type { Page } from "playwright";
+import * as Y from "yjs";
+import { readPageBlockOutline } from "./page-block-outline";
 import {
   LIBRARY_INBOX,
   type InboxScope,
@@ -110,7 +112,7 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
         projectId: input.projectId,
         pageId: input.pageId,
         status: input.status,
-        input: { id: input.pageId, title: input.title, description: input.nfm },
+        input: { id: input.pageId, title: input.title, description: input.markdown },
       },
       preflight,
     });
@@ -243,11 +245,36 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
         documentId: descriptor.documentId,
         generation: descriptor.generation,
         expectedHeadSeq: descriptor.headSeq,
-        nfm: input.nfm,
+        markdown: input.markdown,
       }),
       `Replace ${input.pageId}`,
     );
     return { commitSeq: mutation.commitSeq, createdBlockIds: mutation.createdBlockIds };
+  }
+
+  async readPageBlockTree(projectId: string, pageId: string) {
+    const clientSessionId = createUuidV7();
+    const descriptor = requireSuccess(
+      await this.#invoke("block-document:owned:prepare", projectId, pageId),
+      `Prepare ${pageId}`,
+    );
+    const request = { projectId, documentId: descriptor.documentId, clientSessionId };
+    requireSuccess(await this.#invoke("document-sync:subscribe", request), `Subscribe ${pageId}`);
+    const document = new Y.Doc({ guid: descriptor.documentId });
+    try {
+      const synced = requireSuccess(
+        await this.#invoke("document-sync:sync", {
+          ...request,
+          stateVector: Y.encodeStateVector(document),
+        }),
+        `Read ${pageId}`,
+      );
+      Y.applyUpdate(document, synced.update);
+      return readPageBlockOutline(document);
+    } finally {
+      document.destroy();
+      requireSuccess(await this.#invoke("document-sync:unsubscribe", request), `Close ${pageId}`);
+    }
   }
 
   async createLibraryFile(input: ScenarioLibraryFileSeed) {

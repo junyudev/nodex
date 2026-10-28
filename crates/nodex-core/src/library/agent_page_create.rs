@@ -50,7 +50,7 @@ use super::mutation::{MutationEffects, library_commit_result, seal_mutation_with
 
 const MODULE_NAME: &str = "library";
 const MAX_PAGES: usize = 16;
-const MAX_TOTAL_NFM_BYTES: usize = 2 * 1024 * 1024;
+const MAX_TOTAL_MARKDOWN_BYTES: usize = 2 * 1024 * 1024;
 const MAX_ID_BYTES: usize = 512;
 
 struct PreparedPage {
@@ -722,7 +722,7 @@ fn apply_pages(
         if staged.body_block_ids != page.body_block_ids {
             return Err(StoreError::new(
                 StoreErrorCode::RevisionConflict,
-                "Prepared Page body identities no longer match its Nested Markdown",
+                "Prepared Page body identities no longer match its Nodex Markdown",
                 true,
             ));
         }
@@ -992,7 +992,7 @@ fn compile_resolved_preflight(
             &document_id,
             "agent_create_body",
             &rich_title,
-            &draft.nfm,
+            draft.markdown.as_str(),
         )?;
         let body_block_ids = genesis.body_block_ids.clone();
         let primary_membership_id = allocation_id(&page_operation_id, "primary-membership");
@@ -1168,14 +1168,14 @@ fn validate_request(request: &LibraryAgentCreatePagesRequest) -> Result<(), Stor
             "create_pages requires between 1 and 16 Page drafts",
         ));
     }
-    let total_nfm_bytes = request
+    let total_markdown_bytes = request
         .pages
         .iter()
-        .try_fold(0usize, |total, page| total.checked_add(page.nfm.len()))
-        .ok_or_else(|| invalid("create_pages Nested Markdown size overflowed"))?;
-    if total_nfm_bytes > MAX_TOTAL_NFM_BYTES {
+        .try_fold(0usize, |total, page| total.checked_add(page.markdown.len()))
+        .ok_or_else(|| invalid("create_pages Nodex Markdown size overflowed"))?;
+    if total_markdown_bytes > MAX_TOTAL_MARKDOWN_BYTES {
         return Err(invalid(
-            "create_pages exceeds the 2 MiB aggregate Nested Markdown limit",
+            "create_pages exceeds the 2 MiB aggregate Nodex Markdown limit",
         ));
     }
     if let LibraryAgentPageDestination::DataSource { values, .. } = &request.destination

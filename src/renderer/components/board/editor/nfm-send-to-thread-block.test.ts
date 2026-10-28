@@ -1,12 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
-import { blockNoteToNfm, serializeNfm } from "@/lib/nfm";
+import { writeMarkdown, type MarkdownBlock } from "../../../../shared/nodex-markdown";
 import { isUuidV7 } from "../../../../shared/uuid-v7";
 import { createSendToThreadToggleBlock } from "./nfm-send-to-thread-block";
 
-describe("nfm send-to-thread block", () => {
+describe("markdown send-to-thread block", () => {
   test("allocates a canonical Block identity by default", () => {
     const block = createSendToThreadToggleBlock({
-      threadId: "thread-123",
+      sessionId: "thread-123",
       children: [],
     });
 
@@ -16,7 +16,7 @@ describe("nfm send-to-thread block", () => {
   test("creates a collapsed toggle with a thread mention and preserved children", () => {
     const block = createSendToThreadToggleBlock({
       blockId: "sent-toggle",
-      threadId: "thread-123",
+      sessionId: "thread-123",
       children: [
         {
           type: "paragraph",
@@ -26,7 +26,7 @@ describe("nfm send-to-thread block", () => {
       ],
     });
 
-    const nfm = serializeNfm(blockNoteToNfm([block]));
-    expect(nfm).toBe('▶ sent to <mention-thread uuid="thread-123" />\n\tOriginal note');
+    const markdown = writeMarkdown([block]);
+    expect(markdown).toBe(":::toggle[sent to <nodex://sessions/thread-123>]\n  Original note\n:::");
   });
 });

@@ -288,7 +288,7 @@ describe.skipIf(!packagedCli)("packaged native CLI and Electron authority", () =
       const projected = await runtime.rootClient.libraryRead({
         kind: "page_projection_file",
         page_id: pageId,
-        file_kind: "body_nested_markdown",
+        file_kind: "body_markdown",
         prepare: null,
       });
       if (projected.value.kind !== "page_projection_file") {

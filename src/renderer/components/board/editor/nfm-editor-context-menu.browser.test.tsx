@@ -11,7 +11,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("nfm editor context menu", () => {
+describe("markdown editor context menu", () => {
   test("does not retry a failed native read against a newer browser clipboard", async () => {
     const originalApi = window.api;
     const originalClipboard = navigator.clipboard;

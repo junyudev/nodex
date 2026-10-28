@@ -140,10 +140,7 @@ describe("Codex prompt preparation", () => {
 
   test("extracts inline agent config without sending it as prompt text", () => {
     const parsed = splitCodexPromptAgentConfigLines(
-      [
-        "Investigate the owner path",
-        '<agent-config mode="plan" provider="openai" model="gpt-test" reasoning="high" speed="fast" />',
-      ].join("\n"),
+      'Investigate the owner path\n\n:agent-config{mode="plan" provider="openai" model="gpt-test" reasoning="high" speed="fast"}',
     );
 
     expect(parsed.text).toBe("Investigate the owner path");
@@ -161,13 +158,13 @@ describe("Codex prompt preparation", () => {
   test("collects structured Agent config sidecars without scanning fallback text", () => {
     const structured = [{ provider: "anthropic", model: "claude-sonnet" }];
     expect(
-      collectCodexPromptAgentConfigs('<agent-config provider="openai" />', {
+      collectCodexPromptAgentConfigs(':agent-config{provider="openai"}', {
         text: "Do the work",
         agentConfigs: structured,
       }),
     ).toEqual(structured);
     expect(
-      collectCodexPromptAgentConfigs('<agent-config provider="openai" speed="fast" />', undefined),
+      collectCodexPromptAgentConfigs(':agent-config{provider="openai" speed="fast"}', undefined),
     ).toEqual([{ provider: "openai", speed: "fast" }]);
   });
 

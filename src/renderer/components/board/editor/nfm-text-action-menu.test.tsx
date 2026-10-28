@@ -168,7 +168,6 @@ function renderTextActionMenu(props?: Partial<NfmTextActionMenuSurfaceProps>) {
     clearFormat: 0,
     equations: 0,
     blockActions: 0,
-    nodexRows: [] as string[],
     moveDestinations: [] as NfmMoveToDestination[],
     sendRequests: [] as NfmSendToThreadRequest[],
     selectionPresentations: [] as string[],
@@ -250,9 +249,6 @@ function renderTextActionMenu(props?: Partial<NfmTextActionMenuSurfaceProps>) {
         onOpenBlockActions={() => {
           actions.blockActions += 1;
         }}
-        onNodexRow={(row) => {
-          actions.nodexRows.push(row.key);
-        }}
         onMoveBlocksToDestination={(destination) => {
           actions.moveDestinations.push(destination);
         }}
@@ -280,7 +276,7 @@ function renderTextActionMenu(props?: Partial<NfmTextActionMenuSurfaceProps>) {
   return { actions, view };
 }
 
-describe("nfm text action menu surface", () => {
+describe("markdown text action menu surface", () => {
   beforeEach(() => {
     localStorage.removeItem(TEXT_ACTION_RECENT_COLOR_STORAGE_KEY);
     localStorage.removeItem(NFM_SEND_TO_THREAD_MODE_STORAGE_KEY);
@@ -383,7 +379,6 @@ describe("nfm text action menu surface", () => {
     expect(actions.styles.join(",")).toBe("bold");
     expect(actions.clearFormat).toBe(1);
     expect(actions.equations).toBe(1);
-    expect(actions.nodexRows.join(",")).toBe("");
   });
 
   test("opens the send-to-chat picker and submits thread and new-thread targets", async () => {
@@ -396,6 +391,7 @@ describe("nfm text action menu surface", () => {
       sendToThreadPreferredTarget: {
         kind: "thread",
         thread: makePreferredThreadFromItem(existingThread),
+        sessionId: "session-preferred",
         meta: "This session",
       },
       renderSendToThreadMenu: (props) => (
@@ -522,6 +518,7 @@ describe("nfm text action menu surface", () => {
           preferredTarget={{
             kind: "thread",
             thread: makePreferredThreadFromItem(existingThread, { updatedAt: 1 }),
+            sessionId: "session-preferred",
             meta: "This session",
           }}
           onAccept={() => undefined}
@@ -645,56 +642,7 @@ describe("nfm text action menu surface", () => {
     expect(acceptedRequests.join(",")).toBe('{"kind":"new-thread","sessionId":"session-current"}');
   });
 
-  test("thread-section picker displays the bound section hint before the session thread", async () => {
-    const existingThread = SEND_TO_THREAD_THREADS[0];
-    if (!existingThread) {
-      throw new Error("missing send-to-thread fixture");
-    }
-
-    const sectionThread = {
-      ...existingThread,
-      threadId: "thread-section",
-      id: "thread:thread-section",
-      title: "Section follow-up",
-      updatedAt: 1,
-    };
-    const sessionThread = {
-      ...existingThread,
-      threadId: "thread-session",
-      id: "thread:thread-session",
-      title: "Session chat",
-      updatedAt: 10,
-    };
-
-    const view = render(
-      <NodexTooltipProvider>
-        <NfmSendToThreadMenuSurface
-          projectId="default"
-          threadItems={[sessionThread, sectionThread]}
-          enableThreadSearch={false}
-          projectNameById={{ default: "Default" }}
-          preferredTarget={{
-            kind: "thread",
-            thread: makePreferredThreadFromItem(sectionThread),
-            meta: "Current section",
-          }}
-          showModeSelector={false}
-          onAccept={() => undefined}
-          onClose={() => undefined}
-        />
-      </NodexTooltipProvider>,
-    );
-    await settleAsyncRender();
-
-    const options = view.getAllByRole("option");
-    expect(options.length).toBe(3);
-    expect(options[0]?.textContent?.includes("Section follow-up") ?? false).toBe(true);
-    expect(options[0]?.textContent?.includes("Current section") ?? false).toBe(true);
-    expect(options[1]?.textContent?.includes("Session chat") ?? false).toBe(true);
-    expect(options[2]?.textContent?.includes("New chat") ?? false).toBe(true);
-  });
-
-  test("thread-section picker can fall back to the current session new chat target", async () => {
+  test("Send to chat can use the current Session new chat target", async () => {
     const existingThread = SEND_TO_THREAD_THREADS[0];
     if (!existingThread) {
       throw new Error("missing send-to-thread fixture");
@@ -1121,7 +1069,7 @@ describe("nfm text action menu surface", () => {
     const { view } = renderTextActionMenu({
       nodexRows: [
         {
-          key: "convert-divider-to-thread-section",
+          key: "move-to",
           label: longLabel,
           enabled: true,
         },

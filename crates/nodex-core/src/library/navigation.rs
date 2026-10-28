@@ -3810,7 +3810,7 @@ mod tests {
                         page_id: "page:starter".to_owned(),
                         document_id: "document:starter".to_owned(),
                         title_markdown: "Welcome".to_owned(),
-                        nfm: "Start here.".to_owned(),
+                        markdown: "Start here.".to_owned(),
                     },
                 },
             ),

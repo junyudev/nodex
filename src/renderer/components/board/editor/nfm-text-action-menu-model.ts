@@ -34,14 +34,12 @@ export interface TextActionMenuEligibilityInput {
 
 export interface TextActionMenuRuntimeInput {
   currentBlockId: string | null;
-  currentBlockType: string | null;
   canSendBlocks: boolean;
   canSendToThread: boolean;
-  hasConvertDividerToThreadSection: boolean;
 }
 
 export interface TextActionNodexRow {
-  key: string;
+  key: "send-to-thread" | "move-to";
   label: string;
   enabled: boolean;
 }
@@ -85,14 +83,6 @@ export function resolveNodexTextActionRows(
     rows.push({
       key: "move-to",
       label: "Move to",
-      enabled: true,
-    });
-  }
-
-  if (input.currentBlockType === "divider" && input.hasConvertDividerToThreadSection) {
-    rows.push({
-      key: "convert-divider-to-thread-section",
-      label: "Make thread section",
       enabled: true,
     });
   }

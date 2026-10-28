@@ -9,20 +9,22 @@ import {
 export function usePageCreateDescriptionDraft(requestId: string, initialNfm = "") {
   const [generation, setGeneration] = useState(0);
   const [draft, setDraft] = useState<PageCreateDescriptionDraft | null>(null);
-  const snapshot = useRef({ requestId, generation: 0, nfm: initialNfm });
+  const snapshot = useRef({ requestId, generation: 0, markdown: initialNfm });
 
   useLayoutEffect(() => {
     const retained = snapshot.current;
-    const nfm =
-      retained.requestId === requestId && retained.generation === generation ? retained.nfm : "";
-    const current = createPageCreateDescriptionDraft(requestId, generation, nfm);
+    const markdown =
+      retained.requestId === requestId && retained.generation === generation
+        ? retained.markdown
+        : "";
+    const current = createPageCreateDescriptionDraft(requestId, generation, markdown);
     setDraft(current);
     return () => {
       try {
         snapshot.current = {
           requestId,
           generation,
-          nfm: materializePageCreateDescription(current),
+          markdown: materializePageCreateDescription(current),
         };
       } catch (error) {
         // Closing a malformed draft must still release its live Document. The

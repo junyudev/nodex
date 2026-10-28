@@ -48,6 +48,7 @@ import {
   composerPromptKeywordsPluginKey,
   type ComposerPromptKeyword,
 } from "./composer-prompt-keywords";
+import { readMarkdownPaste } from "../../../../../shared/markdown";
 
 export type ComposerPromptMentionKind =
   | "agent"
@@ -611,6 +612,7 @@ export function classifyComposerPaste(text: string): "inline" | "attachment" {
 
 function handleComposerLargeTextPaste(
   event: ClipboardEvent,
+  text: string,
   onLargeTextPaste: ((text: string) => boolean) | undefined,
 ): boolean {
   const clipboard = event.clipboardData;
@@ -620,21 +622,64 @@ function handleComposerLargeTextPaste(
     Array.from(clipboard.items ?? []).some((item) => item.kind === "file");
   if (hasFiles) return false;
 
-  const text = clipboard.getData("text/plain");
   if (classifyComposerPaste(text) !== "attachment") return false;
   if (onLargeTextPaste?.(text) !== true) return false;
   event.preventDefault();
   return true;
 }
 
+/** HTML a Composer writes or reads mention atoms from; only such HTML is pasted as HTML. */
+const PROMPT_MENTION_SELECTOR = (promptSchema.nodes.mention.spec.parseDOM ?? [])
+  .flatMap((rule) => (rule.tag ? [rule.tag] : []))
+  .join(", ");
+
+/**
+ * The text a paste inserts into the prompt: the Markdown source of what was copied, with every
+ * line it shows (`readMarkdownPaste`). HTML is read by the editor itself only when it carries
+ * mention atoms, as a copy from another Composer does, so those mentions arrive whole.
+ */
+export function readPromptPasteText(
+  clipboard: Pick<DataTransfer, "getData"> & { readonly types?: readonly string[] },
+): string | null {
+  const html = clipboard.getData("text/html");
+  if (
+    html &&
+    new DOMParser().parseFromString(html, "text/html").querySelector(PROMPT_MENTION_SELECTOR)
+  )
+    return null;
+  return readMarkdownPaste({
+    types: Array.from(clipboard.types ?? []),
+    getData: (format) => clipboard.getData(format),
+  });
+}
+
+function pastePromptText(view: EditorView, event: ClipboardEvent, text: string | null): boolean {
+  if (text === null) return false;
+  event.preventDefault();
+  view.dispatch(
+    view.state.tr
+      .replaceSelection(buildPromptTextSlice(text))
+      .scrollIntoView()
+      .setMeta("paste", true)
+      .setMeta("uiEvent", "paste"),
+  );
+  return true;
+}
+
 function handleComposerPaste(
+  view: EditorView,
   event: ClipboardEvent,
   onPasteFiles: ((payload: ComposerPastedFiles) => boolean) | undefined,
   onLargeTextPaste: ((text: string) => boolean) | undefined,
 ): boolean {
+  if (handleComposerFilePaste(event, onPasteFiles)) return true;
+  const text = event.clipboardData ? readPromptPasteText(event.clipboardData) : null;
   return (
-    handleComposerFilePaste(event, onPasteFiles) ||
-    handleComposerLargeTextPaste(event, onLargeTextPaste)
+    handleComposerLargeTextPaste(
+      event,
+      text ?? event.clipboardData?.getData("text/plain") ?? "",
+      onLargeTextPaste,
+    ) || pastePromptText(view, event, text)
   );
 }
 
@@ -1558,8 +1603,13 @@ export const ComposerPromptEditor = forwardRef<
         handleSuggestionKeyDown(currentView, event) ||
         acceptComposerPrediction(currentView, event) ||
         onKeyDownRef.current(event),
-      handlePaste: (_view, event) =>
-        handleComposerPaste(event, onPasteFilesRef.current, onLargeTextPasteRef.current),
+      handlePaste: (currentView, event) =>
+        handleComposerPaste(
+          currentView,
+          event,
+          onPasteFilesRef.current,
+          onLargeTextPasteRef.current,
+        ),
       dispatchTransaction(transaction) {
         const currentView = viewRef.current;
         if (!currentView) return;
@@ -1604,8 +1654,13 @@ export const ComposerPromptEditor = forwardRef<
         handleSuggestionKeyDown(currentView, event) ||
         acceptComposerPrediction(currentView, event) ||
         onKeyDownRef.current(event),
-      handlePaste: (_currentView, event) =>
-        handleComposerPaste(event, onPasteFilesRef.current, onLargeTextPasteRef.current),
+      handlePaste: (currentView, event) =>
+        handleComposerPaste(
+          currentView,
+          event,
+          onPasteFilesRef.current,
+          onLargeTextPasteRef.current,
+        ),
     });
   }, [disabled, dispatchSuggestionMeta, handleSuggestionKeyDown, placeholder, singleLine, compact]);
 

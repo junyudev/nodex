@@ -37,7 +37,7 @@ pub(super) fn create_page(
     operation_id: &str,
     request_hash: &str,
     title_markdown: &str,
-    nfm: &str,
+    markdown: &str,
     destination: &LibraryPageWriteDestination,
 ) -> Result<LibraryApplyOutcome, StoreError> {
     use nodex_core_contracts::library::{
@@ -90,7 +90,7 @@ pub(super) fn create_page(
             destination,
             pages: vec![LibraryAgentCreatePageDraft {
                 title_markdown: title_markdown.to_owned(),
-                nfm: nfm.to_owned(),
+                markdown: markdown.to_owned(),
                 values: Vec::new(),
             }],
             include_block_ids: true,

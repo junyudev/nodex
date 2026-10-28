@@ -7,7 +7,7 @@ import {
 import type { UserInput } from "@nodex/codex-app-server-protocol/v2";
 import { codexImageFileIdFromSource } from "./codex-image-input";
 import { dedupeCodexLiveFileAttachments } from "./codex-live-file-attachments";
-import { parseInlineContent } from "./nfm";
+import { readInlineMarkdown } from "./nodex-markdown";
 import {
   REVIEW_DIFF_COMMENTS_ADDITIONAL_CONTEXT_KEY,
   serializeReviewDiffCommentAttachmentForPrompt,
@@ -60,20 +60,22 @@ export function createEmptyCodexPreparedPrompt(): PreparedCodexPrompt {
 }
 
 function parsePromptAgentConfigLine(line: string): CodexPromptAgentConfigInput | null {
-  const parsed = parseInlineContent(line.trim());
-  if (parsed.length !== 1) return null;
-
-  const [item] = parsed;
-  if (item?.type !== "agentConfig") return null;
-
-  return {
-    ...(item.mode ? { mode: item.mode } : {}),
-    ...(item.provider ? { provider: item.provider } : {}),
-    ...(item.model ? { model: item.model } : {}),
-    ...(item.reasoning ? { reasoning: item.reasoning } : {}),
-    ...(item.speed ? { speed: item.speed } : {}),
-    ...(item.unknownAttributes?.length ? { unknownAttributes: item.unknownAttributes } : {}),
-  };
+  const trimmed = line.trim();
+  if (!trimmed.startsWith(":agent-config{")) return null;
+  const parsed = readInlineMarkdown(trimmed);
+  const item = parsed[0];
+  if (parsed.length !== 1 || item?.type !== "agentConfig") return null;
+  const props = item.props ?? {};
+  const known = Object.fromEntries(
+    ["mode", "provider", "model", "reasoning", "speed"].flatMap((key) =>
+      typeof props[key] === "string" && props[key] ? [[key, props[key]]] : [],
+    ),
+  );
+  const unknownAttributes =
+    typeof props.unknownAttributes === "string"
+      ? props.unknownAttributes.split(",").filter(Boolean)
+      : [];
+  return { ...known, ...(unknownAttributes.length ? { unknownAttributes } : {}) };
 }
 
 export function splitCodexPromptAgentConfigLines(prompt: string): {
@@ -93,7 +95,7 @@ export function splitCodexPromptAgentConfigLines(prompt: string): {
   }
 
   return {
-    text: textLines.join("\n"),
+    text: textLines.join("\n").trimEnd(),
     agentConfigs,
   };
 }

@@ -11,7 +11,7 @@ import {
 } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { messageTextOf } from "../../../shared/message-content";
-import { extractPlainText } from "../../../shared/nfm/extract-text";
+import { extractMarkdownText } from "../../../shared/nodex-markdown";
 import {
   ArchiveIcon,
   BoardIcon,
@@ -408,7 +408,7 @@ export function InboxRoute({
   const requestDelete = (items: readonly InboxItem[]) =>
     setDeleteRequest({
       pageIds: items.map((item) => item.pageId),
-      preview: items.length === 1 && items[0] ? extractPlainText(items[0].body) : null,
+      preview: items.length === 1 && items[0] ? extractMarkdownText(items[0].body) : null,
     });
   const openTarget = (target: InboxOutcomeTarget) =>
     target.kind === "session" ? onOpenSession(target.sessionId) : onOpenDatabase(target.databaseId);
@@ -455,7 +455,7 @@ export function InboxRoute({
                 {
                   pageId,
                   label: member.pageKey ?? member.title,
-                  preview: extractPlainText(member.body),
+                  preview: extractMarkdownText(member.body),
                 },
               ]
             : [];
@@ -463,7 +463,6 @@ export function InboxRoute({
         onOpenPage={onOpenPage}
         onOpenSession={onOpenSession}
         onManualDraftChange={(draft) => setManualDraft(item.pageId, draft)}
-        onEditAsPage={() => onOpenPage(item.pageId)}
       >
         {(triage) => (
           <InboxMessage

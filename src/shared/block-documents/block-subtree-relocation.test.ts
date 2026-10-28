@@ -10,12 +10,12 @@ import {
   type BlockSubtreeOperationErrorCode,
 } from "./block-subtree-relocation";
 
-const createDocument = (documentId: string, nfm: string, blockIds: readonly string[]) => {
+const createDocument = (documentId: string, markdown: string, blockIds: readonly string[]) => {
   let index = 0;
   const genesis = createPageDocumentGenesis({
     documentId,
     title: documentId,
-    nfm,
+    markdown,
     allocateBlockId: () => {
       const blockId = blockIds[index];
       index += 1;
@@ -43,7 +43,7 @@ describe("Block subtree tree index", () => {
   test("locates canonical containers with path, parent, direct children, and descendants", () => {
     const document = createDocument(
       "tree-index",
-      ["Parent", "\tChild", "\t\tGrandchild", "\tSibling", "Tail"].join("\n"),
+      ":::paragraph[Parent]\n  :::paragraph[Child]\n    Grandchild\n  :::\n\n  Sibling\n:::\n\nTail",
       ["parent", "child", "grandchild", "sibling", "tail"],
     );
 
@@ -65,7 +65,7 @@ describe("Block subtree tree index", () => {
   test("captures non-overlapping roots in source order, independent of request order", () => {
     const document = createDocument(
       "tree-capture",
-      ["A", "\tA child", "B", "C", "\tC child"].join("\n"),
+      ":::paragraph[A]\n  A child\n:::\n\nB\n\n:::paragraph[C]\n  C child\n:::",
       ["a", "a-child", "b", "c", "c-child"],
     );
 
@@ -84,10 +84,10 @@ describe("Block subtree relocation", () => {
   test("moves a stable ordered forest across Documents before a nested anchor", () => {
     const source = createDocument(
       "relocation-source",
-      ["A **bold**", "\tA child", "B", "C", "\tC child"].join("\n"),
+      ":::paragraph[A **bold**]\n  A child\n:::\n\nB\n\n:::paragraph[C]\n  C child\n:::",
       ["a", "a-child", "b", "c", "c-child"],
     );
-    const target = createDocument("relocation-target", ["Parent", "\tX", "\tY"].join("\n"), [
+    const target = createDocument("relocation-target", ":::paragraph[Parent]\n  X\n\n  Y\n:::", [
       "parent",
       "x",
       "y",
@@ -113,9 +113,9 @@ describe("Block subtree relocation", () => {
         .blocks.get("parent")
         ?.directChildBlockIds.join(","),
     ).toBe("x,a,c,y");
-    expect(materializePageDocument(source).nfm).toBe("B");
-    expect(materializePageDocument(target).nfm).toBe(
-      ["Parent", "\tX", "\tA **bold**", "\t\tA child", "\tC", "\t\tC child", "\tY"].join("\n"),
+    expect(materializePageDocument(source).markdown).toBe("B");
+    expect(materializePageDocument(target).markdown).toBe(
+      ":::paragraph[Parent]\n  X\n\n  :::paragraph[A **bold**]\n    A child\n  :::\n\n  :::paragraph[C]\n    C child\n  :::\n\n  Y\n:::",
     );
 
     const sourceReplica = new Y.Doc({ guid: source.guid });
@@ -124,8 +124,10 @@ describe("Block subtree relocation", () => {
     Y.applyUpdate(targetReplica, targetInitialUpdate);
     Y.applyUpdate(sourceReplica, Y.encodeStateAsUpdate(source, sourceVector));
     Y.applyUpdate(targetReplica, Y.encodeStateAsUpdate(target, targetVector));
-    expect(materializePageDocument(sourceReplica).nfm).toBe("B");
-    expect(materializePageDocument(targetReplica).nfm).toBe(materializePageDocument(target).nfm);
+    expect(materializePageDocument(sourceReplica).markdown).toBe("B");
+    expect(materializePageDocument(targetReplica).markdown).toBe(
+      materializePageDocument(target).markdown,
+    );
 
     sourceReplica.destroy();
     targetReplica.destroy();
@@ -134,11 +136,11 @@ describe("Block subtree relocation", () => {
   });
 
   test("moves within one Document and creates a missing child group", () => {
-    const document = createDocument(
-      "relocation-same-document",
-      ["Destination", "First", "Second"].join("\n"),
-      ["destination", "first", "second"],
-    );
+    const document = createDocument("relocation-same-document", "Destination\n\nFirst\n\nSecond", [
+      "destination",
+      "first",
+      "second",
+    ]);
 
     const result = relocateBlockSubtrees({
       sourceDocument: document,
@@ -150,17 +152,18 @@ describe("Block subtree relocation", () => {
     expect(result.sameDocument).toBe(true);
     expect(result.sourceBlockIdsBefore.join(",")).toBe("destination,first,second");
     expect(result.sourceBlockIdsAfter.join(",")).toBe("destination,first,second");
-    expect(materializePageDocument(document).nfm).toBe(
-      ["Destination", "\tFirst", "\tSecond"].join("\n"),
+    expect(materializePageDocument(document).markdown).toBe(
+      ":::paragraph[Destination]\n  First\n\n  Second\n:::",
     );
     document.destroy();
   });
 
   test("rejects duplicate and overlapping roots before mutation", () => {
-    const duplicateDocument = createDocument("duplicate-roots", "Parent\n\tChild", [
-      "parent",
-      "child",
-    ]);
+    const duplicateDocument = createDocument(
+      "duplicate-roots",
+      ":::paragraph[Parent]\n  Child\n:::",
+      ["parent", "child"],
+    );
     const duplicateBefore = encodedState(duplicateDocument);
     expect(
       readOperationErrorCode(() =>
@@ -178,11 +181,11 @@ describe("Block subtree relocation", () => {
   });
 
   test("rejects ancestor cycles and anchors inside the moved subtree", () => {
-    const cycleDocument = createDocument("cycle-relocation", "Parent\n\tChild\nSibling", [
-      "parent",
-      "child",
-      "sibling",
-    ]);
+    const cycleDocument = createDocument(
+      "cycle-relocation",
+      ":::paragraph[Parent]\n  Child\n:::\n\nSibling",
+      ["parent", "child", "sibling"],
+    );
     const before = encodedState(cycleDocument);
 
     expect(
@@ -212,11 +215,11 @@ describe("Block subtree relocation", () => {
 
   test("rejects missing or non-sibling target anchors before mutation", () => {
     const source = createDocument("anchor-source", "Move", ["move"]);
-    const target = createDocument("anchor-target", "Parent\n\tNested\nRoot anchor", [
-      "parent",
-      "nested",
-      "root-anchor",
-    ]);
+    const target = createDocument(
+      "anchor-target",
+      ":::paragraph[Parent]\n  Nested\n:::\n\nRoot anchor",
+      ["parent", "nested", "root-anchor"],
+    );
     const sourceBefore = encodedState(source);
     const targetBefore = encodedState(target);
 
@@ -267,7 +270,7 @@ describe("Block subtree relocation", () => {
   });
 
   test("rejects global identity collisions across Documents", () => {
-    const source = createDocument("identity-source", "Move\nRemain", ["shared", "source-only"]);
+    const source = createDocument("identity-source", "Move\n\nRemain", ["shared", "source-only"]);
     const target = createDocument("identity-target", "Existing", ["shared"]);
     const sourceBefore = encodedState(source);
     const targetBefore = encodedState(target);
@@ -292,10 +295,7 @@ describe("Block subtree relocation", () => {
     const source = createDocument("childless-source", "Move", ["move"]);
     const target = createDocument(
       "childless-target",
-      [
-        '<page-ref url="nodex://pages/target-card" />',
-        '<database-view-ref database-view="target-view" />',
-      ].join("\n"),
+      '::page-ref{page="target-card"}\n\n::database-view-ref{view="target-view"}',
       ["page-ref", "view-ref"],
     );
     const sourceBefore = encodedState(source);

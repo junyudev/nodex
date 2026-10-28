@@ -204,7 +204,7 @@ describe.runIf(enabled)("Rust Core Gate E runtime", () => {
           page_id: createUuidV7(),
           document_id: createUuidV7(),
           title_markdown: "Welcome to Nodex",
-          nfm: "Welcome to Nodex.",
+          markdown: "Welcome to Nodex.",
         },
       },
     });
@@ -231,9 +231,9 @@ describe.runIf(enabled)("Rust Core Gate E runtime", () => {
         projectClient.libraryApply({
           operationId: `gate-e-fixture-page-${index}`,
           intent: {
-            kind: "create_page_from_nfm",
+            kind: "create_page_from_text",
             title_markdown: `Rust Core benchmark Page ${String(index + 1).padStart(4, "0")}`,
-            nfm: `Search projection body ${index + 1}\nShared benchmark token\n`,
+            markdown: `Search projection body ${index + 1}\nShared benchmark token\n`,
             destination: {
               kind: "data_source",
               data_source_id: dataSourceId,
@@ -252,7 +252,7 @@ describe.runIf(enabled)("Rust Core Gate E runtime", () => {
     await projectClient.libraryRead({
       kind: "page_projection_file",
       page_id: firstPageId,
-      file_kind: "body_nested_markdown",
+      file_kind: "body_markdown",
       prepare: null,
     });
 
@@ -262,7 +262,7 @@ describe.runIf(enabled)("Rust Core Gate E runtime", () => {
         projectClient.libraryRead({
           kind: "page_projection_file",
           page_id: firstPageId,
-          file_kind: "body_nested_markdown",
+          file_kind: "body_markdown",
           prepare: null,
         }),
       );
@@ -278,9 +278,9 @@ describe.runIf(enabled)("Rust Core Gate E runtime", () => {
         projectClient.libraryApply({
           operationId: `gate-e-measured-page-${index}`,
           intent: {
-            kind: "create_page_from_nfm",
+            kind: "create_page_from_text",
             title_markdown: `Measured semantic mutation ${index + 1}`,
-            nfm: "Representative transaction with Document and Database projections\n",
+            markdown: "Representative transaction with Document and Database projections\n",
             destination: {
               kind: "data_source",
               data_source_id: dataSourceId,

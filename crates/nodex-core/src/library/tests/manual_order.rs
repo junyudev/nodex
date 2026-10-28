@@ -300,9 +300,9 @@ fn promotion_round_trip(mode: LibraryBlockTransferMode) {
     let after = content(&library, &promoted_page);
     assert_eq!(after.page_id, before.page_id);
     assert_eq!(after.document_id, before.document_id);
-    assert_eq!(after.body_nfm, before.body_nfm);
+    assert_eq!(after.body_markdown, before.body_markdown);
     assert_eq!(after.title, before.title);
-    assert!(after.body_nfm.contains("nodex://files/shared-file"));
+    assert!(after.body_markdown.contains("nodex://files/shared-file"));
     let file = library
         .read(
             &context(),
@@ -719,7 +719,7 @@ fn relocated_page_undo_restores_logical_neighbors_after_rebalance() {
     assert_eq!(ordered_pages(&database), [PAGE, MIDDLE, LAST]);
     let after = content(&library, MIDDLE);
     assert_eq!(after.document_id, before.document_id);
-    assert_eq!(after.body_nfm, before.body_nfm);
+    assert_eq!(after.body_markdown, before.body_markdown);
 }
 
 fn library_roots(library: &LibraryModule) -> Vec<(String, i64)> {

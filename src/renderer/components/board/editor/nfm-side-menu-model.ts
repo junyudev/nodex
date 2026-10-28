@@ -27,7 +27,6 @@ export type NfmSideMenuActionKey =
   | "suggest-edits"
   | "present-from-here"
   | "ask-ai"
-  | "convert-divider-to-thread-section"
   | "table-header-row"
   | "table-header-column"
   | "table-fit-width"
@@ -78,7 +77,6 @@ export interface NfmSideMenuModelInput {
   canUseColor: boolean;
   canSendBlocks: boolean;
   canSendToThread?: boolean;
-  hasConvertDividerToThreadSection: boolean;
   isTableBlock: boolean;
   canUseTableHeaders: boolean;
   showMockActions: boolean;
@@ -228,7 +226,6 @@ function resolveSingleBlockScopeTitle(block: NfmSideMenuTargetBlockDescriptor) {
   if (block.type === "callout") return "Callout";
   if (block.type === "table") return "Table";
   if (block.type === "pageRef") return "Page reference";
-  if (block.type === "threadSection") return "Thread section";
   return "Block";
 }
 
@@ -350,24 +347,6 @@ export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideM
     ];
   });
 
-  const nodexRows: NfmSideMenuAction[] = [];
-  if (
-    input.currentBlockId &&
-    input.currentBlockType === "divider" &&
-    input.selectedTopLevelBlockCount === 1 &&
-    input.hasConvertDividerToThreadSection
-  ) {
-    nodexRows.push({
-      key: "convert-divider-to-thread-section",
-      label: "Make thread section",
-      kind: "action",
-      section: "nodex",
-      visualGroup: "nodex",
-      enabled: input.isEditable,
-      keywords: ["divider", "thread", "section"],
-    });
-  }
-
   const tableRows: NfmSideMenuAction[] =
     input.currentBlockId &&
     input.isTableBlock &&
@@ -442,7 +421,6 @@ export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideM
 
   const sections: NfmSideMenuSection[] = [
     { key: "selection", label: input.selectionTitle, rows: [...codeRows, ...referenceRows] },
-    { key: "nodex", label: "Nodex", rows: nodexRows },
     { key: "table", label: "Table", rows: tableRows },
   ];
 

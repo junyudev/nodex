@@ -11,7 +11,7 @@ vi.mock("@/lib/use-theme", () => ({
 describe("page stage raw content", () => {
   test("renders exact raw content in a read-only chrome", async () => {
     const { PageStageRawContent } = await import("./raw-content");
-    const content = '# Heading\n\n- item 1\n- item 2\n<image source="nodex://assets/demo.png" />';
+    const content = "# Heading\n\n- item 1\n- item 2\n\n![Demo](nodex://assets/demo.png)";
     const view = render(<PageStageRawContent content={content} />);
 
     await settleLazyRender();

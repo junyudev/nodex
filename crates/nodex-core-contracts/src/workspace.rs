@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 48;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 49;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -223,7 +223,7 @@ pub enum ProjectWorkspaceRead {
         limit: u32,
     },
     /// Prepares the user's rewrite of a message still waiting in its Inbox.
-    /// `original_body` is the stored Nested Markdown body the user started from, and `body`
+    /// `original_body` is the stored Nodex Markdown body the user started from, and `body`
     /// the rewrite as message text; a message that changed since, or no longer has the
     /// message shape, cannot be rewritten.
     InboxMessageEdit {
@@ -1407,7 +1407,7 @@ pub struct ProjectWorkspaceStarterPage {
     pub page_id: String,
     pub document_id: String,
     pub title_markdown: String,
-    pub nfm: String,
+    pub markdown: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
@@ -1764,7 +1764,7 @@ pub enum ProjectWorkspaceIntent {
     /// Inbox Database, created on first use; a Project Inbox message becomes a Page in
     /// that Project's Database. Agent provenance, when present, becomes immutable source.
     /// The body is message text with the message shape, text followed by images, and
-    /// becomes the Page body as canonical Nested Markdown. Without a sender title, Core gives the Page a provisional
+    /// becomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional
     /// title that the suggestion Agent may later replace.
     SendInboxMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]

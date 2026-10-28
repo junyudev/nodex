@@ -5,7 +5,7 @@ import type {
   RecoveryPreview as Preview,
 } from "../../../shared/block-documents/document-recovery";
 import { CanvasFilePreview } from "@/components/canvas/canvas-file-preview";
-import { ReadonlyNfmBlockNotePreview } from "@/components/board/editor/readonly-nfm-blocknote-preview";
+import { ReadonlyMarkdownBlockNotePreview } from "@/components/board/editor/readonly-nfm-blocknote-preview";
 
 export function RecoveryPreview({
   value,
@@ -52,7 +52,7 @@ export function RecoveryPreview({
           fallback={value.title || "Untitled document"}
         />
       </h2>
-      <ReadonlyNfmBlockNotePreview
+      <ReadonlyMarkdownBlockNotePreview
         fileAuthority={
           storeEpoch
             ? {
@@ -63,7 +63,7 @@ export function RecoveryPreview({
               }
             : null
         }
-        content={value.nfm}
+        content={value.markdown}
         projectId={scope.routingContext.kind === "project" ? scope.routingContext.projectId : ""}
         pageId={documentId}
         historyId={draftId}

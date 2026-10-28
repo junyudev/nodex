@@ -15,7 +15,7 @@ import {
   resolveThreadMentionDisplay,
   type ThreadMentionDisplay,
   type ThreadMentionDisplayInput,
-} from "@/lib/nfm/thread-mention-display";
+} from "@/lib/editor-model/thread-mention-display";
 import { cn } from "@/lib/utils";
 import { threadMentionInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
 import {
@@ -34,10 +34,10 @@ export interface ThreadMentionProps {
 }
 
 export interface ThreadMentionRuntimeValue {
-  threads: Record<string, CodexThreadSummary>;
+  sessions: Record<string, CodexThreadSummary>;
   resolvingIds: Set<string>;
-  resolveThread?: (threadId: string) => Promise<CodexThreadSummary | null>;
-  openThread?: (threadId: string) => void;
+  resolveSession?: (sessionId: string) => Promise<CodexThreadSummary | null>;
+  openSession?: (sessionId: string) => void;
 }
 
 export interface ThreadMentionInlineContentUpdate {
@@ -49,7 +49,7 @@ const EMPTY_THREADS: Record<string, CodexThreadSummary> = {};
 const EMPTY_RESOLVING_IDS = new Set<string>();
 
 const ThreadMentionRuntimeContext = createContext<ThreadMentionRuntimeValue>({
-  threads: EMPTY_THREADS,
+  sessions: EMPTY_THREADS,
   resolvingIds: EMPTY_RESOLVING_IDS,
 });
 
@@ -143,7 +143,7 @@ function ThreadMentionPopoverBody({
             {chip.label}
           </NodexPopoverTitle>
           <div className="mt-0.5 truncate text-xs text-token-description-foreground">
-            {missing ? "This thread could not be found." : chip.detail}
+            {missing ? "This chat could not be found." : chip.detail}
           </div>
         </div>
       </div>
@@ -156,7 +156,7 @@ function ThreadMentionPopoverBody({
       <div className="mt-3 flex flex-wrap gap-1.5 px-2 pb-1">
         <button
           type="button"
-          aria-label="Copy thread UUID"
+          aria-label="Copy Session ID"
           className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground"
           onClick={(event) => {
             event.preventDefault();
@@ -187,7 +187,7 @@ function ThreadMentionTooltipBody({
     <div className="max-w-[18rem] space-y-0.5 text-left">
       <div className="truncate text-sm font-medium text-token-foreground">{chip.label}</div>
       <div className="truncate text-xs text-token-description-foreground">
-        {missing ? "This thread could not be found." : chip.detail}
+        {missing ? "This chat could not be found." : chip.detail}
       </div>
       <div className="truncate text-xs text-token-description-foreground">
         {thread?.cwd || uuid}
@@ -205,25 +205,25 @@ export function ThreadMentionInlineContentView({
   const [open, setOpen] = useState(false);
   const [missing, setMissing] = useState(false);
   const props = normalizeThreadMentionProps(inlineContent.props);
-  const thread = props.uuid ? (runtime.threads[props.uuid] ?? null) : null;
+  const thread = props.uuid ? (runtime.sessions[props.uuid] ?? null) : null;
   const resolving = props.uuid ? runtime.resolvingIds.has(props.uuid) : false;
   const chip = useMemo(
     () => resolveThreadMentionChip({ uuid: props.uuid, thread, resolving, missing }),
     [missing, props.uuid, resolving, thread],
   );
-  const canOpen = Boolean(props.uuid && runtime.openThread && !missing);
+  const canOpen = Boolean(props.uuid && runtime.openSession && !missing);
 
   useEffect(() => {
     if (thread) {
       setMissing(false);
       return;
     }
-    if (!props.uuid || thread || !runtime.resolveThread) return;
+    if (!props.uuid || thread || !runtime.resolveSession) return;
 
     let cancelled = false;
     setMissing(false);
     void runtime
-      .resolveThread(props.uuid)
+      .resolveSession(props.uuid)
       .then((resolvedThread) => {
         if (!cancelled) setMissing(resolvedThread === null);
       })
@@ -255,7 +255,7 @@ export function ThreadMentionInlineContentView({
         event.preventDefault();
         event.stopPropagation();
         if (canOpen) {
-          runtime.openThread?.(props.uuid);
+          runtime.openSession?.(props.uuid);
           return;
         }
         setOpen((current) => !current);

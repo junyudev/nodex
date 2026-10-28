@@ -9,7 +9,7 @@ use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::events::ProjectionSnapshotAuthority;
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const DATABASE_CONTRACT_VERSION: u32 = 27;
+pub const DATABASE_CONTRACT_VERSION: u32 = 28;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1213,7 +1213,7 @@ pub struct DatabaseRowsById {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct DatabaseRowDetail {
     pub summary: DatabaseRowSummary,
-    pub body_nfm: String,
+    pub body_markdown: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

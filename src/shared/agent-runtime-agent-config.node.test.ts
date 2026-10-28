@@ -46,7 +46,7 @@ it("resolves a model and mode without requiring or manufacturing execution ident
 });
 
 it("parses raw config only when the structured config sidecar is absent", () => {
-  const text = 'Task\n<agent-config model="chosen" />';
+  const text = 'Task\n\n:agent-config{model="chosen"}';
   expect(resolveAgentRuntimeAgentConfig({ ...base, message: { text } })).toMatchObject({
     hasConfig: true,
     message: { text: "Task", modelSelection: { instanceId: "codex", model: "chosen" } },

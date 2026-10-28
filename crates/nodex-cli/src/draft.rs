@@ -43,7 +43,7 @@ const MANIFEST_FILE: &str = "draft.json";
 const BASE_DIRECTORY: &str = "base";
 const WORK_DIRECTORY: &str = "work";
 const META_FILE: &str = "meta.yaml";
-const BODY_FILE: &str = "body.nested.md";
+const BODY_FILE: &str = "body.md";
 const IDENTITY_FILE: &str = "identity.json";
 const APPLY_FILE: &str = "apply.json";
 const APPLY_TEMP_FILE: &str = ".apply.tmp";
@@ -284,10 +284,7 @@ pub(crate) fn create(
     }
     crate::page_mutation::validate_title(base_metadata.title_markdown.clone())
         .map_err(draft_markdown_error)?;
-    decode_body(
-        projection.body_nested_markdown.as_bytes(),
-        &output.join(BODY_FILE),
-    )?;
+    decode_body(projection.body_markdown.as_bytes(), &output.join(BODY_FILE))?;
 
     let identity_bytes = serde_json::to_vec(&DraftIdentity {
         document_id: projection.document_id.clone(),
@@ -322,7 +319,7 @@ pub(crate) fn create(
             store_epoch: projection.store_epoch.clone(),
             created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
             base_meta_sha256: digest(projection.meta_yaml.as_bytes()),
-            base_body_sha256: digest(projection.body_nested_markdown.as_bytes()),
+            base_body_sha256: digest(projection.body_markdown.as_bytes()),
             base_identity_sha256: digest(&identity_bytes),
             normalized_base_metadata_sha256: normalized_metadata_hash(&base_metadata)?,
             base_title_etag: projection.title_etag.clone(),
@@ -344,7 +341,7 @@ pub(crate) fn create(
         )?;
         write_new_file(
             &base_root.join(BODY_FILE),
-            projection.body_nested_markdown.as_bytes(),
+            projection.body_markdown.as_bytes(),
             READ_ONLY_FILE_MODE,
         )?;
         write_new_file(
@@ -359,7 +356,7 @@ pub(crate) fn create(
         )?;
         write_new_file(
             &work_root.join(BODY_FILE),
-            projection.body_nested_markdown.as_bytes(),
+            projection.body_markdown.as_bytes(),
             PRIVATE_FILE_MODE,
         )?;
         fs::set_permissions(
@@ -393,10 +390,10 @@ pub(crate) fn create(
         files: vec![
             MANIFEST_FILE,
             "base/meta.yaml",
-            "base/body.nested.md",
+            "base/body.md",
             "base/identity.json",
             "work/meta.yaml",
-            "work/body.nested.md",
+            "work/body.md",
         ],
     })
     .map(CommandOutput::Json)
@@ -677,7 +674,7 @@ fn compile_body_commands(
     let patches = compile_safe_patches(
         &loaded.base_body,
         &loaded.work_body,
-        &current.body_nested_markdown,
+        &current.body_markdown,
         maximum_commands,
     )?;
     for patch in &patches {
@@ -1864,7 +1861,8 @@ mod tests {
             fs::read(root.join(WORK_DIRECTORY).join(BODY_FILE)).unwrap(),
             b"Replacement\n"
         );
-        let replacement = json!({"kind":"replace_body", "nested_markdown":"Replacement\n", "expected_etag":"body-etag"});
+        let replacement =
+            json!({"kind":"replace_body", "markdown":"Replacement\n", "expected_etag":"body-etag"});
         assert!(serde_json::from_value::<DraftEdit>(replacement).is_err());
     }
 
@@ -1952,7 +1950,7 @@ mod tests {
             document_generation: 1,
             document_head_seq: 1,
             meta_yaml: String::new(),
-            body_nested_markdown: body.to_owned(),
+            body_markdown: body.to_owned(),
             body_blocks: fixture_blocks(body.len()),
             page_files: nodex_core_contracts::library::LibraryPageFileInventory {
                 page_id: "page-1".to_owned(),

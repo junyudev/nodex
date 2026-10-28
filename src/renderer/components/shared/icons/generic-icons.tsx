@@ -21,6 +21,7 @@ import {
   GitBranchPlus as LucideGitBranchPlus,
   GitMerge as LucideGitMerge,
   Hash as LucideHash,
+  ImageIcon as LucideImageIcon,
   ImagePlus as LucideImagePlus,
   KeyRound as LucideKeyRound,
   LayoutGrid as LucideLayoutGrid,
@@ -178,6 +179,10 @@ export const GitBranchPlus: LucideIconType = /* @__PURE__ */ createGenericIcon(
   "GitBranchPlus",
 );
 export const Hash: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideHash, "Hash");
+export const ImageIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
+  LucideImageIcon,
+  "ImageIcon",
+);
 export const ImagePlus: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideImagePlus,
   "ImagePlus",

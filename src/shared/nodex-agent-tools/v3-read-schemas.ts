@@ -17,7 +17,7 @@ import {
   DatabaseViewLayoutSchema,
   MAX_DATABASE_QUERY_PROPERTY_IDS,
   NonManualDatabaseViewSortSchema,
-} from "./read-schemas";
+} from "./database-query-schemas";
 import { PageLocationV3Schema, InlineMarkdownTitleSchema } from "./v3-base-schemas";
 
 const DatabaseSummaryV3Schema = z.strictObject({

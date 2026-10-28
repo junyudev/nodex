@@ -68,7 +68,7 @@ function editorState(selection: EditorState["selection"]) {
   });
 }
 
-describe("nfm side menu selection helpers", () => {
+describe("markdown side menu selection helpers", () => {
   test("keeps the active selection when it contains the clicked block", () => {
     const clickedBlock = block("b");
     const intent = createSideMenuSelectionIntent(

@@ -311,7 +311,7 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                     let mut statement = transaction.prepare(
                         "INSERT INTO document_materializations(\
                            document_id, generation, projected_seq, schema_version, title, \
-                           title_rich_json, title_rich_hash, nfm, plain_text, preview, \
+                           title_rich_json, title_rich_hash, markdown, plain_text, preview, \
                            block_tree_json, references_json, asset_refs_json, updated_at\
                          ) VALUES (?1, 1, 0, ?7, ?2, '[]', ?3, ?4, ?4, ?5, '[]', '[]', '[]', ?6)",
                     )?;
@@ -483,7 +483,7 @@ fn legacy_thread_payload_bytes(connection: &Connection) -> usize {
 fn legacy_database_payload_bytes(connection: &Connection) -> usize {
     let rows = connection
         .prepare(
-            "SELECT model.page_block_id, model.title, materialization.nfm, \
+            "SELECT model.page_block_id, model.title, materialization.markdown, \
                materialization.plain_text, model.database_values_json \
              FROM page_read_model model \
              JOIN document_materializations materialization \
@@ -495,7 +495,7 @@ fn legacy_database_payload_bytes(connection: &Connection) -> usize {
             Ok(json!({
                 "pageId": row.get::<_, String>(0)?,
                 "title": row.get::<_, String>(1)?,
-                "bodyNfm": row.get::<_, String>(2)?,
+                "bodyMarkdown": row.get::<_, String>(2)?,
                 "plainText": row.get::<_, String>(3)?,
                 "values": row.get::<_, String>(4)?,
             }))
@@ -872,7 +872,7 @@ fn read_budget_gate_large_fixture() {
     else {
         panic!("Database returned the wrong detail");
     };
-    assert!(value.body_nfm.contains("BODY-SENTINEL-19999"));
+    assert!(value.body_markdown.contains("BODY-SENTINEL-19999"));
 
     let mutation = database
         .apply(

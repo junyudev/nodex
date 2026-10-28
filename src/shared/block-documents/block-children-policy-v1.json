@@ -18,7 +18,6 @@
     "divider": { "acceptance": "never", "layout": "atomic" },
     "image": { "acceptance": "never", "layout": "atomic" },
     "callout": { "acceptance": "always", "layout": "enclosed" },
-    "threadSection": { "acceptance": "never", "layout": "marker" },
     "page": { "acceptance": "never", "layout": "resource" },
     "database": { "acceptance": "never", "layout": "resource" },
     "canvas": { "acceptance": "never", "layout": "resource" },

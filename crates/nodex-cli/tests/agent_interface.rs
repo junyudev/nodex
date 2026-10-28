@@ -49,6 +49,30 @@ fn capabilities_succeeds_without_resolving_a_profile_or_starting_core() {
 }
 
 #[test]
+fn capabilities_report_the_markdown_revision_that_docs_describe() {
+    let run = |args: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
+            .args(args)
+            .output()
+            .expect("run nodex");
+        assert!(output.status.success());
+        output.stdout
+    };
+    let envelope: Value =
+        serde_json::from_slice(&run(&["--json", "capabilities"])).expect("JSON envelope");
+    let revision = envelope["result"]["formats"]["markdownRevision"]
+        .as_u64()
+        .expect("Nodex Markdown revision");
+    let docs = String::from_utf8(run(&["docs", "markdown"])).expect("UTF-8 docs");
+    let described = docs
+        .split_once("revision: `")
+        .and_then(|(_, rest)| rest.split_once('`'))
+        .map(|(value, _)| value)
+        .expect("docs name their revision");
+    assert_eq!(described, revision.to_string());
+}
+
+#[test]
 fn every_leaf_exposes_machine_readable_help_without_core() {
     let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
         .args(["--json", "page", "move", "--help"])
@@ -79,7 +103,7 @@ fn actual_offline_results_and_errors_obey_the_published_schemas() {
     };
     for command in ["capabilities", "docs"] {
         let path = if command == "docs" {
-            vec!["docs", "nested-markdown"]
+            vec!["docs", "markdown"]
         } else {
             vec![command]
         };

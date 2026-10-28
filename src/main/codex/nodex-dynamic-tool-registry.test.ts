@@ -1,3 +1,4 @@
+import { NODEX_MARKDOWN_COMPACT_HINT } from "../../shared/nodex-markdown/agent-guide";
 import { describe, expect, test } from "vite-plus/test";
 import {
   NODEX_APP_V6_TOOLS,
@@ -29,8 +30,8 @@ describe("createNodexV3DynamicToolRegistry", () => {
     expect(namespace?.type).toBe("namespace");
     if (!namespace || namespace.type !== "namespace") return;
 
-    expect(namespace.description).toContain("Use one literal tab per child level");
-    expect(namespace.description).not.toContain("NFM");
+    expect(namespace.description).toContain(NODEX_MARKDOWN_COMPACT_HINT);
+    expect(namespace.description).not.toMatch(/\bNFM\b|Nested Markdown/u);
     expect(namespace.tools.map((tool) => tool.name).sort()).toEqual([...NODEX_APP_V6_TOOLS].sort());
     expect(
       namespace.tools

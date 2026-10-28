@@ -52,7 +52,7 @@ const CREATE_PAGE_V2_REQUIRED_KEYS = [
   "kind",
   "pageId",
   "title",
-  "nfm",
+  "markdown",
   "status",
   "viewPlacement",
   "dataSourceId",
@@ -111,7 +111,7 @@ export interface CreatePageOperationV2 {
   readonly pageId: string;
   readonly title: string;
   readonly richTitle?: PortableRichText;
-  readonly nfm: string;
+  readonly markdown: string;
   readonly status: WorkflowStatus;
   readonly priority: Priority | null;
   readonly estimate: Estimate | null;
@@ -606,7 +606,7 @@ const parseCreateOperationV2 = (value: unknown): CreatePageOperationV2 => {
   if (!title.trim()) {
     throw new PageLifecycleV2ContractError(`${label}.title cannot be blank`);
   }
-  const nfm = readString(operation, "nfm", label, MAX_PAGE_DESCRIPTION_LENGTH, {
+  const markdown = readString(operation, "markdown", label, MAX_PAGE_DESCRIPTION_LENGTH, {
     allowEmpty: true,
   });
   let richTitle: PortableRichText | undefined;
@@ -706,7 +706,7 @@ const parseCreateOperationV2 = (value: unknown): CreatePageOperationV2 => {
     pageId: readId(operation, "pageId", label),
     title,
     ...(richTitle === undefined ? {} : { richTitle }),
-    nfm,
+    markdown,
     status: operation.status,
     priority: (operation.priority as Priority | null | undefined) ?? null,
     estimate: (operation.estimate as Estimate | null | undefined) ?? null,

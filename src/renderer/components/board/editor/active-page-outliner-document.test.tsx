@@ -137,7 +137,7 @@ function createSurface() {
         storeEpoch: "epoch",
         generation: 1,
         headSeq: 0,
-        schemaKey: "nfm",
+        schemaKey: "markdown",
         schemaVersion: 1,
         readiness: "ready",
         sync: { kind: "yjs", stateVector: Y.encodeStateVector(document) },

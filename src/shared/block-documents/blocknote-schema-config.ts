@@ -76,16 +76,6 @@ export const reusableTemplateRefBlockConfig = {
   content: "none",
 } as const satisfies CustomBlockConfig;
 
-export const threadSectionBlockConfig = {
-  type: "threadSection",
-  propSchema: {
-    ...defaultProps,
-    label: { default: "" },
-    threadId: { default: "" },
-  },
-  content: "none",
-} as const satisfies CustomBlockConfig;
-
 export const attachmentInlineContentConfig = {
   type: "attachment",
   propSchema: {
@@ -145,7 +135,6 @@ export const pageMentionInlineContentConfig = {
 
 export const blockDocumentCustomBlockConfigs = {
   callout: calloutBlockConfig,
-  threadSection: threadSectionBlockConfig,
   page: pageBlockConfig,
   database: databaseBlockConfig,
   canvas: canvasBlockConfig,
@@ -156,7 +145,19 @@ export const blockDocumentCustomBlockConfigs = {
   mathBlock: mathBlockConfig,
 } as const;
 
+export const inlineImageInlineContentConfig = {
+  type: "inlineImage",
+  propSchema: {
+    url: { default: "" },
+    alt: { default: "" },
+    width: { default: undefined, type: "number" },
+    href: { default: undefined, type: "string" },
+  },
+  content: "none",
+} as const satisfies CustomInlineContentConfig;
+
 export const blockDocumentCustomInlineContentConfigs = {
+  inlineImage: inlineImageInlineContentConfig,
   agentConfig: agentConfigInlineContentConfig,
   attachment: attachmentInlineContentConfig,
   dateMention: dateMentionInlineContentConfig,

@@ -5,7 +5,7 @@ import { NodexPopover, NodexPopoverTrigger } from "@/components/ui/popover";
 import { render, settleAsyncRender } from "@/test/dom";
 import { NfmEditorPopoverContent } from "./nfm-editor-popover-content";
 
-describe("nfm editor popover content", () => {
+describe("markdown editor popover content", () => {
   test("keeps editor selection focus stable while opening and closing", async () => {
     const focusProbe = document.createElement("button");
     focusProbe.type = "button";

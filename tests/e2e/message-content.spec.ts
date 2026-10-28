@@ -35,10 +35,13 @@ test("an Inbox message shows its Markdown and the images in its Page", async ({}
       const { pageId } = await seed.sendInboxMessage(
         [
           "Settings buttons have **no accessible labels**:",
+          "",
           "- the gear in the toolbar",
           "- the close button on dialogs",
-          "Keep a \\< b as typed.",
-          `<image source="nodex://files/${fileId}">Settings toolbar</image>`,
+          "",
+          "Keep a < b as typed.",
+          "",
+          `![Settings toolbar](nodex://files/${fileId})`,
         ].join("\n"),
       );
 
@@ -145,7 +148,7 @@ test("the Inbox composer sends pasted and picked images after the text", async (
         await invokeIpc(page, "inbox:window", { scope: { kind: "library" }, filter: "inbox" })
       ).items;
       expect(item?.body).toMatch(
-        /^The toolbar is cut off on \*\*narrow\*\* windows<br>when the sidebar is open\n- the gear\n- the close button\n<image source="nodex:\/\/files\/[^"]+"><\/image>\n<image source="nodex:\/\/files\/[^"]+"><\/image>$/,
+        /^The toolbar is cut off on \*\*narrow\*\* windows\nwhen the sidebar is open\n\n- the gear\n- the close button\n\n!\[\]\(nodex:\/\/files\/[^)]+\)\n\n!\[\]\(nodex:\/\/files\/[^)]+\)$/,
       );
       await page.screenshot({ path: path.join(artifacts, "sent.png") });
 

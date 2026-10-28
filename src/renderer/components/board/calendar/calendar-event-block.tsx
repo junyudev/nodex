@@ -4,7 +4,7 @@ import { formatTimeRange } from "@/lib/calendar-utils";
 import { resolveBoardPriorityOption } from "@/lib/board-options";
 import { estimateStyles } from "@/lib/types";
 import type { Priority, Estimate } from "@/lib/types";
-import { extractPlainText } from "@/lib/nfm/extract-text";
+import { extractMarkdownText } from "../../../../shared/nodex-markdown";
 import { cn } from "@/lib/utils";
 import {
   resolveRecurringIndicatorType,
@@ -150,7 +150,7 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
   };
 
   const timeRange = formatTimeRange(scheduledStart, scheduledEnd);
-  const descriptionText = description ? extractPlainText(description, 80) : undefined;
+  const descriptionText = description ? extractMarkdownText(description, 80) : undefined;
   const priorityOption = resolveBoardPriorityOption(priority);
   const priorityLabel = priorityOption?.shortLabel ?? null;
   const isSourceGhost = dragVisual === "source-ghost";

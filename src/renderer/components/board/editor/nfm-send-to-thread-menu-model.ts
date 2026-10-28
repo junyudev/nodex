@@ -3,7 +3,7 @@ import type { CommandPaletteThread } from "@/lib/command-palette";
 import type { ChatDestinationTarget } from "@/lib/page-chat-actions";
 import { createCommandPaletteThreadSearchIndex } from "@/lib/command-palette-thread-search";
 import { normalizeSearchText } from "@/lib/search-text";
-import { formatThreadMentionShortUuid } from "@/lib/nfm/thread-mention-display";
+import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
 import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
 
 export type NfmSendToThreadMode = "send" | "wrap-toggle";
@@ -16,7 +16,7 @@ export interface NfmSendToThreadRequest {
 }
 
 export type NfmSendToThreadPreferredTarget =
-  | { kind: "thread"; thread: CodexThreadSummary; meta: string }
+  | { kind: "thread"; thread: CodexThreadSummary; sessionId: string; meta: string }
   | { kind: "new-thread"; sessionId: string; meta: "This session"; label?: "New chat" };
 
 export interface NfmSendToThreadNewRow {
@@ -49,6 +49,8 @@ export interface NfmSendToThreadRowsInput {
   query: string;
   preferredTarget?: NfmSendToThreadPreferredTarget | null;
   projectNameById?: Readonly<Record<string, string>>;
+  /** Wrapping leaves a mention of the chat, which only a chat with a Session can have. */
+  requireSession?: boolean;
 }
 
 export function resolveNfmSendToThreadTitle(thread: CodexThreadSummary): string {
@@ -93,6 +95,7 @@ function isAvailablePreferredThread(thread: CodexThreadSummary): boolean {
 
 function createPreferredThreadItem(
   thread: CodexThreadSummary,
+  sessionId: string,
   projectNameById: Readonly<Record<string, string>>,
 ): CommandPaletteThread | null {
   if (!isAvailablePreferredThread(thread)) return null;
@@ -103,7 +106,7 @@ function createPreferredThreadItem(
     kind: "thread",
     id: `thread:${thread.threadId}`,
     threadId: thread.threadId,
-    sessionId: null,
+    sessionId,
     projectId,
     projectName,
     title: resolveNfmSendToThreadTitle(thread),
@@ -143,6 +146,7 @@ function createThreadRow(
     target: {
       kind: "thread",
       threadId: thread.threadId,
+      sessionId: thread.sessionId,
     },
   };
 }
@@ -181,6 +185,7 @@ export function buildNfmSendToThreadRows({
   query,
   preferredTarget = null,
   projectNameById = {},
+  requireSession = false,
 }: NfmSendToThreadRowsInput): NfmSendToThreadRow[] {
   const preferredExistingThreadId =
     preferredTarget?.kind === "thread" ? preferredTarget.thread.threadId : null;
@@ -189,9 +194,17 @@ export function buildNfmSendToThreadRows({
     : null;
   const preferredThreadFallback =
     preferredTarget?.kind === "thread"
-      ? createPreferredThreadItem(preferredTarget.thread, projectNameById)
+      ? createPreferredThreadItem(
+          preferredTarget.thread,
+          preferredTarget.sessionId,
+          projectNameById,
+        )
       : null;
-  const preferredThread = preferredThreadFromResults ?? preferredThreadFallback;
+  // The editor's own Session names its chat even when the chat list has not caught up.
+  const preferredThread =
+    preferredThreadFromResults && preferredTarget?.kind === "thread"
+      ? { ...preferredThreadFromResults, sessionId: preferredTarget.sessionId }
+      : preferredThreadFallback;
   const visiblePreferredThread =
     preferredThread && preferredThreadMatchesQuery(preferredThread, query) ? preferredThread : null;
   const preferredNewThreadRow =
@@ -212,7 +225,7 @@ export function buildNfmSendToThreadRows({
     ...threads
       .filter((thread) => thread.threadId !== visiblePreferredThread?.threadId)
       .map((thread) => createThreadRow(thread, null)),
-  ];
+  ].filter((row) => !requireSession || row.target.sessionId !== null);
 
   if (visiblePreferredNewThreadRow) {
     return [visiblePreferredNewThreadRow, ...threadRows];

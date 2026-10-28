@@ -194,7 +194,7 @@ fn projectless_agent_authority_creates_copies_and_moves_pages_with_exact_receipt
         destination: LibraryAgentPageDestination::Library { at: None },
         pages: vec![LibraryAgentCreatePageDraft {
             title_markdown: "Created".into(),
-            nfm: "Body".into(),
+            markdown: "Body".into(),
             values: vec![],
         }],
         include_block_ids: true,

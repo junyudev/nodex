@@ -42,7 +42,7 @@ For query-selected batches, use the four observation columns and prepare/apply
 workflow in the linked query reference.
 
 `page create-batch --input -` creates 1–16 Pages at an explicit destination in
-one transaction. Drafts use `title_markdown`, `nested_markdown` and typed initial
+one transaction. Drafts use `title_markdown`, `markdown` and typed initial
 `values`. Fetch its input schema for destination/value shapes. Failure rolls
 back the whole batch. Save one key and exact input before a retryable submission.
 

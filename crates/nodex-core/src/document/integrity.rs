@@ -6,8 +6,6 @@ use yrs::{ReadTxn, StateVector, Transact, Update};
 use crate::infrastructure::document_repository::{DocumentHeadRow, DocumentReadRepository};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
-use super::persistence::persist_nfm_derivation_upgrade;
-
 use super::{
     BlockDocumentSchema, DocumentMaterialization, MAX_DOCUMENT_UPDATE_BYTES,
     create_compatible_document, decode_block_document, decode_state_vector_v1,
@@ -32,25 +30,32 @@ pub(crate) fn validate_documents_for_store_revision(
     let repository = DocumentReadRepository::new(connection);
     let heads = repository.live_yjs_heads()?;
     for head in &heads {
-        let reconstructed = reconstruct_live_yjs_document(&repository, head)?;
+        let mut reconstructed = reconstruct_live_yjs_document(&repository, head)?;
+        if store_revision < 192 {
+            let stored = repository
+                .materialization(&head.id)?
+                .ok_or_else(|| corrupt("Document has no materialization"))?;
+            if contains_retired_prompt_marker(&stored.block_tree) {
+                // The migration preflight authenticates the canonical tree and its
+                // adapted projection. Retired marker prose has no current serializer.
+                continue;
+            }
+            reconstructed.schema_version = u32::try_from(head.schema_version)
+                .map_err(|_| corrupt("Invalid Document schema version"))?;
+        }
         assert_persisted_materialization(&repository, head, &reconstructed, store_revision)?;
     }
     Ok(heads.len())
 }
 
-/// Upgrades the NFM encoding after exact source validation. All other derived
-/// fields were proven identical; canonical history, identity indexes, and
-/// owner-scoped references/search/assets keep their existing state and times.
-pub(crate) fn upgrade_document_nfm_derivation(
+/// The predecessor's derivation-only step is subsumed by the final full projection
+/// rebuild. Intermediate revisions are never published during a forward transaction.
+pub(crate) fn upgrade_document_markdown_derivation(
     connection: &Connection,
 ) -> Result<usize, StoreError> {
-    let repository = DocumentReadRepository::new(connection);
-    let heads = repository.live_yjs_heads()?;
-    for head in &heads {
-        let materialization = reconstruct_live_yjs_document(&repository, head)?;
-        persist_nfm_derivation_upgrade(connection, head, &materialization.nfm)?;
-    }
-    Ok(heads.len())
+    Ok(DocumentReadRepository::new(connection)
+        .live_yjs_heads()?
+        .len())
 }
 
 pub(crate) fn materialization_derivation_for_store_revision(
@@ -59,6 +64,7 @@ pub(crate) fn materialization_derivation_for_store_revision(
     match store_revision {
         130..=188 => Ok(2),
         189..=191 => Ok(3),
+        192 => Ok(4),
         _ => Err(StoreError::new(
             StoreErrorCode::UnsupportedSchema,
             format!("Store v{store_revision} has no registered Document derivation"),
@@ -71,13 +77,10 @@ fn reconstruct_live_yjs_document(
     repository: &DocumentReadRepository<'_>,
     head: &DocumentHeadRow,
 ) -> Result<DocumentMaterialization, StoreError> {
-    let schema = BlockDocumentSchema::from_identity(&head.schema_key, head.schema_version)
-        .ok_or_else(|| {
-            corrupt(format!(
-                "Document uses unregistered schema {}@{}",
-                head.schema_key, head.schema_version
-            ))
-        })?;
+    let schema = super::schema_compatibility::current_schema_for_stored_identity(
+        &head.schema_key,
+        head.schema_version,
+    )?;
     let snapshot = repository.latest_snapshot(&head.id, head.generation, head.head_seq)?;
     let document = create_compatible_document(&head.id);
     let snapshot_seq = if let Some(snapshot) = snapshot {
@@ -142,10 +145,37 @@ fn reconstruct_live_yjs_document(
         )));
     }
 
-    let decoded = decode_block_document(&document, schema)
-        .map_err(|error| corrupt(format!("Document {} schema validation: {error}", head.id)))?;
+    let decoded = if BlockDocumentSchema::from_identity(&head.schema_key, head.schema_version)
+        .is_some()
+    {
+        decode_block_document(&document, schema)
+    } else {
+        super::block_document::decode_block_document_allowing_illegal_children(&document, schema)
+            .map(|mut decoded| {
+                decoded.block_tree.blocks =
+                    super::schema_compatibility::normalize_nodex_markdown_forest(
+                        decoded.block_tree.blocks,
+                        &head.id,
+                    )
+                    .0
+                    .blocks;
+                decoded
+            })
+    }
+    .map_err(|error| corrupt(format!("Document {} schema validation: {error}", head.id)))?;
     materialize_decoded_document(&decoded)
         .map_err(|error| corrupt(format!("Document {} materialization: {error}", head.id)))
+}
+
+fn contains_retired_prompt_marker(value: &serde_json::Value) -> bool {
+    value.as_array().is_some_and(|blocks| {
+        blocks.iter().any(|block| {
+            block.get("type").and_then(serde_json::Value::as_str) == Some("threadSection")
+                || block
+                    .get("children")
+                    .is_some_and(contains_retired_prompt_marker)
+        })
+    })
 }
 
 fn assert_persisted_materialization(
@@ -167,16 +197,17 @@ fn assert_persisted_materialization(
         [&head.id],
         |row| row.get::<_, i64>(0),
     )?;
-    let current_nfm_matches = store_revision >= 187 && persisted.nfm == actual.nfm;
-    let nfm_matches = if current_nfm_matches || store_revision >= 189 {
-        current_nfm_matches
+    // Predecessor text projections are disposable. The migration authenticates
+    // their canonical Block tree against hash-checked Yrs authority before rebuilding
+    // them; retaining a second text-language implementation would weaken that boundary.
+    let current = store_revision >= 192;
+    let markdown_matches = !current || persisted.markdown == actual.markdown;
+    let persisted_block_tree = if current {
+        persisted.block_tree.clone()
     } else {
-        let legacy =
-            crate::domain::nfm::materialize_nfm_before_paragraph_protection(&actual.block_tree)
-                .map_err(|error| {
-                    corrupt(format!("Document {} predecessor NFM: {error}", head.id))
-                })?;
-        persisted.nfm == legacy.nfm
+        crate::domain::block_materialization::read_predecessor_block_tree(
+            persisted.block_tree.clone(),
+        )
     };
     let mismatched_fields = [
         (persisted.generation != head.generation, "generation"),
@@ -187,12 +218,15 @@ fn assert_persisted_materialization(
         ),
         (persisted.title != actual.title, "title"),
         (persisted.rich_title != rich_title, "rich_title"),
-        (!nfm_matches, "nfm"),
-        (persisted.plain_text != actual.plain_text, "plain_text"),
-        (persisted.preview != actual.preview, "preview"),
-        (persisted.block_tree != block_tree, "block_tree"),
-        (persisted.references != references, "references"),
-        (persisted.asset_refs != asset_refs, "asset_refs"),
+        (!markdown_matches, "markdown"),
+        (
+            current && persisted.plain_text != actual.plain_text,
+            "plain_text",
+        ),
+        (current && persisted.preview != actual.preview, "preview"),
+        (persisted_block_tree != block_tree, "block_tree"),
+        (current && persisted.references != references, "references"),
+        (current && persisted.asset_refs != asset_refs, "asset_refs"),
         (
             derivation_version != materialization_derivation_for_store_revision(store_revision)?,
             "materialization_derivation_version",

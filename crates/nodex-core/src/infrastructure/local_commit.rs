@@ -2617,17 +2617,17 @@ mod tests {
              ) VALUES \
                ( \
                  'document:relocation-source', 'library:relocation-ledger', 1, 1, \
-                 'nodex.page', 3, X'', '', 'ready', 'ydoc_primary', 'yjs', \
+                 'nodex.page', 4, X'', '', 'ready', 'ydoc_primary', 'yjs', \
                  '2026-08-13', '2026-08-13' \
                ), \
                ( \
                  'document:relocation-target', 'library:relocation-ledger', 1, 1, \
-                 'nodex.page', 3, X'', '', 'ready', 'ydoc_primary', 'yjs', \
+                 'nodex.page', 4, X'', '', 'ready', 'ydoc_primary', 'yjs', \
                  '2026-08-13', '2026-08-13' \
                ), \
                ( \
                  'document:relocation-other', 'library:relocation-ledger', 1, 1, \
-                 'nodex.page', 3, X'', '', 'ready', 'ydoc_primary', 'yjs', \
+                 'nodex.page', 4, X'', '', 'ready', 'ydoc_primary', 'yjs', \
                  '2026-08-13', '2026-08-13' \
                ); \
              INSERT INTO blocks( \

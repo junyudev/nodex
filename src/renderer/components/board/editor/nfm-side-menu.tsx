@@ -63,10 +63,10 @@ import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { claimEditorSelectionSurface } from "@/lib/editor-selection-presentation";
 import { writeTextToClipboard } from "@/lib/clipboard";
-import { canFormatCodeLanguage, getCodeBlockPlainText } from "@/lib/nfm/code-block-model";
-import { codeBlockViewState } from "@/lib/nfm/code-block-view-state";
-import { formatCode } from "@/lib/nfm/code-formatters";
-import { codeLanguagePreference } from "@/lib/nfm/code-language-preference";
+import { canFormatCodeLanguage, getCodeBlockPlainText } from "@/lib/editor-model/code-block-model";
+import { codeBlockViewState } from "@/lib/editor-model/code-block-view-state";
+import { formatCode } from "@/lib/editor-model/code-formatters";
+import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
 import { cn } from "@/lib/utils";
 import { hasTypedOwnerBlock } from "@/lib/typed-owner-blocks";
 import { NFM_TURN_INTO_DEFINITIONS } from "@/lib/nfm-turn-into-targets";
@@ -74,7 +74,7 @@ import type { LibraryStructuralTurnIntoTarget } from "../../../../shared/library
 import {
   CODE_LANGUAGE_CATALOG,
   normalizeCodeLanguageId,
-} from "../../../../shared/nfm/code-language-catalog";
+} from "../../../../shared/code-languages/code-language-catalog";
 import { NfmEditorPopoverContent } from "./nfm-editor-popover-content";
 import { NfmStructuredClipboardExtension, type NfmClipboardCommand } from "./nfm-editor-extensions";
 import { NfmFloatingPopover, type NfmPopoverReference } from "./nfm-floating-popover";
@@ -516,7 +516,7 @@ function getEditorEditable(editor: SideMenuEditorRuntime) {
 }
 
 function supportsBlockColor(editor: SideMenuEditorRuntime, block: SideMenuBlock) {
-  if (!block.type) {
+  if (!block.type || block.type === "image") {
     return {
       text: false,
       background: false,
@@ -600,7 +600,6 @@ function getActionIcon(key: NfmSideMenuActionKey) {
   if (key === "suggest-edits") return <NfmSideMenuSuggestEditsIcon />;
   if (key === "present-from-here") return <NfmSideMenuPlayIcon />;
   if (key === "ask-ai") return <AskAiIcon className="size-5 shrink-0" />;
-  if (key === "convert-divider-to-thread-section") return <CodeIcon />;
   return <NfmSideMenuTableHeaderIcon />;
 }
 
@@ -1510,7 +1509,6 @@ function NfmSideMenuPopup({
         canUseColor: colorSupport.text || colorSupport.background,
         canSendBlocks: runtimeSnapshot.canSendBlocks,
         canSendToThread: runtimeSnapshot.canSendToThread,
-        hasConvertDividerToThreadSection: runtimeSnapshot.hasConvertDividerToThreadSection,
         isTableBlock: selectedTopLevelBlock?.type === "table",
         canUseTableHeaders: editor.settings?.tables?.headers === true,
         showMockActions: import.meta.env.DEV,
@@ -1532,7 +1530,6 @@ function NfmSideMenuPopup({
       codeWrapped,
       hasValidDiagram,
       editor.settings?.tables?.headers,
-      runtimeSnapshot.hasConvertDividerToThreadSection,
       isEditable,
       isSingleCodeBlock,
       runtimeSnapshot.canSendBlocks,
@@ -1772,12 +1769,6 @@ function NfmSideMenuPopup({
           return;
         }
         editor.removeBlocks?.(topLevelSelectedBlocks);
-        close("action");
-        return;
-      }
-
-      if (key === "convert-divider-to-thread-section") {
-        runtimeSnapshot.onConvertDividerToThreadSection(currentBlockId);
         close("action");
         return;
       }

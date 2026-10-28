@@ -21,11 +21,11 @@ pub(crate) use history::prepare_file_content_revisions;
 pub(crate) mod history_fence;
 pub(crate) mod integrity;
 mod maintenance;
+mod markdown_input;
+mod markdown_patch;
 mod materialization;
 mod module;
-mod nfm_input;
-mod nfm_patch;
-pub(crate) use nfm_patch::draft_body_blocks;
+pub(crate) use markdown_patch::draft_body_blocks;
 mod operations;
 mod owners;
 mod persistence;
@@ -37,7 +37,7 @@ mod retention;
 pub(crate) use retention::{erase_document_history, request_block_erasure};
 mod runtime;
 mod schema_compatibility;
-mod schema_migration;
+pub(crate) mod schema_migration;
 mod semantic;
 mod yrs_engine;
 
@@ -72,11 +72,11 @@ pub(crate) use module::{
 pub(crate) use module::{resolve_recovery_canvas_file_target, resolve_recovery_file_target};
 pub use operations::{
     DocumentBlockOperation, DocumentBlockUpdatePatch, DocumentOperationError,
-    DocumentOperationErrorCode, ExactNfmPatch, MAX_DOCUMENT_OPERATION_BATCH_SIZE,
+    DocumentOperationErrorCode, ExactMarkdownPatch, MAX_DOCUMENT_OPERATION_BATCH_SIZE,
     PortableSubtreeDocumentHead, PortableSubtreeTransferKind, PortableSubtreeTransferRequest,
-    PreparedDocumentOperationUpdate, PreparedPortableSubtreeTransfer, apply_exact_nfm_patches,
-    prepare_document_operation_update, prepare_exact_nfm_patch_update,
-    prepare_nfm_replacement_update, prepare_portable_subtree_transfer_updates,
+    PreparedDocumentOperationUpdate, PreparedPortableSubtreeTransfer, apply_exact_markdown_patches,
+    prepare_document_operation_update, prepare_exact_markdown_patch_update,
+    prepare_markdown_replacement_update, prepare_portable_subtree_transfer_updates,
 };
 pub use realtime::{
     AwarenessPublication, DocumentRealtimeEvent, DocumentSubscriptionAck,
@@ -111,9 +111,8 @@ pub(crate) use genesis::{
     prepare_yjs_clone_genesis,
 };
 pub(crate) use history::{
-    NewDocumentCheckpoint, backfill_migrated_document_history,
-    canonical_json_bytes as canonical_document_checkpoint, insert_document_checkpoint,
-    insert_migrated_file_baselines,
+    NewDocumentCheckpoint, canonical_json_bytes as canonical_document_checkpoint,
+    insert_document_checkpoint, insert_migrated_file_baselines,
 };
 #[cfg(test)]
 pub(crate) use persistence::persist_yjs_genesis;
@@ -132,8 +131,9 @@ pub(crate) use schema_compatibility::{
     normalize_stored_materialized_forest,
 };
 pub(crate) use schema_migration::{
-    migrate_block_children_contract, repair_document_schema_projections,
-    validate_block_children_migration_source,
+    migrate_block_children_contract, migrate_block_document_baselines,
+    migrate_nodex_markdown_contract, repair_document_schema_projections,
+    validate_block_children_migration_source, validate_nodex_markdown_migration_source,
 };
 pub(crate) use semantic::{
     mint_document_projection_etags, mint_document_semantic_etags, mint_document_title_etag,

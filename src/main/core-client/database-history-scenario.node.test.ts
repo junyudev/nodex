@@ -228,7 +228,7 @@ test("cross-Project history validates the entire inverse before an atomic commit
       operationId: createUuidV7(),
       status: "build",
       title: "Other Project row",
-      nfm: "Independent content",
+      markdown: "Independent content",
     });
     const ownModel = buildDatabaseViewWindowRenderModel(
       await runScenarioDatabase(ctx.runtime, (module) =>
@@ -410,7 +410,7 @@ test.each(["asc", "desc"] as const)(
           operationId: createUuidV7(),
           status: "build",
           title: key,
-          nfm: "Body",
+          markdown: "Body",
         });
       }
       const initial = await db.read();

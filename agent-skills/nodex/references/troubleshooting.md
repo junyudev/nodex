@@ -47,7 +47,7 @@ Page bodies before replacing them.
 ## Resource missing or content unsupported
 
 Rediscover within the selected context. Do not use deleted rows or raw storage
-as fallback. Preserve native Nested Markdown structure; a lossy or partial
+as fallback. Preserve native Nodex Markdown structure; a lossy or partial
 projection is not a complete replacement baseline. Use explicit semantic
 ownership commands for Page moves/deletion rather than editing owning shells.
 

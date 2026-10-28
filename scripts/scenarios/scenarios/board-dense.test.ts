@@ -252,6 +252,10 @@ class RecordingSeedPort implements ScenarioSeedPort {
     return { commitSeq: 12, createdBlockIds: [] };
   }
 
+  async readPageBlockTree(): Promise<never> {
+    throw new Error("Document Block reads are not part of this scenario");
+  }
+
   async readPage(_projectId: string, pageId: string): Promise<ScenarioPageObservation> {
     return {
       pageId,

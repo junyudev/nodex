@@ -687,7 +687,10 @@ fn validate_and_project(
         archived: row.block_lifecycle == "archived",
         title: row.title.clone().expect("validated title projection"),
         rich_title,
-        description: row.description.clone().expect("validated NFM projection"),
+        description: row
+            .description
+            .clone()
+            .expect("validated Markdown projection"),
         priority,
         estimate,
         tags,

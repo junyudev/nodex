@@ -1,6 +1,6 @@
 import type { components } from "@nodex/core-protocol";
 import { createHash } from "node:crypto";
-import { parseInlineMarkdownTitle } from "../../shared/nfm/agent-title";
+import { parseInlineMarkdownTitle } from "../../shared/nodex-markdown/agent-title";
 import type {
   ExecuteNodexAgentCreatePagesResult,
   NodexAgentCreatePagesCommand,
@@ -66,7 +66,7 @@ const coreRequest = (request: PrepareNodexAgentCreatePagesRequest): CoreCreateRe
   destination: toCoreAgentPageDestination(request.input.destination, []),
   pages: request.input.pages.map((page) => ({
     title_markdown: page.title,
-    nfm: page.markdown ?? "",
+    markdown: page.markdown ?? "",
     values: (page.values ?? []).map((value) => ({
       property_id: value.propertyId,
       value: value.value,
@@ -156,7 +156,7 @@ const command = (
               richText: [...parseInlineMarkdownTitle(draft.title)],
             },
             ...(draft.markdown !== undefined
-              ? { body: { format: "nfm", content: draft.markdown } }
+              ? { body: { format: "markdown", content: draft.markdown } }
               : {}),
           },
           destination: normalizedDestination(request, preparation, index),
@@ -244,16 +244,6 @@ export const prepareNativeNodexAgentPageCreate = async (
             kind: "prepared",
             command: command(request, operationId, preparation),
             documentHeads,
-            previews: preparation.pages.map((page, index) => {
-              const draft = request.input.pages[index];
-              if (!draft) throw new Error(`Agent Page draft ${index} is unavailable`);
-              return {
-                pageId: page.page_id,
-                title: draft.title,
-                bodyBlockCount: page.body_block_ids.length,
-                targetMarkdown: draft.markdown ?? "",
-              };
-            }),
           },
         },
         operationId,

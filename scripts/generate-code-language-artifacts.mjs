@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { serializeGeneratedCodeString } from "./generated-code-string.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const catalogPath = resolve(repositoryRoot, "src/shared/nfm/code-language-catalog-v1.json");
+const catalogPath = resolve(
+  repositoryRoot,
+  "src/shared/code-languages/code-language-catalog-v1.json",
+);
 const bundlePath = resolve(
   repositoryRoot,
   "third_party/blocknote/packages/code-block/src/shiki.bundle.ts",

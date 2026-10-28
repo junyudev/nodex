@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
 import { z } from "zod";
-import { NESTED_MARKDOWN_AGENT_GUIDE, NESTED_MARKDOWN_COMPACT_HINT } from "../nfm/agent-guide";
+import {
+  NODEX_MARKDOWN_AGENT_GUIDE,
+  NODEX_MARKDOWN_COMPACT_HINT,
+} from "../nodex-markdown/agent-guide";
 import { NODEX_AGENT_V3_TOOL_CONTRACTS } from "./v3-contracts";
 import { NODEX_APP_V3_TOOLS, NODEX_APP_V3_TOOLSET_REVISION } from "./identity";
 import {
@@ -19,7 +22,7 @@ import {
   UpdatePageV3InputSchema,
 } from "./v3-write-schemas";
 
-const ETAG = `nxe1.${"a".repeat(43)}`;
+const ETAG = `nxe2.${"a".repeat(43)}`;
 
 describe("nodex_app@4 contracts", () => {
   test("defines one strict contract for every intent tool", () => {
@@ -34,7 +37,7 @@ describe("nodex_app@4 contracts", () => {
     }
   });
 
-  test("uses only Agent-visible Nested Markdown vocabulary", () => {
+  test("uses only Agent-visible Nodex Markdown vocabulary", () => {
     const publicContract = JSON.stringify(
       Object.values(NODEX_AGENT_V3_TOOL_CONTRACTS).map((contract) => ({
         description: contract.description,
@@ -43,14 +46,14 @@ describe("nodex_app@4 contracts", () => {
       })),
     );
 
-    expect(publicContract).not.toMatch(/NFM|nfm/u);
+    expect(publicContract).not.toMatch(/NFM|nested_markdown/u);
     expect(publicContract).not.toContain("documentId");
     expect(publicContract).not.toContain("cardId");
     expect(publicContract).not.toContain("cardIds");
     expect(publicContract).not.toContain("databaseBlockId");
     expect(publicContract).not.toContain('"const":"space"');
     expect(publicContract).toContain("markdown");
-    expect(Buffer.byteLength(NESTED_MARKDOWN_COMPACT_HINT, "utf8")).toBeLessThanOrEqual(200);
+    expect(Buffer.byteLength(NODEX_MARKDOWN_COMPACT_HINT, "utf8")).toBeLessThanOrEqual(200);
   });
 
   test("keeps the full guide opt-in and aligned with the compact tab rule", () => {
@@ -60,18 +63,20 @@ describe("nodex_app@4 contracts", () => {
         include: { markdownGuide: true },
       }).success,
     ).toBe(true);
-    expect(GetContextV3InputSchema.safeParse({ include: { nfmGuide: true } }).success).toBe(false);
+    expect(GetContextV3InputSchema.safeParse({ include: { unknownGuide: true } }).success).toBe(
+      false,
+    );
     expect(
       GetContextV3OutputSchema.safeParse({
         data: {
           libraryId: "library",
           project: null,
 
-          markdownGuide: NESTED_MARKDOWN_AGENT_GUIDE,
+          markdownGuide: NODEX_MARKDOWN_AGENT_GUIDE,
         },
       }).success,
     ).toBe(true);
-    expect(NESTED_MARKDOWN_AGENT_GUIDE.instructions).toContain(NESTED_MARKDOWN_COMPACT_HINT);
+    expect(NODEX_MARKDOWN_AGENT_GUIDE.instructions).toContain(NODEX_MARKDOWN_COMPACT_HINT);
   });
 
   test("defaults fetch to content while guarding Block-only controls", () => {
@@ -162,7 +167,7 @@ describe("nodex_app@4 contracts", () => {
         pages: [
           {
             title: "**Launch** plan",
-            markdown: "▶ Scope\n\tChild paragraph\n\t- [ ] Child task",
+            markdown: ":::toggle[Scope]\n  Child paragraph\n\n  - [ ] Child task\n:::",
           },
         ],
       }).success,
@@ -302,7 +307,7 @@ describe("nodex_app@4 contracts", () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.issues[0]?.message).toContain("<empty-block/>");
+        expect(result.error.issues[0]?.message).toContain("<br>");
       }
     }
     expect(
@@ -311,10 +316,30 @@ describe("nodex_app@4 contracts", () => {
         body: {
           kind: "insert",
           at: { kind: "end" },
-          markdown: "<empty-block/>",
+          markdown: "<br>",
         },
       }).success,
     ).toBe(true);
+  });
+
+  test("writes one Markdown language and refuses the retired body field", () => {
+    const create = (page: Record<string, unknown>) =>
+      CreatePagesV3InputSchema.safeParse({
+        destination: { kind: "library" },
+        pages: [{ title: "Plan", ...page }],
+      }).success;
+    expect(create({ markdown: "- Plan\n  - nested" })).toBe(true);
+    expect(create({})).toBe(true);
+    expect(create({ gfm: "Plan" })).toBe(false);
+    const update = (body: Record<string, unknown>) =>
+      UpdatePageV3InputSchema.safeParse({ pageId: "page-1", body }).success;
+    const insert = { kind: "insert", at: { kind: "end" } };
+    expect(update({ ...insert, markdown: "> [!NOTE]\n> Shipped" })).toBe(true);
+    expect(update({ ...insert, markdown: "<br>" })).toBe(true);
+    expect(update({ ...insert, markdown: "" })).toBe(false);
+    expect(update({ ...insert, gfm: "Plan" })).toBe(false);
+    expect(update({ kind: "replace", markdown: "", ifMatch: ETAG })).toBe(true);
+    expect(update({ kind: "replace", ifMatch: ETAG })).toBe(false);
   });
 
   test("uses Page-only move and duplicate intents without generic transfer fields", () => {

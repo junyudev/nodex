@@ -36,12 +36,11 @@ const generatedOrExternalPaths = [
 ];
 
 // Whitespace and delimiters are protocol data in these syntax references.
-// Formatting them can silently change the examples they define.
+// Formatting them can silently change the Nodex Markdown examples they define,
+// and the Agent reference must stay exactly as its generator writes it.
 const rawMarkdownReferencePaths = [
-  "agent-skills/nodex/references/nested-markdown.md",
-  "docs/references/nested-markdown-spec.md",
+  "agent-skills/nodex/references/markdown.md",
   "docs/references/nodex-markdown.md",
-  "docs/references/notion-flavored-markdown-syntax-sample.md",
 ];
 
 // JavaScript entrypoints use runtime contracts. Tooling test exceptions below

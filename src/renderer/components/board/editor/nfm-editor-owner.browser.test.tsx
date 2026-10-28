@@ -20,12 +20,12 @@ const settle = async () => {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 };
 
-function fixture(retained: boolean, nfm = "") {
+function fixture(retained: boolean, markdown = "") {
   let blockIndex = 0;
   const { document } = createPageDocumentGenesis({
     documentId: `document:editor-owner-${retained}`,
     title: "Editor lifecycle",
-    nfm,
+    markdown,
     allocateBlockId: () =>
       blockIndex++ === 0 ? "block:editor-owner" : `block:editor-owner-${blockIndex}`,
   });
@@ -197,7 +197,7 @@ for (const retained of [false, true])
 test("initial image resolution sees the committed view callback port", async () => {
   const { document, input } = fixture(
     false,
-    'An image\n\n<image source="https://example.test/image.png">Image</image>',
+    "An image\n\n![Image](https://example.test/image.png)",
   );
   const resolveFileUrl = vi.fn(
     async () => "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=",

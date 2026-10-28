@@ -1383,7 +1383,7 @@ export class NodexYProvider {
         const materialization = this.documentSchemaAdapter.inspect(document).materialization;
         return {
           recoveryId: snapshot.recoveryId,
-          nfm: materialization.nfm,
+          markdown: materialization.markdown,
           plainText: materialization.plainText,
         };
       } catch {

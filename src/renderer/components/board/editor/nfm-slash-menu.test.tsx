@@ -6,8 +6,8 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
   buildPageReferenceCandidateSuggestionItems,
   buildPageSearchUnavailableSuggestionItem,
-  buildNfmDateMentionInlineContent,
-  buildNfmDateMentionSuggestionItems,
+  buildDateMentionInlineContent,
+  buildDateMentionSuggestionItems,
   buildNfmPageMentionCreateSuggestionItems,
   buildNfmSlashMenuItems,
   buildNfmThreadMentionInlineContent,
@@ -41,7 +41,7 @@ import {
 } from "@blocknote/react";
 import type { CommandPaletteThread } from "@/lib/command-palette";
 import type { CodexThreadSummary, Project } from "@/lib/types";
-import { codeLanguagePreference } from "@/lib/nfm/code-language-preference";
+import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../../../shared/project-appearance";
 
 describe("Page reference insertion bookmark", () => {
@@ -420,7 +420,6 @@ describe("NfmSlashMenu", () => {
       "Mention a page",
       "Embed page",
       "Canvas",
-      "Thread Section",
       "Agent Config",
     ]);
     expect(
@@ -474,7 +473,6 @@ describe("NfmSlashMenu", () => {
 
     expect(keys.includes("card_reference")).toBe(false);
     expect(keys.includes("toggle_list_inline_view")).toBe(false);
-    expect(keys.includes("thread_section")).toBe(true);
     expect(keys.includes("agent_config")).toBe(true);
     expect(keys.includes("canvas")).toBe(false);
     expect(
@@ -534,7 +532,6 @@ describe("NfmSlashMenu", () => {
       "mention_page",
       "embed_page",
       "subpage",
-      "thread_section",
       "agent_config",
     ];
     const actionItems = items.filter((item) => (item.key ? actionKeys.includes(item.key) : false));
@@ -746,7 +743,7 @@ describe("NfmSlashMenu", () => {
     expect(typeof firstThreadContent === "string").toBe(false);
     if (typeof firstThreadContent === "string") return;
     expect(firstThreadContent?.type).toBe("threadMention");
-    expect(firstThreadContent?.props?.uuid).toBe("thr-payload");
+    expect(firstThreadContent?.props?.uuid).toBe("session-1");
     expect(threadContent[1]).toBe(" ");
   });
 
@@ -788,34 +785,14 @@ describe("NfmSlashMenu", () => {
     expect(items.every((item) => item.tooltipContent !== null)).toBe(true);
   });
 
-  test("maps an app-server-only chat into a thread mention suggestion", () => {
-    const items = buildNfmThreadMentionSuggestionItems(
-      {},
-      [
-        makePaletteThread({
-          id: "thread:server-only-mention",
-          threadId: "server-only-mention",
-          sessionId: null,
-          title: "Historical mention target",
-          searchPreview: {
-            source: "content",
-            excerpt: "Mention evidence from app-server history.",
-            segments: [{ text: "Mention evidence", highlight: true }],
-          },
-        }),
-      ],
-      "evidence",
-    );
-
-    expect(items[0]).toMatchObject({
-      title: "Historical mention target",
-      group: "Mention a chat",
-      detail: "Mention evidence from app-server history.",
-    });
+  test("excludes chats without a Session from mention suggestions", () => {
+    const item = makePaletteThread({ threadId: "server-only", sessionId: null });
+    expect(buildNfmThreadMentionSuggestionItems({}, [item], "")).toEqual([]);
+    expect(buildNfmThreadMentionInlineContent(item)).toEqual([]);
   });
 
   test("date mention suggestions are first for date-like queries and insert inline content", () => {
-    expect(buildNfmDateMentionSuggestionItems({}, "").map(({ title }) => title)).toEqual([
+    expect(buildDateMentionSuggestionItems({}, "").map(({ title }) => title)).toEqual([
       "Today",
       "Now",
     ]);
@@ -825,7 +802,7 @@ describe("NfmSlashMenu", () => {
         [makePaletteThread({ title: "Today planning" })],
         "today",
       ),
-      ...buildNfmDateMentionSuggestionItems({}, "today"),
+      ...buildDateMentionSuggestionItems({}, "today"),
     ]);
 
     expect(items.length > 0).toBe(true);
@@ -836,7 +813,7 @@ describe("NfmSlashMenu", () => {
     expect(items[2]?.title).toBe("Today planning");
     expect(items[2]?.group).toBe("Mention a chat");
 
-    const inlineContent = buildNfmDateMentionInlineContent({
+    const inlineContent = buildDateMentionInlineContent({
       type: "dateMention",
       start: "2026-06-28",
       format: "relative",

@@ -21,7 +21,7 @@ import {
   createPageDocument,
 } from "../../../shared/block-documents/page-document";
 import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
-import { populateBlockDocumentBodyFromNfm } from "../../../shared/block-documents/block-document-codec";
+import { populateBlockDocumentBodyFromMarkdown } from "../../../shared/block-documents/block-document-codec";
 import { projectContentRoute } from "../../../shared/content-routing-context";
 import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
 import { consumePageBlockFocus, requestPageBlockFocus } from "@/lib/page-block-focus-intents";
@@ -237,7 +237,10 @@ describe("page stage", () => {
       documentId: "document:page-1",
       initialTitle: "Live title",
     });
-    populateBlockDocumentBodyFromNfm(surfaceDocument.body, "# Live collaborative body\n\n- item");
+    populateBlockDocumentBodyFromMarkdown(
+      surfaceDocument.body,
+      "# Live collaborative body\n\n- item",
+    );
     loadedPageStage = await import("./page-stage");
   });
 
@@ -437,7 +440,7 @@ describe("page stage", () => {
         await Promise.resolve();
       });
       await act(async () => {
-        populateBlockDocumentBodyFromNfm(surfaceDocument.body, "Updated after view replay");
+        populateBlockDocumentBodyFromMarkdown(surfaceDocument.body, "Updated after view replay");
         await Promise.resolve();
       });
       await waitFor(() => {

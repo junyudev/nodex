@@ -5,9 +5,19 @@ import {
   clipboardFileReferenceSources,
   replaceClipboardFileReferences,
 } from "./clipboard-file-references";
-import { serializeAttachmentClipboardText } from "./nfm/clipboard-attachment";
+import { writePortableMarkdown, type MarkdownInline } from "./nodex-markdown";
 
 const source = "nodex://files/0199134e-cbb0-7000-8000-000000000006";
+
+function attachmentMarkdown(attachment: Readonly<Record<string, unknown>>): string {
+  return writePortableMarkdown([
+    {
+      type: "paragraph",
+      content: [{ type: "attachment", props: attachment } satisfies MarkdownInline],
+      children: [],
+    },
+  ]).markdown;
+}
 
 function readLink(text: string) {
   const [token] = fromMarkdown(text).children;
@@ -36,7 +46,7 @@ describe("clipboard File references", () => {
     "/Users/example/&amp;.html",
     String.raw`C:\my files\setup (v2).html`,
     String.raw`C:\files\setup.html`,
-  ])("keeps %s as the same Markdown destination for direct and exported attachments", (path) => {
+  ])("links %s the same way for direct and exported attachments", (path) => {
     const attachment = {
       type: "attachment",
       kind: "file",
@@ -44,20 +54,16 @@ describe("clipboard File references", () => {
       source: path,
       name: "setup [v2]*`&amp;.html",
     } as const;
-    const direct = serializeAttachmentClipboardText(attachment);
-    const portable = serializeAttachmentClipboardText({
-      ...attachment,
-      mode: "materialized",
-      source,
-    });
+    const portable = attachmentMarkdown({ ...attachment, mode: "materialized", source });
     const exported = replaceClipboardFileReferences(portable, new Map([[source, path]]));
-    expect(exported).toBe(direct);
-    const link = readLink(exported);
-    expect(link.url).toBe(path);
-    expect(link.children.map((token) => token.type)).toEqual(["text"]);
-    expect(link.children.map((token) => ("value" in token ? token.value : "")).join("")).toBe(
-      attachment.name,
-    );
+    for (const written of [attachmentMarkdown(attachment), exported]) {
+      const link = readLink(written);
+      expect(link.url).toBe(path);
+      expect(link.children.map((token) => token.type)).toEqual(["text"]);
+      expect(link.children.map((token) => ("value" in token ? token.value : "")).join("")).toBe(
+        attachment.name,
+      );
+    }
   });
 
   test("rewrites repeated images, attachments and literal references in one pass", () => {

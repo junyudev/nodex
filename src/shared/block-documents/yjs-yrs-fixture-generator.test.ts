@@ -6,8 +6,12 @@ import { Awareness, encodeAwarenessUpdate, removeAwarenessStates } from "y-proto
 import { test } from "vite-plus/test";
 import * as Y from "yjs";
 import yjsPackage from "yjs/package.json";
-import { materializePageDocument, populateBlockDocumentBodyFromNfm } from "./block-document-codec";
+import {
+  materializePageDocument,
+  populateBlockDocumentBodyFromMarkdown,
+} from "./block-document-codec";
 import { assertValidBlockDocument } from "./block-structure";
+import { REUSABLE_TEMPLATE_DOCUMENT_SCHEMA_VERSION } from "./additional-document-bearing-blocks";
 import { createBodyOnlyBlockDocument } from "./body-only-block-document";
 import {
   inspectRegisteredOwnedBlockDocument,
@@ -15,7 +19,10 @@ import {
 } from "./document-schema-adapters";
 import { createPageDocument } from "./page-document";
 import { replaceYTextWithPortableRichText } from "./portable-rich-text";
-import { createSyncedBlockDocument } from "./synced-block-document";
+import {
+  SYNCED_BLOCK_DOCUMENT_SCHEMA_VERSION,
+  createSyncedBlockDocument,
+} from "./synced-block-document";
 import {
   headlessBlockDocumentSchema,
   type HeadlessBlockDocumentPartialBlock,
@@ -86,8 +93,8 @@ const schemaMatrixContent = [
           model: "gpt-5",
           reasoning: "high",
           speed: "fast",
-          unknownAttributes: "",
-          rawAttributes: "mode=agent",
+          unknownAttributes: "future",
+          rawAttributes: 'future="value"',
         },
       },
       {
@@ -96,12 +103,21 @@ const schemaMatrixContent = [
           start: "2026-07-18T09:00:00+08:00",
           end: "2026-07-18T10:00:00+08:00",
           tz: "Asia/Shanghai",
-          format: "datetime",
+          format: "relative",
           timeFormat: "24h",
-          reminder: "PT15M",
+          reminder: "minute:10",
         },
       },
-      { type: "threadMention", props: { uuid: "thread-matrix" } },
+      {
+        type: "inlineImage",
+        props: {
+          url: "https://example.com/icon.svg",
+          alt: "Icon",
+          width: 16,
+          href: "https://example.com",
+        },
+      },
+      { type: "threadMention", props: { uuid: "session-matrix" } },
       { type: "text", text: " after 😀 中文 e\u0301", styles: { italic: true } },
     ],
   },
@@ -173,11 +189,6 @@ const schemaMatrixContent = [
         },
       ],
     },
-  },
-  {
-    id: "matrix-thread-section",
-    type: "threadSection",
-    props: { label: "Implementation", threadId: "thread-1" },
   },
   { id: "matrix-page", type: "page" },
   { id: "matrix-database", type: "database" },
@@ -264,12 +275,15 @@ generate("generates stable Yjs 13 fixtures for the Yrs compatibility corpus", as
     },
   ]);
   let blockIndex = 0;
-  populateBlockDocumentBodyFromNfm(
+  populateBlockDocumentBodyFromMarkdown(
     page.body,
     [
       "# Runtime",
-      "Parent **bold** with [link](https://nodex.local/spec) 😀 中文 e\u0301",
-      "\tNested child",
+      "",
+      ":::paragraph[Parent **bold** with [link](https://nodex.local/spec) 😀 中文 e\u0301]",
+      "  Nested child",
+      ":::",
+      "",
       "Sibling",
     ].join("\n"),
     () => `fixture-block-${++blockIndex}`,
@@ -328,24 +342,24 @@ generate("generates stable Yjs 13 fixtures for the Yrs compatibility corpus", as
     matrixText.insert(0, "JS checkpoint edit ");
   }, "matrix-after-checkpoint");
   const matrixAfterUpdate = Y.encodeStateAsUpdate(matrixAfter, matrixStateVector);
-  const nfmParserOracle = createPageDocument({
-    documentId: "nodex-yjs-yrs-nfm-parser-oracle",
+  const markdownParserOracle = createPageDocument({
+    documentId: "nodex-yjs-yrs-markdown-parser-oracle",
     initializeBody: false,
   });
-  let nfmParserBlockIndex = 0;
-  populateBlockDocumentBodyFromNfm(
-    nfmParserOracle.body,
-    matrixMaterialization.nfm,
-    () => `oracle-nfm-${++nfmParserBlockIndex}`,
+  let markdownParserBlockIndex = 0;
+  populateBlockDocumentBodyFromMarkdown(
+    markdownParserOracle.body,
+    matrixMaterialization.markdown,
+    () => `oracle-markdown-${++markdownParserBlockIndex}`,
   );
-  const nfmParserMaterialization = materializePageDocument(nfmParserOracle.document);
+  const markdownParserMaterialization = materializePageDocument(markdownParserOracle.document);
 
   const emptyPage = createPageDocument({
     documentId: "nodex-yjs-yrs-empty-page",
     initializeBody: false,
   });
   emptyPage.document.clientID = 1_301;
-  populateBlockDocumentBodyFromNfm(emptyPage.body, "", () => "empty-page-paragraph");
+  populateBlockDocumentBodyFromMarkdown(emptyPage.body, "", () => "empty-page-paragraph");
   const emptyPageMaterialization = materializePageDocument(emptyPage.document);
 
   const syncedBlock = createSyncedBlockDocument({
@@ -358,7 +372,7 @@ generate("generates stable Yjs 13 fixtures for the Yrs compatibility corpus", as
     inspectRegisteredOwnedBlockDocument(syncedBlock.document, {
       ownerType: "synced_block_source",
       schemaKey: "nodex.synced-block",
-      schemaVersion: 2,
+      schemaVersion: SYNCED_BLOCK_DOCUMENT_SCHEMA_VERSION,
     }).materialization,
   );
 
@@ -369,7 +383,7 @@ generate("generates stable Yjs 13 fixtures for the Yrs compatibility corpus", as
   });
   reusableTemplate.document.clientID = 1_303;
   let templateIndex = 0;
-  populateBlockDocumentBodyFromNfm(
+  populateBlockDocumentBodyFromMarkdown(
     reusableTemplate.body,
     "Template **body** 😀",
     () => `template-block-${++templateIndex}`,
@@ -378,7 +392,7 @@ generate("generates stable Yjs 13 fixtures for the Yrs compatibility corpus", as
     inspectRegisteredOwnedBlockDocument(reusableTemplate.document, {
       ownerType: "reusable_template_source",
       schemaKey: "nodex.reusable-template",
-      schemaVersion: 2,
+      schemaVersion: REUSABLE_TEMPLATE_DOCUMENT_SCHEMA_VERSION,
     }).materialization,
   );
 
@@ -429,12 +443,12 @@ generate("generates stable Yjs 13 fixtures for the Yrs compatibility corpus", as
       `${JSON.stringify(matrixMaterialization, null, 2)}\n`,
     ),
     writeFile(
-      path.join(outputRoot, "nfm-parser-oracle.json"),
+      path.join(outputRoot, "markdown-parser-oracle.json"),
       `${JSON.stringify(
         {
-          input: matrixMaterialization.nfm,
-          blockTree: nfmParserMaterialization.blockTree,
-          nfm: nfmParserMaterialization.nfm,
+          input: matrixMaterialization.markdown,
+          blockTree: markdownParserMaterialization.blockTree,
+          markdown: markdownParserMaterialization.markdown,
         },
         null,
         2,
@@ -450,7 +464,7 @@ generate("generates stable Yjs 13 fixtures for the Yrs compatibility corpus", as
           yjsVersion: yjsPackage.version,
           title: merged.getText("title").toString(),
           bodyXml: merged.getXmlFragment("body").toString(),
-          nfm: materialization.nfm,
+          markdown: materialization.markdown,
           blockIds: materialization.blockTree.map((block) => block.id),
           matrix: {
             title: matrix.document.getText("title").toString(),

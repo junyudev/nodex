@@ -2,12 +2,12 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   canonicalizeDocumentOperationBatch,
   canonicalizeDocumentOperationIntent,
-  canonicalizeReplaceDocumentFromNfm,
-  canonicalizeReplaceDocumentFromNfmIntent,
+  canonicalizeReplaceDocumentFromMarkdown,
+  canonicalizeReplaceDocumentFromMarkdownIntent,
   DocumentOperationContractError,
   parseDocumentOperationBatch,
   parseDocumentOperationCommandResult,
-  parseReplaceDocumentFromNfm,
+  parseReplaceDocumentFromMarkdown,
 } from "./document-operations";
 import { committedLocalCommit } from "../testing/local-commit";
 
@@ -22,12 +22,12 @@ const BASE = {
   expectedHeadSeq: 4,
 } as const;
 
-const rejectsContract = (value: unknown, kind: "batch" | "nfm"): boolean => {
+const rejectsContract = (value: unknown, kind: "batch" | "markdown"): boolean => {
   try {
     if (kind === "batch") {
       parseDocumentOperationBatch(value);
     } else {
-      parseReplaceDocumentFromNfm(value);
+      parseReplaceDocumentFromMarkdown(value);
     }
     return false;
   } catch (error) {
@@ -167,9 +167,9 @@ describe("Document operation contract", () => {
         canonicalizeDocumentOperationBatch(retriedOperation),
     ).toBe(false);
 
-    const replacement = { ...BASE, nfm: "Body" };
-    expect(canonicalizeReplaceDocumentFromNfmIntent(replacement)).toBe(
-      canonicalizeReplaceDocumentFromNfmIntent({
+    const replacement = { ...BASE, markdown: "Body" };
+    expect(canonicalizeReplaceDocumentFromMarkdownIntent(replacement)).toBe(
+      canonicalizeReplaceDocumentFromMarkdownIntent({
         ...replacement,
         clientSessionId: "browser-retry",
         actor: { kind: "ipc", id: "same-local-user" },
@@ -246,19 +246,19 @@ describe("Document operation contract", () => {
     ).toBe(true);
   });
 
-  test("keeps explicit NFM replacement separate and CAS-bound", () => {
-    const replacement = parseReplaceDocumentFromNfm({
+  test("keeps explicit Markdown replacement separate and CAS-bound", () => {
+    const replacement = parseReplaceDocumentFromMarkdown({
       ...BASE,
-      nfm: "First\nSecond",
+      markdown: "First\n\nSecond",
     });
-    expect(replacement.nfm).toBe("First\nSecond");
-    expect(canonicalizeReplaceDocumentFromNfm(replacement)).toBe(
-      canonicalizeReplaceDocumentFromNfm({
-        nfm: "First\nSecond",
+    expect(replacement.markdown).toBe("First\n\nSecond");
+    expect(canonicalizeReplaceDocumentFromMarkdown(replacement)).toBe(
+      canonicalizeReplaceDocumentFromMarkdown({
+        markdown: "First\n\nSecond",
         ...BASE,
       }),
     );
-    expect(rejectsContract({ ...BASE, nfm: "Body", operations: [] }, "nfm")).toBe(true);
+    expect(rejectsContract({ ...BASE, markdown: "Body", operations: [] }, "markdown")).toBe(true);
   });
 
   test("strictly parses transport-neutral success and conflict results", () => {

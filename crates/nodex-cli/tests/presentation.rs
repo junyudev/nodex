@@ -34,13 +34,13 @@ fn captured_results_default_to_json_and_explicit_text_overrides_them() {
 
 #[test]
 fn content_documentation_stays_raw_in_a_pipe_and_can_be_explicitly_wrapped() {
-    let raw = invoke(&["docs", "nested-markdown"]);
+    let raw = invoke(&["docs", "markdown"]);
     assert!(raw.status.success());
     assert_eq!(
         raw.stdout,
-        include_bytes!("../../../agent-skills/nodex/references/nested-markdown.md")
+        include_bytes!("../../../agent-skills/nodex/references/markdown.md")
     );
-    let structured = invoke(&["--json", "docs", "nested-markdown"]);
+    let structured = invoke(&["--json", "docs", "markdown"]);
     assert!(structured.status.success());
     let structured: Value = serde_json::from_slice(&structured.stdout).unwrap();
     assert_eq!(

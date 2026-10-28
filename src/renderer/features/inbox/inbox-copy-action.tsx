@@ -1,5 +1,5 @@
 import type { InboxItem } from "../../../shared/inbox";
-import { parseNfm } from "../../../shared/nfm/parser";
+import { readMarkdown } from "../../../shared/nodex-markdown";
 import { writtenMessageText } from "../../../shared/message-content";
 import { CheckmarkIcon, CopyIcon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
@@ -14,15 +14,15 @@ import { inboxPageRoutingContext } from "./inbox-presentation";
  * part is read from its Page.
  */
 async function inboxMessageText(item: InboxItem): Promise<string> {
-  const nfm = item.bodyTruncated
+  const markdown = item.bodyTruncated
     ? (
         await loadPageDocumentMaterialization({
           routingContext: inboxPageRoutingContext(item),
           pageId: item.pageId,
         })
-      ).nfm
+      ).markdown
     : item.body;
-  return writtenMessageText(parseNfm(nfm));
+  return writtenMessageText(readMarkdown(markdown));
 }
 
 export function InboxCopyAction({ item }: { readonly item: InboxItem }) {

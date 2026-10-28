@@ -29,7 +29,7 @@ export const documentSyncRecoveryScenario: ScenarioDomainRecipe = {
       operationId: createUuidV7(),
       status: "build",
       title: "Edit and recover",
-      nfm: "First paragraph\n\nSecond paragraph\n\nLast paragraph",
+      markdown: "",
     });
     const otherDocument = await port.createPage({
       key: "other",
@@ -38,17 +38,18 @@ export const documentSyncRecoveryScenario: ScenarioDomainRecipe = {
       operationId: createUuidV7(),
       status: "build",
       title: "Independent page",
-      nfm: "This document remains independent.",
+      markdown: "This document remains independent.",
     });
-    const body = await port.replaceOwnedDocument({
+    await port.replaceOwnedDocument({
       projectId: project.id,
       pageId: source,
       mutationId: createUuidV7(),
       operationId: createUuidV7(),
       clientSessionId: createUuidV7(),
-      nfm: "First paragraph\nSecond paragraph\nLast paragraph",
+      markdown: "First paragraph\n\nSecond paragraph\n\nLast paragraph",
     });
-    const lastBlockId = body.createdBlockIds[2];
+    const roots = await port.readPageBlockTree(project.id, source);
+    const lastBlockId = roots[2]?.id;
     if (!lastBlockId) throw new Error("Recovery scenario needs three paragraph identities");
     await port.createStandalonePage({
       pageId: child,

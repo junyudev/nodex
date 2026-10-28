@@ -66,7 +66,6 @@ function StreamMessage({
         inboxProjectId={null}
         menu={() => null}
         onManualDraftChange={vi.fn()}
-        onEditAsPage={vi.fn()}
       >
         {(triage) => (
           <InboxMessage

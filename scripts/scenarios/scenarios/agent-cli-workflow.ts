@@ -26,7 +26,7 @@ const materialize = async (
     projectId: project.id,
     status: "build",
     title: AGENT_CLI_PAGE_TITLE,
-    nfm: "# Release meeting\n\nRelease date: Friday.\n\nKeep the rollback checklist intact.",
+    markdown: "# Release meeting\n\nRelease date: Friday.\n\nKeep the rollback checklist intact.",
   });
   const page = await port.readPage(project.id, pageId);
   return {

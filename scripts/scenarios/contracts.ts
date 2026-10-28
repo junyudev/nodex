@@ -36,6 +36,13 @@ import type {
 
 export const SCENARIO_MANIFEST_VERSION = 1 as const;
 
+/** A committed Block's identity, type and place, enough to seed against an existing Document. */
+export interface ScenarioBlockNode {
+  readonly id: string;
+  readonly type: string;
+  readonly children: readonly ScenarioBlockNode[];
+}
+
 export interface ScenarioPageSeed {
   readonly key: string;
   readonly pageId: string;
@@ -43,7 +50,7 @@ export interface ScenarioPageSeed {
   readonly projectId: string;
   readonly status: WorkflowStatus;
   readonly title: string;
-  readonly nfm: string;
+  readonly markdown: string;
 }
 
 export interface ScenarioStandalonePageSeed {
@@ -62,7 +69,7 @@ export interface ScenarioDocumentReplacement {
   readonly clientSessionId: string;
   readonly projectId: string;
   readonly pageId: string;
-  readonly nfm: string;
+  readonly markdown: string;
 }
 
 export interface ScenarioLibraryFileSeed {
@@ -156,9 +163,11 @@ export interface ScenarioSeedPort {
   readPrimaryDataSourcePropertyCount(projectId: string): Promise<number>;
   readDatabase(request: DatabaseModuleReadRequestV2): Promise<DatabaseModuleReadResultV2>;
   applyDatabase(request: DatabaseApplyV2): Promise<DatabaseApplyResultV2>;
+  /** Created identities exclude retained Blocks; readPageBlockTree supplies committed order. */
   replaceOwnedDocument(
     input: ScenarioDocumentReplacement,
   ): Promise<{ readonly commitSeq: number; readonly createdBlockIds: readonly string[] }>;
+  readPageBlockTree(projectId: string, pageId: string): Promise<readonly ScenarioBlockNode[]>;
   createLibraryFile(input: ScenarioLibraryFileSeed): Promise<LibraryFile>;
   addPageFileEntry(input: ScenarioPageFileEntrySeed): Promise<LibraryPageFileEntryReceipt>;
   readPageFileInventory(projectId: string, pageId: string): Promise<LibraryPageFileInventory>;

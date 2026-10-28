@@ -23,7 +23,7 @@ pub(crate) struct PageGenesisInput<'a> {
     pub(crate) page_id: &'a str,
     pub(crate) document_id: &'a str,
     pub(crate) title_markdown: &'a str,
-    pub(crate) nfm: &'a str,
+    pub(crate) markdown: &'a str,
     pub(crate) destination: &'a PageCopyDataSourceDestination,
     pub(crate) now: &'a str,
 }
@@ -58,7 +58,7 @@ pub(crate) fn create_page_in_data_source(
         input.document_id,
         "page_body_block",
         &rich_title,
-        input.nfm,
+        input.markdown,
         None,
         input.now,
     )?;

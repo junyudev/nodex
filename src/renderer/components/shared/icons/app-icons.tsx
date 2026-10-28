@@ -4089,7 +4089,7 @@ export function NfmTableBlockIcon({ className }: IconProps) {
   );
 }
 
-export function NfmImageBlockIcon({ className }: IconProps) {
+export function ImageBlockIcon({ className }: IconProps) {
   return <ImageIcon className={cn("size-5 shrink-0", className)} />;
 }
 

@@ -2,13 +2,13 @@ import type {
   PortableRichTextItem,
   PortableRichTextStyles,
 } from "../../shared/block-documents/portable-rich-text";
-import { formatDateMentionPlainText } from "../../shared/nfm/date-mention";
-import type { NfmColor } from "../../shared/nfm/types";
+import { formatDateMentionPlainText } from "../../shared/rich-text/date-mention";
+import type { RichTextColor } from "../../shared/rich-text/colors";
 import { cn } from "./utils";
 
-const titleColorClass = (color: NfmColor | undefined): string | undefined => {
+const titleColorClass = (color: RichTextColor | undefined): string | undefined => {
   if (!color) return undefined;
-  const classes: Record<NfmColor, string> = {
+  const classes: Record<RichTextColor, string> = {
     gray: "text-[var(--gray-text)]",
     brown: "text-[var(--brown-text,#64473a)]",
     orange: "text-[var(--orange-text,#d9730d)]",

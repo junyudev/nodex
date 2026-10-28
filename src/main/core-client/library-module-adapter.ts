@@ -707,7 +707,7 @@ const toCorePageLifecycleMutation = (
         page_id: operation.pageId,
         title: operation.title,
         rich_title: operation.richTitle ?? null,
-        nfm: operation.nfm,
+        markdown: operation.markdown,
         status: operation.status,
         priority: operation.priority,
         estimate: operation.estimate,

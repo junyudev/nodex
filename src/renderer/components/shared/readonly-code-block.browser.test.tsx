@@ -3,7 +3,7 @@ import { describe, expect, test } from "vite-plus/test";
 import "@/globals.css";
 import { NfmDocument } from "@/components/board/nfm-renderer";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
-import { parseNfm } from "@/lib/nfm/parser";
+import { readMarkdown } from "../../../shared/nodex-markdown";
 import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import { contrastRatio, getPaintedBackground, parseComputedColor } from "@/test/color-contrast";
 import {
@@ -20,7 +20,7 @@ const source = "```bash\nbrew install --cask qlvideo && qlmanage -r cache\n```";
 
 const surfaces = {
   "assistant thread": () => <MarkdownRenderer content={source} dialect="conversation" />,
-  "user message": () => <NfmDocument blocks={parseNfm(source)} density="message" />,
+  "user message": () => <NfmDocument blocks={readMarkdown(source)} density="message" />,
 };
 
 describe.each(["light", "dark"] as const)("read-only code in the %s scheme", (theme) => {

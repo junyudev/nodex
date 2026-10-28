@@ -1,7 +1,7 @@
 import { Activity, StrictMode, useLayoutEffect } from "react";
 import { act, fireEvent, render } from "@testing-library/react";
 import { expect, test } from "vite-plus/test";
-import { populateBlockDocumentBodyFromNfm } from "../../shared/block-documents/block-document-codec";
+import { populateBlockDocumentBodyFromMarkdown } from "../../shared/block-documents/block-document-codec";
 import {
   materializePageCreateDescription,
   type PageCreateDescriptionDraft,
@@ -35,7 +35,7 @@ test("recreates live draft Documents across view replay while preserving edits a
   expect(initial.document.isDestroyed).toBe(false);
   expect(materializePageCreateDescription(initial)).toBe("Restored draft");
   await act(async () => {
-    populateBlockDocumentBodyFromNfm(initial.body, "Edited description\n\n- Keep this item");
+    populateBlockDocumentBodyFromMarkdown(initial.body, "Edited description\n\n- Keep this item");
     await Promise.resolve();
   });
   const edited = materializePageCreateDescription(initial);

@@ -1,9 +1,9 @@
-# NFM Editor Child-Group Keyboard Behavior
+# Page Editor Child-Group Keyboard Behavior
 
 Status: Active
-Last Updated: 2026-04-13
+Last Updated: 2026-10-28
 
-This document describes the current `Enter` and `Backspace` behavior for nested child groups inside the NFM / BlockNote editor.
+This document describes the current `Enter` and `Backspace` behavior for nested child groups inside the BlockNote Page editor.
 
 This is intentionally narrower than the main product spec. It is the detailed source of truth for child-group keyboard overrides implemented in:
 
@@ -23,7 +23,6 @@ Included:
 
 Not included:
 
-- Thread-section `Cmd/Ctrl+Enter` behavior
 - Composer `Enter` behavior outside the editor
 - Link-menu or find/replace `Enter` handling
 - Generic BlockNote default keyboard behavior when these handlers do not match

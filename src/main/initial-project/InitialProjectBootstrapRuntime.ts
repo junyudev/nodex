@@ -119,7 +119,7 @@ const make = (options: InitialProjectBootstrapRuntimeOptions) =>
                 pageId: createId(),
                 documentId: createId(),
                 titleMarkdown: page.titleMarkdown,
-                nfm: page.nfm,
+                markdown: page.markdown,
               },
             },
           } satisfies InitialProjectJournal;
@@ -140,7 +140,7 @@ const make = (options: InitialProjectBootstrapRuntimeOptions) =>
           starterPage: {
             ...attempt.payload.starterPage,
             titleMarkdown: page.titleMarkdown,
-            nfm: page.nfm,
+            markdown: page.markdown,
           },
         },
       };

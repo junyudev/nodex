@@ -118,7 +118,7 @@ async function createInitialProject(client: CoreClient, nodexHome: string): Prom
         page_id: "page:getting-started",
         document_id: "document:getting-started",
         title_markdown: "Welcome to Nodex",
-        nfm: "Welcome to Nodex.",
+        markdown: "Welcome to Nodex.",
       },
     },
   });

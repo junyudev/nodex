@@ -1,8 +1,9 @@
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type { CodexPromptInput } from "@/lib/types";
 
+/** An existing chat names its Session when it has one, so mentions of it can name that Session. */
 export type ChatDestinationTarget =
-  | { readonly kind: "thread"; readonly threadId: string }
+  | { readonly kind: "thread"; readonly threadId: string; readonly sessionId: string | null }
   | { readonly kind: "new-thread"; readonly sessionId?: string };
 
 export interface OpenPageInNewChatInput {

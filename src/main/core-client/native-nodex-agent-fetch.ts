@@ -6,8 +6,8 @@ import type {
   NodexAgentV3ReadRequest,
 } from "../../shared/nodex-agent-tools";
 import { FetchV6OutputSchema } from "../../shared/nodex-agent-tools/v6-schemas";
-import { serializeInlineMarkdownTitle } from "../../shared/nfm/agent-title";
-import { extractPlainText } from "../../shared/nfm/extract-text";
+import { serializeInlineMarkdownTitle } from "../../shared/nodex-markdown/agent-title";
+import { extractMarkdownText } from "../../shared/nodex-markdown";
 import { nativeAgentClient, type NativeNodexAgentCore } from "./native-nodex-agent-core";
 import { toCoreAgentExecutionAuthorization } from "./core-agent-execution-authorization";
 import { mapNativeNodexAgentCoreError } from "./native-nodex-agent-page-update";
@@ -218,7 +218,7 @@ async function readFetchObservation(
       format === "summary"
         ? {
             format,
-            text: extractPlainText(snapshot.nested_markdown, 4_096),
+            text: extractMarkdownText(snapshot.markdown, 4_096),
           }
         : format === "blocks"
           ? {
@@ -236,8 +236,8 @@ async function readFetchObservation(
             }
           : {
               format,
-              markdown: snapshot.nested_markdown,
-              contentHash: createHash("sha256").update(snapshot.nested_markdown).digest("hex"),
+              markdown: snapshot.markdown,
+              contentHash: createHash("sha256").update(snapshot.markdown).digest("hex"),
               ...(snapshot.body_etag ? { etag: snapshot.body_etag } : {}),
             };
     const ownsDocument = target.block_id === target.owner_page_id;

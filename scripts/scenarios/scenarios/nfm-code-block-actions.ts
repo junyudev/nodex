@@ -76,7 +76,7 @@ const materialize = async (
     projectId: project.id,
     status: "build",
     title: "Exercise Code Block actions",
-    nfm: NFM_CODE_BLOCK_ACTIONS_NFM,
+    markdown: NFM_CODE_BLOCK_ACTIONS_NFM,
   };
   await port.createPage(page);
   return {

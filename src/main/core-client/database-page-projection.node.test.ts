@@ -116,7 +116,7 @@ const makeRow = (pageId: string, status: "triage" | "build" = "build"): DataSour
     scheduled_end: databaseValue("scheduled_end", "datetime", "2026-07-25T09:00:00.000Z"),
     assignee: databaseValue("assignee", "text", "Ada"),
   },
-  bodyNfm: "# Detail\n\nA body with **structure**.",
+  bodyMarkdown: "# Detail\n\nA body with **structure**.",
   intrinsicProperties: [
     { key: "run.target", valueType: "string", value: "newWorktree", revision: 1 },
     { key: "run.localPath", valueType: "string", value: "/repo/nodex", revision: 1 },
@@ -288,7 +288,7 @@ describe("native Database Page projections", () => {
 
   test("fails closed when native exact-head or intrinsic evidence is absent", () => {
     const row = makeRow("page:missing");
-    const withoutBody = { ...row, bodyNfm: undefined };
+    const withoutBody = { ...row, bodyMarkdown: undefined };
     const withoutIntrinsic = { ...row, intrinsicProperties: undefined };
 
     expect(() => projectDatabasePage(withoutBody)).toThrowError(DatabasePageProjectionError);

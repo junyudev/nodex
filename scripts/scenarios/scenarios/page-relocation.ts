@@ -70,7 +70,7 @@ const materialize = async (
       projectId: sourceProject.id,
       status: "build",
       title: "Move this Page",
-      nfm: "This content and Page identity must survive relocation and Undo.",
+      markdown: "This content and Page identity must survive relocation and Undo.",
     }),
     port.createPage({
       key: PAGE_RELOCATION_TARGET_PAGE_KEY,
@@ -79,7 +79,7 @@ const materialize = async (
       projectId: targetProject.id,
       status: "plan",
       title: "Beta parent Page",
-      nfm: "A valid Page destination in the same Library.",
+      markdown: "A valid Page destination in the same Library.",
     }),
     port.createStandalonePage({
       pageId: standalonePageId,

@@ -14,7 +14,7 @@ use crate::database::{
 use crate::document::{ContentRoutingContext, DocumentHeadRevision};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 55;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 56;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -240,7 +240,7 @@ pub struct LibraryAgentPageCopyRequest {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryAgentCreatePageDraft {
     pub title_markdown: String,
-    pub nfm: String,
+    pub markdown: String,
     pub values: Vec<LibraryPageCopyValue>,
 }
 
@@ -1383,7 +1383,7 @@ pub enum LibraryPageLifecycleMutation {
         page_id: String,
         title: String,
         rich_title: Option<Value>,
-        nfm: String,
+        markdown: String,
         status: LibraryPageWorkflowStatus,
         priority: Option<String>,
         estimate: Option<String>,
@@ -1635,7 +1635,7 @@ pub struct LibraryPageContent {
     pub schema_version: i64,
     pub title: String,
     pub rich_title: Value,
-    pub body_nfm: String,
+    pub body_markdown: String,
     pub plain_text: String,
     pub preview: String,
     pub references: Vec<LibraryContentReference>,
@@ -1922,7 +1922,7 @@ pub struct PreparedBlobReceipt {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LibraryPageProjectionFileKind {
-    BodyNestedMarkdown,
+    BodyMarkdown,
     MetaYaml,
 }
 
@@ -2049,7 +2049,7 @@ pub struct LibraryPageProjectionFile {
     pub validators: LibraryPageProjectionFileValidators,
 }
 
-/// UTF-8 byte interval in the draft's exact Nested Markdown body.
+/// UTF-8 byte interval in the draft's exact Nodex Markdown body.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryPageDraftSpan {
     pub start: usize,
@@ -2077,7 +2077,7 @@ pub struct LibraryPageDraftProjection {
     pub document_generation: i64,
     pub document_head_seq: i64,
     pub meta_yaml: String,
-    pub body_nested_markdown: String,
+    pub body_markdown: String,
     pub body_blocks: Vec<LibraryPageDraftBlock>,
     pub page_files: LibraryPageFileInventory,
     pub title_etag: String,
@@ -2273,11 +2273,11 @@ pub enum LibraryContentReference {
         #[serde(rename = "displayHint", skip_serializing_if = "Option::is_none")]
         display_hint: Option<String>,
     },
-    Thread {
+    Session {
         #[serde(rename = "sourceBlockId")]
         source_block_id: String,
-        #[serde(rename = "targetThreadId")]
-        target_thread_id: String,
+        #[serde(rename = "targetSessionId")]
+        target_session_id: String,
     },
 }
 
@@ -2971,12 +2971,12 @@ pub enum LibraryIntent {
         mention_host: LibraryPageMentionHost,
         destination: LibraryPageMentionDestination,
     },
-    CreatePagesFromNfm {
+    CreatePagesFromText {
         request: LibraryAgentCreatePagesRequest,
     },
-    CreatePageFromNfm {
+    CreatePageFromText {
         title_markdown: String,
-        nfm: String,
+        markdown: String,
         destination: LibraryPageWriteDestination,
     },
     CreateDatabase {

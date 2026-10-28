@@ -17,12 +17,13 @@ use sha2::{Digest, Sha256};
 
 use crate::database::repair_scheduled_page_indexes;
 use crate::document::integrity::{
-    materialization_derivation_for_store_revision, upgrade_document_nfm_derivation,
+    materialization_derivation_for_store_revision, upgrade_document_markdown_derivation,
     validate_documents_for_store_revision, validate_restore_documents,
 };
 use crate::document::{
-    migrate_block_children_contract, repair_document_schema_projections,
-    validate_block_children_migration_source,
+    migrate_block_children_contract, migrate_block_document_baselines,
+    migrate_nodex_markdown_contract, repair_document_schema_projections,
+    validate_block_children_migration_source, validate_nodex_markdown_migration_source,
 };
 use crate::domain::fractional_rank::materialize_order;
 use crate::domain::identity::random_uuid_v7;
@@ -369,6 +370,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 191,
         apply: migrate_v190_to_v191,
     },
+    MigrationStep {
+        from_revision: 191,
+        to_revision: 192,
+        apply: migrate_v191_to_v192,
+    },
 ];
 
 fn resolve_migration_path(
@@ -633,6 +639,7 @@ fn validate_migration_source(
         materialization_derivation_for_store_revision(source_revision)?,
     )?;
     if source_revision >= CURRENT_DOCUMENT_SCHEMA_REVISION {
+        validate_nodex_markdown_migration_source(connection)?;
         validate_documents_for_store_revision(connection, source_revision)?;
     } else {
         validate_block_children_migration_source(connection)?;
@@ -1396,6 +1403,7 @@ fn migrate_v136_to_v137(
            SELECT RAISE(ABORT, 'Scheduled Page index owner must be a Page in the Library');
          END;",
     )?;
+    migrate_block_children_contract(connection, context.completed_at_unix_ms)?;
     let document = repair_document_schema_projections(connection, context.completed_at_unix_ms)?;
     let completed_at = timestamp_from_unix_ms(context.completed_at_unix_ms)?;
     let refreshed_scheduled_pages = repair_scheduled_page_indexes(connection, &completed_at)?;
@@ -2474,7 +2482,8 @@ fn migrate_v188_to_v189(
     context: &MigrationContext,
 ) -> Result<(), StoreError> {
     connection.execute_batch(include_str!("../../schema/migrations/v188_to_v189.sql"))?;
-    let rebuilt = upgrade_document_nfm_derivation(connection)?;
+    migrate_block_document_baselines(connection, context.completed_at_unix_ms)?;
+    let rebuilt = upgrade_document_markdown_derivation(connection)?;
     validate_restore_documents(connection)?;
     connection.execute(
         "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
@@ -2496,6 +2505,22 @@ fn migrate_v190_to_v191(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"temporary_side_chats":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+/// All unreleased Nodex Markdown document normalizations share this version.
+fn migrate_v191_to_v192(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    let evidence = migrate_nodex_markdown_contract(connection, context.completed_at_unix_ms)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            serde_json::to_string(&evidence).map_err(|_| internal("Nodex Markdown migration evidence could not be encoded"))?],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -3555,10 +3580,10 @@ mod tests {
 
         let mut fresh = Connection::open_in_memory().expect("fresh Store");
         install_current_schema(&mut fresh).expect("install current schema");
-        let migrated_inventory =
-            super::super::schema::read_schema_inventory(&migrated).expect("migrated inventory");
+        let migrated_inventory = crate::infrastructure::schema::read_schema_inventory(&migrated)
+            .expect("migrated inventory");
         let fresh_inventory =
-            super::super::schema::read_schema_inventory(&fresh).expect("fresh inventory");
+            crate::infrastructure::schema::read_schema_inventory(&fresh).expect("fresh inventory");
         let differences = fresh_inventory
             .iter()
             .filter_map(|(key, fresh_sql)| {
@@ -5545,7 +5570,7 @@ mod tests {
             transaction.execute(
                 "INSERT INTO document_materializations(document_id,generation,projected_seq,schema_version,title,title_rich_json,title_rich_hash,nfm,plain_text,preview,block_tree_json,updated_at)
                  VALUES (?1,1,0,3,?2,?3,?4,?5,?6,?7,?8,?9)",
-                params![DOCUMENT,materialization.title,title,crate::document::sha256(title.as_bytes()),materialization.nfm,
+                params![DOCUMENT,materialization.title,title,crate::document::sha256(title.as_bytes()),materialization.markdown,
                     materialization.plain_text,materialization.preview,serde_json::to_string(&materialization.block_tree).unwrap(),NOW],
             )?;
             for (id, kind) in [("owned", "structural_edit"), ("unowned", "structural_edit"), ("capture", "structural_edit"), ("transfer", "block_transfer")] {
@@ -5927,8 +5952,8 @@ mod tests {
                     library_id,
                     genesis.materialization.title,
                     genesis.materialization.preview,
-                    genesis.materialization.nfm.len() as i64,
-                    i64::from(!genesis.materialization.nfm.trim().is_empty())
+                    genesis.materialization.markdown.len() as i64,
+                    i64::from(!genesis.materialization.markdown.trim().is_empty())
                 ],
             )?;
             transaction.execute(
@@ -6675,7 +6700,7 @@ mod tests {
             .pragma_update(None, "user_version", 153)
             .expect("unpublished revision");
         let inventory =
-            super::super::schema::read_schema_inventory(&connection).expect("inventory");
+            crate::infrastructure::schema::read_schema_inventory(&connection).expect("inventory");
         let secrets = profile_secrets(&connection);
         let mut events = Vec::new();
         let error =
@@ -6693,7 +6718,8 @@ mod tests {
             153
         );
         assert_eq!(
-            super::super::schema::read_schema_inventory(&connection).expect("unchanged inventory"),
+            crate::infrastructure::schema::read_schema_inventory(&connection)
+                .expect("unchanged inventory"),
             inventory
         );
         assert_eq!(profile_secrets(&connection), secrets);
@@ -7577,6 +7603,17 @@ mod tests {
         // Start the published predecessor without upgrading it. Current public operations
         // produce the Page/Document and membership closure shared by v184 and v185.
         let predecessor = SqliteStoreKernel::open_test(profile.path()).expect("v184 runtime");
+        // Current authoring operates on the successor's field names; restore the
+        // exact historical physical schema before exercising migration admission.
+        predecessor
+            .writer()
+            .call(|connection| {
+                connection.execute_batch(
+                    "ALTER TABLE document_materializations RENAME COLUMN nfm TO markdown",
+                )?;
+                Ok::<_, StoreError>(())
+            })
+            .unwrap();
         let (profile_id, library_id, epoch): (String, String, String) = predecessor
             .readers()
             .read_default(|connection| {
@@ -7691,6 +7728,7 @@ mod tests {
                 Ok(())
             })?;
             super::derivation_tests::rewrite_as_predecessor(connection, 184);
+            connection.execute_batch("ALTER TABLE document_materializations RENAME COLUMN markdown TO nfm")?;
             validate_migration_source(connection, 184)
         }).expect("valid historical Inbox closure");
         drop(module);
@@ -7834,6 +7872,139 @@ mod tests {
         assert_eq!(
             MIGRATION_STEPS.last().expect("migration tail").to_revision,
             CURRENT_STORE_REVISION
+        );
+    }
+    #[test]
+    fn frozen_v191_migrates_markdown_heads_history_and_projections_once() {
+        use crate::infrastructure::document_repository::DocumentReadRepository;
+        let profile = tempdir().unwrap();
+        fs::write(
+            profile.path().join("nodex.db"),
+            include_bytes!("../../tests/fixtures/store-v191.db"),
+        )
+        .unwrap();
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        let old_epoch: String = connection
+            .query_row(
+                "SELECT store_epoch FROM block_store_metadata WHERE id=1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let prepared = prepare_profile_store(&mut connection, profile.path()).unwrap();
+        assert_eq!(prepared.migrated_from_version, Some(191));
+        let backup_name: String = connection.query_row(
+            "SELECT backup_name FROM core_store_migration_history WHERE source_revision=191 AND target_revision=192",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        let backups = profile.path().join("backups/core-migrations");
+        validate_migration_backup(&backups.join(backup_name), 191)
+            .expect("exact predecessor backup");
+
+        let new_epoch: String = connection
+            .query_row(
+                "SELECT store_epoch FROM block_store_metadata WHERE id=1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_ne!(old_epoch, new_epoch);
+        let materialization = DocumentReadRepository::new(&connection)
+            .materialization("88d43209-dfa6-7de3-83c3-7c33a5661d57")
+            .unwrap()
+            .unwrap();
+        assert!(
+            materialization
+                .markdown
+                .contains("<nodex://sessions/session%3Anative>")
+        );
+        let complete = connection.query_row("SELECT block_tree_json,markdown FROM document_materializations WHERE document_id=(SELECT id FROM documents WHERE id IN (SELECT document_id FROM document_versions) LIMIT 1)",[],|row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?))).unwrap();
+        let blocks: Vec<crate::domain::block_materialization::MaterializedBlockNode> =
+            serde_json::from_str(&complete.0).unwrap();
+        let image = blocks
+            .iter()
+            .find(|block| block.block_type == "image")
+            .expect("migrated image");
+        assert!(!image.props.contains_key("backgroundColor"));
+        assert_eq!(image.props["caption"], "A *literal* bold  caption\nnext");
+        assert!(complete.1.contains("<nodex://sessions/session%3Aruntime>"));
+        assert!(
+            complete
+                .1
+                .contains("[Unbound chat](codex://threads/legacy%3Aunbound%20%2Fchat)")
+        );
+        assert!(
+            blocks
+                .iter()
+                .all(|block| block.block_type != "threadSection")
+        );
+        assert!(
+            blocks
+                .iter()
+                .any(|block| block.content.as_ref().is_some_and(|content| content
+                    .as_array()
+                    .is_some_and(|items| items
+                        .iter()
+                        .any(|item| item.get("text").and_then(serde_json::Value::as_str)
+                            == Some("Kept child")))))
+        );
+        let (bytes, format): (Vec<u8>, String) = connection
+            .query_row(
+                "SELECT full_update_blob,checkpoint_format FROM document_versions LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let checkpoint: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(format, "block_tree_snapshot_v3");
+        let retained: Vec<crate::domain::block_materialization::MaterializedBlockNode> =
+            serde_json::from_value(checkpoint["blockTree"].clone()).unwrap();
+        assert!(
+            retained
+                .iter()
+                .all(|block| block.block_type != "threadSection")
+        );
+        assert_eq!(
+            retained
+                .iter()
+                .find(|block| block.block_type == "image")
+                .unwrap()
+                .props["caption"],
+            image.props["caption"]
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT MIN(materialization_derivation_version) FROM document_materializations",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            4
+        );
+        validate_schema_identity(&connection, 192).unwrap();
+        let fresh = tempdir().unwrap();
+        let mut fresh_connection = open_writer(&fresh.path().join("nodex.db")).unwrap();
+        prepare_profile_store(&mut fresh_connection, fresh.path()).unwrap();
+        assert_eq!(
+            crate::infrastructure::schema::read_schema_inventory(&connection).unwrap(),
+            crate::infrastructure::schema::read_schema_inventory(&fresh_connection).unwrap()
+        );
+        assert_eq!(connection.query_row("SELECT count(*) FROM core_store_migration_history WHERE source_revision=191 AND target_revision=192",[],|row| row.get::<_,i64>(0)).unwrap(),1);
+        let reopened = prepare_profile_store(&mut connection, profile.path()).unwrap();
+        assert_eq!(reopened.migrated_from_version, None);
+        assert_eq!(fs::read_dir(backups).unwrap().count(), 1);
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT store_epoch FROM block_store_metadata WHERE id=1",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            new_epoch
         );
     }
 }

@@ -84,7 +84,7 @@ fn deleted_view_reference_does_not_freeze_document_edits() {
         )
         .expect("edit text and display hint while retaining unavailable reference");
     let (head, engine) = synced_page_engine(&seeded);
-    let materialization = materialize_engine(&engine, BlockDocumentSchema::PageV3).unwrap();
+    let materialization = materialize_engine(&engine, BlockDocumentSchema::PageV4).unwrap();
     assert_eq!(materialization.title, "Still editable");
     assert_eq!(materialization.references.len(), 1);
     let error = seeded
@@ -121,7 +121,7 @@ fn deleted_view_reference_does_not_freeze_document_edits() {
         .expect("remove unavailable reference");
     let (_, engine) = synced_page_engine(&seeded);
     assert!(
-        materialize_engine(&engine, BlockDocumentSchema::PageV3)
+        materialize_engine(&engine, BlockDocumentSchema::PageV4)
             .unwrap()
             .references
             .is_empty()
@@ -184,10 +184,13 @@ fn library_reads_page_references_from_canonical_document_commits() {
 }
 
 #[test]
-fn deleted_thread_mentions_allow_text_edits_but_not_more_mentions() {
+fn deleted_session_mentions_allow_text_edits_but_not_more_mentions() {
     let seeded = seeded_module();
-    let thread = seed_agent_turn(&seeded, "reference:thread");
-    let mention = json!({"type": "threadMention", "props": {"uuid": thread.authority.thread_id}});
+    seeded.kernel.writer().call(|connection| {
+        connection.execute("INSERT INTO project_sessions(id,project_id,no_thread_fallback_title,\"order\",created_at,updated_at) VALUES('session:mention',?1,'Mentioned chat',0,?2,?2)",params![PROJECT_ID,NOW])?;
+        Ok::<_,StoreError>(())
+    }).unwrap();
+    let mention = json!({"type":"threadMention","props":{"uuid":"session:mention"}});
     let (head, engine) = synced_page_engine(&seeded);
     seeded
         .module
@@ -212,21 +215,18 @@ fn deleted_thread_mentions_allow_text_edits_but_not_more_mentions() {
                 ),
             ),
         )
-        .expect("insert readable Thread mention");
-    ProjectWorkspaceModule::new(PROFILE_ID, LIBRARY_ID, &seeded.kernel)
-        .unwrap()
-        .apply(
-            &context(),
-            ModuleApplyRequest {
-                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                operation_id: "reference:thread-delete".to_owned(),
-                store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-                intent: ProjectWorkspaceIntent::DeleteThread {
-                    thread_id: thread.authority.thread_id,
-                },
-            },
-        )
-        .expect("delete mentioned Thread");
+        .expect("insert existing Session mention");
+    seeded
+        .kernel
+        .writer()
+        .call(|connection| {
+            connection.execute(
+                "DELETE FROM project_sessions WHERE id='session:mention'",
+                [],
+            )?;
+            Ok::<_, StoreError>(())
+        })
+        .unwrap();
     let (head, engine) = synced_page_engine(&seeded);
     let content_update = |content| DocumentBlockOperation::UpdateBlock {
         block_id: CREATED_REFERENCE_BLOCK_ID.to_owned(),

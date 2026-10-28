@@ -48,8 +48,7 @@ import {
   NFM_SUGGESTION_MENU_TOOLTIP_Z_INDEX,
   NFM_SUGGESTION_MENU_Z_INDEX,
 } from "./nfm-blocknote-floating-ui";
-import { createEmptyThreadSectionBlock } from "./thread-section";
-import { formatThreadMentionShortUuid } from "@/lib/nfm/thread-mention-display";
+import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
 import {
   ThreadIcon,
   BellIcon,
@@ -57,7 +56,7 @@ import {
   ClockIcon,
   CanvasIcon,
   CodeIcon,
-  NfmImageBlockIcon,
+  ImageBlockIcon,
   NfmSideMenuPageInIcon,
   NfmTableBlockIcon,
   PageIcon,
@@ -66,8 +65,11 @@ import {
   MoreActionsIcon,
   SettingsGeneralIcon,
 } from "@/components/shared/icons";
-import { buildDateMentionQueryMatches, type DateMentionQueryMatch } from "@/lib/nfm/date-mention";
-import type { NfmDateMentionInlineContent } from "@/lib/nfm/types";
+import {
+  buildDateMentionQueryMatches,
+  type DateMentionQueryMatch,
+} from "../../../../shared/rich-text/date-mention";
+import type { DateMentionInlineContent } from "../../../../shared/rich-text/date-mention";
 import { dateMentionPayloadToProps } from "./date-mention-inline-content";
 import { useBlockReferenceHostRuntime } from "@/components/block-documents/block-reference-runtime-context";
 import { toast } from "@/components/ui/toast";
@@ -84,7 +86,7 @@ import type {
 import {
   type MentionSuggestionFamily,
   type MentionSuggestionRank,
-} from "@/lib/nfm/mention-suggestion-model";
+} from "@/lib/editor-model/mention-suggestion-model";
 import type { Project } from "@/lib/types";
 import {
   buildCommandPaletteCharacterHighlightSegments,
@@ -95,18 +97,18 @@ import { StatusIcon } from "@/lib/status-presentation";
 import { WORKFLOW_STATUS_LABELS } from "../../../../shared/workflow-status";
 import { contentRoutingContextKey } from "../../../../shared/content-routing-context";
 import { NFM_TURN_INTO_DEFINITIONS } from "@/lib/nfm-turn-into-targets";
-import { codeLanguagePreference } from "@/lib/nfm/code-language-preference";
+import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
 import { NfmTurnIntoBlockIcon, type NfmTurnIntoBlockKey } from "./nfm-turn-into-block-icon";
 import {
   evaluateNfmTypedSuggestionTrigger,
   getNfmSlashTriggerCharacters,
   type NfmTypedSuggestionKind,
-} from "@/lib/nfm/editor-trigger-policy";
+} from "@/lib/editor-model/editor-trigger-policy";
 import {
   getNfmPageMentionEntryProfile,
   selectNfmPageMentionSections,
   type NfmPageMentionEntryProfile,
-} from "@/lib/nfm/page-mention-entrypoint";
+} from "@/lib/editor-model/page-mention-entrypoint";
 import { useNfmPageMentionCreateFlow } from "./nfm-page-mention-create-flow";
 import type { NfmSuggestionItem } from "./nfm-suggestion-item";
 
@@ -258,7 +260,6 @@ const NFM_SLASH_MENU_ITEM_PRESENTATIONS = [
   { key: "mention_page", group: "Pages", label: "Mention a page" },
   { key: "embed_page", group: "Pages", label: "Embed page" },
   { key: "canvas", group: "Pages", label: "Canvas" },
-  { key: "thread_section", group: "Agent", label: "Thread Section" },
   { key: "agent_config", group: "Agent", label: "Agent Config" },
 ] as const satisfies readonly NfmSlashMenuItemPresentation[];
 
@@ -277,11 +278,10 @@ function getNfmSlashMenuItemIcon(key: NfmSlashMenuItemKey, turnIntoKey?: NfmTurn
   if (key === "emoji") return <TextActionReactionIcon />;
   if (key === "divider") return <Minus className="size-5" />;
   if (key === "table") return <NfmTableBlockIcon />;
-  if (key === "image") return <NfmImageBlockIcon />;
+  if (key === "image") return <ImageBlockIcon />;
   if (key === "canvas") return <CanvasIcon className="size-5" />;
   if (key === "embed_page") return <NfmSideMenuPageInIcon />;
   if (key === "subpage" || key === "mention_page") return <PageIcon className="size-5" />;
-  if (key === "thread_section") return <ThreadIcon className="size-5" />;
   if (key === "math_block" || key === "inline_math") return <TextActionEquationIcon />;
   if (key === "code_mermaid") return <CodeIcon />;
   return <SettingsGeneralIcon className="size-5" />;
@@ -760,17 +760,6 @@ export function getNfmSlashMenuCustomItems(
     },
   } satisfies NfmSuggestionItem;
 
-  const threadSectionItem = {
-    key: "thread_section",
-    title: "Thread Section",
-    subtext: "Insert a runnable notebook-style prompt boundary",
-    aliases: ["thread", "section", "prompt section", "cell"],
-    hint: null,
-    onItemClick: () => {
-      insertBlock(editor, createEmptyThreadSectionBlock() as unknown as Record<string, unknown>);
-    },
-  } satisfies NfmSuggestionItem;
-
   const agentConfigItem = {
     key: "agent_config",
     title: "Agent Config",
@@ -893,7 +882,6 @@ export function getNfmSlashMenuCustomItems(
     ...(mentionPageItem ? [mentionPageItem] : []),
     ...(embedPageItem ? [embedPageItem] : []),
     ...(subpageItem ? [subpageItem] : []),
-    threadSectionItem,
     agentConfigItem,
   ];
 
@@ -1134,16 +1122,17 @@ function resolveThreadMentionContext(item: CommandPaletteThread): string {
 }
 
 export function buildNfmThreadMentionInlineContent(item: CommandPaletteThread): unknown[] {
+  if (!item.sessionId) return [];
   return [
     {
       type: "threadMention",
-      props: { uuid: item.threadId },
+      props: { uuid: item.sessionId },
     },
     " ",
   ];
 }
 
-export function buildNfmDateMentionInlineContent(payload: NfmDateMentionInlineContent): unknown[] {
+export function buildDateMentionInlineContent(payload: DateMentionInlineContent): unknown[] {
   return [
     {
       type: "dateMention",
@@ -1153,7 +1142,7 @@ export function buildNfmDateMentionInlineContent(payload: NfmDateMentionInlineCo
   ];
 }
 
-export function buildNfmDateMentionSuggestionItem(
+export function buildDateMentionSuggestionItem(
   editor: unknown,
   match: DateMentionQueryMatch,
   sourceOrder = 0,
@@ -1176,18 +1165,18 @@ export function buildNfmDateMentionSuggestionItem(
     },
     icon: <Icon className="size-4" aria-hidden="true" />,
     onItemClick: () => {
-      insertInlineContent(editor, buildNfmDateMentionInlineContent(match.payload));
+      insertInlineContent(editor, buildDateMentionInlineContent(match.payload));
     },
   };
 }
 
-export function buildNfmDateMentionSuggestionItems(
+export function buildDateMentionSuggestionItems(
   editor: unknown,
   query: string,
   now = new Date(),
 ): NfmSuggestionItem[] {
   return buildDateMentionQueryMatches(query, now).map((match, index) =>
-    buildNfmDateMentionSuggestionItem(editor, match, index),
+    buildDateMentionSuggestionItem(editor, match, index),
   );
 }
 
@@ -1376,52 +1365,54 @@ export function buildNfmThreadMentionSuggestionItems(
     titleCounts.set(title, (titleCounts.get(title) ?? 0) + 1);
   }
 
-  return items.map((item, sourceOrder) => {
-    const title = resolveThreadMentionTitle(item);
-    const match = classifyThreadMentionMatch(item, query);
-    const excerpt = resolveMentionSearchPreviewExcerpt(item.searchPreview);
-    const preview =
-      match === "content" && excerpt
-        ? buildCommandPaletteQueryHighlightPreview(excerpt, query, {
-            maxCharacters: 88,
-            leadingContextCharacters: 18,
-          })
+  return items
+    .filter((item) => item.sessionId !== null)
+    .map((item, sourceOrder) => {
+      const title = resolveThreadMentionTitle(item);
+      const match = classifyThreadMentionMatch(item, query);
+      const excerpt = resolveMentionSearchPreviewExcerpt(item.searchPreview);
+      const preview =
+        match === "content" && excerpt
+          ? buildCommandPaletteQueryHighlightPreview(excerpt, query, {
+              maxCharacters: 88,
+              leadingContextCharacters: 18,
+            })
+          : null;
+      const fallbackTitleSegments = query.trim()
+        ? buildCommandPaletteCharacterHighlightSegments(title, query)
         : null;
-    const fallbackTitleSegments = query.trim()
-      ? buildCommandPaletteCharacterHighlightSegments(title, query)
-      : null;
-    const titleSegments =
-      item.searchDecorations?.titleSegments ??
-      (fallbackTitleSegments?.some(({ highlight }) => highlight) ? fallbackTitleSegments : null);
-    const duplicateTitle = (titleCounts.get(title.trim().toLocaleLowerCase()) ?? 0) > 1;
-    const detail = preview
-      ? preview.excerpt
-      : duplicateTitle
-        ? resolveThreadMentionContext(item)
-        : null;
-    const context = resolveThreadMentionContext(item);
-    return {
-      title,
-      subtext: detail ?? undefined,
-      detail,
-      titleSegments,
-      detailSegments: preview?.segments ?? null,
-      aliases: [],
-      group: "Mention a chat",
-      hint: null,
-      tooltipContent: buildMentionTooltipContent(title, [context, excerpt]),
-      mentionRank: {
-        family: "chat",
-        match,
-        activeContext: item.inActiveProject,
-        sourceOrder,
-      },
-      icon: <ThreadIcon className="size-4" />,
-      onItemClick: () => {
-        insertInlineContent(editor, buildNfmThreadMentionInlineContent(item));
-      },
-    } satisfies NfmSuggestionItem;
-  });
+      const titleSegments =
+        item.searchDecorations?.titleSegments ??
+        (fallbackTitleSegments?.some(({ highlight }) => highlight) ? fallbackTitleSegments : null);
+      const duplicateTitle = (titleCounts.get(title.trim().toLocaleLowerCase()) ?? 0) > 1;
+      const detail = preview
+        ? preview.excerpt
+        : duplicateTitle
+          ? resolveThreadMentionContext(item)
+          : null;
+      const context = resolveThreadMentionContext(item);
+      return {
+        title,
+        subtext: detail ?? undefined,
+        detail,
+        titleSegments,
+        detailSegments: preview?.segments ?? null,
+        aliases: [],
+        group: "Mention a chat",
+        hint: null,
+        tooltipContent: buildMentionTooltipContent(title, [context, excerpt]),
+        mentionRank: {
+          family: "chat",
+          match,
+          activeContext: item.inActiveProject,
+          sourceOrder,
+        },
+        icon: <ThreadIcon className="size-4" />,
+        onItemClick: () => {
+          insertInlineContent(editor, buildNfmThreadMentionInlineContent(item));
+        },
+      } satisfies NfmSuggestionItem;
+    });
 }
 
 export function selectNfmMentionSuggestionItems(
@@ -1738,7 +1729,7 @@ export function useNfmMentionGetItems({
 
       return [
         ...buildNfmThreadMentionSuggestionItems(editorRef.current, threadResults, query),
-        ...buildNfmDateMentionSuggestionItems(editorRef.current, query),
+        ...buildDateMentionSuggestionItems(editorRef.current, query),
       ];
     },
     [asyncRefreshKey, ensureAsyncSearch, getThreadSearchIndex, loadThreadItems],

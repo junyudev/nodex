@@ -1,3 +1,4 @@
+import type { MarkdownBlock } from "../../../../shared/nodex-markdown";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 
 export interface NfmSendToThreadToggleBlock {
@@ -8,12 +9,12 @@ export interface NfmSendToThreadToggleBlock {
     | { type: "text"; text: string; styles: Record<string, never> }
     | { type: "threadMention"; props: { uuid: string } }
   >;
-  children: unknown[];
+  children: readonly MarkdownBlock[];
 }
 
 export function createSendToThreadToggleBlock(input: {
-  threadId: string;
-  children: unknown[];
+  sessionId: string;
+  children: readonly MarkdownBlock[];
   blockId?: string;
 }): NfmSendToThreadToggleBlock {
   return {
@@ -22,7 +23,7 @@ export function createSendToThreadToggleBlock(input: {
     props: {},
     content: [
       { type: "text", text: "sent to ", styles: {} },
-      { type: "threadMention", props: { uuid: input.threadId } },
+      { type: "threadMention", props: { uuid: input.sessionId } },
     ],
     children: input.children,
   };

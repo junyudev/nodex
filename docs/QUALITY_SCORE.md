@@ -9,7 +9,7 @@ Last updated: 2026-08-14
 | Core Data + History        | B+    | ->    | Good transactional model; limited fault-injection tests                                                 |
 | HTTP/API Layer             | B     | ->    | Strong validation; thin auth/network-hardening posture                                                  |
 | Renderer Board UX          | B     | ->    | Feature-rich; complexity raises regression risk                                                         |
-| Editor + NFM               | B+    | ->    | Deep targeted tests; high behavioral complexity                                                         |
+| Editor + Nodex Markdown    | B+    | ->    | Deep targeted tests; high behavioral complexity                                                         |
 | Managed Worktree Lifecycle | A-    | up    | Durable recovery and isolated Electron coverage; real SSH gate remains environment-capability dependent |
 | Documentation              | A-    | up    | Harness structure now present; needs ongoing freshness discipline                                       |
 | Release/Operations         | B-    | ->    | Packaging flow documented; limited automated operational checks                                         |
@@ -34,7 +34,7 @@ Strengths: unified hooks, live refresh model, multi-project UX.
 Gaps: Complex inter-surface interactions increase behavior drift risk.
 Action items: Add focused integration checks for project-switch + card-stage state.
 
-### Editor + NFM (B+)
+### Editor + Nodex Markdown (B+)
 
 Strengths: robust parser/adapter tests, captured engineering learnings, explicit custom extensions.
 Gaps: BlockNote edge behavior remains a moving target.

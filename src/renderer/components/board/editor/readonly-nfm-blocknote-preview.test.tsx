@@ -3,10 +3,10 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import {
   createDateMentionClockStore,
   setDateMentionClockStoreForTest,
-} from "@/lib/nfm/date-mention-clock";
+} from "@/lib/editor-model/date-mention-clock";
 import { renderWithMaitai as render } from "../../../test/thread-maitai";
 import { settleAsyncRender, textContent } from "../../../test/dom";
-import { ReadonlyNfmBlockNotePreview } from "./readonly-nfm-blocknote-preview";
+import { ReadonlyMarkdownBlockNotePreview } from "./readonly-nfm-blocknote-preview";
 
 let restoreDateMentionClockStore: (() => void) | null = null;
 
@@ -42,9 +42,27 @@ function installDateMentionClock(start: string) {
 }
 
 describe("readonly NFM BlockNote preview", () => {
+  test("shows an image within text in place and keeps an image alone on its line a Block", async () => {
+    const view = render(
+      <ReadonlyMarkdownBlockNotePreview
+        content={
+          "Logo ![mark|20](https://example.com/mark.svg) here\n\n![Photo](https://example.com/photo.png)"
+        }
+        projectId="alpha"
+        pageId="card-images"
+        historyId={0}
+      />,
+    );
+
+    const mark = await view.findByAltText("mark");
+    expect(mark.closest("[data-content-type='paragraph']")).not.toBeNull();
+    expect((mark as HTMLImageElement).style.maxWidth).toBe("20px");
+    expect(view.container.querySelector("[data-content-type='image']")).not.toBeNull();
+  });
+
   test("shows only the shared language label and Copy for Code Blocks", async () => {
     const view = render(
-      <ReadonlyNfmBlockNotePreview
+      <ReadonlyMarkdownBlockNotePreview
         content={"```ts\nconst answer = 42\n```"}
         projectId="alpha"
         pageId="card-code"
@@ -68,7 +86,7 @@ describe("readonly NFM BlockNote preview", () => {
 
   test("renders NFM content through the read-only BlockNote surface", async () => {
     const view = render(
-      <ReadonlyNfmBlockNotePreview
+      <ReadonlyMarkdownBlockNotePreview
         content={"# Historical heading\n\nSnapshot body with **bold** text"}
         projectId="alpha"
         pageId="card-1"
@@ -91,12 +109,8 @@ describe("readonly NFM BlockNote preview", () => {
 
   test("renders live embeds as inert placeholders", async () => {
     const view = render(
-      <ReadonlyNfmBlockNotePreview
-        content={[
-          '<page-ref url="nodex://pages/card-1" />',
-          '<thread-section label="Investigate" thread="thr_123" />',
-          '<database-view-ref database-view="view-1" display-hint="Planning" />',
-        ].join("\n\n")}
+      <ReadonlyMarkdownBlockNotePreview
+        content={'::page-ref{page="card-1"}\n\n::database-view-ref{view="view-1" hint="Planning"}'}
         projectId="alpha"
         pageId="card-1"
         historyId={2}
@@ -110,7 +124,6 @@ describe("readonly NFM BlockNote preview", () => {
     });
 
     const body = textContent(view.container);
-    expect(body.includes("Thread section")).toBe(true);
     expect(body.includes("Database view")).toBe(true);
     expect(body.includes("Search Pages")).toBe(false);
     expect(body.includes("Rules")).toBe(false);
@@ -118,9 +131,9 @@ describe("readonly NFM BlockNote preview", () => {
 
   test("renders attachment, agent config, and thread mention as inert inline content", async () => {
     const view = render(
-      <ReadonlyNfmBlockNotePreview
+      <ReadonlyMarkdownBlockNotePreview
         content={
-          'Before <attachment kind="file" mode="link" source="/tmp/report.md" name="report.md" /> after\n\nUse <agent-config mode="plan" model="gpt-5.5" reasoning="high" />\n\nSee <mention-thread uuid="019-thread" />'
+          'Before :attachment{kind="file" mode="link" source="/tmp/report.md" name="report.md"} after\n\nUse :agent-config{mode="plan" model="gpt-5.5" reasoning="high"}\n\nSee <nodex://sessions/019-thread>'
         }
         projectId="alpha"
         pageId="card-1"
@@ -154,8 +167,8 @@ describe("readonly NFM BlockNote preview", () => {
   test("refreshes readonly date mention labels while mounted", async () => {
     const clock = installDateMentionClock("2026-06-28T12:00:00");
     const view = render(
-      <ReadonlyNfmBlockNotePreview
-        content={'Readonly note with <mention-date start="2026-06-28" format="relative" />.'}
+      <ReadonlyMarkdownBlockNotePreview
+        content={'Readonly note with :date{start="2026-06-28" format="relative"}.'}
         projectId="alpha"
         pageId="card-1"
         historyId={5}
@@ -179,42 +192,5 @@ describe("readonly NFM BlockNote preview", () => {
         throw new Error("Date mention did not refresh to Yesterday");
       }
     });
-  });
-
-  test("initializes and cleans preview toggle state", async () => {
-    const view = render(
-      <ReadonlyNfmBlockNotePreview
-        content={"▼ Open toggle\n\tOpen child\n\n▶ Closed toggle\n\tClosed child"}
-        projectId="alpha"
-        pageId="card-1"
-        historyId={4}
-      />,
-    );
-
-    await waitFor(() => {
-      if (!textContent(view.container).includes("Open toggle")) {
-        throw new Error("Toggle not rendered");
-      }
-    });
-
-    const toggleKeys: string[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (key?.startsWith("toggle-")) toggleKeys.push(key);
-    }
-
-    expect(toggleKeys.length).toBe(2);
-    expect(toggleKeys.some((key) => localStorage.getItem(key) === "true")).toBe(true);
-    expect(toggleKeys.some((key) => localStorage.getItem(key) === "false")).toBe(true);
-
-    view.unmount();
-    await settleAsyncRender();
-
-    const remainingToggleKeys: string[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (key?.startsWith("toggle-")) remainingToggleKeys.push(key);
-    }
-    expect(remainingToggleKeys.length).toBe(0);
   });
 });

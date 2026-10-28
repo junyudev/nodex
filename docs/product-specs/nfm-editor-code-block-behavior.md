@@ -1,4 +1,4 @@
-# NFM Editor Code Block Behavior
+# Page Editor Code Block Behavior
 
 Status: Active
 Last updated: 2026-09-06
@@ -7,18 +7,18 @@ Last updated: 2026-09-06
 
 Code Blocks present source text with syntax highlighting while preserving a small durable document shape: language and code. Editing controls stay out of the source and appear as one compact Action Bar at the upper-right of the block. Code Blocks do not support captions.
 
-This contract owns editable Code Blocks, read-only BlockNote previews, NFM previews, language selection, formatting capability, and renderer-local line wrapping. Mermaid-specific Code preview behavior is owned by [NFM Editor Equation and Mermaid Preview Behavior](./nfm-editor-equation-and-mermaid-preview-behavior.md).
+This contract owns editable Code Blocks, read-only BlockNote previews, Page editor previews, language selection, formatting capability, and renderer-local line wrapping. Mermaid-specific Code preview behavior is owned by [Page Editor Equation and Mermaid Preview Behavior](./nfm-editor-equation-and-mermaid-preview-behavior.md).
 
 ## Durable content and local presentation
 
-Language is durable Block content and round-trips through the Block Document and the NFM fence. Unsupported or historical language identifiers normalize to Plain Text at import boundaries instead of creating hidden catalog entries.
+Language is durable Block content and round-trips through the Block Document and the Nodex Markdown fence. Unsupported or historical language identifiers normalize to Plain Text at import boundaries instead of creating hidden catalog entries.
 
 Editable and read-only highlighting resolve catalog IDs, labels, and aliases to
 the same bundled grammar. Plain Text and unsupported values bypass syntax
 highlighting; display labels are never passed to the grammar loader. Every
 catalog grammar must be loadable from the bundled runtime.
 
-Line wrapping is renderer-local presentation state keyed by durable Block ID as `code-wrap-${blockId}`. It is not a Block prop, NFM attribute, database value, collaborative update, or Undo/Redo entry. The state rules are:
+Line wrapping is renderer-local presentation state keyed by durable Block ID as `code-wrap-${blockId}`. It is not a Block prop, Nodex Markdown attribute, database value, collaborative update, or Undo/Redo entry. The state rules are:
 
 - a new Block ID starts unwrapped;
 - remounting, moving, or restoring the same Block ID restores its local value;
@@ -26,7 +26,7 @@ Line wrapping is renderer-local presentation state keyed by durable Block ID as 
 - deleting and undoing restores the same ID and local value;
 - unavailable browser storage does not prevent the current renderer session from changing wrap.
 
-Changing wrap must leave the materialized Block Document and serialized NFM byte-for-byte unchanged.
+Changing wrap must leave the materialized Block Document and exact Markdown text byte-for-byte unchanged.
 
 Mermaid preview format follows the same renderer-local ownership but uses its own `code-mermaid-preview-${blockId}` key and defaults to split. It is never a Block prop. Its complete state, action, security, and export contract is defined in the dedicated Equation and Mermaid preview specification.
 
@@ -48,7 +48,7 @@ The picker contains exactly these 88 labels:
 
 > ABAP, Agda, Arduino, ASCII Art, Assembly, Bash, BASIC, BNF, C, C#, C++, Clojure, CoffeeScript, CSS, Dart, Dhall, Diff, Docker, EBNF, Elixir, Elm, Erlang, F#, Flow, Fortran, Gherkin, GLSL, Go, GraphQL, Groovy, Haskell, HCL, HTML, Idris, Java, JavaScript, JSON, Julia, Kotlin, LaTeX, Less, Lisp, LiveScript, LLVM IR, Lua, Makefile, Markdown, Markup, Mathematica, MATLAB, Mermaid, Nix, Notion Formula, Objective-C, OCaml, Pascal, Perl, PHP, Plain Text, PowerShell, Prolog, Protobuf, PureScript, Python, R, Racket, Reason, Rocq, Ruby, Rust, Sass, Scala, Scheme, SCSS, Shell, Smalltalk, Solidity, SQL, Swift, TOML, TypeScript, VB.Net, Verilog, VHDL, Visual Basic, WebAssembly, XML, YAML
 
-`src/shared/nfm/code-language-catalog-v1.json` is the executable source of truth for canonical IDs, labels, aliases, extensions, search terms, syntax grammars, and formatter kinds. Tests must keep the count, order, unique identities, and labels exact.
+`src/shared/code-languages/code-language-catalog-v1.json` is the executable source of truth for canonical IDs, labels, aliases, extensions, search terms, syntax grammars, and formatter kinds. Tests must keep the count, order, unique identities, and labels exact.
 
 Search matches label, canonical ID, aliases, extensions, and search terms. The picker is 240px wide, no taller than half the viewport, focuses its search field when opened, marks the current item with both a check and `aria-selected`, and returns focus to its trigger on Escape. Language choice commits one editor transaction and updates the validated renderer-local default used only when creating later Code Blocks. Explicit imported or existing Block language always wins.
 
@@ -77,7 +77,7 @@ Copy writes the complete plain source, without a Markdown fence or document meta
 
 ## Block actions and formatting
 
-More opens the shared NFM Block side menu. For one Code Block it prepends `Copy code`, `Wrap code`, `Language`, and, when supported, `Format code` to the generic production actions. Caption is absent. A narrow Action Bar therefore retains every capability through More.
+More opens the shared Page editor Block side menu. For one Code Block it prepends `Copy code`, `Wrap code`, `Language`, and, when supported, `Format code` to the generic production actions. Caption is absent. A narrow Action Bar therefore retains every capability through More.
 
 Formatting is available only for CSS, GraphQL, HTML, JavaScript, JSON, SCSS, TypeScript, and XML. Each formatter and parser loads on demand. Rust and every other catalog language omit Format until a compatible maintained formatter is actually registered and tested.
 
@@ -85,9 +85,9 @@ Formatting distinguishes unsupported, unchanged, failed, and changed results. Un
 
 ## Read-only presentation
 
-Read-only BlockNote previews keep the editable surface geometry. NFM previews, thread messages and Markdown documents share one read-only Code presentation: the same 10px surface, background token, 22px code inset, Code typography and syntax palette, with a symmetric 24px vertical inset because no editable Action Bar row is reserved. Every read-only presentation shows only the read-only header, containing the language label, Wrap and Copy, inset 4px from the top and end edge. Wrap is one reading preference shared by all read-only code: it starts unwrapped. `Enable word wrap` / `Disable word wrap` toggles every read-only block in every window, and the choice survives restart. It is independent of an editable Code Block's own wrap state and never changes the source or what Copy writes. Wrapped lines break at spaces and break long tokens only when they cannot fit. A rendered preview such as Mermaid has no Wrap. The header never mounts Language, More, Format, or another mutation controller. In message and document surfaces the header appears on hover, while focus is within it, and always on coarse-pointer devices.
+Read-only BlockNote previews keep the editable surface geometry. Page editor previews, thread messages and Markdown documents share one read-only Code presentation: the same 10px surface, background token, 22px code inset, Code typography and syntax palette, with a symmetric 24px vertical inset because no editable Action Bar row is reserved. Every read-only presentation shows only the read-only header, containing the language label, Wrap and Copy, inset 4px from the top and end edge. Wrap is one reading preference shared by all read-only code: it starts unwrapped. `Enable word wrap` / `Disable word wrap` toggles every read-only block in every window, and the choice survives restart. It is independent of an editable Code Block's own wrap state and never changes the source or what Copy writes. Wrapped lines break at spaces and break long tokens only when they cannot fit. A rendered preview such as Mermaid has no Wrap. The header never mounts Language, More, Format, or another mutation controller. In message and document surfaces the header appears on hover, while focus is within it, and always on coarse-pointer devices.
 
-NFM previews label languages through the catalog. Markdown surfaces label catalog languages the same way and keep any other authored language name, which is still offered to Shiki's own grammar aliases. Each token's palette color resolves from the document color scheme, so the contrast rule above holds in every read-only presentation. Copy writes the authored source; an unfinished streaming fence cannot be copied, a failed write can retry, and success feedback lasts two seconds.
+Page editor previews label languages through the catalog. Markdown surfaces label catalog languages the same way and keep any other authored language name, which is still offered to Shiki's own grammar aliases. Each token's palette color resolves from the document color scheme, so the contrast rule above holds in every read-only presentation. Copy writes the authored source; an unfinished streaming fence cannot be copied, a failed write can retry, and success feedback lasts two seconds.
 
 ## Verification boundary
 

@@ -6,7 +6,3 @@ export function formatClipboardMarkdownDestination(source: string): string {
   if (/\s/u.test(source)) return `<${escaped}>`;
   return escaped.replace(/[()]/gu, "\\$&");
 }
-
-export function escapeClipboardMarkdownLinkText(text: string): string {
-  return text.replace(/[\\`*_[\]<>~&]/gu, "\\$&");
-}

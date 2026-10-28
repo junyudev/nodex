@@ -4288,7 +4288,7 @@ it.effect(
 );
 
 it.effect(
-  "parses raw NFM lines, respects structured input and queues overrides without steering",
+  "parses raw Markdown lines, respects structured input and queues overrides without steering",
   () =>
     Effect.gen(function* () {
       const fixture = setup();
@@ -4301,12 +4301,12 @@ it.effect(
         sessionId: created.sessionId,
         intent: "steer",
         message: {
-          messageId: "message:nfm",
-          text: '<agent-config mode="plan" reasoning="high" speed="standard" />\nNext task',
+          messageId: "message:markdown",
+          text: ':agent-config{mode="plan" reasoning="high" speed="standard"}\nNext task',
         },
       });
       const command = [...fixture.commands.values()].find(
-        (value) => value.type === "message.dispatch" && value.messageId === "message:nfm",
+        (value) => value.type === "message.dispatch" && value.messageId === "message:markdown",
       )!;
       if (command.type !== "message.dispatch") throw new Error("Expected message command");
       assert.equal(command.text, "Next task");
@@ -4339,7 +4339,7 @@ it.effect(
         sessionId: created.sessionId,
         message: {
           messageId: "message:literal",
-          text: '<agent-config model="missing" />\nLiteral',
+          text: ':agent-config{model="missing"}\n\nLiteral',
           agentConfigs: [],
         },
       });
@@ -4348,7 +4348,7 @@ it.effect(
       )!;
       assert.equal(
         literal.type === "message.dispatch" && literal.text,
-        '<agent-config model="missing" />\nLiteral',
+        ':agent-config{model="missing"}\n\nLiteral',
       );
       assert.equal(
         fixture.calls.filter((call) => call.method === "providers.read").length,
@@ -4356,7 +4356,7 @@ it.effect(
       );
       yield* owner.queue({
         sessionId: created.sessionId,
-        requestId: "edit:nfm",
+        requestId: "edit:markdown",
         action: "edit",
         runId: "queued",
         message: {
@@ -5762,7 +5762,7 @@ it.effect(
         sessionId: side.sessionId,
         message: {
           messageId: "first",
-          text: '<agent-config mode="plan" />\n**Inspect** status',
+          text: ':agent-config{mode="plan"}\n**Inspect** status',
         },
       });
       assert.equal(result.sideChatTitle, "Inspect status");

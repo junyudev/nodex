@@ -1,30 +1,32 @@
-# NFM Editor Thread Mention Behavior
+# Page Editor Chat Mention Behavior
 
 Status: Active
-Last Updated: 2026-10-17
+Last Updated: 2026-10-28
 
 ## Summary
 
-NFM supports an inline chat mention:
+The Page editor supports an inline chat mention:
 
-```xml
-<mention-thread uuid="019..." />
+```text
+<nodex://sessions/019...>
 ```
 
-The mention references a chat's root Thread id as an opaque string: a native Codex Thread id, or the execution root Thread of a chat that Agent execution runs. It is a document reference and navigation affordance only; it does not embed or send the mentioned thread's transcript.
+A chat mention names its Session, the identity used by chat links and the sidebar.
+It is a reference and navigation affordance; it does not embed or send a transcript.
 
 ## Persistence
 
-- The canonical inline NFM form is a self-closing `<mention-thread uuid="..." />` tag.
-- `uuid` is required after trimming whitespace. Empty or missing `uuid` tags remain plain text and must not create broken structured inline content.
-- The serializer writes only the `uuid` attribute and escapes XML attribute characters.
-- The parser stores the mention as `threadMention` inline content with `{ uuid }`.
-- Unknown future thread id formats are allowed; the parser does not enforce a UUID regex.
-- Core accepts a saved mention only when it names a native Thread or an Agent execution root Thread in the Page's Project or the projectless scope, so a mention written by Send & wrap never makes its Page unreadable.
+- Exact text is `<nodex://sessions/ID>`.
+- Stored inline content remains `threadMention` with `props.uuid` holding the Session id.
+- Newly written mentions must name an existing Session in the current Profile;
+  projectless Sessions and Sessions in other Projects are valid.
+- Sessionless native conversations are imported before they can be mentioned.
+  A plain link to `codex://threads/ID` remains available for such conversations.
+- [Nodex Markdown](../references/nodex-markdown.md) owns syntax and exact refusal rules.
 
 ## Rendering
 
-- Editable Card Stage, Toggle List, projected inline editors, and read-only NFM previews all understand `threadMention` inline content.
+- Editable Card Stage, Toggle List, projected inline editors, and read-only Page editor previews all understand `threadMention` inline content.
 - In editable editors, the mention is atomic inline content and is not directly text-editable.
 - The inline surface follows a minimal Notion page-mention style: inherited body text color, a small thread icon, medium-weight underlined label, no filled pill background, and no inline status badge.
 - The display label resolves in this order:
@@ -39,23 +41,22 @@ The mention references a chat's root Thread id as an opaque string: a native Cod
 
 ## Resolution And Navigation
 
-- Card Stage resolves mention metadata from the current project thread summary cache first.
-- If a mention is not cached, Nodex asks the main process for `codex:thread:summary:get(threadId)`.
-- The main process first reads local `codex_threads`; only a miss calls Codex app-server `thread/read` with `includeTurns: false`.
-- An Agent execution root Thread resolves through its Session binding in Core and never reaches Codex app-server. The summary carries the Session's title, archive state and Session id; it is absent unless exactly one Session is bound to that Thread.
-- Resolution must not resume a thread, subscribe to a stream, switch the active thread, or fetch transcript turns.
-- Clicking a resolved mention opens the referenced thread through the existing Codex-thread navigation callback. An Agent chat opens through its Session; when no Session can be found the action reports that the chat is no longer available.
-- If opening is unavailable or the thread is unresolved, the mention popover exposes `Copy UUID`.
+The editor resolves the Session through its current Core detail, then uses its
+current execution binding for chat presentation and navigation. The mention's
+identity never changes when that binding or the chat title changes. Resolution
+reads metadata without resuming execution, subscribing to a transcript or
+fetching turns. Missing Sessions keep their original identity and offer copying
+it from the unavailable-state popover.
 
 ## Insertion
 
-- The NFM `@` suggestion menu includes thread mention rows alongside Page mentions.
-- Page connection semantics are defined separately in [NFM Editor Page Connection Behavior](nfm-editor-page-reference-behavior.md).
-- Thread rows use the same sidebar-wide chat search model as the command palette: non-archived sidebar chats from the current project, other projects, projectless chats, and sessionless chats are eligible.
+- The Page editor `@` suggestion menu includes thread mention rows alongside Page mentions.
+- Page connection semantics are defined separately in [Page Connections](nfm-editor-page-reference-behavior.md).
+- Thread rows use the same sidebar-wide chat search model as the command palette: non-archived sidebar chats from the current project, other projects, projectless chats, are eligible when they have a Session.
 - The picker treats the editor's own `projectId` as the active project. Matching current-project chats and Pages are rendered first in one `Current project` group, with chats before Pages and each type preserving its selector order. Other chats, including projectless chats, follow in `Chats`; other Pages follow in `Pages`.
 - Archived, ephemeral, and side-conversation chats do not appear in the picker.
-- Metadata search covers title, preview, branch, project, cwd, and short/id fields with command-palette fuzzy and prefix ranking. Transcript matches use bounded app-server `thread/search` through `codex:threads:palette:search`; server-only chats remain eligible and may add a compact highlighted snippet to the item tooltip.
-- Mention rows render only the item title in the picker row and do not show right-side `@thread` or `@` syntax hints. Slash-menu rows show a right-side hint only when it teaches compact, meaningful syntax or a keyboard shortcut; Table, Canvas, Page Mention, Embed Page, Subpage, Thread Section, and Agent Config keep their aliases searchable without echoing those wordy slash queries in the row.
+- Metadata search covers title, preview, branch, project, cwd, and short/id fields with command-palette fuzzy and prefix ranking. Transcript matches use bounded app-server `thread/search` through `codex:threads:palette:search`; server-only chats are excluded until imported and may add a compact highlighted snippet to the item tooltip.
+- Mention rows render only the item title in the picker row and do not show right-side `@thread` or `@` syntax hints. Slash-menu rows show a right-side hint only when it teaches compact, meaningful syntax or a keyboard shortcut; Table, Canvas, Page Mention, Embed Page, Subpage, and Agent Config keep their aliases searchable without echoing those wordy slash queries in the row.
 - Mention tooltips show only compact context, such as project, column, actionable state, and an optional search snippet. They do not concatenate raw thread ids, Page ids, cwd paths, or long mixed metadata strings.
 - Idle and unknown-state threads do not show `Ready` or `Thread` as row state labels.
 - Choosing a thread row inserts `threadMention` inline content and a trailing space.
@@ -63,6 +64,6 @@ The mention references a chat's root Thread id as an opaque string: a native Cod
 
 ## Prompt And Clipboard Behavior
 
-- Plain-text serialization renders a thread mention as `[Thread: <uuid>]`.
-- Thread-section prompts use that same text placeholder.
+- Portable clipboard Markdown renders a chat mention as `[Thread](nodex://sessions/ID)`.
+- Exact Page prompt text keeps the `<nodex://sessions/ID>` mention.
 - Thread mentions do not add `promptInput.mentions`, do not attach files or images, and do not inject referenced thread content.

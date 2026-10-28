@@ -86,7 +86,7 @@ const materializeLibraryFiles = async (
       projectId: project.id,
       status: definition.status,
       title: definition.title,
-      nfm: "",
+      markdown: "",
     };
     const page = await port.createPage(seed);
     pageIdsByKey[definition.key] = seed.pageId;
@@ -130,7 +130,7 @@ const materializeLibraryFiles = async (
       clientSessionId: `scenario:${LIBRARY_FILES_SCENARIO_ID}`,
       projectId: project.id,
       pageId,
-      nfm: `<image source="nodex://files/${sharedFileId}">${definition.title}</image>`,
+      markdown: `![${definition.title}](nodex://files/${sharedFileId})`,
     });
     minimumCommitSeq = Math.max(minimumCommitSeq, replacement.commitSeq);
   }

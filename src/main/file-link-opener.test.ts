@@ -15,7 +15,7 @@ import {
 } from "./file-link-opener";
 import { FILE_LINK_OPENER_OPTIONS } from "../shared/file-link-openers";
 
-const parserPath = path.join(process.cwd(), "src/renderer/lib/nfm/parser.ts");
+const parserPath = path.join(process.cwd(), "src/renderer/lib/markdown/parser.ts");
 const parserDirectory = path.dirname(parserPath);
 const vscodeIconPath = path.join(process.cwd(), "src/renderer/assets/open-file-targets/vscode.png");
 

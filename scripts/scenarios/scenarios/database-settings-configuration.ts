@@ -654,7 +654,7 @@ const materialize = async (
       projectId: project.id,
       status: key === "configured" ? "build" : "plan",
       title: key === "configured" ? "Configured property values" : "Empty property values",
-      nfm: key === "configured" ? "Every settings surface has durable evidence." : "",
+      markdown: key === "configured" ? "Every settings surface has durable evidence." : "",
     });
   }
   const configured = await configureDatabase(port, project.id, Object.values(pageIdsByKey));

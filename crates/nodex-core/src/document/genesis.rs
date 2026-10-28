@@ -8,7 +8,7 @@ use crate::domain::block_tree::TextDelta;
 use crate::domain::rich_text::{RichTextItem, rich_text_to_delta};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
-use super::nfm_input::materialize_document_nfm;
+use super::markdown_input::materialize_document_markdown;
 use super::operations::{DocumentBlockOperation, PreparedDocumentOperationUpdate};
 use super::{
     BlockDocumentSchema, DocumentMaterialization, YrsDocumentEngine, decode_block_document,
@@ -74,22 +74,22 @@ pub(crate) fn prepare_page_yjs_genesis(
     });
     let document = encode_block_document(
         document_id,
-        BlockDocumentSchema::PageV3,
+        BlockDocumentSchema::PageV4,
         title.as_deref(),
         &tree,
     )
     .map_err(|error| invalid(format!("Page genesis is invalid: {error}")))?;
-    prepare_encoded_genesis(document_id, "page", BlockDocumentSchema::PageV3, document)
+    prepare_encoded_genesis(document_id, "page", BlockDocumentSchema::PageV4, document)
 }
 
 pub(crate) fn prepare_page_yjs_genesis_with_content(
     document_id: &str,
     rich_title: &[RichTextItem],
-    nfm: &str,
+    markdown: &str,
     allocate_block_id: &mut impl FnMut() -> String,
 ) -> Result<PreparedYjsGenesis, StoreError> {
-    let blocks = materialize_document_nfm(nfm, allocate_block_id)
-        .map_err(|error| invalid(format!("Page genesis Nested Markdown is invalid: {error}")))?;
+    let blocks = materialize_document_markdown(markdown, allocate_block_id)
+        .map_err(|error| invalid(format!("Page genesis Nodex Markdown is invalid: {error}")))?;
     let tree = dematerialize_block_tree(&blocks)
         .map_err(|error| invalid(format!("Page genesis Blocks are invalid: {error}")))?;
     let title = if rich_title.is_empty() {
@@ -102,12 +102,12 @@ pub(crate) fn prepare_page_yjs_genesis_with_content(
     };
     let document = encode_block_document(
         document_id,
-        BlockDocumentSchema::PageV3,
+        BlockDocumentSchema::PageV4,
         title.as_deref(),
         &tree,
     )
     .map_err(|error| invalid(format!("Page genesis is invalid: {error}")))?;
-    prepare_encoded_genesis(document_id, "page", BlockDocumentSchema::PageV3, document)
+    prepare_encoded_genesis(document_id, "page", BlockDocumentSchema::PageV4, document)
 }
 
 pub(crate) fn prepare_yjs_genesis_with_blocks(
@@ -203,7 +203,7 @@ pub(crate) fn prepare_editable_root(
 }
 
 fn empty_document(block_id: &str) -> Result<Vec<MaterializedBlockNode>, StoreError> {
-    materialize_document_nfm("", &mut || block_id.to_owned())
+    materialize_document_markdown("", &mut || block_id.to_owned())
         .map_err(|error| invalid(format!("Empty Document boundary is invalid: {error}")))
 }
 

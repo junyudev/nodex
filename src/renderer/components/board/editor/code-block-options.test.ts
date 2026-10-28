@@ -1,11 +1,11 @@
 import { BlockNoteEditor, collectHighlightNodeTypes } from "@blocknote/core";
 import { describe, expect, test } from "vite-plus/test";
 import { preloadBlockNoteDualThemeParser } from "@/lib/syntax-highlighting";
-import { codeLanguagePreference } from "@/lib/nfm/code-language-preference";
+import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
 import { editorCodeBlockOptions } from "./code-block-options";
 import { createNfmEditorExtensions } from "./nfm-editor-extensions";
 import { nfmSchema } from "./nfm-schema";
-import { CODE_LANGUAGE_CATALOG } from "../../../../shared/nfm/code-language-catalog";
+import { CODE_LANGUAGE_CATALOG } from "../../../../shared/code-languages/code-language-catalog";
 
 const shikiParserSymbol = Symbol.for("blocknote.shikiParser");
 const shikiHighlighterPromiseSymbol = Symbol.for("blocknote.shikiHighlighterPromise");

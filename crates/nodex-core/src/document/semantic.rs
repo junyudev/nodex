@@ -12,19 +12,18 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::domain::block_materialization::MaterializedBlockNode;
-use crate::domain::nfm::{NfmBlock, NfmInlineContent, NfmStyleSet, semantic_empty_document_root};
-use crate::domain::nfm_parser::parse_nfm;
-use crate::domain::rich_text::{RichTextItem, RichTextStyles, canonicalize_rich_text};
+use crate::domain::ordinary_block::semantic_empty_document_root;
+use crate::domain::rich_text::RichTextItem;
 
-use super::nfm_input::materialize_nfm_fragment;
+use super::markdown_input::materialize_markdown_fragment;
 use super::{
     BlockDocumentSchema, DocumentBlockOperation, DocumentBlockUpdatePatch, DocumentMaterialization,
-    DocumentOperationError, DocumentOperationErrorCode, ExactNfmPatch,
-    prepare_document_operation_update, prepare_exact_nfm_patch_update,
-    prepare_nfm_replacement_update,
+    DocumentOperationError, DocumentOperationErrorCode, ExactMarkdownPatch,
+    prepare_document_operation_update, prepare_exact_markdown_patch_update,
+    prepare_markdown_replacement_update,
 };
 
-const ETAG_PREFIX: &str = "nxe1";
+const ETAG_PREFIX: &str = "nxe2";
 const ETAG_KEY_BYTES: usize = 32;
 const ETAG_DIGEST_BYTES: usize = 32;
 const MAX_SEMANTIC_COMMANDS: usize = 512;
@@ -76,6 +75,7 @@ pub(crate) struct PreparedSemanticMutation {
     pub(crate) write_fence_block_ids: Vec<String>,
     pub(crate) title_write_fence_required: bool,
     pub(crate) local_block_ids: BTreeMap<String, String>,
+    pub(crate) moved_block_ids: Vec<String>,
 }
 
 pub(crate) struct SemanticMutationContext<'a> {
@@ -108,7 +108,7 @@ pub(crate) fn prepare_semantic_mutation(
     )?;
     let mut title = None::<Vec<RichTextItem>>;
     let mut replacement = None::<String>;
-    let mut patches = Vec::<ExactNfmPatch>::new();
+    let mut patches = Vec::<ExactMarkdownPatch>::new();
     let mut structural = Vec::<DocumentBlockOperation>::new();
     let mut local_block_ids = BTreeMap::<String, String>::new();
     let mut promotable_empty_seed_id =
@@ -138,16 +138,13 @@ pub(crate) fn prepare_semantic_mutation(
                 if let Some(expected_etag) = expected_etag {
                     assert_etag(expected_etag, &body_etag)?;
                 }
-                patches.push(ExactNfmPatch {
-                    old_nfm: old_fragment.clone(),
-                    new_nfm: new_fragment.clone(),
+                patches.push(ExactMarkdownPatch {
+                    old_markdown: old_fragment.clone(),
+                    new_markdown: new_fragment.clone(),
                     expected_matches: expected_matches.map(|value| value as usize).or(Some(1)),
                 });
             }
-            DocumentSemanticCommand::InsertBody {
-                anchor,
-                nested_markdown,
-            } => {
+            DocumentSemanticCommand::InsertBody { anchor, markdown } => {
                 let can_promote_seed = promotable_empty_seed_id.is_some()
                     && matches!(
                         anchor,
@@ -168,7 +165,7 @@ pub(crate) fn prepare_semantic_mutation(
                             Some(seed_id) => seed_id,
                             None => allocate_block_id(),
                         };
-                        materialize_nfm_fragment(nested_markdown, &mut promotion_allocator)
+                        materialize_markdown_fragment(markdown, &mut promotion_allocator)
                             .map_err(|error| SemanticMutationError::Invalid(error.to_string()))?
                     };
                     if semantic_empty_document_root(&blocks).is_some() {
@@ -181,7 +178,7 @@ pub(crate) fn prepare_semantic_mutation(
 
                 let (parent_block_id, before_block_id) =
                     resolve_semantic_anchor(&context.materialization.block_tree, anchor)?;
-                let blocks = materialize_nfm_fragment(nested_markdown, allocate_block_id)
+                let blocks = materialize_markdown_fragment(markdown, allocate_block_id)
                     .map_err(|error| SemanticMutationError::Invalid(error.to_string()))?;
                 structural.extend(blocks.into_iter().map(|block| {
                     DocumentBlockOperation::InsertBlock {
@@ -193,7 +190,7 @@ pub(crate) fn prepare_semantic_mutation(
                 promotable_empty_seed_id = None;
             }
             DocumentSemanticCommand::ReplaceBody {
-                nested_markdown,
+                markdown,
                 expected_etag,
             } => {
                 if replacement.is_some() {
@@ -202,7 +199,7 @@ pub(crate) fn prepare_semantic_mutation(
                     ));
                 }
                 assert_etag(expected_etag, &body_etag)?;
-                replacement = Some(nested_markdown.clone());
+                replacement = Some(markdown.clone());
             }
             DocumentSemanticCommand::InsertBlock { anchor, block } => {
                 let (parent_block_id, before_block_id) =
@@ -295,18 +292,18 @@ pub(crate) fn prepare_semantic_mutation(
         ));
     }
 
-    let prepared = if let Some(nfm) = replacement {
-        prepare_nfm_replacement_update(
+    let prepared = if let Some(markdown) = replacement {
+        prepare_markdown_replacement_update(
             context.document_id,
             context.schema,
             context.full_state_v1,
             context.state_vector_v1,
-            &nfm,
+            &markdown,
             title.as_deref(),
             allocate_block_id,
         )
     } else if !patches.is_empty() {
-        prepare_exact_nfm_patch_update(
+        prepare_exact_markdown_patch_update(
             context.document_id,
             context.schema,
             context.full_state_v1,
@@ -347,6 +344,7 @@ pub(crate) fn prepare_semantic_mutation(
         write_fence_block_ids: prepared.write_fence_block_ids,
         title_write_fence_required: prepared.title_write_fence_required,
         local_block_ids,
+        moved_block_ids: prepared.moved_block_ids,
     })
 }
 
@@ -510,79 +508,33 @@ pub(crate) fn parse_inline_markdown_title(
             "title Markdown must be one line and cannot contain tabs".to_owned(),
         ));
     }
-    let blocks =
-        parse_nfm(markdown).map_err(|error| SemanticMutationError::Invalid(error.to_string()))?;
-    let inline = match blocks.as_slice() {
-        [] if markdown.trim().is_empty() => Vec::new(),
-        [
-            NfmBlock::Paragraph {
-                content,
-                color: None,
-                children,
-            },
-        ] if children.is_empty() => content.clone(),
-        _ => {
+    if !markdown.trim().is_empty() {
+        let blocks = nodex_markdown::read(markdown, nodex_markdown::ReadOptions::EXACT)
+            .map_err(|error| SemanticMutationError::Invalid(error.to_string()))?;
+        if !matches!(blocks.as_slice(), [nodex_markdown::Block { kind: nodex_markdown::BlockKind::Paragraph { colors, .. }, children, .. }] if colors.is_empty() && children.is_empty())
+        {
             return Err(SemanticMutationError::Invalid(
-                "title Markdown accepts inline content, not Block syntax".to_owned(),
+                "title Markdown accepts inline content, not Block syntax".into(),
             ));
         }
-    };
-    let items = inline
-        .iter()
-        .map(rich_text_item)
-        .collect::<Result<Vec<_>, _>>()?;
-    canonicalize_rich_text(&items)
-        .map(|value| value.rich_text)
-        .map_err(|error| SemanticMutationError::Invalid(error.to_string()))
-}
-
-fn rich_text_item(item: &NfmInlineContent) -> Result<RichTextItem, SemanticMutationError> {
-    let styles = |styles: &NfmStyleSet| RichTextStyles {
-        bold: styles.bold,
-        italic: styles.italic,
-        underline: styles.underline,
-        strikethrough: styles.strikethrough,
-        code: styles.code,
-        color: styles.color.clone(),
-    };
-    match item {
-        NfmInlineContent::Text {
-            text,
-            styles: item_styles,
-        } => Ok(RichTextItem::Text {
-            text: text.clone(),
-            styles: styles(item_styles),
-        }),
-        NfmInlineContent::Link {
-            text,
-            href,
-            styles: item_styles,
-        } => Ok(RichTextItem::Link {
-            text: text.clone(),
-            href: href.clone(),
-            styles: styles(item_styles),
-        }),
-        NfmInlineContent::ThreadMention { uuid } => {
-            Ok(RichTextItem::ThreadMention { uuid: uuid.clone() })
-        }
-        NfmInlineContent::PageMention { target_page_id } => Ok(RichTextItem::PageMention {
-            target_page_id: target_page_id.clone(),
-        }),
-        NfmInlineContent::DateMention(date) => Ok(RichTextItem::DateMention {
-            start: date.start.clone(),
-            end: date.end.clone(),
-            tz: date.tz.clone(),
-            format: date.format.clone(),
-            time_format: date.time_format.clone(),
-            reminder: date.reminder.clone(),
-        }),
-        NfmInlineContent::LineBreak
-        | NfmInlineContent::Math { .. }
-        | NfmInlineContent::Attachment { .. }
-        | NfmInlineContent::AgentConfig { .. } => Err(SemanticMutationError::Invalid(
-            "title Markdown contains unsupported inline content".to_owned(),
-        )),
     }
+    let inline = nodex_markdown::read_inline(markdown, nodex_markdown::ReadOptions::EXACT)
+        .map_err(|error| SemanticMutationError::Invalid(error.to_string()))?;
+    let json = nodex_markdown::inline_content_to_json(&inline);
+    crate::domain::materialized_inline::rich_text_from_materialized_inline(&json)
+        .map_err(|error| SemanticMutationError::Invalid(error.to_string()))
+        .and_then(|value| {
+            if value
+                .rich_text
+                .iter()
+                .any(|item| matches!(item, RichTextItem::LineBreak))
+            {
+                return Err(SemanticMutationError::Invalid(
+                    "title Markdown cannot contain line breaks".into(),
+                ));
+            }
+            Ok(value.rich_text)
+        })
 }
 
 fn assert_etag(supplied: &str, expected: &str) -> Result<(), SemanticMutationError> {
@@ -620,7 +572,7 @@ pub(crate) fn mint_etag(
         .ok_or_else(|| {
             SemanticMutationError::EtagAuthority("signing key is unavailable".to_owned())
         })?;
-    let value = json!([1, kind, project_id, store_epoch, subject, state]);
+    let value = json!([2, kind, project_id, store_epoch, subject, state]);
     let canonical = canonical_json(value);
     let bytes = serde_json::to_vec(&canonical)
         .map_err(|error| SemanticMutationError::EtagAuthority(error.to_string()))?;
@@ -751,7 +703,7 @@ pub(crate) fn mint_document_semantic_etags(
         store_epoch,
         document_id,
         json!(&materialization.rich_title),
-        &materialization.nfm,
+        &materialization.markdown,
     )
 }
 
@@ -779,7 +731,7 @@ pub(crate) fn mint_document_projection_etags(
     store_epoch: &str,
     document_id: &str,
     rich_title: Value,
-    nfm: &str,
+    markdown: &str,
 ) -> Result<(String, String), SemanticMutationError> {
     let title =
         mint_document_title_etag(connection, project_id, store_epoch, document_id, rich_title)?;
@@ -789,7 +741,7 @@ pub(crate) fn mint_document_projection_etags(
         project_id,
         store_epoch,
         &[document_id],
-        json!({ "nfm": nfm }),
+        json!({ "markdown": markdown }),
     )?;
     Ok((title, body))
 }
@@ -891,7 +843,7 @@ fn base64_url_no_pad(bytes: &[u8]) -> String {
 
 fn decode_etag(value: &str) -> Result<[u8; ETAG_DIGEST_BYTES], SemanticMutationError> {
     let encoded = value
-        .strip_prefix("nxe1.")
+        .strip_prefix("nxe2.")
         .ok_or_else(|| SemanticMutationError::Invalid("semantic ETag is malformed".to_owned()))?;
     if encoded.len() != 43 {
         return Err(SemanticMutationError::Invalid(
@@ -944,6 +896,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn predecessor_etags_cannot_be_reinterpreted_as_markdown_guards() {
+        let digest = base64_url_no_pad(&[0; ETAG_DIGEST_BYTES]);
+        assert!(decode_etag(&format!("nxe1.{digest}")).is_err());
+        assert!(decode_etag(&format!("nxe2.{digest}")).is_ok());
+    }
+
+    #[test]
     fn manual_hmac_matches_the_rfc_4231_sha256_vector() {
         let key = [0x0b; 20];
         assert_eq!(
@@ -956,7 +915,7 @@ mod tests {
     #[test]
     fn base64_url_etags_round_trip_without_padding() {
         let digest = hmac_sha256(&[7; 32], b"semantic authority");
-        let encoded = format!("nxe1.{}", base64_url_no_pad(&digest));
+        let encoded = format!("nxe2.{}", base64_url_no_pad(&digest));
         assert_eq!(decode_etag(&encoded).unwrap(), digest);
     }
 
@@ -992,7 +951,7 @@ mod tests {
                 }),
             )
             .unwrap(),
-            "nxe1.NeZS7_17LKIgmH87yqTDVA5mm9gP9Atq3ACGpOgzpp4"
+            "nxe2.XLfyWF0Hi9o2NQpJgvcWfjZc9puaVeE-qVShslfLcco"
         );
     }
 
@@ -1032,7 +991,7 @@ mod tests {
                 &block,
             )
             .unwrap(),
-            "nxe1.EnQ1us3xfWrZTXjJbz0fxn8YlwndxHmcf-QOm0hLFRI"
+            "nxe2.rDB-BP7PxYgTmqdwKosQT2bFADt6dwIV3LXKYDzqjpc"
         );
         assert_eq!(
             mint_document_subtree_etag(
@@ -1043,7 +1002,7 @@ mod tests {
                 &block,
             )
             .unwrap(),
-            "nxe1.YfQL4rewgNpU0wwaMdqRBkypTTsp-1ED7NT84dpgH_Q"
+            "nxe2.IKfRj-lTlAEbTex6eh5csz_mxmZwJ04DJuFL_QuMEpo"
         );
     }
 

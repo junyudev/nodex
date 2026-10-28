@@ -12,23 +12,15 @@ import {
   resolveOrderedListPadding,
 } from "@/lib/ordered-list-groups";
 import { buildPageDeepLink } from "../../../shared/nodex-deeplink";
-import { resolveOrderedListStarts } from "../../../shared/nfm/ordered-list";
-import type {
-  NfmBlock,
-  NfmInlineContent,
-  NfmColor,
-  NfmImage,
-  NfmNumberedListItem,
-  NfmStyleSet,
-  NfmTable,
-} from "@/lib/nfm/types";
+import type { MarkdownBlock, MarkdownInline } from "../../../shared/nodex-markdown";
+import type { RichTextColor } from "../../../shared/rich-text/colors";
+import { normalizeDateMention } from "../../../shared/rich-text/date-mention";
 import { FileLinkAnchor } from "../shared/file-link-anchor";
-import { parseNfm } from "@/lib/nfm/parser";
-import { resolveAssetSourceToDisplayUrl } from "@/lib/assets";
-import { parseFileSource } from "../../../shared/file-resources";
-import { useFilePlacementRuntime, useFileReadSnapshot } from "./editor/file-runtime";
-import { formatThreadMentionShortUuid } from "@/lib/nfm/thread-mention-display";
-import { formatDateMentionPlainText } from "@/lib/nfm/date-mention";
+import { readMarkdown } from "../../../shared/nodex-markdown";
+import { InlineImage, inlineImageProps } from "./inline-image";
+import { useMarkdownImage } from "./markdown-image";
+import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
+import { formatDateMentionPlainText } from "../../../shared/rich-text/date-mention";
 import { cn } from "@/lib/utils";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { DateMentionInlineVisual } from "./date-mention-inline-visual";
@@ -40,7 +32,7 @@ import { CodeBlockReadOnlyHeader } from "@/components/shared/code-block-readonly
 import { ReadonlyCodeBlock } from "@/components/shared/readonly-code-block";
 import { MermaidCodePreview } from "@/components/board/editor/mermaid-code-preview";
 import { useTheme } from "@/lib/use-theme";
-import { resolveCodeLanguage } from "../../../shared/nfm/code-language-catalog";
+import { resolveCodeLanguage } from "../../../shared/code-languages/code-language-catalog";
 import { latexToHTMLString } from "@blocknote/math-block";
 import { resolveAgentConfigChip } from "./editor/agent-config-chip";
 
@@ -50,12 +42,12 @@ interface NfmRendererProps {
   projectWorkspacePath?: string | null;
 }
 
-/** Read-only renderer for Nested Markdown. */
+/** Read-only renderer for Nodex Markdown. */
 export function NfmRenderer({ content, className, projectWorkspacePath }: NfmRendererProps) {
   if (!content.trim()) return null;
   return (
     <NfmDocument
-      blocks={parseNfm(content)}
+      blocks={readMarkdown(content)}
       className={className}
       projectWorkspacePath={projectWorkspacePath}
     />
@@ -72,7 +64,7 @@ export type NfmDensity = "page" | "message";
 const NfmDensityContext = createContext<NfmDensity>("page");
 
 /**
- * Read-only rendering of parsed Nested Markdown Blocks. Library File images resolve through the
+ * Read-only rendering of parsed Nodex Markdown Blocks. Library File images resolve through the
  * enclosing File runtime.
  */
 export function NfmDocument({
@@ -81,7 +73,7 @@ export function NfmDocument({
   projectWorkspacePath,
   density = "page",
 }: {
-  readonly blocks: NfmBlock[];
+  readonly blocks: readonly MarkdownBlock[];
   readonly className?: string;
   readonly projectWorkspacePath?: string | null;
   readonly density?: NfmDensity;
@@ -129,25 +121,11 @@ const MESSAGE_STYLES = {
   header: "font-semibold",
 } as const;
 
-/** Where an image source displays from: a Library File through the File runtime, else as is. */
-export function useNfmImage(source: string): {
-  readonly url: string | null;
-  readonly failed: boolean;
-} {
-  const runtime = useFilePlacementRuntime();
-  const snapshot = useFileReadSnapshot(runtime, source, { objectUrl: true });
-  if (parseFileSource(source) === null) {
-    const url = resolveAssetSourceToDisplayUrl(source);
-    return { url, failed: url === null };
-  }
-  return { url: snapshot.objectUrl, failed: runtime === null || Boolean(snapshot.contentError) };
-}
-
 function BlockList({
   blocks,
   projectWorkspacePath,
 }: {
-  blocks: NfmBlock[];
+  blocks: readonly MarkdownBlock[];
   projectWorkspacePath?: string | null;
 }) {
   const children: ReactNode[] = [];
@@ -162,13 +140,15 @@ function BlockList({
       continue;
     }
 
-    const orderedBlocks: NfmNumberedListItem[] = [block];
+    const orderedBlocks: MarkdownBlock[] = [block];
     while (index + 1 < blocks.length && blocks[index + 1]?.type === "numberedListItem") {
-      orderedBlocks.push(blocks[index + 1] as NfmNumberedListItem);
+      orderedBlocks.push(blocks[index + 1] as MarkdownBlock);
       index += 1;
     }
 
-    const starts = resolveOrderedListStarts(orderedBlocks);
+    const starts = orderedBlocks.map(
+      (_, index) => Number(orderedBlocks[0]?.props?.start ?? 1) + index,
+    );
     const groups = groupOrderedListItems(
       orderedBlocks,
       (_orderedBlock, orderedIndex) => starts[orderedIndex] ?? 1,
@@ -204,45 +184,48 @@ function BlockComponent({
   block,
   projectWorkspacePath,
 }: {
-  block: NfmBlock;
+  block: MarkdownBlock;
   projectWorkspacePath?: string | null;
 }) {
-  const colorClass = block.color ? nfmColorClass(block.color) : undefined;
+  const colorClass = blockColorClass(block);
   const density = useContext(NfmDensityContext);
 
   switch (block.type) {
     case "paragraph":
       return (
         <div className={cn(PARAGRAPH_SPACING[density], "leading-relaxed", colorClass)}>
-          <p className={density === "message" ? MESSAGE_STYLES.text : undefined}>
+          <p className="whitespace-pre-wrap">
             <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
           </p>
-          <ChildBlocks children={block.children} projectWorkspacePath={projectWorkspacePath} />
+          <ChildBlocks
+            children={block.children ?? []}
+            projectWorkspacePath={projectWorkspacePath}
+          />
         </div>
       );
 
     case "heading": {
-      const Tag = `h${block.level}` as "h1" | "h2" | "h3" | "h4";
+      const level = Math.min(4, Math.max(1, Number(block.props?.level ?? 1))) as 1 | 2 | 3 | 4;
+      const Tag = `h${level}` as "h1" | "h2" | "h3" | "h4";
       const sizes = HEADING_SIZES[density];
 
-      if (block.isToggleable) {
+      if (block.props?.isToggleable) {
         return (
-          <details className={cn("nfm-toggle my-1", colorClass)} open={block.isOpen || undefined}>
+          <details className={cn("nfm-toggle my-1", colorClass)} open={undefined}>
             <summary
-              className={cn(
-                "nfm-toggle-summary",
-                sizes[block.level],
-                INLINE_MARKDOWN_HEADING_CLASS_NAME,
-              )}
+              className={cn("nfm-toggle-summary", sizes[level], INLINE_MARKDOWN_HEADING_CLASS_NAME)}
             >
-              <ToggleCaretIcon hasChildren={block.children.length > 0} />
+              <ToggleCaretIcon hasChildren={(block.children ?? []).length > 0} />
               <span className="min-w-0">
                 <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
               </span>
             </summary>
-            {block.children.length > 0 && (
+            {(block.children ?? []).length > 0 && (
               <div className="mt-1 pl-4">
-                <BlockList blocks={block.children} projectWorkspacePath={projectWorkspacePath} />
+                <BlockList
+                  blocks={block.children ?? []}
+                  projectWorkspacePath={projectWorkspacePath}
+                />
               </div>
             )}
           </details>
@@ -250,7 +233,7 @@ function BlockComponent({
       }
 
       return (
-        <Tag className={cn(sizes[block.level], colorClass, INLINE_MARKDOWN_HEADING_CLASS_NAME)}>
+        <Tag className={cn(sizes[level], colorClass, INLINE_MARKDOWN_HEADING_CLASS_NAME)}>
           <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
         </Tag>
       );
@@ -264,7 +247,7 @@ function BlockComponent({
           <li className={cn(density === "message" && MESSAGE_STYLES.text, colorClass)}>
             <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
             <ChildBlocks
-              children={block.children}
+              children={block.children ?? []}
               projectWorkspacePath={projectWorkspacePath}
               parent="listItem"
             />
@@ -277,17 +260,17 @@ function BlockComponent({
         <div className={cn("my-0.5", colorClass)}>
           <div className="flex items-start gap-2">
             <span
-              aria-checked={block.checked}
+              aria-checked={block.props?.checked === true}
               role="checkbox"
               className={cn(
                 "mt-0.75 inline-block h-4 w-4 min-w-4 shrink-0 rounded-sm border-[calc(var(--spacing)*0.375)]",
-                block.checked
+                block.props?.checked === true
                   ? "border-transparent bg-primary-solid text-primary-solid"
                   : "border-(--foreground-tertiary) bg-transparent",
               )}
-              style={block.checked ? { position: "relative" } : undefined}
+              style={block.props?.checked === true ? { position: "relative" } : undefined}
             >
-              {block.checked && (
+              {block.props?.checked === true && (
                 <svg viewBox="0 0 14 14" fill="none" className="h-full w-full">
                   <path
                     d="M3 7.5L5.5 10L11 4"
@@ -301,7 +284,7 @@ function BlockComponent({
             </span>
             <span
               className={cn(
-                block.checked && "line-through opacity-60",
+                block.props?.checked === true && "line-through opacity-60",
                 density === "message" && MESSAGE_STYLES.text,
               )}
             >
@@ -309,31 +292,34 @@ function BlockComponent({
             </span>
           </div>
           <ChildBlocks
-            children={block.children}
+            children={block.children ?? []}
             projectWorkspacePath={projectWorkspacePath}
             parent="checkItem"
           />
         </div>
       );
 
-    case "toggle":
+    case "toggleListItem":
       return (
-        <details className={cn("nfm-toggle my-1", colorClass)} open={block.isOpen || undefined}>
+        <details className={cn("nfm-toggle my-1", colorClass)} open={undefined}>
           <summary className="nfm-toggle-summary">
-            <ToggleCaretIcon hasChildren={block.children.length > 0} />
+            <ToggleCaretIcon hasChildren={(block.children ?? []).length > 0} />
             <span className="min-w-0">
               <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
             </span>
           </summary>
-          {block.children.length > 0 && (
+          {(block.children ?? []).length > 0 && (
             <div className="mt-1 pl-4">
-              <BlockList blocks={block.children} projectWorkspacePath={projectWorkspacePath} />
+              <BlockList
+                blocks={block.children ?? []}
+                projectWorkspacePath={projectWorkspacePath}
+              />
             </div>
           )}
         </details>
       );
 
-    case "blockquote":
+    case "quote":
       return (
         <blockquote
           className={cn(
@@ -344,17 +330,24 @@ function BlockComponent({
           )}
         >
           <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
-          <ChildBlocks children={block.children} projectWorkspacePath={projectWorkspacePath} />
+          <ChildBlocks
+            children={block.children ?? []}
+            projectWorkspacePath={projectWorkspacePath}
+          />
         </blockquote>
       );
 
     case "codeBlock":
       return (
-        <HighlightedCodeBlock code={block.code} language={block.language} className={colorClass} />
+        <HighlightedCodeBlock
+          code={blockText(block)}
+          language={String(block.props?.language ?? "text")}
+          className={colorClass}
+        />
       );
 
     case "mathBlock":
-      return <MathSourcePreview source={block.source} displayMode />;
+      return <MathSourcePreview source={blockText(block)} displayMode />;
 
     case "table":
       return (
@@ -373,26 +366,25 @@ function BlockComponent({
             colorClass,
           )}
         >
-          {block.icon && <span className="text-[1.2em] select-none">{block.icon}</span>}
+          {String(block.props?.icon ?? "💡") && (
+            <span className="text-[1.2em] select-none">{String(block.props?.icon ?? "💡")}</span>
+          )}
           <div className="min-w-0 flex-1">
             <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
-            <ChildBlocks children={block.children} projectWorkspacePath={projectWorkspacePath} />
+            <ChildBlocks
+              children={block.children ?? []}
+              projectWorkspacePath={projectWorkspacePath}
+            />
           </div>
         </div>
       );
 
     case "image":
-      return (
-        <NfmImageFigure
-          block={block}
-          className={colorClass}
-          projectWorkspacePath={projectWorkspacePath}
-        />
-      );
+      return <ImageFigure block={block} className={colorClass} />;
 
     case "pageRef": {
       const mentionUrl = buildPageDeepLink({
-        pageId: block.targetBlockId,
+        pageId: String(block.props?.targetBlockId ?? ""),
       });
       return (
         <NodexTooltip tooltipContent={`Page mention (${mentionUrl})`}>
@@ -408,33 +400,35 @@ function BlockComponent({
       return (
         <div className="my-2.5 inline-flex items-center gap-2 rounded-lg border border-(--border) bg-[color-mix(in_srgb,var(--background-secondary)_65%,transparent)] px-2.5 py-2 text-xs leading-none text-(--foreground-secondary)">
           <span aria-hidden="true">▣</span>
-          <span className="whitespace-nowrap">Page · {block.uuid}</span>
+          <span className="whitespace-nowrap">Page · {block.id}</span>
         </div>
       );
 
     case "database":
-      return <ResourceBlock label="Database" detail={block.uuid} />;
+      return <ResourceBlock label="Database" detail={block.id ?? ""} />;
 
     case "canvas":
-      return <ResourceBlock label="Canvas" detail={block.uuid} />;
+      return <ResourceBlock label="Canvas" detail={block.id ?? ""} />;
 
     case "databaseViewRef":
       return (
-        <ResourceBlock label="Database view" detail={block.displayHint || block.databaseViewId} />
+        <ResourceBlock
+          label="Database view"
+          detail={String(block.props?.displayHint || block.props?.databaseViewId || "")}
+        />
       );
 
     case "syncedBlockRef":
-      return <ResourceBlock label="Synced block" detail={block.sourceBlockId} />;
+      return (
+        <ResourceBlock label="Synced block" detail={String(block.props?.sourceBlockId ?? "")} />
+      );
 
     case "templateRef":
-      return <ResourceBlock label="Template" detail={block.displayHint || block.sourceBlockId} />;
-
-    case "threadSection":
       return (
-        <div className="mt-5 mb-1 flex items-center gap-2 text-xs font-medium tracking-wide text-(--foreground-tertiary)">
-          <span aria-hidden="true">◆</span>
-          <span>{block.label || block.threadId || "Thread section"}</span>
-        </div>
+        <ResourceBlock
+          label="Template"
+          detail={String(block.props?.displayHint || block.props?.sourceBlockId || "")}
+        />
       );
 
     case "divider":
@@ -445,19 +439,11 @@ function BlockComponent({
   }
 }
 
-function NfmImageFigure({
-  block,
-  className,
-  projectWorkspacePath,
-}: {
-  block: NfmImage;
-  className?: string;
-  projectWorkspacePath?: string | null;
-}) {
-  const { url: sourceUrl } = useNfmImage(block.source);
+function ImageFigure({ block, className }: { block: MarkdownBlock; className?: string }) {
+  const { url: sourceUrl } = useMarkdownImage(String(block.props?.url ?? ""));
   const widthStyle =
-    block.previewWidth !== undefined
-      ? { width: `${block.previewWidth}px`, maxWidth: "100%" }
+    numberProp(block, "previewWidth") !== undefined
+      ? { width: `${numberProp(block, "previewWidth")}px`, maxWidth: "100%" }
       : undefined;
 
   return (
@@ -465,24 +451,25 @@ function NfmImageFigure({
       {sourceUrl ? (
         <img
           src={sourceUrl}
-          alt={nfmImageAlt(block)}
+          alt={markdownImageAlt(block)}
           className="max-w-full rounded-md border border-(--border)"
           style={widthStyle}
-          width={block.sourceWidth}
-          height={block.sourceHeight}
+          width={numberProp(block, "sourceWidth")}
+          height={numberProp(block, "sourceHeight")}
           loading="lazy"
         />
       ) : null}
-      {block.caption.length > 0 && (
+      {Boolean(block.props?.caption) && (
         <figcaption className="mt-1 text-sm text-(--foreground-secondary)">
-          <InlineList items={block.caption} projectWorkspacePath={projectWorkspacePath} />
+          {String(block.props?.caption ?? "")}
         </figcaption>
       )}
     </figure>
   );
 }
 
-export const nfmImageAlt = (block: NfmImage): string => inlineText(block.caption) || "Image";
+export const markdownImageAlt = (block: MarkdownBlock): string =>
+  String(block.props?.caption || block.props?.name || "Image");
 
 function ResourceBlock({ label, detail }: { label: string; detail: string }) {
   return (
@@ -499,10 +486,10 @@ function NumberedListItemContent({
   block,
   projectWorkspacePath,
 }: {
-  block: NfmNumberedListItem;
+  block: MarkdownBlock;
   projectWorkspacePath?: string | null;
 }) {
-  const colorClass = block.color ? nfmColorClass(block.color) : undefined;
+  const colorClass = blockColorClass(block);
   const density = useContext(NfmDensityContext);
 
   return (
@@ -514,7 +501,7 @@ function NumberedListItemContent({
     >
       <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
       <ChildBlocks
-        children={block.children}
+        children={block.children ?? []}
         projectWorkspacePath={projectWorkspacePath}
         parent="listItem"
       />
@@ -527,50 +514,44 @@ function NfmTableBlock({
   projectWorkspacePath,
   className,
 }: {
-  table: NfmTable;
+  table: MarkdownBlock;
   projectWorkspacePath?: string | null;
   className?: string;
 }) {
-  const message = useContext(NfmDensityContext) === "message";
+  const content = table.content as {
+    headerRows?: number;
+    headerCols?: number;
+    columnWidths?: (number | null)[];
+    rows: { cells: { props?: Record<string, unknown>; content?: unknown }[] }[];
+  };
   return (
-    <div
-      className={cn(
-        "nfm-render-table max-w-full overflow-x-auto",
-        message ? MESSAGE_STYLES.table : "my-3",
-        className,
-      )}
-    >
+    <div className={cn("my-3 max-w-full overflow-x-auto", className)}>
       <table className="border-collapse text-sm leading-5">
         <tbody>
-          {table.rows.map((row, rowIndex) => (
+          {content.rows.map((row, rowIndex) => (
             <tr key={rowIndex}>
               {row.cells.map((cell, columnIndex) => {
                 const Tag =
-                  (table.headerRow && rowIndex === 0) || (table.headerColumn && columnIndex === 0)
+                  rowIndex < (content.headerRows ?? 0) || columnIndex < (content.headerCols ?? 0)
                     ? "th"
                     : "td";
-                const column = table.columns[columnIndex];
-                const color = cell.color ?? row.color ?? column?.color;
-                const style = {
-                  width: column?.width ? `${column.width}px` : undefined,
-                  textAlign: column?.align,
-                };
                 return (
                   <Tag
                     key={columnIndex}
                     className={cn(
-                      message
-                        ? [
-                            MESSAGE_STYLES.cell,
-                            Tag === "th" ? MESSAGE_STYLES.header : "font-normal",
-                          ]
-                        : [
-                            "min-w-[120px] max-w-[240px] border border-token-border px-[9px] py-[7px] text-left align-top font-normal",
-                            Tag === "th" ? "bg-token-foreground/5" : "",
-                          ],
-                      color ? nfmColorClass(color) : "",
+                      "border border-token-border px-2 py-1.5 text-left align-top",
+                      cell.props?.backgroundColor
+                        ? nfmColorClass(`${cell.props.backgroundColor}_bg` as RichTextColor)
+                        : undefined,
                     )}
-                    style={style}
+                    style={{
+                      width: content.columnWidths?.[columnIndex] ?? undefined,
+                      textAlign: cell.props?.textAlignment as
+                        | "left"
+                        | "center"
+                        | "right"
+                        | undefined,
+                    }}
                   >
                     <InlineList items={cell.content} projectWorkspacePath={projectWorkspacePath} />
                   </Tag>
@@ -632,7 +613,7 @@ function ChildBlocks({
   projectWorkspacePath,
   parent = "block",
 }: {
-  children: NfmBlock[];
+  children: readonly MarkdownBlock[];
   projectWorkspacePath?: string | null;
   parent?: keyof (typeof MESSAGE_STYLES)["children"];
 }) {
@@ -649,12 +630,12 @@ function InlineList({
   items,
   projectWorkspacePath,
 }: {
-  items: NfmInlineContent[];
+  items: unknown;
   projectWorkspacePath?: string | null;
 }) {
   return (
     <>
-      {items.map((item, i) => (
+      {(Array.isArray(items) ? (items as MarkdownInline[]) : []).map((item, i) => (
         <InlineItem key={i} item={item} projectWorkspacePath={projectWorkspacePath} />
       ))}
     </>
@@ -665,113 +646,91 @@ function InlineItem({
   item,
   projectWorkspacePath,
 }: {
-  item: NfmInlineContent;
+  item: MarkdownInline;
   projectWorkspacePath?: string | null;
 }) {
-  if (item.type === "linebreak") return <br />;
-
-  if (item.type === "link") {
+  const props = item.props ?? {};
+  if (item.type === "link")
     return (
       <FileLinkAnchor
-        href={item.href}
+        href={item.href ?? ""}
         projectWorkspacePath={projectWorkspacePath}
-        className={cn("nfm-render-link", styleClasses(item.styles))}
+        className="nfm-render-link"
       >
-        {item.text}
+        <InlineList items={item.content} projectWorkspacePath={projectWorkspacePath} />
       </FileLinkAnchor>
     );
-  }
-
+  if (item.type === "inlineImage")
+    return <InlineImage {...inlineImageProps(props)} projectWorkspacePath={projectWorkspacePath} />;
   if (item.type === "attachment") {
-    const label =
-      item.name.trim() || (item.kind === "text" ? "Pasted text" : "Untitled attachment");
-
+    const name = String(props.name ?? "");
+    const kind = props.kind === "file" || props.kind === "folder" ? props.kind : "text";
     return (
-      <NodexTooltip
-        tooltipContent={item.mode === "link" ? item.source : item.origin || item.source}
-      >
+      <NodexTooltip tooltipContent={String(props.origin || props.source || "")}>
         <InlineReferenceVisual
           className="max-w-[18rem]"
-          label={label}
+          label={name || "Attachment"}
           icon={
             <AttachmentResourceIcon
-              kind={item.kind}
-              name={item.name}
-              mimeType={item.mimeType}
+              kind={kind}
+              name={name}
+              mimeType={typeof props.mimeType === "string" ? props.mimeType : undefined}
               className="size-full"
             />
           }
-          trailing={item.mode === "link" ? <Link2 className="size-full" /> : undefined}
+          trailing={props.mode === "link" ? <Link2 className="size-full" /> : undefined}
           data-attachment-inline-chip="true"
         />
       </NodexTooltip>
     );
   }
-
   if (item.type === "agentConfig") {
-    const chip = resolveAgentConfigChip({
-      ...item,
-      unknownAttributes: item.unknownAttributes?.join(",") ?? "",
-      rawAttributes: item.rawAttributes ?? "",
-    });
+    const chip = resolveAgentConfigChip(props);
     return (
-      <span
-        className={cn(
-          "inline-flex max-w-[18rem] items-center gap-1 rounded-full px-2 py-0.5 align-middle text-[12px] leading-5",
-          chip.invalid
-            ? "bg-token-foreground/8 text-token-description-foreground"
-            : "border border-token-border/55 bg-token-foreground/[0.035] text-token-foreground",
-        )}
-      >
+      <span className="inline-flex max-w-[18rem] items-center gap-1 rounded-full border border-token-border/55 px-2 py-0.5 align-middle text-[12px] leading-5">
         <NodexLogoMarkIcon monochrome className="size-3 shrink-0" />
         <span className="truncate">{chip.label}</span>
         {chip.summary ? <span className="truncate opacity-70">{chip.summary}</span> : null}
       </span>
     );
   }
-
-  if (item.type === "threadMention") {
-    const label = formatThreadMentionShortUuid(item.uuid);
+  if (item.type === "threadMention")
     return (
       <ThreadMentionInlineVisual
         className="max-w-[18rem] align-baseline"
-        title={item.uuid}
-        label={label}
+        title={String(props.uuid ?? "")}
+        label={formatThreadMentionShortUuid(String(props.uuid ?? ""))}
       />
     );
-  }
-
-  if (item.type === "pageMention") {
+  if (item.type === "pageMention")
     return (
       <PageMentionInlineVisual
         className="max-w-[18rem] align-baseline"
-        title={buildPageDeepLink({ pageId: item.targetPageId })}
-        label={item.targetPageId}
+        title={buildPageDeepLink({ pageId: String(props.targetPageId ?? "") })}
+        label={String(props.targetPageId ?? "")}
       />
     );
-  }
-
   if (item.type === "dateMention") {
-    return (
+    const payload = normalizeDateMention({ ...props, type: "dateMention" });
+    return payload ? (
       <DateMentionInlineVisual
-        payload={item}
+        payload={payload}
         className="max-w-[18rem]"
-        title={formatDateMentionPlainText(item)}
+        title={formatDateMentionPlainText(payload)}
       />
-    );
+    ) : null;
   }
-
-  if (item.type === "math") {
-    return <MathSourcePreview source={item.source} />;
-  }
-
-  // text span
-  const classes = styleClasses(item.styles, { includeCode: false });
-  if (item.styles.code) {
-    return <InlineMarkdownCode className={classes}>{item.text}</InlineMarkdownCode>;
-  }
-  if (!classes) return <>{item.text}</>;
-  return <span className={classes}>{item.text}</span>;
+  if (item.type === "math")
+    return <MathSourcePreview source={typeof item.content === "string" ? item.content : ""} />;
+  const classes = styleClasses(item.styles ?? {}, { includeCode: false });
+  const text = (item.text ?? "").split("\n").map((line, index) => (
+    <span key={index}>
+      {index > 0 ? <br /> : null}
+      {line}
+    </span>
+  ));
+  if (item.styles?.code) return <InlineMarkdownCode className={classes}>{text}</InlineMarkdownCode>;
+  return classes ? <span className={classes}>{text}</span> : <>{text}</>;
 }
 
 function MathSourcePreview({
@@ -797,20 +756,23 @@ function MathSourcePreview({
 }
 
 function styleClasses(
-  styles: NfmStyleSet,
+  styles: NonNullable<MarkdownInline["styles"]>,
   options?: { includeCode?: boolean },
 ): string | undefined {
   const parts: string[] = [];
   if (styles.bold) parts.push("font-semibold");
   if (styles.italic) parts.push("italic");
-  if (styles.strikethrough) parts.push("line-through");
+  if (styles.strike) parts.push("line-through");
   if (styles.underline) parts.push("underline");
   if (styles.code && options?.includeCode !== false) parts.push("font-mono");
-  if (styles.color) parts.push(nfmColorClass(styles.color));
+  if (typeof styles.textColor === "string")
+    parts.push(nfmColorClass(styles.textColor as RichTextColor));
+  if (typeof styles.backgroundColor === "string")
+    parts.push(nfmColorClass(`${styles.backgroundColor}_bg` as RichTextColor));
   return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
-function nfmColorClass(color: NfmColor): string {
+function nfmColorClass(color: RichTextColor): string {
   // Map NFM colors to CSS variable-based classes
   const colorMap: Record<string, string> = {
     gray: "text-[var(--gray-text)]",
@@ -849,18 +811,18 @@ function ToggleCaretIcon({ hasChildren }: { hasChildren: boolean }) {
   );
 }
 
-function inlineText(items: NfmInlineContent[]): string {
-  return items
-    .map((item) => {
-      if (item.type === "linebreak") return " ";
-      if (item.type === "attachment") return item.name;
-      if (item.type === "agentConfig") return "";
-      if (item.type === "threadMention") return item.uuid;
-      if (item.type === "pageMention") return item.targetPageId;
-      if (item.type === "dateMention") return formatDateMentionPlainText(item);
-      if (item.type === "math") return item.source;
-      return item.text;
-    })
-    .join("")
-    .trim();
+function blockText(block: MarkdownBlock): string {
+  return Array.isArray(block.content)
+    ? (block.content as MarkdownInline[]).map((item) => item.text ?? "").join("")
+    : "";
+}
+function numberProp(block: MarkdownBlock, name: string): number | undefined {
+  const value = block.props?.[name];
+  return typeof value === "number" ? value : undefined;
+}
+function blockColorClass(block: MarkdownBlock): string {
+  return cn(
+    nfmColorClass(String(block.props?.textColor ?? "") as RichTextColor),
+    nfmColorClass(`${block.props?.backgroundColor ?? ""}_bg` as RichTextColor),
+  );
 }

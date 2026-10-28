@@ -604,20 +604,17 @@ mod tests {
                         "Library/CLI~page-1/meta.yaml",
                     ),
                     body: file(
-                        LibraryPageProjectionFileKind::BodyNestedMarkdown,
-                        "pages/hash/body.nested.md",
-                        "Library/CLI~page-1/body.nested.md",
+                        LibraryPageProjectionFileKind::BodyMarkdown,
+                        "pages/hash/body.md",
+                        "Library/CLI~page-1/body.md",
                     ),
                 }],
                 warnings: Vec::new(),
             },
         };
         assert_eq!(
-            remap_output(
-                b"pages/hash/body.nested.md:4:Core starts\n2 matches\n",
-                &lease
-            ),
-            b"Library/CLI~page-1/body.nested.md:4:Core starts\n2 matches\n"
+            remap_output(b"pages/hash/body.md:4:Core starts\n2 matches\n", &lease),
+            b"Library/CLI~page-1/body.md:4:Core starts\n2 matches\n"
         );
     }
 
@@ -630,7 +627,7 @@ mod tests {
         let meta_bytes = b"id: \"page-1\"\ntitle: \"CLI\"\nproperties: {}\nschedule: null\n";
         let body_bytes = b"## Runtime\nCore starts on demand.\n";
         let meta_path = page_root.join("meta.yaml");
-        let body_path = page_root.join("body.nested.md");
+        let body_path = page_root.join("body.md");
         fs::write(&meta_path, meta_bytes).expect("metadata projection");
         fs::write(&body_path, body_bytes).expect("body projection");
         let mut lease = LibrarySearchSnapshotLease {
@@ -668,9 +665,9 @@ mod tests {
                         meta_bytes,
                     ),
                     body: projected_file(
-                        LibraryPageProjectionFileKind::BodyNestedMarkdown,
-                        "pages/hash/body.nested.md",
-                        "Library/CLI~page-1/body.nested.md",
+                        LibraryPageProjectionFileKind::BodyMarkdown,
+                        "pages/hash/body.md",
+                        "Library/CLI~page-1/body.md",
                         body_bytes,
                     ),
                 }],
@@ -708,7 +705,7 @@ mod tests {
         assert_eq!(matching.exit_status, 0);
         assert_eq!(
             matching.stdout,
-            b"Library/CLI~page-1/body.nested.md:2:Core starts on demand.\n"
+            b"Library/CLI~page-1/body.md:2:Core starts on demand.\n"
         );
 
         let missing = run(

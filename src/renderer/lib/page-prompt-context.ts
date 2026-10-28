@@ -1,7 +1,7 @@
 import { materializePagePromptInput } from "./page-prompt-input";
 import type { CodexPromptInput } from "@/lib/types";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
-import { parseNfm } from "@/lib/nfm";
+import { readMarkdown } from "../../shared/nodex-markdown";
 import { materializePageDocument } from "../../shared/block-documents/block-document-codec";
 import type { OwnedDocumentDescriptor } from "../../shared/block-documents/contracts";
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
@@ -15,7 +15,7 @@ import {
 } from "./block-document-surface-runtime";
 import type { DocumentSyncAdapter } from "./nodex-y-provider";
 import { unwrapOwnedBlockDocumentPreparationResult } from "./owned-block-document";
-import { buildCodexPromptInputFromNfmBlocks } from "./codex-prompt-input";
+import { buildCodexPromptInputFromMarkdownBlocks } from "./codex-prompt-input";
 import type { PagePromptContext } from "./page-chat-actions";
 
 export interface BuildPagePromptContextInput {
@@ -23,7 +23,7 @@ export interface BuildPagePromptContextInput {
   readonly pageId: string;
   readonly pageKey?: string;
   readonly title: string;
-  readonly nfm: string;
+  readonly markdown: string;
   readonly source?: string;
 }
 
@@ -86,12 +86,12 @@ export function buildPagePromptContext({
   pageId,
   pageKey,
   title,
-  nfm,
+  markdown,
   source = buildPageDeepLink({ pageId }),
 }: BuildPagePromptContextInput): PagePromptContext {
   const normalizedTitle = title.trim() || "Untitled Page";
   const normalizedPageKey = pageKey?.trim() || undefined;
-  const basePrompt = buildCodexPromptInputFromNfmBlocks(parseNfm(nfm));
+  const basePrompt = buildCodexPromptInputFromMarkdownBlocks(readMarkdown(markdown));
   const promptText = [
     `Page: ${normalizedTitle}`,
     ...(normalizedPageKey ? [`Page key: ${normalizedPageKey}`] : []),
@@ -135,7 +135,7 @@ export async function loadPagePromptContext(input: {
     pageId: input.pageId,
     pageKey: input.pageKey,
     title: materialized.title.trim() || input.titleSnapshot || "Untitled Page",
-    nfm: materialized.nfm,
+    markdown: materialized.markdown,
   });
   return {
     ...context,

@@ -1,18 +1,18 @@
-# NFM Editor Table Block Behavior
+# Page Editor Table Block Behavior
 
 Status: Active  
 Last updated: 2026-06-24
 
 ## Summary
 
-NFM descriptions support simple editable tables in Card Stage, inline toggle-list editors, read-only history previews, and the lightweight NFM renderer. The table feature mirrors the Notion simple-table interaction model where possible while keeping Nodex design tokens for color, border, shadow, and typography.
+Page bodies support simple editable tables in Card Stage, inline toggle-list editors, read-only history previews, and the lightweight Page editor renderer. The table feature mirrors the Notion simple-table interaction model where possible while keeping Nodex design tokens for color, border, shadow, and typography.
 
 ## Syntax and Persistence
 
-- GFM pipe tables parse as NFM `table` blocks and remain serialized as pipe tables while they only use GFM-expressible state: rows, cells, header row, and column alignment.
-- When a table uses non-GFM state such as header column, fixed column widths, fit-page-width, row/column/cell color, colspan, or rowspan, serialization upgrades that block to the lossless NFM `<table>` extension documented in `docs/references/nested-markdown-spec.md`.
-- Tables are top-level or nested NFM blocks but are childless at the persistence boundary. Table cells contain inline NFM rich text only; block children, images, card refs, thread sections, and other block content are not valid inside cells.
-- Card descriptions continue to persist as plain NFM text. No SQLite schema migration is required.
+- GFM pipe tables read as `table` Blocks and remain serialized as pipe tables while they only use GFM-expressible state: rows, cells, header row, and column alignment.
+- Exact text is a pipe table, wrapped in `:::table{…}` when header state, column widths or table color need attributes. A cell background is an attribute list at the end of its text. [Nodex Markdown](../references/nodex-markdown.md) owns canonical spelling; tables do not have merged cells.
+- Tables are top-level or nested Blocks but are childless at the persistence boundary. Table cells contain inline rich text, including inline images; child Blocks, owning resources, dividers, and other Block content are not valid inside cells.
+- Page bodies are stored in their owned collaborative Documents; Markdown text is a derived projection.
 
 ## Editor Behavior
 
@@ -20,9 +20,9 @@ NFM descriptions support simple editable tables in Card Stage, inline toggle-lis
 - BlockNote/ProseMirror owns table invariants, cell selections, Tab/Shift-Tab navigation, Enter-to-next-row behavior, column resizing, and table copy/paste normalization.
 - Nodex enables header row/column table support and cell background support. Split/merge cells, database conversion, comments, and row-to-card import are shown only as disabled development-build controls until Nodex has the underlying product model.
 - The block side menu shows live `Header row` and `Header column` actions for a single selected table block. Development builds can additionally show disabled placeholder rows such as `Fit table width`, row/column color placeholders, and `Create cards from rows`.
-- Table row/column/cell handle menus use the same compact visual language as the NFM block side menu: 265px main surface, 226px color flyout, 28px action rows, shared side-menu icons for `Color`, `Duplicate`, and `Delete`, right-side shortcuts/checkmarks, tokenized hover/background/shadow, and disabled mock rows only for actions whose product model is not implemented yet.
+- Table row/column/cell handle menus use the same compact visual language as the Page editor block side menu: 265px main surface, 226px color flyout, 28px action rows, shared side-menu icons for `Color`, `Duplicate`, and `Delete`, right-side shortcuts/checkmarks, tokenized hover/background/shadow, and disabled mock rows only for actions whose product model is not implemented yet.
 - Row and column handle `Duplicate` creates a copied row or column immediately after the selected row or column, preserving inline rich text, cell color props, text alignment, and column width where applicable. `Clear contents` empties selected row, column, or cell content while preserving cell styling and table dimensions. Cell-level duplicate remains absent because the reference simple-table behavior does not duplicate single-cell selections.
-- Table paste priority is Notion block MIME, then BlockNote/default HTML handling, then GFM plain-text table handling. Notion `table` plus `table_row` records paste as NFM tables; database/collection tables are not converted.
+- Table paste priority is Notion block MIME, then BlockNote/default HTML handling, then GFM plain-text table handling. Notion `table` plus `table_row` records paste as table Blocks; database/collection tables are not converted.
 
 ## Layout and Visual Contract
 
@@ -32,6 +32,6 @@ NFM descriptions support simple editable tables in Card Stage, inline toggle-lis
 
 ## Clipboard and Prompt Serialization
 
-- Whole-block copy and thread-section prompt serialization include table cell text in row-major order.
-- Plain-text table copy from NFM serialization uses tab-separated cells and newline-separated rows.
+- Whole-block copy and Page prompt serialization include table cell text in row-major order.
+- Portable clipboard text writes tables as GFM pipe tables; Page prompts use exact Nodex Markdown with table directives when required.
 - GFM pasted from plain text is parsed as Markdown only when the clipboard text contains a valid GFM table delimiter row, so ordinary pasted text remains plain text.

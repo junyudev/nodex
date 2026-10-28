@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 
@@ -453,3 +454,13 @@ describe("dev launcher", () => {
     ).toThrow("NODEX_REMOTE_DEBUGGING_PORT");
   });
 });
+
+test("the launcher loads in plain Node, as `vp run dev` runs it", () => {
+  // Vitest resolves stylesheets and editor modules; the launcher runs under tsx, which does not.
+  const usage = execFileSync(
+    process.execPath,
+    ["--import", "tsx", path.join(import.meta.dirname, "dev-launcher.ts"), "--help"],
+    { cwd: path.join(import.meta.dirname, ".."), encoding: "utf8", timeout: 60_000 },
+  );
+  expect(usage).toContain("--from-profile");
+}, 90_000);

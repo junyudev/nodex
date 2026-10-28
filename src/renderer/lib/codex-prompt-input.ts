@@ -4,108 +4,104 @@ import type {
   CodexPromptInput,
 } from "@/lib/types";
 import {
-  blockNoteToNfm,
-  extractPlainText,
-  serializeClipboardText,
-  serializeInlineContent,
-  type NfmBlock,
-  type NfmInlineContent,
-} from "@/lib/nfm";
+  writeMarkdown,
+  type MarkdownBlock,
+  type MarkdownInline,
+} from "../../shared/nodex-markdown";
 
+/** Block text stays exact; image placeholders and Agent settings travel with typed sidecars. */
 export function buildCodexPromptInputFromBlockNoteBlocks(
-  blocks: unknown[],
-  transformNfmBlocks?: (nfmBlocks: NfmBlock[]) => void,
+  blocks: readonly MarkdownBlock[],
 ): CodexPromptInput {
-  const nfmBlocks = blockNoteToNfm(blocks);
-  transformNfmBlocks?.(nfmBlocks);
-  return buildCodexPromptInputFromNfmBlocks(nfmBlocks);
+  return buildCodexPromptInputFromMarkdownBlocks(blocks);
 }
 
-export function buildCodexPromptInputFromNfmBlocks(nfmBlocks: NfmBlock[]): CodexPromptInput {
+export function buildCodexPromptInputFromMarkdownBlocks(
+  blocks: readonly MarkdownBlock[],
+): CodexPromptInput {
   const images: CodexPromptImageInput[] = [];
   const agentConfigs: CodexPromptAgentConfigInput[] = [];
-  const textBlocks = stripPromptSideEffectsFromBlocks(nfmBlocks, images, agentConfigs);
-
+  const image = (source: string, caption: string): string => {
+    images.push({ source, ...(caption ? { caption } : {}) });
+    return caption
+      ? `[Image #${images.length}] (caption: ${caption})`
+      : `[Image #${images.length}]`;
+  };
+  const inline = (content: unknown): unknown => {
+    if (!Array.isArray(content)) return content;
+    return (content as MarkdownInline[]).flatMap((item): MarkdownInline[] => {
+      const props = item.props ?? {};
+      if (item.type === "agentConfig") {
+        agentConfigs.push(promptAgentConfig(props));
+        return [];
+      }
+      if (item.type === "inlineImage")
+        return [
+          {
+            type: "text",
+            text: image(String(props.url ?? ""), String(props.alt ?? "")),
+            styles: {},
+          },
+        ];
+      return [
+        {
+          ...item,
+          ...(Array.isArray(item.content)
+            ? { content: inline(item.content) as MarkdownInline[] }
+            : {}),
+        },
+      ];
+    });
+  };
+  const visit = (items: readonly MarkdownBlock[]): MarkdownBlock[] =>
+    items.map((block) => {
+      if (block.type === "image")
+        return {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: image(String(block.props?.url ?? ""), String(block.props?.caption ?? "")),
+              styles: {},
+            },
+          ],
+        };
+      const content =
+        block.type === "table" && block.content && typeof block.content === "object"
+          ? {
+              ...block.content,
+              rows: (block.content as { rows: { cells: { content?: unknown }[] }[] }).rows.map(
+                (row) => ({
+                  ...row,
+                  cells: row.cells.map((cell) => ({ ...cell, content: inline(cell.content) })),
+                }),
+              ),
+            }
+          : inline(block.content);
+      return {
+        ...block,
+        ...(content !== undefined ? { content } : {}),
+        children: visit(block.children ?? []),
+      };
+    });
   return {
-    text: trimSerializedPromptText(serializeClipboardText(textBlocks)),
-    ...(images.length > 0 ? { images } : {}),
-    ...(agentConfigs.length > 0 ? { agentConfigs } : {}),
+    text: writeMarkdown(visit(blocks)).trim(),
+    ...(images.length ? { images } : {}),
+    ...(agentConfigs.length ? { agentConfigs } : {}),
   };
 }
 
-function trimSerializedPromptText(text: string): string {
-  return text
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .join("\n")
-    .trim();
-}
-
-function stripPromptSideEffectsFromBlocks(
-  blocks: NfmBlock[],
-  images: CodexPromptImageInput[],
-  agentConfigs: CodexPromptAgentConfigInput[],
-): NfmBlock[] {
-  const result: NfmBlock[] = [];
-
-  for (const block of blocks) {
-    if (block.type === "image") {
-      const captionText = extractPlainText(serializeInlineContent(block.caption)).trim();
-      const imageNumber = images.length + 1;
-      images.push({
-        source: block.source,
-        ...(captionText ? { caption: captionText } : {}),
-      });
-      const placeholder = captionText
-        ? `[Image #${imageNumber}] (caption: ${captionText})`
-        : `[Image #${imageNumber}]`;
-      result.push({
-        type: "paragraph",
-        content: [{ type: "text", text: placeholder, styles: {} }],
-        children: [],
-      });
-      continue;
-    }
-
-    const children = stripPromptSideEffectsFromBlocks(block.children ?? [], images, agentConfigs);
-    if ("content" in block && Array.isArray(block.content)) {
-      result.push({
-        ...block,
-        content: stripPromptSideEffectsFromInline(block.content, agentConfigs),
-        children,
-      } as NfmBlock);
-      continue;
-    }
-
-    result.push({
-      ...block,
-      children,
-    } as NfmBlock);
-  }
-
-  return result;
-}
-
-function stripPromptSideEffectsFromInline(
-  items: NfmInlineContent[],
-  agentConfigs: CodexPromptAgentConfigInput[],
-): NfmInlineContent[] {
-  const result: NfmInlineContent[] = [];
-
-  for (const item of items) {
-    if (item.type === "agentConfig") {
-      agentConfigs.push({
-        ...(item.mode ? { mode: item.mode } : {}),
-        ...(item.provider ? { provider: item.provider } : {}),
-        ...(item.model ? { model: item.model } : {}),
-        ...(item.reasoning ? { reasoning: item.reasoning } : {}),
-        ...(item.speed ? { speed: item.speed } : {}),
-        ...(item.unknownAttributes?.length ? { unknownAttributes: item.unknownAttributes } : {}),
-      });
-      continue;
-    }
-    result.push(item);
-  }
-
-  return result;
+export function promptAgentConfig(
+  props: Readonly<Record<string, unknown>>,
+): CodexPromptAgentConfigInput {
+  const known = Object.fromEntries(
+    ["mode", "provider", "model", "reasoning", "speed"].flatMap((key) =>
+      typeof props[key] === "string" && props[key] ? [[key, props[key]]] : [],
+    ),
+  );
+  const unknownAttributes =
+    typeof props.unknownAttributes === "string"
+      ? props.unknownAttributes.split(",").filter(Boolean)
+      : [];
+  return { ...known, ...(unknownAttributes.length ? { unknownAttributes } : {}) };
 }

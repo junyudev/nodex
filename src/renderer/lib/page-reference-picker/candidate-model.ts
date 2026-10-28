@@ -1,4 +1,4 @@
-import type { MentionSuggestionMatch } from "../nfm/mention-suggestion-model";
+import type { MentionSuggestionMatch } from "../editor-model/mention-suggestion-model";
 import type { CommandPaletteHighlightSegment } from "../command-palette-highlight";
 import type { PageReferenceCandidate, PageReferenceIntent, PageReferenceSelection } from "./types";
 

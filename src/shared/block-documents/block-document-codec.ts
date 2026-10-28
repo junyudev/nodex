@@ -6,9 +6,14 @@ import {
 } from "@blocknote/core/yjs";
 import * as Y from "yjs";
 import { createUuidV7 } from "../uuid-v7";
-import { extractPlainText } from "../nfm/extract-text";
-import { parseNfm } from "../nfm/parser";
-import { serializeNfm } from "../nfm/serializer";
+import {
+  readMarkdown,
+  writeMarkdown,
+  markdownPlainText,
+  markdownPreview,
+  type MarkdownBlock,
+} from "../nodex-markdown";
+import { markdownBlocksForEditor } from "../nodex-markdown/blocknote";
 import {
   assertValidBlockDocument,
   BLOCK_GROUP_NODE_NAME,
@@ -27,11 +32,6 @@ import {
   type BlockDocumentReference,
 } from "./derived-records";
 import { headlessBlockDocumentSchema } from "./headless-blocknote-schema";
-import {
-  blockNoteToNfm,
-  nfmToBlockNoteWithIds,
-  type BlockNoteBlockValue,
-} from "./nfm-blocknote-adapter";
 import {
   canonicalizePortableRichText,
   portableRichTextPlainText,
@@ -62,7 +62,7 @@ export interface BlockDocumentMaterialization {
   readonly schemaVersion: number;
   readonly title: string;
   readonly blockTree: readonly BlockTreeNode[];
-  readonly nfm: string;
+  readonly markdown: string;
   readonly plainText: string;
   readonly preview: string;
   readonly references: readonly BlockDocumentReference[];
@@ -87,7 +87,7 @@ export interface CreatePageDocumentGenesisInput {
   /** Plain convenience seam; richTitle is the canonical authority input. */
   readonly title?: string;
   readonly richTitle?: PortableRichText;
-  readonly nfm: string;
+  readonly markdown: string;
   readonly allocateBlockId?: () => BlockId;
 }
 
@@ -118,18 +118,12 @@ export class BlockDocumentCodecError extends Error {
 }
 
 /**
- * Canonicalize imported NFM to the durable semantics representable by a
+ * Canonicalize imported Markdown to the durable semantics representable by a
  * BlockNote-backed Document. Disclosure state is intentionally omitted: an
  * expanded toggle is window-local UI state, not collaborative Page content.
  */
-export const createBlockDocumentNfmContentParitySignature = (nfm: string): string => {
-  let nextBlockId = 0;
-  const blocks = nfmToBlockNoteWithIds(parseNfm(nfm), () => {
-    nextBlockId += 1;
-    return `nfm-parity-${nextBlockId}`;
-  });
-  return serializeNfm(blockNoteToNfm(blocks));
-};
+export const createBlockDocumentMarkdownContentParitySignature = (markdown: string): string =>
+  writeMarkdown(readMarkdown(markdown, "exact"));
 
 const headlessEditor = BlockNoteEditor.create({
   schema: headlessBlockDocumentSchema,
@@ -158,12 +152,12 @@ export const createCanonicalEmptyParagraphBlock = (blockId: BlockId): BlockTreeN
   children: [],
 });
 
-export const populateBlockDocumentBodyFromNfm = (
+export const populateBlockDocumentBodyFromMarkdown = (
   body: Y.XmlFragment,
-  nfm: string,
+  markdown: string,
   allocateBlockId: () => BlockId = createUuidV7,
 ): void => {
-  const imported = nfmToBlockNoteWithIds(parseNfm(nfm), allocateBlockId);
+  const imported = markdownBlocksForEditor(readMarkdown(markdown, "exact"), allocateBlockId);
   const blockNoteBlocks =
     imported.length > 0 ? imported : [createCanonicalEmptyParagraphBlock(allocateBlockId())];
   blocksToYXmlFragment(
@@ -245,7 +239,7 @@ const cloneProps = (
   return cloned as Readonly<Record<string, BlockTreeValue>>;
 };
 
-const toBlockTree = (blocks: readonly BlockNoteBlockValue[]): readonly BlockTreeNode[] =>
+const toBlockTree = (blocks: readonly MarkdownBlock[]): readonly BlockTreeNode[] =>
   blocks.map((block) => {
     if (!block.id) {
       throw new BlockDocumentCodecError("Materialized Block is missing its identity");
@@ -260,9 +254,18 @@ const toBlockTree = (blocks: readonly BlockNoteBlockValue[]): readonly BlockTree
     };
   });
 
-/** A local history record never serializes an unchanged descendant subtree. */
-export const materializeBlockFields = (container: Y.XmlElement): BlockTreeNode =>
-  toBlockTree([yXmlElementToBlockFields(headlessEditor, container)])[0]!;
+/**
+ * History retains stored props, including omissions, rather than ProseMirror's
+ * view defaults so Core can guard exact Block state. Descendants are excluded.
+ */
+export const materializeBlockFields = (container: Y.XmlElement): BlockTreeNode => {
+  const content = container.get(0);
+  if (!(content instanceof Y.XmlElement)) {
+    throw new BlockDocumentCodecError("Block content is missing");
+  }
+  const fields = toBlockTree([yXmlElementToBlockFields(headlessEditor, container)])[0]!;
+  return { ...fields, props: cloneProps(content.getAttributes()) };
+};
 
 const flattenBlockTree = (
   blocks: readonly BlockTreeNode[],
@@ -338,11 +341,6 @@ const assertCanonicalBlockChildren = (body: Y.XmlFragment): void => {
   );
 };
 
-const buildPreview = (plainText: string): string => {
-  if (plainText.length <= 240) return plainText;
-  return `${plainText.slice(0, 240).trimEnd()}...`;
-};
-
 export const semanticEmptyDocumentRoot = (
   blockTree: readonly BlockTreeNode[],
 ): BlockTreeNode | undefined => {
@@ -351,6 +349,10 @@ export const semanticEmptyDocumentRoot = (
   if (!root || root.type !== "paragraph" || root.children.length > 0) {
     return undefined;
   }
+  const hasColor = [root.props.textColor, root.props.backgroundColor].some(
+    (color) => typeof color === "string" && color !== "" && color !== "default",
+  );
+  if (hasColor) return undefined;
   return Array.isArray(root.content) && root.content.length === 0 ? root : undefined;
 };
 
@@ -370,13 +372,10 @@ export const materializeBlockDocumentBody = ({
 }: MaterializeBlockDocumentBodyInput): BlockDocumentMaterialization => {
   const scannedBlocks = assertValidBlockDocument(body);
   assertCanonicalBlockChildren(body);
-  let blockNoteBlocks: readonly BlockNoteBlockValue[] = [];
+  let blockNoteBlocks: readonly MarkdownBlock[] = [];
   if (scannedBlocks.length > 0) {
     try {
-      blockNoteBlocks = yXmlFragmentToBlocks(
-        headlessEditor,
-        body,
-      ) as readonly BlockNoteBlockValue[];
+      blockNoteBlocks = yXmlFragmentToBlocks(headlessEditor, body) as readonly MarkdownBlock[];
     } catch (error) {
       throw new BlockDocumentCodecError(
         `${schemaLabel} body cannot be decoded with the canonical BlockNote schema`,
@@ -387,18 +386,17 @@ export const materializeBlockDocumentBody = ({
 
   const blockTree = toBlockTree(blockNoteBlocks);
   assertMaterializationMatchesScan(blockTree, scannedBlocks);
-  const nfmBlocks = blockNoteToNfm(blockNoteBlocks);
-  const nfm = semanticEmptyDocumentRoot(blockTree) ? "" : serializeNfm(nfmBlocks);
-  const { references, assetRefs } = deriveBlockDocumentRecords(blockTree, nfmBlocks);
-  const plainText = extractPlainText(nfm);
+  const markdown = semanticEmptyDocumentRoot(blockTree) ? "" : writeMarkdown(blockNoteBlocks);
+  const { references, assetRefs } = deriveBlockDocumentRecords(blockTree);
+  const plainText = markdownPlainText(blockNoteBlocks);
 
   return {
     schemaVersion,
     title,
     blockTree,
-    nfm,
+    markdown,
     plainText,
-    preview: buildPreview(plainText),
+    preview: markdownPreview(plainText),
     references,
     assetRefs,
   };
@@ -422,7 +420,7 @@ export const createPageDocumentGenesis = ({
   documentId,
   title = "",
   richTitle,
-  nfm,
+  markdown,
   allocateBlockId = createUuidV7,
 }: CreatePageDocumentGenesisInput): PageDocumentGenesis => {
   if (richTitle !== undefined && title.length > 0) {
@@ -437,7 +435,7 @@ export const createPageDocumentGenesis = ({
     if (richTitle !== undefined) {
       replaceYTextWithPortableRichText(envelope.title, canonicalizePortableRichText(richTitle));
     }
-    populateBlockDocumentBodyFromNfm(envelope.body, nfm, allocateBlockId);
+    populateBlockDocumentBodyFromMarkdown(envelope.body, markdown, allocateBlockId);
     const materialization = materializePageDocument(envelope.document);
     return {
       document: envelope.document,
@@ -448,9 +446,12 @@ export const createPageDocumentGenesis = ({
   } catch (error) {
     envelope.document.destroy();
     if (error instanceof BlockDocumentCodecError) throw error;
-    throw new BlockDocumentCodecError(`Could not import NFM genesis for Document ${documentId}`, {
-      cause: error,
-    });
+    throw new BlockDocumentCodecError(
+      `Could not import Markdown genesis for Document ${documentId}`,
+      {
+        cause: error,
+      },
+    );
   }
 };
 

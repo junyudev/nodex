@@ -1163,6 +1163,7 @@ dependencies = [
  "hex",
  "nodex-core-contracts",
  "nodex-core-protocol",
+ "nodex-markdown",
  "nodex-page-search-kernel",
  "nodex-sqlite-query",
  "nodex-store-format",

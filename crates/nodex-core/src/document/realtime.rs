@@ -612,7 +612,7 @@ fn intent_document_id(intent: &OwnedDocumentIntent) -> Option<&str> {
         OwnedDocumentIntent::ApplyYjsUpdate { document_id, .. }
         | OwnedDocumentIntent::ApplySemanticMutation { document_id, .. }
         | OwnedDocumentIntent::ApplyOperationBatch { document_id, .. }
-        | OwnedDocumentIntent::ReplaceFromNfm { document_id, .. }
+        | OwnedDocumentIntent::ReplaceFromMarkdown { document_id, .. }
         | OwnedDocumentIntent::ApplyCanvasMutation { document_id, .. }
         | OwnedDocumentIntent::CompactCanvasTombstones { document_id, .. }
         | OwnedDocumentIntent::CreateCheckpoint { document_id, .. }

@@ -208,7 +208,7 @@ export interface DataSourcePageRowV2 {
   readonly effectiveGroupKey: string | null;
   readonly effectiveSubgroupKey: string | null;
   /** Exact-head Page body projection supplied by native Database authority. */
-  readonly bodyNfm?: string;
+  readonly bodyMarkdown?: string;
   /** Exact-head intrinsic values requested by complete Page projections. */
   readonly intrinsicProperties?: readonly PageIntrinsicPropertyValueV2[];
   /** Projection of the standard Parent Relation, independent from structural ownership. */

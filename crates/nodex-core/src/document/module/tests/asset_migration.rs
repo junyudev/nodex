@@ -28,7 +28,7 @@ fn install_historical_document(connection: &rusqlite::Connection) -> Result<(), 
     let genesis = prepare_yjs_genesis_with_blocks(
         DOCUMENT_ID,
         "page",
-        BlockDocumentSchema::PageV3,
+        BlockDocumentSchema::PageV4,
         &blocks(),
     )?;
     for unit in &genesis.materialization.search_units {
@@ -80,7 +80,7 @@ fn managed_asset_migration_preserves_content_history_and_missing_sources() {
                 let authority = read_document_authority(connection, DOCUMENT_ID)?.unwrap();
                 let engine = crate::document::reconstruct_yjs_engine(connection, &authority.head)?;
                 let materialization =
-                    materialize_engine(&engine, BlockDocumentSchema::PageV3).unwrap();
+                    materialize_engine(&engine, BlockDocumentSchema::PageV4).unwrap();
                 let file_source = materialization.block_tree[0].props["url"].as_str().unwrap();
                 assert!(file_source.starts_with("nodex://files/"));
                 assert_eq!(materialization.block_tree[0].props["name"], "My photo");

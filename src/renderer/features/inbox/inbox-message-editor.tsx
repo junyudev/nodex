@@ -7,7 +7,7 @@ import {
 } from "@/components/message/message-images-input";
 import { NodexButton } from "@/components/ui/button";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
-import { parseNfm } from "../../../shared/nfm/parser";
+import { readMarkdown } from "../../../shared/nodex-markdown";
 import { inboxDraftBody, isEmptyInboxDraft, type InboxDraft } from "./inbox-capture-state";
 import { useInboxImageAccess } from "./use-inbox-image-access";
 
@@ -128,7 +128,7 @@ export function InboxMessageEditor({
           </summary>
           <div className="mt-1">
             <MessageDocument
-              blocks={parseNfm(currentBody)}
+              blocks={readMarkdown(currentBody)}
               contentKey={currentBody}
               fileAuthority={images?.readAuthority ?? null}
             />

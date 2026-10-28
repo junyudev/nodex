@@ -1,4 +1,4 @@
-# NFM Editor Equation and Mermaid Preview Behavior
+# Page Editor Equation and Mermaid Preview Behavior
 
 Status: Active
 
@@ -10,7 +10,7 @@ Nodex supports source-authored mathematical equations and Mermaid diagrams witho
 
 ## Durable model
 
-A Block Equation is `mathBlock` with plain TeX source and no children. Inline Equation is inline `math` with plain TeX source. Both forms preserve that source exactly across the Core/Yrs document boundary. KaTeX HTML and MathML are derived at render time and never enter NFM, Yjs, database state, collaborative updates, or Undo history.
+A Block Equation is `mathBlock` with plain TeX source and no children. Inline Equation is inline `math` with plain TeX source. Both forms preserve that source exactly across the Core/Yrs document boundary. KaTeX HTML and MathML are derived at render time and never enter Nodex Markdown, Yjs, database state, collaborative updates, or Undo history.
 
 Mermaid source is an ordinary `codeBlock` with `language: "mermaid"`. There is no durable `diagram`, `previewMode`, SVG, image, caption, or renderer property. Switching a Code Block into or out of Mermaid preserves its exact source. The code-language catalog remains the same exact 88-item catalog.
 
@@ -26,11 +26,11 @@ A closed invalid Block Equation presents the rendering diagnostic on a full-widt
 
 An Equation is selectable plain source but is not a plain-text merge target. Backspace at the beginning of a closed Equation is a no-op. Backspace with the complete Block Equation selected removes that Block through ordinary block-selection semantics. A following paragraph is not merged into an Equation. Turn Into exposes `Block equation`; conversions preserve textual source, promote children before entering the childless shape, and participate in the same single-operation Undo contract as other ordinary Block conversions.
 
-## Nested Markdown
+## Nodex Markdown
 
-Inline Equation uses `$source$` when the source has no delimiter collision. Opening brackets and sentence/closing punctuation are valid outer boundaries, so natural prose such as `($x$).` round-trips without added spaces. Sources containing dollars, backticks, boundary whitespace, or line breaks use `$` plus a variable-length backtick span plus `$`. Block Equation uses matching standalone dollar fences of at least two characters. The serializer chooses a fence longer than every standalone dollar-only source line, so TeX remains literal and round-trips losslessly.
+Inline Equation uses `$$source$$`. Its delimiter is one dollar sign longer than the longest run in the source, and at least two; sources with boundary dollars or spaces use the padding defined by [Nodex Markdown](../references/nodex-markdown.md#links-and-mentions). Block Equation uses matching standalone dollar fences of at least two characters. The writer chooses a fence longer than every standalone dollar-only source line, so TeX remains literal and round-trips losslessly.
 
-Clipboard and Agent-facing Nested Markdown keep TeX source. External semantic HTML may contain MathML with a TeX annotation, but generated KaTeX markup is never authoritative.
+Clipboard and Agent-facing Nodex Markdown keep TeX source. External semantic HTML may contain MathML with a TeX annotation, but generated KaTeX markup is never authoritative.
 
 ## Mermaid preview formats
 
@@ -40,7 +40,7 @@ Clipboard and Agent-facing Nested Markdown keep TeX source. External semantic HT
 - `preview`: diagram only;
 - `split`: source followed by the diagram in one vertical surface.
 
-The default is `split`. The value is stored per stable Block ID under `code-mermaid-preview-${blockId}`. A remount, move, or delete then Undo keeps it; a duplicate or new/imported Block receives a new ID and starts in split. Storage failure falls back to live in-memory state. Format changes never call an editor mutation and never affect NFM, Yjs, saving, collaboration, or Undo/Redo.
+The default is `split`. The value is stored per stable Block ID under `code-mermaid-preview-${blockId}`. A remount, move, or delete then Undo keeps it; a duplicate or new/imported Block receives a new ID and starts in split. Storage failure falls back to live in-memory state. Format changes never call an editor mutation and never affect Markdown text, Yjs, saving, collaboration, or Undo/Redo.
 
 Preview-only keeps ProseMirror's required content mount inert, visually clipped, and outside the accessibility/tab order. Its trigger receives focus before the source is hidden. Returning to code or split restores a visible editable source region.
 
@@ -69,4 +69,4 @@ Every render uses a unique ID and controlled light/dark theme input. Diagrams us
 
 ## Verification boundary
 
-Pure tests own NFM delimiter selection, Core/Yrs plain-inline round-trips, adapter/headless round-trips, local view-state semantics, structural capabilities, strict configuration, SVG sanitization, action capacity, and download fallback. Browser tests own real Math source popups and selection, Mermaid concurrency and cleanup, Code/preview/split accessibility, action reachability, theme rerender, error recovery, fullscreen focus, and NodeView lifecycle. Integrated manual QA covers valid, empty, long, invalid, inline, read-only, narrow, and dark states.
+Pure tests own Nodex Markdown delimiter selection, Core/Yrs plain-inline round-trips, adapter/headless round-trips, local view-state semantics, structural capabilities, strict configuration, SVG sanitization, action capacity, and download fallback. Browser tests own real Math source popups and selection, Mermaid concurrency and cleanup, Code/preview/split accessibility, action reachability, theme rerender, error recovery, fullscreen focus, and NodeView lifecycle. Integrated manual QA covers valid, empty, long, invalid, inline, read-only, narrow, and dark states.

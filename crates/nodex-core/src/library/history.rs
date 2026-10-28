@@ -830,9 +830,9 @@ fn mutation_display(evidence: &MutationEvidence) -> LibraryPageHistoryDisplay {
             "Edited Page content",
             None,
         ),
-        "replace_document_from_nfm" => (
+        "replace_document_from_markdown" => (
             LibraryPageHistoryCategory::Content,
-            "Replaced Page content from NFM",
+            "Replaced Page content from Markdown",
             None,
         ),
         _ => return unknown_display(evidence.actor_label.clone()),
@@ -1376,7 +1376,7 @@ mod tests {
                         "INSERT INTO documents( \
                            id, library_id, generation, head_seq, schema_key, schema_version, \
                            state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine \
-                         ) VALUES (?1, ?2, 1, 0, 'nodex.page', 3, X'', ?3, 'ready', \
+                         ) VALUES (?1, ?2, 1, 0, 'nodex.page', 4, X'', ?3, 'ready', \
                            'ydoc_primary', ?4, ?4, 'yjs')",
                         params![DOCUMENT, LIBRARY, "", LATEST],
                     )?;
@@ -1403,7 +1403,7 @@ mod tests {
                            schema_key, schema_version, cause, label, actor_json, revision_kind, \
                            pinned, checkpoint_format, full_update_blob, state_vector, \
                            checkpoint_hash, byte_length, created_at \
-                         ) VALUES ('version:latest', ?1, ?2, 1, 0, 'nodex.page', 3, 'manual', \
+                         ) VALUES ('version:latest', ?1, ?2, 1, 0, 'nodex.page', 4, 'manual', \
                            'Milestone', '{\"displayName\":\"Checkpoint editor\"}', 'manual', 1, \
                            'block_tree_snapshot_v2', X'7B7D', X'', ?3, 2, ?4)",
                         params![DOCUMENT, PROJECT, HASH, LATEST],

@@ -5,7 +5,7 @@ import type { CommandPaletteHighlightSegment } from "@/lib/command-palette-highl
 import type {
   MentionSuggestionFamily,
   MentionSuggestionRank,
-} from "@/lib/nfm/mention-suggestion-model";
+} from "@/lib/editor-model/mention-suggestion-model";
 
 /** Semantic suggestion row shared by the NFM menu and its authoritative subflows. */
 export type NfmSuggestionItem = DefaultReactSuggestionItem & {

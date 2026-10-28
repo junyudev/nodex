@@ -13,10 +13,10 @@ Source Property queries require explicit `--bind ALIAS=SOURCE_ID`.
 nodex sql schema page_documents
 nodex sql query 'SELECT page_id,title FROM pages WHERE title LIKE :title' \
   --param 'title="%release%"'
-nodex sql query 'SELECT page_id,nested_markdown,body_etag FROM page_documents WHERE page_id=:id' \
+nodex sql query 'SELECT page_id,markdown,body_etag FROM page_documents WHERE page_id=:id' \
   --param 'id="PAGE_ID"'
 nodex sql schema tasks --bind tasks=SOURCE_ID
-nodex sql query 'SELECT t.page_id,t.title,d.nested_markdown,d.body_etag FROM tasks t JOIN page_documents d USING(page_id) WHERE t."Status"=:status ORDER BY t.page_id LIMIT 10' \
+nodex sql query 'SELECT t.page_id,t.title,d.markdown,d.body_etag FROM tasks t JOIN page_documents d USING(page_id) WHERE t."Status"=:status ORDER BY t.page_id LIMIT 10' \
   --bind tasks=SOURCE_ID --param 'status="OPTION_ID"'
 ```
 
@@ -32,7 +32,7 @@ or a resumable session. Query results are complete or fail their budget. A calle
 `LIMIT` limits the answer; repeated queries with OFFSET do not share a snapshot.
 Use `--file FILE|-` for substantial SQL. Named parameters are JSON scalars.
 
-For exact Markdown stdout, select only `nested_markdown` and add `--raw`. Raw
+For exact Markdown stdout, select only `markdown` and add `--raw`. Raw
 requires one non-null text cell and adds no newline; explicit JSON conflicts.
 `read PAGE_ID` remains useful for a simple single-Page read. Use body/title ETags
 from SQL when preparing subsequent replacement/rename operations.
@@ -43,7 +43,7 @@ from SQL when preparing subsequent replacement/rename operations.
 `search_hits(QUERY,K)` returns the same top-K Page hits before outer filtering:
 
 ```sql
-SELECT s.page_id,s.snippet,d.nested_markdown
+SELECT s.page_id,s.snippet,d.markdown
 FROM search_hits(:query,5) s
 JOIN page_documents d USING(page_id)
 ORDER BY s.ordinal;

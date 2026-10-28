@@ -2,10 +2,10 @@ import {
   createDateMentionPayload,
   normalizeDateMention,
   todayIsoDate,
-  type NfmDateMentionDateFormat,
-  type NfmDateMentionTimeFormat,
-} from "@/lib/nfm/date-mention";
-import type { NfmDateMentionInlineContent } from "@/lib/nfm/types";
+  type DateMentionDateFormat,
+  type DateMentionTimeFormat,
+} from "../../../../shared/rich-text/date-mention";
+import type { DateMentionInlineContent } from "../../../../shared/rich-text/date-mention";
 
 export interface DateMentionProps {
   start: string;
@@ -46,7 +46,7 @@ export function normalizeDateMentionProps(
   };
 }
 
-export function dateMentionPayloadToProps(payload: NfmDateMentionInlineContent): DateMentionProps {
+export function dateMentionPayloadToProps(payload: DateMentionInlineContent): DateMentionProps {
   return {
     start: payload.start,
     end: payload.end ?? "",
@@ -59,15 +59,15 @@ export function dateMentionPayloadToProps(payload: NfmDateMentionInlineContent):
 
 export function dateMentionPropsToPayload(
   props: Partial<DateMentionProps> | undefined,
-): NfmDateMentionInlineContent {
+): DateMentionInlineContent {
   const normalizedProps = normalizeDateMentionProps(props);
   const payload = normalizeDateMention({
     type: "dateMention",
     start: normalizedProps.start,
     end: normalizedProps.end,
     tz: normalizedProps.tz,
-    format: normalizedProps.format as NfmDateMentionDateFormat,
-    timeFormat: normalizedProps.timeFormat as NfmDateMentionTimeFormat,
+    format: normalizedProps.format as DateMentionDateFormat,
+    timeFormat: normalizedProps.timeFormat as DateMentionTimeFormat,
     reminder: normalizedProps.reminder,
   });
 

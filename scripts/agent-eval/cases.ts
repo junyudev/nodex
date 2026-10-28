@@ -4,7 +4,7 @@ import * as Y from "yjs";
 import { createCoreDocumentSyncAdapter } from "../../src/main/core-client/document-sync-adapter";
 import {
   materializePageDocument,
-  createBlockDocumentNfmContentParitySignature,
+  createBlockDocumentMarkdownContentParitySignature,
   type BlockTreeNode,
   type BlockTreeValue,
 } from "../../src/shared/block-documents/block-document-codec";
@@ -71,7 +71,7 @@ const preserve = (name: string, passed: boolean): CaseAssertion => ({
   name,
   passed,
 });
-const canonical = createBlockDocumentNfmContentParitySignature;
+const canonical = createBlockDocumentMarkdownContentParitySignature;
 
 /** Page identities across the fresh evaluation Library; unrelated additions are collateral work. */
 async function libraryPageIds(context: Context): Promise<string[]> {
@@ -141,7 +141,7 @@ async function observe(context: Context, pageId: string) {
     return {
       title: body.title,
       blockTree: body.blockTree,
-      nfm: canonical(body.nfm),
+      markdown: canonical(body.markdown),
       values:
         membership.kind === "member"
           ? Object.fromEntries(
@@ -160,7 +160,7 @@ async function observe(context: Context, pageId: string) {
 async function createPage(
   context: Context,
   title: string,
-  nfm: string,
+  markdown: string,
   status: "build" | "review" = "build",
 ) {
   const pageId = createUuidV7();
@@ -171,14 +171,14 @@ async function createPage(
     projectId: context.manifest.projectId,
     status,
     title,
-    nfm,
+    markdown,
   });
   return pageId;
 }
-async function replace(context: Context, pageId: string, nfm: string) {
+async function replace(context: Context, pageId: string, markdown: string) {
   await context.seed.replaceOwnedDocument({
     pageId,
-    nfm,
+    markdown,
     projectId: context.manifest.projectId,
     operationId: createUuidV7(),
     mutationId: createUuidV7(),
@@ -224,7 +224,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
   const meeting = context.manifest.pageIdsByKey.meeting;
   if (!meeting) throw new Error("Missing meeting fixture");
   const title = `${name} release plan`;
-  const original = `# ${name} release\n\nRelease date: Friday.\n\n## Rollback\n\nKeep **database snapshots** for seven days.\n\n- Verify backups\n\t- Verify restore procedure\n- Record owner: Mina\n\nTracking code: ${name.toUpperCase()}-42.`;
+  const original = `# ${name} release\n\nRelease date: Friday.\n\n## Rollback\n\nKeep **database snapshots** for seven days.\n\n- Verify backups\n  - Verify restore procedure\n- Record owner: Mina\n\nTracking code: ${name.toUpperCase()}-42.`;
   const target = await createPage(context, title, original);
   const sentinel = await createPage(
     context,
@@ -250,13 +250,16 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
   const noChanges = async () => [...(await unchanged(context, before)), await samePages()];
   const promptPrefix = `Work in the current Project. `;
   const expectedBody = async (
-    nfm: string,
+    markdown: string,
     verifyBlocks?: (blocks: readonly BlockTreeNode[]) => CaseAssertion,
   ) => {
     const state = await observe(context, target);
     const unaffected = new Map([...before].filter(([key]) => key !== target));
     return result([
-      check("Requested body, including all unaffected content", state.nfm === canonical(nfm)),
+      check(
+        "Requested body, including all unaffected content",
+        state.markdown === canonical(markdown),
+      ),
       ...(verifyBlocks ? [verifyBlocks(state.blockTree)] : []),
       preserve("Title preserved", state.title === title),
       preserve("Properties preserved", same(state.values, before.get(target)?.values)),
@@ -306,7 +309,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
         const state = await observe(context, target);
         return result([
           check("New title", state.title === `${name} launch checklist`),
-          preserve("Body preserved", state.nfm === before.get(target)?.nfm),
+          preserve("Body preserved", state.markdown === before.get(target)?.markdown),
           preserve("Properties preserved", same(state.values, before.get(target)?.values)),
           ...(await unchanged(context, new Map([...before].filter(([key]) => key !== target)))),
           await samePages(),
@@ -365,7 +368,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
           check("Concurrent writer ran after relevant observation", injected),
           preserve(
             "Concurrent value preserved",
-            (await observe(context, target)).nfm === canonical(concurrent),
+            (await observe(context, target)).markdown === canonical(concurrent),
           ),
           check(
             "Conflict communicated",
@@ -543,7 +546,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
             check(`Exact values for ${pageId}`, same(state.values, values)),
             preserve(
               `Body and title for ${pageId}`,
-              state.nfm === old.nfm && state.title === old.title,
+              state.markdown === old.markdown && state.title === old.title,
             ),
           );
         }

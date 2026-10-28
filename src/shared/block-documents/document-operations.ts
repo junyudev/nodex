@@ -81,7 +81,7 @@ export interface DocumentOperationBatch {
   readonly operations: readonly DocumentBlockOperation[];
 }
 
-export interface ReplaceDocumentFromNfm {
+export interface ReplaceDocumentFromMarkdown {
   readonly mutationId: string;
   readonly projectId: string;
   readonly storeEpoch: string;
@@ -90,19 +90,19 @@ export interface ReplaceDocumentFromNfm {
   readonly documentId: DocumentId;
   readonly generation: number;
   readonly expectedHeadSeq: number;
-  readonly nfm: string;
+  readonly markdown: string;
   /** Optional canonical title replacement committed in the same Yjs update. */
   readonly richTitle?: PortableRichText;
 }
 
 export type DocumentMutationRequest =
   | DocumentOperationBatch
-  | ReplaceDocumentFromNfm
+  | ReplaceDocumentFromMarkdown
   | PrepareDocumentVersionRestore;
 
 export type DocumentMutationKind =
   | "document_operation_batch"
-  | "replace_document_from_nfm"
+  | "replace_document_from_markdown"
   | "document_version_restore";
 
 export type DocumentMutationCoordination = "merge_friendly" | "write_fence";
@@ -544,15 +544,19 @@ export const parseDocumentOperationBatch = (value: unknown): DocumentOperationBa
   };
 };
 
-export const parseReplaceDocumentFromNfm = (value: unknown): ReplaceDocumentFromNfm => {
+export const parseReplaceDocumentFromMarkdown = (value: unknown): ReplaceDocumentFromMarkdown => {
   const budget: ParseBudget = { remaining: MAX_OPERATION_REQUEST_UNITS };
-  const envelope = parseMutationEnvelope(value, "replaceDocumentFromNfm", ["nfm"], budget, [
-    "richTitle",
-  ]);
-  const nfm = envelope.record.nfm;
-  if (typeof nfm !== "string" || nfm.length > MAX_PAGE_DESCRIPTION_LENGTH) {
+  const envelope = parseMutationEnvelope(
+    value,
+    "replaceDocumentFromMarkdown",
+    ["markdown"],
+    budget,
+    ["richTitle"],
+  );
+  const markdown = envelope.record.markdown;
+  if (typeof markdown !== "string" || markdown.length > MAX_PAGE_DESCRIPTION_LENGTH) {
     throw new DocumentOperationContractError(
-      `replaceDocumentFromNfm.nfm must be at most ${MAX_PAGE_DESCRIPTION_LENGTH} characters`,
+      `replaceDocumentFromMarkdown.markdown must be at most ${MAX_PAGE_DESCRIPTION_LENGTH} characters`,
     );
   }
   let richTitle: PortableRichText | undefined;
@@ -562,12 +566,12 @@ export const parseReplaceDocumentFromNfm = (value: unknown): ReplaceDocumentFrom
       consumeBudget(
         budget,
         portableRichTextSemanticSource(richTitle).length,
-        "replaceDocumentFromNfm.richTitle",
+        "replaceDocumentFromMarkdown.richTitle",
       );
     } catch (error) {
       if (error instanceof PortableRichTextError) {
         throw new DocumentOperationContractError(
-          `replaceDocumentFromNfm.richTitle is invalid: ${error.message}`,
+          `replaceDocumentFromMarkdown.richTitle is invalid: ${error.message}`,
         );
       }
       throw error;
@@ -584,7 +588,7 @@ export const parseReplaceDocumentFromNfm = (value: unknown): ReplaceDocumentFrom
     documentId: envelope.documentId,
     generation: envelope.generation,
     expectedHeadSeq: envelope.expectedHeadSeq,
-    nfm,
+    markdown,
     ...(richTitle ? { richTitle } : {}),
   };
 };
@@ -659,7 +663,7 @@ export const parseDocumentOperationResult = (value: unknown): DocumentOperationR
   ]);
   if (
     result.mutationKind !== "document_operation_batch" &&
-    result.mutationKind !== "replace_document_from_nfm" &&
+    result.mutationKind !== "replace_document_from_markdown" &&
     result.mutationKind !== "document_version_restore"
   ) {
     throw new DocumentOperationContractError(`${label}.mutationKind is not supported`);
@@ -837,8 +841,8 @@ const stableStringify = (value: unknown): string => {
 export const canonicalizeDocumentOperationBatch = (value: unknown): string =>
   stableStringify(parseDocumentOperationBatch(value));
 
-export const canonicalizeReplaceDocumentFromNfm = (value: unknown): string =>
-  stableStringify(parseReplaceDocumentFromNfm(value));
+export const canonicalizeReplaceDocumentFromMarkdown = (value: unknown): string =>
+  stableStringify(parseReplaceDocumentFromMarkdown(value));
 
 export const canonicalizeDocumentVersionRestore = (value: unknown): string =>
   stableStringify(parseDocumentVersionRestore(value));
@@ -864,8 +868,8 @@ export const canonicalizeDocumentOperationIntent = (value: unknown): string =>
   stableStringify(withoutMutationAuditIdentity(parseDocumentOperationBatch(value)));
 
 /** See {@link canonicalizeDocumentOperationIntent}. */
-export const canonicalizeReplaceDocumentFromNfmIntent = (value: unknown): string =>
-  stableStringify(withoutMutationAuditIdentity(parseReplaceDocumentFromNfm(value)));
+export const canonicalizeReplaceDocumentFromMarkdownIntent = (value: unknown): string =>
+  stableStringify(withoutMutationAuditIdentity(parseReplaceDocumentFromMarkdown(value)));
 
 /** See {@link canonicalizeDocumentOperationIntent}. */
 export const canonicalizeDocumentVersionRestoreIntent = (value: unknown): string =>

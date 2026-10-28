@@ -595,7 +595,7 @@ const seedProject = (core: CoreLaunchResult["client"], profileRoot: string): Eff
             page_id: "page:subagent-scale",
             document_id: "document:subagent-scale",
             title_markdown: "Subagent scale evidence",
-            nfm: "Disposable scale evidence.",
+            markdown: "Disposable scale evidence.",
           },
         },
       }),

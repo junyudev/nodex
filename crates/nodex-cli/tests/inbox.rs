@@ -97,7 +97,7 @@ fn command_line_sends_land_in_the_inbox_of_their_project() {
                         page_id: "019b1000-1000-7000-8000-000000000102".to_owned(),
                         document_id: "document:inbox-cli".to_owned(),
                         title_markdown: "Notes".to_owned(),
-                        nfm: String::new(),
+                        markdown: String::new(),
                     },
                 },
             },
@@ -156,12 +156,12 @@ fn command_line_sends_land_in_the_inbox_of_their_project() {
             .collect::<Vec<_>>()
     };
     // Sent from outside every Project, the message waits in the Library Inbox.
-    // The stream returns canonical Nested Markdown: consecutive message lines share a Block.
+    // The stream returns canonical Nodex Markdown: consecutive message lines share a Block.
     assert_eq!(
         read(ProjectWorkspaceInboxScope::Library),
         vec![(
             "Try the new tokenizer".to_owned(),
-            "Try the new tokenizer<br>Only after the benchmark lands.".to_owned(),
+            "Try the new tokenizer\nOnly after the benchmark lands.".to_owned(),
             ProjectWorkspaceInboxSource::CommandLine {
                 project_id: None,
                 label: "Command line".into(),

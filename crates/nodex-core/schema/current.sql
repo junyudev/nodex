@@ -232,7 +232,7 @@ CREATE TABLE document_materializations (
       title TEXT NOT NULL DEFAULT '',
       title_rich_json TEXT NOT NULL DEFAULT '[]',
       title_rich_hash TEXT NOT NULL DEFAULT '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
-      nfm TEXT NOT NULL,
+      markdown TEXT NOT NULL,
       plain_text TEXT NOT NULL,
       preview TEXT NOT NULL,
       block_tree_json TEXT NOT NULL,
@@ -4494,7 +4494,7 @@ CREATE TABLE inbox_decision_undo (
   consumed INTEGER NOT NULL DEFAULT 0 CHECK(consumed IN (0,1))
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version = 191;
+PRAGMA user_version = 192;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

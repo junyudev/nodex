@@ -141,7 +141,7 @@ function PageCreateDialogContent({
   );
   const { draft: descriptionDraft, reset: resetDescriptionDraft } = usePageCreateDescriptionDraft(
     requestId,
-    restoredSnapshot?.descriptionNfm ?? "",
+    restoredSnapshot?.descriptionMarkdown ?? "",
   );
   const [createMore, setCreateMore] = useState(restoredSnapshot?.createMore ?? false);
   const [expanded, setExpanded] = useState(restoredSnapshot?.expanded ?? initialExpanded);

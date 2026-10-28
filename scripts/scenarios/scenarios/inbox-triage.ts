@@ -181,13 +181,15 @@ const materializeInboxTriage = async (
     mimeType: "image/png",
     bytes: SCREENSHOT_BYTES,
   });
-  // Written in Nested Markdown: formatting, a list, and a pasted screenshot after the text.
+  // Written as message text: formatting, a list, and a pasted screenshot after the text.
   const pictured = await port.sendInboxMessage(
     [
       "Settings buttons have **no accessible labels**:",
+      "",
       "- the gear in the toolbar",
       "- the close button on dialogs",
-      `<image source="nodex://files/${screenshotFileId}">Settings toolbar</image>`,
+      "",
+      `![Settings toolbar](nodex://files/${screenshotFileId})`,
     ].join("\n"),
   );
   await port.proposeInboxDispatch({

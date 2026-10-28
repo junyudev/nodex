@@ -22,15 +22,18 @@ async function rows(context: CoreScenarioContext) {
   if (read.value.kind !== "view_window") throw new Error("Expected task rows");
   return read.value.value.rows.items;
 }
-async function replace(context: CoreScenarioContext, pageId: string, nfm: string) {
-  await context.seed.replaceOwnedDocument({
-    pageId,
-    nfm,
-    projectId: context.manifest.projectId,
-    operationId: createUuidV7(),
-    mutationId: createUuidV7(),
-    clientSessionId: "eval-oracle-test",
-  });
+async function recreateBody(context: CoreScenarioContext, pageId: string, markdown: string) {
+  // Exact replacement preserves unchanged Blocks; clear first to exercise identity loss.
+  for (const body of ["", markdown]) {
+    await context.seed.replaceOwnedDocument({
+      pageId,
+      markdown: body,
+      projectId: context.manifest.projectId,
+      operationId: createUuidV7(),
+      mutationId: createUuidV7(),
+      clientSessionId: "eval-oracle-test",
+    });
+  }
 }
 
 async function patch(
@@ -96,8 +99,8 @@ test("exact-edit oracle rejects a body-equivalent wholesale replacement that rec
     const target = (await rows(context)).find((item) => item.title === "Harbor release plan");
     if (!target) throw new Error("Missing release Page");
     const body =
-      "# Harbor release\n\nRelease date: Monday.\n\n## Rollback\n\nKeep **database snapshots** for seven days.\n\n- Verify backups\n\t- Verify restore procedure\n- Record owner: Mina\n\nTracking code: HARBOR-42.";
-    await replace(context, target.page_id, body);
+      "# Harbor release\n\nRelease date: Monday.\n\n## Rollback\n\nKeep **database snapshots** for seven days.\n\n- Verify backups\n  - Verify restore procedure\n- Record owner: Mina\n\nTracking code: HARBOR-42.";
+    await recreateBody(context, target.page_id, body);
     const verification = await prepared.verify("Done");
     expect(verification.passed).toBe(false);
     expect(verification.assertions.filter((assertion) => !assertion.passed)).toEqual([
@@ -119,13 +122,13 @@ test("append oracle accepts a new paragraph and rejects replacing the original B
       context,
       target.page_id,
       "Tracking code: JUNIPER-42.",
-      "Tracking code: JUNIPER-42.\nSign-off owner: Ravi.",
+      "Tracking code: JUNIPER-42.\n\nSign-off owner: Ravi.",
     );
     expect(await prepared.verify("Done")).toMatchObject({ passed: true });
-    await replace(
+    await recreateBody(
       context,
       target.page_id,
-      "# Juniper release\n\nRelease date: Friday.\n\n## Rollback\n\nKeep **database snapshots** for seven days.\n\n- Verify backups\n\t- Verify restore procedure\n- Record owner: Mina\n\nTracking code: JUNIPER-42.\n\nSign-off owner: Ravi.",
+      "# Juniper release\n\nRelease date: Friday.\n\n## Rollback\n\nKeep **database snapshots** for seven days.\n\n- Verify backups\n  - Verify restore procedure\n- Record owner: Mina\n\nTracking code: JUNIPER-42.\n\nSign-off owner: Ravi.",
     );
     const verification = await prepared.verify("Done");
     expect(verification.passed).toBe(false);
@@ -174,7 +177,7 @@ test("empty-result oracle rejects extra Pages even when the answer claims none",
       projectId: context.manifest.projectId,
       status: "build",
       title: "Unexpected Page",
-      nfm: "",
+      markdown: "",
     });
     expect((await prepared.verify("No matching Pages.")).passed).toBe(false);
   });
@@ -352,7 +355,7 @@ const rawReadArguments = [
     args: (id: string) => [
       "sql",
       "query",
-      "SELECT nested_markdown FROM page_documents WHERE page_id = :id",
+      "SELECT markdown FROM page_documents WHERE page_id = :id",
       "--param",
       `id=${JSON.stringify(id)}`,
       "--raw",
@@ -363,7 +366,7 @@ const rawReadArguments = [
     args: (id: string) => [
       "sql",
       "query",
-      "SELECT nested_markdown FROM page_documents WHERE page_id = :id",
+      "SELECT markdown FROM page_documents WHERE page_id = :id",
       `--param=id=${JSON.stringify(id)}`,
       "--raw",
     ],

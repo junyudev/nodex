@@ -129,7 +129,7 @@ Use these docs as the source of truth:
 - User-visible feature behavior and public contracts: `docs/product-specs/`
 - Native CLI overview: `docs/CLI.md`
 - Profile and Desktop configuration: `docs/CONFIGURATION.md`
-- External/reference specs (Nested Markdown format, examples): `docs/references/`
+- External/reference specs (Nodex Markdown and clipboard behavior): `docs/references/`
 
 ## Documentation Update Rules
 

@@ -24,7 +24,6 @@ const INLINE_BLOCK_TYPES: &[&str] = &[
 const NONE_BLOCK_TYPES: &[&str] = &[
     "divider",
     "image",
-    "threadSection",
     "page",
     "database",
     "canvas",
@@ -649,14 +648,32 @@ fn materialize_inline_content(
     block_id: &str,
 ) -> Result<Vec<Value>, BlockMaterializationError> {
     let mut content = Vec::new();
+    let mut after_break = false;
     for node in nodes {
         match node {
             XmlNode::Text { delta } => {
                 for chunk in delta {
-                    content.push(materialize_text_chunk(chunk, block_id)?);
+                    let item = materialize_text_chunk(chunk, block_id)?;
+                    if std::mem::take(&mut after_break) {
+                        join_after_break(&mut content, item);
+                    } else {
+                        content.push(item);
+                    }
                 }
             }
+            XmlNode::Element(element) if element.name == HARD_BREAK_NODE => {
+                if !element.children.is_empty() {
+                    return Err(BlockMaterializationError::InvalidContent {
+                        block_id: block_id.to_owned(),
+                        field: element.name.clone(),
+                        message: "hard break contains XML children".to_owned(),
+                    });
+                }
+                push_line_break(&mut content);
+                after_break = true;
+            }
             XmlNode::Element(element) => {
+                after_break = false;
                 if PLAIN_INLINE_CONTENT_TYPES.contains(&element.name.as_str()) {
                     let mut source = String::new();
                     for child in &element.children {
@@ -715,6 +732,123 @@ fn materialize_inline_content(
         }
     }
     Ok(content)
+}
+
+/// The editor's Shift+Enter line break, stored as its own element between text.
+const HARD_BREAK_NODE: &str = "hardBreak";
+
+/// Separate texts stay separate items, which history relies on to undo a merge at its gap. A
+/// hard break is the exception: BlockNote joins the text after it to the text before it when
+/// both read the same, as text with equal styles or runs of the same link.
+fn join_after_break(content: &mut Vec<Value>, item: Value) {
+    if let Some(last) = content.last_mut() {
+        match (last["type"].as_str(), item["type"].as_str()) {
+            (Some("text"), Some("text")) if last["styles"] == item["styles"] => {
+                append_text(last, item["text"].as_str().unwrap_or_default());
+                return;
+            }
+            (Some("link"), Some("link")) if last["href"] == item["href"] => {
+                if let (Some(runs), Some(next)) =
+                    (last["content"].as_array_mut(), item["content"].as_array())
+                {
+                    for run in next {
+                        match runs.last_mut() {
+                            Some(previous) if previous["styles"] == run["styles"] => {
+                                append_text(previous, run["text"].as_str().unwrap_or_default());
+                            }
+                            _ => runs.push(run.clone()),
+                        }
+                    }
+                    return;
+                }
+            }
+            _ => {}
+        }
+    }
+    content.push(item);
+}
+
+/// BlockNote writes a hard break as a newline ending the text, or link, before it.
+fn push_line_break(content: &mut Vec<Value>) {
+    match content.last_mut() {
+        Some(last) if last["type"] == "text" => append_text(last, "\n"),
+        Some(last) if last["type"] == "link" => {
+            if let Some(run) = last["content"]
+                .as_array_mut()
+                .and_then(|runs| runs.last_mut())
+            {
+                append_text(run, "\n");
+            }
+        }
+        _ => content.push(serde_json::json!({ "type": "text", "text": "\n", "styles": {} })),
+    }
+}
+
+/// A Block tree materialized before hard breaks were read as BlockNote reads them keeps each
+/// break as an inline atom. This reads such a tree as the current materializer reads its Yrs.
+pub(crate) fn read_predecessor_block_tree(tree: Value) -> Value {
+    fn inline(items: Value) -> Value {
+        let Value::Array(items) = items else {
+            return items;
+        };
+        let mut content = Vec::with_capacity(items.len());
+        let mut after_break = false;
+        for item in items {
+            if item["type"] == HARD_BREAK_NODE {
+                push_line_break(&mut content);
+                after_break = true;
+            } else if std::mem::take(&mut after_break) {
+                join_after_break(&mut content, item);
+            } else {
+                content.push(item);
+            }
+        }
+        Value::Array(content)
+    }
+    fn block(mut value: Value) -> Value {
+        if let Some(object) = value.as_object_mut() {
+            match object.remove("content") {
+                Some(content @ Value::Array(_)) => {
+                    object.insert("content".to_owned(), inline(content));
+                }
+                Some(Value::Object(mut table)) => {
+                    if let Some(Value::Array(rows)) = table.get_mut("rows") {
+                        for row in rows {
+                            if let Some(Value::Array(cells)) = row.get_mut("cells") {
+                                for cell in cells {
+                                    if let Some(content) = cell.get_mut("content") {
+                                        *content = inline(content.take());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    object.insert("content".to_owned(), Value::Object(table));
+                }
+                Some(other) => {
+                    object.insert("content".to_owned(), other);
+                }
+                None => {}
+            }
+            if let Some(Value::Array(children)) = object.remove("children") {
+                object.insert(
+                    "children".to_owned(),
+                    Value::Array(children.into_iter().map(block).collect()),
+                );
+            }
+        }
+        value
+    }
+    match tree {
+        Value::Array(blocks) => Value::Array(blocks.into_iter().map(block).collect()),
+        other => other,
+    }
+}
+
+fn append_text(item: &mut Value, text: &str) {
+    if let Some(Value::String(current)) = item.get_mut("text") {
+        current.push_str(text);
+    }
 }
 
 fn materialize_text_chunk(
@@ -999,6 +1133,126 @@ mod tests {
     use crate::domain::block_tree::decode_block_tree;
 
     use super::*;
+
+    #[test]
+    fn hard_breaks_materialize_as_newlines_joined_like_blocknote() {
+        let text = |insert: &str, attributes: &[(&str, PortableValue)]| TextDelta {
+            insert: insert.into(),
+            attributes: attributes
+                .iter()
+                .map(|(key, value)| ((*key).to_owned(), value.clone()))
+                .collect(),
+        };
+        let bold = ("bold", PortableValue::Object(BTreeMap::new()));
+        let link = (
+            "link",
+            PortableValue::Object(BTreeMap::from([(
+                "href".to_owned(),
+                PortableValue::String("https://example.com".into()),
+            )])),
+        );
+        let hard_break = XmlNode::Element(XmlElementNode {
+            name: "hardBreak".into(),
+            attributes: BTreeMap::new(),
+            children: vec![],
+        });
+        let block = BlockNode {
+            id: "paragraph".into(),
+            container_attributes: BTreeMap::new(),
+            content: XmlElementNode {
+                name: "paragraph".into(),
+                attributes: BTreeMap::new(),
+                children: vec![
+                    XmlNode::Text {
+                        delta: vec![text("one", std::slice::from_ref(&bold))],
+                    },
+                    hard_break.clone(),
+                    XmlNode::Text {
+                        delta: vec![
+                            text("two", std::slice::from_ref(&bold)),
+                            text(" plain", &[]),
+                        ],
+                    },
+                    hard_break,
+                    XmlNode::Text {
+                        delta: vec![
+                            text("a ", std::slice::from_ref(&link)),
+                            text("bold", &[link.clone(), bold]),
+                            text(" link", &[link]),
+                        ],
+                    },
+                ],
+            },
+            children: vec![],
+        };
+        let materialized = materialize_block_tree(&BlockTree {
+            root_attributes: BTreeMap::new(),
+            blocks: vec![block],
+        })
+        .unwrap();
+        assert_eq!(
+            materialized[0].content,
+            Some(serde_json::json!([
+                {"type": "text", "text": "one\ntwo", "styles": {"bold": true}},
+                {"type": "text", "text": " plain\n", "styles": {}},
+                {"type": "link", "href": "https://example.com", "content": [
+                    {"type": "text", "text": "a ", "styles": {}}
+                ]},
+                {"type": "link", "href": "https://example.com", "content": [
+                    {"type": "text", "text": "bold", "styles": {"bold": true}}
+                ]},
+                {"type": "link", "href": "https://example.com", "content": [
+                    {"type": "text", "text": " link", "styles": {}}
+                ]}
+            ]))
+        );
+        assert_eq!(
+            crate::domain::markdown::materialize_markdown(&materialized)
+                .unwrap()
+                .markdown,
+            "**one**\n**two** plain\n[a **bold** link](https://example.com)"
+        );
+    }
+
+    #[test]
+    fn header_only_tables_match_blocknote_and_keep_plain_pipe_markdown() {
+        let markdown = "| A | B |\n| --- | --- |";
+        let parsed = nodex_markdown::read(markdown, nodex_markdown::ReadOptions::EXACT)
+            .expect("valid table");
+        let blocks =
+            crate::domain::markdown::materialize_markdown_blocks_with_ids(&parsed, &mut || {
+                "table".to_owned()
+            })
+            .unwrap();
+        let tree = dematerialize_block_tree(&blocks).unwrap();
+        assert!(tree.blocks[0].content.attributes.is_empty());
+        let materialized = materialize_block_tree(&tree).unwrap();
+        let json = serde_json::to_value(&materialized).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!([{
+                "id": "table",
+                "type": "table",
+                "props": {},
+                "children": [],
+                "content": {
+                    "type": "tableContent",
+                    "columnWidths": [null, null],
+                    "headerRows": 1,
+                    "headerCols": 2,
+                    "rows": [{ "cells": [
+                        {"type": "tableCell", "props": {}, "content": [
+                            {"type": "text", "text": "A", "styles": {}}
+                        ]},
+                        {"type": "tableCell", "props": {}, "content": [
+                            {"type": "text", "text": "B", "styles": {}}
+                        ]}
+                    ]}]
+                }
+            }])
+        );
+        assert_eq!(nodex_markdown::write_json(&json).unwrap(), markdown);
+    }
 
     #[test]
     fn matches_the_typescript_blocknote_schema_matrix() {

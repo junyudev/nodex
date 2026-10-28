@@ -90,14 +90,14 @@ const observation = (
     headSeq: 11,
     commitHead: 20,
   },
-  validators: { title: `nxe1.${"a".repeat(43)}`, body: `nxe1.${"b".repeat(43)}` },
+  validators: { title: `nxe2.${"a".repeat(43)}`, body: `nxe2.${"b".repeat(43)}` },
   output: FetchV6OutputSchema.parse({
     data: {
       resource: {
         id: prepared.pageId,
         type: "page",
         pageKey: null,
-        title: { markdown: "Canonical title", etag: `nxe1.${"a".repeat(43)}` },
+        title: { markdown: "Canonical title", etag: `nxe2.${"a".repeat(43)}` },
         lifecycle: "active",
         location: { kind: "library", libraryId: authority.libraryId },
       },
@@ -105,7 +105,7 @@ const observation = (
         format: "markdown",
         markdown,
         contentHash: "a".repeat(64),
-        etag: `nxe1.${"b".repeat(43)}`,
+        etag: `nxe2.${"b".repeat(43)}`,
       },
     },
   }),

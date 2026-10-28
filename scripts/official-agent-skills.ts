@@ -5,9 +5,18 @@ import { join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
-import { NESTED_MARKDOWN_AGENT_GUIDE } from "../src/shared/nfm/agent-guide";
-import { parseNfm } from "../src/shared/nfm/parser";
-import { serializeNfm } from "../src/shared/nfm/serializer";
+import {
+  NODEX_MARKDOWN_AGENT_GUIDE,
+  NODEX_MARKDOWN_AGENT_RULES,
+} from "../src/shared/nodex-markdown/agent-guide";
+import { readMarkdown } from "../src/shared/nodex-markdown";
+import { writeMarkdown, initMarkdownSync } from "../src/shared/nodex-markdown";
+import { readFileSync } from "node:fs";
+initMarkdownSync(
+  readFileSync(
+    new URL("../src/shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm", import.meta.url),
+  ),
+);
 
 const execFileAsync = promisify(execFile);
 
@@ -23,7 +32,7 @@ const MAX_SKILL_LINES = 500;
 export const OFFICIAL_SKILL_FILES = [
   "SKILL.md",
   "agents/openai.yaml",
-  "references/nested-markdown.md",
+  "references/markdown.md",
   "references/page-editor.md",
   "references/project-database-views.md",
   "references/queries-and-configuration.md",
@@ -276,38 +285,38 @@ function validateSkillMetadata(files: ReadonlyMap<string, Buffer>): void {
   }
 }
 
-export function renderNestedMarkdownReference(): string {
-  for (const example of NESTED_MARKDOWN_AGENT_GUIDE.examples) {
-    const roundTrip = serializeNfm(parseNfm(example));
+export function renderMarkdownReference(): string {
+  for (const example of NODEX_MARKDOWN_AGENT_GUIDE.examples) {
+    const roundTrip = writeMarkdown(readMarkdown(example, "exact"));
     if (roundTrip !== example) {
-      throw new Error("Production Nested Markdown example failed round-trip");
+      throw new Error("Production Nodex Markdown example failed round-trip");
     }
   }
 
-  const examples = NESTED_MARKDOWN_AGENT_GUIDE.examples
-    .map((example) => `\`\`\`nested-markdown\n${example}\n\`\`\``)
+  const examples = NODEX_MARKDOWN_AGENT_GUIDE.examples
+    .map((example) => `\`\`\`markdown\n${example}\n\`\`\``)
     .join("\n\n");
 
   return [
-    "# Nested Markdown",
+    "# Nodex Markdown",
     "",
     "This reference is generated from Nodex's production Agent guide. Specification",
-    `revision: \`${NESTED_MARKDOWN_AGENT_GUIDE.specificationVersion}\`.`,
+    `revision: \`${NODEX_MARKDOWN_AGENT_GUIDE.specificationVersion}\`.`,
     "",
     "## Authoring rules",
     "",
-    NESTED_MARKDOWN_AGENT_GUIDE.instructions,
+    ...NODEX_MARKDOWN_AGENT_RULES.map((rule) => `- ${rule}`),
     "",
     "For the CLI, translate dynamic-tool wording to the equivalent native workflow:",
     "use `nodex read` before identity-sensitive edits and use semantic `nodex page`",
     "or `nodex block` commands for owning Pages. Write complete bodies through a",
-    "file so literal tabs and user text are preserved exactly.",
+    "file so Markdown source and user text are preserved exactly.",
     "",
     "## Round-trip examples",
     "",
     examples,
     "",
-    "Each example is parsed and serialized by the production Nested Markdown codec",
+    "Each example is parsed and serialized by the production Nodex Markdown codec",
     "during artifact generation. A mismatch fails generation.",
     "",
   ].join("\n");
@@ -367,14 +376,12 @@ async function buildExpectedArtifact(options: ResolvedOptions): Promise<{
   const sourceTree = await validateExactTree(authoringRoot, OFFICIAL_SKILL_FILES, MAX_SKILL_BYTES);
   validateSkillMetadata(sourceTree.files);
 
-  const nestedMarkdown = decodeUtf8(
-    sourceTree.files.get("references/nested-markdown.md") ?? Buffer.alloc(0),
-    "references/nested-markdown.md",
+  const markdownReference = decodeUtf8(
+    sourceTree.files.get("references/markdown.md") ?? Buffer.alloc(0),
+    "references/markdown.md",
   );
-  if (nestedMarkdown !== renderNestedMarkdownReference()) {
-    throw new Error(
-      "references/nested-markdown.md is stale; regenerate it from the production guide",
-    );
+  if (markdownReference !== renderMarkdownReference()) {
+    throw new Error("references/markdown.md is stale; regenerate it from the production guide");
   }
 
   const packageManifest = JSON.parse(
@@ -457,6 +464,11 @@ export async function generateOfficialAgentSkills(
   requestedOptions: OfficialAgentSkillsOptions = {},
 ): Promise<OfficialAgentSkillsManifest> {
   const options = resolveOptions(requestedOptions);
+  // The language reference is derived from the production guide; verification refuses a stale one.
+  await writeFile(
+    join(options.repositoryRoot, AUTHORING_SKILL_RELATIVE, "references/markdown.md"),
+    renderMarkdownReference(),
+  );
   const expected = await buildExpectedArtifact(options);
   await writeArtifact(options.outputDirectory, expected.files);
   await verifyResolvedArtifact(options);

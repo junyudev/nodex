@@ -71,11 +71,9 @@ async function openSideMenu({
         value={{
           getSnapshot: () => ({
             canSendBlocks: false,
-            hasConvertDividerToThreadSection: false,
             sourceProjectId: null,
             sourcePageId: null,
             onMoveBlocksToDestination: () => undefined,
-            onConvertDividerToThreadSection: () => undefined,
             onBlockDragStart: () => undefined,
             onBlockDragEnd: () => undefined,
             onDuplicateBlocks: () => false,

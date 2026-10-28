@@ -2,7 +2,7 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import { renderWithMaitai as render } from "../../../test/thread-maitai";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
-import { ReadonlyNfmBlockNotePreview } from "./readonly-nfm-blocknote-preview";
+import { ReadonlyMarkdownBlockNotePreview } from "./readonly-nfm-blocknote-preview";
 
 const reads = vi.hoisted(() => ({ metadata: vi.fn(), bytes: vi.fn(), save: vi.fn() }));
 vi.mock("@/lib/library-file-resources", async (original) => ({
@@ -20,7 +20,7 @@ const authority = (revisionId: string): FileReadAuthority => ({
   readSource: { kind: "document_revision", document_id: "document", revision_id: revisionId },
 });
 const content =
-  '<attachment kind="file" mode="materialized" source="nodex://files/shared" name="stale.txt" mime="text/plain" />';
+  ':attachment{kind="file" source="nodex://files/shared" name="stale.txt" mime="text/plain"}';
 
 test("historical attachment preview reads and saves only its captured source, including after a scope change", async () => {
   reads.metadata.mockImplementation(async (scope: FileReadAuthority) => ({
@@ -46,7 +46,7 @@ test("historical attachment preview reads and saves only its captured source, in
   });
   reads.save.mockResolvedValue(undefined);
   const preview = (scope: FileReadAuthority) => (
-    <ReadonlyNfmBlockNotePreview
+    <ReadonlyMarkdownBlockNotePreview
       fileAuthority={scope}
       content={content}
       projectId="project"

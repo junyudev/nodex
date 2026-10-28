@@ -14,13 +14,8 @@ import type { DocumentSyncAdapter } from "../../lib/nodex-y-provider";
 import { createNfmEditorModeOptions } from "../board/editor/nfm-editor-source";
 import type { PrimaryPageBlockDocumentDescriptor } from "./block-document-surface";
 
-const LONG_CARD_SECTION = `## Working notes
-This is a **formatted** paragraph with enough text to exercise collaborative rendering.
-▶ Details
-	Nested explanation
-	- Nested list item
-### Follow-up
-Another paragraph after the nested content.`;
+const LONG_CARD_SECTION =
+  "## Working notes\n\nThis is a **formatted** paragraph with enough text to exercise collaborative rendering.\n\n:::toggle[Details]\n  Nested explanation\n\n  - Nested list item\n:::\n\n### Follow-up\n\nAnother paragraph after the nested content.";
 
 class LongCardAdapter implements DocumentSyncAdapter {
   readonly serverDocument: Y.Doc;
@@ -123,7 +118,7 @@ describe("long Card collaborative open lifecycle", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document:edited-long-card-browser",
       title: "Edited long Card",
-      nfm: Array.from(
+      markdown: Array.from(
         { length: 48 },
         (_, index) => `${LONG_CARD_SECTION}\nParagraph ${index + 1}`,
       ).join("\n"),

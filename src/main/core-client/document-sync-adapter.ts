@@ -32,7 +32,7 @@ import {
   DocumentOperationContractError,
   parseDocumentOperationBatch,
   parseDocumentOperationResult,
-  parseReplaceDocumentFromNfm,
+  parseReplaceDocumentFromMarkdown,
   parseDocumentVersionRestore,
   type DocumentMutationRequest,
   type DocumentOperationBatch,
@@ -493,7 +493,7 @@ const parseDocumentMutationRequest = (
   request: DocumentMutationRequest,
 ): DocumentMutationRequest => {
   if ("operations" in request) return parseDocumentOperationBatch(request);
-  if ("nfm" in request) return parseReplaceDocumentFromNfm(request);
+  if ("markdown" in request) return parseReplaceDocumentFromMarkdown(request);
   return parseDocumentVersionRestore(request);
 };
 
@@ -559,13 +559,13 @@ const coreDocumentMutationIntent = (request: DocumentMutationRequest): OwnedDocu
       actor: request.actor,
     };
   }
-  if ("nfm" in request) {
+  if ("markdown" in request) {
     return {
-      kind: "replace_from_nfm",
+      kind: "replace_from_markdown",
       document_id: request.documentId,
       generation: request.generation,
       expected_head_seq: request.expectedHeadSeq,
-      nfm: request.nfm,
+      markdown: request.markdown,
       ...(request.richTitle === undefined ? {} : { rich_title: request.richTitle }),
       actor: request.actor,
     };
@@ -582,9 +582,9 @@ const coreDocumentMutationIntent = (request: DocumentMutationRequest): OwnedDocu
 
 const documentMutationKind = (
   request: DocumentMutationRequest,
-): "document_operation_batch" | "replace_document_from_nfm" | "document_version_restore" => {
+): "document_operation_batch" | "replace_document_from_markdown" | "document_version_restore" => {
   if ("operations" in request) return "document_operation_batch";
-  if ("nfm" in request) return "replace_document_from_nfm";
+  if ("markdown" in request) return "replace_document_from_markdown";
   return "document_version_restore";
 };
 

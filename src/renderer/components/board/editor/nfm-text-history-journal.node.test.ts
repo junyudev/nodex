@@ -10,8 +10,8 @@ import { publishDocumentHistoryFence } from "../../../lib/document-history-fence
 import { NfmTextHistoryJournal } from "./nfm-text-history-journal";
 import { NfmHistoryLane } from "./nfm-editor-history";
 
-const setup = (nfm: string) => {
-  const { document } = createPageDocumentGenesis({ documentId: "history-journal", nfm });
+const setup = (markdown: string) => {
+  const { document } = createPageDocumentGenesis({ documentId: "history-journal", markdown });
   const body = document.getXmlFragment("body");
   const group = body.get(0) as Y.XmlElement;
   const manager = new Y.UndoManager(body, {
@@ -164,7 +164,7 @@ test("an entry beyond Core's semantic bridge limit cannot remain deceptively und
 });
 
 test("Core fences retain moved-away history and do not invalidate later captures on replayed delivery", () => {
-  const fixture = setup("One\nTwo");
+  const fixture = setup("One\n\nTwo");
   const { document, group, manager, journal } = fixture;
   try {
     const paragraph = group.get(0) as Y.XmlElement;
@@ -231,7 +231,7 @@ test("a readdressed capture that cancels itself is consumed without a Core bridg
 });
 
 test("captures only edited fields, merges the engine's exact capture group, and detects rebuilt addresses", () => {
-  const fixture = setup("Paragraph\n\tChild\nUnrelated");
+  const fixture = setup(":::paragraph[Paragraph]\n  Child\n:::\n\nUnrelated");
   const { document, group, manager, journal } = fixture;
   try {
     const paragraph = group.get(0) as Y.XmlElement;
@@ -266,7 +266,7 @@ test("captures only edited fields, merges the engine's exact capture group, and 
 });
 
 test("records ordinary forest deletion and insertion with exact placements, without copying descendants into fields", () => {
-  const fixture = setup("Parent\n\tChild\nSibling");
+  const fixture = setup(":::paragraph[Parent]\n  Child\n:::\n\nSibling");
   const { document, group, manager, journal } = fixture;
   try {
     const rootId = (group.get(0) as Y.XmlElement).getAttribute("id")!;
@@ -317,7 +317,7 @@ test("adding the first child group and deleting its new child are distinct seman
 });
 
 test("an unrelated remote edit cannot become part of a local capture group", () => {
-  const fixture = setup("One\nTwo");
+  const fixture = setup("One\n\nTwo");
   const { document, group, manager, journal } = fixture;
   try {
     const first = ((group.get(0) as Y.XmlElement).get(0) as Y.XmlElement).get(0) as Y.XmlText;
@@ -336,7 +336,7 @@ test("an unrelated remote edit cannot become part of a local capture group", () 
 });
 
 test("typing in a large Document materializes only its affected Block", () => {
-  const fixture = setup(Array.from({ length: 2000 }, (_, i) => `Paragraph ${i}`).join("\n"));
+  const fixture = setup(Array.from({ length: 2000 }, (_, i) => `Paragraph ${i}`).join("\n\n"));
   const { document, group, manager, journal } = fixture;
   try {
     const initialReads = fixture.materialized();
@@ -370,7 +370,7 @@ test("non-history edits cannot be absorbed into a later local semantic group", (
 });
 
 test("local XML recreation and native Undo keep using Yjs, including a subsequent unrelated remote edit", () => {
-  const fixture = setup("One\nTwo");
+  const fixture = setup("One\n\nTwo");
   const { document, group, manager, journal } = fixture;
   try {
     const paragraph = group.get(0) as Y.XmlElement;

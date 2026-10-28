@@ -14,7 +14,7 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
       const { pageId } = yield* captureInbox(inbox, original);
       // A rewrite starts from the body as the Page stores it.
       const originalBody =
-        "Homepage feels like a dev tool.<br>Maybe it should read like an assistant?";
+        "Homepage feels like a dev tool.\nMaybe it should read like an assistant?";
       const [entry] = yield* inbox.pendingSuggestions(8);
       if (!entry) return assert.fail("Missing pending entry");
       yield* inbox.propose({
@@ -30,7 +30,7 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
 
       const rewritten = "The homepage should read like a personal assistant.\nKeep the docs link.";
       // The Page keeps the written lines as one paragraph with a line break.
-      const stored = "The homepage should read like a personal assistant.<br>Keep the docs link.";
+      const stored = "The homepage should read like a personal assistant.\nKeep the docs link.";
       const basis = inboxPageBasisFromCore(entry.basis);
       yield* inbox.edit({ pageId, basis, originalBody, body: rewritten });
 
@@ -49,7 +49,7 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
         client.libraryRead({
           kind: "page_projection_file",
           page_id: pageId,
-          file_kind: "body_nested_markdown",
+          file_kind: "body_markdown",
         }),
       );
       assert.strictEqual(page.value.kind, "page_projection_file");

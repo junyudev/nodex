@@ -1463,7 +1463,7 @@ mod tests {
                     page_id: PAGE.to_owned(),
                     title: "Native lifecycle".to_owned(),
                     rich_title: None,
-                    nfm: "Native body".to_owned(),
+                    markdown: "Native body".to_owned(),
                     status: LibraryPageWorkflowStatus::Triage,
                     priority: None,
                     estimate: None,
@@ -1648,7 +1648,7 @@ mod tests {
             panic!("Page content");
         };
         assert_eq!(value.title, "Native lifecycle");
-        assert_eq!(value.body_nfm, "Native body");
+        assert_eq!(value.body_markdown, "Native body");
         let LibraryReadValue::PageProjectionFile { value: body_file } = module
             .read(
                 &persistent_context,
@@ -1656,7 +1656,7 @@ mod tests {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::PageProjectionFile {
                         page_id: PAGE.to_owned(),
-                        file_kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                        file_kind: LibraryPageProjectionFileKind::BodyMarkdown,
                         prepare: None,
                     },
                 },
@@ -1730,7 +1730,7 @@ mod tests {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::PageProjectionFile {
                         page_id: PAGE.to_owned(),
-                        file_kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                        file_kind: LibraryPageProjectionFileKind::BodyMarkdown,
                         prepare: Some(LibraryPagePrepareKind::TitleSet),
                     },
                 },
@@ -1940,7 +1940,7 @@ mod tests {
                             "INSERT INTO documents( \
                                id, library_id, generation, head_seq, schema_key, schema_version, \
                                state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine \
-                             ) VALUES (?1, 'library-1', 1, 0, 'nodex.page', 3, X'', '', \
+                             ) VALUES (?1, 'library-1', 1, 0, 'nodex.page', 4, X'', '', \
                                'pending_genesis', 'legacy_shadow', ?2, ?2, 'yjs')",
                             params![document_id, NOW],
                         )?;
@@ -2022,7 +2022,7 @@ mod tests {
                            database_values_json, intrinsic_properties_json, property_revisions_json, \
                            projection_version, created_at, updated_at \
                          ) VALUES (?1, 'library-1', 'active', 'library', 'library-1', 'a', 1, 1, \
-                           ?2, 1, 0, 3, 'legacy_shadow', NULL, NULL, NULL, NULL, NULL, '', '', 0, 0, \
+                           ?2, 1, 0, 4, 'legacy_shadow', NULL, NULL, NULL, NULL, NULL, '', '', 0, 0, \
                            '{}', '{}', '{}', 1, ?3, ?3)",
                         params![ROOT_PAGE, ROOT_DOCUMENT, NOW],
                     )?;
@@ -2037,7 +2037,7 @@ mod tests {
                            database_values_json, intrinsic_properties_json, property_revisions_json, \
                            projection_version, created_at, updated_at \
                          ) VALUES (?1, 'library-1', 'active', 'data_source', ?2, NULL, 1, 1, \
-                           ?3, 1, 0, 3, 'legacy_shadow', 'membership:row', ?4, NULL, NULL, NULL, '', '', 0, 0, \
+                           ?3, 1, 0, 4, 'legacy_shadow', 'membership:row', ?4, NULL, NULL, NULL, '', '', 0, 0, \
                            '{\"status\":\"triage\",\"task_parent\":null}', '{}', \
                            '{\"database\":{\"status\":1,\"task_parent\":1},\"intrinsic\":{}}', 1, ?5, ?5)",
                         params![ROW_PAGE, SOURCE, ROW_DOCUMENT, DATABASE, NOW],
@@ -2117,7 +2117,7 @@ mod tests {
             panic!("Page content");
         };
         assert_eq!(value.document_head_seq, 1);
-        assert_eq!(value.body_nfm, "");
+        assert_eq!(value.body_markdown, "");
         assert!(value.references.is_empty());
         assert!(value.asset_refs.is_empty());
         let destination = module
@@ -6850,7 +6850,7 @@ mod tests {
                             page_id: PAGE.to_owned(),
                             title: "Property Page".to_owned(),
                             rich_title: None,
-                            nfm: String::new(),
+                            markdown: String::new(),
                             status: LibraryPageWorkflowStatus::Triage,
                             priority: None,
                             estimate: None,
@@ -7764,14 +7764,16 @@ pub(crate) fn create_recovery_copy(
 ) -> Result<(), crate::infrastructure::sqlite::StoreError> {
     match preview {
         nodex_core_contracts::document::RecoveryPreview::Document {
-            rich_title, nfm, ..
+            rich_title,
+            markdown,
+            ..
         } => mutation::create_recovery_page(
             scope,
             context,
             owner_id,
             document_id,
             rich_title,
-            nfm,
+            markdown,
             restored_files,
         ),
         nodex_core_contracts::document::RecoveryPreview::Canvas { scene, .. } => {

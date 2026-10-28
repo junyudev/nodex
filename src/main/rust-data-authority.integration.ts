@@ -264,7 +264,7 @@ describe("Electron native data authority", () => {
               pageId: randomUUID(),
               documentId: randomUUID(),
               titleMarkdown: "Welcome to Nodex",
-              nfm: "Welcome to Nodex.",
+              markdown: "Welcome to Nodex.",
             },
           });
           expect(yield* workspace.listProjects).toEqual(
@@ -1656,8 +1656,8 @@ describe("Electron native data authority", () => {
               bodyBlocksCreated: 1,
               blockIds: [expect.any(String)],
               etags: {
-                title: expect.stringMatching(/^nxe1\./u),
-                body: expect.stringMatching(/^nxe1\./u),
+                title: expect.stringMatching(/^nxe2\./u),
+                body: expect.stringMatching(/^nxe2\./u),
               },
             },
             {
@@ -1666,8 +1666,8 @@ describe("Electron native data authority", () => {
               bodyBlocksCreated: 1,
               blockIds: [expect.any(String)],
               etags: {
-                title: expect.stringMatching(/^nxe1\./u),
-                body: expect.stringMatching(/^nxe1\./u),
+                title: expect.stringMatching(/^nxe2\./u),
+                body: expect.stringMatching(/^nxe2\./u),
               },
             },
           ],
@@ -1781,8 +1781,8 @@ describe("Electron native data authority", () => {
             [copiedDataSourcePageId]: expect.any(String),
           }),
           etags: {
-            title: expect.stringMatching(/^nxe1\./u),
-            body: expect.stringMatching(/^nxe1\./u),
+            title: expect.stringMatching(/^nxe2\./u),
+            body: expect.stringMatching(/^nxe2\./u),
           },
         },
       });

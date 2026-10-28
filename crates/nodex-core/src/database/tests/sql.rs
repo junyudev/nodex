@@ -16,7 +16,7 @@ fn create_rows(library: &LibraryModule, source: &str, count: usize, key: &str) {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     operation_id: format!("sql:{key}:{start}"),
                     store_epoch: StoreEpoch("epoch-1".into()),
-                    intent: LibraryIntent::CreatePagesFromNfm {
+                    intent: LibraryIntent::CreatePagesFromText {
                         request: LibraryAgentCreatePagesRequest {
                             destination: LibraryAgentPageDestination::DataSource {
                                 data_source_id: source.into(),
@@ -28,7 +28,7 @@ fn create_rows(library: &LibraryModule, source: &str, count: usize, key: &str) {
                             pages: (start..(start + 16).min(count))
                                 .map(|index| LibraryAgentCreatePageDraft {
                                     title_markdown: format!("Item {index:03}"),
-                                    nfm: String::new(),
+                                    markdown: String::new(),
                                     values: vec![],
                                 })
                                 .collect(),
@@ -245,9 +245,9 @@ fn public_sql_counts_complete_windows_and_enforces_cross_source_authority() {
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 operation_id: "sql:second-page".into(),
                 store_epoch: StoreEpoch("epoch-1".into()),
-                intent: LibraryIntent::CreatePageFromNfm {
+                intent: LibraryIntent::CreatePageFromText {
                     title_markdown: "Other page".into(),
-                    nfm: String::new(),
+                    markdown: String::new(),
                     destination:
                         nodex_core_contracts::library::LibraryPageWriteDestination::DataSource {
                             data_source_id: second_source.into(),
@@ -503,7 +503,7 @@ fn public_sql_reads_only_selected_documents_and_caches_search_under_repeated_joi
     let (document, stats) = measured_sql(
         &kernel,
         SqlScope::default(),
-        "SELECT nested_markdown,body_etag FROM page_documents WHERE page_id=:id",
+        "SELECT markdown,body_etag FROM page_documents WHERE page_id=:id",
         &[("id", id)],
     );
     assert_eq!(document.rows.len(), 1);
@@ -515,7 +515,7 @@ fn public_sql_reads_only_selected_documents_and_caches_search_under_repeated_joi
     let (limited, stats) = measured_sql(
         &kernel,
         tasks_scope(),
-        "WITH chosen AS MATERIALIZED (SELECT page_id FROM tasks ORDER BY page_id LIMIT 10) SELECT chosen.page_id,d.nested_markdown,d.body_etag FROM chosen JOIN page_documents d USING(page_id)",
+        "WITH chosen AS MATERIALIZED (SELECT page_id FROM tasks ORDER BY page_id LIMIT 10) SELECT chosen.page_id,d.markdown,d.body_etag FROM chosen JOIN page_documents d USING(page_id)",
         &[],
     );
     assert_eq!(limited.rows.len(), 10);
@@ -526,7 +526,7 @@ fn public_sql_reads_only_selected_documents_and_caches_search_under_repeated_joi
     let (hits, stats) = measured_sql(
         &kernel,
         tasks_scope(),
-        "SELECT t.page_id,d.nested_markdown,d.body_etag FROM tasks t CROSS JOIN search_hits(:query,5) s JOIN page_documents d ON d.page_id=s.page_id WHERE t.page_id=s.page_id",
+        "SELECT t.page_id,d.markdown,d.body_etag FROM tasks t CROSS JOIN search_hits(:query,5) s JOIN page_documents d ON d.page_id=s.page_id WHERE t.page_id=s.page_id",
         &[("query", json!("Item"))],
     );
     assert_eq!(hits.rows.len(), 5);

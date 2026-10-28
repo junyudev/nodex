@@ -332,8 +332,9 @@ export function NfmSendToThreadMenuSurface({
       query: deferredQuery,
       preferredTarget,
       projectNameById,
+      requireSession: mode === "wrap-toggle",
     });
-  }, [deferredQuery, preferredTarget, projectId, projectNameById, visibleThreads]);
+  }, [deferredQuery, mode, preferredTarget, projectId, projectNameById, visibleThreads]);
   const buildRowsForQuery = useCallback(
     (nextQuery: string): readonly NfmSendToThreadRow[] => {
       if (!projectId) return [];
@@ -350,9 +351,11 @@ export function NfmSendToThreadMenuSurface({
         query: nextQuery,
         preferredTarget,
         projectNameById,
+        requireSession: mode === "wrap-toggle",
       });
     },
     [
+      mode,
       normalizedThreadItems,
       preferredTarget,
       projectId,

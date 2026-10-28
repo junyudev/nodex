@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   materializePageDocument,
-  populateBlockDocumentBodyFromNfm,
+  populateBlockDocumentBodyFromMarkdown,
 } from "../../shared/block-documents/block-document-codec";
 import {
   buildPageCreateInput,
@@ -17,7 +17,7 @@ describe("Page create draft", () => {
     const draft = createPageCreateDescriptionDraft("request-empty-description");
 
     expect(materializePageDocument(draft.document)).toMatchObject({
-      nfm: "",
+      markdown: "",
       blockTree: [
         {
           type: "paragraph",
@@ -31,7 +31,7 @@ describe("Page create draft", () => {
 
   test("materializes one Page lifecycle payload from local title, NFM, and properties", () => {
     const draft = createPageCreateDescriptionDraft("request-1");
-    populateBlockDocumentBodyFromNfm(
+    populateBlockDocumentBodyFromMarkdown(
       draft.body,
       "## Context\n\nKeep the creation draft local until submit.",
     );
@@ -51,7 +51,7 @@ describe("Page create draft", () => {
 
     expect(input).toEqual({
       title: "Ship create modal",
-      description: "## Context\nKeep the creation draft local until submit.",
+      description: "## Context\n\nKeep the creation draft local until submit.",
       priority: "p1-high",
       estimate: "m",
       tagOptions: [
@@ -94,7 +94,7 @@ describe("Page create draft", () => {
 
   test("captures a pure recoverable snapshot and hydrates it into a fresh document", () => {
     const first = createPageCreateDescriptionDraft("request-restore");
-    populateBlockDocumentBodyFromNfm(first.body, "Recover this body");
+    populateBlockDocumentBodyFromMarkdown(first.body, "Recover this body");
     const snapshot = capturePageCreateDraftSnapshot({
       title: "Recover this Page",
       descriptionDraft: first,
@@ -109,12 +109,12 @@ describe("Page create draft", () => {
     const restored = createPageCreateDescriptionDraft(
       "request-restored",
       0,
-      snapshot.descriptionNfm,
+      snapshot.descriptionMarkdown,
     );
 
     expect(snapshot).toEqual({
       title: "Recover this Page",
-      descriptionNfm: "Recover this body",
+      descriptionMarkdown: "Recover this body",
       status: "build",
       priority: "p1-high",
       estimate: "m",

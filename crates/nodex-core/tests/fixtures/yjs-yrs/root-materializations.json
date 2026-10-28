@@ -1,6 +1,6 @@
 {
   "emptyPage": {
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "title": "",
     "blockTree": [
       {
@@ -15,7 +15,7 @@
         "children": []
       }
     ],
-    "nfm": "",
+    "markdown": "",
     "plainText": "",
     "preview": "",
     "references": [],
@@ -23,18 +23,18 @@
     "richTitle": []
   },
   "emptySyncedBlock": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "title": "",
     "richTitle": [],
     "blockTree": [],
-    "nfm": "",
+    "markdown": "",
     "plainText": "",
     "preview": "",
     "references": [],
     "assetRefs": []
   },
   "reusableTemplate": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "title": "",
     "richTitle": [],
     "blockTree": [
@@ -68,7 +68,7 @@
         "children": []
       }
     ],
-    "nfm": "Template **body** 😀",
+    "markdown": "Template **body** 😀",
     "plainText": "Template body 😀",
     "preview": "Template body 😀",
     "references": [],

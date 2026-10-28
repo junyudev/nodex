@@ -37,7 +37,7 @@ function fixture(): string {
   write(path.join(root, "Cargo.lock"), "version = 4\n");
   write(path.join(root, "crates/core/src/main.rs"), "fn main() {}\n");
   write(path.join(root, "src/shared/block-documents/policy.json"), "{}");
-  write(path.join(root, "agent-skills/nodex/references/nested-markdown.md"), "example");
+  write(path.join(root, "agent-skills/nodex/references/markdown.md"), "example");
   return root;
 }
 function buildAdapter(
@@ -149,7 +149,7 @@ test("invalidates embedded assets, compiler context and crate sources while igno
   write(path.join(root, "src/shared/block-documents/policy.json"), '{"rule":true}');
   expect(fingerprint()).not.toBe(original);
   const policyChanged = fingerprint();
-  write(path.join(root, "agent-skills/nodex/references/nested-markdown.md"), "new skill");
+  write(path.join(root, "agent-skills/nodex/references/markdown.md"), "new skill");
   expect(fingerprint()).not.toBe(policyChanged);
   const skillChanged = fingerprint();
   write(path.join(root, "crates/core/src/main.rs"), "fn main() { panic!() }\n");

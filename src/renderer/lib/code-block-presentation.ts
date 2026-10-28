@@ -1,4 +1,7 @@
-import { findCodeLanguage, resolveCodeLanguage } from "../../shared/nfm/code-language-catalog";
+import {
+  findCodeLanguage,
+  resolveCodeLanguage,
+} from "../../shared/code-languages/code-language-catalog";
 
 export interface ReadonlyCodeLanguage {
   /** Catalog ID, or the authored token when the catalog has no entry for it. */

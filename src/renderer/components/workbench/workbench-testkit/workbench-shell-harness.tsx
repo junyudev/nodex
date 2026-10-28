@@ -1445,11 +1445,11 @@ vi.mock(".././workbench-page-stage", () => ({
               current + 1;
             (
               props.onToggleHistoryPanel as
-                | ((snapshot: { readonly title: string; readonly nfm: string }) => void)
+                | ((snapshot: { readonly title: string; readonly markdown: string }) => void)
                 | undefined
             )?.({
               title: `Card ${String(pageId)}`,
-              nfm: `Body ${String(pageId)}`,
+              markdown: `Body ${String(pageId)}`,
             });
           },
         },

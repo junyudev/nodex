@@ -1112,9 +1112,9 @@ fn restores_a_turned_page_then_collects_only_its_dormant_document() {
     );
     let child = apply(
         "restore-turn:child",
-        LibraryIntent::CreatePageFromNfm {
+        LibraryIntent::CreatePageFromText {
             title_markdown: "Child".into(),
-            nfm: "Preserved body".into(),
+            markdown: "Preserved body".into(),
             destination: LibraryPageWriteDestination::Page {
                 page_id: HOST_PAGE.into(),
                 at: None,
@@ -1187,7 +1187,7 @@ fn restores_a_turned_page_then_collects_only_its_dormant_document() {
                 &child.document_id
             )?);
             let before: String = connection.query_row(
-                "SELECT nfm FROM document_materializations WHERE document_id = ?1",
+                "SELECT markdown FROM document_materializations WHERE document_id = ?1",
                 [HOST_DOCUMENT],
                 |row| row.get(0),
             )?;
@@ -1217,7 +1217,7 @@ fn restores_a_turned_page_then_collects_only_its_dormant_document() {
             );
             assert_eq!(
                 connection.query_row(
-                    "SELECT nfm FROM document_materializations WHERE document_id = ?1",
+                    "SELECT markdown FROM document_materializations WHERE document_id = ?1",
                     [HOST_DOCUMENT],
                     |row| row.get::<_, String>(0)
                 )?,

@@ -140,6 +140,11 @@ export const collectBlockChildrenViolations = (
   return violations;
 };
 
+const attributeText = (element: Y.XmlElement, name: string): string => {
+  const value: unknown = element.getAttribute(name);
+  return typeof value === "string" ? value : "";
+};
+
 const readPlainText = (container: Y.XmlElement): string => {
   const content = container
     .toArray()
@@ -150,9 +155,15 @@ const readPlainText = (container: Y.XmlElement): string => {
   if (!content) {
     return "";
   }
+  // An image Block's text is its caption; an image within text contributes its description.
+  if (content.nodeName === "image") {
+    return attributeText(content, "caption");
+  }
   const parts: string[] = [];
   for (const node of content.createTreeWalker(() => true)) {
-    if (node instanceof Y.XmlText) {
+    if (node instanceof Y.XmlElement && node.nodeName === "inlineImage") {
+      parts.push(attributeText(node, "alt"));
+    } else if (node instanceof Y.XmlText) {
       const text = (node.toDelta() as readonly { readonly insert: unknown }[])
         .flatMap((operation) => (typeof operation.insert === "string" ? [operation.insert] : []))
         .join("");

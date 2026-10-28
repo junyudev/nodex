@@ -157,7 +157,7 @@ function pageHit(
   };
 }
 
-describe("nfm move-to menu model", () => {
+describe("markdown move-to menu model", () => {
   test("exposes only destinations inside the source Project authority", () => {
     expect(getNfmMoveToExecutableProjects(PROJECTS, "alpha").map((project) => project.id)).toEqual([
       "alpha",

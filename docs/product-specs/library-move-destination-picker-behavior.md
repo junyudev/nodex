@@ -59,5 +59,5 @@ The mutation remains the final serialized authority and rechecks the resource lo
 
 ## Shared UI substrate
 
-Database resource Move, Page Relocation, and NFM Move share the destination-picker frame, option row, search geometry, section headers, status rows, scroll window, and delayed-loading visual language.
+Database resource Move, Page Relocation, and Page editor Move share the destination-picker frame, option row, search geometry, section headers, status rows, scroll window, and delayed-loading visual language.
 Their destination domain models and mutations remain separate.

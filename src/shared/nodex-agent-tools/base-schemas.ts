@@ -4,8 +4,8 @@ import {
   type PortableRichText,
 } from "../block-documents/portable-rich-text";
 import { MAX_PAGE_TITLE_LENGTH } from "../page-limits";
-import { NFM_DATE_MENTION_DATE_FORMATS, NFM_DATE_MENTION_TIME_FORMATS } from "../nfm/date-mention";
-import { NFM_COLORS } from "../nfm/types";
+import { DATE_MENTION_DATE_FORMATS, DATE_MENTION_TIME_FORMATS } from "../rich-text/date-mention";
+import { RICH_TEXT_ALL_COLORS } from "../rich-text/colors";
 export {
   NODEX_APP_TOOLS,
   NODEX_APP_TOOL_NAMESPACE,
@@ -39,7 +39,7 @@ export const CursorSchema = z
   .brand<"Cursor">();
 export const ETagSchema = z
   .string()
-  .regex(/^nxe1\.[A-Za-z0-9_-]{43}$/u)
+  .regex(/^nxe2\.[A-Za-z0-9_-]{43}$/u)
   .describe("Opaque validator for one observed semantic state")
   .brand<"ETag">();
 
@@ -51,7 +51,7 @@ const PortableRichTextStylesSchema = z.strictObject({
   underline: z.literal(true).optional(),
   strikethrough: z.literal(true).optional(),
   code: z.literal(true).optional(),
-  color: z.enum(NFM_COLORS).optional(),
+  color: z.enum(RICH_TEXT_ALL_COLORS).optional(),
 });
 
 const PortableRichTextItemSchema = z.discriminatedUnion("type", [
@@ -80,8 +80,8 @@ const PortableRichTextItemSchema = z.discriminatedUnion("type", [
     start: z.string().trim().min(1).max(1_024),
     end: z.string().trim().min(1).max(1_024).optional(),
     tz: z.string().trim().min(1).max(1_024).optional(),
-    format: z.enum(NFM_DATE_MENTION_DATE_FORMATS).optional(),
-    timeFormat: z.enum(NFM_DATE_MENTION_TIME_FORMATS).optional(),
+    format: z.enum(DATE_MENTION_DATE_FORMATS).optional(),
+    timeFormat: z.enum(DATE_MENTION_TIME_FORMATS).optional(),
     reminder: z.string().trim().min(1).max(1_024).optional(),
   }),
 ]);
@@ -170,9 +170,9 @@ export const ToolErrorCodeSchema = z.enum([
   "projection_not_ready",
   "cursor_stale",
   "conflict",
-  "invalid_nfm",
-  "nfm_patch_mismatch",
-  "nfm_patch_overlap",
+  "invalid_markdown",
+  "markdown_patch_mismatch",
+  "markdown_patch_overlap",
   "protected_owner_deletion",
   "mixed_transfer_sources",
   "idempotency_collision",

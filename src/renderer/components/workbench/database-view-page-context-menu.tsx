@@ -1,3 +1,4 @@
+import { writePortableMarkdown } from "../../../shared/nodex-markdown";
 import {
   Fragment,
   useRef,
@@ -322,7 +323,11 @@ export function DatabaseViewPageContextMenuOverlay({
         pageId: request.pageId,
       })
         .then((materialized) =>
-          copyWithFeedback(materialized.nfm, request.successMessage, request.failureMessage),
+          copyWithFeedback(
+            writePortableMarkdown(materialized.blockTree).markdown,
+            request.successMessage,
+            request.failureMessage,
+          ),
         )
         .catch(() => {
           toast.danger(request.failureMessage);

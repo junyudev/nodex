@@ -35,7 +35,7 @@ function renderToolbar(props?: Partial<Parameters<typeof NfmCompactLinkToolbar>[
   );
 }
 
-describe("nfm compact link toolbar", () => {
+describe("markdown compact link toolbar", () => {
   test("opens the link through the Open action when actionable", async () => {
     let openCount = 0;
 
@@ -232,7 +232,7 @@ describe("nfm compact link toolbar", () => {
   });
 });
 
-describe("nfm link edit toolbar surface", () => {
+describe("markdown link edit toolbar surface", () => {
   test("renders only the URL field and applies the edited link", async () => {
     let applied = 0;
     const view = render(

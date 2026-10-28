@@ -146,13 +146,13 @@ export class NfmHistoryLane {
     this.standaloneHistory = options.interactionHistory
       ? undefined
       : createInteractionHistory({
-          scopeKey: "nfm",
+          scopeKey: "markdown",
           limits: { ...limits, maxPending: limits.maxQueued + 1 },
           onError: (error) => this.onError?.(error),
         });
     const interactionHistory = options.interactionHistory ?? this.standaloneHistory!;
     this.owner = interactionHistory.bind({
-      scopeKey: "nfm",
+      scopeKey: "markdown",
       breakCapture: () => this.stopCapturing(),
       onCommitted: (receipt) => this.handlers.onCommitted?.(receipt),
       retainedIdentityCount: () => options.textHistory?.retainedIdentityCount ?? 0,

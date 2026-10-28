@@ -45,7 +45,7 @@ describe("resolveNodexDynamicToolCallPresentation", () => {
           resource: {
             kind: "page",
             title: { kind: "plain", text: "Migration plan" },
-            body: { format: "nfm", content: "# Plan\nDetails" },
+            body: { format: "markdown", content: "# Plan\nDetails" },
           },
           destination: { kind: "library" },
         },
@@ -64,10 +64,10 @@ describe("resolveNodexDynamicToolCallPresentation", () => {
       call("edit_document", {
         documentId: "document-1",
         body: {
-          kind: "nfm.patch",
+          kind: "markdown.patch",
           patches: [
-            { oldNfm: "## Draft\n- [ ] Ship", newNfm: "## Ready\n- [x] Ship" },
-            { oldNfm: "Owner: TBD", newNfm: "Owner: Ada" },
+            { oldMarkdown: "## Draft\n- [ ] Ship", newMarkdown: "## Ready\n- [x] Ship" },
+            { oldMarkdown: "Owner: TBD", newMarkdown: "Owner: Ada" },
           ],
         },
       }),
@@ -92,7 +92,7 @@ describe("resolveNodexDynamicToolCallPresentation", () => {
     const presentation = resolveNodexDynamicToolCallPresentation(
       call("edit_document", {
         documentId: "document-1",
-        body: { kind: "nfm.insert", at: { kind: "end" }, content },
+        body: { kind: "markdown.insert", at: { kind: "end" }, content },
       }),
     );
 
@@ -102,12 +102,12 @@ describe("resolveNodexDynamicToolCallPresentation", () => {
   });
 
   test("keeps both sides of a large exact patch in the bounded preview", () => {
-    const oldNfm = Array.from({ length: 100 }, (_, index) => `Old ${index + 1}`).join("\n");
-    const newNfm = Array.from({ length: 100 }, (_, index) => `New ${index + 1}`).join("\n");
+    const oldMarkdown = Array.from({ length: 100 }, (_, index) => `Old ${index + 1}`).join("\n");
+    const newMarkdown = Array.from({ length: 100 }, (_, index) => `New ${index + 1}`).join("\n");
     const presentation = resolveNodexDynamicToolCallPresentation(
       call("edit_document", {
         documentId: "document-1",
-        body: { kind: "nfm.patch", patches: [{ oldNfm, newNfm }] },
+        body: { kind: "markdown.patch", patches: [{ oldMarkdown, newMarkdown }] },
       }),
     );
 

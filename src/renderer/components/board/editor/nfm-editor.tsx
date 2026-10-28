@@ -1,3 +1,4 @@
+import { markdownBlocksForEditor } from "../../../../shared/nodex-markdown/blocknote";
 import { NfmStructuralRemovalPresentation } from "./nfm-structural-removal-presentation";
 import { readCodexSubmissionPresentation } from "@/lib/codex-turn-presentation";
 import type { WorkbenchSubmitPresentation } from "../../../../shared/nodex-app-tools/workbench";
@@ -38,7 +39,6 @@ import { NfmLinkToolbar } from "./nfm-link-toolbar";
 import { NfmLinkToolbarController } from "./nfm-link-toolbar-controller";
 import { toast } from "@/components/ui/toast";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
-import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
 import { applyLibraryModule } from "@/lib/api";
 import { resolveNfmLinkAction } from "@/lib/nfm-link-actions";
 import {
@@ -49,7 +49,6 @@ import {
   type ContentRoutingContext,
   type ContentPageNavigationTarget,
 } from "../../../../shared/content-routing-context";
-import { NodexPopover, NodexPopoverAnchor, NodexPopoverContent } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useEditorDragBehaviors } from "./use-editor-drag-behaviors";
 import {
@@ -98,7 +97,6 @@ import type {
   NfmSendToThreadPreferredTarget,
   NfmSendToThreadRequest,
 } from "./nfm-send-to-thread-menu-model";
-import { NfmSendToThreadMenuSurface } from "./nfm-send-to-thread-menu";
 import { NfmSideMenuRuntimeProvider } from "./nfm-side-menu-runtime";
 import { resolveSendBlockSelection } from "./send-block-selection";
 import { PasteResourceDialog } from "./paste-resource-dialog";
@@ -142,18 +140,6 @@ import {
   runInEditorTransaction,
 } from "./external-block-drag-session";
 import {
-  buildThreadSectionPromptInput,
-  createEmptyThreadSectionBlock,
-  deriveThreadSectionPromptBlocks,
-  resolveThreadSectionSendPlan,
-  type ThreadSectionBlockLike,
-} from "./thread-section";
-import {
-  ThreadSectionRuntimeProvider,
-  type ThreadSectionLinkedThreadState,
-  type ThreadSectionRuntimeValue,
-} from "./thread-section-runtime";
-import {
   ThreadMentionRuntimeProvider,
   type ThreadMentionRuntimeValue,
 } from "./thread-mention-chip";
@@ -161,19 +147,10 @@ import { activateSelectedMention } from "./mention-chip-keyboard-navigation";
 import { AgentConfigRuntimeProvider, type AgentConfigRuntimeValue } from "./agent-config-runtime";
 import { resolveDefaultAgentConfigIntelligence } from "./agent-config-chip";
 import { prepareOwnedBlockDocument } from "@/lib/api";
-import { readCodexThreadSummary } from "@/lib/codex-thread-summary";
-import { serializeNfm, blockNoteToNfm, applyToggleStatesFromDom } from "@/lib/nfm";
+import { readSessionMentionSummary } from "@/lib/session-mentions";
+import { writeMarkdown, readMarkdown } from "../../../../shared/nodex-markdown";
 import type { CodexThreadSummary } from "@/lib/types";
 
-interface PageStageLinkedThread {
-  readonly threadId: string;
-  readonly title: string;
-  readonly preview?: string;
-  readonly statusType: CodexThreadSummary["statusType"];
-  readonly statusActiveFlags: CodexThreadSummary["statusActiveFlags"];
-  readonly archived: boolean;
-  readonly updatedAt: number;
-}
 import { resolveAssetSourceToDisplayUrl } from "@/lib/assets";
 import { readImageFileSourceDimensions } from "@/lib/image-source-dimensions";
 import { parseFileSource } from "../../../../shared/file-resources";
@@ -183,7 +160,6 @@ import { usePasteResourceSettings } from "@/lib/use-paste-resource-settings";
 import { readCopyFileReferencesAsLocalPaths } from "@/lib/copy-file-reference-settings";
 import { resolvePageDeepLinkPasteIntent } from "@/lib/page-reference-paste";
 import { cn } from "@/lib/utils";
-import { useCommandPaletteThreadItems } from "@/lib/command-palette-chat-search";
 import type {
   BlockDocumentMutationBarrier,
   DocumentHeadFence,
@@ -248,8 +224,8 @@ interface NfmEditorCommonProps {
   sessionId?: string | null;
   sessionThread?: CodexThreadSummary | null;
   canStartThreadInSession?: boolean;
-  linkedCodexThreads?: readonly PageStageLinkedThread[];
   onOpenCodexThread?: (threadId: string) => Promise<void>;
+  onOpenSession?: (sessionId: string) => void | Promise<void>;
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   onOpenDatabase?: BlockReferenceHostRuntime["openDatabase"];
   onOpenCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;
@@ -315,26 +291,6 @@ interface SendBlocksSelection {
   blocks: DragSessionBlock[];
 }
 
-interface PreparedThreadSectionSendRequest {
-  sectionTitle: string;
-  plainTextPreview: string;
-  threadLabel: string;
-  sendActionLabel: string;
-  autoCreateSection: boolean;
-  prompt: string;
-  promptInput: CodexPromptInput;
-  markerBlockId: string | null;
-  threadId: string;
-  canReuseThread: boolean;
-  createMarkerBeforeBlockId: string | null;
-}
-
-interface ThreadSectionPickerState {
-  request: PreparedThreadSectionSendRequest;
-  anchorRect: DOMRect;
-  preferredTarget: NfmSendToThreadPreferredTarget | null;
-}
-
 function isAvailableNfmSendToThreadPreferredTargetThread(
   thread: CodexThreadSummary | null | undefined,
 ): thread is CodexThreadSummary {
@@ -348,10 +304,11 @@ function isAvailableNfmSendToThreadPreferredTargetThread(
 
 function createNfmSendToThreadPreferredTargetFromThread(
   thread: CodexThreadSummary | null | undefined,
+  sessionId: string | null,
   meta: string,
 ): NfmSendToThreadPreferredTarget | null {
-  if (!isAvailableNfmSendToThreadPreferredTargetThread(thread)) return null;
-  return { kind: "thread", thread, meta };
+  if (!sessionId || !isAvailableNfmSendToThreadPreferredTargetThread(thread)) return null;
+  return { kind: "thread", thread, sessionId, meta };
 }
 
 function createNfmSendToThreadPreferredSessionTarget(
@@ -366,43 +323,6 @@ function createNfmSendToThreadPreferredSessionTarget(
     sessionId: normalizedSessionId,
     meta: "This session",
   };
-}
-
-function toThreadSectionLinkedThreadState(
-  thread: PageStageLinkedThread,
-): ThreadSectionLinkedThreadState {
-  return {
-    threadId: thread.threadId,
-    threadName: thread.title,
-    threadPreview: thread.preview ?? "",
-    statusType: thread.statusType,
-    statusActiveFlags: thread.statusActiveFlags,
-    archived: thread.archived,
-    updatedAt: thread.updatedAt,
-  };
-}
-
-function toThreadSectionLinkedThreadStateFromSummary(
-  thread: CodexThreadSummary,
-): ThreadSectionLinkedThreadState {
-  return {
-    threadId: thread.threadId,
-    threadName: thread.threadName ?? "",
-    threadPreview: thread.threadPreview,
-    statusType: thread.statusType,
-    statusActiveFlags: thread.statusActiveFlags,
-    archived: thread.archived,
-    updatedAt: thread.updatedAt,
-  };
-}
-
-function buildThreadSectionThreadMap(
-  threads: ThreadSectionLinkedThreadState[],
-): Record<string, ThreadSectionLinkedThreadState> {
-  return threads.reduce<Record<string, ThreadSectionLinkedThreadState>>((acc, thread) => {
-    acc[thread.threadId] = thread;
-    return acc;
-  }, {});
 }
 
 function resolveImagePreview(input: { readonly source: string; readonly alt: string }): {
@@ -445,8 +365,6 @@ export function NfmEditor(props: NfmEditorProps) {
   );
 }
 
-const EMPTY_LINKED_CODEX_THREADS: readonly PageStageLinkedThread[] = [];
-
 function NfmEditorInstance({
   owner,
   contentRoutingContext,
@@ -459,8 +377,8 @@ function NfmEditorInstance({
   sessionId = null,
   sessionThread = null,
   canStartThreadInSession = false,
-  linkedCodexThreads = EMPTY_LINKED_CODEX_THREADS,
   onOpenCodexThread,
+  onOpenSession,
   onOpenPage,
   onOpenDatabase,
   onOpenCanvas,
@@ -494,15 +412,6 @@ function NfmEditorInstance({
   const [pasteResourceDialog, setPasteResourceDialog] = useState<PasteResourceDialogState | null>(
     null,
   );
-  const [threadSectionPicker, setThreadSectionPicker] = useState<ThreadSectionPickerState | null>(
-    null,
-  );
-  const { threads: sendToThreadItems, loading: sendToThreadItemsLoading } =
-    useCommandPaletteThreadItems({
-      enabled: Boolean(threadSectionPicker) && executionProjectId !== null,
-      activeProjectId: executionProjectId,
-      refreshKey: 0,
-    });
   const [pasteResourcePending, setPasteResourcePending] = useState(false);
   const [pasteResourceError, setPasteResourceError] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{
@@ -515,9 +424,6 @@ function NfmEditorInstance({
     ),
     [projectWorkspacePath],
   );
-  const [threadSectionPendingBlockIds, setThreadSectionPendingBlockIds] = useState<Set<string>>(
-    () => new Set(),
-  );
   const [threadMentionThreadsById, setThreadMentionThreadsById] = useState<
     Record<string, CodexThreadSummary>
   >({});
@@ -529,19 +435,11 @@ function NfmEditorInstance({
   );
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const threadSectionThreadMap = useMemo(
-    () =>
-      buildThreadSectionThreadMap([
-        ...linkedCodexThreads.map(toThreadSectionLinkedThreadState),
-        ...projectThreadSummaries.map(toThreadSectionLinkedThreadStateFromSummary),
-      ]),
-    [linkedCodexThreads, projectThreadSummaries],
-  );
-
-  const projectThreadSummaryMap = useMemo(
+  // A chat mention names its Session; the Project's live chats keep its title current.
+  const projectSessionSummaryMap = useMemo(
     () =>
       projectThreadSummaries.reduce<Record<string, CodexThreadSummary>>((acc, thread) => {
-        acc[thread.threadId] = thread;
+        if (thread.sessionId) acc[thread.sessionId] = thread;
         return acc;
       }, {}),
     [projectThreadSummaries],
@@ -549,7 +447,7 @@ function NfmEditorInstance({
 
   const sessionSendToThreadPreferredTarget = useMemo(
     () =>
-      createNfmSendToThreadPreferredTargetFromThread(sessionThread, "This session") ??
+      createNfmSendToThreadPreferredTargetFromThread(sessionThread, sessionId, "This session") ??
       createNfmSendToThreadPreferredSessionTarget(sessionId, canStartThreadInSession),
     [canStartThreadInSession, sessionId, sessionThread],
   );
@@ -617,10 +515,10 @@ function NfmEditorInstance({
   );
   const threadMentionSummaryMap = useMemo(
     () => ({
-      ...projectThreadSummaryMap,
       ...threadMentionThreadsById,
+      ...projectSessionSummaryMap,
     }),
-    [projectThreadSummaryMap, threadMentionThreadsById],
+    [projectSessionSummaryMap, threadMentionThreadsById],
   );
   const threadMentionSummaryMapRef = useRef(threadMentionSummaryMap);
   useEffect(() => {
@@ -706,7 +604,7 @@ function NfmEditorInstance({
   }, [editor, editorInstanceKey, isActivePanelTab]);
   useEffect(() => () => pasteResourceDialog?.target.selection?.release(), [pasteResourceDialog]);
 
-  const resolveThreadMention = useCallback(
+  const resolveSessionMention = useCallback(
     async (threadId: string): Promise<CodexThreadSummary | null> => {
       const normalizedThreadId = threadId.trim();
       if (!normalizedThreadId) return null;
@@ -724,13 +622,13 @@ function NfmEditorInstance({
         return next;
       });
 
-      const resolvePromise = readCodexThreadSummary(normalizedThreadId)
+      const resolvePromise = readSessionMentionSummary(normalizedThreadId)
         .then((thread) => {
           const summary = thread as CodexThreadSummary | null;
           if (!summary) return null;
 
           setThreadMentionThreadsById((current) => {
-            const existing = current[summary.threadId];
+            const existing = current[normalizedThreadId];
             if (
               existing &&
               existing.threadName === summary.threadName &&
@@ -743,7 +641,7 @@ function NfmEditorInstance({
             }
             return {
               ...current,
-              [summary.threadId]: summary,
+              [normalizedThreadId]: summary,
             };
           });
           return summary;
@@ -844,11 +742,7 @@ function NfmEditorInstance({
 
   const serializeEditorToNfm = useCallback((): string => {
     if (!editor) return "";
-    const nfmBlocks = blockNoteToNfm(editor.document);
-    if (containerRef.current) {
-      applyToggleStatesFromDom(editor.document, nfmBlocks, containerRef.current);
-    }
-    return serializeNfm(nfmBlocks);
+    return writeMarkdown(editor.document);
   }, [editor]);
 
   const restoreEditorFocus = useCallback(() => {
@@ -867,296 +761,6 @@ function NfmEditorInstance({
 
     restoreEditorFocus();
   }, [editor, isActivePanelTab, restoreEditorFocus]);
-
-  const prepareThreadSectionSend = useCallback(
-    async (blockId: string) => {
-      if (!editor) return null;
-
-      const sendPlan = resolveThreadSectionSendPlan(
-        editor.document as ThreadSectionBlockLike[],
-        blockId,
-      );
-      if (!sendPlan) return null;
-
-      const promptBlocks = deriveThreadSectionPromptBlocks(sendPlan.section);
-      const promptInput = buildThreadSectionPromptInput(promptBlocks, (nfmBlocks) => {
-        if (!containerRef.current) return;
-        applyToggleStatesFromDom(promptBlocks, nfmBlocks, containerRef.current);
-      });
-      const plainTextPreview = promptInput.text;
-      const existingThread =
-        sendPlan.section.threadId.length > 0
-          ? threadSectionThreadMap[sendPlan.section.threadId]
-          : undefined;
-      const canReuseThread = Boolean(existingThread && !existingThread.archived);
-      const sectionTitle = sendPlan.section.label || sendPlan.section.fallbackTitle;
-      const sendActionLabel = canReuseThread
-        ? "Send to existing thread"
-        : sendPlan.section.threadId.length > 0
-          ? "Start a new thread and rebind section"
-          : "Start a new thread";
-      const threadLabel = canReuseThread
-        ? resolveCodexElectronDisplayThreadTitle({
-            threadName: existingThread?.threadName,
-            threadPreview: existingThread?.threadPreview,
-            fallback: sendPlan.section.threadId,
-          })
-        : sendPlan.section.threadId.length > 0
-          ? "Linked thread is unavailable"
-          : "No existing thread";
-
-      return {
-        sectionTitle,
-        plainTextPreview,
-        threadLabel,
-        sendActionLabel,
-        autoCreateSection: sendPlan.createMarkerBeforeBlockId !== null,
-        prompt: promptInput.text,
-        promptInput,
-        markerBlockId: sendPlan.section.markerBlockId || null,
-        threadId: sendPlan.section.threadId,
-        canReuseThread,
-        createMarkerBeforeBlockId: sendPlan.createMarkerBeforeBlockId,
-      };
-    },
-    [editor, threadSectionThreadMap],
-  );
-
-  const closeThreadSectionPicker = useCallback(() => {
-    setThreadSectionPicker(null);
-  }, []);
-
-  const resolveThreadSectionPreferredThread = useCallback(
-    (request: PreparedThreadSectionSendRequest): NfmSendToThreadPreferredTarget | null => {
-      const sectionThread =
-        request.threadId.length > 0
-          ? (projectThreadSummaryMap[request.threadId] ??
-            (sessionThread?.threadId === request.threadId ? sessionThread : undefined))
-          : undefined;
-      return (
-        createNfmSendToThreadPreferredTargetFromThread(sectionThread, "Current section") ??
-        sessionSendToThreadPreferredTarget
-      );
-    },
-    [projectThreadSummaryMap, sessionThread, sessionSendToThreadPreferredTarget],
-  );
-
-  const withPendingThreadSection = useCallback(
-    async (blockId: string, action: () => Promise<void>) => {
-      setThreadSectionPendingBlockIds((current) => {
-        const next = new Set(current);
-        next.add(blockId);
-        return next;
-      });
-
-      try {
-        await action();
-      } finally {
-        setThreadSectionPendingBlockIds((current) => {
-          const next = new Set(current);
-          next.delete(blockId);
-          return next;
-        });
-      }
-    },
-    [],
-  );
-
-  const handleOpenThreadSectionThread = useCallback(
-    (threadId: string) => {
-      if (!onOpenCodexThread) return;
-      void onOpenCodexThread(threadId);
-    },
-    [onOpenCodexThread],
-  );
-
-  const performThreadSectionSend = useCallback(
-    async (request: PreparedThreadSectionSendRequest, sendRequest: NfmSendToThreadRequest) => {
-      if (!editor) {
-        return false;
-      }
-      if (executionProjectId === null) {
-        toast.danger("Thread sending requires a Project.", {
-          id: "nfm-thread-section",
-        });
-        restoreEditorFocus();
-        return false;
-      }
-      if (sendRequest.target.kind === "thread" && !onSendPagePrompt) {
-        toast.danger("Thread sending is not available.", {
-          id: "nfm-thread-section",
-        });
-        restoreEditorFocus();
-        return false;
-      }
-      if (sendRequest.target.kind === "new-thread" && !onStartNewSessionThreadFromEditor) {
-        toast.danger("New chat creation is not available.", {
-          id: "nfm-thread-section",
-        });
-        restoreEditorFocus();
-        return false;
-      }
-
-      const submittedPresentation = readCodexSubmissionPresentation(workbenchOwner);
-      let markerBlockId = request.markerBlockId;
-      if (!markerBlockId && request.createMarkerBeforeBlockId) {
-        const [insertedMarker] = editor.insertBlocks(
-          [createEmptyThreadSectionBlock()],
-          request.createMarkerBeforeBlockId,
-          "before",
-        );
-        markerBlockId = insertedMarker?.id ?? null;
-      }
-
-      if (!markerBlockId) {
-        toast.danger("Could not resolve a thread section to send.", {
-          id: "nfm-thread-section",
-        });
-        restoreEditorFocus();
-        return false;
-      }
-
-      const sendExistingThreadPrompt = onSendPagePrompt;
-      const startNewSessionThread = onStartNewSessionThreadFromEditor;
-
-      try {
-        await withPendingThreadSection(markerBlockId, async () => {
-          await surfaceMutationBarrier?.flushAndFence();
-          const threadId =
-            sendRequest.target.kind === "thread"
-              ? sendRequest.target.threadId
-              : (
-                  await startNewSessionThread!({
-                    projectId: executionProjectId,
-                    targetSessionId: sendRequest.target.sessionId,
-                    prompt: request.prompt,
-                    promptInput: request.promptInput,
-                    submittedPresentation,
-                    threadName: request.sectionTitle,
-                  })
-                ).threadId;
-
-          if (sendRequest.target.kind === "thread") {
-            await sendExistingThreadPrompt!({
-              projectId: executionProjectId,
-              threadId,
-              prompt: request.prompt,
-              promptInput: request.promptInput,
-              submittedPresentation,
-            });
-          }
-
-          const markerBlock = editor.getBlock(markerBlockId);
-          if (!markerBlock) return;
-          editor.updateBlock(markerBlock, {
-            props: {
-              ...(markerBlock.props ?? {}),
-              threadId,
-            },
-          });
-        });
-        restoreEditorFocus();
-        return true;
-      } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Could not send thread section.", {
-          id: "nfm-thread-section",
-        });
-        restoreEditorFocus();
-        return false;
-      }
-    },
-    [
-      editor,
-      executionProjectId,
-      onStartNewSessionThreadFromEditor,
-      onSendPagePrompt,
-      restoreEditorFocus,
-      withPendingThreadSection,
-      workbenchOwner,
-      surfaceMutationBarrier,
-    ],
-  );
-
-  const handleAcceptThreadSectionPicker = useCallback(
-    async (sendRequest: NfmSendToThreadRequest) => {
-      if (!threadSectionPicker) return;
-      const request = threadSectionPicker.request;
-      closeThreadSectionPicker();
-      await performThreadSectionSend(request, sendRequest);
-    },
-    [closeThreadSectionPicker, performThreadSectionSend, threadSectionPicker],
-  );
-
-  const handleSendThreadSectionByBlockId = useCallback(
-    (blockId: string, anchor?: HTMLElement) => {
-      if (!editor || executionProjectId === null || !onSendPagePrompt) {
-        return false;
-      }
-
-      const cssEscape =
-        globalThis.CSS?.escape ?? ((value: string) => value.replace(/["\\]/g, "\\$&"));
-      const anchorElement =
-        anchor ??
-        editor.prosemirrorView?.dom.querySelector<HTMLElement>(
-          `.bn-block[data-id="${cssEscape(blockId)}"]`,
-        ) ??
-        editor.prosemirrorView?.dom;
-      if (!anchorElement) return false;
-
-      void (async () => {
-        const sendRequest = await prepareThreadSectionSend(blockId);
-        if (!sendRequest) {
-          toast.danger("Could not resolve content to send.", {
-            id: "nfm-thread-section",
-          });
-          return;
-        }
-
-        if (
-          sendRequest.prompt.length === 0 &&
-          (sendRequest.promptInput.images?.length ?? 0) === 0
-        ) {
-          toast.info("This thread section is empty.", {
-            id: "nfm-thread-section",
-          });
-          return;
-        }
-
-        setThreadSectionPicker({
-          request: sendRequest,
-          anchorRect: anchorElement.getBoundingClientRect(),
-          preferredTarget: resolveThreadSectionPreferredThread(sendRequest),
-        });
-      })();
-
-      return true;
-    },
-    [
-      editor,
-      executionProjectId,
-      onSendPagePrompt,
-      prepareThreadSectionSend,
-      resolveThreadSectionPreferredThread,
-    ],
-  );
-
-  const threadSectionRuntimeValue = useMemo<ThreadSectionRuntimeValue>(
-    () => ({
-      threads: threadSectionThreadMap,
-      pendingBlockIds: threadSectionPendingBlockIds,
-      openThread: handleOpenThreadSectionThread,
-      send: handleSendThreadSectionByBlockId,
-      resolveScope: () => ({
-        threads: threadSectionThreadMap,
-      }),
-    }),
-    [
-      handleOpenThreadSectionThread,
-      handleSendThreadSectionByBlockId,
-      threadSectionPendingBlockIds,
-      threadSectionThreadMap,
-    ],
-  );
 
   const closePasteResourceDialog = useCallback(() => {
     setPasteResourcePending(false);
@@ -1343,11 +947,16 @@ function NfmEditorInstance({
       const blocks = pasteResourceDialog.blocknoteHtmlPayload
         ? editor.tryParseHTMLToBlocks(pasteResourceDialog.blocknoteHtmlPayload)
         : pasteResourceDialog.markdownPayload
-          ? editor.tryParseMarkdownToBlocks(pasteResourceDialog.markdownPayload)
+          ? readClipboardMarkdown(pasteResourceDialog.markdownPayload)
           : pasteResourceDialog.htmlPayload
             ? editor.tryParseHTMLToBlocks(pasteResourceDialog.htmlPayload)
-            : editor.tryParseMarkdownToBlocks(pasteResourceDialog.textPayload);
-      const handled = structuralEditingController.current?.handleBlockPaste(blocks) ?? false;
+            : readClipboardMarkdown(pasteResourceDialog.textPayload);
+      const handled =
+        structuralEditingController.current?.handleBlockPaste(
+          blocks as Parameters<
+            NonNullable<typeof structuralEditingController.current>["handleBlockPaste"]
+          >[0],
+        ) ?? false;
       if (!handled) {
         toast.info("The structural selection changed before paste could be applied.");
       }
@@ -1394,7 +1003,11 @@ function NfmEditorInstance({
           throw new Error("The original paste position is no longer available.");
         }
         const inserted = typedTarget
-          ? (structuralEditingController.current?.handleBlockPaste(blocks) ?? false)
+          ? (structuralEditingController.current?.handleBlockPaste(
+              blocks as Parameters<
+                NonNullable<typeof structuralEditingController.current>["handleBlockPaste"]
+              >[0],
+            ) ?? false)
           : insertBlocksAtPasteTarget(editor, target, blocks);
         if (!inserted) throw new Error("Couldn’t insert the pasted image at the original position");
       } catch (error) {
@@ -1839,13 +1452,6 @@ function NfmEditorInstance({
             openImagePreview: (preview) => {
               openImagePreview(preview);
             },
-            openThread: onOpenCodexThread ? handleOpenThreadSectionThread : undefined,
-            sendThreadSectionByBlockId: handleSendThreadSectionByBlockId,
-            showMissingThreadSectionHint: () => {
-              toast.info("Insert /thread section to send notebook-style prompts.", {
-                id: "nfm-thread-section",
-              });
-            },
           });
         if (handled) {
           event.preventDefault();
@@ -1893,8 +1499,6 @@ function NfmEditorInstance({
   }, [
     editor,
     embeddedBoundary,
-    handleSendThreadSectionByBlockId,
-    handleOpenThreadSectionThread,
     navigateSearch,
     onOpenCodexThread,
     openImagePreview,
@@ -1941,17 +1545,6 @@ function NfmEditorInstance({
       el.removeEventListener("dblclick", handleDoubleClick, true);
     };
   }, [editor, openImagePreview]);
-
-  const handleConvertDividerToThreadSection = useCallback(
-    (blockId: string) => {
-      const block = editor.getBlock(blockId);
-      if (!block || block.type !== "divider") return;
-
-      editor.updateBlock(block, createEmptyThreadSectionBlock());
-      restoreEditorFocus();
-    },
-    [editor, restoreEditorFocus],
-  );
 
   const resolveSendBlocksSelection = useCallback(
     (fallbackBlockId: string, retainedBlockIds?: readonly string[]): SendBlocksSelection | null => {
@@ -2085,13 +1678,7 @@ function NfmEditorInstance({
         return;
       }
 
-      const promptInput = buildCodexPromptInputFromBlockNoteBlocks(
-        selection.blocks,
-        (nfmBlocks) => {
-          if (!containerRef.current) return;
-          applyToggleStatesFromDom(selection.blocks, nfmBlocks, containerRef.current);
-        },
-      );
+      const promptInput = buildCodexPromptInputFromBlockNoteBlocks(selection.blocks);
       const hasImages = (promptInput.images?.length ?? 0) > 0;
       if (promptInput.text.length === 0 && !hasImages) {
         toast.info("Selected blocks are empty.", {
@@ -2103,21 +1690,23 @@ function NfmEditorInstance({
       const submittedPresentation = readCodexSubmissionPresentation(workbenchOwner);
       await surfaceMutationBarrier?.flushAndFence();
       let threadId: string;
+      let targetSessionId: string | null;
       if (request.target.kind === "thread") {
         threadId = request.target.threadId;
+        targetSessionId = request.target.sessionId;
       } else {
         if (!onStartNewSessionThreadFromEditor) {
           throw new Error("New chat creation is not available.");
         }
-        threadId = (
-          await onStartNewSessionThreadFromEditor({
-            projectId: executionProjectId,
-            targetSessionId: request.target.sessionId,
-            prompt: promptInput.text,
-            promptInput,
-            submittedPresentation,
-          })
-        ).threadId;
+        const started = await onStartNewSessionThreadFromEditor({
+          projectId: executionProjectId,
+          targetSessionId: request.target.sessionId,
+          prompt: promptInput.text,
+          promptInput,
+          submittedPresentation,
+        });
+        threadId = started.threadId;
+        targetSessionId = started.sessionId ?? request.target.sessionId ?? null;
       }
 
       if (request.target.kind === "thread") {
@@ -2133,8 +1722,9 @@ function NfmEditorInstance({
 
       if (request.mode === "wrap-toggle") {
         const dropEditor = editor as unknown as EditorForExternalBlockDrop;
+        if (!targetSessionId) throw new Error("The chat has no Session.");
         const toggleBlock = createSendToThreadToggleBlock({
-          threadId,
+          sessionId: targetSessionId,
           children: selection.blocks,
         });
 
@@ -2351,11 +1941,9 @@ function NfmEditorInstance({
     sendToThreadPreferredTarget: sessionSendToThreadPreferredTarget,
     onSendBlocksToThread: (request: NfmSendToThreadRequest, blockIds: readonly string[]) =>
       sendBlocksToThread(request, blockIds[0] ?? "", blockIds),
-    hasConvertDividerToThreadSection: true,
     sourceProjectId: sourcePageContext ? executionProjectId : null,
     sourcePageId: sourcePageContext?.pageId ?? null,
     onMoveBlocksToDestination: moveBlocksToDestination,
-    onConvertDividerToThreadSection: handleConvertDividerToThreadSection,
     onBlockDragStart: handleBlockDragStart,
     onBlockDragEnd: handleBlockDragEnd,
     onDuplicateBlocks: (blockIds: readonly string[]) =>
@@ -2371,11 +1959,9 @@ function NfmEditorInstance({
     sendToThreadPreferredTarget: sessionSendToThreadPreferredTarget,
     onSendBlocksToThread: (request: NfmSendToThreadRequest, blockIds: readonly string[]) =>
       sendBlocksToThread(request, blockIds[0] ?? "", blockIds),
-    hasConvertDividerToThreadSection: true,
     sourceProjectId: sourcePageContext ? executionProjectId : null,
     sourcePageId: sourcePageContext?.pageId ?? null,
     onMoveBlocksToDestination: moveBlocksToDestination,
-    onConvertDividerToThreadSection: handleConvertDividerToThreadSection,
     onBlockDragStart: handleBlockDragStart,
     onBlockDragEnd: handleBlockDragEnd,
     onDuplicateBlocks: (blockIds: readonly string[]) =>
@@ -2413,12 +1999,8 @@ function NfmEditorInstance({
         request: NfmSendToThreadRequest,
         selectedBlockIds: readonly string[],
       ) => sendBlocksToThread(request, selectedBlockIds[0] ?? "", selectedBlockIds),
-      onSendThreadSection: handleSendThreadSectionByBlockId,
-      onConvertDividerToThreadSection: handleConvertDividerToThreadSection,
     }),
     [
-      handleConvertDividerToThreadSection,
-      handleSendThreadSectionByBlockId,
       blockActionCapabilities.canMoveBlocks,
       blockActionCapabilities.canSendBlocksToThread,
       moveBlocksToDestination,
@@ -2430,12 +2012,12 @@ function NfmEditorInstance({
     ],
   );
 
-  const openThreadMention = useCallback(
-    (threadId: string) => {
-      if (!onOpenCodexThread) return;
-      void onOpenCodexThread(threadId);
+  const openSessionMention = useCallback(
+    (sessionId: string) => {
+      if (!onOpenSession) return;
+      void onOpenSession(sessionId);
     },
-    [onOpenCodexThread],
+    [onOpenSession],
   );
 
   const createCanvasAtEmptyParagraph = useCallback(
@@ -2660,15 +2242,15 @@ function NfmEditorInstance({
 
   const threadMentionRuntimeValue = useMemo<ThreadMentionRuntimeValue>(
     () => ({
-      threads: threadMentionSummaryMap,
+      sessions: threadMentionSummaryMap,
       resolvingIds: threadMentionResolvingIds,
-      resolveThread: resolveThreadMention,
-      ...(onOpenCodexThread ? { openThread: openThreadMention } : {}),
+      resolveSession: resolveSessionMention,
+      ...(onOpenSession ? { openSession: openSessionMention } : {}),
     }),
     [
-      onOpenCodexThread,
-      openThreadMention,
-      resolveThreadMention,
+      onOpenSession,
+      openSessionMention,
+      resolveSessionMention,
       threadMentionResolvingIds,
       threadMentionSummaryMap,
     ],
@@ -2890,47 +2472,6 @@ function NfmEditorInstance({
             </div>
           </div>
         )}
-        {threadSectionPicker ? (
-          <NodexPopover
-            open
-            onOpenChange={(open) => {
-              if (!open) closeThreadSectionPicker();
-            }}
-          >
-            <NodexPopoverAnchor>
-              <span
-                aria-hidden="true"
-                className="pointer-events-none fixed"
-                style={{
-                  left: threadSectionPicker.anchorRect.left,
-                  top: threadSectionPicker.anchorRect.top,
-                  width: threadSectionPicker.anchorRect.width,
-                  height: threadSectionPicker.anchorRect.height,
-                }}
-              />
-            </NodexPopoverAnchor>
-            <NodexPopoverContent
-              side="right"
-              align="center"
-              sideOffset={6}
-              aria-label="Send thread section to chat"
-              finalFocus={false}
-              className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl"
-              style={{ width: 330 }}
-            >
-              <NfmSendToThreadMenuSurface
-                projectId={executionProjectId}
-                threadItems={sendToThreadItems}
-                threadItemsLoading={sendToThreadItemsLoading}
-                projectNameById={sendToThreadProjectNameById}
-                preferredTarget={threadSectionPicker.preferredTarget}
-                onAccept={handleAcceptThreadSectionPicker}
-                onClose={closeThreadSectionPicker}
-                showModeSelector={false}
-              />
-            </NodexPopoverContent>
-          </NodexPopover>
-        ) : null}
         {headingRail?.portalElement ? (
           <NfmHeadingNavigationRail
             editor={editor as unknown as Parameters<typeof NfmHeadingNavigationRail>[0]["editor"]}
@@ -2941,80 +2482,73 @@ function NfmEditorInstance({
         ) : null}
         <BlockReferenceRuntimeProvider value={blockReferenceRuntimeValue}>
           <AgentConfigRuntimeProvider value={agentConfigRuntimeValue}>
-            <ThreadSectionRuntimeProvider value={threadSectionRuntimeValue}>
-              <ThreadMentionRuntimeProvider value={threadMentionRuntimeValue}>
-                <NfmEditorContextMenu
-                  editor={editor}
-                  onPreparePaste={() => {
-                    const target = captureNfmPasteTarget(editor.prosemirrorView);
-                    const releaseStructural =
-                      structuralEditingController.current?.prepareNextStructuralPaste();
-                    return {
-                      restore: target.restore,
-                      release: () => {
-                        target.release();
-                        releaseStructural?.();
-                      },
-                    };
-                  }}
-                >
-                  <NfmTextActionMenuRuntimeProvider value={textActionMenuRuntimeValue}>
-                    <NfmSideMenuRuntimeProvider value={sideMenuRuntimeValue}>
-                      <BlockNoteView
-                        editor={editor}
-                        onEditorViewMount={(editorRoot) => {
-                          editorSession?.restoreSelection(editor);
-                          onEditorViewMount?.(editorRoot);
-                        }}
-                        onEditorViewUnmount={() => {
-                          onEditorViewUnmount?.();
-                          editorSession?.captureSelection(editor);
-                        }}
-                        editable
-                        onChange={handleChange}
-                        theme={themeMode}
-                        attributionTooltip={false}
-                        formattingToolbar={false}
-                        emojiPicker={false}
-                        linkToolbar={false}
-                        slashMenu={false}
-                        sideMenu={false}
-                        tableHandles={false}
-                        data-theming-css-variables-demo
-                      >
-                        <NfmSideMenuOpenProvider>
-                          <NfmCodeBlockController />
-                          <NfmSideMenuShortcutController />
-                          <SideMenuController
-                            sideMenu={customSideMenu}
-                            floatingUIOptions={sideMenuFloatingOptions}
-                          />
-                          <NfmFormattingToolbarController
-                            formattingToolbar={NfmFormattingToolbar}
-                          />
-                          <NfmLinkToolbarController
-                            linkToolbar={renderLinkToolbar}
-                            floatingUIOptions={{
-                              useTransitionStylesProps: {
-                                duration: 0,
-                              },
-                              useTransitionStatusProps: {
-                                duration: 0,
-                              },
-                            }}
-                          />
-                          <NfmSlashMenu
-                            executionProjectId={executionProjectId}
-                            allowPageReferences
-                          />
-                          <NfmTableHandlesController />
-                        </NfmSideMenuOpenProvider>
-                      </BlockNoteView>
-                    </NfmSideMenuRuntimeProvider>
-                  </NfmTextActionMenuRuntimeProvider>
-                </NfmEditorContextMenu>
-              </ThreadMentionRuntimeProvider>
-            </ThreadSectionRuntimeProvider>
+            <ThreadMentionRuntimeProvider value={threadMentionRuntimeValue}>
+              <NfmEditorContextMenu
+                editor={editor}
+                onPreparePaste={() => {
+                  const target = captureNfmPasteTarget(editor.prosemirrorView);
+                  const releaseStructural =
+                    structuralEditingController.current?.prepareNextStructuralPaste();
+                  return {
+                    restore: target.restore,
+                    release: () => {
+                      target.release();
+                      releaseStructural?.();
+                    },
+                  };
+                }}
+              >
+                <NfmTextActionMenuRuntimeProvider value={textActionMenuRuntimeValue}>
+                  <NfmSideMenuRuntimeProvider value={sideMenuRuntimeValue}>
+                    <BlockNoteView
+                      editor={editor}
+                      onEditorViewMount={(editorRoot) => {
+                        editorSession?.restoreSelection(editor);
+                        onEditorViewMount?.(editorRoot);
+                      }}
+                      onEditorViewUnmount={() => {
+                        onEditorViewUnmount?.();
+                        editorSession?.captureSelection(editor);
+                      }}
+                      editable
+                      onChange={handleChange}
+                      theme={themeMode}
+                      attributionTooltip={false}
+                      formattingToolbar={false}
+                      emojiPicker={false}
+                      linkToolbar={false}
+                      slashMenu={false}
+                      sideMenu={false}
+                      tableHandles={false}
+                      data-theming-css-variables-demo
+                    >
+                      <NfmSideMenuOpenProvider>
+                        <NfmCodeBlockController />
+                        <NfmSideMenuShortcutController />
+                        <SideMenuController
+                          sideMenu={customSideMenu}
+                          floatingUIOptions={sideMenuFloatingOptions}
+                        />
+                        <NfmFormattingToolbarController formattingToolbar={NfmFormattingToolbar} />
+                        <NfmLinkToolbarController
+                          linkToolbar={renderLinkToolbar}
+                          floatingUIOptions={{
+                            useTransitionStylesProps: {
+                              duration: 0,
+                            },
+                            useTransitionStatusProps: {
+                              duration: 0,
+                            },
+                          }}
+                        />
+                        <NfmSlashMenu executionProjectId={executionProjectId} allowPageReferences />
+                        <NfmTableHandlesController />
+                      </NfmSideMenuOpenProvider>
+                    </BlockNoteView>
+                  </NfmSideMenuRuntimeProvider>
+                </NfmTextActionMenuRuntimeProvider>
+              </NfmEditorContextMenu>
+            </ThreadMentionRuntimeProvider>
           </AgentConfigRuntimeProvider>
         </BlockReferenceRuntimeProvider>
         {pasteResourceDialog && (
@@ -3060,3 +2594,6 @@ function NfmEditorInstance({
     </FileRuntimeProvider>
   );
 }
+
+const readClipboardMarkdown = (text: string) =>
+  markdownBlocksForEditor(readMarkdown(text, "boundary"));

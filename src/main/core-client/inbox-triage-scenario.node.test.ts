@@ -54,9 +54,11 @@ describe("inbox/triage scenario", () => {
       expect(item).toMatchObject({
         body: [
           "Settings buttons have **no accessible labels**:",
+          "",
           "- the gear in the toolbar",
           "- the close button on dialogs",
-          `<image source="nodex://files/${fileId}">Settings toolbar</image>`,
+          "",
+          `![Settings toolbar](nodex://files/${fileId})`,
         ].join("\n"),
         bodyTruncated: false,
         bodyEditable: true,

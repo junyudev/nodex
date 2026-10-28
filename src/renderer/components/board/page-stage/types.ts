@@ -32,7 +32,7 @@ export interface PageStageSessionSnapshot {
 
 export interface PageStageHistorySnapshot {
   readonly title: string;
-  readonly nfm: string;
+  readonly markdown: string;
 }
 
 /**

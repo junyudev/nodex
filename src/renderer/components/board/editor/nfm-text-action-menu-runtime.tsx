@@ -19,8 +19,6 @@ export interface NfmTextActionMenuRuntimeValue {
     request: NfmSendToThreadRequest,
     selectedBlockIds: readonly string[],
   ) => Promise<void> | void;
-  onSendThreadSection?: (blockId: string, anchor?: HTMLElement) => boolean;
-  onConvertDividerToThreadSection?: (blockId: string) => void;
 }
 
 const DEFAULT_TEXT_ACTION_MENU_RUNTIME: NfmTextActionMenuRuntimeValue = {

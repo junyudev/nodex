@@ -63,7 +63,7 @@ interface BoardDensePageDefinition {
   readonly key: string;
   readonly status: WorkflowStatus;
   readonly title: string;
-  readonly nfm: string;
+  readonly markdown: string;
   readonly replaceAfterCreate?: string;
 }
 
@@ -80,32 +80,33 @@ export const BOARD_DENSE_PAGES: readonly BoardDensePageDefinition[] = [
     key: "offlineRecovery",
     status: "triage",
     title: "Clarify offline recovery copy",
-    nfm: "Explain how recovery behaves while the network is unavailable.",
+    markdown: "Explain how recovery behaves while the network is unavailable.",
   },
   {
     key: "wrappingTitle",
     status: "triage",
     title: "A deliberately long Page title that wraps without hiding the card actions",
-    nfm: "Keep the actions reachable at every supported card width.",
+    markdown: "Keep the actions reachable at every supported card width.",
   },
-  { key: "emptyBrief", status: "triage", title: "Empty brief", nfm: "" },
+  { key: "emptyBrief", status: "triage", title: "Empty brief", markdown: "" },
   {
     key: "sceneOwnership",
     status: "plan",
     title: "Map Project Scene ownership",
-    nfm: "# Scene ownership\n\n- Window session owns tabs\n- Core owns durable Pages\n\nKeep the boundary explicit.",
+    markdown:
+      "# Scene ownership\n\n- Window session owns tabs\n- Core owns durable Pages\n\nKeep the boundary explicit.",
   },
   {
     key: "keyboardPaths",
     status: "plan",
     title: "Review keyboard paths",
-    nfm: "Review navigation, focus, and escape behavior.",
+    markdown: "Review navigation, focus, and escape behavior.",
   },
   {
     key: BOARD_DENSE_PRIMARY_PAGE_KEY,
     status: "build",
     title: "Unify Database View rendering",
-    nfm: "",
+    markdown: "",
     replaceAfterCreate:
       "# Rendering contract\n\n- Use the authoritative Database projection\n- Preserve canonical Page identity\n\nKeep Board and Page views convergent.",
   },
@@ -113,25 +114,26 @@ export const BOARD_DENSE_PAGES: readonly BoardDensePageDefinition[] = [
     key: "boundedProjection",
     status: "build",
     title: "Keep projection updates bounded",
-    nfm: "A deliberately longer preview explains that local commits should update only the affected projection window while preserving causal coverage.",
+    markdown:
+      "A deliberately longer preview explains that local commits should update only the affected projection window while preserving causal coverage.",
   },
   {
     key: "localFirstIdentity",
     status: "build",
     title: "Preserve local-first identity",
-    nfm: "Canonical identifiers remain stable across every projection.",
+    markdown: "Canonical identifiers remain stable across every projection.",
   },
   {
     key: "electronGeometry",
     status: "review",
     title: "Verify real Electron geometry",
-    nfm: "Exercise the actual desktop boundary at the canonical viewport.",
+    markdown: "Exercise the actual desktop boundary at the canonical viewport.",
   },
   {
     key: "isolatedWorkflow",
     status: "ship",
     title: "Ship the isolated UI workflow",
-    nfm: "The same recipe now serves Core, Electron, and seeded development homes.",
+    markdown: "The same recipe now serves Core, Electron, and seeded development homes.",
   },
 ] as const;
 
@@ -171,14 +173,14 @@ const materializeBoardDense = async (
     clientSessionId: `scenario:${BOARD_DENSE_SCENARIO_ID}`,
     projectId: project.id,
     pageId: primary.pageId,
-    nfm: [
+    markdown: [
       primaryDefinition.replaceAfterCreate,
       "",
-      `Related Page: <mention-page url="nodex://pages/${referenceTargetPageId}" />`,
+      `Related Page: <nodex://pages/${referenceTargetPageId}>`,
       "",
       `[Open projection notes](nodex://pages/${referenceTargetPageId})`,
       "",
-      `<page-ref url="nodex://pages/${referenceTargetPageId}" />`,
+      `::page-ref{page="${referenceTargetPageId}"}`,
     ].join("\n"),
   } as const;
   const replacement = await retryIdempotentOperation(() =>

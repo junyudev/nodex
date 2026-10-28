@@ -101,7 +101,7 @@ pub(crate) fn execute_owner_command(
                 block_id: source_block_id,
                 document_id,
                 owner_type: SYNCED_OWNER_TYPE,
-                schema: BlockDocumentSchema::SyncedBlockV2,
+                schema: BlockDocumentSchema::SyncedBlockV3,
                 schema_key: SYNCED_BLOCK_SCHEMA_KEY,
                 schema_version: i64::from(SYNCED_BLOCK_SCHEMA_VERSION),
                 display_name: None,
@@ -126,7 +126,7 @@ pub(crate) fn execute_owner_command(
                 block_id: source_block_id,
                 document_id,
                 owner_type: TEMPLATE_OWNER_TYPE,
-                schema: BlockDocumentSchema::ReusableTemplateV2,
+                schema: BlockDocumentSchema::ReusableTemplateV3,
                 schema_key: REUSABLE_TEMPLATE_SCHEMA_KEY,
                 schema_version: i64::from(REUSABLE_TEMPLATE_SCHEMA_VERSION),
                 display_name: Some(display_name),
@@ -321,7 +321,7 @@ fn promote_synced_source(
     let source_prepared = prepare_yjs_genesis_with_blocks(
         source_document_id,
         SYNCED_OWNER_TYPE,
-        BlockDocumentSchema::SyncedBlockV2,
+        BlockDocumentSchema::SyncedBlockV3,
         &[root],
     )?;
     let source_full_state = source_prepared.engine.full_state_v1();

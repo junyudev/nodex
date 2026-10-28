@@ -102,7 +102,7 @@ describe("NfmEditor source boundary", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document-1-genesis",
       title: "Collaborative Card",
-      nfm: "",
+      markdown: "",
       allocateBlockId: () => "block-collaborative-root",
     });
     Y.applyUpdate(document, genesis.update);
@@ -154,7 +154,7 @@ describe("NfmEditor source boundary", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document-title-only",
       title: "Title only",
-      nfm: "",
+      markdown: "",
       allocateBlockId: () => "block-title-only-root",
     });
     const source = createCollaborativeSource(genesis.document.getXmlFragment("body"));
@@ -201,7 +201,7 @@ describe("NfmEditor source boundary", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document-long-collaborative",
       title: "Long collaborative Card",
-      nfm: Array.from(
+      markdown: Array.from(
         { length: 96 },
         (_, index) =>
           `Paragraph ${index + 1} has enough content to exercise a full collaborative render.`,

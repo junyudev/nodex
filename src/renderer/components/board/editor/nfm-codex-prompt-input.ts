@@ -1,4 +1,4 @@
 export {
   buildCodexPromptInputFromBlockNoteBlocks,
-  buildCodexPromptInputFromNfmBlocks,
+  buildCodexPromptInputFromMarkdownBlocks,
 } from "@/lib/codex-prompt-input";

@@ -212,7 +212,6 @@ export interface NfmTextActionMenuSurfaceProps {
   onClearFormat: () => void;
   onConvertToEquation?: () => void;
   onOpenBlockActions: (fallbackAnchorRect?: NfmSideMenuRect) => void;
-  onNodexRow: (row: TextActionNodexRow) => void;
   onMoveBlocksToDestination?: (destination: NfmMoveToDestination) => Promise<void> | void;
   onSendBlocksToThread?: (request: NfmSendToThreadRequest) => Promise<void> | void;
   onSelectionPresentationChange?: (presentation: NfmRetainedSelectionPresentation) => void;
@@ -1316,7 +1315,6 @@ function TextActionAiPane({
   sourcePageId,
   sendToThreadProjectNameById,
   sendToThreadPreferredTarget,
-  onNodexRow,
   onMoveBlocksToDestination,
   onSendBlocksToThread,
   onActionPopoverOpenChange,
@@ -1330,7 +1328,6 @@ function TextActionAiPane({
   | "sourcePageId"
   | "sendToThreadProjectNameById"
   | "sendToThreadPreferredTarget"
-  | "onNodexRow"
   | "onMoveBlocksToDestination"
   | "onSendBlocksToThread"
   | "renderMoveToMenu"
@@ -1434,14 +1431,7 @@ function TextActionAiPane({
                 );
               }
 
-              return (
-                <TextActionSkillRow
-                  key={row.key}
-                  label={row.label}
-                  disabled={!row.enabled}
-                  onClick={() => onNodexRow(row)}
-                />
-              );
+              return null;
             })}
           </>
         ) : null}
@@ -1525,7 +1515,6 @@ export function NfmTextActionMenuSurface({
   onClearFormat,
   onConvertToEquation = noopTextAction,
   onOpenBlockActions,
-  onNodexRow,
   onMoveBlocksToDestination,
   onSendBlocksToThread,
   onSelectionPresentationChange,
@@ -1755,7 +1744,6 @@ export function NfmTextActionMenuSurface({
             sourcePageId={sourcePageId}
             sendToThreadProjectNameById={sendToThreadProjectNameById}
             sendToThreadPreferredTarget={sendToThreadPreferredTarget}
-            onNodexRow={onNodexRow}
             onMoveBlocksToDestination={onMoveBlocksToDestination}
             onSendBlocksToThread={onSendBlocksToThread}
             onActionPopoverOpenChange={handleNodexActionPopoverOpenChange}
@@ -1800,18 +1788,14 @@ export function NfmTextActionMenu() {
     () =>
       resolveNodexTextActionRows({
         currentBlockId: snapshot.currentBlockId,
-        currentBlockType: snapshot.currentBlockType,
         canSendBlocks: runtime.canSendBlocks && Boolean(runtime.onMoveBlocksToDestination),
         canSendToThread: runtime.canSendBlocks && Boolean(runtime.onSendBlocksToThread),
-        hasConvertDividerToThreadSection: Boolean(runtime.onConvertDividerToThreadSection),
       }),
     [
       runtime.canSendBlocks,
-      runtime.onConvertDividerToThreadSection,
       runtime.onMoveBlocksToDestination,
       runtime.onSendBlocksToThread,
       snapshot.currentBlockId,
-      snapshot.currentBlockType,
     ],
   );
 
@@ -1875,15 +1859,6 @@ export function NfmTextActionMenu() {
     formattingToolbar.store.setState(false);
   };
 
-  const handleNodexRow = (row: TextActionNodexRow) => {
-    if (!snapshot.currentBlockId) return;
-
-    if (row.key === "convert-divider-to-thread-section") {
-      runtime.onConvertDividerToThreadSection?.(snapshot.currentBlockId);
-      return;
-    }
-  };
-
   const handleMoveBlocksToDestination = async (destination: NfmMoveToDestination) => {
     if (commandBlockIds.length === 0) return;
     await runtime.onMoveBlocksToDestination?.(destination, commandBlockIds);
@@ -1930,7 +1905,6 @@ export function NfmTextActionMenu() {
       onClearFormat={clearFormat}
       onConvertToEquation={convertToEquation}
       onOpenBlockActions={openBlockActions}
-      onNodexRow={handleNodexRow}
       onMoveBlocksToDestination={handleMoveBlocksToDestination}
       onSendBlocksToThread={handleSendBlocksToThread}
       onSelectionPresentationChange={handleSelectionPresentationChange}

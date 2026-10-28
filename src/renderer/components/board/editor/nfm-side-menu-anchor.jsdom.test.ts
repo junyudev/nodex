@@ -29,7 +29,7 @@ function makeBlockElement(initialRect: DOMRect) {
   };
 }
 
-describe("nfm side menu anchor", () => {
+describe("markdown side menu anchor", () => {
   test("reads the current block rect every time for live block anchors", () => {
     const block = makeBlockElement(new DOMRect(100, 200, 300, 60));
     const reference = createNfmSideMenuBlockReference(block.element);

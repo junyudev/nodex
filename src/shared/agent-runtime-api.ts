@@ -19,7 +19,7 @@ export interface AgentRuntimeMessage {
   readonly context?: DispatchMessage["context"];
   readonly modelSelection?: DispatchMessage["modelSelection"];
   readonly interactionMode?: CreateThread["interactionMode"];
-  /** Structured editor input is authoritative; absent input permits standalone NFM lines. */
+  /** Structured editor input is authoritative; absent input permits standalone Nodex Markdown lines. */
   readonly agentConfigs?: readonly import("./types").CodexPromptAgentConfigInput[];
 }
 

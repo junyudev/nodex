@@ -68,7 +68,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
             None,
             &[
                 ("page_id", "TEXT", false),
-                ("nested_markdown", "TEXT", false),
+                ("markdown", "TEXT", false),
                 ("body_etag", "TEXT", false),
             ],
         ),
@@ -299,8 +299,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
     };
     let examples = match name {
         "page_documents" => vec![
-            "SELECT page_id, nested_markdown, body_etag FROM page_documents WHERE page_id = :id"
-                .into(),
+            "SELECT page_id, markdown, body_etag FROM page_documents WHERE page_id = :id".into(),
         ],
         "view_rows" => vec!["SELECT page_id, title FROM view_rows(:view) ORDER BY ordinal".into()],
         "search_hits" => vec![

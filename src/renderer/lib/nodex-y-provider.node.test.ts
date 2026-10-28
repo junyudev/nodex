@@ -525,7 +525,7 @@ describe("NodexYProvider", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document-1",
       title: "Shared Card",
-      nfm: "Root\n\tChild\nSibling",
+      markdown: ":::paragraph[Root]\n  Child\n:::\n\nSibling",
       allocateBlockId: () => {
         const blockId = initialIds[nextInitialId];
         if (!blockId) throw new Error("Unexpected genesis Block allocation");
@@ -536,7 +536,7 @@ describe("NodexYProvider", () => {
     const insertedGenesis = createPageDocumentGenesis({
       documentId: "insert-template",
       title: "",
-      nfm: "Inserted **live**",
+      markdown: "Inserted **live**",
       allocateBlockId: () => "block-inserted",
     });
     const insertedPortable = captureXmlSubtreeAt(getRootBlockGroup(insertedGenesis.document), 0);
@@ -590,7 +590,7 @@ describe("NodexYProvider", () => {
       expect(concurrentMaterialization.title.includes(" / Alpha")).toBe(true);
       expect(concurrentMaterialization.title.includes(" / Beta")).toBe(true);
       expect(concurrentMaterialization.plainText.includes("Root edited by Alpha")).toBe(true);
-      expect(concurrentMaterialization.nfm.includes("*Root* edited by Alpha")).toBe(true);
+      expect(concurrentMaterialization.markdown.includes("*Root* edited by Alpha")).toBe(true);
       expect(JSON.stringify(materializePageDocument(secondDocument))).toBe(
         JSON.stringify(concurrentMaterialization),
       );

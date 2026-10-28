@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
 import { NODEX_AGENT_V3_CATALOG_BUDGETS } from "../../shared/nodex-agent-tools/budgets";
 import {
-  NESTED_MARKDOWN_AGENT_GUIDE,
-  NESTED_MARKDOWN_COMPACT_HINT,
-} from "../../shared/nfm/agent-guide";
+  NODEX_MARKDOWN_AGENT_GUIDE,
+  NODEX_MARKDOWN_COMPACT_HINT,
+} from "../../shared/nodex-markdown/agent-guide";
 import {
   formatDynamicToolCatalogMetrics,
   measureDynamicToolCatalog,
@@ -49,13 +49,14 @@ describe("Nodex Agent catalog metrics", () => {
     const namespace = catalog[0];
     expect(namespace?.type).toBe("namespace");
     if (!namespace || namespace.type !== "namespace") return;
-    expect(namespace.description.split(NESTED_MARKDOWN_COMPACT_HINT)).toHaveLength(2);
-    expect(Buffer.byteLength(NESTED_MARKDOWN_COMPACT_HINT, "utf8")).toBeLessThanOrEqual(
+    expect(namespace.description.split(NODEX_MARKDOWN_COMPACT_HINT)).toHaveLength(2);
+    expect(Buffer.byteLength(NODEX_MARKDOWN_COMPACT_HINT, "utf8")).toBeLessThanOrEqual(
       NODEX_AGENT_V3_CATALOG_BUDGETS.namespaceHintBytes,
     );
     const serialized = JSON.stringify(catalog);
-    expect(serialized).not.toContain(NESTED_MARKDOWN_AGENT_GUIDE.instructions);
-    expect(serialized).not.toMatch(/NFM|nfm/u);
+    expect(serialized).not.toContain(NODEX_MARKDOWN_AGENT_GUIDE.instructions);
+    // The eager catalog names the one language and no retired format.
+    expect(serialized).not.toMatch(/\bNFM\b|Nested Markdown|\bgfm\b/u);
     expect(
       namespace.tools.filter((tool) => tool.deferLoading !== true).map((tool) => tool.name),
     ).toEqual(["fetch", "get_context", "search"]);

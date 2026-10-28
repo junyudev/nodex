@@ -55,7 +55,7 @@ describe("InboxCopyAction", () => {
 
   test("copies the whole Page when the stream shows only part of the message", async () => {
     vi.mocked(loadPageDocumentMaterialization).mockResolvedValue({
-      nfm: "The complete message",
+      markdown: "The complete message",
     } as Awaited<ReturnType<typeof loadPageDocumentMaterialization>>);
     const moved = item({
       bodyTruncated: true,

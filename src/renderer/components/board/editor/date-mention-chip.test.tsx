@@ -5,7 +5,7 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
   createDateMentionClockStore,
   setDateMentionClockStoreForTest,
-} from "@/lib/nfm/date-mention-clock";
+} from "@/lib/editor-model/date-mention-clock";
 import { DateMentionInlineContentView, preloadDateMentionCalendar } from "./date-mention-chip";
 import {
   dateMentionPayloadToProps,

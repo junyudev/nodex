@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { MAX_PAGE_WRITE_BODY_BYTES } from "../page-limits";
 import { MAX_PORTABLE_RICH_TEXT_BYTES } from "../block-documents/portable-rich-text";
-import { parseInlineMarkdownTitle } from "../nfm/agent-title";
+import { parseInlineMarkdownTitle } from "../nodex-markdown/agent-title";
 import {
   BlockIdSchema,
   DataSourceIdSchema,
@@ -25,19 +25,19 @@ export const InlineMarkdownTitleSchema = z
       });
     }
   })
-  .describe("Single-line title using Nested Markdown's title-safe inline subset");
+  .describe("Single-line title using Nodex Markdown's title-safe inline subset");
 
-export const NestedMarkdownSchema = z
+export const MarkdownSchema = z
   .string()
   .max(MAX_PAGE_WRITE_BODY_BYTES)
   .refine(
     (markdown) => new TextEncoder().encode(markdown).byteLength <= MAX_PAGE_WRITE_BODY_BYTES,
-    `Nested Markdown must be at most ${MAX_PAGE_WRITE_BODY_BYTES} UTF-8 bytes`,
+    `Nodex Markdown must be at most ${MAX_PAGE_WRITE_BODY_BYTES} UTF-8 bytes`,
   );
 
-export const NestedMarkdownFragmentSchema = NestedMarkdownSchema.refine(
+export const MarkdownFragmentSchema = MarkdownSchema.refine(
   (markdown) => markdown.trim().length > 0,
-  "Nested Markdown insertion must contain at least one Block; use <empty-block/> to insert an intentional empty Block",
+  "Nodex Markdown insertion must contain at least one Block; use <br> to insert an intentional empty Block",
 );
 
 export const DatabaseValueDraftV3Schema = z.strictObject({

@@ -55,7 +55,7 @@ describe("collaborative NFM undo in Chromium", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document:automatic-format-history",
       title: "Automatic format history",
-      nfm: "",
+      markdown: "",
       allocateBlockId: () => "block-automatic-format",
     });
     const document = genesis.document;
@@ -129,7 +129,7 @@ describe("collaborative NFM undo in Chromium", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document:automatic-format-surface-isolation",
       title: "Automatic format surface isolation",
-      nfm: "",
+      markdown: "",
       allocateBlockId: () => "block-automatic-format-isolation",
     });
     const document = genesis.document;
@@ -198,7 +198,7 @@ describe("collaborative NFM undo in Chromium", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document:backward-merge",
       title: "Backward merge",
-      nfm: "ABC\n\n123",
+      markdown: "ABC\n\n123",
       allocateBlockId: (() => {
         const ids = ["block-target", "block-source"];
         return () => ids.shift() ?? "block-extra";
@@ -392,7 +392,7 @@ describe("collaborative NFM undo in Chromium", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document:remote-selected-block-deletion",
       title: "Remote selected Block deletion",
-      nfm: "Before\n\nMiddle\n\nDragged last Block",
+      markdown: "Before\n\nMiddle\n\nDragged last Block",
       allocateBlockId: () => `block-${++nextBlockId}`,
     });
     const localDocument = genesis.document;
@@ -511,7 +511,7 @@ describe("collaborative NFM undo in Chromium", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document:two-surface-undo",
       title: "Two surfaces",
-      nfm: "Base paragraph",
+      markdown: "Base paragraph",
       allocateBlockId: () => "block-base",
     });
     const document = genesis.document;
@@ -586,7 +586,7 @@ describe("collaborative NFM undo in Chromium", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document:relative-cursor-browser",
       title: "Relative cursor",
-      nfm: "alpha omega",
+      markdown: "alpha omega",
       allocateBlockId: () => "block-relative-cursor",
     });
     const document = genesis.document;
@@ -725,7 +725,7 @@ describe("collaborative NFM undo in Chromium", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document:strict-undo-browser",
       title: "Strict undo",
-      nfm: "Base paragraph",
+      markdown: "Base paragraph",
       allocateBlockId: () => "block-base",
     });
     const localDocument = genesis.document;

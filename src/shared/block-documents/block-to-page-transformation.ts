@@ -10,7 +10,7 @@ import {
   portableRichTextPlainText,
   type PortableRichText,
 } from "./portable-rich-text";
-import { blockNoteInlineToNfm } from "./nfm-blocknote-adapter";
+import { blockNoteInlineToPortableRichText } from "./blocknote-rich-text";
 
 export type BlockToPageTransformation =
   | {
@@ -48,7 +48,9 @@ export const planBlockToPageTransformation = (input: {
   if (assessment.kind === "wrap") {
     let richTitle: PortableRichText = plainTextToPortableRichText(input.root.type);
     try {
-      const candidate = canonicalizePortableRichText(blockNoteInlineToNfm(input.root.content));
+      const candidate = canonicalizePortableRichText(
+        blockNoteInlineToPortableRichText(input.root.content),
+      );
       if (portableRichTextPlainText(candidate).trim().length > 0) {
         richTitle = candidate;
       }

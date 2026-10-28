@@ -1545,7 +1545,7 @@ mod tests {
                         crate::document::reconstruct_yjs_engine(connection, &authority.head)?;
                     let update = crate::document::prepare_document_operation_update(
                         "document:page-a",
-                        crate::document::BlockDocumentSchema::PageV3,
+                        crate::document::BlockDocumentSchema::PageV4,
                         &engine.full_state_v1(),
                         &engine.state_vector_v1(),
                         &[crate::document::DocumentBlockOperation::SetTitle {

@@ -3,7 +3,7 @@ import {
   DocumentOperationContractError,
   parseDocumentOperationBatch,
   parseDocumentVersionRestore,
-  parseReplaceDocumentFromNfm,
+  parseReplaceDocumentFromMarkdown,
   type DocumentMutationRequest,
   type DocumentOperationCommandError,
 } from "./document-operations";
@@ -52,14 +52,14 @@ export const parseDocumentMutationRequest = (value: unknown): DocumentMutationRe
   if (Object.hasOwn(value, "operations")) {
     return parseDocumentOperationBatch(value);
   }
-  if (Object.hasOwn(value, "nfm")) {
-    return parseReplaceDocumentFromNfm(value);
+  if (Object.hasOwn(value, "markdown")) {
+    return parseReplaceDocumentFromMarkdown(value);
   }
   if (Object.hasOwn(value, "versionId")) {
     return parseDocumentVersionRestore(value);
   }
   throw new DocumentOperationContractError(
-    "Document mutation request must contain operations, nfm, or versionId",
+    "Document mutation request must contain operations, markdown, or versionId",
   );
 };
 
@@ -115,8 +115,8 @@ export const bindTrustedDocumentMutation = (
       value:
         "operations" in request
           ? parseDocumentOperationBatch(bound)
-          : "nfm" in request
-            ? parseReplaceDocumentFromNfm(bound)
+          : "markdown" in request
+            ? parseReplaceDocumentFromMarkdown(bound)
             : parseDocumentVersionRestore(bound),
     };
   } catch (error) {

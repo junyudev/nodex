@@ -11,7 +11,7 @@ import {
   useFilePlacementRuntime,
   useFileReadSnapshot,
 } from "@/components/board/editor/file-runtime";
-import { useNfmImage } from "@/components/board/nfm-renderer";
+import { useMarkdownImage } from "@/components/board/markdown-image";
 import { PlusIcon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -24,10 +24,10 @@ import {
 } from "@/features/local-conversation/view/composer/image-attachments";
 import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "@/features/local-conversation/view/shared/composer-footer-controls";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
+import { pasteMarkdownSource } from "@/lib/text-field-paste";
 import { COMPOSER_IMAGE_MIME_TYPES } from "../../../shared/composer-image-input";
 import { fileSource } from "../../../shared/file-resources";
 import { messageImageBlock } from "../../../shared/message-content";
-import type { NfmImage } from "../../../shared/nfm/types";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { MessageImagePreview } from "./message-document";
 
@@ -35,8 +35,6 @@ import { MessageImagePreview } from "./message-document";
 export interface MessageDraftImage {
   readonly fileId: string;
   readonly name: string;
-  /** The image's Block as a message being rewritten has it, written back unchanged. */
-  readonly block?: NfmImage;
   /** The File's revision when this draft imported it; only such an image is discarded with it. */
   readonly importedRevision?: number;
 }
@@ -124,8 +122,10 @@ export function useMessageImageInput({
     },
     /** The local preview of an image imported here, shown until its File is read. */
     previewUrl: (fileId: string) => previews.current.get(fileId) ?? null,
-    onPaste: (event: ClipboardEvent<HTMLElement>) => {
-      handleComposerFilePaste(event.nativeEvent, ({ imageFiles }) => add(imageFiles));
+    /** The Composer's paste: images become attachments, text arrives as its Markdown source. */
+    onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      if (handleComposerFilePaste(event.nativeEvent, ({ imageFiles }) => add(imageFiles))) return;
+      pasteMarkdownSource(event);
     },
     onDragOver: (event: DragEvent<HTMLElement>) => {
       if (!access || !event.dataTransfer.types.includes("Files")) return;
@@ -158,7 +158,7 @@ export function MessageImageRow({
   } | null>(null);
   if (images.length === 0 && input.uploads.length === 0) return null;
   const size = resolveComposerImageAttachmentSize(false);
-  const viewed = images.map((image) => image.block ?? messageImageBlock(image.fileId));
+  const viewed = images.map((image) => messageImageBlock(image.fileId));
   return (
     <FileReadBoundary authority={readAuthority}>
       <div className="hide-scrollbar w-full overflow-x-auto p-px">
@@ -228,7 +228,7 @@ function DraftImageThumbnail({
   const source = fileSource(image.fileId);
   const runtime = useFilePlacementRuntime();
   const metadata = useFileReadSnapshot(runtime, source, { metadata: true }).metadata;
-  const { url, failed } = useNfmImage(source);
+  const { url, failed } = useMarkdownImage(source);
   const src = url ?? previewUrl;
   return (
     <ComposerImageAttachmentThumbnail

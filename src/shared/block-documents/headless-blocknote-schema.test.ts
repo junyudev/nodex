@@ -85,11 +85,6 @@ describe("headless Block Document schema", () => {
         content: "\\sum_i x_i",
       },
       {
-        id: "thread-section-block",
-        type: "threadSection",
-        props: { label: "Implementation", threadId: "thread-1" },
-      },
-      {
         id: "page-block",
         type: "page",
       },
@@ -137,7 +132,7 @@ describe("headless Block Document schema", () => {
 
     expect(JSON.stringify(decoded)).toBe(JSON.stringify(editor.document));
     expect(decoded.map((block) => block.id).join(",")).toBe(
-      "callout-block,math-block,thread-section-block,page-block,database-block,canonical-page-ref-block,database-view-ref-block,synced-block-ref-block,template-ref-block",
+      "callout-block,math-block,page-block,database-block,canonical-page-ref-block,database-view-ref-block,synced-block-ref-block,template-ref-block",
     );
   });
 });

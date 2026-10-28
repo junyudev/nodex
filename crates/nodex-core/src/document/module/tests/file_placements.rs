@@ -39,7 +39,7 @@ fn standalone_page_accepts_imported_files_without_project_grants_or_entries() {
         let (next_head, engine) = synced_page_engine(&seeded);
         assert_eq!(next_head, head + 1);
         assert_eq!(
-            materialize_engine(&engine, BlockDocumentSchema::PageV3)
+            materialize_engine(&engine, BlockDocumentSchema::PageV4)
                 .unwrap()
                 .file_ids(),
             vec!["file:paste"]
@@ -181,7 +181,7 @@ fn standalone_structural_replacement_accepts_readable_file_references() {
     let access = library_context_for("standalone-editor", AdapterKind::ElectronHost);
     create_file(&seeded, &access, "file:structural", b"structural bytes");
     let (head, engine) = synced_page_engine(&seeded);
-    let materialization = materialize_engine(&engine, BlockDocumentSchema::PageV3).unwrap();
+    let materialization = materialize_engine(&engine, BlockDocumentSchema::PageV4).unwrap();
     crate::library::LibraryModule::new(PROFILE_ID, LIBRARY_ID, &seeded.kernel)
         .apply(
             &access,
@@ -218,7 +218,7 @@ fn standalone_structural_replacement_accepts_readable_file_references() {
         .expect("Library structural paste uses bound authority");
     let (_, engine) = synced_page_engine(&seeded);
     assert_eq!(
-        materialize_engine(&engine, BlockDocumentSchema::PageV3)
+        materialize_engine(&engine, BlockDocumentSchema::PageV4)
             .unwrap()
             .file_ids(),
         vec!["file:structural"]

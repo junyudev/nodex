@@ -227,7 +227,8 @@ test("persists typography across real conversation, Page, settings and Electron 
       operationId: createUuidV7(),
       status: "plan",
       title: "Typography Page",
-      nfm: "# Typography Page\n\nPage body keeps its own size.\n\n```text\nPage code uses the code preference.\n```",
+      markdown:
+        "# Typography Page\n\nPage body keeps its own size.\n\n```text\nPage code uses the code preference.\n```",
     });
     // The reply streams into the Turn this prompt starts, a finished block at a time.
     await sendAgentPrompt(page, draft.projectSessionId, "Show typography for this task");

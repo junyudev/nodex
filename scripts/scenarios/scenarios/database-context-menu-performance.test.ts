@@ -81,6 +81,10 @@ class PerformanceSeedPort implements ScenarioSeedPort {
     throw new Error("Document replacement is not part of this scenario");
   }
 
+  async readPageBlockTree(): Promise<never> {
+    throw new Error("Document Block reads are not part of this scenario");
+  }
+
   async readPage(): Promise<ScenarioPageObservation> {
     throw new Error("Page detail inspection is not part of this scenario");
   }

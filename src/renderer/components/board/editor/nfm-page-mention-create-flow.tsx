@@ -6,7 +6,7 @@ import { NfmSideMenuPageInIcon, PageIcon } from "@/components/shared/icons";
 import { useBlockReferenceHostRuntime } from "@/components/block-documents/block-reference-runtime-context";
 import { NodexDropdownSurface } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
-import { blockNoteInlineToPortableRichText } from "../../../../shared/block-documents/nfm-blocknote-adapter";
+import { blockNoteInlineToPortableRichText } from "../../../../shared/block-documents/blocknote-rich-text";
 import type { PortableRichText } from "../../../../shared/block-documents/portable-rich-text";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { NfmMoveToMenu } from "./nfm-move-to-menu";

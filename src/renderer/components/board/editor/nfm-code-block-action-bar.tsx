@@ -25,10 +25,13 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   getCodeLanguageSearchText,
   resolveCodeLanguage,
-} from "../../../../shared/nfm/code-language-catalog";
-import { searchCodeLanguages, type CodeBlockActionBarMode } from "@/lib/nfm/code-block-model";
+} from "../../../../shared/code-languages/code-language-catalog";
+import {
+  searchCodeLanguages,
+  type CodeBlockActionBarMode,
+} from "@/lib/editor-model/code-block-model";
 import { cn } from "@/lib/utils";
-import type { MermaidCodePreviewMode } from "@/lib/nfm/code-block-view-state";
+import type { MermaidCodePreviewMode } from "@/lib/editor-model/code-block-view-state";
 
 const MERMAID_PREVIEW_OPTIONS = [
   {

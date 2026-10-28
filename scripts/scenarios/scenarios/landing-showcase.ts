@@ -6,17 +6,19 @@ const pages = [
   {
     key: "brief",
     title: "Hide completed tasks",
-    nfm: "## Goal\n\nAdd a ‘Hide completed’ toggle to the task list.\n\n## Acceptance criteria\n\n- [ ] Show all tasks by default.\n- [ ] Hide completed tasks when the toggle is on.",
+    markdown:
+      "## Goal\n\nAdd a ‘Hide completed’ toggle to the task list.\n\n## Acceptance criteria\n\n- [ ] Show all tasks by default.\n- [ ] Hide completed tasks when the toggle is on.",
   },
   {
     key: "release",
     title: "Release checklist",
-    nfm: "## Before release\n\n- [ ] Review the task filter.\n- [ ] Check keyboard navigation.\n- [ ] Write release notes.",
+    markdown:
+      "## Before release\n\n- [ ] Review the task filter.\n- [ ] Check keyboard navigation.\n- [ ] Write release notes.",
   },
   {
     key: "shortcuts",
     title: "Keyboard shortcuts",
-    nfm: "## Keep the flow\n\nEvery task-list control should be reachable with the keyboard.",
+    markdown: "## Keep the flow\n\nEvery task-list control should be reachable with the keyboard.",
   },
 ] as const;
 
@@ -35,10 +37,10 @@ const createLandingScenario = (sharedPages: boolean): ScenarioDomainRecipe => {
         const pageId = createUuidV7();
         await port.createPage({
           ...page,
-          nfm:
+          markdown:
             sharedPages && page.key === "brief"
-              ? `${page.nfm}\n- [ ] Restore them when it is off, without changing their status.\n\n## Implementation notes`
-              : page.nfm,
+              ? `${page.markdown}\n- [ ] Restore them when it is off, without changing their status.\n\n## Implementation notes`
+              : page.markdown,
           pageId,
           operationId: createUuidV7(),
           projectId: project.id,

@@ -24,7 +24,7 @@ test("structural history remains usable across Project presentations in one Libr
       operationId: createUuidV7(),
       status: "build",
       title: "Other Project",
-      nfm: "Other content",
+      markdown: "Other content",
     });
     await ctx.seed.createStandalonePage({
       projectId: other.id,

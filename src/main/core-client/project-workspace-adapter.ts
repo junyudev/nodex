@@ -430,7 +430,7 @@ export interface DesktopInitialProjectStarterPage {
   readonly pageId: string;
   readonly documentId: string;
   readonly titleMarkdown: string;
-  readonly nfm: string;
+  readonly markdown: string;
 }
 
 export interface DesktopInitialProjectCreateInput extends ProjectCreateInput {

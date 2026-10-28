@@ -375,6 +375,57 @@ describe("ComposerPromptEditor", () => {
     expect(onChange).toHaveBeenLastCalledWith("first line\n\nthird line");
   });
 
+  test.each([
+    ["line breaks", "first line<br>second line", "first line\nsecond line"],
+    ["a code block", "<pre>const a = 1;\nconst b = 2;</pre>", "const a = 1;\nconst b = 2;"],
+    [
+      "an editor's lines",
+      "<div><div><span>const a = 1;</span></div><div><br></div><div><span>b();</span></div></div>",
+      "const a = 1;\n\nb();",
+    ],
+  ])("keeps every line of rich text pasted with %s", (_source, html, text) => {
+    const { editor, editorRef } = renderPromptEditor({ value: "" });
+    const { clipboardData } = createClipboardData({ "text/plain": text, "text/html": html });
+
+    act(() => editorRef.current?.focusAtEnd());
+    fireEvent.paste(editor, { clipboardData });
+
+    expect(editorRef.current?.getText()).toBe(text);
+  });
+
+  test("pastes a web page's structure as its Markdown source", () => {
+    const { editor, editorRef } = renderPromptEditor({ value: "" });
+    const { clipboardData } = createClipboardData({
+      "text/plain": "Steps\none\ntwo\nRead the docs",
+      "text/html":
+        '<p><b>Steps</b></p><ul><li>one</li><li>two</li></ul><p>Read <a href="https://e.x/docs">the docs</a></p>',
+    });
+
+    act(() => editorRef.current?.focusAtEnd());
+    fireEvent.paste(editor, { clipboardData });
+
+    expect(editorRef.current?.getText()).toBe(
+      "**Steps**\n- one\n- two\n\nRead [the docs](https://e.x/docs)",
+    );
+  });
+
+  test("keeps mention atoms whole when pasting another Composer's copy", () => {
+    const source = renderPromptEditor({ value: "Ask [@notes.md](/repo/notes.md) now" });
+    const mention = source.editor.querySelector("[data-composer-mention='true']");
+    if (!(mention instanceof HTMLElement)) throw new Error("Mention was not rendered");
+    const { editor, editorRef } = renderPromptEditor({ value: "" });
+    const { clipboardData } = createClipboardData({
+      "text/plain": "Ask @notes.md now",
+      "text/html": `<p>Ask ${mention.outerHTML} now</p>`,
+    });
+
+    act(() => editorRef.current?.focusAtEnd());
+    fireEvent.paste(editor, { clipboardData });
+
+    expect(editorRef.current?.getText()).toBe(source.editorRef.current?.getText());
+    expect(editor.querySelector("[data-composer-mention='true']")).not.toBeNull();
+  });
+
   test("copies prompt paragraphs with one newline per logical line", () => {
     const { editor, editorRef } = renderPromptEditor({
       value: "first line\n\nthird line",

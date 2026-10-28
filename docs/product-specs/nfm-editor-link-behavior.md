@@ -1,11 +1,11 @@
-# NFM Editor Link Behavior
+# Page Editor Link Behavior
 
 Status: Active
 Last Updated: 2026-08-17
 
-This document describes the current explicit link behavior inside the NFM / BlockNote editor.
+This document describes the current explicit link behavior inside the BlockNote Page editor.
 
-It is the detailed source of truth for manual link creation, editing, stored link marks, exact link-target preservation in the editor, and the NFM editor's open-time link classification rules. The main product spec should stay high-level and defer to this document for exact rules and examples.
+It is the detailed source of truth for manual link creation, editing, stored link marks, exact link-target preservation in the editor, and the Page editor's open-time link classification rules. The main product spec should stay high-level and defer to this document for exact rules and examples.
 
 ## Scope
 
@@ -14,7 +14,7 @@ Included:
 - Manual link creation from the formatting toolbar
 - Manual link editing from the hovered/selected link toolbar
 - Submit-time trimming and exact-preservation rules
-- Stored link-mark behavior as it relates to NFM round-trip persistence
+- Stored link-mark behavior as it relates to Nodex Markdown round trips
 
 Not included:
 
@@ -25,11 +25,11 @@ Not included:
 
 Canonical `nodex://pages/<page-id>` targets are ordinary stored links with an
 internal Page open action. Their navigation and contextual paste behavior is
-defined by [NFM Editor Page Connection Behavior](nfm-editor-page-reference-behavior.md).
+defined by [Page Connections](nfm-editor-page-reference-behavior.md).
 
 ## Overview
 
-The NFM editor has 2 different link paths:
+The Page editor has 2 different link paths:
 
 1. Automatic link recognition
 2. Explicit/manual link editing
@@ -65,7 +65,7 @@ separate text-level visual style.
 
 ## Link Toolbar Affordance
 
-For an existing selected or hovered link, the NFM editor shows a compact toolbar anchored below the link by default. Floating UI may flip it above the link when viewport collision requires it.
+For an existing selected or hovered link, the Page editor shows a compact toolbar anchored below the link by default. Floating UI may flip it above the link when viewport collision requires it.
 Its chrome is a single 36px-high rounded toolbar with the same spacing and shadow in its normal and URL-editing states.
 Both states use an opaque floating surface so editor content never shows through the toolbar, and they share the same link-action glyph set.
 The toolbar uses the same light and dark outline shadow geometry as Notion's link toolbar. `Copy` and `Open` are icon-only actions; their tooltips and accessible names remain available.
@@ -185,9 +185,9 @@ tel:+123456789
 file:///Users/asc/repo/abc
 ```
 
-## NFM Persistence
+## Link Persistence
 
-Once a manual link is stored in the editor, NFM persistence keeps the final `href` value exactly as stored in the link mark.
+Once a manual link is stored in the editor, Nodex Markdown keeps the final `href` value exactly as stored in the link mark.
 
 Example:
 
@@ -207,13 +207,13 @@ not:
 [link](https:///Users/asc/repo/abc)
 ```
 
-This is because the behavior is enforced at manual-link submit time, before the value is serialized into NFM.
+This is because the behavior is enforced at manual-link submit time, before the value is written as Nodex Markdown.
 
 ## Open-Time Classification
 
 Storage and opening are intentionally separate.
 
-When the user clicks a stored manual link in the NFM editor or read-only NFM rendering, Nodex classifies the preserved stored `href` at open time instead of relying on browser-relative navigation.
+When the user clicks a stored manual link in the Page editor or a read-only Page preview, Nodex classifies the preserved stored `href` at open time instead of relying on browser-relative navigation.
 
 Open-time rules:
 
@@ -327,6 +327,6 @@ Current implementation shape:
 
 - upstream BlockNote/Tiptap link marks still own the stored link mark type
 - Nodex overrides the default BlockNote create/edit link UI submit path
-- the custom submit normalizer trims only and otherwise preserves the user-entered `href` before NFM serialization
+- the custom submit normalizer trims only and otherwise preserves the user-entered `href` before Nodex Markdown serialization
 
 This override exists because the upstream default React link editor prepends `https://` to any non-protocol value, which is too aggressive for Nodex's technical-note workflow.

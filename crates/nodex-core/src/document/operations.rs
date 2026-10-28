@@ -26,7 +26,6 @@ use crate::domain::subtree::{
     move_block_subtree_forest, remap_block_subtree_forest, remove_block_subtree_forest,
 };
 
-use super::nfm_input::materialize_document_nfm;
 use super::{
     BlockDocumentError, BlockDocumentSchema, DocumentMaterialization, DocumentMaterializationError,
     MAX_DOCUMENT_UPDATE_BYTES, create_compatible_document, decode_block_document,
@@ -130,13 +129,15 @@ pub struct PreparedDocumentOperationUpdate {
     pub materialization: DocumentMaterialization,
     pub write_fence_block_ids: Vec<String>,
     pub title_write_fence_required: bool,
+    /// Exact move roots emitted by the operation compiler.
+    pub moved_block_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ExactNfmPatch {
-    pub old_nfm: String,
-    pub new_nfm: String,
+pub struct ExactMarkdownPatch {
+    pub old_markdown: String,
+    pub new_markdown: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_matches: Option<usize>,
 }
@@ -190,10 +191,10 @@ pub enum DocumentOperationErrorCode {
     AncestorCycle,
     InvalidBlock,
     InvalidOperation,
-    InvalidNfm,
-    NfmPatchNotFound,
-    NfmPatchAmbiguous,
-    NfmPatchOverlap,
+    InvalidMarkdown,
+    MarkdownPatchNotFound,
+    MarkdownPatchAmbiguous,
+    MarkdownPatchOverlap,
     NoChange,
     DocumentStateCorrupt,
 }
@@ -252,7 +253,7 @@ impl DocumentOperationError {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct NfmPatchSpan {
+pub(super) struct MarkdownPatchSpan {
     pub(super) start: usize,
     pub(super) end: usize,
     pub(super) replacement: String,
@@ -375,14 +376,23 @@ pub fn prepare_document_operation_update(
         materialization,
         write_fence_block_ids: write_fences.into_iter().collect(),
         title_write_fence_required,
+        moved_block_ids: operations
+            .iter()
+            .filter_map(|operation| match operation {
+                DocumentBlockOperation::MoveBlock { block_id, .. } => Some(block_id.clone()),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
     })
 }
 
-pub fn apply_exact_nfm_patches(
+pub fn apply_exact_markdown_patches(
     source: &str,
-    patches: &[ExactNfmPatch],
+    patches: &[ExactMarkdownPatch],
 ) -> Result<String, DocumentOperationError> {
-    let spans = resolve_exact_nfm_patches(source, patches)?;
+    let spans = resolve_exact_markdown_patches(source, patches)?;
     let mut result = source.to_owned();
     for span in spans.into_iter().rev() {
         result.replace_range(span.start..span.end, &span.replacement);
@@ -390,24 +400,24 @@ pub fn apply_exact_nfm_patches(
     Ok(result)
 }
 
-pub(super) fn resolve_exact_nfm_patches(
+pub(super) fn resolve_exact_markdown_patches(
     source: &str,
-    patches: &[ExactNfmPatch],
-) -> Result<Vec<NfmPatchSpan>, DocumentOperationError> {
+    patches: &[ExactMarkdownPatch],
+) -> Result<Vec<MarkdownPatchSpan>, DocumentOperationError> {
     if patches.is_empty() {
         return Err(operation_error(
             DocumentOperationErrorCode::EmptyBatch,
-            "NFM patch batch must not be empty",
+            "Markdown patch batch must not be empty",
             None,
             None,
         ));
     }
     let mut spans = Vec::new();
     for (patch_index, patch) in patches.iter().enumerate() {
-        if patch.old_nfm.is_empty() {
+        if patch.old_markdown.is_empty() {
             return Err(operation_error(
                 DocumentOperationErrorCode::InvalidOperation,
-                format!("NFM patch {patch_index} must match non-empty content"),
+                format!("Markdown patch {patch_index} must match non-empty content"),
                 Some(patch_index),
                 None,
             ));
@@ -416,32 +426,32 @@ pub(super) fn resolve_exact_nfm_patches(
         if !(1..=100).contains(&expected) {
             return Err(operation_error(
                 DocumentOperationErrorCode::InvalidOperation,
-                format!("NFM patch {patch_index} expectedMatches is out of bounds"),
+                format!("Markdown patch {patch_index} expectedMatches is out of bounds"),
                 Some(patch_index),
                 None,
             ));
         }
-        let starts = overlapping_match_starts(source, &patch.old_nfm);
+        let starts = overlapping_match_starts(source, &patch.old_markdown);
         if starts.len() != expected {
             let code = if starts.is_empty() {
-                DocumentOperationErrorCode::NfmPatchNotFound
+                DocumentOperationErrorCode::MarkdownPatchNotFound
             } else {
-                DocumentOperationErrorCode::NfmPatchAmbiguous
+                DocumentOperationErrorCode::MarkdownPatchAmbiguous
             };
             return Err(operation_error(
                 code,
                 format!(
-                    "NFM patch {patch_index} matched {} span(s); expected {expected}",
+                    "Markdown patch {patch_index} matched {} span(s); expected {expected}",
                     starts.len()
                 ),
                 Some(patch_index),
                 None,
             ));
         }
-        spans.extend(starts.into_iter().map(|start| NfmPatchSpan {
+        spans.extend(starts.into_iter().map(|start| MarkdownPatchSpan {
             start,
-            end: start + patch.old_nfm.len(),
-            replacement: patch.new_nfm.clone(),
+            end: start + patch.old_markdown.len(),
+            replacement: patch.new_markdown.clone(),
             patch_index,
         }));
     }
@@ -454,9 +464,9 @@ pub(super) fn resolve_exact_nfm_patches(
             continue;
         }
         return Err(operation_error(
-            DocumentOperationErrorCode::NfmPatchOverlap,
+            DocumentOperationErrorCode::MarkdownPatchOverlap,
             format!(
-                "NFM patches {} and {} overlap",
+                "Markdown patches {} and {} overlap",
                 previous.patch_index, current.patch_index
             ),
             Some(current.patch_index),
@@ -467,41 +477,45 @@ pub(super) fn resolve_exact_nfm_patches(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_nfm_replacement_update(
+pub fn prepare_markdown_replacement_update(
     document_id: &str,
     schema: BlockDocumentSchema,
     full_state_v1: &[u8],
     expected_state_vector_v1: &[u8],
-    nfm: &str,
+    markdown: &str,
     rich_title: Option<&[RichTextItem]>,
     allocate_block_id: &mut impl FnMut() -> String,
 ) -> Result<PreparedDocumentOperationUpdate, DocumentOperationError> {
-    if !super::schema_metadata(schema).nfm_replace {
+    if !super::schema_metadata(schema).markdown_replace {
         return Err(operation_error(
             DocumentOperationErrorCode::InvalidOperation,
-            "This Document schema does not support whole-body NFM replacement",
+            "This Document schema does not support whole-body Markdown replacement",
             None,
             None,
         ));
     }
-    let target_blocks = materialize_document_nfm(nfm, allocate_block_id).map_err(|error| {
-        operation_error(
-            DocumentOperationErrorCode::InvalidNfm,
-            error.to_string(),
-            None,
-            None,
-        )
-    })?;
-    let target_tree = dematerialize_block_tree(&target_blocks)?;
-    prepare_document_body_replacement_update(
+    let document = load_document(document_id, full_state_v1)?;
+    assert_exact_state_vector(&document, expected_state_vector_v1, "Markdown replacement")?;
+    let source = materialize_decoded_document(&decode_block_document(&document, schema)?)?;
+    // The public body file owns one final LF, including an empty Document.
+    let old_markdown = format!("{}\n", source.markdown);
+    let new_markdown = if markdown.ends_with('\n') {
+        markdown.to_owned()
+    } else {
+        format!("{markdown}\n")
+    };
+    prepare_exact_markdown_patch_update(
         document_id,
         schema,
         full_state_v1,
         expected_state_vector_v1,
-        &target_blocks,
-        &target_tree,
+        &[ExactMarkdownPatch {
+            old_markdown,
+            new_markdown,
+            expected_matches: Some(1),
+        }],
         rich_title,
-        DocumentBodyReplacementKind::NfmReplacement,
+        allocate_block_id,
     )
 }
 
@@ -522,32 +536,31 @@ pub(crate) fn prepare_document_snapshot_restore_update(
         target_blocks,
         &target_tree,
         rich_title,
-        DocumentBodyReplacementKind::SnapshotRestore,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_exact_nfm_patch_update(
+pub fn prepare_exact_markdown_patch_update(
     document_id: &str,
     schema: BlockDocumentSchema,
     full_state_v1: &[u8],
     expected_state_vector_v1: &[u8],
-    patches: &[ExactNfmPatch],
+    patches: &[ExactMarkdownPatch],
     rich_title: Option<&[RichTextItem]>,
     allocate_block_id: &mut impl FnMut() -> String,
 ) -> Result<PreparedDocumentOperationUpdate, DocumentOperationError> {
     let source = load_document(document_id, full_state_v1)?;
-    assert_exact_state_vector(&source, expected_state_vector_v1, "NFM patch")?;
+    assert_exact_state_vector(&source, expected_state_vector_v1, "Markdown patch")?;
     let source = materialize_decoded_document(&decode_block_document(&source, schema)?)?;
-    if !super::schema_metadata(schema).nfm_replace {
+    if !super::schema_metadata(schema).markdown_replace {
         return Err(operation_error(
             DocumentOperationErrorCode::InvalidOperation,
-            "This Document schema does not support NFM patches",
+            "This Document schema does not support Markdown patches",
             None,
             None,
         ));
     }
-    let mut operations = super::nfm_patch::compile(&source, patches, allocate_block_id)?;
+    let mut operations = super::markdown_patch::compile(&source, patches, allocate_block_id)?;
     if let Some(rich_title) = rich_title {
         operations.push(DocumentBlockOperation::SetRichTitle {
             rich_title: rich_title.to_vec(),
@@ -556,7 +569,7 @@ pub fn prepare_exact_nfm_patch_update(
     if operations.is_empty() {
         return Err(operation_error(
             DocumentOperationErrorCode::NoChange,
-            "NFM patch produced no semantic change",
+            "Markdown patch produced no semantic change",
             None,
             None,
         ));
@@ -827,6 +840,7 @@ fn prepare_subtree_document_result(
         materialization,
         write_fence_block_ids: write_fence_block_ids.to_vec(),
         title_write_fence_required: false,
+        moved_block_ids: Vec::new(),
     })
 }
 
@@ -864,7 +878,6 @@ fn prepare_document_body_replacement_update(
     target_blocks: &[MaterializedBlockNode],
     target_tree: &BlockTree,
     rich_title: Option<&[RichTextItem]>,
-    replacement_kind: DocumentBodyReplacementKind,
 ) -> Result<PreparedDocumentOperationUpdate, DocumentOperationError> {
     let source = load_document(document_id, full_state_v1)?;
     let expected = decode_state_vector_v1(expected_state_vector_v1)
@@ -873,7 +886,7 @@ fn prepare_document_body_replacement_update(
     if source_vector != expected {
         return Err(operation_error(
             DocumentOperationErrorCode::StaleStateVector,
-            replacement_kind.stale_state_message(),
+            "Document snapshot restore was prepared from a stale structural state",
             None,
             None,
         ));
@@ -883,20 +896,6 @@ fn prepare_document_body_replacement_update(
     let old_ids: BTreeSet<_> = current_ids(&source_decoded.block_tree.blocks)
         .into_iter()
         .collect();
-    if let Some(reused) = (!replacement_kind.allows_reused_block_ids())
-        .then(|| flatten_materialized_ids(target_blocks))
-        .into_iter()
-        .flatten()
-        .find(|id| old_ids.contains(id))
-    {
-        return Err(operation_error(
-            DocumentOperationErrorCode::DuplicateBlockId,
-            format!("NFM replacement reused existing Block identity {reused}"),
-            None,
-            Some(&reused),
-        ));
-    }
-
     let working = load_document(document_id, full_state_v1)?;
     let body = working.get_or_insert_xml_fragment("body");
     let title = schema
@@ -926,8 +925,8 @@ fn prepare_document_body_replacement_update(
     let materialization = materialize_decoded_document(&decoded)?;
     if materialization.block_tree != target_blocks {
         return Err(operation_error(
-            replacement_kind.target_mismatch_code(),
-            replacement_kind.target_mismatch_message(),
+            DocumentOperationErrorCode::DocumentStateCorrupt,
+            "Document snapshot restore did not reproduce its validated target Block tree",
             None,
             None,
         ));
@@ -937,18 +936,15 @@ fn prepare_document_body_replacement_update(
     {
         return Err(operation_error(
             DocumentOperationErrorCode::NoChange,
-            replacement_kind.no_change_message(),
+            "Document snapshot restore produced no semantic change",
             None,
             None,
         ));
     }
-    let write_fence_block_ids = match replacement_kind {
-        DocumentBodyReplacementKind::NfmReplacement => old_ids,
-        DocumentBodyReplacementKind::SnapshotRestore => old_ids
-            .into_iter()
-            .chain(flatten_materialized_ids(target_blocks))
-            .collect(),
-    };
+    let write_fence_block_ids: BTreeSet<_> = old_ids
+        .into_iter()
+        .chain(flatten_materialized_ids(target_blocks))
+        .collect();
     let transaction = working.transact();
     Ok(PreparedDocumentOperationUpdate {
         update_v1: transaction.encode_state_as_update_v1(&source_vector),
@@ -956,53 +952,8 @@ fn prepare_document_body_replacement_update(
         materialization,
         write_fence_block_ids: write_fence_block_ids.into_iter().collect(),
         title_write_fence_required,
+        moved_block_ids: Vec::new(),
     })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DocumentBodyReplacementKind {
-    NfmReplacement,
-    SnapshotRestore,
-}
-
-impl DocumentBodyReplacementKind {
-    fn allows_reused_block_ids(self) -> bool {
-        matches!(self, Self::SnapshotRestore)
-    }
-
-    fn stale_state_message(self) -> &'static str {
-        match self {
-            Self::NfmReplacement => "NFM replacement was prepared from a stale structural state",
-            Self::SnapshotRestore => {
-                "Document snapshot restore was prepared from a stale structural state"
-            }
-        }
-    }
-
-    fn target_mismatch_code(self) -> DocumentOperationErrorCode {
-        match self {
-            Self::NfmReplacement => DocumentOperationErrorCode::InvalidNfm,
-            Self::SnapshotRestore => DocumentOperationErrorCode::DocumentStateCorrupt,
-        }
-    }
-
-    fn target_mismatch_message(self) -> &'static str {
-        match self {
-            Self::NfmReplacement => {
-                "NFM replacement did not reproduce its validated target Block tree"
-            }
-            Self::SnapshotRestore => {
-                "Document snapshot restore did not reproduce its validated target Block tree"
-            }
-        }
-    }
-
-    fn no_change_message(self) -> &'static str {
-        match self {
-            Self::NfmReplacement => "NFM replacement produced no semantic change",
-            Self::SnapshotRestore => "Document snapshot restore produced no semantic change",
-        }
-    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1840,7 +1791,7 @@ mod tests {
 
         let prepared = prepare_document_operation_update(
             "operations-matrix",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
             &operations,
@@ -1869,7 +1820,7 @@ mod tests {
             .apply_update(Update::decode_v1(&prepared.update_v1).expect("incremental update"))
             .expect("consumer accepts update");
         let actual = materialize_decoded_document(
-            &decode_block_document(&consumer, BlockDocumentSchema::PageV3)
+            &decode_block_document(&consumer, BlockDocumentSchema::PageV4)
                 .expect("consumer document"),
         )
         .expect("consumer materialization");
@@ -1882,7 +1833,7 @@ mod tests {
         let stale = StateVector::default().encode_v1();
         let error = prepare_document_operation_update(
             "operations-matrix",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &stale,
             &[DocumentBlockOperation::DeleteBlock {
@@ -1895,7 +1846,7 @@ mod tests {
 
         let duplicate = prepare_document_operation_update(
             "operations-matrix",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
             &[DocumentBlockOperation::InsertBlock {
@@ -1913,7 +1864,7 @@ mod tests {
 
         let cycle = prepare_document_operation_update(
             "operations-matrix",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
             &[DocumentBlockOperation::MoveBlock {
@@ -1928,7 +1879,7 @@ mod tests {
 
         let no_change = prepare_document_operation_update(
             "operations-matrix",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
             &[DocumentBlockOperation::MoveBlock {
@@ -1943,18 +1894,18 @@ mod tests {
     }
 
     #[test]
-    fn applies_exact_non_overlapping_nfm_patches_with_unicode() {
-        let patched = apply_exact_nfm_patches(
+    fn applies_exact_non_overlapping_markdown_patches_with_unicode() {
+        let patched = apply_exact_markdown_patches(
             "Alpha 😀\nBeta 😀",
             &[
-                ExactNfmPatch {
-                    old_nfm: "😀".to_owned(),
-                    new_nfm: "中".to_owned(),
+                ExactMarkdownPatch {
+                    old_markdown: "😀".to_owned(),
+                    new_markdown: "中".to_owned(),
                     expected_matches: Some(2),
                 },
-                ExactNfmPatch {
-                    old_nfm: "Beta".to_owned(),
-                    new_nfm: "Gamma".to_owned(),
+                ExactMarkdownPatch {
+                    old_markdown: "Beta".to_owned(),
+                    new_markdown: "Gamma".to_owned(),
                     expected_matches: None,
                 },
             ],
@@ -1962,55 +1913,61 @@ mod tests {
         .expect("exact patches");
         assert_eq!(patched, "Alpha 中\nGamma 中");
 
-        let missing = apply_exact_nfm_patches(
+        let missing = apply_exact_markdown_patches(
             "One",
-            &[ExactNfmPatch {
-                old_nfm: "Missing".to_owned(),
-                new_nfm: "Replacement".to_owned(),
+            &[ExactMarkdownPatch {
+                old_markdown: "Missing".to_owned(),
+                new_markdown: "Replacement".to_owned(),
                 expected_matches: None,
             }],
         )
         .expect_err("missing fragment");
-        assert_eq!(missing.code(), DocumentOperationErrorCode::NfmPatchNotFound);
+        assert_eq!(
+            missing.code(),
+            DocumentOperationErrorCode::MarkdownPatchNotFound
+        );
 
-        let ambiguous = apply_exact_nfm_patches(
+        let ambiguous = apply_exact_markdown_patches(
             "One One",
-            &[ExactNfmPatch {
-                old_nfm: "One".to_owned(),
-                new_nfm: "Two".to_owned(),
+            &[ExactMarkdownPatch {
+                old_markdown: "One".to_owned(),
+                new_markdown: "Two".to_owned(),
                 expected_matches: None,
             }],
         )
         .expect_err("ambiguous fragment");
         assert_eq!(
             ambiguous.code(),
-            DocumentOperationErrorCode::NfmPatchAmbiguous
+            DocumentOperationErrorCode::MarkdownPatchAmbiguous
         );
 
-        let overlap = apply_exact_nfm_patches(
+        let overlap = apply_exact_markdown_patches(
             "aaa",
-            &[ExactNfmPatch {
-                old_nfm: "aa".to_owned(),
-                new_nfm: "b".to_owned(),
+            &[ExactMarkdownPatch {
+                old_markdown: "aa".to_owned(),
+                new_markdown: "b".to_owned(),
                 expected_matches: Some(2),
             }],
         )
         .expect_err("overlap");
-        assert_eq!(overlap.code(), DocumentOperationErrorCode::NfmPatchOverlap);
+        assert_eq!(
+            overlap.code(),
+            DocumentOperationErrorCode::MarkdownPatchOverlap
+        );
     }
 
     #[test]
     fn exact_patch_preserves_matrix_block_identities_and_unaffected_content() {
         let (state, vector) = matrix_state();
         let mut next_id = 0usize;
-        let prepared = prepare_exact_nfm_patch_update(
+        let prepared = prepare_exact_markdown_patch_update(
             "operations-matrix",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
-            &[ExactNfmPatch {
-                old_nfm: "## Heading".to_owned(),
-                new_nfm: "## Heading from Rust patch".to_owned(),
+            &[ExactMarkdownPatch {
+                old_markdown: "## Heading".to_owned(),
+                new_markdown: "## Heading from Rust patch".to_owned(),
                 expected_matches: None,
             }],
             None,
@@ -2019,12 +1976,12 @@ mod tests {
                 format!("replacement-{next_id}")
             },
         )
-        .expect("NFM replacement");
+        .expect("Markdown replacement");
 
         assert!(
             prepared
                 .materialization
-                .nfm
+                .markdown
                 .contains("## Heading from Rust patch")
         );
         assert_eq!(next_id, 0, "a one-line edit allocates no Block IDs");
@@ -2032,7 +1989,7 @@ mod tests {
         assert!(!prepared.title_write_fence_required);
         let original = load_document("operations-matrix", &state).unwrap();
         let mut expected = materialize_decoded_document(
-            &decode_block_document(&original, BlockDocumentSchema::PageV3).unwrap(),
+            &decode_block_document(&original, BlockDocumentSchema::PageV4).unwrap(),
         )
         .unwrap()
         .block_tree;
@@ -2048,7 +2005,7 @@ mod tests {
             .apply_update(Update::decode_v1(&prepared.update_v1).expect("relative update"))
             .expect("Yjs/Yrs consumer update");
         let actual = materialize_decoded_document(
-            &decode_block_document(&consumer, BlockDocumentSchema::PageV3)
+            &decode_block_document(&consumer, BlockDocumentSchema::PageV4)
                 .expect("consumer document"),
         )
         .expect("consumer materialization");
@@ -2059,7 +2016,7 @@ mod tests {
         let tree = dematerialize_block_tree(blocks).unwrap();
         let document = super::super::encode_block_document(
             "patch-fixture",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             None,
             &tree,
         )
@@ -2071,23 +2028,23 @@ mod tests {
         )
     }
 
-    fn exact_patch(old: &str, new: &str) -> ExactNfmPatch {
-        ExactNfmPatch {
-            old_nfm: old.to_owned(),
-            new_nfm: new.to_owned(),
+    fn exact_patch(old: &str, new: &str) -> ExactMarkdownPatch {
+        ExactMarkdownPatch {
+            old_markdown: old.to_owned(),
+            new_markdown: new.to_owned(),
             expected_matches: None,
         }
     }
 
     fn patch_fixture(
         blocks: &[MaterializedBlockNode],
-        patches: &[ExactNfmPatch],
+        patches: &[ExactMarkdownPatch],
     ) -> PreparedDocumentOperationUpdate {
         let (state, vector) = patch_fixture_state(blocks);
         let mut next_id = 0;
-        prepare_exact_nfm_patch_update(
+        prepare_exact_markdown_patch_update(
             "patch-fixture",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
             patches,
@@ -2101,6 +2058,75 @@ mod tests {
     }
 
     #[test]
+    fn changing_block_type_preserves_identity_without_carrying_foreign_props() {
+        let mut source = paragraph("same-id", "Text");
+        source
+            .props
+            .insert("backgroundColor".into(), serde_json::json!("default"));
+        let prepared = patch_fixture(
+            &[source],
+            &[exact_patch("Text", "![Caption](https://example.com/a.png)")],
+        );
+        let block = &prepared.materialization.block_tree[0];
+        assert_eq!(block.id, "same-id");
+        assert_eq!(block.block_type, "image");
+        assert_eq!(
+            block.props,
+            BTreeMap::from([
+                ("url".into(), serde_json::json!("https://example.com/a.png")),
+                ("caption".into(), serde_json::json!("Caption"))
+            ])
+        );
+    }
+
+    #[test]
+    fn replacement_preserves_unchanged_ids_image_metadata_and_collaborative_nodes() {
+        use yrs::SharedRef;
+        let mut image = paragraph("image", "");
+        image.block_type = "image".into();
+        image.content = None;
+        image.props = BTreeMap::from([
+            ("url".into(), serde_json::json!("https://example.com/a.png")),
+            ("caption".into(), serde_json::json!("Caption")),
+            ("name".into(), serde_json::json!("original.png")),
+            ("sourceWidth".into(), serde_json::json!(640)),
+            ("sourceHeight".into(), serde_json::json!(480)),
+        ]);
+        let source = vec![
+            paragraph("first", "Before"),
+            image.clone(),
+            paragraph("last", "Keep"),
+        ];
+        let (state, vector) = patch_fixture_state(&source);
+        let peer = load_document("patch-fixture", &state).unwrap();
+        let body = peer.get_or_insert_xml_fragment("body");
+        let hook = locate_xml_block(&body, &peer.transact(), "image")
+            .unwrap()
+            .container
+            .hook();
+        let prepared = prepare_markdown_replacement_update(
+            "patch-fixture",
+            BlockDocumentSchema::PageV4,
+            &state,
+            &vector,
+            "After\n\n![Caption](https://example.com/a.png)\n\nKeep",
+            None,
+            &mut || panic!("unchanged structure allocates no identities"),
+        )
+        .unwrap();
+        assert_eq!(
+            flatten_materialized_ids(&prepared.materialization.block_tree),
+            vec!["first", "image", "last"]
+        );
+        assert_eq!(prepared.materialization.block_tree[1], image);
+        peer.transact_mut()
+            .apply_update(Update::decode_v1(&prepared.update_v1).unwrap())
+            .unwrap();
+        assert!(hook.get(&peer.transact()).is_some());
+        assert_eq!(prepared.write_fence_block_ids, vec!["first"]);
+    }
+
+    #[test]
     fn exact_patch_keeps_untouched_collaborative_nodes_and_peer_edits_alive() {
         use yrs::{SharedRef, Text};
 
@@ -2108,9 +2134,9 @@ mod tests {
         parent.children.push(paragraph("child", "Keep snapshots"));
         let blocks = vec![parent, paragraph("other", "Unchanged")];
         let (state, vector) = patch_fixture_state(&blocks);
-        let prepared = prepare_exact_nfm_patch_update(
+        let prepared = prepare_exact_markdown_patch_update(
             "patch-fixture",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
             &[exact_patch("Friday", "Monday")],
@@ -2146,11 +2172,11 @@ mod tests {
             "untouched shared text survives"
         );
         let merged = materialize_decoded_document(
-            &decode_block_document(&peer, BlockDocumentSchema::PageV3).unwrap(),
+            &decode_block_document(&peer, BlockDocumentSchema::PageV4).unwrap(),
         )
         .unwrap();
-        assert!(merged.nfm.contains("Release date: Monday."));
-        assert!(merged.nfm.contains("Peer: Keep snapshots"));
+        assert!(merged.markdown.contains("Release date: Monday."));
+        assert!(merged.markdown.contains("Peer: Keep snapshots"));
         assert_eq!(
             flatten_materialized_ids(&merged.block_tree),
             vec!["date", "child", "other"]
@@ -2178,7 +2204,10 @@ mod tests {
         let prepared = patch_fixture(
             &source,
             &[
-                exact_patch("Parent\n\tsame", "Parent\n\tChanged 中"),
+                exact_patch(
+                    ":::paragraph[Parent]\n  same\n:::",
+                    ":::paragraph[Parent]\n  Changed 中\n:::",
+                ),
                 exact_patch("Tail 😀", "Tail 😀 extended"),
             ],
         );
@@ -2194,12 +2223,15 @@ mod tests {
         let mut parent = paragraph("parent", "Parent");
         parent.children.push(paragraph("child", "Child"));
         let source = vec![parent, paragraph("tail", "Tail")];
-        let promoted = patch_fixture(&source, &[exact_patch("Parent\n", "")]);
+        let promoted = patch_fixture(
+            &source,
+            &[exact_patch(":::paragraph[Parent]\n  Child\n:::", "Child")],
+        );
         assert_eq!(
             promoted.materialization.block_tree,
             vec![paragraph("child", "Child"), paragraph("tail", "Tail")]
         );
-        let inserted = patch_fixture(&source, &[exact_patch("Tail", "New\nTail")]);
+        let inserted = patch_fixture(&source, &[exact_patch("Tail", "New\n\nTail")]);
         assert_eq!(
             flatten_materialized_ids(&inserted.materialization.block_tree),
             vec!["parent", "child", "new-1", "tail"]
@@ -2219,12 +2251,12 @@ mod tests {
         ];
         let (state, vector) = patch_fixture_state(&source);
         let mut next_id = 0;
-        let patched = prepare_exact_nfm_patch_update(
+        let patched = prepare_exact_markdown_patch_update(
             "patch-fixture",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
-            &[exact_patch("A\nB", "A\nX\nY\nZ\nB")],
+            &[exact_patch("A\n\nB", "A\n\nX\n\nY\n\nZ\n\nB")],
             None,
             &mut || {
                 next_id += 1;
@@ -2260,7 +2292,7 @@ mod tests {
                 .all(|hook| hook.get(&peer.transact()).is_some())
         );
         let merged = materialize_decoded_document(
-            &decode_block_document(&peer, BlockDocumentSchema::PageV3).unwrap(),
+            &decode_block_document(&peer, BlockDocumentSchema::PageV4).unwrap(),
         )
         .unwrap();
         assert_eq!(merged, patched.materialization);
@@ -2269,30 +2301,36 @@ mod tests {
     #[test]
     fn exact_patch_rejects_reusing_a_removed_block_identity() {
         let (state, vector) = patch_fixture_state(&[paragraph("a", "A"), paragraph("b", "B")]);
-        let error = prepare_exact_nfm_patch_update(
+        let error = prepare_exact_markdown_patch_update(
             "patch-fixture",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
-            &[exact_patch("A\n", ""), exact_patch("B", "B\nX")],
+            &[exact_patch("A\n\n", ""), exact_patch("B", "B\n\nX")],
             None,
             &mut || "a".to_owned(),
         )
         .unwrap_err();
-        assert_eq!(error.code(), DocumentOperationErrorCode::InvalidNfm);
+        assert_eq!(error.code(), DocumentOperationErrorCode::InvalidMarkdown);
     }
 
     #[test]
     fn exact_patch_reparents_existing_blocks_under_a_new_parent() {
         let source = vec![paragraph("a", "A"), paragraph("b", "B")];
-        let patched = patch_fixture(&source, &[exact_patch("A\nB", "Parent\n\tA\n\tB")]);
+        let patched = patch_fixture(
+            &source,
+            &[exact_patch(
+                "A\n\nB",
+                ":::paragraph[Parent]\n  A\n\n  B\n:::",
+            )],
+        );
         assert_eq!(patched.materialization.block_tree.len(), 1);
         assert_eq!(patched.materialization.block_tree[0].id, "new-1");
         assert_eq!(patched.materialization.block_tree[0].children, source);
     }
 
     #[test]
-    fn exact_patch_does_not_roundtrip_an_untouched_opaque_callout() {
+    fn exact_patch_preserves_an_empty_callout_and_its_first_paragraph() {
         let mut callout = paragraph("callout", "");
         callout.block_type = "callout".to_owned();
         callout
@@ -2318,9 +2356,9 @@ mod tests {
                 DocumentOperationErrorCode::StaleStateVector,
             ),
         ] {
-            let error = prepare_exact_nfm_patch_update(
+            let error = prepare_exact_markdown_patch_update(
                 "patch-fixture",
-                BlockDocumentSchema::PageV3,
+                BlockDocumentSchema::PageV4,
                 &state,
                 expected,
                 &[exact_patch("A", "A")],
@@ -2338,14 +2376,14 @@ mod tests {
         let checkpoint_document =
             load_document("operations-matrix", &checkpoint_state).expect("checkpoint document");
         let checkpoint_materialization = materialize_decoded_document(
-            &decode_block_document(&checkpoint_document, BlockDocumentSchema::PageV3)
+            &decode_block_document(&checkpoint_document, BlockDocumentSchema::PageV4)
                 .expect("checkpoint decode"),
         )
         .expect("checkpoint materialization");
         let extra_block_id = "01981e00-0000-7000-8000-000000000099";
         let changed = prepare_document_operation_update(
             "operations-matrix",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &checkpoint_state,
             &checkpoint_vector,
             &[
@@ -2377,7 +2415,7 @@ mod tests {
 
         let restored = prepare_document_snapshot_restore_update(
             "operations-matrix",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &current_state,
             &current_vector,
             &checkpoint_materialization.block_tree,
@@ -2407,7 +2445,7 @@ mod tests {
             .apply_update(Update::decode_v1(&restored.update_v1).expect("restore update"))
             .expect("apply restore update");
         let actual = materialize_decoded_document(
-            &decode_block_document(&current_document, BlockDocumentSchema::PageV3)
+            &decode_block_document(&current_document, BlockDocumentSchema::PageV4)
                 .expect("restored document"),
         )
         .expect("restored materialization");
@@ -2419,17 +2457,17 @@ mod tests {
         let (state, vector) = matrix_state();
         let source = load_document("operations-matrix", &state).unwrap();
         let source = materialize_decoded_document(
-            &decode_block_document(&source, BlockDocumentSchema::PageV3).unwrap(),
+            &decode_block_document(&source, BlockDocumentSchema::PageV4).unwrap(),
         )
         .unwrap();
-        let prepared = prepare_exact_nfm_patch_update(
+        let prepared = prepare_exact_markdown_patch_update(
             "operations-matrix",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
-            &[ExactNfmPatch {
-                old_nfm: format!("{}\n", source.nfm),
-                new_nfm: "Replacement paragraph\n".to_owned(),
+            &[ExactMarkdownPatch {
+                old_markdown: format!("{}\n", source.markdown),
+                new_markdown: "Replacement paragraph\n".to_owned(),
                 expected_matches: None,
             }],
             None,
@@ -2437,7 +2475,7 @@ mod tests {
         )
         .expect("canonical body patch");
 
-        assert_eq!(prepared.materialization.nfm, "Replacement paragraph");
+        assert_eq!(prepared.materialization.markdown, "Replacement paragraph");
     }
 
     #[test]
@@ -2445,14 +2483,14 @@ mod tests {
         let (state, vector) = matrix_state();
         let source = load_document("operations-matrix", &state).unwrap();
         let source = materialize_decoded_document(
-            &decode_block_document(&source, BlockDocumentSchema::PageV3).unwrap(),
+            &decode_block_document(&source, BlockDocumentSchema::PageV4).unwrap(),
         )
         .unwrap();
 
         for prepared in [
-            prepare_nfm_replacement_update(
+            prepare_markdown_replacement_update(
                 "operations-matrix",
-                BlockDocumentSchema::PageV3,
+                BlockDocumentSchema::PageV4,
                 &state,
                 &vector,
                 "",
@@ -2460,14 +2498,14 @@ mod tests {
                 &mut || "empty-replacement".to_owned(),
             )
             .expect("empty replacement"),
-            prepare_exact_nfm_patch_update(
+            prepare_exact_markdown_patch_update(
                 "operations-matrix",
-                BlockDocumentSchema::PageV3,
+                BlockDocumentSchema::PageV4,
                 &state,
                 &vector,
-                &[ExactNfmPatch {
-                    old_nfm: source.nfm,
-                    new_nfm: String::new(),
+                &[ExactMarkdownPatch {
+                    old_markdown: source.markdown,
+                    new_markdown: String::new(),
                     expected_matches: Some(1),
                 }],
                 None,
@@ -2475,7 +2513,7 @@ mod tests {
             )
             .expect("exact patch to empty Document"),
         ] {
-            assert_eq!(prepared.materialization.nfm, "");
+            assert_eq!(prepared.materialization.markdown, "");
             assert_eq!(prepared.materialization.plain_text, "");
             assert_eq!(prepared.materialization.block_tree.len(), 1);
             assert_eq!(
@@ -2504,7 +2542,7 @@ mod tests {
         ]);
         let prepared = prepare_document_operation_update(
             "operations-matrix",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &state,
             &vector,
             &[
@@ -2562,16 +2600,16 @@ mod tests {
         let state = std::fs::read(root.join("empty-synced-block.bin")).expect("synced fixture");
         let document = load_document("empty-synced", &state).expect("synced document");
         let vector = document.transact().state_vector().encode_v1();
-        let error = prepare_nfm_replacement_update(
+        let error = prepare_markdown_replacement_update(
             "empty-synced",
-            BlockDocumentSchema::SyncedBlockV2,
+            BlockDocumentSchema::SyncedBlockV3,
             &state,
             &vector,
             "Synced content",
             None,
             &mut || "synced-new".to_owned(),
         )
-        .expect_err("body-only NFM replacement is not a Page capability");
+        .expect_err("body-only Markdown replacement is not a Page capability");
         assert_eq!(error.code(), DocumentOperationErrorCode::InvalidOperation);
     }
 
@@ -2580,7 +2618,7 @@ mod tests {
         let head = fixture_head(
             "matrix-base.bin",
             "subtree-page",
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         );
         let copied = prepare_portable_subtree_transfer_updates(
             &PortableSubtreeTransferRequest {
@@ -2612,7 +2650,7 @@ mod tests {
             .apply_update(Update::decode_v1(&copied.target.update_v1).expect("copy update"))
             .expect("copy update applies");
         let copy_actual = materialize_decoded_document(
-            &decode_block_document(&copy_consumer, BlockDocumentSchema::PageV3)
+            &decode_block_document(&copy_consumer, BlockDocumentSchema::PageV4)
                 .expect("copy consumer document"),
         )
         .expect("copy materialization");
@@ -2649,7 +2687,7 @@ mod tests {
             .apply_update(Update::decode_v1(&moved.target.update_v1).expect("move update"))
             .expect("move update applies");
         let move_actual = materialize_decoded_document(
-            &decode_block_document(&move_consumer, BlockDocumentSchema::PageV3)
+            &decode_block_document(&move_consumer, BlockDocumentSchema::PageV4)
                 .expect("move consumer document"),
         )
         .expect("move materialization");
@@ -2661,12 +2699,12 @@ mod tests {
         let source = fixture_head(
             "reusable-template.bin",
             "template-source-document",
-            BlockDocumentSchema::ReusableTemplateV2,
+            BlockDocumentSchema::ReusableTemplateV3,
         );
         let target = fixture_head(
             "empty-synced-block.bin",
             "synced-target-document",
-            BlockDocumentSchema::SyncedBlockV2,
+            BlockDocumentSchema::SyncedBlockV3,
         );
         let prepared = prepare_portable_subtree_transfer_updates(
             &PortableSubtreeTransferRequest {
@@ -2702,7 +2740,7 @@ mod tests {
             .apply_update(Update::decode_v1(&source_update.update_v1).expect("source update"))
             .expect("source update applies");
         let source_actual = materialize_decoded_document(
-            &decode_block_document(&source_consumer, BlockDocumentSchema::ReusableTemplateV2)
+            &decode_block_document(&source_consumer, BlockDocumentSchema::ReusableTemplateV3)
                 .expect("source document"),
         )
         .expect("source materialization");
@@ -2715,7 +2753,7 @@ mod tests {
             .apply_update(Update::decode_v1(&prepared.target.update_v1).expect("target update"))
             .expect("target update applies");
         let target_actual = materialize_decoded_document(
-            &decode_block_document(&target_consumer, BlockDocumentSchema::SyncedBlockV2)
+            &decode_block_document(&target_consumer, BlockDocumentSchema::SyncedBlockV3)
                 .expect("target document"),
         )
         .expect("target materialization");

@@ -142,33 +142,17 @@ pub(crate) fn remap_block_files(
     remap_block_asset_sources(blocks, &sources);
 }
 
-/// Rewrites only image and attachment source fields, including captions. Code,
+/// Rewrites only image and attachment source fields, including inline images. Code,
 /// ordinary links, names and other metadata remain verbatim.
 pub(crate) fn remap_block_asset_sources(
     blocks: &mut [super::block_materialization::MaterializedBlockNode],
     mapping: &BTreeMap<String, String>,
 ) {
     for block in blocks {
-        if block.block_type == "image" {
-            if let Some(source) = block.props.get_mut("url") {
-                remap_source(source, mapping);
-            }
-            if let Some(serde_json::Value::String(caption)) = block.props.get_mut("caption") {
-                let mut content = super::nfm::parse_inline_content(caption);
-                let mut changed = false;
-                for item in &mut content {
-                    let super::nfm::NfmInlineContent::Attachment { source, .. } = item else {
-                        continue;
-                    };
-                    if let Some(target) = mapped_source(source, mapping) {
-                        *source = target;
-                        changed = true;
-                    }
-                }
-                if changed {
-                    *caption = super::nfm::serialize_inline_content_for_adapter(&content);
-                }
-            }
+        if block.block_type == "image"
+            && let Some(source) = block.props.get_mut("url")
+        {
+            remap_source(source, mapping);
         }
         if let Some(content) = &mut block.content {
             remap_inline_files(content, mapping);
@@ -187,6 +171,15 @@ fn remap_inline_files(value: &mut serde_json::Value, mapping: &BTreeMap<String, 
                 if let Some(source) = object
                     .get_mut("props")
                     .and_then(|props| props.get_mut("source"))
+                {
+                    remap_source(source, mapping);
+                }
+                return;
+            }
+            if object.get("type").and_then(serde_json::Value::as_str) == Some("inlineImage") {
+                if let Some(source) = object
+                    .get_mut("props")
+                    .and_then(|props| props.get_mut("url"))
                 {
                     remap_source(source, mapping);
                 }

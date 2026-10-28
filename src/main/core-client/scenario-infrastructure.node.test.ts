@@ -29,7 +29,7 @@ describe("authoritative isolated scenarios over CoreClient", () => {
         clientSessionId: "scenario:core-follow-up",
         projectId: context.manifest.projectId,
         pageId: primaryPageId,
-        nfm: "# Updated rendering contract\n\nThe Core-only harness committed this change.",
+        markdown: "# Updated rendering contract\n\nThe Core-only harness committed this change.",
       });
       const after = await context.seed.readPage(
         context.manifest.projectId,

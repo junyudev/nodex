@@ -92,7 +92,7 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
                         page_id: "019b1000-1000-7000-8000-000000000004".to_owned(),
                         document_id: "019b1000-1000-7000-8000-000000000005".to_owned(),
                         title_markdown: "Welcome to Nodex".to_owned(),
-                        nfm: "Welcome to Nodex.".to_owned(),
+                        markdown: "Welcome to Nodex.".to_owned(),
                     },
                 },
             },
@@ -146,10 +146,23 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
     let LibraryReadValue::PageProjectionFile { value } = snapshot.value else {
         panic!("expected Page file value")
     };
-    assert!(
-        value
-            .content
-            .contains(r#"title: "Native \\*\\*read\\*\\*""#)
+    let encoded_title = value
+        .content
+        .lines()
+        .find_map(|line| line.strip_prefix("title: "))
+        .expect("Page title field");
+    let title_markdown: String = serde_json::from_str(encoded_title).unwrap();
+    let title = nodex_core::domain::markdown::parse_markdown(&title_markdown).unwrap();
+    let title_blocks =
+        nodex_core::domain::markdown::materialize_markdown_blocks_with_ids(&title, &mut || {
+            "title".to_owned()
+        })
+        .unwrap();
+    assert_eq!(
+        title_blocks[0].content,
+        Some(serde_json::json!([
+            { "type": "text", "text": "Native **read**", "styles": {} }
+        ]))
     );
     assert!(value.validators.title_etag.is_some());
     let body_projection = client
@@ -157,7 +170,7 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
             Some(project_id),
             LibraryRead::PageProjectionFile {
                 page_id: page_id.to_owned(),
-                file_kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                file_kind: LibraryPageProjectionFileKind::BodyMarkdown,
                 prepare: None,
             },
         )

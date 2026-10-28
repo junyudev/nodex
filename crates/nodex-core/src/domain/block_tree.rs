@@ -35,7 +35,6 @@ pub const REGISTERED_BLOCK_TYPES: &[&str] = &[
     "canvas",
     "page",
     "database",
-    "threadSection",
     "pageRef",
     "databaseViewRef",
     "syncedBlockRef",
@@ -170,7 +169,8 @@ pub fn decode_block_tree<T: ReadTxn>(
 }
 
 /// Exact-baseline Store migrations may read trees that predate the current
-/// parent capability contract. Every other structural invariant stays active;
+/// parent capability contract or contain retired prompt markers. Every other
+/// structural invariant stays active;
 /// the tree must be normalized before it can enter a current runtime path.
 pub(crate) fn decode_block_tree_allowing_illegal_children<T: ReadTxn>(
     body: &XmlFragmentRef,
@@ -199,7 +199,11 @@ pub(crate) fn decode_block_tree_allowing_illegal_children<T: ReadTxn>(
     };
     let issues = validate_block_tree(&tree)
         .into_iter()
-        .filter(|issue| issue.code != BlockTreeIssueCode::BlockChildrenNotAllowed)
+        .filter(|issue| {
+            issue.code != BlockTreeIssueCode::BlockChildrenNotAllowed
+                && !(issue.code == BlockTreeIssueCode::UnsupportedBlockType
+                    && issue.block_type.as_deref() == Some("threadSection"))
+        })
         .collect::<Vec<_>>();
     if issues.is_empty() {
         return Ok(tree);
@@ -722,6 +726,13 @@ fn scan_blocks(
 }
 
 fn element_plain_text(element: &XmlElementNode) -> String {
+    if let Some(PortableValue::String(text)) = element.attributes.get(match element.name.as_str() {
+        "image" => "caption",
+        "inlineImage" => "alt",
+        _ => "",
+    }) {
+        return text.clone();
+    }
     let mut text = String::new();
     for child in &element.children {
         match child {
@@ -827,7 +838,7 @@ mod tests {
         let tree = decode_block_tree(&body, &transaction).expect("valid BlockTree");
         let blocks = scan_block_tree(&tree);
 
-        assert_eq!(blocks.len(), 20);
+        assert_eq!(blocks.len(), 19);
         assert_eq!(blocks[0].block_type, "paragraph");
         assert_eq!(blocks[7].parent_block_id.as_deref(), Some("matrix-toggle"));
         assert_eq!(

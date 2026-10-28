@@ -37,7 +37,7 @@ struct RawPageContent {
     materialization_schema_version: Option<i64>,
     title: Option<String>,
     rich_title_json: Option<String>,
-    nfm: Option<String>,
+    markdown: Option<String>,
     plain_text: Option<String>,
     preview: Option<String>,
     references_json: Option<String>,
@@ -58,7 +58,7 @@ pub(super) fn page_content(
                document.generation, document.head_seq, document.schema_key, \
                document.schema_version, document.readiness, materialization.generation, \
                materialization.projected_seq, materialization.schema_version, \
-               materialization.title, materialization.title_rich_json, materialization.nfm, \
+               materialization.title, materialization.title_rich_json, materialization.markdown, \
                materialization.plain_text, materialization.preview, \
                materialization.references_json, materialization.asset_refs_json \
              FROM pages page JOIN blocks owner \
@@ -85,7 +85,7 @@ pub(super) fn page_content(
                     materialization_schema_version: row.get(10)?,
                     title: row.get(11)?,
                     rich_title_json: row.get(12)?,
-                    nfm: row.get(13)?,
+                    markdown: row.get(13)?,
                     plain_text: row.get(14)?,
                     preview: row.get(15)?,
                     references_json: row.get(16)?,
@@ -109,7 +109,7 @@ pub(super) fn page_content(
     }
     let title = require_content(row.title, "Page title")?;
     let rich_title = parse_rich_title(row.rich_title_json)?;
-    let body_nfm = require_content(row.nfm, "Page Nested Markdown")?;
+    let body_markdown = require_content(row.markdown, "Page Nodex Markdown")?;
     let plain_text = require_content(row.plain_text, "Page plain text")?;
     let preview = require_content(row.preview, "Page preview")?;
     let references = parse_json_array::<BlockDocumentReference>(
@@ -141,7 +141,7 @@ pub(super) fn page_content(
         schema_version: row.schema_version,
         title,
         rich_title,
-        body_nfm,
+        body_markdown,
         plain_text,
         preview,
         references,
@@ -588,12 +588,12 @@ fn content_reference(reference: BlockDocumentReference) -> LibraryContentReferen
             database_view_id,
             display_hint,
         },
-        BlockDocumentReference::Thread {
+        BlockDocumentReference::Session {
             source_block_id,
-            target_thread_id,
-        } => LibraryContentReference::Thread {
+            target_session_id,
+        } => LibraryContentReference::Session {
             source_block_id,
-            target_thread_id,
+            target_session_id,
         },
     }
 }
@@ -708,7 +708,7 @@ mod tests {
             { "kind": "page", "sourceBlockId": "source", "targetPageId": "page", "presentation": "link", "occurrenceCount": 3 },
             { "kind": "block", "sourceBlockId": "source", "targetBlockId": "block", "displayHint": "Block" },
             { "kind": "database_view", "sourceBlockId": "source", "databaseViewId": "view", "displayHint": "View" },
-            { "kind": "thread", "sourceBlockId": "source", "targetThreadId": "thread" }
+            { "kind": "session", "sourceBlockId": "source", "targetSessionId": "thread" }
         ]);
         let canonical = parse_json_array::<BlockDocumentReference>(
             Some(wire.to_string()),

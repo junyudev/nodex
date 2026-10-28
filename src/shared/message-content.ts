@@ -1,57 +1,64 @@
 import { fileSource } from "./file-resources";
-import { parseNfm } from "./nfm/parser";
-import { serializeMessageText } from "./message-text";
-import { serializePlainNfm } from "./nfm/plain-source";
-import { serializeNfm } from "./nfm/serializer";
-import type { NfmBlock, NfmImage } from "./nfm/types";
+import {
+  readMarkdown,
+  writeMarkdown,
+  writePortableMarkdown,
+  type MarkdownBlock,
+} from "./nodex-markdown";
 
-/**
- * A written message read as its text Blocks and the images attached after them. An image
- * elsewhere in the body, such as one later moved between paragraphs in the Page, stays in the
- * text, so a body outside the message shape still reads in order.
- */
-export interface MessageContent {
-  readonly text: readonly NfmBlock[];
-  readonly attachments: readonly NfmImage[];
-}
+/** Composers edit Nodex Markdown source; stored bodies are its exact text. */
+export const parseMessageText = (text: string): MarkdownBlock[] => readMarkdown(text);
+export const serializeMessageText = (blocks: readonly MarkdownBlock[]): string =>
+  writeMarkdown(blocks);
 
-export function splitMessageContent(blocks: readonly NfmBlock[]): MessageContent {
-  let start = blocks.length;
-  while (start > 0) {
-    const block = blocks[start - 1]!;
-    if (block.type !== "image" || block.children.length > 0) break;
-    start -= 1;
-  }
-  return {
-    text: blocks.slice(0, start),
-    attachments: blocks.slice(start).filter((block) => block.type === "image"),
+/** Copy uses the language writer's portable form. */
+export function writtenMessageText(
+  blocks: readonly MarkdownBlock[],
+  pageTitle?: (pageId: string) => string | null,
+): string {
+  const ids = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const item = value as Record<string, unknown>;
+    if (item.type === "pageMention")
+      ids.add(String((item.props as Record<string, unknown>)?.targetPageId ?? ""));
+    Object.values(item).forEach(visit);
   };
+  if (pageTitle) visit(blocks);
+  const pageTitles = Object.fromEntries(
+    [...ids].flatMap((id) => {
+      const title = pageTitle?.(id);
+      return title ? [[id, title]] : [];
+    }),
+  );
+  return writePortableMarkdown(blocks, { pageTitles }).markdown;
 }
 
-/**
- * A stored body as the message text a person reads and edits, falling back to plain Nested
- * Markdown for the rare body that message text cannot say exactly.
- */
-export const writtenMessageText = (blocks: readonly NfmBlock[]): string =>
-  serializeMessageText(blocks) ?? serializePlainNfm(blocks);
-
-/** The message's text without its attached images, as written: a prompt draft's start. */
-export const messageTextOf = (nfm: string): string =>
-  writtenMessageText(splitMessageContent(parseNfm(nfm)).text);
-
-/** A Library File attached to a message, as the image Block a Composer writes for it. */
-export const messageImageBlock = (fileId: string): NfmImage => ({
+export interface MessageContent {
+  readonly text: readonly MarkdownBlock[];
+  readonly attachments: readonly MarkdownBlock[];
+}
+export function splitMessageContent(blocks: readonly MarkdownBlock[]): MessageContent {
+  let start = blocks.length;
+  while (start > 0 && blocks[start - 1]?.type === "image" && !blocks[start - 1]?.children?.length)
+    start -= 1;
+  return { text: blocks.slice(0, start), attachments: blocks.slice(start) };
+}
+export const messageTextOf = (markdown: string): string =>
+  writeMarkdown(splitMessageContent(readMarkdown(markdown)).text);
+export const messageImageBlock = (fileId: string): MarkdownBlock => ({
   type: "image",
-  source: fileSource(fileId),
-  caption: [],
-  children: [],
+  props: { url: fileSource(fileId) },
 });
+export const isComposerImage = (image: MarkdownBlock): boolean =>
+  writeMarkdown([image]) ===
+  writeMarkdown([{ type: "image", props: { url: image.props?.url ?? "" } }]);
 
-/**
- * A Composer's message as the body Core reads: its message text as typed, then its image
- * Blocks, the message shape Core keeps as the Page body.
- */
-export function composeMessageText(text: string, images: readonly NfmImage[]): string {
-  const lines = text.replace(/\r\n?/g, "\n").trimEnd();
-  return [lines, serializeNfm([...images])].filter(Boolean).join("\n");
+export function composeMessageText(text: string, images: readonly MarkdownBlock[]): string {
+  const written = text.replace(/\r\n?/gu, "\n").trimEnd();
+  return [written, images.length ? writeMarkdown(images) : ""].filter(Boolean).join("\n\n");
 }

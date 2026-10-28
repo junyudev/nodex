@@ -12,7 +12,7 @@ const InitialProjectStarterPageSchema = z
     pageId: z.string().uuid(),
     documentId: z.string().uuid(),
     titleMarkdown: z.string().min(1).max(10_000),
-    nfm: z.string().max(48 * 1024),
+    markdown: z.string().max(48 * 1024),
   })
   .strict();
 

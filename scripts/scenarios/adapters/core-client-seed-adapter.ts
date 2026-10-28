@@ -4,6 +4,8 @@ import {
   type RustDataAuthorityRuntime,
 } from "../../../src/main/core-client";
 import * as Effect from "effect/Effect";
+import * as Y from "yjs";
+import { readPageBlockOutline } from "./page-block-outline";
 import { compilePageLifecycleRequestV2 } from "../../../src/shared/page-lifecycle-v2-runtime";
 import { createBoundedOperationId } from "../../../src/shared/operation-identity";
 import type {
@@ -101,7 +103,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
         projectId: input.projectId,
         pageId: input.pageId,
         status: input.status,
-        input: { id: input.pageId, title: input.title, description: input.nfm },
+        input: { id: input.pageId, title: input.title, description: input.markdown },
       },
       preflight,
     });
@@ -212,11 +214,42 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
         documentId: descriptor.documentId,
         generation: descriptor.generation,
         expectedHeadSeq: descriptor.headSeq,
-        nfm: input.nfm,
+        markdown: input.markdown,
       }),
       `Replace ${input.pageId}`,
     );
     return { commitSeq: mutation.commitSeq, createdBlockIds: mutation.createdBlockIds };
+  }
+
+  async readPageBlockTree(projectId: string, pageId: string) {
+    const client = this.#runtime.clientForProject(projectId);
+    const clientSessionId = createUuidV7();
+    const descriptor = await createCoreDocumentSyncAdapter(client).readDescriptor({
+      ownerBlockId: pageId,
+      clientSessionId,
+    });
+    const document = new Y.Doc({ guid: descriptor.documentId });
+    const stream = await client.openDocumentEventStream(
+      { documentId: descriptor.documentId, clientSessionId },
+      () => undefined,
+      () => undefined,
+      () => undefined,
+    );
+    try {
+      const synced = requireSuccess(
+        await createCoreDocumentSyncAdapter(client).sync({
+          documentId: descriptor.documentId,
+          clientSessionId,
+          stateVector: Y.encodeStateVector(document),
+        }),
+        `Read ${pageId}`,
+      );
+      Y.applyUpdate(document, synced.update);
+      return readPageBlockOutline(document);
+    } finally {
+      await stream.close();
+      document.destroy();
+    }
   }
 
   async createLibraryFile(input: ScenarioLibraryFileSeed) {
@@ -630,7 +663,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
             pageId: createUuidV7(),
             documentId: createUuidV7(),
             titleMarkdown: "Scenario Bootstrap",
-            nfm: "Scenario bootstrap authority.",
+            markdown: "Scenario bootstrap authority.",
           },
         });
       }),

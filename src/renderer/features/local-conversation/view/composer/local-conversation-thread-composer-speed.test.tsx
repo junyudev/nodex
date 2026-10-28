@@ -5632,7 +5632,7 @@ test("sends a restored image with a vision config while the selected Runtime mod
   const send = vi.fn<ThreadStageActions["onSendPrompt"]>(async () => {});
   const errors: string[] = [];
   const model = buildModel().availableModels[0]!;
-  const prompt = '<agent-config model="vision" />\nDescribe this image';
+  const prompt = ':agent-config{model="vision"}\n\nDescribe this image';
   const images = [{ source: "data:image/png;base64,aW1hZ2U=", caption: "diagram.png" }];
   const view = await renderComposer(
     {

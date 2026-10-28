@@ -55,7 +55,7 @@ import {
 export interface CommonOwnedDocumentMaterialization {
   readonly schemaVersion: number;
   readonly blockTree: readonly BlockTreeNode[];
-  readonly nfm: string;
+  readonly markdown: string;
   readonly plainText: string;
   readonly preview: string;
   readonly references: readonly BlockDocumentReference[];
@@ -103,8 +103,8 @@ export type RegisteredOwnedDocumentInspection = OwnedDocumentInspection;
 export interface BlockDocumentSchemaCapabilities {
   readonly title: boolean;
   readonly blockTree: true;
-  readonly nfmGenesis: boolean;
-  readonly nfmReplace: boolean;
+  readonly markdownGenesis: boolean;
+  readonly markdownReplace: boolean;
 }
 
 export interface BlockDocumentSchemaLimits {
@@ -218,8 +218,8 @@ const pageDocumentAdapter: BlockDocumentSchemaAdapter = {
   capabilities: {
     title: true,
     blockTree: true,
-    nfmGenesis: true,
-    nfmReplace: true,
+    markdownGenesis: true,
+    markdownReplace: true,
   },
   limits: DEFAULT_BLOCKNOTE_LIMITS,
   create: (documentId) => ({
@@ -249,8 +249,8 @@ const syncedBlockDocumentAdapter: BlockDocumentSchemaAdapter = {
   capabilities: {
     title: false,
     blockTree: true,
-    nfmGenesis: true,
-    nfmReplace: false,
+    markdownGenesis: true,
+    markdownReplace: false,
   },
   limits: DEFAULT_BLOCKNOTE_LIMITS,
   create: (documentId) => ({
@@ -278,8 +278,8 @@ const reusableTemplateDocumentAdapter: BlockDocumentSchemaAdapter = {
   capabilities: {
     title: false,
     blockTree: true,
-    nfmGenesis: true,
-    nfmReplace: false,
+    markdownGenesis: true,
+    markdownReplace: false,
   },
   limits: DEFAULT_BLOCKNOTE_LIMITS,
   create: (documentId) => ({
@@ -388,7 +388,7 @@ export const getYjsDocumentSchemaAdapter = (input: {
   return getRegisteredBlockDocumentSchemaAdapter(input);
 };
 
-/** BlockNote/NFM pipelines must opt into the block-tree content model. */
+/** BlockNote/Nodex Markdown pipelines must opt into the block-tree content model. */
 export const getBlockDocumentSchemaAdapter = (input: {
   readonly ownerType: string;
   readonly schemaKey: string;
@@ -460,7 +460,7 @@ export const toPersistedBlockDocumentMaterialization = (
   title: materialization.kind === "page" ? materialization.title : "",
   richTitle: materialization.kind === "page" ? materialization.richTitle : [],
   blockTree: materialization.blockTree,
-  nfm: materialization.nfm,
+  markdown: materialization.markdown,
   plainText: materialization.plainText,
   preview: materialization.preview,
   references: materialization.references,

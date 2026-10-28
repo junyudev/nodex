@@ -2,7 +2,7 @@
 
 ## Scope
 
-Task shorthand is an authoring aid for promoting ordinary NFM Blocks into Database Pages.
+Task shorthand is an authoring aid for promoting ordinary Page editor Blocks into Database Pages.
 It is not a Page-title syntax, a renderer-side Property mutation, or a configurable rule engine.
 
 ## Grammar

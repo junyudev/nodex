@@ -433,11 +433,11 @@ describe("DynamicToolCall", () => {
             documentId: "document-1",
             ifRevision: "revision-1",
             body: {
-              kind: "nfm.patch",
+              kind: "markdown.patch",
               patches: [
                 {
-                  oldNfm: "## Draft\n- [ ] Verify migration",
-                  newNfm: "## Ready\n- [x] Verify migration",
+                  oldMarkdown: "## Draft\n- [ ] Verify migration",
+                  newMarkdown: "## Ready\n- [x] Verify migration",
                 },
               ],
             },

@@ -64,8 +64,8 @@ Page text, diffs, and File bytes retain their native format.
   [page-editor.md](references/page-editor.md).
 - For Data Source schema/query/property operations and saved Boards, use
   [project-database-views.md](references/project-database-views.md).
-- Before unfamiliar rich-content edits, read `nodex docs nested-markdown` or
-  [nested-markdown.md](references/nested-markdown.md). The format is **Nested Markdown**.
+- Before unfamiliar rich-content edits, read `nodex docs markdown` or
+  [markdown.md](references/markdown.md). The format is **Nodex Markdown**.
 - For unavailable binaries, connection failures, or conflicts, use
   [troubleshooting.md](references/troubleshooting.md).
 

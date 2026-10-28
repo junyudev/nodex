@@ -2229,12 +2229,12 @@ mod tests {
             pages: vec![
                 LibraryAgentCreatePageDraft {
                     title_markdown: "**First**".to_owned(),
-                    nfm: "First body".to_owned(),
+                    markdown: "First body".to_owned(),
                     values: Vec::new(),
                 },
                 LibraryAgentCreatePageDraft {
                     title_markdown: "Second".to_owned(),
-                    nfm: "Second body".to_owned(),
+                    markdown: "Second body".to_owned(),
                     values: Vec::new(),
                 },
             ],

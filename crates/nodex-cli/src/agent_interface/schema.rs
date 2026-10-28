@@ -85,7 +85,7 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["read"] => document::<LibraryPageProjectionFile>(),
         ["page", "prepare"] => document::<LibraryPageOperationPreparation>(),
         ["sed"] => document::<crate::runtime::SedOutput>(),
-        ["docs", "nested-markdown"] => document::<String>(),
+        ["docs", "markdown"] => document::<String>(),
         ["rg"] => document::<ProcessResult>(),
         ["open", _] => document::<crate::open::OpenResult>(),
         ["patch"] | ["page", "insert" | "replace" | "rename"] | ["block", _] => {
@@ -356,7 +356,7 @@ mod tests {
         }]}));
         assert_decoder::<crate::page_batch::PageBatchInput>(json!({
             "destination": {"kind": "page", "page_id": "parent"},
-            "pages": [{"title_markdown": "Agenda", "nested_markdown": "Discussion"}]
+            "pages": [{"title_markdown": "Agenda", "markdown": "Discussion"}]
         }));
     }
 

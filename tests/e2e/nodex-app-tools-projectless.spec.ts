@@ -199,7 +199,7 @@ test("projectless agents use Profile content and Automation tools in both intera
           projectId: seedProject.projectId,
           title: "Projectless content",
           status: "build",
-          nfm: "Original projectless content.",
+          markdown: "Original projectless content.",
         });
         const database = await seed.readDatabase({
           projectId: seedProject.projectId,

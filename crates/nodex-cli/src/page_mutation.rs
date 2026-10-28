@@ -88,7 +88,7 @@ pub(crate) fn insert_page_content(
     arguments: PageInsertArgs,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
-    let fragment = validate_nfm_fragment(read_content_input(
+    let fragment = validate_fragment(read_content_input(
         arguments.file.as_deref(),
         MAX_BODY_INPUT_BYTES,
         "Page insertion",
@@ -105,11 +105,11 @@ pub(crate) fn insert_page_content(
     )
 }
 
-fn validate_nfm_fragment(fragment: String) -> Result<String, CliError> {
+fn validate_fragment(fragment: String) -> Result<String, CliError> {
     if fragment.trim().is_empty() {
         return Err(CliError::new(
             CliErrorCode::InvalidInput,
-            "Page insertion must contain at least one Nested Markdown Block; use <empty-block/> to insert an intentional empty Block",
+            "Page insertion must contain at least one Block; use <br> to insert an intentional empty Block",
         ));
     }
     Ok(fragment)
@@ -305,7 +305,7 @@ impl SemanticWrite {
             | Self::BlockInsert { .. }
             | Self::BlockUpdate { .. }
             | Self::BlockMove { .. }
-            | Self::BlockDelete { .. } => LibraryPageProjectionFileKind::BodyNestedMarkdown,
+            | Self::BlockDelete { .. } => LibraryPageProjectionFileKind::BodyMarkdown,
         }
     }
 
@@ -323,13 +323,13 @@ impl SemanticWrite {
                 .collect(),
             Self::Insert { fragment, anchor } => vec![DocumentSemanticCommand::InsertBody {
                 anchor: anchor.clone(),
-                nested_markdown: fragment.clone(),
+                markdown: fragment.clone(),
             }],
             Self::Replace {
                 body,
                 expected_etag,
             } => vec![DocumentSemanticCommand::ReplaceBody {
-                nested_markdown: body.clone(),
+                markdown: body.clone(),
                 expected_etag: expected_etag.clone(),
             }],
             Self::Title {
@@ -800,7 +800,7 @@ mod tests {
         let write = SemanticWrite::Patch(patch);
         let error = write.enrich_core_error(CliError::new(
             CliErrorCode::PatchOverlap,
-            "document operation NfmPatchOverlap: NFM patches 0 and 1 overlap",
+            "document operation MarkdownPatchOverlap: Markdown patches 0 and 1 overlap",
         ));
         assert_eq!(error.hunk, Some(2));
         assert_eq!(error.line, Some(7));
@@ -871,14 +871,10 @@ mod tests {
     }
 
     #[test]
-    fn nfm_fragment_validation_rejects_whitespace_and_accepts_explicit_empty_blocks() {
-        let error =
-            validate_nfm_fragment("\n \t\n".to_owned()).expect_err("whitespace-only Fragment");
+    fn markdown_fragment_validation_rejects_whitespace_and_accepts_explicit_empty_blocks() {
+        let error = validate_fragment("\n \t\n".to_owned()).expect_err("whitespace-only Fragment");
         assert_eq!(error.code, CliErrorCode::InvalidInput);
-        assert!(error.message.contains("<empty-block/>"));
-        assert_eq!(
-            validate_nfm_fragment("<empty-block/>".to_owned()).unwrap(),
-            "<empty-block/>"
-        );
+        assert!(error.message.contains("<br>"));
+        assert_eq!(validate_fragment("<br>".to_owned()).unwrap(), "<br>");
     }
 }

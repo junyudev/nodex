@@ -14,9 +14,9 @@ It covers:
 - Board card drag within the board
 - Multi-card Board drag
 - Drag behavior while Board search/filter/sort rules are active
-- Block drag from NFM editors into Board
-- Board card drag into NFM editors
-- Block drag between independently mounted NFM editor surfaces
+- Block drag from Page editors into Board
+- Board card drag into Page editors
+- Block drag between independently mounted Page editor surfaces
 
 It does not redefine general BlockNote side-menu behavior outside these Board-facing flows.
 
@@ -139,11 +139,11 @@ This post-removal contract must stay identical across:
 
 ## Editor Interop
 
-### NFM block -> Database View
+### Page editor block -> Database View
 
 - Task shorthand interpretation, literal fallback, modifiers, and authoring feedback follow [Task Shorthand Page Promotion Behavior](task-shorthand-page-promotion-behavior.md).
 - Native block drag from Card Stage and independently mounted owning/reference editors into Board or List targets the Database parent, not a serialized row snapshot. The custom side-menu starts one window-local drag session only after BlockNote has established the exact root Block selection. The default operation is move; holding Alt/Option at drop time copies instead.
-- Move submits one logical `BlockTransfer`: text-like roots promote to Cards in place, while non-convertible roots receive deterministic wrapper Cards. Copy recursively clones ownership with fresh IDs and leaves the source unchanged. Neither path serializes NFM nor mutates a Card description projection.
+- Move submits one logical `BlockTransfer`: text-like roots promote to Cards in place, while non-convertible roots receive deterministic wrapper Cards. Copy recursively clones ownership with fresh IDs and leaves the source unchanged. Neither path serializes Markdown text nor mutates a Card description projection.
 - If Move detaches every root Block from the source Document, Core inserts one stable-ID empty paragraph in the same atomic transfer. The source Page therefore becomes semantically blank but remains immediately editable; the placeholder is not promoted, and Undo removes it while restoring the exact original roots.
 - Images and attachments retain their stable Library File IDs. Move changes
   only the source and target body occurrences; Copy adds another occurrence of
@@ -187,7 +187,7 @@ This post-removal contract must stay identical across:
   horizontal boundary sits below the complete collapsed header stack (marker,
   label, count, and actions), never through that stack.
 
-### NFM editor -> NFM editor
+### Page editor -> Page editor
 
 - An explicit side-menu drag between different Card Documents carries stable root Block IDs and logical Document coordinates through the same window-local session. The destination renders the horizontal block insertion line and suppresses ProseMirror's vertical text caret.
 - Native editor placement and cross-surface transfers share a thin, rounded, soft-blue insertion line. Its feedback color is independent of the chosen accent and focus-ring color; inline and vertical cursors retain their own orientation and geometry.
@@ -199,7 +199,7 @@ This post-removal contract must stay identical across:
 - Same mounted-surface reorder remains BlockNote-native because it is already one Yjs transaction in one Document. Two separately mounted surfaces over the same logical Document fail closed until a stable-ID single-Document move command is available.
 - In nested Card outliners, the closest `.nfm-editor` to the event target owns the drop. An outer editor capture listener must not steal a drop intended for an embedded Card body.
 
-### Database Page -> NFM editor
+### Database Page -> Page editor
 
 - Dragging one or more ordered Board Cards or List rows into a Card Stage or independently mounted reference editor moves the real same-ID, childless Card shells into the target Document. Their separately owned title/body Documents are unchanged.
 - Move is the default. Holding Alt/Option at drop time copies each recursive ownership closure with fresh application IDs and preserves the source Cards.

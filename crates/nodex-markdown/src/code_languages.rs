@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 use unicode_normalization::UnicodeNormalization;
 
 const CATALOG: &str =
-    include_str!("../../../src/shared/nfm/code-language-catalog-v1.json");
+    include_str!("../../../src/shared/code-languages/code-language-catalog-v1.json");
 
 fn lookup_token(value: &str) -> String {
     let normalized: String = value.nfkc().collect();

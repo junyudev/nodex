@@ -1640,7 +1640,7 @@ fn block_materialization_hash(
         "schemaVersion": materialization.schema_version,
         "kind": materialization.kind,
         "blockTree": materialization.block_tree,
-        "nfm": materialization.nfm,
+        "markdown": materialization.markdown,
         "plainText": materialization.plain_text,
         "preview": materialization.preview,
         "references": materialization.references,

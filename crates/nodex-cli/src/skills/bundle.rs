@@ -16,7 +16,7 @@ const MAX_SKILL_TOTAL_BYTES: u64 = 512 * 1024;
 pub const OFFICIAL_SKILL_FILES: [&str; 7] = [
     "SKILL.md",
     "agents/openai.yaml",
-    "references/nested-markdown.md",
+    "references/markdown.md",
     "references/page-editor.md",
     "references/project-database-views.md",
     "references/queries-and-configuration.md",
@@ -29,7 +29,7 @@ const OFFICIAL_BUNDLE_FILES: [&str; 10] = [
     "release-manifest.json",
     "skills/nodex/SKILL.md",
     "skills/nodex/agents/openai.yaml",
-    "skills/nodex/references/nested-markdown.md",
+    "skills/nodex/references/markdown.md",
     "skills/nodex/references/page-editor.md",
     "skills/nodex/references/project-database-views.md",
     "skills/nodex/references/queries-and-configuration.md",

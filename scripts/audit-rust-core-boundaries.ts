@@ -131,11 +131,7 @@ const productionMainBundlePromise = build({
   metafile: true,
   logLevel: "silent",
 });
-const retiredDocumentAuthorityInputs = [
-  "document-operation-engine.ts",
-  "block-document-codec.ts",
-  "nfm-document-replacement.ts",
-];
+const retiredDocumentAuthorityInputs = ["document-operation-engine.ts", "block-document-codec.ts"];
 const auditProductionMainBundle = (
   productionMainBundle: Awaited<typeof productionMainBundlePromise>,
 ): void => {

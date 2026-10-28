@@ -22,7 +22,7 @@ const sha256 = (value: string): string => createHash("sha256").update(value).dig
 const skillFiles = [
   "SKILL.md",
   "agents/openai.yaml",
-  "references/nested-markdown.md",
+  "references/markdown.md",
   "references/page-editor.md",
   "references/project-database-views.md",
   "references/queries-and-configuration.md",

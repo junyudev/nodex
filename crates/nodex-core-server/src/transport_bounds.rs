@@ -311,7 +311,7 @@ mod tests {
     #[test]
     fn document_json_uses_its_larger_decoded_string_bound() {
         let accepted = serde_json::json!({
-            "nestedMarkdown": "x".repeat(nodex_core_protocol::MAX_DOCUMENT_JSON_STRING_BYTES),
+            "markdown": "x".repeat(nodex_core_protocol::MAX_DOCUMENT_JSON_STRING_BYTES),
         });
         validate_json(
             &serde_json::to_vec(&accepted).expect("accepted Document JSON"),
@@ -320,7 +320,7 @@ mod tests {
         .expect("Document JSON accepts an 8 MiB decoded string");
 
         let rejected = serde_json::json!({
-            "nestedMarkdown": "x".repeat(
+            "markdown": "x".repeat(
                 nodex_core_protocol::MAX_DOCUMENT_JSON_STRING_BYTES + 1
             ),
         });

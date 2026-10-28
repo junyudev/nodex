@@ -13,7 +13,7 @@ const originalClipboard = navigator.clipboard;
 
 function createThreadSummary(overrides: Partial<CodexThreadSummary> = {}): CodexThreadSummary {
   return {
-    threadId: "019-thread",
+    threadId: "019-session",
     projectId: "project-1",
     source: null,
     threadName: "Investigate parser issue",
@@ -43,7 +43,7 @@ afterEach(() => {
 describe("thread mention inline content", () => {
   test("resolves label and state from thread metadata", () => {
     const resolved = resolveThreadMentionChip({
-      uuid: "019-thread",
+      uuid: "019-session",
       thread: createThreadSummary({
         threadName: "",
         threadPreview: "First preview line\nSecond",
@@ -53,9 +53,9 @@ describe("thread mention inline content", () => {
 
     expect(resolved.label).toBe("First preview line Second");
     expect(resolved.stateLabel).toBe("Archived");
-    expect(resolved.shortUuid).toBe("019-thread");
+    expect(resolved.shortUuid).toBe("019-session");
 
-    const missing = resolveThreadMentionChip({ uuid: "019-thread", missing: true });
+    const missing = resolveThreadMentionChip({ uuid: "019-session", missing: true });
     expect(missing.label).toBe("Missing thread");
     expect(missing.tone).toBe("error");
   });
@@ -66,16 +66,16 @@ describe("thread mention inline content", () => {
       <NodexTooltipProvider>
         <ThreadMentionRuntimeProvider
           value={{
-            threads: {
-              "019-thread": createThreadSummary(),
+            sessions: {
+              "019-session": createThreadSummary(),
             },
             resolvingIds: new Set(),
-            openThread: (threadId) => {
+            openSession: (threadId) => {
               openedThreadId = threadId;
             },
           }}
         >
-          <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-thread" } }} />
+          <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-session" } }} />
         </ThreadMentionRuntimeProvider>
       </NodexTooltipProvider>,
     );
@@ -106,7 +106,7 @@ describe("thread mention inline content", () => {
     fireEvent.click(mention);
     await settleAsyncRender();
 
-    expect(openedThreadId).toBe("019-thread");
+    expect(openedThreadId).toBe("019-session");
   });
 
   test("opens uncached thread mentions when an opener is available", async () => {
@@ -115,14 +115,14 @@ describe("thread mention inline content", () => {
       <NodexTooltipProvider>
         <ThreadMentionRuntimeProvider
           value={{
-            threads: {},
-            resolvingIds: new Set(["019-thread"]),
-            openThread: (threadId) => {
+            sessions: {},
+            resolvingIds: new Set(["019-session"]),
+            openSession: (threadId) => {
               openedThreadId = threadId;
             },
           }}
         >
-          <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-thread" } }} />
+          <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-session" } }} />
         </ThreadMentionRuntimeProvider>
       </NodexTooltipProvider>,
     );
@@ -130,7 +130,7 @@ describe("thread mention inline content", () => {
     fireEvent.click(view.getByRole("button"));
     await settleAsyncRender();
 
-    expect(openedThreadId).toBe("019-thread");
+    expect(openedThreadId).toBe("019-session");
     expect(document.body.querySelector('[role="dialog"]') === null).toBe(true);
   });
 
@@ -139,14 +139,14 @@ describe("thread mention inline content", () => {
       <NodexTooltipProvider>
         <ThreadMentionRuntimeProvider
           value={{
-            threads: {
-              "019-thread": createThreadSummary(),
+            sessions: {
+              "019-session": createThreadSummary(),
             },
             resolvingIds: new Set(),
-            openThread: () => undefined,
+            openSession: () => undefined,
           }}
         >
-          <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-thread" } }} />
+          <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-session" } }} />
         </ThreadMentionRuntimeProvider>
       </NodexTooltipProvider>,
     );
@@ -158,7 +158,7 @@ describe("thread mention inline content", () => {
 
     await waitFor(() => {
       const tooltip = document.body.querySelector('[role="tooltip"]');
-      if (!tooltip || !textContent(tooltip).includes("Ready · 019-thread")) {
+      if (!tooltip || !textContent(tooltip).includes("Ready · 019-session")) {
         throw new Error("Thread mention tooltip not open");
       }
     });
@@ -179,11 +179,11 @@ describe("thread mention inline content", () => {
       <NodexTooltipProvider>
         <ThreadMentionRuntimeProvider
           value={{
-            threads: {},
+            sessions: {},
             resolvingIds: new Set(),
           }}
         >
-          <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-thread" } }} />
+          <ThreadMentionInlineContentView inlineContent={{ props: { uuid: "019-session" } }} />
         </ThreadMentionRuntimeProvider>
       </NodexTooltipProvider>,
     );
@@ -196,10 +196,10 @@ describe("thread mention inline content", () => {
     });
 
     fireEvent.click(
-      document.body.querySelector("button[aria-label='Copy thread UUID']") as HTMLButtonElement,
+      document.body.querySelector("button[aria-label='Copy Session ID']") as HTMLButtonElement,
     );
     await settleAsyncRender();
 
-    expect(writes.join(",")).toBe("019-thread");
+    expect(writes.join(",")).toBe("019-session");
   });
 });

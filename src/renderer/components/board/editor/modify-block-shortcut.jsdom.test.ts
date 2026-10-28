@@ -183,39 +183,6 @@ describe("modifyCurrentBlock", () => {
     },
   );
 
-  test("opens a bound thread section", () => {
-    let openedThreadId = "";
-    const editor = makeEditor({
-      id: "thread-section-1",
-      type: "threadSection",
-      props: { threadId: "thread-1" },
-    });
-
-    const handled = modifyCurrentBlock(editor, {
-      openThread: (threadId) => {
-        openedThreadId = threadId;
-      },
-    });
-
-    expect(handled).toBe(true);
-    expect(openedThreadId).toBe("thread-1");
-  });
-
-  test("leaves an unbound thread section unhandled", () => {
-    const handled = modifyCurrentBlock(
-      makeEditor({
-        id: "thread-section-1",
-        type: "threadSection",
-        props: { threadId: "" },
-      }),
-      {
-        openThread: () => undefined,
-      },
-    );
-
-    expect(handled).toBe(false);
-  });
-
   test("uses a single selected modifiable block before the cursor block", () => {
     let previewKey = "";
     const cursorBlock = { id: "paragraph-1", type: "paragraph", props: {} };

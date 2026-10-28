@@ -11,7 +11,7 @@ import type { DocumentId } from "./contracts";
 export const SYNCED_BLOCK_SOURCE_TYPE = "synced_block_source";
 export const SYNCED_BLOCK_REFERENCE_TYPE = "syncedBlockRef";
 export const SYNCED_BLOCK_DOCUMENT_SCHEMA_KEY = "nodex.synced-block";
-export const SYNCED_BLOCK_DOCUMENT_SCHEMA_VERSION = 2;
+export const SYNCED_BLOCK_DOCUMENT_SCHEMA_VERSION = 3;
 export const SYNCED_BLOCK_DOCUMENT_BODY_KEY = BODY_ONLY_DOCUMENT_ROOT_KEY;
 
 export type SyncedBlockDocumentEnvelope = BodyOnlyBlockDocumentEnvelope;

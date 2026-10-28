@@ -40,6 +40,107 @@ const firstText = (container: Y.XmlElement): Y.XmlText => {
   throw new Error("Expected a paragraph text node");
 };
 
+test.each([
+  { name: "omitted", props: {} },
+  {
+    name: "explicit default",
+    props: { backgroundColor: "default", textColor: "default", textAlignment: "left" },
+  },
+  { name: "non-default", props: { textColor: "red", textAlignment: "right" } },
+])("guarded creation history preserves $name stored props", async ({ props }) => {
+  await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (ctx) => {
+    const client = ctx.runtime.rootClient;
+    const documents = createCoreDocumentSyncAdapter(client);
+    const library = createCoreLibraryModuleAdapter({
+      client,
+      ...ctx.runtime.identity,
+      editorHistoryOwnerId: createUuidV7(),
+    });
+    const documentId = ctx.manifest.entityIdsByKey!.sourceDocument!;
+    const clientSessionId = createUuidV7();
+    const document = new Y.Doc({ guid: documentId });
+    const body = document.getXmlFragment("body");
+    const stream = await client.openDocumentEventStream(
+      { documentId, clientSessionId },
+      () => undefined,
+      () => undefined,
+      () => undefined,
+    );
+    const sync = async () => {
+      const result = await documents.sync({
+        documentId,
+        clientSessionId,
+        stateVector: Y.encodeStateVector(document),
+      });
+      if (!result.ok) throw new Error(result.error.message);
+      Y.applyUpdate(document, result.value.update, "canonical-core");
+      return result.value;
+    };
+    const apply = async (operation: LibraryApplyOperation) => {
+      const result = await library.apply({
+        operationId: createUuidV7(),
+        storeEpoch: ctx.runtime.identity.storeEpoch,
+        operation,
+      });
+      if (!result.ok) throw new Error(result.error.message);
+      await sync();
+      return result.value.structuralEdit!;
+    };
+    let manager: Y.UndoManager | undefined;
+    let journal: NfmTextHistoryJournal | undefined;
+    try {
+      const initial = await sync();
+      const before = materializePageDocument(document).blockTree;
+      const root = body.get(0) as Y.XmlElement;
+      const created = cloneXmlSubtree(root.get(0)) as Y.XmlElement;
+      const id = createUuidV7();
+      created.setAttribute("id", id);
+      manager = new Y.UndoManager(body, { trackedOrigins: new Set(["surface-local"]) });
+      journal = new NfmTextHistoryJournal(body, manager);
+      const stateVector = Y.encodeStateVector(document);
+      document.transact(() => {
+        root.insert(0, [created]);
+        const content = created.get(0) as Y.XmlElement;
+        for (const key of Object.keys(content.getAttributes())) content.removeAttribute(key);
+        for (const [key, value] of Object.entries(props)) content.setAttribute(key, value);
+      }, "surface-local");
+      const patch = journal.patch(manager.undoStack.at(-1)!);
+      const after = materializePageDocument(document).blockTree;
+      const written = await documents.applyUpdate({
+        documentId,
+        clientSessionId,
+        storeEpoch: initial.storeEpoch,
+        generation: initial.generation,
+        baseHeadSeq: initial.headSeq,
+        updateId: createUuidV7(),
+        touchedBlockIds: [id],
+        update: Y.encodeStateAsUpdate(document, stateVector),
+      });
+      if (!written.ok) throw new Error(written.error.message);
+      await sync();
+      const undone = await apply({
+        kind: "apply_structural_edit",
+        command: {
+          kind: "restore_editor_history",
+          documentId,
+          generation: initial.generation,
+          patch,
+        },
+      });
+      expect(materializePageDocument(document).blockTree).toEqual(before);
+      expect(undone.history).toBeDefined();
+      await apply({ kind: "reverse_structural_edit", token: undone.history! });
+      expect(materializePageDocument(document).blockTree).toEqual(after);
+      expect((block(body, id).get(0) as Y.XmlElement).getAttributes()).toEqual(props);
+    } finally {
+      journal?.dispose();
+      manager?.destroy();
+      document.destroy();
+      await stream.close();
+    }
+  });
+});
+
 const cases = [
   ...(
     [

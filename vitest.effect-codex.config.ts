@@ -8,6 +8,7 @@ const testFiles = filesForSuite("effect-codex", resolveVitestTestTier());
 
 export default defineConfig({
   test: {
+    setupFiles: ["./config/setup-markdown.ts"],
     ...testObservation("effect-codex"),
     env: TEST_ENVIRONMENT,
     environment: "node",

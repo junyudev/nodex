@@ -14,7 +14,7 @@ import {
   INITIAL_PROJECT_DESCRIPTION,
   INITIAL_PROJECT_NAME,
 } from "../../shared/initial-project-welcome";
-import { extractPlainText } from "../../shared/nfm";
+import { extractMarkdownText } from "../../shared/nodex-markdown";
 import type { Project } from "../../shared/types";
 import type {
   DesktopInitialProjectCreateInput,
@@ -180,7 +180,7 @@ describe("InitialProjectBootstrapRuntime", () => {
         assert.strictEqual(input?.name, "My Project");
         assert.deepEqual(input?.sources, [sourceRoot]);
         assert.strictEqual(input?.starterPage.titleMarkdown, "Welcome to Nodex");
-        assert.include(extractPlainText(input?.starterPage.nfm ?? ""), sourceRoot);
+        assert.include(extractMarkdownText(input?.starterPage.markdown ?? ""), sourceRoot);
         assert.deepEqual(presentations, [
           {
             projectId: input?.projectId,
@@ -260,7 +260,7 @@ describe("InitialProjectBootstrapRuntime", () => {
               pageId: "44444444-4444-4444-8444-444444444444",
               documentId: "55555555-5555-4555-8555-555555555555",
               titleMarkdown: "Welcome to Nodex",
-              nfm: "Welcome to Nodex",
+              markdown: "Welcome to Nodex",
             },
           },
         } satisfies InitialProjectJournal;

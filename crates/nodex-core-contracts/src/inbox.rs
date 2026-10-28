@@ -225,7 +225,7 @@ pub struct ProjectWorkspaceInboxItem {
     pub page_id: String,
     pub page_key: Option<String>,
     pub title: String,
-    /// The message as the stream shows it, in Nested Markdown: the Page body when it
+    /// The message as the stream shows it, in Nodex Markdown: the Page body when it
     /// fits the stream budget, otherwise the opening of its text as paragraphs.
     pub body: String,
     pub body_truncated: bool,

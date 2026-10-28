@@ -97,7 +97,7 @@ import {
 } from "./database-settings/database-settings-route";
 import { parseDatabaseId, parseDatabaseViewId } from "../../../shared/database-identities";
 import { createUuidV7 } from "../../../shared/uuid-v7";
-import { serializeNfm } from "../../../shared/nfm";
+import { writePortableMarkdown } from "../../../shared/nodex-markdown";
 import { DatabaseViewDeleteConfirmationDialog } from "./database-view-action-menu";
 import { useApplicationPending } from "@/bootstrap/application-surface";
 
@@ -937,14 +937,13 @@ export function DbViewSessionTab({
         },
         onCopyLink: async () => {
           const copied = await writeTextToClipboard(
-            serializeNfm([
+            writePortableMarkdown([
               {
                 type: "databaseViewRef",
-                databaseViewId: view.viewId,
-                displayHint: view.name,
+                props: { databaseViewId: view.viewId, displayHint: view.name },
                 children: [],
               },
-            ]),
+            ]).markdown,
           );
           if (copied) toast.success("Copied exact View link");
           else toast.danger("Couldn’t copy the View link");

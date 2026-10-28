@@ -15,7 +15,7 @@ const request = {
     kind: "create_page",
     pageId: "page-1",
     title: "Transport v2",
-    nfm: "Body",
+    markdown: "Body",
     status: "triage",
     dataSourceId: "source-1",
     viewPlacement: { kind: "end" },

@@ -413,6 +413,11 @@ fn persist_yjs_commit_inner(
         &input.materialization.references,
         &input.base_materialization.references,
     )?;
+    validate_title_session_mentions(
+        connection,
+        &input.materialization.rich_title,
+        &input.base_materialization.rich_title,
+    )?;
     validate_page_file_placements(
         connection,
         input.authority,
@@ -708,6 +713,7 @@ fn persist_yjs_genesis_inner(
         &input.materialization.references,
         &[],
     )?;
+    validate_title_session_mentions(connection, &input.materialization.rich_title, &[])?;
     validate_page_file_placements(connection, input.authority, None, input.materialization)?;
     reconcile_document_blocks(
         connection,
@@ -1503,11 +1509,12 @@ fn persist_materialization_row(
         .map_err(|_| internal("Reference JSON"))?;
     let asset_refs_json = serde_json::to_string(&materialization.asset_refs)
         .map_err(|_| internal("Asset reference JSON"))?;
+    let markdown_column = super::schema_migration::stored_markdown_column(connection)?;
     connection.execute(
-        "INSERT INTO document_materializations (\
+        &format!("INSERT INTO document_materializations (\
            document_id, generation, projected_seq, schema_version, \
            materialization_derivation_version, title, title_rich_json, title_rich_hash, \
-           nfm, plain_text, preview, block_tree_json, references_json, asset_refs_json, \
+           {markdown_column}, plain_text, preview, block_tree_json, references_json, asset_refs_json, \
            updated_at\
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
          ON CONFLICT(document_id) DO UPDATE SET \
@@ -1515,11 +1522,11 @@ fn persist_materialization_row(
            schema_version = excluded.schema_version, \
            materialization_derivation_version = excluded.materialization_derivation_version, \
            title = excluded.title, title_rich_json = excluded.title_rich_json, \
-           title_rich_hash = excluded.title_rich_hash, nfm = excluded.nfm, \
+           title_rich_hash = excluded.title_rich_hash, {markdown_column} = excluded.{markdown_column}, \
            plain_text = excluded.plain_text, preview = excluded.preview, \
            block_tree_json = excluded.block_tree_json, \
            references_json = excluded.references_json, asset_refs_json = excluded.asset_refs_json, \
-           updated_at = excluded.updated_at",
+           updated_at = excluded.updated_at"),
         params![
             document_id,
             generation,
@@ -1529,7 +1536,7 @@ fn persist_materialization_row(
             materialization.title,
             rich_title_json,
             rich_title_hash,
-            materialization.nfm,
+            materialization.markdown,
             materialization.plain_text,
             materialization.preview,
             block_tree_json,
@@ -1560,41 +1567,8 @@ pub(crate) fn persist_materialization(
     replace_page_reference_projection(connection, document_id, &materialization.references, now)
 }
 
-/// An NFM encoding change does not change Block identity, text, references or
+/// An Markdown encoding change does not change Block identity, text, references or
 /// user modification times. Refresh only the projections that contain its bytes.
-pub(crate) fn persist_nfm_derivation_upgrade(
-    connection: &Connection,
-    head: &DocumentHeadRow,
-    nfm: &str,
-) -> Result<(), StoreError> {
-    let changed = connection.execute(
-        "UPDATE document_materializations SET nfm=?1, materialization_derivation_version=?2
-         WHERE document_id=?3 AND generation=?4 AND projected_seq=?5 AND schema_version=?6",
-        params![
-            nfm,
-            CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION,
-            head.id,
-            head.generation,
-            head.head_seq,
-            head.schema_version
-        ],
-    )?;
-    if changed != 1 {
-        return Err(corrupt(
-            "NFM derivation upgrade requires a materialization at the exact Document head",
-        ));
-    }
-    connection.execute(
-        "UPDATE page_read_model SET description_length=?1,has_description=?2 WHERE document_id=?3",
-        params![
-            i64::try_from(nfm.len()).map_err(|_| internal("Page description length overflow"))?,
-            i64::from(!nfm.trim().is_empty()),
-            head.id
-        ],
-    )?;
-    Ok(())
-}
-
 /// Rebuilds a schema-derived materialization without turning retained, unowned
 /// recovery Documents back into visible reference sources. Their full
 /// materialization remains durable for Undo/restore; only owner-scoped reverse
@@ -1667,6 +1641,12 @@ pub(crate) fn replace_document_block_index_for_schema_migration(
             "DELETE FROM document_block_index WHERE document_id = ?1 AND block_id = ?2",
             params![document_id, block_id],
         )?;
+        // Retired prompt markers keep their identity for authenticated history,
+        // but can no longer be active content or recreated by current schemas.
+        connection.execute(
+            "UPDATE blocks SET lifecycle = 'deleted' WHERE id = ?1 AND type = 'threadSection'",
+            [&block_id],
+        )?;
     }
 
     // Deleted Pages retain their Document index for exact restore. Those Blocks
@@ -1690,6 +1670,34 @@ pub(crate) fn replace_document_block_index_for_schema_migration(
         if changed == 1 {
             continue;
         }
+        let placed_elsewhere = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM document_block_index WHERE block_id = ?1 AND document_id <> ?2)",
+            params![unit.block_id, document_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if placed_elsewhere {
+            // Dormant Documents retain their canonical body after promotion or
+            // transfer. Rebuilding them cannot reclaim Blocks now owned elsewhere.
+            let has_owner = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM block_documents WHERE document_id = ?1)",
+                [document_id],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if has_owner {
+                return Err(corrupt(
+                    "Migrated Document claims a Block in another Document",
+                ));
+            }
+            continue;
+        }
+        // A marker-only body gains one canonical empty paragraph. Existing
+        // identities remain untouched, including retained deleted Documents.
+        let created = connection.execute(
+            "INSERT INTO blocks(id, library_id, type, lifecycle, created_at, updated_at) \
+             SELECT ?1, library_id, ?2, 'active', created_at, updated_at FROM documents \
+             WHERE id = ?3 AND NOT EXISTS (SELECT 1 FROM blocks WHERE id = ?1)",
+            params![unit.block_id, unit.block_type, document_id],
+        )?;
         connection.execute(
             "INSERT INTO document_block_index (\
                document_id, block_id, parent_block_id, ordinal, block_type, text, projected_seq\
@@ -1704,6 +1712,14 @@ pub(crate) fn replace_document_block_index_for_schema_migration(
                 projected_seq,
             ],
         )?;
+        if created == 1 {
+            connection.execute(
+                "UPDATE blocks SET lifecycle = 'deleted' WHERE id = ?1 AND EXISTS (\
+                   SELECT 1 FROM block_documents ownership JOIN blocks owner ON owner.id = ownership.block_id \
+                   WHERE ownership.document_id = ?2 AND owner.lifecycle = 'deleted')",
+                params![unit.block_id, document_id],
+            )?;
+        }
     }
     Ok(())
 }
@@ -2090,9 +2106,9 @@ fn update_page_document_projection(
             authority.head.schema_version,
             materialization.title,
             materialization.preview,
-            i64::try_from(materialization.nfm.len())
+            i64::try_from(materialization.markdown.len())
                 .map_err(|_| internal("Page description length overflow"))?,
-            i64::from(!materialization.nfm.trim().is_empty()),
+            i64::from(!materialization.markdown.trim().is_empty()),
             now,
             authority.owner_block_id,
             authority.head.id,
@@ -2168,10 +2184,38 @@ fn insert_library_search_unit(
     Ok(())
 }
 
+fn validate_title_session_mentions(
+    connection: &Connection,
+    title: &[crate::domain::rich_text::RichTextItem],
+    base_title: &[crate::domain::rich_text::RichTextItem],
+) -> Result<(), StoreError> {
+    let references = |items: &[crate::domain::rich_text::RichTextItem]| {
+        items
+            .iter()
+            .filter_map(|item| match item {
+                crate::domain::rich_text::RichTextItem::ThreadMention { uuid } => {
+                    Some(BlockDocumentReference::Session {
+                        source_block_id: "title".into(),
+                        target_session_id: uuid.clone(),
+                    })
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    validate_document_references(
+        connection,
+        "",
+        None,
+        &references(title),
+        &references(base_title),
+    )
+}
+
 fn validate_document_references(
     connection: &Connection,
     library_id: &str,
-    actor_project_id: Option<&str>,
+    _actor_project_id: Option<&str>,
     references: &[BlockDocumentReference],
     base_references: &[BlockDocumentReference],
 ) -> Result<(), StoreError> {
@@ -2216,21 +2260,12 @@ fn validate_document_references(
                 )
                 .optional()?
                 .is_some(),
-            // A chat is referenced by its Thread: a native Codex Thread, or the execution root
-            // Thread an Agent chat's Session is bound to.
-            BlockDocumentReference::Thread {
-                target_thread_id, ..
+            BlockDocumentReference::Session {
+                target_session_id, ..
             } => connection
                 .query_row(
-                    "SELECT 1 FROM codex_threads WHERE thread_id = ?1 \
-                     AND (project_id = ?2 OR project_id IS NULL) \
-                     UNION ALL \
-                     SELECT 1 FROM project_session_execution_bindings binding \
-                     JOIN project_sessions session ON session.id = binding.session_id \
-                     WHERE binding.runtime_thread_id = ?1 \
-                       AND (session.project_id = ?2 OR session.project_id IS NULL) \
-                     LIMIT 1",
-                    params![target_thread_id, actor_project_id],
+                    "SELECT 1 FROM project_sessions WHERE id = ?1 LIMIT 1",
+                    [target_session_id],
                     |_| Ok(()),
                 )
                 .optional()?
@@ -2249,7 +2284,7 @@ fn validate_document_references(
 
 // Include the source occurrence so copying or retargeting an unavailable
 // reference cannot borrow another Block's retained target. Counts also fence
-// repeated inline Thread mentions within the same Block.
+// repeated inline Session mentions within the same Block.
 fn reference_identity(reference: &BlockDocumentReference) -> (&str, &str, &str) {
     match reference {
         BlockDocumentReference::Page {
@@ -2267,10 +2302,10 @@ fn reference_identity(reference: &BlockDocumentReference) -> (&str, &str, &str) 
             database_view_id,
             ..
         } => ("database_view", source_block_id, database_view_id),
-        BlockDocumentReference::Thread {
+        BlockDocumentReference::Session {
             source_block_id,
-            target_thread_id,
-        } => ("thread", source_block_id, target_thread_id),
+            target_session_id,
+        } => ("session", source_block_id, target_session_id),
     }
 }
 
@@ -2296,11 +2331,13 @@ fn reference_description(reference: &BlockDocumentReference) -> String {
         } => format!(
             "unreadable Database View reference from `{source_block_id}` to `{database_view_id}`"
         ),
-        BlockDocumentReference::Thread {
+        BlockDocumentReference::Session {
             source_block_id,
-            target_thread_id,
+            target_session_id,
         } => {
-            format!("unreadable Thread reference from `{source_block_id}` to `{target_thread_id}`")
+            format!(
+                "unavailable Session reference from `{source_block_id}` to `{target_session_id}`"
+            )
         }
     }
 }
@@ -2541,9 +2578,9 @@ mod reference_tests {
                 database_view_id: target.to_owned(),
                 display_hint: None,
             },
-            BlockDocumentReference::Thread {
+            BlockDocumentReference::Session {
                 source_block_id: source.to_owned(),
-                target_thread_id: target.to_owned(),
+                target_session_id: target.to_owned(),
             },
         ]
     }
@@ -2587,7 +2624,7 @@ mod reference_tests {
     }
 
     #[test]
-    fn chat_references_name_native_or_agent_execution_threads_in_scope() {
+    fn chat_mentions_accept_sessions_across_the_profile() {
         let directory = tempfile::tempdir().unwrap();
         let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
         kernel
@@ -2601,39 +2638,31 @@ mod reference_tests {
                               ('other', 'Other', 'now', 'now', 'library');
                      INSERT INTO project_sessions (id, project_id, no_thread_fallback_title, \"order\", created_at, updated_at)
                        VALUES ('session', 'project', 'Chat', 0, 'now', 'now'),
-                              ('elsewhere', 'other', 'Chat', 1, 'now', 'now');
+                              ('elsewhere', 'other', 'Chat', 1, 'now', 'now'),
+                              ('unstarted', NULL, 'Chat', 2, 'now', 'now');
                      INSERT INTO project_session_execution_bindings (session_id, runtime_id, runtime_thread_id, launch_request_id, bound_at)
                        VALUES ('session', 'runtime', 'nodex:thread:agent', 'launch', 'now'),
                               ('elsewhere', 'runtime', 'nodex:thread:other', 'launch-other', 'now');",
                 )?;
                 let reference = |thread: &str| {
-                    [BlockDocumentReference::Thread {
+                    [BlockDocumentReference::Session {
                         source_block_id: "block".to_owned(),
-                        target_thread_id: thread.to_owned(),
+                        target_session_id: thread.to_owned(),
                     }]
                 };
-                validate_document_references(
-                    connection,
-                    "library",
-                    Some("project"),
-                    &reference("nodex:thread:agent"),
-                    &[],
-                )
-                .expect("an Agent chat in the Project is referenceable");
-                for (thread, project) in [
-                    ("nodex:thread:other", Some("project")),
-                    ("nodex:thread:agent", None),
-                    ("nodex:thread:unbound", Some("project")),
-                ] {
-                    let error = validate_document_references(
-                        connection,
-                        "library",
-                        project,
-                        &reference(thread),
-                        &[],
-                    )
-                    .expect_err("a chat outside the reference scope is not referenceable");
-                    assert_eq!(error.code, StoreErrorCode::InvalidInput);
+                for session in ["session", "elsewhere", "unstarted"] {
+                    for project in [Some("project"), None] {
+                        validate_document_references(connection,"library",project,&reference(session),&[]).expect("any existing Profile Session is mentionable");
+                    }
+                }
+                use crate::domain::rich_text::RichTextItem;
+                let title = vec![RichTextItem::ThreadMention { uuid:"elsewhere".into() }];
+                validate_title_session_mentions(connection,&title,&[])?;
+                let missing = vec![RichTextItem::ThreadMention { uuid:"missing".into() }];
+                assert!(validate_title_session_mentions(connection,&missing,&[]).is_err());
+                validate_title_session_mentions(connection,&missing,&missing)?;
+                for thread in ["nodex:thread:agent","nodex:thread:other","missing-session"] {
+                    assert_eq!(validate_document_references(connection,"library",Some("project"),&reference(thread),&[]).unwrap_err().code,StoreErrorCode::InvalidInput);
                 }
                 Ok::<_, StoreError>(())
             })

@@ -3,7 +3,8 @@ use thiserror::Error;
 
 use super::block_materialization::MaterializedBlockNode;
 use super::block_tree::MAX_BLOCK_ID_LENGTH;
-use super::nfm::{NfmBlock, NfmInlineContent, parse_page_deep_link};
+use nodex_markdown::links::parse_page_link as parse_page_deep_link;
+use serde_json::Value;
 
 const MAX_REFERENCE_DISPLAY_HINT_LENGTH: usize = 512;
 const NODEX_ASSET_SCHEME: &str = "nodex://assets/";
@@ -40,12 +41,12 @@ pub enum BlockDocumentReference {
         #[serde(rename = "displayHint", skip_serializing_if = "Option::is_none")]
         display_hint: Option<String>,
     },
-    #[serde(rename = "thread")]
-    Thread {
+    #[serde(rename = "session")]
+    Session {
         #[serde(rename = "sourceBlockId")]
         source_block_id: String,
-        #[serde(rename = "targetThreadId")]
-        target_thread_id: String,
+        #[serde(rename = "targetSessionId")]
+        target_session_id: String,
     },
 }
 
@@ -64,7 +65,7 @@ impl BlockDocumentReference {
             Self::Block {
                 target_block_id, ..
             } => Some(target_block_id),
-            Self::DatabaseView { .. } | Self::Thread { .. } => None,
+            Self::DatabaseView { .. } | Self::Session { .. } => None,
         }
     }
 
@@ -73,7 +74,7 @@ impl BlockDocumentReference {
             Self::DatabaseView {
                 database_view_id, ..
             } => Some(database_view_id),
-            Self::Page { .. } | Self::Block { .. } | Self::Thread { .. } => None,
+            Self::Page { .. } | Self::Block { .. } | Self::Session { .. } => None,
         }
     }
 }
@@ -105,8 +106,6 @@ pub struct BlockDocumentDerivedRecords {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum DerivedRecordsError {
-    #[error("NFM projection does not match the materialized Block tree")]
-    ShapeMismatch,
     #[error(
         "{label} must be a non-empty stable identity no longer than {MAX_BLOCK_ID_LENGTH} characters"
     )]
@@ -115,193 +114,175 @@ pub enum DerivedRecordsError {
         "Reference display hints must not exceed {MAX_REFERENCE_DISPLAY_HINT_LENGTH} characters"
     )]
     DisplayHintTooLong,
-    #[error("Owning {block_type} NFM uuid {uuid} does not match Block {block_id}")]
-    OwningBlockIdentity {
-        block_type: &'static str,
-        uuid: String,
-        block_id: String,
-    },
 }
 
 pub fn derive_block_document_records(
     block_tree: &[MaterializedBlockNode],
-    nfm_blocks: &[NfmBlock],
 ) -> Result<BlockDocumentDerivedRecords, DerivedRecordsError> {
     let mut records = BlockDocumentDerivedRecords {
         references: Vec::new(),
         asset_refs: Vec::new(),
     };
-    collect_records(block_tree, nfm_blocks, &mut records)?;
+    collect_records(block_tree, &mut records)?;
     Ok(records)
 }
 
 fn collect_records(
-    block_tree: &[MaterializedBlockNode],
-    nfm_blocks: &[NfmBlock],
+    blocks: &[MaterializedBlockNode],
     records: &mut BlockDocumentDerivedRecords,
 ) -> Result<(), DerivedRecordsError> {
-    if block_tree.len() != nfm_blocks.len() {
-        return Err(DerivedRecordsError::ShapeMismatch);
-    }
-    for (block, nfm) in block_tree.iter().zip(nfm_blocks) {
-        if let Some(content) = nfm_content(nfm) {
-            collect_inline_records(&block.id, content, records);
+    for block in blocks {
+        if let Some(content) = &block.content {
+            collect_inline_records(&block.id, content, records)?;
         }
-        match nfm {
-            NfmBlock::Table { rows, .. } => {
-                for row in rows {
-                    for cell in &row.cells {
-                        collect_inline_records(&block.id, &cell.content, records);
-                    }
-                }
-            }
-            NfmBlock::Image {
-                source, caption, ..
-            } => {
-                collect_inline_records(&block.id, caption, records);
-                append_asset_reference(
-                    &mut records.asset_refs,
-                    &block.id,
-                    BlockDocumentAssetKind::Image,
-                    source,
-                );
-            }
-            NfmBlock::Page { uuid } if uuid != &block.id => {
-                return Err(DerivedRecordsError::OwningBlockIdentity {
-                    block_type: "Page",
-                    uuid: uuid.clone(),
-                    block_id: block.id.clone(),
-                });
-            }
-            NfmBlock::Database { uuid } if uuid != &block.id => {
-                return Err(DerivedRecordsError::OwningBlockIdentity {
-                    block_type: "Database",
-                    uuid: uuid.clone(),
-                    block_id: block.id.clone(),
-                });
-            }
-            NfmBlock::PageRef { target_block_id } => {
-                assert_reference_id(target_block_id, "targetBlockId")?;
+        let prop = |key: &str| {
+            block
+                .props
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        };
+        match block.block_type.as_str() {
+            "image" => append_asset_reference(
+                &mut records.asset_refs,
+                &block.id,
+                BlockDocumentAssetKind::Image,
+                prop("url"),
+            ),
+            "pageRef" => {
+                let target = prop("targetBlockId");
+                assert_reference_id(target, "targetBlockId")?;
                 append_page_reference(
                     &mut records.references,
                     block.id.clone(),
-                    target_block_id.clone(),
+                    target.into(),
                     PageReferencePresentation::ReferenceBlock,
                 );
             }
-            NfmBlock::DatabaseViewRef {
-                database_view_id,
-                display_hint,
-            } => {
-                assert_reference_id(database_view_id, "databaseViewId")?;
+            "databaseViewRef" => {
+                let target = prop("databaseViewId");
+                assert_reference_id(target, "databaseViewId")?;
                 records
                     .references
                     .push(BlockDocumentReference::DatabaseView {
                         source_block_id: block.id.clone(),
-                        database_view_id: database_view_id.clone(),
-                        display_hint: read_display_hint(display_hint)?,
+                        database_view_id: target.into(),
+                        display_hint: read_display_hint(
+                            &block
+                                .props
+                                .get("displayHint")
+                                .and_then(Value::as_str)
+                                .map(str::to_owned),
+                        )?,
                     });
             }
-            NfmBlock::SyncedBlockRef { source_block_id } => {
-                assert_reference_id(source_block_id, "sourceBlockId")?;
+            "syncedBlockRef" | "templateRef" => {
+                let target = prop("sourceBlockId");
+                assert_reference_id(target, "sourceBlockId")?;
                 records.references.push(BlockDocumentReference::Block {
                     source_block_id: block.id.clone(),
-                    target_block_id: source_block_id.clone(),
-                    display_hint: None,
-                });
-            }
-            NfmBlock::TemplateRef {
-                source_block_id,
-                display_hint,
-            } => {
-                assert_reference_id(source_block_id, "sourceBlockId")?;
-                records.references.push(BlockDocumentReference::Block {
-                    source_block_id: block.id.clone(),
-                    target_block_id: source_block_id.clone(),
-                    display_hint: read_display_hint(display_hint)?,
+                    target_block_id: target.into(),
+                    display_hint: read_display_hint(
+                        &block
+                            .props
+                            .get("displayHint")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned),
+                    )?,
                 });
             }
             _ => {}
         }
-
-        collect_records(&block.children, nfm_children(nfm), records)?;
+        collect_records(&block.children, records)?;
     }
     Ok(())
 }
 
-fn nfm_content(block: &NfmBlock) -> Option<&[NfmInlineContent]> {
-    match block {
-        NfmBlock::Paragraph { content, .. }
-        | NfmBlock::Heading { content, .. }
-        | NfmBlock::BulletListItem { content, .. }
-        | NfmBlock::NumberedListItem { content, .. }
-        | NfmBlock::CheckListItem { content, .. }
-        | NfmBlock::Toggle { content, .. }
-        | NfmBlock::Blockquote { content, .. }
-        | NfmBlock::Callout { content, .. } => Some(content),
-        _ => None,
-    }
-}
-
-fn nfm_children(block: &NfmBlock) -> &[NfmBlock] {
-    match block {
-        NfmBlock::Paragraph { children, .. }
-        | NfmBlock::EmptyBlock { children }
-        | NfmBlock::Heading { children, .. }
-        | NfmBlock::BulletListItem { children, .. }
-        | NfmBlock::NumberedListItem { children, .. }
-        | NfmBlock::CheckListItem { children, .. }
-        | NfmBlock::Toggle { children, .. }
-        | NfmBlock::Blockquote { children, .. }
-        | NfmBlock::CodeBlock { children, .. }
-        | NfmBlock::Callout { children, .. }
-        | NfmBlock::Image { children, .. }
-        | NfmBlock::ThreadSection { children, .. }
-        | NfmBlock::Divider { children } => children,
-        _ => &[],
-    }
-}
-
 fn collect_inline_records(
     source_block_id: &str,
-    content: &[NfmInlineContent],
+    value: &Value,
     records: &mut BlockDocumentDerivedRecords,
-) {
-    for item in content {
-        match item {
-            NfmInlineContent::PageMention { target_page_id } => {
-                append_page_reference(
-                    &mut records.references,
-                    source_block_id.to_owned(),
-                    target_page_id.clone(),
-                    PageReferencePresentation::Mention,
-                );
+) -> Result<(), DerivedRecordsError> {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_inline_records(source_block_id, item, records)?;
             }
-            NfmInlineContent::Link { href, .. } => {
-                if let Some(target_page_id) = parse_page_deep_link(href) {
+        }
+        Value::Object(object) => {
+            let prop = |key: &str| {
+                object
+                    .get("props")
+                    .and_then(|props| props.get(key))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+            };
+            match object.get("type").and_then(Value::as_str) {
+                Some("pageMention") => {
+                    let target = prop("targetPageId");
+                    assert_reference_id(target, "targetPageId")?;
                     append_page_reference(
                         &mut records.references,
-                        source_block_id.to_owned(),
-                        target_page_id,
-                        PageReferencePresentation::Link,
+                        source_block_id.into(),
+                        target.into(),
+                        PageReferencePresentation::Mention,
                     );
                 }
+                Some("link") => {
+                    if let Some(target) = object
+                        .get("href")
+                        .and_then(Value::as_str)
+                        .and_then(parse_page_deep_link)
+                    {
+                        append_page_reference(
+                            &mut records.references,
+                            source_block_id.into(),
+                            target,
+                            PageReferencePresentation::Link,
+                        );
+                    }
+                }
+                Some("threadMention") => {
+                    let target = prop("uuid");
+                    assert_reference_id(target, "sessionId")?;
+                    records.references.push(BlockDocumentReference::Session {
+                        source_block_id: source_block_id.into(),
+                        target_session_id: target.into(),
+                    });
+                }
+                Some("attachment") => append_asset_reference(
+                    &mut records.asset_refs,
+                    source_block_id,
+                    BlockDocumentAssetKind::Attachment,
+                    prop("source"),
+                ),
+                Some("inlineImage") => {
+                    append_asset_reference(
+                        &mut records.asset_refs,
+                        source_block_id,
+                        BlockDocumentAssetKind::Image,
+                        prop("url"),
+                    );
+                    if let Some(target) = parse_page_deep_link(prop("href")) {
+                        append_page_reference(
+                            &mut records.references,
+                            source_block_id.into(),
+                            target,
+                            PageReferencePresentation::Link,
+                        );
+                    }
+                }
+                _ => {}
             }
-            NfmInlineContent::ThreadMention { uuid } => {
-                records.references.push(BlockDocumentReference::Thread {
-                    source_block_id: source_block_id.to_owned(),
-                    target_thread_id: uuid.clone(),
-                });
+            for key in ["content", "rows", "cells"] {
+                if let Some(child) = object.get(key) {
+                    collect_inline_records(source_block_id, child, records)?;
+                }
             }
-            NfmInlineContent::Attachment { source, .. } => append_asset_reference(
-                &mut records.asset_refs,
-                source_block_id,
-                BlockDocumentAssetKind::Attachment,
-                source,
-            ),
-            _ => {}
         }
+        _ => {}
     }
+    Ok(())
 }
 
 fn append_page_reference(
@@ -435,9 +416,46 @@ mod tests {
     use crate::document::create_compatible_document;
     use crate::domain::block_materialization::materialize_block_tree;
     use crate::domain::block_tree::decode_block_tree;
-    use crate::domain::nfm::materialize_nfm;
 
     use super::*;
+
+    #[test]
+    fn inline_images_are_assets_and_caption_markup_is_plain_text() {
+        let blocks: Vec<MaterializedBlockNode> = serde_json::from_value(serde_json::json!([
+            {"id":"text","type":"paragraph","props":{},"content":[{"type":"inlineImage","props":{"url":"nodex://files/inline","alt":"Searchable badge","width":32,"href":"nodex://pages/linked"}},{"type":"threadMention","props":{"uuid":"session"}}],"children":[]},
+            {"id":"image","type":"image","props":{"url":"nodex://files/block","caption":"Literal **caption** :attachment{source=hidden}"},"children":[]}
+        ])).unwrap();
+        let records = derive_block_document_records(&blocks).unwrap();
+        assert_eq!(
+            records
+                .asset_refs
+                .iter()
+                .map(|asset| asset.file_id.as_deref().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["inline", "block"]
+        );
+        assert!(records.references.iter().any(|reference| matches!(reference,BlockDocumentReference::Session { target_session_id, .. } if target_session_id=="session")));
+        assert!(records.references.iter().any(|reference| matches!(reference,BlockDocumentReference::Page { target_page_id, presentation:PageReferencePresentation::Link, .. } if target_page_id=="linked")));
+        let text = crate::domain::markdown::materialize_markdown(&blocks)
+            .unwrap()
+            .plain_text;
+        assert!(text.contains("Searchable badge"));
+        assert!(text.contains("Literal **caption** :attachment{source=hidden}"));
+        let mut copied = blocks.clone();
+        crate::domain::files::remap_block_files(
+            &mut copied,
+            &std::collections::BTreeMap::from([("inline".into(), "copied".into())]),
+        );
+        assert_eq!(
+            copied[0].content.as_ref().unwrap()[0]["props"]["url"],
+            "nodex://files/copied"
+        );
+        assert_eq!(
+            copied[0].content.as_ref().unwrap()[0]["props"]["href"],
+            "nodex://pages/linked"
+        );
+        assert_eq!(copied[1].props, blocks[1].props);
+    }
 
     #[test]
     fn matches_the_typescript_reference_and_asset_oracle() {
@@ -452,11 +470,9 @@ mod tests {
         let body = transaction.get_xml_fragment("body").expect("body root");
         let tree = decode_block_tree(&body, &transaction).expect("BlockTree");
         let blocks = materialize_block_tree(&tree).expect("BlockNote materialization");
-        let nfm = materialize_nfm(&blocks).expect("NFM materialization");
-        let actual = serde_json::to_value(
-            derive_block_document_records(&blocks, &nfm.blocks).expect("derived records"),
-        )
-        .expect("serialize derived records");
+        let actual =
+            serde_json::to_value(derive_block_document_records(&blocks).expect("derived records"))
+                .expect("serialize derived records");
         let expected: Value = serde_json::from_slice(
             &std::fs::read(root.join("matrix-materialization.json")).expect("oracle fixture"),
         )

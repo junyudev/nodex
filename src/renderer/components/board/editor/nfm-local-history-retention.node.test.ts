@@ -47,7 +47,7 @@ const membership = (request: LibraryModuleApplyRequest) => {
 const fixture = (
   apply: (request: LibraryModuleApplyRequest) => Promise<LibraryModuleApplyResult>,
 ) => {
-  const { document } = createPageDocumentGenesis({ documentId: "history", nfm: "One" });
+  const { document } = createPageDocumentGenesis({ documentId: "history", markdown: "One" });
   const body = document.getXmlFragment("body");
   const container = (body.get(0) as Y.XmlElement).get(0) as Y.XmlElement;
   const text = (container.get(0) as Y.XmlElement).get(0) as Y.XmlText;

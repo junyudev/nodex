@@ -28,13 +28,13 @@ describe("page prompt context", () => {
       pageId: "page-1",
       pageKey: "LAB-13",
       title: "Release plan",
-      nfm: '<image source="nodex://assets/diagram.png">Architecture</image>\n\nShip it',
+      markdown: "![Architecture](nodex://assets/diagram.png)\n\nShip it",
     });
 
     expect(context.source).toBe("nodex://pages/page-1");
     expect(context.pageKey).toBe("LAB-13");
     expect(context.promptInput.text).toBe(
-      "Page: Release plan\nPage key: LAB-13\nSource: nodex://pages/page-1\n\n[Image #1] (caption: Architecture)\nShip it",
+      "Page: Release plan\nPage key: LAB-13\nSource: nodex://pages/page-1\n\n[Image #1] (caption: Architecture)\n\nShip it",
     );
     expect(context.promptInput.images).toEqual([
       {
@@ -49,7 +49,7 @@ describe("page prompt context", () => {
       projectId: "project-a",
       pageId: "page-1",
       title: "  ",
-      nfm: "Body",
+      markdown: "Body",
     });
 
     expect(context.title).toBe("Untitled Page");
@@ -61,7 +61,7 @@ describe("page prompt context", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document-1",
       title: "Canonical title",
-      nfm: "# Release\n\nShip it",
+      markdown: "# Release\n\nShip it",
     });
     const connect = vi.fn(async () => undefined);
     const whenReady = vi.fn(async () => undefined);
@@ -82,7 +82,7 @@ describe("page prompt context", () => {
       });
 
       expect(materialized.title).toBe("Canonical title");
-      expect(materialized.nfm).toBe("# Release\nShip it");
+      expect(materialized.markdown).toBe("# Release\n\nShip it");
       expect(connect).toHaveBeenCalledOnce();
       expect(whenReady).toHaveBeenCalledOnce();
       expect(close).toHaveBeenCalledOnce();
@@ -95,7 +95,7 @@ describe("page prompt context", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document-1",
       title: "Canonical title",
-      nfm: "Body",
+      markdown: "Body",
     });
     const close = vi.fn(async () => undefined);
     const runtime = {

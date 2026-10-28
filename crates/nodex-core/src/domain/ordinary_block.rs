@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use nodex_core_contracts::library::{LibraryHeadingLevel, LibraryStructuralTurnIntoTarget};
 use serde_json::Value;
 
+use super::block_materialization::MaterializedBlockNode;
+
 pub fn canonical_ordinary_block_shape(
     target: &LibraryStructuralTurnIntoTarget,
 ) -> (&'static str, BTreeMap<String, Value>) {
@@ -83,6 +85,27 @@ fn append_plain_source(value: &Value, output: &mut String) {
         },
         _ => {}
     }
+}
+
+/// Omitted ordinary properties have the same meaning as explicit default values.
+pub fn semantic_empty_document_root(
+    blocks: &[MaterializedBlockNode],
+) -> Option<&MaterializedBlockNode> {
+    let [block] = blocks else { return None };
+    (block.block_type == "paragraph"
+        && block.children.is_empty()
+        && block
+            .content
+            .as_ref()
+            .is_some_and(|content| content.as_array().is_some_and(Vec::is_empty))
+        && block.props.iter().all(|(key, value)| {
+            matches!(
+                (key.as_str(), value.as_str()),
+                ("textColor" | "backgroundColor", Some("default"))
+                    | ("textAlignment", Some("left"))
+            )
+        }))
+    .then_some(block)
 }
 
 pub fn default_props() -> BTreeMap<String, Value> {

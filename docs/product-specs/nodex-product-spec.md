@@ -98,7 +98,7 @@ lifecycle-validated reference set.
 
 Read [Database, Pages, and Views Behavior](database-pages-and-views-behavior.md)
 for the feature contract, [Board Drag and Drop Behavior](board-drag-and-drop-behavior.md)
-for Board movement, and the focused NFM specifications in
+for Board movement, and the focused Page editor specifications in
 [the product-spec index](index.md) for editor interactions.
 
 ### Canvas
@@ -177,13 +177,13 @@ shell-capable agents and scripts use the native `nodex` CLI and official Skill. 
 Core contracts; neither receives raw SQL, a database path, renderer state, or
 caller-forged authority.
 
-Nested Markdown is the default agent bulk-content representation. Stable Block
+Nodex Markdown is the default agent bulk-content representation. Stable Block
 operations remain available when identity matters. Full Profile access retains
 semantic preconditions, exact execution routing and Profile/Library/Store epoch
 identity. Plan mode does not restrict content writes.
 
 Read [Agent Interface Behavior](agent-interface-behavior.md),
-[CLI Reference](../CLI.md), and [Nested Markdown](../references/nested-markdown-spec.md).
+[CLI Reference](../CLI.md), and [Nodex Markdown](../references/nodex-markdown.md).
 
 ## Product invariants
 
@@ -194,7 +194,7 @@ Read [Agent Interface Behavior](agent-interface-behavior.md),
 4. A successful mutation is visible from committed authority; users do not need
    a second save or refresh to make it real.
 5. Collaborative content has one Document authority. Summaries, search rows,
-   NFM, and UI caches are rebuildable projections.
+   Markdown text, and UI caches are rebuildable projections.
 6. Window layout and local interaction state never become content authority.
 7. Every Agent has full access to the current Profile; authenticated connection,
    captured execution identity and resource lifecycle remain exact.

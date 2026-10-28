@@ -43,7 +43,7 @@ function makeAttempt(sourceRoot: string): InitialProjectJournal {
         pageId: "44444444-4444-4444-8444-444444444444",
         documentId: "55555555-5555-4555-8555-555555555555",
         titleMarkdown: "Welcome to Nodex",
-        nfm: "Welcome to **Nodex**.",
+        markdown: "Welcome to **Nodex**.",
       },
     },
   };

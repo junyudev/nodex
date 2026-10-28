@@ -265,7 +265,7 @@ test("a surface created before mount undoes later text before structure through 
   const { document: doc } = createPageDocumentGenesis({
     documentId: "document:surface-history",
     title: "History",
-    nfm: "",
+    markdown: "",
     allocateBlockId: () => "block:paragraph",
   });
   const editor = BlockNoteEditor.create(
@@ -395,7 +395,7 @@ test("a surface created before mount undoes later text before structure through 
 test("portable fallback fills the reserved paste gesture even when Undo was queued before readiness", async () => {
   const { document: doc } = createPageDocumentGenesis({
     documentId: "portable-history",
-    nfm: "",
+    markdown: "",
     allocateBlockId: () => "paragraph",
   });
   const editor = BlockNoteEditor.create(

@@ -39,7 +39,7 @@ test("two windows retain independent text history after the same Document's stru
       first,
       project,
       source,
-      "before\nafter\nsurvivor\nindependent",
+      "before\n\nafter\n\nsurvivor\n\nindependent",
     );
     const child = await createConvergenceSubpage(
       first,
@@ -48,7 +48,7 @@ test("two windows retain independent text history after the same Document's stru
       "Restored child",
       seed.blockIds[1],
     );
-    await seedConvergenceDocument(first, project, child, "retained child content\nchild tail");
+    await seedConvergenceDocument(first, project, child, "retained child content\n\nchild tail");
     const open = async (window: Page) => {
       await window
         .getByRole("button", { name: "Open Shared Document history", exact: true })
@@ -186,7 +186,7 @@ test("cross-window paste supersedes only the source Cut and keeps independent Un
       sourceWindow,
       project,
       source,
-      "before\nafter\nsurvivor",
+      "before\n\nafter\n\nsurvivor",
     );
     const child = await createConvergenceSubpage(
       sourceWindow,
@@ -195,8 +195,13 @@ test("cross-window paste supersedes only the source Cut and keeps independent Un
       "Moved history child",
       sourceSeed.blockIds[1],
     );
-    await seedConvergenceDocument(sourceWindow, project, child, "owned content\nowned tail");
-    const targetSeed = await seedConvergenceDocument(sourceWindow, project, target, "target\ntail");
+    await seedConvergenceDocument(sourceWindow, project, child, "owned content\n\nowned tail");
+    const targetSeed = await seedConvergenceDocument(
+      sourceWindow,
+      project,
+      target,
+      "target\n\ntail",
+    );
     const open = async (window: Page, page: ConvergencePage, title: string) => {
       await window.getByRole("button", { name: "Open Window history", exact: true }).click();
       await openProjectBoard(window);

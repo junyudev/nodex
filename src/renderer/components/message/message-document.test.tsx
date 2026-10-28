@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
 import { TestQueryProvider } from "@/test/query";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
-import { parseNfm } from "../../../shared/nfm/parser";
+import { readMarkdown } from "../../../shared/nodex-markdown";
 import { MessageDocument, MessageText } from "./message-document";
 
 const reads = vi.hoisted(() => ({ bytes: vi.fn() }));
@@ -34,7 +34,7 @@ test("written text reads its Markdown as structure and the rest as typed", () =>
   const view = render(
     <MessageText
       text={
-        "**Ship** the changelog\n* check the links\n  * in the footer\nKeep a < b and [draft\nas typed: https://example.com/notes"
+        "**Ship** the changelog\n* check the links\n  * in the footer\n\nAs typed: https://example.com/notes\nKeep a < b and [draft"
       }
     />,
   );
@@ -58,9 +58,7 @@ test("a message shows its attached Library images and opens them", async () => {
   const view = render(
     <TestQueryProvider>
       <MessageDocument
-        blocks={parseNfm(
-          'The banner is cut off\n<image source="nodex://files/shot">Banner</image>',
-        )}
+        blocks={readMarkdown("The banner is cut off\n\n![Banner](nodex://files/shot)")}
         contentKey="pictured"
         fileAuthority={authority}
       />
@@ -86,7 +84,7 @@ test("a message shows its attached Library images and opens them", async () => {
 test("an image the message cannot read says so instead of loading forever", () => {
   const view = render(
     <MessageDocument
-      blocks={parseNfm('<image source="nodex://files/shot">Banner</image>')}
+      blocks={readMarkdown("![Banner](nodex://files/shot)")}
       contentKey="picture"
       fileAuthority={null}
     />,

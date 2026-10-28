@@ -1,11 +1,11 @@
-# NFM Editor Move-To Popover Behavior
+# Page Editor Move-To Popover Behavior
 
 Status: Active  
 Last Updated: 2026-10-15
 
 ## Contract
 
-The NFM side-menu `Move to` action opens a destination popover instead of a two-row submenu. The popover searches DB destinations and Page destinations in the source Project's destination list while preserving move semantics for the selected NFM blocks.
+The Page editor side-menu `Move to` action opens a destination popover instead of a two-row submenu. The popover searches DB destinations and Page destinations in the source Project's destination list while preserving move semantics for the selected Page editor blocks.
 
 The expanded text-selection menu uses the same `Move to` destination popover in its Actions area. It replaces the older separate `Move to card` and `Turn into cards` text-selection actions with one destination picker.
 
@@ -44,8 +44,8 @@ The `Page in` row inside the side-menu `Turn into` submenu uses the same popover
 
 ## Move Semantics
 
-- Selecting a DB status moves the selected NFM Block subtrees into the current Project's primary Data Source. Core promotes eligible ordinary Blocks to Pages, preserves subtree content, and assigns the selected Status through an active Status-grouped View.
-- Selecting a Page moves the selected NFM Block subtrees into that Page body.
+- Selecting a DB status moves the selected Page editor Block subtrees into the current Project's primary Data Source. Core promotes eligible ordinary Blocks to Pages, preserves subtree content, and assigns the selected Status through an active Status-grouped View.
+- Selecting a Page moves the selected Page editor Block subtrees into that Page body.
 - Selecting a DB status from `Page in` uses the same DB-status move semantics as selecting a DB status from `Move to`.
 - Page and DB destinations share one renderer move runtime. The editor first releases focus and flushes its source mutation barrier; the runtime then validates the source fence, resolves the exact destination, and commits one idempotent `BlockTransfer` intent.
 - Page destinations prepare the target Document and include exact source and target heads. DB destinations resolve the canonical Project-default Database descriptor and choose a real active View grouped by the built-in `status` Property rather than deriving Data Source identity from UI state.

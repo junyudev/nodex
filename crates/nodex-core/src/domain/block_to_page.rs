@@ -24,7 +24,6 @@ const WRAPPED_TYPES: &[&str] = &[
     "divider",
     "image",
     "callout",
-    "threadSection",
     "database",
     "pageRef",
     "databaseViewRef",

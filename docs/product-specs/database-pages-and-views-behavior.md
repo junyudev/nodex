@@ -81,7 +81,7 @@ presentation; a presentation failure preserves that durable Chat and relation.
 `Send to chat…` hands off to a Window-owned chooser after the context menu
 closes. The chooser retains the selected Page and remains usable if its source
 View unmounts. Page image inputs follow the verified exact-version byte-snapshot contract
-in [Page prompt image inputs](./nfm-thread-section-image-inputs.md).
+in [Page prompt image inputs](./nfm-page-prompt-image-inputs.md).
 
 Each Board or List surface owns one short-lived Page menu session. Right-click
 resolves only the Page under the pointer; unopened Property editors and
@@ -669,7 +669,7 @@ a minimum read cursor; it does not delay command completion or Undo eligibility.
 Changing the display's effective rules or revoking its authority discards only
 that presentation lease, without claiming the command was rejected.
 
-List also accepts native NFM Block drags from another mounted editor in the
+List also accepts native Page editor Block drags from another mounted editor in the
 same renderer window. Under manual order or an inferable writable Property
 sort, a root Page-row half resolves to a truthful root-level gap and reuses the
 existing insertion line; group and subgroup headers, empty Lists, nested rows,
@@ -798,7 +798,7 @@ Library identity and live owner, followed by the initial sync barrier. They edit
 the canonical collaborative Document directly; there is no ordinary whole-body
 autosave, projection-seeded initialization, or
 whole-Page conflict overwrite. A title-only Page opens with a valid empty-body
-editor while NFM/plain-text export remains empty.
+editor while Markdown and plain-text exports remain empty.
 
 Page Stage may show Source Properties only when the Page is currently parented
 by a Data Source and the corresponding schema/value coordinates are valid.
@@ -925,8 +925,8 @@ dependencies change, and never mutate option colors or Page values.
 
 Page title and body support the registered rich-text and Block families,
 including nested Pages, references, Database View references, images,
-attachments, tables, toggles, and thread sections. Exact syntax is owned by
-[Nested Markdown](../references/nested-markdown-spec.md); focused interaction
+attachments, tables and toggles. Exact syntax is owned by
+[Nodex Markdown](../references/nodex-markdown.md); focused interaction
 contracts are indexed in [Product Specifications](index.md).
 
 Page title and prose use the active appearance's Content font family, falling
@@ -954,12 +954,12 @@ This invariant is enforced on the actual local Block transaction before it
 enters the collaborative Y.Doc, not only on keyboard or side-menu commands.
 Remote Core delivery is admitted so verified structural commits converge.
 The complete parent capability and presentation contract is defined in
-[NFM Editor Block Children Behavior](nfm-editor-block-children-behavior.md).
+[Page Editor Block Children Behavior](nfm-editor-block-children-behavior.md).
 
 Large or native clipboard input uses explicit bounded flows. Saved assets use
 managed asset identity; external links remain links. Exact attachment, copy,
-table, mention, side-menu, and thread-section behavior belongs to the focused
-NFM specifications linked from [the index](index.md).
+table, mention, and side-menu behavior belongs to the focused
+Page editor specifications linked from [the index](index.md).
 
 ## Calendar and reminders
 

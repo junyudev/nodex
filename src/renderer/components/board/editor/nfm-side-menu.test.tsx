@@ -171,7 +171,6 @@ function renderSideMenuSurface({
     isEditable: true,
     canUseColor: true,
     canSendBlocks: true,
-    hasConvertDividerToThreadSection: false,
     isTableBlock: false,
     canUseTableHeaders: false,
     showMockActions,
@@ -271,7 +270,6 @@ function StatefulSideMenuSurface({
         isEditable: true,
         canUseColor: true,
         canSendBlocks: true,
-        hasConvertDividerToThreadSection: false,
         isTableBlock: false,
         canUseTableHeaders: false,
         showMockActions: true,
@@ -349,7 +347,7 @@ function StatefulSideMenuSurface({
   );
 }
 
-describe("nfm side menu surface", () => {
+describe("markdown side menu surface", () => {
   test("treats editor blank clicks as outside while preserving popup and trigger exemptions", () => {
     const popupElement = document.createElement("div");
     const popupChild = document.createElement("button");

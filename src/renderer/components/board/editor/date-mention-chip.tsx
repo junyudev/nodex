@@ -36,13 +36,13 @@ import {
   getTimeFormatLabel,
   isoDateToDate,
   isDateMentionDateTimeValue,
-  NFM_DATE_MENTION_DATE_FORMATS,
-  NFM_DATE_MENTION_REMINDER_PRESETS,
-  NFM_DATE_MENTION_TIME_FORMATS,
+  DATE_MENTION_DATE_FORMATS,
+  DATE_MENTION_REMINDER_PRESETS,
+  DATE_MENTION_TIME_FORMATS,
   parseDateMentionInput,
   todayIsoDate,
-} from "@/lib/nfm/date-mention";
-import type { NfmDateMentionInlineContent } from "@/lib/nfm/types";
+} from "../../../../shared/rich-text/date-mention";
+import type { DateMentionInlineContent } from "../../../../shared/rich-text/date-mention";
 import { cn } from "@/lib/utils";
 import { DateMentionInlineVisual } from "../date-mention-inline-visual";
 import {
@@ -67,17 +67,15 @@ const LazyDateMentionCalendar = lazy(async () => ({
   default: (await preloadDateMentionCalendar()).DateMentionCalendar,
 }));
 
-const DATE_FORMAT_OPTIONS: NodexOptionPickerOption[] = NFM_DATE_MENTION_DATE_FORMATS.map(
-  (format) => ({
-    value: format,
-    label: getDateFormatLabel(format),
-    subText: format === "relative" ? "Today, Tomorrow, Jun 28 fallback" : format,
-  }),
-);
+const DATE_FORMAT_OPTIONS: NodexOptionPickerOption[] = DATE_MENTION_DATE_FORMATS.map((format) => ({
+  value: format,
+  label: getDateFormatLabel(format),
+  subText: format === "relative" ? "Today, Tomorrow, Jun 28 fallback" : format,
+}));
 
 const TIME_FORMAT_OPTIONS: NodexOptionPickerOption[] = [
   { value: "", label: getTimeFormatLabel(undefined), subText: "Use browser locale" },
-  ...NFM_DATE_MENTION_TIME_FORMATS.map((format) => ({
+  ...DATE_MENTION_TIME_FORMATS.map((format) => ({
     value: format,
     label: getTimeFormatLabel(format),
     subText: format === "12h" ? "2:30 PM" : "14:30",
@@ -86,7 +84,7 @@ const TIME_FORMAT_OPTIONS: NodexOptionPickerOption[] = [
 
 const REMINDER_OPTIONS: NodexOptionPickerOption[] = [
   { value: "", label: "None" },
-  ...NFM_DATE_MENTION_REMINDER_PRESETS.map((reminder) => ({
+  ...DATE_MENTION_REMINDER_PRESETS.map((reminder) => ({
     value: reminder,
     label: getReminderLabel(reminder),
   })),
@@ -211,7 +209,7 @@ function DateMentionPopoverBody({
     setMonth(startDate);
   }, [startDate, startDateValue]);
 
-  const patchPayload = (nextPayload: NfmDateMentionInlineContent) => {
+  const patchPayload = (nextPayload: DateMentionInlineContent) => {
     onPatch(dateMentionPayloadToProps(nextPayload));
   };
 
@@ -470,8 +468,7 @@ function DateMentionPopoverBody({
         <NodexOptionPicker
           value={payload.reminder ?? ""}
           options={
-            payload.reminder &&
-            !NFM_DATE_MENTION_REMINDER_PRESETS.includes(payload.reminder as never)
+            payload.reminder && !DATE_MENTION_REMINDER_PRESETS.includes(payload.reminder as never)
               ? [
                   ...REMINDER_OPTIONS,
                   {

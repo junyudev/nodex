@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { NodexAgentToolContract } from "./contracts";
+import type { NodexAgentToolContract } from "./tool-contract";
 import { NODEX_AGENT_V3_TOOL_CONTRACTS } from "./v3-contracts";
 import {
   CreatePagesV5InputSchema,

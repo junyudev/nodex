@@ -82,7 +82,7 @@ function searchThreads(query: string, threads: CommandPaletteThread[]): CommandP
   });
 }
 
-describe("nfm send-to-thread menu model", () => {
+describe("markdown send-to-thread menu model", () => {
   test("uses the compact Codex title projection for preferred thread labels", () => {
     expect(
       resolveNfmSendToThreadTitle(
@@ -251,6 +251,7 @@ describe("nfm send-to-thread menu model", () => {
           threadName: "Stale title",
           updatedAt: 1,
         }),
+        sessionId: "session-preferred",
         meta: "This session",
       },
       threads: [
@@ -269,6 +270,32 @@ describe("nfm send-to-thread menu model", () => {
     expect(rows[0].isPreferredTarget).toBe(true);
     expect(rows[1]?.id).toBe("thread:newer");
     expect(rows[2]?.kind).toBe("new-thread");
+  });
+
+  test("wraps only into chats with a Session, naming the editor's own Session for its chat", () => {
+    const rows = buildNfmSendToThreadRows({
+      query: "",
+      requireSession: true,
+      preferredTarget: {
+        kind: "thread",
+        thread: makePreferredThread({ threadId: "preferred", updatedAt: 1 }),
+        sessionId: "session-current",
+        meta: "This session",
+      },
+      threads: [
+        makeThread({ threadId: "preferred", sessionId: null, updatedAt: 5 }),
+        makeThread({ threadId: "codex-only", sessionId: null, updatedAt: 4 }),
+        makeThread({ threadId: "bound", sessionId: "session-bound", updatedAt: 3 }),
+      ],
+    });
+
+    expect(
+      rows.map((row) => (row.kind === "thread" ? [row.id, row.target.sessionId] : [row.id])),
+    ).toEqual([
+      ["thread:preferred", "session-current"],
+      ["thread:bound", "session-bound"],
+      ["new-thread"],
+    ]);
   });
 
   test("pins the current session new-chat target without duplicating the footer action", () => {
@@ -337,6 +364,7 @@ describe("nfm send-to-thread menu model", () => {
         preferredTarget: {
           kind: "thread",
           thread,
+          sessionId: "session-preferred",
           meta: "Current section",
         },
         threads: [makeThread({ threadId: "other", title: "Other", updatedAt: 1 })],

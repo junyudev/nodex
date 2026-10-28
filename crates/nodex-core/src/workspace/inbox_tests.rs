@@ -213,9 +213,12 @@ fn sending_creates_one_hidden_inbox_and_streams_messages_newest_first() {
     );
     assert!(window(module, ProjectWorkspaceInboxWindowFilter::Processed).is_empty());
     let newest = &items[0];
-    // The whole message is the body, as Nested Markdown; Blocks carry their own spacing,
+    // The whole message is the body, as Nodex Markdown; Blocks carry their own spacing,
     // so the blank line between them is not kept. The title only labels it.
-    assert_eq!(newest.body, "Fix the sidebar flicker\nIt happens on hover.");
+    assert_eq!(
+        newest.body,
+        "Fix the sidebar flicker\n\nIt happens on hover."
+    );
     assert_eq!(newest.title, "Fix the sidebar flicker");
     assert_eq!(newest.source, ProjectWorkspaceInboxSource::User);
     assert_eq!(newest.location, ProjectWorkspaceInboxLocation::Inbox);
@@ -1902,7 +1905,7 @@ fn write_message(workspace: &TestWorkspace, edit: &ProjectWorkspaceInboxMessageE
         .call(move |connection| {
             connection.execute(
                 "UPDATE document_materializations \
-                 SET nfm = ?2, plain_text = ?4, title = COALESCE(?3, title) \
+                 SET markdown = ?2, plain_text = ?4, title = COALESCE(?3, title) \
                  WHERE document_id = (SELECT document_id FROM pages WHERE block_id = ?1)",
                 rusqlite::params![page_id, body, title, text],
             )?;
@@ -1945,10 +1948,7 @@ fn rewriting_a_message_follows_the_rules_of_sending_it() {
     let original = item(module, "page:edit");
     assert!(original.body_editable);
     // Lines written together stay one paragraph, broken where they were written.
-    assert_eq!(
-        original.body,
-        "Survey onboarding flows<br>Keep it read-only."
-    );
+    assert_eq!(original.body, "Survey onboarding flows\nKeep it read-only.");
 
     let edit = prepare_edit(
         module,
@@ -1960,7 +1960,10 @@ fn rewriting_a_message_follows_the_rules_of_sending_it() {
     let sent =
         super::inbox::message_page("Compare three onboarding flows\n\nKeep it read-only.", None)
             .expect("message page");
-    assert_eq!(edit.body_markdown.as_deref(), Some(sent.body_nfm.as_str()));
+    assert_eq!(
+        edit.body_markdown.as_deref(),
+        Some(sent.body_markdown.as_str())
+    );
     // The title is still Core's provisional label, so it follows the new opening words.
     assert_eq!(
         edit.title_markdown.as_deref(),
@@ -2061,13 +2064,13 @@ fn only_message_shaped_waiting_messages_are_rewritten_in_place() {
             // An image moved between paragraphs on its Page leaves the message shape;
             // formatting alone does not. One was also named by an earlier suggestion.
             connection.execute(
-                "UPDATE document_materializations SET nfm = \
+                "UPDATE document_materializations SET markdown = \
                  'Ship the changelog\n<image source=\"nodex://files/shot\">Shot</image>\nThen tell people' \
                  WHERE document_id = 'document:rich'",
                 [],
             )?;
             connection.execute(
-                "UPDATE document_materializations SET nfm = '**Ship** the changelog' \
+                "UPDATE document_materializations SET markdown = '**Ship** the changelog' \
                  WHERE document_id = 'document:formatted'",
                 [],
             )?;
@@ -2296,13 +2299,13 @@ fn a_dispatched_chat_receives_the_messages_images_with_their_text() {
     send(
         module,
         "pictured",
-        "The banner is cut off\n<image source=\"nodex://files/shot\"></image>\n<image source=\"nodex://files/detail\"></image>",
+        "The banner is cut off\n\n![](nodex://files/shot)\n\n![](nodex://files/detail)",
     );
     // The same screenshot in a second message is sent once.
     send(
         module,
         "again",
-        "Same on the pricing page\n<image source=\"nodex://files/shot\"></image>",
+        "Same on the pricing page\n\n![](nodex://files/shot)",
     );
     let pages = vec!["page:pictured".to_owned(), "page:again".to_owned()];
     apply_host(
@@ -3668,14 +3671,14 @@ fn a_message_is_written_as_markdown_and_everyday_text_stays_literal() {
     send(
         module,
         "written",
-        "**Ship** the changelog\n* check the links\n  * in the footer\n* tag the release\nKeep a < b and [draft\nas typed: https://example.com/notes.\n\nThen tell people",
+        "**Ship** the changelog\n* check the links\n  * in the footer\n* tag the release\n\nAs typed: https://example.com/notes.\nKeep a < b and [draft\n\nThen tell people",
     );
     let written = item(module, "page:written");
-    // Typed Markdown is real structure, written lines stay together until a blank line, and
-    // text that forms no markup stays as written.
+    // Typed GitHub Flavored Markdown is real structure, written lines stay together until a
+    // blank line, and text that forms no markup stays as written.
     assert_eq!(
         written.body,
-        "**Ship** the changelog\n- check the links\n\t- in the footer\n- tag the release\nKeep a \\< b and \\[draft<br>as typed: [https://example.com/notes](https://example.com/notes).\nThen tell people"
+        "**Ship** the changelog\n\n- check the links\n  - in the footer\n- tag the release\n\nAs typed: https://example.com/notes.\nKeep a \\< b and \\[draft\n\nThen tell people"
     );
     assert!(written.body_editable);
     assert_eq!(written.title, "Ship the changelog");
@@ -3689,20 +3692,16 @@ fn a_message_keeps_its_images_after_its_text() {
     send(
         module,
         "pictured",
-        "The banner is cut off\n<image source=\"nodex://files/shot\">Banner</image>",
+        "The banner is cut off\n\n![Banner](nodex://files/shot)",
     );
     let pictured = item(module, "page:pictured");
     assert_eq!(
         pictured.body,
-        "The banner is cut off\n<image source=\"nodex://files/shot\">Banner</image>"
+        "The banner is cut off\n\n![Banner](nodex://files/shot)"
     );
     assert!(pictured.body_editable);
 
-    send(
-        module,
-        "picture",
-        "<image source=\"nodex://files/shot\">Banner</image>",
-    );
+    send(module, "picture", "![Banner](nodex://files/shot)");
     // A message of images alone is labeled by its first caption.
     assert_eq!(item(module, "page:picture").title, "Banner");
 
@@ -3710,7 +3709,7 @@ fn a_message_keeps_its_images_after_its_text() {
         send_error(
             module,
             "out-of-shape",
-            "<image source=\"nodex://files/shot\">Banner</image>\nThe banner is cut off",
+            "![Banner](nodex://files/shot)\n\nThe banner is cut off",
         ),
         CoreErrorCode::InvalidInput
     );
@@ -3719,7 +3718,7 @@ fn a_message_keeps_its_images_after_its_text() {
         send_error(
             module,
             "external",
-            "The banner is cut off\n<image source=\"https://example.com/shot.png\">Banner</image>",
+            "The banner is cut off\n\n![Banner](https://example.com/shot.png)",
         ),
         CoreErrorCode::InvalidInput
     );

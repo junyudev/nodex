@@ -10,6 +10,7 @@ const testFiles = filesForSuite("core-client", resolveVitestTestTier());
 export default defineConfig({
   resolve: rendererViteResolve,
   test: {
+    setupFiles: ["./config/setup-markdown.ts"],
     ...testObservation("core-client"),
     env: TEST_ENVIRONMENT,
     environment: "node",

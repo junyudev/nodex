@@ -18,14 +18,13 @@ function buildDefaultSections(showMockActions = false) {
     isEditable: true,
     canUseColor: true,
     canSendBlocks: true,
-    hasConvertDividerToThreadSection: false,
     isTableBlock: false,
     canUseTableHeaders: false,
     showMockActions,
   });
 }
 
-describe("nfm side menu model", () => {
+describe("markdown side menu model", () => {
   test("hides reference mock actions from the production action order", () => {
     const sections = buildDefaultSections();
     const rows = flattenNfmSideMenuRows(sections);
@@ -48,7 +47,6 @@ describe("nfm side menu model", () => {
       isEditable: true,
       canUseColor: true,
       canSendBlocks: true,
-      hasConvertDividerToThreadSection: false,
       isTableBlock: false,
       canUseTableHeaders: false,
       showMockActions: false,
@@ -79,7 +77,6 @@ describe("nfm side menu model", () => {
         isEditable: true,
         canUseColor: true,
         canSendBlocks: true,
-        hasConvertDividerToThreadSection: false,
         isTableBlock: false,
         canUseTableHeaders: false,
         showMockActions: false,
@@ -105,7 +102,6 @@ describe("nfm side menu model", () => {
         isEditable: true,
         canUseColor: true,
         canSendBlocks: true,
-        hasConvertDividerToThreadSection: false,
         isTableBlock: false,
         canUseTableHeaders: false,
         showMockActions: false,
@@ -144,7 +140,6 @@ describe("nfm side menu model", () => {
       isEditable: true,
       canUseColor: true,
       canSendBlocks: true,
-      hasConvertDividerToThreadSection: false,
       isTableBlock: false,
       canUseTableHeaders: false,
       showMockActions: true,
@@ -184,7 +179,6 @@ describe("nfm side menu model", () => {
       isEditable: true,
       canUseColor: true,
       canSendBlocks: false,
-      hasConvertDividerToThreadSection: false,
       isTableBlock: false,
       canUseTableHeaders: false,
       showMockActions: false,
@@ -197,26 +191,24 @@ describe("nfm side menu model", () => {
     expect(moveTo?.mockReason === undefined).toBe(true);
   });
 
-  test("adds divider and table specific Nodex sections only when relevant", () => {
+  test("adds table actions for a single table", () => {
     const sections = buildNfmSideMenuSections({
       currentBlockId: "divider-1",
-      currentBlockType: "divider",
-      selectionTitle: "Divider",
+      currentBlockType: "table",
+      selectionTitle: "Table",
       selectedTopLevelBlockCount: 1,
       isEditable: true,
       canUseColor: false,
       canSendBlocks: false,
-      hasConvertDividerToThreadSection: true,
       isTableBlock: true,
       canUseTableHeaders: true,
       showMockActions: false,
     });
     const rows = flattenNfmSideMenuRows(sections);
 
-    expect(rows.length).toBe(8);
-    expect(rows[5]?.row.key).toBe("convert-divider-to-thread-section");
-    expect(rows[6]?.row.key).toBe("table-header-row");
-    expect(rows[7]?.row.key).toBe("table-header-column");
+    expect(rows.length).toBe(7);
+    expect(rows[5]?.row.key).toBe("table-header-row");
+    expect(rows[6]?.row.key).toBe("table-header-column");
   });
 
   test("hides Nodex and table special rows for multi-block selections", () => {
@@ -228,14 +220,12 @@ describe("nfm side menu model", () => {
       isEditable: true,
       canUseColor: false,
       canSendBlocks: false,
-      hasConvertDividerToThreadSection: true,
       isTableBlock: true,
       canUseTableHeaders: true,
       showMockActions: false,
     });
     const rows = flattenNfmSideMenuRows(sections);
 
-    expect(rows.some(({ row }) => row.key === "convert-divider-to-thread-section")).toBe(false);
     expect(rows.some(({ row }) => row.key === "table-header-row")).toBe(false);
     expect(rows.some(({ row }) => row.key === "table-header-column")).toBe(false);
   });
@@ -249,7 +239,6 @@ describe("nfm side menu model", () => {
       isEditable: true,
       canUseColor: true,
       canSendBlocks: true,
-      hasConvertDividerToThreadSection: false,
       isTableBlock: true,
       canUseTableHeaders: true,
       showMockActions: true,

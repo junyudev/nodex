@@ -36,7 +36,12 @@ test("undoes later typing before a native Subpage cut and restores the same owne
       "History source",
       "History fixture",
     );
-    const seeded = await seedConvergenceDocument(page, project, source, "before\nafter\nsurvivor");
+    const seeded = await seedConvergenceDocument(
+      page,
+      project,
+      source,
+      "before\n\nafter\n\nsurvivor",
+    );
     const child = await createConvergenceSubpage(
       page,
       project,
@@ -44,7 +49,7 @@ test("undoes later typing before a native Subpage cut and restores the same owne
       "History child",
       seeded.blockIds[1],
     );
-    await seedConvergenceDocument(page, project, child, "owned content\nowned tail");
+    await seedConvergenceDocument(page, project, child, "owned content\n\nowned tail");
     await page.getByRole("button", { name: "Open Chronological history", exact: true }).click();
     await openProjectBoard(page);
     const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');

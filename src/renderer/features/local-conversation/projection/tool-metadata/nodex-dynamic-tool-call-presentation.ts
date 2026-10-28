@@ -142,7 +142,7 @@ function buildMarkdownChangePreview(
   body: Record<string, unknown> | null,
 ): NodexMarkdownChangePreview | null {
   const kind = stringValue(body, "kind");
-  if (kind === "nfm.insert" || kind === "insert") {
+  if (kind === "markdown.insert" || kind === "insert") {
     const content =
       typeof body?.content === "string"
         ? body.content
@@ -162,7 +162,7 @@ function buildMarkdownChangePreview(
     };
   }
 
-  if (kind === "nfm.replace" || kind === "replace") {
+  if (kind === "markdown.replace" || kind === "replace") {
     const content =
       typeof body?.content === "string"
         ? body.content
@@ -182,7 +182,7 @@ function buildMarkdownChangePreview(
     };
   }
 
-  if (kind !== "nfm.patch" && kind !== "patch") return null;
+  if (kind !== "markdown.patch" && kind !== "patch") return null;
 
   const patches = asArray(body?.patches);
   const lines: NodexMarkdownDiffLine[] = [];

@@ -1,9 +1,9 @@
-# NFM Editor Copy Behavior
+# Page Editor Copy Behavior
 
 Status: Active
-Last Updated: 2026-09-05
+Last Updated: 2026-10-25
 
-This document describes copy-related behavior inside the NFM / BlockNote editor. It covers ordinary selection copy/cut, structural selection copy/cut, and the separate image-toolbar copy action.
+This document describes copy-related behavior inside the BlockNote Page editor. It covers ordinary selection copy/cut, structural selection copy/cut, and the separate image-toolbar copy action.
 
 This is intentionally narrower than the main product spec. It is the detailed source of truth for editor clipboard behavior.
 
@@ -14,19 +14,19 @@ Included:
 - Copy and cut of ordinary and structural editor selections
 - Image-block toolbar `Copy image`
 - Portable clipboard presentations and the private structural MIME descriptor
-- Selection-shape rules that determine whether copied `text/plain` is raw text or structure-preserving text
+- The Markdown written as copied `text/plain`, and the selection-shape rules it follows
 
-Detailed structural paste, identity, and undo behavior is owned by [NFM Editor Structural Editing Behavior](nfm-editor-structural-editing-behavior.md).
+Detailed structural paste, identity, and undo behavior is owned by [Page Editor Structural Editing Behavior](nfm-editor-structural-editing-behavior.md).
 
 Not included:
 
 - Paste behavior
 - Board drag/drop `text/plain` payloads
-- Thread transcript copy actions outside the NFM editor
+- Thread transcript copy actions outside the Page editor
 
 ## Copy Surfaces
 
-The NFM editor currently has 2 distinct copy paths:
+The Page editor currently has 2 distinct copy paths:
 
 1. Standard copy / cut inside the editor
 2. Image-block toolbar copy (`Copy image`)
@@ -131,18 +131,21 @@ For a non-empty selection, the helper starts from `editor.getSelectionCutBlocks(
   still accept literal plain text. The fragment is bounded, untrusted
   presentation with typed-owner semantics removed, never a structural
   capability. Invalid fragments fall back to the visible HTML/text.
-- `structuredText` from `blockNoteToNfm(...)` plus `serializeClipboardText(...)`
+- `structuredText`, the portable Markdown of the same Blocks, produced by
+  `writePortableMarkdown` according to the rules in
+  [Markdown Interchange](../references/markdown-interchange.md)
 
 The fallback serializer is evaluated only if the normal selection serializer is unavailable or throws. In that case, the helper falls back to BlockNote's `selectedFragmentToHTML(...)` output and keeps the existing HTML-parse fallback for `text/plain`. A collapsed-caret Block target never degrades into an empty text-range payload.
 
 ### Plain-text File references
 
 Inline attachments copy as Markdown links, `[name](source)`, in paragraphs,
-nested Blocks, table cells, and image captions. Linked files and folders retain
+nested Blocks and table cells, and images as Markdown images,
+`![caption](source)`. Linked files and folders retain
 their existing absolute paths even when local-path copy is disabled. Saved
 attachments retain their current Nodex locator by default; the original import
 location never substitutes for the saved content. Missing targets retain a
-readable attachment label. Rich fragments and canonical NFM retain attachment
+readable attachment label. Rich fragments and exact Nodex Markdown retain attachment
 identity rather than replacing the occurrence with a text link.
 
 Standard copy/cut keeps `nodex://assets/...` and `nodex://files/...` locators
@@ -196,19 +199,11 @@ Local-path rewriting is all-or-nothing for one copied payload. If any Nodex File
 reference cannot be resolved, every reference remains portable instead of
 producing mixed local and portable locators.
 
-The portable `text/plain` presentation converts `<image ...>caption</image>`
-lines into Markdown image syntax before optional local-path resolution:
-
-- indentation before the image line is preserved
-- the `source="..."` attribute becomes the Markdown destination
-- captions become Markdown alt text
-- alt text escapes only `\`, `[` and `]`
-- attachment labels escape Markdown formatting; image alt text retains inline markers
-- attachment and image destinations escape literal `\`, `<`, `>`, `&`, `(`, and `)` as needed
-- destinations containing whitespace are wrapped in `<...>`
-- local-path replacement uses the same destination escaping as direct linked paths
-
-If an image tag line does not match the expected pattern or has no usable source, it is left unchanged.
+Local-path resolution replaces a locator in place, whether it is a Markdown
+destination or bare text, and keeps the Markdown around it, including the
+indentation of nested Blocks. A path written as a destination escapes literal
+`\`, `<`, `>` and `&`, escapes `(` and `)` or, when the path contains whitespace,
+is wrapped in `<...>`, so it reads back as exactly that path.
 
 ### Image examples
 
@@ -218,37 +213,40 @@ unchanged and continues to carry the original serialized image presentation.
 
 ```text
 # selection:
-[<image source="nodex://assets/diagram.png">diagram</image>]
+[![diagram](nodex://assets/diagram.png)]
 # expected text/plain:
 ![diagram](/absolute/path/diagram.png)
 ```
 
 ```text
 # selection:
-[	<image source="nodex://assets/plan.png"></image>]
+[Plan
+	![](nodex://assets/plan.png)]
 # expected text/plain:
-	![image](/absolute/path/plan.png)
+- Plan
+
+  ![](/absolute/path/plan.png)
 ```
 
 ```text
 # selection:
-[<image source="nodex://assets/my-file.png">release plan (v2)</image>]
+[![release plan (v2)](nodex://assets/my-file.png)]
 # expected text/plain:
 ![release plan (v2)](/absolute/path/my-file.png)
 ```
 
 ```text
 # selection:
-[<image source="nodex://assets/my-file.png"></image>]
+[![](nodex://assets/my-file.png)]
 # resolved file path:
 /workspace/my files/my-file (v2).png
 # expected text/plain:
-![image](</workspace/my files/my-file (v2).png>)
+![](</workspace/my files/my-file (v2).png>)
 ```
 
 ```text
 # selection:
-[<image source="/workspace/already-absolute.png">diagram</image>]
+[![diagram](/workspace/already-absolute.png)]
 # expected text/plain:
 ![diagram](/workspace/already-absolute.png)
 ```
@@ -306,6 +304,7 @@ asd
 2. gamm]a
 # expected copy result:
 beta
+
 2. gamm
 ```
 
@@ -315,6 +314,7 @@ beta
 > second] line
 # expected copy result:
 ted line
+
 > second
 ```
 
@@ -324,15 +324,19 @@ ted line
 next] paragraph
 # expected copy result:
 ing
+
 next
 ```
 
 ```text
 # selection:
-▶ toggl[e title
+:::toggle[toggl[e title]
+:::
+
 after] line
 # expected copy result:
 e title
+
 after
 ```
 
@@ -349,23 +353,15 @@ Selections that start at the first visible character of a block keep that block'
 
 ```text
 # selection:
-[> quoted line
-> second line]
-# expected copy result:
-> quoted line
-> second line
-```
-
-```text
-# selection:
 [## Heading
 paragraph]
 # expected copy result:
 ## Heading
+
 paragraph
 ```
 
-Parent/child structure is preserved when the selected range includes the parent block:
+Parent/child structure is preserved when the selected range includes the parent block. Markdown nests only under list items and quotes, so a paragraph or toggle with Blocks under it is written as an outline:
 
 ```text
 # selection:
@@ -374,9 +370,10 @@ Parent/child structure is preserved when the selected range includes the parent 
 	1234567
 12345]6
 # expected copy result:
-56
-	1234567
-	1234567
+- 56
+  - 1234567
+  - 1234567
+
 12345
 ```
 
@@ -390,7 +387,9 @@ Nested selections are lifted when the ancestor itself is not selected:
 12345]6
 # expected copy result:
 4567
+
 1234567
+
 12345
 ```
 
@@ -402,7 +401,9 @@ Nested selections are lifted when the ancestor itself is not selected:
 tail] line
 # expected copy result:
 one
+
 child two
+
 tail
 ```
 
@@ -417,7 +418,7 @@ ent
 - child
 ```
 
-Inline formatting markers follow the same serializer in partial and full-block copy:
+Inline formatting follows the same writer in partial and full-block copy, and text that would read as Markdown is escaped only where it otherwise would:
 
 ```text
 # selection:
@@ -425,6 +426,7 @@ plain **bo[ld** text
 next *li]ne*
 # expected copy result:
 **ld** text
+
 next *li*
 ```
 
@@ -434,10 +436,11 @@ prefix [label](htt
 next **row**](https://example.com)
 # expected copy result:
 [label](htt
-next **row**](https://example.com)
+
+next **row**](https\://example.com)
 ```
 
-Empty selected blocks remain visible as blank lines:
+Selected empty Blocks have no Markdown and are left out:
 
 ```text
 # selection:
@@ -445,7 +448,6 @@ first[
 
 third]
 # expected copy result:
-
 third
 ```
 
@@ -456,67 +458,29 @@ If there are no usable selection blocks, or structured serialization throws, the
 - it prefers `clipboardHTML` first
 - then falls back to `externalHTML`
 - it parses HTML through `tryParseHTMLToBlocks(...)`
-- it serializes the parsed blocks with the same clipboard-text serializer
+- it writes the parsed blocks as Markdown by the same rules
 
 When both a selection-derived result and an HTML-derived result exist, the helper keeps the "richer" one using a simple heuristic that favors:
 
-- deeper tab indentation
+- more indented lines, which is where Markdown keeps nesting
 - more blank lines
 - more total lines
 
 If all custom reconstruction fails, the helper falls back to BlockNote's original `markdown` text output.
 
-## Structured Text Format
+## Markdown Format
 
-The clipboard serializer preserves block structure and keeps a small subset of inline formatting markers.
+Copied `text/plain` is GitHub Flavored Markdown, as
+[Markdown Interchange](../references/markdown-interchange.md) writes it, so
+Markdown apps, chat apps and Composers read what was copied. Within that:
 
-### Inline behavior
-
-Inline serialization currently works like this:
-
-- text spans emit their literal text
-- links keep full link syntax (`[label](url)`)
-- inline line breaks emit real `\n`
-- bold spans keep `**...**`
-- italic spans keep `*...*`
-- strikethrough spans keep `~~...~~`
-- underline spans keep `<span underline="true">...</span>`
-- color spans keep `<span color="...">...</span>`
-- inline code spans keep backtick delimiters
-- inline markdown/NFM escape backslashes are not added
-
-As a result:
-
-- block-level structured copy keeps all current inline NFM markers
-- special characters are not backslash-escaped just to satisfy NFM serialization
-- partial inline-text copy uses the same inline serializer, so formatting markers are preserved when present in the selection snapshot
-
-### Block markers kept in `text/plain`
-
-The serializer keeps the editor's structural markers:
-
-- headings keep `#` prefixes
-- bullet items keep `- `
-- numbered items keep `1. `
-- checklists keep `- [ ]` or `- [x]`
-- toggles keep `▶ ` or `▼ `
-- blockquotes keep `> `
-- code blocks keep fenced code syntax when the code block itself is copied as structure
-- text selections made inside a code block copy only the selected code text, without surrounding fences
-- code blocks omit the `text` info string when no explicit language was chosen, so default plain-text fences export without a language label
-- dividers keep `---`
-- custom tag-style blocks stay tag-style (`<callout>`, `<image>`, `<page uuid="..." />`, `<page-ref url="nodex://pages/..." />`, etc.)
-
-### Empty and multiline behavior
-
-- Empty paragraph / empty block lines are serialized as blank lines
-- Multiline inline content stays multiline in `text/plain`
-- Nested children are indented with tabs
-- Continuation lines preserve indentation depth, but they do not repeat list/heading markers on each continued line
-
-### Color metadata
-
-When a block serializer already represents color inline in text form, that color suffix is kept in the clipboard text too.
+- a text selection made inside a code block copies only the selected code text,
+  without surrounding fences
+- a code Block without an explicit language is fenced without an info string
+- a line break is a newline, Blocks are separated by a blank line, and a list
+  follows the line that introduces it
+- underline and colors are left out, and Nodex Blocks Markdown cannot say, such
+  as callouts, toggles and Page mentions, are written as near as Markdown can
 
 ## Image Toolbar Copy
 
@@ -559,11 +523,11 @@ On success, the editor is focused again.
 - treats a collapsed host-editor caret as its complete current Block subtree without changing selection presentation
 - writes `blocknote/html`, `text/html`, and `text/plain`; complete Block roots also advertise the bounded private structural descriptor
 - coordinates structural readiness across Nodex windows through the application-scoped host runtime
-- uses structure-preserving `text/plain`
+- writes `text/plain` as portable Markdown
 - preserves `blocknote/html` and `text/html` exactly as serialized for portable standard copy
 - preserves the serialized `text/html` presentation when opt-in local-path resolution completes
 - keeps Nodex File locators portable by default and optionally resolves both Library Files and legacy managed assets only in `text/plain`
-- presents attachments as Markdown links and image lines as Markdown images, with optional local-path resolution
+- presents attachments as Markdown links and images as Markdown images, with optional local-path resolution
 - cut deletes the resolved range or current Block only after successful copy handling
 
 ### Image toolbar copy
@@ -571,12 +535,11 @@ On success, the editor is focused again.
 - block-toolbar action, not selection copy
 - copies real image content through the native desktop clipboard
 - does not fall back to copying the resolved image URL text
-- does not write BlockNote HTML or structure-preserving `text/plain`
+- does not write BlockNote HTML or Markdown `text/plain`
 - shows a global in-app success toast when native image copy succeeds
 - shows a global in-app error toast when native image copy fails
 
 ## Known Intentional Limits Of The Current Behavior
 
 - There is no dedicated ProseMirror `clipboardTextSerializer` hook in use; text handling lives inside the editor's custom copy helper
-- Continuation lines inside structured text keep indentation depth but do not repeat list markers
-- Image conversion during selection copy is line-pattern based, not a full structured image AST pass
+- Copied `text/plain` says what Markdown can; the rich formats beside it carry everything else, such as colors, toggles and Page mentions

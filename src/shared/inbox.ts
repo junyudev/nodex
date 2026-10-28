@@ -152,7 +152,7 @@ export interface InboxItem {
   readonly title: string;
   readonly body: string;
   readonly bodyTruncated: boolean;
-  /** Plain message text shown whole, so it can be rewritten in place; else edit its Page. */
+  /** Whether the bounded stream contains the whole editable body. */
   readonly bodyEditable: boolean;
   readonly submittedAt: string;
   readonly source: InboxSource;
@@ -245,7 +245,7 @@ export interface InboxSendInput {
   readonly issuedAt: number;
   readonly storeEpoch: string;
   readonly scope: InboxScope;
-  /** The message in Nested Markdown: its text, then its images. */
+  /** The message in Nodex Markdown: its text, then its images. */
   readonly body: string;
 }
 
@@ -340,7 +340,7 @@ export interface InboxSetImportantInput {
   readonly important: boolean;
 }
 
-/** Rewrites a waiting message; `originalBody` is the Nested Markdown the user started from. */
+/** Rewrites a waiting message; `originalBody` is the Nodex Markdown the user started from. */
 export interface InboxEditInput {
   readonly pageId: string;
   readonly basis: InboxPageBasis;

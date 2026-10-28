@@ -17,7 +17,7 @@ export const NFM_EQUATION_AND_MERMAID_SOURCE = "graph TD\n  Source --> Preview";
 export const NFM_EQUATION_AND_MERMAID_NFM = [
   "# Equation and Mermaid",
   "",
-  "Inline energy is $E = mc^2$.",
+  "Inline energy is $$E = mc^2$$.",
   "",
   "$$",
   String.raw`\int_0^1 x^2 \, dx = \frac{1}{3}`,
@@ -53,10 +53,10 @@ export const NFM_VIEWPORT_CONTINUITY_NFM = [
   "",
   "Viewport restoration anchor",
   "",
-  ...Array.from(
+  Array.from(
     { length: 12 },
     (_, index) => `Viewport tail ${index + 1}: deterministic content after the restoration anchor.`,
-  ),
+  ).join("\n\n"),
 ].join("\n");
 
 export interface NfmEquationAndMermaidScenarioFacts extends ScenarioFacts {
@@ -120,7 +120,7 @@ const materialize = async (
     projectId: project.id,
     status: "build",
     title: "Exercise Equation and Mermaid",
-    nfm: NFM_EQUATION_AND_MERMAID_NFM,
+    markdown: NFM_EQUATION_AND_MERMAID_NFM,
   };
   const viewportPage: ScenarioPageSeed = {
     key: NFM_VIEWPORT_CONTINUITY_PAGE_KEY,
@@ -129,7 +129,7 @@ const materialize = async (
     projectId: project.id,
     status: "build",
     title: "Exercise Viewport Continuity",
-    nfm: NFM_VIEWPORT_CONTINUITY_NFM,
+    markdown: NFM_VIEWPORT_CONTINUITY_NFM,
   };
   await port.createPage(page);
   await port.createPage(viewportPage);

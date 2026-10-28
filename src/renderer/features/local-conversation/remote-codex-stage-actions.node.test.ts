@@ -71,7 +71,7 @@ it("keeps a remote side title on rejection or empty text and excludes Agent conf
   await expect(f.actions.onSendPrompt("Unsent title")).rejects.toThrow("Send refused");
   await f.actions.onSendPrompt("<!-- invisible -->");
   expect(f.onSideChatTitle).not.toHaveBeenCalled();
-  await f.actions.onSendPrompt('<agent-config mode="plan" />\n**Review** the request');
+  await f.actions.onSendPrompt(':agent-config{mode="plan"}\n**Review** the request');
   expect(f.onSideChatTitle).toHaveBeenCalledExactlyOnceWith("Review the request");
 });
 

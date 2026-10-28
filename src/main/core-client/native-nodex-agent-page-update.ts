@@ -13,10 +13,6 @@ import type { AgentDocumentEditEffects } from "../../shared/nodex-agent-tools/do
 import type { NewBlockDraftInput } from "../../shared/nodex-agent-tools/write-schemas";
 import type { ToolFailure } from "../../shared/nodex-agent-tools/base-schemas";
 import { UpdatePageV3OutputSchema } from "../../shared/nodex-agent-tools/v3-write-schemas";
-import {
-  AgentDocumentEditCompilerError,
-  applyExactNfmPatches,
-} from "../../shared/nodex-agent-tools/exact-nfm-patches";
 import { CoreModuleResponseError } from "./core-client";
 import { nativeAgentClient, type NativeNodexAgentCore } from "./native-nodex-agent-core";
 import { toCoreAgentExecutionAuthorization } from "./core-agent-execution-authorization";
@@ -33,6 +29,7 @@ import {
 } from "./types";
 
 export type CoreAgentMutation = components["schemas"]["AgentDocumentSemanticMutation"];
+
 export type CoreAgentPreparation = components["schemas"]["AgentOperationPreparation"];
 export type CoreCommittedDocument = OwnedDocumentApplyResult;
 type ToolError = ToolFailure["error"];
@@ -236,7 +233,7 @@ const toNodexAgentPageUpdateCommit = (
       pending.request.tool === "update_page" &&
       (pending.request.input.body?.kind === "replace" ||
         pending.request.input.body?.kind === "patch")
-        ? "replace_document_from_nfm"
+        ? "replace_document_from_markdown"
         : "document_operation_batch",
     mutationId: pending.operationId,
     projectId: pending.request.projectId,
@@ -324,7 +321,7 @@ const mutationCommands = (
         ? [
             {
               kind: "replace_body" as const,
-              nested_markdown: body.markdown,
+              markdown: body.markdown ?? "",
               expected_etag: body.ifMatch,
             },
           ]
@@ -333,7 +330,7 @@ const mutationCommands = (
               {
                 kind: "insert_body" as const,
                 anchor: semanticAnchor(body.at),
-                nested_markdown: body.markdown,
+                markdown: body.markdown ?? "",
               },
             ]
           : []),
@@ -393,8 +390,8 @@ const projectNativeNodexAgentPageUpdateOutput = (
         ? {
             body: {
               format: "markdown",
-              markdown: exactContent.body_nfm,
-              contentHash: createHash("sha256").update(exactContent.body_nfm).digest("hex"),
+              markdown: exactContent.body_markdown,
+              contentHash: createHash("sha256").update(exactContent.body_markdown).digest("hex"),
             },
           }
         : {}),
@@ -464,21 +461,6 @@ export const prepareNativeNodexAgentPageUpdate = async (
       throw new Error("Core returned the wrong Agent Page content variant");
     }
     const content = contentSnapshot.value.value;
-    const targetMarkdown =
-      request.tool === "update_page" && request.input.body?.kind === "patch"
-        ? applyExactNfmPatches(
-            content.body_nfm,
-            request.input.body.patches.map((patch) => ({
-              oldNfm: patch.oldMarkdown,
-              newNfm: patch.newMarkdown,
-              ...(patch.expectedMatches !== undefined
-                ? { expectedMatches: patch.expectedMatches }
-                : {}),
-            })),
-          )
-        : request.tool === "update_page" && request.input.body?.kind === "replace"
-          ? request.input.body.markdown
-          : content.body_nfm;
     const mutation: CoreAgentMutation = {
       document_id: content.document_id,
       generation: content.document_generation,
@@ -551,7 +533,6 @@ export const prepareNativeNodexAgentPageUpdate = async (
               snapshot.value.preparation,
               request.tool === "update_page" && request.input.title !== undefined,
             ),
-            targetMarkdown: snapshot.value.preparation.preview_markdown ?? targetMarkdown,
           },
         },
         operationId,
@@ -559,18 +540,7 @@ export const prepareNativeNodexAgentPageUpdate = async (
       transition: { kind: "retain", pending },
     };
   } catch (error) {
-    const mapped =
-      error instanceof AgentDocumentEditCompilerError
-        ? {
-            code: error.code,
-            message: error.message,
-            retryable: false,
-            recovery:
-              error.code === "nfm_patch_mismatch" || error.code === "nfm_patch_overlap"
-                ? ("fetch_again" as const)
-                : ("none" as const),
-          }
-        : mapNativeNodexAgentCoreError(error);
+    const mapped = mapNativeNodexAgentCoreError(error);
     return {
       result: envelope({ ok: false, error: mapped }, operationId),
       transition: { kind: "keep" },

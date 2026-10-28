@@ -59,7 +59,7 @@ vi.mock("@/lib/database-property-options-runtime", async (importOriginal) => ({
 
 vi.mock("./editor/nfm-editor", async () => {
   const React = await import("react");
-  const { materializePageDocument, populateBlockDocumentBodyFromNfm } =
+  const { materializePageDocument, populateBlockDocumentBodyFromMarkdown } =
     await import("../../../shared/block-documents/block-document-codec");
 
   return {
@@ -81,10 +81,10 @@ vi.mock("./editor/nfm-editor", async () => {
       editorState.latestFragment = source.fragment;
       const inputRef = React.useRef<HTMLTextAreaElement>(null);
       const readValue = () =>
-        source.fragment.doc ? materializePageDocument(source.fragment.doc).nfm : "";
+        source.fragment.doc ? materializePageDocument(source.fragment.doc).markdown : "";
       const [value, setValue] = React.useState(readValue);
       React.useEffect(() => {
-        setValue(source.fragment.doc ? materializePageDocument(source.fragment.doc).nfm : "");
+        setValue(source.fragment.doc ? materializePageDocument(source.fragment.doc).markdown : "");
       }, [source.documentId, source.fragment]);
       React.useImperativeHandle(embeddedBoundary.navigationRef, () => ({
         focus: () => {
@@ -109,7 +109,7 @@ vi.mock("./editor/nfm-editor", async () => {
               if (source.fragment.length > 0) {
                 source.fragment.delete(0, source.fragment.length);
               }
-              populateBlockDocumentBodyFromNfm(source.fragment, nextValue);
+              populateBlockDocumentBodyFromMarkdown(source.fragment, nextValue);
             });
           }}
         />

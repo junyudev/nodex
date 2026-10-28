@@ -8,7 +8,7 @@ repeating the full capability and context workflow on every command.
 
 ```sh
 nodex sql query 'SELECT page_id,title FROM pages WHERE title LIKE :title' --param 'title="%launch%"'
-nodex sql query 'SELECT page_id,nested_markdown,body_etag FROM page_documents WHERE page_id=:id' --param 'id="PAGE_ID"'
+nodex sql query 'SELECT page_id,markdown,body_etag FROM page_documents WHERE page_id=:id' --param 'id="PAGE_ID"'
 nodex sql query 'SELECT title,title_etag,file_manifest_revision,intrinsic_properties FROM pages WHERE page_id=:id' --param 'id="PAGE_ID"'
 ```
 
@@ -36,7 +36,7 @@ Use `--at start`, `before:BLOCK_ID`, `after:BLOCK_ID`,
 `inside-start:BLOCK_ID`, or `inside-end:BLOCK_ID` for explicit placement.
 
 For a precise text edit, copy the exact old fragment from the read result,
-including any Nested Markdown identity markers, and supply enough context to
+including any Nodex Markdown identity markers, and supply enough context to
 identify it uniquely:
 
 ```sh

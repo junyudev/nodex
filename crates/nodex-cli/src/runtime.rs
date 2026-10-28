@@ -146,7 +146,7 @@ pub(crate) fn execute_with_presentation(
     }
     if matches!(&cli.command, Command::Docs(_)) {
         return Ok(CommandOutput::Bytes(
-            include_bytes!("../../../agent-skills/nodex/references/nested-markdown.md").to_vec(),
+            include_bytes!("../../../agent-skills/nodex/references/markdown.md").to_vec(),
         ));
     }
     if matches!(&cli.command, Command::Capabilities) {
@@ -723,7 +723,7 @@ fn read_page(
     let file_kind = if arguments.meta {
         LibraryPageProjectionFileKind::MetaYaml
     } else {
-        LibraryPageProjectionFileKind::BodyNestedMarkdown
+        LibraryPageProjectionFileKind::BodyMarkdown
     };
     let snapshot = unwrap_library(client.library_read(
         Some(&project.id),
@@ -794,7 +794,7 @@ fn sed_page(
         Some(&project.id),
         LibraryRead::PageProjectionFile {
             page_id,
-            file_kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+            file_kind: LibraryPageProjectionFileKind::BodyMarkdown,
             prepare: None,
         },
     ))?;

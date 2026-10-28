@@ -1,9 +1,9 @@
-# NFM Editor Agent Config Behavior
+# Page Editor Agent Config Behavior
 
 Status: Active
 Last Updated: 2026-10-14
 
-This document is the source of truth for the editable NFM `<agent-config />` inline atom and the execution settings it applies when its prompt starts.
+This document is the source of truth for the editable Page editor `:agent-config{}` inline atom and the execution settings it applies when its prompt starts.
 
 ## Product surface
 
@@ -18,12 +18,12 @@ Native Codex currently has one runtime-owned provider, so the Model menu omits a
 
 Environment, Harness, Personality, Tools, credentials, and raw configuration are not edited here. `Reset` clears every explicit Agent config value and returns the atom to inheritance.
 
-## NFM contract
+## Nodex Markdown contract
 
-Agent config is a self-closing inline atom:
+Agent config is an inline directive:
 
 ```text
-<agent-config mode="plan" provider="openai" model="gpt-5.6-sol" reasoning="high" speed="fast" />
+:agent-config{mode="plan" provider="openai" model="gpt-5.6-sol" reasoning="high" speed="fast"}
 ```
 
 Canonical attributes serialize in this order:
@@ -34,7 +34,7 @@ mode, provider, model, reasoning, speed
 
 Only non-empty attributes serialize. Stable Provider and Model identifiers are document data; display labels, backend bindings, credential state, and secrets are not. `speed` is the product term for the runtime service tier. `speed="standard"` records an explicit Standard choice; an omitted speed inherits.
 
-Omitted fields inherit from the target task or new-task defaults. A Model without a Provider resolves against native Codex, and the only accepted explicit Provider is `openai`. An empty `<agent-config />` is valid and expresses complete inheritance.
+Omitted fields inherit from the target task or new-task defaults. A Model without a Provider resolves against native Codex, and the only accepted explicit Provider is `openai`. An empty `:agent-config{}` is valid and expresses complete inheritance.
 
 Unknown, malformed, unavailable, or unsupported explicit values remain visible for correction and fail closed at send time. They are never silently replaced with another Provider, Model, Effort, Speed, or Mode.
 
@@ -65,4 +65,4 @@ permissions: authenticated calls can use all content in the current Profile's
 Library. Plan mode changes how work is planned, while execution identity and
 cancellation continue to follow the calling Session and native connection.
 
-Authentication remains runtime-owned. Credentials never enter NFM, prompt sidecars, pending-worktree payloads, logs, test fixtures, or screenshots.
+Authentication remains runtime-owned. Credentials never enter Nodex Markdown, prompt sidecars, pending-worktree payloads, logs, test fixtures, or screenshots.

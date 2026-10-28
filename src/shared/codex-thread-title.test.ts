@@ -18,7 +18,7 @@ describe("cleanCodexAutoTitlePrompt", () => {
   });
 
   test("does not strip markdown links or agent config lines", () => {
-    const prompt = '<agent-config mode="plan" />\nRead [docs](README.md)';
+    const prompt = ':agent-config{mode="plan"}\nRead [docs](README.md)';
     expect(cleanCodexAutoTitlePrompt(prompt)).toBe(prompt);
   });
 

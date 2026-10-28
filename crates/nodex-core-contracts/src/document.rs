@@ -15,7 +15,7 @@ mod recovery;
 pub use recovery::*;
 pub mod recovery_bundle;
 
-pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 16;
+pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 17;
 pub const OWNED_DOCUMENT_DESCRIPTOR_VERSION: u32 = 4;
 /// A complete 2 MiB Canvas mutation plus bounded identity and File metadata.
 pub const MAX_CANVAS_MUTATION_EVENT_BYTES: usize = 2 * 1024 * 1024 + 256 * 1024;
@@ -359,7 +359,7 @@ pub struct AgentDocumentSemanticSnapshot {
     pub target_block_id: String,
     pub title: String,
     pub rich_title: Value,
-    pub nested_markdown: String,
+    pub markdown: String,
     pub plain_text: String,
     pub blocks: Vec<AgentDocumentSemanticBlock>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -404,11 +404,11 @@ pub enum OwnedDocumentIntent {
         operations: Vec<DocumentBlockOperation>,
         actor: Value,
     },
-    ReplaceFromNfm {
+    ReplaceFromMarkdown {
         document_id: String,
         generation: i64,
         expected_head_seq: i64,
-        nfm: String,
+        markdown: String,
         rich_title: Option<Vec<Value>>,
         actor: Value,
     },
@@ -486,10 +486,10 @@ pub enum DocumentSemanticCommand {
     },
     InsertBody {
         anchor: DocumentSemanticAnchor,
-        nested_markdown: String,
+        markdown: String,
     },
     ReplaceBody {
-        nested_markdown: String,
+        markdown: String,
         expected_etag: String,
     },
     InsertBlock {

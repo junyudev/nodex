@@ -76,7 +76,6 @@ export type PrepareNodexAgentPageUpdateResult =
             readonly kind: "prepared";
             readonly mutation: NodexAgentPreparedPageUpdate;
             readonly effects: AgentDocumentEditEffects;
-            readonly targetMarkdown: string;
           };
     }
   | { readonly ok: false; readonly error: ToolFailure["error"] };
@@ -127,12 +126,6 @@ export type PrepareNodexAgentCreatePagesResult =
             readonly kind: "prepared";
             readonly command: NodexAgentCreatePagesCommand;
             readonly documentHeads: readonly NodexAgentDocumentHead[];
-            readonly previews: readonly {
-              readonly pageId: string;
-              readonly title: string;
-              readonly bodyBlockCount: number;
-              readonly targetMarkdown: string;
-            }[];
           };
     }
   | { readonly ok: false; readonly error: ToolFailure["error"] };

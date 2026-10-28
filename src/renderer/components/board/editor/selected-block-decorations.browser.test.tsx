@@ -141,7 +141,6 @@ function BlockActionSelectionHarness() {
       onSetBackgroundColor={() => undefined}
       onClearFormat={() => undefined}
       onOpenBlockActions={() => undefined}
-      onNodexRow={() => undefined}
       onMoveBlocksToDestination={() => undefined}
       onSendBlocksToThread={() => undefined}
       onSelectionPresentationChange={setPresentation}

@@ -914,7 +914,7 @@ mod tests {
                    VALUES ('placeholder', 'library:restore', 'paragraph', 'active', 1, 1, '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z');
                  INSERT INTO documents(id, library_id, generation, head_seq, schema_key, schema_version,
                    state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine)
-                   VALUES ('document:dormant', 'library:restore', 1, 1, 'nodex.page', 3,
+                   VALUES ('document:dormant', 'library:restore', 1, 1, 'nodex.page', 4,
                      X'', '', 'ready', 'ydoc_primary', '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z', 'yjs');
                  INSERT INTO document_block_index(document_id, block_id, ordinal, block_type, text, projected_seq)
                    VALUES ('document:dormant', 'placeholder', 0, 'paragraph', '', 1);",
@@ -960,7 +960,7 @@ mod tests {
                        state_vector, state_hash, readiness, authority, created_at, updated_at, \
                        sync_engine\
                      ) VALUES (\
-                       'document:retained', 'library:restore', 1, 4, 'nodex.page', 3, X'', '', \
+                       'document:retained', 'library:restore', 1, 4, 'nodex.page', 4, X'', '', \
                        'ready', 'ydoc_primary', '2026-08-26T00:00:00.000Z', \
                        '2026-08-26T00:00:00.000Z', 'yjs'\
                      ); \

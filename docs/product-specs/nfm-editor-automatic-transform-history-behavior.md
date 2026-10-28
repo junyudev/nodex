@@ -1,11 +1,11 @@
-# NFM Editor Automatic Transform History Behavior
+# Page Editor Automatic Transform History Behavior
 
 Status: Active
-Last Updated: 2026-08-26
+Last Updated: 2026-10-28
 
 ## Purpose
 
-This document is the user-visible source of truth for Undo and Redo when the NFM Editor automatically converts recently typed text into richer editor content. An automatic transform includes inline Markdown formatting, Block-prefix conversion, and linkification while typing.
+This document is the user-visible source of truth for Undo and Redo when the Page Editor automatically converts recently typed text into richer editor content. An automatic transform includes inline Markdown formatting, Block-prefix conversion, and linkification while typing.
 
 ## History model
 
@@ -34,7 +34,7 @@ Undo restores the complete delimiters exactly once and restores the caret to the
 
 ## Block-prefix transforms
 
-Heading, list, checklist, quote, code-block, divider, toggle, thread-section, and future Block-prefix rules use the same two-entry history model. Space-triggered and Enter-triggered forms restore an editable literal prefix on the first Undo; the second Undo removes the user input.
+Heading, list, checklist, quote, code-block, divider, toggle, and future Block-prefix rules use the same two-entry history model. Space-triggered and Enter-triggered forms restore an editable literal prefix on the first Undo; the second Undo removes the user input.
 
 An immediate Backspace after an automatic transform may restore its literal input as the editor's input-rule convenience. It restores the literal syntax once and never duplicates the final delimiter, whitespace, newline, or other trigger. This convenience does not replace or fork the normal Undo/Redo history lane.
 
@@ -46,7 +46,7 @@ Input-method composition is not transformed during an active composition. Once c
 
 When typing autolink is enabled, the URL text and its terminating separator are committed before linkification. The first Undo removes only the automatically added link mark and keeps the complete literal text. Paste remains one paste action even when pasted content contains multiple eligible links.
 
-URL recognition, settings, path guards, and paste eligibility remain defined by [NFM Editor Autolink Behavior](nfm-editor-autolink-behavior.md).
+URL recognition, settings, path guards, and paste eligibility remain defined by [Page Editor Autolink Behavior](nfm-editor-autolink-behavior.md).
 
 ## Non-user maintenance
 

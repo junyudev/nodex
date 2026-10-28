@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
-import { formatDateMentionPlainText } from "@/lib/nfm/date-mention";
+import { formatDateMentionPlainText } from "../../../../shared/rich-text/date-mention";
 import { dateMentionInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
 import { DateMentionInlineVisual } from "../date-mention-inline-visual";
 import {

@@ -17,7 +17,7 @@ import {
   ThreadSummaryPushIcon,
   OpenInIcon,
   TerminalIcon,
-  NfmImageBlockIcon,
+  ImageBlockIcon,
 } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { BranchSelectorPopover } from "../shared/branch-selector-popover";
@@ -608,7 +608,7 @@ function BackgroundSubagentRowTrailing({
 
 function SummaryOutputIcon({ row }: { row: ThreadSummaryPanelOutputRow }) {
   if (row.kind === "generated-image" || row.kind === "image") {
-    return <NfmImageBlockIcon className="size-3.5" />;
+    return <ImageBlockIcon className="size-3.5" />;
   }
 
   if (row.kind === "website") {

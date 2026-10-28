@@ -6,7 +6,7 @@ import {
   type NodexAgentV6ToolName,
 } from "../../shared/nodex-agent-tools/identity";
 import { NODEX_AGENT_V6_TOOL_CONTRACTS } from "../../shared/nodex-agent-tools/v6-contracts";
-import { NESTED_MARKDOWN_COMPACT_HINT } from "../../shared/nfm/agent-guide";
+import { NODEX_MARKDOWN_COMPACT_HINT } from "../../shared/nodex-markdown/agent-guide";
 import {
   DynamicToolRegistry,
   DynamicToolRegistryError,
@@ -14,7 +14,7 @@ import {
 } from "./dynamic-tool-registry";
 
 export const NODEX_APP_V3_TOOL_NAMESPACE_DESCRIPTION = [
-  NESTED_MARKDOWN_COMPACT_HINT,
+  NODEX_MARKDOWN_COMPACT_HINT,
   "Page keys are human locators: resolve them with search, then use the returned canonical Page ID for fetches and every mutation.",
   "Outputs are JSON text. In Code Mode, compose dependent calls in one JavaScript pipeline, parse each result, throw on result.error, keep intermediate rows, Markdown, cursors, and ETags inside JavaScript, serialize dependent writes, and emit only a bounded summary with text().",
 ].join(" ");

@@ -387,18 +387,18 @@ describe("Yjs/Yrs compatibility", () => {
     );
   }, 60_000);
 
-  test("consumes a Rust exact-NFM body replacement and rich title atomically", () => {
-    const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-nfm-patch-"));
+  test("consumes a Rust exact Markdown body replacement and rich title atomically", () => {
+    const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-markdown-patch-"));
     temporaryRoots.push(temporaryRoot);
-    const corpusPath = path.join(temporaryRoot, "nfm-patch.json");
-    const updatePath = path.join(temporaryRoot, "nfm-patch.bin");
+    const corpusPath = path.join(temporaryRoot, "markdown-patch.json");
+    const updatePath = path.join(temporaryRoot, "markdown-patch.bin");
     writeFileSync(
       corpusPath,
       JSON.stringify({
         patches: [
           {
-            oldNfm: "## Heading",
-            newNfm: "## Heading from an exact Rust patch",
+            oldMarkdown: "## Heading",
+            newMarkdown: "## Heading from an exact Rust patch",
             expectedMatches: 1,
           },
         ],
@@ -413,7 +413,7 @@ describe("Yjs/Yrs compatibility", () => {
     );
 
     const summary = runBridge<SemanticOperationSummary>([
-      "nfm-patch",
+      "markdown-patch",
       fixtureRoot,
       corpusPath,
       updatePath,

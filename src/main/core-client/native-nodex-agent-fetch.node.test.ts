@@ -11,7 +11,7 @@ import { FakeCoreClient } from "./testing/fake-core-client";
 
 const pageId = "01980000-0000-7000-8000-000000000001";
 const documentId = "01980000-0000-7000-8000-000000000002";
-const etag = `nxe1.${"a".repeat(43)}`;
+const etag = `nxe2.${"a".repeat(43)}`;
 const authority: NodexAgentTurnContext = {
   threadId: "thread:actor",
   turnId: "turn:actor",
@@ -74,7 +74,7 @@ const fixture = (snapshotEpoch = authority.storeEpoch) => {
         generation: 2,
         head_seq: 11,
         rich_title: [{ type: "text", text: "Current title", styles: {} }],
-        nested_markdown: "- Current paragraph\n",
+        markdown: "- Current paragraph\n",
         plain_text: "Current paragraph",
         blocks: [],
         title_etag: etag,

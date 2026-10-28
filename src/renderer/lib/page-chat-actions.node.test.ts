@@ -68,7 +68,7 @@ describe("sendPageToChatWithRelation", () => {
   test("orders canonical snapshot, target resolution, durable link, then existing Turn", async () => {
     const runtime = dependencies();
     await sendPageToChatWithRelation(
-      pageInput({ kind: "thread", threadId: "thread-target" }),
+      pageInput({ kind: "thread", threadId: "thread-target", sessionId: "session-target" }),
       runtime.value,
     );
     expect(runtime.calls).toEqual(["snapshot", "resolve-thread", "link", "start-turn"]);
@@ -91,7 +91,7 @@ describe("sendPageToChatWithRelation", () => {
     });
     await expect(
       sendPageToChatWithRelation(
-        pageInput({ kind: "thread", threadId: "thread-target" }),
+        pageInput({ kind: "thread", threadId: "thread-target", sessionId: "session-target" }),
         runtime.value,
       ),
     ).rejects.toThrow("Page unavailable");
@@ -107,7 +107,7 @@ describe("sendPageToChatWithRelation", () => {
     });
     await expect(
       sendPageToChatWithRelation(
-        pageInput({ kind: "thread", threadId: "thread-target" }),
+        pageInput({ kind: "thread", threadId: "thread-target", sessionId: "session-target" }),
         runtime.value,
       ),
     ).rejects.toThrow("Chat unavailable");
@@ -123,7 +123,7 @@ describe("sendPageToChatWithRelation", () => {
     });
     await expect(
       sendPageToChatWithRelation(
-        pageInput({ kind: "thread", threadId: "thread-target" }),
+        pageInput({ kind: "thread", threadId: "thread-target", sessionId: "session-target" }),
         runtime.value,
       ),
     ).rejects.toThrow("Store unavailable");
@@ -139,7 +139,7 @@ describe("sendPageToChatWithRelation", () => {
     });
     await expect(
       sendPageToChatWithRelation(
-        pageInput({ kind: "thread", threadId: "thread-target" }),
+        pageInput({ kind: "thread", threadId: "thread-target", sessionId: "session-target" }),
         runtime.value,
       ),
     ).rejects.toThrow("Agent unavailable");

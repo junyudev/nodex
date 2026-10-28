@@ -193,7 +193,7 @@ test("native Database View tools distinguish displayed rows from the effective s
             projectId: draft.projectId,
             title: fixture.title,
             status: fixture.status,
-            nfm: "",
+            markdown: "",
           });
           if (fixture.matches) expectedPages.push({ pageId, title: fixture.title });
         }

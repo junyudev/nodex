@@ -44,7 +44,7 @@ type PageLifecycleCreateDisplayOptionalFields = Omit<
   | "kind"
   | "pageId"
   | "title"
-  | "nfm"
+  | "markdown"
   | "status"
   | "viewPlacement"
   | "dataSourceId"
@@ -57,7 +57,7 @@ export type PageLifecycleCreateDisplayOperation = Readonly<{
   kind: "create_page";
   pageId: string;
   title: string;
-  nfm: string;
+  markdown: string;
   status: WorkflowStatus;
   viewPlacement: CreatePageOperationV2["viewPlacement"];
   tagOptions?: NonNullable<PageCreateInput["tagOptions"]>;
@@ -227,7 +227,7 @@ const compileCreateOperation = (input: {
     pageId: input.operation.pageId,
     title: input.operation.title,
     ...(input.operation.richTitle === undefined ? {} : { richTitle: input.operation.richTitle }),
-    nfm: input.operation.nfm,
+    markdown: input.operation.markdown,
     status: input.operation.status,
     priority: input.operation.priority ?? null,
     estimate: input.operation.estimate ?? null,
@@ -565,7 +565,7 @@ const createDisplayOperation = (
     kind: "create_page",
     pageId: intent.pageId,
     title: input.title,
-    nfm: input.description ?? "",
+    markdown: input.description ?? "",
     status: intent.status,
     viewPlacement,
     priority: input.priority ?? null,

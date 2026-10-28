@@ -1,37 +1,15 @@
 import { describe, expect, test } from "vite-plus/test";
 import * as Y from "yjs";
 import {
-  createBlockDocumentNfmContentParitySignature,
+  createBlockDocumentMarkdownContentParitySignature,
   createPageDocumentGenesis,
   createDetachedPageDocumentFromBlockTree,
   materializePageDocument,
   materializeBlockFields,
 } from "./block-document-codec";
 
-const FULL_NFM_FIXTURE = [
-  "# Heading",
-  'Paragraph **bold** with <agent-config mode="plan" model="gpt-5.5" reasoning="high" /> and <mention-thread uuid="thread-1" /> and <mention-date start="2026-07-11" format="relative" />.',
-  "- List",
-  '\tNested <attachment kind="file" mode="materialized" source="nodex://assets/demo.txt" name="demo.txt" mime="text/plain" bytes="12" />',
-  "3. Ordered",
-  "- [x] Checked",
-  "▶ Collapsed toggle",
-  "\tToggle child",
-  "> Quoted",
-  "---",
-  '<callout icon="💡">Callout</callout>',
-  '<image source="nodex://assets/image.png">Image caption</image>',
-  '<thread-section label="Investigate" thread="thread-2" />',
-  '<page-ref url="nodex://pages/card-target" />',
-  '<page-ref url="nodex://pages/card-canonical" />',
-  '<database-view-ref database-view="view-canonical" display-hint="Planning" />',
-  "```ts",
-  "const value = 1;",
-  "```",
-  "| Name | Score |",
-  "| --- | ---: |",
-  "| Nodex | 10 |",
-].join("\n");
+const FULL_MARKDOWN_FIXTURE =
+  '# Heading\n\nParagraph **bold** with :agent-config{mode="plan" model="gpt-5.5" reasoning="high"} and <nodex://sessions/thread-1> and :date{start="2026-07-11" format="relative"}&#46;\n\n- List\n\n  Nested :attachment{kind="file" source="nodex://assets/demo.txt" name="demo.txt" mime="text/plain" bytes="12"}\n\n3. Ordered\n- [x] Checked\n\n:::toggle[Collapsed toggle]\n  Toggle child\n:::\n\n> Quoted\n\n---\n\n> [!TIP]\n>\n> ![Image caption](nodex://assets/image.png)\n>\n> ::page-ref{page="card-target"}\n>\n> ::page-ref{page="card-canonical"}\n>\n> ::database-view-ref{view="view-canonical" hint="Planning"}\n>\n> ```typescript\n> const value = 1;\n> ```\n>\n> | Name | Score |\n> | --- | ---: |\n> | Nodex | 10 |';
 
 const flattenIds = (
   blocks: readonly { readonly id: string; readonly children: readonly unknown[] }[],
@@ -50,7 +28,7 @@ describe("PageDocumentCodec", () => {
   test("incremental history fields agree with full materialization for rich text, custom blocks, and tables", () => {
     const { document, materialization } = createPageDocumentGenesis({
       documentId: "history-fields-all-shapes",
-      nfm: FULL_NFM_FIXTURE,
+      markdown: FULL_MARKDOWN_FIXTURE,
     });
     const expected = new Map<string, unknown>();
     const collect = (blocks: typeof materialization.blockTree): void => {
@@ -76,37 +54,31 @@ describe("PageDocumentCodec", () => {
   });
 
   test("excludes imported toggle disclosure state from durable content", () => {
-    const nfm = [
-      "▼ Expanded toggle",
-      "\tExpanded child",
-      "▼# Expanded heading",
-      "\tHeading child",
-    ].join("\n");
+    const markdown =
+      ':::toggle[Expanded toggle]\n  Expanded child\n:::\n\n:::toggle[Expanded heading]{heading="1"}\n  Heading child\n:::';
 
     const genesis = createPageDocumentGenesis({
       documentId: "document-codec-local-toggle-state",
       title: "Local disclosure",
-      nfm,
+      markdown,
     });
 
-    expect(createBlockDocumentNfmContentParitySignature(nfm)).toBe(
-      ["▶ Expanded toggle", "\tExpanded child", "▶# Expanded heading", "\tHeading child"].join(
-        "\n",
-      ),
+    expect(createBlockDocumentMarkdownContentParitySignature(markdown)).toBe(
+      ':::toggle[Expanded toggle]\n  Expanded child\n:::\n\n:::toggle[Expanded heading]{heading="1"}\n  Heading child\n:::',
     );
-    expect(genesis.materialization.nfm).toBe(createBlockDocumentNfmContentParitySignature(nfm));
+    expect(genesis.materialization.markdown).toBe(
+      createBlockDocumentMarkdownContentParitySignature(markdown),
+    );
   });
 
   test("requires current Page identities while keeping parity allocation deterministic", () => {
-    expect(() => createBlockDocumentNfmContentParitySignature("<page />")).toThrow(
-      "Canonical Page NFM requires an exact non-empty uuid",
-    );
-    expect(createBlockDocumentNfmContentParitySignature('<page uuid="exported-card" />')).toBe(
-      '<page uuid="nfm-parity-1" />',
+    expect(() => createBlockDocumentMarkdownContentParitySignature("::page{}")).toThrow("id");
+    expect(createBlockDocumentMarkdownContentParitySignature('::page{id="exported-card"}')).toBe(
+      '::page{id="exported-card"}',
     );
     expect(
-      createBlockDocumentNfmContentParitySignature('<page-ref url="nodex://pages/target-card" />'),
-    ).toBe('<page-ref url="nodex://pages/target-card" />');
+      createBlockDocumentMarkdownContentParitySignature('::page-ref{page="target-card"}'),
+    ).toBe('::page-ref{page="target-card"}');
   });
 
   test("headlessly imports and materializes every supported custom shape", () => {
@@ -114,7 +86,7 @@ describe("PageDocumentCodec", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document-codec-all-shapes",
       title: "Shared title",
-      nfm: FULL_NFM_FIXTURE,
+      markdown: FULL_MARKDOWN_FIXTURE,
       allocateBlockId: () => `block-${++nextId}`,
     });
 
@@ -122,14 +94,14 @@ describe("PageDocumentCodec", () => {
     const replay = createPageDocumentGenesis({
       documentId: "document-codec-all-shapes-replay",
       title: "Shared title",
-      nfm: genesis.materialization.nfm,
+      markdown: genesis.materialization.markdown,
     });
-    expect(replay.materialization.nfm).toBe(genesis.materialization.nfm);
+    expect(replay.materialization.markdown).toBe(genesis.materialization.markdown);
     expect(flattenIds(genesis.materialization.blockTree).length).toBe(nextId);
     expect(new Set(flattenIds(genesis.materialization.blockTree)).size).toBe(nextId);
     expect(genesis.materialization.references.length).toBe(4);
     expect(genesis.materialization.references.map((reference) => reference.kind).join(",")).toBe(
-      "thread,page,page,database_view",
+      "session,page,page,database_view",
     );
     expect(genesis.materialization.assetRefs.length).toBe(2);
     expect(genesis.materialization.assetRefs[0]?.managedFileName).toBe("demo.txt");
@@ -143,9 +115,13 @@ describe("PageDocumentCodec", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document-codec-source",
       title: "Reload",
-      nfm: "Root\n\t- Child\nSibling",
+      markdown: ":::paragraph[Root]\n  - Child\n:::\n\nSibling",
       allocateBlockId: () => `stable-${++nextId}`,
     });
+    expect(genesis.materialization.blockTree).toMatchObject([
+      { type: "paragraph", children: [{ type: "bulletListItem" }] },
+      { type: "paragraph", children: [] },
+    ]);
     const originalIds = flattenIds(genesis.materialization.blockTree).join(",");
     const reloaded = new Y.Doc({ guid: "document-codec-source" });
     Y.applyUpdate(reloaded, genesis.update);
@@ -153,14 +129,14 @@ describe("PageDocumentCodec", () => {
     const materialized = materializePageDocument(reloaded);
 
     expect(flattenIds(materialized.blockTree).join(",")).toBe(originalIds);
-    expect(materialized.nfm).toBe(genesis.materialization.nfm);
+    expect(materialized.markdown).toBe(genesis.materialization.markdown);
   });
 
   test("materializes without mutating the authoritative Y.Doc", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document-codec-pure-read",
       title: "Pure read",
-      nfm: "Parent\n\tChild",
+      markdown: ":::paragraph[Parent]\n  Child\n:::",
     });
     const stateBefore = Array.from(Y.encodeStateAsUpdate(genesis.document)).join(",");
 
@@ -169,11 +145,11 @@ describe("PageDocumentCodec", () => {
     expect(Array.from(Y.encodeStateAsUpdate(genesis.document)).join(",")).toBe(stateBefore);
   });
 
-  test("creates one authority-owned editable paragraph for blank NFM", () => {
+  test("creates one authority-owned editable paragraph for blank Markdown", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document-codec-empty",
       title: "Empty",
-      nfm: "",
+      markdown: "",
       allocateBlockId: () => "block-empty-root",
     });
 
@@ -186,7 +162,7 @@ describe("PageDocumentCodec", () => {
         children: [],
       },
     ]);
-    expect(genesis.materialization.nfm).toBe("");
+    expect(genesis.materialization.markdown).toBe("");
     expect(genesis.materialization.plainText).toBe("");
   });
 
@@ -218,5 +194,17 @@ describe("PageDocumentCodec", () => {
     });
     expect(pending.materialization.assetRefs).toEqual([]);
     pending.document.destroy();
+  });
+  test("keeps an empty paragraph's authored color in the exact text", () => {
+    const page = createPageDocumentGenesis({
+      documentId: "colored-empty",
+      markdown: '{background="gray"}',
+    });
+    try {
+      expect(page.materialization.markdown).toBe('{background="gray"}');
+      expect(page.materialization.plainText).toBe("");
+    } finally {
+      page.document.destroy();
+    }
   });
 });

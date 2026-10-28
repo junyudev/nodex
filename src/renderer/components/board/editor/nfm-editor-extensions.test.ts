@@ -9,16 +9,10 @@ import {
   inspectNodexClipboardHtml,
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
 } from "../../../../shared/clipboard-paste";
-import {
-  createNfmEditorExtensions,
-  createNfmPasteHandler,
-  NFM_DISABLED_EXTENSIONS,
-  THREAD_SECTION_SHORTCUT_PATTERN,
-  threadSectionInputRule,
-} from "./nfm-editor-extensions";
-import { createEmptyThreadSectionBlock } from "./thread-section";
+import { createNfmEditorExtensions, createNfmPasteHandler } from "./nfm-editor-extensions";
+import { readMarkdown, writeMarkdown, type MarkdownBlock } from "../../../../shared/nodex-markdown";
 
-describe("nfm editor extensions", () => {
+describe("markdown editor extensions", () => {
   const writeClaim = "0199134e-cbb0-7000-8000-000000000006";
   test("keeps Code Block paste literal even when the clipboard carries a structural claim", () => {
     const onStructuralClaimPaste = vi.fn(() => true);
@@ -74,27 +68,6 @@ describe("nfm editor extensions", () => {
     expect(onStructuralClaimPaste).not.toHaveBeenCalled();
     expect(defaultPasteHandler).not.toHaveBeenCalled();
   });
-  test("replaces the built-in divider shortcut with the thread-section shortcut", () => {
-    const extensions = createNfmEditorExtensions();
-
-    expect(NFM_DISABLED_EXTENSIONS.includes("divider-block-shortcuts")).toBe(true);
-    expect(extensions.includes(threadSectionInputRule)).toBe(true);
-    expect(THREAD_SECTION_SHORTCUT_PATTERN.test("---")).toBe(true);
-    expect(THREAD_SECTION_SHORTCUT_PATTERN.test("--")).toBe(false);
-  });
-
-  test("reuses the shared empty thread-section block shape", () => {
-    expect(JSON.stringify(createEmptyThreadSectionBlock())).toBe(
-      JSON.stringify({
-        type: "threadSection",
-        props: {
-          label: "",
-          threadId: "",
-        },
-      }),
-    );
-  });
-
   test("claims a verified structural sidecar before generic paste parsing", () => {
     const defaultPasteHandler = vi.fn(() => true);
     const onStructuralPaste = vi.fn(() => true);
@@ -235,6 +208,45 @@ describe("nfm editor extensions", () => {
     expect(pasteHTML.mock.calls[0]?.[0]).not.toContain('data-content-type="page"');
     expect(defaultPasteHandler).not.toHaveBeenCalled();
   });
+
+  test.each([
+    [
+      "Markdown a source provides",
+      { "text/markdown": "**Ship** it\n- [ ] tag", "text/plain": "Ship it tag" },
+      "**Ship** it\n- [ ] tag",
+    ],
+    [
+      "a table written as Markdown",
+      { "text/plain": "| a | b |\n| - | - |\n| 1 | 2 |" },
+      "| a | b |\n| - | - |\n| 1 | 2 |",
+    ],
+  ])(
+    "pastes %s as the Blocks Nodex reads it as",
+    (_source, data: Record<string, string>, markdown) => {
+      const defaultPasteHandler = vi.fn(() => true);
+      const blocksToFullHTML = vi.fn((_blocks: unknown[]) => "<blocks />");
+      const pasteHTML = vi.fn();
+      const handler = createNfmPasteHandler();
+
+      expect(
+        handler({
+          event: {
+            clipboardData: {
+              types: Object.keys(data),
+              getData: (type: string) => data[type] ?? "",
+            },
+          } as unknown as ClipboardEvent,
+          editor: { blocksToFullHTML, pasteHTML } as never,
+          defaultPasteHandler,
+        }),
+      ).toBe(true);
+      expect(writeMarkdown(blocksToFullHTML.mock.calls[0]?.[0] as MarkdownBlock[])).toBe(
+        writeMarkdown(readMarkdown(markdown)),
+      );
+      expect(pasteHTML).toHaveBeenCalledWith("<blocks />", true);
+      expect(defaultPasteHandler).not.toHaveBeenCalled();
+    },
+  );
 
   test("leaves ordinary clipboard content on BlockNote's generic path", () => {
     const defaultPasteHandler = vi.fn(() => true);

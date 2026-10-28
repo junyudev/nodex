@@ -325,7 +325,7 @@ test("native Workbench observations keep two windows independent and preserve th
             projectId: draft.projectId,
             status: "plan",
             title,
-            nfm: `Content owned by ${title}.`,
+            markdown: `Content owned by ${title}.`,
           });
         }
         threadId = await sendAgentPrompt(first, sessionId, BOOT_PROMPT);

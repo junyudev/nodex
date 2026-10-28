@@ -9,7 +9,7 @@ import {
   parseLocalFileLinkHref,
 } from "./file-link-openers";
 
-const EXAMPLE_PARSER_PATH = "/workspace/nodex/src/renderer/lib/nfm/parser.ts";
+const EXAMPLE_PARSER_PATH = "/workspace/nodex/src/renderer/lib/markdown/parser.ts";
 const EXAMPLE_MAIN_PATH = "/workspace/nodex/src/main/index.ts";
 
 describe("file link openers", () => {

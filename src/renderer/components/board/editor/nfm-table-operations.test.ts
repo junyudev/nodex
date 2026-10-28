@@ -47,7 +47,7 @@ function cellBackground(content: NfmTableContent, row: number, column: number) {
   return cell.props.backgroundColor;
 }
 
-describe("nfm table operations", () => {
+describe("markdown table operations", () => {
   test("duplicates a row after the selected row", () => {
     const nextContent = duplicateNfmTableTarget(tableContent(), {
       kind: "row",

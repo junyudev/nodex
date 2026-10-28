@@ -11,18 +11,18 @@ use crate::domain::block_tree::{
 use super::create_compatible_document;
 
 pub const PAGE_SCHEMA_KEY: &str = "nodex.page";
-pub const PAGE_SCHEMA_VERSION: u32 = 3;
+pub const PAGE_SCHEMA_VERSION: u32 = 4;
 pub const SYNCED_BLOCK_SCHEMA_KEY: &str = "nodex.synced-block";
-pub const SYNCED_BLOCK_SCHEMA_VERSION: u32 = 2;
+pub const SYNCED_BLOCK_SCHEMA_VERSION: u32 = 3;
 pub const REUSABLE_TEMPLATE_SCHEMA_KEY: &str = "nodex.reusable-template";
-pub const REUSABLE_TEMPLATE_SCHEMA_VERSION: u32 = 2;
+pub const REUSABLE_TEMPLATE_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BlockDocumentSchema {
-    PageV3,
-    SyncedBlockV2,
-    ReusableTemplateV2,
+    PageV4,
+    SyncedBlockV3,
+    ReusableTemplateV3,
 }
 
 pub(crate) fn decode_block_document_allowing_illegal_children(
@@ -57,31 +57,31 @@ pub(crate) fn decode_block_document_allowing_illegal_children(
 impl BlockDocumentSchema {
     pub fn from_identity(schema_key: &str, schema_version: i64) -> Option<Self> {
         match (schema_key, schema_version) {
-            (PAGE_SCHEMA_KEY, 3) => Some(Self::PageV3),
-            (SYNCED_BLOCK_SCHEMA_KEY, 2) => Some(Self::SyncedBlockV2),
-            (REUSABLE_TEMPLATE_SCHEMA_KEY, 2) => Some(Self::ReusableTemplateV2),
+            (PAGE_SCHEMA_KEY, 4) => Some(Self::PageV4),
+            (SYNCED_BLOCK_SCHEMA_KEY, 3) => Some(Self::SyncedBlockV3),
+            (REUSABLE_TEMPLATE_SCHEMA_KEY, 3) => Some(Self::ReusableTemplateV3),
             _ => None,
         }
     }
 
     pub fn schema_key(self) -> &'static str {
         match self {
-            Self::PageV3 => PAGE_SCHEMA_KEY,
-            Self::SyncedBlockV2 => SYNCED_BLOCK_SCHEMA_KEY,
-            Self::ReusableTemplateV2 => REUSABLE_TEMPLATE_SCHEMA_KEY,
+            Self::PageV4 => PAGE_SCHEMA_KEY,
+            Self::SyncedBlockV3 => SYNCED_BLOCK_SCHEMA_KEY,
+            Self::ReusableTemplateV3 => REUSABLE_TEMPLATE_SCHEMA_KEY,
         }
     }
 
     pub fn schema_version(self) -> u32 {
         match self {
-            Self::PageV3 => PAGE_SCHEMA_VERSION,
-            Self::SyncedBlockV2 => SYNCED_BLOCK_SCHEMA_VERSION,
-            Self::ReusableTemplateV2 => REUSABLE_TEMPLATE_SCHEMA_VERSION,
+            Self::PageV4 => PAGE_SCHEMA_VERSION,
+            Self::SyncedBlockV3 => SYNCED_BLOCK_SCHEMA_VERSION,
+            Self::ReusableTemplateV3 => REUSABLE_TEMPLATE_SCHEMA_VERSION,
         }
     }
 
     pub fn has_title(self) -> bool {
-        matches!(self, Self::PageV3)
+        matches!(self, Self::PageV4)
     }
 }
 
@@ -219,11 +219,11 @@ mod tests {
             .apply_update(Update::decode_v1(&bytes).expect("valid fixture"))
             .expect("fixture applies");
 
-        let decoded = decode_block_document(&document, BlockDocumentSchema::PageV3)
+        let decoded = decode_block_document(&document, BlockDocumentSchema::PageV4)
             .expect("valid Page document");
         assert_eq!(decoded.schema.schema_key(), PAGE_SCHEMA_KEY);
         assert_eq!(decoded.schema.schema_version(), PAGE_SCHEMA_VERSION);
-        assert_eq!(decoded.block_tree.blocks.len(), 19);
+        assert_eq!(decoded.block_tree.blocks.len(), 18);
         assert!(decoded.title.is_some());
     }
 
@@ -232,7 +232,7 @@ mod tests {
         let document = create_compatible_document("body-only");
         document.get_or_insert_text("title");
         document.get_or_insert_xml_fragment("body");
-        let error = decode_block_document(&document, BlockDocumentSchema::SyncedBlockV2)
+        let error = decode_block_document(&document, BlockDocumentSchema::SyncedBlockV3)
             .expect_err("title is not valid for a body-only document");
         assert_eq!(
             error,
@@ -248,7 +248,7 @@ mod tests {
             "value",
             "not text",
         );
-        let error = decode_block_document(&document, BlockDocumentSchema::PageV3)
+        let error = decode_block_document(&document, BlockDocumentSchema::PageV4)
             .expect_err("wrong root type");
         assert_eq!(
             error,
@@ -272,7 +272,7 @@ mod tests {
             .apply_update(Update::decode_v1(&bytes).expect("valid fixture"))
             .expect("fixture applies");
         let decoded =
-            decode_block_document(&source, BlockDocumentSchema::PageV3).expect("decode source");
+            decode_block_document(&source, BlockDocumentSchema::PageV4).expect("decode source");
 
         let target = encode_block_document(
             "page-roundtrip-target",
@@ -282,7 +282,7 @@ mod tests {
         )
         .expect("encode target");
         let roundtrip =
-            decode_block_document(&target, BlockDocumentSchema::PageV3).expect("decode target");
+            decode_block_document(&target, BlockDocumentSchema::PageV4).expect("decode target");
         assert_eq!(roundtrip.title, decoded.title);
         assert_eq!(roundtrip.block_tree, decoded.block_tree);
     }

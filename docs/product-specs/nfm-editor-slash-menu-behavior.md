@@ -1,17 +1,17 @@
-# NFM Editor Slash Menu Behavior
+# Page Editor Slash Menu Behavior
 
 Status: Active
 Last updated: 2026-08-27
 
 ## Purpose
 
-The NFM slash menu is the editor's insertion catalog. It exposes only commands
+The Page editor slash menu is the editor's insertion catalog. It exposes only commands
 that Nodex has deliberately named, illustrated, ordered, and connected to a
-current NFM capability. The menu must not grow implicitly when an editor
+current Page editor capability. The menu must not grow implicitly when an editor
 dependency adds another default command.
 
 Typed trigger boundaries and suggestion-session dismissal are owned by
-[NFM Editor Suggestion Menu Behavior](nfm-editor-suggestion-menu-behavior.md).
+[Page Editor Suggestion Menu Behavior](nfm-editor-suggestion-menu-behavior.md).
 
 ## Catalog
 
@@ -22,7 +22,7 @@ are omitted when their runtime is unavailable.
 2. `Lists`: Bulleted list, Numbered list, To-do list, Toggle list
 3. `Blocks`: Quote, Callout, Code, Code - Mermaid, Block equation, Divider, Table, Image
 4. `Pages`: Subpage, Mention a page, Embed page, Canvas
-5. `Agent`: Thread Section, Agent Config
+5. `Agent`: Agent Config
 
 Heading 4/5/6 are intentionally absent. Unknown dependency-provided items are
 also absent until Nodex gives them a product role, icon, placement, and tested
@@ -30,14 +30,12 @@ insertion behavior.
 
 Callout uses the ordinary slash replacement boundary: choosing it converts the
 empty slash paragraph into a Callout without creating an extra sibling. Table
-uses the NFM table initializer rather than a dependency default.
+uses the Page editor table initializer rather than a dependency default.
 
 Canvas, Subpage, Mention a page, and Embed page appear only when the current
 host exposes the corresponding capability. Page connection semantics are
 owned by
-[NFM Editor Page Connection Behavior](nfm-editor-page-reference-behavior.md).
-Thread Section insertion is owned by
-[NFM Editor Thread Section Behavior](nfm-editor-thread-section-behavior.md).
+[Page Connections](nfm-editor-page-reference-behavior.md).
 
 ## Vocabulary and presentation
 

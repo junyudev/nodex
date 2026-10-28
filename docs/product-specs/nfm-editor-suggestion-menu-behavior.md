@@ -1,4 +1,4 @@
-# NFM Editor Suggestion Menu Behavior
+# Page Editor Suggestion Menu Behavior
 
 Status: Active
 Last updated: 2026-08-26
@@ -10,9 +10,9 @@ editor action rather than ordinary text. The editor owns one suggestion
 session at a time; the popup is only a presentation of that live session.
 
 The command catalog is owned by
-[NFM Editor Slash Menu Behavior](nfm-editor-slash-menu-behavior.md). Page and
+[Page Editor Slash Menu Behavior](nfm-editor-slash-menu-behavior.md). Page and
 chat result semantics are owned by
-[NFM Editor Page Connection Behavior](nfm-editor-page-reference-behavior.md)
+[Page Connections](nfm-editor-page-reference-behavior.md)
 and the corresponding thread-mention specification.
 
 ## Typed triggers

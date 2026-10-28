@@ -5,7 +5,7 @@ import {
   shouldUseTextActionMenu,
 } from "./nfm-text-action-menu-model";
 
-describe("nfm text action menu model", () => {
+describe("markdown text action menu model", () => {
   test("uses the Notion-style menu only for editable expanded rich-text selections", () => {
     expect(
       shouldUseTextActionMenu({
@@ -73,10 +73,8 @@ describe("nfm text action menu model", () => {
   test("omits Nodex rows when no current block can anchor the action", () => {
     const rows = resolveNodexTextActionRows({
       currentBlockId: null,
-      currentBlockType: "paragraph",
       canSendBlocks: true,
       canSendToThread: true,
-      hasConvertDividerToThreadSection: true,
     });
 
     expect(rows.length).toBe(0);
@@ -85,15 +83,12 @@ describe("nfm text action menu model", () => {
   test("projects active Nodex rows in the AI skills section order", () => {
     const rows = resolveNodexTextActionRows({
       currentBlockId: "block-1",
-      currentBlockType: "divider",
       canSendBlocks: true,
       canSendToThread: true,
-      hasConvertDividerToThreadSection: true,
     });
 
-    expect(rows.length).toBe(3);
+    expect(rows.length).toBe(2);
     expect(rows[0]?.label).toBe("Send to chat");
     expect(rows[1]?.label).toBe("Move to");
-    expect(rows[2]?.label).toBe("Make thread section");
   });
 });

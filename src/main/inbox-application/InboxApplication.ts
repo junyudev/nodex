@@ -45,7 +45,7 @@ import {
   InboxSummaryInputSchema,
   InboxWindowInputSchema,
 } from "../../shared/schemas/inbox";
-import { serializeInlineContent } from "../../shared/nfm/serializer-inline";
+import { writeInlineMarkdown } from "../../shared/nodex-markdown";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import {
   inboxChatFromCore,
@@ -615,7 +615,7 @@ export const make = Effect.gen(function* () {
             commands: [
               {
                 kind: "set_title",
-                inline_markdown: serializeInlineContent([
+                inline_markdown: writeInlineMarkdown([
                   { type: "text", text: input.title, styles: {} },
                 ]),
                 expected_etag: titleEtag,

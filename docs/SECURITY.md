@@ -697,7 +697,7 @@ read through the authenticated Profile and exact execution identity boundary.
 - Security logging/auditing is still local-first and not audit-grade. Backend logs redact common secret-bearing fields (for example authorization headers, tokens, API keys, passwords, cookies, and session values) before writing JSON-line log records; optional Sentry crash diagnostics are for failure triage, not an audit trail.
 - A compromised trusted top-level renderer can request exact local file reads through the workspace-file bridge. Webviews, subframes, and unowned renderer contents are rejected, but process-level renderer isolation is still the confidentiality boundary for these reads.
 - Erasure removes content from the live Store; it does not rewrite existing backups, and freed SQLite pages may keep fragments until they are reused or vacuumed. Text already sent to a model runtime cannot be recalled.
-- Dynamic-tool receipts are an idempotency and recovery ledger, not an audit-grade record of human intent. They intentionally exclude raw Nested Markdown/body content; receipts do not retain a second document history.
+- Dynamic-tool receipts are an idempotency and recovery ledger, not an audit-grade record of human intent. They intentionally exclude raw Markdown text or body content; receipts do not retain a second document history.
 
 ## Safe Operating Practices
 

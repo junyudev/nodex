@@ -175,7 +175,7 @@ test("native Workbench tools arrange, read and safely edit the exact Page", asyn
           projectId: draft.projectId,
           status: "build",
           title: "Workbench Page",
-          nfm: "Keep this Page intact while arranging its view.",
+          markdown: "Keep this Page intact while arranging its view.",
         });
         await seed.createPage({
           key: "second",
@@ -184,7 +184,7 @@ test("native Workbench tools arrange, read and safely edit the exact Page", asyn
           projectId: draft.projectId,
           status: "plan",
           title: "Companion Page",
-          nfm: "This Page stays in the original group.",
+          markdown: "This Page stays in the original group.",
         });
         threadId = await sendAgentPrompt(page, draft.projectSessionId, "WORKBENCH_CONTROL_PROBE");
         await waitForFinalMarker(page, "WORKBENCH_CONTROL_OK");

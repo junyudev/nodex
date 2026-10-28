@@ -41,7 +41,7 @@ pub(crate) struct PageBatchInput {
 #[serde(deny_unknown_fields)]
 pub(crate) struct PageBatchDraft {
     pub title_markdown: String,
-    pub nested_markdown: String,
+    pub markdown: String,
     #[serde(default)]
     pub values: Vec<LibraryPageCopyValue>,
 }
@@ -78,12 +78,14 @@ pub(crate) fn execute(
         pages: input
             .pages
             .into_iter()
-            .map(|page| LibraryAgentCreatePageDraft {
-                title_markdown: page.title_markdown,
-                nfm: page.nested_markdown,
-                values: page.values,
+            .map(|page| {
+                Ok(LibraryAgentCreatePageDraft {
+                    title_markdown: page.title_markdown,
+                    markdown: page.markdown,
+                    values: page.values,
+                })
             })
-            .collect(),
+            .collect::<Result<_, CliError>>()?,
         include_block_ids: input.include_block_ids,
         include_etags: input.include_etags,
     };
@@ -94,7 +96,7 @@ pub(crate) fn execute(
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 operation_id: operation_id(args.mutation.idempotency_key.as_deref())?,
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-                intent: LibraryIntent::CreatePagesFromNfm { request },
+                intent: LibraryIntent::CreatePagesFromText { request },
             },
         )
         .map_err(map_client_error)?;

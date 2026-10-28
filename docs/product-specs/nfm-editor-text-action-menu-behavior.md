@@ -1,4 +1,4 @@
-# NFM Editor Text Action Menu Behavior
+# Page Editor Text Action Menu Behavior
 
 Status: Active
 Last updated: 2026-10-01
@@ -46,4 +46,4 @@ the menu then overlaps the selection as needed to keep its actions visible.
 `Send to chat` shares its destination picker, modes, retained Block targets, and
 Page image capture with the [Block side menu](nfm-block-side-menu-behavior.md).
 Library image references are captured through the source Page before a Chat is
-created or a message is submitted; see [Page image inputs](nfm-thread-section-image-inputs.md).
+created or a message is submitted; see [Page image inputs](nfm-page-prompt-image-inputs.md).

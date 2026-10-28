@@ -7,28 +7,24 @@ Inbox Composer, the thread Composer, and the message bubbles that show what was
 written. Image ingress and submission for the thread Composer remain owned by
 [Composer Image Attachments Behavior](./composer-image-attachments-behavior.md);
 Inbox capture, triage, and dispatch remain owned by
-[Inbox Behavior](./inbox-behavior.md). The text form itself is specified in
-[Nested Markdown](../references/nested-markdown-spec.md#message-text).
+[Inbox Behavior](./inbox-behavior.md). How Markdown is read and written is
+specified in [Nodex Markdown](../references/nodex-markdown.md); clipboard sources and HTML conversion live in [Markdown Interchange](../references/markdown-interchange.md).
 
 ## One language
 
-A message is written as message text: Markdown as people write it, read as a
-small Nested Markdown document. Nested Markdown is the text form of Page
-content, so the same text means the same thing in the Composer, in the bubble,
-in the Page it becomes, and in what an Agent receives.
+A message is written as Nodex Markdown: GitHub Flavored Markdown plus Nodex directives, read the same way in the Composer, in the bubble, in the Page it
+becomes, in what an Agent receives, in Core, and on GitHub. An Agent's reply
+beside it renders by the same Markdown rules.
 
-- Markdown is structure: `**important**` is bold, `- item`, `* item` and `1)`
-  start lists, a list item indented with spaces nests under the one before it
-  and a line indented under a list item continues it, `> ` quotes, fenced code
-  stays code, and a `|` pipe table is a table.
-- Indentation shows as written: a line indented with spaces keeps its spaces,
-  and a line nested with a tab steps in under the line above it.
-- Lines written together stay together: consecutive lines of a paragraph or
-  quote are one Block broken where they were written, and a blank line starts
-  the next Block.
-- A bare `http://` or `https://` URL is a link.
-- Text that forms no markup stays literal: `a < b`, `[draft`, and `price is $5`
-  read as written.
+- Markdown is structure: `**bold**`, `_italic_`, `~~struck~~`, `- item`,
+  `1. item`, `- [ ] task`, `> quote`, `> [!NOTE]` alerts, fenced and indented
+  code, `|` tables, `$$` math, and links.
+- A single newline is a line break, and a blank line starts the next Block.
+- A line keeps the spaces and tabs it is indented with, except inside a list or
+  quote, where indentation is nesting.
+- A bare URL is a link.
+- Text that forms no markup stays literal: `a < b`, `[draft`, `price is $5`, and
+  `snake_case` read as written.
 
 There is no second message format. Every surface that accepts written input
 reads it as message text, and every surface that shows it renders the result.
@@ -40,11 +36,20 @@ formatting appears once the message is shown. Mentions are indivisible atoms in
 the text. Images sit in one attachment row above the text, with the same
 thumbnails in every Composer, and enter by paste, drop, or the picker.
 
-A Composer never fills the text with escapes. A message reopened for editing,
-copied, or drafted into a prompt is written back as message text: lines as they
-were written, nesting indented with spaces wherever spaces say the same, bare
-URLs bare, and each escape only where removing it would change what the message
-says.
+Pasting inserts the Markdown source of what was copied, with every line it
+shows. Rich text from another app becomes its Markdown: headings, emphasis,
+lists, checklists, links, code and tables keep their meaning, and a run of
+lines, as Notes and mail write them, stays a run of lines. Markdown a source
+provides and Nodex's own copies stay as written, code copied from an editor or
+a code block keeps its exact text, and a copy from another Composer keeps its
+mentions. Images in rich text are left out of the text; image files on the
+clipboard become attachments. When the Markdown would lose words the copy's
+plain text has, the plain text is pasted instead.
+
+A Composer displays authored Markdown source. Reopening a stored message uses its
+exact Nodex Markdown, including escapes and directives needed to preserve the
+Blocks. Copy uses portable Markdown. A Page sent to an Agent uses exact text
+with image placeholders and typed image and Agent-config sidecars.
 
 ## Projections
 
@@ -54,7 +59,9 @@ One written message has exactly two projections.
   order, then one Block per attachment.
 - **Into Agent input.** Text, mentions, and images are projected to an Agent by
   the same rules everywhere, whether the source is a Composer or a Page sent to
-  a chat. Mentions become readable references; images travel as images.
+  a chat. A Page's content is written as exact Nodex Markdown, mentions retain stable
+  Page and Session references, and images travel as images, each marked in the text by a
+  numbered placeholder.
 
 Wherever Nodex sends an image's bytes to an Agent itself, rather than handing the
 Agent a local file, the image is fitted instead of being refused or left out. One
@@ -76,13 +83,19 @@ including anything later added in the Page; the stream shows a bounded part of
 a long body, and the full message stays one action away. Long messages collapse
 after the same number of lines in every bubble.
 
-An Agent's reply is not a written message; it streams as conversation Markdown.
+An Agent's reply is not a written message; it streams as conversation Markdown,
+read by the same Markdown rules.
 
 ## Inbox message shape
 
-A message written in a Composer has the message shape: text Blocks followed by
-image Blocks of Library Files, which the Composer imports as each image is
-added. A message with that shape is edited in place with the same Composer, and
-the edit reads back exactly. A body that message text cannot say exactly, or
-that no longer has that shape, for example because an image was moved between
-paragraphs in the Page, is edited as its Page.
+A message written in a Composer has text Blocks followed by image Blocks of
+Library Files, which the Composer imports as each image is added and writes
+after the text as `![](nodex://files/…)`.
+
+Every stored body can be edited in the Composer as its exact Markdown source.
+Ordinary trailing Library File images reopen in the attachment row. A body with
+other image state, such as a caption, width or image between paragraphs, reopens
+as complete Markdown source so its content stays exact. Underlining, toggles and
+other directives do not require a separate Page-editing fallback. Editing a
+truncated stream item loads its complete body first. Concurrent changes remain
+protected by the message rewrite boundary.

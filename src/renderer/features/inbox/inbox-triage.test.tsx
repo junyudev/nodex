@@ -106,7 +106,6 @@ const renderTriage = (
         inboxProjectId={null}
         menu={() => null}
         onManualDraftChange={vi.fn()}
-        onEditAsPage={vi.fn()}
         {...overrides}
       >
         {({ editor, messageActions, strip, actions: row }) => (
@@ -167,7 +166,6 @@ describe("InboxTriage", () => {
           inboxProjectId={null}
           menu={() => null}
           onManualDraftChange={onManualDraftChange}
-          onEditAsPage={vi.fn()}
         >
           {({ strip, actions: row }) => (
             <>
@@ -211,7 +209,6 @@ describe("InboxTriage", () => {
         groupedWithKey={null}
         menu={() => null}
         onManualDraftChange={vi.fn()}
-        onEditAsPage={vi.fn()}
       >
         {({ editor, messageActions, strip, actions: controls }) => (
           <>
@@ -531,14 +528,6 @@ describe("InboxTriage", () => {
     });
     expect(screen.queryByRole("textbox", { name: "Edit message" })).toBeNull();
     expect(screen.getByText("Homepage feels like a dev tool")).toBeTruthy();
-  });
-
-  test("a message too rich to rewrite in place is edited as its Page", async () => {
-    const onEditAsPage = vi.fn();
-    renderTriage({ item: item({ bodyEditable: false }), onEditAsPage });
-    await click("Edit as Page");
-    expect(onEditAsPage).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("textbox", { name: "Edit message" })).toBeNull();
   });
 
   test("a hand-written dispatch from the suggestion sends the edited action", async () => {

@@ -449,7 +449,7 @@ fn reconstruct_yjs_engine_inner(
         || persisted.schema_version != i64::from(actual.schema_version)
         || persisted.title != actual.title
         || persisted.rich_title != serde_json::to_value(&actual.rich_title).map_err(json_error)?
-        || persisted.nfm != actual.nfm
+        || persisted.markdown != actual.markdown
         || persisted.plain_text != actual.plain_text
         || persisted.preview != actual.preview
         || persisted.block_tree != serde_json::to_value(&actual.block_tree).map_err(json_error)?

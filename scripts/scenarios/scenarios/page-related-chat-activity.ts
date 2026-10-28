@@ -92,7 +92,7 @@ const materializePageRelatedChatActivity = async (
       projectId: project.id,
       status: "build",
       title: "Trace related Chat activity",
-      nfm: "Verify that durable Page relationships project execution and unread activity.",
+      markdown: "Verify that durable Page relationships project execution and unread activity.",
     },
     {
       key: PAGE_RELATED_CHAT_ACTIVITY_OPEN_ACTION_PAGE_KEY,
@@ -101,7 +101,7 @@ const materializePageRelatedChatActivity = async (
       projectId: project.id,
       status: "plan",
       title: "Open a durable related Chat",
-      nfm: "Use the Page action to create a Chat whose relationship survives restart.",
+      markdown: "Use the Page action to create a Chat whose relationship survives restart.",
     },
   ];
   for (const page of pages) await port.createPage(page);

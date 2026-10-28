@@ -363,7 +363,7 @@ fn atomic_metadata_read_succeeds_when_document_bodies_and_database_rows_are_inac
                 AuthAction::Read {
                     table_name: "document_materializations",
                     column_name:
-                        "nfm" | "plain_text" | "preview" | "references_json" | "asset_refs_json",
+                        "markdown" | "plain_text" | "preview" | "references_json" | "asset_refs_json",
                 }
                 | AuthAction::Read {
                     table_name:

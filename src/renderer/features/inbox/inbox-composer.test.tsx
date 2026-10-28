@@ -101,8 +101,38 @@ test("a pasted image becomes a Library File sent after the message's text", asyn
     await Promise.resolve();
   });
   expect(inboxDraftBody(onSend.mock.calls[0]![0])).toBe(
-    'The toolbar is cut off\n<image source="nodex://files/shot"></image>',
+    "The toolbar is cut off\n\n![](nodex://files/shot)",
   );
+});
+
+test("rich text pasted into the message arrives as its Markdown, every line kept", async () => {
+  const onSend = vi.fn();
+  const view = render(
+    <TestQueryProvider>
+      <Composer onSend={onSend} />
+    </TestQueryProvider>,
+  );
+  const text = view.getByRole("textbox", { name: "Message your Inbox" }) as HTMLTextAreaElement;
+  const data: Record<string, string> = {
+    "text/plain": "Milk\nEggs\nSee the list",
+    "text/html":
+      '<div>Milk</div><div>Eggs</div><div><br></div><div>See <a href="https://e.x/list">the list</a></div>',
+  };
+  await act(async () => {
+    fireEvent.paste(text, {
+      clipboardData: {
+        files: [],
+        items: [],
+        types: Object.keys(data),
+        getData: (f: string) => data[f] ?? "",
+      },
+    });
+    await Promise.resolve();
+  });
+  expect(text.value).toBe("Milk\nEggs\n\nSee [the list](https://e.x/list)");
+  // The draft took the paste, not only the field.
+  const send = view.getByRole("button", { name: "Send to Inbox" }) as HTMLButtonElement;
+  expect(send.disabled).toBe(false);
 });
 
 test("a removed image leaves the draft, and an image alone can be sent", async () => {
@@ -171,7 +201,7 @@ test("an image cancelled while it imports goes to Trash once it is in", async ()
   expect(view.queryByRole("button", { name: "shot.png" })).toBeNull();
 });
 
-const PICTURED = 'Settings\n<image source="nodex://files/shot" preview-width="320">Toolbar</image>';
+const PICTURED = "Settings\n\n![](nodex://files/shot)";
 
 const editor = (onSave: (body: string) => Promise<boolean>, onCancel = vi.fn()) =>
   render(
@@ -186,7 +216,14 @@ const editor = (onSave: (body: string) => Promise<boolean>, onCancel = vi.fn()) 
     </TestQueryProvider>,
   );
 
-test("a rewrite of the text keeps the message's images exactly", async () => {
+test("a message whose image was resized in its Page keeps its exact Markdown in the editor", () => {
+  expect(inboxDraftFromBody("Settings\n\n![|320](nodex://files/shot)")).toEqual({
+    text: "Settings\n\n![|320](nodex://files/shot)",
+    images: [],
+  });
+});
+
+test("a rewrite of the text keeps the message's images", async () => {
   const onSave = vi.fn(async () => true);
   const view = editor(onSave);
   const text = view.getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement;
@@ -201,9 +238,7 @@ test("a rewrite of the text keeps the message's images exactly", async () => {
     fireEvent.click(save);
     await Promise.resolve();
   });
-  expect(onSave).toHaveBeenCalledWith(
-    'Settings, again\n<image source="nodex://files/shot" preview-width="320">Toolbar</image>',
-  );
+  expect(onSave).toHaveBeenCalledWith("Settings, again\n\n![](nodex://files/shot)");
 });
 
 test("a rewrite can drop one of the message's images", async () => {

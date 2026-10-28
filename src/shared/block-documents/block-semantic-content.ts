@@ -1,5 +1,5 @@
 import type { BlockTreeNode } from "./block-document-codec";
-import { blockNoteInlineToNfm } from "./nfm-blocknote-adapter";
+import { blockNoteInlineToPortableRichText } from "./blocknote-rich-text";
 import {
   canonicalizePortableRichText,
   PortableRichTextError,
@@ -22,7 +22,6 @@ export const BLOCK_TO_PAGE_TYPE_CAPABILITIES = {
   divider: "wrap_subtree",
   image: "wrap_subtree",
   callout: "wrap_subtree",
-  threadSection: "wrap_subtree",
   page: "already_page",
   canvas: "wrap_subtree",
   database: "wrap_subtree",
@@ -114,7 +113,7 @@ export const assessBlockSemanticContentForPage = (
     };
   }
   try {
-    const primary = canonicalizePortableRichText(blockNoteInlineToNfm(root.content));
+    const primary = canonicalizePortableRichText(blockNoteInlineToPortableRichText(root.content));
     return {
       kind: "promote",
       primary,

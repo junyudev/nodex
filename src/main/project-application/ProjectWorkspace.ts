@@ -1475,7 +1475,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
             page_id: input.starterPage.pageId,
             document_id: input.starterPage.documentId,
             title_markdown: input.starterPage.titleMarkdown,
-            nfm: input.starterPage.nfm,
+            markdown: input.starterPage.markdown,
           },
         });
         const project = yield* getProject(input.projectId);

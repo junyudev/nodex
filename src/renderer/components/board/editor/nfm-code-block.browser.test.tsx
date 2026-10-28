@@ -3,7 +3,7 @@ import { BlockNoteViewRaw } from "@blocknote/react";
 import { AllSelection } from "@tiptap/pm/state";
 import { act, fireEvent, render, screen, waitFor, type RenderResult } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import { codeBlockViewState } from "@/lib/nfm/code-block-view-state";
+import { codeBlockViewState } from "@/lib/editor-model/code-block-view-state";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { createMaitaiStore, MaitaiProvider } from "@/lib/maitai";
 import {
@@ -18,8 +18,7 @@ import {
   parseComputedColor,
   relativeLuminance,
 } from "@/test/color-contrast";
-import { blockNoteToNfm } from "../../../../shared/block-documents/nfm-blocknote-adapter";
-import { serializeNfm } from "../../../../shared/nfm";
+import { writeMarkdown } from "../../../../shared/nodex-markdown";
 import { nfmSchema } from "./nfm-schema";
 import { createNfmEditorExtensions } from "./nfm-editor-extensions";
 import { NfmCodeBlockController } from "./nfm-code-block-controller";
@@ -316,7 +315,7 @@ describe("NFM Code Block surface in Chromium", () => {
   test("projects local wrap state without changing the Block document", async () => {
     const { editor, host } = await mountCodeBlock("code-wrap-local");
     const before = editor.document;
-    const nfmBefore = serializeNfm(blockNoteToNfm(before));
+    const nfmBefore = writeMarkdown(before);
     const surface = host.querySelector<HTMLElement>("[data-nfm-code-block-surface]")!;
     const code = surface.querySelector<HTMLElement>("code")!;
     expect(surface.dataset.wrapped).toBe("false");
@@ -329,7 +328,7 @@ describe("NFM Code Block surface in Chromium", () => {
     expect(surface.dataset.wrapped).toBe("true");
     expect(getComputedStyle(code).whiteSpace).toBe("break-spaces");
     expect(editor.document).toEqual(before);
-    expect(serializeNfm(blockNoteToNfm(editor.document))).toBe(nfmBefore);
+    expect(writeMarkdown(editor.document)).toBe(nfmBefore);
     expect(editor.getBlock("code-wrap-local")?.props).not.toHaveProperty("wrapped");
   });
 
@@ -342,7 +341,7 @@ describe("NFM Code Block surface in Chromium", () => {
       undefined,
       "mermaid",
     );
-    const before = serializeNfm(blockNoteToNfm(editor.document));
+    const before = writeMarkdown(editor.document);
     const surface = host.querySelector<HTMLElement>("[data-nfm-code-block-surface]")!;
 
     expect(surface.dataset.mermaidPreviewMode).toBe("split");
@@ -382,7 +381,7 @@ describe("NFM Code Block surface in Chromium", () => {
     const sourceRegion = surface.querySelector<HTMLElement>("[data-nfm-code-source-region]")!;
     expect(sourceRegion.getAttribute("aria-hidden")).toBe("true");
     expect(sourceRegion.hasAttribute("inert")).toBe(true);
-    expect(serializeNfm(blockNoteToNfm(editor.document))).toBe(before);
+    expect(writeMarkdown(editor.document)).toBe(before);
     expect(editor.getBlock("mermaid-local-preview")?.props).not.toHaveProperty("previewMode");
 
     await act(async () => {

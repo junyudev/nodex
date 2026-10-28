@@ -82,7 +82,7 @@ const documentVersionDetail = () => ({
         children: [],
       },
     ],
-    nfm: "Checkpoint preview",
+    markdown: "Checkpoint preview",
     plainText: "Checkpoint preview",
     preview: "Checkpoint preview",
     references: [],

@@ -587,7 +587,7 @@ The content interfaces let an agent:
 - search and fetch Pages or Blocks in the current Profile;
 - execute saved Views or bounded temporary Data Source queries;
 - create complete Pages;
-- update Page title/body through Nested Markdown or stable Block operations;
+- update Page title/body through Nodex Markdown or stable Block operations;
 - move or duplicate Page ownership roots;
 - list, read, create/replace, rename, delete, inspect, and restore direct Page
   Files through bounded semantic operations.
@@ -598,11 +598,13 @@ Agents may discover and discuss a Page through its key, but every structured
 `pageId`/`pageIds` mutation input remains UUID-only: search resolves the key and
 the write reuses the returned canonical identity.
 
-Nested Markdown is the default bulk-content representation. Exact body patches
+Nodex Markdown is the one bulk-content representation: GFM plus directives for
+content Markdown cannot express. Fetches, creates, inserts, replacements and
+patches use one `markdown` field. Exact body patches
 retain unchanged Blocks and their live collaborative nodes. One-to-one content
 changes update the existing Block identity; repeated text is correlated by source
 position within the matched patch, not by a document-wide content lookup.
-Unchanged properties and child relationships omitted or normalized by NFM remain
+Unchanged properties and child relationships omitted from the exact text remain
 with the original Block. A one-line edit therefore reports the edited Block as
 updated, with no created or deleted Blocks.
 
@@ -620,9 +622,14 @@ for new or ambiguous split/merge content. They never silently fall back to
 whole-body replacement. A projection that cannot express a change without
 ambiguously modifying existing Blocks fails before commit and requires explicit
 Block operations. Alignment work and the compiled structural operation count are
-bounded; large rewrites use smaller patches or explicit whole-body replacement.
-Whole-body replacement has its own identity semantics and is not a substitute
-for an unsuccessful precise edit.
+bounded; large rewrites may need smaller edits.
+Whole-body replacement compiles one patch from the current exact body to the
+supplied Markdown, under the caller's body ETag. It uses the same identity
+preservation rules: unchanged Blocks retain their IDs and live collaborative
+nodes, and unchanged images keep their file names and natural dimensions.
+Owning resource shells must remain in place. Replacement shares the patch
+compiler's alignment and structural bounds; a failed precise edit is never
+silently retried as replacement.
 
 Local draft apply has the same preservation contract. Its sealed baseline binds
 the original Document generation and authoritative Block source locations. Edits
@@ -636,7 +643,7 @@ survive rejection. Pending retries retain their exact operation and edit plan.
 Stable Block operations remain the explicit identity-sensitive structural path.
 Ownership never hides in Markdown: create, move, duplicate, and protected deletion
 are typed semantic operations. Exact syntax is documented in
-[Nested Markdown](../references/nested-markdown-spec.md).
+[Nodex Markdown](../references/nodex-markdown.md).
 
 Tool rows identify the visible intent and result and retain expandable exact
 arguments/output plus raw app-server evidence. Historical calls remain readable

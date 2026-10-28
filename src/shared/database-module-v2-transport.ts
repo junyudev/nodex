@@ -2403,7 +2403,7 @@ const parseIntrinsicProperty = (value: unknown, label: string): PageIntrinsicPro
   };
 };
 
-const readPageBodyNfm = (value: unknown, label: string): string => {
+const readPageBodyMarkdown = (value: unknown, label: string): string => {
   if (typeof value === "string" && value.length <= MAX_PAGE_DESCRIPTION_LENGTH) return value;
   throw new TypeError(`${label} must be a bounded string`);
 };
@@ -2433,7 +2433,7 @@ const parsePageRow = (value: unknown, label: string): DataSourcePageRowV2 => {
       "effectiveSubgroupKey",
       "taskParent",
     ],
-    ["bodyNfm", "intrinsicProperties"],
+    ["bodyMarkdown", "intrinsicProperties"],
   );
   const page = parsePage(row.page);
   const membership = readRecord(row.membership, `${label}.membership`);
@@ -2454,8 +2454,10 @@ const parsePageRow = (value: unknown, label: string): DataSourcePageRowV2 => {
       return [propertyId, parsed] as const;
     }),
   );
-  const bodyNfm =
-    row.bodyNfm === undefined ? undefined : readPageBodyNfm(row.bodyNfm, `${label}.bodyNfm`);
+  const bodyMarkdown =
+    row.bodyMarkdown === undefined
+      ? undefined
+      : readPageBodyMarkdown(row.bodyMarkdown, `${label}.bodyMarkdown`);
   const intrinsicProperties =
     row.intrinsicProperties === undefined
       ? undefined
@@ -2495,7 +2497,7 @@ const parsePageRow = (value: unknown, label: string): DataSourcePageRowV2 => {
       createdAt: readTimestamp(membership.createdAt, `${label}.membership.createdAt`),
     },
     values,
-    ...(bodyNfm === undefined ? {} : { bodyNfm }),
+    ...(bodyMarkdown === undefined ? {} : { bodyMarkdown }),
     ...(intrinsicProperties === undefined ? {} : { intrinsicProperties }),
     taskParent,
     position,

@@ -61,13 +61,13 @@ Authority accepts intent and determines truth. A read model makes that truth
 cheap to query. A UI projection decides how it is presented. Information flows
 from left to right and never returns through the same path as a write:
 
-| Domain               | Authority                                                       | Read model or projection                                |
-| -------------------- | --------------------------------------------------------------- | ------------------------------------------------------- |
-| Block content        | Yjs `block_tree` or normalized `canvas_scene` Document          | NFM, title, preview, search, assets, Card detail        |
-| Database capability  | relational Database membership, properties, and Views           | Board rows, Calendar occurrences, Database View results |
-| Codex conversation   | generated protocol items/requests plus explicit app-local state | transcript entries, activity groups, summaries          |
-| Scheduled automation | `automation.toml`                                               | SQLite mirror and renderer detail                       |
-| Review changes       | Git/file metadata and validated content                         | file tree, patch rows, summary counts                   |
+| Domain               | Authority                                                       | Read model or projection                                   |
+| -------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
+| Block content        | Yjs `block_tree` or normalized `canvas_scene` Document          | Markdown text, title, preview, search, assets, Card detail |
+| Database capability  | relational Database membership, properties, and Views           | Board rows, Calendar occurrences, Database View results    |
+| Codex conversation   | generated protocol items/requests plus explicit app-local state | transcript entries, activity groups, summaries             |
+| Scheduled automation | `automation.toml`                                               | SQLite mirror and renderer detail                          |
+| Review changes       | Git/file metadata and validated content                         | file tree, patch rows, summary counts                      |
 
 This resolves an important retired ambiguity: `Card.description`, Card summaries,
 and metadata overlays are projections. They never seed, refresh, or save a
@@ -175,7 +175,7 @@ and render the insertion slot in the post-removal “remaining items” space, t
 translate it once to the persistence contract.
 
 Cross-parent Block movement is a stable-ID domain operation, not serialized DOM
-or NFM transfer. The side menu establishes the exact source selection; one
+or Markdown text transfer. The side menu establishes the exact source selection; one
 window-local coordinator carries disposable gesture state; and one idempotent
 `BlockTransfer` commits the result. Do not combine insertion-slot feedback
 with sortable live reflow.
@@ -394,7 +394,7 @@ measurement loop is too expensive to rediscover through runtime testing alone.
 | Whole-Store backup, restore, replacement, and maintenance                                                          | [Backup/restore](reliability/backup-restore-and-maintenance.md)                    |
 | Cross-feature renderer construction, state ownership, shared UI/editor primitives, and UI verification conventions | [Frontend](FRONTEND.md)                                                            |
 | Board and cross-surface drag behavior                                                                              | [Board drag and drop](product-specs/board-drag-and-drop-behavior.md)               |
-| NFM side-menu interaction                                                                                          | [NFM block side menu](product-specs/nfm-block-side-menu-behavior.md)               |
+| Page editor side-menu interaction                                                                                  | [Page editor block side menu](product-specs/nfm-block-side-menu-behavior.md)       |
 | Workbench ownership and navigation                                                                                 | [Workbench shell](product-specs/workbench-shell.md)                                |
 | Review/file-change UI                                                                                              | [Review right panel](product-specs/review-right-panel-behavior.md)                 |
 | Command-palette indexing and navigation                                                                            | [Command palette](product-specs/command-palette-behavior.md)                       |

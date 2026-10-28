@@ -39,7 +39,6 @@ describe("block children contract", () => {
       "divider",
       "image",
       "callout",
-      "threadSection",
       "page",
       "database",
       "canvas",
@@ -116,9 +115,9 @@ describe("block children contract", () => {
   });
 
   test("reports an invalid tree without silently hiding children", () => {
-    const source = [block("thread", "threadSection", [block("body", "paragraph")])];
+    const source = [block("image", "image", [block("body", "paragraph")])];
     expect(() => assertBlockChildrenContract(source)).toThrow(
-      "Block threadSection must not contain generic child Blocks",
+      "Block image must not contain generic child Blocks",
     );
   });
 

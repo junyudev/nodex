@@ -317,7 +317,7 @@ absent. Unsafe cleanup preserves the environment and exits nonzero.
 Authoritative scenario recipes create current-schema product data through public
 Core operations. `--seed <id>` applies a recipe only while initializing a new
 environment and before Electron starts. `board/dense` creates a Project with
-five workflow columns, ten Pages, and structured NFM content:
+five workflow columns, ten Pages, and structured Block content:
 
 ```bash
 vp run dev --home "$HOME/repo/nodex/runs.local/board-dense" --seed board/dense

@@ -1,6 +1,6 @@
 import type { CodeBlockOptions } from "@blocknote/core";
-import { CODE_LANGUAGE_CATALOG } from "../../../../shared/nfm/code-language-catalog";
-import { codeLanguagePreference } from "@/lib/nfm/code-language-preference";
+import { CODE_LANGUAGE_CATALOG } from "../../../../shared/code-languages/code-language-catalog";
+import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
 
 export const editorCodeBlockOptions: CodeBlockOptions = {
   defaultLanguage: "text",

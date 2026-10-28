@@ -80,7 +80,7 @@ describe("typed owner transaction guard in Chromium", () => {
     const genesis = createPageDocumentGenesis({
       documentId: "document:typed-owner-guard",
       title: "Typed owner guard",
-      nfm: "Editable paragraph",
+      markdown: "Editable paragraph",
       allocateBlockId: () => "text",
     });
     const localDocument = genesis.document;

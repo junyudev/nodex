@@ -151,7 +151,7 @@ pub enum RecoveryPreview {
     Document {
         title: String,
         rich_title: Value,
-        nfm: String,
+        markdown: String,
         files: std::collections::BTreeMap<String, crate::library::LibraryFileReadBinding>,
     },
     Canvas {

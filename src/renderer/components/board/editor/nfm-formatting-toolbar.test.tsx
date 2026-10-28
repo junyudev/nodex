@@ -24,7 +24,7 @@ function makeTextActionEligibility(
   };
 }
 
-describe("nfm formatting toolbar", () => {
+describe("markdown formatting toolbar", () => {
   test("opens the text-action menu for expanded rich-text selections", () => {
     const presentation = resolveNfmFormattingToolbarPresentation({
       show: true,

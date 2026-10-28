@@ -1,3 +1,4 @@
+import { readMarkdown } from "../../../shared/nodex-markdown";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
@@ -114,7 +115,8 @@ describe("DatabaseViewPageContextMenu", () => {
     mocks.writeTextToClipboard.mockReset().mockResolvedValue(true);
     mocks.loadPageDocumentMaterialization.mockReset().mockResolvedValue({
       title: "Release plan",
-      nfm: "# Release\n\nShip it",
+      markdown: "# Release\n\nShip it",
+      blockTree: readMarkdown("# Release\n\nShip it"),
     });
   });
 

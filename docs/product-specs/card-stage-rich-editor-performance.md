@@ -1,10 +1,10 @@
 # Page Stage Rich Editor Performance
 
-This document defines the performance and durability contract for Page Stage. A Page's title and body are edited directly in one collaborative Y.Doc; NFM and Page detail payloads are projections, never editor state authority.
+This document defines the performance and durability contract for Page Stage. A Page's title and body are edited directly in one collaborative Y.Doc; Markdown text and Page detail payloads are projections, never editor state authority.
 
 ## Authority Boundary
 
-Every Page owns one registered `nodex.page@3` Document with exactly:
+Every Page owns one registered `nodex.page@4` Document with exactly:
 
 - `Y.Text("title")` for the canonical rich title, using the validated portable-rich Delta subset.
 - `Y.XmlFragment("body")` for the BlockNote-compatible body tree.
@@ -23,7 +23,7 @@ An ordinary title or body edit stays inside Yjs and ProseMirror:
 4. Core validates and commits the update, head, Block registry/index, exact-head materialization, search/assets, receipt, and change evidence atomically.
 5. The provider clears pending state only after the durable ACK; other subscribed surfaces receive the committed update.
 
-The hot path does not serialize the complete body to NFM, update a React `description` draft, replace the BlockNote tree from Card props, or send a whole-Card mutation. This removes both the historical per-keystroke serialization cost and the last-writer-wins snapshot seam.
+The hot path does not serialize the complete body to Markdown text, update a React `description` draft, replace the BlockNote tree from Card props, or send a whole-Card mutation. This keeps per-keystroke serialization and whole-body snapshot writes out of the editing path.
 
 Block change readers scope ordinary snapshots to the transaction’s affected range, including property and mark changes. Selection-only transactions produce no content changes. Preflight reads tolerate unassigned Block IDs without writing snapshot identities into the live Document.
 
@@ -93,17 +93,17 @@ Y.Doc + Block/Database authority
 
 No arrow returns from a projection to an existing Y.Doc.
 
-## NFM Boundary
+## Nodex Markdown Boundary
 
-NFM remains the public text interchange and read format. Full serialization is appropriate only for:
+Nodex Markdown is the public text interchange and read format. Full serialization is appropriate only for:
 
 - materialization/export after a validated Document transaction;
 - raw read-only display;
 - sending selected/current content to another product surface;
 - genesis import during creation or shipped-store finalization;
-- explicit `ReplaceDocumentFromNfm` with current generation/head CAS.
+- explicit body replacement with current generation/head CAS.
 
-Explicit replacement parses NFM and compiles stable-ID operations against the current Y.Doc. It creates a forward Yjs update; it does not replace the Y.Doc, reset causal history, or write NFM directly as authority.
+Explicit replacement reads Nodex Markdown and compiles stable-ID operations against the current Y.Doc. It creates a forward Yjs update; it does not replace the Y.Doc, reset causal history, or write Markdown text directly as authority.
 
 ## Lifecycle and Close
 
@@ -141,14 +141,14 @@ Nested surfaces are lazy and bounded by a renderer activation budget. Expansion,
 
 ## Invariants
 
-- Page title/body authority is the owned Y.Doc, not shell props, Nested Markdown, a derived View, or a renderer draft.
+- Page title/body authority is the owned Y.Doc, not shell props, Nodex Markdown, a derived View, or a renderer draft.
 - An ordinary editor transaction must not serialize or submit the whole body.
 - Every writable mount owns a distinct Yjs client/session identity.
 - A durable ACK is emitted only after the SQLite transaction commits.
 - Remote updates do not echo and do not enter local undo.
 - Page/View read-model updates never call `replaceBlocks` on an existing surface.
 - There is no whole-Page title/body conflict overwrite path.
-- NFM replacement is explicit, exact-head gated, and produces a forward update.
+- Markdown text replacement is explicit, exact-head gated, and produces a forward update.
 - Block/Page writes go through Rust Core's serialized writer; main-process handlers never open SQLite or run Page transactions.
 - Board caches remain summary-only and full bodies load only through explicit scoped reads or mounted Documents.
 - Reference surfaces never store a foreign body in their host Document.
@@ -182,7 +182,7 @@ Ask which owner the feature belongs to:
 
 - collaborative content -> Yjs transaction in the owning Document;
 - lifecycle/property/membership -> typed Block or Database mutation;
-- export/import -> explicit NFM boundary;
+- export/import -> explicit Nodex Markdown boundary;
 - reference expansion -> lazy target Document surface;
 - selection/search/open state -> window-local UI;
 - history -> immutable checkpoint/evidence plus forward restore.

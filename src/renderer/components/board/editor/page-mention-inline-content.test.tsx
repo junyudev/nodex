@@ -80,7 +80,7 @@ const availableTarget = (
   },
   document: {
     readiness: "ready",
-    schemaKey: "nfm",
+    schemaKey: "markdown",
     schemaVersion: 1,
   },
   ...overrides,

@@ -4690,13 +4690,8 @@ pub(super) fn insert_history_payload(
 /// File placement proof comes from the authenticated body, never a second
 /// independently mutable list or the source Page's current namespace.
 fn structural_file_ids(blocks: &[MaterializedBlockNode]) -> Result<Vec<String>, StoreError> {
-    let nfm = crate::domain::nfm::materialize_nfm(blocks)
-        .map_err(|error| corrupt(format!("Structural body cannot materialize: {error}")))?;
-    let records =
-        crate::domain::derived_records::derive_block_document_records(blocks, &nfm.blocks)
-            .map_err(|error| {
-                corrupt(format!("Structural body cannot derive File uses: {error}"))
-            })?;
+    let records = crate::domain::derived_records::derive_block_document_records(blocks)
+        .map_err(|error| corrupt(format!("Structural body cannot derive File uses: {error}")))?;
     Ok(records
         .asset_refs
         .into_iter()
@@ -7842,7 +7837,10 @@ mod tests {
                 .all(|placement| placement.before_block_id.as_deref() == Some("after"))
         );
         let document = &normalized.documents[0];
-        assert_eq!(document.schema_version, 3);
+        assert_eq!(
+            document.schema_version,
+            i64::from(crate::document::PAGE_SCHEMA_VERSION)
+        );
         let OwnedDocumentBody::Yjs { blocks, .. } = &document.body else {
             panic!("Page Document must remain Yjs");
         };
@@ -10074,9 +10072,9 @@ mod tests {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     operation_id: "turn-nonempty:create-subpage".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::CreatePageFromNfm {
+                    intent: LibraryIntent::CreatePageFromText {
                         title_markdown: "Rich **subpage** [link](https://nodex.local)".to_owned(),
-                        nfm: "Body paragraph\n\n- first\n  - nested".to_owned(),
+                        markdown: "Body paragraph\n\n- first\n  - nested".to_owned(),
                         destination: LibraryPageWriteDestination::Page {
                             page_id: HOST_PAGE.to_owned(),
                             at: None,

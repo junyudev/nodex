@@ -3,7 +3,7 @@ import type {
   PortableRichTextItem,
   PortableRichTextStyles,
 } from "../../shared/block-documents/portable-rich-text";
-import type { NfmColor } from "../../shared/nfm/types";
+import type { RichTextColor } from "../../shared/rich-text/colors";
 import { portableRichTitleAtomLabel } from "./portable-rich-title-presentation";
 
 export interface RichTitleClipboardPayload {
@@ -26,10 +26,10 @@ interface RichTitleClipboardStyle {
 }
 
 export type RichTitleClipboardColorResolver = (
-  color: NfmColor,
+  color: RichTextColor,
 ) => readonly RichTitleClipboardStyle[];
 
-const COLOR_FALLBACKS: Partial<Record<NfmColor, string>> = {
+const COLOR_FALLBACKS: Partial<Record<RichTextColor, string>> = {
   brown: "#64473a",
   brown_bg: "#e9e5e3",
   pink: "#ad1a72",
@@ -148,7 +148,7 @@ export function writeRichTitleClipboardPayload(
 }
 
 export function resolveRichTitleClipboardColor(
-  color: NfmColor,
+  color: RichTextColor,
   getPropertyValue: (property: string) => string,
 ): readonly RichTitleClipboardStyle[] {
   const background = color.endsWith("_bg");

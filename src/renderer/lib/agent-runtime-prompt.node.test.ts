@@ -84,7 +84,7 @@ describe("Runtime visual input admission", () => {
         models: [textModel, visionModel],
       } satisfies AgentRuntimeOperations["providers.read"]["output"][number];
       const prepare = (from: typeof textModel, to: string) => {
-        const text = source === "structured" ? "Look" : `Look\n<agent-config model="${to}" />`;
+        const text = source === "structured" ? "Look" : `Look\n:agent-config{model="${to}"}`;
         const input = {
           model: from,
           provider,
@@ -119,7 +119,7 @@ describe("Runtime visual input admission", () => {
     },
   );
   it("keeps an explicit empty editor config list authoritative", async () => {
-    const text = 'Look\n<agent-config model="text" />';
+    const text = 'Look\n\n:agent-config{model="text"}';
     await expect(
       prepareAgentRuntimeMessage(
         {

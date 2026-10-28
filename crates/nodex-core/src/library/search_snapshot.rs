@@ -395,7 +395,7 @@ impl SearchSnapshotStore {
     fn ensure_cache_file(&self, file: &PreparedFile) -> Result<PathBuf, StoreError> {
         let kind = match file.kind {
             LibraryPageProjectionFileKind::MetaYaml => "meta",
-            LibraryPageProjectionFileKind::BodyNestedMarkdown => "body",
+            LibraryPageProjectionFileKind::BodyMarkdown => "body",
         };
         let parent = self.root.join("cache/v1").join(kind);
         require_owned_directory(&parent)?;
@@ -478,7 +478,7 @@ pub(super) fn prepare(
                 commit_head,
                 requesting_project_id: project_id,
                 page_id: &page_id,
-                kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                kind: LibraryPageProjectionFileKind::BodyMarkdown,
                 prepare: None,
             },
         ) {
@@ -535,9 +535,9 @@ pub(super) fn prepare(
             meta.content.as_bytes(),
         )?;
         let body_file = snapshot_file(
-            LibraryPageProjectionFileKind::BodyNestedMarkdown,
-            &format!("{physical_root}/body.nested.md"),
-            &format!("{logical_root}/body.nested.md"),
+            LibraryPageProjectionFileKind::BodyMarkdown,
+            &format!("{physical_root}/body.md"),
+            &format!("{logical_root}/body.md"),
             body.content.as_bytes(),
         )?;
         total_bytes = total_bytes

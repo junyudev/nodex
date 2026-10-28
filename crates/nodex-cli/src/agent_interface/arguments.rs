@@ -150,13 +150,13 @@ pub(super) fn content_input(path: &[&str]) -> Option<ContentInputHelp> {
         ),
         ["page", "create"] => (
             "--file",
-            "Nested Markdown",
+            "Nodex Markdown",
             "--file omitted without --empty, or --file -",
             crate::page_mutation::MAX_BODY_INPUT_BYTES,
         ),
         ["page", "insert" | "replace"] => (
             "--file",
-            "Nested Markdown",
+            "Nodex Markdown",
             "--file omitted or -",
             crate::page_mutation::MAX_BODY_INPUT_BYTES,
         ),

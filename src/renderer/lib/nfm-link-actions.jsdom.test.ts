@@ -13,7 +13,7 @@ let windowOpenCalls: unknown[][] = [];
 let locationAssignCalls: unknown[][] = [];
 let invokeCalls: unknown[][] = [];
 
-describe("nfm link actions", () => {
+describe("markdown link actions", () => {
   beforeEach(() => {
     windowOpenCalls = [];
     locationAssignCalls = [];

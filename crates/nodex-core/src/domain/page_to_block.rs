@@ -1,12 +1,11 @@
 use nodex_core_contracts::library::LibraryStructuralTurnIntoTarget;
-use serde_json::Value;
 use thiserror::Error;
 
 use super::block_children::accepts_block_children;
 use super::block_materialization::{MaterializedBlockNode, dematerialize_block_tree};
 use super::materialized_inline::{MaterializedInlineError, materialized_inline_from_rich_text};
 use super::ordinary_block::{
-    canonical_equation_block_content, canonical_ordinary_block_shape, default_props,
+    canonical_equation_block_content, canonical_ordinary_block_shape, semantic_empty_document_root,
 };
 use super::rich_text::RichTextItem;
 
@@ -35,7 +34,8 @@ pub fn plan_page_to_block_transformation(
 ) -> Result<PageToBlockTransformation, PageToBlockError> {
     dematerialize_block_tree(body_roots)
         .map_err(|error| PageToBlockError::InvalidBody(error.to_string()))?;
-    let retained_empty_placeholder_id = semantic_empty_body_id(body_roots).map(str::to_owned);
+    let retained_empty_placeholder_id =
+        semantic_empty_document_root(body_roots).map(|root| root.id.clone());
     let (block_type, props) = canonical_ordinary_block_shape(target);
     let mut block = MaterializedBlockNode {
         id: page_id.to_owned(),
@@ -71,28 +71,15 @@ pub fn plan_page_to_block_transformation(
     })
 }
 
-fn semantic_empty_body_id(body_roots: &[MaterializedBlockNode]) -> Option<&str> {
-    let [root] = body_roots else {
-        return None;
-    };
-    if root.block_type != "paragraph"
-        || root.props != default_props()
-        || root.content.as_ref() != Some(&Value::Array(Vec::new()))
-        || !root.children.is_empty()
-    {
-        return None;
-    }
-    Some(&root.id)
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
     use nodex_core_contracts::library::{LibraryHeadingLevel, LibraryStructuralTurnIntoTarget};
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     use super::*;
+    use crate::domain::ordinary_block::default_props;
     use crate::domain::rich_text::RichTextStyles;
 
     fn paragraph(id: &str, text: &str) -> MaterializedBlockNode {
@@ -209,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_canonical_empty_body_stays_in_the_dormant_document() {
+    fn omitted_and_explicit_default_empty_bodies_stay_in_the_dormant_document() {
         let empty = MaterializedBlockNode {
             id: "empty".to_owned(),
             block_type: "paragraph".to_owned(),
@@ -217,29 +204,35 @@ mod tests {
             content: Some(Value::Array(Vec::new())),
             children: Vec::new(),
         };
-        let plan = plan_page_to_block_transformation(
-            "page-a",
-            &[],
-            std::slice::from_ref(&empty),
-            &LibraryStructuralTurnIntoTarget::Paragraph,
-        )
-        .expect("valid transformation");
-        assert!(plan.block.children.is_empty());
-        assert!(plan.trailing_siblings.is_empty());
-        assert_eq!(plan.retained_empty_placeholder_id.as_deref(), Some("empty"));
+        for props in [default_props(), BTreeMap::new()] {
+            let empty = MaterializedBlockNode {
+                props,
+                ..empty.clone()
+            };
+            let plan = plan_page_to_block_transformation(
+                "page-a",
+                &[],
+                std::slice::from_ref(&empty),
+                &LibraryStructuralTurnIntoTarget::Paragraph,
+            )
+            .expect("valid transformation");
+            assert!(plan.block.children.is_empty());
+            assert!(plan.trailing_siblings.is_empty());
+            assert_eq!(plan.retained_empty_placeholder_id.as_deref(), Some("empty"));
+        }
 
-        let noncanonical = MaterializedBlockNode {
-            props: BTreeMap::new(),
+        let styled = MaterializedBlockNode {
+            props: BTreeMap::from([("textColor".to_owned(), json!("red"))]),
             ..empty
         };
         let plan = plan_page_to_block_transformation(
             "page-a",
             &[],
-            std::slice::from_ref(&noncanonical),
+            std::slice::from_ref(&styled),
             &LibraryStructuralTurnIntoTarget::Paragraph,
         )
         .expect("valid transformation");
-        assert_eq!(plan.block.children, vec![noncanonical]);
+        assert_eq!(plan.block.children, vec![styled]);
         assert!(plan.trailing_siblings.is_empty());
         assert_eq!(plan.retained_empty_placeholder_id, None);
     }

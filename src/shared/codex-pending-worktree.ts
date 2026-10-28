@@ -95,7 +95,7 @@ export interface CodexPendingStartConversationParamsInput {
   readonly addedFiles: readonly CodexLiveFileAttachment[];
   readonly pastedTextAttachments?: readonly CodexPromptTextAttachmentInput[];
 
-  /** Keeps content-origin permission checks active after the NFM sidecar is consumed. */
+  /** Keeps content-origin permission checks active after the Nodex Markdown sidecar is consumed. */
 
   readonly model: string | null;
   readonly executionProfile?: CodexExecutionProfile | null;

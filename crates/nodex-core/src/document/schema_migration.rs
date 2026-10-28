@@ -5,10 +5,11 @@ use sha2::{Digest, Sha256};
 use yrs::updates::encoder::Encode;
 use yrs::{ReadTxn, StateVector, Transact};
 
-use crate::domain::block_children::normalize_block_children_forest;
+use super::schema_compatibility::{
+    decode_stored_materialized_forest, normalize_nodex_markdown_forest,
+};
 use crate::domain::block_materialization::{
-    MaterializedBlockNode, dematerialize_block_tree,
-    dematerialize_block_tree_allowing_illegal_children, materialize_block_tree,
+    MaterializedBlockNode, dematerialize_block_tree, materialize_block_tree,
 };
 use crate::domain::rich_text::{RichTextItem, rich_text_to_delta};
 use crate::infrastructure::document_repository::{
@@ -29,18 +30,18 @@ use super::{
     schema_metadata,
 };
 
+#[cfg(test)]
 const BASELINE_PAGE_SCHEMA_VERSION: i64 = 2;
-const BASELINE_SYNCED_BLOCK_SCHEMA_VERSION: i64 = 1;
-const BASELINE_REUSABLE_TEMPLATE_SCHEMA_VERSION: i64 = 1;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct BlockChildrenMigrationEvidence {
+pub(crate) struct DocumentSchemaMigrationEvidence {
     pub(crate) scanned_documents: usize,
     pub(crate) changed_documents: usize,
     pub(crate) scanned_versions: usize,
     pub(crate) changed_versions: usize,
     pub(crate) lifted_roots: usize,
+    pub(crate) removed_prompt_markers: usize,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -57,15 +58,18 @@ struct PreparedDocument {
     full_state: Vec<u8>,
     state_vector: Vec<u8>,
     materialization: DocumentMaterialization,
+    snapshot_created_at: String,
+    materialization_updated_at: String,
     changed: bool,
     lifted_roots: usize,
+    removed_prompt_markers: usize,
 }
 
 #[derive(Debug)]
 struct VersionRow {
     version_id: String,
     document_id: String,
-    project_id: String,
+    project_id: Option<String>,
     generation: i64,
     base_head_seq: i64,
     schema_key: String,
@@ -93,34 +97,45 @@ struct PreparedVersion {
     state_vector: Vec<u8>,
     changed: bool,
     lifted_roots: usize,
+    removed_prompt_markers: usize,
+}
+
+struct MigratedCheckpoint {
+    bytes: Vec<u8>,
+    state_vector: Vec<u8>,
+    changed: bool,
+    lifted_roots: usize,
+    removed_prompt_markers: usize,
 }
 
 struct PreparedMigration {
     documents: Vec<PreparedDocument>,
     versions: Vec<PreparedVersion>,
-    evidence: BlockChildrenMigrationEvidence,
+    evidence: DocumentSchemaMigrationEvidence,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct BlockTreeSnapshotV2 {
+struct BlockTreeMigrationSnapshot {
     format_version: u32,
     kind: BlockDocumentKind,
     block_tree: Vec<MaterializedBlockNode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     rich_title: Option<Vec<RichTextItem>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    file_snapshot: Option<crate::domain::files::FileSnapshotManifest>,
 }
 
 pub(crate) fn validate_block_children_migration_source(
     connection: &Connection,
-) -> Result<BlockChildrenMigrationEvidence, StoreError> {
+) -> Result<DocumentSchemaMigrationEvidence, StoreError> {
     Ok(prepare_migration(connection)?.evidence)
 }
 
 pub(crate) fn migrate_block_children_contract(
     connection: &Connection,
     completed_at_unix_ms: i64,
-) -> Result<BlockChildrenMigrationEvidence, StoreError> {
+) -> Result<DocumentSchemaMigrationEvidence, StoreError> {
     let prepared = prepare_migration(connection)?;
     let timestamp = Utc
         .timestamp_millis_opt(completed_at_unix_ms)
@@ -133,7 +148,91 @@ pub(crate) fn migrate_block_children_contract(
     for version in &prepared.versions {
         write_version(connection, version)?;
     }
+    for (schema, previous) in [
+        (BlockDocumentSchema::PageV4, 3),
+        (BlockDocumentSchema::SyncedBlockV3, 2),
+        (BlockDocumentSchema::ReusableTemplateV3, 2),
+    ] {
+        connection.execute("UPDATE documents SET schema_version = ?1 WHERE schema_key = ?2 AND schema_version <= ?3 AND readiness = 'pending_genesis' AND sync_engine = 'yjs'", params![schema.schema_version(), schema.schema_key(), previous])?;
+    }
+    connection.execute("UPDATE page_read_model SET document_schema_version = (SELECT schema_version FROM documents WHERE id = page_read_model.document_id) WHERE document_id IN (SELECT id FROM documents WHERE readiness = 'pending_genesis' AND sync_engine = 'yjs')", [])?;
     Ok(prepared.evidence)
+}
+
+/// Historical migration readers can access the predecessor column before its rename.
+pub(crate) fn stored_markdown_column(connection: &Connection) -> Result<&'static str, StoreError> {
+    let has_current: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('document_materializations') WHERE name='markdown')", [], |row| row.get(0))?;
+    Ok(if has_current { "markdown" } else { "nfm" })
+}
+
+/// One schema transition for the unreleased Nodex Markdown normalization steps.
+pub(crate) fn migrate_nodex_markdown_contract(
+    connection: &Connection,
+    completed_at_unix_ms: i64,
+) -> Result<DocumentSchemaMigrationEvidence, StoreError> {
+    let context = MarkdownMigration::load(connection)?;
+    let prepared = prepare_migration_with_markdown(connection, Some(&context))?;
+    if stored_markdown_column(connection)? != "markdown" {
+        connection
+            .execute_batch("ALTER TABLE document_materializations RENAME COLUMN nfm TO markdown")?;
+    }
+    let timestamp = Utc
+        .timestamp_millis_opt(completed_at_unix_ms)
+        .single()
+        .ok_or_else(|| internal("Markdown migration timestamp"))?
+        .to_rfc3339_opts(SecondsFormat::Millis, true);
+    for document in &prepared.documents {
+        write_document(connection, document, &timestamp)?;
+    }
+    for version in &prepared.versions {
+        write_version(connection, version)?;
+    }
+    connection.execute("UPDATE documents SET schema_version = CASE schema_key WHEN 'nodex.page' THEN 4 ELSE 3 END WHERE readiness = 'pending_genesis' AND sync_engine = 'yjs'", [])?;
+    connection.execute("UPDATE page_read_model SET document_schema_version = (SELECT schema_version FROM documents WHERE id = page_read_model.document_id) WHERE document_id IN (SELECT id FROM documents WHERE readiness = 'pending_genesis' AND sync_engine = 'yjs')", [])?;
+    let evidence = prepared.evidence;
+    if context.legacy_column || evidence.changed_documents > 0 || evidence.changed_versions > 0 {
+        let epoch = crate::domain::identity::random_uuid_v7()
+            .map_err(|_| internal("Markdown migration epoch entropy failed"))?;
+        connection.execute(
+            "UPDATE block_store_metadata SET store_epoch = ?1, updated_at = ?2 WHERE id=1",
+            params![format!("epoch:{epoch}"), timestamp],
+        )?;
+    }
+    rebuild_retained_projection_indexes(connection)?;
+    Ok(evidence)
+}
+
+/// Earlier Store steps normalize their document baseline without adopting the
+/// successor's physical text column or caption and mention semantics.
+pub(crate) fn migrate_block_document_baselines(
+    connection: &Connection,
+    completed_at_unix_ms: i64,
+) -> Result<DocumentSchemaMigrationEvidence, StoreError> {
+    let evidence = migrate_block_children_contract(connection, completed_at_unix_ms)?;
+    rebuild_retained_projection_indexes(connection)?;
+    Ok(evidence)
+}
+
+fn rebuild_retained_projection_indexes(connection: &Connection) -> Result<(), StoreError> {
+    // Checkpoints own File bindings; retention tables are projections of the new
+    // canonical bytes and hashes, including retained deleted/unowned Documents.
+    // Schema-rebuild transactions disable foreign-key cascades, so clear child
+    // rows explicitly before replacing their hash-fenced index headers.
+    connection.execute("DELETE FROM document_version_retention_members WHERE version_id IN (SELECT version.version_id FROM document_versions version JOIN documents document ON document.id = version.document_id WHERE document.sync_engine = 'yjs')", [])?;
+    connection.execute("DELETE FROM document_version_file_refs WHERE version_id IN (SELECT version.version_id FROM document_versions version JOIN documents document ON document.id = version.document_id WHERE document.sync_engine = 'yjs')", [])?;
+    connection.execute("DELETE FROM document_version_retention_index WHERE version_id IN (SELECT version.version_id FROM document_versions version JOIN documents document ON document.id = version.document_id WHERE document.sync_engine = 'yjs')", [])?;
+    connection.execute("DELETE FROM document_version_file_index WHERE version_id IN (SELECT version.version_id FROM document_versions version JOIN documents document ON document.id = version.document_id WHERE document.sync_engine = 'yjs')", [])?;
+    super::history::backfill_migrated_document_history(connection)?;
+    Ok(())
+}
+
+pub(crate) fn validate_nodex_markdown_migration_source(
+    connection: &Connection,
+) -> Result<DocumentSchemaMigrationEvidence, StoreError> {
+    Ok(
+        prepare_migration_with_markdown(connection, Some(&MarkdownMigration::load(connection)?))?
+            .evidence,
+    )
 }
 
 /// Repairs Profiles that completed the original Document schema migration
@@ -199,23 +298,32 @@ pub(crate) fn repair_document_schema_projections(
 }
 
 fn prepare_migration(connection: &Connection) -> Result<PreparedMigration, StoreError> {
+    prepare_migration_with_markdown(connection, None)
+}
+
+fn prepare_migration_with_markdown(
+    connection: &Connection,
+    markdown: Option<&MarkdownMigration>,
+) -> Result<PreparedMigration, StoreError> {
     let repository = DocumentReadRepository::new(connection);
     let mut documents = Vec::new();
-    let mut evidence = BlockChildrenMigrationEvidence::default();
+    let mut evidence = DocumentSchemaMigrationEvidence::default();
     for head in repository.live_yjs_heads()? {
-        let prepared = prepare_document(&repository, head)?;
+        let prepared = prepare_document(&repository, head, markdown)?;
         evidence.scanned_documents += 1;
         evidence.changed_documents += usize::from(prepared.changed);
         evidence.lifted_roots += prepared.lifted_roots;
+        evidence.removed_prompt_markers += prepared.removed_prompt_markers;
         documents.push(prepared);
     }
 
     let mut versions = Vec::new();
     for row in read_version_rows(connection)? {
-        let prepared = prepare_version(row)?;
+        let prepared = prepare_version_with_markdown(row, markdown)?;
         evidence.scanned_versions += 1;
         evidence.changed_versions += usize::from(prepared.changed);
         evidence.lifted_roots += prepared.lifted_roots;
+        evidence.removed_prompt_markers += prepared.removed_prompt_markers;
         versions.push(prepared);
     }
     Ok(PreparedMigration {
@@ -228,8 +336,9 @@ fn prepare_migration(connection: &Connection) -> Result<PreparedMigration, Store
 fn prepare_document(
     repository: &DocumentReadRepository<'_>,
     head: DocumentHeadRow,
+    markdown: Option<&MarkdownMigration>,
 ) -> Result<PreparedDocument, StoreError> {
-    let target_schema = exact_baseline_schema(&head.schema_key, head.schema_version)?;
+    let target_schema = stored_migration_schema(&head.schema_key, head.schema_version)?;
     let snapshot = repository
         .latest_snapshot(&head.id, head.generation, head.head_seq)?
         .ok_or_else(|| corrupt(format!("Document {} has no baseline snapshot", head.id)))?;
@@ -253,10 +362,16 @@ fn prepare_document(
     }
 
     let engine = reconstruct_baseline_document(repository, &head, &snapshot)?;
-    let decoded = decode_block_document_allowing_illegal_children(engine.document(), target_schema)
-        .map_err(|error| corrupt(format!("Document {} baseline schema: {error}", head.id)))?;
-    let normalized = normalize_block_children_forest(decoded.block_tree.blocks);
-    let normalized_document = DecodedBlockDocument {
+    let decoded =
+        decode_schema_migration_document(engine.document(), target_schema, head.schema_version)
+            .map_err(|error| corrupt(format!("Document {} baseline schema: {error}", head.id)))?;
+    let (mut normalized, removed_prompt_markers) = normalize_schema_migration_forest(
+        decoded.block_tree.blocks,
+        head.schema_version,
+        target_schema,
+        &head.id,
+    );
+    let mut normalized_document = DecodedBlockDocument {
         document_id: decoded.document_id,
         schema: target_schema,
         title: decoded.title,
@@ -265,6 +380,11 @@ fn prepare_document(
             blocks: normalized.blocks,
         },
     };
+    if let Some(markdown) =
+        markdown.filter(|context| context.applies_to(head.schema_version, target_schema))
+    {
+        normalized.changed |= markdown.transform_document(&mut normalized_document)?;
+    }
     let current_materialization =
         materialize_decoded_document(&normalized_document).map_err(|error| {
             corrupt(format!(
@@ -272,6 +392,26 @@ fn prepare_document(
                 head.id
             ))
         })?;
+    let stored_blocks: Vec<MaterializedBlockNode> =
+        serde_json::from_value(materialization.block_tree).map_err(|_| {
+            corrupt(format!(
+                "Document {} materialized Block tree is invalid",
+                head.id
+            ))
+        })?;
+    let mut stored_normalized =
+        super::schema_compatibility::normalize_stored_forest(&stored_blocks, &head.id)?;
+    if let Some(markdown) =
+        markdown.filter(|context| context.applies_to(head.schema_version, target_schema))
+    {
+        markdown.transform_blocks(&mut stored_normalized);
+    }
+    if stored_normalized != current_materialization.block_tree {
+        return Err(corrupt(format!(
+            "Document {} materialized Block tree diverges",
+            head.id
+        )));
+    }
     let (full_state, state_vector) = if normalized.changed {
         encode_current_document(&normalized_document)?
     } else {
@@ -283,8 +423,11 @@ fn prepare_document(
         full_state,
         state_vector,
         materialization: current_materialization,
+        snapshot_created_at: snapshot.created_at,
+        materialization_updated_at: materialization.updated_at,
         changed: normalized.changed,
         lifted_roots: normalized.lifted_roots,
+        removed_prompt_markers,
     })
 }
 
@@ -350,8 +493,16 @@ fn reconstruct_baseline_document(
     Ok(engine)
 }
 
+#[cfg(test)]
 fn prepare_version(row: VersionRow) -> Result<PreparedVersion, StoreError> {
-    let target_schema = exact_baseline_schema(&row.schema_key, row.schema_version)?;
+    prepare_version_with_markdown(row, None)
+}
+
+fn prepare_version_with_markdown(
+    row: VersionRow,
+    markdown: Option<&MarkdownMigration>,
+) -> Result<PreparedVersion, StoreError> {
+    let target_schema = stored_migration_schema(&row.schema_key, row.schema_version)?;
     if row.byte_length != i64::try_from(row.full_update_blob.len()).unwrap_or(-1) {
         return Err(corrupt(format!(
             "Document version {} length diverges",
@@ -363,9 +514,17 @@ fn prepare_version(row: VersionRow) -> Result<PreparedVersion, StoreError> {
         &row.checkpoint_hash,
         "Document version checkpoint",
     )?;
-    let (checkpoint, state_vector, changed, lifted_roots) = match row.checkpoint_format.as_str() {
-        "yjs_update_v1" => prepare_yjs_version(&row, target_schema)?,
-        "block_tree_snapshot_v2" => prepare_block_tree_version(&row, target_schema)?,
+    let MigratedCheckpoint {
+        bytes: checkpoint,
+        state_vector,
+        changed,
+        lifted_roots,
+        removed_prompt_markers,
+    } = match row.checkpoint_format.as_str() {
+        "yjs_update_v1" => prepare_yjs_version(&row, target_schema, markdown)?,
+        "block_tree_snapshot_v2" | "block_tree_snapshot_v3" => {
+            prepare_block_tree_version(&row, target_schema, markdown)?
+        }
         other => {
             return Err(corrupt(format!(
                 "Yjs Document version {} uses unsupported checkpoint format {other}",
@@ -380,13 +539,15 @@ fn prepare_version(row: VersionRow) -> Result<PreparedVersion, StoreError> {
         state_vector,
         changed,
         lifted_roots,
+        removed_prompt_markers,
     })
 }
 
 fn prepare_yjs_version(
     row: &VersionRow,
     target_schema: BlockDocumentSchema,
-) -> Result<(Vec<u8>, Vec<u8>, bool, usize), StoreError> {
+    markdown: Option<&MarkdownMigration>,
+) -> Result<MigratedCheckpoint, StoreError> {
     let engine = YrsDocumentEngine::from_full_state_v1(&row.document_id, &row.full_update_blob)
         .map_err(|error| corrupt(format!("Document version {}: {error}", row.version_id)))?;
     if !engine
@@ -403,18 +564,16 @@ fn prepare_yjs_version(
             row.version_id
         )));
     }
-    let decoded = decode_block_document_allowing_illegal_children(engine.document(), target_schema)
-        .map_err(|error| corrupt(format!("Document version {}: {error}", row.version_id)))?;
-    let normalized = normalize_block_children_forest(decoded.block_tree.blocks);
-    if !normalized.changed {
-        return Ok((
-            row.full_update_blob.clone(),
-            row.state_vector.clone(),
-            false,
-            0,
-        ));
-    }
-    let normalized_document = DecodedBlockDocument {
+    let decoded =
+        decode_schema_migration_document(engine.document(), target_schema, row.schema_version)
+            .map_err(|error| corrupt(format!("Document version {}: {error}", row.version_id)))?;
+    let (mut normalized, removed_prompt_markers) = normalize_schema_migration_forest(
+        decoded.block_tree.blocks,
+        row.schema_version,
+        target_schema,
+        &row.document_id,
+    );
+    let mut normalized_document = DecodedBlockDocument {
         document_id: decoded.document_id,
         schema: target_schema,
         title: decoded.title,
@@ -423,14 +582,35 @@ fn prepare_yjs_version(
             blocks: normalized.blocks,
         },
     };
+    if let Some(markdown) =
+        markdown.filter(|context| context.applies_to(row.schema_version, target_schema))
+    {
+        normalized.changed |= markdown.transform_document(&mut normalized_document)?;
+    }
+    if !normalized.changed {
+        return Ok(MigratedCheckpoint {
+            bytes: row.full_update_blob.clone(),
+            state_vector: row.state_vector.clone(),
+            changed: false,
+            lifted_roots: 0,
+            removed_prompt_markers: 0,
+        });
+    }
     let (checkpoint, state_vector) = encode_current_document(&normalized_document)?;
-    Ok((checkpoint, state_vector, true, normalized.lifted_roots))
+    Ok(MigratedCheckpoint {
+        bytes: checkpoint,
+        state_vector,
+        changed: true,
+        lifted_roots: normalized.lifted_roots,
+        removed_prompt_markers,
+    })
 }
 
 fn prepare_block_tree_version(
     row: &VersionRow,
     target_schema: BlockDocumentSchema,
-) -> Result<(Vec<u8>, Vec<u8>, bool, usize), StoreError> {
+    markdown: Option<&MarkdownMigration>,
+) -> Result<MigratedCheckpoint, StoreError> {
     if !row.state_vector.is_empty() {
         return Err(corrupt(format!(
             "Document version {} block-tree checkpoint has causal state",
@@ -444,9 +624,17 @@ fn prepare_block_tree_version(
             "BlockTree Document checkpoint JSON is not canonical",
         ));
     }
-    let mut snapshot = serde_json::from_value::<BlockTreeSnapshotV2>(value)
+    let mut snapshot = serde_json::from_value::<BlockTreeMigrationSnapshot>(value)
         .map_err(|_| corrupt("BlockTree Document checkpoint payload is invalid"))?;
-    if snapshot.format_version != 2 || snapshot.kind != schema_metadata(target_schema).kind {
+    let expected_format = if row.checkpoint_format == "block_tree_snapshot_v3" {
+        3
+    } else {
+        2
+    };
+    if snapshot.format_version != expected_format
+        || (expected_format == 3 && snapshot.file_snapshot.is_none())
+        || snapshot.kind != schema_metadata(target_schema).kind
+    {
         return Err(corrupt(
             "BlockTree Document checkpoint schema identity diverges",
         ));
@@ -456,9 +644,35 @@ fn prepare_block_tree_version(
             "BlockTree Document checkpoint title capability diverges",
         ));
     }
-    let tree = dematerialize_block_tree_allowing_illegal_children(&snapshot.block_tree)
-        .map_err(|error| corrupt(format!("BlockTree Document checkpoint: {error}")))?;
-    let normalized = normalize_block_children_forest(tree.blocks);
+    let tree = if row.schema_version == i64::from(target_schema.schema_version()) {
+        dematerialize_block_tree(&snapshot.block_tree)
+            .map_err(|error| corrupt(format!("Current checkpoint: {error}")))?
+    } else {
+        decode_stored_materialized_forest(&snapshot.block_tree, &row.document_id)?
+    };
+    let (mut normalized, _) = normalize_schema_migration_forest(
+        tree.blocks,
+        row.schema_version,
+        target_schema,
+        &row.document_id,
+    );
+    let markdown = markdown.filter(|context| context.applies_to(row.schema_version, target_schema));
+    if let Some(markdown) = markdown {
+        let mut blocks = materialize_block_tree(&crate::domain::block_tree::BlockTree {
+            root_attributes: tree.root_attributes.clone(),
+            blocks: normalized.blocks.clone(),
+        })
+        .map_err(|error| corrupt(error.to_string()))?;
+        normalized.changed |= markdown.transform_blocks(&mut blocks);
+        normalized.blocks = dematerialize_block_tree(&blocks)
+            .map_err(|error| corrupt(error.to_string()))?
+            .blocks;
+        if let Some(title) = &mut snapshot.rich_title {
+            normalized.changed |= markdown.transform_title(title);
+        }
+    }
+    let removed_prompt_markers = count_prompt_markers(&snapshot.block_tree);
+    normalized.changed |= removed_prompt_markers > 0;
     let normalized_tree = crate::domain::block_tree::BlockTree {
         root_attributes: tree.root_attributes,
         blocks: normalized.blocks,
@@ -469,15 +683,30 @@ fn prepare_block_tree_version(
         .map(rich_text_to_delta)
         .transpose()
         .map_err(|error| corrupt(format!("BlockTree Document checkpoint title: {error}")))?;
-    materialize_decoded_document(&DecodedBlockDocument {
+    let materialization = materialize_decoded_document(&DecodedBlockDocument {
         document_id: row.document_id.clone(),
         schema: target_schema,
         title,
         block_tree: normalized_tree.clone(),
     })
     .map_err(|error| corrupt(format!("BlockTree Document checkpoint: {error}")))?;
+    if markdown.is_some()
+        && let Some(files) = &mut snapshot.file_snapshot
+    {
+        let retained: std::collections::BTreeSet<_> =
+            materialization.file_ids().into_iter().collect();
+        let previous = files.files.len();
+        files.files.retain(|id, _| retained.contains(id));
+        normalized.changed |= files.files.len() != previous;
+    }
     if !normalized.changed {
-        return Ok((row.full_update_blob.clone(), Vec::new(), false, 0));
+        return Ok(MigratedCheckpoint {
+            bytes: row.full_update_blob.clone(),
+            state_vector: Vec::new(),
+            changed: false,
+            lifted_roots: 0,
+            removed_prompt_markers: 0,
+        });
     }
     snapshot.block_tree = materialize_block_tree(&normalized_tree)
         .map_err(|error| corrupt(format!("BlockTree Document checkpoint: {error}")))?;
@@ -485,7 +714,13 @@ fn prepare_block_tree_version(
         serde_json::to_value(snapshot)
             .map_err(|_| internal("BlockTree Document checkpoint could not be encoded"))?,
     )?;
-    Ok((checkpoint, Vec::new(), true, normalized.lifted_roots))
+    Ok(MigratedCheckpoint {
+        bytes: checkpoint,
+        state_vector: Vec::new(),
+        changed: true,
+        lifted_roots: normalized.lifted_roots,
+        removed_prompt_markers,
+    })
 }
 
 fn encode_current_document(
@@ -512,6 +747,16 @@ fn write_document(
     prepared: &PreparedDocument,
     timestamp: &str,
 ) -> Result<(), StoreError> {
+    let projection_timestamp = if prepared.changed {
+        timestamp
+    } else {
+        &prepared.materialization_updated_at
+    };
+    let snapshot_timestamp = if prepared.changed {
+        timestamp
+    } else {
+        &prepared.snapshot_created_at
+    };
     let target_version = i64::from(prepared.target_schema.schema_version());
     let changed = connection.execute(
         "UPDATE documents SET schema_version = ?1, state_vector = ?2, state_hash = '' \
@@ -551,7 +796,7 @@ fn write_document(
             prepared.full_state,
             hash_bytes(&prepared.full_state),
             target_version,
-            timestamp,
+            snapshot_timestamp,
         ],
     )?;
     persist_materialization_for_schema_migration(
@@ -560,7 +805,7 @@ fn write_document(
         prepared.head.generation,
         prepared.head.head_seq,
         &prepared.materialization,
-        timestamp,
+        projection_timestamp,
     )?;
     replace_document_block_index_for_schema_migration(
         connection,
@@ -573,7 +818,7 @@ fn write_document(
         &prepared.head.id,
         &prepared.materialization,
         prepared.head.head_seq,
-        timestamp,
+        projection_timestamp,
     )?;
     Ok(())
 }
@@ -658,22 +903,53 @@ fn read_version_rows(connection: &Connection) -> Result<Vec<VersionRow>, StoreEr
         .map_err(StoreError::from)
 }
 
-fn exact_baseline_schema(
+fn stored_migration_schema(
     schema_key: &str,
     schema_version: i64,
 ) -> Result<BlockDocumentSchema, StoreError> {
-    match (schema_key, schema_version) {
-        ("nodex.page", BASELINE_PAGE_SCHEMA_VERSION) => Ok(BlockDocumentSchema::PageV3),
-        ("nodex.synced-block", BASELINE_SYNCED_BLOCK_SCHEMA_VERSION) => {
-            Ok(BlockDocumentSchema::SyncedBlockV2)
-        }
-        ("nodex.reusable-template", BASELINE_REUSABLE_TEMPLATE_SCHEMA_VERSION) => {
-            Ok(BlockDocumentSchema::ReusableTemplateV2)
-        }
-        _ => Err(corrupt(format!(
-            "Yjs Document schema {schema_key}@{schema_version} is not the exact v134 baseline"
-        ))),
+    super::schema_compatibility::current_schema_for_stored_identity(schema_key, schema_version)
+        .map_err(|_| corrupt(format!("Yjs Document schema {schema_key}@{schema_version} is not a published document migration baseline")))
+}
+
+fn decode_schema_migration_document(
+    document: &yrs::Doc,
+    target_schema: BlockDocumentSchema,
+    source_version: i64,
+) -> Result<DecodedBlockDocument, super::BlockDocumentError> {
+    if source_version == i64::from(target_schema.schema_version()) {
+        return decode_block_document(document, target_schema);
     }
+    decode_block_document_allowing_illegal_children(document, target_schema)
+}
+
+fn normalize_schema_migration_forest(
+    blocks: Vec<crate::domain::block_tree::BlockNode>,
+    source_version: i64,
+    target_schema: BlockDocumentSchema,
+    document_id: &str,
+) -> (crate::domain::block_children::NormalizedBlockForest, usize) {
+    // Further steps in this unreleased version must never reinterpret content
+    // already written with its current identity (especially Session mentions).
+    if source_version == i64::from(target_schema.schema_version()) {
+        return (
+            crate::domain::block_children::NormalizedBlockForest {
+                blocks,
+                changed: false,
+                lifted_roots: 0,
+            },
+            0,
+        );
+    }
+    normalize_nodex_markdown_forest(blocks, document_id)
+}
+
+fn count_prompt_markers(blocks: &[MaterializedBlockNode]) -> usize {
+    blocks
+        .iter()
+        .map(|block| {
+            usize::from(block.block_type == "threadSection") + count_prompt_markers(&block.children)
+        })
+        .sum()
 }
 
 fn verify_hash(bytes: &[u8], expected: &str, label: &str) -> Result<(), StoreError> {
@@ -720,18 +996,19 @@ mod tests {
             id: id.to_owned(),
             block_type: block_type.to_owned(),
             props: BTreeMap::new(),
-            content: Some(json!([])),
+            content: (block_type != "threadSection").then(|| json!([])),
             children,
         }
     }
 
     fn baseline_version(block_tree: Vec<MaterializedBlockNode>) -> VersionRow {
         let checkpoint = canonical_json_bytes(
-            serde_json::to_value(BlockTreeSnapshotV2 {
+            serde_json::to_value(BlockTreeMigrationSnapshot {
                 format_version: 2,
                 kind: BlockDocumentKind::Page,
                 block_tree,
                 rich_title: Some(Vec::new()),
+                file_snapshot: None,
             })
             .expect("snapshot"),
         )
@@ -739,7 +1016,7 @@ mod tests {
         VersionRow {
             version_id: "version-1".to_owned(),
             document_id: "document-1".to_owned(),
-            project_id: "project-1".to_owned(),
+            project_id: Some("project-1".to_owned()),
             generation: 1,
             base_head_seq: 1,
             schema_key: "nodex.page".to_owned(),
@@ -776,6 +1053,45 @@ mod tests {
             write_var_uint(&mut encoded, clock);
         }
         encoded
+    }
+
+    #[test]
+    fn migrated_plain_captions_release_obsolete_retained_file_bindings() {
+        let image = MaterializedBlockNode {
+            id: "image".into(),
+            block_type: "image".into(),
+            props: BTreeMap::from([
+                ("url".into(), json!("https://example.com/a.png")),
+                (
+                    "caption".into(),
+                    json!(
+                        r#"<attachment kind="file" source="nodex://files/caption-only" name="notes.txt" />"#
+                    ),
+                ),
+            ]),
+            content: None,
+            children: vec![],
+        };
+        let mut row = baseline_version(vec![image]);
+        row.checkpoint_format = "block_tree_snapshot_v3".into();
+        let mut snapshot: serde_json::Value =
+            serde_json::from_slice(&row.full_update_blob).unwrap();
+        snapshot["formatVersion"] = json!(3);
+        snapshot["fileSnapshot"] =
+            json!({"files":{"caption-only":{"version":1,"defaultName":"notes.txt"}}});
+        row.full_update_blob = canonical_json_bytes(snapshot).unwrap();
+        row.byte_length = row.full_update_blob.len() as i64;
+        row.checkpoint_hash = hash_bytes(&row.full_update_blob);
+        let migration = MarkdownMigration {
+            legacy_column: true,
+            sessions: Default::default(),
+            native_titles: Default::default(),
+        };
+        let prepared = prepare_version_with_markdown(row, Some(&migration)).unwrap();
+        let snapshot: BlockTreeMigrationSnapshot =
+            serde_json::from_slice(&prepared.checkpoint).unwrap();
+        assert_eq!(snapshot.block_tree[0].props["caption"], "notes.txt");
+        assert!(snapshot.file_snapshot.unwrap().files.is_empty());
     }
 
     #[test]
@@ -892,7 +1208,7 @@ mod tests {
         .expect("baseline version");
         assert!(prepared.changed);
         assert_eq!(prepared.lifted_roots, 1);
-        let snapshot = serde_json::from_slice::<BlockTreeSnapshotV2>(&prepared.checkpoint)
+        let snapshot = serde_json::from_slice::<BlockTreeMigrationSnapshot>(&prepared.checkpoint)
             .expect("current checkpoint");
         assert_eq!(
             snapshot
@@ -911,7 +1227,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_baseline_reader_rejects_old_schema_and_unknown_vocabulary() {
+    fn migration_reader_rejects_unpublished_schemas_and_unknown_vocabulary() {
         let mut old_schema = baseline_version(Vec::new());
         old_schema.schema_version = 1;
         assert_eq!(
@@ -928,11 +1244,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn migrates_a_retained_deleted_head_and_rebuilds_its_current_projection() {
+    fn retained_legacy_store(
+        content_type: &str,
+        include_child: bool,
+        has_title: bool,
+    ) -> Connection {
         const NOW: &str = "2026-08-25T00:00:00.000Z";
         let document = create_compatible_document("document-1");
-        document.get_or_insert_text("title");
+        if has_title {
+            document.get_or_insert_text("title");
+        }
         let body = document.get_or_insert_xml_fragment("body");
         {
             let mut transaction = document.transact_mut();
@@ -943,15 +1264,18 @@ mod tests {
                 XmlElementPrelim::empty("blockContainer"),
             );
             code.insert_attribute(&mut transaction, "id", "code");
-            code.insert(&mut transaction, 0, XmlElementPrelim::empty("codeBlock"));
-            let children = code.insert(&mut transaction, 1, XmlElementPrelim::empty("blockGroup"));
-            let paragraph = children.insert(
-                &mut transaction,
-                0,
-                XmlElementPrelim::empty("blockContainer"),
-            );
-            paragraph.insert_attribute(&mut transaction, "id", "paragraph");
-            paragraph.insert(&mut transaction, 0, XmlElementPrelim::empty("paragraph"));
+            code.insert(&mut transaction, 0, XmlElementPrelim::empty(content_type));
+            if include_child {
+                let children =
+                    code.insert(&mut transaction, 1, XmlElementPrelim::empty("blockGroup"));
+                let paragraph = children.insert(
+                    &mut transaction,
+                    0,
+                    XmlElementPrelim::empty("blockContainer"),
+                );
+                paragraph.insert_attribute(&mut transaction, "id", "paragraph");
+                paragraph.insert(&mut transaction, 0, XmlElementPrelim::empty("paragraph"));
+            }
         }
         let transaction = document.transact();
         let full_state = transaction.encode_state_as_update_v1(&StateVector::default());
@@ -976,7 +1300,7 @@ mod tests {
             .expect("Library");
         for (id, block_type) in [
             ("page-owner", "page"),
-            ("code", "codeBlock"),
+            ("code", content_type),
             ("paragraph", "paragraph"),
         ] {
             connection
@@ -1023,14 +1347,18 @@ mod tests {
             .expect("baseline snapshot");
         let baseline_tree = serde_json::to_string(&vec![block(
             "code",
-            "codeBlock",
-            vec![block("paragraph", "paragraph", Vec::new())],
+            content_type,
+            if include_child {
+                vec![block("paragraph", "paragraph", Vec::new())]
+            } else {
+                Vec::new()
+            },
         )])
         .expect("baseline tree");
         connection
             .execute(
                 "INSERT INTO document_materializations( \
-                   document_id, generation, projected_seq, schema_version, nfm, plain_text, \
+                   document_id, generation, projected_seq, schema_version, markdown, plain_text, \
                    preview, block_tree_json, updated_at \
                  ) VALUES ('document-1', 1, 0, 2, '', '', '', ?1, ?2)",
                 params![baseline_tree, NOW],
@@ -1046,6 +1374,20 @@ mod tests {
                 [],
             )
             .expect("baseline index");
+        connection
+            .execute(
+                "UPDATE document_block_index SET block_type = ?1 WHERE block_id = 'code'",
+                [content_type],
+            )
+            .expect("source index type");
+        if !include_child {
+            connection
+                .execute(
+                    "DELETE FROM document_block_index WHERE block_id = 'paragraph'",
+                    [],
+                )
+                .expect("no child index");
+        }
         connection
             .execute(
                 "UPDATE blocks SET lifecycle = 'deleted' \
@@ -1069,6 +1411,12 @@ mod tests {
             )
             .expect("baseline Page projection");
 
+        connection
+    }
+
+    #[test]
+    fn migrates_a_retained_deleted_head_and_rebuilds_its_current_projection() {
+        let connection = retained_legacy_store("codeBlock", true, true);
         let evidence = migrate_block_children_contract(&connection, 1_777_000_000_000)
             .expect("Block children migration");
         DocumentReadRepository::new(&connection)
@@ -1078,12 +1426,13 @@ mod tests {
 
         assert_eq!(
             evidence,
-            BlockChildrenMigrationEvidence {
+            DocumentSchemaMigrationEvidence {
                 scanned_documents: 1,
                 changed_documents: 1,
                 scanned_versions: 0,
                 changed_versions: 0,
                 lifted_roots: 1,
+                removed_prompt_markers: 0,
             }
         );
         let versions = connection
@@ -1097,7 +1446,7 @@ mod tests {
                 |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)),
             )
             .expect("current versions");
-        assert_eq!(versions, (3, 3, 3));
+        assert_eq!(versions, (4, 4, 4));
         assert_eq!(
             connection
                 .query_row(
@@ -1107,7 +1456,7 @@ mod tests {
                     |row| row.get::<_, i64>(0),
                 )
                 .expect("migrated Page projection"),
-            3
+            4
         );
         assert_eq!(
             connection
@@ -1174,7 +1523,740 @@ mod tests {
                     |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
                 )
                 .expect("repaired Page projection"),
-            (3, "{\"status\":\"ship\"}".to_owned())
+            (4, "{\"status\":\"ship\"}".to_owned())
+        );
+    }
+    #[test]
+    fn nodex_markdown_removes_markers_from_all_document_kinds_and_retained_heads() {
+        for (schema_key, source_version, schema, has_title) in [
+            ("nodex.page", 3, BlockDocumentSchema::PageV4, true),
+            (
+                "nodex.synced-block",
+                2,
+                BlockDocumentSchema::SyncedBlockV3,
+                false,
+            ),
+            (
+                "nodex.reusable-template",
+                2,
+                BlockDocumentSchema::ReusableTemplateV3,
+                false,
+            ),
+        ] {
+            for include_child in [true, false] {
+                let connection = retained_legacy_store("threadSection", include_child, has_title);
+                if !has_title {
+                    connection
+                        .execute("DELETE FROM page_read_model", [])
+                        .unwrap();
+                    connection.execute("DELETE FROM pages", []).unwrap();
+                    connection
+                        .execute("DELETE FROM block_documents", [])
+                        .unwrap();
+                }
+                connection
+                    .execute(
+                        "UPDATE documents SET schema_key = ?1, schema_version = ?2",
+                        params![schema_key, source_version],
+                    )
+                    .unwrap();
+                connection
+                    .execute(
+                        "UPDATE document_snapshots SET schema_version = ?1",
+                        [source_version],
+                    )
+                    .unwrap();
+                connection
+                    .execute(
+                        "UPDATE document_materializations SET schema_version = ?1",
+                        [source_version],
+                    )
+                    .unwrap();
+                if has_title {
+                    connection
+                        .execute(
+                            "UPDATE page_read_model SET document_schema_version = ?1",
+                            [source_version],
+                        )
+                        .unwrap();
+                    connection.execute("INSERT INTO project_sessions(id,no_thread_fallback_title,\"order\",created_at,updated_at) VALUES ('session-1','Keep chat',0,'2026-08-25T00:00:00.000Z','2026-08-25T00:00:00.000Z')", []).unwrap();
+                    connection.execute("INSERT INTO project_session_pages(session_id,page_id,linked_at) VALUES ('session-1','page-owner','2026-08-25T00:00:00.000Z')", []).unwrap();
+                }
+                let source_repository = DocumentReadRepository::new(&connection);
+                let source_snapshot = source_repository
+                    .latest_snapshot("document-1", 1, 0)
+                    .unwrap()
+                    .unwrap();
+                let source_tree: Vec<MaterializedBlockNode> = serde_json::from_value(
+                    source_repository
+                        .materialization("document-1")
+                        .unwrap()
+                        .unwrap()
+                        .block_tree,
+                )
+                .unwrap();
+                for (name, format) in [
+                    ("yrs", "yjs_update_v1"),
+                    ("tree2", "block_tree_snapshot_v2"),
+                    ("tree3", "block_tree_snapshot_v3"),
+                ] {
+                    let (bytes, vector) = if name == "yrs" {
+                        (
+                            source_snapshot.snapshot_update.clone(),
+                            source_snapshot.state_vector.clone(),
+                        )
+                    } else {
+                        let snapshot = BlockTreeMigrationSnapshot {
+                            format_version: if name == "tree3" { 3 } else { 2 },
+                            kind: schema_metadata(schema).kind,
+                            block_tree: source_tree.clone(),
+                            rich_title: has_title.then(Vec::new),
+                            file_snapshot: (name == "tree3").then(|| {
+                                crate::domain::files::FileSnapshotManifest {
+                                    files: BTreeMap::new(),
+                                }
+                            }),
+                        };
+                        (
+                            canonical_json_bytes(serde_json::to_value(snapshot).unwrap()).unwrap(),
+                            Vec::new(),
+                        )
+                    };
+                    connection.execute(
+                        "INSERT INTO document_versions(version_id,document_id,project_id,generation,base_head_seq,schema_key,schema_version,cause,checkpoint_format,full_update_blob,state_vector,checkpoint_hash,byte_length,created_at) VALUES (?1,'document-1',NULL,1,0,?2,?3,'manual',?4,?5,?6,?7,?8,'2026-08-25T00:00:00.000Z')",
+                        params![name, schema_key, source_version, format, bytes, vector, hash_bytes(&bytes), bytes.len() as i64],
+                    ).unwrap();
+                }
+                let evidence = migrate_nodex_markdown_contract(&connection, 1_777_000_000_000)
+                    .expect("Nodex Markdown migration");
+                assert_eq!(evidence.removed_prompt_markers, 4);
+                assert_eq!(evidence.changed_versions, 3);
+                assert_eq!(evidence.changed_documents, 1);
+                let repository = DocumentReadRepository::new(&connection);
+                let head = repository.document_head("document-1").unwrap().unwrap();
+                assert_eq!(head.schema_version, i64::from(schema.schema_version()));
+                let snapshot = repository
+                    .latest_snapshot("document-1", 1, 0)
+                    .unwrap()
+                    .unwrap();
+                let engine =
+                    YrsDocumentEngine::from_full_state_v1("document-1", &snapshot.snapshot_update)
+                        .unwrap();
+                let decoded = decode_block_document(engine.document(), schema)
+                    .expect("strict current schema");
+                let current = materialize_decoded_document(&decoded).unwrap();
+                assert_eq!(current.block_tree.len(), 1);
+                let paragraph = &current.block_tree[0];
+                assert_eq!(paragraph.block_type, "paragraph");
+                assert!(paragraph.children.is_empty());
+                assert_eq!(paragraph.content, Some(json!([])));
+                if include_child {
+                    assert_eq!(paragraph.id, "paragraph");
+                } else {
+                    assert_ne!(paragraph.id, "code");
+                }
+                let persisted = repository.materialization("document-1").unwrap().unwrap();
+                assert_eq!(
+                    persisted.block_tree,
+                    serde_json::to_value(&current.block_tree).unwrap()
+                );
+                assert!(current.markdown.is_empty());
+                assert_eq!(
+                    connection
+                        .query_row(
+                            "SELECT count(*) FROM document_block_index WHERE block_id = 'code'",
+                            [],
+                            |row| row.get::<_, i64>(0)
+                        )
+                        .unwrap(),
+                    0
+                );
+                assert_eq!(
+                    connection
+                        .query_row(
+                            "SELECT lifecycle FROM blocks WHERE id = 'code'",
+                            [],
+                            |row| row.get::<_, String>(0)
+                        )
+                        .unwrap(),
+                    "deleted"
+                );
+                if has_title {
+                    assert_eq!(connection.query_row("SELECT count(*) FROM project_session_pages WHERE session_id = 'session-1' AND page_id = 'page-owner'", [], |row| row.get::<_, i64>(0)).unwrap(), 1);
+                }
+                let versions = read_version_rows(&connection).unwrap();
+                assert_eq!(versions.len(), 3);
+                for row in &versions {
+                    assert_eq!(row.schema_version, i64::from(schema.schema_version()));
+                    assert_eq!(hash_bytes(&row.full_update_blob), row.checkpoint_hash);
+                    assert_eq!(row.byte_length, row.full_update_blob.len() as i64);
+                    assert_eq!(connection.query_row("SELECT checkpoint_hash FROM document_version_retention_index WHERE version_id = ?1", [&row.version_id], |row| row.get::<_, String>(0)).unwrap(), row.checkpoint_hash);
+                    assert_eq!(connection.query_row("SELECT checkpoint_hash FROM document_version_file_index WHERE version_id = ?1", [&row.version_id], |row| row.get::<_, String>(0)).unwrap(), row.checkpoint_hash);
+                }
+                let before = snapshot.snapshot_update;
+                let repeat =
+                    migrate_nodex_markdown_contract(&connection, 1_777_000_000_001).unwrap();
+                assert_eq!(repeat.changed_documents, 0);
+                assert_eq!(repeat.removed_prompt_markers, 0);
+                assert_eq!(
+                    repository
+                        .latest_snapshot("document-1", 1, 0)
+                        .unwrap()
+                        .unwrap()
+                        .snapshot_update,
+                    before
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn nodex_markdown_preserves_siblings_and_nested_children_in_every_checkpoint_schema() {
+        for (schema_key, source_version, kind, rich_title) in [
+            ("nodex.page", 3, BlockDocumentKind::Page, Some(Vec::new())),
+            (
+                "nodex.synced-block",
+                2,
+                BlockDocumentKind::SyncedBlock,
+                None,
+            ),
+            (
+                "nodex.reusable-template",
+                2,
+                BlockDocumentKind::ReusableTemplate,
+                None,
+            ),
+        ] {
+            let mut following = block("following", "paragraph", Vec::new());
+            following.content = Some(
+                json!([{ "type":"text", "text":"Keep following content", "styles": {"bold":true} }, {"type":"agentConfig", "props":{"mode":"plan"}}]),
+            );
+            let tree = vec![
+                block("before", "paragraph", Vec::new()),
+                block(
+                    "marker",
+                    "threadSection",
+                    vec![block(
+                        "nested",
+                        "threadSection",
+                        vec![block("lifted", "paragraph", Vec::new())],
+                    )],
+                ),
+                following.clone(),
+            ];
+            let mut row = baseline_version(tree.clone());
+            row.schema_key = schema_key.to_owned();
+            row.schema_version = source_version;
+            row.full_update_blob = canonical_json_bytes(
+                serde_json::to_value(BlockTreeMigrationSnapshot {
+                    format_version: 2,
+                    kind,
+                    block_tree: tree,
+                    rich_title,
+                    file_snapshot: None,
+                })
+                .unwrap(),
+            )
+            .unwrap();
+            row.byte_length = row.full_update_blob.len() as i64;
+            row.checkpoint_hash = hash_bytes(&row.full_update_blob);
+            let prepared = prepare_version(row).unwrap();
+            assert_eq!(prepared.removed_prompt_markers, 2);
+            let current: BlockTreeMigrationSnapshot =
+                serde_json::from_slice(&prepared.checkpoint).unwrap();
+            assert_eq!(
+                current
+                    .block_tree
+                    .iter()
+                    .map(|block| block.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["before", "lifted", "following"]
+            );
+            assert_eq!(current.block_tree[2], following);
+        }
+    }
+
+    #[test]
+    fn nodex_markdown_rewrites_yjs_checkpoints_and_rejects_corruption_before_writes() {
+        let connection = retained_legacy_store("threadSection", true, true);
+        let repository = DocumentReadRepository::new(&connection);
+        let snapshot = repository
+            .latest_snapshot("document-1", 1, 0)
+            .unwrap()
+            .unwrap();
+        let source_engine =
+            YrsDocumentEngine::from_full_state_v1("document-1", &snapshot.snapshot_update).unwrap();
+        assert!(
+            decode_block_document(source_engine.document(), BlockDocumentSchema::PageV4).is_err()
+        );
+        let mut row = baseline_version(Vec::new());
+        row.schema_version = 3;
+        row.checkpoint_format = "yjs_update_v1".to_owned();
+        row.full_update_blob = snapshot.snapshot_update.clone();
+        row.state_vector = snapshot.state_vector;
+        row.byte_length = row.full_update_blob.len() as i64;
+        row.checkpoint_hash = hash_bytes(&row.full_update_blob);
+        let prepared = prepare_version(row).expect("retained Yjs checkpoint");
+        assert_eq!(prepared.removed_prompt_markers, 1);
+        let engine =
+            YrsDocumentEngine::from_full_state_v1("document-1", &prepared.checkpoint).unwrap();
+        let decoded =
+            decode_block_document(engine.document(), BlockDocumentSchema::PageV4).unwrap();
+        assert_eq!(decoded.block_tree.blocks[0].id, "paragraph");
+        assert!(
+            engine
+                .state_vector_equals_v1(&prepared.state_vector)
+                .unwrap()
+        );
+
+        connection
+            .execute(
+                "UPDATE document_snapshots SET snapshot_hash = ?1",
+                ["0".repeat(64)],
+            )
+            .unwrap();
+        assert!(migrate_nodex_markdown_contract(&connection, 1_777_000_000_000).is_err());
+        assert_eq!(
+            repository
+                .document_head("document-1")
+                .unwrap()
+                .unwrap()
+                .schema_version,
+            2
+        );
+        assert_eq!(
+            repository
+                .latest_snapshot("document-1", 1, 0)
+                .unwrap()
+                .unwrap()
+                .snapshot_update,
+            snapshot.snapshot_update
+        );
+    }
+
+    #[test]
+    fn nodex_markdown_rolls_back_head_and_checkpoint_rewrites_on_projection_failure() {
+        let mut connection = retained_legacy_store("threadSection", true, true);
+        let before = DocumentReadRepository::new(&connection)
+            .latest_snapshot("document-1", 1, 0)
+            .unwrap()
+            .unwrap();
+        connection.execute_batch("CREATE TRIGGER reject_migration_projection BEFORE UPDATE ON document_materializations BEGIN SELECT RAISE(ABORT, 'projection failure'); END;").unwrap();
+        let result = crate::infrastructure::sqlite::with_immediate_transaction(
+            &mut connection,
+            |transaction| migrate_nodex_markdown_contract(transaction, 1_777_000_000_000),
+        );
+        assert!(result.is_err());
+        let repository = DocumentReadRepository::new(&connection);
+        assert_eq!(
+            repository
+                .document_head("document-1")
+                .unwrap()
+                .unwrap()
+                .schema_version,
+            2
+        );
+        let after = repository
+            .latest_snapshot("document-1", 1, 0)
+            .unwrap()
+            .unwrap();
+        assert_eq!(after.snapshot_update, before.snapshot_update);
+        assert_eq!(after.state_vector, before.state_vector);
+        assert_eq!(after.snapshot_hash, before.snapshot_hash);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM document_block_index WHERE block_id = 'code'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+    }
+    #[test]
+    fn nodex_markdown_upgrades_pending_documents_without_creating_body_content() {
+        let connection = retained_legacy_store("threadSection", false, true);
+        for (key, old_version, new_version) in [
+            ("nodex.page", 3, 4),
+            ("nodex.synced-block", 2, 3),
+            ("nodex.reusable-template", 2, 3),
+        ] {
+            connection.execute("INSERT INTO documents(id,library_id,schema_key,schema_version,readiness,authority,created_at,updated_at) VALUES (?1,'library-1',?1,?2,'pending_genesis','legacy_shadow','2026-08-25T00:00:00.000Z','2026-08-25T00:00:00.000Z')", params![key, old_version]).unwrap();
+            migrate_nodex_markdown_contract(&connection, 1_777_000_000_000).unwrap();
+            let head = DocumentReadRepository::new(&connection)
+                .document_head(key)
+                .unwrap()
+                .unwrap();
+            assert_eq!(head.schema_version, new_version);
+            assert_eq!(head.readiness, DocumentReadiness::PendingGenesis);
+            assert!(
+                DocumentReadRepository::new(&connection)
+                    .materialization(key)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn nodex_markdown_retains_image_metadata_and_frozen_file_bindings() {
+        let image = MaterializedBlockNode {
+            id: "image".to_owned(),
+            block_type: "image".to_owned(),
+            props: BTreeMap::from([
+                ("url".to_owned(), json!("nodex://files/file-1")),
+                ("caption".to_owned(), json!("**Sketch**")),
+                ("backgroundColor".to_owned(), json!("blue")),
+                ("name".to_owned(), json!("diagram.png")),
+                ("sourceWidth".to_owned(), json!(640)),
+                ("sourceHeight".to_owned(), json!(480)),
+            ]),
+            content: None,
+            children: Vec::new(),
+        };
+        let files = crate::domain::files::FileSnapshotManifest {
+            files: BTreeMap::from([(
+                "file-1".to_owned(),
+                crate::domain::files::FileSnapshotTarget {
+                    version: 7,
+                    default_name: "original.png".to_owned(),
+                },
+            )]),
+        };
+        let snapshot = BlockTreeMigrationSnapshot {
+            format_version: 3,
+            kind: BlockDocumentKind::Page,
+            block_tree: vec![block("marker", "threadSection", Vec::new()), image.clone()],
+            rich_title: Some(Vec::new()),
+            file_snapshot: Some(files.clone()),
+        };
+        let mut row = baseline_version(Vec::new());
+        row.schema_version = 3;
+        row.checkpoint_format = "block_tree_snapshot_v3".to_owned();
+        row.full_update_blob =
+            canonical_json_bytes(serde_json::to_value(snapshot).unwrap()).unwrap();
+        row.byte_length = row.full_update_blob.len() as i64;
+        row.checkpoint_hash = hash_bytes(&row.full_update_blob);
+        let prepared = prepare_version(row).unwrap();
+        let current: BlockTreeMigrationSnapshot =
+            serde_json::from_slice(&prepared.checkpoint).unwrap();
+        assert_eq!(current.block_tree, vec![image]);
+        assert_eq!(current.file_snapshot, Some(files));
+    }
+}
+
+/// The one-time translation of predecessor content. Session identity is Profile-wide;
+/// an ambiguous execution root must never choose an arbitrary Session.
+struct MarkdownMigration {
+    legacy_column: bool,
+    sessions: std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+    native_titles: std::collections::BTreeMap<String, String>,
+}
+
+enum MentionTarget<'a> {
+    Session(&'a str),
+    Native(&'a str),
+    Unchanged,
+}
+
+impl MarkdownMigration {
+    fn applies_to(&self, source_version: i64, target_schema: BlockDocumentSchema) -> bool {
+        self.legacy_column || source_version < i64::from(target_schema.schema_version())
+    }
+    fn load(connection: &Connection) -> Result<Self, StoreError> {
+        let mut sessions =
+            std::collections::BTreeMap::<String, std::collections::BTreeSet<String>>::new();
+        for (table, column) in [
+            ("project_session_threads", "thread_id"),
+            ("project_session_execution_bindings", "runtime_thread_id"),
+        ] {
+            let exists: bool = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+                [table],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                continue;
+            }
+            let mut statement = connection.prepare(&format!("SELECT binding.{column},binding.session_id FROM {table} binding JOIN project_sessions session ON session.id=binding.session_id"))?;
+            for row in statement.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })? {
+                let (thread, session) = row?;
+                sessions.entry(thread).or_default().insert(session);
+            }
+        }
+        let has_backend: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('codex_threads') WHERE name='agent_backend_kind')",[],|row| row.get(0))?;
+        let filter = if has_backend {
+            " WHERE agent_backend_kind = 'codex'"
+        } else {
+            ""
+        };
+        let native_titles = connection.prepare(&format!("SELECT thread_id,COALESCE(NULLIF(thread_name,''),'Codex chat') FROM codex_threads{filter}"))?.query_map([], |row| Ok((row.get(0)?,row.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        Ok(Self {
+            legacy_column: stored_markdown_column(connection)? != "markdown",
+            sessions,
+            native_titles,
+        })
+    }
+
+    fn target(&self, thread: &str) -> MentionTarget<'_> {
+        if let Some(sessions) = self.sessions.get(thread) {
+            return if sessions.len() == 1 {
+                MentionTarget::Session(sessions.first().expect("one Session"))
+            } else {
+                MentionTarget::Unchanged
+            };
+        }
+        self.native_titles
+            .get(thread)
+            .map_or(MentionTarget::Unchanged, |title| {
+                MentionTarget::Native(title)
+            })
+    }
+
+    fn transform_title(&self, title: &mut Vec<RichTextItem>) -> bool {
+        let mut changed = false;
+        for item in title {
+            let RichTextItem::ThreadMention { uuid } = item else {
+                continue;
+            };
+            match self.target(uuid) {
+                MentionTarget::Session(session) => {
+                    changed |= uuid != session;
+                    *uuid = session.into();
+                }
+                MentionTarget::Native(title) => {
+                    *item = RichTextItem::Link {
+                        text: title.into(),
+                        href: format!(
+                            "codex://threads/{}",
+                            nodex_markdown::links::encode_component(uuid)
+                        ),
+                        styles: Default::default(),
+                    };
+                    changed = true;
+                }
+                MentionTarget::Unchanged => {}
+            }
+        }
+        changed
+    }
+
+    fn transform_inline(&self, value: &mut serde_json::Value) -> bool {
+        use serde_json::{Value, json};
+        match value {
+            Value::Array(items) => items
+                .iter_mut()
+                .fold(false, |changed, item| self.transform_inline(item) | changed),
+            Value::Object(object) => {
+                if object.get("type").and_then(Value::as_str) == Some("threadMention") {
+                    let Some(uuid) = object
+                        .get("props")
+                        .and_then(|props| props.get("uuid"))
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                    else {
+                        return false;
+                    };
+                    match self.target(&uuid) {
+                        MentionTarget::Session(session) if session != uuid => {
+                            object.get_mut("props").expect("mention props")["uuid"] =
+                                json!(session);
+                            return true;
+                        }
+                        MentionTarget::Native(title) => {
+                            *value = json!({"type":"link","href":format!("codex://threads/{}",nodex_markdown::links::encode_component(&uuid)),"content":[{"type":"text","text":title,"styles":{}}]});
+                            return true;
+                        }
+                        _ => return false,
+                    }
+                }
+                object.values_mut().fold(false, |changed, value| {
+                    self.transform_inline(value) | changed
+                })
+            }
+            _ => false,
+        }
+    }
+
+    fn transform_blocks(&self, blocks: &mut [MaterializedBlockNode]) -> bool {
+        let mut changed = false;
+        for block in blocks {
+            if block.block_type == "image" {
+                changed |= block.props.remove("backgroundColor").is_some();
+                if let Some(serde_json::Value::String(caption)) = block.props.get_mut("caption") {
+                    let plain = decode_legacy_caption(caption);
+                    changed |= *caption != plain;
+                    *caption = plain;
+                }
+            }
+            if let Some(content) = &mut block.content {
+                changed |= self.transform_inline(content);
+            }
+            changed |= self.transform_blocks(&mut block.children);
+        }
+        changed
+    }
+
+    fn transform_document(&self, document: &mut DecodedBlockDocument) -> Result<bool, StoreError> {
+        let mut blocks = materialize_block_tree(&document.block_tree)
+            .map_err(|error| corrupt(error.to_string()))?;
+        let mut changed = self.transform_blocks(&mut blocks);
+        if changed {
+            document.block_tree =
+                dematerialize_block_tree(&blocks).map_err(|error| corrupt(error.to_string()))?;
+        }
+        if let Some(delta) = &mut document.title {
+            let mut title = crate::domain::rich_text::materialize_rich_text(delta)
+                .map_err(|error| corrupt(error.to_string()))?
+                .rich_text;
+            if self.transform_title(&mut title) {
+                *delta = rich_text_to_delta(&title).map_err(|error| corrupt(error.to_string()))?;
+                changed = true;
+            }
+        }
+        Ok(changed)
+    }
+}
+
+/// Only predecessor image captions contain escaped inline NFM. Decode their text once,
+/// preserving whitespace; current captions never pass through a markup decoder.
+fn decode_legacy_caption(caption: &str) -> String {
+    use std::sync::LazyLock;
+    static SPAN: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"</?span(?:\s[^>]*)?>").expect("legacy span pattern"));
+    static ATOM: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r#"<(attachment|mention-page|mention-thread|mention-date|agent-config)\b([^>]*)/?>"#,
+        )
+        .expect("legacy caption atoms")
+    });
+    static ATTR: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r#"([a-z-]+)="([^"]*)""#).expect("legacy caption attributes")
+    });
+    let escaped = |text: &str, start: usize| {
+        text[..start]
+            .bytes()
+            .rev()
+            .take_while(|byte| *byte == b'\\')
+            .count()
+            % 2
+            == 1
+    };
+    let caption = SPAN.replace_all(caption, |capture: &regex::Captures<'_>| {
+        let found = capture.get(0).expect("span match");
+        if escaped(caption, found.start()) {
+            found.as_str().to_owned()
+        } else {
+            String::new()
+        }
+    });
+    let decoded = ATOM.replace_all(&caption, |capture: &regex::Captures<'_>| {
+        let found = capture.get(0).expect("atom match");
+        if escaped(&caption, found.start()) {
+            return found.as_str().to_owned();
+        }
+        let attributes = ATTR
+            .captures_iter(&capture[2])
+            .map(|item| {
+                (
+                    item[1].to_owned(),
+                    item[2]
+                        .replace("&quot;", "\"")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">")
+                        .replace("&amp;", "&"),
+                )
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let text = match &capture[1] {
+            "attachment" => attributes.get("name").cloned().unwrap_or_default(),
+            "mention-page" => attributes.get("url").cloned().unwrap_or_default(),
+            "mention-thread" => attributes.get("uuid").cloned().unwrap_or_default(),
+            "mention-date" => nodex_markdown::text::date_plain_text(&nodex_markdown::DateMention {
+                start: attributes.get("start").cloned().unwrap_or_default(),
+                end: attributes.get("end").cloned(),
+                tz: attributes.get("tz").cloned(),
+                format: attributes.get("format").cloned(),
+                time_format: attributes.get("time-format").cloned(),
+                reminder: attributes.get("reminder").cloned(),
+            }),
+            "agent-config" => ["mode", "model", "reasoning"]
+                .iter()
+                .filter_map(|key| attributes.get(*key))
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" "),
+            _ => String::new(),
+        };
+        nodex_markdown::write_inline(&[nodex_markdown::Inline::Text {
+            text,
+            style: Default::default(),
+        }])
+    });
+    nodex_markdown::read_inline(&decoded, nodex_markdown::ReadOptions::BOUNDARY)
+        .map(|inline| nodex_markdown::text::inline_text(&inline))
+        .unwrap_or_else(|_| decoded.into_owned())
+}
+
+#[cfg(test)]
+mod markdown_contract_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn legacy_captions_become_plain_text_without_collapsing_spaces() {
+        assert_eq!(
+            decode_legacy_caption(r#"A \*literal\* **bold**  caption<br>next"#),
+            "A *literal* bold  caption\nnext"
+        );
+        assert_eq!(
+            decode_legacy_caption(
+                r#"<span color="red">a</span> [link](https://example.com) `code`"#
+            ),
+            "a link code"
+        );
+        assert_eq!(
+            decode_legacy_caption(r#"\<span color="red">literal\</span>"#),
+            r#"<span color="red">literal</span>"#
+        );
+        assert_eq!(
+            decode_legacy_caption(
+                r#"<attachment kind="file" name="*literal*.txt" source="file" />"#
+            ),
+            "*literal*.txt"
+        );
+    }
+
+    #[test]
+    fn mentions_use_unique_sessions_and_only_native_threads_fall_back_to_links() {
+        use std::collections::{BTreeMap, BTreeSet};
+        let context = MarkdownMigration {
+            legacy_column: true,
+            sessions: BTreeMap::from([
+                ("root".into(), BTreeSet::from(["session".into()])),
+                ("ambiguous".into(), BTreeSet::from(["a".into(), "b".into()])),
+            ]),
+            native_titles: BTreeMap::from([
+                ("native /id".into(), "Known chat".into()),
+                ("ambiguous".into(), "Must stay ambiguous".into()),
+            ]),
+        };
+        let mut content = json!([{"type":"threadMention","props":{"uuid":"root"}},{"type":"threadMention","props":{"uuid":"native /id"}},{"type":"threadMention","props":{"uuid":"ambiguous"}},{"type":"threadMention","props":{"uuid":"unknown-runtime"}}]);
+        assert!(context.transform_inline(&mut content));
+        assert_eq!(content[0]["props"]["uuid"], "session");
+        assert_eq!(content[1]["href"], "codex://threads/native%20%2Fid");
+        assert_eq!(content[1]["content"][0]["text"], "Known chat");
+        assert_eq!(content[2]["props"]["uuid"], "ambiguous");
+        assert_eq!(content[3]["type"], "threadMention");
+        let mut title = vec![RichTextItem::ThreadMention {
+            uuid: "native /id".into(),
+        }];
+        assert!(context.transform_title(&mut title));
+        assert!(
+            matches!(&title[0], RichTextItem::Link { href, .. } if href == "codex://threads/native%20%2Fid")
         );
     }
 }

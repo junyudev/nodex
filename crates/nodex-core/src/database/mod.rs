@@ -1018,7 +1018,7 @@ mod tests {
             .writer()
             .call(|connection| {
                 connection.execute(
-                    "UPDATE document_materializations SET nfm = ?1 \
+                    "UPDATE document_materializations SET markdown = ?1 \
                      WHERE document_id = 'document:database-row'",
                     [BODY_SENTINEL],
                 )?;
@@ -1126,7 +1126,7 @@ mod tests {
             panic!("Database row detail snapshot");
         };
         assert_eq!(row_detail.summary.page_id, "page:database-row");
-        assert_eq!(row_detail.body_nfm, BODY_SENTINEL);
+        assert_eq!(row_detail.body_markdown, BODY_SENTINEL);
 
         let native_query = nodex_core_contracts::database::DatabaseDataSourceQuery {
             cursor: None,
@@ -7812,7 +7812,7 @@ mod tests {
         );
         assert_eq!(first.groups.total_rows, 2);
         assert_eq!(first.rows.items.len(), 1);
-        assert!(first.rows.items[0].move_etag.starts_with("nxe1."));
+        assert!(first.rows.items[0].move_etag.starts_with("nxe2."));
         let first_etag = first.rows.items[0].move_etag.clone();
         let cursor = first
             .rows

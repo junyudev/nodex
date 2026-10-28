@@ -1,4 +1,7 @@
 import { expect, type Page } from "@playwright/test";
+import * as Y from "yjs";
+import { assertValidBlockDocument } from "../../../src/shared/block-documents/block-structure";
+import { openPageDocument } from "../../../src/shared/block-documents/page-document";
 import type { DatabaseModuleReadSnapshotV2 } from "../../../src/shared/database-module-v2";
 import {
   compilePageLifecycleRequestV2,
@@ -273,11 +276,12 @@ export interface SeededConvergencePage extends ConvergencePage {
   blockIds: readonly string[];
 }
 
+// Seed exact Nodex Markdown: blank lines separate Blocks; one newline stays inside a paragraph.
 export async function seedConvergenceDocument(
   page: Page,
   project: ConvergenceProject,
   source: ConvergencePage,
-  nfm = "Keep block\nDragged source",
+  markdown = "Keep block\n\nDragged source",
 ): Promise<SeededConvergencePage> {
   const descriptor = requireIpcValue<ProjectAccessedDocumentDescriptor>(
     await invokeIpc(page, "block-document:owned:prepare", project.projectId, source.pageId),
@@ -288,7 +292,7 @@ export async function seedConvergenceDocument(
     throw new Error("Source Page document identity changed during preparation");
   }
 
-  const mutation = requireIpcValue<Record<string, unknown>>(
+  requireIpcValue(
     await invokeIpc(page, "block-documents:mutate", project.projectId, documentId, {
       mutationId: createUuidV7(),
       projectId: project.projectId,
@@ -297,20 +301,53 @@ export async function seedConvergenceDocument(
       documentId,
       generation: descriptor.generation,
       expectedHeadSeq: descriptor.headSeq,
-      nfm,
+      markdown,
     }),
     "Seed source Page document",
   );
-  if (!Array.isArray(mutation.createdBlockIds)) {
-    throw new Error("Seed source Page document returned no created block ids");
-  }
-  const blockIds = mutation.createdBlockIds.map((blockId, index) =>
-    requireString(blockId, `Seeded block id ${index}`),
+  return { ...source, blockIds: await readConvergenceDocumentBlockIds(page, project, source) };
+}
+
+/** Read committed preorder, including Blocks retained by an exact Markdown write. */
+export async function readConvergenceDocumentBlockIds(
+  page: Page,
+  project: ConvergenceProject,
+  source: ConvergencePage,
+): Promise<readonly string[]> {
+  const documentId = source.documentId;
+  const update = await page.evaluate(
+    async (request) => {
+      const api = window.api;
+      if (!api) throw new Error("Development renderer bridge is unavailable");
+      const subscribed = (await api.invoke(
+        "document-sync:subscribe",
+        request,
+      )) as IpcApi["document-sync:subscribe"]["result"];
+      if (!subscribed.ok) throw new Error(subscribed.error.message);
+      try {
+        const synced = (await api.invoke("document-sync:sync", {
+          ...request,
+          stateVector: new Uint8Array([0]),
+        })) as IpcApi["document-sync:sync"]["result"];
+        if (!synced.ok) throw new Error(synced.error.message);
+        return Array.from(synced.value.update);
+      } finally {
+        await api.invoke("document-sync:unsubscribe", request);
+      }
+    },
+    { projectId: project.projectId, documentId, clientSessionId: createUuidV7() },
   );
-  if (blockIds.length < 2) {
-    throw new Error("Seed source Page document must contain a transferable block");
+  const document = new Y.Doc({ guid: documentId });
+  try {
+    Y.applyUpdate(document, new Uint8Array(update));
+    const blockIds = assertValidBlockDocument(openPageDocument(document).body).map(({ id }) => id);
+    if (blockIds.length < 2) {
+      throw new Error("Seed source Page document must contain a transferable block");
+    }
+    return blockIds;
+  } finally {
+    document.destroy();
   }
-  return { ...source, blockIds };
 }
 
 export async function createConvergenceSubpage(

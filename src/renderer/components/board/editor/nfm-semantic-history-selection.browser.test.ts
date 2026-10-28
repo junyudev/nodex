@@ -21,7 +21,7 @@ const settle = async () =>
 test("semantic Undo and Redo restore the original inline selections after address replacement and remount", async () => {
   const { document: doc } = createPageDocumentGenesis({
     documentId: "selection-history",
-    nfm: "abcdef",
+    markdown: "abcdef",
     allocateBlockId: () => "paragraph",
   });
   const body = doc.getXmlFragment("body");

@@ -10,6 +10,7 @@ const testFiles = filesForSuite("unit", resolveVitestTestTier());
 export default defineConfig({
   resolve: rendererViteResolve,
   test: {
+    setupFiles: ["./config/setup-markdown.ts"],
     ...testObservation("unit"),
     env: TEST_ENVIRONMENT,
     environment: "node",

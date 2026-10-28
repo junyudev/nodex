@@ -1,5 +1,5 @@
 import type { InboxItem } from "../../../shared/inbox";
-import { parseNfm } from "../../../shared/nfm/parser";
+import { readMarkdown } from "../../../shared/nodex-markdown";
 import { MessageDocument } from "@/components/message/message-document";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { inboxPageRoutingContext } from "./inbox-presentation";
@@ -9,7 +9,7 @@ export function InboxMessageDocument({ item }: { readonly item: InboxItem }) {
   const library = useLibraryMetadata();
   return (
     <MessageDocument
-      blocks={parseNfm(item.body)}
+      blocks={readMarkdown(item.body)}
       contentKey={item.body}
       fileAuthority={
         library.data

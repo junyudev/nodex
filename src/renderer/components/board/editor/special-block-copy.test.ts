@@ -103,7 +103,7 @@ describe("special block copy", () => {
     expect(payload).toEqual({
       clipboardHTML: "<full>Current\n\tChild</full>",
       externalHTML: "<external>Current\n\tChild</external>",
-      structuredText: "Current\n\tChild",
+      structuredText: "- Current\n  - Child",
     });
   });
 
@@ -207,7 +207,7 @@ describe("special block copy", () => {
       "<div>ignored-by-test-double</div>",
     );
 
-    expect(value).toBe("block1-line1\nblock1-line2\nblock2\n\tchild\n\nblock3");
+    expect(value).toBe("block1-line1\nblock1-line2\n- block2\n  - child\n\nblock3");
   });
 
   test("resolveStructuredPlainTextForSelection serializes top-level selected blocks only", () => {
@@ -235,7 +235,7 @@ describe("special block copy", () => {
       "fallback",
     );
 
-    expect(value).toBe("Parent line\n\tChild line");
+    expect(value).toBe("- Parent line\n  - Child line");
   });
 
   test("createStructuredPlainTextPayload preserves html and rewrites structured text only", () => {
@@ -268,7 +268,7 @@ describe("special block copy", () => {
 
     expect(nextPayload.clipboardHTML).toBe(payload.clipboardHTML);
     expect(nextPayload.externalHTML).toBe(payload.externalHTML);
-    expect(nextPayload.structuredText).toBe("Parent line\n\tChild line");
+    expect(nextPayload.structuredText).toBe("- Parent line\n  - Child line");
   });
 
   test("createStructuredPlainTextPayload omits the default text code-block label", () => {
@@ -473,7 +473,7 @@ describe("special block copy", () => {
       "fallback",
     );
 
-    expect(value).toBe("111\n\t222\n333");
+    expect(value).toBe("- 111\n  - 222\n\n333");
   });
 
   test("resolveStructuredPlainTextForSelection uses literal text for text selections inside a code block", () => {
@@ -654,10 +654,10 @@ describe("special block copy", () => {
       "clipboard-html",
     );
 
-    expect(value).toBe("block2\n\tchild2-1\n\tchild2-2\n\nblock4");
+    expect(value).toBe("- block2\n  - child2-1\n  - child2-2\n\nblock4");
   });
 
-  test("resolveStructuredPlainTextForSelection converts linebreaks and empty blocks to NFM-like plaintext", () => {
+  test("resolveStructuredPlainTextForSelection writes line breaks and empty Blocks as Markdown", () => {
     const child21 = {
       id: "child2-1",
       type: "paragraph",
@@ -716,7 +716,7 @@ describe("special block copy", () => {
     );
 
     expect(value).toBe(
-      "block1-text-line1\nblock1-text-line2\nblock2\n\tchild2-1\n\tchild2-2\nblock3\n\nblock4",
+      "block1-text-line1\nblock1-text-line2\n- block2\n  - child2-1\n  - child2-2\n\nblock3\n\nblock4",
     );
   });
 
@@ -738,7 +738,7 @@ describe("special block copy", () => {
       "fallback",
     );
 
-    expect(value).toBe("alpha\nbeta * ` > [ ] \\");
+    expect(value).toBe("alpha\nbeta * ` > [ ] \\\\");
   });
 
   test("resolveStructuredPlainTextForSelection preserves all inline markers", () => {
@@ -778,7 +778,7 @@ describe("special block copy", () => {
     );
 
     expect(value).toBe(
-      '**bold** *italic* ~~strike~~ <span underline="true">under</span> <span color="blue">blue</span> `code` [***link***](https://example.com/a?b=1)',
+      "**bold** *italic* ~~strike~~ under blue `code` [***link***](https://example.com/a?b=1)",
     );
   });
 
@@ -834,7 +834,7 @@ describe("special block copy", () => {
       "fallback",
     );
 
-    expect(value).toBe("parent\n\tchild-one\n\tchild-two");
+    expect(value).toBe("- parent\n  - child-one\n  - child-two");
   });
 
   test("successful selection serialization never evaluates the fallback", () => {
@@ -992,7 +992,7 @@ describe("special block copy", () => {
       }),
     );
 
-    expect(payload.structuredText).toBe("56\n\t1234567\n\t1234567\n12345");
+    expect(payload.structuredText).toBe("- 56\n  - 1234567\n  - 1234567\n\n12345");
     expect(payload.clipboardHTML).toBe("<full>56\n\t1234567\n\t1234567\n12345</full>");
     expect(payload.externalHTML).toBe("<external>56\n\t1234567\n\t1234567\n12345</external>");
   });
@@ -1041,7 +1041,7 @@ describe("special block copy", () => {
       ),
     );
 
-    expect(payload.structuredText).toBe("4567\n1234567\n12345");
+    expect(payload.structuredText).toBe("4567\n\n1234567\n\n12345");
     expect(payload.clipboardHTML).toBe("<full>4567\n1234567\n12345</full>");
     expect(payload.externalHTML).toBe("<external>4567\n1234567\n12345</external>");
   });
@@ -1114,7 +1114,7 @@ describe("special block copy", () => {
 
     const payload = createCopiedSelectionPayloadFromSelection(editor);
 
-    expect(payload.structuredText).toBe("4567\n1234567\n12345");
+    expect(payload.structuredText).toBe("4567\n\n1234567\n\n12345");
     expect(payload.clipboardHTML).toBe("<full>4567\n1234567\n12345</full>");
     expect(payload.externalHTML).toBe("<external>4567\n1234567\n12345</external>");
   });
@@ -1151,7 +1151,7 @@ describe("special block copy", () => {
       }),
     );
 
-    expect(payload.structuredText).toBe("inside toggle\nafter");
+    expect(payload.structuredText).toBe("inside toggle\n\nafter");
     expect(payload.clipboardHTML).toBe("<full>inside toggle\nafter</full>");
     expect(payload.externalHTML).toBe("<external>inside toggle\nafter</external>");
   });
@@ -1171,13 +1171,11 @@ describe("special block copy", () => {
     const payload: CopiedSelectionPayload = {
       clipboardHTML: `<span data-source="${file}">setup.html</span>`,
       externalHTML: "<p>setup.html</p>",
-      structuredText: `[setup.html](${file}) [local](/tmp/local.html)\n<image source="${asset}">diagram</image>`,
+      structuredText: `[setup.html](${file}) [local](/tmp/local.html)\n\n![diagram](${asset})`,
     };
     expect(copiedSelectionHasFileReferences(payload)).toBe(true);
     const portable = preparePortableCopiedSelectionPayload(payload);
-    expect(portable.structuredText).toBe(
-      `[setup.html](${file}) [local](/tmp/local.html)\n![diagram](${asset})`,
-    );
+    expect(portable.structuredText).toBe(payload.structuredText);
 
     const calls: string[] = [];
     const rewritten = await rewriteCopiedSelectionFileReferences(payload, async (source) => {
@@ -1186,7 +1184,7 @@ describe("special block copy", () => {
     });
     expect(calls).toEqual([file, asset]);
     expect(rewritten.structuredText).toBe(
-      "[setup.html](</my files/setup (v2).html>) [local](/tmp/local.html)\n![diagram](</my files/diagram.png>)",
+      "[setup.html](</my files/setup (v2).html>) [local](/tmp/local.html)\n\n![diagram](</my files/diagram.png>)",
     );
     expect(rewritten.clipboardHTML).toBe(payload.clipboardHTML);
     expect(readNodexClipboardFragment(rewritten.externalHTML)).toBe(payload.clipboardHTML);
@@ -1228,7 +1226,7 @@ describe("special block copy", () => {
     const payload: CopiedSelectionPayload = {
       clipboardHTML: `<img src="${source}" />`,
       externalHTML: `<img src="${source}" />`,
-      structuredText: `<image source="${source}">diagram</image>`,
+      structuredText: `![diagram](${source})`,
     };
 
     const rewritten = preparePortableCopiedSelectionPayload(payload);
@@ -1257,85 +1255,20 @@ describe("special block copy", () => {
     expect(rewritten.structuredText).toBe(payload.structuredText);
   });
 
-  test("rewriteCopiedSelectionFileReferences converts NFM image lines to markdown image syntax", async () => {
-    const source = "nodex://assets/image.png";
-    const payload: CopiedSelectionPayload = {
-      clipboardHTML: `<img src="${source}" />`,
-      externalHTML: `<img src="${source}" />`,
-      structuredText: `<image source="${source}">diagram</image>`,
-    };
-
-    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async () => {
-      return "/workspace/.nodex/assets/image.png";
-    });
-
-    expect(rewritten.clipboardHTML).toBe(payload.clipboardHTML);
-    expect(readNodexClipboardFragment(rewritten.externalHTML)).toBe(payload.clipboardHTML);
-    expect(inspectNodexClipboardHtml(rewritten.externalHTML).fallbackHtml).toContain(
-      payload.externalHTML,
-    );
-    expect(rewritten.structuredText).toBe("![diagram](/workspace/.nodex/assets/image.png)");
-  });
-
-  test("rewriteCopiedSelectionFileReferences preserves indentation and escapes markdown image destinations", async () => {
+  test("rewriteCopiedSelectionFileReferences keeps indentation and brackets a local path with spaces", async () => {
     const source = "nodex://assets/plan.png";
     const payload: CopiedSelectionPayload = {
       clipboardHTML: `<img src="${source}" />`,
       externalHTML: `<img src="${source}" />`,
-      structuredText: `\t<image source="${source}"></image>`,
+      structuredText: `- Plan\n\n  ![plan](${source})`,
     };
 
     const rewritten = await rewriteCopiedSelectionFileReferences(payload, async () => {
       return "/workspace/my files/plan (v2).png";
     });
 
-    expect(rewritten.structuredText).toBe("\t![image](</workspace/my files/plan (v2).png>)");
-  });
-
-  test("rewriteCopiedSelectionFileReferences supports space-indented NFM image lines", async () => {
-    const source = "nodex://assets/diagram.png";
-    const payload: CopiedSelectionPayload = {
-      clipboardHTML: `<img src="${source}" />`,
-      externalHTML: `<img src="${source}" />`,
-      structuredText: `    <image source="${source}">diagram</image>`,
-    };
-
-    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async () => {
-      return "/workspace/.nodex/assets/diagram.png";
-    });
-
-    expect(rewritten.structuredText).toBe("    ![diagram](/workspace/.nodex/assets/diagram.png)");
-  });
-
-  test("rewriteCopiedSelectionFileReferences escapes markdown image alt text without generic NFM escaping", async () => {
-    const source = "nodex://assets/diagram.png";
-    const payload: CopiedSelectionPayload = {
-      clipboardHTML: `<img src="${source}" />`,
-      externalHTML: `<img src="${source}" />`,
-      structuredText: `<image source="${source}">a[b]*\`</image>`,
-    };
-
-    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async () => {
-      return "/workspace/.nodex/assets/diagram.png";
-    });
-
-    expect(rewritten.structuredText).toBe("![a\\[b\\]*`](/workspace/.nodex/assets/diagram.png)");
-  });
-
-  test("rewriteCopiedSelectionFileReferences keeps all inline markers in markdown image alt text", async () => {
-    const source = "nodex://assets/diagram.png";
-    const payload: CopiedSelectionPayload = {
-      clipboardHTML: `<img src="${source}" />`,
-      externalHTML: `<img src="${source}" />`,
-      structuredText: `<image source="${source}">**bold** *italic* ~~strike~~ <span underline="true">under</span> <span color="blue">blue</span> \`code\` [link](https://example.com)</image>`,
-    };
-
-    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async () => {
-      return "/workspace/.nodex/assets/diagram.png";
-    });
-
     expect(rewritten.structuredText).toBe(
-      '![**bold** *italic* ~~strike~~ <span underline="true">under</span> <span color="blue">blue</span> `code` \\[link\\](https://example.com)](/workspace/.nodex/assets/diagram.png)',
+      "- Plan\n\n  ![plan](</workspace/my files/plan (v2).png>)",
     );
   });
 

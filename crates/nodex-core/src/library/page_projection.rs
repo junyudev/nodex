@@ -10,10 +10,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Value, json};
 
 use crate::document::{mint_document_projection_etags, mint_etag, parse_inline_markdown_title};
-use crate::domain::nfm::{
-    NfmDateMention, NfmInlineContent, NfmStyleSet, serialize_inline_content_for_adapter,
-};
-use crate::domain::rich_text::{RichTextItem, RichTextStyles, canonicalize_rich_text};
+use crate::domain::rich_text::{RichTextItem, canonicalize_rich_text};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::content::page_content;
@@ -108,7 +105,7 @@ pub(super) fn page_projection_file(
         store_epoch,
         &page.document_id,
         page.rich_title.clone(),
-        &page.body_nfm,
+        &page.body_markdown,
     )
     .map_err(etag_error)?;
     let mut validators = LibraryPageProjectionFileValidators {
@@ -149,8 +146,8 @@ pub(super) fn page_projection_file(
     }
 
     let (content, metadata) = match kind {
-        LibraryPageProjectionFileKind::BodyNestedMarkdown => {
-            (with_final_newline(&page.body_nfm), None)
+        LibraryPageProjectionFileKind::BodyMarkdown => {
+            (with_final_newline(&page.body_markdown), None)
         }
         LibraryPageProjectionFileKind::MetaYaml => {
             let projection = PageMetaProjectionV2 {
@@ -221,7 +218,7 @@ pub(super) fn page_draft_projection(
             commit_head,
             requesting_project_id,
             page_id,
-            kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+            kind: LibraryPageProjectionFileKind::BodyMarkdown,
             prepare: Some(LibraryPagePrepareKind::DocumentReplace),
         },
     )?;
@@ -272,7 +269,7 @@ pub(super) fn page_draft_projection(
         document_generation: meta.document_generation,
         document_head_seq: meta.document_head_seq,
         meta_yaml: meta.content,
-        body_nested_markdown: body.content,
+        body_markdown: body.content,
         body_blocks,
         page_files,
         title_etag,
@@ -292,7 +289,7 @@ fn validate_prepare(
                 Some(LibraryPagePrepareKind::TitleSet)
             )
             | (
-                LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                LibraryPageProjectionFileKind::BodyMarkdown,
                 Some(LibraryPagePrepareKind::DocumentReplace)
             )
             | (_, Some(LibraryPagePrepareKind::PageDelete))
@@ -376,11 +373,11 @@ fn render_title_markdown(rich_title: &Value) -> Result<String, StoreError> {
     if canonical != items {
         return Err(corrupt("Page rich title is not canonical"));
     }
-    let inline = canonical
-        .iter()
-        .map(nfm_item)
-        .collect::<Result<Vec<_>, _>>()?;
-    let markdown = serialize_inline_content_for_adapter(&inline);
+    let json = crate::domain::materialized_inline::materialized_inline_from_rich_text(&canonical)
+        .map_err(|_| corrupt("Page rich title is not title-safe"))?;
+    let inline = nodex_markdown::inline_content_from_json(&json)
+        .map_err(|_| corrupt("Page rich title is not representable as Markdown"))?;
+    let markdown = nodex_markdown::write_inline(&inline);
     let reparsed = parse_inline_markdown_title(&markdown)
         .map_err(|_| corrupt("Page rich title cannot be represented as inline Markdown"))?;
     if reparsed != canonical {
@@ -389,57 +386,6 @@ fn render_title_markdown(rich_title: &Value) -> Result<String, StoreError> {
         ));
     }
     Ok(markdown)
-}
-
-fn nfm_item(item: &RichTextItem) -> Result<NfmInlineContent, StoreError> {
-    let styles = |styles: &RichTextStyles| NfmStyleSet {
-        bold: styles.bold,
-        italic: styles.italic,
-        strikethrough: styles.strikethrough,
-        underline: styles.underline,
-        code: styles.code,
-        color: styles.color.clone(),
-    };
-    match item {
-        RichTextItem::Text {
-            text,
-            styles: item_styles,
-        } => Ok(NfmInlineContent::Text {
-            text: text.clone(),
-            styles: styles(item_styles),
-        }),
-        RichTextItem::Link {
-            text,
-            href,
-            styles: item_styles,
-        } => Ok(NfmInlineContent::Link {
-            text: text.clone(),
-            href: href.clone(),
-            styles: styles(item_styles),
-        }),
-        RichTextItem::ThreadMention { uuid } => {
-            Ok(NfmInlineContent::ThreadMention { uuid: uuid.clone() })
-        }
-        RichTextItem::PageMention { target_page_id } => Ok(NfmInlineContent::PageMention {
-            target_page_id: target_page_id.clone(),
-        }),
-        RichTextItem::DateMention {
-            start,
-            end,
-            tz,
-            format,
-            time_format,
-            reminder,
-        } => Ok(NfmInlineContent::DateMention(NfmDateMention {
-            start: start.clone(),
-            end: end.clone(),
-            tz: tz.clone(),
-            format: format.clone(),
-            time_format: time_format.clone(),
-            reminder: reminder.clone(),
-        })),
-        RichTextItem::LineBreak => Err(corrupt("Page rich title contains a line break")),
-    }
 }
 
 fn project_properties(
@@ -1206,14 +1152,14 @@ mod tests {
         );
         assert!(
             validate_prepare(
-                LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                LibraryPageProjectionFileKind::BodyMarkdown,
                 Some(&LibraryPagePrepareKind::DocumentReplace)
             )
             .is_ok()
         );
         assert!(
             validate_prepare(
-                LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                LibraryPageProjectionFileKind::BodyMarkdown,
                 Some(&LibraryPagePrepareKind::TitleSet)
             )
             .is_err()

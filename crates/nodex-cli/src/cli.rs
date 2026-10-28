@@ -150,8 +150,8 @@ pub struct DocsArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum DocsCommand {
-    /// Canonical Nested Markdown syntax for Page bodies.
-    NestedMarkdown,
+    /// Canonical Nodex Markdown syntax for Page bodies.
+    Markdown,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
@@ -257,7 +257,7 @@ pub struct ReadArgs {
     /// Page ID, Page key, or uniquely resolvable title path.
     #[arg(value_name = "PAGE_SELECTOR")]
     pub page: String,
-    /// Read Page metadata as YAML instead of the Nested Markdown body.
+    /// Read Page metadata as YAML instead of the Nodex Markdown body.
     #[arg(long)]
     pub meta: bool,
 }
@@ -329,7 +329,7 @@ pub enum PageCommand {
     Create(PageCreateArgs),
     /// Create 1–16 Pages atomically from one JSON document.
     CreateBatch(crate::page_batch::PageCreateBatchArgs),
-    /// Insert Nested Markdown without replacing existing Page content.
+    /// Insert Nodex Markdown without replacing existing Page content.
     Insert(PageInsertArgs),
     /// Replace the complete Page body using its current body ETag.
     Replace(PageReplaceArgs),
@@ -606,7 +606,7 @@ pub struct PageCreateArgs {
     /// Parent destination: library, page:PAGE_ID or data_source:SOURCE_ID.
     #[arg(long)]
     pub parent: String,
-    /// Initial Page title as inline Nested Markdown.
+    /// Initial Page title as inline Nodex Markdown.
     #[arg(long)]
     pub title: String,
     #[command(flatten)]
@@ -624,7 +624,8 @@ pub struct PageInsertArgs {
     /// Block anchor: start, end, before:ID, after:ID, inside-start:ID or inside-end:ID.
     #[arg(long, default_value = "end")]
     pub at: String,
-    /// Read Nested Markdown from a UTF-8 file; omitted or - reads redirected stdin.
+    /// Read Nodex Markdown from a UTF-8 file;
+    /// omitted or - reads redirected stdin.
     #[arg(long)]
     pub file: Option<PathBuf>,
     #[command(flatten)]
@@ -638,7 +639,8 @@ pub struct PageReplaceArgs {
     /// Current validators.body_etag from read --json, or body_etag from page_documents SQL.
     #[arg(long = "if-match")]
     pub if_match: String,
-    /// Read Nested Markdown from a UTF-8 file; omitted or - reads redirected stdin.
+    /// Read Nodex Markdown from a UTF-8 file;
+    /// omitted or - reads redirected stdin.
     #[arg(long)]
     pub file: Option<PathBuf>,
     #[command(flatten)]
@@ -653,7 +655,7 @@ pub struct PageRenameArgs {
     /// Current validators.title_etag from read --json, or title_etag from pages SQL.
     #[arg(long = "if-match")]
     pub if_match: String,
-    /// New inline Nested Markdown title; mutually exclusive with --file.
+    /// New inline Nodex Markdown title; mutually exclusive with --file.
     #[arg(conflicts_with = "file")]
     pub title: Option<String>,
     /// Read the new title from a UTF-8 file or stdin (-); mutually exclusive with TITLE.
@@ -737,7 +739,8 @@ pub struct PageDeleteArgs {
 #[derive(Clone, Debug, Args, PartialEq)]
 #[group(multiple = false)]
 pub struct BodyInputArgs {
-    /// Read Nested Markdown from a UTF-8 file; omitted or - reads redirected stdin.
+    /// Read Nodex Markdown from a UTF-8 file;
+    /// omitted or - reads redirected stdin.
     #[arg(long)]
     pub file: Option<PathBuf>,
     /// Create an empty body without reading stdin.
@@ -850,7 +853,7 @@ pub enum InboxCommand {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct InboxSendArgs {
-    /// Message text, kept whole as the Page body: Markdown, then any images.
+    /// Message text, kept whole as the Page body: GitHub Flavored Markdown, then any images.
     /// Omitted or - reads redirected stdin.
     #[arg(value_name = "TEXT")]
     pub text: Option<String>,
@@ -1079,16 +1082,8 @@ mod tests {
         assert!(arguments.content.file.is_none());
 
         let conflicting = Cli::try_parse_from([
-            "nodex",
-            "page",
-            "create",
-            "--parent",
-            "library",
-            "--title",
-            "Page",
-            "--empty",
-            "--file",
-            "body.nested.md",
+            "nodex", "page", "create", "--parent", "library", "--title", "Page", "--empty",
+            "--file", "body.md",
         ])
         .expect_err("Page create body sources are exclusive");
         assert_eq!(conflicting.kind(), clap::error::ErrorKind::ArgumentConflict);

@@ -316,7 +316,8 @@ test.each([
         operationId: createUuidV7(),
         mutationId: createUuidV7(),
         clientSessionId: createUuidV7(),
-        nfm: "▶ **Promoted title**\n\tA rich **body**\n\t▶ Nested content\n\t\tDeep body\n- [x] Wrapped task\n\tWrapped child",
+        markdown:
+          ":::toggle[**Promoted title**]\n  A rich **body**\n\n  :::toggle[Nested content]\n    Deep body\n  :::\n:::\n\n- [x] Wrapped task\n\n  Wrapped child",
       });
       const source = await readDocument(client, documentId);
       expect(source.materialization.blockTree).toHaveLength(2);

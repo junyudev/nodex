@@ -306,7 +306,7 @@ fn create_page(
         page_id,
         title,
         rich_title,
-        nfm,
+        markdown,
         status,
         priority,
         estimate,
@@ -412,7 +412,7 @@ fn create_page(
     let prepared = prepare_page_yjs_genesis_with_content(
         &document_id,
         &rich_title,
-        nfm,
+        markdown,
         &mut allocate_block_id,
     )?;
     let created_block_ids = flatten_block_ids(&prepared.materialization.block_tree);
@@ -499,7 +499,7 @@ fn create_page(
             )?;
             let authority = read_document_authority(connection, &document_id)?
                 .ok_or_else(|| corrupt("Created Page has no Document authority"))?;
-            if authority.head.schema_key != BlockDocumentSchema::PageV3.schema_key()
+            if authority.head.schema_key != BlockDocumentSchema::PageV4.schema_key()
                 || authority.head.schema_version != i64::from(PAGE_SCHEMA_VERSION)
             {
                 return Err(corrupt("Created Page has the wrong Document schema"));

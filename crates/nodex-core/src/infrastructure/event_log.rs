@@ -2988,9 +2988,9 @@ mod tests {
                        state_vector, state_hash, readiness, authority, created_at, updated_at,
                        sync_engine
                      ) VALUES
-                     ('document:visible', 'library:events', 1, 0, 'nodex.page', 3,
+                     ('document:visible', 'library:events', 1, 0, 'nodex.page', 4,
                        X'', '', 'ready', 'ydoc_primary', '2026-08-07', '2026-08-07', 'yjs'),
-                     ('document:hidden', 'library:events', 1, 0, 'nodex.page', 3,
+                     ('document:hidden', 'library:events', 1, 0, 'nodex.page', 4,
                        X'', '', 'ready', 'ydoc_primary', '2026-08-07', '2026-08-07', 'yjs');
                      INSERT INTO block_documents(block_id, document_id, library_id, created_at)
                      VALUES

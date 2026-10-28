@@ -1,14 +1,14 @@
-# NFM Editor Page Connection Behavior
+# Page Connections
 
 Status: Active
 Last updated: 2026-08-26
 
 ## Purpose
 
-This document is the user-visible source of truth for connecting one Page to another in the NFM editor.
+This document is the user-visible source of truth for connecting one Page to another in the Page editor.
 It distinguishes presentation from ownership and gives each intent one predictable entry point.
 Typed `@` boundaries and the shared suggestion-session lifecycle are owned by
-[NFM Editor Suggestion Menu Behavior](nfm-editor-suggestion-menu-behavior.md).
+[Page Editor Suggestion Menu Behavior](nfm-editor-suggestion-menu-behavior.md).
 
 ## Four Page occurrences
 
@@ -23,14 +23,14 @@ The first three never change parentage, Database membership, content access, or 
 
 ## Page Mention
 
-Canonical NFM is:
+Exact Nodex Markdown is:
 
 ```xml
-<mention-page url="nodex://pages/<page-id>" />
+<nodex://pages/<page-id>>
 ```
 
-The parser accepts only the exact self-closing tag with one canonical URL attribute.
-Invalid tags remain literal text.
+A Page autolink is a mention; a Markdown link with its own text remains a link.
+[Nodex Markdown](../references/nodex-markdown.md) owns the reading and refusal rules.
 The editor stores only `targetPageId`; current title and availability resolve in the current Library through the host presentation route.
 
 The visual is an inline semantic icon and underlined title, not a pill or card.

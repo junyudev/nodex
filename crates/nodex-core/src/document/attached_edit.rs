@@ -72,12 +72,12 @@ pub(crate) fn edit_page_in_scope(
             title.as_deref(),
         )
     } else {
-        prepare_nfm_replacement_update(
+        prepare_markdown_replacement_update(
             &document_id,
             schema,
             &full_state,
             &engine.state_vector_v1(),
-            body.unwrap_or(&base.nfm),
+            body.unwrap_or(&base.markdown),
             title.as_deref(),
             &mut || {
                 ordinal += 1;

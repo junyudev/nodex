@@ -9,15 +9,16 @@ import {
 import { parseFileSource } from "../../../shared/file-resources";
 import {
   composeMessageText,
+  isComposerImage,
   messageImageBlock,
+  serializeMessageText,
   splitMessageContent,
 } from "../../../shared/message-content";
-import { parseNfm } from "../../../shared/nfm/parser";
-import { serializeMessageText } from "../../../shared/message-text";
+import { readMarkdown } from "../../../shared/nodex-markdown";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 
-/** What the composer holds: the text as typed, read as Nested Markdown, and its images. */
+/** What the composer holds: the text as typed, read as message text, and its images. */
 export interface InboxDraft {
   readonly text: string;
   readonly images: readonly MessageDraftImage[];
@@ -35,23 +36,24 @@ export const inboxDraftLabel = (draft: InboxDraft): string =>
 export const inboxDraftBody = (draft: InboxDraft): string =>
   composeMessageText(
     draft.text,
-    draft.images.map((image) => image.block ?? messageImageBlock(image.fileId)),
+    draft.images.map((image) => messageImageBlock(image.fileId)),
   );
 
-/**
- * The draft a message in the message shape is rewritten from: its text as written, then its
- * images. Null when message text cannot say exactly what the body says; that message is edited
- * as its Page.
- */
-export function inboxDraftFromBody(body: string): InboxDraft | null {
-  const { text, attachments } = splitMessageContent(parseNfm(body));
+/** Every stored message is editable as exact Markdown, with ordinary File images as attachments. */
+export function inboxDraftFromBody(body: string): InboxDraft {
+  const { text, attachments } = splitMessageContent(readMarkdown(body));
   const written = serializeMessageText(text);
-  if (written === null) return null;
+  if (
+    !attachments.every(
+      (block) => isComposerImage(block) && parseFileSource(String(block.props?.url ?? "")),
+    )
+  )
+    return { text: body, images: [] };
   return {
     text: written,
     images: attachments.flatMap((block) => {
-      const fileId = parseFileSource(block.source);
-      return fileId ? [{ fileId, name: "", block }] : [];
+      const fileId = parseFileSource(String(block.props?.url ?? ""));
+      return fileId ? [{ fileId, name: "" }] : [];
     }),
   };
 }

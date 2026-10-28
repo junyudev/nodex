@@ -397,7 +397,7 @@ Codex-specific logging policy:
 - bounded acknowledgement and authority-derived summary sizes where available
 - typed retry/conflict/failure codes without raw mutation payloads
 
-Content logs must never include raw Card title/body bytes, NFM bodies, Yjs update bytes, or local recovery artifacts. Document sync/mutation logs may include only bounded byte counts, durable generation/head, update identity, queue/transaction timing, and typed outcome evidence. `Card` in a log field is the product alias for the affected Block, not evidence of a Card snapshot write path.
+Content logs must never include raw Card title/body bytes, Markdown text, Yjs update bytes, or local recovery artifacts. Document sync/mutation logs may include only bounded byte counts, durable generation/head, update identity, queue/transaction timing, and typed outcome evidence. `Card` in a log field is the product alias for the affected Block, not evidence of a Card snapshot write path.
 
 ## Using the Logger in New Backend Code
 

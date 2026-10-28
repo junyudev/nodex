@@ -12,6 +12,20 @@ export const readTestClipboard = (application: ElectronApplication) =>
     path.join(process.cwd(), ".generated/clipboard-runtime", process.arch, "nodex-clipboard.node"),
   );
 
+/** Copy rich text as a browser, Notes or mail does: HTML beside its plain text. */
+export const writeTestClipboardRichText = (
+  application: ElectronApplication,
+  copy: { readonly html: string; readonly text: string },
+) =>
+  application.evaluate(async ({ clipboard, ClipboardItem }, value) => {
+    await clipboard.write([
+      new ClipboardItem({
+        "text/html": new Blob([value.html], { type: "text/html" }),
+        "text/plain": new Blob([value.text], { type: "text/plain" }),
+      }),
+    ]);
+  }, copy);
+
 export const writeTestClipboardImage = (application: ElectronApplication, dataUrl: string) =>
   application.evaluate(async ({ clipboard, ClipboardItem, nativeImage }, source) => {
     const bytes = nativeImage.createFromDataURL(source).toPNG();

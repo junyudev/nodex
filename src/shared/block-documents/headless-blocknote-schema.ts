@@ -11,6 +11,7 @@ import {
   type StyleSchema,
 } from "@blocknote/core";
 import {
+  inlineImageInlineContentConfig,
   agentConfigInlineContentConfig,
   attachmentInlineContentConfig,
   calloutBlockConfig,
@@ -22,7 +23,6 @@ import {
   dateMentionInlineContentConfig,
   pageMentionInlineContentConfig,
   threadMentionInlineContentConfig,
-  threadSectionBlockConfig,
   syncedBlockRefBlockConfig,
   reusableTemplateRefBlockConfig,
   mathBlockConfig,
@@ -71,7 +71,6 @@ const headlessBlockDocumentBlockSpecs = {
   page: createHeadlessBlockSpec(pageBlockConfig),
   database: createHeadlessBlockSpec(databaseBlockConfig),
   canvas: createHeadlessBlockSpec(canvasBlockConfig),
-  threadSection: createHeadlessBlockSpec(threadSectionBlockConfig),
   pageRef: createHeadlessBlockSpec(pageRefBlockConfig),
   databaseViewRef: createHeadlessBlockSpec(databaseViewRefBlockConfig),
   syncedBlockRef: createHeadlessBlockSpec(syncedBlockRefBlockConfig),
@@ -88,6 +87,7 @@ export const headlessBlockDocumentSchema = BlockNoteSchema.create({
   blockSpecs: headlessBlockDocumentBlockSpecs,
   inlineContentSpecs: {
     ...defaultInlineContentSpecs,
+    inlineImage: createHeadlessInlineContentSpec(inlineImageInlineContentConfig),
     agentConfig: createHeadlessInlineContentSpec(agentConfigInlineContentConfig),
     attachment: createHeadlessInlineContentSpec(attachmentInlineContentConfig),
     dateMention: createHeadlessInlineContentSpec(dateMentionInlineContentConfig),

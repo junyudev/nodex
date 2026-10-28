@@ -102,7 +102,7 @@ describe("canonical Page history panel", () => {
         projectId="project-1"
         pageId="card-1"
         pageTitle="Current title"
-        pageNfm="Current body"
+        pageMarkdown="Current body"
         projectWorkspacePath="/workspace/project-1"
         open
         onClose={() => undefined}
@@ -545,7 +545,7 @@ function makeVersionDetail(): DocumentVersionDetail {
       title: "Checkpoint title",
       richTitle: [{ type: "text", text: "Checkpoint title", styles: {} }],
       blockTree: [],
-      nfm: "Checkpoint body",
+      markdown: "Checkpoint body",
       plainText: "Checkpoint body",
       preview: "Checkpoint body",
       references: [],

@@ -31,7 +31,7 @@ import type {
   PrepareNodexAgentPageUpdateResult,
 } from "../../shared/nodex-agent-tools";
 import { GetContextV3OutputSchema } from "../../shared/nodex-agent-tools/v3-read-schemas";
-import { NESTED_MARKDOWN_AGENT_GUIDE } from "../../shared/nfm/agent-guide";
+import { NODEX_MARKDOWN_AGENT_GUIDE } from "../../shared/nodex-markdown/agent-guide";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import type { CoreGenerationClient } from "../core-client/core-generation-client";
 import type { NativeNodexAgentCore } from "../core-client/native-nodex-agent-core";
@@ -298,7 +298,7 @@ export const live: Layer.Layer<
                 project: null,
 
                 ...(request.input.include?.markdownGuide
-                  ? { markdownGuide: NESTED_MARKDOWN_AGENT_GUIDE }
+                  ? { markdownGuide: NODEX_MARKDOWN_AGENT_GUIDE }
                   : {}),
               },
             }),
@@ -408,7 +408,7 @@ export const live: Layer.Layer<
 
               ...(databases ? { databases } : {}),
               ...(request.input.include?.markdownGuide
-                ? { markdownGuide: NESTED_MARKDOWN_AGENT_GUIDE }
+                ? { markdownGuide: NODEX_MARKDOWN_AGENT_GUIDE }
                 : {}),
             },
           }),

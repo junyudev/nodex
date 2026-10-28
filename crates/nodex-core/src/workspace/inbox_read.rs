@@ -309,7 +309,7 @@ struct EntryRow {
     parent_kind: String,
     parent_id: String,
     title: String,
-    nfm: Option<String>,
+    markdown: Option<String>,
     source_body_truncated: bool,
     plain_text: String,
     generation: i64,
@@ -317,8 +317,8 @@ struct EntryRow {
     placement_revision: i64,
 }
 
-/// Admit a small complete NFM or bounded text prefix in SQLite before decoding.
-/// Byte lengths read column metadata; oversized documents never enter the NFM parser.
+/// Admit a small complete Markdown or bounded text prefix in SQLite before decoding.
+/// Byte lengths read column metadata; oversized documents never enter the Markdown parser.
 fn read_entry(
     connection: &Connection,
     page_id: &str,
@@ -330,8 +330,8 @@ fn read_entry(
                entry.source_thread_id, entry.source_project_id, entry.source_label, entry.kind, \
                entry.state, entry.suggestion_state, entry.suggestion_error, \
                entry.current_proposal_id, entry.revision, page.parent_kind, page.parent_id, \
-               COALESCE(materialization.title, ''), CASE WHEN octet_length(materialization.nfm) <= ?2 \
-                 THEN materialization.nfm ELSE NULL END, \
+               COALESCE(materialization.title, ''), CASE WHEN octet_length(materialization.markdown) <= ?2 \
+                 THEN materialization.markdown ELSE NULL END, \
                substr(COALESCE(materialization.plain_text, ''),1,?3), document.generation, document.head_seq, \
                entry.provisional_title, entry.source_turn_id, \
                COALESCE(octet_length(materialization.plain_text),0) > ?3, entry.scope_project_id, (SELECT placement_revision FROM blocks WHERE id=entry.page_id) \
@@ -364,7 +364,7 @@ fn read_entry(
                     parent_kind: row.get(13)?,
                     parent_id: row.get(14)?,
                     title: row.get(15)?,
-                    nfm: row.get(16)?,
+                    markdown: row.get(16)?,
                     plain_text: row.get(17)?,
                     generation: row.get(18)?,
                     head_seq: row.get(19)?,
@@ -395,11 +395,11 @@ pub(super) fn read_message_edit(
             false,
         )
     })?;
-    // The rewrite started from the stored body, so it compares as Nested Markdown, not as
+    // The rewrite started from the stored body, so it compares as Nodex Markdown, not as
     // message text.
-    let original = crate::domain::nfm_parser::parse_nfm(original_body)
+    let original = crate::domain::markdown::parse_markdown(original_body)
         .ok()
-        .map(|blocks| crate::domain::nfm::serialize_nfm(&blocks));
+        .map(|blocks| crate::domain::markdown::serialize_markdown(&blocks));
     if original.is_none_or(|original| original != current) {
         return Err(StoreError::new(
             StoreErrorCode::RevisionConflict,
@@ -408,7 +408,7 @@ pub(super) fn read_message_edit(
         ));
     }
     let next = super::inbox::message_body(body)?;
-    let changed = next.nfm != current;
+    let changed = next.markdown != current;
     let provisional = row.provisional_title.as_deref() == Some(row.title.as_str());
     let title_markdown = changed
         .then(|| super::inbox::provisional_title(&next.title_text))
@@ -421,7 +421,7 @@ pub(super) fn read_message_edit(
             generation: row.generation,
             head_seq: row.head_seq,
         },
-        body_markdown: changed.then_some(next.nfm),
+        body_markdown: changed.then_some(next.markdown),
         title_markdown,
     })
 }
@@ -429,28 +429,36 @@ pub(super) fn read_message_edit(
 /// The Page body while the stream shows it whole and it still has the message shape;
 /// otherwise the message is edited as its Page.
 fn editable_body(row: &EntryRow) -> Option<String> {
-    let nfm = row.nfm.as_deref().filter(|_| !row.source_body_truncated)?;
-    let blocks = crate::domain::nfm_parser::parse_nfm(nfm).ok()?;
-    super::inbox::has_message_shape(&blocks).then(|| crate::domain::nfm::serialize_nfm(&blocks))
+    let markdown = row
+        .markdown
+        .as_deref()
+        .filter(|_| !row.source_body_truncated)?;
+    let blocks = crate::domain::markdown::parse_markdown(markdown).ok()?;
+    super::inbox::has_message_shape(&blocks)
+        .then(|| crate::domain::markdown::serialize_markdown(&blocks))
 }
 
-/// The message as the stream shows it, in Nested Markdown: the Page body when it fits
+/// The message as the stream shows it, in Nodex Markdown: the Page body when it fits
 /// the stream budget, otherwise the opening of its text as plain paragraphs.
 fn stream_body(row: &EntryRow) -> (String, bool) {
-    if let Some(nfm) = row.nfm.as_deref().filter(|_| !row.source_body_truncated) {
-        return (nfm.to_owned(), false);
+    if let Some(markdown) = row
+        .markdown
+        .as_deref()
+        .filter(|_| !row.source_body_truncated)
+    {
+        return (markdown.to_owned(), false);
     }
     let (text, _) = bounded_utf8(&row.plain_text, MAX_STREAM_BODY_BYTES);
-    (super::inbox::text_paragraphs_nfm(&text), true)
+    (super::inbox::text_paragraphs_markdown(&text), true)
 }
 
 /// The message's text, one line per Block, for the suggestion Agent.
 fn message_text(row: &EntryRow) -> String {
-    let Some(nfm) = &row.nfm else {
+    let Some(markdown) = &row.markdown else {
         return row.plain_text.clone();
     };
-    crate::domain::nfm_parser::parse_nfm(nfm)
-        .map(|blocks| crate::domain::nfm::extract_block_lines(&blocks))
+    crate::domain::markdown::parse_markdown(markdown)
+        .map(|blocks| crate::domain::markdown::extract_block_lines(&blocks))
         .unwrap_or_else(|_| row.plain_text.clone())
 }
 
@@ -837,9 +845,9 @@ pub(super) fn message_image_sources(
 ) -> Result<(), StoreError> {
     let row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
     if let Some(blocks) = row
-        .nfm
+        .markdown
         .as_deref()
-        .and_then(|nfm| crate::domain::nfm_parser::parse_nfm(nfm).ok())
+        .and_then(|markdown| crate::domain::markdown::parse_markdown(markdown).ok())
     {
         super::inbox::collect_image_sources(&blocks, sources);
     }
@@ -1297,10 +1305,10 @@ mod tests {
         // Scale is the subject: ordinary captured Pages may grow long after capture.
         workspace.kernel.writer().call(|connection| {
             let huge="界".repeat(1_000_000);
-            connection.execute("UPDATE document_materializations SET nfm=?1,plain_text=?1 WHERE document_id='document:large'",[huge])?;
+            connection.execute("UPDATE document_materializations SET markdown=?1,plain_text=?1 WHERE document_id='document:large'",[huge])?;
             for budget in [MAX_STREAM_BODY_BYTES,MAX_AGENT_BODY_BYTES] {
                 let row=read_entry(connection,"page:large",budget)?;
-                assert!(row.nfm.is_none(),"oversized NFM never crosses the SQL read boundary");
+                assert!(row.markdown.is_none(),"oversized Markdown never crosses the SQL read boundary");
                 assert!(row.plain_text.len()<=budget*4);assert!(row.source_body_truncated);
                 let (body,truncated)=bounded_utf8(&message_text(&row),budget);
                 assert!(truncated);assert!(body.len()<=budget);assert!(!body.is_empty());

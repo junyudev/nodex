@@ -29,7 +29,7 @@ test("undoes native promotion immediately and interleaves editor changes in inte
       page,
       project,
       source,
-      "Promoted block\nIndependent text",
+      "Promoted block\n\nIndependent text",
     );
     await page.getByRole("button", { name: "Open Interaction history", exact: true }).click();
     await openProjectBoard(page);

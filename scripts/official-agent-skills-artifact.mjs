@@ -9,7 +9,7 @@ const SKILL_PREFIX = "skills/nodex";
 export const OFFICIAL_AGENT_SKILL_FILES = Object.freeze([
   "SKILL.md",
   "agents/openai.yaml",
-  "references/nested-markdown.md",
+  "references/markdown.md",
   "references/page-editor.md",
   "references/project-database-views.md",
   "references/queries-and-configuration.md",

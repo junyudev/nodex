@@ -143,7 +143,7 @@ test("delegates across Codex and Claude through the Session UI and restores chil
       projectId: otherProject.id,
       status: "plan",
       title: "Cross Project source",
-      nfm: "Content in another Project.",
+      markdown: "Content in another Project.",
     });
     fs.writeFileSync(
       path.join(fixture, "content-target.json"),

@@ -35,7 +35,7 @@ export default defineConfig(async () => ({
     }),
     fileParallelism: !testFiles.isStress,
     passWithNoTests: testFiles.isStress,
-    setupFiles: ["./src/renderer/test/setup.ts"],
+    setupFiles: ["./config/setup-markdown.ts", "./src/renderer/test/setup.ts"],
     hookTimeout: testFiles.isStress ? 60_000 : 30_000,
     testTimeout: testFiles.isStress ? 60_000 : 30_000,
   },

@@ -11,7 +11,7 @@ use crate::domain::derived_records::{
     BlockDocumentAssetReference, BlockDocumentReference, DerivedRecordsError,
     derive_block_document_records,
 };
-use crate::domain::nfm::{NfmMaterializationError, materialize_nfm};
+use crate::domain::markdown::{MarkdownMaterializationError, materialize_markdown};
 use crate::domain::rich_text::{
     RichTextError, RichTextItem, RichTextMaterialization, materialize_rich_text,
 };
@@ -30,7 +30,7 @@ const REUSABLE_TEMPLATE_OWNER_TYPE: &str = "reusable_template_source";
 /// This is deliberately independent from `DocumentMaterialization::schema_version`:
 /// the latter describes the Yrs document shape, while this value describes the
 /// interpretation of its derived records.
-pub(crate) const CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION: i64 = 3;
+pub(crate) const CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION: i64 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,8 +55,8 @@ pub struct BlockDocumentSchemaMetadata {
     pub schema_key: String,
     pub schema_version: u32,
     pub title: bool,
-    pub nfm_genesis: bool,
-    pub nfm_replace: bool,
+    pub markdown_genesis: bool,
+    pub markdown_replace: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,7 +78,7 @@ pub struct DocumentMaterialization {
     pub title: String,
     pub rich_title: Vec<RichTextItem>,
     pub block_tree: Vec<MaterializedBlockNode>,
-    pub nfm: String,
+    pub markdown: String,
     pub plain_text: String,
     pub preview: String,
     pub references: Vec<BlockDocumentReference>,
@@ -296,7 +296,7 @@ pub enum DocumentMaterializationError {
     #[error(transparent)]
     Blocks(#[from] BlockMaterializationError),
     #[error(transparent)]
-    Nfm(#[from] NfmMaterializationError),
+    Markdown(#[from] MarkdownMaterializationError),
     #[error(transparent)]
     RichTitle(#[from] RichTextError),
     #[error(transparent)]
@@ -315,8 +315,8 @@ pub fn materialize_decoded_document(
 ) -> Result<DocumentMaterialization, DocumentMaterializationError> {
     validate_schema_specific_body(document)?;
     let block_tree = materialize_block_tree(&document.block_tree)?;
-    let nfm = materialize_nfm(&block_tree)?;
-    let records = derive_block_document_records(&block_tree, &nfm.blocks)?;
+    let markdown = materialize_markdown(&block_tree)?;
+    let records = derive_block_document_records(&block_tree)?;
     let title = match &document.title {
         Some(title) => materialize_rich_text(title)?,
         None => RichTextMaterialization {
@@ -343,9 +343,9 @@ pub fn materialize_decoded_document(
         title: title.plain_text,
         rich_title: title.rich_text,
         block_tree,
-        nfm: nfm.nfm,
-        plain_text: nfm.plain_text,
-        preview: nfm.preview,
+        markdown: markdown.markdown,
+        plain_text: markdown.plain_text,
+        preview: markdown.preview,
         references: records.references,
         asset_refs: records.asset_refs,
         search_marker_kind: if schema.title {
@@ -360,32 +360,32 @@ pub fn materialize_decoded_document(
 
 pub fn schema_metadata(schema: BlockDocumentSchema) -> BlockDocumentSchemaMetadata {
     match schema {
-        BlockDocumentSchema::PageV3 => BlockDocumentSchemaMetadata {
+        BlockDocumentSchema::PageV4 => BlockDocumentSchemaMetadata {
             kind: BlockDocumentKind::Page,
             owner_type: PAGE_OWNER_TYPE.to_owned(),
             schema_key: PAGE_SCHEMA_KEY.to_owned(),
             schema_version: schema.schema_version(),
             title: true,
-            nfm_genesis: true,
-            nfm_replace: true,
+            markdown_genesis: true,
+            markdown_replace: true,
         },
-        BlockDocumentSchema::SyncedBlockV2 => BlockDocumentSchemaMetadata {
+        BlockDocumentSchema::SyncedBlockV3 => BlockDocumentSchemaMetadata {
             kind: BlockDocumentKind::SyncedBlock,
             owner_type: SYNCED_BLOCK_OWNER_TYPE.to_owned(),
             schema_key: SYNCED_BLOCK_SCHEMA_KEY.to_owned(),
             schema_version: schema.schema_version(),
             title: false,
-            nfm_genesis: true,
-            nfm_replace: false,
+            markdown_genesis: true,
+            markdown_replace: false,
         },
-        BlockDocumentSchema::ReusableTemplateV2 => BlockDocumentSchemaMetadata {
+        BlockDocumentSchema::ReusableTemplateV3 => BlockDocumentSchemaMetadata {
             kind: BlockDocumentKind::ReusableTemplate,
             owner_type: REUSABLE_TEMPLATE_OWNER_TYPE.to_owned(),
             schema_key: REUSABLE_TEMPLATE_SCHEMA_KEY.to_owned(),
             schema_version: schema.schema_version(),
             title: false,
-            nfm_genesis: true,
-            nfm_replace: false,
+            markdown_genesis: true,
+            markdown_replace: false,
         },
     }
 }
@@ -393,7 +393,7 @@ pub fn schema_metadata(schema: BlockDocumentSchema) -> BlockDocumentSchemaMetada
 fn validate_schema_specific_body(
     document: &DecodedBlockDocument,
 ) -> Result<(), DocumentMaterializationError> {
-    if document.schema != BlockDocumentSchema::ReusableTemplateV2 {
+    if document.schema != BlockDocumentSchema::ReusableTemplateV3 {
         return Ok(());
     }
     let block = scan_block_tree(&document.block_tree)
@@ -433,7 +433,7 @@ mod tests {
             .transact_mut()
             .apply_update(Update::decode_v1(&update).expect("valid fixture"))
             .expect("fixture applies");
-        let decoded = decode_block_document(&document, BlockDocumentSchema::PageV3)
+        let decoded = decode_block_document(&document, BlockDocumentSchema::PageV4)
             .expect("decoded Page document");
         let actual = materialize_decoded_document(&decoded).expect("materialization");
         let expected = serde_json::from_slice(
@@ -453,7 +453,7 @@ mod tests {
             "title",
             "richTitle",
             "blockTree",
-            "nfm",
+            "markdown",
             "plainText",
             "preview",
             "references",
@@ -466,11 +466,11 @@ mod tests {
 
     #[test]
     fn body_only_metadata_has_no_invented_title_capability() {
-        let metadata = schema_metadata(BlockDocumentSchema::SyncedBlockV2);
+        let metadata = schema_metadata(BlockDocumentSchema::SyncedBlockV3);
 
         assert_eq!(metadata.kind, BlockDocumentKind::SyncedBlock);
         assert!(!metadata.title);
-        assert!(!metadata.nfm_replace);
+        assert!(!metadata.markdown_replace);
         assert_eq!(metadata.schema_key, "nodex.synced-block");
     }
 

@@ -8,6 +8,7 @@ import { createReactInlineMathSpec, createReactMathBlockSpec } from "@blocknote/
 import { editorCodeBlockOptions } from "./code-block-options";
 import { createNfmCodeBlockSpec } from "./nfm-code-block-spec";
 import { createAgentConfigInlineContentSpec } from "./agent-config-chip";
+import { inlineImageInlineContentSpec } from "./inline-image-inline-content";
 import { createAttachmentInlineContentSpec } from "./attachment-chip";
 import { createCalloutBlock } from "./callout-block";
 import { createCanvasBlockSpec } from "./canvas-block";
@@ -16,7 +17,6 @@ import { createDateMentionInlineContentSpec } from "./date-mention-inline-conten
 import { createDatabaseViewRefBlockSpec } from "./database-view-ref-block";
 import { createDatabaseBlockSpec } from "./database-block";
 import { imageBlockSpec } from "./image-block";
-import { createThreadSectionBlockSpec } from "./thread-section-block";
 import { createThreadMentionInlineContentSpec } from "./thread-mention-chip";
 import { createPageMentionInlineContentSpec } from "./page-mention-inline-content";
 import { createSyncedBlockRefBlockSpec } from "./synced-block-ref-block";
@@ -42,7 +42,6 @@ export const nfmSchema = BlockNoteSchema.create({
     divider: defaultBlockSpecs.divider,
     image: imageBlockSpec(),
     callout: createCalloutBlock(),
-    threadSection: createThreadSectionBlockSpec(),
     page: createPageBlockSpec(),
     database: createDatabaseBlockSpec(),
     canvas: createCanvasBlockSpec(),
@@ -54,6 +53,7 @@ export const nfmSchema = BlockNoteSchema.create({
   },
   inlineContentSpecs: {
     ...defaultInlineContentSpecs,
+    inlineImage: inlineImageInlineContentSpec,
     agentConfig: createAgentConfigInlineContentSpec(),
     attachment: createAttachmentInlineContentSpec(),
     dateMention: createDateMentionInlineContentSpec(),

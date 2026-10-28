@@ -2152,7 +2152,7 @@
           "target_block_id",
           "title",
           "rich_title",
-          "nested_markdown",
+          "markdown",
           "plain_text",
           "blocks",
           "has_more"
@@ -2184,7 +2184,7 @@
             "type": "integer",
             "format": "int64"
           },
-          "nested_markdown": {
+          "markdown": {
             "type": "string"
           },
           "next_cursor": {
@@ -7009,7 +7009,7 @@
                 },
                 "body": {
                   "type": "string",
-                  "description": "The message as the stream shows it, in Nested Markdown: the Page body when it\nfits the stream budget, otherwise the opening of its text as paragraphs."
+                  "description": "The message as the stream shows it, in Nodex Markdown: the Page body when it\nfits the stream budget, otherwise the opening of its text as paragraphs."
                 },
                 "body_editable": {
                   "type": "boolean",
@@ -12988,10 +12988,10 @@
         "type": "object",
         "required": [
           "summary",
-          "body_nfm"
+          "body_markdown"
         ],
         "properties": {
-          "body_nfm": {
+          "body_markdown": {
             "type": "string"
           },
           "summary": {
@@ -15956,7 +15956,7 @@
             "type": "object",
             "required": [
               "anchor",
-              "nested_markdown",
+              "markdown",
               "kind"
             ],
             "properties": {
@@ -15969,7 +15969,7 @@
                   "insert_body"
                 ]
               },
-              "nested_markdown": {
+              "markdown": {
                 "type": "string"
               }
             }
@@ -15977,7 +15977,7 @@
           {
             "type": "object",
             "required": [
-              "nested_markdown",
+              "markdown",
               "expected_etag",
               "kind"
             ],
@@ -15991,7 +15991,7 @@
                   "replace_body"
                 ]
               },
-              "nested_markdown": {
+              "markdown": {
                 "type": "string"
               }
             }
@@ -16587,11 +16587,11 @@
         "type": "object",
         "required": [
           "title_markdown",
-          "nfm",
+          "markdown",
           "values"
         ],
         "properties": {
-          "nfm": {
+          "markdown": {
             "type": "string"
           },
           "title_markdown": {
@@ -19485,20 +19485,20 @@
             "type": "object",
             "required": [
               "sourceBlockId",
-              "targetThreadId",
+              "targetSessionId",
               "kind"
             ],
             "properties": {
               "kind": {
                 "type": "string",
                 "enum": [
-                  "thread"
+                  "session"
                 ]
               },
               "sourceBlockId": {
                 "type": "string"
               },
-              "targetThreadId": {
+              "targetSessionId": {
                 "type": "string"
               }
             }
@@ -20875,7 +20875,7 @@
           "schema_version",
           "title",
           "rich_title",
-          "body_nfm",
+          "body_markdown",
           "plain_text",
           "preview",
           "references",
@@ -20888,7 +20888,7 @@
               "$ref": "#/components/schemas/LibraryContentAssetReference"
             }
           },
-          "body_nfm": {
+          "body_markdown": {
             "type": "string"
           },
           "commit_seq": {
@@ -21382,7 +21382,7 @@
           "document_generation",
           "document_head_seq",
           "meta_yaml",
-          "body_nested_markdown",
+          "body_markdown",
           "body_blocks",
           "page_files",
           "title_etag",
@@ -21398,7 +21398,7 @@
           "body_etag": {
             "type": "string"
           },
-          "body_nested_markdown": {
+          "body_markdown": {
             "type": "string"
           },
           "commit_head": {
@@ -21452,7 +21452,7 @@
       },
       "LibraryPageDraftSpan": {
         "type": "object",
-        "description": "UTF-8 byte interval in the draft's exact Nested Markdown body.",
+        "description": "UTF-8 byte interval in the draft's exact Nodex Markdown body.",
         "required": [
           "start",
           "end"
@@ -22642,7 +22642,7 @@
             "required": [
               "page_id",
               "title",
-              "nfm",
+              "markdown",
               "status",
               "is_all_day",
               "reminders",
@@ -22695,14 +22695,14 @@
                   "create_page"
                 ]
               },
+              "markdown": {
+                "type": "string"
+              },
               "new_tag_options": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/LibraryPageLifecycleTagOption"
                 }
-              },
-              "nfm": {
-                "type": "string"
               },
               "page_id": {
                 "type": "string"
@@ -23777,7 +23777,7 @@
       "LibraryPageProjectionFileKind": {
         "type": "string",
         "enum": [
-          "body_nested_markdown",
+          "body_markdown",
           "meta_yaml"
         ]
       },
@@ -27775,7 +27775,7 @@
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "create_pages_from_nfm"
+                      "create_pages_from_text"
                     ]
                   },
                   "request": {
@@ -27787,7 +27787,7 @@
                 "type": "object",
                 "required": [
                   "title_markdown",
-                  "nfm",
+                  "markdown",
                   "destination",
                   "kind"
                 ],
@@ -27798,10 +27798,10 @@
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "create_page_from_nfm"
+                      "create_page_from_text"
                     ]
                   },
-                  "nfm": {
+                  "markdown": {
                     "type": "string"
                   },
                   "title_markdown": {
@@ -28624,7 +28624,7 @@
                   "document_id",
                   "generation",
                   "expected_head_seq",
-                  "nfm",
+                  "markdown",
                   "actor",
                   "kind"
                 ],
@@ -28644,10 +28644,10 @@
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "replace_from_nfm"
+                      "replace_from_markdown"
                     ]
                   },
-                  "nfm": {
+                  "markdown": {
                     "type": "string"
                   },
                   "rich_title": {
@@ -30771,7 +30771,7 @@
               },
               {
                 "type": "object",
-                "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is message text with the message shape, text followed by images, and\nbecomes the Page body as canonical Nested Markdown. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
+                "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is message text with the message shape, text followed by images, and\nbecomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
                 "required": [
                   "page_id",
                   "document_id",
@@ -36243,7 +36243,7 @@
               },
               {
                 "type": "object",
-                "description": "Prepares the user's rewrite of a message still waiting in its Inbox.\n`original_body` is the stored Nested Markdown body the user started from, and `body`\nthe rewrite as message text; a message that changed since, or no longer has the\nmessage shape, cannot be rewritten.",
+                "description": "Prepares the user's rewrite of a message still waiting in its Inbox.\n`original_body` is the stored Nodex Markdown body the user started from, and `body`\nthe rewrite as message text; a message that changed since, or no longer has the\nmessage shape, cannot be rewritten.",
                 "required": [
                   "page_id",
                   "original_body",
@@ -41442,7 +41442,7 @@
           },
           {
             "type": "object",
-            "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is message text with the message shape, text followed by images, and\nbecomes the Page body as canonical Nested Markdown. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
+            "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is message text with the message shape, text followed by images, and\nbecomes the Page body as canonical Nodex Markdown. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
             "required": [
               "page_id",
               "document_id",
@@ -43162,13 +43162,13 @@
           "page_id",
           "document_id",
           "title_markdown",
-          "nfm"
+          "markdown"
         ],
         "properties": {
           "document_id": {
             "type": "string"
           },
-          "nfm": {
+          "markdown": {
             "type": "string"
           },
           "page_id": {
@@ -45600,7 +45600,7 @@
             "required": [
               "title",
               "rich_title",
-              "nfm",
+              "markdown",
               "files",
               "kind"
             ],
@@ -45620,7 +45620,7 @@
                   "document"
                 ]
               },
-              "nfm": {
+              "markdown": {
                 "type": "string"
               },
               "rich_title": {},

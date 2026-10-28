@@ -101,7 +101,9 @@ pub(crate) fn migrate_v151_to_v152(
     let queue_manifests = migrate_queued_follow_ups(connection, &assets_root, &now, &mut blobs)?;
     let retained_legacy_blob_sources = blobs.retained_legacy_sources;
 
-    crate::document::backfill_migrated_document_history(connection)?;
+    // Target tables now exist. Normalize published Yjs schemas before the
+    // current history and File-baseline readers inspect their Documents.
+    crate::document::migrate_block_document_baselines(connection, completed_at_unix_ms)?;
     let next_epoch = format!(
         "epoch:{}",
         crate::domain::identity::random_uuid_v7()

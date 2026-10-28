@@ -134,7 +134,7 @@ impl ViewFixture {
                         contract_version: LIBRARY_CONTRACT_VERSION,
                         operation_id: format!("{operation}:{index}"),
                         store_epoch: StoreEpoch("epoch-1".into()),
-                        intent: LibraryIntent::CreatePagesFromNfm {
+                        intent: LibraryIntent::CreatePagesFromText {
                             request: LibraryAgentCreatePagesRequest {
                                 destination: LibraryAgentPageDestination::DataSource {
                                     data_source_id: source.into(),
@@ -251,7 +251,7 @@ impl ViewFixture {
 fn draft(title: &str) -> LibraryAgentCreatePageDraft {
     LibraryAgentCreatePageDraft {
         title_markdown: title.into(),
-        nfm: String::new(),
+        markdown: String::new(),
         values: vec![],
     }
 }
@@ -807,7 +807,7 @@ fn effective_search_uses_displayed_text_option_labels_and_current_page_keys() {
         vec![
             LibraryAgentCreatePageDraft {
                 title_markdown: "Café Résumé".into(),
-                nfm: "- Distributed queues\n".into(),
+                markdown: "- Distributed queues\n".into(),
                 values: vec![LibraryPageCopyValue {
                     property_id: "p_choice01".into(),
                     value: json!("o_choice01"),

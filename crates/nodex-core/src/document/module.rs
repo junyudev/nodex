@@ -41,7 +41,7 @@ use yrs::updates::encoder::Encode;
 use yrs::{ReadTxn, Transact};
 
 use crate::domain::block_materialization::MaterializedBlockNode;
-use crate::domain::nfm::materialize_nfm;
+use crate::domain::markdown::materialize_markdown;
 use crate::domain::rich_text::RichTextItem;
 use crate::infrastructure::agent_operations::{
     PreparedAgentOperationBinding, PreparedAgentOperationLease, PreparedAgentOperationRegistry,
@@ -83,7 +83,8 @@ use super::history::{
 use super::operations::{
     DocumentBlockOperation as EngineDocumentBlockOperation,
     DocumentBlockUpdatePatch as EngineDocumentBlockUpdatePatch, DocumentOperationError,
-    DocumentOperationErrorCode, prepare_document_operation_update, prepare_nfm_replacement_update,
+    DocumentOperationErrorCode, prepare_document_operation_update,
+    prepare_markdown_replacement_update,
 };
 use super::owners::execute_owner_command;
 use super::persistence::{
@@ -743,21 +744,21 @@ impl OwnedDocumentModule {
                 operations,
                 actor,
             ),
-            OwnedDocumentIntent::ReplaceFromNfm {
+            OwnedDocumentIntent::ReplaceFromMarkdown {
                 document_id,
                 generation,
                 expected_head_seq,
-                nfm,
+                markdown,
                 rich_title,
                 actor,
-            } => self.replace_from_nfm(
+            } => self.replace_from_markdown(
                 context,
                 request.operation_id,
                 request.store_epoch,
                 document_id,
                 generation,
                 expected_head_seq,
-                nfm,
+                markdown,
                 rich_title,
                 actor,
             ),
@@ -981,7 +982,7 @@ impl OwnedDocumentModule {
                     || materialization.block_tree.clone(),
                     |coordinate| vec![coordinate.block.clone()],
                 );
-                let selected_nfm = materialize_nfm(&selected_roots)
+                let selected_markdown = materialize_markdown(&selected_roots)
                     .map_err(|error| invalid_store(error.to_string()))?;
                 let mut coordinates = Vec::new();
                 if let Some(target) = &target_coordinate {
@@ -1125,8 +1126,8 @@ impl OwnedDocumentModule {
                     title: materialization.title,
                     rich_title: serde_json::to_value(materialization.rich_title)
                         .map_err(|_| internal("Document rich title cannot be serialized"))?,
-                    nested_markdown: selected_nfm.nfm,
-                    plain_text: selected_nfm.plain_text,
+                    markdown: selected_markdown.markdown,
+                    plain_text: selected_markdown.plain_text,
                     blocks,
                     title_etag,
                     body_etag,
@@ -2803,15 +2804,7 @@ impl OwnedDocumentModule {
                     }
                     Err(error) => return Err(document_operation_store_error(error)),
                 };
-                let exact_moved_block_ids = operations
-                    .iter()
-                    .filter_map(|operation| match operation {
-                        EngineDocumentBlockOperation::MoveBlock { block_id, .. } => {
-                            Some(block_id.clone())
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
+                let exact_moved_block_ids = prepared.moved_block_ids;
                 let mutation_effect = document_mutation_effect(
                     &authority.owner_block_id,
                     authority.head.head_seq,
@@ -2855,7 +2848,7 @@ impl OwnedDocumentModule {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn replace_from_nfm(
+    fn replace_from_markdown(
         &self,
         context: &BoundModuleContext,
         operation_id: String,
@@ -2863,13 +2856,13 @@ impl OwnedDocumentModule {
         document_id: String,
         generation: i64,
         expected_head_seq: i64,
-        nfm: String,
+        markdown: String,
         contract_rich_title: Option<Vec<Value>>,
         actor: Value,
     ) -> Result<OwnedDocumentApplyOutcome, CoreError> {
         validate_document_actor(&actor)?;
         let fingerprint = serde_json::to_vec(&(
-            "nodex.document.replace-from-nfm.v1",
+            "nodex.document.replace-from-markdown.v1",
             &context.profile_id,
             &context.library_id,
             &context.project_id,
@@ -2877,10 +2870,10 @@ impl OwnedDocumentModule {
             &document_id,
             generation,
             expected_head_seq,
-            &nfm,
+            &markdown,
             &contract_rich_title,
         ))
-        .map_err(|_| invalid("Document NFM replacement cannot be fingerprinted"))?;
+        .map_err(|_| invalid("Document Markdown replacement cannot be fingerprinted"))?;
         let rich_title = contract_rich_title.map(contract_rich_text).transpose()?;
         let allocation_seed = operation_id.clone();
         let update_id = format!("document-mutation:{operation_id}");
@@ -2892,7 +2885,7 @@ impl OwnedDocumentModule {
                 expected_store_epoch,
                 document_id,
                 generation,
-                operation_kind: "replace_from_nfm",
+                operation_kind: "replace_from_markdown",
                 request_hash: sha256(&fingerprint),
                 publication: UpdatePublication::Updated,
                 prepared_agent: None,
@@ -2904,12 +2897,12 @@ impl OwnedDocumentModule {
                 assert_document_head(authority, generation, expected_head_seq)?;
                 let schema = registered_yjs_schema(authority)?;
                 let mut allocation_index = 0_u64;
-                let prepared = match prepare_nfm_replacement_update(
+                let prepared = match prepare_markdown_replacement_update(
                     &authority.head.id,
                     schema,
                     &engine.full_state_v1(),
                     &engine.state_vector_v1(),
-                    &nfm,
+                    &markdown,
                     rich_title.as_deref(),
                     &mut || {
                         allocation_index += 1;
@@ -2931,7 +2924,7 @@ impl OwnedDocumentModule {
                         write_fence_block_ids: &prepared.write_fence_block_ids,
                         title_write_fence_required: prepared.title_write_fence_required,
                         force_write_fence: true,
-                        exact_moved_block_ids: None,
+                        exact_moved_block_ids: Some(&prepared.moved_block_ids),
                     },
                 );
                 assert_document_mutation_effect_preserves_typed_owners(
@@ -2951,7 +2944,9 @@ impl OwnedDocumentModule {
                     touched_block_ids: mutation_effect.touched_block_ids.clone(),
                     update: prepared.update_v1,
                     write_fence_block_ids: prepared.write_fence_block_ids,
-                    placement_attribution: PreparedPlacementAttribution::Collaborative,
+                    placement_attribution: PreparedPlacementAttribution::Exact(
+                        prepared.moved_block_ids,
+                    ),
                     title_write_fence_required: prepared.title_write_fence_required,
                     document_write_fence_required: true,
                     mutation_effect: Some(Box::new(mutation_effect)),
@@ -2960,7 +2955,7 @@ impl OwnedDocumentModule {
             },
             Some(DocumentCommitCheckpoint {
                 actor,
-                cause: "replace_document_from_nfm",
+                cause: "replace_document_from_markdown",
                 label: None,
                 revision_kind: "operation",
             }),
@@ -4657,16 +4652,10 @@ fn prepare_semantic_update(
     );
     match prepared {
         Ok(prepared) => {
-            let preview_markdown = prepared.materialization.nfm.clone();
+            let preview_markdown = prepared.materialization.markdown.clone();
             let semantic_local_block_ids =
                 (!prepared.local_block_ids.is_empty()).then_some(prepared.local_block_ids.clone());
-            let exact_moved_block_ids = commands
-                .iter()
-                .filter_map(|command| match command {
-                    DocumentSemanticCommand::MoveBlock { block_id, .. } => Some(block_id.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
+            let exact_moved_block_ids = prepared.moved_block_ids;
             let mutation_effect = document_mutation_effect(
                 &authority.owner_block_id,
                 authority.head.head_seq,
@@ -4716,9 +4705,10 @@ fn prepare_semantic_update(
                 Some(preview_markdown),
             ))
         }
-        Err(SemanticMutationError::NoChange) => {
-            Ok((PreparedUpdate::NoChange, Some(materialization.nfm.clone())))
-        }
+        Err(SemanticMutationError::NoChange) => Ok((
+            PreparedUpdate::NoChange,
+            Some(materialization.markdown.clone()),
+        )),
         Err(error) => Err(semantic_error(error)),
     }
 }
@@ -5681,13 +5671,15 @@ fn semantic_error(error: SemanticMutationError) -> StoreError {
         SemanticMutationError::Operation(error) => {
             let code = match error.code() {
                 super::DocumentOperationErrorCode::StaleStateVector => StoreErrorCode::HeadConflict,
-                super::DocumentOperationErrorCode::NfmPatchNotFound => {
+                super::DocumentOperationErrorCode::MarkdownPatchNotFound => {
                     StoreErrorCode::PatchNotFound
                 }
-                super::DocumentOperationErrorCode::NfmPatchAmbiguous => {
+                super::DocumentOperationErrorCode::MarkdownPatchAmbiguous => {
                     StoreErrorCode::PatchAmbiguous
                 }
-                super::DocumentOperationErrorCode::NfmPatchOverlap => StoreErrorCode::PatchOverlap,
+                super::DocumentOperationErrorCode::MarkdownPatchOverlap => {
+                    StoreErrorCode::PatchOverlap
+                }
                 _ => StoreErrorCode::InvalidInput,
             };
             StoreError::new(code, error.to_string(), false)
@@ -5928,7 +5920,7 @@ mod tests {
             YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &full_state).expect("Page engine");
         let state_vector = engine.state_vector_v1();
         let materialization =
-            materialize_engine(&engine, BlockDocumentSchema::PageV3).expect("Page materialization");
+            materialize_engine(&engine, BlockDocumentSchema::PageV4).expect("Page materialization");
         let snapshot_hash = sha256(&full_state);
         kernel
             .writer()
@@ -5967,7 +5959,7 @@ mod tests {
                             "INSERT INTO documents(\
                                id, library_id, generation, head_seq, schema_key, schema_version, \
                                state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine\
-                             ) VALUES (?1, ?2, 1, 1, 'nodex.page', 3, ?3, ?4, \
+                             ) VALUES (?1, ?2, 1, 1, 'nodex.page', 4, ?3, ?4, \
                                'ready', 'ydoc_primary', ?5, ?5, 'yjs')",
                             params![DOCUMENT_ID, LIBRARY_ID, state_vector, "", NOW],
                         )?;
@@ -6031,7 +6023,7 @@ mod tests {
                             "INSERT INTO document_snapshots(\
                                document_id, generation, snapshot_seq, state_vector, snapshot_update, \
                                snapshot_hash, schema_version, created_at\
-                             ) VALUES (?1, 1, 1, ?2, ?3, ?4, 3, ?5)",
+                             ) VALUES (?1, 1, 1, ?2, ?3, ?4, 4, ?5)",
                             params![DOCUMENT_ID, state_vector, full_state, snapshot_hash, NOW],
                         )?;
                         let rich_title = serde_json::to_string(&materialization.rich_title)
@@ -6039,15 +6031,15 @@ mod tests {
                         transaction.execute(
                             "INSERT INTO document_materializations(\
                                document_id, generation, projected_seq, schema_version, title, title_rich_json, \
-                               title_rich_hash, nfm, plain_text, preview, block_tree_json, references_json, \
+                               title_rich_hash, markdown, plain_text, preview, block_tree_json, references_json, \
                                asset_refs_json, updated_at\
-                             ) VALUES (?1, 1, 1, 3, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                             ) VALUES (?1, 1, 1, 4, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                             params![
                                 DOCUMENT_ID,
                                 materialization.title,
                                 rich_title,
                                 sha256(rich_title.as_bytes()),
-                                materialization.nfm,
+                                materialization.markdown,
                                 materialization.plain_text,
                                 materialization.preview,
                                 serde_json::to_string(&materialization.block_tree)
@@ -6070,7 +6062,7 @@ mod tests {
                                database_values_json, intrinsic_properties_json, property_revisions_json, \
                                projection_version, created_at, updated_at\
                              ) VALUES (?1, ?2, 'active', 'library', ?2, \
-                               '7fffffffffffffffffffffffffffffff', 1, 1, ?3, 1, 1, 3, \
+                               '7fffffffffffffffffffffffffffffff', 1, 1, ?3, 1, 1, 4, \
                                'ydoc_primary', NULL, NULL, NULL, NULL, NULL, ?4, ?5, ?6, ?7, '{}', '{}', \
                                '{}', 1, ?8, ?8)",
                             params![
@@ -6079,8 +6071,8 @@ mod tests {
                                 DOCUMENT_ID,
                                 materialization.title,
                                 materialization.preview,
-                                materialization.nfm.len() as i64,
-                                i64::from(!materialization.nfm.trim().is_empty()),
+                                materialization.markdown.len() as i64,
+                                i64::from(!materialization.markdown.trim().is_empty()),
                                 NOW,
                             ],
                         )?;
@@ -6102,7 +6094,7 @@ mod tests {
     fn title_update(full_state: &[u8], state_vector: &[u8], title: &str) -> Vec<u8> {
         prepare_document_operation_update(
             DOCUMENT_ID,
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             full_state,
             state_vector,
             &[DocumentBlockOperation::SetTitle {
@@ -6146,7 +6138,7 @@ mod tests {
     ) -> Vec<u8> {
         prepare_document_operation_update(
             DOCUMENT_ID,
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
             &engine.full_state_v1(),
             &engine.state_vector_v1(),
             operations,
@@ -6161,14 +6153,14 @@ mod tests {
             .kernel
             .readers()
             .read_default(|connection| {
-                let (nfm, block_tree_json): (String, String) = connection.query_row(
-                    "SELECT nfm, block_tree_json FROM document_materializations WHERE document_id = ?1",
+                let (markdown, block_tree_json): (String, String) = connection.query_row(
+                    "SELECT markdown, block_tree_json FROM document_materializations WHERE document_id = ?1",
                     [DOCUMENT_ID],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )?;
                 let block_tree = serde_json::from_str(&block_tree_json)
                     .map_err(|_| internal("persisted body Block tree JSON"))?;
-                Ok::<_, StoreError>((nfm, block_tree))
+                Ok::<_, StoreError>((markdown, block_tree))
             })
             .expect("persisted Document body")
     }
@@ -8353,9 +8345,9 @@ mod tests {
 
     fn verify_registered_genesis(bound: &BoundModuleContext) {
         for (owner_type, schema_key, schema_version) in [
-            ("page", "nodex.page", 3),
-            ("synced_block_source", "nodex.synced-block", 2),
-            ("reusable_template_source", "nodex.reusable-template", 2),
+            ("page", "nodex.page", 4),
+            ("synced_block_source", "nodex.synced-block", 3),
+            ("reusable_template_source", "nodex.reusable-template", 3),
         ] {
             let seeded = pending_module(owner_type, schema_key, schema_version);
             let request = ModuleApplyRequest {
@@ -9878,31 +9870,31 @@ mod tests {
             updated.committed.value.mutation_effect
         );
 
-        let current_nfm = seeded
+        let current_markdown = seeded
             .kernel
             .readers()
             .read_default(|connection| {
                 connection
                     .query_row(
-                        "SELECT nfm FROM document_materializations WHERE document_id = ?1",
+                        "SELECT markdown FROM document_materializations WHERE document_id = ?1",
                         [DOCUMENT_ID],
                         |row| row.get::<_, String>(0),
                     )
                     .map_err(StoreError::from)
             })
             .unwrap();
-        let nfm_request = ModuleApplyRequest {
+        let markdown_request = ModuleApplyRequest {
             contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-            operation_id: "document-operation:nfm".to_owned(),
+            operation_id: "document-operation:markdown".to_owned(),
             store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-            intent: OwnedDocumentIntent::ReplaceFromNfm {
+            intent: OwnedDocumentIntent::ReplaceFromMarkdown {
                 document_id: DOCUMENT_ID.to_owned(),
                 generation: 1,
                 expected_head_seq: 3,
-                nfm: current_nfm,
+                markdown: current_markdown,
                 rich_title: Some(vec![json!({
                     "type": "text",
-                    "text": "Native NFM title",
+                    "text": "Native Markdown title",
                     "styles": {},
                 })]),
                 actor: json!({ "kind": "electron_renderer", "clientId": "renderer:test" }),
@@ -9910,14 +9902,14 @@ mod tests {
         };
         let replaced = seeded
             .module
-            .apply(&context(), nfm_request)
-            .expect("whole-NFM replacement at the exact head");
+            .apply(&context(), markdown_request)
+            .expect("whole-Markdown replacement at the exact head");
         let replace_effect = replaced
             .committed
             .value
             .mutation_effect
             .as_ref()
-            .expect("NFM effect");
+            .expect("Markdown effect");
         assert!(replace_effect.title_changed);
         assert_eq!(
             replace_effect.coordination,
@@ -9933,7 +9925,7 @@ mod tests {
                      WHERE source_mutation_id IN (\
                        'document-operation:insert', \
                        'document-operation:update', \
-                       'document-operation:nfm'\
+                       'document-operation:markdown'\
                      ) AND revision_kind = 'operation'",
                     [],
                     |row| row.get::<_, i64>(0),
@@ -10166,7 +10158,7 @@ mod tests {
         };
         let engine = YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &update).unwrap();
         assert_eq!(
-            materialize_engine(&engine, BlockDocumentSchema::PageV3)
+            materialize_engine(&engine, BlockDocumentSchema::PageV4)
                 .unwrap()
                 .title,
             "Compacted authority"
@@ -10516,7 +10508,7 @@ mod tests {
         let seeded = seeded_module();
         let materialization = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         )
         .unwrap();
         let title_etag = seeded
@@ -10645,7 +10637,7 @@ mod tests {
         let hidden_block_id = "019bf52d-6870-7000-8000-000000000124";
         let initial = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         )
         .unwrap();
         let visible_block_id = initial.block_tree[0].id.clone();
@@ -10825,19 +10817,19 @@ mod tests {
                 before_block_id: None,
             }],
         );
-        let current_nfm = seeded
+        let current_markdown = seeded
             .kernel
             .readers()
             .read_default(|connection| {
                 connection
                     .query_row(
-                        "SELECT nfm FROM document_materializations WHERE document_id = ?1",
+                        "SELECT markdown FROM document_materializations WHERE document_id = ?1",
                         [DOCUMENT_ID],
                         |row| row.get::<_, String>(0),
                     )
                     .map_err(StoreError::from)
             })
-            .expect("current NFM");
+            .expect("current Markdown");
         seeded
             .module
             .apply(
@@ -10846,11 +10838,11 @@ mod tests {
                     contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                     operation_id: "document-operation:whole-document-fence".to_owned(),
                     store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-                    intent: OwnedDocumentIntent::ReplaceFromNfm {
+                    intent: OwnedDocumentIntent::ReplaceFromMarkdown {
                         document_id: DOCUMENT_ID.to_owned(),
                         generation: 1,
                         expected_head_seq: 1,
-                        nfm: current_nfm,
+                        markdown: current_markdown,
                         rich_title: Some(vec![json!({
                             "type": "text",
                             "text": "Whole document replacement",
@@ -10912,7 +10904,7 @@ mod tests {
         let provenance = seed_agent_turn(&seeded, connection_id);
         let materialization = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         )
         .unwrap();
         let title_etag = seeded
@@ -11029,8 +11021,8 @@ mod tests {
             .semantic_etags
             .clone()
             .expect("prepared Agent commit returns semantic ETags");
-        assert!(semantic_etags.title.starts_with("nxe1."));
-        assert!(semantic_etags.body.starts_with("nxe1."));
+        assert!(semantic_etags.title.starts_with("nxe2."));
+        assert!(semantic_etags.body.starts_with("nxe2."));
         let duplicate = seeded
             .module
             .apply(&context_for(connection_id), execute(None))
@@ -11100,7 +11092,7 @@ mod tests {
         let seeded = seeded_module();
         let initial = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         )
         .unwrap();
         let seed_id = initial.block_tree[0].id.clone();
@@ -11115,7 +11107,7 @@ mod tests {
                 anchor: DocumentSemanticAnchor::End {
                     parent_block_id: None,
                 },
-                nested_markdown: "Inserted by Agent".to_owned(),
+                markdown: "Inserted by Agent".to_owned(),
             }],
         };
         let prepared = seeded
@@ -11191,15 +11183,15 @@ mod tests {
             .kernel
             .readers()
             .read_default(|connection| {
-                let (nfm, block_tree_json): (String, String) = connection.query_row(
-                    "SELECT nfm, block_tree_json FROM document_materializations WHERE document_id = ?1",
+                let (markdown, block_tree_json): (String, String) = connection.query_row(
+                    "SELECT markdown, block_tree_json FROM document_materializations WHERE document_id = ?1",
                     [DOCUMENT_ID],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )?;
                 let block_tree: Vec<MaterializedBlockNode> =
                     serde_json::from_str(&block_tree_json)
                         .map_err(|_| internal("seed promotion Block tree JSON"))?;
-                assert_eq!(nfm, "Inserted by Agent");
+                assert_eq!(markdown, "Inserted by Agent");
                 assert_eq!(block_tree[0].id, seed_id);
                 Ok::<_, StoreError>(())
             })
@@ -11211,7 +11203,7 @@ mod tests {
         let seeded = seeded_module();
         let initial = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         )
         .unwrap();
         let seed_id = initial.block_tree[0].id.clone();
@@ -11225,7 +11217,7 @@ mod tests {
                 anchor: DocumentSemanticAnchor::End {
                     parent_block_id: None,
                 },
-                nested_markdown: "Agent content".to_owned(),
+                markdown: "Agent content".to_owned(),
             }],
         };
         let prepare = |operation_id: &str| {
@@ -11334,12 +11326,12 @@ mod tests {
             .kernel
             .readers()
             .read_default(|connection| {
-                let nfm: String = connection.query_row(
-                    "SELECT nfm FROM document_materializations WHERE document_id = ?1",
+                let markdown: String = connection.query_row(
+                    "SELECT markdown FROM document_materializations WHERE document_id = ?1",
                     [DOCUMENT_ID],
                     |row| row.get(0),
                 )?;
-                assert_eq!(nfm, "Renderer content");
+                assert_eq!(markdown, "Renderer content");
                 Ok::<_, StoreError>(())
             })
             .unwrap();
@@ -11365,20 +11357,20 @@ mod tests {
                             anchor: DocumentSemanticAnchor::End {
                                 parent_block_id: None,
                             },
-                            nested_markdown: "\n \t\n".to_owned(),
+                            markdown: "\n \t\n".to_owned(),
                         }],
                     },
                 },
             )
             .expect_err("whitespace-only Fragment");
         assert_eq!(error.code, CoreErrorCode::InvalidInput);
-        assert!(error.message.contains("<empty-block/>"));
+        assert!(error.message.contains("<br>"));
         seeded
             .kernel
             .readers()
             .read_default(|connection| {
                 let evidence: (i64, String, i64, i64) = connection.query_row(
-                    "SELECT document.head_seq, materialization.nfm, \
+                    "SELECT document.head_seq, materialization.markdown, \
                        (SELECT count(*) FROM core_module_receipts WHERE operation_id = ?2), \
                        (SELECT count(*) FROM change_log WHERE operation_id = ?2) \
                      FROM documents document \
@@ -11398,7 +11390,7 @@ mod tests {
         let seeded = seeded_module();
         let initial = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         )
         .unwrap();
         let seed_id = initial.block_tree[0].id.clone();
@@ -11419,19 +11411,19 @@ mod tests {
                                 anchor: DocumentSemanticAnchor::End {
                                     parent_block_id: None,
                                 },
-                                nested_markdown: "<empty-block/>".to_owned(),
+                                markdown: "<br>".to_owned(),
                             },
                             DocumentSemanticCommand::InsertBody {
                                 anchor: DocumentSemanticAnchor::End {
                                     parent_block_id: None,
                                 },
-                                nested_markdown: "First".to_owned(),
+                                markdown: "First".to_owned(),
                             },
                             DocumentSemanticCommand::InsertBody {
                                 anchor: DocumentSemanticAnchor::End {
                                     parent_block_id: None,
                                 },
-                                nested_markdown: "Second".to_owned(),
+                                markdown: "Second".to_owned(),
                             },
                         ],
                     },
@@ -11453,14 +11445,14 @@ mod tests {
             effect.coordination,
             DocumentMutationCoordination::WriteFence
         );
-        let (nfm, block_tree) = persisted_body(&seeded);
-        assert_eq!(nfm, "First\nSecond");
+        let (markdown, block_tree) = persisted_body(&seeded);
+        assert_eq!(markdown, "First\n\nSecond");
         assert_eq!(block_tree[0].id, seed_id);
 
         let explicit = seeded_module();
         let initial = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &explicit.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         )
         .unwrap();
         let explicit_seed_id = initial.block_tree[0].id.clone();
@@ -11480,15 +11472,15 @@ mod tests {
                             anchor: DocumentSemanticAnchor::End {
                                 parent_block_id: None,
                             },
-                            nested_markdown: "<empty-block/>\nHello".to_owned(),
+                            markdown: "<br>\n\nHello".to_owned(),
                         }],
                     },
                 },
             )
             .expect("explicit empty Block Fragment");
         assert_eq!(committed.committed.value.head_seq, 2);
-        let (nfm, block_tree) = persisted_body(&explicit);
-        assert_eq!(nfm, "<empty-block/>\nHello");
+        let (markdown, block_tree) = persisted_body(&explicit);
+        assert_eq!(markdown, "<br>\n\nHello");
         assert_eq!(block_tree[0].id, explicit_seed_id);
         assert_eq!(block_tree.len(), 2);
     }
@@ -11512,7 +11504,7 @@ mod tests {
                             anchor: DocumentSemanticAnchor::End {
                                 parent_block_id: None,
                             },
-                            nested_markdown: "<empty-block/>".to_owned(),
+                            markdown: "<br>".to_owned(),
                         }],
                     },
                 },
@@ -11536,7 +11528,7 @@ mod tests {
         let engine =
             YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &full_state).expect("Page engine");
         for owner_type in TYPED_CREATION_BLOCK_TYPES {
-            let mut materialization = materialize_engine(&engine, BlockDocumentSchema::PageV3)
+            let mut materialization = materialize_engine(&engine, BlockDocumentSchema::PageV4)
                 .expect("Page materialization");
             let owner_block = materialization
                 .search_units
@@ -11546,7 +11538,7 @@ mod tests {
             let owner_block_id = owner_block.block_id.clone();
             let commands = vec![DocumentSemanticCommand::DeleteBlock {
                 block_id: owner_block_id.clone(),
-                expected_etag: "nxe1.test".to_owned(),
+                expected_etag: "nxe2.test".to_owned(),
             }];
             let footprint =
                 agent_semantic_footprint(OWNER_BLOCK_ID, &commands, &materialization, None)
@@ -11567,7 +11559,7 @@ mod tests {
         let engine =
             YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &full_state).expect("Page engine");
         for owner_type in TYPED_CREATION_BLOCK_TYPES {
-            let mut materialization = materialize_engine(&engine, BlockDocumentSchema::PageV3)
+            let mut materialization = materialize_engine(&engine, BlockDocumentSchema::PageV4)
                 .expect("Page materialization");
             let owner_block = materialization
                 .search_units
@@ -11585,7 +11577,7 @@ mod tests {
                     anchor: DocumentSemanticAnchor::End {
                         parent_block_id: Some(owner_block_id.clone()),
                     },
-                    nested_markdown: "Child".to_owned(),
+                    markdown: "Child".to_owned(),
                 },
                 DocumentSemanticCommand::MoveBlock {
                     block_id: "ordinary-block".to_owned(),
@@ -11614,7 +11606,7 @@ mod tests {
                 },
                 DocumentSemanticCommand::UpdateBlock {
                     block_id: owner_block_id.clone(),
-                    expected_etag: "nxe1.test".to_owned(),
+                    expected_etag: "nxe2.test".to_owned(),
                     patch: ContractDocumentBlockUpdatePatch {
                         block_type: None,
                         props: Some(BTreeMap::new()),
@@ -11645,7 +11637,7 @@ mod tests {
         let engine =
             YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &full_state).expect("Page engine");
         for owner_type in TYPED_CREATION_BLOCK_TYPES {
-            let mut materialization = materialize_engine(&engine, BlockDocumentSchema::PageV3)
+            let mut materialization = materialize_engine(&engine, BlockDocumentSchema::PageV4)
                 .expect("Page materialization");
             let owner_block = materialization
                 .search_units
@@ -11735,7 +11727,7 @@ mod tests {
             YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &full_state).expect("Page engine");
 
         for owner_type in TYPED_CREATION_BLOCK_TYPES {
-            let mut before = materialize_engine(&engine, BlockDocumentSchema::PageV3)
+            let mut before = materialize_engine(&engine, BlockDocumentSchema::PageV4)
                 .expect("Page materialization");
             let mut owner = before.block_tree[0].clone();
             owner.block_type = (*owner_type).to_owned();
@@ -11874,7 +11866,7 @@ mod tests {
         assert!(
             block_etags
                 .values()
-                .all(|etags| etags.update.starts_with("nxe1.") && etags.delete.starts_with("nxe1."))
+                .all(|etags| etags.update.starts_with("nxe2.") && etags.delete.starts_with("nxe2."))
         );
         assert_eq!(
             committed
@@ -11954,7 +11946,7 @@ mod tests {
         };
         let update_snapshot = read_snapshot(Some(AgentDocumentBlockGuardKind::Update), None);
         assert_eq!(update_snapshot.blocks[0].block_id, root_id);
-        assert!(update_snapshot.nested_markdown.contains("Root"));
+        assert!(update_snapshot.markdown.contains("Root"));
         assert!(update_snapshot.has_more);
         let block_etag = update_snapshot.blocks[0]
             .etag
@@ -12192,7 +12184,7 @@ mod tests {
         let seeded = seeded_module();
         let materialization = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         )
         .unwrap();
         let (title_etag, body_etag) = seeded
@@ -12214,7 +12206,7 @@ mod tests {
                     Some(PROJECT_ID),
                     STORE_EPOCH,
                     &[DOCUMENT_ID],
-                    json!({ "nfm": materialization.nfm }),
+                    json!({ "markdown": materialization.markdown }),
                 )
                 .expect("body ETag");
                 Ok::<_, StoreError>((title, body))
@@ -12234,7 +12226,7 @@ mod tests {
                         expected_etag: title_etag.clone(),
                     },
                     DocumentSemanticCommand::ReplaceBody {
-                        nested_markdown: "Semantic body".to_owned(),
+                        markdown: "Semantic body".to_owned(),
                         expected_etag: body_etag,
                     },
                 ],
@@ -12250,14 +12242,15 @@ mod tests {
             .kernel
             .readers()
             .read_default(|connection| {
-                let (title, nfm, rich_title): (String, String, String) = connection.query_row(
-                    "SELECT title, nfm, title_rich_json FROM document_materializations \
+                let (title, markdown, rich_title): (String, String, String) = connection
+                    .query_row(
+                        "SELECT title, markdown, title_rich_json FROM document_materializations \
                      WHERE document_id = ?1",
-                    [DOCUMENT_ID],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                )?;
+                        [DOCUMENT_ID],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )?;
                 assert_eq!(title, "Semantic title");
-                assert_eq!(nfm, "Semantic body");
+                assert_eq!(markdown, "Semantic body");
                 assert_eq!(
                     serde_json::from_str::<Value>(&rich_title).unwrap()[0]["styles"]["bold"],
                     true
@@ -12379,7 +12372,7 @@ mod tests {
         let seeded = seeded_module();
         let materialization = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         )
         .unwrap();
         let title_etag = seeded
@@ -12428,8 +12421,8 @@ mod tests {
             .semantic_etags
             .clone()
             .expect("native CLI receipt ETags");
-        assert!(etags.title.starts_with("nxe1."));
-        assert!(etags.body.starts_with("nxe1."));
+        assert!(etags.title.starts_with("nxe2."));
+        assert!(etags.body.starts_with("nxe2."));
 
         let replay = seeded
             .module
@@ -12445,7 +12438,7 @@ mod tests {
         let seeded = seeded_module();
         let materialization = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
+            BlockDocumentSchema::PageV4,
         )
         .unwrap();
         let body_etag = seeded
@@ -12458,7 +12451,7 @@ mod tests {
                     Some(PROJECT_ID),
                     STORE_EPOCH,
                     &[DOCUMENT_ID],
-                    json!({ "nfm": materialization.nfm }),
+                    json!({ "markdown": materialization.markdown }),
                 )
                 .map_err(semantic_error)
             })
@@ -12476,7 +12469,7 @@ mod tests {
                         generation: 1,
                         expected_head_seq: 1,
                         commands: vec![DocumentSemanticCommand::ReplaceBody {
-                            nested_markdown: "a\nb\nc\nsame\nsame".to_owned(),
+                            markdown: "a\nb\nc\nsame\nsame".to_owned(),
                             expected_etag: body_etag,
                         }],
                     },

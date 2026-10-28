@@ -1,9 +1,9 @@
+import { markdownBlocksForEditor } from "../../../../shared/nodex-markdown/blocknote";
+import { inlineImageInlineContentSpec } from "./inline-image-inline-content";
 import { BoardIcon, PageIcon } from "@/components/shared/icons";
 import {
   useCallback,
-  useEffect,
   useMemo,
-  useRef,
   type ComponentType,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -32,7 +32,7 @@ import {
   inlineTintedChipLabelClassName,
   inlineTintedChipVariants,
 } from "@/components/ui/inline-tinted-chip";
-import { parseNfm, nfmToBlockNote } from "@/lib/nfm";
+import { readMarkdown } from "../../../../shared/nodex-markdown";
 import { resolveAssetSourceToDisplayUrl } from "@/lib/assets";
 import { resolveAgentConfigChip, type AgentConfigProps } from "./agent-config-chip";
 import type { FileReadAuthority, FilePreviewAuthority } from "@/lib/library-file-resources";
@@ -43,7 +43,7 @@ import { formatAttachmentBytes } from "./attachment-chip-format";
 import { AttachmentResourceIcon } from "../attachment-resource-icon";
 import { createReadonlyDateMentionInlineContentSpec } from "./date-mention-inline-content-spec";
 import { createReadonlyPageMentionInlineContentSpec } from "./page-mention-inline-content";
-import { resolveThreadMentionDisplay } from "@/lib/nfm/thread-mention-display";
+import { resolveThreadMentionDisplay } from "@/lib/editor-model/thread-mention-display";
 import { createCalloutBlock } from "./callout-block";
 import { editorCodeBlockOptions } from "./code-block-options";
 import { createNfmCodeBlockSpec } from "./nfm-code-block-spec";
@@ -69,11 +69,10 @@ import {
   mathBlockConfig,
   mathInlineContentConfig,
   threadMentionInlineContentConfig,
-  threadSectionBlockConfig,
 } from "../../../../shared/block-documents/blocknote-schema-config";
 import { BLOCK_CHILDREN_RULES } from "../../../../shared/block-documents/block-children-policy";
 
-interface ReadonlyNfmBlockNotePreviewProps {
+interface ReadonlyMarkdownBlockNotePreviewProps {
   fileAuthority?: FileReadAuthority | FilePreviewAuthority | null;
   content: string;
   projectId: string;
@@ -85,7 +84,6 @@ interface ReadonlyNfmBlockNotePreviewProps {
 
 interface ReadonlyPreviewDocument {
   initialContent: PartialBlock[] | undefined;
-  toggleStates: Array<{ id: string; open: boolean }>;
 }
 
 interface PreviewAttachmentProps {
@@ -179,20 +177,6 @@ const createReadonlyTemplateRefBlockSpec = createReactBlockSpec(reusableTemplate
   ),
 });
 
-const createReadonlyThreadSectionBlockSpec = createReactBlockSpec(threadSectionBlockConfig, {
-  render: ({ block }) => {
-    const label = String(block.props.label || "").trim();
-    const threadId = String(block.props.threadId || "").trim();
-    return (
-      <InertEmbedPlaceholder
-        icon={PageIcon}
-        label="Thread section"
-        detail={label || threadId || "Snapshot only"}
-      />
-    );
-  },
-});
-
 function formatPreviewAttachmentLabel(props: PreviewAttachmentProps): string {
   const name = props.name.trim() || (props.kind === "text" ? "Pasted text" : "Attachment");
   const size =
@@ -270,7 +254,7 @@ const createReadonlyThreadMentionInlineContentSpec = () =>
     },
   });
 
-export const readonlyNfmBlockNotePreviewSchema = BlockNoteSchema.create({
+export const readonlyMarkdownBlockNotePreviewSchema = BlockNoteSchema.create({
   blockChildrenRules: BLOCK_CHILDREN_RULES,
   blockSpecs: {
     paragraph: defaultBlockSpecs.paragraph,
@@ -295,11 +279,11 @@ export const readonlyNfmBlockNotePreviewSchema = BlockNoteSchema.create({
     databaseViewRef: createReadonlyDatabaseViewRefBlockSpec(),
     syncedBlockRef: createReadonlySyncedBlockRefBlockSpec(),
     templateRef: createReadonlyTemplateRefBlockSpec(),
-    threadSection: createReadonlyThreadSectionBlockSpec(),
     mathBlock: createReactMathBlockSpec(mathBlockConfig),
   },
   inlineContentSpecs: {
     ...defaultInlineContentSpecs,
+    inlineImage: inlineImageInlineContentSpec,
     attachment: createReadonlyAttachmentInlineContentSpec(),
     agentConfig: createReadonlyAgentConfigInlineContentSpec(),
     dateMention: createReadonlyDateMentionInlineContentSpec(),
@@ -314,36 +298,18 @@ export function createReadonlyNfmPreviewDocument(content: string): ReadonlyPrevi
   if (!content.trim()) {
     return {
       initialContent: undefined,
-      toggleStates: [],
     };
   }
 
-  const toggleStates = new Map<string, boolean>();
-  const blocks = parseNfm(content);
-  const initialContent = nfmToBlockNote(blocks, toggleStates) as PartialBlock[];
+  const blocks = readMarkdown(content);
+  const initialContent = markdownBlocksForEditor(blocks) as PartialBlock[];
 
   return {
     initialContent: initialContent.length > 0 ? initialContent : undefined,
-    toggleStates: Array.from(toggleStates, ([id, open]) => ({ id, open })),
   };
 }
 
-function cleanupToggleStates(ids: string[]) {
-  for (const id of ids) {
-    localStorage.removeItem(`toggle-${id}`);
-  }
-}
-
-function setToggleStates(toggleStates: ReadonlyPreviewDocument["toggleStates"]): string[] {
-  const ids: string[] = [];
-  for (const { id, open } of toggleStates) {
-    localStorage.setItem(`toggle-${id}`, open ? "true" : "false");
-    ids.push(id);
-  }
-  return ids;
-}
-
-export function ReadonlyNfmBlockNotePreview(props: ReadonlyNfmBlockNotePreviewProps) {
+export function ReadonlyMarkdownBlockNotePreview(props: ReadonlyMarkdownBlockNotePreviewProps) {
   return (
     <FileReadBoundary authority={props.fileAuthority}>
       <ReadonlyNfmPreviewContent {...props} />
@@ -358,34 +324,16 @@ function ReadonlyNfmPreviewContent({
   historyId,
   projectWorkspacePath,
   className,
-}: ReadonlyNfmBlockNotePreviewProps) {
+}: ReadonlyMarkdownBlockNotePreviewProps) {
   const fileRuntime = useFilePlacementRuntime();
   const fileReferenceRouter = useFileReferenceRouter();
   const hostRuntime = useBlockReferenceHostRuntime();
   const { resolved: themeMode } = useTheme();
-  const toggleBlockIdsRef = useRef<string[]>([]);
-
-  const previewDocument = useMemo(() => {
-    void pageId;
-    void historyId;
-    void projectId;
-    cleanupToggleStates(toggleBlockIdsRef.current);
-    const nextDocument = createReadonlyNfmPreviewDocument(content);
-    toggleBlockIdsRef.current = setToggleStates(nextDocument.toggleStates);
-    return nextDocument;
-  }, [content, projectId, pageId, historyId]);
-
-  useEffect(
-    () => () => {
-      cleanupToggleStates(toggleBlockIdsRef.current);
-      toggleBlockIdsRef.current = [];
-    },
-    [],
-  );
+  const previewDocument = useMemo(() => createReadonlyNfmPreviewDocument(content), [content]);
 
   const editor = useCreateBlockNote(
     {
-      schema: readonlyNfmBlockNotePreviewSchema,
+      schema: readonlyMarkdownBlockNotePreviewSchema,
       extensions: [nfmSyntaxHighlighter],
       initialContent: previewDocument.initialContent,
       resolveFileUrl: async (source) => {

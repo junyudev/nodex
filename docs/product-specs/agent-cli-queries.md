@@ -44,7 +44,7 @@ and invalid schema selectors fail explicitly.
 | Relation                                                               | One row represents                                | Important columns or meaning                                                                                                                                           |
 | ---------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pages`                                                                | One active Page                                   | `page_id`, `page_key`, `title`, nullable `data_source_id`, timestamps, `title_etag`, `file_manifest_revision`, lazy `intrinsic_properties` JSON; no implicit body read |
-| `page_documents`                                                       | One current Page body                             | `page_id`, `nested_markdown`, `body_etag`; one-to-one with Pages                                                                                                       |
+| `page_documents`                                                       | One current Page body                             | `page_id`, `markdown`, `body_etag`; one-to-one with Pages                                                                                                              |
 | Bound Source, e.g. `tasks`                                             | One active member Page                            | `page_id`, `title`, `data_source_id`, `membership_revision`, `value_revisions`, Property columns                                                                       |
 | `view_rows(VIEW_ID)`                                                   | One Page occurrence in a saved View               | `occurrence_id`, `page_id`, `group_key`, `subgroup_key`, `parent_occurrence_id`, `ordinal`; a Page can occur repeatedly                                                |
 | `search_hits(QUERY, K)`                                                | One of the top K Page search hits                 | `page_id`, `title`, `snippet`, `ordinal`; Page identities are deduplicated                                                                                             |
@@ -134,7 +134,7 @@ No complete-match relation or oversized-K workaround is part of this contract.
 A repeated join over one non-correlated search invocation reuses its results.
 
 ```sql
-SELECT s.page_id, s.title, s.snippet, d.nested_markdown
+SELECT s.page_id, s.title, s.snippet, d.markdown
 FROM search_hits(:query, 5) AS s
 JOIN page_documents AS d USING (page_id)
 ORDER BY s.ordinal;

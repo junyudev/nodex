@@ -3,9 +3,34 @@ import { createUuidV7 } from "../../shared/uuid-v7";
 import { createCoreLibraryModuleAdapter } from "./library-module-adapter";
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
 import {
+  STRUCTURAL_INTERACTIONS_PRESSURE_SCENARIO_ID,
   STRUCTURAL_INTERACTIONS_SCENARIO_ID,
   requireStructuralInteractionsFacts,
 } from "../../../scripts/scenarios/scenarios/structural-interactions";
+
+test("the pressure scenario creates its complete nested body with stable root identities", async () => {
+  await withCoreScenario(
+    { scenarioId: STRUCTURAL_INTERACTIONS_PRESSURE_SCENARIO_ID },
+    async (context) => {
+      const facts = requireStructuralInteractionsFacts(context.facts);
+      const roots = await context.seed.readPageBlockTree(
+        context.manifest.projectId,
+        facts.sourcePageId,
+      );
+      expect(roots.map((root) => root.type)).toEqual([
+        "paragraph",
+        "paragraph",
+        "image",
+        "paragraph",
+        "page",
+      ]);
+      expect(roots[4]?.id).toBe(facts.embeddedPageId);
+      expect(roots[1]).toMatchObject({ id: facts.paragraphRootId, type: "paragraph" });
+      expect(roots[1]?.children).toHaveLength(273);
+      expect(roots[2]).toMatchObject({ id: facts.imageRootId, type: "image" });
+    },
+  );
+});
 
 test("structural edits and File reads work across Project routing with exact Document heads", async () => {
   await withCoreScenario({ scenarioId: STRUCTURAL_INTERACTIONS_SCENARIO_ID }, async (context) => {

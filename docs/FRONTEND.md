@@ -316,7 +316,7 @@ than inferring it from its DOM environment.
   collaborative Documents, templates, and read-only projections have different
   hydration, replacement, and save rules.
 - Keep schemas, extensions, parsing, and serialization composed in focused
-  editor modules. Preserve NFM round trips when changing any parser, serializer,
+  editor modules. Preserve Nodex Markdown round trips when changing any parser, serializer,
   clipboard, mention, or adapter path.
 - Treat ProseMirror/Tiptap view objects as mounted APIs. Attach browser-managed
   editable DOM behavior through the owning editor lifecycle, and keep callback
@@ -466,7 +466,7 @@ Load the narrow contract only for the branch being changed:
 | Review and Git diff presentation                                            | [Review right panel](product-specs/review-right-panel-behavior.md)                 |
 | Command palette ranking and execution                                       | [Command palette](product-specs/command-palette-behavior.md)                       |
 | Board and cross-surface drag behavior                                       | [Board drag and drop](product-specs/board-drag-and-drop-behavior.md)               |
-| NFM editor interactions                                                     | The matching `nfm-*` document in [Product specifications](product-specs/index.md)  |
+| Page editor interactions                                                    | The matching `nfm-*` document in [Product specifications](product-specs/index.md)  |
 
 These documents own feature behavior. Keep this file limited to conventions
 that remain useful when those features change.

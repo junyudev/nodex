@@ -226,7 +226,7 @@ async function seedProfile(profile: string): Promise<void> {
           page_id: "page:failure-matrix-getting-started",
           document_id: "document:failure-matrix-getting-started",
           title_markdown: "Welcome to Nodex",
-          nfm: "Welcome to Nodex.",
+          markdown: "Welcome to Nodex.",
         },
       },
     });
@@ -245,11 +245,11 @@ async function seedProfile(profile: string): Promise<void> {
       operationId: "failure-matrix-seed-body",
       clientSessionId: "failure-matrix:seed",
       intent: {
-        kind: "replace_from_nfm",
+        kind: "replace_from_markdown",
         document_id: documentId,
         generation: 1,
         expected_head_seq: 1,
-        nfm: "Failure matrix body",
+        markdown: "Failure matrix body",
         actor: {
           kind: "electron_renderer",
           clientId: "failure-matrix:seed",

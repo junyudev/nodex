@@ -123,7 +123,7 @@ pub(crate) fn create_page(
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
     let title_markdown = validate_title(arguments.title)?;
-    let nfm = if arguments.content.empty {
+    let markdown = if arguments.content.empty {
         String::new()
     } else {
         read_content_input(
@@ -148,9 +148,9 @@ pub(crate) fn create_page(
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 operation_id,
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-                intent: LibraryIntent::CreatePageFromNfm {
+                intent: LibraryIntent::CreatePageFromText {
                     title_markdown,
-                    nfm,
+                    markdown,
                     destination,
                 },
             },

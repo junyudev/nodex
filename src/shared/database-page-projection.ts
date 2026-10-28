@@ -499,14 +499,14 @@ export const projectCoreDatabaseViewBoard = (
 
 export const projectCoreDatabaseRowDetail = (detail: CoreDatabaseRowDetail): DatabasePage => ({
   ...projectCoreDatabaseRowSummary(detail.summary),
-  description: detail.body_nfm,
+  description: detail.body_markdown,
 });
 
 export const projectDatabasePage = (
   row: DataSourcePageRowV2,
   order = row.position?.order ?? UNPOSITIONED_PAGE_ORDER,
 ): DatabasePage => {
-  if (row.bodyNfm === undefined) {
+  if (row.bodyMarkdown === undefined) {
     return fail(row.page.pageId, "is missing its exact-head NFM projection");
   }
   const statusValue = requireDatabaseValue(row, "status");
@@ -529,7 +529,7 @@ export const projectDatabasePage = (
     archived: row.page.lifecycle === "archived",
     title: row.page.title,
     richTitle: row.page.richTitle,
-    description: row.bodyNfm,
+    description: row.bodyMarkdown,
     priority: readPriority(row, requireDatabaseValue(row, "priority")),
     estimate: readEstimate(row, requireDatabaseValue(row, "estimate")),
     tags: readTagOptionIds(row),

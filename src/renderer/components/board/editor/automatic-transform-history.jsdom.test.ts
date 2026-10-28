@@ -2,11 +2,7 @@ import { BlockNoteEditor, dispatchHistoryBoundary, type PartialBlock } from "@bl
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { NFM_AUTOLINK_SETTINGS_STORAGE_KEY } from "@/lib/nfm-autolink-settings";
 import { createNfmLinkExtension } from "./nfm-link-extension";
-import {
-  createNfmEditorExtensions,
-  NFM_DISABLED_EXTENSIONS,
-  threadSectionInputRule,
-} from "./nfm-editor-extensions";
+import { createNfmEditorExtensions, NFM_DISABLED_EXTENSIONS } from "./nfm-editor-extensions";
 import { nfmSchema } from "./nfm-schema";
 
 function simulateTextInput(editor: BlockNoteEditor<any, any, any>, text: string) {
@@ -348,11 +344,11 @@ describe("NFM Block-prefix history", () => {
     }
   });
 
-  it("restores the literal thread-section marker before removing its input", () => {
+  it("restores the literal divider prefix before removing its input", () => {
     const editor = BlockNoteEditor.create({
       schema: nfmSchema,
       disableExtensions: [...NFM_DISABLED_EXTENSIONS],
-      extensions: [threadSectionInputRule],
+      extensions: createNfmEditorExtensions(),
     });
     const mount = document.createElement("div");
     editor.mount(mount);
@@ -363,10 +359,12 @@ describe("NFM Block-prefix history", () => {
       editor.setTextCursorPosition(blockId, "start");
       typeString(editor, "---");
 
-      expect(editor.document[0].type).toBe("threadSection");
+      expect(editor.document[0].type).toBe("divider");
       expect(editor.undo()).toBe(true);
       expect(editor.document[0].type).toBe("paragraph");
       expect(editor.document[0].content).toEqual([{ type: "text", text: "---", styles: {} }]);
+      expect(editor.undo()).toBe(true);
+      expect(editor.document[0].content).toEqual([]);
     } finally {
       editor._tiptapEditor.destroy();
     }

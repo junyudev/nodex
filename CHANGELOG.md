@@ -29,6 +29,8 @@ All notable changes to this project will be documented in this file.
 - Inbox suggestions choose the model for each new chat from what every model does well and how much of each Agent's weekly budget is left, and can plan the work: the chat's Agent hands separable parts, such as a backend behind a carefully designed UI, to economical models through Nodex. The plan shows beneath the suggestion before you confirm, and you can change any of its models or drop a part. Nodex's model guide ships with the app and your routing preferences take precedence over it.
 - A chat started from the Inbox opens with its message's Page beside it, so what it was started from stays in view while you follow the work. Settings → Inbox can turn this off.
 - A chat can sit on either side of its tabs: Move to right pane or Move to left pane in Chat actions swaps them, and new chats follow your latest choice. In full view the chat becomes the first tab, with its own Chat actions, so you can switch between it and your tabs without leaving full view. `⇧⌘F` enters and exits full view.
+- Pages and messages are written in Nodex Markdown: GitHub Flavored Markdown, read the way GitHub reads a comment, with directives for toggles, Page references, mentions and the other Blocks Markdown has no word for. Agents fetch, patch and replace a Page in this one exact text without losing its Blocks' identities, and copying or exporting gives portable Markdown other apps read as written.
+- Images can sit within a line of text, as badges and icons do on GitHub, and open full size when clicked; an image on a line of its own stays an image Block.
 
 ### Changed
 
@@ -37,6 +39,8 @@ All notable changes to this project will be documented in this file.
 - Finished Claude Code, OpenCode and other Agent replies read like Codex ones: each Turn's work folds under `Worked for <time>`, leaving your prompt and the complete reply in view.
 - Command K brings chats, Pages, files, and full-text file search into one glass window, with host-aware folder and file-type filters, recent searches, exact match navigation, expandable results, and searchable Settings and themes.
 - Settings is easier to find your way around. Agents, Conversations and Hooks sit together under AI, and Agents lists Codex, Claude Code, OpenCode and other agents as short cards, each opening to its own setup. General is split into App, Chats, Writing, Files & links, Notifications, Privacy and Troubleshooting, with each update and sharing preference on its own row. Searching for a setting, in Settings or Command K, lands on its group or opens the right Agent's card, as does choosing Manage on a chat.
+- Messages are read with the same Markdown rules as Agent replies, the way GitHub reads a comment, so a message looks the same in its bubble, its Page and the chat that receives it.
+- Copying from a Page puts Markdown on the clipboard as plain text, so nested lists, images and formatting paste as written into Markdown editors, chat apps and Composers.
 - Codex reuses the user's native home, including configuration and hooks, without selecting a separate directory from Profile history. Changing the Codex home takes effect after restart; native conversations enter the sidebar only when explicitly imported.
 - Chats automatically load earlier messages as you scroll up, preserve your reading position, and offer retries beside any history that could not load. Imported conversations can be browsed beyond the previous history-window limit.
 - A message sent from the Inbox to a chat stays tied to that chat. Its Page shows the chat and its live status on its Board, List and Page, and its status moves from Triage to Build, Plan or Ship as the message is handled, without overriding a status you set yourself. History leads with work still in progress until you mark it done, and a decided message shows where it went before it folds away.
@@ -46,6 +50,7 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- Removed runnable prompt sections from Pages. Their content and linked chats stay intact; use Send to chat for selected content or the whole Page.
 - Ultrathink is no longer offered as an effort level. Writing "ultrathink" in a Claude message still asks for deeper reasoning on that turn, and messages now reach Claude exactly as you wrote them.
 
 ### Fixed
@@ -58,6 +63,7 @@ All notable changes to this project will be documented in this file.
 
 - Space Content keeps its order when you open a Page, Database or Canvas, and every sidebar list remembers how far you expanded it with Show more after switching between Home and Space, reopening the window or relaunching.
 - Claude's thinking no longer turns into replies the moment a tool call starts, and long thinking no longer stretches past the edge of the chat.
+- Pasting into the chat or Inbox Composer keeps every line, and rich text from browsers, Notes, mail and documents pastes as its Markdown, keeping headings, emphasis, lists, links, code and tables.
 - Unread dots clear when you view a chat or its reply finishes in the foreground, without switching away and back. Manually marked unread chats stay unread until new activity or interaction.
 - Chat completion notifications include the Agent’s reply after execution ends and preserve readable content from Markdown, including code blocks.
 - Existing Profiles upgrade without rejecting saved paragraphs that begin with Markdown punctuation, while preserving their content and edit history.

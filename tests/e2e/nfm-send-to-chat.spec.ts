@@ -116,7 +116,7 @@ respect_system_proxy = false
           page,
           project,
           source,
-          `${prompt}\n<image source="${imageSource}">Diagram</image>\nEnd selection`,
+          `${prompt}\n\n![Diagram](${imageSource})\n\nEnd selection`,
         );
         const paragraphs = editor.locator('[data-content-type="paragraph"] .bn-inline-content');
         await expect(paragraphs.first()).toHaveText(prompt);

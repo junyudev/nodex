@@ -31,7 +31,7 @@ import {
   type PrepareDocumentVersionRestore,
 } from "../../../shared/block-documents/document-history";
 import { CanvasFilePreview } from "../canvas/canvas-file-preview";
-import { ReadonlyNfmBlockNotePreview } from "./editor/readonly-nfm-blocknote-preview";
+import { ReadonlyMarkdownBlockNotePreview } from "./editor/readonly-nfm-blocknote-preview";
 import { mergePageHistoryEntries } from "./page-history-view-model";
 import {
   getDocumentVersion,
@@ -57,7 +57,7 @@ export interface HistoryPanelProps {
   projectId: string;
   pageId: string | null;
   pageTitle?: string;
-  pageNfm?: string;
+  pageMarkdown?: string;
   projectWorkspacePath?: string | null;
   open: boolean;
   onClose: () => void;
@@ -74,7 +74,7 @@ export function HistoryPanel({
   projectId,
   pageId,
   pageTitle,
-  pageNfm,
+  pageMarkdown,
   projectWorkspacePath,
   open,
   onClose,
@@ -424,7 +424,7 @@ export function HistoryPanel({
                   projectId={projectId}
                   pageId={pageId}
                   title={pageTitle}
-                  nfm={pageNfm}
+                  markdown={pageMarkdown}
                   projectWorkspacePath={projectWorkspacePath}
                 />
               </div>
@@ -571,14 +571,14 @@ export function HistoryCurrentRevisionPreview({
   projectId,
   pageId,
   title,
-  nfm = "",
+  markdown = "",
   projectWorkspacePath,
 }: {
   fileAuthority?: LibraryFileAuthority | null;
   projectId: string;
   pageId: string | null;
   title?: string;
-  nfm?: string;
+  markdown?: string;
   projectWorkspacePath?: string | null;
 }) {
   return (
@@ -588,14 +588,14 @@ export function HistoryCurrentRevisionPreview({
         {title || "Untitled Page"}
       </h2>
       <div className="mt-5 min-h-32">
-        {pageId && nfm.trim() ? (
-          <ReadonlyNfmBlockNotePreview
+        {pageId && markdown.trim() ? (
+          <ReadonlyMarkdownBlockNotePreview
             fileAuthority={
               fileAuthority && pageId
                 ? { ...fileAuthority, readSource: { kind: "page", page_id: pageId } }
                 : null
             }
-            content={nfm}
+            content={markdown}
             projectId={projectId}
             pageId={pageId}
             historyId="current"
@@ -684,8 +684,8 @@ export function HistoryRevisionPreview({
         </p>
       ) : null}
       <div className="mt-5 min-h-32">
-        {materialization.nfm.trim() ? (
-          <ReadonlyNfmBlockNotePreview
+        {materialization.markdown.trim() ? (
+          <ReadonlyMarkdownBlockNotePreview
             fileAuthority={
               fileAuthority && fileAuthority.libraryId === entry.libraryId
                 ? {
@@ -698,7 +698,7 @@ export function HistoryRevisionPreview({
                   }
                 : null
             }
-            content={materialization.nfm}
+            content={materialization.markdown}
             projectId={projectId}
             pageId={entry.pageId}
             historyId={entry.versionMetadata.versionId}

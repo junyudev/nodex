@@ -5,7 +5,7 @@
 The Inbox is where a user drops a thought, a todo, or a question without first
 deciding which chat it belongs to. The Library Inbox takes anything; each
 Project's own Inbox, its Home, takes what is already about that Project. Every
-message is saved as an ordinary Page, written in Nested Markdown as described in
+message is saved as an ordinary Page, written in Nodex Markdown as described in
 [Message Content Behavior](./message-content-behavior.md). A bound suggestion Agent may then propose
 where it should go; a proposal never confirms itself.
 

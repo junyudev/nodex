@@ -1,9 +1,9 @@
-# NFM Editor Block Children Behavior
+# Page Editor Block Children Behavior
 
 ## Scope
 
 This document owns the current Block children capability contract shared by the
-editable BlockNote surface, readonly rendering, NFM codecs, Core validation,
+editable BlockNote surface, readonly rendering, Nodex Markdown, Core validation,
 structural operations, history restore, and Store migration.
 
 ## Capability contract
@@ -19,17 +19,14 @@ must declare a rule before it can enter a current document.
 | `heading`                                                          | Only when `isToggleable` is `true` | Disclosure child group when enabled              |
 | `quote`, `callout`                                                 | Yes                                | Children remain inside the same visual container |
 | `codeBlock`, `table`, `divider`, `image`                           | No                                 | Atomic leaf                                      |
-| `threadSection`                                                    | No                                 | Sibling-range marker                             |
 | `page`, `database`, `canvas`                                       | No                                 | Independently owned resource shell               |
 | `pageRef`, `databaseViewRef`, `syncedBlockRef`, `templateRef`      | No                                 | Reference leaf                                   |
 
 Normal headings are never changed into toggle headings merely to retain an
-illegal child edge. A `threadSection` owns the following sibling range until the
-next marker; the marker itself never owns direct children.
+illegal child edge.
 
-Nested Markdown's in-memory `emptyBlock` sentinel is the canonical parse result
-for a blank line. It is normalized to an empty `paragraph` at the Document
-adapter boundary and is never a persisted Block type or a compatibility case.
+The empty Nodex Markdown string reads as one empty `paragraph`. Blank lines
+separate Blocks; an explicit empty paragraph between Blocks is written as `<br>`.
 
 ## Editing and structural behavior
 
@@ -66,17 +63,18 @@ replay without reloading the Page.
 
 ## Persistence invariant
 
-Current Page Documents use `nodex.page@3`; Synced Block Documents use
-`nodex.synced-block@2`; Reusable Template Documents use
-`nodex.reusable-template@2`. Current runtime and restore paths recognize only
+Current Page Documents use `nodex.page@4`; Synced Block Documents use
+`nodex.synced-block@3`; Reusable Template Documents use
+`nodex.reusable-template@3`. Current runtime and restore paths recognize only
 these versions.
 
-Store v135 normalizes the exact preceding document schemas before current
-runtime opens them. When a leaf contains children, each child root is promoted
+Stored Documents are normalized before current runtime opens them. When a leaf contains children, each child root is promoted
 immediately after that leaf, recursively and in original order. The migration
 preserves IDs, content, properties, descendants, and depth-first visible order;
 running the normalizer again makes no change. Heads receive a current-schema
 full snapshot, and retained versions are re-encoded to the current schema.
-The migration preflights every head and retained version before writing; an
-older schema or unknown Block vocabulary fails the upgrade atomically instead
-of being mapped into the current model.
+Authenticated clipboard and Undo payloads adapt to the same current contract
+after their original bytes are verified.
+
+The upgrade preflights every head and retained version before writing. An
+unpublished schema or unknown Block vocabulary fails atomically.

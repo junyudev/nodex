@@ -11,6 +11,7 @@ const testFiles = filesForSuite("integration", resolveVitestTestTier());
 
 export default defineConfig({
   test: {
+    setupFiles: ["./config/setup-markdown.ts"],
     ...testObservation("integration"),
     env: TEST_ENVIRONMENT,
     environment: "node",

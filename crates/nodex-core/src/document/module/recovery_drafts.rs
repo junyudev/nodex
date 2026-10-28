@@ -716,7 +716,7 @@ fn preview(materialization: &DocumentMaterialization) -> RecoveryPreview {
         title: materialization.title.clone(),
         rich_title: serde_json::to_value(&materialization.rich_title)
             .expect("serializable rich title"),
-        nfm: materialization.nfm.clone(),
+        markdown: materialization.markdown.clone(),
         files: Default::default(),
     }
 }
@@ -1645,8 +1645,8 @@ impl OwnedDocumentModule {
                 let snapshot = retained_file_snapshot(&tx, &library_id, &capture.draft_id, &materialization)?.ok_or_else(|| conflict("This draft has unresolved File targets"))?;
                 let plan = crate::library::plan_file_restore(&tx, &library_id, &operation_id, &snapshot)?;
                 crate::domain::files::remap_block_files(&mut materialization.block_tree, &plan.mapping);
-                let nfm = crate::domain::nfm::materialize_nfm(&materialization.block_tree).map_err(|error| invalid_store(error.to_string()))?.nfm;
-                if let RecoveryPreview::Document { nfm: target, .. } = &mut preview { *target = nfm; }
+                let markdown = crate::domain::markdown::materialize_markdown(&materialization.block_tree).map_err(|error| invalid_store(error.to_string()))?.markdown;
+                if let RecoveryPreview::Document { markdown: target, .. } = &mut preview { *target = markdown; }
                 Some(plan)
             } else { None };
             let canvas_plans = if let RecoveryPreview::Canvas { scene, .. } = &mut preview {

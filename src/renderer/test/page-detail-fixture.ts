@@ -1,3 +1,7 @@
+import {
+  PAGE_DOCUMENT_SCHEMA_KEY,
+  PAGE_DOCUMENT_SCHEMA_VERSION,
+} from "../../shared/block-documents/page-document";
 import { plainTextToPortableRichText } from "../../shared/block-documents/portable-rich-text";
 import type { BlockPropertyJsonValue } from "../../shared/block-property-mutations";
 import type { DatabaseJsonValue, DatabasePropertyValueType } from "../../shared/database-kernel";
@@ -160,8 +164,8 @@ export const buildPageDetailFixtureResult = (
       },
       document: {
         readiness: "ready",
-        schemaKey: "nodex.page",
-        schemaVersion: 3,
+        schemaKey: PAGE_DOCUMENT_SCHEMA_KEY,
+        schemaVersion: PAGE_DOCUMENT_SCHEMA_VERSION,
       },
       intrinsicProperties: [
         intrinsic("schedule.isAllDay", Boolean(page.isAllDay)),

@@ -208,7 +208,7 @@ The native Codex app-server owns autonomous goal execution. Conversation manager
 status and expose explicit goal commands; an idle observation does not create a second execution
 authority in Main or a window.
 
-Page discovery is one Core-owned capability across Page references, Command Palette search, Agent search, and transport clients. Core maintains the durable projection, applies lifecycle, explicit query scope and typed filters before the result bound, and returns complete ordering plus typed match evidence. Interactive renderers may hold only a commit-fenced, Core-authored metadata projection and query it synchronously with the same Rust search kernel compiled to WASM; Store-epoch and resource-lifecycle changes invalidate that projection. Body evidence and historical-key resolution remain asynchronous Core enrichment. Adapters translate contracts mechanically, and renderers do not define a second normalization, fuzzy, ranking, or highlighting policy. User-visible policy belongs to [Command Palette Behavior](product-specs/command-palette-behavior.md) and [NFM Editor Page Connection Behavior](product-specs/nfm-editor-page-reference-behavior.md).
+Page discovery is one Core-owned capability across Page references, Command Palette search, Agent search, and transport clients. Core maintains the durable projection, applies lifecycle, explicit query scope and typed filters before the result bound, and returns complete ordering plus typed match evidence. Interactive renderers may hold only a commit-fenced, Core-authored metadata projection and query it synchronously with the same Rust search kernel compiled to WASM; Store-epoch and resource-lifecycle changes invalidate that projection. Body evidence and historical-key resolution remain asynchronous Core enrichment. Adapters translate contracts mechanically, and renderers do not define a second normalization, fuzzy, ranking, or highlighting policy. User-visible policy belongs to [Command Palette Behavior](product-specs/command-palette-behavior.md) and [Page Connections](product-specs/nfm-editor-page-reference-behavior.md).
 
 ## Runtime boundaries
 
@@ -702,7 +702,7 @@ The renderer Content Interaction History Module owns the chronological interval,
 command admission, preparation order and outcome state shared by Page bodies,
 Page titles and Database Views in one window's Library/access-context/Store-epoch
 scope. Retained content participants own their native resources and presentation;
-DOM focus chooses an input boundary, not replay order. NFM, title and
+DOM focus chooses an input boundary, not replay order. Page body, title and
 Database content Adapters prepare typed requests and interpret authoritative
 inverses; they do not maintain parallel command queues or mutable history lists.
 Native capture identities are Adapter-owned resources, not chronological
@@ -717,7 +717,7 @@ observations and exact recovery actions from Content Interaction History, retain
 Document sessions, and DocumentRecovery. This observation does not retain content
 participation, own persistence, or introduce another command queue.
 User-visible replay and retention
-rules belong to [NFM Structural Editing](product-specs/nfm-editor-structural-editing-behavior.md)
+rules belong to [Page Editor Structural Editing](product-specs/nfm-editor-structural-editing-behavior.md)
 and [Database Pages and Views](product-specs/database-pages-and-views-behavior.md).
 
 The native Edit menu consumes only the focused surface's read-only capability
@@ -750,7 +750,7 @@ inputs, not presentation-owner identity, so pagination or refresh cannot revoke
 an admitted prediction before the same visible consumer commits its canonical
 handoff frame.
 
-Any editor selection containing an owning Page, Canvas, or Database is one Library structural edit; the complete selected forest and ownership closure stay outside generic Document mutation. Core owns delete, clipboard capture/paste, duplicate, move, retention, and forward-inverse recipes. Native clipboard data carries a bounded private routing descriptor plus standard portable presentation, never the ownership closure; only Core's durable capability and cut claim authorize structural materialization or an identity-preserving move. Main coordinates the ephemeral cross-window lifecycle without becoming semantic authority. A destination freezes its stable target intent and sanitized fallback before waiting, then fences the current Document immediately before commit, so selection drift cannot redirect Paste. Each editor surface merges structural tokens with its own local Yjs history in user-action order and releases tokens when they leave reachable history. The user-visible contract is [NFM Editor Structural Editing Behavior](product-specs/nfm-editor-structural-editing-behavior.md), and the ownership decisions are [ADR 0048](adr/0048-typed-owner-structural-editing.md) and [ADR 0053](adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
+Any editor selection containing an owning Page, Canvas, or Database is one Library structural edit; the complete selected forest and ownership closure stay outside generic Document mutation. Core owns delete, clipboard capture/paste, duplicate, move, retention, and forward-inverse recipes. Native clipboard data carries a bounded private routing descriptor plus standard portable presentation, never the ownership closure; only Core's durable capability and cut claim authorize structural materialization or an identity-preserving move. Main coordinates the ephemeral cross-window lifecycle without becoming semantic authority. A destination freezes its stable target intent and sanitized fallback before waiting, then fences the current Document immediately before commit, so selection drift cannot redirect Paste. Each editor surface merges structural tokens with its own local Yjs history in user-action order and releases tokens when they leave reachable history. The user-visible contract is [Page Editor Structural Editing Behavior](product-specs/nfm-editor-structural-editing-behavior.md), and the ownership decisions are [ADR 0048](adr/0048-typed-owner-structural-editing.md) and [ADR 0053](adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
 
 When a structural commit invalidates collaborative addresses, its durable
 Document write fences travel through authorized delivery and canonical sync.
@@ -773,7 +773,7 @@ Renderer commands and local collaborative transactions use that contract for
 admission and layout; Core validates the complete candidate tree before
 persistence. Store migration normalizes the preceding exact schema before the
 current-only runtime opens it. The owning behavior is
-[NFM Editor Block Children Behavior](product-specs/nfm-editor-block-children-behavior.md).
+[Page Editor Block Children Behavior](product-specs/nfm-editor-block-children-behavior.md).
 
 Document identity, owner shells, relocation, history, and Canvas decisions are recorded in [CONTEXT.md](../CONTEXT.md) and ADRs [0002](adr/0002-document-bearing-blocks-yjs.md), [0004](adr/0004-atomic-block-relocation.md), [0005](adr/0005-canvas-scene-native-sync-engine.md), and [0048](adr/0048-typed-owner-structural-editing.md).
 
@@ -1268,7 +1268,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 21. There is no catch-all persistence or generic mutation boundary. New durable semantics enter an owning deep Module and its typed Interface.
 22. The Library owns File identity. Pages own relationships and paths; structural moves and copies preserve File IDs without changing shared content or global metadata. File and Page relationship identities remain separate.
 23. Native clipboard descriptors and Main lifecycle state are routing evidence only. Core's durable bundle and cut claim are the sole structural copy and move authority; every non-authoritative path remains portable content.
-24. Written messages are message text, read into Nested Markdown by the same rules in Core and the renderer. A message's Page body, its bubble, its Composer draft, and what a chat receives from it are projections of that one document, and no surface defines a second message format; see [Message Content Behavior](product-specs/message-content-behavior.md).
+24. Blocks have one exact text language, [Nodex Markdown](references/nodex-markdown.md). Core links its Rust implementation natively and the app runs the same implementation through WebAssembly; exact writes and portable exports share that writer and fixture. [ADR 0073](adr/0073-one-text-language-for-blocks.md) records the boundary, while [Markdown Interchange](references/markdown-interchange.md) owns clipboard and HTML conversion. Written messages are message text: a message's Page body, its bubble, its Composer draft, and what a chat receives from it are projections of that one document; see [Message Content Behavior](product-specs/message-content-behavior.md).
 
 ## Codemap
 

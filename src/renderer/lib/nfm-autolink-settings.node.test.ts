@@ -41,7 +41,7 @@ function withMockLocalStorage(run: () => void): void {
   }
 }
 
-describe("nfm autolink settings", () => {
+describe("markdown autolink settings", () => {
   test("defaults to fully enabled autolink behavior", () => {
     withMockLocalStorage(() => {
       mockStorage.clear();

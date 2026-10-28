@@ -7,12 +7,12 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   generateOfficialAgentSkills,
   OFFICIAL_SKILL_FILES,
-  renderNestedMarkdownReference,
+  renderMarkdownReference,
   verifyOfficialAgentSkills,
 } from "./official-agent-skills";
-import { NESTED_MARKDOWN_AGENT_GUIDE } from "../src/shared/nfm/agent-guide";
-import { parseNfm } from "../src/shared/nfm/parser";
-import { serializeNfm } from "../src/shared/nfm/serializer";
+import { NODEX_MARKDOWN_AGENT_GUIDE } from "../src/shared/nodex-markdown/agent-guide";
+import { readMarkdown } from "../src/shared/nodex-markdown";
+import { writeMarkdown } from "../src/shared/nodex-markdown";
 
 const REPOSITORY_ROOT = join(import.meta.dirname, "..");
 
@@ -87,12 +87,12 @@ describe("official Agent Skills artifact", () => {
     ).rejects.toThrow("symlink");
   });
 
-  test("renders production Nested Markdown examples through the real codec", () => {
-    expect(renderNestedMarkdownReference()).toContain(
-      `revision: \`${NESTED_MARKDOWN_AGENT_GUIDE.specificationVersion}\``,
+  test("renders production Nodex Markdown examples through the real codec", () => {
+    expect(renderMarkdownReference()).toContain(
+      `revision: \`${NODEX_MARKDOWN_AGENT_GUIDE.specificationVersion}\``,
     );
-    for (const example of NESTED_MARKDOWN_AGENT_GUIDE.examples) {
-      expect(serializeNfm(parseNfm(example))).toBe(example);
+    for (const example of NODEX_MARKDOWN_AGENT_GUIDE.examples) {
+      expect(writeMarkdown(readMarkdown(example))).toBe(example);
     }
   });
 });

@@ -1,3 +1,5 @@
+import { loadPageDocumentMaterialization } from "@/lib/page-prompt-context";
+import { toast } from "@/components/ui/toast";
 import { useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import type {
@@ -290,7 +292,6 @@ export function InboxTriage({
   menu,
   inboxProjectId,
   onManualDraftChange,
-  onEditAsPage,
   children,
   members = NO_MEMBERS,
   onOpenPage,
@@ -326,8 +327,6 @@ export function InboxTriage({
    */
   readonly menu: (offers: InboxRowOffers, handleManually: () => void) => ReactNode;
   readonly onManualDraftChange: (draft: InboxDispatchDraft | null) => void;
-  /** Opens the message's Page, where a body too rich or long to rewrite in place is edited. */
-  readonly onEditAsPage: () => void;
   /** Places the strip and the action row around the message. */
   readonly children: (parts: InboxTriageParts) => ReactNode;
 }) {
@@ -352,8 +351,7 @@ export function InboxTriage({
     readonly draft: InboxDraft;
     readonly basis: InboxPageBasis;
   } | null>(null);
-  // A body the composer can write exactly is rewritten in place; any other is edited as its Page.
-  const rewrite = item.bodyEditable ? inboxDraftFromBody(item.body) : null;
+
   const model = inboxTriageModel(item, suggestionsEnabled);
   const offers = inboxRowOffers(model, { suggestionsEnabled, grouped: groupedWithKey != null });
   const handled = useInboxOutcome(item);
@@ -362,14 +360,24 @@ export function InboxTriage({
   const handleManually = () =>
     onManualDraftChange(draftForInboxItem(item, inboxProjectId, rowAction));
   const menuNode = menu(offers, handleManually);
-  const editAction = rewrite ? (
+  const editAction = (
     <InboxIconAction
       label="Edit"
       icon={EditIcon}
-      onClick={() => setEditing({ baseBody: item.body, draft: rewrite, basis: item.basis })}
+      onClick={() => {
+        void (async () => {
+          const body = item.bodyTruncated
+            ? (
+                await loadPageDocumentMaterialization({
+                  routingContext: inboxPageRoutingContext(item),
+                  pageId: item.pageId,
+                })
+              ).markdown
+            : item.body;
+          setEditing({ baseBody: body, draft: inboxDraftFromBody(body), basis: item.basis });
+        })().catch(() => toast.danger("Couldn’t load the message"));
+      }}
     />
-  ) : (
-    <InboxIconAction label="Edit as Page" icon={EditIcon} onClick={onEditAsPage} />
   );
   const keepAction = <InboxIconAction label="Keep" icon={ArchiveIcon} onClick={keep} />;
   const doneAction = offers.done ? (

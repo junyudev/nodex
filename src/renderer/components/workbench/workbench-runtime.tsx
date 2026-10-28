@@ -5607,7 +5607,7 @@ export function WorkbenchRuntime({
                                 projectId={pageStageHistoryPanelProjectId}
                                 pageId={pageStageHistoryModal?.pageId ?? null}
                                 pageTitle={pageStageHistoryModal?.pageTitle}
-                                pageNfm={pageStageHistoryModal?.pageNfm}
+                                pageMarkdown={pageStageHistoryModal?.pageMarkdown}
                                 projectWorkspacePath={projectWorkspaceRootOrNull(
                                   pageStageHistoryModalProject,
                                 )}

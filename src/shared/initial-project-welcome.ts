@@ -1,4 +1,4 @@
-import { serializeInlineContent } from "./nfm";
+import { writeInlineMarkdown } from "./nodex-markdown";
 import { DEFAULT_PROJECT_APPEARANCE } from "./project-appearance";
 
 export const INITIAL_PROJECT_NAME = "My Project";
@@ -11,7 +11,7 @@ const MAX_SOURCE_ROOT_BYTES = 4_096;
 
 export interface InitialProjectWelcomePage {
   readonly titleMarkdown: typeof INITIAL_PROJECT_WELCOME_TITLE;
-  readonly nfm: string;
+  readonly markdown: string;
 }
 
 /** The first window shows the new Project on its Inbox Home with the Welcome Page open. */
@@ -32,14 +32,14 @@ export function renderInitialProjectWelcomePage(input: {
     throw new Error("Initial Project source root must be one bounded path");
   }
 
-  const sourceRoot = serializeInlineContent([
+  const sourceRoot = writeInlineMarkdown([
     {
       type: "text",
       text: input.sourceRoot,
       styles: { code: true },
     },
   ]);
-  const projectName = serializeInlineContent([
+  const projectName = writeInlineMarkdown([
     {
       type: "text",
       text: INITIAL_PROJECT_NAME,
@@ -49,32 +49,30 @@ export function renderInitialProjectWelcomePage(input: {
 
   return {
     titleMarkdown: INITIAL_PROJECT_WELCOME_TITLE,
-    nfm: [
+    markdown: [
       `Welcome to ${projectName}. It’s a regular Nodex Project, already connected to the source folder below. Rename the Project, add folders, or delete this Page whenever you’re ready.`,
-      '<callout icon="📁">',
-      `\t**Source folder:** ${sourceRoot}`,
-      "\tAgents in this Project can work in the ordered source folders shown in **Edit project**.",
-      "</callout>",
-      "<empty-block/>",
+      `:::callout[**Source folder:** ${sourceRoot}]{icon="📁"}`,
+      "  Agents in this Project can work in the ordered source folders shown in **Edit project**.",
+      ":::",
       "## Connect your model",
       "Use **Sign in** at the bottom of the sidebar to connect ChatGPT. Available Codex models then appear in the chat composer.",
-      "<empty-block/>",
       "## Try your first task",
       "Select the prompt block below, choose **Send to chat**, then choose **New chat**.",
       "> Create a file named `hello-nodex.md` in this Project’s source folder with a short welcome note. Then tell me exactly what you changed.",
-      "<empty-block/>",
       "## A quick tour",
       "- **Projects** group chats and ordered source folders. Use **+** next to Projects to create another Project and choose your own folders.",
       "- **Projectless chats** are for work that should not belong to a Project; Nodex gives each one a managed workspace.",
       "- **Pages** are durable, editable block documents. This Page is also a row in this Project’s primary Database.",
       "- **DB Views** organize Pages with properties, filters, groups, and different views without changing the Page itself.",
-      "<empty-block/>",
-      "▶ Explore next",
-      "\t- Open **Database** in the tab bar to see this Page as structured data.",
-      "\t- Edit this Page or create another Page and organize it in a DB View.",
-      "\t- Start a Project chat from the prompt above.",
-      "\t- Start a Projectless chat when you do not want Project ownership.",
-      "\t- Initialize Git in the source folder when you want to use worktree chats.",
-    ].join("\n"),
+      ":::toggle[Explore next]",
+      "  - Open **Database** in the tab bar to see this Page as structured data.",
+      "  - Edit this Page or create another Page and organize it in a DB View.",
+      "  - Start a Project chat from the prompt above.",
+      "  - Start a Projectless chat when you do not want Project ownership.",
+      "  - Initialize Git in the source folder when you want to use worktree chats.",
+      ":::",
+    ]
+      .join("\n\n")
+      .replace(/\n\n(?=  |:::)/gu, "\n"),
   };
 }

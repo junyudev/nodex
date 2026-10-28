@@ -1,7 +1,7 @@
 import type { DatabasePropertyOption } from "../../shared/database-kernel";
 import {
   materializePageDocument,
-  populateBlockDocumentBodyFromNfm,
+  populateBlockDocumentBodyFromMarkdown,
 } from "../../shared/block-documents/block-document-codec";
 import {
   createPageDocument,
@@ -31,7 +31,7 @@ export interface BuildPageCreateInputOptions {
 
 export interface PageCreateDraftSnapshot {
   readonly title: string;
-  readonly descriptionNfm: string;
+  readonly descriptionMarkdown: string;
   readonly status: WorkflowStatus;
   readonly priority: Priority | null;
   readonly estimate: Estimate | null;
@@ -55,7 +55,7 @@ export interface CapturePageCreateDraftSnapshotOptions {
 export const createPageCreateDescriptionDraft = (
   requestId: string,
   generation = 0,
-  descriptionNfm = "",
+  descriptionMarkdown = "",
 ): PageCreateDescriptionDraft => {
   const normalizedRequestId = requestId.trim();
   if (!normalizedRequestId) {
@@ -71,7 +71,7 @@ export const createPageCreateDescriptionDraft = (
     initializeBody: false,
   });
   try {
-    populateBlockDocumentBodyFromNfm(envelope.body, descriptionNfm);
+    populateBlockDocumentBodyFromMarkdown(envelope.body, descriptionMarkdown);
     return {
       ...envelope,
       generation,
@@ -84,7 +84,7 @@ export const createPageCreateDescriptionDraft = (
 };
 
 export const materializePageCreateDescription = (draft: PageCreateDescriptionDraft): string =>
-  materializePageDocument(draft.document).nfm;
+  materializePageDocument(draft.document).markdown;
 
 export const resolvePageCreateTagNames = (
   selectedIds: readonly string[],
@@ -166,7 +166,7 @@ export const capturePageCreateDraftSnapshot = ({
   expanded,
 }: CapturePageCreateDraftSnapshotOptions): PageCreateDraftSnapshot => ({
   title,
-  descriptionNfm: materializePageCreateDescription(descriptionDraft),
+  descriptionMarkdown: materializePageCreateDescription(descriptionDraft),
   status,
   priority,
   estimate,
@@ -182,7 +182,7 @@ export const createEmptyPageCreateDraftSnapshot = (
   > = {},
 ): PageCreateDraftSnapshot => ({
   title: "",
-  descriptionNfm: "",
+  descriptionMarkdown: "",
   status,
   priority: options.priority ?? null,
   estimate: options.estimate ?? null,
@@ -196,7 +196,7 @@ export const pageCreateDraftSnapshotsEqual = (
   right: PageCreateDraftSnapshot,
 ): boolean =>
   left.title === right.title &&
-  left.descriptionNfm === right.descriptionNfm &&
+  left.descriptionMarkdown === right.descriptionMarkdown &&
   left.status === right.status &&
   left.priority === right.priority &&
   left.estimate === right.estimate &&

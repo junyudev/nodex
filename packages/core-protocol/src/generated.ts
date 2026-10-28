@@ -478,7 +478,7 @@ export interface components {
             readonly has_more: boolean;
             /** Format: int64 */
             readonly head_seq: number;
-            readonly nested_markdown: string;
+            readonly markdown: string;
             readonly next_cursor?: string | null;
             readonly owner_block_id: string;
             readonly plain_text: string;
@@ -1610,7 +1610,7 @@ export interface components {
             readonly items: readonly {
                 readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
                 /**
-                 * @description The message as the stream shows it, in Nested Markdown: the Page body when it
+                 * @description The message as the stream shows it, in Nodex Markdown: the Page body when it
                  *     fits the stream budget, otherwise the opening of its text as paragraphs.
                  */
                 readonly body: string;
@@ -3134,7 +3134,7 @@ export interface components {
             readonly prefix: string;
         };
         readonly DatabaseRowDetail: {
-            readonly body_nfm: string;
+            readonly body_markdown: string;
             readonly summary: components["schemas"]["DatabaseRowSummary"];
         };
         readonly DatabaseRowsById: {
@@ -3859,12 +3859,12 @@ export interface components {
             readonly anchor: components["schemas"]["DocumentSemanticAnchor"];
             /** @enum {string} */
             readonly kind: "insert_body";
-            readonly nested_markdown: string;
+            readonly markdown: string;
         } | {
             readonly expected_etag: string;
             /** @enum {string} */
             readonly kind: "replace_body";
-            readonly nested_markdown: string;
+            readonly markdown: string;
         } | {
             readonly anchor: components["schemas"]["DocumentSemanticAnchor"];
             readonly block: components["schemas"]["DocumentSemanticBlockDraft"];
@@ -4038,7 +4038,7 @@ export interface components {
             readonly page_key?: string | null;
         };
         readonly LibraryAgentCreatePageDraft: {
-            readonly nfm: string;
+            readonly markdown: string;
             readonly title_markdown: string;
             readonly values: readonly components["schemas"]["LibraryPageCopyValue"][];
         };
@@ -4676,9 +4676,9 @@ export interface components {
             readonly sourceBlockId: string;
         } | {
             /** @enum {string} */
-            readonly kind: "thread";
+            readonly kind: "session";
             readonly sourceBlockId: string;
-            readonly targetThreadId: string;
+            readonly targetSessionId: string;
         };
         /** @enum {string} */
         readonly LibraryDocumentRevisionKind: "automatic" | "manual" | "operation" | "restore" | "safety";
@@ -5030,7 +5030,7 @@ export interface components {
         };
         readonly LibraryPageContent: {
             readonly asset_refs: readonly components["schemas"]["LibraryContentAssetReference"][];
-            readonly body_nfm: string;
+            readonly body_markdown: string;
             /** Format: int64 */
             readonly commit_seq: number;
             /** Format: int64 */
@@ -5161,7 +5161,7 @@ export interface components {
         readonly LibraryPageDraftProjection: {
             readonly body_blocks: readonly components["schemas"]["LibraryPageDraftBlock"][];
             readonly body_etag: string;
-            readonly body_nested_markdown: string;
+            readonly body_markdown: string;
             /** Format: int64 */
             readonly commit_head: number;
             /** Format: int64 */
@@ -5182,7 +5182,7 @@ export interface components {
             /** Format: int32 */
             readonly version: number;
         };
-        /** @description UTF-8 byte interval in the draft's exact Nested Markdown body. */
+        /** @description UTF-8 byte interval in the draft's exact Nodex Markdown body. */
         readonly LibraryPageDraftSpan: {
             readonly end: number;
             readonly start: number;
@@ -5472,8 +5472,8 @@ export interface components {
             readonly is_all_day: boolean;
             /** @enum {string} */
             readonly kind: "create_page";
+            readonly markdown: string;
             readonly new_tag_options: readonly components["schemas"]["LibraryPageLifecycleTagOption"][];
-            readonly nfm: string;
             readonly page_id: string;
             readonly priority?: string | null;
             readonly recurrence?: unknown;
@@ -5725,7 +5725,7 @@ export interface components {
             readonly version: number;
         };
         /** @enum {string} */
-        readonly LibraryPageProjectionFileKind: "body_nested_markdown" | "meta_yaml";
+        readonly LibraryPageProjectionFileKind: "body_markdown" | "meta_yaml";
         readonly LibraryPageProjectionFileValidators: {
             readonly body_etag?: string | null;
             readonly move_etag?: string | null;
@@ -6654,13 +6654,13 @@ export interface components {
                 readonly title: string;
             } | {
                 /** @enum {string} */
-                readonly kind: "create_pages_from_nfm";
+                readonly kind: "create_pages_from_text";
                 readonly request: components["schemas"]["LibraryAgentCreatePagesRequest"];
             } | {
                 readonly destination: components["schemas"]["LibraryPageWriteDestination"];
                 /** @enum {string} */
-                readonly kind: "create_page_from_nfm";
-                readonly nfm: string;
+                readonly kind: "create_page_from_text";
+                readonly markdown: string;
                 readonly title_markdown: string;
             } | {
                 readonly data_source_id: string;
@@ -6867,8 +6867,8 @@ export interface components {
                 /** Format: int64 */
                 readonly generation: number;
                 /** @enum {string} */
-                readonly kind: "replace_from_nfm";
-                readonly nfm: string;
+                readonly kind: "replace_from_markdown";
+                readonly markdown: string;
                 readonly rich_title?: readonly unknown[] | null;
             } | {
                 readonly authorization: components["schemas"]["AgentPreparedExecution"];
@@ -10274,7 +10274,7 @@ export interface components {
         };
         readonly ProjectWorkspaceStarterPage: {
             readonly document_id: string;
-            readonly nfm: string;
+            readonly markdown: string;
             readonly page_id: string;
             readonly title_markdown: string;
         };
@@ -10760,7 +10760,7 @@ export interface components {
             };
             /** @enum {string} */
             readonly kind: "document";
-            readonly nfm: string;
+            readonly markdown: string;
             readonly rich_title: unknown;
             readonly title: string;
         } | {

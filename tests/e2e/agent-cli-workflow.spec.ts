@@ -123,7 +123,7 @@ test("direct Agent commands update the same Page, properties, and attachments sh
       const original = await run([
         "sql",
         "query",
-        "SELECT nested_markdown FROM page_documents WHERE page_id=:id",
+        "SELECT markdown FROM page_documents WHERE page_id=:id",
         "--param",
         `id=${JSON.stringify(pageId)}`,
         "--raw",
@@ -212,13 +212,13 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         bindings,
       );
       expect(count).toEqual([{ matched_count: 1 }]);
-      const documents = await sql<{ page_id: string; nested_markdown: string; body_etag: string }>(
-        "SELECT t.page_id,d.nested_markdown,d.body_etag FROM tasks t JOIN page_documents d USING(page_id) ORDER BY t.page_id",
+      const documents = await sql<{ page_id: string; markdown: string; body_etag: string }>(
+        "SELECT t.page_id,d.markdown,d.body_etag FROM tasks t JOIN page_documents d USING(page_id) ORDER BY t.page_id",
         {},
         bindings,
       );
       expect(documents).toHaveLength(1);
-      expect(documents[0]?.nested_markdown).toContain("Release date: Monday.");
+      expect(documents[0]?.markdown).toContain("Release date: Monday.");
       expect(documents[0]?.body_etag).toBeTruthy();
 
       const script = JSON.stringify({

@@ -432,7 +432,7 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
                 "page_id": "page:getting-started",
                 "document_id": "document:getting-started",
                 "title_markdown": "Welcome to Nodex",
-                "nfm": "Welcome to Nodex."
+                "markdown": "Welcome to Nodex."
             }
         }
     })
@@ -1270,7 +1270,7 @@ fn workspace_contract_mismatch_is_replaced_before_a_projectless_session_request(
                 "page_id": "page:getting-started",
                 "document_id": "document:getting-started",
                 "title_markdown": "Welcome to Nodex",
-                "nfm": "Welcome to Nodex."
+                "markdown": "Welcome to Nodex."
             }
         }
     })

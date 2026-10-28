@@ -2316,7 +2316,7 @@ fn create_project_records(
                     page_id: &request.page.page_id,
                     document_id: &request.page.document_id,
                     title_markdown: &request.page.title_markdown,
-                    nfm: &request.page.nfm,
+                    markdown: &request.page.markdown,
                     destination: &destination,
                     now: &now,
                 },
@@ -2786,7 +2786,7 @@ mod tests {
             page_id: format!("page:getting-started:{seed}"),
             document_id: format!("document:getting-started:{seed}"),
             title_markdown: "Welcome to Nodex".to_owned(),
-            nfm: "Welcome to **Nodex**.".to_owned(),
+            markdown: "Welcome to **Nodex**.".to_owned(),
         }
     }
 
@@ -3033,7 +3033,7 @@ mod tests {
     fn invalid_starter_page_rolls_back_the_entire_initial_project_aggregate() {
         let (_directory, kernel, module) = empty_module();
         let mut invalid_starter_page = starter_page("invalid");
-        invalid_starter_page.nfm = "<page uuid=\"nested-page\" />".to_owned();
+        invalid_starter_page.markdown = "<page uuid=\"nested-page\" />".to_owned();
 
         let error = module
             .apply(

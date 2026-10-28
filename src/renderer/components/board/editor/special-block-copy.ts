@@ -1,15 +1,15 @@
 import { resolveManagedAssetPath } from "../../../lib/assets";
-import { blockNoteToNfm, serializeClipboardText } from "../../../lib/nfm";
-import { decodeXmlCharacterReferences } from "../../../../shared/xml-character-references";
+import { writePortableMarkdown, type MarkdownBlock } from "../../../../shared/nodex-markdown";
 import { TextSelection } from "@tiptap/pm/state";
 import { attachNodexClipboardFragment } from "../../../../shared/clipboard-paste";
 import {
   clipboardFileReferenceSources,
   replaceClipboardFileReferences,
 } from "../../../../shared/clipboard-file-references";
-import { formatClipboardMarkdownDestination } from "../../../../shared/clipboard-markdown";
-const NFM_IMAGE_LINE_PATTERN = /^([ \t]*)<image(?:\s+([^>]*))?>([\s\S]*?)<\/image>$/;
-const NFM_IMAGE_SOURCE_ATTRIBUTE_PATTERN = /\bsource="([^"]*)"/;
+
+/** A copy's plain text is the Markdown of what was copied, readable wherever it is pasted. */
+const portableMarkdown = (blocks: readonly MarkdownBlock[]): string =>
+  writePortableMarkdown(blocks).markdown;
 
 type ClipboardItemCtor = typeof ClipboardItem;
 
@@ -108,50 +108,6 @@ async function resolveFileReferenceReplacements(
   return replacements;
 }
 
-function escapeMarkdownImageAltText(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
-}
-
-function toMarkdownImageDestination(source: string): string {
-  const normalized = source.trim();
-  if (normalized.length === 0) return "";
-
-  return formatClipboardMarkdownDestination(normalized);
-}
-
-function resolveMarkdownImageAltText(caption: string): string {
-  const normalizedCaption = caption.replace(/\s+/g, " ").trim();
-  if (normalizedCaption.length > 0) return normalizedCaption;
-
-  return "image";
-}
-
-function convertNfmImageLineToMarkdown(line: string): string {
-  const match = NFM_IMAGE_LINE_PATTERN.exec(line);
-  if (!match) return line;
-
-  const indentation = match[1] ?? "";
-  const attributes = match[2] ?? "";
-  const caption = match[3] ?? "";
-
-  const sourceMatch = NFM_IMAGE_SOURCE_ATTRIBUTE_PATTERN.exec(attributes);
-  if (!sourceMatch) return line;
-
-  const source = decodeXmlCharacterReferences(sourceMatch[1] ?? "").trim();
-  if (source.length === 0) return line;
-
-  const destination = toMarkdownImageDestination(source);
-  if (destination.length === 0) return line;
-
-  const altText = escapeMarkdownImageAltText(resolveMarkdownImageAltText(caption));
-  return `${indentation}![${altText}](${destination})`;
-}
-
-function convertNfmImageTagsToMarkdown(value: string): string {
-  if (!value.includes("<image")) return value;
-  return value.split("\n").map(convertNfmImageLineToMarkdown).join("\n");
-}
-
 export async function rewriteFileReferences(
   value: string,
   resolveSource: (source: string) => Promise<string | null>,
@@ -175,7 +131,7 @@ export function preparePortableCopiedSelectionPayload(
   return {
     clipboardHTML: payload.clipboardHTML,
     externalHTML: attachNodexClipboardFragment(payload.externalHTML, payload.clipboardHTML),
-    structuredText: convertNfmImageTagsToMarkdown(payload.structuredText),
+    structuredText: payload.structuredText,
   };
 }
 
@@ -471,7 +427,7 @@ function buildSelectionTree(
 
 function serializeSelectionToStructuredPlainText(selectedBlocks: SelectionBlockLike[]): string {
   if (selectedBlocks.length === 0) return "";
-  return serializeClipboardText(blockNoteToNfm(selectedBlocks));
+  return portableMarkdown(selectedBlocks as MarkdownBlock[]);
 }
 
 function extractInlineSelectionText(content: unknown[] | undefined): string {
@@ -540,12 +496,13 @@ function serializeStructuredPlainTextFromHtml(
   const parsedBlocks = editor.tryParseHTMLToBlocks(html);
   if (!Array.isArray(parsedBlocks) || parsedBlocks.length === 0) return "";
 
-  return serializeClipboardText(blockNoteToNfm(parsedBlocks));
+  return portableMarkdown(parsedBlocks as MarkdownBlock[]);
 }
 
 function scoreStructuredPlainText(value: string): number {
   const lines = value.split("\n");
-  const indentationMarkers = (value.match(/\t/g) ?? []).length;
+  // Nesting is written as indentation, so indented lines are structure the copy kept.
+  const indentationMarkers = lines.filter((line) => /^[ \t]+\S/u.test(line)).length;
   const blankLines = lines.filter((line) => line.trim().length === 0).length;
   return indentationMarkers * 100 + blankLines * 10 + lines.length;
 }

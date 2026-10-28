@@ -11,92 +11,125 @@ import {
   prepareNativeNodexAgentPageUpdate,
 } from "./native-nodex-agent-page-update";
 
-test("guarded Page patches preserve their observed body through native preparation and commit", async () => {
-  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
-    const { runtime, manifest } = context;
-    const projectId = manifest.projectId;
-    const pageId = manifest.pageIdsByKey.meeting;
-    const client = runtime.clientForProject(projectId);
-    const threadId = "thread:guarded-page-patch";
-    const turnId = "turn:guarded-page-patch";
-    await context.seed.replaceOwnedDocument({
-      projectId,
-      pageId,
-      nfm: "Release date: Friday.\n\n- Keep **rollback** checklist.\n\t- Verify backups.",
-      operationId: createUuidV7(),
-      mutationId: createUuidV7(),
-      clientSessionId: "guarded-patch-seed",
-    });
-    await client.workspaceApply({
-      operationId: createUuidV7(),
-      intent: {
-        kind: "upsert_thread",
-        thread_id: threadId,
-        patch: {
-          project_id: projectId,
-          thread_name: "Guarded Page patch",
-          created_at: 1,
-          updated_at: 1,
-          linked_at: new Date().toISOString(),
-        },
-      },
-    });
-    await client.workspaceApply({
-      operationId: createUuidV7(),
-      intent: {
-        kind: "admit_turn_authority",
+type CoreScenarioContext = Parameters<Parameters<typeof withCoreScenario>[1]>[0];
 
-        thread_id: threadId,
-        turn_id: turnId,
-        root_thread_id: threadId,
-        actor_project_id: projectId,
+/** The scenario's meeting Page with the given body, and an admitted Agent Turn that may edit it. */
+async function agentPage(context: CoreScenarioContext, key: string, markdown: string) {
+  const { runtime, manifest } = context;
+  const projectId = manifest.projectId;
+  const pageId = manifest.pageIdsByKey.meeting;
+  const client = runtime.clientForProject(projectId);
+  const threadId = `thread:${key}`;
+  const turnId = `turn:${key}`;
+  await context.seed.replaceOwnedDocument({
+    projectId,
+    pageId,
+    markdown,
+    operationId: createUuidV7(),
+    mutationId: createUuidV7(),
+    clientSessionId: `${key}-seed`,
+  });
+  await client.workspaceApply({
+    operationId: createUuidV7(),
+    intent: {
+      kind: "upsert_thread",
+      thread_id: threadId,
+      patch: {
+        project_id: projectId,
+        thread_name: key,
+        created_at: 1,
+        updated_at: 1,
+        linked_at: new Date().toISOString(),
       },
-    });
-    const frozen = await client.workspaceRead({
-      kind: "turn_authority",
+    },
+  });
+  await client.workspaceApply({
+    operationId: createUuidV7(),
+    intent: {
+      kind: "admit_turn_authority",
+
       thread_id: threadId,
       turn_id: turnId,
       root_thread_id: threadId,
       actor_project_id: projectId,
+    },
+  });
+  const frozen = await client.workspaceRead({
+    kind: "turn_authority",
+    thread_id: threadId,
+    turn_id: turnId,
+    root_thread_id: threadId,
+    actor_project_id: projectId,
+  });
+  if (frozen.value.kind !== "turn_authority" || !frozen.value.resolution.admitted_at_ms) {
+    throw new Error("Expected persisted Turn authority");
+  }
+  const authority: NodexAgentTurnContext = {
+    threadId,
+    turnId,
+    rootThreadId: threadId,
+    actorProjectId: projectId,
+    libraryId: runtime.identity.libraryId,
+    storeEpoch: runtime.identity.storeEpoch,
+    admittedAtMs: frozen.value.resolution.admitted_at_ms,
+  };
+  const content = await runtime.rootClient.libraryRead({ kind: "page_content", page_id: pageId });
+  if (content.value.kind !== "page_content") throw new Error("Expected Page content");
+  const documentId = content.value.value.document_id;
+  const read = async () => {
+    const result = await client.documentRead(`nodex-agent:${threadId}`, {
+      kind: "agent_semantic_snapshot",
+      store_epoch: authority.storeEpoch,
+      authorization: toCoreAgentExecutionAuthorization(
+        runtime.identity.profileId,
+        authority,
+        createUuidV7(),
+      ),
+      document_id: documentId,
+      target_block_id: pageId,
+      prepare_title: true,
+      prepare_body: true,
+      block_guards: [],
     });
-    if (frozen.value.kind !== "turn_authority" || !frozen.value.resolution.admitted_at_ms) {
-      throw new Error("Expected persisted Turn authority");
+    if (result.value.kind !== "agent_semantic_snapshot") {
+      throw new Error("Expected semantic Page snapshot");
     }
-    const authority: NodexAgentTurnContext = {
+    const snapshot = result.value.snapshot;
+    if (!snapshot.body_etag || !snapshot.title_etag) throw new Error("Expected Page ETags");
+    expect(snapshot.has_more).toBe(false);
+    return { ...snapshot, body_etag: snapshot.body_etag, title_etag: snapshot.title_etag };
+  };
+  const update = async (body: unknown) => {
+    const prepared = await prepareNativeNodexAgentPageUpdate(runtime, {
+      projectId,
       threadId,
-      turnId,
-      rootThreadId: threadId,
-      actorProjectId: projectId,
-      libraryId: runtime.identity.libraryId,
-      storeEpoch: runtime.identity.storeEpoch,
-      admittedAtMs: frozen.value.resolution.admitted_at_ms,
-    };
-    const content = await runtime.rootClient.libraryRead({ kind: "page_content", page_id: pageId });
-    if (content.value.kind !== "page_content") throw new Error("Expected Page content");
-    const documentId = content.value.value.document_id;
-    const read = async () => {
-      const result = await client.documentRead(`nodex-agent:${threadId}`, {
-        kind: "agent_semantic_snapshot",
-        store_epoch: authority.storeEpoch,
-        authorization: toCoreAgentExecutionAuthorization(
-          runtime.identity.profileId,
-          authority,
-          createUuidV7(),
-        ),
-        document_id: documentId,
-        target_block_id: pageId,
-        prepare_title: true,
-        prepare_body: true,
-        block_guards: [],
-      });
-      if (result.value.kind !== "agent_semantic_snapshot") {
-        throw new Error("Expected semantic Page snapshot");
-      }
-      const snapshot = result.value.snapshot;
-      if (!snapshot.body_etag || !snapshot.title_etag) throw new Error("Expected Page ETags");
-      expect(snapshot.has_more).toBe(false);
-      return { ...snapshot, body_etag: snapshot.body_etag, title_etag: snapshot.title_etag };
-    };
+      callId: createUuidV7(),
+      authority,
+      tool: "update_page",
+      input: UpdatePageV3InputSchema.parse({ pageId, body }),
+    });
+    if (
+      prepared.transition.kind !== "retain" ||
+      !prepared.result.result.ok ||
+      prepared.result.result.value.kind !== "prepared"
+    )
+      throw new Error(`Expected Page preparation: ${JSON.stringify(prepared.result)}`);
+    return applyNativeNodexAgentPageUpdate(
+      runtime,
+      prepared.transition.pending,
+      prepared.result.result.value.mutation,
+    );
+  };
+  return { runtime, projectId, pageId, documentId, authority, threadId, read, update };
+}
+
+test("guarded Page patches preserve their observed body through native preparation and commit", async () => {
+  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+    const { runtime, projectId, pageId, documentId, authority, threadId, read } = await agentPage(
+      context,
+      "guarded-page-patch",
+      "Release date: Friday.\n\n- Keep **rollback** checklist.\n  - Verify backups.",
+    );
     const writer = await CoreClient.connect({
       nodexHome: context.profile.nodexHome,
       clientKind: "native_cli",
@@ -199,8 +232,8 @@ test("guarded Page patches preserve their observed body through native preparati
     const after = await read();
     expect(after.title).toBe("Concurrent title");
     expect(after.rich_title).toEqual(titleChanged.rich_title);
-    expect(after.nested_markdown).toBe(
-      beforeRacingApply.nested_markdown.replace("Release date: Friday.", "Release date: Monday."),
+    expect(after.markdown).toBe(
+      beforeRacingApply.markdown.replace("Release date: Friday.", "Release date: Monday."),
     );
     const target = beforeRacingApply.blocks.find((block) =>
       JSON.stringify(block.content).includes("Release date: Friday."),
@@ -220,5 +253,29 @@ test("guarded Page patches preserve their observed body through native preparati
       deletedBlockIds: [],
       updatedBlockIds: [target.block_id],
     });
+  });
+});
+
+test("an Agent inserts and replaces Page content with Nodex Markdown", async () => {
+  await withCoreScenario({ scenarioId: "agent/cli-workflow" }, async (context) => {
+    const { read, update } = await agentPage(context, "markdown-page-write", "Existing paragraph");
+
+    const inserted = await update({
+      kind: "insert",
+      at: { kind: "end" },
+      markdown: "- Plan\n  - nested\n\n> [!NOTE]\n> Rollback is a flag flip.",
+    });
+    expect(inserted.result, JSON.stringify(inserted.result)).toMatchObject({ ok: true });
+    expect((await read()).markdown).toBe(
+      "Existing paragraph\n\n- Plan\n  - nested\n\n> [!NOTE]\n> Rollback is a flag flip.",
+    );
+
+    const replaced = await update({
+      kind: "replace",
+      ifMatch: (await read()).body_etag,
+      markdown: "## Steps\n\n1. Export\n2. Import\n\nCosts $5.",
+    });
+    expect(replaced.result, JSON.stringify(replaced.result)).toMatchObject({ ok: true });
+    expect((await read()).markdown).toBe("## Steps\n\n1. Export\n2. Import\n\nCosts $5.");
   });
 });

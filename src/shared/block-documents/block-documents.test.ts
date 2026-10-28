@@ -137,7 +137,7 @@ describe("Card block document envelope", () => {
     const inspection = inspectRegisteredOwnedBlockDocument(envelope.document, {
       ownerType: "page",
       schemaKey: "nodex.page",
-      schemaVersion: 3,
+      schemaVersion: 4,
     });
 
     expect(inspection.materialization).toMatchObject({
@@ -205,9 +205,9 @@ describe("registered document-bearing Block envelopes", () => {
         .join(","),
     ).toBe(
       [
-        "page/nodex.page@3:block_tree/yjs",
-        "reusable_template_source/nodex.reusable-template@2:block_tree/yjs",
-        "synced_block_source/nodex.synced-block@2:block_tree/yjs",
+        "page/nodex.page@4:block_tree/yjs",
+        "reusable_template_source/nodex.reusable-template@3:block_tree/yjs",
+        "synced_block_source/nodex.synced-block@3:block_tree/yjs",
       ].join(","),
     );
   });

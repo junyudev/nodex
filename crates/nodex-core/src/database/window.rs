@@ -2484,9 +2484,9 @@ pub(super) fn row_detail(
     let view = resolve_view(connection, library_id, view_id)?;
     let summary = summary_by_id(connection, &view, page_id)?
         .ok_or_else(|| not_found("Database row is unavailable"))?;
-    let body_nfm = connection
+    let body_markdown = connection
         .query_row(
-            "SELECT materialization.nfm FROM pages page \
+            "SELECT materialization.markdown FROM pages page \
              JOIN documents document ON document.id = page.document_id \
              JOIN document_materializations materialization \
                ON materialization.document_id = document.id \
@@ -2499,7 +2499,10 @@ pub(super) fn row_detail(
         )
         .optional()?
         .ok_or_else(|| corrupt("Database row has no exact-head Document projection"))?;
-    Ok(DatabaseRowDetail { summary, body_nfm })
+    Ok(DatabaseRowDetail {
+        summary,
+        body_markdown,
+    })
 }
 
 fn resolve_view(

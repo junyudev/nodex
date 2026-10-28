@@ -132,13 +132,11 @@ impl QueryContext<'_> {
                 commit_head: self.commit_head,
                 requesting_project_id: self.project_id(),
                 page_id: id,
-                kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                kind: LibraryPageProjectionFileKind::BodyMarkdown,
                 prepare: None,
             },
         )?;
-        Ok(
-            json!({"page_id":id,"nested_markdown":page.content,"body_etag":page.validators.body_etag}),
-        )
+        Ok(json!({"page_id":id,"markdown":page.content,"body_etag":page.validators.body_etag}))
     }
 
     pub(crate) fn search(&self, query: &str, k: u32) -> Result<Vec<Value>, StoreError> {

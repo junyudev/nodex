@@ -838,16 +838,16 @@ describe("workbench session shell / library-shell-navigation", () => {
     ]);
   });
 
-  test("page-stage thread sections durably relate their target Chat before sending", async () => {
+  test("page-stage Page prompts durably relate their target Chat before sending", async () => {
     const session = makeAttachedSession({
-      id: "session:alpha:card-thread-section",
-      threadId: "thread-section-target",
+      id: "session:alpha:card-page-prompt",
+      threadId: "page-prompt-target",
       thread: null,
-      executionRef: { runtimeId: "runtime:test", threadId: "thread-section-target" },
+      executionRef: { runtimeId: "runtime:test", threadId: "page-prompt-target" },
       tabs: [
         {
           id: "card-tab",
-          sessionId: "session:alpha:card-thread-section",
+          sessionId: "session:alpha:card-page-prompt",
           projectId: "alpha",
           kind: "page_stage",
           title: "Card One",
@@ -881,7 +881,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     await act(async () => {
       await sendSection({
         projectId: "alpha",
-        threadId: "thread-section-target",
+        threadId: "page-prompt-target",
         prompt: "Run this section",
         promptInput: { text: "Run this section" },
       });
@@ -894,12 +894,12 @@ describe("workbench session shell / library-shell-navigation", () => {
     expect(sendIndex).toBeGreaterThan(linkIndex);
     expect(invokeCalls[linkIndex]).toEqual([
       "page-chats:link",
-      "session:alpha:card-thread-section",
+      "session:alpha:card-page-prompt",
       { pageAccessProjectId: "alpha", pageId: "card-1" },
     ]);
     expect(invokeCalls[sendIndex]![1]).toMatchObject({
-      sessionId: "session:alpha:card-thread-section",
-      threadId: "thread-section-target",
+      sessionId: "session:alpha:card-page-prompt",
+      threadId: "page-prompt-target",
       message: { text: "Run this section" },
     });
     expect(startTurnCalls).toHaveLength(0);

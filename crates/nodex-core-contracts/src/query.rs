@@ -5,7 +5,7 @@ use crate::sql::{SqlQuery, SqlResult, SqlSchema, SqlScope};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-pub const QUERY_CONTRACT_VERSION: u32 = 4;
+pub const QUERY_CONTRACT_VERSION: u32 = 5;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]

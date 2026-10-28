@@ -80,8 +80,8 @@ interface PageStageDescriptionEditorProps {
   readonly sessionId?: string | null;
   readonly sessionThread: PageStageProps["sessionThread"];
   readonly canStartThreadInSession: PageStageProps["canStartThreadInSession"];
-  readonly relatedChats: PageStageProps["relatedChats"];
   readonly onOpenCodexThread: PageStageProps["onOpenCodexThread"];
+  readonly onOpenSession: PageStageProps["onOpenRelatedChat"];
   readonly onOpenPage: PageStageProps["onOpenPage"];
   readonly onOpenDatabase: PageStageProps["onOpenDatabase"];
   readonly onOpenCanvas: PageStageProps["onOpenCanvas"];
@@ -103,7 +103,7 @@ const useLivePageDocumentNfm = (document: Y.Doc): string => {
     },
     [document],
   );
-  const getSnapshot = useCallback(() => materializePageDocument(document).nfm, [document]);
+  const getSnapshot = useCallback(() => materializePageDocument(document).markdown, [document]);
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 };
 
@@ -126,8 +126,8 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   sessionId,
   sessionThread,
   canStartThreadInSession,
-  relatedChats,
   onOpenCodexThread,
+  onOpenSession,
   onOpenPage,
   onOpenDatabase,
   onOpenCanvas,
@@ -234,21 +234,6 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
     );
   }
 
-  const linkedCodexThreads = relatedChats?.flatMap((chat) => {
-    if (!chat.threadId) return [];
-    return [
-      {
-        threadId: chat.threadId,
-        title: chat.displayTitle,
-        preview: chat.threadPreview || undefined,
-        statusType: chat.threadStatus?.statusType ?? "idle",
-        statusActiveFlags: chat.threadStatus?.activeFlags ?? [],
-        archived: chat.threadArchived,
-        updatedAt: chat.conversationRecencyAt ?? Date.parse(chat.linkedAt),
-      },
-    ];
-  });
-
   return (
     <NfmEditor
       contentRoutingContext={contentRoutingContext}
@@ -270,8 +255,8 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
       sessionId={sessionId}
       sessionThread={sessionThread}
       canStartThreadInSession={canStartThreadInSession}
-      linkedCodexThreads={linkedCodexThreads}
       onOpenCodexThread={onOpenCodexThread}
+      onOpenSession={onOpenSession}
       onOpenPage={onOpenPage}
       onOpenDatabase={onOpenDatabase}
       onOpenCanvas={onOpenCanvas}
@@ -380,10 +365,10 @@ export function PageStage(props: PageStageProps) {
     void (async () => {
       await persistDocument();
       const runtime = documentRuntimeRef.current;
-      const nfm = runtime ? materializePageDocument(runtime.document).nfm : "";
+      const markdown = runtime ? materializePageDocument(runtime.document).markdown : "";
       onToggleHistoryPanel?.({
         title: controller.title,
-        nfm,
+        markdown,
       });
     })().catch(() => {
       toast.danger("Couldn’t prepare Page history");
@@ -429,8 +414,8 @@ export function PageStage(props: PageStageProps) {
           sessionId={props.sessionId}
           sessionThread={props.sessionThread}
           canStartThreadInSession={props.canStartThreadInSession}
-          relatedChats={props.relatedChats}
           onOpenCodexThread={props.onOpenCodexThread}
+          onOpenSession={props.onOpenRelatedChat}
           onOpenPage={props.onOpenPage}
           onOpenDatabase={props.onOpenDatabase}
           onOpenCanvas={props.onOpenCanvas}

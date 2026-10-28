@@ -14,8 +14,8 @@ import {
   DatabaseDestinationViewV3Schema,
   DatabaseValueDraftV3Schema,
   InlineMarkdownTitleSchema,
-  NestedMarkdownFragmentSchema,
-  NestedMarkdownSchema,
+  MarkdownFragmentSchema,
+  MarkdownSchema,
   uniqueSelectorList,
 } from "./v3-base-schemas";
 
@@ -23,7 +23,7 @@ const BlockIdMapV3Schema = z.record(BlockIdSchema, BlockIdSchema);
 
 const CreatePageDraftV3Schema = z.strictObject({
   title: InlineMarkdownTitleSchema,
-  markdown: NestedMarkdownSchema.optional(),
+  markdown: MarkdownSchema.optional(),
   values: z.array(DatabaseValueDraftV3Schema).max(512).optional(),
 });
 
@@ -41,7 +41,7 @@ export const CreatePagesV3InputSchema = z
     if (bodyBytes > 2 * 1024 * 1024) {
       context.addIssue({
         code: "custom",
-        message: "The Page batch exceeds the 2 MiB aggregate Nested Markdown limit",
+        message: "The Page batch exceeds the 2 MiB aggregate body limit",
         path: ["pages"],
       });
     }
@@ -81,7 +81,7 @@ const ExactMarkdownPatchV3Schema = z.strictObject({
     .string()
     .min(1)
     .max(2 * 1024 * 1024),
-  newMarkdown: NestedMarkdownSchema,
+  newMarkdown: MarkdownSchema,
   expectedMatches: z.number().int().min(1).max(100).optional(),
 });
 
@@ -89,7 +89,7 @@ export const PageBodyUpdateV3Schema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("insert"),
     at: DocumentAnchorSchema,
-    markdown: NestedMarkdownFragmentSchema,
+    markdown: MarkdownFragmentSchema,
   }),
   z.strictObject({
     kind: z.literal("patch"),
@@ -98,7 +98,7 @@ export const PageBodyUpdateV3Schema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     kind: z.literal("replace"),
-    markdown: NestedMarkdownSchema,
+    markdown: MarkdownSchema,
     ifMatch: ETagSchema,
   }),
 ]);

@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { NodexAgentToolContract } from "./contracts";
+import type { NodexAgentToolContract } from "./tool-contract";
 import {
   FetchV3InputSchema,
   FetchV3OutputSchema,
@@ -33,7 +33,7 @@ function defineV3Contract<TInputSchema extends z.ZodType, TOutputSchema extends 
 export const NODEX_AGENT_V3_TOOL_CONTRACTS = {
   get_context: defineV3Contract({
     description:
-      "Read the current Project binding, access state, Database/View catalog, or the full opt-in Nested Markdown guide.",
+      "Read the current Project binding, access state, Database/View catalog, or the full opt-in Nodex Markdown guide.",
     inputSchema: GetContextV3InputSchema,
     outputSchema: GetContextV3OutputSchema,
     deferLoading: false,
@@ -49,7 +49,7 @@ export const NODEX_AGENT_V3_TOOL_CONTRACTS = {
   }),
   fetch: defineV3Contract({
     description:
-      "Fetch a known stable ID. Defaults to complete canonical Nested Markdown; request summary or blocks only for compact or identity-sensitive work.",
+      "Fetch a known stable ID. Defaults to complete canonical Nodex Markdown; request summary or blocks only for compact or identity-sensitive work.",
     inputSchema: FetchV3InputSchema,
     outputSchema: FetchV3OutputSchema,
     deferLoading: false,
@@ -73,7 +73,7 @@ export const NODEX_AGENT_V3_TOOL_CONTRACTS = {
   }),
   create_pages: defineV3Contract({
     description:
-      "Atomically create one to sixteen complete Pages at one shared Library, Page, or Data Source destination, with direct inline-Markdown titles and optional Nested Markdown bodies.",
+      "Atomically create one to sixteen complete Pages at one shared Library, Page, or Data Source destination, with direct inline-Markdown titles and optional Nodex Markdown bodies.",
     inputSchema: CreatePagesV3InputSchema,
     outputSchema: CreatePagesV3OutputSchema,
     deferLoading: true,
@@ -81,7 +81,7 @@ export const NODEX_AGENT_V3_TOOL_CONTRACTS = {
   }),
   update_page: defineV3Contract({
     description:
-      "Update one Page title or body. Insert or exact-patch Nested Markdown by default; whole replacement requires a body ETag.",
+      "Update one Page title or body. Insert or exact-patch Nodex Markdown by default; whole replacement requires a body ETag.",
     inputSchema: UpdatePageV3InputSchema,
     outputSchema: UpdatePageV3OutputSchema,
     deferLoading: true,

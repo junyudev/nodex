@@ -7,12 +7,15 @@ import {
 } from "@blocknote/core";
 import { createReactBlockSpec } from "@blocknote/react";
 import { useSyncExternalStore, type RefCallback } from "react";
-import { codeBlockViewState, type MermaidCodePreviewMode } from "@/lib/nfm/code-block-view-state";
+import {
+  codeBlockViewState,
+  type MermaidCodePreviewMode,
+} from "@/lib/editor-model/code-block-view-state";
 import { cn } from "@/lib/utils";
-import { getCodeBlockPlainText } from "@/lib/nfm/code-block-model";
+import { getCodeBlockPlainText } from "@/lib/editor-model/code-block-model";
 import { CodeBlockReadOnlyHeader } from "@/components/shared/code-block-readonly-header";
 import { useTheme } from "@/lib/use-theme";
-import { resolveCodeLanguage } from "../../../../shared/nfm/code-language-catalog";
+import { resolveCodeLanguage } from "../../../../shared/code-languages/code-language-catalog";
 import { MermaidCodePreview } from "./mermaid-code-preview";
 
 export interface NfmCodeBlockSpecOptions extends CodeBlockOptions {

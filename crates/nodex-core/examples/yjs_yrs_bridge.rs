@@ -12,11 +12,11 @@ use yrs::updates::encoder::Encode;
 use yrs::{Any, GetString, Out, ReadTxn, Text, Transact, Update, Xml, XmlFragment, XmlOut};
 
 use nodex_core::document::{
-    BlockDocumentSchema, DocumentBlockOperation, ExactNfmPatch, PortableSubtreeDocumentHead,
+    BlockDocumentSchema, DocumentBlockOperation, ExactMarkdownPatch, PortableSubtreeDocumentHead,
     PortableSubtreeTransferKind, PortableSubtreeTransferRequest, create_compatible_document,
     decode_block_document, encode_block_document, has_pending_dependencies,
     materialize_decoded_document, prepare_document_operation_update,
-    prepare_exact_nfm_patch_update, prepare_portable_subtree_transfer_updates,
+    prepare_exact_markdown_patch_update, prepare_portable_subtree_transfer_updates,
 };
 use nodex_core::domain::rich_text::RichTextItem;
 use nodex_core::domain::subtree::BlockSubtreeInsertionTarget;
@@ -234,7 +234,7 @@ fn roundtrip_matrix_block_tree(
     output_update: &Path,
 ) -> Result<DocumentSummary, Box<dyn std::error::Error>> {
     let source = load_matrix_fixture(fixture_root)?;
-    let decoded = decode_block_document(&source, BlockDocumentSchema::PageV3)?;
+    let decoded = decode_block_document(&source, BlockDocumentSchema::PageV4)?;
     let target = encode_block_document(
         "nodex-yjs-yrs-matrix-block-tree-roundtrip",
         decoded.schema,
@@ -396,7 +396,7 @@ fn apply_randomized_edit<T: Text>(
 fn randomized_product_summary(
     document: &yrs::Doc,
 ) -> Result<RandomizedProductSummary, Box<dyn std::error::Error>> {
-    let decoded = decode_block_document(document, BlockDocumentSchema::PageV3)?;
+    let decoded = decode_block_document(document, BlockDocumentSchema::PageV4)?;
     let materialization = serde_json::to_value(materialize_decoded_document(&decoded)?)?;
     let materialization = project_materialization(&materialization);
     let body = document.get_or_insert_xml_fragment("body");
@@ -472,7 +472,7 @@ fn run_semantic_operations(
     let corpus: SemanticOperationCorpus = serde_json::from_slice(&fs::read(corpus_path)?)?;
     let prepared = prepare_document_operation_update(
         "nodex-yjs-yrs-schema-matrix",
-        BlockDocumentSchema::PageV3,
+        BlockDocumentSchema::PageV4,
         &full_state,
         &state_vector,
         &corpus.operations,
@@ -490,13 +490,13 @@ fn run_semantic_operations(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct NfmPatchCorpus {
-    patches: Vec<ExactNfmPatch>,
+struct MarkdownPatchCorpus {
+    patches: Vec<ExactMarkdownPatch>,
     #[serde(default)]
     rich_title: Option<Vec<RichTextItem>>,
 }
 
-fn run_nfm_patch(
+fn run_markdown_patch(
     fixture_root: &Path,
     corpus_path: &Path,
     output_update: &Path,
@@ -506,18 +506,18 @@ fn run_nfm_patch(
     let full_state = transaction.encode_state_as_update_v1(&yrs::StateVector::default());
     let state_vector = transaction.state_vector().encode_v1();
     drop(transaction);
-    let corpus: NfmPatchCorpus = serde_json::from_slice(&fs::read(corpus_path)?)?;
+    let corpus: MarkdownPatchCorpus = serde_json::from_slice(&fs::read(corpus_path)?)?;
     let mut next_id = 0usize;
-    let prepared = prepare_exact_nfm_patch_update(
+    let prepared = prepare_exact_markdown_patch_update(
         "nodex-yjs-yrs-schema-matrix",
-        BlockDocumentSchema::PageV3,
+        BlockDocumentSchema::PageV4,
         &full_state,
         &state_vector,
         &corpus.patches,
         corpus.rich_title.as_deref(),
         &mut || {
             next_id += 1;
-            format!("bridge-nfm-{next_id}")
+            format!("bridge-markdown-{next_id}")
         },
     )?;
     fs::write(output_update, &prepared.update_v1)?;
@@ -541,7 +541,7 @@ fn run_subtree_copy(
     drop(transaction);
     let head = PortableSubtreeDocumentHead {
         document_id: "nodex-yjs-yrs-schema-matrix".to_owned(),
-        schema: BlockDocumentSchema::PageV3,
+        schema: BlockDocumentSchema::PageV4,
         full_state_v1: full_state,
         expected_state_vector_v1: state_vector,
     };
@@ -574,7 +574,7 @@ fn project_materialization(materialization: &serde_json::Value) -> serde_json::V
         "title": materialization["title"],
         "richTitle": materialization["richTitle"],
         "blockTree": materialization["blockTree"],
-        "nfm": materialization["nfm"],
+        "markdown": materialization["markdown"],
         "plainText": materialization["plainText"],
         "preview": materialization["preview"],
         "references": materialization["references"],
@@ -613,8 +613,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("{}", serde_json::to_string(&summary)?);
             return Ok(());
         }
-        [_, mode, fixture_root, corpus, output_update] if mode == "nfm-patch" => {
-            let summary = run_nfm_patch(
+        [_, mode, fixture_root, corpus, output_update] if mode == "markdown-patch" => {
+            let summary = run_markdown_patch(
                 Path::new(fixture_root),
                 Path::new(corpus),
                 Path::new(output_update),
@@ -650,7 +650,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {
             return Err(
-                "usage: yjs_yrs_bridge generate|matrix-generate|matrix-block-tree-roundtrip|subtree-copy <fixture-root> <output-update> | inspect|matrix-inspect <fixture-root> <rust-update> <third-update> | awareness <input-update> <output-update> | randomized <fixture-root> <corpus-json> <yjs-update-root> <rust-update-root> | semantic-operations|nfm-patch <fixture-root> <corpus-json> <output-update>"
+                "usage: yjs_yrs_bridge generate|matrix-generate|matrix-block-tree-roundtrip|subtree-copy <fixture-root> <output-update> | inspect|matrix-inspect <fixture-root> <rust-update> <third-update> | awareness <input-update> <output-update> | randomized <fixture-root> <corpus-json> <yjs-update-root> <rust-update-root> | semantic-operations|markdown-patch <fixture-root> <corpus-json> <output-update>"
                     .into(),
             );
         }

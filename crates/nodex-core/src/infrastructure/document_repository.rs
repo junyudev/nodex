@@ -93,7 +93,7 @@ pub struct DocumentMaterializationRow {
     pub title: String,
     pub rich_title: Value,
     pub rich_title_hash: String,
-    pub nfm: String,
+    pub markdown: String,
     pub plain_text: String,
     pub preview: String,
     pub block_tree: Value,
@@ -335,13 +335,17 @@ impl<'connection> DocumentReadRepository<'connection> {
         document_id: &str,
     ) -> Result<Option<DocumentMaterializationRow>, StoreError> {
         validate_identifier(document_id, "document_materializations.document_id")?;
+        let markdown_column =
+            super::super::document::schema_migration::stored_markdown_column(self.connection)?;
         let raw = self
             .connection
             .query_row(
-                "SELECT document_id, generation, projected_seq, schema_version, title, \
-                        title_rich_json, title_rich_hash, nfm, plain_text, preview, \
+                &format!(
+                    "SELECT document_id, generation, projected_seq, schema_version, title, \
+                        title_rich_json, title_rich_hash, {markdown_column}, plain_text, preview, \
                         block_tree_json, references_json, asset_refs_json, updated_at \
-                 FROM document_materializations WHERE document_id = ?1",
+                 FROM document_materializations WHERE document_id = ?1"
+                ),
                 [document_id],
                 |row| {
                     Ok(RawDocumentMaterialization {
@@ -352,7 +356,7 @@ impl<'connection> DocumentReadRepository<'connection> {
                         title: row.get(4)?,
                         rich_title_json: row.get(5)?,
                         rich_title_hash: row.get(6)?,
-                        nfm: row.get(7)?,
+                        markdown: row.get(7)?,
                         plain_text: row.get(8)?,
                         preview: row.get(9)?,
                         block_tree_json: row.get(10)?,
@@ -594,7 +598,7 @@ struct RawDocumentMaterialization {
     title: String,
     rich_title_json: String,
     rich_title_hash: String,
-    nfm: String,
+    markdown: String,
     plain_text: String,
     preview: String,
     block_tree_json: String,
@@ -630,7 +634,12 @@ impl TryFrom<RawDocumentMaterialization> for DocumentMaterializationRow {
             &raw.rich_title_hash,
             "document_materializations.title_rich_hash",
         )?;
-        validate_bounded_text(&raw.nfm, 0, MAX_TEXT_BYTES, "document_materializations.nfm")?;
+        validate_bounded_text(
+            &raw.markdown,
+            0,
+            MAX_TEXT_BYTES,
+            "document_materializations.markdown",
+        )?;
         validate_bounded_text(
             &raw.plain_text,
             0,
@@ -668,7 +677,7 @@ impl TryFrom<RawDocumentMaterialization> for DocumentMaterializationRow {
             title: raw.title,
             rich_title,
             rich_title_hash: raw.rich_title_hash,
-            nfm: raw.nfm,
+            markdown: raw.markdown,
             plain_text: raw.plain_text,
             preview: raw.preview,
             block_tree,
@@ -988,7 +997,7 @@ mod tests {
                 "INSERT INTO documents(\
                    id, library_id, generation, head_seq, schema_key, schema_version, state_vector, \
                    state_hash, readiness, authority, created_at, updated_at, sync_engine\
-                 ) VALUES ('document:1', 'library:1', 1, 1, 'nodex.page', 3, X'00', '', \
+                 ) VALUES ('document:1', 'library:1', 1, 1, 'nodex.page', 4, X'00', '', \
                    'ready', 'ydoc_primary', ?1, ?1, 'yjs')",
                 [NOW],
             )
@@ -1027,7 +1036,7 @@ mod tests {
             .execute(
                 "INSERT INTO document_materializations(\
                    document_id, generation, projected_seq, schema_version, title, title_rich_json, \
-                   title_rich_hash, nfm, plain_text, preview, block_tree_json, references_json, \
+                   title_rich_hash, markdown, plain_text, preview, block_tree_json, references_json, \
                    asset_refs_json, updated_at\
                  ) VALUES ('document:1', 1, 1, 2, '', '[]', ?1, '', '', '', '[]', '[]', '[]', ?2)",
                 params![HASH, NOW],

@@ -689,7 +689,7 @@ mod tests {
             .transact_mut()
             .apply_update(Update::decode_v1(&state).expect("matrix update"))
             .expect("matrix state");
-        decode_block_document(&document, BlockDocumentSchema::PageV3)
+        decode_block_document(&document, BlockDocumentSchema::PageV4)
             .expect("matrix document")
             .block_tree
     }
