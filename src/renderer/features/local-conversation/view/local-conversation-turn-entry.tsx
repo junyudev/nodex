@@ -1,5 +1,5 @@
 import { useCodexConversationValue } from "../local-conversation-store";
-import { memo, useMemo, type RefCallback } from "react";
+import { memo, useLayoutEffect, useMemo, type RefCallback } from "react";
 import type { CodexConversationChildMembership } from "../../../lib/types";
 import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
 import { selectTurnRenderModel } from "../projection/build-turn-render-model";
@@ -68,6 +68,7 @@ interface LocalConversationTurnEntryProps {
   planSidePanelState?: ThreadPlanSidePanelState | null;
   turnDiffHoverPreviewDisabled?: boolean;
   onRendered?: (turnId: string) => void;
+  onContentCommitted?: (turnKey: string) => void;
   latestTurnFollowContentRef?: RefCallback<HTMLDivElement>;
 }
 
@@ -98,6 +99,7 @@ function LocalConversationTurnEntryComponent({
   planSidePanelState,
   turnDiffHoverPreviewDisabled = false,
   onRendered,
+  onContentCommitted,
   latestTurnFollowContentRef,
 }: LocalConversationTurnEntryProps) {
   const entityKey = isNormalizedConversationTurnEntry(entry) ? entry.historyEntityKey : null;
@@ -181,6 +183,11 @@ function LocalConversationTurnEntryComponent({
       entry,
     ],
   );
+
+  useLayoutEffect(() => {
+    if (!turn) return;
+    onContentCommitted?.(entry.turnKey);
+  }, [entry.turnKey, onContentCommitted, turn]);
 
   if (!turn || !turnModel) return null;
   return (
@@ -350,5 +357,6 @@ export const LocalConversationTurnEntry = memo(
     left.planSidePanelState === right.planSidePanelState &&
     left.turnDiffHoverPreviewDisabled === right.turnDiffHoverPreviewDisabled &&
     left.onRendered === right.onRendered &&
+    left.onContentCommitted === right.onContentCommitted &&
     left.latestTurnFollowContentRef === right.latestTurnFollowContentRef,
 );

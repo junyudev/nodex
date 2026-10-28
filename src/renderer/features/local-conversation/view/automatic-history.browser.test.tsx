@@ -7,6 +7,9 @@ import type {
   AgentSnapshot,
   AgentTurnItem,
 } from "@nodex/agent-runtime/contracts";
+import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
+import { projectCodexTranscript } from "../../../../shared/codex-transcript-projection";
+import type { CodexCanonicalUserMessageItem } from "../../../../shared/codex-conversation-state/codex-conversation-state";
 import type {
   AgentRuntimeConversation,
   AgentRuntimeSessionEvent,
@@ -23,6 +26,7 @@ import {
 } from "../normalized-transcript-hooks";
 import { selectNormalizedConversationTurnEntries } from "../normalized-transcript-selectors";
 import { projectNormalizedTimelineEntries } from "../projection/normalized-timeline-entries";
+import { timelineOwnerFixture } from "../projection/normalized-timeline.test-fixtures";
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
 import {
   EnsureLocalConversationThreadScrollController,
@@ -250,8 +254,9 @@ function historyFixture(items: readonly AgentTurnItem[]) {
         await frames();
       });
     },
-    async stream(text: string, runId = "run:100") {
+    async stream(text: string, runId = "run:100", beforeCommit?: () => void) {
       await act(async () => {
+        beforeCommit?.();
         listener?.({
           type: "event",
           ...target,
@@ -272,11 +277,20 @@ function historyFixture(items: readonly AgentTurnItem[]) {
     },
   };
 }
-function mountHistory(fixture: ReturnType<typeof historyFixture>) {
+interface MountedHistoryFixture {
+  readonly owner: {
+    readonly readOwner: AgentRuntimeConversationOwner["readOwner"];
+    readonly resume: () => Promise<unknown>;
+    readonly dispose: () => void;
+    readonly loadHistoryBoundary?: AgentRuntimeConversationOwner["loadHistoryBoundary"];
+  };
+}
+
+function mountHistory(fixture: MountedHistoryFixture) {
   const store = createMaitaiStore();
   let controller: LocalConversationThreadScrollControllerValue | null = null;
   let ready = false;
-  function Thread({ source }: { source: ReturnType<typeof historyFixture> }) {
+  function Thread({ source }: { source: MountedHistoryFixture }) {
     const { owner, structure } = useCodexTranscriptStructure();
     const scroll = useLocalConversationThreadScrollController();
     useLayoutEffect(() => {
@@ -294,7 +308,7 @@ function mountHistory(fixture: ReturnType<typeof historyFixture>) {
           <LocalConversationVirtualizedTurnList
             entries={[...projected.entries]}
             historyRows={projected.historyRows ?? undefined}
-            conversationId={target.threadId}
+            conversationId={source.owner.readOwner.key.threadId}
             threadCwd="/workspace"
             editableTurnIds={new Set()}
             canForkFromTurn={false}
@@ -312,7 +326,7 @@ function mountHistory(fixture: ReturnType<typeof historyFixture>) {
       </div>
     );
   }
-  const renderTree = (source: ReturnType<typeof historyFixture>) => (
+  const renderTree = (source: MountedHistoryFixture) => (
     <MaitaiProvider store={store}>
       <LocalConversationTestQueryProvider>
         <NodexTooltipProvider>
@@ -339,7 +353,7 @@ function mountHistory(fixture: ReturnType<typeof historyFixture>) {
     ...view,
     scroll,
     viewport,
-    async replace(source: ReturnType<typeof historyFixture>) {
+    async replace(source: MountedHistoryFixture) {
       const release = source.owner.readOwner.subscribeStructure(() => {});
       try {
         await source.owner.resume();
@@ -376,6 +390,188 @@ function mountHistory(fixture: ReturnType<typeof historyFixture>) {
 }
 
 describe("automatic thread history in Chromium", () => {
+  test("keeps an unreported upward movement out of bottom following through subsequent growth", async () => {
+    const prompts = Array.from({ length: 12 }, (_, index): AgentTurnItem => ({
+      ...user(index + 40),
+      runId: "run",
+      inputIntent: "steer",
+    }));
+    const fixture = historyFixture([...prompts, { ...assistant("Same-Turn reply"), runId: "run" }]);
+    const view = mountHistory(fixture);
+    const delayScrollDelivery = (event: Event) => event.stopImmediatePropagation();
+    try {
+      await view.settle();
+      expect(view.scroll().getScrollMode()).toBe("stickToBottom");
+      expect(getThreadScrollDistanceFromBottomPx(view.viewport())).toBe(0);
+      const anchor = view.container.querySelector<HTMLElement>(
+        '[data-client-user-message-id="message:51"]',
+      )!;
+      const before = anchor.getBoundingClientRect().top;
+      expect(before).toBeGreaterThan(view.viewport().getBoundingClientRect().top);
+      expect(before).toBeLessThan(view.viewport().getBoundingClientRect().bottom);
+      await fixture.stream("A growing reply.\n\n".repeat(24), "run", () => {
+        view.viewport().addEventListener("scroll", delayScrollDelivery, { capture: true });
+        fireEvent.wheel(view.viewport(), { deltaY: -8 });
+        view.viewport().scrollTop -= 8;
+      });
+      expect(anchor.isConnected).toBe(true);
+      expect(Math.abs(anchor.getBoundingClientRect().top - before - 8)).toBeLessThanOrEqual(2);
+      expect(view.scroll().getScrollMode()).toBe("user");
+      view.viewport().removeEventListener("scroll", delayScrollDelivery, { capture: true });
+      await act(async () => {
+        fireEvent.scroll(view.viewport());
+        await Promise.resolve();
+      });
+      await fixture.stream("A growing reply.\n\n".repeat(48), "run");
+      expect(view.scroll().getScrollMode()).toBe("user");
+      expect(Math.abs(anchor.getBoundingClientRect().top - before - 8)).toBeLessThanOrEqual(2);
+    } finally {
+      view.viewport().removeEventListener("scroll", delayScrollDelivery, { capture: true });
+      view.dispose();
+    }
+  });
+
+  test("resumes following when an unreported downward movement reaches the bottom threshold", async () => {
+    const prompts = Array.from({ length: 12 }, (_, index): AgentTurnItem => ({
+      ...user(index + 40),
+      runId: "run",
+      inputIntent: "steer",
+    }));
+    const fixture = historyFixture([...prompts, { ...assistant("Same-Turn reply"), runId: "run" }]);
+    const view = mountHistory(fixture);
+    const delayScrollDelivery = (event: Event) => event.stopImmediatePropagation();
+    try {
+      await view.settle();
+      await act(async () => {
+        view.scroll().scrollToDistanceFromBottomPx(28, "instant", "user");
+        await frames();
+      });
+      expect(view.scroll().getScrollMode()).toBe("user");
+      expect(getThreadScrollDistanceFromBottomPx(view.viewport())).toBe(28);
+      await fixture.stream("A growing reply.\n\n".repeat(24), "run", () => {
+        view.viewport().addEventListener("scroll", delayScrollDelivery, { capture: true });
+        fireEvent.wheel(view.viewport(), { deltaY: 8 });
+        view.viewport().scrollTop += 8;
+      });
+      expect(view.scroll().getScrollMode()).toBe("stickToBottom");
+      expect(getThreadScrollDistanceFromBottomPx(view.viewport())).toBe(0);
+      view.viewport().removeEventListener("scroll", delayScrollDelivery, { capture: true });
+      await act(async () => {
+        fireEvent.scroll(view.viewport());
+        await Promise.resolve();
+      });
+      await fixture.stream("A growing reply.\n\n".repeat(48), "run");
+      expect(view.scroll().getScrollMode()).toBe("stickToBottom");
+      expect(getThreadScrollDistanceFromBottomPx(view.viewport())).toBe(0);
+    } finally {
+      view.viewport().removeEventListener("scroll", delayScrollDelivery, { capture: true });
+      view.dispose();
+    }
+  });
+
+  test("preserves a native user message without client correlation through same-Turn prepend and growth", async () => {
+    const native = (first: number, reply: string, swapResidentMessages = false) => {
+      const items: ThreadItem[] = Array.from(
+        { length: 52 - first },
+        (_, index): CodexCanonicalUserMessageItem => ({
+          type: "userMessage",
+          id: `native-user:${first + index}`,
+          clientId: null,
+          ...(first + index === 38 ? {} : { inputIntent: "steer" }),
+          content: [{ type: "text", text: user(first + index).text, text_elements: [] }],
+        }),
+      );
+      if (swapResidentMessages) {
+        const firstIndex = items.findIndex((item) => item.id === "native-user:41");
+        const secondIndex = items.findIndex((item) => item.id === "native-user:42");
+        const firstItem = items[firstIndex]!;
+        items[firstIndex] = items[secondIndex]!;
+        items[secondIndex] = firstItem;
+      }
+      items.push({
+        type: "agentMessage",
+        id: "native-reply",
+        text: reply,
+        phase: "final_answer",
+        memoryCitation: null,
+        delivery: null,
+        questions: null,
+      });
+      return timelineOwnerFixture(
+        { data: [], nextCursor: null, activeRealtimeSessionAtPageStart: null },
+        items,
+        { status: "inProgress", completedAt: null },
+      );
+    };
+    const first = native(40, "Same-Turn reply");
+    const view = mountHistory({
+      owner: {
+        readOwner: first.owner,
+        resume: async () => {},
+        dispose: () => first.owner.dispose(),
+      },
+    });
+    const replace = async (
+      start: number,
+      reply: string,
+      beforeCommit?: () => void,
+      swapResidentMessages = false,
+    ) => {
+      const next = native(start, reply, swapResidentMessages);
+      try {
+        await act(async () => {
+          beforeCommit?.();
+          first.owner.applyEvent({ type: "reset", value: projectCodexTranscript(next.state) });
+          await frames();
+        });
+      } finally {
+        next.owner.dispose();
+      }
+    };
+    try {
+      await view.settle();
+      await view.towardTop();
+      expect(view.viewport().scrollTop).toBe(100);
+      expect(view.scroll().getScrollMode()).toBe("user");
+      const anchor = view
+        .getByText("Prompt 41", { exact: false })
+        .closest<HTMLElement>('[data-user-message-bubble="true"]')!;
+      expect(anchor).toBeTruthy();
+      expect(anchor.hasAttribute("data-client-user-message-id")).toBe(false);
+      const before = anchor.getBoundingClientRect().top;
+      expect(before).toBeGreaterThanOrEqual(view.viewport().getBoundingClientRect().top);
+      expect(before).toBeLessThan(view.viewport().getBoundingClientRect().bottom);
+      await replace(38, "A growing native reply.\n\n".repeat(24), () => {
+        // Native movement can precede its scroll event when a history receipt commits.
+        fireEvent.wheel(view.viewport(), { deltaY: -8 });
+        view.viewport().scrollTop -= 8;
+      });
+      expect(anchor.isConnected).toBe(true);
+      const afterGesture = before + 8;
+      expect(Math.abs(anchor.getBoundingClientRect().top - afterGesture)).toBeLessThanOrEqual(2);
+      await replace(38, "A growing native reply.\n\n".repeat(48));
+      expect(anchor.isConnected).toBe(true);
+      expect(Math.abs(anchor.getBoundingClientRect().top - afterGesture)).toBeLessThanOrEqual(2);
+      await view.towardTop(
+        view.viewport().scrollTop +
+          anchor.getBoundingClientRect().top -
+          view.viewport().getBoundingClientRect().top,
+      );
+      const turn = anchor.closest<HTMLElement>("[data-turn-key]")!;
+      const beforeReorderTop = anchor.getBoundingClientRect().top;
+      const beforeReorderHeight = turn.getBoundingClientRect().height;
+      // Equal-height native messages can change order without notifying ResizeObserver.
+      await replace(38, "A growing native reply.\n\n".repeat(48), undefined, true);
+      expect(turn.getBoundingClientRect().height).toBe(beforeReorderHeight);
+      expect(anchor.isConnected).toBe(true);
+      expect(Math.abs(anchor.getBoundingClientRect().top - beforeReorderTop)).toBeLessThanOrEqual(
+        2,
+      );
+    } finally {
+      view.dispose();
+    }
+  });
+
   test("keeps a resident steering message fixed through prepend and streamed growth inside the same Turn", async () => {
     const steering = (ordinal: number): AgentTurnItem => ({
       ...user(ordinal),

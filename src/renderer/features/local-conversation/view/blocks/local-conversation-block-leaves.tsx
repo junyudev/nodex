@@ -1015,6 +1015,14 @@ export function UserMessageBubble({
     block.entry.rawItem && typeof block.entry.rawItem === "object"
       ? ((block.entry.rawItem as { readonly clientId?: unknown }).clientId ?? null)
       : null;
+  // The opening prompt can reuse its render identity for a different native input.
+  // Leave unknown prefixes ineligible rather than anchoring their changing search ordinal.
+  const userMessageAnchorIdentity =
+    typeof clientUserMessageId === "string"
+      ? ["client", clientUserMessageId]
+      : block.entry.rawItemId
+        ? ["native", block.entry.rawItemId]
+        : null;
 
   const submitEdit = useCallback(
     async (message: string) => {
@@ -1059,11 +1067,11 @@ export function UserMessageBubble({
         isSearchMatch && THREAD_VISUAL_TOKENS.searchUnitMatched,
         isActiveSearchMatch && THREAD_VISUAL_TOKENS.searchUnitActive,
       )}
-      data-conversation-item-key={JSON.stringify([
-        block.entry.threadId,
-        block.turnId,
-        block.entry.itemId,
-      ])}
+      data-conversation-item-key={
+        userMessageAnchorIdentity
+          ? JSON.stringify([block.entry.threadId, block.turnId, ...userMessageAnchorIdentity])
+          : ""
+      }
       data-content-search-unit-key={block.searchUnitKey}
     >
       {block.entry.textSelections ? (
