@@ -1,0 +1,38 @@
+crates/nodex-markdown/src/write/escapes/performance.rs
+  s_59ceb5c1ee8850::t_b6fd007e5369a5 10-20,153-156,176-179
+crates/nodex-markdown/src/write/tests.rs
+  s_59ceb5c1ee8850::t_b32e0be5b59783 357
+  s_59ceb5c1ee8850::t_108e7970fbe85e 340,368,414-416,419,425,431-432
+  s_59ceb5c1ee8850::t_b7a6ecbece28a3 321-325,334-337,346-356,358-367,374-384,413,433-436
+  s_59ceb5c1ee8850::t_2a0794834cbe3f 326-333,338-339,341-345,369-373,385-412,417-418,420-424,426-430
+crates/nodex-markdown/src/write/portable.rs
+  s_59ceb5c1ee8850::t_9007121cc56ecf 20
+crates/nodex-markdown/src/write/escapes.rs
+  s_59ceb5c1ee8850::t_b32e0be5b59783 20-26,32,40,44,142,147,157,194,221,236-238,241-265,270-283,288-298,301
+  s_59ceb5c1ee8850::t_e52dd6a8c9fbf6 299-300,308-312,318-322
+  s_59ceb5c1ee8850::t_9007121cc56ecf 724-725
+  s_59ceb5c1ee8850::t_2a0794834cbe3f 46-50,67-71,239-240,266-269,284-287,302-307,313-317,726
+crates/nodex-markdown/src/write/blocks.rs
+  s_59ceb5c1ee8850::t_ff20b470f32bc2 132,159,192,206,451
+  s_59ceb5c1ee8850::t_f0f9e48a8fcfae 11,294-307,312-316
+  s_59ceb5c1ee8850::t_2a0794834cbe3f 308-311,318,344-350,414-424,459-473,481-491
+crates/nodex-markdown/src/write/inline.rs
+  s_59ceb5c1ee8850::t_9007121cc56ecf 262-263
+  s_59ceb5c1ee8850::t_b32e0be5b59783 200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c15fe379bdfc836ac4c05e1342d9bedd5d5c43dd",
+  "prompts": {},
+  "sessions": {
+    "s_59ceb5c1ee8850": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18223-ae71-7082-b452-7dfd58e36e9d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
