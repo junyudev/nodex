@@ -3889,7 +3889,19 @@ fn status_of(workspace: &TestWorkspace, page_id: &str) -> Option<String> {
         .expect("workflow status")
 }
 
-fn set_status_by_hand(workspace: &TestWorkspace, page_id: &str, option_id: &str) {
+fn set_status_by_hand(
+    workspace: &TestWorkspace,
+    page_id: &str,
+    option_id: &str,
+) -> crate::database::DatabaseApplyOutcome {
+    set_status_option_by_hand(workspace, page_id, Some(option_id))
+}
+
+fn set_status_option_by_hand(
+    workspace: &TestWorkspace,
+    page_id: &str,
+    option_id: Option<&str>,
+) -> crate::database::DatabaseApplyOutcome {
     let revision = {
         let page_id = page_id.to_owned();
         workspace
@@ -3913,7 +3925,7 @@ fn set_status_by_hand(workspace: &TestWorkspace, page_id: &str, option_id: &str)
             &context(),
             ModuleApplyRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
-                operation_id: format!("status:{page_id}:{option_id}"),
+                operation_id: format!("status:{page_id}:{}", option_id.unwrap_or("empty")),
                 store_epoch: StoreEpoch("epoch-1".to_owned()),
                 intent: vec![DatabaseIntent::EditPropertyValues {
                     edits: vec![DatabasePropertyValueMutation {
@@ -3925,15 +3937,110 @@ fn set_status_by_hand(workspace: &TestWorkspace, page_id: &str, option_id: &str)
                         },
                         edit: DatabasePropertyValueEdit::Replace {
                             expected_value_revision: revision,
-                            value: DatabasePropertyValueInput::Select {
-                                option_id: option_id.to_owned(),
-                            },
+                            value: option_id.map_or(
+                                DatabasePropertyValueInput::Empty,
+                                |option_id| DatabasePropertyValueInput::Select {
+                                    option_id: option_id.to_owned(),
+                                },
+                            ),
                         },
                     }],
                 }],
             },
         )
-        .expect("set status by hand");
+        .expect("set status by hand")
+}
+
+fn assert_inbox_invalidated(workspace: &TestWorkspace, commit_seq: i64) {
+    let packet = crate::infrastructure::event_log::CoreEventLog::new(workspace.kernel.readers())
+        .authorized_packet(commit_seq, &host(), None, false)
+        .expect("authorized mutation packet")
+        .expect("mutation packet");
+    assert!(
+        packet.atoms.iter().any(|atom| matches!(
+            &atom.payload,
+            nodex_core_contracts::events::DeliveryAtomPayload::ProjectWorkspace { event, .. }
+                if event.inbox_changed
+        )),
+        "Inbox must refresh after a message Page's Status changes"
+    );
+}
+
+#[test]
+fn inbox_messages_project_the_current_page_status_in_library_and_project_scopes() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for (id, project_id, scope) in [
+        ("library-status", None, ProjectWorkspaceInboxScope::Library),
+        ("project-status", Some(PROJECT), project_scope()),
+    ] {
+        send_to(module, id, "A message waiting for a decision", project_id);
+        let read_status = || {
+            window_in(
+                module,
+                scope.clone(),
+                ProjectWorkspaceInboxWindowFilter::Inbox,
+            )
+            .into_iter()
+            .find(|item| item.page_id == format!("page:{id}"))
+            .expect("waiting message")
+            .page_status
+            .map(|status| (status.id, status.label))
+        };
+        assert_eq!(read_status(), Some(("triage".into(), "Triage".into())));
+
+        let changed = set_status_by_hand(&workspace, &format!("page:{id}"), "build");
+        assert_eq!(read_status(), Some(("build".into(), "Build".into())));
+        assert_inbox_invalidated(&workspace, changed.committed.commit_seq);
+
+        set_status_option_by_hand(&workspace, &format!("page:{id}"), None);
+        assert_eq!(read_status(), None);
+    }
+}
+
+#[test]
+fn inbox_page_status_uses_the_current_option_name_and_refreshes_on_rename() {
+    let workspace = seeded_workspace();
+    send(
+        &workspace.module,
+        "renamed-status",
+        "A message with a renamed status",
+    );
+    let data_source_id = page_parent(&workspace, "page:renamed-status");
+    let revision_source_id = data_source_id.clone();
+    let revision = workspace.kernel.readers().read_default(move |connection| {
+        Ok(connection.query_row(
+            "SELECT schema_revision FROM data_source_properties WHERE data_source_id = ?1 AND id = 'status'",
+            [&revision_source_id],
+            |row| row.get(0),
+        )?)
+    }).expect("Status property revision");
+    let renamed = crate::database::DatabaseModule::new("profile-1", "library-1", &workspace.kernel)
+        .apply(
+            &host(),
+            ModuleApplyRequest {
+                contract_version: DATABASE_CONTRACT_VERSION,
+                operation_id: "status:rename".into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: vec![DatabaseIntent::PutOption {
+                    data_source_id,
+                    property_id: "status".into(),
+                    option_id: "triage".into(),
+                    name: "Ready to review".into(),
+                    color: None,
+                    expected_property_revision: revision,
+                }],
+            },
+        )
+        .expect("rename Status option");
+    let status = item(&workspace.module, "page:renamed-status")
+        .page_status
+        .expect("Page status");
+    assert_eq!(
+        (status.id.as_str(), status.label.as_str()),
+        ("triage", "Ready to review")
+    );
+    assert_inbox_invalidated(&workspace, renamed.committed.commit_seq);
 }
 
 fn set_state(

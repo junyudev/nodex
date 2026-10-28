@@ -251,12 +251,20 @@ pub struct ProjectWorkspaceInboxProposal {
     pub updated_at: String,
 }
 
+/// The message Page's current workflow Status option and display name.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxPageStatus {
+    pub id: String,
+    pub label: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxItem {
     pub basis: ProjectWorkspaceInboxPageBasis,
     pub outcome: Option<ProjectWorkspaceInboxOutcome>,
     pub page_id: String,
     pub page_key: Option<String>,
+    pub page_status: Option<ProjectWorkspaceInboxPageStatus>,
     pub title: String,
     /// The message as the stream shows it, in Nodex Markdown: the Page body when it
     /// fits the stream budget, otherwise the opening of its text as paragraphs.

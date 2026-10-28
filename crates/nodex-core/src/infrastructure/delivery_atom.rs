@@ -63,17 +63,17 @@ pub(crate) fn compile(
     Ok(atoms)
 }
 
-/// The Inbox stream shows its messages' Page bodies, titles and placement, so a commit that
-/// touches one of those Pages changes the Inbox, whichever Module made it. Inbox operations
-/// already announce themselves.
+/// The Inbox stream shows its messages' Page bodies, titles, placement and Status labels.
+/// Page edits and Data Source schema edits change that projection, whichever Module made
+/// them. Inbox operations already announce themselves.
 fn touches_inbox_messages(
     connection: &Connection,
     payload: &CoreModuleEventPayload,
 ) -> Result<bool, StoreError> {
     use nodex_core_contracts::document::OwnedDocumentEvent;
-    let pages = match payload {
-        CoreModuleEventPayload::Library(event) => &event.page_ids,
-        CoreModuleEventPayload::Database(event) => &event.page_ids,
+    let (pages, data_sources): (&[String], &[String]) = match payload {
+        CoreModuleEventPayload::Library(event) => (&event.page_ids, &[]),
+        CoreModuleEventPayload::Database(event) => (&event.page_ids, &event.data_source_ids),
         CoreModuleEventPayload::OwnedDocument(
             OwnedDocumentEvent::DocumentUpdated { document_id, .. }
             | OwnedDocumentEvent::DocumentResyncRequired { document_id, .. }
@@ -89,15 +89,21 @@ fn touches_inbox_messages(
         }
         _ => return Ok(false),
     };
-    if pages.is_empty() {
+    if pages.is_empty() && data_sources.is_empty() {
         return Ok(false);
     }
     let pages = serde_json::to_string(pages)
         .map_err(|error| corrupt(&format!("Inbox Page identities: {error}")))?;
+    let data_sources = serde_json::to_string(data_sources)
+        .map_err(|error| corrupt(&format!("Inbox Data Source identities: {error}")))?;
     Ok(connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM inbox_entries
-           WHERE page_id IN (SELECT value FROM json_each(?1)))",
-        [pages],
+           WHERE page_id IN (SELECT value FROM json_each(?1)))
+           OR EXISTS(SELECT 1 FROM pages page
+             JOIN inbox_entries entry ON entry.page_id = page.block_id
+             WHERE page.parent_kind = 'data_source'
+               AND page.parent_id IN (SELECT value FROM json_each(?2)))",
+        [pages, data_sources],
         |row| row.get(0),
     )?)
 }
@@ -1072,10 +1078,11 @@ mod tests {
         let connection = Connection::open_in_memory().expect("in-memory compiler store");
         connection
             .execute_batch(
-                "CREATE TABLE pages(block_id TEXT PRIMARY KEY, document_id TEXT NOT NULL UNIQUE);
+                "CREATE TABLE pages(block_id TEXT PRIMARY KEY, document_id TEXT NOT NULL UNIQUE,
+                                    parent_kind TEXT NOT NULL, parent_id TEXT NOT NULL);
                  CREATE TABLE inbox_entries(page_id TEXT PRIMARY KEY);
-                 INSERT INTO pages VALUES ('page:message', 'document:message'),
-                                          ('page:note', 'document:note');
+                 INSERT INTO pages VALUES ('page:message', 'document:message', 'data_source', 'source:inbox'),
+                                          ('page:note', 'document:note', 'library', 'library:test');
                  INSERT INTO inbox_entries VALUES ('page:message');",
             )
             .expect("Inbox compiler tables");

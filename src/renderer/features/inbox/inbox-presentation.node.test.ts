@@ -23,6 +23,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   outcome: null,
   basis: { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
   pageKey: "IN-1",
+  pageStatus: null,
   title: "Message",
   body: "Message",
   bodyTruncated: false,

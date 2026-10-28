@@ -13,6 +13,7 @@ const message = (pageId: string, submittedAt: string): InboxItem => ({
   outcome: null,
   basis: { pageId, generation: 1, headSeq: 1, placementRevision: 1 },
   pageKey: null,
+  pageStatus: null,
   title: pageId,
   body: pageId,
   bodyTruncated: false,

@@ -1700,6 +1700,7 @@ export interface components {
                 readonly outcome?: components["schemas"]["ProjectWorkspaceInboxOutcome"] | null;
                 readonly page_id: string;
                 readonly page_key?: string | null;
+                readonly page_status?: components["schemas"]["ProjectWorkspaceInboxPageStatus"] | null;
                 readonly proposal?: components["schemas"]["ProjectWorkspaceInboxProposal"] | null;
                 /** Format: int64 */
                 readonly revision: number;
@@ -9444,6 +9445,11 @@ export interface components {
             readonly page_id: string;
             /** Format: int64 */
             readonly placement_revision: number;
+        };
+        /** @description The message Page's current workflow Status option and display name. */
+        readonly ProjectWorkspaceInboxPageStatus: {
+            readonly id: string;
+            readonly label: string;
         };
         readonly ProjectWorkspaceInboxProjectCount: {
             /** Format: int32 */

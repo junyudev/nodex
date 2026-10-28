@@ -184,10 +184,17 @@ export interface InboxProposal {
   readonly updatedAt: string;
 }
 
+/** The message Page's current workflow Status option and display name. */
+export interface InboxPageStatus {
+  readonly id: string;
+  readonly label: string;
+}
+
 export interface InboxItem {
   readonly outcome: "kept" | "done" | "moved" | "chat" | null;
   readonly pageId: string;
   readonly pageKey: string | null;
+  readonly pageStatus: InboxPageStatus | null;
   readonly title: string;
   readonly body: string;
   readonly bodyTruncated: boolean;

@@ -17,6 +17,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   outcome: null,
   basis: { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
   pageKey: "NOD-1",
+  pageStatus: null,
   title: "Homepage positioning",
   body: "Homepage feels like a dev tool",
   bodyTruncated: false,

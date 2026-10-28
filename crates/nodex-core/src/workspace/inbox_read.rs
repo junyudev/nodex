@@ -12,11 +12,12 @@ use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxDispatchContext, ProjectWorkspaceInboxDispatchWork,
     ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxImportantMessage,
     ProjectWorkspaceInboxItem, ProjectWorkspaceInboxLocation, ProjectWorkspaceInboxMessageEdit,
-    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxProjectCount,
-    ProjectWorkspaceInboxProposal, ProjectWorkspaceInboxProposalOrigin,
-    ProjectWorkspaceInboxProposalState, ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource,
-    ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSuggestionState,
-    ProjectWorkspaceInboxSummary, ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxPageStatus,
+    ProjectWorkspaceInboxProjectCount, ProjectWorkspaceInboxProposal,
+    ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxProposalState,
+    ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource, ProjectWorkspaceInboxSuggestionInput,
+    ProjectWorkspaceInboxSuggestionState, ProjectWorkspaceInboxSummary,
+    ProjectWorkspaceInboxWindowFilter,
 };
 use nodex_core_contracts::workspace::{
     CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceSessionExecutionRef,
@@ -290,6 +291,7 @@ pub(super) fn read_window(
 }
 
 struct EntryRow {
+    page_status: Option<ProjectWorkspaceInboxPageStatus>,
     seq: i64,
     submitted_at: String,
     source_kind: String,
@@ -336,18 +338,39 @@ fn read_entry(
                  THEN materialization.markdown ELSE NULL END, \
                substr(COALESCE(materialization.plain_text, ''),1,?3), document.generation, document.head_seq, \
                entry.provisional_title, entry.source_turn_id, \
-               COALESCE(octet_length(materialization.plain_text),0) > ?3, entry.scope_project_id, (SELECT placement_revision FROM blocks WHERE id=entry.page_id), entry.source_automation_id, entry.source_dispatch_id \
+               COALESCE(octet_length(materialization.plain_text),0) > ?3, entry.scope_project_id, (SELECT placement_revision FROM blocks WHERE id=entry.page_id), entry.source_automation_id, entry.source_dispatch_id, \
+               json_extract(status_option.value, '$.id'), json_extract(status_option.value, '$.name') \
              FROM inbox_entries entry \
              JOIN pages page ON page.block_id = entry.page_id \
              JOIN documents document ON document.id = page.document_id \
              LEFT JOIN document_materializations materialization \
                ON materialization.document_id = page.document_id \
+             LEFT JOIN data_source_page_memberships membership \
+               ON page.parent_kind = 'data_source' AND membership.data_source_id = page.parent_id \
+              AND membership.page_block_id = page.block_id AND membership.removed_at IS NULL \
+             LEFT JOIN data_source_properties status_property \
+               ON status_property.data_source_id = membership.data_source_id \
+              AND status_property.id = ?4 AND status_property.lifecycle = 'active' \
+              AND status_property.value_type = 'select' \
+             LEFT JOIN data_source_property_values status_value \
+               ON status_value.data_source_id = status_property.data_source_id \
+              AND status_value.membership_id = membership.id AND status_value.property_id = status_property.id \
+             LEFT JOIN json_each(status_property.config_json, '$.options') status_option \
+               ON json_extract(status_option.value, '$.id') = json_extract(status_value.value_json, '$') \
              WHERE entry.page_id = ?1",
-            params![page_id, (body_budget * 8) as i64, body_budget as i64],
+            params![
+                page_id,
+                (body_budget * 8) as i64,
+                body_budget as i64,
+                crate::database::property_semantics::STATUS_PROPERTY_ID,
+            ],
             |row| {
                 Ok(EntryRow {
                     source_automation_id: row.get(25)?,
                     source_dispatch_id: row.get(26)?,
+                    page_status: row.get::<_, Option<String>>(27)?.zip(row.get(28)?).map(
+                        |(id, label)| ProjectWorkspaceInboxPageStatus { id, label },
+                    ),
                     seq: row.get(0)?,
                     submitted_at: row.get(1)?,
                     source_kind: row.get(2)?,
@@ -557,6 +580,7 @@ fn read_item(
                 .transpose()?,
             page_id: page_id.to_owned(),
             page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
+            page_status: row.page_status.clone(),
             title: row.title.clone(),
             body_editable: !body_truncated && editable_body(&row).is_some(),
             body,

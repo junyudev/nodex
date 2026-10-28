@@ -231,6 +231,7 @@ const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
 export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   pageId: item.page_id,
   pageKey: item.page_key ?? null,
+  pageStatus: item.page_status ? { id: item.page_status.id, label: item.page_status.label } : null,
   title: item.title,
   body: item.body,
   bodyTruncated: item.body_truncated,

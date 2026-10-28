@@ -35,9 +35,12 @@ describe("Inbox over the real Core transport", () => {
         window: { after: null, first: 20 },
       });
       if (window.value.kind !== "inbox_window") throw new Error("Wrong Inbox window variant");
-      const [item] = window.value.items.items.map(inboxItemFromCore);
+      const [coreItem] = window.value.items.items;
+      if (!coreItem) throw new Error("Missing Inbox message");
+      const item = inboxItemFromCore(coreItem);
       expect(item).toMatchObject({
         pageId,
+        pageStatus: { id: "triage", label: "Triage" },
         title: "Survey onboarding flows",
         body: "Survey onboarding flows\nKeep it read-only.",
         source: { kind: "user" },
@@ -45,7 +48,8 @@ describe("Inbox over the real Core transport", () => {
         suggestionState: "pending",
         proposal: null,
       });
-      expect(item?.pageKey).toMatch(/-1$/);
+      expect(item.pageKey).toMatch(/-1$/);
+      expect(inboxItemFromCore({ ...coreItem, page_status: null }).pageStatus).toBeNull();
 
       const sessionId = createUuidV7();
       await client.workspaceApply({

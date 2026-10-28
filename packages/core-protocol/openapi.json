@@ -7290,6 +7290,16 @@
                     "null"
                   ]
                 },
+                "page_status": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ProjectWorkspaceInboxPageStatus"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "proposal": {
                   "oneOf": [
                     {
@@ -39410,6 +39420,22 @@
           "placement_revision": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ProjectWorkspaceInboxPageStatus": {
+        "type": "object",
+        "description": "The message Page's current workflow Status option and display name.",
+        "required": [
+          "id",
+          "label"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
           }
         }
       },
