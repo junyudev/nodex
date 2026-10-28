@@ -1,0 +1,293 @@
+packages/agent-runtime/src/nodex/TaskCancel.test.ts
+  s_12859b5d7bfb90::t_7b6cd5bff08d89 1-142
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAgentSdkQueryRunner.test.ts
+  s_12859b5d7bfb90::t_8f1c81d654b921 23,27-31,34,70-81
+src/main/agent-runtime/AgentRuntimeSessionActivity.node.test.ts
+  s_12859b5d7bfb90::t_4a8a40d8f3b8b5 28,210-248
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.test.ts
+  s_12859b5d7bfb90::t_017d5238232822 8,161-162,186-187,192,261-358,360-364,366-368,444,449,460-464,469-474,476,478
+  s_c308b770a17d41::t_5d5d564caedb22 380-381,408
+  s_c308b770a17d41::t_6ade4c07e83ecc 159-160,163,170,185,188-191,359,365,465-468,475,477
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.testkit.ts
+  s_c308b770a17d41::t_23b6e3686e3dde 837-840
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_6e752ee2731ec9::t_fd8d8d3a6a12b8 61-63,3722-3728,3734-3746,3748-3814
+  s_12859b5d7bfb90::t_6ea538d6ce9136 3729-3733,3747
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_c308b770a17d41::t_23b6e3686e3dde 410-417,1024-1041,2052-2054,2058-2060,2085,6603-6604,6640-6644,6651-6657,9185-9203,9208-9245,9354,9356-9363,9365-9366,9368-9383
+  s_5cd527886c6c64::t_a39cde9dace400 6605-6607,6624-6625,6645-6647,6658-6660,9246-9248,9364,9385-9387
+  s_12859b5d7bfb90::t_2627db2eefe994 9204-9207,9384
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_12859b5d7bfb90::t_c4254c3cd4f5c3 53,466,2215,2218,2240-2241,2246,2321-2322,2331,2333,2339-2345,2374
+  s_6e752ee2731ec9::t_2e6045246cbb43 456-457,461,463-464,468-470,476-478,483,929,2200-2214,2216-2217,2219-2221,2226-2239,2242-2245,2247-2272,2307,2309-2310,2368,2371,2373
+  s_6e752ee2731ec9::t_e87a3bddac5457 462
+  s_c308b770a17d41::t_139cf47926313e 458-460,465,467,471-475,479-482,2222-2225,2273-2287,2294-2306,2308,2311-2320,2323,2330,2332,2334-2338,2348-2353,2359-2364,2367,2369-2370,2372
+  s_6e752ee2731ec9::t_5114b6699eacbd 38,52,54,2288-2293,2324-2329,2346-2347,2358,2365-2366
+  s_6e752ee2731ec9::t_c9715f860aa11f 234,2354-2357
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.ts
+  s_12859b5d7bfb90::t_cbd36b1b181dea 6,53-55,224
+  s_c308b770a17d41::t_23b6e3686e3dde 56-59,61-67,200-223,225-229
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-header-action.tsx
+  s_c308b770a17d41::t_52b7e4e305515c 7-10,70
+packages/agent-runtime/vendor/shared/src/orchestrationV2PendingBackgroundWork.test.ts
+  s_12859b5d7bfb90::t_eee1fa87f3af57 6,65,75,93,116,148,171-173,199,239,280,308,336,356,380,412,447,467,510,560,578,589,593-647
+src/shared/agent-runtime-api.ts
+  s_12859b5d7bfb90::t_295456b6c3c275 3,166
+  s_6e752ee2731ec9::t_c806bd93c0688c 164-165,167-179,276,414-425
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_ce448c49020622::t_e112f08204cb3a 6730
+  s_5cd527886c6c64::t_a39cde9dace400 241,6675-6725
+  s_09e8b563de7c82::t_98789fc788c4a9 6726-6729,6731
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_5cd527886c6c64::t_fd82db5fb1f204 2197,2206,2222,2224,5881-5884,5913-5919,7808,7843-7846
+  s_09e8b563de7c82::t_440c71b04150ab 2182-2196,2198-2205,2207-2221,2223,2225-2259
+packages/agent-runtime/src/orchestration-v2/EffectWorker.ts
+  s_12859b5d7bfb90::t_5e58ac787dbc3f 223-224,246-251,253,258,760,817,819,845-846
+  s_c308b770a17d41::t_23b6e3686e3dde 225-245,252,254-257
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_c308b770a17d41::t_23b6e3686e3dde 2232-2234,2280-2281,2318-2319,2348,5014-5078,5081-5117,5120-5197,5384-5388,5392-5393,5913-5917,12206,12209-12210
+  s_12859b5d7bfb90::t_f6648ce829154a 2152,5079-5080,5118-5119,5389-5391,12204-12205,12207-12208
+  s_5cd527886c6c64::t_e51b39e8c3e087 2235,2282,2320,2349,2394,5198,5394,5918,12211,12254
+packages/agent-runtime/src/orchestration-v2/DelegatedTaskState.ts
+  s_12859b5d7bfb90::t_84bc672835cbd4 2-5,7-8,10-32,35-49,51-91
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_1105b51fd72c6d::t_5b7badd5d640cc 648,657
+  s_12859b5d7bfb90::t_6d09cac4069766 14,650-656
+src/main/agent-runtime/AgentRuntimeSessionNotifications.node.test.ts
+  s_12859b5d7bfb90::t_c4a48c824c1631 28
+packages/agent-runtime/vendor/shared/src/orchestrationV2PendingBackgroundWork.ts
+  s_12859b5d7bfb90::t_35a946f1c19847 184,205-209,211-248
+  s_5cd527886c6c64::t_c76fde2819576c 297,300
+docs/product-specs/agent-runtime-behavior.md
+  s_c308b770a17d41::t_1cc055b8cf0332 574-584
+  s_c308b770a17d41::t_18448aaf61962d 807-809
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-toggle.tsx
+  s_c308b770a17d41::t_52b7e4e305515c 35-36,39-44,49-56,59,76-83,85-87,98,103,107
+  s_c308b770a17d41::t_30c890922bb272 84
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-background-section.tsx
+  s_c308b770a17d41::t_5dde87858dd7d1 2-3,161,167,180-182,184,197,202,219-220,232-233,237-250,253,264-265,268,271
+  s_c308b770a17d41::t_b7920c138fb3bb 34-38,43-52,173-174,177-179
+  s_c308b770a17d41::t_12c7d89ec289b4 144
+  s_c308b770a17d41::t_39ba12b678f8df 54-57,65
+  s_c308b770a17d41::t_eba9cad2e15930 128
+  s_c308b770a17d41::t_8b9cdf77d3a4f0 16-17,258
+  s_c308b770a17d41::t_976c4bfa886691 261
+  s_c308b770a17d41::t_aef852a80fea9f 262-263,266-267,269-270,272-283
+  s_c308b770a17d41::t_f4f072d560a696 1,4-15,18-33,39-42,53,58-64,66-127,129-143,145-160,162-166,168-172,175-176,183,185-196,198-201,203-218,221-231,234-236,251-252,254-257,259-260,284-291
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_c308b770a17d41::t_c6b0082da690a5 265,267-268
+  s_c308b770a17d41::t_d98d53df572931 246,259-264,266,269-289,293-294
+src/shared/schemas/agent-runtime-api.ts
+  s_6e752ee2731ec9::t_c806bd93c0688c 134-135,141-148
+  s_12859b5d7bfb90::t_bdfda90da7b2d4 136-140
+src/renderer/features/local-conversation/agent-runtime-delegated-tasks.ts
+  s_c308b770a17d41::t_1ab49f6fe51e6a 23,27-29,37-42
+  s_c308b770a17d41::t_849188768096e6 68-78,86
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_c308b770a17d41::t_2e5585e6197d41 97,1629-1630
+  s_c308b770a17d41::t_c6b0082da690a5 1487-1489
+packages/agent-runtime/src/nodex/Service.ts
+  s_12859b5d7bfb90::t_f2c12b49f63e83 17,33,249,884-889,1487
+  s_c308b770a17d41::t_23b6e3686e3dde 244-248,250-264
+src/renderer/features/local-conversation/view/shared/delegated-task-row.test.tsx
+  s_c308b770a17d41::t_313d739297b0da 40-43,110-112,172
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_c308b770a17d41::t_621ae48a08ece5 1138
+  s_c308b770a17d41::t_ac96b7d2890842 95
+  s_882992ba2cda62::t_a587a62eaf5f36 97,106
+  s_52c7d635525c94::t_8efb74de88dff6 1603-1605,1628-1630,1663-1665,1705-1712,1716,1718-1720
+  s_c308b770a17d41::t_52b7e4e305515c 1823
+  s_c308b770a17d41::t_84aaad0715f852 86,96,98,146-147,929,1146,1790,1821-1822,1890-1896,1918-1922
+packages/agent-runtime/src/orchestration-v2/testkit/OrchestratorScenario.ts
+  s_12859b5d7bfb90::t_6b634dabf50c2d 170
+src/renderer/components/workbench/project-agent-dock-target-selector.test.tsx
+  s_c308b770a17d41::t_70ab9b6b2c6623 212
+src/renderer/lib/agent-runtime-runtime.ts
+  s_c308b770a17d41::t_139cf47926313e 338-339
+  s_6e752ee2731ec9::t_c806bd93c0688c 17-20,187-202,271-279,337,340
+packages/agent-runtime/src/nodex/TasksOverview.test.ts
+  s_12859b5d7bfb90::t_d1cae958e6ef6c 39-49,72,80,85-88,90-97,99-107
+  s_c308b770a17d41::t_23b6e3686e3dde 38,51-71,73-79,89,98
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_12859b5d7bfb90::t_21d761ba3b5815 77,499-500,9676,9679-9680,9682-9687,9689-9690,9757-9762,9808-9809,11857-11862,12165-12167
+  s_c308b770a17d41::t_23b6e3686e3dde 9674-9675,9677-9678,9681,9688,9691-9756,9763-9807
+packages/agent-runtime/src/orchestration-v2/ThreadStop.test.ts
+  s_12859b5d7bfb90::t_68f20b7abfab98 763,814,816,818-819,884-885,906-933,935,938,940-950
+  s_c308b770a17d41::t_23b6e3686e3dde 764,766-800,815,817,820-823,825-856,858-861,879-883,887-890,892,896-900,902,904-905,934,937,939
+  s_12859b5d7bfb90::t_6654e431cfbd63 11,30,765,801-813,824,857,862-878,886,891,893-895,901,903,936
+src/renderer/lib/use-session-execution.test.tsx
+  s_c308b770a17d41::t_70ab9b6b2c6623 20
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-shell.tsx
+  s_c308b770a17d41::t_52b7e4e305515c 16-19,163,168,209-212,214-219
+src/main/ipc/handlers/AgentRuntimeIpc.node.test.ts
+  s_12859b5d7bfb90::t_c378b453dd7e06 67,70,196-197,203,258-263
+  s_6e752ee2731ec9::t_c681399a61917b 68-69,71-81,192-195,198-202,204-257
+packages/agent-runtime/src/orchestration-v2/EffectWorker.test.ts
+  s_12859b5d7bfb90::t_fe420d5a9ceeb7 1,20,91,98,580-628,630-636,638-642,644-647,1019-1029,1031,1053-1069,1071-1086,1088-1133
+  s_c308b770a17d41::t_23b6e3686e3dde 629,1030,1032-1052,1070,1087
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-toggle.test.tsx
+  s_c308b770a17d41::t_a1268355d8afb8 57-77
+src/main/agent-runtime/AgentRuntimeSessionActivity.ts
+  s_12859b5d7bfb90::t_95bf8e00800d81 96-108,119
+docs/product-specs/thread-summary-panel-behavior.md
+  s_c308b770a17d41::t_1cc055b8cf0332 179-190
+  s_c308b770a17d41::t_cb6365479d6050 169-173
+  s_c308b770a17d41::t_485868e4dd14d3 17-19,36,143
+  s_c308b770a17d41::t_18448aaf61962d 176-178
+docs/product-specs/index.md
+  s_c308b770a17d41::t_d55d8590c32978 36,46
+src/renderer/features/local-conversation/agent-runtime-background-tasks.ts
+  s_c308b770a17d41::t_2e5585e6197d41 1-5,11,128-129,131,133,135-138,143
+  s_c308b770a17d41::t_539d5a151a45eb 6,8,16,31-32,35,38-49,59-61,64-65,69-72,74-96,100-101,112-113,118-124,130,132,134,139-142,144
+  s_c308b770a17d41::t_5b384662200261 7,9-10,12-15,17-30,33-34,36-37,50-58,62-63,66-68,73,97-99,102-105,108-111,114-117,125-127,145
+  s_c308b770a17d41::t_c6b0082da690a5 106-107
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.ts
+  s_12859b5d7bfb90::t_9d6155b2384c4a 2,14-29,36,102,104-105,108,112,115-118,120-121,123,126,130-131,138,152-182,205-206,208-221
+  s_c308b770a17d41::t_6ade4c07e83ecc 119
+packages/agent-runtime/src/orchestration-v2/ThreadManagementService.ts
+  s_12859b5d7bfb90::t_b7fdb0789011b3 1-5,19,58,289,316,1165-1179,1181-1188,1190,1192,1261,1275-1276
+  s_09e8b563de7c82::t_49777022c572a6 1271-1272,1283-1286
+  s_c308b770a17d41::t_23b6e3686e3dde 290-297,313-315,317-336,1127-1164,1180,1189,1191,1193-1252,1255-1260,1262-1270,1273-1274,1277-1282
+packages/agent-runtime/src/orchestration-v2/EffectOutbox.ts
+  s_12859b5d7bfb90::t_1a972ddf9a967e 15,55-62,144-145
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_12859b5d7bfb90::t_8eedffb1844609 1-6,913-918,1396,1398,1400
+  s_c308b770a17d41::t_23b6e3686e3dde 1401-1403,1405-1418
+packages/agent-runtime/src/mcp/TaskToolkit.integration.test.ts
+  s_12859b5d7bfb90::t_8abe485bee2eca 499-502,506-530,863-914
+src/renderer/components/workbench/workbench-agent-runtime-panels.test.tsx
+  s_c308b770a17d41::t_e4527efd2a0fba 237,240-242,253-255
+CHANGELOG.md
+  s_c308b770a17d41::t_48689312244ad6 62
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_6e752ee2731ec9::t_c806bd93c0688c 189-197
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_12859b5d7bfb90::t_0f03ed61c90216 1665-1666
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-section.tsx
+  s_c308b770a17d41::t_e265bd4b9aa2a2 24-35
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_12859b5d7bfb90::t_bf2af3f90b5c16 366-368,383-385,461
+  s_c308b770a17d41::t_23b6e3686e3dde 369-382,386-460
+src/renderer/lib/use-page-chat-activity.test.tsx
+  s_c308b770a17d41::t_70ab9b6b2c6623 19
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-background-section.test.tsx
+  s_c308b770a17d41::t_1321ab888c048f 1-18,20-129
+  s_c308b770a17d41::t_70ab9b6b2c6623 19
+src/shared/ipc-endpoint-policy.ts
+  s_6e752ee2731ec9::t_c806bd93c0688c 112,554-555
+src/renderer/lib/agent-runtime-session-activity.node.test.ts
+  s_c308b770a17d41::t_70ab9b6b2c6623 19
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/claude_background_monitor_wake/output.ts
+  s_c308b770a17d41::t_1f9b41679fcdd1 2,49-51
+  s_c308b770a17d41::t_49df2f71f32304 40-41,43-44,48
+packages/agent-runtime/src/nodex/Interface.ts
+  s_c308b770a17d41::t_23b6e3686e3dde 375-377,379-396
+  s_12859b5d7bfb90::t_126470ae7ccb22 213-215,223,374,378,397-398
+src/main/agent-runtime/AgentRuntimeClaudeUsage.node.test.ts
+  s_12859b5d7bfb90::t_a8b2b05edbe0ba 407
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_12859b5d7bfb90::t_d95259befe7ad9 89-93,404-418,633-636,988-990,1013,1016-1018,1024-1029,1693-1698,1997-2006,2453-2455,2741-2744,2805-2807,2861-2870,3334-3340,3355-3360,3578-3586
+src/renderer/components/workbench/codex-sidebar.test.tsx
+  s_c308b770a17d41::t_70ab9b6b2c6623 246
+src/renderer/features/local-conversation/agent-runtime-background-tasks.node.test.ts
+  s_c308b770a17d41::t_1acdc5e45c4ec9 2,5,10-11,13-22,24-29,32-50,56,63-65,70,74,81-110,120-121,123,127,136,141-146
+  s_c308b770a17d41::t_313d739297b0da 23
+  s_c308b770a17d41::t_5023fae2bbf785 1,3-4,6-9,12,30-31,51-55,57-62,66-69,71-73,75-80,111-119,122,124-126,128-135,137-140,147-151
+src/renderer/features/local-conversation/projection/thread-summary-panel-section-model.ts
+  s_c308b770a17d41::t_653ee707b2586f 128
+src/main/agent-runtime/AgentRuntimeSessionPredictions.node.test.ts
+  s_12859b5d7bfb90::t_f4707789908bcb 64
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-row.tsx
+  s_c308b770a17d41::t_74e6db1ee83fc3 148-150
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_c308b770a17d41::t_8fa7d0cfe50217 90-100,1127,1159,1166-1167,1185
+  s_c308b770a17d41::t_43c329d8464256 1126,1136-1142,1161-1165,1168-1171,1173-1176,1178-1179,1181-1184,1186-1189
+src/renderer/features/local-conversation/agent-runtime-delegated-tasks.node.test.ts
+  s_c308b770a17d41::t_fef6dafa15ac2d 4,10-12,18-19,22-43,45,49,51,53-61
+packages/agent-runtime/src/orchestration-v2/ThreadManagementService.test.ts
+  s_09e8b563de7c82::t_8830e3093526db 954-1123
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_c308b770a17d41::t_8d50f7a3872c7b 1447,1486
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.test.tsx
+  s_c308b770a17d41::t_69038ea96286fb 2178,2348,2440
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "93b31ca5295bbaaaf1a2d14124a2fdc88ea47ba3",
+  "prompts": {},
+  "sessions": {
+    "s_09e8b563de7c82": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18437-c65f-7660-b677-0fbeefce77f4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_1105b51fd72c6d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12fa7-8e5c-70a3-a18c-e0352e00da6a",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_12859b5d7bfb90": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18326-42b3-7ee1-9fd9-662d891e605d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_52c7d635525c94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aff2e8a0-50dd-4019-aa85-7b5ade99e79e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_6e752ee2731ec9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18326-9d63-72b0-82fc-8a87cc9261f4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_882992ba2cda62": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17153-f57a-7d52-b919-fecd25fcc4d5",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c308b770a17d41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d99b3b35-7cb1-4ef6-9ebd-c9534cf0280b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ce448c49020622": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18061-1d5f-7ed2-bb94-1a917dfd5e09",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
