@@ -1,0 +1,21 @@
+src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx
+  s_ce448c49020622::t_ce9e7b60f5efbd 505-506
+docs/product-specs/workbench-shell.md
+  s_ce448c49020622::t_ce9e7b60f5efbd 207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "45ee02f65ae1d09b3041b86d215e8c41af8f819f",
+  "prompts": {},
+  "sessions": {
+    "s_ce448c49020622": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18061-1d5f-7ed2-bb94-1a917dfd5e09",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
