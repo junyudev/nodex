@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ImageIcon } from "@/components/shared/icons/generic-icons";
+import { ImageIcon } from "@/components/shared/icons";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";

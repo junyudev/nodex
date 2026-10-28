@@ -21,7 +21,6 @@ import {
   GitBranchPlus as LucideGitBranchPlus,
   GitMerge as LucideGitMerge,
   Hash as LucideHash,
-  ImageIcon as LucideImageIcon,
   ImagePlus as LucideImagePlus,
   KeyRound as LucideKeyRound,
   LayoutGrid as LucideLayoutGrid,
@@ -45,7 +44,6 @@ import {
   Route as LucideRoute,
   Rows3 as LucideRows3,
   Scissors as LucideScissors,
-  SendHorizontal as LucideSendHorizontal,
   SendIcon as LucideSendIcon,
   ShieldCheck as LucideShieldCheck,
   Slash as LucideSlash,
@@ -179,10 +177,6 @@ export const GitBranchPlus: LucideIconType = /* @__PURE__ */ createGenericIcon(
   "GitBranchPlus",
 );
 export const Hash: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideHash, "Hash");
-export const ImageIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideImageIcon,
-  "ImageIcon",
-);
 export const ImagePlus: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideImagePlus,
   "ImagePlus",
@@ -250,10 +244,6 @@ export const Rows3: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideRow
 export const Scissors: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideScissors,
   "Scissors",
-);
-export const SendHorizontal: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideSendHorizontal,
-  "SendHorizontal",
 );
 export const SendIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideSendIcon,
