@@ -1,0 +1,22 @@
+src/main/core-client/editor-history-scenario.node.test.ts
+  s_e30a573225d233::t_f8a3638fb00c58 101-106
+  s_e30a573225d233::t_9265643e6d7bfc 43-100,107-143
+src/shared/block-documents/block-document-codec.ts
+  s_e30a573225d233::t_9477eae2636a19 257-268
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "10d2f84760776defed3bcbc3b80767d0b0ec6dc0",
+  "prompts": {},
+  "sessions": {
+    "s_e30a573225d233": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18195-6ad4-7db0-b0da-d19796883da6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
