@@ -1,0 +1,33 @@
+crates/nodex-markdown/src/read/blocks.rs
+  s_4b53f1a3b989a8::t_06b81e78ec9701 287
+crates/nodex-markdown/src/read/inline.rs
+  s_4b53f1a3b989a8::t_06b81e78ec9701 271,273,277,282-283,285,292-294,303,368-371
+  s_4b53f1a3b989a8::t_263e5f66b7f18c 372-373
+crates/nodex-markdown/src/read/tests.rs
+  s_4b53f1a3b989a8::t_dff5b9409bd1cd 669-683
+crates/nodex-markdown/src/read/syntax.rs
+  s_4b53f1a3b989a8::t_560b67ae13151d 480-481,484-488,517-521
+crates/nodex-core/tests/fixtures/yjs-yrs/markdown-parser-oracle.json
+  s_4b53f1a3b989a8::t_4156def4f39b05 2,76-79,401
+crates/nodex-markdown/src/model.rs
+  s_4b53f1a3b989a8::t_87762b3b82de21 1455-1458
+  s_4b53f1a3b989a8::t_06b81e78ec9701 878-883,891-894,953-956
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-materialization.json
+  s_4b53f1a3b989a8::t_4156def4f39b05 402
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d7090d87f6caa23db7ba565895e8a74d5a7b1744",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
