@@ -1,0 +1,25 @@
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_4b53f1a3b989a8::t_a0793f40fb4afa 3,273
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_4b53f1a3b989a8::t_a0793f40fb4afa 8,248
+src/shared/block-documents/block-document-codec.ts
+  s_4b53f1a3b989a8::t_524053d7d3b406 357-360,380-390,407,409
+  s_4b53f1a3b989a8::t_a0793f40fb4afa 361-364,408
+  s_4b53f1a3b989a8::t_1ab4c04a1e9b98 410
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e18659032ee30cc5c26d65b568156148591ee16c",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
