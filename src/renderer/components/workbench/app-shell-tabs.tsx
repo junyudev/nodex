@@ -17,12 +17,14 @@ import {
   type ComponentPropsWithoutRef,
   type ComponentType,
   type MouseEvent as ReactMouseEvent,
+  type ReactElement,
   type ReactNode,
   type RefObject,
   type SyntheticEvent,
 } from "react";
 import { NodexTooltip, NodexTooltipProvider } from "@/components/ui/tooltip";
 import { CloseIcon } from "@/components/shared/icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import {
   NodexContextMenuContent,
   NodexContextMenuItem,
@@ -30,8 +32,13 @@ import {
   NodexContextMenuRoot,
   NodexContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { canShowNativeContextMenu, showNativeContextMenu } from "@/lib/native-context-menu";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import type { PanelId } from "@/lib/types";
+import type {
+  NativeContextMenuIconKey,
+  NativeContextMenuItem,
+} from "../../../shared/native-context-menu";
 import { cn } from "@/lib/utils";
 import { WorkbenchPaneTitlebar } from "./workbench-titlebar-context";
 import {
@@ -57,11 +64,15 @@ export type AppShellTabSplitSide = "left" | "right" | "up" | "down";
 /** The physical side of the Scene's content panel, which bottom tabs can move into. */
 export const AppShellContentPanelSideContext = createContext<"left" | "right">("right");
 
-const APP_SHELL_SPLIT_ACTIONS: { side: AppShellTabSplitSide; label: string }[] = [
-  { side: "left", label: "left" },
-  { side: "right", label: "right" },
-  { side: "up", label: "up" },
-  { side: "down", label: "down" },
+const APP_SHELL_SPLIT_ACTIONS: {
+  side: AppShellTabSplitSide;
+  label: string;
+  iconKey: NativeContextMenuIconKey;
+}[] = [
+  { side: "left", label: "left", iconKey: "splitLeft" },
+  { side: "right", label: "right", iconKey: "splitRight" },
+  { side: "up", label: "up", iconKey: "splitUp" },
+  { side: "down", label: "down", iconKey: "splitDown" },
 ];
 const APP_SHELL_TAB_ROW_WHEEL_LINE_HEIGHT_PX = 16;
 const APP_SHELL_TAB_ROW_WHEEL_DELTA_LINE = 1;
@@ -196,6 +207,8 @@ export interface AppShellTabContextMenuActionItem {
   id: string;
   type?: "item";
   label: string;
+  /** Shown beside the label, natively on the desktop and in the page menu elsewhere. */
+  iconKey?: NativeContextMenuIconKey;
   disabled?: boolean;
   tone?: "default" | "destructive";
   onSelect: () => void;
@@ -1165,7 +1178,13 @@ function AppShellTab({
     canPinTab: tab.preview === true && Boolean(onPin),
     canMoveTab: Boolean(onMove) && tab.preview !== true,
     canSplitTab: Boolean(onSplit) && tab.splittable === true,
-    targetPanelLabel: targetPanelId === "bottom" ? "bottom panel" : `${contentPanelSide} panel`,
+    moveTarget:
+      targetPanelId === "bottom"
+        ? { label: "bottom panel", iconKey: "moveDown" }
+        : {
+            label: `${contentPanelSide} panel`,
+            iconKey: contentPanelSide === "left" ? "moveLeft" : "moveRight",
+          },
     onClose: closeCurrentTab,
     onCloseOtherTabs: closeOtherTabs,
     onCloseTabsToRight: closeTabsToRight,
@@ -1175,16 +1194,72 @@ function AppShellTab({
   });
 
   return (
+    <AppShellTabContextMenu items={contextMenuItems} onOpen={onCloseModeExit}>
+      {chrome}
+    </AppShellTabContextMenu>
+  );
+}
+
+function toNativeContextMenuItem(item: AppShellTabContextMenuItem): NativeContextMenuItem {
+  if (item.type === "separator") return { type: "separator", id: item.id };
+  return {
+    id: item.id,
+    label: item.label,
+    enabled: item.disabled !== true,
+    ...(item.iconKey ? { iconKey: item.iconKey } : {}),
+  };
+}
+
+/**
+ * A tab's context menu: native on the desktop, as the platform's tab menus are, and an
+ * equivalent page menu elsewhere. Both show each item's icon.
+ */
+function AppShellTabContextMenu({
+  items,
+  onOpen,
+  children,
+}: {
+  items: readonly AppShellTabContextMenuItem[];
+  onOpen: () => void;
+  children: ReactElement;
+}) {
+  if (items.length === 0) return children;
+  if (canShowNativeContextMenu()) {
+    const openNativeMenu = async () => {
+      onOpen();
+      try {
+        const selectedId = await showNativeContextMenu(items.map(toNativeContextMenuItem));
+        for (const item of items) {
+          if (item.type !== "separator" && item.id === selectedId && item.disabled !== true) {
+            item.onSelect();
+          }
+        }
+      } catch {
+        // The menu could not open; nothing changes.
+      }
+    };
+    return (
+      <div
+        className="contents"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          void openNativeMenu();
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
+  return (
     <NodexContextMenuRoot
       onOpenChange={(open) => {
-        if (!open) return;
-        onCloseModeExit();
+        if (open) onOpen();
       }}
     >
-      <NodexContextMenuTrigger>{chrome}</NodexContextMenuTrigger>
+      <NodexContextMenuTrigger>{children}</NodexContextMenuTrigger>
       <NodexContextMenuPortal>
         <NodexContextMenuContent className="min-w-36">
-          {contextMenuItems.map((item) =>
+          {items.map((item) =>
             item.type === "separator" ? (
               <ContextMenuDivider key={item.id} />
             ) : (
@@ -1193,11 +1268,13 @@ function AppShellTab({
                 disabled={item.disabled}
                 className={cn(
                   APP_SHELL_TAB_CONTEXT_MENU_ITEM_CLASS,
+                  "flex items-center gap-2",
                   item.tone === "destructive" && "text-token-error-foreground",
                   item.disabled && "cursor-default opacity-50",
                 )}
                 onSelect={item.disabled ? undefined : item.onSelect}
               >
+                {item.iconKey ? <NativeMenuIcon iconKey={item.iconKey} /> : null}
                 {item.label}
               </NodexContextMenuItem>
             ),
@@ -1314,32 +1391,10 @@ function AppShellLeadingTabChrome({
       />
     </div>
   );
-  if (!tab.contextMenuItems || tab.contextMenuItems.length === 0) return chrome;
   return (
-    <NodexContextMenuRoot
-      onOpenChange={(open) => {
-        if (open) onContextMenuOpen();
-      }}
-    >
-      <NodexContextMenuTrigger>{chrome}</NodexContextMenuTrigger>
-      <NodexContextMenuPortal>
-        <NodexContextMenuContent className="min-w-36">
-          {tab.contextMenuItems.map((item) => (
-            <NodexContextMenuItem
-              key={item.id}
-              disabled={item.disabled}
-              className={cn(
-                APP_SHELL_TAB_CONTEXT_MENU_ITEM_CLASS,
-                item.disabled && "cursor-default opacity-50",
-              )}
-              onSelect={item.disabled ? undefined : item.onSelect}
-            >
-              {item.label}
-            </NodexContextMenuItem>
-          ))}
-        </NodexContextMenuContent>
-      </NodexContextMenuPortal>
-    </NodexContextMenuRoot>
+    <AppShellTabContextMenu items={tab.contextMenuItems ?? []} onOpen={onContextMenuOpen}>
+      {chrome}
+    </AppShellTabContextMenu>
   );
 }
 
@@ -1350,7 +1405,7 @@ function buildAppShellTabContextMenuItems({
   canPinTab,
   canMoveTab,
   canSplitTab,
-  targetPanelLabel,
+  moveTarget,
   onClose,
   onCloseOtherTabs,
   onCloseTabsToRight,
@@ -1364,7 +1419,7 @@ function buildAppShellTabContextMenuItems({
   canPinTab: boolean;
   canMoveTab: boolean;
   canSplitTab: boolean;
-  targetPanelLabel: string;
+  moveTarget: { label: string; iconKey: NativeContextMenuIconKey };
   onClose: () => void;
   onCloseOtherTabs: () => void;
   onCloseTabsToRight: () => void;
@@ -1372,7 +1427,29 @@ function buildAppShellTabContextMenuItems({
   onMove: () => void;
   onSplit: (side: AppShellTabSplitSide) => void;
 }): AppShellTabContextMenuItem[] {
+  // Codex order: the tab's own actions, where the tab goes, then closing.
   const items: AppShellTabContextMenuItem[] = [...(customItems ?? [])];
+  const placementItems: AppShellTabContextMenuItem[] = [];
+  if (canPinTab) {
+    placementItems.push({
+      id: "pin-tab",
+      label: "Pin tab",
+      iconKey: "pin",
+      onSelect: onPin,
+    });
+  }
+  if (canMoveTab) {
+    placementItems.push({
+      id: "move-tab",
+      label: `Move to ${moveTarget.label}`,
+      iconKey: moveTarget.iconKey,
+      onSelect: onMove,
+    });
+  }
+  if (placementItems.length > 0) {
+    if (items.length > 0) items.push({ id: "placement-separator", type: "separator" });
+    items.push(...placementItems);
+  }
   if (items.length > 0) {
     items.push({ id: "close-tab-separator", type: "separator" });
   }
@@ -1380,41 +1457,31 @@ function buildAppShellTabContextMenuItems({
     {
       id: "close-tab",
       label: "Close",
+      iconKey: "close",
       onSelect: onClose,
     },
     {
       id: "close-other-tabs",
       label: "Close other tabs",
+      iconKey: "close",
       disabled: !canCloseOtherTabs,
       onSelect: onCloseOtherTabs,
     },
     {
       id: "close-tabs-to-the-right",
       label: "Close tabs to the right",
+      iconKey: "close",
       disabled: !canCloseTabsToRight,
       onSelect: onCloseTabsToRight,
     },
   );
-  if (canPinTab) {
-    items.push({
-      id: "pin-tab",
-      label: "Pin tab",
-      onSelect: onPin,
-    });
-  }
-  if (canMoveTab) {
-    items.push({
-      id: "move-tab",
-      label: `Move to ${targetPanelLabel}`,
-      onSelect: onMove,
-    });
-  }
   if (canSplitTab) {
     items.push({ id: "split-tab-separator", type: "separator" });
     for (const action of APP_SHELL_SPLIT_ACTIONS) {
       items.push({
         id: `split-tab-${action.side}`,
         label: `Split tab ${action.label}`,
+        iconKey: action.iconKey,
         onSelect: () => onSplit(action.side),
       });
     }

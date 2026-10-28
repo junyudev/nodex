@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import { fireEvent, within } from "@testing-library/react";
+import { fireEvent, waitFor, within } from "@testing-library/react";
 import { act } from "react";
 import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
@@ -1067,6 +1067,75 @@ describe("AppShellTabs", () => {
     expect(closed.join(",")).toBe("one");
   });
 
+  test("the desktop shows a tab's menu natively, with each item's icon and enabled state", async () => {
+    const showContextMenu = vi.fn(async () => "close-other-tabs");
+    const bridge = window as unknown as { electronBridge?: Record<string, unknown> };
+    const previousBridge = bridge.electronBridge;
+    bridge.electronBridge = { ...previousBridge, showContextMenu };
+    try {
+      const tabs = makeTabs();
+      tabs[1] = {
+        ...tabs[1],
+        contextMenuItems: [
+          { id: "browser-reload", label: "Reload", iconKey: "reload", onSelect: () => undefined },
+        ],
+      };
+      const closed: string[] = [];
+      const view = renderAppShellTabs({
+        tabs,
+        activeTabId: "two",
+        onCloseTab: (tabId) => closed.push(tabId),
+        onMoveTab: () => undefined,
+      });
+      await interact(() => fireEvent.contextMenu(getTabController(view, "two")));
+
+      await waitFor(() => expect(closed).toEqual(["one"]));
+      expect(view.queryByRole("menu")).toBeNull();
+      expect(showContextMenu).toHaveBeenCalledWith(
+        [
+          { id: "browser-reload", label: "Reload", enabled: true, iconKey: "reload" },
+          { type: "separator", id: "placement-separator" },
+          {
+            id: "move-tab",
+            label: "Move to bottom panel",
+            enabled: true,
+            iconKey: "moveDown",
+          },
+          { type: "separator", id: "close-tab-separator" },
+          { id: "close-tab", label: "Close", enabled: true, iconKey: "close" },
+          { id: "close-other-tabs", label: "Close other tabs", enabled: true, iconKey: "close" },
+          {
+            id: "close-tabs-to-the-right",
+            label: "Close tabs to the right",
+            enabled: false,
+            iconKey: "close",
+          },
+        ],
+        undefined,
+      );
+    } finally {
+      bridge.electronBridge = previousBridge;
+    }
+  });
+
+  test("the page menu shows the same icons where native menus are unavailable", async () => {
+    const view = renderAppShellTabs({
+      onCloseTab: () => undefined,
+      onSplitTab: () => undefined,
+      tabs: makeTabs().map((tab) => ({ ...tab, splittable: true })),
+    });
+    await interact(() => fireEvent.contextMenu(getTabController(view, "one")));
+    const menu = await view.findByRole("menu");
+    const iconOf = (label: string) =>
+      within(menu)
+        .getByRole("menuitem", { name: label })
+        .querySelector("[data-native-menu-icon]")
+        ?.getAttribute("data-native-menu-icon");
+    expect(iconOf("Close")).toBe("close");
+    expect(iconOf("Split tab left")).toBe("splitLeft");
+    expect(iconOf("Split tab down")).toBe("splitDown");
+  });
+
   test("context menu disables close-tabs-to-right when only non-closable tabs follow", async () => {
     const view = renderAppShellTabs({
       activeTabId: "two",
@@ -1402,7 +1471,14 @@ describe("AppShellTabs leading tab", () => {
       const view = renderAppShellTabs({
         leadingTab: makeLeadingTab({
           onSelect,
-          contextMenuItems: [{ id: "move", label: `Move to ${side} pane`, onSelect: onMove }],
+          contextMenuItems: [
+            {
+              id: "move",
+              label: `Move to ${side} pane`,
+              iconKey: side === "left" ? "moveLeft" : "moveRight",
+              onSelect: onMove,
+            },
+          ],
         }),
       });
       await interact(() =>
@@ -1415,6 +1491,50 @@ describe("AppShellTabs leading tab", () => {
       expect(onSelect).not.toHaveBeenCalled();
     },
   );
+
+  test("the desktop shows the leading tab menu natively, with each item's icon", async () => {
+    const showContextMenu = vi.fn(async () => "move-right");
+    const onMoveLeft = vi.fn();
+    const onMoveRight = vi.fn();
+    const bridge = window as unknown as { electronBridge?: Record<string, unknown> };
+    const previousBridge = bridge.electronBridge;
+    bridge.electronBridge = { ...previousBridge, showContextMenu };
+    try {
+      const view = renderAppShellTabs({
+        leadingTab: makeLeadingTab({
+          contextMenuItems: [
+            {
+              id: "move-left",
+              label: "Move to left pane",
+              iconKey: "moveLeft",
+              onSelect: onMoveLeft,
+            },
+            {
+              id: "move-right",
+              label: "Move to right pane",
+              iconKey: "moveRight",
+              onSelect: onMoveRight,
+            },
+          ],
+        }),
+      });
+      await interact(() =>
+        fireEvent.contextMenu(view.getByRole("tab", { name: "Research session" })),
+      );
+      await waitFor(() => expect(onMoveRight).toHaveBeenCalledOnce());
+      expect(showContextMenu).toHaveBeenCalledWith(
+        [
+          { id: "move-left", label: "Move to left pane", enabled: true, iconKey: "moveLeft" },
+          { id: "move-right", label: "Move to right pane", enabled: true, iconKey: "moveRight" },
+        ],
+        undefined,
+      );
+      expect(onMoveLeft).not.toHaveBeenCalled();
+      expect(view.queryByRole("menu")).toBeNull();
+    } finally {
+      bridge.electronBridge = previousBridge;
+    }
+  });
 
   test.each([
     { hasContent: false, activeTabId: null, leadingSelected: false, chooserVisible: true },

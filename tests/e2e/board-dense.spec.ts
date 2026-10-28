@@ -12,6 +12,7 @@ import {
   BOARD_DENSE_SCENARIO_ID,
 } from "../../scripts/scenarios/scenarios/board-dense";
 import { dragBlockFromEditorWithMouse } from "./support/drag-block-with-mouse";
+import { selectNativeContextMenuItem } from "./support/native-context-menu";
 
 const primaryShortcut = (key: string): string =>
   `${process.platform === "darwin" ? "Meta" : "Control"}+${key}`;
@@ -346,8 +347,10 @@ test("moves Board cards and List rows into NFM as real Page blocks", async () =>
       const referenceTab = page.getByRole("tab", { name: "Keep projection updates bounded" });
       await referenceTab.dblclick();
       await expect(referenceTab).not.toHaveAttribute("data-app-shell-tab-preview", "true");
-      await referenceTab.click({ button: "right" });
-      await page.getByRole("menuitem", { name: /^Move to (?:right|bottom) panel$/u }).click();
+      const tabMenu = await selectNativeContextMenuItem(application, "move-tab", () =>
+        referenceTab.click({ button: "right" }),
+      );
+      expect(tabMenu).toEqual(expect.arrayContaining([expect.stringMatching(/^Move to /u)]));
       await openProjectBoard(page);
 
       const primaryPageId = manifest.pageIdsByKey.boundedProjection;
@@ -417,8 +420,10 @@ test("round-trips a Board Page through a Subpage without stale presentation", as
       const referenceTab = page.getByRole("tab", { name: "Keep projection updates bounded" });
       await referenceTab.dblclick();
       await expect(referenceTab).not.toHaveAttribute("data-app-shell-tab-preview", "true");
-      await referenceTab.click({ button: "right" });
-      await page.getByRole("menuitem", { name: /^Move to (?:right|bottom) panel$/u }).click();
+      const tabMenu = await selectNativeContextMenuItem(application, "move-tab", () =>
+        referenceTab.click({ button: "right" }),
+      );
+      expect(tabMenu).toEqual(expect.arrayContaining([expect.stringMatching(/^Move to /u)]));
       await openProjectBoard(page);
 
       const primaryPageId = manifest.pageIdsByKey.boundedProjection;

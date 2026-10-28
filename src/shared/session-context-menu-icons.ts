@@ -1,4 +1,15 @@
 import type { NativeContextMenuIconKey } from "./native-context-menu";
+import {
+  CLOSE_TAB_PATHS,
+  DUPLICATE_PATHS,
+  MOVE_TO_BOTTOM_PANE_PATHS,
+  MOVE_TO_LEFT_PANE_PATH,
+  MOVE_TO_RIGHT_PANE_PATH,
+  NEW_TAB_PATHS,
+  PANE_FRAME_PATH,
+  RELOAD_PATHS,
+  TRASH_PATHS,
+} from "./icon-geometry";
 
 export {
   ARCHIVE_BOX_PATH as ARCHIVE_BOX_ICON_PATH,
@@ -20,6 +31,36 @@ const PROJECT_REMOVE_ICON_SVG =
   '<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.6549 5.57307C14.9283 5.2997 15.3718 5.2997 15.6451 5.57307C15.9185 5.84643 15.9185 6.28993 15.6451 6.5633L11.3903 10.8182L15.6451 15.0731L15.735 15.1834C15.9141 15.4551 15.8842 15.8242 15.6451 16.0633C15.4061 16.3024 15.0369 16.3322 14.7653 16.1531L14.6549 16.0633L10.4 11.8084L6.14515 16.0633C5.87178 16.3367 5.42828 16.3367 5.15492 16.0633C4.88155 15.7899 4.88155 15.3464 5.15492 15.0731L9.4098 10.8182L5.15492 6.5633L5.06507 6.45295C4.88597 6.18128 4.91584 5.81214 5.15492 5.57307C5.39399 5.33399 5.76313 5.30413 6.0348 5.48322L6.14515 5.57307L10.4 9.82795L14.6549 5.57307Z" fill="currentColor"/></svg>';
 const OPEN_IN_ICON_SVG =
   '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.949 3.47949C12.0997 3.46465 12.2553 3.51279 12.3709 3.62793C12.4863 3.74328 12.5338 3.89898 12.5193 4.0498C12.5206 4.06633 12.5251 4.08275 12.5252 4.09961V10.667C12.525 10.9565 12.2902 11.191 12.0007 11.1914C11.7109 11.1914 11.4755 10.9568 11.4754 10.667V5.2666L4.37184 12.376C4.16684 12.5807 3.83365 12.5808 3.62867 12.376C3.42385 12.1711 3.42396 11.8388 3.62867 11.6338L10.7332 4.52539H5.33375C5.0438 4.52539 4.80836 4.28995 4.80836 4C4.80836 3.71005 5.0438 3.47461 5.33375 3.47461H11.9002C11.9167 3.47462 11.9328 3.47822 11.949 3.47949Z" fill="currentColor"/></svg>';
+interface GlyphPath {
+  readonly d: string;
+  readonly fillRule?: "evenodd";
+  readonly clipRule?: "evenodd";
+}
+
+function glyphSvg(paths: readonly GlyphPath[], extra = ""): string {
+  const body = paths
+    .map(
+      ({ d, fillRule, clipRule }) =>
+        `<path d="${d}"${fillRule ? ` fill-rule="${fillRule}"` : ""}${clipRule ? ` clip-rule="${clipRule}"` : ""} fill="currentColor"/>`,
+    )
+    .join("");
+  return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">${body}${extra}</svg>`;
+}
+
+/** A pane outline with the half a split opens on filled in. */
+function splitIconSvg(side: "left" | "right" | "up" | "down"): string {
+  const half = {
+    left: { x: 3.6, y: 4.25, width: 4, height: 7.5 },
+    right: { x: 8.4, y: 4.25, width: 4, height: 7.5 },
+    up: { x: 3.6, y: 4.25, width: 8.8, height: 3.35 },
+    down: { x: 3.6, y: 8.4, width: 8.8, height: 3.35 },
+  }[side];
+  return glyphSvg(
+    [{ d: PANE_FRAME_PATH }],
+    `<rect x="${half.x}" y="${half.y}" width="${half.width}" height="${half.height}" rx="0.75" fill="currentColor"/>`,
+  );
+}
+
 export const SESSION_CONTEXT_MENU_ICON_SVG_BY_KEY: Record<NativeContextMenuIconKey, string> = {
   pin: '<svg\n  width="20"\n  height="20"\n  viewBox="0 0 20 20"\n  fill="none"\n  xmlns="http://www.w3.org/2000/svg"\n>\n  <path\n    d="M11.8349 12.5C11.8349 11.7069 12.2795 11.0132 12.8613 10.5977L16.4121 8.06152L16.5019 7.98926C16.8971 7.63403 16.9472 7.02784 16.6162 6.6123L16.539 6.52637L13.4736 3.46094C13.06 3.04747 12.3913 3.07457 12.0107 3.49805L11.9384 3.58789L9.40229 7.13867C8.98671 7.72044 8.293 8.16504 7.49995 8.16504H5.41694C4.98338 8.16504 4.57411 8.46643 4.36714 8.94629C4.16208 9.4219 4.22383 9.91132 4.53901 10.2266L9.77339 15.4609L9.89936 15.5674C10.2107 15.7875 10.6375 15.8122 11.0537 15.6328C11.5335 15.4258 11.8349 15.0166 11.8349 14.583V12.5ZM13.165 14.583C13.165 15.6724 12.4217 16.4916 11.58 16.8545C10.787 17.1964 9.76258 17.1946 8.9853 16.541L8.83296 16.4014L6.6855 14.2539L2.97065 17.9707C2.71095 18.2304 2.28895 18.2304 2.02925 17.9707C1.76955 17.711 1.76955 17.289 2.02925 17.0293L5.74507 13.3135L3.59858 11.167C2.80692 10.3753 2.78076 9.26588 3.14546 8.41992C3.50834 7.57826 4.3275 6.83496 5.41694 6.83496H7.49995C7.78839 6.83496 8.10722 6.66349 8.32026 6.36523L10.8564 2.81445L10.9374 2.70703C11.8018 1.63041 13.4238 1.53039 14.414 2.52051L17.4794 5.58594L17.5722 5.68359C18.4623 6.67995 18.3348 8.2261 17.2929 9.0625L17.1855 9.14355L13.6347 11.6797C13.3365 11.8927 13.165 12.2116 13.165 12.5V14.583Z"\n    fill="currentColor"\n  />\n</svg>',
   unpin:
@@ -49,6 +90,18 @@ export const SESSION_CONTEXT_MENU_ICON_SVG_BY_KEY: Record<NativeContextMenuIconK
   folderOpen: PROJECT_FOLDER_OPEN_ICON_SVG,
   remove: PROJECT_REMOVE_ICON_SVG,
   openIn: OPEN_IN_ICON_SVG,
+  moveLeft: glyphSvg([{ d: MOVE_TO_LEFT_PANE_PATH }]),
+  moveRight: glyphSvg([{ d: MOVE_TO_RIGHT_PANE_PATH }]),
+  moveDown: glyphSvg(MOVE_TO_BOTTOM_PANE_PATHS),
+  close: glyphSvg(CLOSE_TAB_PATHS),
+  newTab: glyphSvg(NEW_TAB_PATHS),
+  reload: glyphSvg(RELOAD_PATHS),
+  duplicate: glyphSvg(DUPLICATE_PATHS),
+  trash: glyphSvg(TRASH_PATHS),
+  splitLeft: splitIconSvg("left"),
+  splitRight: splitIconSvg("right"),
+  splitUp: splitIconSvg("up"),
+  splitDown: splitIconSvg("down"),
 };
 
 export function getNativeContextMenuIconSvg(iconKey: NativeContextMenuIconKey): string {

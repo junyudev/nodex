@@ -3662,11 +3662,13 @@ export function WorkbenchRuntime({
                   {
                     id: "move-chat-left",
                     label: "Move to left pane",
+                    iconKey: "moveLeft",
                     onSelect: () => moveSessionConversationToSide("left"),
                   },
                   {
                     id: "move-chat-right",
                     label: "Move to right pane",
+                    iconKey: "moveRight",
                     onSelect: () => moveSessionConversationToSide("right"),
                   },
                 ]

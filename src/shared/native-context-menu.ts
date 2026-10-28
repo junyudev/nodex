@@ -16,7 +16,19 @@ export type NativeContextMenuIconKey =
   | "openIn"
   | "window"
   | "worktree"
-  | "remove";
+  | "remove"
+  | "moveLeft"
+  | "moveRight"
+  | "moveDown"
+  | "close"
+  | "newTab"
+  | "reload"
+  | "duplicate"
+  | "trash"
+  | "splitLeft"
+  | "splitRight"
+  | "splitUp"
+  | "splitDown";
 
 export interface NativeContextMenuBaseItem {
   id: string;

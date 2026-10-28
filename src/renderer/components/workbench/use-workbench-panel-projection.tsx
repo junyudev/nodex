@@ -435,16 +435,19 @@ export function useWorkbenchPanelProjection({
                   {
                     id: "browser-new-tab-right",
                     label: "New tab to the right",
+                    iconKey: "newTab",
                     onSelect: () => void createBrowserTabToRight(tab, false),
                   },
                   {
                     id: "browser-reload",
                     label: "Reload",
+                    iconKey: "reload",
                     onSelect: () => reloadBrowserTab(tab),
                   },
                   {
                     id: "browser-duplicate",
                     label: "Duplicate",
+                    iconKey: "duplicate",
                     onSelect: () => void createBrowserTabToRight(tab, true),
                   },
                 ]
@@ -453,6 +456,7 @@ export function useWorkbenchPanelProjection({
                     {
                       id: "terminal-kill",
                       label: "Kill terminal",
+                      iconKey: "trash",
                       tone: "destructive",
                       onSelect: () => {
                         terminalSessionStore.kill(tab.config.terminalSessionId);

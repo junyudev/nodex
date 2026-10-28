@@ -21,4 +21,32 @@ describe("native session context-menu icons", () => {
     expect(svg).toContain('fill="black"');
     expect(svg).not.toContain("currentColor");
   });
+
+  test("tab menu icons are template-ready 16px glyphs, one distinct split per side", () => {
+    const keys = [
+      "moveLeft",
+      "moveRight",
+      "moveDown",
+      "close",
+      "newTab",
+      "reload",
+      "duplicate",
+      "trash",
+      "splitLeft",
+      "splitRight",
+      "splitUp",
+      "splitDown",
+    ] as const;
+    for (const key of keys) {
+      const svg = buildSessionContextMenuIconSvg(key);
+      expect(svg).toContain('viewBox="0 0 16 16"');
+      expect(svg).not.toContain("currentColor");
+    }
+    const splits = new Set(
+      (["splitLeft", "splitRight", "splitUp", "splitDown"] as const).map(
+        buildSessionContextMenuIconSvg,
+      ),
+    );
+    expect(splits.size).toBe(4);
+  });
 });
