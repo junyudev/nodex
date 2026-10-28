@@ -240,16 +240,22 @@ describe("LocalConversationTurnEntry", () => {
         expect(view.queryByRole("button", { name: "touch first-denial.txt" })).toBeNull(),
       );
       scrollIntoView.mockClear();
+      // The cancel boundary is before the queued reveal frame, regardless of wall-clock delay.
+      vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
       await act(async () => {
         fireEvent.click(count);
       });
-      await waitFor(() => expect(toggle.getAttribute("aria-expanded")).toBe("true"));
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
       await act(async () => {
         fireEvent.click(toggle);
       });
-      await settleAsyncRender();
+      await act(async () => {
+        vi.advanceTimersToNextFrame();
+      });
       expect(scrollIntoView).not.toHaveBeenCalled();
     } finally {
+      vi.useRealTimers();
       view.unmount();
       scrollIntoView.mockRestore();
     }

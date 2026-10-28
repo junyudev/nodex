@@ -723,7 +723,8 @@ describe("LocalConversationThreadBody", () => {
             id: "user",
             realtimeSessionId: "session",
             role: "user",
-            text: "User voice row\n".repeat(5_001) + "\n[needle](https://example.com/result)",
+            // Large Markdown budgets have dedicated coverage; Find needs only a folded tail.
+            text: "User voice row\n".repeat(40) + "\n[needle](https://example.com/result)",
           },
         },
       ],
