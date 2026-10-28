@@ -45,11 +45,9 @@ describe("Page coordination runtimes", () => {
     });
     await readCalendarOccurrenceWindow("project-1", start, end, "launch", null);
     await readPageChatActivitySummaries({
-      pageAccessProjectId: "project-1",
       pageIds: ["page-1"],
     });
     await readPageChatWindow({
-      pageAccessProjectId: "project-1",
       pageId: "page-1",
       first: 20,
     });
@@ -63,8 +61,8 @@ describe("Page coordination runtimes", () => {
         { storeEpoch: "epoch-page", commitSeq: 8 },
       ],
       ["calendar:occurrences", "project-1", start, end, "launch", null],
-      ["page-chats:activity-summaries", { pageAccessProjectId: "project-1", pageIds: ["page-1"] }],
-      ["page-chats:list", { pageAccessProjectId: "project-1", pageId: "page-1", first: 20 }],
+      ["page-chats:activity-summaries", { pageIds: ["page-1"] }],
+      ["page-chats:list", { pageId: "page-1", first: 20 }],
     ]);
   });
 
@@ -100,7 +98,7 @@ describe("Page coordination runtimes", () => {
   });
 
   test("keeps Page-chat relation changes behind their pending projection boundary", async () => {
-    const relation = { pageAccessProjectId: "project-1", pageId: "page-1" };
+    const relation = { pageId: "page-1" };
 
     await linkPageChat("session-1", relation);
     await unlinkPageChat("session-1", relation);

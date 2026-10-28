@@ -22,9 +22,7 @@ export async function readPageChatActivitySummaryBatches(
   if (pageIds.length === 0) return { summaries: [], projectionRevision: 0 };
 
   const batches = await Promise.all(
-    chunkPageChatPageIds(pageIds).map((batch) =>
-      read({ pageAccessProjectId: input.pageAccessProjectId, pageIds: batch }),
-    ),
+    chunkPageChatPageIds(pageIds).map((batch) => read({ pageIds: batch })),
   );
   return {
     summaries: batches.flatMap((batch) => batch.summaries),

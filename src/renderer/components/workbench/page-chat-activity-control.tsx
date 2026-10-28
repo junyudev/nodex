@@ -26,7 +26,6 @@ export interface PageChatActivityDetailOverride {
 }
 
 export interface PageChatActivityControlProps {
-  readonly pageAccessProjectId: string;
   readonly pageId: string;
   readonly summary: PageChatActivitySummary;
   readonly onOpenChat: (sessionId: string) => Promise<void> | void;
@@ -92,7 +91,6 @@ function RelatedChatRow({
 }
 
 export function PageChatActivityControl({
-  pageAccessProjectId,
   pageId,
   summary,
   onOpenChat,
@@ -104,7 +102,6 @@ export function PageChatActivityControl({
   const activity = usePageChatActivity(summary);
   const detailQuery = useInfiniteQuery({
     ...pageChatWindowQueryOptions({
-      pageAccessProjectId,
       pageId,
       includeArchived: false,
       first: 20,

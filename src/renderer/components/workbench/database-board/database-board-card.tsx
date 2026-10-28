@@ -425,7 +425,6 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
         props.pageActionPort?.openRelatedChat &&
         model.routingContext.kind === "project" ? (
           <PageChatActivityControl
-            pageAccessProjectId={model.routingContext.projectId}
             pageId={row.pageId}
             summary={props.pageChatActivity}
             onOpenChat={props.pageActionPort.openRelatedChat}

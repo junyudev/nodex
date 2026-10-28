@@ -161,9 +161,7 @@ test("persists Page-related Chats and projects their activity across Board, List
         .click();
       await expect(relatedChatRows).toHaveCount(1);
       await expect
-        .poll(
-          async () => (await seed.readPageChats(manifest.projectId, activityPageId)).items.length,
-        )
+        .poll(async () => (await seed.readPageChats(activityPageId)).items.length)
         .toBe(1);
       await expect(visibleActivityControl(page, activityPageId)).toHaveAttribute(
         "aria-label",
@@ -177,9 +175,7 @@ test("persists Page-related Chats and projects their activity across Board, List
       await page.getByRole("menuitem", { name: "Open in", exact: true }).hover();
       await page.getByRole("menuitem", { name: "Open in new chat" }).click();
       await expect
-        .poll(
-          async () => (await seed.readPageChats(manifest.projectId, openActionPageId)).items.length,
-        )
+        .poll(async () => (await seed.readPageChats(openActionPageId)).items.length)
         .toBe(1);
 
       const restartedPage = await harness.restart();

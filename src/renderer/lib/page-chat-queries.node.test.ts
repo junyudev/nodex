@@ -9,7 +9,7 @@ describe("Page Chat activity queries", () => {
     const calls: string[][] = [];
 
     const result = await readPageChatActivitySummaryBatches(
-      { pageAccessProjectId: "project:one", pageIds: requested.reverse() },
+      { pageIds: requested.reverse() },
       async (input): Promise<PageChatActivitySummaryResult> => {
         calls.push(input.pageIds);
         return {
@@ -37,13 +37,10 @@ describe("Page Chat activity queries", () => {
 
   test("returns an empty projection without issuing a Core read", async () => {
     let readCount = 0;
-    const result = await readPageChatActivitySummaryBatches(
-      { pageAccessProjectId: "project:one", pageIds: [] },
-      async () => {
-        readCount += 1;
-        return { summaries: [], projectionRevision: 99 };
-      },
-    );
+    const result = await readPageChatActivitySummaryBatches({ pageIds: [] }, async () => {
+      readCount += 1;
+      return { summaries: [], projectionRevision: 99 };
+    });
 
     expect(result).toEqual({ summaries: [], projectionRevision: 0 });
     expect(readCount).toBe(0);

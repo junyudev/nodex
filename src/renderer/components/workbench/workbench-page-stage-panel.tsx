@@ -177,7 +177,6 @@ export function PageStageSessionTab({
   onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   onOpenPageInNewChat?: (input: OpenPageInNewChatInput) => Promise<void> | void;
   onLinkPageToChat: (input: {
-    readonly pageAccessProjectId: string;
     readonly pageId: string;
     readonly sessionId: string;
   }) => Promise<void>;
@@ -199,7 +198,6 @@ export function PageStageSessionTab({
   const queryClient = useQueryClient();
   const relatedChatsQuery = useInfiniteQuery({
     ...pageChatWindowQueryOptions({
-      pageAccessProjectId: pageAccessProjectId,
       pageId: tab.config.pageId,
       includeArchived: false,
       first: 20,
@@ -210,12 +208,11 @@ export function PageStageSessionTab({
   const removeRelatedChat = useCallback(
     async (relatedSessionId: string): Promise<void> => {
       await unlinkPageChat(relatedSessionId, {
-        pageAccessProjectId: pageAccessProjectId,
         pageId: tab.config.pageId,
       });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pageChats.all() });
     },
-    [queryClient, tab.config.pageId, pageAccessProjectId],
+    [queryClient, tab.config.pageId],
   );
   const editorSessionKey = makeEditorSurfaceKey(sessionId, tab.id);
 
@@ -539,7 +536,6 @@ export function PageStageSessionTab({
             }
             onLinkRelatedChat={async (relatedSessionId) => {
               await onLinkPageToChat({
-                pageAccessProjectId: pageAccessProjectId,
                 pageId: tab.config.pageId,
                 sessionId: relatedSessionId,
               });
@@ -598,7 +594,6 @@ export function PageStageSessionTab({
                 submittedPresentation,
               );
               await onLinkPageToChat({
-                pageAccessProjectId: pageAccessProjectId,
                 pageId: tab.config.pageId,
                 sessionId: targetSession.id,
               });

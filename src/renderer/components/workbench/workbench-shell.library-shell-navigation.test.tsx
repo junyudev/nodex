@@ -834,7 +834,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     expect(invokeCalls[0]).toEqual([
       "page-chats:unlink",
       "session:alpha:related-threadless",
-      { pageAccessProjectId: "alpha", pageId: "card-1" },
+      { pageId: "card-1" },
     ]);
   });
 
@@ -895,7 +895,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     expect(invokeCalls[linkIndex]).toEqual([
       "page-chats:link",
       "session:alpha:card-page-prompt",
-      { pageAccessProjectId: "alpha", pageId: "card-1" },
+      { pageId: "card-1" },
     ]);
     expect(invokeCalls[sendIndex]![1]).toMatchObject({
       sessionId: "session:alpha:card-page-prompt",

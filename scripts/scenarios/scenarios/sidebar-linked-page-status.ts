@@ -228,7 +228,7 @@ const inspect = async (
       const pageId = requireId(manifest.pageIdsByKey, key);
       const [page, chats] = await Promise.all([
         port.readPage(manifest.projectId, pageId),
-        port.readPageChats(manifest.projectId, pageId),
+        port.readPageChats(pageId),
       ]);
       if (page.title !== title || page.documentReadiness !== "ready" || chats.hasMore) {
         throw new Error(`sidebar/linked-page-status Page ${key} did not materialize`);

@@ -344,13 +344,8 @@ export function useWorkbenchSessionCommands({
   );
 
   const linkPageToChat = useCallback(
-    async (input: {
-      readonly pageAccessProjectId: string;
-      readonly pageId: string;
-      readonly sessionId: string;
-    }): Promise<void> => {
+    async (input: { readonly pageId: string; readonly sessionId: string }): Promise<void> => {
       await linkPageChat(input.sessionId, {
-        pageAccessProjectId: input.pageAccessProjectId,
         pageId: input.pageId,
       });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pageChats.all() });

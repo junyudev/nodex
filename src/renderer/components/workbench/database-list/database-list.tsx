@@ -1831,10 +1831,11 @@ export function DatabaseList({
                 instanceId: pageDragInstanceId,
               })
         }
-        pageAccessProjectId={
-          model.routingContext.kind === "project" ? model.routingContext.projectId : null
+        pageChatActivity={
+          model.routingContext.kind === "project"
+            ? pageChatActivityByPageId.get(item.pageId)
+            : undefined
         }
-        pageChatActivity={pageChatActivityByPageId.get(item.pageId)}
         onOpenRelatedChat={pageActionPort?.openRelatedChat}
         onRemovePageChatRelation={(sessionId) => onRemovePageChatRelation(item.pageId, sessionId)}
       />

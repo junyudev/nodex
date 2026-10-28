@@ -159,12 +159,11 @@ test("shows a sole linked Page's Status, opens the Page, and follows live Status
       ).toHaveCount(0);
 
       await invokeIpc(page, "page-chats:unlink", buildChat.sessionId, {
-        pageAccessProjectId: manifest.projectId,
         pageId: buildPage.pageId,
       });
       await expect
         .poll(async () => {
-          const linked = await seed.readPageChats(manifest.projectId, buildPage.pageId);
+          const linked = await seed.readPageChats(buildPage.pageId);
           return linked.items.some((chat) => chat.sessionId === buildChat.sessionId);
         })
         .toBe(false);

@@ -54,7 +54,6 @@ function renderControl({
     <QueryClientProvider client={queryClient}>
       <div onClick={parentClick} onPointerDown={parentPointerDown}>
         <PageChatActivityControl
-          pageAccessProjectId="project-1"
           pageId="page-1"
           summary={activity}
           onOpenChat={onOpenChat}

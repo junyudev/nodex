@@ -1,14 +1,13 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
 
-import { pageChatActivitySummariesQueryOptions } from "@/lib/query-options";
+import { usePageChatActivitySummaries } from "@/lib/use-page-chat-activity-summaries";
 import { queryKeys } from "@/lib/query-keys";
 import { unlinkPageChat } from "@/lib/page-chat-runtime";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import type { PageChatActivitySummary } from "@/lib/types";
 
 interface DatabasePageChatActivityRuntimeValue {
-  readonly pageAccessProjectId: string | null;
   readonly activityByPageId: ReadonlyMap<string, PageChatActivitySummary>;
   readonly removeRelation: (pageId: string, sessionId: string) => Promise<void>;
 }
@@ -24,32 +23,19 @@ function DatabasePageChatActivityProvider({
   readonly children: ReactNode;
 }) {
   const queryClient = useQueryClient();
-  const pageAccessProjectId =
-    model.routingContext.kind === "project" ? model.routingContext.projectId : null;
-  const activity = useQuery(
-    pageChatActivitySummariesQueryOptions(
-      pageAccessProjectId ?? "",
-      model.query.rows.map((row) => row.page.pageId),
-    ),
-  );
-  const activityByPageId = useMemo(
-    () =>
-      new Map<string, PageChatActivitySummary>(
-        activity.data?.summaries.map((summary) => [summary.pageId, summary]) ?? [],
-      ),
-    [activity.data?.summaries],
+  const activityByPageId = usePageChatActivitySummaries(
+    model.query.rows.map((row) => row.page.pageId),
   );
   const removeRelation = useCallback(
     async (pageId: string, sessionId: string): Promise<void> => {
-      if (!pageAccessProjectId) throw new Error("A Project is required to manage linked chats");
-      await unlinkPageChat(sessionId, { pageAccessProjectId, pageId });
+      await unlinkPageChat(sessionId, { pageId });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pageChats.all() });
     },
-    [pageAccessProjectId, queryClient],
+    [queryClient],
   );
   const value = useMemo(
-    () => ({ pageAccessProjectId, activityByPageId, removeRelation }),
-    [activityByPageId, pageAccessProjectId, removeRelation],
+    () => ({ activityByPageId, removeRelation }),
+    [activityByPageId, removeRelation],
   );
   return (
     <DatabasePageChatActivityRuntimeContext value={value}>

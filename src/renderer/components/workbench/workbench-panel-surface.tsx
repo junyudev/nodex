@@ -100,7 +100,6 @@ export function WorkbenchTabProjectionPanel({
   onOpenPageInNewChat?: (input: OpenPageInNewChatInput) => Promise<void> | void;
   onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   onLinkPageToChat: (input: {
-    readonly pageAccessProjectId: string;
     readonly pageId: string;
     readonly sessionId: string;
   }) => Promise<void>;

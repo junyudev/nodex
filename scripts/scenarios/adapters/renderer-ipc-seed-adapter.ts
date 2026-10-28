@@ -570,19 +570,14 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     return { sessionId: session.id, threadId: input.thread.threadId };
   }
 
-  async readPageChatActivity(
-    projectId: string,
-    pageIds: readonly string[],
-  ): Promise<PageChatActivitySummaryResult> {
+  async readPageChatActivity(pageIds: readonly string[]): Promise<PageChatActivitySummaryResult> {
     return await this.#invoke("page-chats:activity-summaries", {
-      pageAccessProjectId: projectId,
       pageIds: [...pageIds],
     });
   }
 
-  async readPageChats(projectId: string, pageId: string): Promise<PageChatWindow> {
+  async readPageChats(pageId: string): Promise<PageChatWindow> {
     return await this.#invoke("page-chats:list", {
-      pageAccessProjectId: projectId,
       pageId,
       includeArchived: false,
       first: 50,

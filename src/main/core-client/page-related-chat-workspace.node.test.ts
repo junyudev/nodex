@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vite-plus/test";
+import * as Effect from "effect/Effect";
 
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
+import { runScenarioProjectWorkspace } from "../../../scripts/scenarios/adapters/core-client-seed-runtime";
 import {
   BOARD_DENSE_PRIMARY_PAGE_KEY,
   BOARD_DENSE_SCENARIO_ID,
@@ -8,6 +10,62 @@ import {
 import { createUuidV7 } from "../../shared/uuid-v7";
 
 describe("Page related Chats over the real Core transport", () => {
+  test("reads Library Page chats without a Project and removes only the selected relation", async () => {
+    await withCoreScenario({ scenarioId: BOARD_DENSE_SCENARIO_ID }, async (context) => {
+      const page = await context.seed.sendInboxMessage("Library message with linked chats");
+      const otherPage = await context.seed.sendInboxMessage("Another Library message");
+      const sessionId = createUuidV7();
+      const otherSessionId = createUuidV7();
+
+      await runScenarioProjectWorkspace(context.runtime, (workspace) =>
+        Effect.gen(function* () {
+          for (const [id, title, pageIds] of [
+            [sessionId, "Shared Library chat", [page.pageId, otherPage.pageId]],
+            [otherSessionId, "Second Library chat", [page.pageId]],
+          ] as const) {
+            yield* workspace.createProjectSession({
+              operationId: createUuidV7(),
+              payload: {
+                sessionId: id,
+                input: {
+                  projectId: context.manifest.projectId,
+                  noThreadFallbackTitle: title,
+                  initialPageIds: [...pageIds],
+                },
+              },
+            });
+          }
+
+          const summaries = yield* workspace.readPageChatActivitySummaries({
+            pageIds: [page.pageId, otherPage.pageId],
+          });
+          expect(summaries.summaries).toMatchObject([
+            { pageId: page.pageId, relatedCount: 2, soleSessionId: null },
+            { pageId: otherPage.pageId, relatedCount: 1, soleSessionId: sessionId },
+          ]);
+
+          const chats = yield* workspace.listPageChatWindow({ pageId: page.pageId });
+          expect(chats.items.map((chat) => chat.sessionId).sort()).toEqual(
+            [sessionId, otherSessionId].sort(),
+          );
+          expect(chats.hasMore).toBe(false);
+          expect(chats.projectionRevision).toBeGreaterThanOrEqual(summaries.projectionRevision);
+
+          yield* workspace.unlinkPageFromProjectSession(sessionId, { pageId: page.pageId });
+          const remaining = yield* workspace.readPageChatActivitySummaries({
+            pageIds: [page.pageId, otherPage.pageId],
+          });
+          expect(remaining.summaries).toMatchObject([
+            { pageId: page.pageId, relatedCount: 1, soleSessionId: otherSessionId },
+            { pageId: otherPage.pageId, relatedCount: 1, soleSessionId: sessionId },
+          ]);
+          const remainingChats = yield* workspace.listPageChatWindow({ pageId: page.pageId });
+          expect(remainingChats.items.map((chat) => chat.sessionId)).toEqual([otherSessionId]);
+        }),
+      );
+    });
+  });
+
   test("creates, reads, unlinks, and relinks a threadless Chat", async () => {
     await withCoreScenario({ scenarioId: BOARD_DENSE_SCENARIO_ID }, async (context) => {
       const projectId = context.manifest.projectId;

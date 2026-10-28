@@ -143,14 +143,12 @@ export const SessionLinkedPageSummaryInputSchema = z
 
 export const PageChatActivitySummaryInputSchema = z
   .object({
-    pageAccessProjectId: z.string().trim().min(1),
     pageIds: boundedUniqueIds(MAX_PAGE_CHAT_ACTIVITY_IDS),
   })
   .strict() satisfies z.ZodType<PageChatActivitySummaryInput>;
 
 export const PageChatWindowInputSchema = z
   .object({
-    pageAccessProjectId: z.string().trim().min(1),
     pageId: z.string().trim().min(1),
     includeArchived: z.boolean().optional(),
     after: z.string().trim().min(1).nullable().optional(),
@@ -160,7 +158,6 @@ export const PageChatWindowInputSchema = z
 
 export const PageChatLinkInputSchema = z
   .object({
-    pageAccessProjectId: z.string().trim().min(1),
     pageId: z.string().trim().min(1),
   })
   .strict() satisfies z.ZodType<PageChatLinkInput>;

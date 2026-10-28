@@ -688,22 +688,17 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
-  async readPageChatActivity(
-    projectId: string,
-    pageIds: readonly string[],
-  ): Promise<PageChatActivitySummaryResult> {
+  async readPageChatActivity(pageIds: readonly string[]): Promise<PageChatActivitySummaryResult> {
     return await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
       workspace.readPageChatActivitySummaries({
-        pageAccessProjectId: projectId,
         pageIds: [...pageIds],
       }),
     );
   }
 
-  async readPageChats(projectId: string, pageId: string): Promise<PageChatWindow> {
+  async readPageChats(pageId: string): Promise<PageChatWindow> {
     return await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
       workspace.listPageChatWindow({
-        pageAccessProjectId: projectId,
         pageId,
         includeArchived: false,
         first: 50,

@@ -332,7 +332,7 @@ describe("project session query cache", () => {
 
   test("session changes invalidate Page Chat projections without touching Database rows", async () => {
     const queryClient = createQueryClient();
-    const pageChatKey = queryKeys.pageChats.activity("project-1", ["page-1"]);
+    const pageChatKey = queryKeys.pageChats.activity(["page-1"]);
     const databaseKey = queryKeys.boards.byProject("project-1");
     queryClient.setQueryData(pageChatKey, { summaries: [], projectionRevision: 1 });
     queryClient.setQueryData(databaseKey, { rows: [] });

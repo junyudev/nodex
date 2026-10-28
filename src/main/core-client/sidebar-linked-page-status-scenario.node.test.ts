@@ -65,7 +65,7 @@ describe("sidebar/linked-page-status over the real Core transport", () => {
           });
           const linkedPageIds: string[] = [];
           for (const page of Object.values(observed.pages)) {
-            const window = await seed.readPageChats(manifest.projectId, page.pageId);
+            const window = await seed.readPageChats(page.pageId);
             if (window.items.some((item) => item.sessionId === chat.sessionId)) {
               linkedPageIds.push(page.pageId);
             }

@@ -174,10 +174,10 @@ export const queryKeys = {
   },
   pageChats: {
     all: () => ["pageChats"] as const,
-    activity: (pageAccessProjectId: string, pageIds: readonly string[]) =>
-      ["pageChats", "activity", pageAccessProjectId, ...normalizePageChatPageIds(pageIds)] as const,
-    detail: (pageAccessProjectId: string, pageId: string, includeArchived = false, first = 50) =>
-      ["pageChats", "detail", pageAccessProjectId, pageId, includeArchived, first] as const,
+    activity: (pageIds: readonly string[]) =>
+      ["pageChats", "activity", ...normalizePageChatPageIds(pageIds)] as const,
+    detail: (pageId: string, includeArchived = false, first = 50) =>
+      ["pageChats", "detail", pageId, includeArchived, first] as const,
   },
   settings: {
     all: () => ["settings"] as const,

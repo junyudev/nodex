@@ -751,7 +751,6 @@ it.effect("maps bounded Page Chat activity and threadless related Chat windows",
     const { scope, workspace } = yield* open(core(reads));
 
     const activity = yield* workspace.readPageChatActivitySummaries({
-      pageAccessProjectId: "project:one",
       pageIds: ["page:one"],
     });
     assert.deepEqual(activity, {
@@ -771,7 +770,6 @@ it.effect("maps bounded Page Chat activity and threadless related Chat windows",
       projectionRevision: 41,
     });
     const window = yield* workspace.listPageChatWindow({
-      pageAccessProjectId: "project:one",
       pageId: "page:one",
       first: 20,
     });
@@ -834,11 +832,9 @@ it.effect("creates and mutates Page Chat relations through typed Core intents", 
       },
     });
     yield* workspace.linkPageToProjectSession(created.id, {
-      pageAccessProjectId: "project:one",
       pageId: "page:two",
     });
     yield* workspace.unlinkPageFromProjectSession(created.id, {
-      pageAccessProjectId: "project:one",
       pageId: "page:one",
     });
 
@@ -933,7 +929,6 @@ it.effect("fails invalid Page Chat input before I/O and propagates caller interr
 
     const invalid = yield* Effect.result(
       workspace.readPageChatActivitySummaries({
-        pageAccessProjectId: "project:one",
         pageIds: ["page:one", "page:one"],
       }),
     );
@@ -942,7 +937,6 @@ it.effect("fails invalid Page Chat input before I/O and propagates caller interr
 
     const pending = yield* workspace
       .readPageChatActivitySummaries({
-        pageAccessProjectId: "project:one",
         pageIds: ["page:one"],
       })
       .pipe(Effect.forkChild);

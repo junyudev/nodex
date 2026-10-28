@@ -83,34 +83,29 @@ export function projectActivitySummariesQueryOptions(projectIds: readonly string
   });
 }
 
-export function pageChatActivitySummariesQueryOptions(
-  pageAccessProjectId: string,
-  pageIds: readonly string[],
-) {
+export function pageChatActivitySummariesQueryOptions(pageIds: readonly string[]) {
   const normalizedPageIds = normalizePageChatPageIds(pageIds);
   return queryOptions({
-    queryKey: queryKeys.pageChats.activity(pageAccessProjectId, normalizedPageIds),
+    queryKey: queryKeys.pageChats.activity(normalizedPageIds),
     queryFn: (): Promise<PageChatActivitySummaryResult> =>
       readPageChatActivitySummaryBatches(
-        { pageAccessProjectId, pageIds: normalizedPageIds },
+        { pageIds: normalizedPageIds },
         readPageChatActivitySummaries,
       ),
-    enabled: pageAccessProjectId.trim().length > 0 && normalizedPageIds.length > 0,
+    enabled: normalizedPageIds.length > 0,
     staleTime: 30_000,
   });
 }
 
 export function pageChatWindowQueryOptions(input: Omit<PageChatWindowInput, "after">) {
-  const pageAccessProjectId = input.pageAccessProjectId;
   const pageId = input.pageId;
   const includeArchived = input.includeArchived === true;
   const first = input.first ?? 50;
   return infiniteQueryOptions({
-    queryKey: queryKeys.pageChats.detail(pageAccessProjectId, pageId, includeArchived, first),
+    queryKey: queryKeys.pageChats.detail(pageId, includeArchived, first),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }): Promise<PageChatWindow> =>
       readPageChatWindow({
-        pageAccessProjectId,
         pageId,
         includeArchived,
         after: pageParam,

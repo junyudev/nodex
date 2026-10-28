@@ -186,11 +186,8 @@ export interface ScenarioSeedPort {
     minimumCommitSeq?: number,
   ): Promise<ScenarioBoardObservation>;
   createRelatedChat(input: ScenarioRelatedChatSeed): Promise<ScenarioRelatedChatSeedResult>;
-  readPageChatActivity(
-    projectId: string,
-    pageIds: readonly string[],
-  ): Promise<PageChatActivitySummaryResult>;
-  readPageChats(projectId: string, pageId: string): Promise<PageChatWindow>;
+  readPageChatActivity(pageIds: readonly string[]): Promise<PageChatActivitySummaryResult>;
+  readPageChats(pageId: string): Promise<PageChatWindow>;
   createSidebarSection(input: SidebarSectionCreateInput): Promise<SidebarSectionSummary>;
   createSessionInSidebarSection(input: SidebarSectionSessionCreateInput): Promise<ProjectSession>;
   moveSidebarSectionItem(input: SidebarSectionMoveItemInput): Promise<void>;

@@ -22,7 +22,7 @@ describe("page/related-chat-activity over the real Core transport", () => {
         });
         expect(observed.openActionPage.relatedCount).toBe(0);
 
-        const chats = await seed.readPageChats(manifest.projectId, observed.activityPage.pageId);
+        const chats = await seed.readPageChats(observed.activityPage.pageId);
         expect(new Set(chats.items.map((item) => item.sessionId))).toEqual(
           new Set([observed.chats.attachedSessionId, observed.chats.threadlessSessionId]),
         );

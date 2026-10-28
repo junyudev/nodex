@@ -73,7 +73,6 @@ describe("sendPageToChatWithRelation", () => {
     );
     expect(runtime.calls).toEqual(["snapshot", "resolve-thread", "link", "start-turn"]);
     expect(runtime.value.linkPage).toHaveBeenCalledWith({
-      pageAccessProjectId: "project-page",
       pageId: "page-1",
       sessionId: "session-target",
     });

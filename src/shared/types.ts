@@ -693,7 +693,6 @@ export interface PageChatActivitySummary {
 }
 
 export interface PageChatActivitySummaryInput {
-  pageAccessProjectId: string;
   pageIds: string[];
 }
 
@@ -724,7 +723,6 @@ export interface PageChatItem {
 }
 
 export interface PageChatWindowInput {
-  pageAccessProjectId: string;
   pageId: string;
   includeArchived?: boolean;
   after?: string | null;
@@ -739,7 +737,6 @@ export interface PageChatWindow {
 }
 
 export interface PageChatLinkInput {
-  pageAccessProjectId: string;
   pageId: string;
 }
 

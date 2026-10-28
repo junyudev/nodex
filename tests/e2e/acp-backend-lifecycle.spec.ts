@@ -424,7 +424,6 @@ test("ACP automations preserve their instance through Cron, Page-linked Heartbea
       const pageId = manifest.pageIdsByKey.meeting;
       if (!pageId) throw new Error("Automation scenario Page is missing");
       await invoke(page, "page-chats:link", run.sessionId, {
-        pageAccessProjectId: manifest.projectId,
         pageId,
       });
       const heartbeat = await invoke<{ item: CodexScheduledAutomation }>(
@@ -454,7 +453,6 @@ test("ACP automations preserve their instance through Cron, Page-linked Heartbea
       expect(
         (
           await invoke<PageChatWindow>(page, "page-chats:list", {
-            pageAccessProjectId: manifest.projectId,
             pageId,
           })
         ).items.some((item) => item.sessionId === run.sessionId),

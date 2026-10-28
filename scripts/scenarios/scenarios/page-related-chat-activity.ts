@@ -177,8 +177,8 @@ const inspectPageRelatedChatActivity = async (
   );
   const workingThreadId = requireManifestIdentity(manifest, PAGE_RELATED_CHAT_ACTIVITY_THREAD_KEY);
   const [activity, chats] = await Promise.all([
-    port.readPageChatActivity(manifest.projectId, [activityPageId, openActionPageId]),
-    port.readPageChats(manifest.projectId, activityPageId),
+    port.readPageChatActivity([activityPageId, openActionPageId]),
+    port.readPageChats(activityPageId),
   ]);
   const activitySummary = activity.summaries.find((item) => item.pageId === activityPageId);
   const openActionSummary = activity.summaries.find((item) => item.pageId === openActionPageId);

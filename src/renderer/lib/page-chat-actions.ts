@@ -51,7 +51,6 @@ interface SendPageToChatDependencies {
   readonly resolveSessionForThread: (threadId: string) => Promise<ResolvedPageChatSession>;
   readonly ensureDefaultSession: (projectId: string) => Promise<ResolvedPageChatSession>;
   readonly linkPage: (input: {
-    readonly pageAccessProjectId: string;
     readonly pageId: string;
     readonly sessionId: string;
   }) => Promise<void>;
@@ -84,7 +83,6 @@ export async function sendPageToChatWithRelation(
       throw new Error("Page content can only be sent to a Project chat");
     }
     await dependencies.linkPage({
-      pageAccessProjectId: input.projectId,
       pageId: input.pageId,
       sessionId: targetSession.id,
     });
@@ -103,7 +101,6 @@ export async function sendPageToChatWithRelation(
     throw new Error("Page content can only be sent to a Project chat");
   }
   await dependencies.linkPage({
-    pageAccessProjectId: input.projectId,
     pageId: input.pageId,
     sessionId: targetSession.id,
   });

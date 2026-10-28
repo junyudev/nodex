@@ -55,7 +55,6 @@ export function DatabaseListRow({
   ariaRowIndex,
   externalDropEdge = null,
   pragmaticDragData = null,
-  pageAccessProjectId,
   pageChatActivity,
   onOpenRelatedChat,
   onRemovePageChatRelation,
@@ -85,7 +84,6 @@ export function DatabaseListRow({
   readonly ariaRowIndex: number;
   readonly externalDropEdge?: "before" | "after" | null;
   readonly pragmaticDragData?: BoardCardDragData | null;
-  readonly pageAccessProjectId?: string | null;
   readonly pageChatActivity?: PageChatActivitySummary;
   readonly onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   readonly onRemovePageChatRelation?: (sessionId: string) => Promise<void> | void;
@@ -373,9 +371,8 @@ export function DatabaseListRow({
           >
             {presentedTitle}
           </button>
-          {pageAccessProjectId && pageChatActivity && onOpenRelatedChat ? (
+          {pageChatActivity && onOpenRelatedChat ? (
             <PageChatActivityControl
-              pageAccessProjectId={pageAccessProjectId}
               pageId={item.pageId}
               summary={pageChatActivity}
               onOpenChat={onOpenRelatedChat}
