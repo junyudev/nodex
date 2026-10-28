@@ -9,6 +9,7 @@ import { CodexSidebarSection, CodexSidebarThreadRow } from "./codex-sidebar";
 import { createAgentRuntimeActivityStore } from "@/lib/agent-runtime-session-activity";
 import { queryKeys } from "@/lib/query-keys";
 import { createTestQueryClient, TestQueryProvider } from "@/test/query";
+import type { SessionLinkedPage, SessionLinkedPageStore } from "@/lib/session-linked-page";
 import type {
   AgentRuntimeSessionActivity,
   AgentRuntimeSessionActivityChange,
@@ -603,5 +604,116 @@ describe("codex sidebar section", () => {
     const status = view.getByTestId("section-status");
     expect(toggle.contains(status)).toBe(false);
     expect(toggle.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+});
+
+describe("codex sidebar linked Page status", () => {
+  const buildPage: SessionLinkedPage = {
+    pageId: "page-build",
+    pageKey: "LAB-13",
+    title: "Tighten sidebar spacing",
+    status: { optionId: "build", label: "Build" },
+  };
+  const linkedPageStore = (page: SessionLinkedPage | null): SessionLinkedPageStore => ({
+    read: (sessionId) => (sessionId === "session-test" ? page : null),
+    subscribeSession: () => () => {},
+  });
+
+  async function renderLinkedRow(input: {
+    item?: Partial<CodexSidebarThreadItem>;
+    page?: SessionLinkedPage | null;
+    hoverCardOpen?: boolean;
+    onSelect?: () => void;
+    onOpenLinkedPage?: (page: SessionLinkedPage) => void;
+  }) {
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(
+        <NodexHoverCardProvider>
+          <NodexTooltipProvider>
+            <CodexSidebarThreadRow
+              item={makeThreadItem(input.item)}
+              linkedPageStore={linkedPageStore(input.page === undefined ? buildPage : input.page)}
+              active={false}
+              hoverCardOpen={input.hoverCardOpen}
+              onSelect={input.onSelect ?? (() => {})}
+              onOpenLinkedPage={input.onOpenLinkedPage}
+            />
+          </NodexTooltipProvider>
+        </NodexHoverCardProvider>,
+      );
+    });
+    return view;
+  }
+
+  test("rests a settled chat on its sole linked Page's Status", async () => {
+    const view = await renderLinkedRow({});
+    const slot = view.container.querySelector<HTMLElement>(
+      "[data-app-action-sidebar-thread-page-status]",
+    );
+    expect(slot?.dataset.appActionSidebarThreadPageStatus).toBe("build");
+    expect(view.getByRole("img", { name: "Page status: Build" })).not.toBeNull();
+    expect(
+      view.getByRole("button", {
+        name: "X Plan Codex terminal reverse engineer",
+        description: "Page status: Build",
+      }),
+    ).not.toBeNull();
+  });
+
+  test("gives the slot to unread and live chat states", async () => {
+    const unread = await renderLinkedRow({ item: { unread: true } });
+    expect(
+      unread.container.querySelector("[data-app-action-sidebar-thread-status='unread']"),
+    ).not.toBeNull();
+    expect(
+      unread.container.querySelector("[data-app-action-sidebar-thread-page-status]"),
+    ).toBeNull();
+    unread.unmount();
+
+    const running = await renderLinkedRow({ item: { statusType: "active" } });
+    expect(
+      running.container.querySelector("[data-app-action-sidebar-thread-status='running']"),
+    ).not.toBeNull();
+    expect(
+      running.container.querySelector("[data-app-action-sidebar-thread-page-status]"),
+    ).toBeNull();
+  });
+
+  test("leaves the slot empty without a sole linked Page or its Status", async () => {
+    const none = await renderLinkedRow({ page: null });
+    expect(none.container.querySelector("[data-app-action-sidebar-thread-page-status]")).toBeNull();
+    none.unmount();
+
+    const statusless = await renderLinkedRow({ page: { ...buildPage, status: null } });
+    expect(
+      statusless.container.querySelector("[data-app-action-sidebar-thread-page-status]"),
+    ).toBeNull();
+  });
+
+  test("opens the linked Page from the hover card without selecting the row", async () => {
+    const opened: SessionLinkedPage[] = [];
+    let selected = 0;
+    await renderLinkedRow({
+      hoverCardOpen: true,
+      onSelect: () => {
+        selected += 1;
+      },
+      onOpenLinkedPage: (page) => {
+        opened.push(page);
+      },
+    });
+    const hoverCard = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    const linkedPage = hoverCard.querySelector<HTMLButtonElement>(
+      `button[data-app-action-sidebar-thread-hover-card-linked-page="${buildPage.pageId}"]`,
+    )!;
+    expect(textContent(linkedPage)).toContain("LAB-13");
+    expect(textContent(linkedPage)).toContain(buildPage.title);
+    await act(async () => {
+      fireEvent.click(linkedPage);
+      await Promise.resolve();
+    });
+    expect(opened).toEqual([buildPage]);
+    expect(selected).toBe(0);
   });
 });

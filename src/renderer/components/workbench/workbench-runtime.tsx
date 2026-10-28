@@ -5311,6 +5311,17 @@ export function WorkbenchRuntime({
     },
     onPreviewSidebarThread: prefetchSidebarSession,
     onOpenSessionContextMenu: openSessionContextMenu,
+    onOpenSessionLinkedPage: (session, page) => {
+      closePendingWorktreeRoute();
+      setAutomationsPath(null);
+      void sessionCommands.openPageInChat({
+        sessionId: session.id,
+        routingContext: session.projectId
+          ? { kind: "project", projectId: session.projectId }
+          : { kind: "library" },
+        page: { pageId: page.pageId, titleSnapshot: page.title },
+      });
+    },
     onSessionTitleDoubleClick: handleSessionTitleDoubleClick,
     onPendingWorktreeTitleDoubleClick: handlePendingWorktreeTitleDoubleClick,
     onArchiveSidebarThread: archiveSidebarThreadItem,

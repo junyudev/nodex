@@ -24,6 +24,13 @@ export interface ShowPagesInChatInput {
   readonly pages: readonly { readonly pageId: string; readonly titleSnapshot?: string }[];
 }
 
+/** One Page to open beside its chat, through `routingContext`, taking the person to that chat. */
+export interface OpenPageInChatInput {
+  readonly sessionId: string;
+  readonly routingContext: ContentRoutingContext;
+  readonly page: ShowPagesInChatInput["pages"][number];
+}
+
 export interface PagePromptContext {
   readonly pageId: string;
   readonly pageKey?: string;

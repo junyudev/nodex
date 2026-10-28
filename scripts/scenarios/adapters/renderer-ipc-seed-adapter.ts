@@ -530,6 +530,15 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       }),
       "Session creation",
     );
+    if (input.pinned) {
+      unwrapCoreResult(
+        await this.#invoke("project-sessions:set-pinned", {
+          operationId: createBoundedOperationId("scenario.session.pin"),
+          payload: { sessionId: session.id, pinned: true },
+        }),
+        "Pin Session",
+      );
+    }
     if (!input.thread) return { sessionId: session.id, threadId: null };
     const observedAt = Date.now();
     await this.#invoke("project-session-threads:attach", {

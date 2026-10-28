@@ -78,6 +78,7 @@ import type { CodexBackgroundTerminalProcessRow } from "./codex-background-termi
 import { loadPagePromptContext } from "./page-prompt-context";
 import {
   sendPageToChatWithRelation,
+  type OpenPageInChatInput,
   type OpenPageInNewChatInput,
   type SendPageToChatInput,
   type ShowPagesInChatInput,
@@ -423,6 +424,22 @@ export function useWorkbenchSessionCommands({
       await operation;
     },
     [sceneNavigator, sessionCatalog],
+  );
+
+  const openPageInChat = useCallback(
+    async (input: OpenPageInChatInput): Promise<void> => {
+      const result = await sceneNavigator.presentPanelSurface({
+        owner: { kind: "session", sessionId: input.sessionId },
+        request: chatPageRequest(input.routingContext, input.page),
+        target: { panelId: "right" },
+        mode: "durable",
+        navigation: "select-owner",
+      });
+      if (result.status !== "presented") {
+        toast.danger("Couldn’t open the Page", { description: result.reason });
+      }
+    },
+    [sceneNavigator],
   );
 
   /** Shows Pages beside a chat without leaving the current location; the first is active. */
@@ -1513,6 +1530,7 @@ export function useWorkbenchSessionCommands({
     resolveChatSessionForThread,
     openProjectSessionById,
     openPageInNewChat,
+    openPageInChat,
     showPagesInChat,
     sendPageToChat,
     startNewChatInProject,

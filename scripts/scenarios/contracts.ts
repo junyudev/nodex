@@ -119,6 +119,7 @@ export interface ScenarioRelatedChatSeed {
   readonly projectId: string;
   readonly initialPageIds: readonly string[];
   readonly noThreadFallbackTitle: string;
+  readonly pinned?: boolean;
   readonly thread?: {
     readonly threadId: string;
     readonly threadName: string;

@@ -413,6 +413,12 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
             },
           },
         });
+        if (input.pinned) {
+          yield* workspace.setProjectSessionPinned({
+            operationId: createBoundedOperationId("scenario.session.pin"),
+            payload: { sessionId: session.id, pinned: true },
+          });
+        }
         if (!input.thread) return { sessionId: session.id, threadId: null };
         const observedAt = Date.now();
         yield* workspace.upsertThread(input.thread.threadId, {

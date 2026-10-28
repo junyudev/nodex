@@ -25,6 +25,7 @@ import {
   CheckmarkIcon,
   ArchiveIcon,
   CloseIcon,
+  PageIcon,
   PinOffIcon,
   ProjectFolderIcon,
   ProjectFolderOpenIcon,
@@ -75,6 +76,12 @@ import {
   type SidebarThreadRowLiveView,
 } from "@/lib/sidebar-thread-row-live-view";
 import { runtimeSessionTarget, SESSION_LIVE_INDICATOR_LABELS } from "@/lib/session-execution";
+import {
+  useSessionLinkedPage,
+  type SessionLinkedPage,
+  type SessionLinkedPageStore,
+} from "@/lib/session-linked-page";
+import { StatusIcon } from "@/lib/status-presentation";
 import { SidebarStatusIndicator } from "./sidebar-status-indicator";
 import { resolveSidebarGroupStatus } from "@/lib/sidebar-status";
 import { cn } from "@/lib/utils";
@@ -1553,16 +1560,80 @@ function CodexSidebarThreadHoverCardMetadataRow({
   );
 }
 
+function CodexSidebarThreadHoverCardLinkedPage({
+  page,
+  onOpen,
+}: {
+  page: SessionLinkedPage;
+  onOpen?: (page: SessionLinkedPage) => void;
+}) {
+  const content = (
+    <>
+      <span className="flex h-5 w-4 shrink-0 items-center justify-center text-token-description-foreground">
+        {page.status ? (
+          <StatusIcon statusId={page.status.optionId} label={page.status.label} />
+        ) : (
+          <PageIcon className="icon-xs" />
+        )}
+      </span>
+      {page.pageKey ? (
+        <span className="shrink-0 text-token-description-foreground">{page.pageKey}</span>
+      ) : null}
+      <span className="min-w-0 flex-1 truncate text-token-foreground">
+        {page.title || "Untitled"}
+      </span>
+      {page.status ? (
+        <span className="shrink-0 text-token-description-foreground">{page.status.label}</span>
+      ) : null}
+    </>
+  );
+  const className = "-mx-1 flex h-5 min-w-0 items-center gap-1.5 rounded-md px-1 text-sm leading-5";
+  if (!onOpen) {
+    return (
+      <div
+        className={className}
+        data-app-action-sidebar-thread-hover-card-linked-page={page.pageId}
+      >
+        {content}
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={cn(
+        className,
+        "cursor-interaction text-left hover:bg-token-list-hover-background focus-visible:bg-token-list-hover-background focus-visible:outline-none",
+      )}
+      data-app-action-sidebar-thread-hover-card-linked-page={page.pageId}
+      onPointerDown={stopCodexSidebarRowActionPropagation}
+      onMouseDown={stopCodexSidebarRowActionPropagation}
+      onKeyDown={stopCodexSidebarRowActionPropagation}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpen(page);
+      }}
+    >
+      {content}
+    </button>
+  );
+}
+
 function CodexSidebarThreadHoverCard({
   item,
+  linkedPage,
   projectLabel,
   branchName,
   onRenameFromTitleClick,
+  onOpenLinkedPage,
 }: {
   item: CodexSidebarThreadItem;
+  linkedPage: SessionLinkedPage | null;
   projectLabel?: string | null;
   branchName?: string | null;
   onRenameFromTitleClick?: (item: CodexSidebarThreadItem, event: MouseEvent<HTMLElement>) => void;
+  onOpenLinkedPage?: (page: SessionLinkedPage) => void;
 }) {
   const resolvedProjectLabel = resolveSidebarThreadHoverCardProjectLabel(item, projectLabel);
   const resolvedBranchName = normalizeSidebarHoverCardText(branchName);
@@ -1637,6 +1708,9 @@ function CodexSidebarThreadHoverCard({
         icon={<WorktreeStatusIcon className="icon-xs" />}
         label={worktreeLabel}
       />
+      {linkedPage ? (
+        <CodexSidebarThreadHoverCardLinkedPage page={linkedPage} onOpen={onOpenLinkedPage} />
+      ) : null}
     </div>
   );
 }
@@ -1725,6 +1799,8 @@ type CodexSidebarThreadRowProps = {
   runtime?: { readonly sessionId: string; readonly rootThreadId: string } | null;
   /** Live Session activity; tests inject an isolated store. */
   activityStore?: AgentRuntimeActivityStore;
+  /** The Session's sole linked Page; tests inject an isolated store. */
+  linkedPageStore?: SessionLinkedPageStore;
   active: boolean;
   /** Grouped rows are nested under a Project; root lanes and Sections stay edge-aligned. */
   grouped?: boolean;
@@ -1743,6 +1819,7 @@ type CodexSidebarThreadRowProps = {
     event: MouseEvent<HTMLElement>,
   ) => void;
   onTogglePinned?: (item: CodexSidebarThreadItem) => void | Promise<void>;
+  onOpenLinkedPage?: (page: SessionLinkedPage) => void;
 };
 
 export function CodexSidebarThreadRow(props: CodexSidebarThreadRowProps) {
@@ -1790,8 +1867,11 @@ function CodexSidebarThreadRowView({
   onOpenContextMenu,
   onRenameFromTitleDoubleClick,
   onTogglePinned,
+  linkedPageStore,
+  onOpenLinkedPage,
 }: CodexSidebarThreadRowProps & { live: SidebarThreadRowLiveView }) {
   const item = live.item;
+  const linkedPage = useSessionLinkedPage(item.sessionId, linkedPageStore);
   const canOpenContextMenu = !item.disabled && Boolean(onOpenContextMenu);
   const showArchiveAction = !item.disabled && Boolean(onArchive);
   const showPinSlot = !item.disabled && Boolean(onTogglePinned);
@@ -1799,17 +1879,27 @@ function CodexSidebarThreadRowView({
   const title = item.title;
   const archiveDisabled = item.disabled || archivePending;
   const { running, needsAttention, status } = live;
+  // A settled chat rests on its linked Page's status; anything live about the chat outranks it.
+  const pageStatus = status ? null : (linkedPage?.status ?? null);
   // The trailing slot shows one status; the description keeps unread news even under a spinner.
   const statusDescription = needsAttention
     ? SESSION_LIVE_INDICATOR_LABELS.waiting
     : item.unread
       ? "Unread"
-      : null;
+      : pageStatus
+        ? `Page status: ${pageStatus.label}`
+        : null;
   const statusDescriptionId = useId();
   const titleId = useId();
   const showRestingPinnedButton = showPinSlot && item.pinned;
   const showRailPinSlot = showPinSlot && !showRestingPinnedButton;
   const showActionRail = showRailPinSlot || showArchiveAction;
+  const trailingStatusClassName = cn(
+    "-me-1 flex shrink-0",
+    showActionRail &&
+      "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
+    contextMenuOpen && "hidden",
+  );
   const [internalHoverCardOpen, setInternalHoverCardOpen] = useState(false);
   const [lazyBranchName, setLazyBranchName] = useState<string | null>(null);
   const resolvedHoverCardOpen = hoverCardOpen ?? internalHoverCardOpen;
@@ -1936,7 +2026,7 @@ function CodexSidebarThreadRowView({
             <div
               className={cn(
                 "ms-[3px] flex items-center justify-end gap-1 group-focus-visible:min-w-12 group-hover:min-w-12 group-has-[:focus-visible]:min-w-12",
-                status && "min-w-[26px]",
+                (status || pageStatus) && "min-w-[26px]",
                 contextMenuOpen && "min-w-12",
                 // The resting pin stays interactive beside the overlaid archive action.
                 showRestingPinnedButton &&
@@ -1964,15 +2054,28 @@ function CodexSidebarThreadRowView({
               ) : null}
               {status ? (
                 <span
-                  className={cn(
-                    "-me-1 flex shrink-0",
-                    showActionRail &&
-                      "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
-                    contextMenuOpen && "hidden",
-                  )}
+                  className={trailingStatusClassName}
                   data-app-action-sidebar-thread-status={status}
                 >
                   <SidebarStatusIndicator status={status} />
+                </span>
+              ) : null}
+              {pageStatus ? (
+                <span
+                  className={trailingStatusClassName}
+                  data-app-action-sidebar-thread-page-status={pageStatus.optionId}
+                >
+                  <span
+                    role="img"
+                    aria-label={`Page status: ${pageStatus.label}`}
+                    className="flex size-5 shrink-0 items-center justify-center"
+                  >
+                    <StatusIcon
+                      statusId={pageStatus.optionId}
+                      label={pageStatus.label}
+                      className="size-3"
+                    />
+                  </span>
                 </span>
               ) : null}
             </div>
@@ -2043,9 +2146,18 @@ function CodexSidebarThreadRowView({
         hoverCardContent={
           <CodexSidebarThreadHoverCard
             item={item}
+            linkedPage={linkedPage}
             projectLabel={hoverCardProjectLabel}
             branchName={resolvedHoverCardBranchName}
             onRenameFromTitleClick={onRenameFromTitleDoubleClick}
+            onOpenLinkedPage={
+              onOpenLinkedPage
+                ? (page) => {
+                    handleHoverCardOpenChange(false);
+                    onOpenLinkedPage(page);
+                  }
+                : undefined
+            }
           />
         }
         disabled={item.disabled}

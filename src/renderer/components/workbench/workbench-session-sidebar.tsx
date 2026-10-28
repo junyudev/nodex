@@ -99,6 +99,7 @@ import type {
   ProjectSession as ProjectSessionDomain,
   ProjectUpdateInput,
 } from "@/lib/types";
+import type { SessionLinkedPage } from "@/lib/session-linked-page";
 import { CODEX_AGENT_BACKEND_BINDING } from "../../../shared/agent-backend";
 import { useCodexAccountActions } from "@/lib/use-codex-account-actions";
 import { useApplyLibraryOperation } from "@/lib/use-library-navigation";
@@ -738,6 +739,7 @@ function SidebarThreadOrganizerSections({
   onSelectSidebarThread,
   onPreviewSidebarThread,
   onOpenSessionContextMenu,
+  onOpenSessionLinkedPage,
   onSessionTitleDoubleClick,
   onPendingWorktreeTitleDoubleClick,
   onArchiveSidebarThread,
@@ -795,6 +797,8 @@ function SidebarThreadOrganizerSections({
   onSelectSidebarThread: (item: CodexSidebarThreadItem) => void | Promise<void>;
   onPreviewSidebarThread?: (item: CodexSidebarThreadItem) => void;
   onOpenSessionContextMenu?: (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => void;
+  /** Takes the person to a chat with its sole linked Page beside it. */
+  onOpenSessionLinkedPage?: (session: ProjectSession, page: SessionLinkedPage) => void;
   onSessionTitleDoubleClick?: (
     session: ProjectSession,
     event: ReactMouseEvent<HTMLElement>,
@@ -1406,6 +1410,11 @@ function SidebarThreadOrganizerSections({
               ? () => onToggleSessionPinned(session)
               : onToggleSidebarThreadPinned
           }
+          onOpenLinkedPage={
+            session && onOpenSessionLinkedPage
+              ? (page) => onOpenSessionLinkedPage(session, page)
+              : undefined
+          }
         />
       );
     },
@@ -1414,6 +1423,7 @@ function SidebarThreadOrganizerSections({
       activePendingClientThreadId,
       contextMenuSessionId,
       onOpenSessionContextMenu,
+      onOpenSessionLinkedPage,
       onArchiveSidebarThread,
       onSelectSession,
       onSelectSidebarThread,
@@ -1792,6 +1802,8 @@ export interface ProjectSessionSidebarProps extends Omit<
   onSelectSidebarThread: (item: CodexSidebarThreadItem) => void | Promise<void>;
   onPreviewSidebarThread?: (item: CodexSidebarThreadItem) => void;
   onOpenSessionContextMenu?: (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => void;
+  /** Takes the person to a chat with its sole linked Page beside it. */
+  onOpenSessionLinkedPage?: (session: ProjectSession, page: SessionLinkedPage) => void;
   onSessionTitleDoubleClick?: (
     session: ProjectSession,
     event: ReactMouseEvent<HTMLElement>,
@@ -1875,6 +1887,7 @@ export function ProjectSessionSidebar({
   onSelectSidebarThread,
   onPreviewSidebarThread,
   onOpenSessionContextMenu,
+  onOpenSessionLinkedPage,
   onSessionTitleDoubleClick,
   onPendingWorktreeTitleDoubleClick,
   onArchiveSidebarThread,
@@ -2146,6 +2159,7 @@ export function ProjectSessionSidebar({
                 onSelectSidebarThread={onSelectSidebarThread}
                 onPreviewSidebarThread={onPreviewSidebarThread}
                 onOpenSessionContextMenu={onOpenSessionContextMenu}
+                onOpenSessionLinkedPage={onOpenSessionLinkedPage}
                 onSessionTitleDoubleClick={onSessionTitleDoubleClick}
                 onPendingWorktreeTitleDoubleClick={onPendingWorktreeTitleDoubleClick}
                 onArchiveSidebarThread={onArchiveSidebarThread}
