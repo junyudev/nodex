@@ -22,6 +22,8 @@ import {
   type WorkbenchSurfaceDescriptor,
 } from "../../../shared/workbench-scene";
 import type { AppShellTabItem } from "./app-shell-tabs";
+import { resolveContentTabLocation } from "./content-tab-location";
+import { libraryContentRoute, projectContentRoute } from "../../../shared/content-routing-context";
 import type { PanelDestination } from "./panel-destination-picker-model";
 import { WorkbenchPanelHost } from "./workbench-panel-host";
 
@@ -65,6 +67,7 @@ export interface WorkbenchScenePanelsProps {
 
 function makePanelItems(
   scene: WorkbenchSceneSnapshot,
+  projects: readonly Project[],
   currentLibraryId: string | null,
   browserConversationId: string,
   browserViewScopeId: string,
@@ -79,6 +82,12 @@ function makePanelItems(
 } {
   const itemsByLeafId: Record<string, AppShellTabItem[]> = {};
   const activeTabIdsByLeafId: Record<string, string | null> = {};
+  const home =
+    scene.owner.kind === "project"
+      ? projectContentRoute(scene.owner.projectId)
+      : scene.owner.kind === "session"
+        ? null
+        : libraryContentRoute;
   for (const leaf of listWorkbenchPanelLeaves(scene.panels[panelId].layout)) {
     const surfaces = leaf.tabIds.flatMap((surfaceId) => {
       const surface = resolveWorkbenchSceneSurface(scene, surfaceId);
@@ -112,6 +121,7 @@ function makePanelItems(
         id: surface.id,
         title,
         titleSource,
+        ...resolveContentTabLocation(surface, { projects, home }),
         icon: presentation.icon,
         iconElement:
           surface.kind === "browser" ? (
@@ -173,6 +183,7 @@ export function buildWorkbenchScenePanels({
   const renderPanel = (panelId: PanelId) => {
     const projection = makePanelItems(
       scene,
+      projects,
       currentLibraryId,
       ownerKey,
       browserViewScopeId,

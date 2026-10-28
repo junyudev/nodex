@@ -74,6 +74,7 @@ import {
   buildAppShellTabFlexSizing,
   buildAppShellTabListWidth,
 } from "./app-shell-tab-sizing";
+import { resolveAppShellTabLocationDetails } from "./app-shell-tab-location";
 
 export type AppShellTabSplitSide = "left" | "right" | "up" | "down";
 
@@ -124,6 +125,12 @@ export interface AppShellTabItem {
   domTabId?: string;
   title: string;
   titleSource?: AppShellTabTitleSource;
+  /**
+   * Where the tab's content lives, outermost first: the Library or a Project, or a file's folders.
+   * The default tooltip shows it under the title, and a tab sharing its title with another shows
+   * the trailing parts that tell them apart.
+   */
+  location?: readonly string[];
   icon?: ComponentType<{ className?: string }>;
   iconElement?: ReactNode;
   actions?: ReactNode;
@@ -178,16 +185,70 @@ export interface AppShellTabPanelRenderContext {
 export function makeAppShellTabAccessibleLabel(
   tab: AppShellTabPresentation,
   title: string,
+  locationDetail?: string,
 ): string {
   if (typeof tab.titleLabel === "function") return tab.titleLabel(title);
   if (tab.titleLabel) return tab.titleLabel;
-  return title;
+  return locationDetail ? `${title}, ${locationDetail}` : title;
+}
+
+/** A tab's title above where its content lives. */
+export function AppShellTabLocationTooltip({
+  title,
+  location,
+}: {
+  readonly title: string;
+  readonly location: readonly string[];
+}) {
+  return (
+    <div className="flex max-w-80 flex-col gap-0.5">
+      <div className="truncate font-medium">{title}</div>
+      {location.length > 0 ? (
+        <div className="line-clamp-2 text-xs break-words text-token-description-foreground">
+          {location.join(" / ")}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function makeAppShellTabTooltip(tab: AppShellTabItem, title: string): ReactNode {
   if (tab.renderTooltip) return tab.renderTooltip(title);
   if (tab.tooltip !== undefined) return tab.tooltip;
+  if (tab.location?.length)
+    return <AppShellTabLocationTooltip title={title} location={tab.location} />;
   return title;
+}
+
+const subscribeToNoTabTitles = (): (() => void) => () => undefined;
+
+/**
+ * Which tabs show a location beside their title, following live titles so a rename that makes
+ * two titles match, or tells them apart again, updates the strip.
+ */
+function useAppShellTabLocationDetails(tabs: readonly AppShellTabItem[]) {
+  const located = tabs.filter((tab) => tab.location?.length);
+  const subscribe = (listener: () => void) => {
+    const unsubscribes = located.map((tab) => tab.titleSource?.subscribe(listener));
+    return () => {
+      for (const unsubscribe of unsubscribes) unsubscribe?.();
+    };
+  };
+  const readTitles = () =>
+    JSON.stringify(located.map((tab) => tab.titleSource?.getSnapshot() ?? tab.title));
+  const titles = useSyncExternalStore(
+    located.length > 1 ? subscribe : subscribeToNoTabTitles,
+    readTitles,
+    readTitles,
+  );
+  const liveTitles = JSON.parse(titles) as string[];
+  return resolveAppShellTabLocationDetails(
+    located.map((tab, index) => ({
+      id: tab.id,
+      title: liveTitles[index] ?? tab.title,
+      location: tab.location,
+    })),
+  );
 }
 
 export function makeAppShellTabIcon(tab: AppShellTabPresentation): ReactNode {
@@ -354,6 +415,7 @@ export function AppShellTabs({
   const reducedMotion = useResolvedReducedMotion();
   const { elementRef: afterTabsInlineRef, elementWidthPx: afterTabsInlineWidthPx } =
     useMeasuredElementWidth();
+  const locationDetails = useAppShellTabLocationDetails(tabs);
   const activeTab =
     activeTabId === null ? null : (tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null);
   const resolvedActiveTabId = activeTab?.id ?? null;
@@ -582,6 +644,7 @@ export function AppShellTabs({
             <AppShellTab
               key={tab.presentationId ?? tab.id}
               tab={tab}
+              locationDetail={locationDetails.get(tab.id)}
               controllerId={controllerId}
               panelTabDnd={panelTabDnd}
               isActive={isActive}
@@ -835,6 +898,7 @@ function blurActiveElementWithin(element: HTMLElement): void {
 
 function AppShellTab({
   tab,
+  locationDetail,
   controllerId,
   panelTabDnd,
   isActive,
@@ -857,6 +921,8 @@ function AppShellTab({
   reducedMotion,
 }: {
   tab: AppShellTabItem;
+  /** Where the content lives, shown when another tab shares its title. */
+  locationDetail: string | undefined;
   controllerId: string;
   panelTabDnd?: AppShellTabsProps["panelTabDnd"];
   isActive: boolean;
@@ -890,28 +956,27 @@ function AppShellTab({
   const iconElement = makeAppShellTabIcon(tab);
   const dataTabId = tab.domTabId ?? tab.id;
   const tabId = makeTabId(controllerId, tab.id);
-  const accessibleLabel = makeAppShellTabAccessibleLabel(tab, resolvedTitle);
+  const accessibleLabel = makeAppShellTabAccessibleLabel(tab, resolvedTitle, locationDetail);
   const tooltipContent = makeAppShellTabTooltip(tab, resolvedTitle);
   const titleRef = useRef<HTMLSpanElement | null>(null);
   const titleOverflows = useAppShellTabTitleOverflow(titleRef, resolvedTitle);
+  // The title fades on its own, so a location telling same-titled tabs apart stays readable.
   const title = (
     <span
       ref={titleRef}
       data-app-shell-tab-title={tab.id}
+      data-app-shell-tab-title-fade={titleOverflows ? tab.id : undefined}
       className={cn(
-        "block w-full min-w-0 overflow-hidden whitespace-nowrap text-start",
+        "block min-w-0 overflow-hidden whitespace-nowrap text-start",
         tab.preview && "italic",
       )}
+      style={titleOverflows ? { maskImage: TAB_TITLE_FADE_MASK } : undefined}
     >
       {resolvedTitle}
     </span>
   );
   const label = (
-    <span
-      data-app-shell-tab-title-fade={titleOverflows ? tab.id : undefined}
-      className="relative min-w-0 flex-1 overflow-hidden"
-      style={titleOverflows ? { maskImage: TAB_TITLE_FADE_MASK } : undefined}
-    >
+    <span className="relative flex min-w-0 flex-1 items-baseline overflow-hidden">
       <NodexTooltip
         tooltipContent={tooltipContent}
         disabled={isDragging}
@@ -924,6 +989,14 @@ function AppShellTab({
       >
         {title}
       </NodexTooltip>
+      {locationDetail ? (
+        <span
+          data-app-shell-tab-location={tab.id}
+          className="ms-1 max-w-1/2 shrink-0 truncate text-xs opacity-60"
+        >
+          {locationDetail}
+        </span>
+      ) : null}
     </span>
   );
 

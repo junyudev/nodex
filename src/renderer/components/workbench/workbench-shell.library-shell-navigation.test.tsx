@@ -1012,11 +1012,11 @@ describe("workbench session shell / library-shell-navigation", () => {
       ],
       sessionsByProject: { alpha: [session] },
     });
-    expect((await screen.findByRole("tab", { name: "Beta project, Beta Card" })).textContent).toBe(
+    expect((await screen.findByRole("tab", { name: "Beta Card, Beta project" })).textContent).toBe(
       "Beta Card",
     );
-    expect(screen.getByLabelText("Close Beta project, Beta Card tab") !== null).toBe(true);
-    expect(screen.getByRole("tab", { name: "Library, Reading list" }).textContent).toBe(
+    expect(screen.getByLabelText("Close Beta Card, Beta project tab") !== null).toBe(true);
+    expect(screen.getByRole("tab", { name: "Reading list, Library" }).textContent).toBe(
       "Reading list",
     );
     expect(screen.getByRole("tab", { name: "DB View" }).textContent).toBe("DB View");
@@ -1042,8 +1042,8 @@ describe("workbench session shell / library-shell-navigation", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole("tab", { name: "Beta project, Renamed card" }) !== null).toBe(true);
-    expect(screen.getByLabelText("Close Beta project, Renamed card tab") !== null).toBe(true);
+    expect(screen.getByRole("tab", { name: "Renamed card, Beta project" }) !== null).toBe(true);
+    expect(screen.getByLabelText("Close Renamed card, Beta project tab") !== null).toBe(true);
     const renamedTitle = screen.container.querySelector('[data-app-shell-tab-title="card-tab"]');
     expect(renamedTitle?.textContent).toBe("Renamed card");
     if (!(renamedTitle instanceof HTMLElement)) throw new Error("Expected renamed card tab title");
@@ -1058,19 +1058,19 @@ describe("workbench session shell / library-shell-navigation", () => {
     }
     const renamedTooltip = screen.container.ownerDocument.body.querySelector('[role="tooltip"]');
     expect(renamedTooltip?.textContent).toContain("Renamed card");
-    expect(renamedTooltip?.textContent).toContain("Project: Beta");
+    expect(renamedTooltip?.textContent).toContain("Beta");
 
     await act(async () => {
       disposeLiveTitle();
       await Promise.resolve();
     });
-    expect(screen.getByRole("tab", { name: "Beta project, Renamed card" }) !== null).toBe(true);
+    expect(screen.getByRole("tab", { name: "Renamed card, Beta project" }) !== null).toBe(true);
 
     await act(async () => {
       publishLiveTitle("   ");
       await Promise.resolve();
     });
-    expect(screen.getByRole("tab", { name: "Beta project, Untitled" }) !== null).toBe(true);
+    expect(screen.getByRole("tab", { name: "Untitled, Beta project" }) !== null).toBe(true);
     expect(
       screen.container.querySelector('[data-app-shell-tab-title="card-tab"]')?.textContent,
     ).toBe("Untitled");
@@ -1078,7 +1078,7 @@ describe("workbench session shell / library-shell-navigation", () => {
       disposeLiveTitle();
       await Promise.resolve();
     });
-    expect(screen.getByRole("tab", { name: "Beta project, Untitled" }) !== null).toBe(true);
+    expect(screen.getByRole("tab", { name: "Untitled, Beta project" }) !== null).toBe(true);
     expect(invokeCalls.some((call) => call[0] === "window-session-view:tab-update")).toBe(false);
   });
 
@@ -1252,7 +1252,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     ).toBeGreaterThan(0);
   });
 
-  test("keeps same-project page-stage tabs unprefixed while preserving default title tooltips", async () => {
+  test("names same-project Page tabs plainly while their tooltip shows where the Page lives", async () => {
     const session = makeSession({
       tabs: [
         {
@@ -1293,7 +1293,9 @@ describe("workbench session shell / library-shell-navigation", () => {
     }
 
     const tooltip = screen.container.ownerDocument.body.querySelector('[role="tooltip"]');
-    expect(tooltip?.textContent).toBe("Card One");
+    if (!(tooltip instanceof HTMLElement)) throw new Error("Expected the card tab tooltip");
+    expect(within(tooltip).getByText("Card One")).toBeTruthy();
+    expect(within(tooltip).getByText("Alpha")).toBeTruthy();
   });
 
   test("opens terminals from cross-project card tabs in the owning session workspace", async () => {
@@ -1813,7 +1815,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    expect(screen.getByRole("tab", { name: "beta project, Beta Card" }).textContent).toBe(
+    expect(screen.getByRole("tab", { name: "Beta Card, beta project" }).textContent).toBe(
       "Beta Card",
     );
   });

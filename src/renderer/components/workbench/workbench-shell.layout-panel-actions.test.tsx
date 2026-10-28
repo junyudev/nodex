@@ -2970,7 +2970,7 @@ describe("workbench session shell / layout-panel-actions", () => {
           JSON.stringify(call[1]).includes('"projectId":"beta"'),
       ),
     ).toBe(true);
-    expect(screen.getByRole("tab", { name: /Beta project, DB View/ }) !== null).toBe(true);
+    expect(screen.getByRole("tab", { name: "DB View, Beta project" }) !== null).toBe(true);
   });
 
   test("empty right panel Page action loads current-Project Pages and searches other Projects on demand", async () => {

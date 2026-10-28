@@ -173,6 +173,78 @@ describe("AppShellTabs", () => {
     expect(tooltip?.textContent).toBe("Two in Beta");
   });
 
+  test("same-titled tabs show the location that tells them apart, also to assistive technology", async () => {
+    let notesTitle = "Notes";
+    const listeners = new Set<() => void>();
+    const tab = (id: string, title: string, location: string[]): AppShellTabItem => ({
+      id,
+      title,
+      location,
+      closable: true,
+      renderPanel: () => <div>{id}</div>,
+    });
+    const view = renderAppShellTabs({
+      tabs: [
+        tab("renderer", "index.ts", ["src", "renderer", "lib"]),
+        tab("main", "index.ts", ["src", "main", "lib"]),
+        {
+          ...tab("notes", "Notes", ["Library"]),
+          titleSource: {
+            getSnapshot: () => notesTitle,
+            subscribe: (listener) => {
+              listeners.add(listener);
+              return () => listeners.delete(listener);
+            },
+          },
+        },
+        tab("plan", "Plan", ["Beta"]),
+      ],
+      activeTabId: "renderer",
+    });
+    const shown = () =>
+      Object.fromEntries(
+        [...view.container.querySelectorAll("[data-app-shell-tab-location]")].map((element) => [
+          element.getAttribute("data-app-shell-tab-location"),
+          element.textContent,
+        ]),
+      );
+
+    expect(shown()).toEqual({ renderer: "renderer/lib", main: "main/lib" });
+    expect(view.getByRole("tab", { name: "index.ts, main/lib" })).toBeTruthy();
+    expect(view.getByRole("tab", { name: "Notes" })).toBeTruthy();
+
+    // Renaming a Page to match another tab's title names both locations.
+    await act(async () => {
+      notesTitle = "Plan";
+      listeners.forEach((listener) => listener());
+      await Promise.resolve();
+    });
+    expect(shown()).toEqual({
+      renderer: "renderer/lib",
+      main: "main/lib",
+      notes: "Library",
+      plan: "Beta",
+    });
+  });
+
+  test("a located tab's default tooltip shows where its content lives", async () => {
+    const view = renderAppShellTabs({
+      tabs: [
+        {
+          id: "index",
+          title: "index.ts",
+          location: ["src", "lib"],
+          renderPanel: () => <div>index</div>,
+        },
+      ],
+      activeTabId: "index",
+    });
+    await hoverTabThroughTooltipDelay(view.getByText("index.ts"));
+    const tooltip = view.container.ownerDocument.body.querySelector('[role="tooltip"]');
+    if (!(tooltip instanceof HTMLElement)) throw new Error("Expected the tab tooltip");
+    expect(within(tooltip).getByText("src / lib")).toBeTruthy();
+  });
+
   test("subscribes tab chrome without re-rendering panel content", async () => {
     let title = "Persisted title";
     const listeners = new Set<() => void>();

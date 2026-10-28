@@ -74,6 +74,8 @@ import {
 } from "../../../shared/browser-sidebar";
 import { listWorkbenchPanelLeaves } from "../../../shared/workbench-panel-layout";
 import type { AppShellTabItem } from "./app-shell-tabs";
+import { resolveContentTabLocation } from "./content-tab-location";
+import { projectContentRoute } from "../../../shared/content-routing-context";
 import { buildAutomationsPath } from "@/lib/workbench-automations-routes";
 import {
   BackgroundAgentSessionTab,
@@ -199,50 +201,6 @@ function getTabIcon(kind: WorkbenchTabProjection["kind"]): ComponentType<{ class
   return getPanelNewTabAction(kind).Icon;
 }
 
-/**
- * Content tabs show only their title. When the content lives outside the Session's Project, its
- * Library or Project location moves to the tooltip and accessible name instead.
- */
-function resolveContentLocationTabChrome(
-  tab: ProjectSessionRenderableTab,
-  activeSession: ProjectSession,
-  projects: readonly Project[],
-): Pick<AppShellTabItem, "titleLabel" | "renderTooltip"> {
-  if (
-    isSideChatPanelTab(tab) ||
-    isMcpAppPanelTab(tab) ||
-    isPlanPanelTab(tab) ||
-    isAutomationPanelTab(tab) ||
-    isBackgroundAgentPanelTab(tab) ||
-    isSubagentsPanelTab(tab) ||
-    isProcessOutputPanelTab(tab) ||
-    isImageEditorPanelTab(tab)
-  )
-    return {};
-  if (tab.kind !== "db_view" && tab.kind !== "page_stage" && tab.kind !== "canvas_stage") return {};
-  const { routingContext } = tab.config;
-  if (routingContext.kind === "project" && routingContext.projectId === activeSession.projectId)
-    return {};
-
-  const projectLabel =
-    routingContext.kind === "project"
-      ? projects.find((project) => project.id === routingContext.projectId)?.name.trim() ||
-        routingContext.projectId
-      : null;
-  const accessibleLocation = projectLabel === null ? "Library" : `${projectLabel} project`;
-  const tooltipLocation = projectLabel === null ? "Library" : `Project: ${projectLabel}`;
-
-  return {
-    titleLabel: (title) => `${accessibleLocation}, ${title}`,
-    renderTooltip: (title) => (
-      <div className="flex max-w-80 flex-col gap-0.5">
-        <div className="truncate font-medium">{title}</div>
-        <div className="truncate text-xs text-token-description-foreground">{tooltipLocation}</div>
-      </div>
-    ),
-  };
-}
-
 function createBackgroundAgentTabIcon(threadId: string): ComponentType<{ className?: string }> {
   function BackgroundAgentTabIcon({ className }: { className?: string }) {
     return <SubagentAvatar seed={threadId} className={className} />;
@@ -360,7 +318,12 @@ export function useWorkbenchPanelProjection({
                 title,
               )
             : undefined;
-        const locationChrome = resolveContentLocationTabChrome(tab, session, projects);
+        const locationChrome = transientPanelTab
+          ? {}
+          : resolveContentTabLocation(tab, {
+              projects,
+              home: session.projectId ? projectContentRoute(session.projectId) : null,
+            });
         const filesIcon =
           !transientPanelTab && tab.kind === "files"
             ? resolveFileResourceIcon("path" in tab.config ? tab.config.path : undefined)

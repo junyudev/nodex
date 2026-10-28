@@ -512,8 +512,9 @@ describe("workbench session shell / sidebar-projects", () => {
     await settleAsyncRender();
 
     expect(getInboxHomeTab(screen)).not.toBeNull();
-    expect(screen.getAllByRole("tab", { name: "DB View" })).toHaveLength(2);
-    expect(screen.getByRole("tab", { name: "DB View", selected: true }) !== null).toBe(true);
+    // Both Views share a title, so each tab names its Project.
+    expect(screen.getByRole("tab", { name: "DB View, Alpha" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "DB View, Beta project", selected: true })).toBeTruthy();
     expect(screen.queryByRole("tab", { name: "Database" })).toBeNull();
   });
 
