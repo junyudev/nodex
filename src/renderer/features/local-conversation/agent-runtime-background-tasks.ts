@@ -45,6 +45,7 @@ export function projectAgentRuntimeBackgroundTasks(
       command: task.command,
       owner: task.threadTitle,
       startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : null,
+      stoppable: true,
       stopping: isStopping(task.taskId),
     };
   });

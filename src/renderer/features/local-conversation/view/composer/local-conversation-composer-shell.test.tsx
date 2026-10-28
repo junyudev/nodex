@@ -103,7 +103,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onOpenTurnDiffReview: () => {},
     onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
-    onCleanBackgroundTerminals: async () => {},
+    onStopBackgroundTerminals: async () => {},
     ...overrides,
   };
 }
@@ -286,7 +286,7 @@ describe("LocalConversationComposerShell", () => {
     expect(queue?.getAttribute("data-above-composer-conversation-id") ?? "").toBe("thread-portal");
   });
 
-  test("renders queue rows, background terminals, and request cards in one shell", async () => {
+  test("renders queue rows and request cards in one shell, leaving background work to the summary", async () => {
     installComposerShellWindowApi();
     const model = buildComposerShellModel();
     const view = renderComposerShell(model);
@@ -299,7 +299,7 @@ describe("LocalConversationComposerShell", () => {
     expect(
       Boolean(renderedText.includes("Run final validation once the request workflow is complete.")),
     ).toBe(true);
-    expect(Boolean(renderedText.includes("Running 1 terminal"))).toBe(true);
+    expect(Boolean(renderedText.includes("Running 1 terminal"))).toBe(false);
     expect(Boolean(renderedText.includes("1 active requests"))).toBe(false);
 
     const backgroundReason = view.getByText(

@@ -9,6 +9,7 @@ import {
   test as bunTest,
 } from "vite-plus/test";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { createCodexBackgroundTerminalTasks } from "../../codex-background-tasks";
 import { act } from "react";
 import type { ReactElement } from "react";
 import type {
@@ -2129,15 +2130,19 @@ describe("ThreadFloatingSummaryPanel", () => {
         turns={turns}
         childMemberships={[makeSubagentMembership()]}
         knownConversationsById={{}}
-        backgroundTerminalRows={[
-          {
-            id: "terminal-1",
-            turnId: "turn-terminal-1",
-            command: "bun test",
-            cwd: "/repo/project",
-            previewLine: "3 pass",
-          },
-        ]}
+        backgroundTasks={createCodexBackgroundTerminalTasks(
+          "thread-1",
+          [
+            {
+              id: "terminal-1",
+              turnId: "turn-terminal-1",
+              command: "bun test",
+              cwd: "/repo/project",
+              previewLine: "3 pass",
+            },
+          ],
+          { onStopBackgroundTerminals: async () => {} },
+        )}
         scheduledAutomation={{
           id: "automation-1",
           name: "Review release notes",
@@ -2273,15 +2278,19 @@ describe("ThreadFloatingSummaryPanel", () => {
         cwd={null}
         projectWorkspacePath={null}
         turns={[]}
-        backgroundTerminalRows={[
-          {
-            id: "terminal-1",
-            turnId: "turn-terminal-1",
-            command: "bun dev",
-            cwd: "/repo/project",
-            previewLine: null,
-          },
-        ]}
+        backgroundTasks={createCodexBackgroundTerminalTasks(
+          "thread-1",
+          [
+            {
+              id: "terminal-1",
+              turnId: "turn-terminal-1",
+              command: "bun dev",
+              cwd: "/repo/project",
+              previewLine: null,
+            },
+          ],
+          actions,
+        )}
         sideChatRows={[
           {
             id: "side-chat-1",
@@ -2313,7 +2322,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Investigate layout" }));
       fireEvent.click(view.getByRole("button", { name: "Release notes example.com" }));
-      fireEvent.click(view.getByRole("button", { name: "bun dev" }));
+      fireEvent.click(view.getByRole("button", { name: "bun dev, Shell command" }));
       fireEvent.click(view.getByRole("button", { name: "View all processes" }));
     });
 
@@ -2407,15 +2416,19 @@ describe("ThreadFloatingSummaryPanel", () => {
         projectWorkspacePath={null}
         turns={[]}
         computerUsePip={{ visible: false }}
-        backgroundTerminalRows={[
-          {
-            id: "terminal-1",
-            turnId: "turn-terminal-1",
-            command: "bun dev",
-            cwd: "/repo/project",
-            previewLine: null,
-          },
-        ]}
+        backgroundTasks={createCodexBackgroundTerminalTasks(
+          "thread-1",
+          [
+            {
+              id: "terminal-1",
+              turnId: "turn-terminal-1",
+              command: "bun dev",
+              cwd: "/repo/project",
+              previewLine: null,
+            },
+          ],
+          { onStopBackgroundTerminals: async () => {} },
+        )}
         browserRows={[
           {
             id: "browser-1",

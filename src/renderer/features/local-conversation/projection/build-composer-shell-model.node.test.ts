@@ -457,7 +457,6 @@ describe("buildComposerShellModel", () => {
     expect(model.pendingSteerRows.length).toBe(0);
     expect(model.queuedFollowUpRows.length).toBe(1);
     expect(model.queuedFollowUpRows[0]?.displayText).toBe("Run validation next.");
-    expect(model.backgroundTerminalRows.length).toBe(1);
     expect(model.backgroundAgentRows.length).toBe(1);
     expect(model.backgroundAgentRows[0]?.status).toBe("active");
     expect(model.showRequestCards).toBe(true);

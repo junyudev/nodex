@@ -17,7 +17,6 @@ import {
 } from "@dnd-kit/sortable";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  useEffect,
   forwardRef,
   useLayoutEffect,
   useMemo,
@@ -30,7 +29,6 @@ import { createPortal } from "react-dom";
 import {
   ActivitySpinnerIcon,
   AutomationMoreIcon,
-  ChevronRightIcon,
   ComposerResumeIcon,
   DeleteIcon,
   EditIcon,
@@ -41,7 +39,6 @@ import {
   QueuedFollowUpIcon,
   SidePanelSideChatIcon,
   SidebarManualOrderIcon,
-  StopIcon,
 } from "@/components/shared/icons";
 import { serializeSortableTranslation } from "@/lib/sortable-transform";
 import {
@@ -104,22 +101,6 @@ interface LocalConversationComposerShellProps {
   contextRailLeadingContent?: ReactNode;
 }
 
-function TerminalIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className="icon-2xs shrink-0 text-token-input-placeholder-foreground/70"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M4.5 5.75C4.5 5.05964 5.05964 4.5 5.75 4.5H14.25C14.9404 4.5 15.5 5.05964 15.5 5.75V14.25C15.5 14.9404 14.9404 15.5 14.25 15.5H5.75C5.05964 15.5 4.5 14.9404 4.5 14.25V5.75Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
 const QUEUE_GHOST_BUTTON_CLASS_NAME =
   "no-drag cursor-interaction inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-transparent text-token-text-tertiary select-none electron:rounded-md enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-offset-0 disabled:cursor-default disabled:opacity-40";
 const QUEUE_MENU_ICON_CLASS_NAME =
@@ -145,27 +126,6 @@ const QueueActionButton = forwardRef<
     </button>
   );
 });
-
-function ComposerGhostIconButton({
-  ariaLabel,
-  onClick,
-  children,
-}: {
-  ariaLabel: string;
-  onClick?: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      className="electron:p-1 electron:[&>svg]:icon-sm inline-flex size-6 items-center justify-center rounded-full p-0.5 text-token-input-placeholder-foreground transition-colors hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:outline-none [&>svg]:icon-2xs"
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
 
 function QueueLabelActionButton({
   ariaLabel,
@@ -656,120 +616,6 @@ function QueuePanel({ model, actions }: { model: ThreadFooterModel; actions: Thr
   );
 }
 
-function BackgroundTerminalRow({
-  terminal,
-}: {
-  terminal: ThreadFooterModel["composerShell"]["backgroundTerminalRows"][number];
-}) {
-  const visibleRow = (
-    <div className="min-w-0">
-      <div className="truncate font-mono text-size-code">
-        <span>{terminal.command}</span>
-        {terminal.previewLine ? (
-          <span className="ml-1 text-token-description-foreground">{terminal.previewLine}</span>
-        ) : null}
-      </div>
-    </div>
-  );
-
-  if (terminal.command.length === 0 && terminal.previewLine == null) {
-    return visibleRow;
-  }
-
-  return (
-    <NodexTooltip
-      tooltipContent={
-        <div className="codex-tool-code max-h-40 max-w-[36rem] overflow-auto font-mono text-size-code">
-          <div className="break-all whitespace-pre-wrap">{terminal.command}</div>
-          {terminal.previewLine ? (
-            <div className="mt-1 break-all whitespace-pre-wrap text-token-description-foreground">
-              {terminal.previewLine}
-            </div>
-          ) : null}
-        </div>
-      }
-      side="top"
-      hoverable
-      tooltipBodyClassName="max-w-none"
-    >
-      {visibleRow}
-    </NodexTooltip>
-  );
-}
-
-function BackgroundTerminalPanel({
-  threadId,
-  rows,
-  actions,
-}: {
-  threadId: string;
-  rows: ThreadFooterModel["composerShell"]["backgroundTerminalRows"];
-  actions: ThreadStageActions;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  if (rows.length === 0) {
-    return null;
-  }
-
-  return (
-    <ComposerShellCard>
-      <div className="flex items-center justify-between gap-2 px-3 py-row-y">
-        <div className="flex min-w-0 items-center gap-2">
-          <TerminalIcon />
-          <span className="text-size-chat min-w-0 truncate leading-4 text-token-description-foreground">
-            Running {rows.length === 1 ? "1 terminal" : `${rows.length} terminals`}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <NodexTooltip tooltipContent="Stop background terminals">
-            <ComposerGhostIconButton
-              ariaLabel="Stop"
-              onClick={() => {
-                void actions.onCleanBackgroundTerminals(threadId);
-              }}
-            >
-              <StopIcon className="icon-2xs" />
-            </ComposerGhostIconButton>
-          </NodexTooltip>
-          <ComposerGhostIconButton
-            ariaLabel={
-              expanded ? "Collapse running terminals details" : "Expand running terminals details"
-            }
-            onClick={() => {
-              setExpanded((current) => !current);
-            }}
-          >
-            <ChevronRightIcon
-              className={cn(
-                "icon-2xs text-current transition-transform duration-300",
-                expanded && "rotate-90",
-              )}
-            />
-          </ComposerGhostIconButton>
-        </div>
-      </div>
-      <motion.div
-        initial={false}
-        animate={{
-          height: expanded ? "auto" : 0,
-          opacity: expanded ? 1 : 0,
-        }}
-        transition={CODEX_THREAD_ACCORDION_TRANSITION}
-        className={expanded ? "overflow-visible" : "overflow-hidden"}
-        style={{
-          pointerEvents: expanded ? "auto" : "none",
-        }}
-      >
-        <div className="flex flex-col gap-2 px-3 pt-0.5 pb-3">
-          {rows.map((row) => (
-            <BackgroundTerminalRow key={row.id} terminal={row} />
-          ))}
-        </div>
-      </motion.div>
-    </ComposerShellCard>
-  );
-}
-
 function RequestCardStack({
   model,
   actions,
@@ -1013,11 +859,7 @@ function ScopedLocalConversationComposerShell({
     model.composerShell.queuedFollowUpRows.length > 0;
   const threadGoal = model.conversation?.threadGoal ?? null;
   const showThreadGoalStatusRow = threadGoal !== null && threadGoal.status !== "complete";
-  const backgroundTerminalThreadId = model.threadId;
-  const showBackgroundTerminals =
-    backgroundTerminalThreadId !== null && model.composerShell.backgroundTerminalRows.length > 0;
-  const showAuxiliaryLaneStack =
-    showQueuePanel || showThreadGoalStatusRow || showBackgroundTerminals;
+  const showAuxiliaryLaneStack = showQueuePanel || showThreadGoalStatusRow;
   const auxiliaryLaneStack = showAuxiliaryLaneStack ? (
     // Keep fill and blur on the framed layer: a filtered child can mask its
     // curved stroke when the rail clips its contents.
@@ -1028,13 +870,6 @@ function ScopedLocalConversationComposerShell({
       {showQueuePanel ? <QueuePanel model={model} actions={actions} /> : null}
       {showThreadGoalStatusRow ? (
         <ThreadGoalStatusRow goal={threadGoal} hostId={model.hostId} actions={actions} />
-      ) : null}
-      {showBackgroundTerminals ? (
-        <BackgroundTerminalPanel
-          threadId={backgroundTerminalThreadId}
-          rows={model.composerShell.backgroundTerminalRows}
-          actions={actions}
-        />
       ) : null}
     </div>
   ) : null;

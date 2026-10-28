@@ -549,7 +549,7 @@ function buildActions(): ThreadStageActions {
     onOpenTurnDiffReview: () => {},
     onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
-    onCleanBackgroundTerminals: noopAsync,
+    onStopBackgroundTerminals: noopAsync,
     onNewThreadProjectChange: () => {},
   };
 }

@@ -58,7 +58,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onOpenTurnDiffReview: () => undefined,
     onConsumeComposerIntent: () => undefined,
     onOpenThread: () => undefined,
-    onCleanBackgroundTerminals: noopAsync,
+    onStopBackgroundTerminals: noopAsync,
     onNewThreadProjectChange: () => undefined,
     onRequestNewChatProjectCreate: () => undefined,
     ...overrides,

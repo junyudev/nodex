@@ -52,7 +52,7 @@ export function composeNativeThreadStageActions(
     onForkFromTurn: unavailable,
     onUnarchiveThread: unavailable,
     onConsumeComposerIntent: () => undefined,
-    onCleanBackgroundTerminals: unavailable,
+    onStopBackgroundTerminals: unavailable,
     ...native,
   };
 }

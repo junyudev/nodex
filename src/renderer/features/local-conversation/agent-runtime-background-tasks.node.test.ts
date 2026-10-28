@@ -55,6 +55,7 @@ describe("Agent Runtime background tasks", () => {
         command: "pnpm docs:dev --port 4321",
         owner: null,
         startedAtMs: Date.parse("2026-10-28T10:00:00.000Z"),
+        stoppable: true,
         stopping: false,
       },
       {
@@ -64,6 +65,7 @@ describe("Agent Runtime background tasks", () => {
         command: "gh run watch 42",
         owner: null,
         startedAtMs: null,
+        stoppable: true,
         stopping: true,
       },
       {
@@ -73,6 +75,7 @@ describe("Agent Runtime background tasks", () => {
         command: null,
         owner: "Audit auth",
         startedAtMs: null,
+        stoppable: true,
         stopping: false,
       },
     ]);

@@ -365,7 +365,6 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
       pendingSteerRows: [],
       queuedFollowUpRows: [],
       backgroundAgentRows: [],
-      backgroundTerminalRows: [],
       showRequestCards: false,
       showComposer: true,
     },

@@ -253,7 +253,6 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
       pendingSteerRows: [],
       queuedFollowUpRows: [],
       backgroundAgentRows: [],
-      backgroundTerminalRows: [],
       showRequestCards: false,
       showComposer: true,
     },
@@ -285,7 +284,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onOpenTurnDiffReview: () => {},
     onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
-    onCleanBackgroundTerminals: async () => {},
+    onStopBackgroundTerminals: async () => {},
     ...overrides,
   };
 }

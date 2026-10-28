@@ -40,7 +40,7 @@ function buildActions(): ThreadStageActions {
     onOpenTurnDiffReview: () => {},
     onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
-    onCleanBackgroundTerminals: async () => {},
+    onStopBackgroundTerminals: async () => {},
   };
 }
 

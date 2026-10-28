@@ -18,6 +18,7 @@ const task = (id: string, overrides: Partial<ConversationBackgroundTask> = {}) =
   command: null,
   owner: null,
   startedAtMs: null,
+  stoppable: true,
   stopping: false,
   ...overrides,
 });

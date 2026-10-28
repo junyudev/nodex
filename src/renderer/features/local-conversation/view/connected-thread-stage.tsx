@@ -35,7 +35,6 @@ import {
 } from "@/lib/workbench-ui-scopes";
 import { composerContextOperations } from "../composer-context-operations";
 import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
-import { buildCodexTurnOccurrenceKey } from "../../../../shared/codex-turn-identity";
 import { buildComposerShellModel } from "../projection/build-composer-shell-model";
 import { selectPrimaryBackgroundConversationRequest } from "../conversation-request-helpers";
 import { copyConversationMarkdown } from "../copy-conversation-markdown";
@@ -103,6 +102,7 @@ import {
   ThreadSummaryPanelRenderErrorFallback,
 } from "./summary-panel";
 import { usePublishThreadSummaryContent } from "./summary-panel/thread-summary-content";
+import { createCodexBackgroundTerminalTasks } from "../codex-background-tasks";
 import {
   resolveChildConversationIds,
   resolveEffectiveThreadStageSettings,
@@ -735,7 +735,6 @@ export function ConnectedThreadStageFooter({
         canonicalRequests: bodyPresentation.canonicalRequests,
         pendingSteers,
         queuedFollowUps: [...queuedFollowUps],
-        backgroundTerminalRows,
         backgroundAgentRows,
         childMemberships,
         statusType,
@@ -745,7 +744,6 @@ export function ConnectedThreadStageFooter({
       }),
     [
       activeThreadId,
-      backgroundTerminalRows,
       backgroundAgentRows,
       childMemberships,
       bodyPresentation.canonicalRequests,
@@ -1443,8 +1441,9 @@ function ConnectedThreadStageContent({
       projectlessOutputDirectory: summaryFields.projectlessOutputDirectory,
       projectWorkspacePath: input.projectWorkspacePath ?? null,
       turns,
-      backgroundTerminalRows,
-      backgroundTasks: input.provider?.backgroundTasks ?? null,
+      backgroundTasks:
+        input.provider?.backgroundTasks ??
+        createCodexBackgroundTerminalTasks(activeThreadId, backgroundTerminalRows, actions),
       backgroundAgentRows,
       childMemberships,
       knownConversationsById,

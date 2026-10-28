@@ -31,7 +31,7 @@ export function buildComposerActions(overrides?: Partial<ThreadStageActions>): T
     onOpenTurnDiffReview: () => {},
     onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
-    onCleanBackgroundTerminals: async () => {},
+    onStopBackgroundTerminals: async () => {},
     ...overrides,
   };
 }

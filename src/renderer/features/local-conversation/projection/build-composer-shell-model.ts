@@ -1,5 +1,4 @@
 import type {
-  CodexBackgroundTerminalRow,
   CodexConversationChildMembership,
   CodexCanonicalServerRequest,
   CodexConversationLiveRequest,
@@ -36,7 +35,6 @@ interface ExplicitBuildComposerShellModelInput {
   pendingSteers: CodexPendingSteer[];
   queuedFollowUps: CodexQueuedFollowUp[];
   queuedFollowUpProjection?: CodexQueuedFollowUpProjection;
-  backgroundTerminalRows: CodexBackgroundTerminalRow[];
   childMemberships: CodexConversationChildMembership[];
   /** Complete ordered descendants from the scoped Subagent Directory, when available. */
   backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
@@ -70,7 +68,6 @@ function normalizeBuildComposerShellModelInput(
       pendingSteers: input.conversation.pendingSteers,
       queuedFollowUps: [...input.conversation.queuedFollowUps.entries],
       queuedFollowUpProjection: input.conversation.queuedFollowUps,
-      backgroundTerminalRows: input.conversation.backgroundTerminalRows,
       childMemberships: input.childMemberships ?? [],
       backgroundAgentRows: input.backgroundAgentRows,
       statusType: input.conversation.statusType,
@@ -153,7 +150,6 @@ export function buildComposerShellModel(
       pendingSteerRows: [],
       queuedFollowUpRows: [],
       backgroundAgentRows: [],
-      backgroundTerminalRows: [],
       showRequestCards: false,
       showComposer: true,
     };
@@ -207,7 +203,6 @@ export function buildComposerShellModel(
       (entry) => entry.pause?.kind === "interrupted",
     ),
     backgroundAgentRows: [...backgroundAgentRows],
-    backgroundTerminalRows: normalized.backgroundTerminalRows,
     showRequestCards,
     showComposer: !showRequestCards,
   };

@@ -169,7 +169,7 @@ const actions: ThreadStageActions = {
   onOpenTurnDiffReview: () => {},
   onConsumeComposerIntent: () => {},
   onOpenThread: () => {},
-  onCleanBackgroundTerminals: async () => {},
+  onStopBackgroundTerminals: async () => {},
 };
 function FindControls({ query = term }: { readonly query?: string }) {
   const find = useContentSearch();

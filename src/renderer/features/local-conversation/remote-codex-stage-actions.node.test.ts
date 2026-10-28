@@ -107,3 +107,26 @@ it("does not publish a queued title after failure or an empty accepted request",
   await f.actions.onSendQueuedFollowUpNow("remote-thread", "queued");
   expect(f.onSideChatTitle).not.toHaveBeenCalled();
 });
+
+it("stops the named remote background terminals, or cleans them all", async () => {
+  const terminateBackgroundTerminal = vi.fn().mockResolvedValue(true);
+  const cleanBackgroundTerminals = vi.fn().mockResolvedValue(true);
+  const actions = createRemoteCodexStageActions({
+    hostId: "ssh:owned",
+    threadId: "remote-thread",
+    projectId: null,
+    control: { terminateBackgroundTerminal, cleanBackgroundTerminals },
+    host: { onQueueingEnabledChange: vi.fn(), onOpenThread: vi.fn() },
+  } as unknown as RemoteActionsInput);
+  await actions.onStopBackgroundTerminals("remote-thread", ["41", "42"]);
+  expect(terminateBackgroundTerminal.mock.calls).toEqual([
+    [{ threadId: "remote-thread", processId: "41" }],
+    [{ threadId: "remote-thread", processId: "42" }],
+  ]);
+  expect(cleanBackgroundTerminals).not.toHaveBeenCalled();
+  await actions.onStopBackgroundTerminals("remote-thread");
+  expect(cleanBackgroundTerminals).toHaveBeenCalledExactlyOnceWith("remote-thread");
+  await expect(actions.onStopBackgroundTerminals("foreign-thread")).rejects.toThrow(
+    "identity changed",
+  );
+});

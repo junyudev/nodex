@@ -1166,6 +1166,7 @@ describe("Agent Runtime background work", () => {
           command: "pnpm docs:dev",
           owner: null,
           startedAtMs: Date.parse("2026-10-15T00:00:00.000Z"),
+          stoppable: true,
           stopping: false,
         },
       ]),

@@ -883,7 +883,6 @@ export function buildComposerShellFixture(
     canonicalRequests,
     pendingSteers: conversation.pendingSteers,
     queuedFollowUps: [...conversation.queuedFollowUps.entries],
-    backgroundTerminalRows: conversation.backgroundTerminalRows,
     childMemberships: [...scenario.childMemberships],
     statusType,
     statusActiveFlags: conversation.statusActiveFlags,

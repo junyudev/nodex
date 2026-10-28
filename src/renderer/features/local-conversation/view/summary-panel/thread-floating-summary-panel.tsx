@@ -1,5 +1,5 @@
 import type { CodexSubagentRow } from "../../../../../shared/codex-subagent-row-model";
-import { ListTree, PictureInPicture2, Slash } from "@/components/shared/icons/generic-icons";
+import { PictureInPicture2, Slash } from "@/components/shared/icons/generic-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BranchStatusIcon,
@@ -16,7 +16,6 @@ import {
   ThreadSummaryCreatePullRequestIcon,
   ThreadSummaryPushIcon,
   OpenInIcon,
-  TerminalIcon,
   ImageBlockIcon,
 } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -47,7 +46,6 @@ import { useSummaryGitState } from "../../data/use-summary-git-state";
 import { threadSummaryGitOperations } from "../../thread-summary-git-operations";
 import { cn } from "../../../../lib/utils";
 import type {
-  CodexBackgroundTerminalRow,
   CodexConversationChildMembership,
   CodexConversationSnapshot,
   CodexConversationTurn,
@@ -124,7 +122,6 @@ import {
 
 const EMPTY_CHILD_MEMBERSHIPS: readonly CodexConversationChildMembership[] = [];
 const EMPTY_KNOWN_CONVERSATIONS_BY_ID: Record<string, CodexConversationSnapshot> = {};
-const EMPTY_BACKGROUND_TERMINAL_ROWS: readonly CodexBackgroundTerminalRow[] = [];
 const EMPTY_SIDE_CHAT_ROWS: readonly ThreadSummaryPanelAuxiliaryRow[] = [];
 const EMPTY_BROWSER_ROWS: readonly ThreadSummaryPanelBrowserRow[] = [];
 const EMPTY_MCP_SERVER_STATUSES: ProtocolListMcpServerStatusResponse = {
@@ -142,8 +139,7 @@ export interface ThreadSummaryPanelContentProps {
   projectlessOutputDirectory?: string | null;
   projectWorkspacePath: string | null;
   turns: readonly CodexConversationTurn[];
-  backgroundTerminalRows?: readonly CodexBackgroundTerminalRow[];
-  /** Live background work with Stop and output; replaces terminal rows where present. */
+  /** Live background work the conversation's Agents left running, with Stop and output. */
   backgroundTasks?: ConversationBackgroundTasks | null;
   backgroundAgentRows?: readonly CodexSubagentRow[];
   childMemberships?: readonly CodexConversationChildMembership[];
@@ -925,7 +921,6 @@ export function ThreadSummaryPanelSurface({
   projectlessOutputDirectory = null,
   projectWorkspacePath,
   turns,
-  backgroundTerminalRows = EMPTY_BACKGROUND_TERMINAL_ROWS,
   backgroundTasks = null,
   backgroundAgentRows: projectedBackgroundAgentRows,
   childMemberships = EMPTY_CHILD_MEMBERSHIPS,
@@ -1135,7 +1130,7 @@ export function ThreadSummaryPanelSurface({
         suppressOutputs: hasGitEnvironmentSummary,
         sideChatCount: sideChatRows.length,
         backgroundSubagentRows,
-        taskCount: backgroundTasks?.tasks.length ?? backgroundTerminalRows.length,
+        taskCount: backgroundTasks?.tasks.length ?? 0,
         hasComputerUsePip,
         browserCount: browserRows.length,
         sourceCount: sourceModel.count,
@@ -1144,7 +1139,6 @@ export function ThreadSummaryPanelSurface({
       activeThreadId,
       backgroundSubagentRows,
       backgroundTasks,
-      backgroundTerminalRows.length,
       browserRows.length,
       hasComputerUsePip,
       outputRows.length,
@@ -1284,13 +1278,6 @@ export function ThreadSummaryPanelSurface({
     },
     [onOpenPlanInSidePanel],
   );
-  const onOpenBackgroundTerminalOutput = actions?.onOpenBackgroundTerminalOutput;
-  const handleOpenBackgroundTerminalOutput = useCallback(
-    (row: CodexBackgroundTerminalRow) => {
-      void onOpenBackgroundTerminalOutput?.(row);
-    },
-    [onOpenBackgroundTerminalOutput],
-  );
   const onOpenScheduledAutomation = actions?.onOpenSummaryScheduledAutomation;
   const onToggleComputerUsePip = actions?.onToggleSummaryComputerUsePip;
   const handleOpenScheduledAutomation = useCallback(
@@ -1327,21 +1314,6 @@ export function ThreadSummaryPanelSurface({
     },
     [actions],
   );
-  const processManagerAction = actions?.onOpenProcessManager ? (
-    <NodexTooltip tooltipContent="View all processes" side="top">
-      <button
-        type="button"
-        aria-label="View all processes"
-        className="ms-auto inline-flex size-6 cursor-interaction items-center justify-center rounded-sm border-0 bg-transparent text-token-text-tertiary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
-        onClick={() => {
-          void actions.onOpenProcessManager?.();
-        }}
-      >
-        <ListTree className="icon-xs" aria-hidden="true" />
-      </button>
-    </NodexTooltip>
-  ) : null;
-
   return (
     <>
       <div
@@ -1709,42 +1681,7 @@ export function ThreadSummaryPanelSurface({
                       autoCollapse={section.autoCollapse}
                       onErrorMessage={onErrorMessage}
                     />
-                  ) : (
-                    <ThreadSummaryPanelSection
-                      key={section.kind}
-                      sectionKey="background-tasks"
-                      title="Background"
-                      titleSuffix={
-                        <ThreadSummaryPanelCountBadge
-                          count={section.count ?? backgroundTerminalRows.length}
-                        />
-                      }
-                      after={processManagerAction}
-                    >
-                      {backgroundTerminalRows.slice(0, 4).map((row) => (
-                        <ThreadSummaryPanelRow
-                          key={row.id}
-                          label={row.command}
-                          title={row.command}
-                          icon={<TerminalIcon className="icon-sm shrink-0" />}
-                          interactive={Boolean(onOpenBackgroundTerminalOutput)}
-                          onClick={
-                            onOpenBackgroundTerminalOutput
-                              ? () => handleOpenBackgroundTerminalOutput(row)
-                              : undefined
-                          }
-                          trailing={
-                            row.previewLine ? (
-                              <span className="block max-w-24 truncate text-sm text-token-text-tertiary">
-                                {row.previewLine}
-                              </span>
-                            ) : null
-                          }
-                          trailingVisible={Boolean(row.previewLine)}
-                        />
-                      ))}
-                    </ThreadSummaryPanelSection>
-                  );
+                  ) : null;
 
                 case "computerUsePip": {
                   if (!computerUsePip || !onToggleComputerUsePip) return null;
@@ -1889,9 +1826,9 @@ export function ThreadSummaryPanelSurface({
 
 /** Live background work the summary lists, for the toggle that opens it. */
 export function threadSummaryBackgroundCount(
-  content: Pick<ThreadSummaryPanelContentProps, "backgroundTasks" | "backgroundTerminalRows">,
+  content: Pick<ThreadSummaryPanelContentProps, "backgroundTasks">,
 ): number {
-  return content.backgroundTasks?.tasks.length ?? content.backgroundTerminalRows?.length ?? 0;
+  return content.backgroundTasks?.tasks.length ?? 0;
 }
 
 export function ThreadSummaryPanelPopover({

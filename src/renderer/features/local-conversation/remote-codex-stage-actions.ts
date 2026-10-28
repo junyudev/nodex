@@ -168,8 +168,17 @@ export function createRemoteCodexStageActions(input: {
     onConsumeComposerIntent: (requested, nonce) => {
       control.consumeComposerIntent(requireThread(requested), nonce);
     },
-    onCleanBackgroundTerminals: async (requested) => {
-      await control.cleanBackgroundTerminals(requireThread(requested));
+    onStopBackgroundTerminals: async (requested, processIds) => {
+      const thread = requireThread(requested);
+      if (processIds === undefined) {
+        await control.cleanBackgroundTerminals(thread);
+        return;
+      }
+      await Promise.all(
+        processIds.map((processId) =>
+          control.terminateBackgroundTerminal({ threadId: thread, processId }),
+        ),
+      );
     },
   });
 }

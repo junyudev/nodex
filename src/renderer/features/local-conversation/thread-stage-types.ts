@@ -267,6 +267,8 @@ export interface ConversationBackgroundTask {
   /** The delegated conversation running it; null for the chat's own work. */
   readonly owner: string | null;
   readonly startedAtMs: number | null;
+  /** The Agent can end this task alone; otherwise only Stop all reaches it. */
+  readonly stoppable: boolean;
   /** A Stop request is in flight; the task leaves the list once it has ended. */
   readonly stopping: boolean;
 }
@@ -285,6 +287,10 @@ export interface ConversationBackgroundTasks {
   readonly stop: (taskId?: string) => Promise<void>;
   /** Null when the Agent cannot show this task's output. */
   readonly readOutput?: (taskId: string) => Promise<ConversationBackgroundTaskOutput | null>;
+  /** Opens the task's full output in its own surface, where it is not shown in place. */
+  readonly openOutput?: (taskId: string) => void;
+  /** Opens every process the conversation runs, beyond its background tasks. */
+  readonly openAll?: () => void;
 }
 
 /** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */
@@ -587,7 +593,8 @@ export interface ThreadStageActions {
   onConsumeNewThreadComposerIntent?: (sessionId: string, focusNonce: number) => void;
   onOpenThread: (threadId: string, context?: ThreadOpenThreadContext) => void | Promise<void>;
   onRetryThreadAttachment?: (threadId: string) => void | Promise<void>;
-  onCleanBackgroundTerminals: (threadId: string) => Promise<void>;
+  /** Ends the named background terminals, or all of the conversation's when none are named. */
+  onStopBackgroundTerminals: (threadId: string, processIds?: readonly string[]) => Promise<void>;
 }
 
 /** Presentation and Session metadata actions are shared without inheriting provider execution. */
@@ -1213,7 +1220,6 @@ export interface ThreadComposerShellModel {
   queuedFollowUpHasNextPage?: boolean;
   hasInterruptedQueuedFollowUps?: boolean;
   backgroundAgentRows: ThreadComposerShellBackgroundAgentRowModel[];
-  backgroundTerminalRows: CodexBackgroundTerminalRow[];
   showRequestCards: boolean;
   showComposer: boolean;
 }

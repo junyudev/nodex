@@ -166,11 +166,13 @@ interactive only when its child and writer state permit it and otherwise stays
 read-only. Avatar identity and row preview text remain static across status
 changes.
 
-Background lists work the Agent left running after the tool call that started
-it, not child-agent metadata. For a Codex Chat these are registered background
-processes: rows open the same live Process output surface as Process Manager,
-and the section's `View all processes` action opens that Workbench-owned
-dialog. Process status and action behavior remain summarized in
+Background lists work an Agent left running after the tool call that started
+it, not child-agent metadata. Every Chat presents it the same way; the source
+differs. For a Codex Chat attached to a remote host the rows are its background
+terminals: selecting one opens the same live Process output surface as Process
+Manager, a terminal with a process stops alone, Stop all cleans every terminal,
+and the section's `View all processes` action opens the Workbench-owned dialog.
+Process status and action behavior remain summarized in
 [Codex Workspace Behavior](codex-workspace-behavior.md).
 
 For a Runtime Chat, such as Claude Code or a local Codex Chat, Background lists

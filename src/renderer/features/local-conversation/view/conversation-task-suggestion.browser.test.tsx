@@ -110,7 +110,6 @@ describe("task suggestion Composer handoff", () => {
                 queuedFollowUpRows: [],
                 pendingSteerRows: [],
                 backgroundAgentRows: [],
-                backgroundTerminalRows: [],
                 showComposer: true,
                 showRequestCards: false,
               },

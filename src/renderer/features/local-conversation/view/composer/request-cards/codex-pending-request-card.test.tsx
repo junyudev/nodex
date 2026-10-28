@@ -119,7 +119,7 @@ function createActions(log: string[]): ThreadStageActions {
     onOpenTurnDiffReview: () => {},
     onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
-    onCleanBackgroundTerminals: async () => {},
+    onStopBackgroundTerminals: async () => {},
   };
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { ActivitySpinnerIcon, BellIcon, StopIcon, TerminalIcon } from "@/components/shared/icons";
-import { CircleDotIcon } from "@/components/shared/icons/generic-icons";
+import { BellIcon, StopIcon, TerminalIcon } from "@/components/shared/icons";
+import { CircleDotIcon, ListTree } from "@/components/shared/icons/generic-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatElapsedSince, getNextElapsedTimeUpdateDelay } from "@/lib/elapsed-time";
@@ -125,7 +125,7 @@ function BackgroundTaskOutputView({
             ? "No output yet"
             : null;
   return (
-    <div className="mb-1 ms-[26px] min-w-0 overflow-hidden rounded-md bg-token-foreground/[0.035]">
+    <div className="mb-1 min-w-0 overflow-hidden rounded-md bg-token-foreground/[0.035]">
       {task.command ? (
         <div className="truncate px-2 pt-1.5 font-code text-size-code-sm text-token-text-tertiary">
           {`$ ${task.command}`}
@@ -141,7 +141,7 @@ function BackgroundTaskOutputView({
           {notice}
         </div>
       ) : (
-        <div className="vertical-scroll-fade-mask-top flex max-h-40 flex-col-reverse overflow-auto font-code text-size-code-sm whitespace-pre text-token-description-foreground [--edge-fade-distance:1.5rem]">
+        <div className="vertical-scroll-fade-mask flex max-h-40 flex-col-reverse overflow-auto font-code text-size-code-sm whitespace-pre text-token-description-foreground [--edge-fade-distance:1.5rem] [animation-direction:reverse]">
           <div className="w-max min-w-full px-2 py-1.5">
             {state.status === "ready" && state.output?.truncated ? (
               <div className="text-token-text-tertiary">…</div>
@@ -157,14 +157,16 @@ function BackgroundTaskOutputView({
 function BackgroundTaskRow({
   task,
   background,
+  stopping,
   expanded,
-  onToggle,
+  onSelect,
   onStop,
 }: {
   task: ConversationBackgroundTask;
   background: ConversationBackgroundTasks;
+  stopping: boolean;
   expanded: boolean;
-  onToggle: (() => void) | undefined;
+  onSelect: (() => void) | undefined;
   onStop: () => void;
 }) {
   return (
@@ -177,11 +179,11 @@ function BackgroundTaskRow({
         aria-label={[task.label, KIND_LABELS[task.kind], task.owner && `in ${task.owner}`]
           .filter(Boolean)
           .join(", ")}
-        aria-expanded={onToggle ? expanded : undefined}
-        interactive={Boolean(onToggle)}
-        onClick={onToggle}
+        aria-expanded={background.readOutput ? expanded : undefined}
+        interactive={Boolean(onSelect)}
+        onClick={onSelect}
         trailing={
-          task.stopping ? (
+          stopping ? (
             <CodexShimmerText
               variant="classic"
               className="text-sm whitespace-nowrap text-token-text-tertiary"
@@ -194,12 +196,12 @@ function BackgroundTaskRow({
         }
         trailingVisible
         actions={
-          task.stopping ? undefined : (
+          stopping || !task.stoppable ? undefined : (
             <NodexTooltip tooltipContent="Stop" side="top">
               <button
                 type="button"
                 aria-label={`Stop ${task.label}`}
-                className="flex size-6 cursor-interaction items-center justify-center rounded-sm text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
+                className={HEADER_ICON_BUTTON_CLASS_NAME}
                 onClick={onStop}
               >
                 <StopIcon className="size-3" />
@@ -215,9 +217,12 @@ function BackgroundTaskRow({
   );
 }
 
+const HEADER_ICON_BUTTON_CLASS_NAME =
+  "flex size-6 shrink-0 cursor-interaction items-center justify-center rounded-sm text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px]";
+
 /**
- * Background work the conversation's Agent left running, with each task's name, age and recent
- * output, and Stop for one task or all of them. Subagents have their own section.
+ * Background work the conversation's Agents left running, with each task's name, age and
+ * recent output, and Stop for one task or all of them. Subagents have their own section.
  */
 export function ThreadSummaryBackgroundSection({
   background,
@@ -229,22 +234,31 @@ export function ThreadSummaryBackgroundSection({
   onErrorMessage: (message: string | null) => void;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [stoppingAll, setStoppingAll] = useState(false);
+  // Stop shows at once, before the Agent confirms; the list drops the task when it ends.
+  const [requested, setRequested] = useState<ReadonlySet<string>>(() => new Set());
   const { tasks } = background;
+  const isStopping = (task: ConversationBackgroundTask) => task.stopping || requested.has(task.id);
+  const live = tasks.filter((task) => !isStopping(task));
   const stop = (taskId?: string) => {
+    const ids = taskId === undefined ? live.map((task) => task.id) : [taskId];
     onErrorMessage(null);
-    const request = background.stop(taskId).catch((cause: unknown) => {
-      onErrorMessage(
-        cause instanceof Error
-          ? cause.message
-          : taskId
-            ? "Could not stop the background task"
-            : "Could not stop background tasks",
+    setRequested((current) => new Set([...current, ...ids]));
+    void background
+      .stop(taskId)
+      .catch((cause: unknown) => {
+        onErrorMessage(
+          cause instanceof Error
+            ? cause.message
+            : taskId
+              ? "Could not stop the background task"
+              : "Could not stop background tasks",
+        );
+      })
+      .finally(() =>
+        setRequested((current) => new Set([...current].filter((id) => !ids.includes(id)))),
       );
-    });
-    return request;
   };
-  const stoppable = tasks.filter((task) => !task.stopping).length;
+  const { openAll, openOutput, readOutput } = background;
   return (
     <ThreadSummaryPanelSection
       sectionKey="background-tasks"
@@ -252,23 +266,31 @@ export function ThreadSummaryBackgroundSection({
       titleSuffix={<ThreadSummaryPanelCountBadge count={tasks.length} />}
       autoCollapse={autoCollapse}
       after={
-        tasks.length > 1 && stoppable > 0 ? (
-          <button
-            type="button"
-            disabled={stoppingAll}
-            className="ms-auto inline-flex h-6 shrink-0 cursor-interaction items-center gap-1 rounded-sm px-1.5 text-sm text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default disabled:opacity-60"
-            onClick={() => {
-              setStoppingAll(true);
-              void stop().finally(() => setStoppingAll(false));
-            }}
-          >
-            {stoppingAll ? (
-              <ActivitySpinnerIcon className="size-3" />
-            ) : (
-              <StopIcon className="size-3" />
-            )}
-            Stop all
-          </button>
+        live.length > 1 || openAll ? (
+          <span className="ms-auto flex shrink-0 items-center gap-0.5">
+            {live.length > 1 ? (
+              <button
+                type="button"
+                className="inline-flex h-6 shrink-0 cursor-interaction items-center gap-1 rounded-sm px-1.5 text-sm text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
+                onClick={() => stop()}
+              >
+                <StopIcon className="size-3" />
+                Stop all
+              </button>
+            ) : null}
+            {openAll ? (
+              <NodexTooltip tooltipContent="View all processes" side="top">
+                <button
+                  type="button"
+                  aria-label="View all processes"
+                  className={HEADER_ICON_BUTTON_CLASS_NAME}
+                  onClick={openAll}
+                >
+                  <ListTree className="icon-xs" aria-hidden="true" />
+                </button>
+              </NodexTooltip>
+            ) : null}
+          </span>
         ) : null
       }
     >
@@ -277,13 +299,16 @@ export function ThreadSummaryBackgroundSection({
           key={task.id}
           task={task}
           background={background}
+          stopping={isStopping(task)}
           expanded={expandedId === task.id}
-          onToggle={
-            background.readOutput
+          onSelect={
+            readOutput
               ? () => setExpandedId((current) => (current === task.id ? null : task.id))
-              : undefined
+              : openOutput
+                ? () => openOutput(task.id)
+                : undefined
           }
-          onStop={() => void stop(task.id)}
+          onStop={() => stop(task.id)}
         />
       ))}
     </ThreadSummaryPanelSection>
