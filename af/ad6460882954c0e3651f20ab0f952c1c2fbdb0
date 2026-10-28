@@ -1,0 +1,1075 @@
+src/renderer/lib/page-prompt-context.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 31,37,52,64,85,98
+docs/product-specs/nfm-editor-autolink-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,6,14-15,148
+docs/references/markdown-interchange.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1-69
+src/shared/block-documents/block-to-page-transformation.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 13,51-53
+src/shared/database-module-v2.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 211
+src/shared/nodex-agent-tools/tool-contract.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-13
+src/renderer/components/board/calendar/calendar-event-block.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 7,153
+crates/nodex-core-contracts/src/database.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 12,1216
+crates/nodex-cli/tests/agent_interface.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 52-74,106
+  s_4b53f1a3b989a8::t_5db9107350a905 51
+src/renderer/components/board/page-create-dialog.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 144
+src/shared/message-content.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2-7,9-38,41-45,47,49,51-53,55,57-59,61-63
+src/renderer/components/board/editor/notion-paste.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-2,5-7,10-28,30-33,35-40,42-43,45-47,49-55,57-63,65,67-74,76-80,82-83,86-90,92,95-97,99-117
+src/renderer/components/board/editor/thread-mention-chip.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 16,46,56,58,69-70,73,78,109,118-120,125,133,142-143,146,149,161,182,186,199,203
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 1448,1452
+src/shared/message-content.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 6-7,10,12-53,58,66,74-77,86,88,91
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 279,394,521,645,1072
+agent-skills/nodex/references/queries-and-configuration.md
+  s_4b53f1a3b989a8::t_498fe41f667838 16,19,35,46
+src/renderer/components/board/editor/special-block-copy.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2,9-12,134,430,499,504-505
+docs/product-specs/nfm-editor-thread-mention-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,4,8,10-11,14-15,19-25,29,44-49,53-55,58-59,67-68
+docs/product-specs/agent-cli-queries.md
+  s_4b53f1a3b989a8::t_498fe41f667838 47,137
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 5635
+crates/nodex-core/src/library/page_genesis.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 26,61
+src/renderer/components/board/markdown-image.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-17
+src/renderer/components/board/editor/nfm-code-block-spec.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 10-13,15,18
+crates/nodex-core/src/library/files.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 1548
+src/renderer/main.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-2,12-13,15-26
+src/main/inbox-application/inbox-naming.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 45
+vitest.renderer.config.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 38
+src/main/codex/dynamic-tool-catalog-metrics.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4-6,52-53,57-59
+crates/nodex-core/src/document/retention.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 1257,2181,2257,2402,2997,3145
+src/shared/nodex-agent-tools/index.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 3,6
+scripts/scenarios/scenarios/database-settings-configuration.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 657
+tests/e2e/inbox-sync.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 40
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 312,320-321,333-334,367,398,400,402,411,424,432-438,441,444-449,452,457,460-461,848,850,1308,1311
+src/main/core-client/native-nodex-agent-page-update.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 14,16-42,44-50,55-92,94-95,97-104,106-132,235-236,258-280
+  s_4b53f1a3b989a8::t_e7cde86f242b33 281
+crates/nodex-core/src/document/block_document.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 14,16,18,23-25,60-62,69-71,77-79,84,222,226,235,251,275,285
+crates/nodex-core/src/infrastructure/migration_derivation_tests.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 5-7,11-14,16-20,22-25,28-32,34-39,46-52,55,58,60-69,74-80,82-87,89,95-98,100-130,132-133,138,140,143,147-151,153,155-157
+scripts/audit-rust-core-boundaries.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 134
+src/shared/code-languages/code-language-catalog.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-140
+src/shared/file-link-openers.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 12
+docs/product-specs/nfm-editor-child-group-keyboard-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,4,6
+CHANGELOG.md
+  s_4b53f1a3b989a8::t_498fe41f667838 32-33,42-43,53,66
+src/renderer/lib/editor-model/code-block-model.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-78
+docs/product-specs/nfm-editor-text-action-menu-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,49
+src/shared/nodex-agent-tools/write-runtime.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 84
+docs/product-specs/nfm-editor-block-children-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,6,26,28-29,66-68,71,76-80
+crates/nodex-core-server/tests/native_cli_client.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 95,149-165,173
+src/main/inbox-application/InboxApplication.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 48,618
+tests/e2e/nodex-app-tools-workbench.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 178,187
+src/renderer/features/local-conversation/view/shared/tools/dynamic-tool-call.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 436,439-440
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 85,254,275-300,367
+src/renderer/components/board/editor/nfm-link-toolbar-surface.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 38,235
+src/renderer/components/board/editor/notion-paste.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-3,61,65,68,70,75,91,98,103-105,110,112,120,325,327-328,342,350,358,366,374,396,403,411-414,419,427,448,450,452-453,456-474,476,541,545,564-568,585,602-606,613,615,628,645,647,650-651,653-654
+docs/development.md
+  s_4b53f1a3b989a8::t_498fe41f667838 320
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2-3,115,248,255-277
+  s_4b53f1a3b989a8::t_99bc2dbe6a5bc7 278-279
+crates/nodex-core/src/administration/tests.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 1115,1117,1190,1220
+docs/product-specs/nfm-editor-move-to-popover-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,8,47-48
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 51,615,631-668,670,675-676,678-682,1606-1612,1657-1663
+crates/nodex-core/src/infrastructure/event_log.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 2991,2993
+src/main/file-link-opener.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 18
+src/renderer/features/local-conversation/projection/tool-metadata/nodex-dynamic-tool-call-presentation.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 48,67,69-70,95,105-106,110
+src/main/project-application/ProjectWorkspace.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1478
+AGENTS.md
+  s_4b53f1a3b989a8::t_498fe41f667838 132
+scripts/prepared-electron-build.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 87-89
+src/renderer/components/board/editor/nfm-semantic-history-selection.browser.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 24
+src/renderer/features/inbox/inbox-message-editor.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 10,131
+docs/product-specs/database-pages-and-views-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 84,672,801,928-929,957,961-962
+crates/nodex-core/src/administration/restore.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 917,963
+docs/FRONTEND.md
+  s_4b53f1a3b989a8::t_498fe41f667838 319,469
+docs/product-specs/workbench-shell.md
+  s_4b53f1a3b989a8::t_498fe41f667838 208-209
+src/main/core-client/agent-eval-cases.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 25-36,102-103,125,128,131,180,358,369
+src/renderer/components/board/editor/date-mention-chip.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 39-41,44-45,70-74,78,87,212,471
+vitest.core-client.config.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 13
+scripts/prepared-electron-build.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 30,120-122
+crates/nodex-core/src/domain/block_materialization.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 651,656-661,664-674,676,737-853,1137-1255
+  s_4b53f1a3b989a8::t_79e9278548f98c 1256
+scripts/scenarios/scenarios/inbox-triage.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 184,188,191-192
+scripts/scenarios/scenarios/nfm-equation-and-mermaid.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 20,56,59,123,132
+docs/product-specs/nfm-editor-link-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,6,8,17,28,32,68,188,190,210,216,330
+crates/nodex-core/src/domain/mod.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 11
+src/renderer/components/board/editor/nfm-editor-mod-enter-shortcut.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 9,11
+crates/nodex-core/src/document/module/recovery_drafts.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 719,1648-1649
+src/renderer/lib/session-mentions.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-18
+tests/e2e/typography-settings.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 230-231
+vite.config.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 39-40,42
+src/renderer/components/board/history-panel.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 34,60,77,427,574,581,591-592,598,687-688,701
+src/renderer/components/board/editor/nfm-suggestion-item.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 8
+crates/nodex-core/src/document/attached_edit.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 75,80
+crates/nodex-core/tests/fixtures/yjs-yrs/manifest.json
+  s_4b53f1a3b989a8::t_498fe41f667838 3,6,14
+src/shared/block-documents/additional-document-bearing-blocks.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4
+src/renderer/lib/editor-model/code-formatters.jsdom.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-40
+src/shared/rich-text/date-mention.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-62
+crates/nodex-core-contracts/src/inbox.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 228
+docs/KEYBOARD_SHORTCUTS.md
+  s_4b53f1a3b989a8::t_498fe41f667838 9,17,72,131-141,147-152,175,191-195,202,250-260
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 1,150-151,228,307,310-311,381,449,519,605,623,629,642,743,948,951-957,1004-1008,1679,1691,1694,1699-1707,1723,1725,2013-2016,2018,2243,2245-2246,2249-2251,2483-2549,2595-2597
+src/renderer/lib/nfm-link-actions.jsdom.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 16
+crates/nodex-core/src/document/semantic.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 15-16,18,21-23,26,78,111,141-143,147,168,181,193,202,295-296,301,306,347,511-515,517,521-537,575,706,734,744,846,898-904,918,954,994,1005
+src/renderer/features/inbox/inbox-route.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 14,411,458
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 372,536
+docs/product-specs/nfm-editor-automatic-transform-history-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,4,8,37,49
+src/renderer/lib/nodex-y-provider.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 528,539,593
+src/renderer/lib/editor-model/code-language-preference.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-53
+src/shared/page-summary.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 3,10
+crates/nodex-core/src/automation/occurrence.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 690-693
+crates/nodex-core/src/domain/ordinary_block.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 6-7,90-108
+  s_4b53f1a3b989a8::t_379a2c98cec1ae 109-110
+docs/SECURITY.md
+  s_4b53f1a3b989a8::t_498fe41f667838 700
+src/renderer/components/board/editor/nfm-surface-history.browser.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 268,398
+src/shared/nodex-agent-tools/v6-contracts.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2,32
+src/renderer/lib/session-mentions.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-46
+src/shared/block-documents/block-subtree-relocation.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 13,18,46,68,87,90,116-118,127-130,139-143,155-156,162-166,184-188,218-222,273,298
+src/renderer/features/inbox/inbox-copy-action.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 58
+src/renderer/lib/use-page-create-description-draft.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 4,38
+src/renderer/test/setup-browser.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2-6
+src/shared/block-documents/yjs-yrs-fixture-generator.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 9-12,14,22-25,96-97,106,108-117,120,278,282-286,345-346,349-353,355,362,375,386,395,446,449-451,467
+src/shared/code-languages/code-language-catalog.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-165
+tests/e2e/nodex-app-tools-projectless.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 202
+src/renderer/features/inbox/inbox-capture-state.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 12,14,17,21,39,42-44,46-51,55-56
+src/shared/block-documents/document-history-transport.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 491
+src/main/core-client/document-sync-adapter.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 35,496,562,564,568,585,587
+docs/product-specs/nfm-editor-page-reference-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,8,11,26,29,32-33
+src/renderer/lib/editor-model/page-mention-entrypoint.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-112
+crates/nodex-cli/src/page_mutation.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 91,108,112,308,326,332,803,874-875,877-878
+crates/nodex-core/src/library/tests/agent_surface.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 366
+src/shared/codex-pending-worktree.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 98
+crates/nodex-core/src/document/module/tests/asset_migration.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 31,83
+vitest.integration.config.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 14
+src/shared/block-documents/reference-codec.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 3-4,30,34-36,39,43-44,61
+src/renderer/components/board/editor/nfm-side-menu-selection.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 71
+crates/nodex-cli/tests/data_primitives.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 182,443,611,615,788,943-990,1233,1252,1432,1454,1514-1515,1522-1536
+crates/nodex-core/src/infrastructure/document_repository.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 96,338-339,343-345,347-348,359,601,637-642,680,1000,1039
+src/main/core-client/library-module-adapter.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1173,1219
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 1434
+src/renderer/features/inbox/inbox-message-document.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 2,12
+src/renderer/lib/editor-model/code-block-view-state.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-107
+src/renderer/lib/editor-model/date-mention-clock.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-277
+src/shared/block-documents/block-documents.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 140,208-210
+src/renderer/components/board/editor/nfm-text-history-journal.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 13-14,167,234,269,320,339,373
+src/renderer/components/board/page-create-dialog.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 62,84,87,112
+src/renderer/components/board/page-stage.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 84,106,130,259,368,371,418
+docs/product-specs/card-stage-rich-editor-performance.md
+  s_4b53f1a3b989a8::t_498fe41f667838 3,7,26,96,98,104,106,144,151,185
+crates/nodex-core/src/library/page_copy.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 2232,2237
+src/renderer/lib/editor-model/code-block-model.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-60
+src/shared/agent-runtime-api.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 22
+packages/core-protocol/src/generated.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 481,1613,3137,3862,3867,4041,4679,4681,5033,5164,5185,5475,5728,6657,6662-6663,6870-6871,10277,10763
+src/shared/codex-prompt-preparation.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 10,63-78,98
+docs/references/index.md
+  s_4b53f1a3b989a8::t_498fe41f667838 3-12
+src/shared/markdown/html.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-127
+src/shared/page-lifecycle-v2.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 55,114,609,709
+crates/nodex-core/src/document/realtime.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 615
+crates/nodex-core/src/workspace/mutation.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 2319,2789,3036
+crates/nodex-core/src/library/mod.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 1466,1651,1659,1733,1943,2025,2040,2120,6853,7767-7769,7776
+src/renderer/components/board/editor/nfm-text-action-menu-model.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 8,90
+src/shared/nodex-agent-tools/v3-contracts.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 3-6,25,40,49,56,66-68,75,79,170,310,319,325-342
+  s_4b53f1a3b989a8::t_36d9d7517428a7 343-344
+scripts/scenarios/scenarios/page-related-chat-activity.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 95,104
+vitest.main.config.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 14
+crates/nodex-core/tests/fixtures/yjs-yrs/markdown-parser-oracle.json
+  s_4b53f1a3b989a8::t_498fe41f667838 1-402
+docs/product-specs/message-content-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 10-11,15-27,39-52,62-64,86-87,91-101
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 6,19,52-53,98,109,149,188,197-201,203-207,228
+src/shared/nodex-agent-tools/v5-contracts.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2
+docs/product-specs/nfm-editor-attachment-chip-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,6,14,24,53,59,61,63-65,71,74,266,430,432,434,451-452,456,491,500,509
+src/renderer/components/board/editor/automatic-transform-history.jsdom.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 5,347,351,362,366-367
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 216,218-221,1908,1951,1963-1966,2067,2073,2302,2308,3674,3677-3678,3681,3695,3700,3704,3712,3721
+src/main/core-client/native-nodex-agent-page-update.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 32,236,324,333,393-394,543
+crates/nodex-core/src/library/search_snapshot.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 398,481,538-540
+docs/product-specs/index.md
+  s_4b53f1a3b989a8::t_498fe41f667838 19,55-56,61-62,65-71,73
+src/shared/agent-runtime-agent-config.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 49
+src/renderer/lib/page-chat-actions.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4,6
+src/main/codex/nodex-dynamic-tool-registry.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1,33-34
+crates/nodex-cli/src/page_lifecycle.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 126,151,153
+src/shared/block-documents/block-document-codec.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4,11-12,31,57-58,63,66-70,75-77,80-81,89,97,99,104,118,121-124,132,139,148,152,165,198-208
+  s_4b53f1a3b989a8::t_2b72f62b2316bf 209
+src/renderer/lib/editor-model/page-mention-entrypoint.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-107
+src/renderer/components/board/editor/readonly-file-preview.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 5,23,49
+crates/nodex-core-server/src/transport_bounds.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 314,323
+src/shared/page-lifecycle-v2-runtime.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 47,60,230,568
+crates/nodex-core/src/library/tests/query.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 62,79,143,164,547
+src/renderer/components/board/editor/nfm-schema.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 11,56
+src/shared/block-documents/headless-blocknote-schema.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 14,90
+src/renderer/test/page-detail-fixture.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-4,167-168
+src/shared/code-languages/code-language-catalog-v1.json
+  s_4b53f1a3b989a8::t_498fe41f667838 1-808
+src/renderer/components/block-documents/long-page-open.stress.browser.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 17-18,121
+crates/nodex-cli/src/skills/bundle.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 19,32
+crates/nodex-core/src/document/genesis.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 11,77,82,88,91-92,105,110,206
+scripts/dev-launcher.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1,457-466
+src/main/core-client/editor-history-scenario.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 43-143
+src/shared/markdown/index.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-3
+packages/core-protocol/openapi.json
+  s_4b53f1a3b989a8::t_498fe41f667838 2155,2187,7012,12991,12994,15959,15972,15980,15994,16590,16594,19488,19495,19501,20878,20891,21385,21401,21455,22645,22698-22700,23780,27778,27790,27801,27804,28627,28647,28650,30774,36246,41445,43165,43171,45603,45623
+vitest.effect-codex.config.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 11
+src/renderer/components/board/editor/nfm-formatting-toolbar.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 27
+src/renderer/components/board/page-stage.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 24,240-243,443
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 104,108-137,204,219-226,241
+src/main/initial-project/initial-project-journal-store.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 46
+src/renderer/components/shared/icons/generic-icons.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 24,182-185
+src/main/core-client/native-nodex-agent-fetch.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 9-10,221,239-240
+src/renderer/components/board/editor/active-page-outliner-document.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 140
+scripts/scenarios/scenarios/database-context-menu-performance.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 63
+src/shared/block-documents/synced-block-document.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 14
+src/shared/codex-prompt-preparation.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 143,161,167
+src/renderer/components/board/editor/nfm-page-mention-create-flow.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 9
+agent-skills/nodex/references/page-editor.md
+  s_4b53f1a3b989a8::t_498fe41f667838 11,39
+scripts/scenarios/adapters/page-block-outline.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-21
+src/renderer/components/board/date-mention-inline-visual.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 9-14,20,38,155,170
+src/renderer/components/workbench/workbench-page-stage-panel.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 74,513
+docs/product-specs/nfm-editor-slash-menu-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,8,10,14,25,33,38
+src/renderer/components/board/editor/nfm-editor-extensions.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1,8,11-12,560,627,629,638,648,653-663,747-750,752-753,769-770,774-775,782-787
+src/shared/nodex-markdown/agent-guide.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-29
+crates/nodex-core/src/database/tests/sql.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 19,31,248,250,506,518,529
+scripts/scenarios/contracts.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 39-45,53,72,166,170
+src/shared/codex-thread-title.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 21
+src/shared/markdown/html-import.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-47
+src/main/core-client/document-sync-adapter.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 85
+src/renderer/features/document-recovery/recovery-preview.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 8,55,66
+docs/CLI.md
+  s_4b53f1a3b989a8::t_498fe41f667838 75,114,163-166,202,204,235-236,247,271-274
+src/renderer/lib/block-document-surface-runtime.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 408
+src/shared/nodex-markdown/index.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-137
+src/renderer/lib/portable-rich-title-presentation.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 5-6,9,11
+tests/e2e/message-content.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 38,41-44,151
+crates/nodex-markdown/src/code_languages.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 13
+crates/nodex-core/src/infrastructure/library_files_migration.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 104-106
+agent-skills/nodex/references/project-database-views.md
+  s_4b53f1a3b989a8::t_498fe41f667838 45
+scripts/scenarios/scenarios/database-context-menu-performance.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 84-87
+src/main/core-client/structural-interactions-scenario.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 6,11-33
+  s_4b53f1a3b989a8::t_3a6edd5adbc668 34
+src/renderer/components/board/editor/nfm-table-operations.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 50
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4291,4304-4305,4309,4342,4351,4359,5765
+src/main/initial-project/initial-project-journal-store.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 15
+src/renderer/lib/nfm-autolink-settings.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 44
+tests/e2e/agent-runtime-cross-provider.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 146
+crates/nodex-core/src/domain/files.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 145,152-155,179-182
+  s_4b53f1a3b989a8::t_bd22cc07fd355d 183-187
+crates/nodex-core/src/read_budget_gate.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 314,486,498,875
+src/renderer/components/board/editor/date-mention-inline-content.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 5-8,49,62,69-70
+src/renderer/components/board/editor/nfm-side-menu.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 350
+src/renderer/components/board/editor/thread-mention-chip.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 18,37,39-40,52,146,159,190,208,214,221,226,258
+src/shared/block-documents/page-document.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 7
+crates/nodex-core/src/library/history.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 833,835,1379,1406
+src/renderer/components/board/editor/nfm-code-block.browser.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 6,21,318,331,344,384
+tests/e2e/nfm-editor-history-multiwindow.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 42,51,189,198-204
+tests/e2e/support/editor-scenario.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2-4,279,284,295,304,308-338,340-349
+crates/nodex-cli/tests/inbox.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 100,159,164
+crates/nodex-cli/src/agent_interface/arguments.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 153,159
+src/renderer/components/board/editor/nfm-send-to-thread-menu.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 335,337,354,358
+crates/nodex-core/src/database/mod.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 1021,1129,7815
+src/renderer/components/board/editor/nfm-code-block-controller.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 9-14,16
+src/renderer/components/board/editor/nfm-editor-mod-enter-shortcut.jsdom.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 6-7,10,13,16-17,20-21,24,31,33-34,37,39,41,44-45
+tests/e2e/clipboard.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 15-28
+src/shared/block-documents/blocknote-rich-text.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-85
+src/shared/inbox.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 155,248,343
+docs/product-specs/nodex-product-spec.md
+  s_4b53f1a3b989a8::t_498fe41f667838 101,180,186,197
+src/shared/nodex-agent-tools/document-edit-compiler.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1
+crates/nodex-core/src/library/page_projection.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 13,108,149-150,221,272,292,376-380,1155,1162
+docs/product-specs/renderer-view-state-ownership.md
+  s_4b53f1a3b989a8::t_498fe41f667838 61,142
+tests/e2e/database-surface-history.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 93,256
+docs/product-specs/backend-logging-spec.md
+  s_4b53f1a3b989a8::t_498fe41f667838 400
+scripts/package-provenance.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 25
+src/renderer/lib/agent-runtime-prompt.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 87,122
+docs/product-specs/inbox-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 8
+crates/nodex-cli/src/runtime.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 149,726,797
+src/renderer/lib/editor-model/code-block-view-state.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-95
+crates/nodex-core/src/database/page_key.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 944
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 2540
+crates/nodex-core/tests/fixtures/yjs-yrs/root-materializations.json
+  s_4b53f1a3b989a8::t_498fe41f667838 3,18,26,30,37,71
+src/renderer/components/board/editor/typed-owner-transaction-guard.browser.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 83
+src/renderer/components/board/editor/nfm-codex-prompt-input.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 3
+crates/nodex-core/src/library/structural_edit.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 4693-4694,7840-7843,10075,10077
+crates/nodex-core/src/query/schema.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 71,302
+scripts/generate-code-language-artifacts.mjs
+  s_4b53f1a3b989a8::t_498fe41f667838 8-11
+src/main/core-client/database-page-projection.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 119,291
+src/shared/initial-project-welcome.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2,16-17
+src/renderer/features/local-conversation/remote-codex-stage-actions.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 74
+src/main/app-tools/WorkbenchContentRead.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 93,100,108
+crates/nodex-core/tests/yjs_yrs_conformance.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 64,89,177,180,185,206,229,254
+crates/nodex-core/src/document/maintenance.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 395,462
+docs/product-specs/nfm-editor-table-block-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,8,12-15,23,25,35-36
+crates/nodex-core/src/document/module/tests/reference_lifecycle.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 87,124,187,189-193,218-229
+src/shared/block-documents/headless-blocknote-schema.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 135
+src/renderer/features/inbox/inbox-copy-action.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 2,17,23,25
+src/renderer/components/board/inline-image.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 1-91
+tests/e2e/nodex-app-tools-workbench-multiwindow.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 328
+src/main/database-application/DatabaseModule.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 113
+docs/product-specs/board-drag-and-drop-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 17-19,142,146,190,202
+scripts/scenarios/scenarios/board-dense.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 255-258
+crates/nodex-core/src/infrastructure/migration.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 20,24-26,373-377,642,1406,2485-2486,2513-2528,3583-3584,3586,5573,5955-5956,6703,6721-6722,7606-7616,7731,7877-8008
+  s_4b53f1a3b989a8::t_96a0c40fe3d4c3 8009
+src/renderer/components/board/editor/nfm-side-menu-model.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 27,194,197-198,209-211
+src/renderer/lib/editor-model/thread-mention-display.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-31
+src/shared/page-content-authority.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 10
+crates/nodex-core/src/document/mod.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 24-25,28,40,75,77-79,114-115,134-136
+src/renderer/lib/editor-model/thread-mention-display.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-68
+tests/e2e/nodex-app-tools-database-view.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 196
+crates/nodex-core/src/domain/page_to_block.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 8,37-38,79,82,199,207-222,224-225,231,235
+crates/nodex-core/src/document/materialization.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 14,33,58-59,81,299,318-319,346-348,363,369-370,372,378-379,381,387-388,396,436,456,469,473
+src/main/core-client/inbox-workspace.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 42
+crates/nodex-cli/src/ripgrep.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 607-609,616-617,630,668-670,708
+src/renderer/components/board/editor/nfm-local-history-retention.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 50
+src/renderer/components/board/page-stage/raw-content.browser.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 14
+src/main/core-client/editor-history-library-access-scenario.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 27
+crates/nodex-core/examples/yjs_yrs_bridge.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 15,19,237,399,475,493-494,499,509,511,513,520,544,577,616-617,653
+src/main/core-client/native-nodex-agent-page-create.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 3,69,159
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 100,940,943,946
+crates/nodex-core/src/document/markdown_input.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 1-69
+src/renderer/features/inbox/inbox-capture-state.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 298
+src/shared/block-documents/block-semantic-content.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2,116
+docs/product-specs/nfm-editor-copy-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,4,6,17,19,25,29,134-136,143-144,148,202-206,216,223-224,226-228,233,240,244,249,307,317,327,333-335,339,360,364,373-376,390,392,404,406,421,429,439-440,443,461,465,471,473-475,477-483,526,530,538,545
+src/main/rust-data-authority.integration.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 267,1659-1660,1669-1670,1784-1785
+src/shared/clipboard-file-references.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 8,12-21,49,57,59-66
+src/renderer/components/workbench/database-view-page-context-menu.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 1,118-119
+src/renderer/components/board/editor/modify-block-shortcut.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 148
+src/shared/nodex-markdown/blocknote.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-43
+src/renderer/components/board/page-stage/types.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 35
+crates/nodex-cli/src/cli.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 153-154,260,332,609,627-628,642-643,658,742-743,856,1085-1086
+src/main/core-client/rust-core-runtime-benchmark.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 207,234,236,255,265,281,283
+src/shared/nodex-agent-tools/base-schemas.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 7-8,42,54,83-84,173-175
+src/renderer/lib/page-create-draft.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4,34,58,74,87,169,185,199
+src/renderer/components/board/editor/nfm-editor-context-menu.browser.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 14
+src/renderer/components/board/editor/date-mention-chip.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 8
+src/renderer/lib/page-create-draft.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4,20,34,54,97,112,117
+crates/nodex-core/schema/current.sql
+  s_4b53f1a3b989a8::t_498fe41f667838 235,4497
+crates/nodex-core/src/library/mutation.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 274-275,277,288,2013-2015,2021,2091,2660,3501,3503,3824,3839-3842,5908,5914,5919,5987,5989,6008-6009,6036,6045,6083,6510,6512,6667,6669,6702,6894,7066,7068,7134-7135,7216
+src/renderer/components/board/editor/nfm-text-action-menu-model.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 42
+src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 841,843-844,846,850,884,897,901-902
+src/renderer/components/board/editor/date-mention-inline-content-spec.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 3
+crates/nodex-core/src/database/window.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 2487,2489,2502-2505
+src/shared/block-documents/document-operation-engine.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 12-17,22,76,81-86,120-122,134,191,203-208
+tests/e2e/electron-smoke.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 66,233,239,241-242,247,381,388,1088-1089,1091,1138,1141-1143,1234,1242,1247,1463,1475,1578,1598,1604,1699,1715-1721,1726,1821,2890-2892,2894,2896,3024,3115,3213-3214,3216,3319-3322,3581,3583,3821-3824,3984,3990-3992,4784,4814,4816-4819,5171,5247,5348
+tests/e2e/nfm-editor-history.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 39-44,52
+src/renderer/components/board/editor/nfm-editor-history.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 149,155
+docs/product-specs/agent-interface-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 590,601-603,607,625-632,646
+src/renderer/features/inbox/inbox-triage.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 1-2,354,363,367-379
+crates/nodex-core/src/library/block_transfer.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 4580,4591,4603,4625,4634,4694,4696-4701,4847,4849,4882,7429,7441
+crates/nodex-core/src/library/agent_page_create.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 53,725,995,1171,1174-1176,1178
+src/main/codex/nodex-dynamic-tool-registry.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 9,17
+src/renderer/lib/editor-model/editor-trigger-policy.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-150
+src/shared/block-documents/blocknote-schema-config.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 148-158,160
+src/shared/block-documents/block-structure.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 143-147,158-161,164-166
+src/main/platform/node/NodexCliBootstrapPrompt.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 7
+src/shared/block-documents/document-schema-adapters.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 58,106-107,221-222,252-253,281-282,391,463
+crates/nodex-cli/tests/library_files.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 115
+src/shared/block-documents/yjs-yrs-conformance.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 390-391,393-394,400-401,416
+src/renderer/lib/editor-model/code-formatters.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-118
+crates/nodex-core/src/document/history.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 1643
+src/renderer/lib/editor-model/mention-suggestion-model.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-135
+src/shared/database-module-v2-transport.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2406,2436,2457-2460,2500
+docs/product-specs/nfm-editor-date-mention-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,8,10-13,20,28,33,38,47,52,59-60
+src/renderer/components/board/history-panel.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 105,548
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 378-428
+crates/nodex-core-contracts/src/document/recovery.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 154
+src/renderer/components/board/editor/readonly-nfm-blocknote-preview.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 1-2,35,46,75,257,286,304-305,312,327,332,336
+src/shared/markdown/paste.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-120
+crates/nodex-cli/tests/presentation.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 37,41,43
+crates/nodex-core/src/domain/markdown.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 1-202
+src/renderer/lib/workbench-panel-shortcut-scope.jsdom.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 59-60,63-64
+src/shared/database-page-projection.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 502,509,532
+src/shared/block-documents/portable-rich-text.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 5-8,40,75-76,137,147-150,153,252,255,346,366,373
+crates/nodex-core/src/document/integrity.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 33-45,51-53,56-58,67,80-83,148-165,170-180,200-206,208-210,221-229
+crates/nodex-core/Cargo.toml
+  s_4b53f1a3b989a8::t_498fe41f667838 16
+crates/nodex-cli/src/agent_interface.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 15,119-120,123,125-126,1232,1281,1326,1469,1491,1589,1816,1828
+src/renderer/components/board/editor/nfm-send-to-thread-mode-settings.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 53
+src/shared/rich-text/colors.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-52
+crates/nodex-core/src/document/markdown_patch.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 1-826
+src/renderer/lib/code-block-presentation.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-4
+scripts/scenarios/scenarios/agent-cli-workflow.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 29
+crates/nodex-core/src/document/operations.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 132-133,138-140,194-197,256,379-387,391,393,395,403,405-406,410,417,420,429,434,437,439,444,451,453-454,467,469,480,485,489,492,497-507,512-516,518,543,548,553,555,558,563,572,843,889,928-929,939,944-947,955,1794,1823,1836,1849,1867,1882,1897-1898,1901-1903,1906-1908,1916,1918-1920,1925-1928,1930,1932-1934,1941,1944,1946-1948,1953-1956,1963,1965,1968-1970,1979,1984,1992,2008,2019,2031-2034,2041,2045,2047,2060-2128,2137,2139,2175,2178-2179,2207-2210,2226-2229,2234,2254,2256,2259,2295,2304,2306,2309,2314,2320-2326,2333,2359,2361,2379,2386,2418,2448,2460,2463,2465,2468-2470,2478,2486,2491,2493,2501,2503,2506-2508,2516,2545,2603,2605,2612,2621,2653,2690,2702,2707,2743,2756
+scripts/scenarios/scenarios/nfm-equation-and-mermaid.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-35
+src/main/initial-project/InitialProjectBootstrapRuntime.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 122,143
+scripts/scenarios/scenarios/nfm-code-block-actions.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 79
+crates/nodex-core-contracts/src/workspace.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 19,226,1410,1767
+src/renderer/components/message/message-images-input.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 14,27,125-128,161,231
+src/shared/nodex-agent-tools/database-query-schemas.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-65
+tests/e2e/content-interaction-history.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 32
+scripts/scenarios/scenarios/library-files.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 89,133
+src/shared/block-documents/derived-records.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 3,28,30,110,114-116,118-123,127,131-143,145-146,152,158-214
+crates/nodex-core/src/library/query.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 135,139
+tests/e2e/nfm-send-to-chat.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 119
+src/renderer/lib/page-prompt-context.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4,18,26,89,94,138
+src/renderer/components/board/editor/page-mention-inline-content.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 83
+tests/e2e/markdown-paste.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-75
+src/shared/block-documents/page-reference-derived-records.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2-3,5-30,32-59,61-65,67-70
+src/main/inbox-application/inbox-editing.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 17,33,52
+tests/e2e/agent-cli-workflow.spec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 126,215-216,221
+src/main/nodex-agent-application/NodexAgentApplication.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 34,301,411
+docs/ARCHITECTURE.md
+  s_4b53f1a3b989a8::t_498fe41f667838 211,705,720,753,776,1271
+src/renderer/components/board/editor/nfm-send-to-thread-block.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2,6,9,19,29-30
+scripts/agent-eval/cases.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 7,74,144,163,174,178,181,227,253,259-262,312,371,549
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-materialization.json
+  s_4b53f1a3b989a8::t_498fe41f667838 2,102-103,112,114-123,129,402-404,407,409,443-448,504,574,586,593,600,607,614,621
+src/renderer/components/board/editor/special-block-copy.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 106,210,238,271,476,657,660,719,741,781,837,995,1044,1117,1154,1174,1178,1187,1229,1258,1263,1271
+src/renderer/components/shared/icons/app-icons.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 4092
+src/shared/nodex-agent-tools/v3-base-schemas.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4,28,30,35,38,40
+src/shared/rich-text/date-mention.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-726
+crates/nodex-core/src/library/page_write_semantic.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 40,93
+crates/nodex-core/src/library/tests/projectless_agent_authority.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 197
+agent-skills/nodex/references/markdown.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1-53
+crates/nodex-core-contracts/src/document.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 18,362,407,411,489,492
+src/renderer/components/board/nfm-renderer.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 7,10,40,143,156,172,204-231
+  s_4b53f1a3b989a8::t_53dbc7f6b0ee31 232
+crates/nodex-core/src/library/content.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 40,61,88,112,144,591,593-594,596,711
+crates/nodex-core/src/domain/subtree.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 692
+src/renderer/components/board/editor/nfm-editor-source.jsdom.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 105,157,204
+scripts/official-agent-skills.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 10,13-15,90-92,94-95
+src/shared/nodex-agent-tools/write-schemas.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 53-54,175
+crates/nodex-core/src/document/runtime.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 452
+docs/product-specs/nfm-editor-structural-editing-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,170
+crates/nodex-core-server/tests/lifecycle.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 435,1273
+src/renderer/components/message/message-document.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 6,37,61,87
+src/renderer/lib/nodex-y-provider.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1386
+crates/nodex-core-contracts/src/query.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 8
+package.json
+  s_4b53f1a3b989a8::t_498fe41f667838 312,314
+src/shared/nodex-agent-tools/v3-write-schemas.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 17-18,26,44,84,92,101
+src/shared/nodex-agent-tools/v3-read-schemas.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 20
+scripts/scenarios/scenarios/structural-interactions.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 88,93,97-106,109-112,114-115,117-126,128-134,208
+crates/nodex-core/src/library/tests/manual_order.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 303,305,722
+src/shared/page-lifecycle-v2.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 25,60,88
+crates/nodex-store-format/src/lib.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 237-240
+src/renderer/features/local-conversation/projection/tool-metadata/nodex-dynamic-tool-call-presentation.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 145,165,185
+src/main/native-cli-electron.integration.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 291
+src/renderer/components/board/editor/nfm-send-to-thread-block.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1,12,16-17,26
+src/main/bootstrap.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-3,36
+  s_4b53f1a3b989a8::t_35edd8f9c27fd6 37
+src/shared/block-documents/document-operations.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 5-6,10,25,30,170-172,249-250,252,254-257,261
+docs/product-specs/nfm-editor-agent-config-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,6,21,23,26,37,68
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 7-8,106,217,224-254,666
+crates/nodex-core/src/document/editor_history.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 379,385
+src/main/core-client/database-history-scenario.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 231,413
+src/shared/markdown/html-blocks.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-112
+src/renderer/lib/page-reference-picker/candidate-model.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1
+docs/product-specs/task-shorthand-page-promotion-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 5
+scripts/rust-dev-runtime.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 48
+src/shared/block-documents/document-operation-transport.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 6,55-56,62,118-119
+crates/nodex-core/src/infrastructure/store_validation.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 161,188,190,195,1229,1251-1253,1263,1288
+src/renderer/components/board/editor/nfm-editor-popover-content.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 8
+docs/ENGINEERING_LEARNINGS.md
+  s_4b53f1a3b989a8::t_498fe41f667838 64-70,178,397
+src/renderer/lib/text-field-paste.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-30
+src/main/core-client/library-module-adapter.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 710
+src/main/core-client/project-workspace-adapter.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 433
+src/renderer/components/board/editor/nfm-side-menu-anchor.jsdom.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 32
+docs/product-specs/library-move-destination-picker-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 62
+crates/nodex-core/src/workspace/inbox.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 34,262,268,292,297,300,304-307,312-316,326,333,336,338,341-347,349-355,357-359,363-380,383-388,391,394-401,403-404,408,411,415-419,422,426,476-479,743
+crates/nodex-core/src/document/owners.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 104,129,324
+crates/nodex-core/src/library/page_lifecycle_mutation.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 309,415,502
+crates/nodex-core/src/document/schema_migration.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 8-10,12,33,38,44,61-62,65,72,100-108,114,119,125-126,131,138,151-158,162-237,301-307,310,312,316,322,326,339,341,365-374,383-387,395-414,426-427,430,496,498-505,517-527,542,549-550,567-576,585-598,600-606,612-613,627,629-637,647-675,686,693-701,703-709,717-723,750-759,799,808,821,906,910-941,943-952,999,1006,1011,1019,1058-1096,1211,1230,1247-1251,1254-1256,1267-1278,1303,1350-1355,1361,1377-1390,1414-1419,1429,1435,1449,1459,1526-2259
+src/renderer/components/workbench/database-view-page-menu-model.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 66
+src/shared/block-documents/block-document-codec.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 10-16,65,90,121,125-126,155,157,160,242,257-268,352-355,375,378,389-391,397,399,423,438,449-454
+  s_4b53f1a3b989a8::t_a5e077401b76ee 9
+src/shared/nodex-markdown/nodex-markdown-fixture.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-288
+src/shared/page-lifecycle-v2-transport.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 18
+src/renderer/lib/codex-thread-summary.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4
+src/shared/initial-project-welcome.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1,14,35,42,52,54-56,67-76
+docs/product-specs/nfm-page-prompt-image-inputs.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1-159
+src/shared/nodex-agent-tools/v3-contracts.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2,36,52,76,84
+src/renderer/components/message/message-document.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 3-4,14-15,30,81,112,115,121,137,145,158
+scripts/rust-dev-runtime.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 40,152
+src/renderer/components/board/editor/image-block.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 11,248,261,274,294,310,318-320,327,334,391-392
+scripts/official-agent-skills.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 8-19,35,288-290,292,296-297,301,304,308,313,319,379-381,383-384,467-471
+src/main/core-client/core-client.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 121
+src/shared/nodex-markdown/agent-title.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-64
+src/main/core-client/native-nodex-agent-fetch.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 14,77
+src/renderer/features/document-recovery/recovery-review.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 76,189
+src/shared/markdown/markdown-paste.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-94
+src/renderer/components/board/editor/nfm-code-block-action-bar.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 28-32,34
+src/renderer/lib/rich-title-clipboard.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 6,29,32,151
+scripts/scenarios/scenarios/page-relocation.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 73,82
+src/renderer/components/board/editor/nfm-clipboard-selection.browser.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 1,168,170,175-178,556,662,820
+scripts/official-agent-skills-artifact.mjs
+  s_4b53f1a3b989a8::t_498fe41f667838 12
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 598
+crates/nodex-core/src/library/navigation.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 3813
+crates/nodex-core/src/infrastructure/local_commit.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 2620,2625,2630
+docs/product-specs/description-history-revisions.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,3-4,6-8,10,12-15,17-19,21,23-25,27-30,32,34-37,39-41,43,45-47,49-50,56
+src/renderer/components/board/editor/nfm-editor-undo.browser.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 58,132,201,395,514,589,728
+src/renderer/components/board/editor/nfm-codex-prompt-input.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4,37,49-74
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 5610
+src/renderer/lib/codex-prompt-input.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 7-10,12,14,16,19-21,24-28,30-81,83-91,94-106
+src/shared/block-documents/block-children-policy.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 118,120
+src/renderer/lib/page-chat-actions.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 71,94,110,126,142
+crates/nodex-core/src/library/tests/effective_view_query.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 137,254,810
+src/renderer/components/board/editor/nfm-editor-extensions.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 12-13,15,212-249
+  s_4b53f1a3b989a8::t_c19d346388105b 250
+src/shared/block-documents/document-operations.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 84,93,100,105,547,549-557,559,569,574,591,666,844-845,871-872
+vitest.node.config.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 13
+docs/product-specs/nfm-editor-code-block-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,10,14,21,29,51,80,88,90
+scripts/scenarios/scenarios/landing-showcase.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 9-10,15-16,21,40,42-43
+src/renderer/components/board/editor/nfm-move-to-menu-model.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 160
+scripts/scenarios/scenarios/board-dense.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 66,83,89,91,96-97,103,109,117-118,124,130,136,176,179,183
+src/renderer/components/board/editor/nfm-side-menu.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 66-69,77,519
+src/renderer/components/board/editor/nfm-slash-menu.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 9-10,44,746,788-791,795,805,816
+src/renderer/lib/editor-model/mention-suggestion-model.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-131
+crates/nodex-core/src/document/persistence.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 416-420,716,1512,1514,1517,1525,1529,1539,1570,1644-1649,1673-1700,1715-1722,2109,2111,2187-2214,2218,2263-2264,2267-2268,2287,2305,2307-2308,2334,2336,2338-2340,2581,2583,2627,2641-2642,2648,2650,2653-2665
+crates/nodex-core/src/administration/profile_clone.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 570,579,586-588,590
+crates/nodex-core-contracts/src/library.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 17,243,1386,1638,1925,2052,2080,2276,2279-2280,2974,2977,2979
+scripts/core-failure-matrix.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 229,248,252
+scripts/publish-official-agent-skills.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 21
+src/main/core-client/inbox-triage-scenario.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 57,60-61
+src/main/initial-project/InitialProjectBootstrapRuntime.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 17,183,263
+src/renderer/components/board/editor/nfm-editor-owner.browser.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 23,28,200
+src/renderer/components/board/nfm-renderer.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 15-17,19-23,35,45,50,67,76,128,143,145,149-151,187,190,197,200-203,208-209,212,214,216,218,223,225-228,236,250,263,267,271,273,287,295,302,304,306,311,313-316,322,333-336,342-346,350,369-371,374-377,383,387,403,408,411,415-418,422-424,428-431,442-443,445-446,454,457-458,462,464,471-472,489,492,504,517,521-526,528,531,535,542-545,547-554,616,633,638,649,652-653,656,658,660,663-664,666-667,669,672,675-677,681,688,690,697,701-702,705,709-710,714-715,717,719,721,723-733,759,765,768-771,775,814-827
+crates/nodex-cli/src/page_batch.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 44,81-86,88,99
+crates/nodex-cli/src/agent_interface/schema.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 88,359
+src/renderer/components/workbench/database-view-page-context-menu.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 1,326-330
+src/renderer/lib/editor-model/date-mention-clock.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-203
+src/renderer/components/board/editor/nfm-slash-menu.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 51,59,68-72,89,100,106,111,281,1125,1129,1135,1145,1168,1173,1179,1368-1382,1384-1415,1732
+src/renderer/lib/editor-model/editor-trigger-policy.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-97
+crates/nodex-cli/src/draft.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 46,287,322,344,359,393,396,677,1864-1865,1953
+config/setup-markdown.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-9
+scripts/scenarios/scenarios/document-sync-recovery.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 32,41,43,49,51-52
+src/main/core-client/block-promotion-history-scenario.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 319-320
+src/renderer/components/board/editor/readonly-nfm-blocknote-preview.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 6,9,45-62,65,89,112-113,134,136,170-171
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 20,611
+crates/nodex-core/src/domain/derived_records.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 6-7,44-45,48-49,68,77,126,131,134-136,138-154,158,162-164,169-176,179-181,184-191,196,203,205-209,211-223,226-228,231-275,277-280,283,285,422-459,473-475
+crates/nodex-core/src/domain/block_tree.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 172-173,202-206,729-735,841
+src/shared/nodex-agent-tools/result-budgets.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 12,19
+agent-skills/nodex/SKILL.md
+  s_4b53f1a3b989a8::t_498fe41f667838 67-68
+docs/product-specs/nfm-editor-suggestion-menu-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,13,15
+src/main/core-client/scenario-infrastructure.node.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 32
+src/renderer/components/board/editor/code-block-options.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 2-3
+crates/nodex-core/src/document/schema_compatibility.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 14-15,26-28,40-47,57,64,81-179,210,215,220,239-301
+src/renderer/components/shared/readonly-code-block.browser.test.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 6,23
+agent-skills/nodex/references/troubleshooting.md
+  s_4b53f1a3b989a8::t_498fe41f667838 50
+src/renderer/lib/editor-model/equation-security.jsdom.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-30
+src/shared/nodex-markdown/facade.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 1-61
+crates/nodex-core/src/document/module.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 44,86-87,747,751,754,761,985,1129-1130,2807,2851,2859,2865,2873,2876,2888,2900,2905,2927,2947-2949,2958,4655,4658,4708-4711,5674,5677,5680-5682,5923,5962,6026,6034,6036,6042,6065,6074-6075,6097,6141,6156-6157,6163,8348-8350,9873,9879,9886,9888,9890,9894,9897,9905-9906,9912,9928,10161,10511,10640,10820,10826,10832,10841,10845,10907,11024-11025,11095,11110,11186-11187,11194,11206,11220,11329-11330,11334,11360,11367,11373,11393,11414,11420,11426,11448-11449,11455,11475,11482-11483,11507,11531,11541,11562,11580,11609,11640,11730,11869,11949,12187,12209,12229,12245-12247,12249-12251,12253,12375,12424-12425,12441,12454,12472
+crates/nodex-core/src/document/module/tests/file_placements.rs
+  s_4b53f1a3b989a8::t_498fe41f667838 42,184,221
+src/renderer/components/board/editor/inline-image-inline-content.tsx
+  s_4b53f1a3b989a8::t_498fe41f667838 1-16
+docs/product-specs/nfm-block-side-menu-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,8,55,64-65,67,76,81,128,154,158
+src/renderer/components/board/editor/nfm-text-action-menu-actions.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 54
+src/renderer/lib/use-page-create-description-draft.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 12,16-20,27
+docs/QUALITY_SCORE.md
+  s_4b53f1a3b989a8::t_498fe41f667838 12,37
+docs/product-specs/nfm-editor-equation-and-mermaid-preview-behavior.md
+  s_4b53f1a3b989a8::t_498fe41f667838 1,13,29,31,33,43,72
+src/renderer/components/board/editor/code-block-options.test.ts
+  s_4b53f1a3b989a8::t_498fe41f667838 4,8
+Cargo.lock
+  s_4b53f1a3b989a8::t_d1b0145ebffe7c 1166
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-state-vector.bin
+  s_4b53f1a3b989a8::t_1a69ffbe2a2f38 1
+packages/core-protocol/src/compatibility.generated.ts
+  s_4b53f1a3b989a8::t_3c7ed9df7cc977 12,16,20,24,36,42-43
+pnpm-lock.yaml
+  s_4b53f1a3b989a8::t_47bd0b65981d6f 588-590,594-596,6538-6540,6553-6558,6562-6564,6568-6570,6583-6585,8052-8054,8609-8611,13509-13513,13547-13554,13559-13566,13571-13578,13635-13651,15358-15362,16036-16037
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "afad6460882954c0e3651f20ab0f952c1c2fbdb0",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
