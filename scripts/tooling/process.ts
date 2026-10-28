@@ -1,6 +1,7 @@
 import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface Command {
   readonly command: string;
@@ -11,6 +12,7 @@ export interface Command {
   readonly logFile?: string;
   readonly onStdout?: (chunk: string) => void;
   readonly measureResources?: boolean;
+  readonly linuxBrowserResourceFile?: string;
   /** Only for installers that create root-owned descendants through sudo. */
   readonly privilegedCancellation?: boolean;
 }
@@ -141,9 +143,14 @@ async function stopProcessGroups(rootPid: number, privileged: boolean): Promise<
 }
 
 /** Advisory sampling must never block command output or overlap its own snapshots. */
-function observeProcessTree(rootPid: number, onSample: (bytes: number) => void): () => void {
+function observeProcessTree(
+  rootPid: number,
+  onSample: (bytes: number) => void,
+  linuxBrowserResourceFile?: string,
+): () => void {
   let pending: ChildProcess | undefined;
   let stopped = false;
+  let reportedFailure = false;
   const timer = setInterval(() => {
     if (pending) return;
     pending = execFile(
@@ -151,12 +158,35 @@ function observeProcessTree(rootPid: number, onSample: (bytes: number) => void):
       processTableArguments,
       { encoding: "utf8", timeout: 1_000, killSignal: "SIGKILL" },
       (error, output) => {
-        pending = undefined;
-        if (error || stopped) return;
+        if (error || stopped) {
+          pending = undefined;
+          return;
+        }
         const rows = parseProcessTable(output);
         const owned = descendantPids(rootPid, rows);
         const rss = rows.reduce((sum, [pid, , , memory]) => sum + (owned.has(pid) ? memory : 0), 0);
         onSample(rss * 1024);
+        if (!linuxBrowserResourceFile) {
+          pending = undefined;
+          return;
+        }
+        // The optional /proc read shares this sampler's lease, timeout, and cancellation.
+        // File writes stay in the killable child so diagnostics cannot stall command output.
+        pending = execFile(
+          process.execPath,
+          [
+            fileURLToPath(new URL("./linux-browser-resources.ts", import.meta.url)),
+            linuxBrowserResourceFile,
+            ...[...owned].map(String),
+          ],
+          { timeout: 1_000, killSignal: "SIGKILL" },
+          (probeError) => {
+            pending = undefined;
+            if (!probeError || stopped || reportedFailure) return;
+            reportedFailure = true;
+            process.stderr.write(`[browser-resources] ${probeError.message}\n`);
+          },
+        );
       },
     );
   }, 1_000);
@@ -187,11 +217,17 @@ export async function runCommand(options: Command): Promise<CommandResult> {
       let peakTreeRssBytes = 0;
       let samples = 0;
       const observation =
-        options.measureResources && child.pid && process.platform !== "win32"
-          ? observeProcessTree(child.pid, (rss) => {
-              peakTreeRssBytes = Math.max(peakTreeRssBytes, rss);
-              samples += 1;
-            })
+        (options.measureResources || options.linuxBrowserResourceFile) &&
+        child.pid &&
+        process.platform !== "win32"
+          ? observeProcessTree(
+              child.pid,
+              (rss) => {
+                peakTreeRssBytes = Math.max(peakTreeRssBytes, rss);
+                samples += 1;
+              },
+              options.linuxBrowserResourceFile,
+            )
           : undefined;
       let cancellation: Promise<void> | undefined;
       const abort = () => {

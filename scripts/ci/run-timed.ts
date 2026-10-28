@@ -112,10 +112,24 @@ const appendSummary = async (
 export const runTimedCommand = async (options: RunTimedOptions): Promise<TimedCommandRecord> => {
   if (!options.name.trim()) throw new Error("Timed command name must not be empty.");
   const now = options.now ?? (() => new Date());
-  const started = now();
-  const result = await runCommand({ ...options, args: options.commandArguments });
-  const finished = now();
   const environment = options.env ?? process.env;
+  const timingDirectory =
+    options.timingDirectory ?? path.resolve(process.cwd(), ".generated/ci-timings");
+  const jobName = sanitizeJobName(environment.CI_TIMING_JOB ?? environment.GITHUB_JOB ?? "local");
+  const started = now();
+  const result = await runCommand({
+    ...options,
+    args: options.commandArguments,
+    ...(process.platform === "linux" && environment.CI === "true" && options.name === "app-browser"
+      ? {
+          linuxBrowserResourceFile: path.join(
+            timingDirectory,
+            `${jobName}-browser-resources.jsonl`,
+          ),
+        }
+      : {}),
+  });
+  const finished = now();
   const record: TimedCommandRecord = {
     attempt: optionalPositiveInteger(environment.GITHUB_RUN_ATTEMPT),
     job: optionalText(environment.CI_TIMING_JOB ?? environment.GITHUB_JOB),
@@ -128,10 +142,7 @@ export const runTimedCommand = async (options: RunTimedOptions): Promise<TimedCo
     ...(result.resources ? { resources: result.resources } : {}),
     exitCode: result.exitCode,
   };
-  const timingDirectory =
-    options.timingDirectory ?? path.resolve(process.cwd(), ".generated/ci-timings");
   await mkdir(timingDirectory, { recursive: true });
-  const jobName = sanitizeJobName(environment.CI_TIMING_JOB ?? environment.GITHUB_JOB ?? "local");
   await appendFile(
     path.join(timingDirectory, `${jobName}.jsonl`),
     `${JSON.stringify(record)}\n`,

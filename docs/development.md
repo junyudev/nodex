@@ -33,6 +33,9 @@ Do not add release-age exclusions to resolve peer conflicts. Run `vp install`,
 - Base UI `1.9.0` queued popup focus must respect an already focused open descendant
   in the same floating tree. Its runtime patch covers both module formats; retain
   the controlled-frame menu regression when updating the package.
+- `@vitest/browser` `5.0.5` retains WebSocket close codes and reasons in its
+  existing debug log. The patch changes diagnostics only; remove it when upstream
+  provides equivalent disconnect attribution.
 - `@pierre/diffs` supplies `@pierre/theme@2.0.0`. Trees `1.0.0-beta.6` pins
   theming `1.0.0`, so its dependency is overridden to `1.0.2`, which supports
   Theme 2 and preserves the color normalization API used by Trees.

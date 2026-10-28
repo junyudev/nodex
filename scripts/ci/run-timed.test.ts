@@ -110,3 +110,35 @@ describe("CI timed command runner", () => {
     expect(summary).toContain("| failed step |");
   });
 });
+
+test.skipIf(process.platform !== "linux")(
+  "captures live resources for the outer browser CI command without replacing its failure exit",
+  async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "nodex browser timed "));
+    temporaryRoots.push(root);
+    const resourceFile = path.join(root, "browser-job-browser-resources.jsonl");
+    const record = await runTimedCommand({
+      name: "app-browser",
+      command: process.execPath,
+      commandArguments: [
+        "-e",
+        `
+        const fs = require('node:fs');
+        setInterval(() => { if (fs.existsSync(${JSON.stringify(resourceFile)})) process.exit(7); }, 20);
+        setTimeout(() => process.exit(9), 8000);
+      `,
+      ],
+      timingDirectory: root,
+      env: { ...process.env, CI: "true", CI_TIMING_JOB: "browser-job", GITHUB_STEP_SUMMARY: "" },
+    });
+    expect(record.exitCode).toBe(7);
+    const sample = JSON.parse((await readFile(resourceFile, "utf8")).trim().split("\n")[0]);
+    expect(sample).toMatchObject({
+      incomplete: false,
+      processes: [],
+      backing: { memfd: { objects: 0 } },
+    });
+    expect(record.resources?.samples).toBeGreaterThan(0);
+  },
+  12_000,
+);

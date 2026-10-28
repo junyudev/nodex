@@ -1,6 +1,9 @@
 import { resolveVitestTestTier } from "./config/vitest-test-tier";
 import { testObservation } from "./config/vitest-observation";
-import { playwright } from "vite-plus/test/browser-playwright";
+import {
+  browserServerDiagnostics,
+  ciPlaywrightProvider,
+} from "./config/vitest-browser-diagnostics";
 import { defineConfig } from "vite-plus";
 import {
   createRendererVitePlugins,
@@ -13,7 +16,11 @@ import { createTypographyBootstrapHtmlPlugin } from "./config/typography-bootstr
 const testFiles = filesForSuite("browser", resolveVitestTestTier());
 
 export default defineConfig(async () => ({
-  plugins: [...(await createRendererVitePlugins()), createTypographyBootstrapHtmlPlugin()],
+  plugins: [
+    ...(await createRendererVitePlugins()),
+    createTypographyBootstrapHtmlPlugin(),
+    browserServerDiagnostics(),
+  ],
   resolve: rendererViteResolve,
   css: rendererViteCss,
   optimizeDeps: {
@@ -42,7 +49,7 @@ export default defineConfig(async () => ({
       enabled: true,
       headless: true,
       instances: [{ browser: "chromium" }],
-      provider: playwright(),
+      provider: ciPlaywrightProvider(),
       trace:
         process.env.RUNNER_DEBUG === "1" || process.env.NODEX_BROWSER_TRACE === "1"
           ? { mode: "retain-on-failure", tracesDir: ".vitest-attachments/browser-traces" }

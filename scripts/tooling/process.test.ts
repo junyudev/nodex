@@ -271,3 +271,66 @@ test.skipIf(process.platform === "win32")(
   },
   15_000,
 );
+
+test.skipIf(process.platform === "win32").each(["exit", "timeout", "cancel"] as const)(
+  "preserves command %s while bounding an unresponsive detailed sampler",
+  async (outcome) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "nodex detailed sampler "));
+    const marker = path.join(root, "sampler.pid");
+    const controller = new AbortController();
+    let samplerPid: number | undefined;
+    try {
+      const preload = path.join(root, "preload.cjs");
+      await writeFile(
+        preload,
+        `
+        if (process.argv[1]?.endsWith('linux-browser-resources.ts')) {
+          require('node:fs').writeFileSync(${JSON.stringify(marker)}, String(process.pid));
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+        }
+      `,
+      );
+      vi.stubEnv("NODE_OPTIONS", `--require=${JSON.stringify(preload)}`);
+      const result = await runCommand({
+        command: process.execPath,
+        args: [
+          "-e",
+          `
+          const fs = require('node:fs');
+          let announced = false;
+          setInterval(() => {
+            if (!fs.existsSync(${JSON.stringify(marker)})) return;
+            const pid = Number(fs.readFileSync(${JSON.stringify(marker)}, 'utf8'));
+            if (${JSON.stringify(outcome)} === 'exit') process.exit(7);
+            if (${JSON.stringify(outcome)} === 'cancel' && !announced) {
+              announced = true; process.stdout.write('sample-started');
+            }
+            if (${JSON.stringify(outcome)} !== 'timeout') return;
+            try { process.kill(pid, 0); } catch { process.exit(7); }
+          }, 20);
+          setTimeout(() => process.exit(9), 10000);
+        `,
+        ],
+        linuxBrowserResourceFile: path.join(root, "resources.jsonl"),
+        signal: controller.signal,
+        onStdout: () => controller.abort(),
+      });
+      expect(result.exitCode).toBe(outcome === "cancel" ? 130 : 7);
+      expect(result.durationMs).toBeLessThan(8_000);
+      samplerPid = Number(await readFile(marker, "utf8"));
+      await vi.waitFor(() => expect(() => process.kill(samplerPid!, 0)).toThrow());
+    } finally {
+      controller.abort();
+      vi.unstubAllEnvs();
+      if (samplerPid) {
+        try {
+          process.kill(samplerPid, "SIGKILL");
+        } catch {
+          /* Already reaped. */
+        }
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  15_000,
+);
