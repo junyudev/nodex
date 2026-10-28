@@ -1,0 +1,25 @@
+README.zh-CN.md
+  s_d6504674c8e7fb::t_8bd21d4e7890ab 1-100,107-133
+  s_d6504674c8e7fb::t_aae9aacdda4f60 101-106
+README.md
+  s_d6504674c8e7fb::t_a4933c3a5b5fed 11-15,20-21,24-26,28,31-33,36,42-44,48-55,57,59,61-64,66,74-76,78,86-90,98-103,111-112,115,118-126,131
+  s_d6504674c8e7fb::t_ce45a83497e63d 68-72,80-84,92-96
+  s_d6504674c8e7fb::t_aae9aacdda4f60 105-109
+  s_d6504674c8e7fb::t_4202558762b2d9 91,97,104,110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3fb0aebe518d9344b0f21f460f1db49234682620",
+  "prompts": {},
+  "sessions": {
+    "s_d6504674c8e7fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6d7ddc6-82d7-41de-8b95-c0408aeb2d07",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
