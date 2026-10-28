@@ -1,0 +1,38 @@
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_5772f1e1d73ab7::t_6f55ab05c61911 6673,6675-6686
+  s_5772f1e1d73ab7::t_8c783cd28f576e 90,2165,2195,2201-2204,6652-6672,6674,6687-6748
+  s_5772f1e1d73ab7::t_f013ffd21f4371 6749-6750
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/claude_background_tasks_resume/claude_transcript.ndjson
+  s_5772f1e1d73ab7::t_dbbbbd33e10dc2 1-5
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_5772f1e1d73ab7::t_422b34314a1396 6992-7002,7005-7006,7010
+  s_5772f1e1d73ab7::t_e21002fe793178 2088-2090,3139-3141,6991,7003-7004,7007-7009,7011-7025,8725
+CHANGELOG.md
+  s_c308b770a17d41::t_5de5401ebfad95 61
+docs/product-specs/agent-runtime-behavior.md
+  s_c308b770a17d41::t_1511eefe64f08b 822-824
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c02fcd1caffe0f5f36a054c74029a8f47618f1e8",
+  "prompts": {},
+  "sessions": {
+    "s_5772f1e1d73ab7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18438-2641-7353-8cd8-c63b54c720b6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c308b770a17d41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d99b3b35-7cb1-4ef6-9ebd-c9534cf0280b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
