@@ -1,0 +1,61 @@
+src/main/core-client/page-related-chat-workspace.node.test.ts
+  s_48ef640a8a0615::t_30971982bfb15b 2,5,13-68
+src/renderer/components/workbench/database-page-chat-activity-runtime.tsx
+  s_48ef640a8a0615::t_5be0aac20fbc22 1,4,26-27,31,34,37-38
+src/renderer/lib/use-page-chat-activity-summaries.ts
+  s_48ef640a8a0615::t_5be0aac20fbc22 1-24
+src/renderer/lib/use-page-chat-activity-summaries.test.tsx
+  s_48ef640a8a0615::t_8c930e14ce4f6c 44,52-53,57
+  s_48ef640a8a0615::t_30971982bfb15b 1-22,24-43,45-51,54-56,58-72
+  s_48ef640a8a0615::t_2852fd30905185 23
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_48ef640a8a0615::t_cb6c602ee30de0 691,699
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_48ef640a8a0615::t_b89ae59ac6349a 573,579
+scripts/scenarios/contracts.ts
+  s_48ef640a8a0615::t_d8e0c4603d7039 189-190
+scripts/scenarios/scenarios/page-related-chat-activity.ts
+  s_48ef640a8a0615::t_61d4fe96048675 180-181
+src/main/core-client/page-related-chat-scenario.node.test.ts
+  s_48ef640a8a0615::t_50eaa4c3e3b4e7 25
+src/renderer/components/workbench/database-list/database-list-row.tsx
+  s_48ef640a8a0615::t_8c4171817e4f85 374
+src/renderer/components/workbench/database-list/database-list.tsx
+  s_48ef640a8a0615::t_000dbca60bb684 1834-1837
+src/renderer/components/workbench/workbench-page-stage-panel.tsx
+  s_48ef640a8a0615::t_cc5bf926ce384e 215
+src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx
+  s_48ef640a8a0615::t_411aca81636130 837,898
+src/renderer/lib/page-chat-queries.node.test.ts
+  s_48ef640a8a0615::t_4d7f16c35721d8 12,40-43
+src/renderer/lib/page-chat-queries.ts
+  s_48ef640a8a0615::t_fde8302e4cda84 25
+src/renderer/lib/page-coordination-runtime.jsdom.test.ts
+  s_48ef640a8a0615::t_190fffdd1e888b 64-65,101
+src/renderer/lib/project-session-query-cache.node.test.ts
+  s_48ef640a8a0615::t_6736f564851b9e 335
+src/renderer/lib/query-keys.ts
+  s_48ef640a8a0615::t_9b6094130f65fe 177-180
+src/renderer/lib/query-options.ts
+  s_48ef640a8a0615::t_39ad61200bc75d 86,89,92,95,105
+src/renderer/lib/use-workbench-session-commands.ts
+  s_48ef640a8a0615::t_dd8d8a83746477 347
+tests/e2e/page-related-chat-activity.spec.ts
+  s_48ef640a8a0615::t_5c58459775a587 164,178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "40ed9c8bd348f3e664e9893fa9477df9abd94c19",
+  "prompts": {},
+  "sessions": {
+    "s_48ef640a8a0615": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1835d-7c84-7fd0-8e48-185906b900db",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
