@@ -1,0 +1,25 @@
+agent-skills/nodex/references/markdown.md
+  s_4b53f1a3b989a8::t_58d329d82ad7b8 8-17
+scripts/official-agent-skills.ts
+  s_4b53f1a3b989a8::t_58d329d82ad7b8 467-471
+  s_4b53f1a3b989a8::t_9137687d487340 8-9,11,308
+  s_4b53f1a3b989a8::t_7422e26f4f4b63 10
+src/shared/nodex-markdown/agent-guide.ts
+  s_4b53f1a3b989a8::t_9137687d487340 5-18,22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9b151da08dd446dc5ba7195496fb59add0a5545a",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
