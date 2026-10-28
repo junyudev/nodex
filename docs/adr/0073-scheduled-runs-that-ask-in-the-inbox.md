@@ -48,6 +48,9 @@ to `Ask`. Creating an `Automatic` task, or changing a task from `Ask` to `Automa
 suggested change that the user applies. Core enforces this for Agent commands. A run that needs the
 user afterwards says so with `send_to_inbox`, attributed to its task.
 
+A task may follow a runbook Page as standing instructions. Each run reads the Page's current
+content, may update it with what later runs should know, and links its chat to the Page.
+
 ## Consequences
 
 - One review surface covers both moments that need the user: before a run and after it.

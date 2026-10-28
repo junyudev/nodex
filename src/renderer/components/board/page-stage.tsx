@@ -52,6 +52,7 @@ import {
 } from "@/lib/page-stage-viewport-session";
 import { contentRoutingContextKey } from "../../../shared/content-routing-context";
 import { ApplicationPending } from "@/bootstrap/application-surface";
+import { useScheduledNavigation } from "@/features/scheduled/scheduled-navigation";
 
 export type { PageStageProps } from "./page-stage/types";
 
@@ -339,6 +340,7 @@ function PageStageDocumentTitle({
 
 export function PageStage(props: PageStageProps) {
   const { onToggleHistoryPanel } = props;
+  const scheduledNavigation = useScheduledNavigation();
   const documentRuntimeRef = useRef<BlockDocumentSurfaceRuntime | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const viewportSessionRef = useRef<PageStageViewportSession | null>(null);
@@ -499,6 +501,19 @@ export function PageStage(props: PageStageProps) {
           onCopyDeeplink={() => {
             void copyPageDeeplink(page.id);
           }}
+          onSchedule={
+            scheduledNavigation
+              ? () =>
+                  scheduledNavigation.scheduleRunbook({
+                    pageId: page.id,
+                    title: controller.title,
+                    projectId:
+                      controller.contentRoutingContext.kind === "project"
+                        ? controller.contentRoutingContext.projectId
+                        : null,
+                  })
+              : undefined
+          }
           onDelete={() => {
             void controller.handleDelete();
           }}

@@ -70,6 +70,8 @@ const cron = {
 };
 const item: CodexScheduledAutomation = {
   launch: "automatic",
+  runbookPageId: null,
+  runbookTitle: null,
   heldFiring: null,
   id: "automation:a",
   definitionRevision: 1,
@@ -150,13 +152,14 @@ it.effect("an Agent refused automatic execution is directed to a user-reviewed s
     const text = refused.content[0];
     assert.match(text?.type === "text" ? text.text : "", /Return a suggested_create change/);
     const proposed = yield* execute(
-      input({ ...cron, mode: "suggested_create", launch: "automatic" }),
+      input({ ...cron, mode: "suggested_create", launch: "automatic", runbookPageId: "runbook" }),
     );
     assert.isUndefined(proposed.isError);
     assert.deepEqual(proposed.structuredContent?.proposal, {
       ...cron,
       mode: "suggested_create",
       launch: "automatic",
+      runbookPageId: "runbook",
       backendBinding: { kind: "codex" },
     });
   }),

@@ -1,4 +1,5 @@
 import {
+  AutomationsIcon,
   BackIcon,
   CodeIcon,
   DeleteIcon,
@@ -24,6 +25,8 @@ interface PageStageToolbarProps {
   limitMainContentWidth: boolean;
   showRawContent: boolean;
   onCopyDeeplink: () => void;
+  /** Opens a new scheduled task that follows this Page as its runbook. */
+  onSchedule?: () => void;
   onDelete: () => void;
   showDelete?: boolean;
   onToggleContentWidth: () => void;
@@ -46,6 +49,7 @@ export function PageStageToolbar({
   limitMainContentWidth,
   showRawContent,
   onCopyDeeplink,
+  onSchedule,
   onDelete,
   showDelete = true,
   onToggleContentWidth,
@@ -172,6 +176,14 @@ export function PageStageToolbar({
           >
             Copy deeplink
           </NodexDropdownItem>
+          {onSchedule ? (
+            <NodexDropdownItem
+              leftSlot={<AutomationsIcon className="icon-2xs" />}
+              onSelect={onSchedule}
+            >
+              Schedule…
+            </NodexDropdownItem>
+          ) : null}
           {showDelete ? (
             <>
               <NodexDropdownSeparator />

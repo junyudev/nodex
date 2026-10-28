@@ -14,9 +14,11 @@ const task: CodexScheduledAutomation = {
   targetSessionId: null,
   notificationPolicy: null,
   launch: "ask",
+  runbookPageId: "page:runbook",
+  runbookTitle: null,
   heldFiring: null,
   name: "Bump dependency versions",
-  prompt: "Bump dependency versions.",
+  prompt: "Follow the runbook.",
   rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
   model: "gpt-6.1-sol",
   reasoningEffort: "high",
@@ -32,12 +34,13 @@ const task: CodexScheduledAutomation = {
 };
 
 describe("scheduled task status updates", () => {
-  test("pausing restates the whole task, so it keeps its launch", () => {
+  test("pausing restates the whole task, so it keeps its runbook and launch", () => {
     const update = buildScheduledTaskStatusUpdate(task, "PAUSED");
-    expect(update).toMatchObject({ launch: "ask" });
+    expect(update).toMatchObject({ launch: "ask", runbookPageId: "page:runbook" });
     expect(applyOptimisticScheduledTaskUpdate([task], update)?.[0]).toMatchObject({
       status: "PAUSED",
       launch: "ask",
+      runbookPageId: "page:runbook",
     });
   });
 });

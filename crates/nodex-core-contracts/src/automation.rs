@@ -84,6 +84,10 @@ pub struct AutomationDefinitionInput {
     /// Desktop Host creates it and `Ask` when an Agent does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub launch: Option<AutomationLaunch>,
+    /// A Page whose current content every run follows as standing instructions, and which
+    /// each run's chat links to. Absent clears it, like other optional fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runbook_page_id: Option<String>,
     pub name: String,
     pub prompt: Option<String>,
     pub rrule: Option<String>,
@@ -108,6 +112,9 @@ pub struct AutomationDefinition {
     #[serde(default)]
     pub notification_policy: Option<AutomationNotificationPolicy>,
     pub launch: AutomationLaunch,
+    pub runbook_page_id: Option<String>,
+    /// The runbook Page's current title; None without a runbook or when the Page is no longer active.
+    pub runbook_title: Option<String>,
     /// The firing of an `Ask` task waiting in the Inbox, if any. At most one waits per task.
     pub held_firing: Option<AutomationHeldFiring>,
     pub name: String,

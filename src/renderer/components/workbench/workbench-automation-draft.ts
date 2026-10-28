@@ -32,6 +32,10 @@ export interface WorkbenchAutomationDraft {
   notificationPolicy?: CodexScheduledAutomationCreateInput["notificationPolicy"];
   /** Whether a due run starts on its own or waits in the Inbox first. */
   launch: CodexScheduledAutomationLaunch;
+  /** A Page every run follows as standing instructions. */
+  runbookPageId: string | null;
+  /** The runbook's title when it was chosen, for display only; never saved. */
+  runbookTitle: string | null;
   expectedRevision?: number;
   name: string;
   prompt: string;
@@ -128,6 +132,8 @@ export function createWorkbenchAutomationDraft(
     targetSessionId: automation?.targetSessionId ?? "",
     notificationPolicy: automation?.notificationPolicy,
     launch: automation?.launch ?? "automatic",
+    runbookPageId: automation?.runbookPageId ?? null,
+    runbookTitle: automation?.runbookTitle ?? null,
     name: automation?.name ?? "",
     prompt: automation?.prompt ?? "",
     rrule: automation?.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
@@ -161,6 +167,8 @@ export function createWorkbenchAutomationDraftFromCreateInput(
     targetSessionId: kind === "heartbeat" ? (input.targetSessionId ?? "") : "",
     notificationPolicy: input.notificationPolicy,
     launch: input.launch ?? "automatic",
+    runbookPageId: input.runbookPageId ?? null,
+    runbookTitle: null,
     name: input.name ?? "",
     prompt: input.prompt ?? "",
     rrule: input.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
@@ -196,6 +204,11 @@ export function createWorkbenchAutomationDraftFromUpdateInput(input: {
     expectedRevision: update.expectedRevision,
     notificationPolicy: update.notificationPolicy,
     launch: update.launch ?? base.launch,
+    runbookPageId: update.runbookPageId === undefined ? base.runbookPageId : update.runbookPageId,
+    runbookTitle:
+      update.runbookPageId === undefined || update.runbookPageId === base.runbookPageId
+        ? base.runbookTitle
+        : null,
     kind,
     status: normalizeStatus(update.status ?? base.status),
     projectId:
@@ -422,6 +435,7 @@ function buildCodexScheduledAutomationDraftPayload(
       ? { notificationPolicy: draft.notificationPolicy }
       : {}),
     launch: draft.launch,
+    runbookPageId: draft.runbookPageId,
     name,
     prompt,
     rrule,
@@ -452,6 +466,7 @@ export function buildCodexScheduledAutomationCreateInput(input: {
       ? { notificationPolicy: payload.notificationPolicy }
       : {}),
     launch: payload.launch,
+    runbookPageId: payload.runbookPageId,
     name: payload.name,
     prompt: payload.prompt,
     rrule: payload.rrule,
@@ -499,6 +514,7 @@ export function isWorkbenchAutomationDraftDirty(input: {
     (draft.notificationPolicy !== undefined &&
       draft.notificationPolicy !== existing.notificationPolicy) ||
     draft.launch !== existing.launch ||
+    draft.runbookPageId !== existing.runbookPageId ||
     normalizeOptionalText(draft.name) !== existing.name ||
     normalizeOptionalText(draft.prompt) !== existing.prompt ||
     normalizeOptionalText(draft.rrule) !== existing.rrule ||
@@ -531,6 +547,7 @@ export function hasWorkbenchAutomationCreateDraftChanges(
       normalizeOptionalText(draft.targetSessionId) !==
         normalizeOptionalText(initialDraft.targetSessionId) ||
       draft.launch !== initialDraft.launch ||
+      draft.runbookPageId !== initialDraft.runbookPageId ||
       normalizeOptionalText(draft.name) !== normalizeOptionalText(initialDraft.name) ||
       normalizeOptionalText(draft.prompt) !== normalizeOptionalText(initialDraft.prompt) ||
       normalizeOptionalText(draft.rrule) !== normalizeOptionalText(initialDraft.rrule) ||
@@ -554,6 +571,7 @@ export function hasWorkbenchAutomationCreateDraftChanges(
     normalizeStatus(draft.status) !== "ACTIVE" ||
     normalizeOptionalText(draft.targetSessionId) !== null ||
     draft.launch !== "automatic" ||
+    draft.runbookPageId !== null ||
     normalizeOptionalText(draft.name) !== null ||
     normalizeOptionalText(draft.prompt) !== null ||
     normalizeOptionalText(draft.rrule) !== DEFAULT_WORKBENCH_AUTOMATION_RRULE ||

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useLocalEnvironmentOptions } from "@/lib/use-local-environment-queries";
+import { useLibraryCatalog } from "@/lib/use-library-navigation";
 import type {
   CodexScheduledAutomationLaunch,
   Project,
@@ -300,6 +301,80 @@ export function ScheduledLaunchField({
       display={launch === "ask" ? "Ask in Inbox" : "Run automatically"}
       onValueChange={(value) => onLaunchChange(value === "ask" ? "ask" : "automatic")}
     />
+  );
+}
+
+const NO_RUNBOOK = "";
+
+/** A Page every run follows as standing instructions, chosen from the Library's Pages. */
+export function ScheduledRunbookField({
+  pageId,
+  title,
+  disabled,
+  onChange,
+}: {
+  pageId: string | null;
+  /** The chosen Page's title; null when only its identity is known. */
+  title: string | null;
+  disabled: boolean;
+  onChange: (runbook: { readonly pageId: string | null; readonly title: string | null }) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const catalog = useLibraryCatalog({
+    query: query.trim() || undefined,
+    kinds: ["page"],
+    lifecycle: "active",
+    limit: 20,
+  });
+  const pageOptions: NodexOptionPickerOption[] = (catalog.data?.items ?? []).flatMap((entry) =>
+    entry.target.kind === "page"
+      ? [
+          {
+            value: entry.target.pageId,
+            label: entry.title.trim() || "Untitled",
+            subText: entry.locationLabel || undefined,
+          },
+        ]
+      : [],
+  );
+  const shownTitle = title?.trim() || "Chosen Page";
+  if (pageId !== null && !pageOptions.some((option) => option.value === pageId)) {
+    pageOptions.unshift({ value: pageId, label: shownTitle });
+  }
+  return (
+    <ScheduledFieldRow label="Runbook">
+      <NodexOptionPicker
+        value={pageId ?? NO_RUNBOOK}
+        options={[{ value: NO_RUNBOOK, label: "None" }, ...pageOptions]}
+        onValueChange={(value) => {
+          if (value === NO_RUNBOOK) {
+            onChange({ pageId: null, title: null });
+            return;
+          }
+          const option = pageOptions.find((candidate) => candidate.value === value);
+          onChange({
+            pageId: value,
+            title: typeof option?.label === "string" ? option.label : null,
+          });
+        }}
+        title="Runbook"
+        align="end"
+        side="bottom"
+        contentWidth="workspace"
+        contentMaxHeight="list"
+        search="filter"
+        filterOptions={false}
+        onSearchChange={setQuery}
+        searchPlaceholder="Search pages"
+        searchAriaLabel="Search pages"
+        disabled={disabled}
+        triggerButton={
+          <ScheduledFieldTrigger ariaLabel="Runbook" disabled={disabled}>
+            {pageId === null ? "None" : shownTitle}
+          </ScheduledFieldTrigger>
+        }
+      />
+    </ScheduledFieldRow>
   );
 }
 

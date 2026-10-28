@@ -416,6 +416,7 @@ function buildAutomationUpdateCreateInput(
     args.launch === "ask" || args.launch === "automatic" ? args.launch : undefined;
   const plan = {
     ...(launch ? { launch } : {}),
+    runbookPageId: normalizeOptionalString(args.runbookPageId) ?? null,
   };
 
   if (kind === "heartbeat") {

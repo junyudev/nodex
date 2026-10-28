@@ -18,6 +18,8 @@ function makeAutomation(
     targetSessionId: null,
     notificationPolicy: null,
     launch: "automatic",
+    runbookPageId: null,
+    runbookTitle: null,
     heldFiring: null,
     kind: "cron",
     status: "ACTIVE",

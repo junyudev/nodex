@@ -35,9 +35,26 @@ export interface CodexScheduledAutomationModelSettings {
   reasoningEffort: string | null;
 }
 
+export interface ScheduledAutomationRunbook {
+  readonly title: string;
+  readonly pageKey: string;
+  readonly body: string;
+}
+
+const runbookInstructions = (runbook?: ScheduledAutomationRunbook | null): string[] =>
+  runbook
+    ? [
+        "",
+        `Runbook: ${runbook.title} (${runbook.pageKey})`,
+        runbook.body,
+        "You may update this runbook Page with what future runs should know.",
+      ]
+    : [];
+
 export function buildCodexScheduledAutomationRunPrompt(
   automation: Pick<CodexScheduledAutomation, "id" | "name" | "prompt" | "lastRunAt">,
   instructions = automation.prompt,
+  runbook?: ScheduledAutomationRunbook | null,
 ): string {
   const lastRun =
     automation.lastRunAt === null ? "never" : new Date(automation.lastRunAt).toISOString();
@@ -48,6 +65,7 @@ export function buildCodexScheduledAutomationRunPrompt(
     `Last run: ${lastRun}`,
     "",
     instructions,
+    ...runbookInstructions(runbook),
   ].join("\n");
 }
 
@@ -55,6 +73,7 @@ export function buildCodexScheduledAutomationHeartbeatPrompt(
   automation: Pick<CodexScheduledAutomation, "id" | "prompt">,
   now = Date.now(),
   instructions = automation.prompt,
+  runbook?: ScheduledAutomationRunbook | null,
 ): string {
   return [
     "<heartbeat>",
@@ -62,6 +81,7 @@ export function buildCodexScheduledAutomationHeartbeatPrompt(
     `  <current_time_iso>${new Date(now).toISOString()}</current_time_iso>`,
     "  <instructions>",
     instructions,
+    ...runbookInstructions(runbook),
     "  </instructions>",
     "</heartbeat>",
   ].join("\n");

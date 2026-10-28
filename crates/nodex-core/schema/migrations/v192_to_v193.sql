@@ -1,4 +1,5 @@
 ALTER TABLE codex_scheduled_automations ADD COLUMN launch TEXT NOT NULL DEFAULT 'automatic' CHECK (launch IN ('automatic','ask'));
+ALTER TABLE codex_scheduled_automations ADD COLUMN runbook_page_id TEXT;
 ALTER TABLE core_automation_runs ADD COLUMN dispatch_id TEXT;
 ALTER TABLE core_automation_leases ADD COLUMN purpose TEXT NOT NULL DEFAULT 'run' CHECK (purpose IN ('run','hold'));
 CREATE TEMP TABLE saved_inbox_entries AS SELECT * FROM inbox_entries;

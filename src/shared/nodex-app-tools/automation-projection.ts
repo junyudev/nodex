@@ -10,6 +10,7 @@ const definitionSnapshot = z.object({
   name: z.string(),
   rrule: z.string().nullable(),
   launch: z.enum(["automatic", "ask"]).optional(),
+  runbookPageId: z.string().nullable().optional(),
 });
 
 /** Project only successful native results; proposals carry the target resolved by Main. */

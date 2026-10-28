@@ -4122,6 +4122,7 @@ mod scheduled {
             target_session_id: None,
             notification_policy: AutomationNotificationPreference::Preserve,
             launch: Some(AutomationLaunch::Ask),
+            runbook_page_id: None,
             name: "Daily report".into(),
             prompt: Some("Prepare the report".into()),
             rrule: Some("FREQ=MINUTELY;INTERVAL=5".into()),
@@ -5261,9 +5262,73 @@ mod scheduled {
     }
 
     #[test]
-    fn run_session_links_the_message_and_attributes_reports_to_the_task() {
+    fn definition_runbook_title_follows_renames_and_clears_for_inactive_pages() {
+        use nodex_core_contracts::document::{DocumentBlockOperation, OwnedDocumentIntent};
         let workspace = seeded_workspace();
-        setup(&workspace, task_input());
+        super::super::test_support::create_library_page(&workspace, "page:runbook", PROJECT);
+        let mut input = task_input();
+        input.runbook_page_id = Some("page:runbook".into());
+        setup(&workspace, input);
+        let read_title = || {
+            let result = AutomationModule::new("profile-1", "library-1", &workspace.kernel)
+                .read(
+                    &host(),
+                    ModuleReadRequest {
+                        contract_version: nodex_core_contracts::AUTOMATION_CONTRACT_VERSION,
+                        read: AutomationRead::Definition {
+                            automation_id: "task".into(),
+                        },
+                    },
+                )
+                .unwrap();
+            let AutomationReadValue::Definition { item } = result.value else {
+                panic!("definition");
+            };
+            item.unwrap().runbook_title
+        };
+        assert_eq!(read_title().as_deref(), Some("page:runbook"));
+        let head = workspace
+            .kernel
+            .readers()
+            .read_default(|c| crate::document::read_document_authority(c, "document:page:runbook"))
+            .unwrap()
+            .unwrap()
+            .head;
+        crate::document::OwnedDocumentModule::new("profile-1", "library-1", &workspace.kernel)
+            .apply(
+                &host(),
+                ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::OWNED_DOCUMENT_CONTRACT_VERSION,
+                    operation_id: "rename-runbook".into(),
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    intent: OwnedDocumentIntent::ApplyOperationBatch {
+                        document_id: head.id,
+                        generation: head.generation,
+                        expected_head_seq: head.head_seq,
+                        operations: vec![DocumentBlockOperation::SetTitle {
+                            title: "Current runbook".into(),
+                        }],
+                        actor: serde_json::json!({"kind":"user"}),
+                    },
+                },
+            )
+            .unwrap();
+        assert_eq!(read_title().as_deref(), Some("Current runbook"));
+        change_message_lifecycle(&workspace, "page:runbook", "archive");
+        assert_eq!(read_title(), None);
+        change_message_lifecycle(&workspace, "page:runbook", "unarchive");
+        assert_eq!(read_title().as_deref(), Some("Current runbook"));
+        change_message_lifecycle(&workspace, "page:runbook", "delete");
+        assert_eq!(read_title(), None);
+    }
+
+    #[test]
+    fn run_session_links_the_message_and_runbook_and_attributes_reports_to_the_task() {
+        let workspace = seeded_workspace();
+        super::super::test_support::create_library_page(&workspace, "page:runbook", PROJECT);
+        let mut input = task_input();
+        input.runbook_page_id = Some("page:runbook".into());
+        setup(&workspace, input);
         confirm(&workspace);
         let lease = claim(&workspace, "claim-execution");
         automation(
@@ -5298,9 +5363,9 @@ mod scheduled {
         assert_eq!(
             count(
                 &workspace,
-                "SELECT count(*) FROM project_session_pages WHERE session_id='session:task' AND page_id='page:firing'"
+                "SELECT count(*) FROM project_session_pages WHERE session_id='session:task' AND page_id IN ('page:runbook','page:firing')"
             ),
-            1
+            2
         );
         assert_eq!(
             item(&workspace).proposal.unwrap().chat.unwrap().session_id,
@@ -5494,4 +5559,15 @@ fn scheduled_launch_defaults_and_agent_commands_cannot_escalate_execution() {
     )
     .unwrap_err();
     assert_eq!(execution.code, CoreErrorCode::Unauthorized);
+    input.runbook_page_id = Some("missing-page".into());
+    let invalid = apply(
+        "invalid-runbook",
+        AutomationIntent::CreateDefinition {
+            automation_id: "runbook-task".into(),
+            definition: input,
+        },
+        false,
+    )
+    .unwrap_err();
+    assert_eq!(invalid.code, CoreErrorCode::NotFound);
 }

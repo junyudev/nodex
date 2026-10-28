@@ -37,6 +37,8 @@ const definition: CodexScheduledAutomation = {
   targetSessionId: null,
   notificationPolicy: null,
   launch: "automatic",
+  runbookPageId: null,
+  runbookTitle: null,
   heldFiring: null,
   name: "Report",
   prompt: "Build a report",
@@ -79,6 +81,7 @@ const setup = (
     agentDefinitionId: binding.kind === "acp" ? binding.agentDefinitionId : "",
     targetProviderId: agentRuntimeProviderId(binding),
     targetArchived: false,
+    missingRunbook: false,
     dispatches: 0,
   };
   const runs = new Map<string, CodexAutomationRun>();
@@ -98,6 +101,26 @@ const setup = (
               confirmations.push(firing.dispatchId);
             }),
         } as unknown as InboxApplication["Service"]),
+        Layer.succeed(CoreModules, {
+          library: {
+            read: (input: { file_kind: string }) =>
+              state.missingRunbook
+                ? Effect.fail(new Error("Page not found"))
+                : Effect.succeed({
+                    value: {
+                      kind: "page_projection_file",
+                      value: {
+                        page_key: "OPS-4",
+                        metadata: { title_markdown: "Release checklist" },
+                        content:
+                          input.file_kind === "body_markdown"
+                            ? "Check the last release first."
+                            : "",
+                      },
+                    },
+                  }),
+          },
+        } as unknown as CoreModules["Service"]),
         backendRegistryLive.pipe(
           Layer.provide(
             Layer.succeed(ApplicationSettings, {
@@ -344,12 +367,13 @@ const admission = {
 };
 
 it.effect.each(["cron", "heartbeat"] as const)(
-  "%s admission freezes instructions and selection and retains its dispatch",
+  "%s admission freezes instructions and selection, reads the current runbook, and retains its dispatch",
   (kind) => {
     const fixture = setup();
     fixture.state.definition = {
       ...fixture.state.definition,
       kind,
+      runbookPageId: "runbook",
       launch: "ask",
       ...(kind === "heartbeat"
         ? { targetSessionId: "heartbeat-session", projectId: null, cwds: [] }
@@ -363,6 +387,9 @@ it.effect.each(["cron", "heartbeat"] as const)(
         kind === "cron" ? fixture.launches[0]!.modelSelection : fixture.messages[0]!.modelSelection;
       assert.include(submitted.text, admission.prompt);
       assert.notInclude(submitted.text, definition.prompt);
+      assert.include(submitted.text, "Runbook: Release checklist (OPS-4)");
+      assert.include(submitted.text, "Check the last release first.");
+      assert.include(submitted.text, "You may update this runbook Page");
       assert.deepEqual(selection, {
         instanceId: "codex",
         model: "reviewed-model",
@@ -377,7 +404,7 @@ it.effect.each(["cron", "heartbeat"] as const)(
   },
 );
 
-it.effect("unavailable overrides fail before launching", () => {
+it.effect("unavailable overrides and missing runbooks fail before launching", () => {
   const fixture = setup();
   return Effect.gen(function* () {
     const execution = yield* AutomationExecution;
@@ -395,6 +422,12 @@ it.effect("unavailable overrides fail before launching", () => {
         reason,
       );
     }
+    fixture.state.definition.runbookPageId = "deleted-page";
+    fixture.state.missingRunbook = true;
+    assert.match(
+      yield* refusal(execution.executeClaimed(fixture.state.definition, context)),
+      /runbook Page is unavailable/,
+    );
     assert.equal(fixture.launches.length, 0);
     assert.equal(fixture.runs.size, 0);
   }).pipe(Effect.provide(fixture.layer));

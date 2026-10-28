@@ -279,7 +279,7 @@ fn read_definition_window(
                 agent_backend_kind, agent_backend_definition_id, \
                 agent_backend_instance_config_id, execution_environment, \
                 local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                project_id, launch \
+                project_id, launch, runbook_page_id \
          FROM codex_scheduled_automations \
          WHERE (?1 OR status <> 'DELETED') \
            AND (?2 IS NULL OR created_at > ?2 OR (created_at = ?2 AND automation_id > ?3)) \
@@ -346,7 +346,7 @@ pub(super) fn read_definition(
                     agent_backend_kind, agent_backend_definition_id, \
                     agent_backend_instance_config_id, execution_environment, \
                     local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                project_id, launch \
+                project_id, launch, runbook_page_id \
              FROM codex_scheduled_automations WHERE automation_id = ?1",
             [automation_id],
             definition_from_row,
@@ -390,6 +390,8 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDe
                 ));
             }
         },
+        runbook_page_id: row.get(24)?,
+        runbook_title: None,
         held_firing: None,
         name: row.get(5)?,
         prompt: row.get(6)?,
@@ -418,6 +420,12 @@ fn enrich_definition(
     mut item: AutomationDefinition,
 ) -> Result<AutomationDefinition, StoreError> {
     item.held_firing = super::firing::held(connection, &item.automation_id)?;
+    item.runbook_title = connection.query_row(
+        "SELECT COALESCE(materialization.title,'') FROM pages page \
+         JOIN blocks block ON block.id=page.block_id AND block.lifecycle='active' \
+         LEFT JOIN document_materializations materialization ON materialization.document_id=page.document_id \
+         WHERE page.block_id=?1", [item.runbook_page_id.as_deref()], |row| row.get(0),
+    ).optional()?;
     validate_definition(item)
 }
 

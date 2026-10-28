@@ -17,6 +17,9 @@ describe("workbench automations routes", () => {
       automationId: "automation-1",
       automationMode: "edit",
       templateId: null,
+      runbookPageId: null,
+      runbookTitle: null,
+      projectId: null,
       runSessionId: null,
     });
     expect(
@@ -25,6 +28,9 @@ describe("workbench automations routes", () => {
       automationId: "a",
       automationMode: null,
       templateId: null,
+      runbookPageId: null,
+      runbookTitle: null,
+      projectId: null,
       runSessionId: "session-1",
     });
   });
@@ -50,5 +56,25 @@ describe("workbench automations routes", () => {
       resolveAutomationsRouteState("/automations?automationId=a&templateId=daily-bug-scan")
         .templateId,
     ).toBe(null);
+  });
+
+  test("only a new task follows a runbook Page from the route", () => {
+    const path = buildAutomationsPath({
+      automationMode: "create",
+      runbookPageId: "page-1",
+      runbookTitle: "Dependency policy",
+      projectId: "project-1",
+    });
+    expect(path).toBe(
+      "/automations?automationMode=create&runbookPageId=page-1&runbookTitle=Dependency+policy&projectId=project-1",
+    );
+    expect(resolveAutomationsRouteState(path)).toMatchObject({
+      runbookPageId: "page-1",
+      runbookTitle: "Dependency policy",
+      projectId: "project-1",
+    });
+    expect(buildAutomationsPath({ automationId: "a", runbookPageId: "page-1" })).toBe(
+      "/automations?automationId=a",
+    );
   });
 });

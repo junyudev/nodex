@@ -30,6 +30,7 @@ import {
   ScheduledFieldTrigger,
   ScheduledLaunchField,
   ScheduledProjectField,
+  ScheduledRunbookField,
   ScheduledScheduleFields,
   type ScheduledTaskChatOption,
 } from "./scheduled-task-fields";
@@ -372,6 +373,16 @@ export function ScheduledTaskForm({
                       />
                     </AdvancedCard>
                   ) : null}
+                  <AdvancedCard>
+                    <ScheduledRunbookField
+                      pageId={draft.runbookPageId}
+                      title={draft.runbookTitle}
+                      disabled={disabled}
+                      onChange={({ pageId, title }) =>
+                        patch({ runbookPageId: pageId, runbookTitle: title })
+                      }
+                    />
+                  </AdvancedCard>
                   <AdvancedCard>
                     <ScheduledAgentFields
                       draft={draft}

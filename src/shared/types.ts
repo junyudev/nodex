@@ -2199,6 +2199,10 @@ export interface CodexScheduledAutomation {
   targetSessionId: string | null;
   notificationPolicy: CodexScheduledAutomationNotificationPolicy | null;
   launch: CodexScheduledAutomationLaunch;
+  /** A Page every run follows as standing instructions, and which each run's chat links to. */
+  runbookPageId: string | null;
+  /** The runbook Page's current title; null without a runbook or when the Page is gone. */
+  runbookTitle: string | null;
   heldFiring: CodexScheduledAutomationHeldFiring | null;
   name: string;
   prompt: string;
@@ -2223,6 +2227,7 @@ export interface CodexScheduledAutomationCreateInput {
   notificationPolicy?: CodexScheduledAutomationNotificationPolicy | null;
   /** Omitted keeps the current launch; a new task launches `automatic`. */
   launch?: CodexScheduledAutomationLaunch;
+  runbookPageId?: string | null;
   name: string;
   prompt?: string | null;
   rrule?: string | null;
@@ -3229,6 +3234,7 @@ export interface CodexAutomationUpdateView {
       name: string;
       rrule: string;
       launch?: CodexScheduledAutomationLaunch;
+      runbookPageId?: string | null;
     } | null;
   } | null;
 }

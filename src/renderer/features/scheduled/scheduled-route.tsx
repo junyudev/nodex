@@ -222,6 +222,7 @@ function ScheduledTaskConversation({
                     {[
                       paused ? "Paused" : formatScheduledTaskScheduleLabel(task),
                       task.launch === "ask" ? "Asks in Inbox" : null,
+                      task.runbookTitle ? `Follows ${task.runbookTitle}` : null,
                     ]
                       .filter(Boolean)
                       .join(" · ")}
@@ -290,6 +291,10 @@ export function ScheduledRoute({
     request = {
       kind: "create",
       template: findTemplate(route.templateId),
+      runbook: route.runbookPageId
+        ? { pageId: route.runbookPageId, title: route.runbookTitle }
+        : null,
+      projectId: route.projectId,
     };
   } else if (route.automationMode === "edit" && selected) {
     request = { kind: "edit", task: selected };

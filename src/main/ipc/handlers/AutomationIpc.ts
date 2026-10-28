@@ -33,6 +33,15 @@ const validateTaskOptions = (input: CodexScheduledAutomationCreateInput) =>
     try: () => {
       if (input.launch !== undefined && input.launch !== "ask" && input.launch !== "automatic")
         throw new Error("Choose whether this task asks first or runs automatically.");
+      if (
+        input.runbookPageId !== undefined &&
+        input.runbookPageId !== null &&
+        (typeof input.runbookPageId !== "string" ||
+          !input.runbookPageId.trim() ||
+          input.runbookPageId !== input.runbookPageId.trim() ||
+          input.runbookPageId.length > 512)
+      )
+        throw new Error("Choose an available runbook Page.");
     },
     catch: (cause) => new AutomationIpcError({ operation: "validate-task-options", cause }),
   });

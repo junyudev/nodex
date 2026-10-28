@@ -87,6 +87,22 @@ waiting run runs that waiting run with its current message. While the user has
 not edited a waiting message, editing the task's instructions rewrites the
 message to match. Once the user has edited it, the message keeps their text.
 
+## Runbooks
+
+A task may follow an active Library Page as its runbook: standing instructions
+that change between runs. Each run reads the Page's current content after the
+task's instructions, sees the Page's title and key, and may update the Page with
+what later runs should know. A missing or deleted runbook stops the run with its
+reason until the task follows another Page or none. Each run's chat links to its
+runbook, so the Page lists its runs among its linked chats.
+
+`Schedule…` in a Page's actions menu opens the create dialog for a task that
+follows that Page, in the Page's Project and its first folder, with `Advanced`
+open and the instructions `Follow the runbook.` A new task created without a name
+takes its runbook's title. A Page that tasks follow shows a `Scheduled` property
+listing them by name, with an Inbox glyph on those that ask first and the
+schedule on hover. Choosing one opens it in Scheduled.
+
 ## Entry points and route state
 
 The rail's `Scheduled` entry, command palette `Manage automations`, and Thread
@@ -97,8 +113,9 @@ user leaves. Scheduled lists only tasks owned by the current Profile.
 Route state is canonical URL state:
 
 - `automationId` selects a task;
-- `automationMode=create` opens the create dialog, seeded by `templateId`;
-  `automationMode=edit` opens the edit dialog for the selected task;
+- `automationMode=create` opens the create dialog, seeded by `templateId` or by a
+  `runbookPageId` the new task follows; `automationMode=edit` opens the edit
+  dialog for the selected task;
 - `runSessionId` presents a run's or Heartbeat's chat in place.
 
 A selected task that no longer exists returns to the landing page. A selected
@@ -145,7 +162,7 @@ as the user's message, then `Your task is scheduled. Its next run is …`, which
 adds `and it will wait for you in the Inbox` for a task that asks first. A task
 with a run waiting says so instead, and one without a known next run points to
 its details. A card with the task's name and schedule, followed by
-`Asks in Inbox` when it applies, opens the edit dialog. `Reply about this task…` starts a
+`Asks in Inbox` and `Follows <runbook>` when they apply, opens the edit dialog. `Reply about this task…` starts a
 chat about the task in its Project and presents it in place; the message names
 the task so the Agent can read or update it.
 
@@ -153,14 +170,16 @@ the task so the Agent can read or update it.
 
 The dialog edits one draft:
 
-- name (edit only; a new task is named after the first line of its instructions);
+- name (edit only; a new task is named after its runbook, else after the first
+  line of its instructions);
 - instructions;
 - `Repeat` (Interval, Daily, Weekdays, Weekly, Custom) with `Every`, `On`, `Time`
   in the local time zone, or a custom rule;
 - `When due`, the last row of the schedule card: `Run automatically` or
   `Ask in Inbox`;
 - `Advanced`: Notifications, `Start each run in new chat`, the Heartbeat's chat,
-  Project, Workspace, Environment, the Agent, and for cron tasks its model and effort.
+  Project, Workspace, Environment, `Runbook` (a searchable Page menu, or `None`),
+  the Agent, and for cron tasks its model and effort.
 
 `Start each run in new chat` chooses a cron task (on) or a Heartbeat that
 continues one chat (off) and is fixed once the task exists. Cron tasks require
@@ -213,10 +232,9 @@ links while their Heartbeat continues the selected instance.
 Each Cron run receives its task name, stable Automation ID, previous run time,
 and its instructions in a new Session: the saved ones, or for a run that waited in
 the Inbox, the reviewed message. Nodex does not provision an implicit cross-run
-memory file or require an Agent-specific home environment variable.
-Persistent notes must be explicitly requested in the task's instructions at a
-location accessible to its selected Agent. Heartbeats continue the existing
-Session and its available conversation context. A Heartbeat run the user
+memory file or require an Agent-specific home environment variable; a runbook is
+the explicit place for what later runs should know. Heartbeats continue the
+existing Session and its available conversation context. A Heartbeat run the user
 confirmed in the Inbox still waits for a busy chat, but not for the chat's window
 or its usual cadence.
 

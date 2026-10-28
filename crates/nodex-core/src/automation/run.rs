@@ -447,7 +447,13 @@ fn begin_run(
         params![run_id, automation_id, session_id, session_title, source_cwd, now_ms, request_hash, dispatch_id],
     )?;
     if let Some(session) = session_id {
-        link_run_pages(connection, dispatch_id, session, &committed_at)?;
+        link_run_pages(
+            connection,
+            automation_id,
+            dispatch_id,
+            session,
+            &committed_at,
+        )?;
     }
     single_run_effects(connection, "begin_run", run_id, committed_at)
 }
@@ -494,6 +500,7 @@ fn bind_run_session(
     )?;
     link_run_pages(
         connection,
+        &current.automation_id,
         current.dispatch_id.as_deref(),
         session_id,
         &committed_at,
@@ -1141,6 +1148,7 @@ fn internal(message: &str) -> StoreError {
 
 fn link_run_pages(
     connection: &Connection,
+    automation: &str,
     dispatch: Option<&str>,
     session: &str,
     now: &str,
@@ -1156,5 +1164,15 @@ fn link_run_pages(
     {
         pages.push(page);
     }
+    let runbook: Option<String> = connection.query_row(
+        "SELECT runbook_page_id FROM codex_scheduled_automations WHERE automation_id=?1",
+        [automation],
+        |r| r.get(0),
+    )?;
+    if let Some(page) = runbook {
+        pages.push(page);
+    }
+    pages.sort();
+    pages.dedup();
     crate::workspace::link_pages(connection, session, &pages, now)
 }

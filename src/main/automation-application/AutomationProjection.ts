@@ -68,6 +68,8 @@ export const projectAutomationDefinition = (
     targetSessionId: definition.target_session_id ?? null,
     notificationPolicy: definition.notification_policy ?? null,
     launch: definition.launch,
+    runbookPageId: definition.runbook_page_id ?? null,
+    runbookTitle: definition.runbook_title ?? null,
     heldFiring: definition.held_firing
       ? {
           dispatchId: definition.held_firing.dispatch_id,
@@ -227,6 +229,7 @@ export const toCoreAutomationDefinitionInput = (input: CodexScheduledAutomationC
   return {
     kind: input.kind,
     launch: input.launch ?? null,
+    runbook_page_id: input.runbookPageId ?? null,
     project_id: input.projectId ?? null,
     target_session_id: input.targetSessionId ?? null,
     notification_policy:

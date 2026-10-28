@@ -734,7 +734,7 @@ fn create_definition(
         return Err(conflict("Scheduled Automation id already exists"));
     }
     require_active_definition_capacity(connection)?;
-    let definition = normalize_definition(connection, input, None)?;
+    let definition = normalize_definition(connection, library_id, input, None)?;
     let launch = input.launch.unwrap_or({
         if matches!(context.adapter, AdapterKind::Agent) {
             AutomationLaunch::Ask
@@ -760,9 +760,9 @@ fn create_definition(
            reasoning_effort, service_tier, cwds_json, agent_backend_kind, \
            agent_backend_definition_id, agent_backend_instance_config_id, \
            execution_environment, local_environment_config_path, next_run_at, last_run_at, \
-           created_at, updated_at, definition_revision, notification_policy, project_id, launch\
+           created_at, updated_at, definition_revision, notification_policy, project_id, launch, runbook_page_id\
          ) VALUES (?1, ?2, 'ACTIVE', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
-           ?13, ?14, ?15, ?16, NULL, ?17, ?17, 1, ?18, ?19, ?20)",
+           ?13, ?14, ?15, ?16, NULL, ?17, ?17, 1, ?18, ?19, ?20, ?21)",
         params![
             automation_id,
             kind_string(definition.kind),
@@ -784,6 +784,7 @@ fn create_definition(
             definition.notification_policy.map(|_| "failed_runs_only"),
             definition.project_id,
             launch_literal(launch),
+            input.runbook_page_id,
         ],
     )?;
     let stored = read_definition(connection, automation_id)?
@@ -850,7 +851,8 @@ fn update_definition(
     if current.status == AutomationDefinitionStatus::Deleted {
         require_active_definition_capacity(connection)?;
     }
-    let definition = normalize_definition(connection, input, current.notification_policy)?;
+    let definition =
+        normalize_definition(connection, library_id, input, current.notification_policy)?;
     require_unique_active_heartbeat(connection, automation_id, status, &definition)?;
     let (now_ms, committed_at) = core_now(connection)?;
     let schedule_changed = current.kind != definition.kind
@@ -876,7 +878,7 @@ fn update_definition(
            agent_backend_kind = ?11, agent_backend_definition_id = ?12, \
            agent_backend_instance_config_id = ?13, execution_environment = ?14, \
            local_environment_config_path = ?15, next_run_at = ?16, updated_at = ?17, \
-           definition_revision = definition_revision + 1, notification_policy = ?20, project_id = ?21, launch = ?22 \
+           definition_revision = definition_revision + 1, notification_policy = ?20, project_id = ?21, launch = ?22, runbook_page_id = ?23 \
          WHERE automation_id = ?18 AND definition_revision = ?19",
         params![
             kind_string(definition.kind),
@@ -901,6 +903,7 @@ fn update_definition(
             definition.notification_policy.map(|_| "failed_runs_only"),
             definition.project_id,
             launch_literal(input.launch.unwrap_or(current.launch)),
+            input.runbook_page_id,
         ],
     )?;
     if changed != 1 {
@@ -1633,9 +1636,19 @@ fn is_page_occurrence_intent(intent: &AutomationIntent) -> bool {
 
 fn normalize_definition(
     connection: &Connection,
+    library_id: &str,
     input: &AutomationDefinitionInput,
     current_notification_policy: Option<AutomationNotificationPolicy>,
 ) -> Result<NormalizedDefinition, StoreError> {
+    if let Some(page_id) = &input.runbook_page_id {
+        validate_id("runbook_page_id", page_id)?;
+        let active: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM pages page JOIN blocks block ON block.id=page.block_id JOIN libraries library ON library.id=block.library_id WHERE page.block_id=?1 AND block.library_id=?2 AND block.lifecycle='active')", params![page_id,library_id], |row| row.get(0))?;
+        if !active {
+            return Err(not_found(
+                "The runbook must be an active Page in this Library",
+            ));
+        }
+    }
     let name = input.name.trim();
     if name.is_empty() || name.chars().count() > MAX_NAME_CHARS {
         return Err(invalid("Scheduled Automation name is invalid"));
@@ -2267,6 +2280,7 @@ mod tests {
     fn definition() -> AutomationDefinitionInput {
         AutomationDefinitionInput {
             launch: None,
+            runbook_page_id: None,
             kind: AutomationDefinitionKind::Cron,
             project_id: Some("project:default".to_owned()),
             target_session_id: None,

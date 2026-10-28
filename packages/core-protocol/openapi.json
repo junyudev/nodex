@@ -3719,6 +3719,19 @@
           "rrule": {
             "type": "string"
           },
+          "runbook_page_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runbook_title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The runbook Page's current title; None without a runbook or when the Page is no longer active."
+          },
           "service_tier": {
             "type": [
               "string",
@@ -3824,6 +3837,13 @@
               "string",
               "null"
             ]
+          },
+          "runbook_page_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A Page whose current content every run follows as standing instructions, and which\neach run's chat links to. Absent clears it, like other optional fields."
           },
           "service_tier": {
             "type": [
@@ -5604,6 +5624,19 @@
                 },
                 "rrule": {
                   "type": "string"
+                },
+                "runbook_page_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "runbook_title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The runbook Page's current title; None without a runbook or when the Page is no longer active."
                 },
                 "service_tier": {
                   "type": [

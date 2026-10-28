@@ -20,6 +20,8 @@ function automation(overrides: Partial<CodexScheduledAutomation> = {}): CodexSch
     targetSessionId: null,
     notificationPolicy: null,
     launch: "automatic",
+    runbookPageId: null,
+    runbookTitle: null,
     heldFiring: null,
     kind: "cron",
     status: "ACTIVE",

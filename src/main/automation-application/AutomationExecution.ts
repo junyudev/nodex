@@ -36,6 +36,7 @@ import type { AutomationFiringAdmission } from "./AutomationApplication";
 import type { InboxChatAgent } from "../../shared/inbox";
 import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
 import { InboxApplication } from "../inbox-application/InboxApplication";
+import { CoreModules } from "../core-runtime/CoreModules";
 import type { AutomationArchiveMessages } from "./AutomationArchiveExcerpt";
 
 type RunOutcome = NonNullable<AgentRuntimeOperations["run.outcome"]["output"]>;
@@ -113,6 +114,7 @@ export const live: Layer.Layer<
   | ProjectWorkspace
   | AgentBackendRegistry
   | InboxApplication
+  | CoreModules
 > = Layer.effect(
   AutomationExecution,
   Effect.gen(function* () {
@@ -122,6 +124,7 @@ export const live: Layer.Layer<
     const workspace = yield* ProjectWorkspace;
     const backends = yield* AgentBackendRegistry;
     const inbox = yield* InboxApplication;
+    const core = yield* CoreModules;
     const protect = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
       effect.pipe(Effect.mapError((cause) => new AutomationExecutionError({ operation, cause })));
     const fail = (operation: string, message: string) =>
@@ -160,6 +163,37 @@ export const live: Layer.Layer<
       );
       return { instanceId: provider.instanceId, model, options };
     });
+    const readRunbook = Effect.fn("AutomationExecution.readRunbook")(
+      function* (pageId: string) {
+        const read = (file_kind: "meta_yaml" | "body_markdown") =>
+          core.library.read(
+            { kind: "page_projection_file", page_id: pageId, file_kind },
+            { class: "background" },
+            null,
+          );
+        const metadata = yield* read("meta_yaml");
+        const body = yield* read("body_markdown");
+        if (
+          metadata.value.kind !== "page_projection_file" ||
+          body.value.kind !== "page_projection_file"
+        )
+          return yield* fail(
+            "runbook",
+            "This task's runbook Page is unavailable. Choose another Page or remove the runbook.",
+          );
+        return {
+          title: metadata.value.value.metadata?.title_markdown || "Untitled",
+          pageKey: metadata.value.value.page_key ?? pageId,
+          body: body.value.value.content,
+        };
+      },
+      Effect.mapError(() =>
+        fail(
+          "runbook",
+          "This task's runbook Page is unavailable. Choose another Page or remove the runbook.",
+        ),
+      ),
+    );
     const prepareDefinition: AutomationExecution["Service"]["prepareDefinition"] = (
       input,
       current,
@@ -265,6 +299,9 @@ export const live: Layer.Layer<
         return yield* fail("execute", "Scheduled execution requires its durable dispatch identity");
       const selected = yield* selection(definition, context.admission?.agent);
       const instructions = context.admission?.prompt ?? definition.prompt;
+      const runbook = definition.runbookPageId
+        ? yield* readRunbook(definition.runbookPageId)
+        : null;
       if (definition.kind === "heartbeat") {
         const sessionId = definition.targetSessionId;
         if (!sessionId)
@@ -341,6 +378,7 @@ export const live: Layer.Layer<
                   definition,
                   context.now,
                   instructions,
+                  runbook,
                 ),
                 modelSelection: selected,
               },
@@ -411,7 +449,7 @@ export const live: Layer.Layer<
             ...(cwd === null ? {} : { sourceRoot: cwd }),
             message: {
               messageId,
-              text: buildCodexScheduledAutomationRunPrompt(definition, instructions),
+              text: buildCodexScheduledAutomationRunPrompt(definition, instructions, runbook),
             },
           });
           if (!(yield* automation.runs.bindSession({ runId, sessionId })))

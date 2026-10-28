@@ -32,14 +32,22 @@ import {
 import type { ScheduledTaskChatOption } from "./scheduled-task-fields";
 import { ScheduledTaskForm } from "./scheduled-task-form";
 import { deriveScheduledTaskName } from "./scheduled-task-model";
+import { seedWorkbenchAutomationProject } from "@/components/workbench/workbench-automation-project-options";
 import type { ScheduledTasks } from "./use-scheduled-tasks";
 
 export type ScheduledTaskDialogRequest =
   | {
       readonly kind: "create";
       readonly template: WorkbenchAutomationTemplate | null;
+      /** A Page the new task follows as its runbook, and its title when it was chosen. */
+      readonly runbook?: { readonly pageId: string; readonly title: string | null } | null;
+      /** The Project the new task starts in. */
+      readonly projectId?: string | null;
     }
   | { readonly kind: "edit"; readonly task: CodexScheduledAutomation };
+
+/** A task created from a Page starts by following it; its instructions can add to that. */
+const RUNBOOK_INSTRUCTIONS = "Follow the runbook.";
 
 interface ScheduledTaskDialogProps {
   readonly request: ScheduledTaskDialogRequest | null;
@@ -61,20 +69,36 @@ const SECONDARY_PILL_CLASS = cn(
   "bg-token-foreground/5 text-token-foreground enabled:hover:bg-token-foreground/10",
 );
 
-function initialDraft(request: ScheduledTaskDialogRequest): WorkbenchAutomationDraft {
+function initialDraft(
+  request: ScheduledTaskDialogRequest,
+  projects: readonly Project[],
+): WorkbenchAutomationDraft {
   if (request.kind === "edit") return createWorkbenchAutomationDraft({ automation: request.task });
-  return request.template
+  const template = request.template
     ? createWorkbenchAutomationDraftFromTemplate(request.template)
     : createWorkbenchAutomationDraft();
+  const project = seedWorkbenchAutomationProject(
+    projects.find((candidate) => candidate.id === request.projectId),
+  );
+  const draft = project ? { ...template, ...project } : template;
+  return request.runbook
+    ? {
+        ...draft,
+        runbookPageId: request.runbook.pageId,
+        runbookTitle: request.runbook.title,
+        prompt: draft.prompt || RUNBOOK_INSTRUCTIONS,
+      }
+    : draft;
 }
 
-/** A new task without a name is named after its instructions. */
+/** A new task without a name is named after its runbook when it has one, else its instructions. */
 function draftToSave(
   request: ScheduledTaskDialogRequest,
   draft: WorkbenchAutomationDraft,
 ): WorkbenchAutomationDraft {
   if (request.kind === "edit" || draft.name.trim()) return draft;
-  return { ...draft, name: deriveScheduledTaskName(draft.prompt) };
+  const runbookTitle = draft.runbookPageId ? draft.runbookTitle?.trim() : null;
+  return { ...draft, name: runbookTitle || deriveScheduledTaskName(draft.prompt) };
 }
 
 function ScheduledTaskEditor({
@@ -97,7 +121,7 @@ function ScheduledTaskEditor({
   readonly instructionsRef: React.RefObject<HTMLTextAreaElement | null>;
 }) {
   const modelsQuery = useQuery(codexModelsListQueryOptions());
-  const [baseline, setBaseline] = useState(() => initialDraft(request));
+  const [baseline, setBaseline] = useState(() => initialDraft(request, projects));
   const [draft, setDraft] = useState(baseline);
   const [saving, setSaving] = useState(false);
   // Model defaults resolve once the model catalog arrives, for both the draft and its baseline.
@@ -169,6 +193,8 @@ function ScheduledTaskEditor({
           disabled={busy}
           nameInputRef={nameInputRef}
           instructionsRef={instructionsRef}
+          // A task started from a Page shows the runbook it follows, with its Project and Agent.
+          advancedInitiallyOpen={request.kind === "create" && Boolean(request.runbook)}
           onSubmit={() => void submit()}
           onOpenLocalEnvironmentsSettings={onOpenLocalEnvironmentsSettings}
         />

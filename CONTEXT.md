@@ -582,6 +582,12 @@ the reviewed message text as that run's instructions. An admitted Firing runs
 through the task's ordinary lease. Skipping it, handing its message elsewhere,
 or deleting its task ends it.
 
+### Runbook
+
+A Runbook is a Library Page that a Scheduled task follows as standing
+instructions. Each run reads its current content and may update it for later
+runs, and each run's chat links to it.
+
 ### Conversation recency
 
 Conversation recency is the time of a Thread's latest meaningful conversation
@@ -983,7 +989,7 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
   Library content listed in Space.
 - `docs/adr/0073-scheduled-runs-that-ask-in-the-inbox.md`: Scheduled tasks as
   the only Agent scheduler, held Firings reviewed in the Inbox, user-granted
-  unattended execution.
+  unattended execution, and runbook Pages.
 - `docs/adr/0043-database-scoped-page-keys.md`: Database-owned Page-key
   namespaces, Library-unique prefix history, monotonic allocation, UUID
   identity boundary, resolution, and presentation projection.

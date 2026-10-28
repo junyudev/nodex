@@ -16,6 +16,7 @@ const proposal = {
   targetSessionId: "session:resolved",
   notificationPolicy: null,
   launch: "automatic",
+  runbookPageId: "runbook-page",
 } as const;
 function item(overrides: Partial<McpItem> = {}): McpItem {
   return {
@@ -99,6 +100,7 @@ describe("native Automation result projection", () => {
                 name: "Current task",
                 rrule: "FREQ=WEEKLY",
                 launch: "ask",
+                runbookPageId: "runbook-page",
               },
             },
           },
@@ -112,6 +114,7 @@ describe("native Automation result projection", () => {
         name: "Current task",
         rrule: "FREQ=WEEKLY",
         launch: "ask",
+        runbookPageId: "runbook-page",
       },
     });
     expect(projected?.proposal).toBeUndefined();

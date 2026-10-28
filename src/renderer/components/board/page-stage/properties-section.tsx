@@ -40,6 +40,7 @@ import { PageStageDataSourcePropertyControl } from "./data-source-property-contr
 import type { PageStageController } from "./use-page-stage-controller";
 import type { PageStageRelatedChat } from "./types";
 import { PageFilesRow } from "./page-files-row";
+import { PageScheduledTasksRow } from "./scheduled-tasks-row";
 import { PageStagePropertyRow } from "./property-row";
 import { pageStagePropertyAddControl } from "./property-value-styles";
 
@@ -445,6 +446,7 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
       {shownRows.map((row) => (
         <PropertyListRow key={row.key} row={row} controller={controller} />
       ))}
+      <PageScheduledTasksRow pageId={pageId} />
       {relatedChatsCollapsed ? null : linkedChatsRow}
       {filesCollapsed ? null : filesRow}
 

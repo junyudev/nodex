@@ -9,6 +9,8 @@ function automation(overrides: Partial<CodexScheduledAutomation> = {}): CodexSch
     projectId: null,
     notificationPolicy: null,
     launch: "automatic",
+    runbookPageId: null,
+    runbookTitle: null,
     heldFiring: null,
     kind: "heartbeat",
     status: "ACTIVE",

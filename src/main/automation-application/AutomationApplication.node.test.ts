@@ -214,6 +214,8 @@ it.effect(
       const refreshes: unknown[] = [];
       const task = definition({
         launch: "ask",
+        runbook_page_id: "runbook",
+        runbook_title: "Team runbook",
         held_firing: {
           dispatch_id: "dispatch",
           page_id: "inbox-page",
@@ -292,6 +294,8 @@ it.effect(
           serviceTier: null,
         },
       });
+      assert.equal(claim?.definition.runbookPageId, "runbook");
+      assert.equal(claim?.definition.runbookTitle, "Team runbook");
       assert.equal(claim?.definition.heldFiring?.missedCount, 1);
       const updated = yield* application.definitions
         .update(
@@ -302,6 +306,7 @@ it.effect(
             name: "Updated",
             targetSessionId: "session:source",
             launch: "ask",
+            runbookPageId: "runbook",
           },
           { expectedRevision: 1, operationId: "stable-edit" },
         )
@@ -489,6 +494,7 @@ it.effect("replays complete Definition replacements with the original revision a
             target_session_id: null,
             notification_policy: { kind: "preserve" },
             launch: null,
+            runbook_page_id: null,
             name: "Replacement",
             prompt: null,
             rrule: null,

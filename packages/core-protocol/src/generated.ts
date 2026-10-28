@@ -800,6 +800,9 @@ export interface components {
             readonly prompt: string;
             readonly reasoning_effort?: string | null;
             readonly rrule: string;
+            readonly runbook_page_id?: string | null;
+            /** @description The runbook Page's current title; None without a runbook or when the Page is no longer active. */
+            readonly runbook_title?: string | null;
             readonly service_tier?: string | null;
             readonly status: components["schemas"]["AutomationDefinitionStatus"];
             readonly target_session_id?: string | null;
@@ -820,6 +823,11 @@ export interface components {
             readonly prompt?: string | null;
             readonly reasoning_effort?: string | null;
             readonly rrule?: string | null;
+            /**
+             * @description A Page whose current content every run follows as standing instructions, and which
+             *     each run's chat links to. Absent clears it, like other optional fields.
+             */
+            readonly runbook_page_id?: string | null;
             readonly service_tier?: string | null;
             readonly target_session_id?: string | null;
         };
@@ -1278,6 +1286,9 @@ export interface components {
                 readonly prompt: string;
                 readonly reasoning_effort?: string | null;
                 readonly rrule: string;
+                readonly runbook_page_id?: string | null;
+                /** @description The runbook Page's current title; None without a runbook or when the Page is no longer active. */
+                readonly runbook_title?: string | null;
                 readonly service_tier?: string | null;
                 readonly status: components["schemas"]["AutomationDefinitionStatus"];
                 readonly target_session_id?: string | null;

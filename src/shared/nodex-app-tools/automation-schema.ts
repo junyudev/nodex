@@ -22,6 +22,12 @@ const definitionFields = {
     .describe(
       "Ask before running or run automatically. Agents may create ask tasks or switch to ask; automatic requires a suggested change the user applies. Omitted on create defaults to ask; omitted on update preserves the current choice.",
     ),
+  runbookPageId: id
+    .nullable()
+    .optional()
+    .describe(
+      "Page whose current content every run follows as standing instructions. Runs may update it for future runs. Null or omitted removes the runbook.",
+    ),
   backendBinding: z
     .discriminatedUnion("kind", [
       z.strictObject({ kind: z.literal("codex") }),

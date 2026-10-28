@@ -93,6 +93,16 @@ export function formatWorkbenchAutomationProjectTriggerLabel(input: {
   return selectedRoots.length > 1 ? `${label} · ${selectedRoots.length} folders` : label;
 }
 
+/** A new task in a Project starts in its first folder, in a worktree. */
+export function seedWorkbenchAutomationProject(
+  project: Project | undefined,
+): { projectId: string; cwds: string[]; executionEnvironment: "worktree" } | null {
+  const root = project ? listProjectRoots(project)[0] : undefined;
+  return project && root
+    ? { projectId: project.id, cwds: [root], executionEnvironment: "worktree" }
+    : null;
+}
+
 export function resolveWorkbenchAutomationProjectForRoot(input: {
   projects: readonly Project[];
   root: string | null | undefined;

@@ -20,6 +20,8 @@ function task(overrides: Partial<CodexScheduledAutomation> = {}): CodexScheduled
     targetSessionId: null,
     notificationPolicy: null,
     launch: "automatic",
+    runbookPageId: null,
+    runbookTitle: null,
     heldFiring: null,
     name: "Task",
     prompt: "Do the thing",

@@ -127,6 +127,10 @@ import {
 } from "@/lib/pending-worktree-runtime";
 import { useScheduledTasks } from "@/features/scheduled/use-scheduled-tasks";
 import type { ScheduledSidebarNavigation } from "@/features/scheduled/scheduled-sidebar";
+import {
+  ScheduledNavigationProvider,
+  type ScheduledNavigation,
+} from "@/features/scheduled/scheduled-navigation";
 import type { CustomizeNavigation } from "@/features/plugins/customize-navigation";
 import {
   buildPluginDirectoryPath,
@@ -2741,6 +2745,19 @@ export function WorkbenchRuntime({
     onOpenSettings: (target) =>
       openSettingsPath(target == null ? PLUGINS_SETTINGS_PATH : buildPluginSettingsPath(target)),
     onOpenHooksSettings: () => openSettingsAt("hooks-settings"),
+  };
+  // Pages and Inboxes reach Scheduled through this, wherever they are shown.
+  const scheduledNavigation: ScheduledNavigation = {
+    openTask: (automationId) => navigateScheduled(buildAutomationsPath({ automationId })),
+    scheduleRunbook: ({ pageId, title, projectId }) =>
+      navigateScheduled(
+        buildAutomationsPath({
+          automationMode: "create",
+          runbookPageId: pageId,
+          runbookTitle: title,
+          projectId,
+        }),
+      ),
   };
   const scheduledSidebarNavigation: ScheduledSidebarNavigation = {
     tasks: scheduledTasks,
@@ -5659,7 +5676,9 @@ export function WorkbenchRuntime({
 
   return (
     <AgentSettingsNavigationProvider openAgentSettings={openAgentSettings}>
-      <WorkbenchNewTabPortProvider port={newTabPort}>{workbench}</WorkbenchNewTabPortProvider>
+      <ScheduledNavigationProvider value={scheduledNavigation}>
+        <WorkbenchNewTabPortProvider port={newTabPort}>{workbench}</WorkbenchNewTabPortProvider>
+      </ScheduledNavigationProvider>
     </AgentSettingsNavigationProvider>
   );
 }

@@ -31,6 +31,8 @@ export function applyOptimisticScheduledTaskUpdate(
       kind: update.kind,
       status: update.status,
       launch: update.launch ?? automation.launch,
+      runbookPageId:
+        update.runbookPageId === undefined ? automation.runbookPageId : update.runbookPageId,
       projectId: isCron ? (update.projectId ?? null) : null,
       targetSessionId: isCron ? null : (update.targetSessionId ?? null),
       name: update.name,
@@ -54,7 +56,7 @@ export function applyOptimisticScheduledTaskUpdate(
 
 /**
  * The full update that changes only a task's status. An update replaces the whole definition,
- * so every optional field it keeps is restated.
+ * so every optional field it keeps, the runbook included, is restated.
  */
 export function buildScheduledTaskStatusUpdate(
   automation: CodexScheduledAutomation,
@@ -66,6 +68,7 @@ export function buildScheduledTaskStatusUpdate(
     projectId: automation.projectId,
     status,
     launch: automation.launch,
+    runbookPageId: automation.runbookPageId,
     targetSessionId: automation.targetSessionId,
     name: automation.name,
     prompt: automation.prompt,

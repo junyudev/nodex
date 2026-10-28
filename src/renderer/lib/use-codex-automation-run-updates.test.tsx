@@ -20,6 +20,8 @@ function makeAutomation(id: string): CodexScheduledAutomation {
     projectId: null,
     notificationPolicy: null,
     launch: "automatic",
+    runbookPageId: null,
+    runbookTitle: null,
     heldFiring: null,
     kind: "cron",
     status: "ACTIVE",

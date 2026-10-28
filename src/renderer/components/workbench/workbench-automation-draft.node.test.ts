@@ -61,6 +61,8 @@ function makeAutomation(
     projectId: null,
     notificationPolicy: null,
     launch: "automatic",
+    runbookPageId: null,
+    runbookTitle: null,
     heldFiring: null,
     kind: "heartbeat",
     status: "ACTIVE",

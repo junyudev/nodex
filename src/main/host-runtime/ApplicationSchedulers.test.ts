@@ -79,6 +79,8 @@ const automationDefinition = (
   targetSessionId: kind === "heartbeat" ? "session-follow-up" : null,
   notificationPolicy: null,
   launch: "automatic",
+  runbookPageId: null,
+  runbookTitle: null,
   heldFiring: null,
   kind,
   status: "ACTIVE",
