@@ -99,34 +99,11 @@ function measureIntrinsicElementWidth(element: HTMLElement): number {
 
 export function LocalConversationAboveComposerPortalHost({
   conversationId,
-  onContentPresenceChange,
 }: {
   conversationId?: string | null;
-  onContentPresenceChange?: (hasContent: boolean) => void;
 }) {
-  const [host, setHost] = useState<HTMLDivElement | null>(null);
-
-  useLayoutEffect(() => {
-    if (!onContentPresenceChange) return;
-    if (!host) {
-      onContentPresenceChange(false);
-      return;
-    }
-
-    const publishPresence = () => {
-      onContentPresenceChange(host.childElementCount > 0);
-    };
-    publishPresence();
-
-    if (typeof MutationObserver === "undefined") return;
-    const observer = new MutationObserver(publishPresence);
-    observer.observe(host, { childList: true });
-    return () => observer.disconnect();
-  }, [host, onContentPresenceChange]);
-
   return (
     <div
-      ref={setHost}
       id={LOCAL_CONVERSATION_FIXED_ABOVE_COMPOSER_PORTAL_ID}
       data-above-composer-portal="true"
       data-above-composer-conversation-id={conversationId ?? undefined}

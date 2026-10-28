@@ -102,7 +102,6 @@ interface LocalConversationComposerShellProps {
   errorMessage: string | null;
   onErrorMessage: (message: string | null) => void;
   contextRailLeadingContent?: ReactNode;
-  hasFixedPortalContent?: boolean;
 }
 
 function TerminalIcon() {
@@ -192,23 +191,8 @@ function QueueLabelActionButton({
   );
 }
 
-function ComposerShellCard({
-  showRoundedTop,
-  children,
-}: {
-  showRoundedTop: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "bg-token-input-background/70 text-token-foreground border-token-border/80 relative overflow-clip border-x border-t backdrop-blur-sm",
-        showRoundedTop && "rounded-t-2xl",
-      )}
-    >
-      {children}
-    </div>
-  );
+function ComposerShellCard({ children }: { children: ReactNode }) {
+  return <div className="relative overflow-clip text-token-foreground">{children}</div>;
 }
 
 function clampTransformToRect(
@@ -506,15 +490,7 @@ function QueuedFollowUpRow({
   );
 }
 
-function QueuePanel({
-  model,
-  actions,
-  showRoundedTop,
-}: {
-  model: ThreadFooterModel;
-  actions: ThreadStageActions;
-  showRoundedTop: boolean;
-}) {
+function QueuePanel({ model, actions }: { model: ThreadFooterModel; actions: ThreadStageActions }) {
   const threadId = model.threadId;
   const pendingSteerRows = model.composerShell.pendingSteerRows;
   const queuedFollowUpRows = model.composerShell.queuedFollowUpRows;
@@ -582,7 +558,7 @@ function QueuePanel({
   };
 
   return (
-    <ComposerShellCard showRoundedTop={showRoundedTop}>
+    <ComposerShellCard>
       <div className="vertical-scroll-fade-mask hide-scrollbar flex max-h-[30dvh] flex-col gap-px overflow-x-hidden overflow-y-auto px-3 py-row-y">
         {queuePause ? (
           <>
@@ -725,12 +701,10 @@ function BackgroundTerminalPanel({
   threadId,
   rows,
   actions,
-  showRoundedTop,
 }: {
   threadId: string;
   rows: ThreadFooterModel["composerShell"]["backgroundTerminalRows"];
   actions: ThreadStageActions;
-  showRoundedTop: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (rows.length === 0) {
@@ -738,7 +712,7 @@ function BackgroundTerminalPanel({
   }
 
   return (
-    <ComposerShellCard showRoundedTop={showRoundedTop}>
+    <ComposerShellCard>
       <div className="flex items-center justify-between gap-2 px-3 py-row-y">
         <div className="flex min-w-0 items-center gap-2">
           <TerminalIcon />
@@ -990,7 +964,6 @@ function ScopedLocalConversationComposerShell({
   errorMessage,
   onErrorMessage,
   contextRailLeadingContent,
-  hasFixedPortalContent = false,
 }: LocalConversationComposerShellProps) {
   const intelligenceController = useComposerIntelligenceController(model, actions);
 
@@ -1045,33 +1018,22 @@ function ScopedLocalConversationComposerShell({
     backgroundTerminalThreadId !== null && model.composerShell.backgroundTerminalRows.length > 0;
   const showAuxiliaryLaneStack =
     showQueuePanel || showThreadGoalStatusRow || showBackgroundTerminals;
-  let sectionIndex = hasFixedPortalContent ? 1 : 0;
-
-  const resolveRoundedTop = () => {
-    const showRoundedTop = sectionIndex === 0;
-    sectionIndex += 1;
-    return showRoundedTop;
-  };
-
   const auxiliaryLaneStack = showAuxiliaryLaneStack ? (
-    <div className="order-2 flex flex-col">
-      {showQueuePanel ? (
-        <QueuePanel model={model} actions={actions} showRoundedTop={resolveRoundedTop()} />
-      ) : null}
+    // Keep fill and blur on the framed layer: a filtered child can mask its
+    // curved stroke when the rail clips its contents.
+    <div
+      data-composer-auxiliary-rail="true"
+      className="relative order-2 flex min-w-0 flex-col divide-y divide-token-border/80 overflow-clip rounded-t-2xl border-x border-t border-token-border/80 bg-token-input-background/70 backdrop-blur-sm supports-[corner-shape:superellipse(1.5)]:[corner-shape:var(--codex-corner-shape)]"
+    >
+      {showQueuePanel ? <QueuePanel model={model} actions={actions} /> : null}
       {showThreadGoalStatusRow ? (
-        <ThreadGoalStatusRow
-          goal={threadGoal}
-          hostId={model.hostId}
-          actions={actions}
-          showRoundedTop={resolveRoundedTop()}
-        />
+        <ThreadGoalStatusRow goal={threadGoal} hostId={model.hostId} actions={actions} />
       ) : null}
       {showBackgroundTerminals ? (
         <BackgroundTerminalPanel
           threadId={backgroundTerminalThreadId}
           rows={model.composerShell.backgroundTerminalRows}
           actions={actions}
-          showRoundedTop={resolveRoundedTop()}
         />
       ) : null}
     </div>

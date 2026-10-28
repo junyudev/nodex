@@ -30,29 +30,6 @@ describe("LocalConversationAboveComposerPortal", () => {
     buildTurnDiffModelCall.mockClear();
   });
 
-  test("reports actual fixed-host content presence to composer chrome", async () => {
-    const presence: boolean[] = [];
-    render(
-      <TooltipProvider>
-        <LocalConversationAboveComposerPortalHost
-          conversationId="thread-portal"
-          onContentPresenceChange={(hasContent) => presence.push(hasContent)}
-        />
-        <LocalConversationAboveComposerPortal
-          blocks={[buildTurnDiffBlock()]}
-          conversationId="thread-portal"
-          isLatestTurn={true}
-          isStreamingTurn={true}
-          threadCwd="/tmp/project"
-        />
-      </TooltipProvider>,
-    );
-
-    await settleAsyncRender();
-
-    expect(presence.at(-1)).toBe(true);
-  });
-
   test("renders streaming turn diffs through the fixed-content portal shell", async () => {
     let openedTurnId = "";
     const { container } = render(

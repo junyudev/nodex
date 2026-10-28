@@ -249,6 +249,16 @@ const startTurn = (params, source = "turn/start") => {
       threadId: thread().id,
       status: { type: "active", activeFlags: [] },
     });
+    if (process.env.NODEX_FAKE_CODEX_COMPOSER_PLAN === "1") {
+      notify("turn/plan/updated", {
+        threadId: thread().id,
+        turnId: next.id,
+        explanation: null,
+        plan: [
+          { step: "Verify the rounded rail", status: "pending" },
+        ],
+      });
+    }
     record("async-question-mode", { enabled: process.env.NODEX_FAKE_CODEX_ASYNC_QUESTIONS === "1" });
     if (process.env.NODEX_FAKE_CODEX_SYNC_QUESTIONS === "1") {
       setTimeout(() => {

@@ -233,12 +233,10 @@ export function ThreadGoalStatusRow({
   goal,
   hostId,
   actions,
-  showRoundedTop = true,
 }: {
   goal: ThreadGoal | null;
   hostId: string;
   actions: ThreadStageActions;
-  showRoundedTop?: boolean;
 }) {
   const [expandedObjective, setExpandedObjective] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<GoalRowPendingAction>(null);
@@ -349,14 +347,8 @@ export function ThreadGoalStatusRow({
       : getThreadGoalMessage("composer.threadGoal.resume");
 
   return (
-    <div className="order-2 flex min-w-0 flex-col" data-thread-goal-status-row="true">
-      <div
-        className={cn(
-          "relative min-w-0 overflow-clip text-token-foreground",
-          "border-x border-t border-token-border/80 bg-token-input-background/70 backdrop-blur-sm",
-          showRoundedTop && "rounded-t-2xl",
-        )}
-      >
+    <div className="flex min-w-0 flex-col" data-thread-goal-status-row="true">
+      <div className="relative min-w-0 overflow-clip text-token-foreground">
         <div className="flex items-center justify-between gap-2 px-3 py-row-y">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <GoalTargetIcon className="icon-2xs shrink-0 text-token-input-placeholder-foreground/70" />

@@ -68,16 +68,11 @@ function LocalConversationFooterChrome({
   contextRailLeadingContent?: ReactNode;
   showComposer?: boolean;
 }) {
-  const [hasFixedPortalContent, setHasFixedPortalContent] = useState(false);
-
   return (
     <div className="flex flex-col" data-thread-find-composer="true">
       {catchUpControl}
       <div className="relative flex flex-col" data-thread-footer-stack="true">
-        <LocalConversationAboveComposerPortalHost
-          conversationId={model.threadId}
-          onContentPresenceChange={setHasFixedPortalContent}
-        />
+        <LocalConversationAboveComposerPortalHost conversationId={model.threadId} />
         <LocalConversationAboveComposerQueuePortalHost conversationId={model.threadId} />
         {showComposer ? (
           <LocalConversationComposerShell
@@ -86,7 +81,6 @@ function LocalConversationFooterChrome({
             errorMessage={errorMessage}
             onErrorMessage={onErrorMessage}
             contextRailLeadingContent={contextRailLeadingContent}
-            hasFixedPortalContent={hasFixedPortalContent}
           />
         ) : contextRailLeadingContent ? (
           <ComposerContextRailSlot visible>
