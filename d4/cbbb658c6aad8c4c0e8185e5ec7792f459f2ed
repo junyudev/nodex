@@ -1,0 +1,47 @@
+src/renderer/components/workbench/app-shell-tabs.test.tsx
+  s_52c7d635525c94::t_807e57cd5d7ed7 2
+  s_52c7d635525c94::t_9eafbe4e108b21 1405-1413,1427-1471
+  s_52c7d635525c94::t_e97097a674a5d3 1472
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_52c7d635525c94::t_760ff17794d004 829-867,869-870
+  s_52c7d635525c94::t_8d5474925c4081 868
+docs/product-specs/workbench-shell.md
+  s_52c7d635525c94::t_c9be5973bd3fb6 25,216
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-shell.tsx
+  s_52c7d635525c94::t_9569a58b2304f7 22-25,27-29
+src/renderer/components/workbench/app-shell-tabs.tsx
+  s_52c7d635525c94::t_3257447a5abe47 33,36,141,146-155,1223-1235,1241-1248,1335,1345,1348-1349,1351
+src/renderer/components/shared/icons/app-icons.tsx
+  s_52c7d635525c94::t_8590992120fe7e 18-19
+  s_52c7d635525c94::t_95afe7f66d71d0 1970-1971
+src/shared/session-context-menu-icons.ts
+  s_52c7d635525c94::t_95afe7f66d71d0 2,24-27,57-58
+src/renderer/lib/use-workbench-thread-summary.ts
+  s_52c7d635525c94::t_bac12d30f7b22a 132-133,136-140
+src/shared/native-context-menu.ts
+  s_52c7d635525c94::t_95afe7f66d71d0 19-21
+src/shared/icon-geometry.ts
+  s_52c7d635525c94::t_95afe7f66d71d0 48-54
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_52c7d635525c94::t_d9471b020e5d88 3628-3629,3635-3636
+  s_52c7d635525c94::t_bac12d30f7b22a 3750-3751,3754,3756,3758-3762
+  s_52c7d635525c94::t_5432708ac88401 32
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-toggle.tsx
+  s_52c7d635525c94::t_8c77b4bf2c1239 1,5-6,8,10-21,45,53,55-57,61-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d4cbbb658c6aad8c4c0e8185e5ec7792f459f2ed",
+  "prompts": {},
+  "sessions": {
+    "s_52c7d635525c94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aff2e8a0-50dd-4019-aa85-7b5ade99e79e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
