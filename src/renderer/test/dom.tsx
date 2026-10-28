@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { type ReactElement } from "react";
 import { vi } from "vite-plus/test";
+import type { HighlightOptions } from "@streamdown/code";
 
 export function render(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
   return rtlRender(ui, options);
@@ -57,6 +58,39 @@ export async function openNodexMenu(trigger: HTMLElement) {
 }
 
 export async function waitForCodeHighlight(node: ParentNode) {
+  await settleLazyRender();
+  await act(async () => {
+    const [{ streamdownCodePlugin }, { CODE_BLOCK_THEME_PAIR }, { resolveReadonlyCodeLanguage }] =
+      await Promise.all([
+        import("@/lib/markdown/markdown-code-highlighter"),
+        import("@/lib/syntax-highlighting"),
+        import("@/lib/code-block-presentation"),
+      ]);
+    const languages = new Set(
+      Array.from(node.querySelectorAll<HTMLElement>("[data-readonly-code-block]")).map(
+        (block) => resolveReadonlyCodeLanguage(block.dataset.language ?? "text").highlightLanguage,
+      ),
+    );
+    // Native grammar imports bypass Vitest's import tracker. Await the actual plugin,
+    // using empty code so the component still owns its complete or streaming token result.
+    await Promise.all(
+      Array.from(
+        languages,
+        (language) =>
+          new Promise<void>((resolve) => {
+            const result = streamdownCodePlugin.highlight(
+              {
+                code: "",
+                language: language as HighlightOptions["language"],
+                themes: [...CODE_BLOCK_THEME_PAIR],
+              },
+              () => resolve(),
+            );
+            if (result) resolve();
+          }),
+      ),
+    );
+  });
   await waitFor(() => {
     // Before Shiki resolves, and for unsupported grammars, code renders without a theme color.
     const highlightedCode = Array.from(
