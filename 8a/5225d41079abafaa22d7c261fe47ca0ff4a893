@@ -1,0 +1,74 @@
+src/renderer/lib/workbench-scene-navigator.ts
+  s_2900de11120cb5::t_5f3452385ffa9d 96-97
+src/shared/schemas/inbox.ts
+  s_7b984a57d9e872::t_e5b49535cef2ad 289
+docs/product-specs/inbox-behavior.md
+  s_2900de11120cb5::t_e7ac9816195fe0 427-430,578-579
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_2900de11120cb5::t_9fa1fb82053984 4315,4498
+  s_2900de11120cb5::t_566480754e6ded 3959,4377
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_2900de11120cb5::t_3804c58bf5d7c0 538-542
+src/renderer/lib/workbench-scene-surface-presenter.ts
+  s_2900de11120cb5::t_322751299f26d6 76
+src/shared/schemas/inbox.test.ts
+  s_7b984a57d9e872::t_e5b49535cef2ad 10,16-24,27-29
+  s_7b984a57d9e872::t_61c30eebea9be3 25-26
+src/renderer/features/inbox/inbox-settings-page.tsx
+  s_2900de11120cb5::t_cd80de935479bf 124-132
+  s_2900de11120cb5::t_08b749f96b37d0 123
+tests/e2e/inbox-new-chat-page.spec.ts
+  s_2900de11120cb5::t_6f7910dcddd3aa 41-42
+  s_2900de11120cb5::t_6ea847c4554b39 44,51-56,76,93
+  s_2900de11120cb5::t_9abb21101b319c 60-62
+  s_2900de11120cb5::t_f6cd963d0098b2 1-2,4-40,43,50,57-58,63-75,77-83,85-90,92,95-97,99-115
+  s_2900de11120cb5::t_b36b7d41e67a9d 3,45-49,59,84,91,94,98
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_7b984a57d9e872::t_a1f24959f56034 50
+src/shared/inbox.ts
+  s_7b984a57d9e872::t_e5b49535cef2ad 523-524,539
+src/renderer/lib/workbench-scene-navigator.node.test.ts
+  s_2900de11120cb5::t_9a9338217582a1 582-614
+src/renderer/lib/use-workbench-session-commands.ts
+  s_2900de11120cb5::t_fe27c0312b3a51 83
+  s_2900de11120cb5::t_1a52ce95c4487b 96-98,130-133,135-136,139-141,389,428-450,1516
+  s_2900de11120cb5::t_90a07d446a7f5b 134,137-138
+  s_2900de11120cb5::t_20e06141046725 95
+src/main/settings/ApplicationSettings.test.ts
+  s_7b984a57d9e872::t_a1f24959f56034 358-362,394-398,403-407
+CHANGELOG.md
+  s_2900de11120cb5::t_607c02f9625a25 29
+src/main/settings/application-settings-persistence.ts
+  s_7b984a57d9e872::t_e5b49535cef2ad 126,1317-1320,1345
+src/renderer/lib/page-chat-actions.ts
+  s_2900de11120cb5::t_79e72ed21e9c17 1
+  s_2900de11120cb5::t_5585cb75dc84fa 19-25
+src/renderer/features/inbox/inbox-route.tsx
+  s_2900de11120cb5::t_566480754e6ded 83
+  s_2900de11120cb5::t_ff0fdb711542fb 33,82,247,287-296
+  s_2900de11120cb5::t_8d44cdda1bd6ec 281-286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8a5225d41079abafaa22d7c261fe47ca0ff4a893",
+  "prompts": {},
+  "sessions": {
+    "s_2900de11120cb5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86a5d445-c73f-4b76-bc76-4ee8d845b64e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7b984a57d9e872": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1804c-ea28-7fa2-ad03-7e7f9d954bff",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
