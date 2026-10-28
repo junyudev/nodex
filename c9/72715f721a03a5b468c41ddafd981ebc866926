@@ -1,0 +1,19 @@
+docs/product-specs/scheduled-route-behavior.md
+  s_f2e3c034e2bc1d::t_006c7b8542ca11 158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c972715f721a03a5b468c41ddafd981ebc866926",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
