@@ -1,0 +1,56 @@
+diff --git a/floating-ui-react/components/FloatingFocusManager.js b/floating-ui-react/components/FloatingFocusManager.js
+index 2f60849..e9650d2 100644
+--- a/floating-ui-react/components/FloatingFocusManager.js
++++ b/floating-ui-react/components/FloatingFocusManager.js
+@@ -414,16 +414,21 @@ function FloatingFocusManager(props) {
+           if (!openRef.current) {
+             return false;
+           }
++          const currentActiveElement = (0, _element.activeElement)(doc);
++          // A portaled descendant owns focus even though it is outside this popup's DOM.
++          const focusMovedIntoChild = currentActiveElement !== elToFocus && tree && (0, _nodes.getNodeChildren)(tree.nodesRef.current, getNodeId()).some(node => (0, _element.contains)(node.context?.elements.floating, currentActiveElement));
++          if (focusMovedIntoChild) {
++            return false;
++          }
+           if (hadFocusInside) {
+             return true;
+           }
+-          const currentActiveElement = (0, _element.activeElement)(doc);
+           const focusMovedInside = currentActiveElement !== elToFocus && (0, _element.contains)(floatingFocusElement, currentActiveElement);
+           return !focusMovedInside;
+         }
+       });
+     });
+-  }, [disabled, open, floatingFocusElement, getTabbableContent, initialFocusRef, openInteractionTypeRef, openRef, dataRef]);
++  }, [disabled, open, floatingFocusElement, getTabbableContent, initialFocusRef, openInteractionTypeRef, openRef, dataRef, tree, getNodeId]);
+ 
+   // A return-focus queued by the effect cleanup. If the effect re-arms in the same commit, a
+   // dependency changed while the popup stayed open, so the cleanup was not a close.
+diff --git a/floating-ui-react/components/FloatingFocusManager.mjs b/floating-ui-react/components/FloatingFocusManager.mjs
+index 5d2a271..aa8905b 100644
+--- a/floating-ui-react/components/FloatingFocusManager.mjs
++++ b/floating-ui-react/components/FloatingFocusManager.mjs
+@@ -408,16 +408,21 @@ export function FloatingFocusManager(props) {
+           if (!openRef.current) {
+             return false;
+           }
++          const currentActiveElement = activeElement(doc);
++          // A portaled descendant owns focus even though it is outside this popup's DOM.
++          const focusMovedIntoChild = currentActiveElement !== elToFocus && tree && getNodeChildren(tree.nodesRef.current, getNodeId()).some(node => contains(node.context?.elements.floating, currentActiveElement));
++          if (focusMovedIntoChild) {
++            return false;
++          }
+           if (hadFocusInside) {
+             return true;
+           }
+-          const currentActiveElement = activeElement(doc);
+           const focusMovedInside = currentActiveElement !== elToFocus && contains(floatingFocusElement, currentActiveElement);
+           return !focusMovedInside;
+         }
+       });
+     });
+-  }, [disabled, open, floatingFocusElement, getTabbableContent, initialFocusRef, openInteractionTypeRef, openRef, dataRef]);
++  }, [disabled, open, floatingFocusElement, getTabbableContent, initialFocusRef, openInteractionTypeRef, openRef, dataRef, tree, getNodeId]);
+ 
+   // A return-focus queued by the effect cleanup. If the effect re-arms in the same commit, a
+   // dependency changed while the popup stayed open, so the cleanup was not a close.

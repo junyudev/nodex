@@ -30,6 +30,9 @@ Do not add release-age exclusions to resolve peer conflicts. Run `vp install`,
 
 - Vendored BlockNote packages share one version; keep the code-block peer
   declaration aligned with its workspace Core dependency.
+- Base UI `1.9.0` queued popup focus must respect an already focused open descendant
+  in the same floating tree. Its runtime patch covers both module formats; retain
+  the controlled-frame menu regression when updating the package.
 - `@pierre/diffs` supplies `@pierre/theme@2.0.0`. Trees `1.0.0-beta.6` pins
   theming `1.0.0`, so its dependency is overridden to `1.0.2`, which supports
   Theme 2 and preserves the color normalization API used by Trees.
