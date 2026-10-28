@@ -1,0 +1,220 @@
+src/renderer/features/local-conversation/view/local-conversation-find-placement.browser.test.tsx
+  s_c308b770a17d41::t_c5530611d2fd68 172
+packages/agent-runtime/src/orchestration-v2/ThreadManagementService.ts
+  s_09e8b563de7c82::t_49777022c572a6 1271-1272,1283-1289
+  s_09e8b563de7c82::t_22233a501b9ce5 1290-1292
+scripts/testing/run-tests.test.ts
+  s_68fe4a2c615450::t_04b66282dd171a 41-46
+src/renderer/features/local-conversation/native-thread-stage-actions.ts
+  s_c308b770a17d41::t_26f289fe3f88a7 55
+packages/agent-runtime/src/persistence/Migrations/081_ConversationDiscovery.test.ts
+  s_68fe4a2c615450::t_41b5d4ab67d332 54-56
+src/renderer/features/local-conversation/remote-codex-stage-actions.ts
+  s_c308b770a17d41::t_26f289fe3f88a7 171-181
+src/renderer/features/local-conversation/view/composer/request-cards/pending-request-conversation-actions.node.test.ts
+  s_c308b770a17d41::t_c5530611d2fd68 40
+src/renderer/features/local-conversation/view/local-conversation-stage-header.test.tsx
+  s_c308b770a17d41::t_c5530611d2fd68 43
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.testkit.ts
+  s_09e8b563de7c82::t_2771846d5bd388 150-163,166
+  s_09e8b563de7c82::t_2c58124d887a41 69-72,76-83,86-88,99-108,111-119,126-127,131-132
+  s_09e8b563de7c82::t_b6e1e4cff18168 73,75,89-98,109-110,120-123,125,137,139
+  s_09e8b563de7c82::t_1fd876f0810fbd 74,124,134-136,138,140-149,164-165
+packages/agent-runtime/src/orchestration-v2/ThreadManagementService.test.ts
+  s_c308b770a17d41::t_8cdb245926e0ef 20-21,965-969,971,989,997,1001,1010-1013
+  s_09e8b563de7c82::t_ffb10f4bf2a83b 970
+scripts/ci/verify-test-inventory.ts
+  s_68fe4a2c615450::t_41b5d4ab67d332 9,60-62,66,87-89
+  s_c308b770a17d41::t_970003a70d22ad 63-65
+config/vitest-test-tier.test.ts
+  s_68fe4a2c615450::t_04b66282dd171a 7,9
+docs/development.md
+  s_68fe4a2c615450::t_04b66282dd171a 709-712
+  s_68fe4a2c615450::t_370784d9943a81 713-718
+src/renderer/features/local-conversation/agent-runtime-background-tasks.node.test.ts
+  s_c308b770a17d41::t_3beda65b17e187 58,68,78
+src/renderer/test/composer-actions-fixture.ts
+  s_c308b770a17d41::t_26f289fe3f88a7 34
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.test.tsx
+  s_c308b770a17d41::t_c5530611d2fd68 106
+  s_c308b770a17d41::t_db4281a8fd6e80 289,302
+src/renderer/features/local-conversation/agent-runtime-background-tasks.ts
+  s_c308b770a17d41::t_7a6e3ffb2a92a6 48
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-background-section.tsx
+  s_c308b770a17d41::t_aef852a80fea9f 240,270-271,274-275,277-278,280-293
+  s_c308b770a17d41::t_976c4bfa886691 269
+  s_c308b770a17d41::t_12c7d89ec289b4 144
+  s_c308b770a17d41::t_5dde87858dd7d1 2-3,160,162,167,169,182-184,186,199,204,220-222,224-225,237-238,241,243,245-258,261,272-273,276,279,302,304-305,307-309,311
+  s_c308b770a17d41::t_eba9cad2e15930 128
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_c308b770a17d41::t_aef852a80fea9f 2
+  s_c308b770a17d41::t_976c4bfa886691 142,1133,1684,1829,1831
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_c308b770a17d41::t_970003a70d22ad 92,5825-5829,5831-5832,5834-5861,5863-5873,5875-5910,5915-6027,6030-6104,6107-6113,6117-6122,6125-6134,6138-6143,6146-6156,6159-6161,6163-6166,6168-6172,6174-6179,6181-6187,6189,6191-6195,6198-6211,6213-6221,6225-6227,6229-6234,6237-6243,6247-6252,6255-6264,6268-6270,6272-6277,6280-6281,6283-6287,6290-6293,6295-6298,6300-6534,6537-6548,6551-6556,6558-6563,6565-6575,6577,6579-6582,6585-6589,6592-6595,6598-6601,6603,6653-6654,6670-6671,6925,6929,7029,7031
+  s_09e8b563de7c82::t_6b08d37c1cba01 6855
+  s_09e8b563de7c82::t_ac4965da860186 81-91,93-111,2096-2098,2119-2126,2246-2247,2274-2277,5808-5823,5830,6105-6106,6114-6116,6123-6124,6135-6137,6144-6145,6157-6158,6162,6167,6173,6180,6188,6190,6196-6197,6212,6222-6224,6228,6235-6236,6244-6246,6253-6254,6265-6267,6271,6278-6279,6282,6288-6289,6294,6299,6535-6536,6549-6550,6557,6564,6576,6578,6583-6584,6590-6591,6596-6597,6602,6604-6652,6655-6669,6672-6761,6845-6854,6856-6901,6904-6905,6907-6908,6911-6924,6926-6928,6930,6932-7025,7027-7028,7030,8706-8708,8744
+package.json
+  s_68fe4a2c615450::t_04b66282dd171a 185
+scripts/testing/run-tests.ts
+  s_68fe4a2c615450::t_41b5d4ab67d332 6,34-35,39-45
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_c308b770a17d41::t_c5530611d2fd68 407
+src/renderer/features/local-conversation/view/local-conversation-footer.test.tsx
+  s_c308b770a17d41::t_c5530611d2fd68 167
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.tsx
+  s_c308b770a17d41::t_31844030cf4437 862
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_c308b770a17d41::t_7a6e3ffb2a92a6 270-271
+  s_c308b770a17d41::t_26f289fe3f88a7 290-293,596-597
+docs/product-specs/agent-runtime-behavior.md
+  s_c308b770a17d41::t_18448aaf61962d 807-813
+  s_c308b770a17d41::t_6237f5a5b7dff6 816-824
+  s_c308b770a17d41::t_45537d29ae2f0c 814-815
+src/renderer/features/local-conversation/codex-background-tasks.node.test.ts
+  s_c308b770a17d41::t_ad764f97da6c51 1-54
+src/renderer/features/local-conversation/remote-codex-stage-actions.node.test.ts
+  s_c308b770a17d41::t_c409e0806e9dec 110-132
+config/test-suites.test.ts
+  s_68fe4a2c615450::t_04b66282dd171a 10,33-38,44-48,79,81
+  s_c308b770a17d41::t_970003a70d22ad 39-43
+src/renderer/features/local-conversation/view/composer/new-chat-project-selector.test.tsx
+  s_c308b770a17d41::t_c5530611d2fd68 61
+src/renderer/features/local-conversation/codex-background-tasks.ts
+  s_c308b770a17d41::t_7a6e3ffb2a92a6 1-55
+CHANGELOG.md
+  s_c308b770a17d41::t_48689312244ad6 61
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_c308b770a17d41::t_3beda65b17e187 1169
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_5772f1e1d73ab7::t_6f55ab05c61911 6673,6675-6686
+  s_5772f1e1d73ab7::t_8c783cd28f576e 90,2165,2195,2201-2204,6652-6672,6674,6687-6750
+config/test-suites.ts
+  s_68fe4a2c615450::t_56d1b289d6d7fb 111-115
+  s_c308b770a17d41::t_970003a70d22ad 191
+  s_68fe4a2c615450::t_41b5d4ab67d332 58,105-108,177-178,192-195,202-206
+  s_c308b770a17d41::t_872dff048dcd5c 179
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_5772f1e1d73ab7::t_e21002fe793178 2088-2090,3139-3141,6991,7003-7004,7007-7009,7011-7025,8725
+  s_5772f1e1d73ab7::t_422b34314a1396 6992-7002,7005-7006,7010
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_c308b770a17d41::t_aef852a80fea9f 105,1444-1446
+src/renderer/features/local-conversation/view/composer/request-cards/codex-pending-request-card.test.tsx
+  s_c308b770a17d41::t_c5530611d2fd68 122
+scripts/ci/verify-test-inventory.test.ts
+  s_68fe4a2c615450::t_04b66282dd171a 14,16-20,49-50,53
+  s_c308b770a17d41::t_970003a70d22ad 51-52,54-59
+  s_c308b770a17d41::t_43cfaf6c7bbf71 60
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_c308b770a17d41::t_cb6365479d6050 644,724-725,727
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_c308b770a17d41::t_c5530611d2fd68 552
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-background-section.test.tsx
+  s_c308b770a17d41::t_d9b1d5b9ec9793 21
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.test.tsx
+  s_c308b770a17d41::t_2e6c8883aaf075 2133-2135,2144-2145,2281-2283,2292-2293,2325,2419-2421,2430-2431
+  s_c308b770a17d41::t_8cdb245926e0ef 12,2136-2143,2284-2291,2422-2429
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-dictation.test.tsx
+  s_c308b770a17d41::t_c5530611d2fd68 287
+config/vitest-test-tier.ts
+  s_68fe4a2c615450::t_41b5d4ab67d332 1,6,8
+docs/product-specs/thread-summary-panel-behavior.md
+  s_c308b770a17d41::t_cb6365479d6050 169-175
+  s_c308b770a17d41::t_18448aaf61962d 178-180
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_09e8b563de7c82::t_bf9cc858aa1682 96,294-298
+  s_09e8b563de7c82::t_606d1a77387180 2305-2306,2337
+  s_09e8b563de7c82::t_5036aac59fe81e 93,2162,2164,2171,2206,2212-2213,2216,2218,2222,2240,2249,2253,2255,2285,2290,2293-2297,2299-2304,2307-2336,2338-2365,2374,2377,2424,2426-2428,2835-2846,2863-2871,4894-4921,5435-5436,5515-5529,6517-6518,6972-7006,7118
+  s_09e8b563de7c82::t_0514ac5708e793 95,97,284,290,300
+  s_09e8b563de7c82::t_242633057fc68f 238-274,276-281
+  s_c308b770a17d41::t_5c55bd773da268 6512-6516
+  s_09e8b563de7c82::t_d4accaa7569a60 2739
+  s_09e8b563de7c82::t_356d2d33c6c3b6 275,2138-2150,2152-2161,2163,2165-2170,2172-2205,2207-2211,2214-2215,2217,2219-2221,2223-2239,2241-2248,2250-2252,2254,2256-2284,2286-2289,2291-2292,2298,2366-2373,2375-2376,2399-2405,2409-2423,2425,2429-2430,2741,2749-2750,2834,7092-7096,7098-7117,7119-7122,7135-7161,7169-7170,7193-7199,7247,7333,7338,7347-7351,7647-7660
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.test.ts
+  s_09e8b563de7c82::t_bca3c37a834ac3 17,19-22,487-552
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/claude_background_tasks_resume/claude_transcript.ndjson
+  s_5772f1e1d73ab7::t_dbbbbd33e10dc2 1-5
+packages/agent-runtime/vendor/contracts/src/acpRegistry.test.ts
+  s_68fe4a2c615450::t_e18fbbf6de2dee 133,145,156,171
+packages/agent-runtime/vendor/contracts/src/settings.test.ts
+  s_68fe4a2c615450::t_9b725af93335c2 141,153-164
+packages/agent-runtime/vendor/provider-acp-registry/src/server/AcpRegistrySupport.test.ts
+  s_09e8b563de7c82::t_6000296adb0432 69-86,259,353,368,438,458,461-462,501,503,515,533,535,591-595,634-635,788-789,807,846-854,915,938-942,1116,1132-1133,1138,1141-1149,1192,1263-1267,1332-1337,1339,1368,1377-1380,1398-1405,1455-1464,1487,1508,1555-1556,1574-1576,1610,1632-1634,1636-1639,1723-1732,1747,1756-1757
+packages/agent-runtime/vendor/provider-acp/src/server/runtimeModel.test.ts
+  s_68fe4a2c615450::t_d515509ab6369f 1413,1415,1420-1421,1425,1440,1443,1452,1465-1466,1471,1480,1494-1495,1499,1506,1513,1519,1522,1525,1534-1539,1550,1556,1566,1573,1578,1588,1592-1593,1634,1639,1651
+packages/agent-runtime/vendor/provider-acp/src/server/sessionConfig.test.ts
+  s_68fe4a2c615450::t_b7c323c5f251e3 82,120,211,233-236
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_09e8b563de7c82::t_a81967bc3fc443 605,654-655
+packages/agent-runtime/vendor/provider-core/src/server/mcpToolPresentation.test.ts
+  s_68fe4a2c615450::t_76a13d5d90b8f8 60
+packages/agent-runtime/vendor/provider-core/src/server/nativeInteraction.ts
+  s_09e8b563de7c82::t_94bd66f5a421dc 15-16,26-27
+packages/agent-runtime/vendor/provider-core/src/server/textGenerationPrompts.test.ts
+  s_68fe4a2c615450::t_645693e498e01e 286
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/OpenCode2Client.live.test.ts
+  s_68fe4a2c615450::t_3369b6f1d7a9fa 6,31-34,85,129
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/OpenCode2Server.live.test.ts
+  s_68fe4a2c615450::t_bf85a2ad489a57 4,33-36,101,154,211
+packages/agent-runtime/vendor/shared/src/git.test.ts
+  s_5772f1e1d73ab7::t_c8d8cd28975ec0 196-199,207,209,218,221,224
+packages/agent-runtime/vendor/shared/src/htmlRender.test.ts
+  s_68fe4a2c615450::t_1f44c870446663 160-162,170-172
+packages/agent-runtime/vendor/shared/src/nodeRuntime.ts
+  s_68fe4a2c615450::t_45777f92f1dc7a 103
+packages/agent-runtime/vendor/shared/src/nodexAppMcp.ts
+  s_68fe4a2c615450::t_793129a4470455 84,95,100,106-114,117
+packages/agent-runtime/vendor/shared/src/observability.memory.test.ts
+  s_09e8b563de7c82::t_509f2cd63d3ee9 13
+packages/agent-runtime/vendor/shared/src/orchestrationV2PendingBackgroundWork.ts
+  s_09e8b563de7c82::t_db24b66cfb4c55 232,236-237,254,261,304-306,310
+packages/agent-runtime/vendor/shared/src/otelEnvironment.test.ts
+  s_09e8b563de7c82::t_771223e5efddff 247,256,270-271
+packages/agent-runtime/vendor/shared/src/providerAuthReturnUrl.test.ts
+  s_09e8b563de7c82::t_c324a5a7601ab7 5,17-21
+packages/agent-runtime/vendor/shared/src/shell.test.ts
+  s_09e8b563de7c82::t_db0674100d8375 52,70-71,118,120-121,123,143,145-147,164,212,234,249,273
+packages/agent-runtime/vendor/shared/src/testing/TraceRetention.fixture.mjs
+  s_09e8b563de7c82::t_2077cc9f803602 5-8,10
+packages/agent-runtime/vendor/shared/src/toolOutput.ts
+  s_09e8b563de7c82::t_ad752d1d1b4cca 13,123-129,192-193,199-200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0b7ac5afd34b432d9cfdcd180ec83e95955f989",
+  "prompts": {},
+  "sessions": {
+    "s_09e8b563de7c82": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18437-c65f-7660-b677-0fbeefce77f4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5772f1e1d73ab7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18438-2641-7353-8cd8-c63b54c720b6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_68fe4a2c615450": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18437-f473-75f2-99cd-c2c6d5446768",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c308b770a17d41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d99b3b35-7cb1-4ef6-9ebd-c9534cf0280b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
