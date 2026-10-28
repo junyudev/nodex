@@ -522,6 +522,15 @@ read through the authenticated Profile and exact execution identity boundary.
   stop outcome. It never contains the bearer capability, socket path, request
   payload, SQL, Document bytes, or user content; a symlink, unsafe mode, or
   malformed prior file disables only the breadcrumb.
+- Main fatal incidents are independent of verbose logging and optional telemetry.
+  Their Profile-owned `diagnostics/fatal` directories require current-user ownership,
+  `0700` mode and real directories; records are atomically published as private `0600`
+  files with bounded size and retention. The projection allowlists error classifications,
+  operations, generation identity, code symbols/coordinates and cleanup counts. It excludes
+  raw error messages, custom exception names, arbitrary exception properties, source paths,
+  prompts, attachments, request bodies and credentials. Fatal log breadcrumbs retain only
+  the bounded projection and incident identity. Remote fatal reporting submits the same projection only
+  when diagnostics are enabled. Unsafe storage disables only incident publication.
 - Optional background registration uses a signed nested application and its bundled `SMAppService` LaunchAgent; it never installs a root helper or writes a launchd plist outside the signed bundle. The selected absolute Profile path is the only persisted input, stored as a private regular file below the current user's Application Support directory. The controller rejects symlinked configuration and executable entries, bounds configuration and control output, and executes the fixed sibling Core without a shell.
 - Every native-Core HTTP request is authenticated by a fresh per-start
   capability and same-UID Unix peer credentials. Handshake registers the

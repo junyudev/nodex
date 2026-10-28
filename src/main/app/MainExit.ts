@@ -16,7 +16,11 @@ export class MainApplicationError extends Schema.TaggedError<MainApplicationErro
     operation: Schema.String,
     cause: Schema.Defect(),
   },
-) {}
+) {
+  override get message(): string {
+    return `Nodex could not complete ${this.operation} (${this.phase}).`;
+  }
+}
 
 export type MainExit =
   | {

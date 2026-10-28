@@ -478,3 +478,90 @@ fn verify_native_recovery_bundle(client: &CoreClient, document_id: &str) {
         matches!(response.0, ResponseEnvelope::Error(error) if error.code == nodex_core_contracts::CoreErrorCode::Unauthorized)
     );
 }
+
+#[test]
+fn native_core_survives_launcher_exit_and_process_group_cleanup() {
+    use std::os::unix::process::CommandExt;
+    use std::process::Stdio;
+
+    const FIXTURE_HOME: &str = "NODEX_TEST_LAUNCHER_GROUP_HOME";
+    const FIXTURE_MODE: &str = "NODEX_TEST_LAUNCHER_GROUP_MODE";
+    if let Some(home) = std::env::var_os(FIXTURE_HOME) {
+        let home = Path::new(&home);
+        let client = connect_or_launch(
+            home,
+            "native-launcher-lifetime-fixture",
+            Some(Path::new(env!("CARGO_BIN_EXE_nodex-core"))),
+        )
+        .expect("native launcher starts Core");
+        fs::write(
+            home.join("launcher-ready"),
+            client.descriptor.pid.to_string(),
+        )
+        .expect("publish fixture readiness");
+        if std::env::var(FIXTURE_MODE).as_deref() == Ok("cancel") {
+            loop {
+                thread::park();
+            }
+        }
+        return;
+    }
+
+    for mode in ["exit", "cancel"] {
+        let directory = tempdir().expect("Core home");
+        let home = directory.path().canonicalize().expect("absolute home");
+        let mut launcher = Command::new(std::env::current_exe().expect("test executable"))
+            .args([
+                "--exact",
+                "native_core_survives_launcher_exit_and_process_group_cleanup",
+            ])
+            .env(FIXTURE_HOME, &home)
+            .env(FIXTURE_MODE, mode)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .expect("owned native launcher group");
+        let group = rustix::process::Pid::from_raw(launcher.id() as i32).expect("launcher group");
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while !home.join("launcher-ready").exists() {
+            assert!(
+                Instant::now() < deadline,
+                "native fixture did not become ready"
+            );
+            assert!(launcher.try_wait().expect("launcher status").is_none());
+            thread::sleep(Duration::from_millis(10));
+        }
+        let client = CoreClient::connect(&home, "native-launcher-lifetime-test")
+            .expect("connect before caller cleanup");
+        let pid = client.descriptor.pid;
+        let guard = ProcessGuard(pid);
+        if mode == "exit" {
+            assert!(launcher.wait().expect("launcher exit").success());
+        }
+        let cleanup = rustix::process::kill_process_group(group, rustix::process::Signal::KILL);
+        assert!(cleanup.is_ok() || cleanup == Err(rustix::io::Errno::SRCH));
+        let _ = launcher.wait();
+
+        assert_eq!(
+            client.health().expect("Core survives group cleanup").pid,
+            pid
+        );
+        let core = rustix::process::Pid::from_raw(pid as i32).expect("Core PID");
+        assert_eq!(
+            rustix::process::getsid(Some(core)).expect("Core session"),
+            core
+        );
+        client.shutdown().expect("explicit authenticated shutdown");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while home.join("run/core/core.sock").exists() {
+            assert!(
+                Instant::now() < deadline,
+                "Core did not drain after shutdown"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        std::mem::forget(guard);
+    }
+}

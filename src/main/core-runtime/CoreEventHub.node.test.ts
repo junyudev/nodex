@@ -23,6 +23,7 @@ import {
   type CoreEventDeliveryService,
   type CoreEventHubService,
 } from "./CoreEventHub";
+import { CoreTransportError } from "../core-client/uds-http";
 import { classifyCoreOperationFailure, coreRuntimeError } from "./CoreRuntimeError";
 
 interface OpenedStream {
@@ -31,6 +32,7 @@ interface OpenedStream {
   readonly onCheckpoint: (checkpoint: CoreStreamCheckpoint) => void;
   readonly onResync: (boundary: CoreEventReplayRequired) => void;
   readonly finish: () => void;
+  readonly fail: (cause: unknown) => void;
 }
 
 const envelope = (sequence: number): CoreEventEnvelope => ({
@@ -97,7 +99,16 @@ const eventClient = (opened: OpenedStream[]): CoreGenerationClient => {
       const finish = (): void => {
         completion.emit("done");
       };
-      opened.push({ after, onEvent, onCheckpoint, onResync, finish });
+      opened.push({
+        after,
+        onEvent,
+        onCheckpoint,
+        onResync,
+        finish,
+        fail: (cause) => {
+          completion.emit("error", cause);
+        },
+      });
       return Promise.resolve({ done, close: finish });
     },
   });
@@ -378,3 +389,48 @@ it.effect("reopens from the durable cursor when callback ingress overflows", () 
   }),
 );
 import { EventEmitter, once } from "node:events";
+
+it.effect(
+  "recovers remote stream loss from the committed cursor without failing the application",
+  () =>
+    Effect.gen(function* () {
+      const opened: OpenedStream[] = [];
+      const delivered: number[] = [];
+      const fatal: string[] = [];
+      const scope = yield* Scope.make();
+      const context = yield* buildHub(
+        eventClient(opened),
+        {
+          event: (event) =>
+            Effect.sync(() => {
+              delivered.push(event.packet.manifest.identity.commit_seq);
+            }),
+          checkpoint: () => Effect.void,
+          resync: () => Effect.void,
+        },
+        scope,
+        (error) =>
+          Effect.sync(() => {
+            fatal.push(error.operation);
+            return true;
+          }),
+      );
+      const hub = Context.get(context, CoreEventHub);
+      yield* waitUntil("initial stream", () => opened.length === 1);
+      opened[0]!.onEvent(envelope(7));
+      opened[0]!.onCheckpoint(checkpoint(7));
+      yield* waitForCursor(hub, 7);
+      opened[0]!.fail(new CoreTransportError("connection_lost", "response", "ECONNRESET", null));
+      yield* waitForBackoff(hub);
+      yield* TestClock.adjust("1 second");
+      yield* waitUntil("replacement stream", () => opened.length === 2);
+      assert.strictEqual(opened[1]!.after, 7);
+      opened[1]!.onEvent(envelope(8));
+      opened[1]!.onCheckpoint(checkpoint(8));
+      yield* waitForCursor(hub, 8);
+      assert.deepEqual(delivered, [7, 8]);
+      assert.deepEqual(fatal, []);
+      assert.strictEqual((yield* SubscriptionRef.get(hub.connection)).kind, "ready");
+      yield* Scope.close(scope, Exit.void);
+    }),
+);

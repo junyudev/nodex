@@ -359,7 +359,19 @@ cleanup report; failure retains the full Effect Cause and its `pre-ready`, `star
 `closing` phase. Fatal Core or Codex truth loss carries its subsystem and original cause into this
 boundary, closes application admission first, and is presented as a runtime failure rather than a
 misleading startup error. The root observability adapter preserves structured annotations, spans,
-fiber identity, and the Cause tree; only that root boundary reports defects to diagnostics.
+fiber identity, and the Cause tree; that root boundary reports fatal typed failures as well as
+defects through the existing diagnostics consent policy.
+
+A failed Main process result also attempts a private atomic incident record under
+`diagnostics/fatal` in the Profile, independently of ordinary log settings and remote telemetry.
+The record retains the phase, bounded nested error classifications, operation, Core generation,
+code coordinates without source paths, and cleanup outcome. It omits raw error messages and
+arbitrary error properties. Retention is eight records of at most 16 KiB each. Publication has a
+two-second deadline; an unavailable filesystem cannot replace the original failure or prevent
+the final dialog. The dialog identifies the same incident and its saved location, or says when
+the record could not be saved. Remote fatal reporting and final-failure log breadcrumbs use
+this same content-free evidence. Cause traversal has an independent visit budget, so deeply
+nested containers cannot bypass the record bounds or prevent presentation.
 
 Process termination signals are lifecycle ingress, not a competing shutdown owner. Electron Main
 translates `SIGINT` and `SIGTERM` into the Main shutdown request and waits for Scope release before

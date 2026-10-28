@@ -23,7 +23,7 @@ futures-core.workspace = true
 getrandom.workspace = true
 hex.workspace = true
 http-body-util.workspace = true
-rustix.workspace = true
+rustix = { workspace = true, features = ["stdio"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

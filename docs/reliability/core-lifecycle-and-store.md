@@ -9,6 +9,13 @@ events, Module contracts, Store identity, and packaged artifact policy. Initial
 selection failure is terminal for that launch; Electron never opens SQLite or
 falls back to a JavaScript writer.
 
+Core establishes its own independent operating-system session and disconnects
+interactive stdin before starting runtime threads. This guarantee belongs to
+Core itself, including when a CLI starts it before Desktop connects. Exiting or
+cancelling that client, closing its terminal, or cleaning its process group
+cannot terminate the shared Core. The bounded startup selection response and
+authenticated explicit shutdown remain separate from caller lifetime.
+
 Core is a detached per-Profile process. An active authenticated Host connection,
 event stream, CLI client, Document subscription, Store operation, or due
 Automation is demand. Core may idle-drain only after every demand source is
@@ -48,6 +55,15 @@ Document calls propagate the owning Effect scope's AbortSignal to HTTP.
 Reads and writes with stable idempotency identity may retry once with their
 original input. Ephemeral Awareness triggers recovery but is never replayed.
 A request timeout alone is ambiguous and does not prove writer loss.
+
+A premature HTTP event-response closure is connection loss even when the
+platform emits an `aborted` callback before its socket error. It reopens from
+the last successfully delivered checkpoint through the existing authority
+recovery owner. Explicit caller cancellation and normal subscription close do
+not imply generation loss; malformed protocol, capacity rejection and integrity
+failure retain their distinct classifications. Recovery never creates another
+Inbox decision or re-admits an Agent turn: stable operation receipts and
+execution admission identity remain authoritative.
 
 ## HTTP error contract
 

@@ -749,7 +749,18 @@ export class UdsHttpTransport {
             }
           });
           response.on("aborted", () => {
-            fail(new Error("Core event stream ended before completion"));
+            // IncomingMessage emits aborted before its ECONNRESET error. Preserve remote
+            // connection loss here rather than letting the first callback erase recovery policy.
+            fail(
+              new CoreTransportError(
+                signal?.aborted ? "aborted" : "connection_lost",
+                "response",
+                signal?.aborted ? "ABORT_ERR" : "ECONNRESET",
+                signal?.aborted
+                  ? signal.reason
+                  : new Error("Core event stream ended before completion"),
+              ),
+            );
           });
           response.on("error", fail);
           openSubscription();

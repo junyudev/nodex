@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog } from "electron";
-import * as Cause from "effect/Cause";
+import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import { configureInstanceScopePaths } from "./instance-scope";
 import { resolveBootstrapConfig } from "./bootstrap-config";
@@ -17,6 +17,7 @@ import * as MainApplicationLive from "./app/MainApplicationLive";
 import * as MainEntry from "./app/MainEntry";
 import * as MainFoundationLive from "./app/MainFoundationLive";
 import { MainApplicationError, type MainExit } from "./app/MainExit";
+import type { MainFailurePresentation } from "./app/MainFatalIncident";
 import { MainObservability } from "./app/MainObservability";
 import { ScopedCallbackRuntime } from "./app/ScopedCallbackRuntime";
 import { assertRustDataAuthorityEnvironment } from "./data-authority";
@@ -86,13 +87,6 @@ const mainSentryInitialization = initializeBootstrapDiagnostics();
 // synchronous init phase. Register Nodex schemes afterward so Chromium receives
 // one combined privilege set instead of losing secure-context privileges.
 registerNodexPrivilegedSchemes();
-
-function formatStartupError(error: unknown): string {
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}`;
-  }
-  return String(error);
-}
 
 function createMacApplicationsInstallerEnvironment(): MacApplicationsInstallerEnvironment {
   let moveConflictCancelled = false;
@@ -172,13 +166,15 @@ function createMacApplicationsInstallerEnvironment(): MacApplicationsInstallerEn
   };
 }
 
-async function handleApplicationFailure(exit: Extract<MainExit, { readonly _tag: "Failure" }>) {
-  const error = Cause.squash(exit.cause);
+async function handleApplicationFailure(
+  exit: Extract<MainExit, { readonly _tag: "Failure" }>,
+  presentation: MainFailurePresentation,
+) {
   const isRuntimeFailure = exit.phase === "runtime";
   const message = isRuntimeFailure
     ? "Nodex encountered an unrecoverable error"
     : "Nodex failed to start";
-  logBootstrap("error", message, { error, phase: exit.phase });
+  logBootstrap("error", message, { incidentId: presentation.incidentId, phase: exit.phase });
 
   for (const window of BrowserWindow.getAllWindows()) {
     if (window.isDestroyed()) continue;
@@ -197,7 +193,7 @@ async function handleApplicationFailure(exit: Extract<MainExit, { readonly _tag:
     cancelId: 0,
     noLink: true,
     message,
-    detail: formatStartupError(error),
+    detail: presentation.detail,
   });
 
   app.quit();
@@ -280,9 +276,11 @@ function launchMainApplication(): void {
         } satisfies MainExit),
       ),
     );
-    yield* observability.reportExit(exit);
-    if (exit._tag === "Failure") {
-      yield* Effect.tryPromise(() => handleApplicationFailure(exit)).pipe(Effect.orDie);
+    const presentation = yield* observability.reportExit(exit);
+    if (exit._tag === "Failure" && presentation) {
+      yield* Effect.tryPromise(() => handleApplicationFailure(exit, presentation)).pipe(
+        Effect.orDie,
+      );
     }
   }).pipe(
     // this is the unique process entry that owns the foundation Layer.

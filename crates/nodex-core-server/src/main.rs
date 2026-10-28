@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::{env, path::PathBuf};
+use std::{env, fs::File, path::PathBuf};
 
 use nodex_core_protocol::{CoreSelectionPolicy, LauncherKind};
 
@@ -37,8 +37,26 @@ fn parse_arguments() -> Result<(PathBuf, CoreSelectionPolicy, LauncherKind), Str
     }
 }
 
+// Every launcher gets the same lifetime guarantee before any runtime threads start.
+// Desktop may already have detached us; a native CLI normally has not.
+fn isolate_process() -> Result<(), Box<dyn std::error::Error>> {
+    if rustix::process::getsid(None)? != rustix::process::getpid() {
+        rustix::process::setsid()?;
+    }
+    rustix::stdio::dup2_stdin(File::open("/dev/null")?)?;
+    Ok(())
+}
+
 #[tokio::main]
-async fn main() {
+async fn run(
+    home: PathBuf,
+    policy: CoreSelectionPolicy,
+    launcher: LauncherKind,
+) -> Result<(), Box<dyn std::error::Error>> {
+    nodex_core_server::run_with_selection(home, policy, launcher).await
+}
+
+fn main() {
     let (home, policy, launcher) = match parse_arguments() {
         Ok(arguments) => arguments,
         Err(message) => {
@@ -46,7 +64,7 @@ async fn main() {
             std::process::exit(2);
         }
     };
-    if let Err(error) = nodex_core_server::run_with_selection(home, policy, launcher).await {
+    if let Err(error) = isolate_process().and_then(|()| run(home, policy, launcher)) {
         eprintln!("nodex-core startup failed: {error}");
         std::process::exit(1);
     }

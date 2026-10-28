@@ -214,7 +214,7 @@ Page discovery is one Core-owned capability across Page references, Command Pale
 
 ### Native Core
 
-The Rust Core is the only production authority allowed to open `nodex.db`, write the WAL, reconstruct durable Yrs/Canvas Documents, execute semantic transactions, advance projections, or maintain receipts and history. It runs as one detached process per Profile and exposes authenticated HTTP/1.1 over a Profile-private Unix socket.
+The Rust Core is the only production authority allowed to open `nodex.db`, write the WAL, reconstruct durable Yrs/Canvas Documents, execute semantic transactions, advance projections, or maintain receipts and history. It runs as one detached process per Profile and exposes authenticated HTTP/1.1 over a Profile-private Unix socket. Core owns its process isolation independently of the client that starts it; caller lifetime cannot terminate an authority later shared by Desktop and CLI. See [Core Lifecycle and Store Reliability](reliability/core-lifecycle-and-store.md).
 
 Core is organized as seven deep semantic Modules under [`crates/nodex-core/src`](../crates/nodex-core/src):
 

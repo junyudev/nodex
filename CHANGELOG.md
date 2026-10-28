@@ -48,6 +48,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Finishing or cancelling a CLI command no longer closes Nodex and interrupts active chats. Desktop recovers interrupted Core connections without repeating chat dispatches, and fatal errors retain private diagnostic records with a readable incident reference.
 - Claude Code chats can keep their working directory while switching between a Project's Sources. Source changes and moves to another Project apply before the next message without interrupting background work.
 - Choosing Ultracode for a Claude chat now actually turns it on, at whatever effort you pick instead of forcing Extra High. When dynamic workflows are off for your Claude account, the toggle says so instead of silently doing nothing.
 - Changing a Claude chat's model, effort, Fast or Ultracode no longer restarts Claude Code, so it applies right away even while background agents, shells or workflows are running. If a change cannot be confirmed, retrying restores the complete choice before sending the next message.

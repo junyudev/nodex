@@ -1,4 +1,4 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, type ServerResponse } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -104,6 +104,24 @@ const serveSseFrames = async (frames: string): Promise<string> => {
     server.listen(socketPath, resolve);
   });
   return socketPath;
+};
+
+const serveLiveEventStream = async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-test-"));
+  directories.push(directory);
+  const socketPath = path.join(directory, "core.sock");
+  let activeResponse: ServerResponse | undefined;
+  const server = createServer((_request, response) => {
+    activeResponse = response;
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.flushHeaders();
+  });
+  servers.push(server);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, resolve);
+  });
+  return { socketPath, disconnect: () => activeResponse?.destroy() };
 };
 
 const servePendingResponse = async (): Promise<string> => {
@@ -849,6 +867,52 @@ describe("UDS Core event replay boundaries", () => {
       new CoreEventCompatibilityError("Authorized delivery packet is invalid"),
     );
     expect(deliveries).toBe(0);
+  });
+
+  test("classifies premature live response closure as recoverable connection loss", async () => {
+    const server = await serveLiveEventStream();
+    const transport = configureEventContract(new UdsHttpTransport(server.socketPath, "capability"));
+    const subscription = await transport.openEventStream(0, () => undefined);
+    const failure = subscription.done.catch((error: unknown) => error);
+    server.disconnect();
+
+    const error = await failure;
+    expect(error).toBeInstanceOf(CoreTransportError);
+    expect(error).toMatchObject({ kind: "connection_lost", phase: "response", code: "ECONNRESET" });
+    expect(isDefinitiveCoreGenerationLoss(error)).toBe(true);
+    expect(classifyCoreOperationFailure("events.read", error)).toMatchObject({
+      reason: "transport-loss",
+      retryable: true,
+    });
+  });
+
+  test("keeps explicit stream cancellation distinct from remote connection loss", async () => {
+    const server = await serveLiveEventStream();
+    const transport = configureEventContract(new UdsHttpTransport(server.socketPath, "capability"));
+    const controller = new AbortController();
+    const subscription = await transport.openEventStream(
+      0,
+      () => undefined,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      controller.signal,
+    );
+    const failure = subscription.done.catch((error: unknown) => error);
+    controller.abort(new Error("subscription owner closed"));
+
+    const error = await failure;
+    expect(error).toMatchObject({ kind: "aborted", code: "ABORT_ERR" });
+    expect(isDefinitiveCoreGenerationLoss(error)).toBe(false);
+  });
+
+  test("closing a live subscription completes normally", async () => {
+    const server = await serveLiveEventStream();
+    const transport = configureEventContract(new UdsHttpTransport(server.socketPath, "capability"));
+    const subscription = await transport.openEventStream(0, () => undefined);
+    subscription.close();
+    await expect(subscription.done).resolves.toBeUndefined();
   });
 
   test("aborts an event stream that has not received response headers", async () => {

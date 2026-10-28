@@ -9,6 +9,7 @@ import * as ElectronIpc from "../platform/electron/ElectronIpc";
 import * as ElectronSessionHost from "../platform/electron/ElectronSessionHost";
 import * as ElectronWindowHost from "../platform/electron/ElectronWindowHost";
 import * as BrowserProfileHelperNode from "../platform/node/BrowserProfileHelperNode";
+import * as MainFatalIncidentStore from "../platform/node/MainFatalIncidentStore";
 import * as ApplicationSettings from "../settings/ApplicationSettings";
 import * as TemporaryAssets from "../local-store/TemporaryAssets";
 import * as MainConfig from "./MainConfig";
@@ -46,13 +47,16 @@ const electronPlatform = Layer.mergeAll(
 const nodePlatform = BrowserProfileHelperNode.live.pipe(Layer.provideMerge(NodeServices.layer));
 
 export const make = (config: unknown): Layer.Layer<MainFoundation, MainConfig.MainConfigError> => {
-  const base = Layer.mergeAll(
+  const environment = Layer.mergeAll(
     MainConfig.layer(config),
     MainCleanup.layer,
-    MainObservability.layer,
     MainShutdown.layer,
     ScopedCallbackRuntime.layer,
     nodePlatform,
+  );
+  const base = MainObservability.layer.pipe(
+    Layer.provide(MainFatalIncidentStore.live),
+    Layer.provideMerge(environment),
   );
   const profileServices = Layer.mergeAll(
     ApplicationSettings.live.pipe(Layer.provide(SecretEncryption.live)),
