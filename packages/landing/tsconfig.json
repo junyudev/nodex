@@ -16,6 +16,6 @@
     "jsxImportSource": "react",
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", "astro.config.ts"],
+  "include": ["src", "scripts", "astro.config.ts"],
   "exclude": ["dist", "node_modules"]
 }

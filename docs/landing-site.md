@@ -31,6 +31,48 @@ workspace's Vite+ alias. The focused tests run an isolated production build and
 check the generated pages and public assets. They run from the repository root
 because the shared Vitest setup resolves generated Markdown assets from that directory.
 
+### Demo media capture
+
+Start the landing server separately, then record its capture pages:
+
+```bash
+vp run capture:landing --demo all --theme both
+vp run capture:landing --og
+```
+
+The recorder uses Playwright Chromium and ffmpeg. Install the browser with
+`vp exec playwright install chromium` if needed. ffmpeg needs H.264, VP9, and
+WebP encoding; `brew install ffmpeg-full` supplies these on macOS. If ffmpeg
+lacks WebP encoding, the recorder also supports an installed `img2webp`
+(`brew install webp`). Nothing is installed automatically.
+
+`--base-url` defaults to `http://127.0.0.1:4330`. `--out` defaults to
+`notes.local/artifacts/landing-captures` in the checkout, which git ignores. `--demo`, `--theme`, `--fps` (30), and `--scale` (2) select the
+capture. `--og` renders only a dark hero still at 70% as `og.png` (1200×630).
+Run `vp run capture:landing --help` for all options. Named outputs are replaced
+on subsequent runs; temporary full-resolution frames are removed after each capture.
+
+`CAPTURE_DEMOS` in `src/demos/capture-demos.ts` owns the available demo IDs and
+designed sizes. Each `/capture/<id>/?capture` page must expose a stable
+`[data-capture-root]` at the page origin and set `window.__nodexCapture` with
+`durationMs` and a `done` promise. The recorder measures the root, including its
+padding, warms fonts, then navigates to a fresh one-shot playback. It observes
+the handle's assignment and completion without changing any animation clocks.
+
+CDP screencast JPEGs at quality 95 are sampled on their real presentation timestamps into a
+constant-rate sequence. Missing frames are held, surplus frames dropped, and
+the static tail is retained until `done`. The encoded duration follows real
+elapsed time, rounded up by at most one output frame; heavy system load can
+extend it because the demo bounds long animation deltas. Each capture writes
+a timing JSON report, full-resolution first/last review PNGs, a 70% poster,
+1260px H.264/VP9 videos, and a looping WebP at up to 20fps and its captured pixel
+width capped to 1200px. MP4 is capped at 4 MB, WebP quality is reduced as needed
+to stay within 8 MB, and the 960px,
+15fps palette GIF is kept only if it fits within 10 MB. The summary prints the
+dimensions, duration, and decimal MB size of each media file. Review the first,
+poster, and last frames before publishing; interpolation cannot restore motion
+that Chromium never delivered.
+
 ## Package Layout
 
 `packages/landing` contains:
@@ -51,6 +93,7 @@ because the shared Vitest setup resolves generated Markdown assets from that dir
 - `src/changelog-renderer.ts` for build-time `CHANGELOG.md` parsing and rendering
 - `src/download-cta.ts` for copying the Homebrew install command
 - `public/` for copied brand assets, the committed OG image, and `.nojekyll`
+- `scripts/capture-demos.ts` for recording demos into README and social media
 - `dist/` for generated static output
 
 The site is a static multi-page build. It does not use React Router or any client-side routing fallback.
@@ -157,6 +200,9 @@ Product demos are scripted re-enactments built from replicas of the interface, n
 - A demo's script is a list of named cues on one clock (`src/demos/timeline.ts`). It plays while
   on screen, shows its final frame under reduced motion, and plays once from the start under
   `?capture` for the recorder.
+
+The README embeds media recorded from the same demos under `.github/assets/readme/`. Record
+again with `vp run capture:landing` after changing a demo the README shows.
 
 Release CTA contract:
 
