@@ -7,6 +7,11 @@ import {
   readPlainTextBlocks,
   type ClipboardPayload,
 } from "./paste";
+import {
+  richHtmlPageMarkdown,
+  richHtmlPlainText,
+  richHtmlSpacerFixtures,
+} from "./__fixtures__/rich-html-paste";
 
 const clipboard = (data: Record<string, string>): ClipboardPayload => ({
   types: Object.keys(data),
@@ -14,6 +19,16 @@ const clipboard = (data: Record<string, string>): ClipboardPayload => ({
 });
 
 describe("Markdown paste", () => {
+  test.each(richHtmlSpacerFixtures)("omits rich HTML spacer lines from $source", (fixture) => {
+    expect(
+      readMarkdownPaste(
+        clipboard({
+          "text/html": fixture.html,
+          "text/plain": richHtmlPlainText,
+        }),
+      ),
+    ).toBe("composer" in fixture ? fixture.composer : richHtmlPageMarkdown);
+  });
   test("rich text from another app arrives as its Markdown, with every line", () => {
     expect(
       readMarkdownPaste(

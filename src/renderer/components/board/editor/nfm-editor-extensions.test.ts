@@ -104,6 +104,13 @@ describe("markdown editor extensions", () => {
   });
 
   test("queues a paste while its matching structural capture is still pending", () => {
+    const portable = {
+      id: "portable",
+      type: "paragraph",
+      props: {},
+      content: [{ type: "text", text: "Fallback", styles: {} }],
+      children: [],
+    };
     const onStructuralClaimPaste = vi.fn(() => true);
     const defaultPasteHandler = vi.fn(() => true);
     const preventDefault = vi.fn();
@@ -131,16 +138,14 @@ describe("markdown editor extensions", () => {
           },
         } as unknown as ClipboardEvent,
         editor: {
-          tryParseHTMLToBlocks: () => [
-            { id: "portable", type: "paragraph", props: {}, content: [], children: [] },
-          ],
+          tryParseHTMLToBlocks: () => [portable],
         } as never,
         defaultPasteHandler,
       }),
     ).toBe(true);
     expect(onStructuralClaimPaste).toHaveBeenCalledWith({
       descriptor,
-      portableBlocks: [{ id: "portable", type: "paragraph", props: {}, content: [], children: [] }],
+      portableBlocks: [portable],
     });
     expect(defaultPasteHandler).not.toHaveBeenCalled();
     expect(preventDefault).toHaveBeenCalledOnce();
@@ -150,6 +155,7 @@ describe("markdown editor extensions", () => {
     const defaultPasteHandler = vi.fn(() => true);
     const onStructuralPaste = vi.fn(() => true);
     const preventDefault = vi.fn();
+    const pasteHTML = vi.fn();
     const envelope = {
       version: 1 as const,
       profileId: "profile:test",
@@ -176,17 +182,30 @@ describe("markdown editor extensions", () => {
             getData: (type: string) => (type === "text/html" ? eventHtml : "Portable fallback"),
           },
         } as unknown as ClipboardEvent,
-        editor: {} as never,
+        editor: {
+          tryParseHTMLToBlocks: () => [
+            { type: "paragraph", content: [{ type: "text", text: "Portable fallback" }] },
+          ],
+          blocksToFullHTML: () => "<p>Portable fallback</p>",
+          pasteHTML,
+        } as never,
         defaultPasteHandler,
       }),
     ).toBe(true);
     expect(onStructuralPaste).not.toHaveBeenCalled();
-    expect(defaultPasteHandler).toHaveBeenCalledOnce();
+    expect(pasteHTML).toHaveBeenCalledWith("<p>Portable fallback</p>", true);
   });
 
   test("removes owner semantics before untrusted HTML reaches BlockNote", () => {
     const defaultPasteHandler = vi.fn(() => true);
     const pasteHTML = vi.fn((html: string) => html);
+    const tryParseHTMLToBlocks = vi.fn<(_html: string) => MarkdownBlock[]>(() => [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "Untrusted Page", styles: {} }],
+        children: [],
+      },
+    ]);
     const handler = createNfmPasteHandler();
 
     expect(
@@ -200,10 +219,16 @@ describe("markdown editor extensions", () => {
                 : "Untrusted Page",
           },
         } as unknown as ClipboardEvent,
-        editor: { pasteHTML } as never,
+        editor: {
+          pasteHTML,
+          tryParseHTMLToBlocks,
+          blocksToFullHTML: () => "<p>Untrusted Page</p>",
+        } as never,
         defaultPasteHandler,
       }),
     ).toBe(true);
+    expect(tryParseHTMLToBlocks).toHaveBeenCalledOnce();
+    expect(tryParseHTMLToBlocks.mock.calls[0]?.[0]).not.toContain('data-content-type="page"');
     expect(pasteHTML).toHaveBeenCalledOnce();
     expect(pasteHTML.mock.calls[0]?.[0]).not.toContain('data-content-type="page"');
     expect(defaultPasteHandler).not.toHaveBeenCalled();
@@ -251,10 +276,13 @@ describe("markdown editor extensions", () => {
     },
   );
 
-  test("leaves rich text to BlockNote without its own Markdown reading", () => {
+  test("leaves code from an editor to BlockNote without its own Markdown reading", () => {
     const defaultPasteHandler = vi.fn(() => true);
     const handler = createNfmPasteHandler({ onStructuralPaste: () => true });
-    const data: Record<string, string> = { "text/html": "<p>- a</p>", "text/plain": "- a\n- b" };
+    const data: Record<string, string> = {
+      "vscode-editor-data": '{"mode":"markdown"}',
+      "text/plain": "- a\n- b",
+    };
 
     expect(
       handler({
@@ -278,7 +306,14 @@ describe("markdown editor extensions", () => {
     const defaultPasteHandler = vi.fn(() => true);
     const onStructuralBlockPaste = vi.fn(() => true);
     const preventDefault = vi.fn();
-    const parsed = [{ id: "parsed", type: "paragraph", props: {}, content: [] }];
+    const parsed = [
+      {
+        id: "parsed",
+        type: "paragraph",
+        props: {},
+        content: [{ type: "text", text: "replacement", styles: {} }],
+      },
+    ];
     const handler = createNfmPasteHandler({
       shouldHandleStructuralBlockPaste: () => true,
       onStructuralBlockPaste,

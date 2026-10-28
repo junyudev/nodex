@@ -4,6 +4,7 @@ import { fromHtml } from "hast-util-from-html";
 import { toMdast } from "hast-util-to-mdast";
 import type { MarkdownBlock } from "../nodex-markdown";
 import { htmlMdastToBlocks } from "./html-blocks";
+import { normalizeRichHtmlBlocks } from "./rich-html-blocks";
 
 /**
  * HTML, as another app puts it on the clipboard, read as Blocks by way of Markdown: the
@@ -43,7 +44,7 @@ export function htmlToBlocks(html: string): MarkdownBlock[] {
     children.push(child);
   }
   flush();
-  return htmlMdastToBlocks({ type: "root", children });
+  return normalizeRichHtmlBlocks(htmlMdastToBlocks({ type: "root", children }));
 }
 
 /** Elements that only style text; anything else starts or holds a Block. */
@@ -69,8 +70,43 @@ const isBlankLine = (node: Element): boolean =>
     (child) =>
       (child.type === "text" && child.value.trim() === "") ||
       child.type === "comment" ||
-      (child.type === "element" && child.tagName === "br"),
+      (child.type === "element" &&
+        (child.tagName === "br" ||
+          (PHRASING.has(child.tagName) && isBlankLine(child) && child.tagName !== "img"))),
   );
+
+/** Trim each div line before joining it, so source edge breaks do not become interior breaks. */
+function trimDivLineBreaks(line: Element): void {
+  const leaves = (node: Element): ElementContent[] =>
+    node.children.flatMap((child): ElementContent[] =>
+      child.type === "element" &&
+      PHRASING.has(child.tagName) &&
+      child.tagName !== "br" &&
+      child.tagName !== "img"
+        ? leaves(child)
+        : [child],
+    );
+  const content = leaves(line);
+  const isContent = (child: ElementContent) =>
+    child.type === "text"
+      ? child.value.trim() !== ""
+      : child.type === "element" && child.tagName !== "br";
+  const first = content.findIndex(isContent);
+  const last = content.findLastIndex(isContent);
+  const edgeBreaks = new Set(
+    content.filter(
+      (child, index) =>
+        child.type === "element" && child.tagName === "br" && (index < first || index > last),
+    ),
+  );
+  const strip = (node: Element): void => {
+    node.children = node.children.filter((child) => !edgeBreaks.has(child));
+    node.children.forEach((child) => {
+      if (child.type === "element") strip(child);
+    });
+  };
+  strip(line);
+}
 
 /**
  * Styles a document writes in CSS, as Google Docs does, read as the marks they show: bold,
@@ -116,7 +152,10 @@ function normalizeClipboardHtml(node: HastRoot | Element): void {
     if (child.type === "element") normalizeClipboardHtml(child);
     if (isLineDiv(child)) {
       if (isBlankLine(child as Element)) flush();
-      else lines.push(child as Element);
+      else {
+        trimDivLineBreaks(child as Element);
+        lines.push(child as Element);
+      }
       continue;
     }
     flush();

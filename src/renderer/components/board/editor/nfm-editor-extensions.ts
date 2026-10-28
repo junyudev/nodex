@@ -1,4 +1,5 @@
 import { markdownBlocksForEditor } from "../../../../shared/nodex-markdown/blocknote";
+import { normalizeRichHtmlBlocks } from "../../../../shared/markdown/rich-html-blocks";
 import { beginRendererStructuralSpan } from "@/lib/renderer-causal-trace";
 import { createExtension, getBlockInfo, getNodeById, type ExtensionOptions } from "@blocknote/core";
 import type { BlockNoteEditor } from "@blocknote/core";
@@ -639,8 +640,10 @@ const readPortableClipboardBlocks = (
     return markdownBlocksForEditor(textBlocks) as readonly NfmStructuralReplacementBlockLike[];
   }
   if (!clipboardData.types.includes("text/html")) return null;
-  return editor.tryParseHTMLToBlocks(
-    sanitizeUntrustedTypedOwnerHtml(clipboardData.getData("text/html")),
+  return normalizeRichHtmlBlocks(
+    editor.tryParseHTMLToBlocks(
+      sanitizeUntrustedTypedOwnerHtml(clipboardData.getData("text/html")),
+    ),
   ) as readonly NfmStructuralReplacementBlockLike[];
 };
 
@@ -726,14 +729,29 @@ export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): Nfm
     }
     const unsafeHtml = internalHtml || externalHtml;
     if (hasUntrustedTypedOwnerHtml(unsafeHtml)) {
-      editor.pasteHTML(sanitizeUntrustedTypedOwnerHtml(unsafeHtml), internalHtml.length > 0);
+      const sanitized = sanitizeUntrustedTypedOwnerHtml(unsafeHtml);
+      if (internalHtml) editor.pasteHTML(sanitized, true);
+      else pasteExternalHtml(editor, sanitized);
       return true;
     }
 
-    // Text reads by the shared Page paste rules; BlockNote pastes code, files and rich text.
+    // Text reads by the shared Page paste rules.
     const textBlocks = clipboardData ? readPageTextPaste(clipboardData) : [];
-    return pasteNfmBlocks(editor, textBlocks) || pasteNatively();
+    if (pasteNfmBlocks(editor, textBlocks)) return true;
+    // Rich text from other apps pastes without the blank lines it spaces with.
+    if (externalHtml && !internalHtml && !types.includes("vscode-editor-data")) {
+      pasteExternalHtml(editor, externalHtml);
+      return true;
+    }
+    // BlockNote pastes code, files and Nodex's own copies.
+    return pasteNatively();
   };
+}
+
+/** Pastes rich text from another app as its Blocks, without the blank lines it spaces with. */
+function pasteExternalHtml(editor: BlockNoteEditor, html: string): void {
+  const blocks = normalizeRichHtmlBlocks(editor.tryParseHTMLToBlocks(html));
+  if (blocks.length > 0) editor.pasteHTML(editor.blocksToFullHTML(blocks), true);
 }
 
 export { getNfmSearchState };

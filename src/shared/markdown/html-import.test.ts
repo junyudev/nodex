@@ -1,15 +1,70 @@
 import { describe, expect, test } from "vite-plus/test";
 import { htmlToBlocks } from "./index";
 import { writePortableMarkdown } from "../nodex-markdown";
+import { richHtmlPageMarkdown, richHtmlSpacerFixtures } from "./__fixtures__/rich-html-paste";
+import { normalizeRichHtmlBlocks } from "./rich-html-blocks";
 
 const asMessage = (html: string) => writePortableMarkdown(htmlToBlocks(html));
 
 describe("HTML import", () => {
+  test.each(richHtmlSpacerFixtures)("drops spacer paragraphs from $source", (fixture) => {
+    const blocks = htmlToBlocks(fixture.html);
+    expect(asMessage(fixture.html).markdown).toBe(
+      "composer" in fixture ? fixture.composer : richHtmlPageMarkdown,
+    );
+    expect(blocks.every((block) => block.type === "paragraph")).toBe(true);
+  });
+
+  test("trims breaks across marks and links, preserving nested content and atomic Blocks", () => {
+    expect(
+      normalizeRichHtmlBlocks([
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "\n", styles: { bold: true } }],
+          children: [{ type: "paragraph", content: [{ type: "text", text: "Child" }] }],
+        },
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "link",
+              href: "https://example.com",
+              content: [{ type: "text", text: " \nLinked", styles: { italic: true } }],
+            },
+            { type: "text", text: "\n", styles: { bold: true } },
+          ],
+        },
+        { type: "image" },
+        { type: "paragraph", content: [{ type: "inlineImage", props: { url: "image.png" } }] },
+        { type: "codeBlock", content: [{ type: "text", text: "\ncode\n\n" }] },
+      ]),
+    ).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "Child" }] },
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "link",
+            href: "https://example.com",
+            content: [{ type: "text", text: "Linked", styles: { italic: true } }],
+          },
+        ],
+      },
+      { type: "image" },
+      { type: "paragraph", content: [{ type: "inlineImage", props: { url: "image.png" } }] },
+      { type: "codeBlock", content: [{ type: "text", text: "\ncode\n\n" }] },
+    ]);
+  });
   test.each([
     [
       "chat line breaks",
       "<span>first line</span><br><span>second line</span>",
       "first line\nsecond line",
+    ],
+    [
+      "interior breaks within one paragraph",
+      "<p><br><span>first line<br>second line<br><br>third line</span><br></p>",
+      "first line\nsecond line\n<br>third line",
     ],
     [
       "lines written as divs, with an empty line between paragraphs",

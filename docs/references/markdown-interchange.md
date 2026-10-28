@@ -60,6 +60,13 @@ stay lines; an empty div separates paragraphs. CSS bold, italic and strike marks
 are read from document copies, including weight-resetting wrappers. This
 adapter does not parse Markdown.
 
+External rich HTML spacer lines, including empty paragraphs, nonbreaking-space
+paragraphs and paragraphs containing only line breaks, separate content without
+creating empty Blocks. Leading and trailing line breaks in paragraphs are
+discarded. Line breaks between real content stay within their paragraph, and
+code keeps its whitespace. This spacing rule applies to Page and Composer paste;
+Nodex's internal clipboard fragments retain their exact Block structure.
+
 ## Writing Markdown
 
 Copy and export use `writePortableMarkdown`, the language writer with Nodex
