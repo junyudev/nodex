@@ -1,0 +1,19 @@
+scripts/rust-dev-runtime.ts
+  s_4b53f1a3b989a8::t_9f64899b90b3f1 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "51f49b3b31d0bbc0543a4a4dfb209e046bafbd1c",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
