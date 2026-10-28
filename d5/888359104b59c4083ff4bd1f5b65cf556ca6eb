@@ -1,0 +1,77 @@
+src/renderer/components/board/editor/paste-resource.test.ts
+  s_4b53f1a3b989a8::t_a8f7b16593715e 17,322-324,326-328,330-331,335-344,351-352,360,369-370
+tests/e2e/markdown-paste.spec.ts
+  s_847495236a6271::t_aa5a7b4b7f939e 51
+  s_847495236a6271::t_8f78cf878f0d53 8,10-14,16,21-50,52-57,59-70
+  s_4b53f1a3b989a8::t_63707a4ff3149f 58
+  s_4b53f1a3b989a8::t_c52be69dbd79ac 71
+src/shared/markdown/paste.ts
+  s_4b53f1a3b989a8::t_4de19d4df8f0ec 8,35,53-99
+  s_4b53f1a3b989a8::t_f37c5e4d29ac04 36-43,45,47-52
+  s_4b53f1a3b989a8::t_7eb5e16e80840c 44,46
+  s_4b53f1a3b989a8::t_df252ab3467546 100
+src/renderer/components/board/editor/paste-resource.ts
+  s_4b53f1a3b989a8::t_18600959218f48 4-5,277,279,293-300,302-304
+src/renderer/components/board/editor/nfm-paste-blocks.ts
+  s_4b53f1a3b989a8::t_c46258ddaff75e 1-24
+CHANGELOG.md
+  s_4b53f1a3b989a8::t_0f1e52e237f4f6 44
+src/renderer/components/board/editor/nfm-editor-extensions.test.ts
+  s_4b53f1a3b989a8::t_f1f89bf9349881 219-220,223-224,248-249,254,257,263-264,271-274
+docs/references/markdown-interchange.md
+  s_4b53f1a3b989a8::t_0f1e52e237f4f6 14-16,33-45
+  s_4b53f1a3b989a8::t_fd6a96471a2f09 17-20
+src/shared/markdown/index.ts
+  s_4b53f1a3b989a8::t_0d33dff2a2c2e1 3-8
+src/renderer/components/board/editor/nfm-text-paste.browser.test.tsx
+  s_4b53f1a3b989a8::t_7a2ac146c52f96 59
+  s_4b53f1a3b989a8::t_9e327f21f573f9 46-48,50,60
+  s_4b53f1a3b989a8::t_4f7c400728a006 1-45,49,51-58,61-88,92-103
+  s_819b31638169c3::t_1f3386ecacf6c0 89-91
+docs/product-specs/nfm-editor-table-block-behavior.md
+  s_4b53f1a3b989a8::t_0f1e52e237f4f6 25,37
+src/renderer/components/board/editor/nfm-editor-extensions.ts
+  s_4b53f1a3b989a8::t_21f6efef46b947 650-651,654
+  s_4b53f1a3b989a8::t_47d8b6b09977ff 649,733
+  s_4b53f1a3b989a8::t_0d33dff2a2c2e1 12,637-639,641-643,734
+  s_4b53f1a3b989a8::t_6e2878b391d7e8 735
+  s_4b53f1a3b989a8::t_0be04e9c5982ad 29
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_4b53f1a3b989a8::t_188ee6d53e0b88 151
+  s_4b53f1a3b989a8::t_ec6057c1e7bccb 954
+src/shared/markdown/markdown-paste.test.ts
+  s_4b53f1a3b989a8::t_449ce91ba90548 3-9,101-167
+  s_4b53f1a3b989a8::t_444186a14b5fce 168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5888359104b59c4083ff4bd1f5b65cf556ca6eb",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_819b31638169c3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a182f8-d543-7650-87dc-1980827d6ca4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_847495236a6271": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18301-653a-7e62-a432-741213c6a21a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
