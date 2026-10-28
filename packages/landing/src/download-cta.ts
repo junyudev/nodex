@@ -1,9 +1,12 @@
 function initializeBrewCopyButton(): void {
   if (typeof document === "undefined") return;
 
-  const button = document.querySelector<HTMLButtonElement>(".landing-brew-copy");
-  if (!button) return;
+  for (const button of document.querySelectorAll<HTMLButtonElement>(".landing-brew-copy")) {
+    bindBrewCopyButton(button);
+  }
+}
 
+function bindBrewCopyButton(button: HTMLButtonElement): void {
   button.addEventListener("click", async () => {
     const command = button.dataset.command;
     if (!command) return;

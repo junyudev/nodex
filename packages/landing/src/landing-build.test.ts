@@ -40,7 +40,7 @@ function readPage(route: string) {
 
 test("the static build emits each public page with its canonical URL", () => {
   for (const [route, heading] of [
-    ["", "Nodex"],
+    ["", "One inbox. Every agent. All local."],
     ["changelog", "Changelog"],
     ["privacy", "Privacy"],
     ["terms", "Terms"],
@@ -48,7 +48,7 @@ test("the static build emits each public page with its canonical URL", () => {
     const page = readPage(route);
     const pathname = route ? `/${route}/` : "/";
 
-    expect(page.querySelector("h1")?.textContent).toBe(heading);
+    expect(page.querySelector("h1")?.textContent.replace(/\s+/g, " ").trim()).toBe(heading);
     expect(page.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe(
       `https://nodex.jyu.app${pathname}`,
     );
@@ -68,13 +68,29 @@ test("the release stamp equals the root app version", () => {
 test("downloads and the copy control use the public install contracts", () => {
   const page = readPage("");
 
-  expect(page.querySelector("#landing-download-button")?.getAttribute("href")).toBe(
-    "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg",
-  );
-  expect(page.querySelector(".landing-brew-copy")?.getAttribute("data-command")).toBe(
-    "brew install --cask junyudev/tap/nodex",
-  );
-  expect(page.querySelector("code")?.textContent).toBe("brew install --cask junyudev/tap/nodex");
+  const downloads = page.querySelectorAll("a[data-download]");
+  const copies = page.querySelectorAll(".landing-brew-copy");
+
+  expect(downloads.length).toBeGreaterThan(0);
+  for (const link of downloads) {
+    expect(link.getAttribute("href")).toBe(
+      "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg",
+    );
+  }
+  expect(copies.length).toBeGreaterThan(0);
+  for (const copy of copies) {
+    expect(copy.getAttribute("data-command")).toBe("brew install --cask junyudev/tap/nodex");
+    expect(copy.parentNode?.querySelector("code")?.textContent).toBe(
+      "brew install --cask junyudev/tap/nodex",
+    );
+  }
+});
+
+test("demo capture pages stay out of search results", () => {
+  expect(
+    readPage("capture/hero").querySelector('meta[name="robots"]')?.getAttribute("content"),
+  ).toBe("noindex");
+  expect(readFileSync(join(outputDir, "robots.txt"), "utf8")).toContain("Disallow: /capture/");
 });
 
 test("the changelog starts with Unreleased and its in-development status", () => {

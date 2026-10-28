@@ -1,0 +1,21 @@
+---
+import TidyDemo from "../demos/TidyDemo";
+import Feature from "./Feature.astro";
+---
+
+<Feature
+  eyebrow="Agent-ready, all local"
+  title="Ask once. Watch the whole board sort itself out."
+  wide
+  points={[
+    "Agents use the <code class='font-mono text-[14px] text-ink'>nodex</code> CLI: one read-only SQL query reads a whole View.",
+    "Edits land as one transaction and never overwrite newer changes.",
+    "Every agent Nodex runs gets the same CLI. Every change stays in Page history.",
+  ]}
+>
+  <Fragment slot="body">
+    Your Pages and Databases live in one local Profile built for agents. Ask in plain words, and
+    the View you have open regroups as the edits land.
+  </Fragment>
+  <TidyDemo client:visible />
+</Feature>

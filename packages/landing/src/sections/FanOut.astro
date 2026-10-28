@@ -1,0 +1,20 @@
+---
+import FanOutDemo from "../demos/FanOutDemo";
+import Feature from "./Feature.astro";
+---
+
+<Feature
+  eyebrow="Mix harnesses"
+  title="Let Claude lead. Let GPT build."
+  points={[
+    "Any chat can hand parts of its work to another provider’s model with <code class='font-mono text-[13px] text-ink'>delegate_task</code>.",
+    "Every subagent keeps its own conversation you can open, follow up on, or stop.",
+    "Pick per part: a frontier model where it matters, a free one where it doesn’t.",
+  ]}
+>
+  <Fragment slot="body">
+    A Claude Code session can fan out to GPT-6.1 Sol in Codex, keep an eye on every task, and merge
+    what comes back — in one transcript, on your machine.
+  </Fragment>
+  <FanOutDemo client:visible />
+</Feature>

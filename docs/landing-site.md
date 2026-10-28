@@ -41,8 +41,12 @@ because the shared Vitest setup resolves generated Markdown assets from that dir
 - `src/pages/changelog/index.astro` for the generated changelog page
 - `src/pages/privacy/index.astro` and `src/pages/terms/index.astro` for the legal pages
 - `src/components/` for shared site navigation and footer
-- `src/islands/` for React components hydrated with Astro's client directives; animations use `motion/react`
+- `src/sections/` for the homepage sections, each an Astro component that places one demo island
+- `src/demos/` for the interactive product demos, hydrated with Astro client directives and animated with `motion/react`; `lumen.ts` holds the fictional workspace and the current agent and model names every demo shares
+- `src/replica/` for presentational copies of the desktop UI (window shell, Inbox, chat, Board) that the demos compose
+- `src/pages/capture/` for the unlisted pages the media recorder captures, including the `og` social preview
 - `src/styles/global.css` for landing-only Tailwind, Geist fonts, and the system-driven dark variant
+- `src/styles/theme.css` for site colors and the app colors the replicas use in each theme
 - `src/lib/site.ts` for typed release and install constants
 - `src/changelog-renderer.ts` for build-time `CHANGELOG.md` parsing and rendering
 - `src/download-cta.ts` for copying the Homebrew install command
@@ -117,17 +121,46 @@ production custom-domain contract and must remain in the generated Pages tree;
 
 ## Content Notes
 
-The v1 site is intentionally narrow:
+The homepage tells one story in order. The hero headline's three lines are also the hero demo's
+chapters and jump to them: **One inbox.** captures a burst of messages and plans each one, the
+reader moves one plan's lead from GPT-6.1 Sol to Claude Opus before starting it, and the
+cleared Inbox shows how it plans; **Every agent.** opens that chat, where the reader points at
+its Claude lead and then at one of its GPT subagents; **All local.** opens a chat with its Page
+in the side tab group, where the agent attaches its report and the reader opens it. Icons beside the last two lines show what they cover, and a line's short caption appears
+only while its chapter plays. The sentence beside the headline is the README's tagline; change
+both together.
+Sections then cover cross-provider delegation, every provider's models and plans in one menu,
+work landing in Pages on a Board, and one plain request that has an agent file a whole backlog,
+followed by a feature grid and a final download call.
 
-- a single-screen homepage
-- a generated changelog page at `/changelog/`
-- a primary release CTA
-- a secondary Homebrew install affordance
-- minimal privacy and terms pages
+Product demos are scripted re-enactments built from replicas of the interface, not recordings:
+
+- Demos show each flow as it is best designed, not only as today's interface draws it. Where a
+  surface or flow would read better another way, the demo leads with that design and becomes
+  its design reference for the app; keep what is already right in the app (its shell, labels,
+  icons and colors) faithful so the replica still reads as Nodex.
+- Every capability a demo shows must ship with the release the site is published with. Plan
+  the release and the site together when a demo leads the app.
+- Split tab groups follow the app: each group's tabs sit in the titlebar above its own pane,
+  and a chat's Page opens in the side group. A file opened from a Page's Files opens as a new
+  tab in that Page's group: HTML in a browser tab that renders it, any other file in a file tab.
+- The cleared Inbox summarizes how it plans, with the app's own labels: the model it is
+  Suggested by, Nodex's Model guide beside what is left of each plan's weekly budget, and the
+  reader's Routing preferences. Pointing at a chat's model button shows the model that leads it,
+  and a subagent's card marks its provider, so a Claude lead with Codex subagents reads at a
+  glance.
+- Every demo shares the fictional Lumen workspace in `src/demos/lumen.ts`; never show real
+  user data, account names, or paths.
+- Replicas read the app's own artwork where it has some: subagent avatars are loaded from
+  `src/renderer/assets/subagent-avatars/` at build time (and a change there redeploys the site),
+  so redrawn icons appear without copying files.
+- A demo's script is a list of named cues on one clock (`src/demos/timeline.ts`). It plays while
+  on screen, shows its final frame under reduced motion, and plays once from the start under
+  `?capture` for the recorder.
 
 Release CTA contract:
 
 - default CTA target: `https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg`
 - Nodex requires Apple silicon and macOS 15 or later; the CTA does not select an architecture.
 
-If the site later expands into screenshots, FAQ, or longer-form product copy, keep that work inside `packages/landing` rather than pulling renderer code into the package.
+Keep landing work inside `packages/landing` rather than pulling renderer code into the package.

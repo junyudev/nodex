@@ -1,16 +1,25 @@
 ---
-import { CHANGELOG_URL, GITHUB_URL } from "../lib/site";
+import { CHANGELOG_URL, DOWNLOAD_URL, GITHUB_URL } from "../lib/site";
+import { GitHubMark } from "../replica/icons";
 ---
 
-<nav class="px-6 sm:px-10" aria-label="Primary">
-  <div class="mx-auto flex h-14 max-w-[860px] items-center justify-between gap-4 border-b border-current/10">
-    <a href="/" class="inline-flex items-center gap-3">
-      <img src="/nodex-icon.png" alt="" width="30" height="30" class="size-[30px] opacity-50" />
-      <span class="text-[19px] font-bold tracking-[-0.02em] opacity-60">Nodex</span>
+<nav class="sticky top-0 z-50 border-b border-line bg-page/70 backdrop-blur-xl" aria-label="Primary">
+  <div class="mx-auto flex h-14 max-w-[1200px] items-center justify-between gap-4 px-6">
+    <a href="/" class="inline-flex items-center gap-2.5">
+      <img src="/nodex-icon.png" alt="" width="26" height="26" class="size-[26px]" />
+      <span class="text-[16px] font-semibold tracking-[-0.02em]">Nodex</span>
     </a>
-    <div class="flex items-center gap-5 text-[15px] font-semibold">
-      <a href={CHANGELOG_URL} class="opacity-60 hover:opacity-100">Changelog</a>
-      <a href={GITHUB_URL} class="opacity-60 hover:opacity-100">GitHub</a>
+    <div class="flex items-center gap-1 text-[14px] text-ink-2">
+      <a href={CHANGELOG_URL} class="hidden rounded-full px-3 py-1.5 hover:text-ink sm:block">Changelog</a>
+      <a
+        href={GITHUB_URL}
+        aria-label="Nodex on GitHub"
+        class="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 hover:text-ink sm:px-3"
+      >
+        <GitHubMark className="size-[18px] sm:size-4" />
+        <span class="hidden sm:inline">GitHub</span>
+      </a>
+      <a href={DOWNLOAD_URL} data-download class="ml-2 rounded-full bg-ink px-3.5 py-1.5 font-medium text-page hover:opacity-90">Download</a>
     </div>
   </div>
 </nav>

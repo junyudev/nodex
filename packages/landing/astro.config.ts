@@ -8,6 +8,7 @@ export default defineConfig({
   outDir: "./dist",
   trailingSlash: "always",
   integrations: [react()],
+  devToolbar: { enabled: false },
   vite: {
     plugins: [tailwindcss()],
   },

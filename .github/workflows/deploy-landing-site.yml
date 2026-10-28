@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "packages/landing/**"
+      - "src/renderer/assets/subagent-avatars/**"
       - ".github/workflows/deploy-landing-site.yml"
       - ".github/workflows/_deploy-landing-site.yml"
       - "pnpm-lock.yaml"

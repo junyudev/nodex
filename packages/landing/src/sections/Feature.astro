@@ -1,0 +1,46 @@
+---
+interface Props {
+  eyebrow: string;
+  title: string;
+  points?: readonly string[];
+  /** Puts the artifact on the left on wide screens. */
+  flip?: boolean;
+  /** Stacks text above a full-width artifact. */
+  wide?: boolean;
+}
+
+const { eyebrow, title, points = [], flip = false, wide = false } = Astro.props;
+---
+
+<section class="mx-auto max-w-[1200px] px-6 py-16 sm:py-20">
+  <div
+    class:list={[
+      "grid items-center gap-10",
+      wide ? "grid-cols-1" : "lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16",
+      flip && !wide && "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]",
+    ]}
+  >
+    <div class:list={["flex flex-col gap-5", flip && !wide && "lg:order-2", wide && "max-w-[720px]"]}>
+      <p class="font-mono text-[12px] tracking-[0.14em] text-ink-3 uppercase">{eyebrow}</p>
+      <h2 class="text-[34px] leading-[1.08] font-semibold tracking-[-0.035em] text-balance sm:text-[44px]">{title}</h2>
+      <div class="text-[17px] leading-relaxed text-pretty text-ink-2">
+        <slot name="body" />
+      </div>
+      {
+        points.length > 0 ? (
+          <ul class="mt-1 flex flex-col gap-2.5 text-[15px] text-ink-2">
+            {points.map((point) => (
+              <li class="flex gap-3">
+                <span class="mt-[9px] size-1.5 shrink-0 rounded-full bg-ink-3" />
+                <span set:html={point} />
+              </li>
+            ))}
+          </ul>
+        ) : null
+      }
+    </div>
+    <div class:list={["min-w-0", flip && !wide && "lg:order-1"]}>
+      <slot />
+    </div>
+  </div>
+</section>

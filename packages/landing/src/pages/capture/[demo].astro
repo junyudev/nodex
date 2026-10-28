@@ -1,0 +1,17 @@
+---
+import CaptureStage from "../../demos/CaptureStage";
+import { CAPTURE_DEMOS, type CaptureDemoId } from "../../demos/capture-demos";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+export function getStaticPaths() {
+  return Object.keys(CAPTURE_DEMOS).map((demo) => ({ params: { demo } }));
+}
+
+const demo = Astro.params.demo as CaptureDemoId;
+---
+
+<BaseLayout title={`Nodex demo — ${demo}`} noindex>
+  <div class="min-h-screen bg-page bg-[radial-gradient(120%_90%_at_50%_0%,var(--site-glow),transparent_70%)]">
+    <CaptureStage client:load demo={demo} />
+  </div>
+</BaseLayout>

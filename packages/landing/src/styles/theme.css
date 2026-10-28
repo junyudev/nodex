@@ -1,0 +1,167 @@
+/*
+ * Two layers of color. Site tokens dress the page; app tokens dress the product replicas so
+ * they read as the real desktop app in either theme.
+ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --site-page: #08080a;
+  --site-raised: #101013;
+  --site-ink: #f5f5f4;
+  --site-ink-2: #a8a8ae;
+  --site-ink-3: #6f6f78;
+  --site-line: rgb(255 255 255 / 0.08);
+  --site-glow: rgb(120 140 255 / 0.16);
+
+  --app-bg: #181818;
+  --app-sidebar: #1c1c1c;
+  --app-raised: #262626;
+  --app-menu: #2d2d2d;
+  --app-hover: rgb(255 255 255 / 0.078);
+  --app-line: rgb(255 255 255 / 0.084);
+  --app-fg: #f4f4f4;
+  --app-muted: rgb(255 255 255 / 0.62);
+  --app-faint: rgb(255 255 255 / 0.45);
+  --app-user: #173e76;
+  --app-on-user: #f6fafe;
+  --app-primary: #ffffff;
+  --app-on-primary: #1a1a1a;
+  --app-accent: #2c67c5;
+  --app-shadow:
+    0 0 0 0.5px rgb(255 255 255 / 0.12), 0 30px 80px -20px rgb(0 0 0 / 0.75),
+    0 12px 28px -12px rgb(0 0 0 / 0.6);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --site-page: #fbfbfa;
+  --site-raised: #ffffff;
+  --site-ink: #161618;
+  --site-ink-2: #55555c;
+  --site-ink-3: #8b8b93;
+  --site-line: rgb(0 0 0 / 0.08);
+  --site-glow: rgb(90 110 255 / 0.12);
+
+  --app-bg: #ffffff;
+  --app-sidebar: #f6f6f6;
+  --app-raised: #ffffff;
+  --app-menu: #ffffff;
+  --app-hover: rgb(26 28 31 / 0.053);
+  --app-line: rgb(26 28 31 / 0.085);
+  --app-fg: #1a1c1f;
+  --app-muted: rgb(26 28 31 / 0.65);
+  --app-faint: rgb(26 28 31 / 0.48);
+  --app-user: #e8f3fe;
+  --app-on-user: #0c274a;
+  --app-primary: #1a1c1f;
+  --app-on-primary: #ffffff;
+  --app-accent: #3a83f7;
+  --app-shadow:
+    0 0 0 0.5px rgb(0 0 0 / 0.14), 0 30px 80px -24px rgb(20 20 40 / 0.28),
+    0 10px 24px -12px rgb(20 20 40 / 0.16);
+}
+
+@theme inline {
+  --color-page: var(--site-page);
+  --color-raised: var(--site-raised);
+  --color-ink: var(--site-ink);
+  --color-ink-2: var(--site-ink-2);
+  --color-ink-3: var(--site-ink-3);
+  --color-line: var(--site-line);
+
+  --color-app: var(--app-bg);
+  --color-app-sidebar: var(--app-sidebar);
+  --color-app-raised: var(--app-raised);
+  --color-app-hover: var(--app-hover);
+  --color-app-line: var(--app-line);
+  --color-app-fg: var(--app-fg);
+  --color-app-muted: var(--app-muted);
+  --color-app-faint: var(--app-faint);
+  --color-app-user: var(--app-user);
+  --color-app-on-user: var(--app-on-user);
+  --color-app-menu: var(--app-menu);
+  --color-app-accent: var(--app-accent);
+  --color-app-primary: var(--app-primary);
+  --color-app-on-primary: var(--app-on-primary);
+
+  --color-status-triage: #8e8e93;
+  --color-status-plan: #a78bfa;
+  --color-status-build: #3a83f7;
+  --color-status-review: #e5652e;
+  --color-status-ship: #30a46c;
+  --color-free: #e7b549;
+
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  --font-app: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif;
+  --shadow-window: var(--app-shadow);
+}
+
+/*
+ * The hero headline doubles as the hero demo's chapters. Before the demo runs every line is
+ * bright; once it plays, the playing line stays bright with its progress beneath it.
+ */
+@utility hero-chapter {
+  opacity: 1;
+  transition: opacity 400ms ease;
+  border-radius: 0.12em;
+
+  [data-hero][data-chapter] & {
+    opacity: 0.48;
+  }
+  [data-hero][data-chapter] &[aria-current],
+  &:focus-visible {
+    opacity: 1;
+  }
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 0.08em;
+  }
+  @media (hover: hover) {
+    [data-hero][data-chapter] &:hover {
+      opacity: 0.78;
+    }
+  }
+}
+
+/* A line's caption reads like a subtitle: only the playing line, or the one pointed at, shows it. */
+@utility hero-chapter-note {
+  transition: opacity 400ms ease;
+
+  [data-hero][data-chapter] & {
+    opacity: 0;
+  }
+  [data-hero][data-chapter] [aria-current] &,
+  [data-hero][data-chapter] [data-hero-chapter]:focus-visible & {
+    opacity: 1;
+  }
+  @media (hover: hover) {
+    [data-hero][data-chapter] [data-hero-chapter]:hover & {
+      opacity: 1;
+    }
+  }
+}
+
+@utility hero-chapter-bar {
+  position: absolute;
+  left: 0.02em;
+  bottom: -0.06em;
+  height: 0.04em;
+  min-height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0;
+  width: calc(var(--hero-progress, 0) * 100%);
+
+  [aria-current] & {
+    opacity: 0.35;
+  }
+}

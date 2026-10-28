@@ -1,0 +1,100 @@
+---
+import HeroDemo from "../demos/HeroDemo";
+import {
+  BoardIcon,
+  ClaudeMark,
+  FolderIcon,
+  OpenAIMark,
+  OpenCodeMark,
+  PageIcon,
+} from "../replica/icons";
+import DownloadActions from "./DownloadActions.astro";
+
+// Each line after the first carries its meaning in icons, with a short caption that shows while
+// its chapter plays. Both are decorative: the headline reads as its three lines, and the
+// caption text is CSS content.
+const chapters = [
+  { line: "One inbox." },
+  {
+    line: "Every agent.",
+    title: "Claude Code, Codex, OpenCode, and 40+ agents in the ACP Registry",
+    marks: [
+      { Icon: ClaudeMark, size: "size-[0.32em]" },
+      { Icon: OpenAIMark, size: "size-[0.32em]" },
+      { Icon: OpenCodeMark, size: "size-[0.26em]" },
+    ],
+    note: "after:content-['+40']",
+  },
+  {
+    line: "All local.",
+    title: "Notion-style Pages, their files, and Databases, stored on your Mac",
+    marks: [
+      { Icon: PageIcon, size: "size-[0.36em]" },
+      { Icon: FolderIcon, size: "size-[0.3em]" },
+      { Icon: BoardIcon, size: "size-[0.3em]" },
+    ],
+    note: "after:content-['Pages_·_Files_·_DBs']",
+  },
+];
+---
+
+<section data-hero class="relative isolate overflow-x-clip pb-4">
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute inset-x-0 top-[380px] -z-10 mx-auto h-[720px] max-w-[1200px] rounded-full bg-[radial-gradient(closest-side,var(--site-glow),transparent)] blur-2xl"
+  >
+  </div>
+  <div
+    class="mx-auto grid max-w-[1200px] grid-cols-1 gap-8 px-6 pt-10 sm:pt-12 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:items-baseline lg:gap-10 xl:gap-14"
+  >
+    <h1
+      class="flex min-w-0 flex-col items-start text-[40px] leading-[1.02] font-semibold tracking-[-0.045em] sm:text-[54px] lg:text-[58px] xl:text-[64px]"
+    >
+      {
+        chapters.map(({ line, title, marks, note }, index) => (
+          <Fragment>
+            <button
+              type="button"
+              data-hero-chapter={index}
+              class="hero-chapter relative cursor-pointer pb-[0.1em] text-left"
+            >
+              <span class="relative inline-block">
+                {line}
+                <span aria-hidden="true" class="hero-chapter-bar" />
+              </span>
+              {marks ? (
+                <span
+                  aria-hidden="true"
+                  title={title}
+                  class="ml-[0.24em] inline-flex translate-y-[-0.1em] items-center align-middle whitespace-nowrap"
+                >
+                  {marks.map(({ Icon, size }) => (
+                    <span class="flex size-[0.56em] items-center justify-center rounded-full bg-raised text-ink ring-1 ring-line not-first:-ml-[0.1em]">
+                      <Icon className={size} />
+                    </span>
+                  ))}
+                  <span
+                    class:list={[
+                      "hero-chapter-note ml-[0.2em] text-[max(0.22em,10px)] font-medium tracking-normal text-ink-2",
+                      note,
+                    ]}
+                  />
+                </span>
+              ) : null}
+            </button>{" "}
+          </Fragment>
+        ))
+      }
+    </h1>
+    <div class="flex flex-col gap-7">
+      <p class="max-w-[480px] text-[18px] leading-[1.55] text-balance text-ink-2 sm:text-[20px] lg:text-[17px] xl:text-[19px]">
+        The open-source workspace where Claude Code, Codex and OpenCode work from the same local
+        Pages.
+      </p>
+      <DownloadActions align="start" stamp={false} />
+    </div>
+  </div>
+  <div class="mx-auto mt-10 max-w-[1240px] px-4 sm:mt-12 sm:px-6">
+    <HeroDemo client:load />
+  </div>
+</section>

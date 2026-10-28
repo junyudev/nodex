@@ -1,0 +1,22 @@
+---
+import DownloadActions from "./DownloadActions.astro";
+---
+
+<section class="relative isolate overflow-hidden border-t border-line">
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute inset-x-0 -bottom-40 -z-10 mx-auto h-[420px] max-w-[900px] rounded-full bg-[radial-gradient(closest-side,var(--site-glow),transparent)] blur-2xl"
+  >
+  </div>
+  <div class="mx-auto flex max-w-[1200px] flex-col items-center px-6 py-20 text-center sm:py-28">
+    <h2 class="text-[40px] leading-[1.04] font-semibold tracking-[-0.045em] text-balance sm:text-[56px]">
+      Drop in your next ten ideas.
+    </h2>
+    <p class="mt-5 max-w-[560px] text-[17px] leading-relaxed text-ink-2">
+      Bring the Codex, Claude Code or OpenCode account you already have — or start with the free models.
+    </p>
+    <div class="mt-10 max-w-full">
+      <DownloadActions />
+    </div>
+  </div>
+</section>

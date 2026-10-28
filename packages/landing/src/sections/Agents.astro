@@ -1,0 +1,22 @@
+---
+import AgentsDemo from "../demos/AgentsDemo";
+import Feature from "./Feature.astro";
+---
+
+<Feature
+  eyebrow="Every agent, every plan"
+  title="Bring the plans you pay for. Add the free ones."
+  flip
+  points={[
+    "Codex, Claude Code and OpenCode built in — plus 40+ agents from the ACP Registry, like Gemini CLI and Qwen Code.",
+    "OpenCode’s free models sit in the same model menu as everything else.",
+    "Usage meters for each account. The Inbox weighs what’s left before it picks a model.",
+    "Switch models mid-chat: your next message hands the conversation to the new Agent.",
+  ]}
+>
+  <Fragment slot="body">
+    Sign in once per provider and every model is one menu away. Nodex shows how much of each plan
+    is left, so the expensive model goes where it matters and a free one takes the rest.
+  </Fragment>
+  <AgentsDemo client:visible />
+</Feature>

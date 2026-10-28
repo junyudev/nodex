@@ -1,0 +1,35 @@
+---
+const items = [
+  ["Worktrees", "Give each chat its own isolated checkout, set up by your Environment."],
+  ["Review", "Unstaged, staged, branch and last-turn diffs, right beside the chat."],
+  ["Browser", "Preview your local server and let agents drive it."],
+  ["Terminal", "Real terminals in the Project’s or the chat’s folder."],
+  ["Scheduled", "Cron tasks and heartbeats that run on your Mac."],
+  ["Canvas", "A whiteboard Block, inline in a Page or in its own tab."],
+  ["Command palette", "Jump to any chat, Page, file or action with ⌘K."],
+  ["Windows & tabs", "Split panes, preview tabs and as many windows as you like."],
+  ["History & snapshots", "Restore any Page revision, or the whole workspace."],
+  ["Bring your chats", "Import existing Codex and Claude Code conversations."],
+  ["Dictation", "Talk to any composer instead of typing."],
+  ["Skills & plugins", "Skills, MCP servers and plugins for the agents that support them."],
+];
+---
+
+<section class="mx-auto max-w-[1200px] px-6 py-16 sm:py-20">
+  <div class="flex max-w-[720px] flex-col gap-4">
+    <p class="font-mono text-[12px] tracking-[0.14em] text-ink-3 uppercase">Everything around the agent</p>
+    <h2 class="text-[34px] leading-[1.08] font-semibold tracking-[-0.035em] text-balance sm:text-[44px]">
+      The rest of the job, in the same window.
+    </h2>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+    {
+      items.map(([title, body]) => (
+        <div class="flex flex-col gap-1.5 bg-page p-6">
+          <span class="text-[15px] font-medium text-ink">{title}</span>
+          <span class="text-[14px] leading-relaxed text-ink-2">{body}</span>
+        </div>
+      ))
+    }
+  </div>
+</section>
