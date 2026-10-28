@@ -1,0 +1,349 @@
+src/renderer/components/workbench/side-chat-close-dialog.tsx
+  s_ce448c49020622::t_e92b38ed4bce9c 1-46
+  s_ce448c49020622::t_888a73366e9f90 47-64
+src/renderer/lib/workbench-scene-commands.ts
+  s_ce448c49020622::t_27500c209d7473 97,101,870-872
+src/renderer/lib/use-workbench-scene-commands.ts
+  s_ce448c49020622::t_27500c209d7473 18,32,50,54
+tests/e2e/thread-selection-actions.spec.ts
+  s_ce448c49020622::t_f0107d6249324d 170,172-173
+  s_ce448c49020622::t_0482209c94b550 9,58,61,171
+  s_ce448c49020622::t_505db9b7bb97ea 29-30,34-35,37,43,54-56,71,87,89,114-115,147
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_1934698a63a580::t_2e5deab108ccbe 1,1164-1167,1831-1832,3015-3016,4044-4051,5070-5074,5976-5991,5998-6000,6023-6026,6029-6039,6161-6185,6402-6410,6413,6415-6416,6424,6427-6428,9719-9728,9808-9809,9868,9870-9884,9886-9905,9907-9913
+src/renderer/components/workbench/workbench-agent-runtime-panels.tsx
+  s_ce448c49020622::t_f0b2a09bb2574c 11,120,157-158,165,170,180,197,227
+  s_ce448c49020622::t_913ee9bb72a8c8 228-229
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_ce448c49020622::t_bbdeb28a7e144e 131-175,2346-2347,2350,2881,2906-2907
+  s_ce448c49020622::t_ad1efdfe374d75 102,119-121,123-126,2348,2932,2934-2936,2938,2943,2977-2979,2983,2985,2991-2998,3000,3013,3016-3019,3023,3035-3038,3040-3045,3047
+  s_ce448c49020622::t_e3049be70b6530 2349,2351,2879-2880,2905,3051-3052
+src/renderer/features/local-conversation/agent-runtime-stage-actions.node.test.ts
+  s_ce448c49020622::t_9eae96a67d29ed 423-434,436
+  s_ce448c49020622::t_ae9c260325980b 435,437-442
+packages/agent-runtime/src/nodex/SideChat.ts
+  s_ce448c49020622::t_da8ef9948ab6b6 1-3,5-9
+  s_1934698a63a580::t_b2b8d0a1075276 4,10
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.test.ts
+  s_1934698a63a580::t_b2b8d0a1075276 57,314,370,480,526,5188-5273,5549-5622
+  s_1934698a63a580::t_64b001d6d9361d 5623-5636
+packages/agent-runtime/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts
+  s_ce448c49020622::t_5f416513e7e673 52
+  s_ce448c49020622::t_1b37ddab891e9f 346,387
+  s_ce448c49020622::t_f6cc24d1d40305 347-386,388
+  s_ce448c49020622::t_8cbcd023877e9f 389-419
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_ce448c49020622::t_9d2a87a4e0f569 1903-1927,1930,1942-1946,1953-1960,1992-2008,2010-2011,2014-2015,2017-2031,2033-2035,2050-2074,2093,2100,2104-2109,2116-2122,2147,2156-2158,2200-2208,2809,3206-3234,3252-3292
+  s_ce448c49020622::t_5eabbd3bedfa9a 6,68-71,1931-1941,1947,1950-1952,1961-1976,1988-1989,2009,2012-2013
+  s_ce448c49020622::t_0338d62e6a837a 116-119,1928-1929,1948-1949,1977-1978,1980-1982
+  s_ce448c49020622::t_f4d440131ecef2 1979,1983-1987,1990-1991,2016
+  s_ce448c49020622::t_28522b72e05f80 3293-3294
+src/renderer/lib/workbench-scene-command-lifecycle.node.test.ts
+  s_ce448c49020622::t_7d449eab03b0c7 31-34,77
+docs/product-specs/agent-runtime-behavior.md
+  s_ce448c49020622::t_305a9f2cb52ac1 202-212,215-219,221-224,251-252
+  s_ce448c49020622::t_d29a8b90761bef 213-214,220
+src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx
+  s_ce448c49020622::t_bbdeb28a7e144e 618-619
+  s_ce448c49020622::t_2c17b553756d67 620-621
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_ce448c49020622::t_657f4abb1e2097 1095-1097,1106-1107,1124,3476-3487,3491-3493,3505
+  s_ce448c49020622::t_b932b7ce46dbfc 485,1666-1680,8797-8799
+  s_ce448c49020622::t_4a2d515ee96921 33,39,456-458,484
+  s_ce448c49020622::t_d306f572618577 480-483,1103-1105,1109-1113,1116-1120,3488-3490,3494-3504
+  s_ce448c49020622::t_72bc3336f878a4 1100,8794-8796,8800-8803
+  s_ce448c49020622::t_00507350f6b170 1098-1099,1101-1102,1108,1114-1115,1121-1123
+  s_ce448c49020622::t_2b3cf0750c969b 486
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAgentSdkInstanceHistory.test.ts
+  s_ce448c49020622::t_837a8f7b2f19e4 180-225
+  s_ce448c49020622::t_05367e2c456d8a 10,226-227,250
+  s_ce448c49020622::t_6600c3ab61ecfd 179
+  s_ce448c49020622::t_bbb0131ca3617e 228-249,251-258
+src/renderer/lib/workbench-panel-tab-model.ts
+  s_ce448c49020622::t_e5767b548904b8 54-56
+  s_ce448c49020622::t_55c9ed564700b2 284
+tests/e2e/side-chat-context.spec.ts
+  s_ce448c49020622::t_165ddf0c987f2e 273
+  s_ce448c49020622::t_919a8b651892fc 23,28-30,35-36,223-224
+  s_ce448c49020622::t_806b55a4b0cd82 1-14,16-22,24-27,37-95,97-99,101-104,115,127-141,153-157,161-165,179-182,184,188-191,199,209-222,225-227,249-251,261,302,311-312,325-329
+  s_ce448c49020622::t_cd149035e8e50d 240-245,286
+  s_ce448c49020622::t_4b7486da4fdd56 105-114,116-126,142-152,158-160,185-187,192-198,200-208,228-239,246-248,252-257,259-260,264-265,269-272,274-285,287-301,303-310,317-324
+  s_ce448c49020622::t_bff95f35f15f23 31-34
+  s_ce448c49020622::t_e28da9b70035d6 15,96,100,314
+  s_ce448c49020622::t_630ae3eb349a1a 183
+  s_ce448c49020622::t_00b0a1a4144a8b 258,262-263
+  s_ce448c49020622::t_10f2ffb2bbe69f 313,315-316
+  s_ce448c49020622::t_77606e218a5e16 266-268
+  s_ce448c49020622::t_1bd86975a450de 166-167
+  s_ce448c49020622::t_2d3782380fc131 168-176
+  s_ce448c49020622::t_f1b1fd40b81767 177-178
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_ce448c49020622::t_0000491b02bb0c 155,6980-6981,6987-6989,6997-6999
+  s_ce448c49020622::t_52f03699be33f8 6982-6986,6990-6996
+  s_ce448c49020622::t_e112f08204cb3a 6762,7731
+src/renderer/lib/use-side-chat-close-confirmation.ts
+  s_ce448c49020622::t_e92b38ed4bce9c 1-4,8-19,26-29,31,33-42,44-46
+  s_ce448c49020622::t_c6d7d9f8b1f310 5-7,20-25
+  s_ce448c49020622::t_27500c209d7473 30,32,43
+  s_ce448c49020622::t_656f2c50bfe9db 47-68
+crates/nodex-core/src/document/integrity.rs
+  s_1934698a63a580::t_fd78ebb6768a8c 61
+src/renderer/lib/agent-runtime-runtime.ts
+  s_ce448c49020622::t_e5767b548904b8 21-22,101-116,217-218
+  s_ce448c49020622::t_05922794327e91 219-222,281-282
+packages/agent-runtime/src/provider/ClaudeSessionStore.test.ts
+  s_ce448c49020622::t_7831143c492e34 1,118-128,138
+  s_ce448c49020622::t_c23f3a1bfb28cd 114-117,129-137,139-142,144,163
+  s_ce448c49020622::t_1f479dd541a2b6 143,145-149
+src/renderer/lib/workbench-scene-command-lifecycle.ts
+  s_ce448c49020622::t_c6d7d9f8b1f310 17,60,65-66
+  s_ce448c49020622::t_27500c209d7473 15-16,64,101
+  s_ce448c49020622::t_427d510746e3dd 67-70,102-109
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_ce448c49020622::t_fe9e4d6dc80957 73,10178-10181,10228,10289
+  s_ce448c49020622::t_fa7141398bcd0d 10182-10227,10229-10288,10290-10294
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_ce448c49020622::t_0e550eeedb3fa4 1654,1676,1685,1688,1691,1704,1712,1718-1721
+  s_ce448c49020622::t_d97ccae88c783e 2656,2763-2767,2893-2901,2903
+  s_ce448c49020622::t_592eeb5b5346e9 2902,2904-2917,3335,3338-3339
+src/renderer/components/workbench/side-chat-close-dialog.test.tsx
+  s_ce448c49020622::t_ece0a1d59f93b3 1-13,19-21,29-30,35,40,45-46,55-57
+  s_ce448c49020622::t_f8ecc4e9861054 14-18,22-28,31-34,36-39,41-44,47-54
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_ce448c49020622::t_2d244dc14ba386 698-732,736-744,777-778,782-785,788-795,815
+  s_ce448c49020622::t_09869902e7e45e 100,644-697,733-735,745-776,779-781,786-787
+  s_ce448c49020622::t_2318ae7e0807ff 796-814,816-833
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_ce448c49020622::t_9484d747913481 5362-5364,5366-5388,5417,5421-5427
+  s_ce448c49020622::t_71670fb53a4264 218-220,326-328,392-394,970-973,5319-5361,5365,5389-5416,5418-5420,5428-5555
+packages/agent-runtime/src/provider/ClaudeSessionStore.ts
+  s_ce448c49020622::t_8ec4673e558cbf 116,189-199,265-305,307-339,341-347,349,358
+  s_ce448c49020622::t_b0e7df1fd5cd1c 350-357
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_ce448c49020622::t_e5767b548904b8 364-368,372-376
+  s_ce448c49020622::t_0a74a8fa1664f1 377-379,381,594-599
+tests/e2e/support/renderer-errors.ts
+  s_ce448c49020622::t_50dd7794945011 1-30
+  s_ce448c49020622::t_68178298c937f5 31-36
+tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs
+  s_ce448c49020622::t_c6c003f1bb4203 269
+  s_ce448c49020622::t_a8a4b1f1b43efa 280-281,286,322-328
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.ts
+  s_1934698a63a580::t_b2b8d0a1075276 1,146-153,161,174,192-194,2132,2134-2143,2147-2148,2424-2464,2580,3012
+packages/agent-runtime/src/orchestration-v2/ThreadFork.head.test.ts
+  s_1934698a63a580::t_bce66b3b6e5fb1 20-21,36-37,63,67
+  s_1934698a63a580::t_91c28275e6dcc8 605-612,618-659,670-708,715-716,722-728,733-737,746-751
+  s_1934698a63a580::t_b2b8d0a1075276 613-617,660-669,709-714,717-721,729-732,738-745
+  s_1934698a63a580::t_2e5deab108ccbe 35,275-604
+packages/agent-runtime/src/orchestration-v2/Adapters/OpenCode2AdapterV2.testkit.ts
+  s_ce448c49020622::t_2ee3407de55264 293-294,305-314
+  s_ce448c49020622::t_5f416513e7e673 296,315-318,321
+  s_ce448c49020622::t_eb2b2e0e814855 304
+src/renderer/lib/workbench-panel-tab-model.node.test.ts
+  s_ce448c49020622::t_55c9ed564700b2 80,94
+  s_ce448c49020622::t_7be2c03e11a05c 95-104
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_ce448c49020622::t_9ee04d930649e7 86
+  s_ce448c49020622::t_2a75917e8a55e5 780,890,1014,1242,1392,1449,1454-1464,1544,1662,1667
+  s_ce448c49020622::t_4924ff708c7e31 1450-1453,1519,1532-1533
+  s_ce448c49020622::t_8b55875a2d023a 1502-1505,1516-1518,1545,1663-1666,1903
+  s_ce448c49020622::t_c0f8b99ad1e485 1465-1469,1478-1479,1534-1543,1546-1548,1624-1626,1638,1646,1668-1686,2314,5351,5608,10411,10601,10844,11044,11229,11369,11547
+scripts/scenarios/runtime/scripted-claude-agent.mjs
+  s_ce448c49020622::t_dfe9d9e8ddb3f2 276-280
+  s_ce448c49020622::t_099f4fdec11752 281,287-290
+src/renderer/lib/use-workbench-panel-openers.ts
+  s_ce448c49020622::t_7d4b2bb69dd0ff 514,528,533-534
+  s_ce448c49020622::t_f2e27483e2b323 56-57,471-477,496-497,504-507,519-520,524,544
+  s_ce448c49020622::t_90b3e5d18532c5 460-462,464-465,515-518
+  s_ce448c49020622::t_f535bf29597d38 862-864
+  s_ce448c49020622::t_58e769a7a9432c 440,508-513,529-532
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_ce448c49020622::t_e5767b548904b8 436-437
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_ce448c49020622::t_d7883ebbb30768 3-4,165,267-281,658
+CHANGELOG.md
+  s_ce448c49020622::t_e400771ea321a9 20
+crates/nodex-core-contracts/src/workspace.rs
+  s_1934698a63a580::t_32f51c238687ea 129-130,1302-1303,1550-1551
+crates/nodex-core/schema/current.sql
+  s_1934698a63a580::t_3d9e3cb6c6112a 1017-1020,4497
+crates/nodex-core/schema/migrations/v190_to_v191.sql
+  s_1934698a63a580::t_4f98e02353aa1a 1-4
+crates/nodex-core/src/infrastructure/migration.rs
+  s_1934698a63a580::t_aa01a048013922 367-371,2489-2503
+crates/nodex-core/src/workspace/agent_runtime_authority.rs
+  s_1934698a63a580::t_b12b7c32ffd0a2 72
+crates/nodex-core/src/workspace/agent_runtime_binding.rs
+  s_1934698a63a580::t_1f2db65b1a590e 40,46-60,76,171-176,273,298,309,394,403-408,430,432,435-436,473,484-598,1096
+crates/nodex-core/src/workspace/agent_runtime_cleanup.rs
+  s_1934698a63a580::t_7885ade3a33189 139
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_1934698a63a580::t_07a01cc2b87469 1245
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_1934698a63a580::t_cf9e81b0f2d3f0 1211
+crates/nodex-core/src/workspace/mutation.rs
+  s_1934698a63a580::t_a1096a79243879 804,821
+crates/nodex-core/src/workspace/page_chat.rs
+  s_1934698a63a580::t_5a93b8ef6dc60c 1053
+crates/nodex-core/src/workspace/read.rs
+  s_1934698a63a580::t_1cde752438c110 389,400
+crates/nodex-core/src/workspace/session_listing.rs
+  s_1934698a63a580::t_8f1be6eb3c06a1 172,582
+crates/nodex-core/src/workspace/sidebar_section.rs
+  s_1934698a63a580::t_cf1145fd0f57c0 1063
+crates/nodex-core/src/workspace/task_window.rs
+  s_1934698a63a580::t_ae1d1f2c83f99d 198
+crates/nodex-store-format/src/lib.rs
+  s_1934698a63a580::t_7ec3a98814ff69 233-236
+docs/ARCHITECTURE.md
+  s_ce448c49020622::t_c37605636dfc64 852-855
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_ce448c49020622::t_2aa691fe8b0361 474,613
+docs/product-specs/workbench-shell.md
+  s_ce448c49020622::t_89151c4137abbc 157
+  s_ce448c49020622::t_ce9e7b60f5efbd 206
+  s_ce448c49020622::t_04d03140c60cfc 235
+packages/agent-runtime/package.json
+  s_1934698a63a580::t_cb7140c53ab185 12
+packages/agent-runtime/src/nodex/CodexImportSource.ts
+  s_1934698a63a580::t_6e89ef7fb5a2ed 89,103
+packages/agent-runtime/src/nodex/Interface.ts
+  s_1934698a63a580::t_d78ed5d3552f84 240
+packages/agent-runtime/src/nodex/NativeImport.ts
+  s_1934698a63a580::t_e5b64d6ba0639e 58,172-180
+packages/agent-runtime/src/nodex/Runtime.ts
+  s_1934698a63a580::t_63bc93f5655a7b 6,249-276,282-283
+packages/agent-runtime/src/nodex/Service.ts
+  s_1934698a63a580::t_5bf6cc8d652ba4 1,659,1027-1028
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.testkit.ts
+  s_ce448c49020622::t_8061ae6d4ecf18 947
+packages/agent-runtime/src/orchestration-v2/EffectOutbox.ts
+  s_1934698a63a580::t_b9bcc070d31650 31,127
+packages/agent-runtime/src/orchestration-v2/EffectWorker.test.ts
+  s_1934698a63a580::t_34d14035d6f967 109
+packages/agent-runtime/src/orchestration-v2/EffectWorker.ts
+  s_ce448c49020622::t_781f09f8c897a8 134-144
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_1934698a63a580::t_b4943a4f457125 1,72,141,3741-3772,3779,3786-3824,3834-3862,3864-3880,3888-3895,3899,4076,4082-4112,4222-4224,5730-5744,5798-5817,6294-6299,6308
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_1934698a63a580::t_4a5506a83dfcac 214-215,303
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_1934698a63a580::t_e651977f93d1d5 73-84,572,668-761,778-779,788-805,807-808,810,812-833,928,993
+packages/agent-runtime/src/orchestration-v2/SessionCatalog.ts
+  s_1934698a63a580::t_6d1631301b14fe 97
+packages/agent-runtime/src/orchestration-v2/SessionSearch.ts
+  s_1934698a63a580::t_2c9f04344de950 122,296,305
+packages/agent-runtime/src/orchestration-v2/SideChatForkFallback.test.ts
+  s_1934698a63a580::t_0fcb190341c963 1-47
+packages/agent-runtime/src/orchestration-v2/ThreadDeletion.test.ts
+  s_1934698a63a580::t_0f672f42cb4c89 300-338
+packages/agent-runtime/src/orchestration-v2/ThreadDeletion.ts
+  s_1934698a63a580::t_5f784684d2938b 221-227
+packages/agent-runtime/src/orchestration-v2/ThreadForkService.ts
+  s_1934698a63a580::t_e911a167d24975 79-136,149
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderReplayHarness.ts
+  s_1934698a63a580::t_b8bb068a8aad20 244-245,268-269,498,545-549
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_1934698a63a580::t_9162c2438cdb74 102,202
+packages/agent-runtime/src/persistence/Migrations/086_SideChatContext.ts
+  s_1934698a63a580::t_3ae4c80bfabe2b 1-12
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_ce448c49020622::t_de7c7f7855bfe3 386-419,444-445,1972,2818,3379
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_ce448c49020622::t_30d9049496dd2e 1538-1593,7147
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_6c9891f66c664a::t_b4c32dd633ba23 410-411,506,524-529,705-707
+packages/agent-runtime/vendor/provider-opencode/src/server/adapter.test.ts
+  s_6c9891f66c664a::t_e603aa94682354 150,166-169,192-193,218,239,252-286,1429-1454
+packages/agent-runtime/vendor/provider-opencode/src/server/adapter.ts
+  s_ce448c49020622::t_4063a667a07184 773-788,795-831,836,2857-2865
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/adapter.ts
+  s_ce448c49020622::t_a97a8cf8cd8546 4325-4352
+packages/core-protocol/openapi.json
+  s_1934698a63a580::t_77a965a07c63a8 6780-6785,29657-29662,35724-35729,37924-37929,40328-40333
+packages/core-protocol/src/compatibility.generated.ts
+  s_1934698a63a580::t_df6aac0d9c1589 42-43
+packages/core-protocol/src/generated.ts
+  s_1934698a63a580::t_0fbff739ee964e 1567,7095,8439,9059,9631
+src/main/codex-application/CodexSideChatBoundary.ts
+  s_1934698a63a580::t_c9098a3f2c8f4b 1-4
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_1934698a63a580::t_b2772f11c9b2c9 145-150
+src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx
+  s_ce448c49020622::t_6d369cd0430887 506-508,535,539
+  s_ce448c49020622::t_04d03140c60cfc 4,506-508,535-538
+  s_ce448c49020622::t_8d39f981988c53 539
+src/shared/agent-runtime-api.ts
+  s_1934698a63a580::t_15f9aa3c9d6175 185-195,338-345
+src/shared/agent-runtime-context-clear.ts
+  s_1934698a63a580::t_ee8436c410cc1d 3-5,22
+src/shared/ipc-endpoint-policy.ts
+  s_1934698a63a580::t_4e02ba9bca3d37 540-541
+src/shared/schemas/agent-runtime-api.ts
+  s_1934698a63a580::t_7f08ac53d53f3e 174-184
+packages/agent-runtime/vendor/provider-core/src/server/orchestrationInstructions.ts
+  s_43dd1da4db2d7c::t_88967f3693e93e 37-38,41-42,44
+src/renderer/components/workbench/workbench-scene-frame.tsx
+  s_ce448c49020622::t_04d03140c60cfc 6,76-79,81
+src/renderer/components/workbench/workbench-scene-frame.browser.test.tsx
+  s_ce448c49020622::t_ec2a9b68a14005 1-2,9,26,32,52,112-126,129-183
+  s_ce448c49020622::t_1a0b1c22813515 184-186
+src/renderer/components/ui/conversation-content-frame.tsx
+  s_ce448c49020622::t_04d03140c60cfc 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "052daf6eb46903cf620b945a6e791c28d62add94",
+  "prompts": {},
+  "sessions": {
+    "s_1934698a63a580": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18063-f06b-7e33-99e5-1bdc9c5053a6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_43dd1da4db2d7c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1807c-4214-7011-a243-44e37a7a0625",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_79f58a542f5eeb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180fd-f036-70d1-ba01-12e1eaeb0930",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ce448c49020622": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18061-1d5f-7ed2-bb94-1a917dfd5e09",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_eeefa63588d57a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18134-d8ba-7f23-b3bb-19d9d691fff0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
