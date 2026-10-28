@@ -1,0 +1,27 @@
+crates/nodex-markdown/src/model.rs
+  s_4b53f1a3b989a8::t_f5b83a047ed155 877,948,971-972
+  s_4b53f1a3b989a8::t_5b51ffec766ddb 1430-1467
+  s_4b53f1a3b989a8::t_0f7148095bfd86 495,497-502,864-865,867-873,876,878-882,884-890,892-893,895-896,899-938,944-947,949-970,973-1034
+  s_4b53f1a3b989a8::t_71ce575381c6a1 1035
+crates/nodex-markdown/src/write/escapes.rs
+  s_4b53f1a3b989a8::t_0f7148095bfd86 67-70,74,81,458-476,491
+crates/nodex-markdown/src/read/tests.rs
+  s_4b53f1a3b989a8::t_09cc31843fd7fd 357,359
+  s_4b53f1a3b989a8::t_4f3e46d8f1b076 355,358
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "897d2e15372508631e0f21a8ecde0b8870991055",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
