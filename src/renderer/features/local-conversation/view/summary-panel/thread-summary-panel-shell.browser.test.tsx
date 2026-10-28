@@ -155,7 +155,10 @@ test.each([1, 1.25])("summary popover follows the chat edge and focus at zoom %s
       0,
     );
     expect(popupElement()!.getBoundingClientRect().width).toBeCloseTo(300 * zoom, 0);
-    expect(document.activeElement).toBe(view.getByRole("button", { name: "Summary action" }));
+    // The popup is already in place while its content slides in; focus follows once it opens.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(view.getByRole("button", { name: "Summary action" })),
+    );
     await act(async () => {
       await userEvent.click(view.getByRole("button", { name: "Review tab" }));
       await frames(2);
@@ -202,36 +205,58 @@ test.each([1, 1.25])("summary popover follows the chat edge and focus at zoom %s
   }
 });
 
-test("summary popover clips its slide to the chat pane and keeps a constant panel width", async () => {
+test("summary popover slides in and back out inside a still frame that the chat pane clips exactly", async () => {
   const view = renderShell(<Popover />);
   try {
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Toggle summary" }));
-    });
-    const samples: { x: number; opacity: number; clip: string }[] = [];
-    await act(async () => {
-      for (let index = 0; index < 12; index += 1) {
-        await frames(1);
-        const popup = popupElement();
-        if (!popup) continue;
-        const style = getComputedStyle(popup);
-        expect(popup.getBoundingClientRect().width).toBeCloseTo(300, 0);
-        samples.push({
-          x: new DOMMatrixReadOnly(style.transform).m41,
-          opacity: Number(style.opacity),
-          clip: style.clipPath,
-        });
+    const trigger = view.getByRole("button", { name: "Toggle summary" });
+    const pane = document
+      .querySelector("[data-app-shell-main-content-layout]")!
+      .getBoundingClientRect();
+    const sampleSlide = async () => {
+      const samples: { frame: DOMRect; slide: number; clipRightEdge: number | null }[] = [];
+      await act(async () => {
+        for (let index = 0; index < 14; index += 1) {
+          await frames(1);
+          const popup = popupElement();
+          const frame = popup?.parentElement;
+          if (!popup || !frame) continue;
+          const rect = frame.getBoundingClientRect();
+          const inset = /^inset\((\S+)px (\S+)px/.exec(getComputedStyle(frame).clipPath);
+          expect(popup.getBoundingClientRect().width).toBeCloseTo(300, 0);
+          samples.push({
+            frame: rect,
+            slide: new DOMMatrixReadOnly(getComputedStyle(popup).transform).m41,
+            clipRightEdge: inset ? rect.right - Number(inset[2]) : null,
+          });
+        }
+      });
+      const sliding = samples.filter(({ slide }) => slide > 1 && slide < 299);
+      expect(sliding.length).toBeGreaterThan(1);
+      for (const sample of sliding) {
+        // The frame never moves, and its clip ends exactly at the pane's edge.
+        expect(sample.frame.right).toBeCloseTo(sliding[0]!.frame.right, 0);
+        expect(sample.clipRightEdge).not.toBeNull();
+        expect(sample.clipRightEdge!).toBeCloseTo(pane.right, 0);
       }
+    };
+
+    await act(async () => {
+      fireEvent.click(trigger);
     });
-    expect(
-      samples.some(
-        ({ x, opacity, clip }) => x > 0 && x < 300 && opacity > 0 && opacity < 1 && clip !== "none",
-      ),
-    ).toBe(true);
+    await sampleSlide();
     await act(async () => {
       await frames(25);
     });
-    await waitFor(() => expect(getComputedStyle(popupElement()!).clipPath).toBe("none"));
+    await waitFor(() =>
+      expect(getComputedStyle(popupElement()!.parentElement!).clipPath).toBe("none"),
+    );
+
+    // Closing plays the slide back out before the popover lets the popup go.
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+    await sampleSlide();
+    await waitFor(() => expect(popupElement()).toBeNull());
   } finally {
     view.dispose();
   }

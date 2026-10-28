@@ -76,6 +76,11 @@ function useSummaryPopoverGeometry(trigger: HTMLElement | null) {
   return geometry;
 }
 
+/**
+ * The popup slides inside its positioner, which rests at the popup's final place, so the pane
+ * clip is set once in the positioner's still frame for each animation instead of chasing the
+ * moving popup. The popup itself animates so the popover keeps it until its exit has played.
+ */
 function SummaryPopoverContent({
   children,
   trigger,
@@ -90,15 +95,15 @@ function SummaryPopoverContent({
   const reducedMotion = useResolvedReducedMotion();
   const present = useIsPresent();
   const popupRef = useRef<HTMLDivElement | null>(null);
-  const animatingRef = useRef(false);
+  const clippingRef = useRef(false);
+  const positioner = () => popupRef.current?.parentElement ?? null;
   const clipToPane = () => {
-    const popup = popupRef.current;
+    const frame = positioner();
     const pane = summaryPane(trigger);
-    if (!popup || !pane || !animatingRef.current) return;
+    if (!frame || !pane || !clippingRef.current) return;
     const bounds = pane.getBoundingClientRect();
-    const rectangle = popup.getBoundingClientRect();
-    const zoom = popup.offsetWidth > 0 ? rectangle.width / popup.offsetWidth : 1;
-    popup.style.clipPath = `inset(${(bounds.top - rectangle.top) / zoom}px ${(rectangle.right - bounds.right) / zoom}px ${(rectangle.bottom - bounds.bottom) / zoom}px ${(bounds.left - rectangle.left) / zoom}px)`;
+    const rectangle = frame.getBoundingClientRect();
+    frame.style.clipPath = `inset(${bounds.top - rectangle.top}px ${rectangle.right - bounds.right}px ${rectangle.bottom - bounds.bottom}px ${bounds.left - rectangle.left}px)`;
   };
 
   return (
@@ -114,7 +119,7 @@ function SummaryPopoverContent({
       aria-hidden={!present}
       inert={!present}
       finalFocus={false}
-      className="!w-auto !overflow-visible !rounded-3xl !bg-transparent !p-0 !shadow-none !ring-0 !backdrop-blur-none"
+      className="!w-auto !overflow-visible !bg-transparent !p-0 !shadow-none !ring-0 !backdrop-blur-none"
       style={{ maxHeight: "none", maxWidth: "none", zoom }}
       render={
         <motion.div
@@ -123,13 +128,14 @@ function SummaryPopoverContent({
           exit={HIDDEN}
           transition={reducedMotion ? { duration: 0 } : CODEX_SUMMARY_PANEL_TRANSITION}
           onAnimationStart={() => {
-            animatingRef.current = true;
+            clippingRef.current = true;
+            // A popup that just opened is positioned by the next frame; a closing one already is.
             clipToPane();
+            requestAnimationFrame(clipToPane);
           }}
-          onUpdate={clipToPane}
           onAnimationComplete={() => {
-            animatingRef.current = false;
-            popupRef.current?.style.removeProperty("clip-path");
+            clippingRef.current = false;
+            positioner()?.style.removeProperty("clip-path");
           }}
         />
       }
