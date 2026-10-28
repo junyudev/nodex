@@ -408,6 +408,8 @@ import type {
   CreateBackupCommandInput,
   Project,
   ProjectActivitySummaryResult,
+  SessionLinkedPageSummaryInput,
+  SessionLinkedPageSummaryResult,
   PageChatActivitySummaryInput,
   PageChatActivitySummaryResult,
   PageChatLinkInput,
@@ -1015,6 +1017,10 @@ export interface IpcApi
   "projects:activity-summaries": {
     args: [projectIds: string[]];
     result: ProjectActivitySummaryResult;
+  };
+  "page-chats:session-linked-pages": {
+    args: [input: SessionLinkedPageSummaryInput];
+    result: SessionLinkedPageSummaryResult;
   };
   "page-chats:activity-summaries": {
     args: [input: PageChatActivitySummaryInput];

@@ -35620,6 +35620,27 @@
               {
                 "type": "object",
                 "required": [
+                  "session_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "session_linked_page_summaries"
+                    ]
+                  },
+                  "session_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "page_ids",
                   "kind"
                 ],
@@ -43242,6 +43263,67 @@
             "type": "string"
           },
           "thread_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceSessionLinkedPage": {
+        "type": "object",
+        "required": [
+          "page_id",
+          "title"
+        ],
+        "properties": {
+          "page_id": {
+            "type": "string"
+          },
+          "page_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceSessionLinkedPageStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceSessionLinkedPageStatus": {
+        "type": "object",
+        "required": [
+          "option_id",
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "option_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceSessionLinkedPageSummary": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "page"
+        ],
+        "properties": {
+          "page": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSessionLinkedPage"
+          },
+          "session_id": {
             "type": "string"
           }
         }
@@ -51035,6 +51117,36 @@
                             "type": "array",
                             "items": {
                               "$ref": "#/components/schemas/ProjectWorkspaceProjectActivitySummary"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "library_id",
+                          "summaries",
+                          "projection_revision",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "session_linked_page_summaries"
+                            ]
+                          },
+                          "library_id": {
+                            "type": "string"
+                          },
+                          "projection_revision": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "summaries": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/ProjectWorkspaceSessionLinkedPageSummary"
                             }
                           }
                         }

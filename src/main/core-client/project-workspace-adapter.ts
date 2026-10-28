@@ -5,6 +5,7 @@ import type {
   CodexThreadSummary,
   Project,
   PageChatActivitySummary,
+  SessionLinkedPageSummary,
   PageChatItem,
   ProjectCreateInput,
   ProjectSession,
@@ -165,6 +166,23 @@ export interface DesktopProjectWorkspaceThread {
   readonly recencyAt: number;
   readonly linkedAt: string;
 }
+
+export const projectWorkspaceSessionLinkedPageSummaryFromCore = (
+  summary: Extract<
+    ProjectWorkspaceReadSnapshot["value"],
+    { kind: "session_linked_page_summaries" }
+  >["summaries"][number],
+): SessionLinkedPageSummary => ({
+  sessionId: summary.session_id,
+  page: {
+    pageId: summary.page.page_id,
+    pageKey: summary.page.page_key ?? null,
+    title: summary.page.title,
+    status: summary.page.status
+      ? { optionId: summary.page.status.option_id, label: summary.page.status.label }
+      : null,
+  },
+});
 
 export const projectWorkspacePageChatActivitySummaryFromCore = (
   summary: CorePageChatActivitySummary,

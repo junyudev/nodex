@@ -53,6 +53,9 @@ pub enum ProjectWorkspaceRead {
     ProjectActivitySummaries {
         project_ids: Vec<String>,
     },
+    SessionLinkedPageSummaries {
+        session_ids: Vec<String>,
+    },
     PageChatActivitySummaries {
         page_ids: Vec<String>,
     },
@@ -257,6 +260,11 @@ pub enum ProjectWorkspaceReadValue {
     },
     ProjectActivitySummaries {
         summaries: Vec<ProjectWorkspaceProjectActivitySummary>,
+        projection_revision: i64,
+    },
+    SessionLinkedPageSummaries {
+        library_id: String,
+        summaries: Vec<ProjectWorkspaceSessionLinkedPageSummary>,
         projection_revision: i64,
     },
     PageChatActivitySummaries {
@@ -1212,6 +1220,26 @@ pub struct ProjectWorkspaceProjectActivitySummary {
     pub waiting_count: u32,
     pub unread_count: u32,
     pub active_count: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionLinkedPageSummary {
+    pub session_id: String,
+    pub page: ProjectWorkspaceSessionLinkedPage,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionLinkedPage {
+    pub page_id: String,
+    pub page_key: Option<String>,
+    pub title: String,
+    pub status: Option<ProjectWorkspaceSessionLinkedPageStatus>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionLinkedPageStatus {
+    pub option_id: String,
+    pub label: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

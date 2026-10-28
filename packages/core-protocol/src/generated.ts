@@ -8443,6 +8443,10 @@ export interface components {
                 readonly project_ids: readonly string[];
             } | {
                 /** @enum {string} */
+                readonly kind: "session_linked_page_summaries";
+                readonly session_ids: readonly string[];
+            } | {
+                /** @enum {string} */
                 readonly kind: "page_chat_activity_summaries";
                 readonly page_ids: readonly string[];
             } | {
@@ -10311,6 +10315,20 @@ export interface components {
             readonly runtime_id: string;
             readonly thread_id: string;
         };
+        readonly ProjectWorkspaceSessionLinkedPage: {
+            readonly page_id: string;
+            readonly page_key?: string | null;
+            readonly status?: components["schemas"]["ProjectWorkspaceSessionLinkedPageStatus"] | null;
+            readonly title: string;
+        };
+        readonly ProjectWorkspaceSessionLinkedPageStatus: {
+            readonly label: string;
+            readonly option_id: string;
+        };
+        readonly ProjectWorkspaceSessionLinkedPageSummary: {
+            readonly page: components["schemas"]["ProjectWorkspaceSessionLinkedPage"];
+            readonly session_id: string;
+        };
         readonly ProjectWorkspaceSessionOpenStats: {
             /** Format: int64 */
             readonly opened_at: number;
@@ -11930,6 +11948,13 @@ export interface components {
                     /** Format: int64 */
                     readonly projection_revision: number;
                     readonly summaries: readonly components["schemas"]["ProjectWorkspaceProjectActivitySummary"][];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "session_linked_page_summaries";
+                    readonly library_id: string;
+                    /** Format: int64 */
+                    readonly projection_revision: number;
+                    readonly summaries: readonly components["schemas"]["ProjectWorkspaceSessionLinkedPageSummary"][];
                 } | {
                     /** @enum {string} */
                     readonly kind: "page_chat_activity_summaries";

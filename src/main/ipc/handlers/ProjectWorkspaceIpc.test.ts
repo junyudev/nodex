@@ -6,7 +6,11 @@ import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { vi } from "vite-plus/test";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
-import type { Project, ProjectUpdateCommandInput } from "../../../shared/types";
+import type {
+  Project,
+  ProjectUpdateCommandInput,
+  SessionLinkedPageSummaryInput,
+} from "../../../shared/types";
 import type {
   ProjectSessionOpenedCommandInput,
   BuiltinSidebarReorderCommandInput,
@@ -94,10 +98,22 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
         ),
       on: () => Effect.die("unused"),
     });
+    const linkedPageInputs: SessionLinkedPageSummaryInput[] = [];
+    const linkedPageResult = {
+      summaries: [],
+      libraryId: "library:one",
+      storeEpoch: "epoch:test",
+      projectionRevision: 17,
+    };
     const updateInputs: ProjectUpdateCommandInput[] = [];
     const openedInputs: ProjectSessionOpenedCommandInput[] = [];
     const pinnedOrderInputs: BuiltinSidebarReorderCommandInput[] = [];
     const workspace = ProjectWorkspace.of({
+      readSessionLinkedPageSummaries: (input: SessionLinkedPageSummaryInput) =>
+        Effect.sync(() => {
+          linkedPageInputs.push(input);
+          return linkedPageResult;
+        }),
       recordProjectSessionOpened: (command: ProjectSessionOpenedCommandInput) =>
         Effect.sync(() => {
           openedInputs.push(command);
@@ -183,7 +199,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 46);
+    assert.strictEqual(handlers.size, 47);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("projects:update"));
     assert.isTrue(handlers.has("project-sessions:fork"));
@@ -192,6 +208,14 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     assert.isTrue(handlers.has("page-chats:list"));
     assert.isTrue(handlers.has("page-chats:link"));
     assert.isTrue(handlers.has("page-chats:unlink"));
+
+    const linkedPageInput = { sessionIds: ["session:one"] };
+    const linkedPageSummary = yield* handlers.get("page-chats:session-linked-pages")!(
+      rendererEvent(17),
+      linkedPageInput,
+    );
+    assert.deepEqual(linkedPageInputs, [linkedPageInput]);
+    assert.deepEqual(linkedPageSummary, linkedPageResult);
 
     const opening: ProjectSessionOpenedCommandInput = {
       operationId: createBoundedOperationId("workspace.session.opened", 1_800_000_000_000),

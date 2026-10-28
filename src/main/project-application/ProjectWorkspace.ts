@@ -10,6 +10,7 @@ import * as Semaphore from "effect/Semaphore";
 import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
 import {
   PageChatActivitySummaryInputSchema,
+  SessionLinkedPageSummaryInputSchema,
   PageChatLinkInputSchema,
   PageChatWindowInputSchema,
   ProjectSessionCreateInputSchema,
@@ -21,6 +22,8 @@ import type {
   CodexBackgroundProcessRecord,
   Project,
   ProjectActivitySummaryResult,
+  SessionLinkedPageSummaryInput,
+  SessionLinkedPageSummaryResult,
   PageChatActivitySummaryInput,
   PageChatActivitySummaryResult,
   PageChatLinkInput,
@@ -84,6 +87,7 @@ import {
   projectWorkspaceExecutionProfilePatchToCore,
   projectWorkspaceProjectFromCore,
   projectWorkspacePageChatActivitySummaryFromCore,
+  projectWorkspaceSessionLinkedPageSummaryFromCore,
   projectWorkspacePageChatItemFromCore,
   projectWorkspaceSidebarSectionItemFromCore,
   projectWorkspaceSidebarSectionItemRefToCore,
@@ -177,6 +181,9 @@ export interface ProjectWorkspaceService {
   readonly readProjectActivitySummaries: (
     projectIds: readonly string[],
   ) => ProjectWorkspaceEffect<ProjectActivitySummaryResult>;
+  readonly readSessionLinkedPageSummaries: (
+    input: SessionLinkedPageSummaryInput,
+  ) => ProjectWorkspaceEffect<SessionLinkedPageSummaryResult>;
   readonly readPageChatActivitySummaries: (
     input: PageChatActivitySummaryInput,
   ) => ProjectWorkspaceEffect<PageChatActivitySummaryResult>;
@@ -1059,6 +1066,27 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       },
     );
 
+    const readSessionLinkedPageSummaries = Effect.fn(
+      "ProjectWorkspace.readSessionLinkedPageSummaries",
+    )(function* (input: SessionLinkedPageSummaryInput) {
+      const parsed = yield* evaluate("session-linked-page.read", () =>
+        SessionLinkedPageSummaryInputSchema.parse(input),
+      );
+      const snapshot = yield* read("session-linked-page.read", {
+        kind: "session_linked_page_summaries",
+        session_ids: parsed.sessionIds,
+      });
+      return yield* evaluate("session-linked-page.read", () => {
+        const value = expectVariant(snapshot, "session_linked_page_summaries");
+        return {
+          summaries: value.summaries.map(projectWorkspaceSessionLinkedPageSummaryFromCore),
+          libraryId: value.library_id,
+          storeEpoch: snapshot.store_epoch,
+          projectionRevision: value.projection_revision,
+        } satisfies SessionLinkedPageSummaryResult;
+      });
+    });
+
     const readPageChatActivitySummaries = Effect.fn(
       "ProjectWorkspace.readPageChatActivitySummaries",
     )(function* (input: PageChatActivitySummaryInput) {
@@ -1460,6 +1488,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       createSessionInSidebarSection,
       readProjectActivitySummaries,
       readPageChatActivitySummaries,
+      readSessionLinkedPageSummaries,
       listPageChatWindow,
       getProject,
       createInitialProject: Effect.fn("ProjectWorkspace.createInitialProject")(function* (input) {

@@ -187,6 +187,9 @@ export const live: Layer.Layer<
     yield* invokeEffectQuery("projects:activity-summaries", (_, projectIds) =>
       projects.readProjectActivitySummaries(projectIds),
     );
+    yield* invokeEffectQuery("page-chats:session-linked-pages", (_, input) =>
+      projects.readSessionLinkedPageSummaries(input),
+    );
     yield* invokeEffectQuery("page-chats:activity-summaries", (_, input) =>
       projects.readPageChatActivitySummaries(input),
     );

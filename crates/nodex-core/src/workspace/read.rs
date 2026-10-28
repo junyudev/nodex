@@ -216,6 +216,17 @@ pub(super) fn read(
                 projection_revision: commit_head,
             })
         }
+        ProjectWorkspaceRead::SessionLinkedPageSummaries { session_ids } => {
+            Ok(ProjectWorkspaceReadValue::SessionLinkedPageSummaries {
+                library_id: library_id.to_owned(),
+                summaries: super::page_chat::read_session_linked_page_summaries(
+                    connection,
+                    library_id,
+                    &session_ids,
+                )?,
+                projection_revision: commit_head,
+            })
+        }
         ProjectWorkspaceRead::PageChatActivitySummaries { page_ids } => {
             Ok(ProjectWorkspaceReadValue::PageChatActivitySummaries {
                 summaries: super::page_chat::read_page_chat_activity_summaries(

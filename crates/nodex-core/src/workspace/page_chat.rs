@@ -7,7 +7,8 @@ use nodex_core_contracts::collection::{
 use nodex_core_contracts::workspace::{
     CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspacePageChatActivitySummary,
     ProjectWorkspacePageChatItem, ProjectWorkspaceSessionExecutionRef,
-    ProjectWorkspaceThreadStatus,
+    ProjectWorkspaceSessionLinkedPage, ProjectWorkspaceSessionLinkedPageStatus,
+    ProjectWorkspaceSessionLinkedPageSummary, ProjectWorkspaceThreadStatus,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
@@ -26,6 +27,7 @@ use super::session_mutation::{
 
 const MAX_INITIAL_PAGE_IDS: usize = 16;
 const MAX_ACTIVITY_PAGE_IDS: usize = 200;
+const MAX_LINKED_PAGE_SESSION_IDS: usize = 200;
 /// Live status for Runtime-bound Sessions is read per Session outside Core; a Page reports at
 /// most this many of its most recently updated ones.
 const MAX_ACTIVITY_RUNTIME_SESSIONS: i64 = 32;
@@ -201,6 +203,105 @@ pub(super) fn unlink_page(
         SessionInvalidationKind::SummaryAndDetail,
         now,
     )
+}
+
+/// Counts only readable, live Pages before projecting the sole linked Page. Session placement
+/// and its Project do not grant content access; the bound Library and Block lifecycle do.
+pub(super) fn read_session_linked_page_summaries(
+    connection: &Connection,
+    library_id: &str,
+    session_ids: &[String],
+) -> Result<Vec<ProjectWorkspaceSessionLinkedPageSummary>, StoreError> {
+    if session_ids.len() > MAX_LINKED_PAGE_SESSION_IDS {
+        return Err(resource_exhausted(
+            "Session Linked Page request exceeds the fixed bound",
+        ));
+    }
+    let mut unique = BTreeSet::new();
+    for session_id in session_ids {
+        validate_id("session_id", session_id)?;
+        if !unique.insert(session_id) {
+            return Err(invalid("Session IDs must be unique"));
+        }
+    }
+    if session_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut parameters = vec![SqlValue::Text(library_id.to_owned())];
+    let requested = session_ids
+        .iter()
+        .enumerate()
+        .map(|(ordinal, session_id)| {
+            parameters.push(SqlValue::Text(session_id.clone()));
+            let id_parameter = parameters.len();
+            parameters.push(SqlValue::Integer(ordinal as i64));
+            format!("(?{id_parameter}, ?{})", parameters.len())
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "WITH requested(session_id, ordinal) AS (VALUES {requested}), \
+         sole AS ( \
+           SELECT session.id AS session_id, requested.ordinal, MIN(page.block_id) AS page_id \
+           FROM requested \
+           JOIN project_sessions session ON session.id = requested.session_id AND session.archived = 0 \
+             AND (session.project_id IS NULL OR EXISTS ( \
+               SELECT 1 FROM projects project WHERE project.id = session.project_id \
+                 AND project.library_id = ?1 AND project.lifecycle = 'active')) \
+           JOIN project_session_pages relation ON relation.session_id = session.id \
+           JOIN pages page ON page.block_id = relation.page_id AND page.library_id = ?1 \
+           JOIN blocks block ON block.id = page.block_id AND block.library_id = ?1 \
+             AND block.lifecycle = 'active' \
+           GROUP BY session.id, requested.ordinal HAVING COUNT(*) = 1 \
+         ) \
+         SELECT sole.session_id, page.block_id, model.title, \
+           json_extract(option.value, '$.id'), json_extract(option.value, '$.name') \
+         FROM sole \
+         JOIN pages page ON page.block_id = sole.page_id \
+         JOIN page_read_model model ON model.page_block_id = page.block_id AND model.library_id = ?1 \
+         LEFT JOIN data_source_page_memberships membership \
+           ON page.parent_kind = 'data_source' AND membership.data_source_id = page.parent_id \
+             AND membership.page_block_id = page.block_id AND membership.removed_at IS NULL \
+         LEFT JOIN data_source_properties property \
+           ON property.data_source_id = membership.data_source_id AND property.id = 'status' \
+             AND property.value_type = 'select' AND property.lifecycle = 'active' \
+         LEFT JOIN data_source_property_values value \
+           ON value.membership_id = membership.id AND value.data_source_id = membership.data_source_id \
+             AND value.property_id = property.id AND value.value_type = 'select' \
+         LEFT JOIN json_each(property.config_json, '$.options') option \
+           ON json_extract(option.value, '$.id') = json_extract(value.value_json, '$') \
+         ORDER BY sole.ordinal"
+    );
+    let rows = connection
+        .prepare(&sql)?
+        .query_map(params_from_iter(parameters.iter()), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    rows.into_iter()
+        .map(|(session_id, page_id, title, option_id, label)| {
+            let page_key =
+                crate::database::current_page_key_for_page(connection, library_id, &page_id)?;
+            let status = option_id.zip(label).map(|(option_id, label)| {
+                ProjectWorkspaceSessionLinkedPageStatus { option_id, label }
+            });
+            Ok(ProjectWorkspaceSessionLinkedPageSummary {
+                session_id,
+                page: ProjectWorkspaceSessionLinkedPage {
+                    page_id,
+                    page_key,
+                    title,
+                    status,
+                },
+            })
+        })
+        .collect()
 }
 
 pub(super) fn read_page_chat_activity_summaries(
@@ -1174,5 +1275,337 @@ mod tests {
             )
             .expect_err("missing Page Chat window");
         assert_eq!(error.code, CoreErrorCode::NotFound);
+    }
+
+    fn library_apply(
+        workspace: &crate::workspace::test_support::TestWorkspace,
+        operation_id: &str,
+        intent: nodex_core_contracts::library::LibraryIntent,
+    ) {
+        crate::library::LibraryModule::new("profile-1", "library-1", &workspace.kernel)
+            .apply(
+                &context(),
+                nodex_core_contracts::ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::LIBRARY_CONTRACT_VERSION,
+                    operation_id: operation_id.to_owned(),
+                    store_epoch: nodex_core_contracts::StoreEpoch("epoch-1".to_owned()),
+                    intent,
+                },
+            )
+            .expect("Library mutation");
+    }
+
+    fn database_apply(
+        workspace: &crate::workspace::test_support::TestWorkspace,
+        operation_id: &str,
+        intent: nodex_core_contracts::database::DatabaseIntent,
+    ) {
+        crate::database::DatabaseModule::new("profile-1", "library-1", &workspace.kernel)
+            .apply(
+                &context(),
+                nodex_core_contracts::ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::DATABASE_CONTRACT_VERSION,
+                    operation_id: operation_id.to_owned(),
+                    store_epoch: nodex_core_contracts::StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![intent],
+                },
+            )
+            .expect("Database mutation");
+    }
+
+    fn linked_pages(
+        workspace: &crate::workspace::test_support::TestWorkspace,
+        session_ids: &[&str],
+    ) -> Vec<nodex_core_contracts::workspace::ProjectWorkspaceSessionLinkedPageSummary> {
+        let ProjectWorkspaceReadValue::SessionLinkedPageSummaries { summaries, .. } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::SessionLinkedPageSummaries {
+                session_ids: session_ids.iter().map(|id| (*id).to_owned()).collect(),
+            },
+        ) else {
+            panic!("Session Linked Page summaries");
+        };
+        summaries
+    }
+
+    #[test]
+    fn linked_page_summary_counts_only_live_pages_and_active_sessions() {
+        use nodex_core_contracts::library::{LibraryIntent, LibraryPageLifecycleMutation};
+        let workspace = seeded_workspace();
+        create_library_page(&workspace, "page:one", "project:default");
+        create_library_page(&workspace, "page:two", "project:default");
+        create_page_session(&workspace, "create-single", "session:single", "page:one");
+        apply(
+            &workspace.module,
+            "create-zero",
+            ProjectWorkspaceIntent::CreateSession {
+                session_id: "session:zero".to_owned(),
+                project_id: Some("project:default".to_owned()),
+                title: "No links".to_owned(),
+                initial_page_ids: vec![],
+            },
+        );
+        apply(
+            &workspace.module,
+            "create-many",
+            ProjectWorkspaceIntent::CreateSession {
+                session_id: "session:many".to_owned(),
+                project_id: Some("project:default".to_owned()),
+                title: "Many links".to_owned(),
+                initial_page_ids: vec!["page:one".to_owned(), "page:two".to_owned()],
+            },
+        );
+        let single = linked_pages(
+            &workspace,
+            &[
+                "session:zero",
+                "session:single",
+                "session:many",
+                "session:missing",
+            ],
+        );
+        assert_eq!(single.len(), 1);
+        assert_eq!(single[0].session_id, "session:single");
+        assert_eq!(single[0].page.page_id, "page:one");
+        assert_eq!(single[0].page.title, "page:one");
+        assert_eq!(single[0].page.page_key, None);
+        assert_eq!(single[0].page.status, None);
+
+        library_apply(
+            &workspace,
+            "archive-two",
+            LibraryIntent::ApplyPageLifecycle {
+                mutation: Box::new(LibraryPageLifecycleMutation::ArchivePage {
+                    page_id: "page:two".to_owned(),
+                    expected_metadata_revision: 1,
+                }),
+            },
+        );
+        assert_eq!(
+            linked_pages(&workspace, &["session:many"])[0].page.page_id,
+            "page:one"
+        );
+        library_apply(
+            &workspace,
+            "unarchive-two",
+            LibraryIntent::ApplyPageLifecycle {
+                mutation: Box::new(LibraryPageLifecycleMutation::UnarchivePage {
+                    page_id: "page:two".to_owned(),
+                    expected_metadata_revision: 2,
+                }),
+            },
+        );
+        assert!(linked_pages(&workspace, &["session:many"]).is_empty());
+        library_apply(
+            &workspace,
+            "delete-two",
+            LibraryIntent::ApplyPageLifecycle {
+                mutation: Box::new(LibraryPageLifecycleMutation::DeletePage {
+                    page_id: "page:two".to_owned(),
+                    expected_metadata_revision: 3,
+                    expected_parent_revision: 1,
+                    parent_document_head: None,
+                }),
+            },
+        );
+        assert_eq!(
+            linked_pages(&workspace, &["session:many"])[0].page.page_id,
+            "page:one"
+        );
+        apply(
+            &workspace.module,
+            "archive-single",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "session:single".to_owned(),
+                intent: ProjectSessionIntent::SetArchived { archived: true },
+            },
+        );
+        assert!(linked_pages(&workspace, &["session:single"]).is_empty());
+    }
+
+    #[test]
+    fn linked_page_summary_uses_current_keys_and_status_option_registry() {
+        use nodex_core_contracts::database::{
+            DatabaseIntent, DatabasePagePropertyAddress, DatabasePropertySchema,
+            DatabasePropertyValueEdit, DatabasePropertyValueInput, DatabasePropertyValueMutation,
+            DatabaseTransferTarget,
+        };
+        let workspace = seeded_workspace();
+        apply(
+            &workspace.module,
+            "create-lab",
+            ProjectWorkspaceIntent::CreateProject {
+                project_id: "project:lab".to_owned(),
+                name: "Lab".to_owned(),
+                description: String::new(),
+                appearance: None,
+                source_roots: vec!["/workspace/lab".to_owned()],
+                page_key_prefix: Some("LAB".to_owned()),
+            },
+        );
+        let (database_id, data_source_id) = workspace.kernel.readers().read_default(|connection| {
+            Ok(connection.query_row("SELECT project.database_block_id, source.id FROM projects project JOIN data_sources source ON source.home_database_block_id = project.database_block_id WHERE project.id = 'project:lab'", [], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?)
+        }).expect("Project Database coordinates");
+        create_library_page(&workspace, "page:work", "project:default");
+        create_page_session(&workspace, "create-work-chat", "session:work", "page:work");
+        assert_eq!(
+            linked_pages(&workspace, &["session:work"])[0].page.status,
+            None
+        );
+        database_apply(
+            &workspace,
+            "move-work",
+            DatabaseIntent::TransferPage {
+                page_id: "page:work".to_owned(),
+                expected_parent_revision: 1,
+                expected_active_membership_revision: 0,
+                target: DatabaseTransferTarget::DataSource {
+                    data_source_id: data_source_id.clone(),
+                },
+            },
+        );
+        let in_source = linked_pages(&workspace, &["session:work"]);
+        assert_eq!(in_source[0].page.page_key.as_deref(), Some("LAB-1"));
+        let value_revision = workspace.kernel.readers().read_default(|connection| {
+            Ok(connection.query_row("SELECT value.revision FROM data_source_property_values value JOIN data_source_page_memberships membership ON membership.id = value.membership_id WHERE membership.page_block_id = 'page:work' AND value.property_id = 'status'", [], |row| row.get::<_, i64>(0))?)
+        }).expect("current Status value revision");
+        database_apply(
+            &workspace,
+            "set-build",
+            DatabaseIntent::EditPropertyValues {
+                edits: vec![DatabasePropertyValueMutation {
+                    expected_membership_revision: None,
+                    address: DatabasePagePropertyAddress {
+                        page_id: "page:work".to_owned(),
+                        data_source_id: data_source_id.clone(),
+                        property_id: "status".to_owned(),
+                    },
+                    edit: DatabasePropertyValueEdit::Replace {
+                        expected_value_revision: value_revision,
+                        value: DatabasePropertyValueInput::Select {
+                            option_id: "build".to_owned(),
+                        },
+                    },
+                }],
+            },
+        );
+        database_apply(
+            &workspace,
+            "rename-status-property",
+            DatabaseIntent::PutProperty {
+                data_source_id: data_source_id.clone(),
+                property_id: "status".to_owned(),
+                expected_data_source_revision: 1,
+                expected_property_revision: 1,
+                name: "Progress".to_owned(),
+                schema: DatabasePropertySchema::Select,
+                before_property_id: None,
+            },
+        );
+        database_apply(
+            &workspace,
+            "rename-build",
+            DatabaseIntent::PutOption {
+                data_source_id: data_source_id.clone(),
+                property_id: "status".to_owned(),
+                option_id: "build".to_owned(),
+                name: "In progress".to_owned(),
+                color: None,
+                expected_property_revision: 2,
+            },
+        );
+        let summary = linked_pages(&workspace, &["session:work"]);
+        assert_eq!(
+            summary[0]
+                .page
+                .status
+                .as_ref()
+                .map(|status| (status.option_id.as_str(), status.label.as_str())),
+            Some(("build", "In progress"))
+        );
+        database_apply(
+            &workspace,
+            "rename-lab-prefix",
+            DatabaseIntent::RenamePageKeyPrefix {
+                database_id: database_id.clone(),
+                expected_revision: 1,
+                prefix: "RND".to_owned(),
+            },
+        );
+        assert_eq!(
+            linked_pages(&workspace, &["session:work"])[0]
+                .page
+                .page_key
+                .as_deref(),
+            Some("RND-1")
+        );
+        database_apply(
+            &workspace,
+            "clear-status",
+            DatabaseIntent::EditPropertyValues {
+                edits: vec![DatabasePropertyValueMutation {
+                    expected_membership_revision: None,
+                    address: DatabasePagePropertyAddress {
+                        page_id: "page:work".to_owned(),
+                        data_source_id: data_source_id.clone(),
+                        property_id: "status".to_owned(),
+                    },
+                    edit: DatabasePropertyValueEdit::Replace {
+                        expected_value_revision: value_revision + 1,
+                        value: DatabasePropertyValueInput::Empty,
+                    },
+                }],
+            },
+        );
+        assert_eq!(
+            linked_pages(&workspace, &["session:work"])[0].page.status,
+            None
+        );
+        database_apply(
+            &workspace,
+            "detach-work",
+            DatabaseIntent::TransferPage {
+                page_id: "page:work".to_owned(),
+                expected_parent_revision: 2,
+                expected_active_membership_revision: 1,
+                target: DatabaseTransferTarget::Library {
+                    library_id: "library-1".to_owned(),
+                },
+            },
+        );
+        let detached = linked_pages(&workspace, &["session:work"]);
+        assert_eq!(detached[0].page.status, None);
+        assert_eq!(detached[0].page.page_key, None);
+    }
+
+    #[test]
+    fn rejects_unbounded_or_ambiguous_session_linked_page_reads() {
+        let workspace = seeded_workspace();
+        assert!(linked_pages(&workspace, &[]).is_empty());
+        for (ids, expected) in [
+            (
+                vec!["session:same".to_owned(); 2],
+                CoreErrorCode::InvalidInput,
+            ),
+            (vec![" ".to_owned()], CoreErrorCode::InvalidInput),
+            (
+                (0..=super::MAX_LINKED_PAGE_SESSION_IDS)
+                    .map(|index| format!("session:{index}"))
+                    .collect(),
+                CoreErrorCode::ResourceExhausted,
+            ),
+        ] {
+            let error = workspace
+                .module
+                .read(
+                    &context(),
+                    ModuleReadRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read: ProjectWorkspaceRead::SessionLinkedPageSummaries { session_ids: ids },
+                    },
+                )
+                .expect_err("invalid Session Linked Page read");
+            assert_eq!(error.code, expected);
+        }
     }
 }

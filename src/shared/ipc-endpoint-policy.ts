@@ -241,6 +241,7 @@ type QueryEndpointPolicy =
   | "library-database:view-window:get"
   | "library-module:read"
   | "library-pages:detail:get"
+  | "page-chats:session-linked-pages"
   | "page-chats:activity-summaries"
   | "page-chats:list"
   | "inbox:summary"

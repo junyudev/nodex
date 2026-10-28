@@ -7,6 +7,7 @@ import type {
   WorkbenchProjectionPageStageTabConfig,
   ProjectSessionCreateInput,
   PageChatActivitySummaryInput,
+  SessionLinkedPageSummaryInput,
   PageChatLinkInput,
   PageChatWindowInput,
   WorkbenchProjectionDbViewTabConfig,
@@ -40,6 +41,7 @@ import {
 export const MAX_PROJECT_SESSION_TITLE_LENGTH = 2_000;
 export const MAX_INITIAL_PAGE_CHAT_IDS = 16;
 export const MAX_PAGE_CHAT_ACTIVITY_IDS = 200;
+export const MAX_SESSION_LINKED_PAGE_IDS = 200;
 export const MAX_PAGE_CHAT_WINDOW_SIZE = 200;
 
 const titleSchema = z.string().trim().min(1).max(MAX_PROJECT_SESSION_TITLE_LENGTH);
@@ -134,6 +136,10 @@ export const ProjectSessionCreateInputSchema = z
       message: "Initial Linked chat Pages require a Project-owned Chat",
     });
   }) satisfies z.ZodType<ProjectSessionCreateInput>;
+
+export const SessionLinkedPageSummaryInputSchema = z
+  .object({ sessionIds: boundedUniqueIds(MAX_SESSION_LINKED_PAGE_IDS) })
+  .strict() satisfies z.ZodType<SessionLinkedPageSummaryInput>;
 
 export const PageChatActivitySummaryInputSchema = z
   .object({

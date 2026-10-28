@@ -656,6 +656,29 @@ export interface ProjectActivitySummaryResult {
   projectionRevision: number;
 }
 
+export interface SessionLinkedPage {
+  pageId: string;
+  pageKey: string | null;
+  title: string;
+  status: { optionId: string; label: string } | null;
+}
+
+export interface SessionLinkedPageSummary {
+  sessionId: string;
+  page: SessionLinkedPage;
+}
+
+export interface SessionLinkedPageSummaryInput {
+  sessionIds: string[];
+}
+
+export interface SessionLinkedPageSummaryResult {
+  summaries: SessionLinkedPageSummary[];
+  libraryId: string;
+  storeEpoch: string;
+  projectionRevision: number;
+}
+
 export interface PageChatActivitySummary {
   pageId: string;
   relatedCount: number;

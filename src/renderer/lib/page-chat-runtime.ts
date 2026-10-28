@@ -1,5 +1,6 @@
 import type {
   PageChatActivitySummaryInput,
+  SessionLinkedPageSummaryInput,
   PageChatLinkInput,
   PageChatWindowInput,
 } from "../../shared/types";
@@ -24,6 +25,10 @@ const pageChatRelationCommandDefinitions = {
 
 const { link: linkPageChatCommand, unlink: unlinkPageChatCommand } =
   pageChatRelationCommandDefinitions;
+
+export async function readSessionLinkedPageSummaries(input: SessionLinkedPageSummaryInput) {
+  return await invokeRendererQuery("page-chats:session-linked-pages", input);
+}
 
 export async function readPageChatActivitySummaries(input: PageChatActivitySummaryInput) {
   return await invokeRendererQuery("page-chats:activity-summaries", input);

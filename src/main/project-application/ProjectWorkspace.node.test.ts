@@ -954,3 +954,74 @@ it.effect("fails invalid Page Chat input before I/O and propagates caller interr
     yield* Scope.close(scope, Exit.void);
   }),
 );
+
+it.effect(
+  "reads sole linked Pages with current Status labels and rejects oversized Session batches",
+  () =>
+    Effect.gen(function* () {
+      let readCount = 0;
+      const reads: CoreModuleClients["workspace"]["read"] = (input) => {
+        if (input.kind !== "session_linked_page_summaries") return Effect.die("Unexpected read");
+        readCount += 1;
+        assert.deepEqual(input, {
+          kind: "session_linked_page_summaries",
+          session_ids: ["session:one"],
+        });
+        return Effect.succeed({
+          contract_version: CORE_CLIENT_REQUIREMENTS.modules.find(
+            (entry) => entry.module === "project_workspace",
+          )!.contract_version,
+          store_epoch: "epoch:one",
+          commit_head: 42,
+          value: {
+            kind: "session_linked_page_summaries",
+            library_id: "library:one",
+            projection_revision: 42,
+            summaries: [
+              {
+                session_id: "session:one",
+                page: {
+                  page_id: "page:one",
+                  page_key: "LAB-13",
+                  title: "Current title",
+                  status: { option_id: "build", label: "In progress" },
+                },
+              },
+            ],
+          },
+        });
+      };
+      const { scope, workspace } = yield* open(core(reads));
+      const result = yield* workspace.readSessionLinkedPageSummaries({
+        sessionIds: ["session:one"],
+      });
+      assert.deepEqual(result, {
+        summaries: [
+          {
+            sessionId: "session:one",
+            page: {
+              pageId: "page:one",
+              pageKey: "LAB-13",
+              title: "Current title",
+              status: { optionId: "build", label: "In progress" },
+            },
+          },
+        ],
+        libraryId: "library:one",
+        storeEpoch: "epoch:one",
+        projectionRevision: 42,
+      });
+      const beforeInvalid = readCount;
+      for (const sessionIds of [
+        ["session:one", "session:one"],
+        Array.from({ length: 201 }, (_, i) => `session:${i}`),
+      ]) {
+        const invalid = yield* Effect.result(
+          workspace.readSessionLinkedPageSummaries({ sessionIds }),
+        );
+        assert.strictEqual(invalid._tag, "Failure");
+      }
+      assert.strictEqual(readCount, beforeInvalid);
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
