@@ -1,0 +1,87 @@
+crates/nodex-markdown/src/write/blocks.rs
+  s_c472db5d79d352::t_5cf4f43c0340b7 549-552
+  s_c472db5d79d352::t_cf2e38eeee92ee 546-548,553-556
+  s_c472db5d79d352::t_a4c38bb8e1a8fb 486-487,502,520,562
+crates/nodex-markdown/src/write/tests.rs
+  s_c472db5d79d352::t_550b41068625c7 581-582,584-585,589-590,593-596,601-606
+  s_c472db5d79d352::t_c4f4ac64381edc 607-611,616-621,637-638,644-647,652-655,661-663
+  s_c472db5d79d352::t_2fb9257a16bc8e 583
+  s_c472db5d79d352::t_5cf4f43c0340b7 586-588,591-592,597-600,612-615,622-636,639-643,648-651,656-660
+crates/nodex-markdown/src/read/locations.rs
+  s_c472db5d79d352::t_2a9ec077c44ffc 96-99,112
+  s_c472db5d79d352::t_f90efd33d381ea 66
+crates/nodex-markdown/src/read/tests.rs
+  s_c472db5d79d352::t_550b41068625c7 453-457,461-462,476-477,480,489-490,502,665
+  s_c472db5d79d352::t_f0a0daa310ad17 478-479,485-486,508-509,538-541,546-548,555,562-565,570
+  s_c472db5d79d352::t_428163c5204054 575,577
+  s_c472db5d79d352::t_5cf4f43c0340b7 458-460,463-475,491-496,498-501,510-537,542-545,549-554,556-561,566-569,578-581,586-595,601-617,619-628,633-636,638-656
+  s_c472db5d79d352::t_890e0b0a82576a 164,497,571-574,576,582-585,596-600,618,629-632,637,657-664
+  s_c472db5d79d352::t_c4f4ac64381edc 503-507
+  s_c472db5d79d352::t_c19dd683f66bd5 481-484,487-488
+  s_4b53f1a3b989a8::t_ada76fa905f8e2 165-168,171,174-175,178-182
+  s_4b53f1a3b989a8::t_cc452cffb5f7b3 169-170,172-173,176-177
+crates/nodex-markdown/src/read/syntax.rs
+  s_c472db5d79d352::t_a8c5f5df3f1aa5 109-113,116-117
+  s_c472db5d79d352::t_fc447e9fe69bc1 399,419,422-423,449,466-471,482,504-506,511,518-520,523,530-532,534,541-542,607-626,628-632,668,687-688
+  s_c472db5d79d352::t_648ca8654b53db 420-421,427-430,455,942-958,960,967-980,982
+  s_4b53f1a3b989a8::t_9f88decd76b8ac 871,876
+  s_c472db5d79d352::t_63778888e773f9 138
+  s_c472db5d79d352::t_9e683ca7e36c3d 563,669-672,683-684,705,708-709
+  s_c472db5d79d352::t_d380e078cfe02e 130,135,141-142,146-150,159-160,169-170
+  s_c472db5d79d352::t_a4456808fa2d9b 846-847,919-920,934-941,959,961-963,981
+  s_c472db5d79d352::t_00c3b5b51496e8 400-402
+  s_c472db5d79d352::t_58e35f8dcc8a33 998-999
+  s_c472db5d79d352::t_5cf4f43c0340b7 114-115,403-418,456-459,558-560,633-635,964-966,1002-1006,1017-1021
+  s_c472db5d79d352::t_40ee6050a1eefa 171,543,983-997,1000-1001,1007-1016,1022-1025
+  s_4b53f1a3b989a8::t_d8dc0efc590012 3,47
+  s_4b53f1a3b989a8::t_2cfddd6fe4e825 848
+crates/nodex-markdown/tests/corpus.rs
+  s_4b53f1a3b989a8::t_0c5fa365339056 1-50
+crates/nodex-markdown/src/write/escapes.rs
+  s_c472db5d79d352::t_e01fa9821dbc6a 343-346,351-358
+  s_c472db5d79d352::t_63778888e773f9 114-117
+  s_c472db5d79d352::t_1b7904f0ae811c 359-360,362,373,392,411,416-417,421-427
+  s_c472db5d79d352::t_5cf4f43c0340b7 107-113,347-350,361,363-372,374-391,393-410,412-415,418-420,467-471
+  s_c472db5d79d352::t_e97b4a86154b46 460,463,466,472
+crates/nodex-markdown/src/attributes.rs
+  s_4b53f1a3b989a8::t_a298361e1d97a5 56,95
+  s_4b53f1a3b989a8::t_29053c0786deef 172-173,175
+crates/nodex-markdown/src/read/columns.rs
+  s_4b53f1a3b989a8::t_52884cf8d83c99 1-47
+crates/nodex-markdown/src/read/inline.rs
+  s_c472db5d79d352::t_8c195ad4150108 404,410,496-504,506
+  s_c472db5d79d352::t_c84e7dbe1c04cc 88,237-239,242-243,247-248
+  s_c472db5d79d352::t_5cf4f43c0340b7 232-235,240-241
+  s_c472db5d79d352::t_60735203487160 89
+crates/nodex-markdown/src/read/blocks.rs
+  s_c472db5d79d352::t_5cf4f43c0340b7 58-60,68-70
+  s_c472db5d79d352::t_60735203487160 31,35
+  s_c472db5d79d352::t_f90efd33d381ea 12,18,37,56-57,61-62,67
+  s_4b53f1a3b989a8::t_37b04f29e76594 4,19,32,38,71-72,532
+crates/nodex-markdown/src/read.rs
+  s_4b53f1a3b989a8::t_e742f0b5b27e55 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ecf2e32ec995dd76e99e5d1e8d7f29b8180930c8",
+  "prompts": {},
+  "sessions": {
+    "s_4b53f1a3b989a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac35893e-6c76-4a19-a11c-73b4be807a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c472db5d79d352": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180d6-40dd-7261-92c4-5c569a137127",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
