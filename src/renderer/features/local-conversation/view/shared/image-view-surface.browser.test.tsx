@@ -133,25 +133,35 @@ describe("inspected images in Chromium", () => {
           const secondSrc = second.src;
           await click(triggers[0]);
           let dialog = await view.findByRole("dialog", { name: "Image preview" });
+          const previewDialog = dialog;
           let preview = within(dialog).getByRole<HTMLImageElement>("img");
           await decoded(preview, 1, 1);
           expect(preview.src).toBe(firstSrc);
           await press("{ArrowRight}");
           await waitFor(() => {
             dialog = view.getByRole("dialog", { name: "Image preview" });
+            expect(dialog).toBe(previewDialog);
             preview = within(dialog).getByRole<HTMLImageElement>("img");
             expect(preview.src).toBe(secondSrc);
           });
           await decoded(preview, 160, 90);
+          expect(within(dialog).queryByRole("button", { name: "Next image" })).toBeNull();
           await press("{ArrowLeft}");
           await waitFor(() => {
             dialog = view.getByRole("dialog", { name: "Image preview" });
+            expect(dialog).toBe(previewDialog);
             expect(within(dialog).getByRole<HTMLImageElement>("img").src).toBe(firstSrc);
+          });
+          await press("{ArrowRight}");
+          await waitFor(() => {
+            dialog = view.getByRole("dialog", { name: "Image preview" });
+            expect(dialog).toBe(previewDialog);
+            expect(within(dialog).getByRole<HTMLImageElement>("img").src).toBe(secondSrc);
           });
           await press("{Escape}");
           await waitFor(() => {
             expect(view.queryByRole("dialog", { name: "Image preview" })).toBeNull();
-            expect(document.activeElement).toBe(triggers[0]);
+            expect(document.activeElement).toBe(triggers[1]);
           });
           expect(readFile).toHaveBeenCalledTimes(3);
         } finally {
