@@ -6,6 +6,7 @@ import { NodexHoverCardProvider } from "@/components/ui/hover-card";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { TestQueryProvider } from "../../test/query";
+import { emptySessionLinkedPageStore } from "../../test/session-linked-page";
 import { CodexSidebarThreadRow } from "./codex-sidebar";
 import { CODEX_SIDEBAR_PROJECT_THREAD_PAGER_ROW_CLASS } from "@/lib/codex-sidebar-pagination";
 import { SidebarPaginatedItems } from "./sidebar-paginated-items";
@@ -49,6 +50,7 @@ test.each(["hover", "keyboard", "menu"] as const)(
             <div className="w-60">
               <CodexSidebarThreadRow
                 item={THREAD}
+                linkedPageStore={emptySessionLinkedPageStore}
                 active={false}
                 grouped
                 contextMenuOpen={mode === "menu"}
@@ -111,6 +113,7 @@ test.each([240, 320])("aligns project pagination text with Session titles at %ip
                     <CodexSidebarThreadRow
                       key={item.key}
                       item={item}
+                      linkedPageStore={emptySessionLinkedPageStore}
                       active={false}
                       grouped
                       onSelect={() => undefined}
