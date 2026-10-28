@@ -78,6 +78,22 @@ not synthesize a successful shell, Browser, or collaboration item as proof that
 the corresponding production capability works. When a test needs one of those
 capabilities, move it to the scripted model boundary instead.
 
+## Orchestrator replay recovery
+
+Replay tests that recreate a runtime over an existing database must enable
+`recoverOnStartup` in `ProviderReplayHarness`. This runs the production
+process-loss reconciliation before the new outbox worker starts. A completed
+Run does not imply that its checkpoint effect has settled its durable claim;
+an interrupted claim still blocks later effects on that Thread until recovery
+requeues it. Advancing the test clock or waiting longer does not replace this
+startup boundary.
+
+Use the harness's `afterEffectExecution` hook to hold an effect between its
+committed result and claim settlement when testing restart races. Coordinate
+the hold with a Deferred and the scenario's `afterSteps` boundary, then close
+the first runtime. Assert the durable claim and the resumed behavior instead
+of relying on scheduling delays or repeated runs.
+
 ## Paid provider canaries
 
 The explicit commands in [Paid Agent smoke tests](./paid-agent-smoke.md) add the

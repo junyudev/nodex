@@ -178,28 +178,34 @@ export interface OrchestratorV2ProviderReplayHarness<
   >;
 }
 
+export interface OrchestratorV2ProviderReplayOptions {
+  readonly databaseLayer?: Layer.Layer<
+    SqlClient.SqlClient,
+    MigrationError | PlatformError.PlatformError | SqlError
+  >;
+  readonly runEffectWorker?: boolean;
+  // Start continuation runs for provider wake turns, as the live runtime does.
+  // Off by default: most fixtures record no wake turn.
+  readonly runContinuationWorker?: boolean;
+  // Required when recreating a runtime over a previous runtime's database:
+  // reconcile process loss before the new worker can claim effects.
+  readonly recoverOnStartup?: boolean;
+  readonly continueThreadsAfterServerUpdate?: boolean;
+  /** Workspace checkpoint persistence; defaults to hidden Git refs in the run's workspace. */
+  readonly checkpointStoreLayer?: Layer.Layer<CheckpointStore.CheckpointStore>;
+  /** Pause after execution commits, before the worker settles its durable claim. */
+  readonly afterEffectExecution?: (
+    effect: EffectOutbox.OrchestrationEffectV2,
+  ) => Effect.Effect<void>;
+}
+
 export function runOrchestratorV2ProviderReplayScenario<
   Transcript extends ProviderReplayTranscript,
   Error,
 >(
   scenario: OrchestratorV2ProviderReplayScenario<Transcript>,
   harness: OrchestratorV2ProviderReplayHarness<Transcript, Error>,
-  options: {
-    readonly databaseLayer?: Layer.Layer<
-      SqlClient.SqlClient,
-      MigrationError | PlatformError.PlatformError | SqlError
-    >;
-    readonly runEffectWorker?: boolean;
-    // Start continuation runs for provider wake turns, as the live runtime does.
-    // Off by default: most fixtures record no wake turn.
-    readonly runContinuationWorker?: boolean;
-    // Reconcile a previous runtime's state before the effect worker starts,
-    // as server startup does after a crash or restart.
-    readonly recoverOnStartup?: boolean;
-    readonly continueThreadsAfterServerUpdate?: boolean;
-    /** Workspace checkpoint persistence; defaults to hidden Git refs in the run's workspace. */
-    readonly checkpointStoreLayer?: Layer.Layer<CheckpointStore.CheckpointStore>;
-  } = {},
+  options: OrchestratorV2ProviderReplayOptions = {},
 ): Effect.Effect<
   OrchestratorV2ScenarioResult,
   | Orchestrator.OrchestratorV2Error
@@ -227,21 +233,7 @@ export function runOrchestratorV2ProviderReplayScenario<
 export function layerProviderReplay<Transcript extends ProviderReplayTranscript, Error>(
   scenario: OrchestratorV2ProviderReplayScenario<Transcript>,
   harness: OrchestratorV2ProviderReplayHarness<Transcript, Error>,
-  options: {
-    readonly databaseLayer?: Layer.Layer<
-      SqlClient.SqlClient,
-      MigrationError | PlatformError.PlatformError | SqlError
-    >;
-    readonly runEffectWorker?: boolean;
-    // Start continuation runs for provider wake turns, as the live runtime does.
-    // Off by default: most fixtures record no wake turn.
-    readonly runContinuationWorker?: boolean;
-    // Reconcile a previous runtime's state before the effect worker starts,
-    // as server startup does after a crash or restart.
-    readonly recoverOnStartup?: boolean;
-    readonly continueThreadsAfterServerUpdate?: boolean;
-    /** Workspace checkpoint persistence; defaults to hidden Git refs in the run's workspace. */
-    readonly checkpointStoreLayer?: Layer.Layer<CheckpointStore.CheckpointStore>;
+  options: OrchestratorV2ProviderReplayOptions & {
     readonly replayGate?: ProviderReplayGate;
   } = {},
 ): Layer.Layer<
@@ -266,22 +258,7 @@ export function layerWithRegistry<Error>(
     Error,
     McpProviderSessions.McpProviderSessions
   >,
-  options: {
-    readonly databaseLayer?: Layer.Layer<
-      SqlClient.SqlClient,
-      MigrationError | PlatformError.PlatformError | SqlError
-    >;
-    readonly runEffectWorker?: boolean;
-    // Start continuation runs for provider wake turns, as the live runtime does.
-    // Off by default: most fixtures record no wake turn.
-    readonly runContinuationWorker?: boolean;
-    // Reconcile a previous runtime's state before the effect worker starts,
-    // as server startup does after a crash or restart.
-    readonly recoverOnStartup?: boolean;
-    readonly continueThreadsAfterServerUpdate?: boolean;
-    /** Workspace checkpoint persistence; defaults to hidden Git refs in the run's workspace. */
-    readonly checkpointStoreLayer?: Layer.Layer<CheckpointStore.CheckpointStore>;
-  } = {},
+  options: OrchestratorV2ProviderReplayOptions = {},
 ): Layer.Layer<
   | Orchestrator.OrchestratorV2
   | EffectWorker.OrchestrationEffectWorkerV2
@@ -505,6 +482,14 @@ export function layerWithRegistry<Error>(
     ),
   );
   const layerEffectWorkerProvided = EffectWorker.layer.pipe(
+    Layer.updateService(EffectWorker.OrchestrationEffectExecutorV2, (executor) => {
+      const afterExecution = options.afterEffectExecution;
+      if (afterExecution === undefined) return executor;
+      return EffectWorker.OrchestrationEffectExecutorV2.of({
+        execute: (effect, executionOptions) =>
+          executor.execute(effect, executionOptions).pipe(Effect.tap(() => afterExecution(effect))),
+      });
+    }),
     Layer.provide(Layer.merge(layerStores, layerEffectExecutorProvided)),
   );
   const layerReplayRuntime = Layer.mergeAll(

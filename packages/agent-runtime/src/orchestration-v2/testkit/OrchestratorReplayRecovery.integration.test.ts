@@ -1,8 +1,10 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as CodexReplay from "effect-codex-app-server/replay";
@@ -16,6 +18,7 @@ import { CodexOrchestratorReplayHarness } from "../Adapters/CodexAdapterV2.testk
 import * as CodexAdapterV2Testkit from "../Adapters/CodexAdapterV2.testkit.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
+import * as EffectOutbox from "../EffectOutbox.ts";
 import { provideDeterministicTestRuntime } from "./DeterministicRuntime.ts";
 import {
   CLAUDE_MODEL_SELECTION,
@@ -35,9 +38,12 @@ import {
   assertUserMessagesInclude,
   projectionFor,
 } from "./fixtures/shared.ts";
-import { runOrchestratorV2ProviderReplayScenario } from "./ProviderReplayHarness.ts";
+import {
+  layerProviderReplay,
+  runOrchestratorV2ProviderReplayScenario,
+} from "./ProviderReplayHarness.ts";
+import { runOrchestratorV2Scenario } from "./OrchestratorScenario.ts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
-import { materializeReplayTranscriptRuntimeInstructions } from "./ReplayRuntimeInstructions.ts";
 import {
   materializeReplayTranscriptWorkspace,
   readProviderReplayTranscript,
@@ -90,7 +96,7 @@ function splitAfterFirstIdle(materialized: MaterializedOrchestratorFixtureInput)
 
 describe("orchestrator replay recovery", () => {
   it.effect(
-    "resumes a provider-native Codex thread after recreating the orchestrator runtime",
+    "resumes a provider-native Codex thread after restart interrupts checkpoint settlement",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -131,23 +137,49 @@ describe("orchestrator replay recovery", () => {
               CodexAdapterV2Testkit.layer({ transcript, driver }),
           };
           const options = {
+            recoverOnStartup: true,
             databaseLayer: SqlitePersistence.layerFromPath(dbPath).pipe(
               Layer.provide(NodeServices.layer),
             ),
           };
+          const checkpointExecuted = yield* Deferred.make<EffectOutbox.OrchestrationEffectV2>();
+          const readEffect = (effectId: string) =>
+            EffectOutbox.EffectOutboxV2.use((outbox) => outbox.get(effectId)).pipe(
+              Effect.provide(EffectOutbox.layer.pipe(Layer.provide(options.databaseLayer))),
+              Effect.map(Option.getOrThrow),
+            );
+          const firstScenario = {
+            name: "provider_thread_resume/codex:first-runtime",
+            transcript,
+            commands: phase1Commands,
+            steps: phase1Steps,
+            projectionThreadIds: materialized.projectionThreadIds,
+            runtimePolicyOverride: { cwd: workspace },
+          };
 
-          yield* runOrchestratorV2ProviderReplayScenario(
-            {
-              name: "provider_thread_resume/codex:first-runtime",
-              transcript,
-              commands: phase1Commands,
-              steps: phase1Steps,
-              projectionThreadIds: materialized.projectionThreadIds,
-              runtimePolicyOverride: { cwd: workspace },
-            },
-            harness,
-            options,
+          // A completed Run can still own an unsettled checkpoint claim. Stop
+          // at that boundary rather than relying on the worker/observer race.
+          const firstResult = yield* runOrchestratorV2Scenario(firstScenario, {
+            afterSteps: Deferred.await(checkpointExecuted).pipe(Effect.asVoid),
+          }).pipe(
+            Effect.provide(
+              layerProviderReplay(firstScenario, harness, {
+                ...options,
+                afterEffectExecution: (effect) =>
+                  effect.request.type === "checkpoint.capture"
+                    ? Deferred.succeed(checkpointExecuted, effect).pipe(
+                        Effect.andThen(Effect.never),
+                      )
+                    : Effect.void,
+              }),
+            ),
           );
+          assert.equal(
+            projectionFor(firstResult, transcript.scenario).runs[0]?.status,
+            "completed",
+          );
+          const checkpointEffect = yield* Deferred.await(checkpointExecuted);
+          assert.equal((yield* readEffect(checkpointEffect.id)).status, "running");
 
           const result = yield* runOrchestratorV2ProviderReplayScenario(
             {
@@ -180,6 +212,9 @@ describe("orchestrator replay recovery", () => {
           assertAssistantTextIncludes(projection, FIRST_FINAL);
           assertAssistantTextIncludes(projection, SECOND_FINAL);
           assert.lengthOf(projection.providerThreads, 1);
+          const recoveredCheckpointEffect = yield* readEffect(checkpointEffect.id);
+          assert.equal(recoveredCheckpointEffect.status, "succeeded");
+          assert.equal(recoveredCheckpointEffect.attemptCount, 2);
         }).pipe(
           provideDeterministicTestRuntime,
           Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer)),
@@ -216,6 +251,7 @@ describe("orchestrator replay recovery", () => {
           splitAfterFirstIdle(materialized);
         const { harness, assertComplete } = makeClaudeRestartReplayHarness(transcript);
         const options = {
+          recoverOnStartup: true,
           databaseLayer: SqlitePersistence.layerFromPath(path.join(tempDir, "state.sqlite")).pipe(
             Layer.provide(NodeServices.layer),
           ),
