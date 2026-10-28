@@ -7,6 +7,7 @@ import { initializeStandaloneDataAuthority } from "../../src/main/core-client";
 import { readCoreRuntimeConnection } from "../../src/main/core-client/runtime-descriptor";
 import { resolveCodexRuntime } from "../../src/main/codex/codex-runtime";
 import { runCodexProbeMain, withCancelableProbeOperation } from "../codex-probe-session";
+import { initializeNodeMarkdown } from "../node-markdown";
 import { CoreClientSeedAdapter } from "../scenarios/adapters/core-client-seed-adapter";
 import { ElectronScenarioHarness } from "../scenarios/harness/electron-e2e-harness";
 import { materializeScenario } from "../scenarios/seed/scenario-seed";
@@ -16,6 +17,8 @@ import { archiveConversation } from "./conversation";
 import { runDesktopAgent } from "./desktop-driver";
 import { prepareDesktopEnvironment } from "./desktop-environment";
 import { directoryFingerprint } from "./fingerprint";
+
+initializeNodeMarkdown(process.cwd());
 
 const digestFile = async (file: string) =>
   createHash("sha256")

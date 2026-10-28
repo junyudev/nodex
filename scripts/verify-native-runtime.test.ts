@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -39,6 +40,33 @@ afterEach(() => {
 });
 
 describe("packaged native runtime verification", () => {
+  test("initializes Markdown before Welcome bootstrap in a cold verification process", () => {
+    const sourceRoot = "/tmp/My [Project] `draft`";
+    const script = `
+      import assert from "node:assert/strict";
+      import { renderInitialProjectWelcomePage } from ${JSON.stringify(new URL("../src/shared/initial-project-welcome.ts", import.meta.url).href)};
+      import { readMarkdown } from ${JSON.stringify(new URL("../src/shared/nodex-markdown/index.ts", import.meta.url).href)};
+      assert.throws(() => readMarkdown("Cold"), /Nodex Markdown is not initialized/);
+      await import(${JSON.stringify(new URL("./verify-native-runtime.ts", import.meta.url).href)});
+      const page = renderInitialProjectWelcomePage({ sourceRoot: ${JSON.stringify(sourceRoot)} });
+      const sourceCallout = readMarkdown(page.markdown, "exact").find(block => block.type === "callout");
+      const sourceFolder = sourceCallout?.content
+        .filter(inline => inline.type === "text" && inline.styles?.code)
+        .map(inline => inline.text).join("");
+      console.log(JSON.stringify({ titleMarkdown: page.titleMarkdown, sourceFolder }));
+    `;
+    const output = execFileSync(
+      process.execPath,
+      ["--import", "tsx", "--input-type=module", "--eval", script],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+
+    expect(JSON.parse(output)).toEqual({
+      titleMarkdown: "Welcome to Nodex",
+      sourceFolder: sourceRoot,
+    });
+  });
+
   const createDictationHelperApp = (protocolVersion: number): string => {
     const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-dictation-smoke-"));
     temporaryDirectories.push(appPath);

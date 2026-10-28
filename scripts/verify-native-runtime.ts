@@ -18,6 +18,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { initializeNodeMarkdown } from "./node-markdown";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as Context from "effect/Context";
@@ -61,6 +62,8 @@ import {
 } from "../src/main/project-application/ProjectWorkspace";
 import { decodeXmlCharacterReferences } from "../src/shared/xml-character-references";
 import { MAC_DICTATION_HELPER_PROTOCOL_VERSION } from "../src/main/dictation/mac-dictation-native-helper-client";
+
+initializeNodeMarkdown(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 
 export class PackagedNativeRuntimeVerificationError extends Schema.TaggedError<PackagedNativeRuntimeVerificationError>()(
   "PackagedNativeRuntimeVerificationError",

@@ -4,23 +4,18 @@ import { lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 
 import { join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { initializeNodeMarkdown } from "./node-markdown";
 
 import {
   NODEX_MARKDOWN_AGENT_GUIDE,
   NODEX_MARKDOWN_AGENT_RULES,
 } from "../src/shared/nodex-markdown/agent-guide";
-import { readMarkdown } from "../src/shared/nodex-markdown";
-import { writeMarkdown, initMarkdownSync } from "../src/shared/nodex-markdown";
-import { readFileSync } from "node:fs";
-initMarkdownSync(
-  readFileSync(
-    new URL("../src/shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm", import.meta.url),
-  ),
-);
+import { readMarkdown, writeMarkdown } from "../src/shared/nodex-markdown";
 
 const execFileAsync = promisify(execFile);
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, "..");
+initializeNodeMarkdown(REPOSITORY_ROOT);
 const GENERATED_ROOT = ".generated";
 const DEFAULT_OUTPUT_RELATIVE = join(GENERATED_ROOT, "official-agent-skills");
 const AUTHORING_SKILL_RELATIVE = join("agent-skills", "nodex");
