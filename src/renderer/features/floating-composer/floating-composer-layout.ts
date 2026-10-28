@@ -278,7 +278,14 @@ export function isFloatingComposerPointerNearBubbleCorner(input: {
   );
 }
 
-/** Whether a dragged composer's pointer rests on the pane's leading edge. */
-export function isFloatingComposerPointerOnPaneEdge(pointerX: number): boolean {
-  return pointerX <= FLOATING_COMPOSER_PANE_DROP_EDGE_PX;
+/** The pane edge a dragged composer's pointer rests on, where its chat would take that side. */
+export function resolveFloatingComposerPaneDropSide(
+  pointerX: number,
+  paneWidth: number,
+): "left" | "right" | null {
+  if (pointerX <= FLOATING_COMPOSER_PANE_DROP_EDGE_PX) return "left";
+  if (paneWidth > FLOATING_COMPOSER_PANE_DROP_EDGE_PX * 2) {
+    if (pointerX >= paneWidth - FLOATING_COMPOSER_PANE_DROP_EDGE_PX) return "right";
+  }
+  return null;
 }

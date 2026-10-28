@@ -3,7 +3,11 @@ import { fireEvent, waitFor, within } from "@testing-library/react";
 import { act, useState } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { render, settleAsyncRender } from "@/test/dom";
-import { WorkspaceTabsControl, type WorkspaceTabsControlProps } from "./workspace-tabs-control";
+import {
+  WorkspaceFullViewToggle,
+  WorkspaceTabsControl,
+  type WorkspaceTabsControlProps,
+} from "./workspace-tabs-control";
 
 const tabs: WorkspaceTabsControlProps["tabs"] = [
   { id: "page", title: "Research", iconElement: <span aria-label="Page icon">P</span> },
@@ -240,4 +244,43 @@ describe("WorkspaceTabsControl", () => {
     await click(view.getByRole("button", { name: "New tab" }));
     expect(onToggle).toHaveBeenCalledExactlyOnceWith();
   });
+});
+
+describe("workspace full view toggle", () => {
+  test("an empty full view can still exit", async () => {
+    const onFullViewChange = vi.fn();
+    const view = renderControl({ mode: "full", tabs: [], onFullViewChange });
+    await click(view.getByRole("button", { name: "Exit full view", pressed: true }));
+    expect(onFullViewChange).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  test.each(["split", "full"] as const)(
+    "the %s header can delegate its full-view toggle to the strip",
+    (mode) => {
+      const view = renderControl({ mode, fullViewToggleInGroup: false });
+      expect(view.queryByRole("button", { name: /^(Enter|Exit) full view$/ })).toBeNull();
+      expect(
+        view.getByRole("button", { name: mode === "split" ? "Hide tabs" : "Enter split view" }),
+      ).toBeTruthy();
+    },
+  );
+
+  test.each([false, true])(
+    "the standalone toggle reports full=%s and requests its inverse",
+    async (full) => {
+      const onFullViewChange = vi.fn();
+      const view = render(
+        <NodexTooltipProvider>
+          <WorkspaceFullViewToggle full={full} onFullViewChange={onFullViewChange} />
+        </NodexTooltipProvider>,
+      );
+      await click(
+        view.getByRole("button", {
+          name: full ? "Exit full view" : "Enter full view",
+          pressed: full,
+        }),
+      );
+      expect(onFullViewChange).toHaveBeenCalledExactlyOnceWith(!full);
+    },
+  );
 });

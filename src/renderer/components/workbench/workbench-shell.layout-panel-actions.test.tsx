@@ -80,6 +80,150 @@ async function expectSummaryContentShift(props: Record<string, unknown> | undefi
 }
 
 describe("workbench session shell / layout-panel-actions", () => {
+  test("full view switches between its leading Chat tab and retained content", async () => {
+    const session = makeAttachedSession({ title: "Workspace research", rightFullWidth: true });
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [session] },
+      initialSelectedSessionId: session.id,
+    });
+    const chat = await screen.findByRole("tab", { name: "Workspace research" });
+    const rightPanel = screen.getByTestId("session-right-panel");
+    expect(within(rightPanel).getAllByRole("tab")[0]).toBe(chat);
+    expect(chat.getAttribute("aria-selected")).toBe("false");
+    expect(within(rightPanel).getByRole("tab", { name: "DB View", selected: true })).toBeTruthy();
+    expect(within(rightPanel).getByRole("tabpanel", { name: "DB View" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Move to .* pane$/ })).toBeNull();
+
+    await pointerActivate(chat);
+
+    await waitFor(() => {
+      expect(invokeCalls).toContainEqual([
+        "window-session-view:panel-patch",
+        session.id,
+        "right",
+        expect.objectContaining({ collapsed: true }),
+      ]);
+      expect(screen.getByRole("tab", { name: "Workspace research", selected: true })).toBeTruthy();
+      expect(
+        screen.getByTestId("session-thread-page").getAttribute("data-workbench-primary-hidden"),
+      ).toBe("false");
+    });
+    expect(rightPanel.getAttribute("data-right-panel-concealed")).toBe("true");
+    expect(rightPanel.getAttribute("data-right-panel-width-mode")).toBe("full");
+    expect(within(rightPanel).queryByRole("tabpanel")).toBeNull();
+    const content = within(rightPanel).getByRole("tab", { name: "DB View", selected: false });
+
+    await pointerActivate(content);
+
+    await waitFor(() => {
+      expect(invokeCalls).toContainEqual([
+        "window-session-view:panel-patch",
+        session.id,
+        "right",
+        expect.objectContaining({ collapsed: false }),
+      ]);
+      expect(within(rightPanel).getByRole("tab", { name: "DB View", selected: true })).toBeTruthy();
+      expect(within(rightPanel).getByRole("tabpanel", { name: "DB View" })).toBeTruthy();
+    });
+    expect(screen.getByRole("tab", { name: "Workspace research", selected: false })).toBeTruthy();
+    expect(rightPanel.getAttribute("data-right-panel-concealed")).toBeNull();
+    expect(rightPanel.getAttribute("data-right-panel-width-mode")).toBe("full");
+    expect(
+      screen.getByTestId("session-thread-page").getAttribute("data-workbench-primary-hidden"),
+    ).toBe("true");
+  });
+
+  test("the full-view Chat context menu moves the Conversation into the right pane", async () => {
+    const session = makeAttachedSession({
+      title: "Move this Chat",
+      rightFullWidth: true,
+      rightCollapsed: true,
+    });
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [session] },
+      initialSelectedSessionId: session.id,
+    });
+    const chat = await screen.findByRole("tab", { name: "Move this Chat", selected: true });
+    expect(screen.queryByRole("button", { name: /^Move to .* pane$/ })).toBeNull();
+    await act(async () => {
+      fireEvent.contextMenu(chat);
+      await Promise.resolve();
+    });
+    const move = await screen.findByRole("menuitem", { name: "Move to right pane" });
+    await act(async () => {
+      fireEvent.click(move);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(invokeCalls).toContainEqual([
+        "window-session-view:panel-patch",
+        session.id,
+        "right",
+        expect.objectContaining({
+          side: "left",
+          collapsed: false,
+          size: expect.objectContaining({ fullWidth: false }),
+        }),
+      ]);
+      expect(screen.getByTestId("session-right-panel").getAttribute("data-right-panel-side")).toBe(
+        "left",
+      );
+    });
+    expect(
+      screen.getByTestId("session-right-panel").getAttribute("data-right-panel-width-mode"),
+    ).toBe("regular");
+    expect(
+      screen.getByTestId("session-right-panel").getAttribute("data-right-panel-concealed"),
+    ).toBeNull();
+    expect(
+      screen.getByTestId("session-thread-page").getAttribute("data-workbench-primary-hidden"),
+    ).toBe("false");
+    expect(screen.queryByRole("tab", { name: "Move this Chat" })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Move to left pane" })).toBeTruthy();
+  });
+
+  test("a saved left content pane carries its full-view toggle and can swap sides from Chat actions", async () => {
+    const session = makeAttachedSession({ rightFullWidth: false, rightCollapsed: false });
+    session.panels.right.side = "left";
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [session] },
+      initialSelectedSessionId: session.id,
+    });
+    const fullViewToggle = await screen.findByRole("button", { name: "Enter full view" });
+    const rightPanel = screen.getByTestId("session-right-panel");
+    expect(rightPanel.getAttribute("data-right-panel-side")).toBe("left");
+    expect(rightPanel.contains(fullViewToggle)).toBe(true);
+    expect(getHeaderShellSlot(screen, "right").contains(fullViewToggle)).toBe(false);
+    const content = within(rightPanel).getByRole("tab", { name: "DB View" });
+    expect(
+      content.compareDocumentPosition(fullViewToggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Move to right pane" })).toBeNull();
+
+    await pointerActivate(await screen.findByRole("button", { name: "Move to left pane" }));
+
+    await waitFor(() => {
+      expect(invokeCalls).toContainEqual([
+        "window-session-view:panel-patch",
+        session.id,
+        "right",
+        expect.objectContaining({ side: "right" }),
+      ]);
+      expect(rightPanel.getAttribute("data-right-panel-side")).toBe("right");
+    });
+    expect(rightPanel.getAttribute("data-right-panel-width-mode")).toBe("regular");
+    expect(
+      screen.getByTestId("session-thread-page").getAttribute("data-workbench-primary-hidden"),
+    ).toBe("false");
+    expect(await screen.findByRole("button", { name: "Move to right pane" })).toBeTruthy();
+    expect(
+      getHeaderShellSlot(screen, "right").contains(
+        screen.getByRole("button", { name: "Enter full view" }),
+      ),
+    ).toBe(true);
+  });
+
   test("settles a failed side chat open into a closable retry surface", async () => {
     const session = makeAttachedSession({
       id: "session:alpha:side-chat-failure",
@@ -731,6 +875,48 @@ describe("workbench session shell / layout-panel-actions", () => {
     },
   );
 
+  test("full view keeps the summary beside the workspace controls, as a popover over content", async () => {
+    setShellBodyWidthForTest(1400);
+    const session = makeAttachedSession({
+      id: "session:alpha:full-summary",
+      title: "Full summary",
+      rightFullWidth: true,
+    });
+    const screen = renderWorkbench({ sessionsByProject: { alpha: [session] } });
+    await settleAsyncRender();
+    await settleAsyncRender();
+
+    // Content fills the view: the Chat pane is hidden, so the summary opens over the content.
+    const rightSlot = getHeaderShellSlot(screen, "right");
+    const contentSummary = within(rightSlot).getByRole("button", { name: "Toggle summary" });
+    expect(
+      contentSummary.compareDocumentPosition(
+        within(rightSlot).getByRole("button", { name: "Exit full view" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
+        .__lastConnectedThreadStageProps?.summaryPanelMounted,
+    ).toBe(false);
+
+    await pointerActivate(await screen.findByRole("tab", { name: "Full summary" }));
+    await settleAsyncRender();
+
+    // The Chat fills the view: its pinned summary returns, and the control stays put.
+    await waitFor(() =>
+      expect(
+        within(getHeaderShellSlot(screen, "right")).getByRole("button", {
+          name: "Toggle pinned summary",
+        }),
+      ).toBeTruthy(),
+    );
+    expect(
+      (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
+        .__lastConnectedThreadStageProps?.summaryPanelMounted,
+    ).toBe(true);
+    expect(screen.getAllByRole("button", { name: /^Toggle (pinned )?summary$/ })).toHaveLength(1);
+  });
+
   test("thread summary toggle stays visible while the right panel is open and keeps the pinned overlay hidden", async () => {
     setShellBodyWidthForTest(1400);
     localStorage.setItem("nodex:thread-summary-panel:pinned-open", "true");
@@ -938,7 +1124,11 @@ describe("workbench session shell / layout-panel-actions", () => {
       | undefined;
     expect(placement?.reserveContent).toBe(true);
     expect(placement?.control?.state).toMatchObject({ visible: true });
-    expect(placement?.menuItems?.map((item) => item.label)).toEqual(["Move to left pane"]);
+    expect(placement?.menuItems?.map((item) => item.label)).toEqual([
+      "Open in full view",
+      "Move to left pane",
+      "Move to right pane",
+    ]);
 
     // Minimizing and docking persist in the Session's Scene.
     await act(async () => {

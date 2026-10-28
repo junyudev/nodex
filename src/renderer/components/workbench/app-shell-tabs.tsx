@@ -6,7 +6,9 @@ import { preserveOffsetOnSource } from "@atlaskit/pragmatic-drag-and-drop/utils/
 import { setCustomNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/utils/set-custom-native-drag-preview";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -45,11 +47,15 @@ import {
   APP_SHELL_TAB_GAP_PX,
   APP_SHELL_TAB_MAX_WIDTH_PX,
   APP_SHELL_TAB_MIN_WIDTH_PX,
+  buildAppShellLeadingTabStripSizing,
   buildAppShellTabFlexSizing,
   buildAppShellTabListWidth,
 } from "./app-shell-tab-sizing";
 
 export type AppShellTabSplitSide = "left" | "right" | "up" | "down";
+
+/** The physical side of the Scene's content panel, which bottom tabs can move into. */
+export const AppShellContentPanelSideContext = createContext<"left" | "right">("right");
 
 const APP_SHELL_SPLIT_ACTIONS: { side: AppShellTabSplitSide; label: string }[] = [
   { side: "left", label: "left" },
@@ -118,6 +124,24 @@ export type AppShellTabPresentation = Pick<
   | "preview"
 >;
 
+/**
+ * A fixed tab before a strip's own tabs, such as a full-view Session's Chat. It is never
+ * closed, dragged, or reordered, and its panel renders outside the strip.
+ */
+export interface AppShellLeadingTab {
+  readonly id: string;
+  readonly title: string;
+  readonly icon: ReactNode;
+  readonly selected: boolean;
+  /** The element this tab controls while selected. */
+  readonly panelId?: string;
+  /** Always-visible trailing actions, such as the Chat actions menu. */
+  readonly actions?: ReactNode;
+  readonly contextMenuItems?: readonly AppShellTabContextMenuActionItem[];
+  readonly onSelect: () => void;
+  readonly onDoubleClick?: () => void;
+}
+
 export interface AppShellTabPanelRenderContext {
   active: boolean;
 }
@@ -184,7 +208,9 @@ export interface AppShellTabContextMenuSeparatorItem {
 
 interface AppShellTabsProps {
   tabs: AppShellTabItem[];
-  activeTabId: string;
+  /** `null` selects none of `tabs`, as while a selected leading tab presents elsewhere. */
+  activeTabId: string | null;
+  leadingTab?: AppShellLeadingTab;
   panelId?: string;
   controllerId?: string;
   onSelect: (tabId: string) => void;
@@ -205,6 +231,8 @@ interface AppShellTabsProps {
   afterListSticky?: ReactNode;
   afterList?: ReactNode;
   bodyOverlay?: ReactNode;
+  /** Shown while no tab or selected leading tab presents a body, as for a group without tabs. */
+  emptyBody?: ReactNode;
   headerEndInsetPx?: number;
   headerHeight?: "pane" | "toolbar";
   titlebar?: boolean;
@@ -234,6 +262,8 @@ export function shouldShowAppShellTabSeparator({
   return true;
 }
 
+const APP_SHELL_TAB_CONTEXT_MENU_ITEM_CLASS =
+  "cursor-interaction rounded-lg px-[var(--padding-row-x)] py-[var(--padding-row-y)] text-sm outline-hidden hover:bg-token-list-hover-background focus:bg-token-list-hover-background";
 const TAB_ROW_EDGE_FADE_PX = 40;
 const TAB_TITLE_FADE_MASK = "linear-gradient(to right, #000 calc(100% - 28px), transparent 100%)";
 
@@ -262,6 +292,7 @@ export function buildTabRowEdgeMask(startClipped: boolean, endClipped: boolean):
 export function AppShellTabs({
   tabs,
   activeTabId,
+  leadingTab,
   panelId,
   controllerId = "pages",
   onSelect,
@@ -276,6 +307,7 @@ export function AppShellTabs({
   afterListSticky,
   afterList,
   bodyOverlay,
+  emptyBody,
   headerEndInsetPx = 0,
   headerHeight = "pane",
   titlebar = false,
@@ -293,7 +325,8 @@ export function AppShellTabs({
   const reducedMotion = useResolvedReducedMotion();
   const { elementRef: afterTabsInlineRef, elementWidthPx: afterTabsInlineWidthPx } =
     useMeasuredElementWidth();
-  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null;
+  const activeTab =
+    activeTabId === null ? null : (tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null);
   const resolvedActiveTabId = activeTab?.id ?? null;
   const activePanelId = activeTab ? makeTabPanelId(controllerId, activeTab.id) : undefined;
   const activeIndex = activeTab ? tabs.findIndex((tab) => tab.id === activeTab.id) : -1;
@@ -313,11 +346,21 @@ export function AppShellTabs({
     setRetainedTabCount(tabs.length);
   }
   const layoutTabCount = Math.max(tabs.length, retainedTabCount);
-  const tabListWidth = buildAppShellTabListWidth({
-    tabCount: layoutTabCount,
-    trailingWidthPx: afterTabsInlineWidthPx,
-    lockedWidthPx: lockedTabWidthPx,
-  });
+  const leadingStripSizing = leadingTab
+    ? buildAppShellLeadingTabStripSizing({
+        tabCount: layoutTabCount,
+        trailingWidthPx: afterTabsInlineWidthPx,
+        lockedWidthPx: lockedTabWidthPx,
+      })
+    : null;
+  const tabListWidth =
+    leadingStripSizing?.listWidth ??
+    buildAppShellTabListWidth({
+      tabCount: layoutTabCount,
+      trailingWidthPx: afterTabsInlineWidthPx,
+      lockedWidthPx: lockedTabWidthPx,
+    });
+  const leadingTabDomId = leadingTab ? makeTabId(controllerId, leadingTab.id) : undefined;
   const exitTabCloseMode = useCallback(() => {
     setLockedTabWidthPx(null);
   }, []);
@@ -498,6 +541,7 @@ export function AppShellTabs({
   const tabList = (
     <div
       role="tablist"
+      aria-owns={leadingTabDomId}
       className="relative z-0 flex shrink-0"
       onMouseDownCapture={handleTabListMouseDownCapture}
       style={{ gap: APP_SHELL_TAB_GAP_PX, width: tabListWidth }}
@@ -556,6 +600,15 @@ export function AppShellTabs({
               </div>
             ) : null}
             <div className="flex h-full min-w-0 flex-1 items-center [container-type:inline-size]">
+              {leadingTab && leadingStripSizing ? (
+                <AppShellLeadingTabChrome
+                  tab={leadingTab}
+                  domId={leadingTabDomId}
+                  width={leadingStripSizing.leadingTabWidth}
+                  separatorVisible={!leadingTab.selected && activeIndex !== 0}
+                  onContextMenuOpen={exitTabCloseMode}
+                />
+              ) : null}
               <div
                 ref={tabRowRef}
                 data-panel-tab-row={
@@ -613,7 +666,9 @@ export function AppShellTabs({
           <div ref={bodyRef} className="relative min-h-0 flex-1 overflow-hidden">
             {renderPanel(activeTab)}
           </div>
-        ) : null}
+        ) : leadingTab?.selected ? null : (
+          emptyBody
+        )}
       </div>
     </NodexTooltipProvider>
   );
@@ -888,6 +943,7 @@ function AppShellTab({
     }
   };
   const targetPanelId = controllerId.includes("bottom") ? "right" : "bottom";
+  const contentPanelSide = useContext(AppShellContentPanelSideContext);
   const moveCurrentTab = () => {
     onMove?.(tab.id, targetPanelId);
   };
@@ -1109,7 +1165,7 @@ function AppShellTab({
     canPinTab: tab.preview === true && Boolean(onPin),
     canMoveTab: Boolean(onMove) && tab.preview !== true,
     canSplitTab: Boolean(onSplit) && tab.splittable === true,
-    targetPanelId,
+    targetPanelLabel: targetPanelId === "bottom" ? "bottom panel" : `${contentPanelSide} panel`,
     onClose: closeCurrentTab,
     onCloseOtherTabs: closeOtherTabs,
     onCloseTabsToRight: closeTabsToRight,
@@ -1136,7 +1192,7 @@ function AppShellTab({
                 key={item.id}
                 disabled={item.disabled}
                 className={cn(
-                  "cursor-interaction rounded-lg px-[var(--padding-row-x)] py-[var(--padding-row-y)] text-sm outline-hidden hover:bg-token-list-hover-background focus:bg-token-list-hover-background",
+                  APP_SHELL_TAB_CONTEXT_MENU_ITEM_CLASS,
                   item.tone === "destructive" && "text-token-error-foreground",
                   item.disabled && "cursor-default opacity-50",
                 )}
@@ -1152,6 +1208,141 @@ function AppShellTab({
   );
 }
 
+function AppShellLeadingTabChrome({
+  tab,
+  domId,
+  width,
+  separatorVisible,
+  onContextMenuOpen,
+}: {
+  tab: AppShellLeadingTab;
+  domId: string | undefined;
+  width: string;
+  separatorVisible: boolean;
+  onContextMenuOpen: () => void;
+}) {
+  const titleRef = useRef<HTMLSpanElement | null>(null);
+  const titleOverflows = useAppShellTabTitleOverflow(titleRef, tab.title);
+  const chrome = (
+    <div
+      data-app-shell-leading-tab={tab.id}
+      className="no-drag relative my-auto flex shrink-0 items-center overflow-hidden pe-(--app-shell-tab-separator-gutter)"
+      style={{ width, marginInlineEnd: APP_SHELL_TAB_GAP_PX }}
+    >
+      <div
+        data-app-shell-tab-surface="true"
+        className="group/tab relative flex h-8 w-full max-w-39 shrink-0 items-center overflow-hidden rounded-lg pe-1.75"
+      >
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-0 z-0 rounded-md border-[length:var(--border-width-hairline)]",
+            tab.selected
+              ? "border-(--color-border) bg-(--app-shell-tab-selected-background) shadow-[0px_1px_2px_-1px_#00000014]"
+              : "border-transparent group-hover/tab:bg-(--color-background-primary-ghost-hover)",
+          )}
+        />
+        <button
+          type="button"
+          id={domId}
+          role="tab"
+          aria-selected={tab.selected}
+          aria-controls={tab.selected ? tab.panelId : undefined}
+          aria-label={tab.title}
+          className={cn(
+            "no-drag relative z-10 flex h-full min-w-0 flex-1 items-center gap-2 py-1 ps-2.5 pe-1 text-sm",
+            tab.selected ? "text-(--color-text)" : "text-tertiary",
+          )}
+          onMouseDown={(event) => {
+            if (event.button !== 0) return;
+            tab.onSelect();
+          }}
+          onClick={(event) => {
+            if (event.detail !== 0) return;
+            tab.onSelect();
+          }}
+          onDoubleClick={(event) => {
+            if (event.button !== 0 || !tab.onDoubleClick) return;
+            event.preventDefault();
+            tab.onDoubleClick();
+          }}
+        >
+          <span
+            aria-hidden="true"
+            className="icon-xs relative flex shrink-0 items-center justify-center overflow-visible"
+          >
+            {tab.icon}
+          </span>
+          <span
+            className="relative min-w-0 flex-1 overflow-hidden"
+            style={titleOverflows ? { maskImage: TAB_TITLE_FADE_MASK } : undefined}
+          >
+            <NodexTooltip
+              tooltipContent={tab.title}
+              delayOpen
+              side="bottom"
+              align="start"
+              style={{
+                maxWidth:
+                  "min(32rem, var(--nodex-floating-surface-available-width), calc(100vw - 16px))",
+              }}
+            >
+              <span
+                ref={titleRef}
+                className="block w-full min-w-0 overflow-hidden whitespace-nowrap text-start"
+              >
+                {tab.title}
+              </span>
+            </NodexTooltip>
+          </span>
+        </button>
+        {tab.actions ? (
+          <div
+            data-app-shell-tab-no-drag="true"
+            className="no-drag relative z-10 flex shrink-0 items-center"
+          >
+            {tab.actions}
+          </div>
+        ) : null}
+      </div>
+      <div
+        aria-hidden="true"
+        data-app-shell-tab-separator={tab.id}
+        className={cn(
+          "absolute end-0 h-3 w-px shrink-0 bg-token-border transition-opacity duration-150",
+          separatorVisible ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </div>
+  );
+  if (!tab.contextMenuItems || tab.contextMenuItems.length === 0) return chrome;
+  return (
+    <NodexContextMenuRoot
+      onOpenChange={(open) => {
+        if (open) onContextMenuOpen();
+      }}
+    >
+      <NodexContextMenuTrigger>{chrome}</NodexContextMenuTrigger>
+      <NodexContextMenuPortal>
+        <NodexContextMenuContent className="min-w-36">
+          {tab.contextMenuItems.map((item) => (
+            <NodexContextMenuItem
+              key={item.id}
+              disabled={item.disabled}
+              className={cn(
+                APP_SHELL_TAB_CONTEXT_MENU_ITEM_CLASS,
+                item.disabled && "cursor-default opacity-50",
+              )}
+              onSelect={item.disabled ? undefined : item.onSelect}
+            >
+              {item.label}
+            </NodexContextMenuItem>
+          ))}
+        </NodexContextMenuContent>
+      </NodexContextMenuPortal>
+    </NodexContextMenuRoot>
+  );
+}
+
 function buildAppShellTabContextMenuItems({
   customItems,
   canCloseOtherTabs,
@@ -1159,7 +1350,7 @@ function buildAppShellTabContextMenuItems({
   canPinTab,
   canMoveTab,
   canSplitTab,
-  targetPanelId,
+  targetPanelLabel,
   onClose,
   onCloseOtherTabs,
   onCloseTabsToRight,
@@ -1173,7 +1364,7 @@ function buildAppShellTabContextMenuItems({
   canPinTab: boolean;
   canMoveTab: boolean;
   canSplitTab: boolean;
-  targetPanelId: string;
+  targetPanelLabel: string;
   onClose: () => void;
   onCloseOtherTabs: () => void;
   onCloseTabsToRight: () => void;
@@ -1214,7 +1405,7 @@ function buildAppShellTabContextMenuItems({
   if (canMoveTab) {
     items.push({
       id: "move-tab",
-      label: `Move to ${targetPanelId === "bottom" ? "bottom panel" : "right panel"}`,
+      label: `Move to ${targetPanelLabel}`,
       onSelect: onMove,
     });
   }

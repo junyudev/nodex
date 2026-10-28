@@ -25,6 +25,8 @@ import {
   type KeyboardShortcutEventLike,
 } from "./command-keybindings";
 
+import { TOGGLE_FULL_VIEW_COMMAND_ID } from "./workbench-commands";
+
 function keyboardEvent(
   key: string,
   overrides: Partial<KeyboardShortcutEventLike> = {},
@@ -140,6 +142,42 @@ describe("command keybindings", () => {
     });
     expect(resolveCommandShortcutPresentation(unassignedState, "openModelPicker")).toBeNull();
   });
+
+  test.each(["macOS", "windows", "linux"] as const)(
+    "reserves a conflict-free full-view default on %s",
+    (platform) => {
+      const state = createCommandKeymapState({}, platform);
+      expect(getPrimaryCommandAccelerator(state, TOGGLE_FULL_VIEW_COMMAND_ID)).toBe(
+        "CmdOrCtrl+Shift+F",
+      );
+      expect(
+        findCommandKeybindingConflict(state, TOGGLE_FULL_VIEW_COMMAND_ID, "CmdOrCtrl+Shift+F"),
+      ).toBeNull();
+      expect(
+        matchesKeyboardEventToCommand(
+          keyboardEvent("F", {
+            code: "KeyF",
+            metaKey: platform === "macOS",
+            ctrlKey: platform !== "macOS",
+            shiftKey: true,
+          }),
+          state,
+          TOGGLE_FULL_VIEW_COMMAND_ID,
+        ),
+      ).toBe(true);
+      expect(
+        findCommandKeybindingConflict(state, "findInThread", "CmdOrCtrl+Shift+F")?.commandId,
+      ).toBe(TOGGLE_FULL_VIEW_COMMAND_ID);
+      expect(() =>
+        applyCommandKeybindingUpdate(
+          {},
+          "findInThread",
+          { type: "set", keybinding: { key: "CmdOrCtrl+Shift+F" } },
+          platform,
+        ),
+      ).toThrow();
+    },
+  );
 
   test("matches CmdOrCtrl keyboard events by platform", () => {
     const macState = createCommandKeymapState({}, "macOS");

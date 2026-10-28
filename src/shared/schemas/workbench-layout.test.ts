@@ -14,7 +14,11 @@ import {
   createEmptyWorkbenchSessionView,
   materializeInitialWorkbenchSessionView,
 } from "../workbench-session-view";
-import { LIBRARY_SCENE_OWNER, materializeInitialWorkbenchScene } from "../workbench-scene";
+import {
+  LIBRARY_SCENE_OWNER,
+  materializeInitialWorkbenchScene,
+  patchWorkbenchScenePanel,
+} from "../workbench-scene";
 import {
   WorkbenchLayoutSnapshotSchema,
   WorkbenchLayoutSnapshotV3Schema,
@@ -24,6 +28,20 @@ import {
 } from "./workbench-layout";
 
 describe("WorkbenchLayoutSnapshotSchema", () => {
+  test("round-trips Session side and full view with Chat selected without a version change", () => {
+    const scene = patchWorkbenchScenePanel(
+      materializeInitialWorkbenchScene({ kind: "session", sessionId: "session-1" }),
+      "right",
+      { side: "left", collapsed: true, size: { fullWidth: true } },
+    );
+    const layout = {
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      scenesByOwnerKey: { "session:session-1": scene },
+    };
+    const restored = WorkbenchLayoutSnapshotSchema.parse(JSON.parse(JSON.stringify(layout)));
+    expect(restored.scenesByOwnerKey["session:session-1"]).toEqual(scene);
+  });
+
   test("migrates the v1 Card navigation vocabulary to Page coordinates", () => {
     const current = createDefaultWorkbenchLayoutSnapshotV3();
     const legacyBase: Record<string, unknown> = { ...current };

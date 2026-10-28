@@ -47,6 +47,7 @@ export const workbenchControlSchemas = {
     .strictObject({
       ...base,
       panelId,
+      side: z.enum(["left", "right"]).optional(),
       collapsed: z.boolean().optional(),
       maximizedGroupId: identity.nullable().optional(),
       size: z
@@ -59,6 +60,7 @@ export const workbenchControlSchemas = {
     })
     .refine(
       (input) =>
+        input.side !== undefined ||
         input.collapsed !== undefined ||
         input.maximizedGroupId !== undefined ||
         input.size !== undefined,
@@ -80,7 +82,7 @@ const descriptions: Record<keyof typeof workbenchControlSchemas, string> = {
     "Split an existing group at an edge, optionally moving one observed tab into the new group.",
   merge_tab_group: "Merge a group with its sibling through the existing Workbench layout rules.",
   set_panel_state:
-    "Change a panel's collapse, size or maximized group. This does not replace the complete layout.",
+    "Change a panel's collapse, size or maximized group. For a Session's right panel, side selects physical left or right placement; an unset side follows the Profile preference. fullWidth=false shows split view when open and Chat only when collapsed; fullWidth=true shows the selected content tab when open and Chat when collapsed, with content tabs retained. Collapsing preserves fullWidth. side is unavailable on bottom panels and non-Session Scenes. This does not replace the complete layout.",
 };
 export const workbenchControlToolCatalog: readonly Tool[] = Object.entries(
   workbenchControlSchemas,

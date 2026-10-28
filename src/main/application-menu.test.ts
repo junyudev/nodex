@@ -9,9 +9,11 @@ import {
   INSTALL_CLI_MENU_ITEM_ID,
   SET_UP_AGENT_SKILLS_MENU_ITEM_ID,
   TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID,
+  TOGGLE_FULL_VIEW_MENU_ITEM_ID,
 } from "./application-menu";
 
-function bottomPanelMenuItem(
+function workbenchMenuItem(
+  menuItemId: string,
   platform: "macOS" | "windows" | "linux",
   overrides: Record<string, string[]> = {},
   onExecuteCommand: (invocation: WorkbenchCommandInvocation) => void = () => undefined,
@@ -22,8 +24,8 @@ function bottomPanelMenuItem(
     () => undefined,
   );
   const submenu = menu.submenu as MenuItemConstructorOptions[];
-  const item = submenu.find((candidate) => candidate.id === TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID);
-  if (!item) throw new Error("Expected the Toggle Bottom Panel menu item");
+  const item = submenu.find((candidate) => candidate.id === menuItemId);
+  if (!item) throw new Error(`Expected the ${menuItemId} menu item`);
   return item;
 }
 
@@ -76,18 +78,20 @@ describe("application menu", () => {
   test.each(["macOS", "windows", "linux"] as const)(
     "builds the bottom-panel accelerator on %s",
     (platform) => {
-      expect(bottomPanelMenuItem(platform).accelerator).toBe("CommandOrControl+J");
+      expect(workbenchMenuItem(TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID, platform).accelerator).toBe(
+        "CommandOrControl+J",
+      );
     },
   );
 
   test("uses the custom primary accelerator and preserves explicit unassignment", () => {
     expect(
-      bottomPanelMenuItem("macOS", {
+      workbenchMenuItem(TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID, "macOS", {
         toggleBottomPanel: ["CmdOrCtrl+Alt+J"],
       }).accelerator,
     ).toBe("CommandOrControl+Alt+J");
     expect(
-      bottomPanelMenuItem("macOS", {
+      workbenchMenuItem(TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID, "macOS", {
         toggleBottomPanel: [],
       }).accelerator,
     ).toBeUndefined();
@@ -95,7 +99,7 @@ describe("application menu", () => {
 
   test("dispatches the typed workbench command once", () => {
     const invocations: unknown[] = [];
-    const item = bottomPanelMenuItem("macOS", {}, (invocation) => {
+    const item = workbenchMenuItem(TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID, "macOS", {}, (invocation) => {
       invocations.push(invocation);
     });
 
@@ -108,6 +112,41 @@ describe("application menu", () => {
         source: "menu",
       },
     ]);
+  });
+
+  test.each(["macOS", "windows", "linux"] as const)(
+    "builds a configurable full-view accelerator on %s",
+    (platform) => {
+      expect(workbenchMenuItem(TOGGLE_FULL_VIEW_MENU_ITEM_ID, platform).accelerator).toBe(
+        "CommandOrControl+Shift+F",
+      );
+      expect(
+        workbenchMenuItem(TOGGLE_FULL_VIEW_MENU_ITEM_ID, platform, {
+          toggleFullView: ["CmdOrCtrl+Alt+F"],
+        }).accelerator,
+      ).toBe("CommandOrControl+Alt+F");
+      expect(
+        workbenchMenuItem(TOGGLE_FULL_VIEW_MENU_ITEM_ID, platform, { toggleFullView: [] })
+          .accelerator,
+      ).toBeUndefined();
+    },
+  );
+
+  test("places full view next to the bottom panel and dispatches it once", () => {
+    const invocations: WorkbenchCommandInvocation[] = [];
+    const menu = buildWorkbenchViewMenu(
+      createCommandKeymapState({}, "macOS"),
+      (invocation) => invocations.push(invocation),
+      () => undefined,
+    );
+    const items = menu.submenu as MenuItemConstructorOptions[];
+    const bottomIndex = items.findIndex((item) => item.id === TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID);
+    const item = items[bottomIndex + 1];
+    expect(item?.id).toBe(TOGGLE_FULL_VIEW_MENU_ITEM_ID);
+    expect(item?.label).toBe("Toggle Full View");
+    if (typeof item?.click !== "function") throw new Error("Expected a menu click handler");
+    item.click({} as never, {} as never, {} as never);
+    expect(invocations).toEqual([{ commandId: "toggleFullView", source: "menu" }]);
   });
 
   test.each(["macOS", "windows", "linux"] as const)(

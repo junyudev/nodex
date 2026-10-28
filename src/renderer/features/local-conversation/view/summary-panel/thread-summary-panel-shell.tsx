@@ -19,10 +19,14 @@ const VISIBLE = { opacity: 1, transform: "translateX(0%)" };
 const HIDDEN = { opacity: 0, transform: "translateX(100%)" };
 
 function summaryPane(trigger: HTMLElement | null): HTMLElement | null {
+  const shell = trigger?.closest("[data-workbench-shell]");
+  const chatPane = shell?.querySelector<HTMLElement>("[data-app-shell-main-content-layout]");
+  if (chatPane?.getAttribute("data-workbench-primary-hidden") !== "true") return chatPane ?? null;
+  // Content fills a full view and hides the chat pane; the summary opens over the content.
   return (
-    trigger
-      ?.closest("[data-workbench-shell]")
-      ?.querySelector("[data-app-shell-main-content-layout]") ?? null
+    shell?.querySelector<HTMLElement>(
+      '[data-workbench-scene-owner] [data-app-shell-focus-area="right-panel"]',
+    ) ?? chatPane
   );
 }
 

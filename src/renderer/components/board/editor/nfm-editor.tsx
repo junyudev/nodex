@@ -76,6 +76,7 @@ import {
   setNfmSearchQuery,
 } from "./search-extension";
 import { resolveFindShortcutSeedQuery } from "./find-shortcut-seed";
+import { matchesNfmFindShortcut } from "./find-shortcut";
 import { deferCollapsedToggleVerticalArrowToBrowser } from "./inline-view-arrow-nav";
 import {
   focusEmbeddedEditorBoundary,
@@ -1853,7 +1854,7 @@ function NfmEditorInstance({
         }
       }
 
-      if (key === "f") {
+      if (matchesNfmFindShortcut(event, isMac ? "macOS" : "windows")) {
         event.preventDefault();
         if (!targetIsTextField) {
           const seedQuery = resolveFindShortcutSeedQuery(editor);

@@ -23,7 +23,13 @@ import { WorkbenchSidebar, type WorkbenchSidebarBodyProps } from "./workbench-si
 import { WorkbenchAppRail } from "./workbench-app-rail";
 import { WorkbenchRailFoot } from "./workbench-rail-account-controls";
 import { WorkbenchTitlebarProvider } from "./workbench-titlebar-context";
-import { WorkspaceTabsControl } from "./workspace-tabs-control";
+import { WorkspaceFullViewToggle, WorkspaceTabsControl } from "./workspace-tabs-control";
+import type { AppShellLeadingTab } from "./app-shell-tabs";
+import {
+  ThreadStageHeaderSlotContext,
+  type ThreadStageHeaderSlot,
+} from "@/features/local-conversation/view/thread-stage-header-slot";
+import { ThreadSummaryToggleDensityContext } from "@/features/local-conversation/view/summary-panel/thread-summary-panel-toggle";
 import {
   WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
   WORKBENCH_TITLEBAR_HEIGHT_PX,
@@ -303,8 +309,11 @@ import type { PageStageSessionSnapshot } from "@/components/board/page-stage/typ
 import { getCodexSidebarFloatingOuterClassName } from "@/lib/codex-sidebar-auto-reveal";
 import {
   CloseIcon,
+  ConversationIcon,
+  EnterFullViewIcon,
+  MoveToLeftPaneIcon,
+  MoveToRightPaneIcon,
   PanelBottomHiddenIcon,
-  ExitFullViewIcon,
   PanelBottomVisibleIcon,
   SidebarHiddenIcon,
   SidebarVisibleIcon,
@@ -329,6 +338,13 @@ import {
   type WorkbenchNewTabPlacement,
 } from "@/lib/workbench-new-tab-port";
 import { inboxPagePeek, readPageStagePanelTabPageRef } from "@/lib/workbench-panel-placement";
+import { formatToggleFullViewShortcutLabel } from "@/lib/workbench-command-shortcuts";
+import {
+  oppositeWorkbenchPanelSide,
+  resolveSessionWorkspacePresentation,
+  useSessionContentSidePreference,
+  type WorkbenchPanelSide,
+} from "@/lib/workbench-session-workspace";
 import { isRootThreadRightPanelComposerOverlayEligibleTab } from "@/lib/workbench-panel-tab-model";
 import {
   buildSessionPanelRenderModel,
@@ -365,6 +381,7 @@ import {
   CREATE_PAGE_COMMAND_ID,
   CREATE_PAGE_EXPANDED_COMMAND_ID,
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
+  TOGGLE_FULL_VIEW_COMMAND_ID,
   type WorkbenchCommandInvocation,
 } from "../../../shared/workbench-commands";
 import {
@@ -377,6 +394,9 @@ import { KeyboardShortcutHelpDialog } from "./keyboard-shortcut-help-dialog";
 import type { CommandMenuMode } from "@/lib/command-palette";
 import type { CodexBackgroundTerminalProcessThreadRef } from "@/lib/codex-background-terminal-processes";
 import { primaryCanvasBlockId } from "../../../shared/block-documents";
+
+/** A full-view Chat tab carries the Chat actions without the move between panes. */
+const CHAT_TAB_THREAD_HEADER_SLOT: ThreadStageHeaderSlot = { variant: "chat-tab", paneMove: null };
 
 const RIGHT_PANEL_HEADER_FALLBACK_SPACER_WIDTH_PX = 70;
 const RIGHT_PANEL_HEADER_FALLBACK_RAIL_WIDTH_PX = 62;
@@ -1651,6 +1671,24 @@ export function WorkbenchRuntime({
     pageStageHistoryModal?.projectId ?? activeProject?.id ?? null;
   const rightActiveRenderableTab = activeSessionPanelModel?.rightActiveRenderableTab ?? null;
   const rightPanelFullWidth = sidePanelOpen && (rightPanel?.size.fullWidth ?? false);
+  const { preferredSide: preferredSessionContentSide, update: updatePreferredSessionContentSide } =
+    useSessionContentSidePreference();
+  // Only a Session places its content beside its Conversation; other Scenes are full-width stacks.
+  const sessionWorkspace =
+    !activeOwnedSceneOwner && activeSessionPanelModel
+      ? resolveSessionWorkspacePresentation({
+          collapsed: rightPanelCollapsed,
+          fullWidth: activeSessionPanelModel.rightPanel.size.fullWidth ?? false,
+          side: activeSessionPanelModel.rightPanel.side,
+          preferredSide: preferredSessionContentSide,
+        })
+      : null;
+  /** Full view, whichever surface fills it; the content panel's tab strip stays in the titlebar. */
+  const rightPanelFullView = sessionWorkspace
+    ? sessionWorkspace.layout === "full"
+    : rightPanelFullWidth;
+  const sessionConversationFillsFullView = sessionWorkspace?.fullViewSurface === "conversation";
+  const sessionContentSide = sessionWorkspace?.contentSide ?? "right";
   const activeImageEditorOwnsRootComposer = Boolean(
     rightActiveRenderableTab &&
     isRootThreadRightPanelComposerOverlayEligibleTab(rightActiveRenderableTab) &&
@@ -1704,6 +1742,8 @@ export function WorkbenchRuntime({
     isMacPlatform,
     reducedMotion,
     rightPanelFullWidth,
+    rightPanelFullView,
+    rightPanelSide: sessionContentSide,
     rightPanelOpen: sidePanelOpen,
     rightPanelRequestedWidth: rightPanel?.size.widthPx ?? null,
     rootRef: workbenchRootRef,
@@ -2803,6 +2843,7 @@ export function WorkbenchRuntime({
     rightPanelRequestedWidth,
     bottomPanelHeight,
     bottomPanelRequestedHeight,
+    rightPanelSide: sessionContentSide,
   });
   const {
     showActiveRightPanel,
@@ -2814,6 +2855,29 @@ export function WorkbenchRuntime({
     resizeRightPanel,
     resizeBottomPanel,
   } = chromeCommands;
+  const activeSessionRightPanel = activeSessionPanelModel?.rightPanel ?? null;
+  /** Shows the Chat in place of the content panel, keeping full view and every content tab. */
+  const presentSessionConversationInFullView = useCallback(() => {
+    if (!activeSessionRightPanel) return;
+    void updateActiveWorkbenchPanel("right", {
+      collapsed: true,
+      size: { ...activeSessionRightPanel.size, fullWidth: true },
+    });
+  }, [activeSessionRightPanel, updateActiveWorkbenchPanel]);
+  /** Places the Chat in the pane on `side`, its content beside it, and remembers the choice. */
+  const moveSessionConversationToSide = useCallback(
+    (side: WorkbenchPanelSide) => {
+      if (!activeSessionRightPanel) return;
+      const contentSide = oppositeWorkbenchPanelSide(side);
+      updatePreferredSessionContentSide(contentSide);
+      void updateActiveWorkbenchPanel("right", {
+        collapsed: false,
+        side: contentSide,
+        size: { ...activeSessionRightPanel.size, fullWidth: false },
+      });
+    },
+    [activeSessionRightPanel, updateActiveWorkbenchPanel, updatePreferredSessionContentSide],
+  );
   const rightPanelComposerOverlayPlacement: FloatingComposerPlacement | undefined =
     activeSessionScene && activeSession
       ? {
@@ -2830,13 +2894,25 @@ export function WorkbenchRuntime({
           title: activeSession.displayTitle,
           menuItems: [
             {
-              id: "beside",
+              id: "full-view",
+              label: "Open in full view",
+              icon: <EnterFullViewIcon />,
+              onSelect: presentSessionConversationInFullView,
+            },
+            {
+              id: "left",
               label: "Move to left pane",
-              icon: <ExitFullViewIcon />,
-              onSelect: () => void setActiveRightPanelFullWidth(false),
+              icon: <MoveToLeftPaneIcon />,
+              onSelect: () => moveSessionConversationToSide("left"),
+            },
+            {
+              id: "right",
+              label: "Move to right pane",
+              icon: <MoveToRightPaneIcon />,
+              onSelect: () => moveSessionConversationToSide("right"),
             },
           ],
-          onDropBesideContent: () => void setActiveRightPanelFullWidth(false),
+          onDropBesideContent: (side) => moveSessionConversationToSide(side),
         }
       : undefined;
   const browserSidebarState = useBrowserSidebarRendererState();
@@ -3117,6 +3193,41 @@ export function WorkbenchRuntime({
     sidePanelOpen,
   ]);
 
+  const sessionContentTabCount = activeSessionPanelModel
+    ? Object.values(activeSessionPanelModel.renderableTabsByPanelLeaf.right).reduce(
+        (count, tabs) => count + tabs.length,
+        0,
+      )
+    : 0;
+  /**
+   * Enters full view showing the selected content, or returns a full view to split view. Without
+   * content, it opens a New tab to show.
+   */
+  const setSessionWorkspaceFullView = useCallback(
+    (fullView: boolean) => {
+      if (!sessionWorkspace) return;
+      if (sessionContentTabCount > 0) {
+        setActiveRightPanelFullWidth(fullView);
+        return;
+      }
+      if (!resolveActivePanelCapabilities("right").actions.browser.available) return;
+      // Settle the layout first, so the New tab appears in place without a passing layout.
+      setActiveRightPanelFullWidth(fullView);
+      void dispatchPanelAction("browser", { panelId: "right" });
+    },
+    [
+      dispatchPanelAction,
+      resolveActivePanelCapabilities,
+      sessionContentTabCount,
+      sessionWorkspace,
+      setActiveRightPanelFullWidth,
+    ],
+  );
+  const toggleActiveWorkspaceFullView = useCallback(() => {
+    if (!sessionWorkspace) return;
+    setSessionWorkspaceFullView(sessionWorkspace.layout !== "full");
+  }, [sessionWorkspace, setSessionWorkspaceFullView]);
+
   const toggleActiveBottomPanel = useCallback(() => {
     if (!activePanelOwnerKey) return;
     if (bottomPanelOpen) {
@@ -3198,7 +3309,6 @@ export function WorkbenchRuntime({
             projectWorkspaceRoot: projectWorkspaceRootOrNull(project ?? null),
           }),
           currentProjectId: activeSession.projectId,
-          canReturnToChat: panelId === "right" && rightPanelFullWidth,
           canOpenBottomTerminal: canOpenBottomTerminal(
             resolveActivePanelCapabilities("bottom").actions.terminal.available,
           ),
@@ -3213,18 +3323,10 @@ export function WorkbenchRuntime({
           projectWorkspaceRoot,
         }),
         currentProjectId: activeProject.id,
-        canReturnToChat: false,
         canOpenBottomTerminal: canOpenBottomTerminal(projectWorkspaceRoot !== null),
       };
     },
-    [
-      activeProject,
-      activeSession,
-      bottomPanelOpen,
-      projects,
-      resolveActivePanelCapabilities,
-      rightPanelFullWidth,
-    ],
+    [activeProject, activeSession, bottomPanelOpen, projects, resolveActivePanelCapabilities],
   );
   const { createManualTab: createSessionManualTab } = sessionCommands;
   const { openPanelDestinationFromPicker } = panelCommands;
@@ -3280,10 +3382,6 @@ export function WorkbenchRuntime({
       }),
     [presentLibraryTarget],
   );
-  const returnToChat = useCallback(
-    () => setActiveRightPanelFullWidth(false),
-    [setActiveRightPanelFullWidth],
-  );
   const newTabPort = useWorkbenchNewTabPortValue({
     windowOwner: workbenchWindow.owner,
     executeSceneCommand,
@@ -3295,7 +3393,6 @@ export function WorkbenchRuntime({
       runAction: runNewTabAction,
       openDestination: openNewTabDestination,
       openLibraryTarget: openNewTabLibraryTarget,
-      returnToChat,
     },
   });
 
@@ -3363,9 +3460,19 @@ export function WorkbenchRuntime({
         toggleActiveBottomPanel();
         return true;
       }
+      if (commandId === TOGGLE_FULL_VIEW_COMMAND_ID) {
+        toggleActiveWorkspaceFullView();
+        return true;
+      }
       return false;
     },
-    [activeProject?.id, activeProjectId, appHandle, toggleActiveBottomPanel],
+    [
+      activeProject?.id,
+      activeProjectId,
+      appHandle,
+      toggleActiveBottomPanel,
+      toggleActiveWorkspaceFullView,
+    ],
   );
 
   const commandPort = useMemo<WorkbenchCommandPort>(
@@ -3522,6 +3629,52 @@ export function WorkbenchRuntime({
     </>
   );
 
+  const fullViewShortcutLabel = formatToggleFullViewShortcutLabel(commandKeymapState);
+  // Split view offers moving the Chat to the content's side; the content then takes the Chat's.
+  const titlebarThreadHeaderSlot = useMemo<ThreadStageHeaderSlot>(
+    () => ({
+      variant: "titlebar",
+      paneMove:
+        sessionWorkspace?.layout === "split"
+          ? {
+              side: sessionWorkspace.contentSide,
+              onSelect: () => moveSessionConversationToSide(sessionWorkspace.contentSide),
+            }
+          : null,
+    }),
+    [moveSessionConversationToSide, sessionWorkspace],
+  );
+  const sessionChatTab: AppShellLeadingTab | null =
+    sessionWorkspace?.layout === "full" && activeSession
+      ? {
+          id: "session-chat",
+          title: activeSession.displayTitle.trim() || "Chat",
+          icon: <ConversationIcon className="icon-xs" />,
+          selected: sessionConversationFillsFullView,
+          actions: (
+            <ThreadStageHeaderSlotContext.Provider value={CHAT_TAB_THREAD_HEADER_SLOT}>
+              <SelectedAppShellHeaderContent />
+            </ThreadStageHeaderSlotContext.Provider>
+          ),
+          contextMenuItems:
+            sessionContentTabCount > 0
+              ? [
+                  {
+                    id: "move-chat-left",
+                    label: "Move to left pane",
+                    onSelect: () => moveSessionConversationToSide("left"),
+                  },
+                  {
+                    id: "move-chat-right",
+                    label: "Move to right pane",
+                    onSelect: () => moveSessionConversationToSide("right"),
+                  },
+                ]
+              : undefined,
+          onSelect: presentSessionConversationInFullView,
+          onDoubleClick: () => setSessionWorkspaceFullView(false),
+        }
+      : null;
   const panelHeaderActions = activePanelOwnerKey ? (
     <>
       <HeaderAction
@@ -3555,17 +3708,25 @@ export function WorkbenchRuntime({
           order={300}
         >
           <WorkspaceTabsControl
-            mode={!sidePanelOpen ? "chat" : rightPanelFullWidth ? "full" : "split"}
+            mode={sessionWorkspace?.layout ?? "chat"}
             tabs={Object.values(panelGroupTabs.right.itemsByLeafId).flat()}
             activeTabId={
               rightPanel
                 ? panelGroupTabs.right.activeTabIdsByLeafId[rightPanel.layout.activeLeafId]
                 : null
             }
-            onFullViewChange={setActiveRightPanelFullWidth}
+            onFullViewChange={setSessionWorkspaceFullView}
+            fullViewToggleInGroup={
+              sessionWorkspace?.contentSide !== "left" || sessionWorkspace.layout !== "split"
+            }
+            fullViewShortcutLabel={fullViewShortcutLabel}
             onToggle={() => {
-              if (sidePanelOpen && !rightPanelFullWidth) {
+              if (sessionWorkspace?.layout === "split") {
                 void hideActiveRightPanel();
+                return;
+              }
+              if (sessionWorkspace?.layout === "full") {
+                setSessionWorkspaceFullView(false);
                 return;
               }
               // With no tabs to show, `New tab` opens one beside the Chat.
@@ -3619,33 +3780,53 @@ export function WorkbenchRuntime({
     <>
       {sidebarHeaderActions}
       {threadSummaryHeaderAction ? (
+        // Full view hides the Chat's title row; its compact summary control joins the workspace
+        // controls, whichever surface fills the view.
         <HeaderAction
           actionId="local-thread-summary-panel-toggle"
-          slotPosition="center"
+          slotPosition={rightPanelFullView ? "right" : "center"}
           align="end"
-          order={250}
+          order={rightPanelFullView ? 150 : 250}
         >
-          {threadSummaryHeaderAction}
+          <ThreadSummaryToggleDensityContext.Provider
+            value={rightPanelFullView ? "compact" : "toolbar"}
+          >
+            {threadSummaryHeaderAction}
+          </ThreadSummaryToggleDensityContext.Provider>
         </HeaderAction>
       ) : null}
       {panelHeaderActions}
     </>
   );
 
+  // A content strip starting at the window's leading edge clears the collapsed sidebar's controls.
   const rightPanelHeaderStartInsetWidth =
-    activePanelOwnerKey && rightPanelFullWidth && sidebarLogicalCollapsed
+    activePanelOwnerKey &&
+    sidebarLogicalCollapsed &&
+    (rightPanelFullView || sessionWorkspace?.contentSide === "left")
       ? Math.max(0, effectiveHeaderLeftWidth - WORKBENCH_NAVIGATION_RAIL_WIDTH_PX)
       : 0;
   const bottomPanelGlobalHeaderInsetWidth = activePanelOwnerKey ? 40 : 0;
 
-  const rightPanelHeaderAfterList = activePanelOwnerKey ? (
+  // A content pane on the right ends under the global controls; one on the left ends at the
+  // Chat, carrying its own full-view toggle.
+  const rightPanelHeaderAfterList = !activePanelOwnerKey ? null : sessionWorkspace?.contentSide ===
+      "left" && sessionWorkspace.layout === "split" ? (
+    <div className="flex h-full shrink-0 items-center ps-1.5">
+      <WorkspaceFullViewToggle
+        full={false}
+        shortcutLabel={fullViewShortcutLabel}
+        onFullViewChange={setSessionWorkspaceFullView}
+      />
+    </div>
+  ) : (
     <div
       aria-hidden="true"
       data-testid="right-panel-tab-bar-header-spacer"
       className="pointer-events-none h-full shrink-0"
       style={{ width: `calc(${headerRightWidth}px)` }}
     />
-  ) : null;
+  );
 
   const bottomPanelGlobalHeaderControls = activePanelOwnerKey ? (
     <div className="pointer-events-auto flex h-full shrink-0 items-center">
@@ -3813,7 +3994,7 @@ export function WorkbenchRuntime({
   const destinationRouteShell = automationsRouteShell ?? pluginsRouteShell;
   // A full-width Scene panel covers the title row only while its Scene is showing,
   // never under a route such as Automations opened over it.
-  const appShellHeaderCoveredByScene = rightPanelFullWidth && destinationRouteShell == null;
+  const appShellHeaderCoveredByScene = rightPanelFullView && destinationRouteShell == null;
   const appShellHeaderCenterVisible =
     settingsRouteShell == null &&
     (activePanelOwnerKey != null ||
@@ -4692,7 +4873,9 @@ export function WorkbenchRuntime({
       : activeSession
         ? {
             ownerKey: activePanelOwnerKey,
-            projection: projectWorkbenchPanelTabShortcutProjection(panelGroupTabs),
+            projection: projectWorkbenchPanelTabShortcutProjection(panelGroupTabs, {
+              rightContentConcealed: sessionConversationFillsFullView,
+            }),
             selectTab: ({ panelId, tabId, leafId }) => selectPanelTab(panelId, tabId, leafId),
             closeTab: ({ panelId, tabId, leafId }) => closePanelTab(panelId, tabId, leafId),
           }
@@ -4914,7 +5097,7 @@ export function WorkbenchRuntime({
       </WorkbenchSessionScopePath>
     ) : null;
   const activeSessionRoute =
-    activeRenderSession && activeSessionPanelModel ? (
+    activeRenderSession && activeSessionPanelModel && sessionWorkspace ? (
       <WorkbenchSessionScene
         session={activeRenderSession}
         model={activeSessionPanelModel}
@@ -4926,6 +5109,7 @@ export function WorkbenchRuntime({
         panelGroupTabs={panelGroupTabs}
         panelLifecycle={panelLifecycle}
         panelCommands={panelCommands}
+        workspace={{ presentation: sessionWorkspace, chatTab: sessionChatTab }}
         layout={{
           appShellMainContentLayout,
           rightPanelTargetWidth,
@@ -5252,7 +5436,9 @@ export function WorkbenchRuntime({
                         >
                           {/* A showing Project Scene owns this row; a route opened over it keeps its header. */}
                           {workbenchWindow.location.kind === "project" ? null : (
-                            <SelectedAppShellHeaderContent />
+                            <ThreadStageHeaderSlotContext.Provider value={titlebarThreadHeaderSlot}>
+                              <SelectedAppShellHeaderContent />
+                            </ThreadStageHeaderSlotContext.Provider>
                           )}
                         </div>
                         {!destinationRouteShell ? (

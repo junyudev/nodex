@@ -617,6 +617,14 @@ export const CODEX_COMMAND_REGISTRY = [
     "CmdOrCtrl+J",
   ]),
   command(
+    "toggleFullView",
+    "Toggle full view",
+    "Expand the content panel to fill the window, or return to split view",
+    123,
+    "app",
+    ["CmdOrCtrl+Shift+F"],
+  ),
+  command(
     PREVIOUS_PANEL_TAB_COMMAND_ID,
     "Previous panel tab",
     "Select the previous tab in the focused panel group",

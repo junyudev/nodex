@@ -28,7 +28,7 @@ describe("New tab tool layout", () => {
         "page_stage",
         "canvas_stage",
       ),
-      { hasChat: false, hasShortcut: withShortcut },
+      { hasShortcut: withShortcut },
     );
 
     expect(kinds(layout.tiles)).toEqual([
@@ -47,7 +47,6 @@ describe("New tab tool layout", () => {
 
   test("fills every slot when nothing overflows", () => {
     const layout = resolveNewTabToolLayout(actions("review", "side_chat", "browser", "terminal"), {
-      hasChat: false,
       hasShortcut: withShortcut,
     });
 
@@ -56,19 +55,22 @@ describe("New tab tool layout", () => {
     expect(layout.projectContent).toEqual([]);
   });
 
-  test("counts Chat as a tile and moves the overflow behind More tools by section", () => {
+  test("moves the overflow behind More tools by section once the tools exceed the grid", () => {
     const layout = resolveNewTabToolLayout(
-      actions(
-        "review",
-        "terminal",
-        "files",
-        "side_chat",
-        "new_page",
-        "db_view",
-        "page_stage",
-        "canvas_stage",
-      ),
-      { hasChat: true, hasShortcut: withShortcut },
+      [
+        ...actions(
+          "review",
+          "terminal",
+          "files",
+          "side_chat",
+          "new_page",
+          "new_page",
+          "db_view",
+          "page_stage",
+          "canvas_stage",
+        ),
+      ],
+      { hasShortcut: withShortcut },
     );
 
     expect(kinds(layout.tiles)).toEqual([
@@ -76,6 +78,7 @@ describe("New tab tool layout", () => {
       "terminal",
       "files",
       "side_chat",
+      "new_page",
       "new_page",
       "db_view",
     ]);
@@ -85,7 +88,6 @@ describe("New tab tool layout", () => {
 
   test("sorts by the effective shortcut, including custom bindings", () => {
     const layout = resolveNewTabToolLayout(actions("terminal", "new_page", "files"), {
-      hasChat: false,
       hasShortcut: (action) => action.kind === "new_page",
     });
 

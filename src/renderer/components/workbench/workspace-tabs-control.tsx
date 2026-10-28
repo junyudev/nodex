@@ -29,6 +29,12 @@ export interface WorkspaceTabsControlProps {
   /** Show the content pane at full width, or return it to split view. */
   onFullViewChange: (full: boolean) => void;
   onSelect: (tabId: string, mode: "split" | "full") => void;
+  /**
+   * Whether the full-view toggle leads this group. A content pane on the left carries the toggle
+   * at the end of its own tab strip instead.
+   */
+  fullViewToggleInGroup?: boolean;
+  fullViewShortcutLabel?: string | null;
 }
 
 /**
@@ -36,7 +42,14 @@ export interface WorkspaceTabsControlProps {
  * change presentation only; the retained tabs and their leaf placement persist.
  */
 export function WorkspaceTabsControl(props: WorkspaceTabsControlProps) {
-  const { mode, tabs, onToggle, onFullViewChange } = props;
+  const {
+    mode,
+    tabs,
+    onToggle,
+    onFullViewChange,
+    fullViewToggleInGroup = true,
+    fullViewShortcutLabel,
+  } = props;
   // A toggle click can leave the pointer resting on the retained-tabs button;
   // its chooser opens on a later hover, not as a side effect of hiding tabs.
   const [hoverOpenSuppressed, setHoverOpenSuppressed] = useState(false);
@@ -50,23 +63,14 @@ export function WorkspaceTabsControl(props: WorkspaceTabsControlProps) {
       className="flex shrink-0 items-center gap-1.5"
       onPointerLeave={() => setHoverOpenSuppressed(false)}
     >
-      {tabs.length > 0 ? (
+      {fullViewToggleInGroup && (tabs.length > 0 || mode === "full") ? (
         <>
           <span aria-hidden="true" className="h-4 w-px shrink-0 bg-token-border" />
-          <NodexTooltip tooltipContent={mode === "full" ? "Exit full view" : "Enter full view"}>
-            <button
-              type="button"
-              aria-label={mode === "full" ? "Exit full view" : "Enter full view"}
-              aria-pressed={mode === "full"}
-              className={cn(
-                TOOLBAR_BUTTON_BASE_CLASS,
-                mode === "full" ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,
-              )}
-              onClick={() => onFullViewChange(mode !== "full")}
-            >
-              {mode === "full" ? <ExitFullViewIcon /> : <EnterFullViewIcon />}
-            </button>
-          </NodexTooltip>
+          <WorkspaceFullViewToggle
+            full={mode === "full"}
+            shortcutLabel={fullViewShortcutLabel}
+            onFullViewChange={onFullViewChange}
+          />
         </>
       ) : null}
       {mode === "chat" && tabs.length > 0 ? (
@@ -79,6 +83,36 @@ export function WorkspaceTabsControl(props: WorkspaceTabsControlProps) {
         <WorkspaceTabsToggle mode={mode} tabCount={tabs.length} onToggle={toggle} />
       )}
     </div>
+  );
+}
+
+/** Enters full view with the selected content, or returns a full view to split view. */
+export function WorkspaceFullViewToggle({
+  full,
+  shortcutLabel,
+  onFullViewChange,
+}: {
+  full: boolean;
+  shortcutLabel?: string | null;
+  onFullViewChange: (full: boolean) => void;
+}) {
+  const label = full ? "Exit full view" : "Enter full view";
+  return (
+    <NodexTooltip tooltipContent={label} shortcutLabel={shortcutLabel ?? undefined}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={full}
+        data-workbench-full-view-toggle=""
+        className={cn(
+          TOOLBAR_BUTTON_BASE_CLASS,
+          full ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,
+        )}
+        onClick={() => onFullViewChange(!full)}
+      >
+        {full ? <ExitFullViewIcon /> : <EnterFullViewIcon />}
+      </button>
+    </NodexTooltip>
   );
 }
 

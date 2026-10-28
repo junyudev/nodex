@@ -10,6 +10,7 @@ import {
   resolveFloatingComposerExpandedHeight,
   resolveFloatingComposerFrameWidth,
   resolveFloatingComposerResizeOffset,
+  resolveFloatingComposerPaneDropSide,
   resolveMinimizedFloatingComposerDock,
 } from "./floating-composer-layout";
 
@@ -180,5 +181,26 @@ describe("floating composer layout", () => {
         inset: 16,
       }),
     ).toEqual({ left: -932, right: 0, top: -732, bottom: 0 });
+  });
+});
+
+describe("floating composer pane drop", () => {
+  test.each([
+    { pointerX: 0, expected: "left" },
+    { pointerX: 24, expected: "left" },
+    { pointerX: 25, expected: null },
+    { pointerX: 500, expected: null },
+    { pointerX: 975, expected: null },
+    { pointerX: 976, expected: "right" },
+    { pointerX: 1000, expected: "right" },
+  ] as const)("pointer at $pointerX resolves to $expected", ({ pointerX, expected }) => {
+    expect(resolveFloatingComposerPaneDropSide(pointerX, 1000)).toBe(expected);
+  });
+
+  test("a pane with overlapping edge zones never resolves an ambiguous right drop", () => {
+    expect(resolveFloatingComposerPaneDropSide(20, 40)).toBe("left");
+    expect(resolveFloatingComposerPaneDropSide(40, 40)).toBeNull();
+    expect(resolveFloatingComposerPaneDropSide(48, 48)).toBeNull();
+    expect(resolveFloatingComposerPaneDropSide(49, 49)).toBe("right");
   });
 });

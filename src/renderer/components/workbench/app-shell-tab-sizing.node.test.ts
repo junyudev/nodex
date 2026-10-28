@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
-import { buildAppShellTabFlexSizing, buildAppShellTabListWidth } from "./app-shell-tab-sizing";
+import {
+  buildAppShellLeadingTabStripSizing,
+  buildAppShellTabFlexSizing,
+  buildAppShellTabListWidth,
+} from "./app-shell-tab-sizing";
 
 describe("app shell tab sizing", () => {
   test("distributes unlocked tabs equally within the shared min and max bounds", () => {
@@ -46,4 +50,38 @@ describe("app shell tab sizing", () => {
       }),
     ).toBe("clamp(183px, calc(100cqw - 0px), 323px)");
   });
+});
+
+describe("leading tab strip sizing", () => {
+  test("gives the fixed leading tab an equal share after trailing actions and gaps", () => {
+    const tabWidth = "clamp(90px, calc(calc(100cqw - 28px - 9px) / 4), 160px)";
+    expect(
+      buildAppShellLeadingTabStripSizing({ tabCount: 3, trailingWidthPx: 28, lockedWidthPx: null }),
+    ).toEqual({ leadingTabWidth: tabWidth, listWidth: `calc(3 * ${tabWidth} + 6px)` });
+  });
+
+  test("locks the leading tab and scrolling tabs to the same measured width", () => {
+    expect(
+      buildAppShellLeadingTabStripSizing({
+        tabCount: 3,
+        trailingWidthPx: 28,
+        lockedWidthPx: 120.4,
+      }),
+    ).toEqual({ leadingTabWidth: "120px", listWidth: "366px" });
+  });
+
+  test.each([null, 120] as const)(
+    "keeps the leading tab with no content tabs (lock %s)",
+    (lockedWidthPx) => {
+      expect(
+        buildAppShellLeadingTabStripSizing({ tabCount: 0, trailingWidthPx: 28, lockedWidthPx }),
+      ).toEqual({
+        leadingTabWidth:
+          lockedWidthPx === null
+            ? "clamp(90px, calc(calc(100cqw - 28px - 0px) / 1), 160px)"
+            : "120px",
+        listWidth: "0px",
+      });
+    },
+  );
 });

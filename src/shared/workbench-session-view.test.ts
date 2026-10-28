@@ -9,6 +9,7 @@ import {
   maximizeWorkbenchSessionViewLeaf,
   moveWorkbenchSessionViewTab,
   normalizeWorkbenchSessionView,
+  patchWorkbenchSessionViewPanel,
   removeWorkbenchSessionViewTab,
   reorderWorkbenchSessionViewTabs,
   resizeWorkbenchSessionViewBranch,
@@ -58,6 +59,50 @@ function materializedView(): WorkbenchSessionViewSnapshot {
 }
 
 describe("WorkbenchSessionView", () => {
+  test.each(["left", "right"] as const)(
+    "preserves %s placement through patches, schema, normalization and window cloning",
+    (side) => {
+      const source = patchWorkbenchSessionViewPanel(materializedView(), "right", {
+        side,
+        collapsed: true,
+      });
+      const normalized = normalizeWorkbenchSessionView(
+        WorkbenchSessionViewSnapshotSchema.parse(source),
+      );
+      const cloned = cloneWorkbenchLayoutForNewWindow(
+        { sessionViewsBySessionId: { "session-1": normalized } },
+        identityFactory("side-clone"),
+      ).sessionViewsBySessionId["session-1"]!;
+      expect(normalized.panels.right).toMatchObject({
+        side,
+        collapsed: true,
+        size: { fullWidth: true },
+      });
+      expect(cloned.panels.right).toMatchObject({
+        side,
+        collapsed: true,
+        size: { fullWidth: true },
+      });
+      expect(WorkbenchSessionViewSnapshotSchema.parse(cloned)).toEqual(cloned);
+    },
+  );
+
+  test("drops side and width from bottom panels during normalization and patching", () => {
+    const source = materializedView();
+    const parsed = WorkbenchSessionViewSnapshotSchema.parse({
+      ...source,
+      panels: {
+        ...source.panels,
+        bottom: { ...source.panels.bottom, side: "left", size: { widthPx: 600, fullWidth: true } },
+      },
+    });
+    const normalized = normalizeWorkbenchSessionView(parsed);
+    const patched = patchWorkbenchSessionViewPanel(normalized, "bottom", { side: "right" });
+    expect(normalized.panels.bottom).not.toHaveProperty("side");
+    expect(normalized.panels.bottom.size).toEqual({ heightPx: 280 });
+    expect(patched.panels.bottom).not.toHaveProperty("side");
+  });
+
   test("migrates the v1 view envelope to the current envelope", () => {
     const current = materializedView();
     const migrated = WorkbenchSessionViewSnapshotSchema.parse({

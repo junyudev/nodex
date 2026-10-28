@@ -465,7 +465,10 @@ export function makeSession(overrides: SessionFixtureOverrides = {}): ProjectSes
       rightActiveTabId:
         rightLayout?.root.type === "leaf" ? rightLayout.root.activeTabId : (rightTabIds[0] ?? null),
       rightCollapsed: rightCollapsed ?? false,
-      rightFullWidth: rightFullWidth ?? sessionOverrides.pinned ?? databaseViewStarter,
+      // A collapsed panel outside full view hides its tabs; full view with Chat selected is opt-in.
+      rightFullWidth:
+        rightFullWidth ??
+        (rightCollapsed ? false : (sessionOverrides.pinned ?? databaseViewStarter)),
       bottomTabIds,
       bottomActiveTabId: bottomTabIds[0] ?? null,
       bottomCollapsed: bottomTabIds.length === 0,

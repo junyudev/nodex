@@ -5,8 +5,10 @@ import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
   AppShellTabs,
+  AppShellContentPanelSideContext,
   buildTabRowEdgeMask,
   shouldShowAppShellTabSeparator,
+  type AppShellLeadingTab,
   type AppShellTabItem,
 } from "./app-shell-tabs";
 import { hoverWithMouse, render, settleAsyncRender, textContent } from "@/test/dom";
@@ -56,7 +58,9 @@ function makeTabs(): AppShellTabItem[] {
 
 function renderAppShellTabs(props: {
   tabs?: AppShellTabItem[];
-  activeTabId?: string;
+  activeTabId?: string | null;
+  leadingTab?: AppShellLeadingTab;
+  emptyBody?: ReactNode;
   onSelect?: (tabId: string) => void;
   onCloseTab?: (tabId: string) => void;
   onDirectCloseTab?: (tabId: string) => void;
@@ -75,7 +79,9 @@ function renderAppShellTabs(props: {
     <NodexTooltipProvider>
       <AppShellTabs
         tabs={props.tabs ?? makeTabs()}
-        activeTabId={props.activeTabId ?? "one"}
+        activeTabId={props.activeTabId === undefined ? "one" : props.activeTabId}
+        leadingTab={props.leadingTab}
+        emptyBody={props.emptyBody}
         onSelect={props.onSelect ?? (() => undefined)}
         onCloseTab={props.onCloseTab}
         onDirectCloseTab={props.onDirectCloseTab}
@@ -1304,3 +1310,151 @@ function getTabController(view: ReturnType<typeof render>, tabId: string): HTMLE
   if (!(element instanceof HTMLElement)) throw new Error(`Expected tab controller for ${tabId}`);
   return element;
 }
+
+function makeLeadingTab(overrides: Partial<AppShellLeadingTab> = {}): AppShellLeadingTab {
+  return {
+    id: "chat",
+    title: "Research session",
+    icon: <span>Conversation</span>,
+    selected: false,
+    panelId: "conversation-panel",
+    onSelect: () => undefined,
+    ...overrides,
+  };
+}
+
+async function interact(callback: () => void) {
+  await act(async () => {
+    callback();
+    await Promise.resolve();
+  });
+  await settleAsyncRender();
+}
+
+describe("AppShellTabs leading tab", () => {
+  test.each([false, true])(
+    "renders the fixed leading tab before content with selected=%s",
+    (selected) => {
+      const view = renderAppShellTabs({
+        activeTabId: selected ? null : "one",
+        leadingTab: makeLeadingTab({ selected }),
+        onCloseTab: vi.fn(),
+      });
+      const [chat, ...content] = view.getAllByRole("tab");
+      expect(chat).toBe(view.getByRole("tab", { name: "Research session", selected }));
+      expect(chat?.getAttribute("aria-controls")).toBe(selected ? "conversation-panel" : null);
+      expect(content).toHaveLength(3);
+      expect(content.filter((tab) => tab.getAttribute("aria-selected") === "true")).toHaveLength(
+        selected ? 0 : 1,
+      );
+      expect(view.queryByRole("button", { name: "Close Research session tab" })).toBeNull();
+      expect(chat?.closest('[draggable="true"]')).toBeNull();
+      if (selected) {
+        expect(view.queryByRole("tabpanel")).toBeNull();
+        expect(view.queryByText("Panel one")).toBeNull();
+        return;
+      }
+      expect(view.getByRole("tabpanel", { name: "One" })).toBeTruthy();
+    },
+  );
+
+  test("primary mousedown selects and double-click invokes the leading tab action", async () => {
+    const onSelect = vi.fn();
+    const onDoubleClick = vi.fn();
+    const view = renderAppShellTabs({ leadingTab: makeLeadingTab({ onSelect, onDoubleClick }) });
+    const chat = view.getByRole("tab", { name: "Research session" });
+    await interact(() => fireEvent.mouseDown(chat, { button: 2 }));
+    expect(onSelect).not.toHaveBeenCalled();
+    await interact(() => fireEvent.mouseDown(chat, { button: 0 }));
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith();
+    await interact(() => fireEvent.doubleClick(chat, { button: 0 }));
+    expect(onDoubleClick).toHaveBeenCalledExactlyOnceWith();
+  });
+
+  test("pressing trailing actions does not select the leading tab", async () => {
+    const onSelect = vi.fn();
+    const onAction = vi.fn();
+    const view = renderAppShellTabs({
+      leadingTab: makeLeadingTab({
+        onSelect,
+        actions: (
+          <button type="button" onClick={onAction}>
+            Chat actions
+          </button>
+        ),
+      }),
+    });
+    const action = view.getByRole("button", { name: "Chat actions" });
+    await interact(() => {
+      fireEvent.mouseDown(action, { button: 0 });
+      fireEvent.mouseUp(action, { button: 0 });
+      fireEvent.click(action);
+    });
+    expect(onAction).toHaveBeenCalledOnce();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test.each(["left", "right"] as const)(
+    "the leading tab context menu invokes Move to %s pane",
+    async (side) => {
+      const onMove = vi.fn();
+      const onSelect = vi.fn();
+      const view = renderAppShellTabs({
+        leadingTab: makeLeadingTab({
+          onSelect,
+          contextMenuItems: [{ id: "move", label: `Move to ${side} pane`, onSelect: onMove }],
+        }),
+      });
+      await interact(() =>
+        fireEvent.contextMenu(view.getByRole("tab", { name: "Research session" })),
+      );
+      const move = await view.findByRole("menuitem", { name: `Move to ${side} pane` });
+      expect(view.queryByRole("menuitem", { name: "Close" })).toBeNull();
+      await interact(() => fireEvent.click(move));
+      expect(onMove).toHaveBeenCalledOnce();
+      expect(onSelect).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([
+    { hasContent: false, activeTabId: null, leadingSelected: false, chooserVisible: true },
+    { hasContent: false, activeTabId: null, leadingSelected: true, chooserVisible: false },
+    { hasContent: true, activeTabId: null, leadingSelected: false, chooserVisible: true },
+    { hasContent: true, activeTabId: "one", leadingSelected: false, chooserVisible: false },
+  ])(
+    "empty chooser: content=$hasContent active=$activeTabId leading=$leadingSelected",
+    ({ hasContent, activeTabId, leadingSelected, chooserVisible }) => {
+      const view = renderAppShellTabs({
+        tabs: hasContent ? makeTabs() : [],
+        activeTabId,
+        leadingTab: makeLeadingTab({ selected: leadingSelected }),
+        emptyBody: <button type="button">Choose content</button>,
+      });
+      expect(Boolean(view.queryByRole("button", { name: "Choose content" }))).toBe(chooserVisible);
+    },
+  );
+});
+
+describe("bottom tab content-panel destination", () => {
+  test.each(["left", "right"] as const)(
+    "names the physical %s panel while preserving the panel identity",
+    async (side) => {
+      const onMoveTab = vi.fn();
+      const view = render(
+        <AppShellContentPanelSideContext value={side}>
+          <AppShellTabs
+            tabs={makeTabs()}
+            activeTabId="one"
+            controllerId="session-bottom"
+            onSelect={() => undefined}
+            onMoveTab={onMoveTab}
+          />
+        </AppShellContentPanelSideContext>,
+      );
+      await interact(() => fireEvent.contextMenu(view.getByRole("tab", { name: "One" })));
+      const move = await view.findByRole("menuitem", { name: `Move to ${side} panel` });
+      await interact(() => fireEvent.click(move));
+      expect(onMoveTab).toHaveBeenCalledExactlyOnceWith("one", "right");
+    },
+  );
+});

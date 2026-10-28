@@ -20,6 +20,13 @@ export interface WorkbenchSceneFrameProps {
       readonly mounted: boolean;
       readonly open: boolean;
       readonly fullWidth: boolean;
+      /** The physical side of the content panel; the primary takes the other side. */
+      readonly side?: "left" | "right";
+      /**
+       * Full view with the primary selected: the panel keeps its full-width frame, so its titlebar
+       * tab strip stays in place, while the primary covers its body.
+       */
+      readonly concealed?: boolean;
       readonly opacity: MotionValue<number>;
       readonly animatedSize: MotionValue<number>;
       readonly content: ReactNode;
@@ -54,12 +61,19 @@ export function WorkbenchSceneFrame({
   layout,
   chrome,
 }: WorkbenchSceneFrameProps) {
+  const rightPanelOnLeft = layout.rightPanel.side === "left";
+  const rightPanelConcealed = layout.rightPanel.concealed === true;
   return (
     <div
       className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
       data-workbench-scene-owner={ownerKey}
     >
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
+          rightPanelOnLeft && "flex-row-reverse",
+        )}
+      >
         <section
           data-testid={primaryTestId}
           data-workbench-primary-hidden={primaryHidden ? "true" : "false"}
@@ -87,8 +101,14 @@ export function WorkbenchSceneFrame({
             data-app-shell-focus-area="right-panel"
             data-testid={rightPanelTestId}
             data-right-panel-width-mode={layout.rightPanel.fullWidth ? "full" : "regular"}
+            data-right-panel-side={rightPanelOnLeft ? "left" : "right"}
+            data-right-panel-concealed={rightPanelConcealed ? "true" : undefined}
+            inert={rightPanelConcealed}
             className={cn(
-              "relative ml-auto h-full min-h-0 min-w-0 shrink-0 overflow-visible",
+              "h-full min-h-0 min-w-0 shrink-0 overflow-visible",
+              rightPanelConcealed
+                ? "invisible absolute inset-y-0 left-0"
+                : cn("relative", rightPanelOnLeft ? "mr-auto" : "ml-auto"),
               APP_SHELL_RIGHT_PANEL_LAYER_CLASS,
             )}
             style={{
@@ -101,7 +121,10 @@ export function WorkbenchSceneFrame({
                 role="separator"
                 aria-orientation="vertical"
                 aria-label="Resize right panel"
-                className="group absolute top-0 bottom-0 left-0 z-40 flex w-4 -translate-x-2 cursor-col-resize touch-none select-none active:cursor-col-resize"
+                className={cn(
+                  "group absolute top-0 bottom-0 z-40 flex w-4 cursor-col-resize touch-none select-none active:cursor-col-resize",
+                  rightPanelOnLeft ? "right-0 translate-x-2" : "left-0 -translate-x-2",
+                )}
                 onPointerDown={chrome.resizeRightPanel}
               >
                 <div className="pointer-events-none m-auto h-full w-px bg-linear-to-b from-transparent via-token-foreground/25 to-transparent opacity-0 group-hover:opacity-100 group-active:opacity-100" />
@@ -113,8 +136,12 @@ export function WorkbenchSceneFrame({
                 ref={chrome.setRightPanelComposerOverlayTarget}
                 data-right-panel-composer-overlay-host="true"
                 className={cn(
-                  "absolute top-0 right-0 bottom-0 min-w-0 bg-token-main-surface-primary",
-                  !layout.rightPanel.fullWidth && "border-l border-token-border",
+                  "absolute top-0 bottom-0 min-w-0 bg-token-main-surface-primary",
+                  rightPanelOnLeft ? "left-0" : "right-0",
+                  !layout.rightPanel.fullWidth &&
+                    (rightPanelOnLeft
+                      ? "border-r border-token-border"
+                      : "border-l border-token-border"),
                 )}
                 style={
                   {

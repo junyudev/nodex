@@ -129,9 +129,15 @@ export function useWorkbenchThreadSummary({
     resetKey: conversationThreadId,
     fullWidth: rightPanelFullWidth,
   });
+  // The pinned summary lives in the chat pane; content filling the Scene hides that pane, and the
+  // summary then opens over the content from its control.
   const mounted = available && !rightPanelFullWidth;
   const open = mounted && layoutMode !== "overlay" && pinnedOpen;
-  const mode = !mounted ? "hidden" : layoutMode === "overlay" ? "popover" : "pinned";
+  const mode = !available
+    ? "hidden"
+    : rightPanelFullWidth || layoutMode === "overlay"
+      ? "popover"
+      : "pinned";
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   useEffect(() => {

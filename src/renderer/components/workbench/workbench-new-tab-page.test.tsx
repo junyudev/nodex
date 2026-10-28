@@ -60,7 +60,6 @@ function renderPage(
   const onSelectAction = vi.fn();
   const onOpenRecent = vi.fn();
   const layout = resolveNewTabToolLayout(kinds.map(getPanelNewTabAction), {
-    hasChat: overrides.onSelectChat != null,
     hasShortcut: (action) => action.shortcut !== undefined,
   });
   render(
@@ -71,7 +70,6 @@ function renderPage(
           isMac
           projects={[]}
           currentProjectId="alpha"
-          onSelectChat={null}
           onSelectAction={onSelectAction}
           onOpenDestination={() => undefined}
           bottomTerminal={null}
@@ -118,52 +116,6 @@ describe("WorkbenchNewTabPage", () => {
         .closest("[aria-haspopup]"),
     ).not.toBe(null);
     expect(onSelectAction).not.toHaveBeenCalledWith("page_stage");
-  });
-
-  test("moves the overflow behind More tools, grouped by section", async () => {
-    const { onSelectAction } = renderPage(
-      [
-        "review",
-        "terminal",
-        "files",
-        "side_chat",
-        "new_page",
-        "db_view",
-        "page_stage",
-        "canvas_stage",
-      ],
-      { onSelectChat: () => undefined },
-    );
-    const tools = screen.getByRole("heading", { name: "Tools" }).parentElement;
-    if (!tools) throw new Error("Expected the Tools section");
-
-    await openNodexMenu(within(tools).getByRole("button", { name: /More tools/ }));
-    const menu = await screen.findByRole("menu");
-    expect(within(menu).getByText("Project") !== null).toBe(true);
-    expect(within(menu).queryByText("More tools")).toBe(null);
-    await act(async () => {
-      fireEvent.click(within(menu).getByText("Canvas"));
-      await Promise.resolve();
-    });
-    expect(onSelectAction).toHaveBeenCalledWith("canvas_stage");
-  });
-
-  test("leads with Chat while the Chat is hidden behind a full-width panel", async () => {
-    const onSelectChat = vi.fn();
-    renderPage(["review", "terminal", "files", "side_chat", "new_page"], { onSelectChat });
-    const tools = screen.getByRole("heading", { name: "Tools" }).parentElement;
-    if (!tools) throw new Error("Expected the Tools section");
-
-    const labels = within(tools)
-      .getAllByRole("button")
-      .map((button) => button.textContent ?? "");
-    expect(labels[0]).toBe("Chat");
-    expect(labels.some((label) => label.startsWith("More tools"))).toBe(false);
-    await act(async () => {
-      fireEvent.click(within(tools).getByRole("button", { name: "Chat" }));
-      await Promise.resolve();
-    });
-    expect(onSelectChat).toHaveBeenCalledOnce();
   });
 
   test("opens a recent page from its row", async () => {

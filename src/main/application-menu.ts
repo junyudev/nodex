@@ -7,11 +7,13 @@ import {
 } from "../shared/command-keybindings";
 import {
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
+  TOGGLE_FULL_VIEW_COMMAND_ID,
   type WorkbenchCommandInvocation,
 } from "../shared/workbench-commands";
 import type { WindowZoomCommand } from "./window-navigation-chrome";
 
 export const TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID = "view.toggleBottomPanel";
+export const TOGGLE_FULL_VIEW_MENU_ITEM_ID = "view.toggleFullView";
 export const INSTALL_CLI_MENU_ITEM_ID = "app.installCli";
 export const SET_UP_AGENT_SKILLS_MENU_ITEM_ID = "app.setupAgentSkills";
 
@@ -125,6 +127,19 @@ export function buildWorkbenchViewMenu(
         click: () => {
           onExecuteCommand({
             commandId: TOGGLE_BOTTOM_PANEL_COMMAND_ID,
+            source: "menu",
+          });
+        },
+      },
+      {
+        id: TOGGLE_FULL_VIEW_MENU_ITEM_ID,
+        label: "Toggle Full View",
+        accelerator: toElectronAccelerator(
+          getPrimaryCommandAccelerator(commandKeymapState, TOGGLE_FULL_VIEW_COMMAND_ID),
+        ),
+        click: () => {
+          onExecuteCommand({
+            commandId: TOGGLE_FULL_VIEW_COMMAND_ID,
             source: "menu",
           });
         },

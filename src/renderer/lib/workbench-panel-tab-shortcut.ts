@@ -43,9 +43,24 @@ export function projectWorkbenchPanelTabShortcutProjection(
       readonly activeTabIdsByLeafId: Readonly<Record<string, string | null>>;
     };
   }>,
+  options: {
+    /**
+     * The Chat fills a full view: content tabs stay listed but none is presented, so tab
+     * shortcuts never close or cycle a tab the user cannot see.
+     */
+    readonly rightContentConcealed?: boolean;
+  } = {},
 ): WorkbenchPanelTabShortcutProjection {
+  const right = projectPanelTabShortcutGroup(groups.right);
   return {
-    right: projectPanelTabShortcutGroup(groups.right),
+    right: options.rightContentConcealed
+      ? {
+          itemsByLeafId: right.itemsByLeafId,
+          activeTabIdsByLeafId: Object.fromEntries(
+            Object.keys(right.itemsByLeafId).map((leafId) => [leafId, null]),
+          ),
+        }
+      : right,
     bottom: projectPanelTabShortcutGroup(groups.bottom),
   };
 }

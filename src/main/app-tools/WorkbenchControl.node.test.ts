@@ -205,3 +205,46 @@ it("accepts semantic open targets while rejecting runtime identity and arbitrary
     false,
   );
 });
+
+it("accepts a side-only panel change and rejects unknown sides and empty requests", () => {
+  const input = { observationId, panelId: "right", side: "left" };
+  assert.strictEqual(workbenchControlSchemas.set_panel_state.safeParse(input).success, true);
+  assert.strictEqual(
+    workbenchControlSchemas.set_panel_state.safeParse({ ...input, side: "right" }).success,
+    true,
+  );
+  assert.strictEqual(
+    workbenchControlSchemas.set_panel_state.safeParse({ ...input, side: "up" }).success,
+    false,
+  );
+  assert.strictEqual(
+    workbenchControlSchemas.set_panel_state.safeParse({ observationId, panelId: "right" }).success,
+    false,
+  );
+});
+
+it.effect("forwards Session physical side through the panel command adapter", () =>
+  Effect.gen(function* () {
+    const requests: WorkbenchCommandEnvelope[] = [];
+    const execute = yield* setup(requests, {
+      ...record,
+      reference: { ...record.reference, sceneOwner: { kind: "session", sessionId: "session" } },
+    });
+    const result = yield* execute({
+      ...context,
+      invocation: {
+        ...context.invocation,
+        name: "set_panel_state",
+        arguments: { observationId, panelId: "right", side: "left" },
+      },
+    });
+    assert.isFalse(result.isError ?? false);
+    assert.deepStrictEqual(requests[0]?.command, {
+      kind: "set_panel_state",
+      panelId: "right",
+      side: "left",
+      collapsed: undefined,
+      size: undefined,
+    });
+  }),
+);

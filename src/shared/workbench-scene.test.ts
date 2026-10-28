@@ -10,6 +10,7 @@ import {
   WORKBENCH_SCENE_MAX_PANEL_SURFACES,
   WORKBENCH_SCENE_VERSION,
   activateWorkbenchSceneSurface,
+  applyForkBrowserTransferToWorkbenchScene,
   cloneWorkbenchSceneLayoutForNewWindow,
   collectWorkbenchScenePresentedPageIds,
   createWorkbenchSceneSurface,
@@ -23,6 +24,7 @@ import {
   migrateWorkbenchSceneV3ToV4,
   migrateWorkbenchSceneV4ToV5,
   moveWorkbenchSceneSurface,
+  normalizeWorkbenchScene,
   patchWorkbenchScenePanel,
   inboxSurface,
   INBOX_SCENE_OWNER,
@@ -627,6 +629,97 @@ describe("WorkbenchScene", () => {
       },
     };
     expect(() => WorkbenchSceneSnapshotSchema.parse(duplicated)).toThrow();
+  });
+
+  test.each(["left", "right"] as const)(
+    "retains Session content on the %s through schema, normalization and cloning",
+    (side) => {
+      const initial = materializeInitialWorkbenchScene({ kind: "session", sessionId: "session-1" });
+      expect(initial.panels.right).not.toHaveProperty("side");
+      const placed = patchWorkbenchScenePanel(initial, "right", { side });
+      const restored = normalizeWorkbenchScene(WorkbenchSceneSnapshotSchema.parse(placed));
+      const cloned = cloneWorkbenchSceneLayoutForNewWindow(
+        { scenesByOwnerKey: { "session:session-1": restored } },
+        identityFactory("side-clone"),
+      ).scenesByOwnerKey["session:session-1"]!;
+
+      expect(restored.panels.right.side).toBe(side);
+      expect(cloned.panels.right.side).toBe(side);
+      expect(WorkbenchSceneSnapshotSchema.parse(cloned)).toEqual(cloned);
+      expect(
+        WorkbenchSceneSnapshotSchema.safeParse({
+          ...placed,
+          panels: { ...placed.panels, right: { ...placed.panels.right, side: "up" } },
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  test.each([
+    { kind: "project", projectId: "project-1" },
+    INBOX_SCENE_OWNER,
+    LIBRARY_SCENE_OWNER,
+  ] as const)(
+    "strips physical side from $kind Scenes and preserves their full-width stack",
+    (owner) => {
+      const initial = materializeInitialWorkbenchScene(owner);
+      const restored = normalizeWorkbenchScene({
+        ...initial,
+        panels: {
+          right: { ...initial.panels.right, side: "left" },
+          bottom: { ...initial.panels.bottom, side: "right" },
+        },
+      });
+      const patched = patchWorkbenchScenePanel(restored, "right", {
+        side: "left",
+        collapsed: true,
+      });
+
+      expect(restored.panels.right).not.toHaveProperty("side");
+      expect(restored.panels.bottom).not.toHaveProperty("side");
+      expect(patched.panels.right).not.toHaveProperty("side");
+      expect(patched.panels.right).toMatchObject({ collapsed: false, size: { fullWidth: true } });
+      expect(WorkbenchSceneSnapshotSchema.parse(patched)).toEqual(patched);
+    },
+  );
+
+  test.each([false, true])(
+    "collapse and reopen preserve fullWidth=%s for a Session",
+    (fullWidth) => {
+      const initial = materializeInitialWorkbenchScene({ kind: "session", sessionId: "session-1" });
+      const open = patchWorkbenchScenePanel(initial, "right", {
+        collapsed: false,
+        size: { fullWidth },
+      });
+      const collapsed = patchWorkbenchScenePanel(open, "right", { collapsed: true });
+      const restored = normalizeWorkbenchScene(WorkbenchSceneSnapshotSchema.parse(collapsed));
+      const reopened = patchWorkbenchScenePanel(restored, "right", { collapsed: false });
+
+      expect(restored.panels.right).toMatchObject({ collapsed: true, size: { fullWidth } });
+      expect(reopened.panels.right).toMatchObject({ collapsed: false, size: { fullWidth } });
+      const hidden = patchWorkbenchScenePanel(reopened, "right", {
+        collapsed: true,
+        size: { fullWidth: false },
+      });
+      expect(hidden.panels.right).toMatchObject({ collapsed: true, size: { fullWidth: false } });
+    },
+  );
+
+  test("imports a Browser fork with Chat selected in full view", () => {
+    const initial = materializeInitialWorkbenchScene({ kind: "session", sessionId: "fork" });
+    const restored = applyForkBrowserTransferToWorkbenchScene(initial, {
+      bottomPanelOpen: false,
+      focusArea: "main",
+      rightPanelFullWidth: true,
+      rightPanelOpen: false,
+      sourceBrowserConversationId: "source",
+      sourceBrowserViewScopeId: "source-window",
+      targetBrowserConversationId: "fork",
+      targetBrowserViewScopeId: "fork-window",
+      tabs: [],
+    });
+    expect(restored.panels.right).toMatchObject({ collapsed: true, size: { fullWidth: true } });
+    expect(WorkbenchSceneSnapshotSchema.parse(restored)).toEqual(restored);
   });
 
   test("keeps a Project right surface stack open and full width", () => {

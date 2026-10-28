@@ -1,6 +1,7 @@
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { render, openNodexMenu, settleAsyncRender, textContent } from "../../../test/dom";
+import { ThreadStageHeaderSlotContext } from "./thread-stage-header-slot";
 import type { ThreadStageActions, ThreadStageHeaderModel } from "../thread-stage-types";
 
 function buildModel(overrides?: Partial<ThreadStageHeaderModel>): ThreadStageHeaderModel {
@@ -263,5 +264,82 @@ describe("ThreadStageHeader", () => {
     expect(cwdIndex < sessionIndex).toBe(true);
     expect(sessionIndex < deeplinkIndex).toBe(true);
     expect(deeplinkIndex < markdownIndex).toBe(true);
+  });
+});
+
+describe("ThreadStageHeader workspace slot", () => {
+  test.each(["right", "left"] as const)(
+    "offers Move to %s pane after Copy and before runtime and Archive",
+    async (side) => {
+      const { ThreadStageHeader } = await import("./local-conversation-stage-header");
+      const onSelect = vi.fn();
+      const view = render(
+        <ThreadStageHeaderSlotContext value={{ variant: "titlebar", paneMove: { side, onSelect } }}>
+          <ThreadStageHeader
+            model={buildModel()}
+            actions={{
+              ...buildActions(),
+              onArchiveThread: async () => {},
+              onOpenSubagentsPanel: async () => {},
+            }}
+            onErrorMessage={() => {}}
+            provider={{
+              kind: "claude",
+              label: "Claude",
+              selection: "claude:work",
+              commands: [],
+              error: null,
+              controls: { subagents: true },
+            }}
+          />
+        </ThreadStageHeaderSlotContext>,
+      );
+      await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
+      const menu = view.getByRole("menu");
+      const items = within(menu).getAllByRole("menuitem");
+      const copy = within(menu).getByRole("menuitem", { name: "Copy" });
+      const move = within(menu).getByRole("menuitem", { name: `Move to ${side} pane` });
+      expect(items.indexOf(move)).toBe(items.indexOf(copy) + 1);
+      expect(items.indexOf(move)).toBeLessThan(
+        items.indexOf(within(menu).getByRole("menuitem", { name: "Subagents" })),
+      );
+      expect(items.indexOf(move)).toBeLessThan(
+        items.indexOf(within(menu).getByRole("menuitem", { name: "Archive" })),
+      );
+      await act(async () => {
+        fireEvent.click(move);
+        await Promise.resolve();
+      });
+      expect(onSelect).toHaveBeenCalledOnce();
+    },
+  );
+
+  test("the default header has no pane move action", async () => {
+    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
+    const view = render(
+      <ThreadStageHeader model={buildModel()} actions={buildActions()} onErrorMessage={() => {}} />,
+    );
+    await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
+    expect(view.queryByRole("menuitem", { name: /^Move to .* pane$/ })).toBeNull();
+  });
+
+  test("the Chat tab slot renders only its working Chat actions trigger", async () => {
+    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
+    const view = render(
+      <ThreadStageHeaderSlotContext value={{ variant: "chat-tab", paneMove: null }}>
+        <ThreadStageHeader
+          model={buildModel()}
+          actions={buildActions()}
+          onErrorMessage={() => {}}
+        />
+      </ThreadStageHeaderSlotContext>,
+    );
+    expect(view.queryByText("Thread title")).toBeNull();
+    expect(view.getAllByRole("button")).toEqual([
+      view.getByRole("button", { name: "Chat actions" }),
+    ]);
+    await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
+    expect(view.getByRole("menuitem", { name: "Copy" })).toBeTruthy();
+    expect(view.queryByRole("menuitem", { name: /^Move to .* pane$/ })).toBeNull();
   });
 });

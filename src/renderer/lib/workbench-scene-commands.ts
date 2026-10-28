@@ -681,11 +681,17 @@ export function prepareWorkbenchSceneCommand(
     reorderGroup(command.panelId, groupId, [...target.tabIds, ...group.tabIds]);
   } else {
     if (
+      command.side === undefined &&
       command.collapsed === undefined &&
       command.maximizedGroupId === undefined &&
       (!command.size || Object.keys(command.size).length === 0)
     )
       return reject("invalid_command");
+    if (
+      command.side !== undefined &&
+      (command.panelId !== "right" || sceneOwner.kind !== "session")
+    )
+      return reject("invalid_placement");
     if (
       (sceneOwner.kind === "project" || sceneOwner.kind === "inbox") &&
       command.panelId === "right" &&
@@ -707,8 +713,9 @@ export function prepareWorkbenchSceneCommand(
       return reject("invalid_placement");
     if (command.panelId === "right" && command.size?.heightPx !== undefined)
       return reject("invalid_placement");
-    if (command.collapsed !== undefined || command.size !== undefined)
+    if (command.side !== undefined || command.collapsed !== undefined || command.size !== undefined)
       scene = patchWorkbenchScenePanel(scene, command.panelId, {
+        ...(command.side === undefined ? {} : { side: command.side }),
         ...(command.collapsed === undefined ? {} : { collapsed: command.collapsed }),
         ...(command.size ? { size: command.size } : {}),
       });

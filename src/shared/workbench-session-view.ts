@@ -31,6 +31,7 @@ export const WORKBENCH_SESSION_VIEW_VERSION = 4 as const;
 export const WORKBENCH_SESSION_VIEW_MAX_TABS = 2_048;
 
 export type WorkbenchPanelId = "right" | "bottom";
+export type WorkbenchPanelSide = "left" | "right";
 export type {
   WorkbenchPanelLayout,
   WorkbenchPanelLayoutV2,
@@ -47,6 +48,8 @@ export interface WorkbenchPanelSize {
 }
 
 export interface WorkbenchPanelState {
+  /** Physical content placement; absent follows the Profile preference. Session right panel only. */
+  side?: WorkbenchPanelSide;
   collapsed: boolean;
   layout: WorkbenchPanelLayout;
   size: WorkbenchPanelSize;
@@ -182,6 +185,7 @@ export interface WorkbenchSessionViewLeafSplitInput extends WorkbenchSessionView
 }
 
 export interface WorkbenchSessionViewPanelPatch {
+  side?: WorkbenchPanelSide;
   collapsed?: boolean;
   size?: Partial<WorkbenchPanelSize>;
 }
@@ -350,6 +354,9 @@ export function normalizeWorkbenchSessionView(
     const repaired = removeDuplicateAndUnknownTabIds(panel.layout, knownTabIds, seenTabIds);
     const placedTabIds = flattenWorkbenchPanelTabIds(repaired);
     panels[panelId] = {
+      ...(panelId === "right" && (panel.side === "left" || panel.side === "right")
+        ? { side: panel.side }
+        : {}),
       collapsed: panel.collapsed,
       layout: normalizeWorkbenchPanelLayout(repaired, placedTabIds),
       size: normalizePanelSize(panelId, panel.size),
@@ -749,6 +756,7 @@ export function patchWorkbenchSessionViewPanel(
         ...view.panels,
         [panelId]: {
           ...panel,
+          ...(patch.side === undefined ? {} : { side: patch.side }),
           ...(patch.collapsed === undefined ? {} : { collapsed: patch.collapsed }),
           size: {
             ...panel.size,

@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 - A new chat suggested in the Inbox shows the Agent, model and effort it will start on when you hover its decision, apart from the Agent that wrote the suggestion. Its menu half, and Handle manually, can start that one chat on another model, effort or speed, or make the choice the default. The Inbox's settings gear changes the suggestion model and the model, effort and speed of every chat the Inbox starts, right in the Inbox.
 - Inbox suggestions choose the model for each new chat from what every model does well and how much of each Agent's weekly budget is left, and can plan the work: the chat's Agent hands separable parts, such as a backend behind a carefully designed UI, to economical models through Nodex. The plan shows beneath the suggestion before you confirm, and you can change any of its models or drop a part. Nodex's model guide ships with the app and your routing preferences take precedence over it.
 - A chat started from the Inbox opens with its message's Page beside it, so what it was started from stays in view while you follow the work. Settings → Inbox can turn this off.
+- A chat can sit on either side of its tabs: Move to right pane or Move to left pane in Chat actions swaps them, and new chats follow your latest choice. In full view the chat becomes the first tab, with its own Chat actions, so you can switch between it and your tabs without leaving full view. `⇧⌘F` enters and exits full view.
 
 ### Changed
 

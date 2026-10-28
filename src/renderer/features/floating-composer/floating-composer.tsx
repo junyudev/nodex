@@ -58,7 +58,7 @@ import {
   FLOATING_COMPOSER_SURFACE_INSET_PX,
   clampFloatingComposerFrameWidth,
   isFloatingComposerPaneNarrow,
-  isFloatingComposerPointerOnPaneEdge,
+  resolveFloatingComposerPaneDropSide,
   isTopFloatingComposerDock,
   resolveFloatingComposerDockForRect,
   resolveFloatingComposerDockScaleOrigin,
@@ -102,8 +102,8 @@ export interface FloatingComposerPlacement {
   readonly title?: string;
   /** Placement actions offered by the move handle's menu, before `Minimize composer`. */
   readonly menuItems?: readonly FloatingComposerMenuItem[];
-  /** Dropping the composer on the pane's leading edge returns the chat beside the content. */
-  readonly onDropBesideContent?: () => void;
+  /** Dropping the composer on a pane edge returns the chat beside the content, on that side. */
+  readonly onDropBesideContent?: (side: "left" | "right") => void;
 }
 
 interface FloatingComposerProps extends FloatingComposerPlacement {
@@ -490,7 +490,7 @@ export function FloatingComposer({
   const [bubbleHovered, setBubbleHovered] = useState(false);
   const [resizing, setResizing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [paneDropActive, setPaneDropActive] = useState(false);
+  const [paneDropSide, setPaneDropSide] = useState<"left" | "right" | null>(null);
   // Near a corner the frame shrinks slightly; with the pointer in the corner, release minimizes.
   const [dockApproach, setDockApproach] = useState<DockApproach>("none");
   const [liveSize, setLiveSize] = useState<{ width?: number; height?: number } | null>(null);
@@ -643,8 +643,10 @@ export function FloatingComposer({
   const handleFrameDrag = (_event: PointerEvent, info: PanInfo) => {
     const dragTarget = readDragTarget(info);
     if (!dragTarget) return;
-    setPaneDropActive(
-      Boolean(onDropBesideContent) && isFloatingComposerPointerOnPaneEdge(dragTarget.pointer.x),
+    setPaneDropSide(
+      onDropBesideContent
+        ? resolveFloatingComposerPaneDropSide(dragTarget.pointer.x, paneWidth)
+        : null,
     );
     setDockApproach(dragTarget.minimize ? "minimize" : dragTarget.nearDock ? "near" : "none");
   };
@@ -652,13 +654,16 @@ export function FloatingComposer({
   const handleFrameDragEnd = (_event: PointerEvent, info: PanInfo) => {
     setDragging(false);
     setDockApproach("none");
-    setPaneDropActive(false);
+    setPaneDropSide(null);
     const dragTarget = readDragTarget(info);
     if (!dragTarget) return;
-    if (onDropBesideContent && isFloatingComposerPointerOnPaneEdge(dragTarget.pointer.x)) {
+    const dropSide = onDropBesideContent
+      ? resolveFloatingComposerPaneDropSide(dragTarget.pointer.x, paneWidth)
+      : null;
+    if (onDropBesideContent && dropSide) {
       offsetX.jump(0);
       offsetY.jump(0);
-      onDropBesideContent();
+      onDropBesideContent(dropSide);
       return;
     }
     if (dragTarget.minimize) {
@@ -686,7 +691,7 @@ export function FloatingComposer({
     setDragging(false);
     setBubbleDragging(false);
     setDockApproach("none");
-    setPaneDropActive(false);
+    setPaneDropSide(null);
     frameSettle.springHome();
     bubbleSettle.springHome();
   });
@@ -1242,10 +1247,14 @@ export function FloatingComposer({
           style={{ top: geometry.toolbarHeight }}
           onPointerLeave={() => setBubbleHovered(false)}
         >
-          {paneDropActive ? (
+          {paneDropSide ? (
             <motion.div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-y-2 left-2 w-1/3 rounded-2xl bg-token-charts-blue/10 ring-1 ring-token-charts-blue/40"
+              data-floating-composer-pane-drop={paneDropSide}
+              className={cn(
+                "pointer-events-none absolute inset-y-2 w-1/3 rounded-2xl bg-token-charts-blue/10 ring-1 ring-token-charts-blue/40",
+                paneDropSide === "left" ? "left-2" : "right-2",
+              )}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
             />

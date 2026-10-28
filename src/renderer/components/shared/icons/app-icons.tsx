@@ -1965,6 +1965,24 @@ export function ExitFullViewIcon({ className }: IconProps) {
   return <ToolbarGlyph paths={FULL_VIEW_EXIT_PATHS} className={cn("icon-xs", className)} />;
 }
 
+const MOVE_TO_LEFT_PANE_PATHS = [
+  "M6.96231 2.96214C7.16727 2.7574 7.49953 2.75742 7.7045 2.96214C7.90913 3.16712 7.9092 3.49939 7.7045 3.70433L3.93301 7.47483H13.3334C13.6232 7.47501 13.8578 7.71038 13.8578 8.00022C13.8577 8.28999 13.6232 8.52544 13.3334 8.52562H3.93301L7.7045 12.2951C7.90924 12.5001 7.90909 12.8323 7.7045 13.0373C7.49953 13.2423 7.16735 13.2422 6.96231 13.0373L2.53067 8.60667L2.47208 8.54124C2.21571 8.22666 2.21566 7.77279 2.47208 7.45823L2.53067 7.3928L6.96231 2.96214Z",
+] as const;
+
+const MOVE_TO_RIGHT_PANE_PATHS = [
+  "M8.29541 2.96214C8.50038 2.75742 8.83263 2.7574 9.0376 2.96214L13.4692 7.3928L13.5278 7.45823C13.7842 7.77279 13.7842 8.22666 13.5278 8.54124L13.4692 8.60667L9.0376 13.0373C8.83256 13.2422 8.50038 13.2423 8.29541 13.0373C8.09082 12.8323 8.09067 12.5001 8.29541 12.2951L12.0669 8.52562H2.6665C2.37676 8.52544 2.14218 8.28999 2.14209 8.00022C2.14209 7.71038 2.3767 7.47501 2.6665 7.47483H12.0669L8.29541 3.70433C8.09071 3.49939 8.09078 3.16712 8.29541 2.96214Z",
+] as const;
+
+/** The Chat moves into the left pane. */
+export function MoveToLeftPaneIcon({ className }: IconProps) {
+  return <ToolbarGlyph paths={MOVE_TO_LEFT_PANE_PATHS} className={cn("icon-xs", className)} />;
+}
+
+/** The Chat moves into the right pane. */
+export function MoveToRightPaneIcon({ className }: IconProps) {
+  return <ToolbarGlyph paths={MOVE_TO_RIGHT_PANE_PATHS} className={cn("icon-xs", className)} />;
+}
+
 export function PanelRightVisibleIcon({ className }: IconProps) {
   return <PanelHiddenGlyph className={cn("size-5 rotate-180", className)} />;
 }

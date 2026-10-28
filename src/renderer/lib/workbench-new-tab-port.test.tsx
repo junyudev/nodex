@@ -58,7 +58,6 @@ describe("New tab port", () => {
           runAction,
           openDestination: async () => false,
           openLibraryTarget: async () => false,
-          returnToChat: () => undefined,
         },
       }),
     );
@@ -168,7 +167,6 @@ describe("New tab port", () => {
             runAction: async () => false,
             openDestination: async () => false,
             openLibraryTarget: async () => false,
-            returnToChat: () => undefined,
           },
         }),
       );

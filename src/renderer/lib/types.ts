@@ -102,6 +102,7 @@ export type {
   WorkspaceFileWatchStopInput,
   PanelId,
   WorkbenchPanelLayout,
+  WorkbenchPanelSide,
   WorkbenchPanelState,
   WorkbenchPanelNode,
   WorkbenchPanelEnsureRightLeafResult,

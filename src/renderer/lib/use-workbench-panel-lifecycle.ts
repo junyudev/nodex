@@ -79,6 +79,7 @@ export function useWorkbenchPanelLifecycle({
       const receipt = await execute({
         kind: "set_panel_state",
         panelId,
+        ...(input.side === undefined ? {} : { side: input.side }),
         ...(input.collapsed === undefined ? {} : { collapsed: input.collapsed }),
         ...(input.size === undefined ? {} : { size: input.size }),
       });

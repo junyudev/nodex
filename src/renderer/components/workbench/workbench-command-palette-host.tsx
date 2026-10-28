@@ -18,6 +18,7 @@ import type { WorkbenchNavigationDirection } from "../../../shared/window-naviga
 import {
   CREATE_PAGE_COMMAND_ID,
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
+  TOGGLE_FULL_VIEW_COMMAND_ID,
   type WorkbenchCommandInvocation,
 } from "../../../shared/workbench-commands";
 import {
@@ -246,6 +247,12 @@ export function WorkbenchCommandPaletteHost({
     toggleBottomPanel: () => {
       executeWorkbenchCommand({
         commandId: TOGGLE_BOTTOM_PANEL_COMMAND_ID,
+        source: "command_palette",
+      });
+    },
+    toggleFullView: () => {
+      executeWorkbenchCommand({
+        commandId: TOGGLE_FULL_VIEW_COMMAND_ID,
         source: "command_palette",
       });
     },

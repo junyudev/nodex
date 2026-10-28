@@ -60,6 +60,8 @@ interface WorkbenchChromeCommandsInput {
   readonly rightPanelRequestedWidth: MotionValue<number>;
   readonly bottomPanelHeight: MotionValue<number>;
   readonly bottomPanelRequestedHeight: MotionValue<number>;
+  /** The content panel's physical side; its resize handle sits on the edge facing the Chat. */
+  readonly rightPanelSide: "left" | "right";
 }
 
 /**
@@ -80,6 +82,7 @@ export function useWorkbenchChromeCommands({
   rightPanelRequestedWidth,
   bottomPanelHeight,
   bottomPanelRequestedHeight,
+  rightPanelSide,
 }: WorkbenchChromeCommandsInput) {
   const panelControllerRef = useRef(controller);
   panelControllerRef.current = controller;
@@ -91,8 +94,11 @@ export function useWorkbenchChromeCommands({
 
   const hideActiveRightPanel = useCallback(async () => {
     if (!activePanelOwner) return;
-    await setActivePanelCollapsed("right", true);
-  }, [activePanelOwner, setActivePanelCollapsed]);
+    await updateActivePanel("right", {
+      collapsed: true,
+      size: { ...activePanelOwner.panels.right.size, fullWidth: false },
+    });
+  }, [activePanelOwner, updateActivePanel]);
 
   const showActiveBottomPanel = useCallback(async () => {
     if (!activePanelOwner) return;
@@ -175,12 +181,15 @@ export function useWorkbenchChromeCommands({
         moveEvent.preventDefault();
         if (closedByResize) return;
         const pointerX = moveEvent.clientX / windowZoom;
-        const rawWidth = startWidth + startX - pointerX;
+        const rawWidth =
+          rightPanelSide === "left"
+            ? startWidth + pointerX - startX
+            : startWidth + startX - pointerX;
         if (rawWidth < RIGHT_PANEL_MIN_WIDTH) {
           closedByResize = true;
           latestWidth = RIGHT_PANEL_MIN_WIDTH;
           restoreRequestedWidth();
-          void setActivePanelCollapsed("right", true);
+          void hideActiveRightPanel();
           return;
         }
 
@@ -236,7 +245,8 @@ export function useWorkbenchChromeCommands({
       activePanelOwner,
       regularRightPanelWidth,
       rightPanelRequestedWidth,
-      setActivePanelCollapsed,
+      rightPanelSide,
+      hideActiveRightPanel,
       shellMainContentWidth,
       updateActivePanel,
       workbenchRootRef,

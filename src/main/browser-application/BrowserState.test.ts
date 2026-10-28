@@ -680,6 +680,30 @@ describe("BrowserState semantic capability", () => {
     }),
   );
 
+  it.effect(
+    "retains full view with Chat selected while capturing and applying a Browser fork",
+    () =>
+      Effect.gen(function* () {
+        const { state } = yield* makeFixture();
+        const transfer = makeBrowserForkTransfer(state);
+        const captured = yield* transfer.capture(identity.browserConversationId, {
+          browserViewScopeId: identity.browserViewScopeId,
+          scene: patchWorkbenchScenePanel(sourceScene(), "right", {
+            collapsed: true,
+            size: { fullWidth: true },
+          }),
+        });
+        const rebased = yield* transfer.rebase(captured, "session-target");
+        const applied = yield* transfer.apply(rebased, {
+          targetBrowserConversationId: "session-target",
+          targetBrowserViewScopeId: "window-target",
+          targetProjectSession: { id: "session-target", projectId: "project-target" },
+        });
+        expect(captured).toMatchObject({ rightPanelOpen: false, rightPanelFullWidth: true });
+        expect(applied).toMatchObject({ rightPanelOpen: false, rightPanelFullWidth: true });
+      }),
+  );
+
   it.effect("rejects a fork whose resolved Browser and Project Session identities diverge", () =>
     Effect.gen(function* () {
       const { state } = yield* makeFixture();

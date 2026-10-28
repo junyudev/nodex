@@ -278,6 +278,89 @@ describe("handleWorkbenchShortcut", () => {
     expect(commands).toEqual(["toggleBottomPanel"]);
   });
 
+  test.each([
+    ["macOS", true, false],
+    ["windows", false, true],
+    ["linux", false, true],
+  ] as const)("dispatches full view from editable surfaces on %s", (platform, metaKey, ctrlKey) => {
+    for (const target of [makeInputTarget(), makeNfmEditorTarget(), makeComposerTarget()]) {
+      const commands: string[] = [];
+      expect(
+        handleWorkbenchShortcut(
+          { key: "F", code: "KeyF", metaKey, ctrlKey, shiftKey: true, altKey: false, target },
+          makeActions({
+            commandKeymapState: createCommandKeymapState({}, platform),
+            onRequestWorkbenchCommand: (id) => commands.push(id),
+          }),
+          platform === "macOS",
+        ),
+      ).toBe(true);
+      expect(commands).toEqual(["toggleFullView"]);
+    }
+  });
+
+  test("full view respects custom bindings and explicit unassignment", () => {
+    const commands: string[] = [];
+    const event = {
+      key: "F",
+      code: "KeyF",
+      metaKey: true,
+      ctrlKey: false,
+      shiftKey: true,
+      altKey: false,
+      target: makeNfmEditorTarget(),
+    };
+    const actions = makeActions({
+      commandKeymapState: createCommandKeymapState(
+        { toggleFullView: ["CmdOrCtrl+Alt+F"] },
+        "macOS",
+      ),
+      onRequestWorkbenchCommand: (id) => commands.push(id),
+    });
+    expect(handleWorkbenchShortcut(event, actions, true)).toBe(false);
+    expect(
+      handleWorkbenchShortcut({ ...event, shiftKey: false, altKey: true }, actions, true),
+    ).toBe(true);
+    expect(commands).toEqual(["toggleFullView"]);
+    expect(
+      handleWorkbenchShortcut(
+        event,
+        {
+          ...actions,
+          commandKeymapState: createCommandKeymapState({ toggleFullView: [] }, "macOS"),
+        },
+        true,
+      ),
+    ).toBe(false);
+    expect(commands).toEqual(["toggleFullView"]);
+  });
+
+  test("leaves full view to native ingress and ignores consumed, composing, and repeated keys", () => {
+    const commands: string[] = [];
+    const event = {
+      key: "F",
+      code: "KeyF",
+      metaKey: true,
+      ctrlKey: false,
+      shiftKey: true,
+      altKey: false,
+      target: makeInputTarget(),
+    };
+    expect(handleWorkbenchShortcut(event, makeActions(), true)).toBe(false);
+    for (const blocked of [{ defaultPrevented: true }, { isComposing: true }, { repeat: true }]) {
+      expect(
+        handleWorkbenchShortcut(
+          { ...event, ...blocked },
+          makeActions({
+            onRequestWorkbenchCommand: (id) => commands.push(id),
+          }),
+          true,
+        ),
+      ).toBe(false);
+    }
+    expect(commands).toEqual([]);
+  });
+
   test("Create Page bindings run only for fresh events outside locally owned surfaces", () => {
     let requests = 0;
     const actions = makeActions({

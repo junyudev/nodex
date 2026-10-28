@@ -28,6 +28,7 @@ import {
   updateWorkbenchSessionViewTab,
   WORKBENCH_SESSION_VIEW_VERSION,
   type WorkbenchPanelId,
+  type WorkbenchPanelSide,
   type WorkbenchPanelSize,
   type WorkbenchPanelState,
   type WorkbenchSessionViewIdentityFactory,
@@ -380,6 +381,7 @@ export interface WorkbenchSceneLeafSplitInput extends WorkbenchSceneLeafInput {
 }
 
 export interface WorkbenchScenePanelPatch {
+  readonly side?: WorkbenchPanelSide;
   readonly collapsed?: boolean;
   readonly size?: Partial<WorkbenchPanelSize>;
 }
@@ -646,16 +648,21 @@ function enforceLibrarySceneInvariants(scene: WorkbenchSceneSnapshot): Workbench
 }
 
 function enforceWorkbenchSceneInvariants(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
+  const { side, ...right } = scene.panels.right;
+  const placedScene =
+    scene.owner.kind === "session" || side === undefined
+      ? scene
+      : { ...scene, panels: { ...scene.panels, right } };
   if (scene.owner.kind === "project") {
-    return enforceProjectSceneInvariants(scene);
+    return enforceProjectSceneInvariants(placedScene);
   }
   if (scene.owner.kind === "inbox") {
-    return enforceInboxSceneInvariants(scene);
+    return enforceInboxSceneInvariants(placedScene);
   }
   if (scene.owner.kind === "library") {
-    return enforceLibrarySceneInvariants(scene);
+    return enforceLibrarySceneInvariants(placedScene);
   }
-  return enforceSessionSceneInvariants(scene);
+  return enforceSessionSceneInvariants(placedScene);
 }
 
 function fromLegacyPanelView(
@@ -1308,19 +1315,9 @@ export function patchWorkbenchScenePanel(
   panelId: WorkbenchPanelId,
   patch: WorkbenchScenePanelPatch,
 ): WorkbenchSceneSnapshot {
-  const adjustedPatch =
-    patch.collapsed === true && panelId === "right"
-      ? {
-          ...patch,
-          size: {
-            ...patch.size,
-            fullWidth: false,
-          },
-        }
-      : patch;
   return fromLegacyPanelView(
     scene,
-    patchWorkbenchSessionViewPanel(toLegacyPanelView(scene), panelId, adjustedPatch),
+    patchWorkbenchSessionViewPanel(toLegacyPanelView(scene), panelId, patch),
   );
 }
 

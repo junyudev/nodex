@@ -66,7 +66,7 @@ describe("useWorkbenchCommandIngress", () => {
     expect(port.execute).toHaveBeenCalledWith("createPage", "keyboard_shortcut");
   });
 
-  test("forwards native commands directly to the registered port", () => {
+  test("forwards native commands directly to the registered port", async () => {
     const handlers: Record<string, (...args: unknown[]) => void> = {};
     const subscribe = (name: string) =>
       vi.fn((handler: (...args: unknown[]) => void) => {
@@ -90,7 +90,7 @@ describe("useWorkbenchCommandIngress", () => {
 
     const { result } = renderHook(() => useWorkbenchCommandIngress());
     const port = makePort();
-    act(() => {
+    await act(async () => {
       result.current.register(port);
       handlers.back?.();
       handlers.sidebar?.();
@@ -100,6 +100,8 @@ describe("useWorkbenchCommandIngress", () => {
         commandId: "toggleBottomPanel",
         source: "menu",
       });
+      handlers.command?.({ commandId: "toggleFullView", source: "menu" });
+      await Promise.resolve();
     });
 
     expect(port.navigate).toHaveBeenCalledWith("back", "menu");
@@ -107,6 +109,8 @@ describe("useWorkbenchCommandIngress", () => {
     expect(port.cyclePanelTab).toHaveBeenCalledWith("previous");
     expect(port.closePanelTab).toHaveBeenCalledOnce();
     expect(port.execute).toHaveBeenCalledWith("toggleBottomPanel", "menu");
+    expect(port.execute).toHaveBeenCalledWith("toggleFullView", "menu");
+    expect(port.execute).toHaveBeenCalledTimes(2);
   });
 
   test("unregistering an old port does not clear its replacement", () => {

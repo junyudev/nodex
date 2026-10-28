@@ -1,5 +1,8 @@
 import { WorkbenchSceneSnapshotSchema } from "../../shared/schemas/workbench-scene";
-import { WorkbenchSubmitPresentationSchema } from "../../shared/nodex-app-tools/workbench";
+import {
+  WorkbenchSubmitPresentationSchema,
+  WorkbenchObservedPanelSchema,
+} from "../../shared/nodex-app-tools/workbench";
 import {
   makePreviewWorkspaceFileTab,
   makePreviewWorkbenchTabProjection,
@@ -123,6 +126,64 @@ function fixture(scene: WorkbenchSceneSnapshot) {
 }
 
 describe("shared Workbench Scene executor", () => {
+  test.each(["left", "right"] as const)(
+    "sets Session physical side to %s with a side-only command",
+    async (side) => {
+      const scene = seededScene({ kind: "session", sessionId: "session-a" }, [page("a")]);
+      const subject = fixture(scene);
+      const receipt = await subject.execute({ kind: "set_panel_state", panelId: "right", side });
+      expect(receipt).toMatchObject({ applied: true, persisted: true, error: null });
+      const stored = subject.owner.read().windowState.scenesByOwnerKey["session:session-a"]!;
+      expect(stored.panels.right.side).toBe(side);
+      const observedPanel = subject.observe().panels.find((panel) => panel.panelId === "right");
+      expect(WorkbenchObservedPanelSchema.parse(observedPanel).side).toBe(side);
+      expect(WorkbenchSceneSnapshotSchema.parse(stored)).toEqual(stored);
+    },
+  );
+
+  test.each([
+    { owner: { kind: "session", sessionId: "session-a" }, panelId: "bottom" },
+    { owner: { kind: "project", projectId: "project-a" }, panelId: "right" },
+    { owner: { kind: "inbox" }, panelId: "right" },
+    { owner: { kind: "library" }, panelId: "right" },
+  ] as const)(
+    "rejects side on $owner.kind $panelId without changing the Scene",
+    async ({ owner, panelId }) => {
+      const subject = fixture(materializeInitialWorkbenchScene(owner));
+      const before = subject.owner.read().windowState;
+      const receipt = await subject.execute({ kind: "set_panel_state", panelId, side: "left" });
+      expect(receipt).toMatchObject({
+        applied: false,
+        persisted: false,
+        error: "invalid_placement",
+      });
+      expect(subject.owner.read().windowState).toBe(before);
+      expect(subject.commit).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([false, true])(
+    "closing the final content tab preserves fullWidth=%s",
+    async (fullWidth) => {
+      const scene = patchWorkbenchScenePanel(
+        seededScene({ kind: "session", sessionId: "session-a" }, [page("last")]),
+        "right",
+        { collapsed: false, size: { fullWidth } },
+      );
+      const subject = fixture(scene);
+      subject.owner.navigate({ kind: "session", sessionId: "session-a", projectContextId: null });
+      expect(await subject.execute({ kind: "close_tab", tabId: "last" })).toMatchObject({
+        applied: true,
+        persisted: true,
+        error: null,
+      });
+      const stored = subject.owner.read().windowState.scenesByOwnerKey["session:session-a"]!;
+      expect(stored.panelSurfacesById).toEqual({});
+      expect(stored.panels.right).toMatchObject({ collapsed: true, size: { fullWidth } });
+      expect(subject.observe().tabs.find((tab) => tab.protected)).toMatchObject({ visible: true });
+    },
+  );
+
   test.each([false, true])(
     "selects a retained tab and fullWidth=%s atomically after preview save succeeds",
     async (fullWidth) => {

@@ -48,7 +48,15 @@ interface WorkbenchChromeLayoutInput {
   readonly headerLeftWidth: number;
   readonly isMacPlatform: boolean;
   readonly reducedMotion: boolean | null;
+  /** The content panel fills the Scene, covering the Conversation. */
   readonly rightPanelFullWidth: boolean;
+  /**
+   * The Scene is in full view, whichever surface fills it: the content panel keeps its full-width
+   * frame, and its tab strip keeps the titlebar, even while the Chat tab is selected.
+   */
+  readonly rightPanelFullView: boolean;
+  /** The content panel's physical side; the Conversation's titlebar row follows it. */
+  readonly rightPanelSide: "left" | "right";
   readonly rightPanelOpen: boolean;
   readonly rightPanelRequestedWidth: number | null;
   readonly rootRef: RefObject<HTMLDivElement | null>;
@@ -90,6 +98,8 @@ export function useWorkbenchChromeLayout({
   isMacPlatform,
   reducedMotion,
   rightPanelFullWidth,
+  rightPanelFullView,
+  rightPanelSide,
   rightPanelOpen,
   rightPanelRequestedWidth: persistedRightPanelWidth,
   rootRef,
@@ -156,6 +166,8 @@ export function useWorkbenchChromeLayout({
   }, [rootFontSize, rootRef]);
 
   const rightPanelFullWidthValue = useSyncedMotionValue(rightPanelFullWidth ? 1 : 0);
+  const rightPanelFullViewValue = useSyncedMotionValue(rightPanelFullView ? 1 : 0);
+  const rightPanelOnLeftValue = useSyncedMotionValue(rightPanelSide === "left" ? 1 : 0);
   const rightPanelOpenValue = useSyncedMotionValue(rightPanelOpen ? 1 : 0);
   const sidebarOpenValue = useSyncedMotionValue(sidebarOpen ? 1 : 0);
   const activeSessionValue = useSyncedMotionValue(activeSessionId ? 1 : 0);
@@ -178,14 +190,14 @@ export function useWorkbenchChromeLayout({
       clampBottomPanelHeight(Number(latestRequestedHeight), Number(latestShellHeight)),
   );
   const rightPanelTargetWidth = useTransform(
-    [shellMainContentWidth, regularRightPanelWidth, rightPanelFullWidthValue],
+    [shellMainContentWidth, regularRightPanelWidth, rightPanelFullViewValue],
     ([latestSizingWidth, latestRegularWidth, latestFullWidth]) =>
       Number(latestFullWidth) > 0
         ? Math.max(Number(latestSizingWidth), Number(latestRegularWidth))
         : Number(latestRegularWidth),
   );
   const rightPanelMotion = useCodexAnimatedPanelState({
-    open: rightPanelOpen,
+    open: rightPanelOpen || rightPanelFullView,
     targetSize: rightPanelTargetWidth,
     reducedMotion,
     resetKey: activeSessionId,
@@ -197,17 +209,25 @@ export function useWorkbenchChromeLayout({
     resetKey: activeSessionId,
   });
   const rightPanelAnimatedWidth = useTransform(
-    [rightPanelMotion.progress, rightPanelMotion.targetSize, rightPanelFullWidthValue],
+    [rightPanelMotion.progress, rightPanelMotion.targetSize, rightPanelFullViewValue],
     ([latestProgress, latestTargetSize, latestFullWidth]) =>
       Number(latestFullWidth) > 0
         ? 0
         : resolveCodexAnimatedPanelSize(Number(latestProgress), Number(latestTargetSize)),
   );
   const destinationRouteHeaderSlotSuppressed = useSyncedMotionValue(destinationRouteOpen ? 1 : 0);
+  // The titlebar row above the content panel belongs to its tab strip, on the panel's side.
   const rightHeaderShellSlotWidth = useTransform(
-    [rightPanelAnimatedWidth, destinationRouteHeaderSlotSuppressed],
-    ([latestRightPanelWidth, latestSuppressed]) =>
-      Number(latestSuppressed) > 0 ? 0 : Number(latestRightPanelWidth),
+    [rightPanelAnimatedWidth, destinationRouteHeaderSlotSuppressed, rightPanelOnLeftValue],
+    ([latestRightPanelWidth, latestSuppressed, latestOnLeft]) =>
+      Number(latestSuppressed) > 0 || Number(latestOnLeft) > 0 ? 0 : Number(latestRightPanelWidth),
+  );
+  const leftHeaderContentWidth = useTransform(
+    [rightPanelAnimatedWidth, destinationRouteHeaderSlotSuppressed, rightPanelOnLeftValue],
+    ([latestRightPanelWidth, latestSuppressed, latestOnLeft]) =>
+      Number(latestSuppressed) > 0 || Number(latestOnLeft) === 0
+        ? 0
+        : Number(latestRightPanelWidth),
   );
   const bottomPanelAnimatedHeightCss = useTransform(
     bottomPanelMotion.animatedSize,
@@ -277,15 +297,24 @@ export function useWorkbenchChromeLayout({
     ? Math.max(headerLeftWidth, collapsedHeaderLeftFallbackWidth)
     : Math.max(headerLeftWidth, safeHeaderLeftWidth + 24);
   const sidebarHeaderWidth = useTransform(
-    sidebarMotion.animatedWidth,
-    (width) => width + WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
+    [sidebarMotion.animatedWidth, leftHeaderContentWidth],
+    ([width, contentWidth]) =>
+      Number(width) + WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + Number(contentWidth),
+  );
+  // A left content panel extends the left slot to the Conversation's edge; its tab strip reserves
+  // the window controls itself, as a full view does.
+  const collapsedSidebarHeaderWidth = useTransform(
+    leftHeaderContentWidth,
+    (contentWidth) => WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + contentWidth,
   );
   const headerLeftShellSlotWidth =
-    sidebarLogicalCollapsed && rightPanelFullWidth
+    sidebarLogicalCollapsed && rightPanelFullView
       ? 0
       : sidebarMotion.mounted
         ? sidebarHeaderWidth
-        : effectiveHeaderLeftWidth;
+        : rightPanelSide === "left"
+          ? collapsedSidebarHeaderWidth
+          : effectiveHeaderLeftWidth;
   const headerLeftShellSlotMinWidth = sidebarMotion.mounted
     ? sidebarLogicalCollapsed
       ? effectiveHeaderLeftWidth

@@ -1,6 +1,7 @@
 import type { CommandId } from "./command-keybindings";
 
 export const TOGGLE_BOTTOM_PANEL_COMMAND_ID = "toggleBottomPanel";
+export const TOGGLE_FULL_VIEW_COMMAND_ID = "toggleFullView";
 export const CREATE_PAGE_COMMAND_ID = "createPage";
 export const CREATE_PAGE_EXPANDED_COMMAND_ID = "createPageExpanded";
 export const EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL = "execute-workbench-command";
@@ -8,6 +9,7 @@ export const EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL = "execute-workbench-command
 export type WorkbenchCommandId = Extract<
   CommandId,
   | typeof TOGGLE_BOTTOM_PANEL_COMMAND_ID
+  | typeof TOGGLE_FULL_VIEW_COMMAND_ID
   | typeof CREATE_PAGE_COMMAND_ID
   | typeof CREATE_PAGE_EXPANDED_COMMAND_ID
 >;

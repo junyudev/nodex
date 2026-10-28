@@ -103,6 +103,7 @@ export type {
   WorkbenchPanelSplitBranch,
   WorkbenchPanelSplitLeaf,
   WorkbenchPanelSplitSide,
+  WorkbenchPanelSide,
   WorkbenchPanelState,
 } from "./workbench-session-view";
 

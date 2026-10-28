@@ -1,7 +1,7 @@
 import type { WorkbenchRendererObservation } from "../../shared/nodex-app-tools/workbench";
 import { isNodexPanelOptionAction, type PanelNewTabAction } from "./workbench-panel-actions";
 
-/** A New tab's Tools grid holds four rows of two tiles, counting `Chat` and `More tools…`. */
+/** A New tab's Tools grid holds four rows of two tiles, counting `More tools…`. */
 export const NEW_TAB_TOOL_SLOTS = 8;
 
 export interface NewTabToolLayout {
@@ -21,7 +21,6 @@ export interface NewTabToolLayout {
 export function resolveNewTabToolLayout(
   actions: readonly PanelNewTabAction[],
   options: {
-    readonly hasChat: boolean;
     readonly hasShortcut: (action: PanelNewTabAction) => boolean;
   },
 ): NewTabToolLayout {
@@ -32,8 +31,8 @@ export function resolveNewTabToolLayout(
     ...general.filter((action) => !options.hasShortcut(action)),
     ...tools.filter(isNodexPanelOptionAction),
   ];
-  const slots = options.hasChat ? NEW_TAB_TOOL_SLOTS - 1 : NEW_TAB_TOOL_SLOTS;
-  const tileCount = ordered.length > slots ? slots - 1 : slots;
+  const tileCount =
+    ordered.length > NEW_TAB_TOOL_SLOTS ? NEW_TAB_TOOL_SLOTS - 1 : NEW_TAB_TOOL_SLOTS;
   const overflow = ordered.slice(tileCount);
   return {
     tiles: ordered.slice(0, tileCount),

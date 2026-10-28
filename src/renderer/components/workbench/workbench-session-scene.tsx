@@ -21,6 +21,8 @@ import {
   WorkbenchSessionScopePath,
   resolveProjectSessionThreadScopeDescriptor,
 } from "@/lib/workbench-ui-scopes";
+import type { SessionWorkspacePresentation } from "@/lib/workbench-session-workspace";
+import { AppShellContentPanelSideContext, type AppShellLeadingTab } from "./app-shell-tabs";
 import type { PanelGroupTabsByPanel } from "./use-workbench-panel-projection";
 import { ReviewRouteOpenAdapter } from "./workbench-review-route-adapter";
 import { SessionThreadPage } from "./workbench-session-thread-route";
@@ -60,6 +62,11 @@ interface WorkbenchSessionSceneProps {
   readonly panelGroupTabs: PanelGroupTabsByPanel;
   readonly panelLifecycle: PanelLifecycle;
   readonly panelCommands: PanelCommands;
+  /** How the Conversation and content panel share the Scene; the Chat tab leads full view. */
+  readonly workspace: {
+    readonly presentation: SessionWorkspacePresentation;
+    readonly chatTab: AppShellLeadingTab | null;
+  };
   readonly layout: {
     readonly appShellMainContentLayout: AppShellMainContentLayout;
     readonly rightPanelTargetWidth: MotionValue<number>;
@@ -113,9 +120,12 @@ export function WorkbenchSessionScene({
   panelGroupTabs,
   panelLifecycle,
   panelCommands,
+  workspace,
   layout,
   chrome,
 }: WorkbenchSessionSceneProps) {
+  const fullView = workspace.presentation.layout === "full";
+  const conversationFillsFullView = workspace.presentation.fullViewSurface === "conversation";
   const sceneKey = makeWorkbenchSceneKey({
     kind: "session",
     sessionId: session.id,
@@ -191,6 +201,8 @@ export function WorkbenchSessionScene({
         headerEndInsetPx={
           panelId === "bottom" ? layout.bottomPanelGlobalHeaderInsetWidth : undefined
         }
+        leadingTab={panelId === "right" ? (workspace.chatTab ?? undefined) : undefined}
+        contentConcealed={panelId === "right" && conversationFillsFullView}
         commands={{
           selectTab: (leafId, tabId) => {
             void selectPanelTab(panelId, tabId, leafId);
@@ -237,57 +249,61 @@ export function WorkbenchSessionScene({
       route={{ routeKey: "/thread", kind: "thread" }}
       selected
     >
-      <WorkbenchSceneFrame
-        ownerKey={sceneKey}
-        primaryTestId="session-thread-page"
-        primaryHidden={model.rightPanelFullWidth}
-        rightPanelTestId="session-right-panel"
-        bottomPanelTestId="session-bottom-panel"
-        primary={
-          <>
-            {sessionError ? (
-              <div className="border-b border-token-border px-3 py-2 text-xs text-token-text-secondary">
-                {sessionError}
-              </div>
-            ) : null}
-            <ReviewRouteOpenAdapter activateReviewTab={activateReviewTab}>
-              {({ onOpenTurnDiffReview, onOpenSummaryGitReview }) => (
-                <SessionThreadPage
-                  {...threadPageProps}
-                  onOpenPendingWorktree={(clientThreadId, projectSessionId) => {
-                    promoteThreadScopeToPending(
-                      threadScopeIdentityRegistry,
-                      threadScopeDescriptor,
-                      clientThreadId,
-                      projectSessionId,
-                    );
-                    threadPageProps.onOpenPendingWorktree(clientThreadId, projectSessionId);
-                  }}
-                  onOpenTurnDiffReview={onOpenTurnDiffReview}
-                  onOpenSummaryGitReview={onOpenSummaryGitReview}
-                />
-              )}
-            </ReviewRouteOpenAdapter>
-          </>
-        }
-        layout={{
-          appShellMainContentLayout: layout.appShellMainContentLayout,
-          rightPanelTargetWidth: layout.rightPanelTargetWidth,
-          bottomPanelHeight: layout.bottomPanelHeight,
-          rightPanel: {
-            ...layout.rightPanel,
-            open: model.sidePanelOpen,
-            fullWidth: model.rightPanelFullWidth,
-            content: renderPanelHost("right"),
-          },
-          bottomPanel: {
-            ...layout.bottomPanel,
-            open: model.bottomPanelOpen,
-            content: renderPanelHost("bottom"),
-          },
-        }}
-        chrome={chrome}
-      />
+      <AppShellContentPanelSideContext.Provider value={workspace.presentation.contentSide}>
+        <WorkbenchSceneFrame
+          ownerKey={sceneKey}
+          primaryTestId="session-thread-page"
+          primaryHidden={model.rightPanelFullWidth}
+          rightPanelTestId="session-right-panel"
+          bottomPanelTestId="session-bottom-panel"
+          primary={
+            <>
+              {sessionError ? (
+                <div className="border-b border-token-border px-3 py-2 text-xs text-token-text-secondary">
+                  {sessionError}
+                </div>
+              ) : null}
+              <ReviewRouteOpenAdapter activateReviewTab={activateReviewTab}>
+                {({ onOpenTurnDiffReview, onOpenSummaryGitReview }) => (
+                  <SessionThreadPage
+                    {...threadPageProps}
+                    onOpenPendingWorktree={(clientThreadId, projectSessionId) => {
+                      promoteThreadScopeToPending(
+                        threadScopeIdentityRegistry,
+                        threadScopeDescriptor,
+                        clientThreadId,
+                        projectSessionId,
+                      );
+                      threadPageProps.onOpenPendingWorktree(clientThreadId, projectSessionId);
+                    }}
+                    onOpenTurnDiffReview={onOpenTurnDiffReview}
+                    onOpenSummaryGitReview={onOpenSummaryGitReview}
+                  />
+                )}
+              </ReviewRouteOpenAdapter>
+            </>
+          }
+          layout={{
+            appShellMainContentLayout: layout.appShellMainContentLayout,
+            rightPanelTargetWidth: layout.rightPanelTargetWidth,
+            bottomPanelHeight: layout.bottomPanelHeight,
+            rightPanel: {
+              ...layout.rightPanel,
+              open: model.sidePanelOpen || fullView,
+              fullWidth: fullView,
+              side: workspace.presentation.contentSide,
+              concealed: conversationFillsFullView,
+              content: renderPanelHost("right"),
+            },
+            bottomPanel: {
+              ...layout.bottomPanel,
+              open: model.bottomPanelOpen,
+              content: renderPanelHost("bottom"),
+            },
+          }}
+          chrome={chrome}
+        />
+      </AppShellContentPanelSideContext.Provider>
     </WorkbenchSessionScopePath>
   );
 }

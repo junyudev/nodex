@@ -28,7 +28,10 @@ import {
   RENAME_THREAD_COMMAND_ID,
   TOGGLE_SIDEBAR_COMMAND_ID,
 } from "../../../shared/window-navigation";
-import { TOGGLE_BOTTOM_PANEL_COMMAND_ID } from "../../../shared/workbench-commands";
+import {
+  TOGGLE_BOTTOM_PANEL_COMMAND_ID,
+  TOGGLE_FULL_VIEW_COMMAND_ID,
+} from "../../../shared/workbench-commands";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../../shared/project-appearance";
 import type { CommandPaletteWorkspaceSelection } from "@/lib/command-palette-workspace-selection";
 import type { CommandPaletteSurfaceHandle } from "./command-palette-surface";
@@ -131,6 +134,31 @@ describe("buildCommandPaletteCommands", () => {
 
     expect(sidebarCommand?.title).toBe("Toggle sidebar");
     expect(sidebarCommand?.shortcut).toBe("⌘B");
+  });
+
+  test.each([true, false])("full view follows Session availability (%s)", (hasActiveSession) => {
+    const commands = buildCommandPaletteCommands(makeCommandContext({ hasActiveSession }));
+    const fullView = commands.find((command) => command.id === TOGGLE_FULL_VIEW_COMMAND_ID);
+    const sidePanel = commands.find((command) => command.id === "toggleSidePanel");
+    expect(fullView?.title).toBe("Toggle full view");
+    expect(fullView?.shortcut).toBe("⇧⌘F");
+    expect(fullView?.disabled).toBe(!hasActiveSession);
+    expect(fullView?.disabled).toBe(sidePanel?.disabled);
+  });
+
+  test.each([
+    ["macOS", ["CmdOrCtrl+Alt+F"], "⌥⌘F"],
+    ["windows", ["CmdOrCtrl+Shift+F"], "Ctrl+Shift+F"],
+    ["macOS", [], undefined],
+  ] as const)("full-view palette labels reflect the %s keymap", (platform, bindings, label) => {
+    const commands = buildCommandPaletteCommands(
+      makeCommandContext({
+        commandKeymapState: createCommandKeymapState({ toggleFullView: [...bindings] }, platform),
+      }),
+    );
+    expect(commands.find((command) => command.id === TOGGLE_FULL_VIEW_COMMAND_ID)?.shortcut).toBe(
+      label,
+    );
   });
 
   test("includes find as a real shell command", () => {

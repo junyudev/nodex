@@ -214,6 +214,7 @@ export type WorkbenchObservedGroup = z.infer<typeof WorkbenchObservedGroupSchema
 export const WorkbenchObservedPanelSchema = z
   .object({
     panelId,
+    side: z.enum(["left", "right"]).optional(),
     collapsed: z.boolean(),
     activeGroupId: identity,
     maximizedGroupId: identity.nullable(),

@@ -268,6 +268,7 @@ export function readWorkbenchAgentContext(
     const collapsed = projection.collapsed[panelId];
     panels.push({
       panelId,
+      ...(panel.side === undefined ? {} : { side: panel.side }),
       collapsed,
       activeGroupId: panel.layout.activeLeafId,
       maximizedGroupId: panel.layout.maximizedLeafId ?? null,

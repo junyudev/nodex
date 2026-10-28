@@ -64,6 +64,7 @@ export const WorkbenchCommandSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("set_panel_state"),
       panelId,
+      side: z.enum(["left", "right"]).optional(),
       collapsed: z.boolean().optional(),
       maximizedGroupId: identity.nullable().optional(),
       size: z

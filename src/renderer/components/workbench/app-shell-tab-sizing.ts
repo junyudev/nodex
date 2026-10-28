@@ -31,6 +31,39 @@ export function buildAppShellTabListWidth({
   return `clamp(${minimumWidthPx}px, calc(100cqw - ${normalizedTrailingWidthPx}px), ${maximumWidthPx}px)`;
 }
 
+/**
+ * Sizes a strip whose leading tab stays outside its scrolling list. The leading tab takes one
+ * equal share, so it keeps the width of the tabs beside it as they grow, shrink, or overflow.
+ */
+export function buildAppShellLeadingTabStripSizing({
+  tabCount,
+  trailingWidthPx,
+  lockedWidthPx,
+}: {
+  tabCount: number;
+  trailingWidthPx: number;
+  lockedWidthPx: number | null;
+}): { readonly leadingTabWidth: string; readonly listWidth: string } {
+  const count = normalizeTabCount(tabCount);
+  const listGapWidthPx = Math.max(0, count - 1) * APP_SHELL_TAB_GAP_PX;
+  const normalizedLockedWidthPx = normalizePositiveWidth(lockedWidthPx);
+  if (normalizedLockedWidthPx !== null) {
+    return {
+      leadingTabWidth: `${normalizedLockedWidthPx}px`,
+      listWidth: `${count * normalizedLockedWidthPx + listGapWidthPx}px`,
+    };
+  }
+
+  const shares = count + 1;
+  const stripGapWidthPx = count * APP_SHELL_TAB_GAP_PX;
+  const availableWidth = `calc(100cqw - ${normalizeNonNegativeWidth(trailingWidthPx)}px - ${stripGapWidthPx}px)`;
+  const tabWidth = `clamp(${APP_SHELL_TAB_MIN_WIDTH_PX}px, calc(${availableWidth} / ${shares}), ${APP_SHELL_TAB_MAX_WIDTH_PX}px)`;
+  return {
+    leadingTabWidth: tabWidth,
+    listWidth: count === 0 ? "0px" : `calc(${count} * ${tabWidth} + ${listGapWidthPx}px)`,
+  };
+}
+
 export function buildAppShellTabFlexSizing(lockedWidthPx: number | null): AppShellTabFlexSizing {
   const normalizedLockedWidthPx = normalizePositiveWidth(lockedWidthPx);
   if (normalizedLockedWidthPx === null) {

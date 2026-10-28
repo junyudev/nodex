@@ -150,6 +150,7 @@ export const make = Effect.gen(function* () {
         return {
           kind: "set_panel_state",
           panelId: args.panelId,
+          side: args.side,
           collapsed: args.collapsed,
           size: args.size,
           ...(args.maximizedGroupId !== undefined

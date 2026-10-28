@@ -19,8 +19,7 @@ export type WorkbenchNewTabIntent =
       readonly kind: "library-target";
       readonly target: LibraryRouteTarget;
       readonly title?: string;
-    }
-  | { readonly kind: "chat" };
+    };
 
 /** Where an intent opens: the New tab's own group. */
 export interface WorkbenchNewTabPlacement {
@@ -35,8 +34,6 @@ export interface WorkbenchNewTabPlacement {
 export interface WorkbenchNewTabOwnerContext {
   readonly actions: readonly PanelNewTabAction[];
   readonly currentProjectId: string | null;
-  /** True when the owner's Chat is hidden behind a full-width panel. */
-  readonly canReturnToChat: boolean;
   /** True when Terminal can also open in the closed bottom panel. */
   readonly canOpenBottomTerminal: boolean;
 }
@@ -75,8 +72,6 @@ export interface WorkbenchNewTabOwnerCommands {
     target: LibraryRouteTarget,
     placement: WorkbenchNewTabPlacement & { readonly title?: string },
   ) => Promise<boolean>;
-  /** Shows the owner's Chat beside its panels. */
-  readonly returnToChat: () => void;
 }
 
 const WorkbenchNewTabPortContext = createContext<WorkbenchNewTabPort | null>(null);
@@ -119,8 +114,7 @@ export function useWorkbenchNewTabPortValue({
   readonly projects: readonly Project[];
   readonly commands: WorkbenchNewTabOwnerCommands;
 }): WorkbenchNewTabPort {
-  const { resolveOwnerContext, runAction, openDestination, openLibraryTarget, returnToChat } =
-    commands;
+  const { resolveOwnerContext, runAction, openDestination, openLibraryTarget } = commands;
   // One intent per New tab at a time: a second click while a Page is being created must not
   // create another one.
   const [pendingSurfaceIds] = useState(() => new Set<string>());
@@ -142,11 +136,6 @@ export function useWorkbenchNewTabPortValue({
         tabId: intent.tabId,
       });
       if (activated.error) return;
-      await executeSceneCommand(owner, { kind: "close_tab", tabId: surfaceId });
-      return;
-    }
-    if (intent.kind === "chat") {
-      returnToChat();
       await executeSceneCommand(owner, { kind: "close_tab", tabId: surfaceId });
       return;
     }

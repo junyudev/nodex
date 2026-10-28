@@ -3,6 +3,7 @@ import { resolveCodexRendererCommandPlatform } from "./codex-window-runtime";
 import {
   CREATE_PAGE_COMMAND_ID,
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
+  TOGGLE_FULL_VIEW_COMMAND_ID,
   type WorkbenchCommandId,
 } from "../../shared/workbench-commands";
 import type {
@@ -312,9 +313,10 @@ export function handleWorkbenchShortcut(
     return actions.onRequestLatestToastAction?.() ?? false;
   }
 
-  if (matchesCommandShortcut(e, actions, TOGGLE_BOTTOM_PANEL_COMMAND_ID, isMac)) {
+  for (const commandId of [TOGGLE_BOTTOM_PANEL_COMMAND_ID, TOGGLE_FULL_VIEW_COMMAND_ID] as const) {
+    if (!matchesCommandShortcut(e, actions, commandId, isMac)) continue;
     if (!actions.onRequestWorkbenchCommand) return false;
-    actions.onRequestWorkbenchCommand(TOGGLE_BOTTOM_PANEL_COMMAND_ID);
+    actions.onRequestWorkbenchCommand(commandId);
     return true;
   }
 

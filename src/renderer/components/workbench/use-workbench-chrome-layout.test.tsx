@@ -17,6 +17,8 @@ function ChromeGeometryFixture() {
     isMacPlatform: true,
     reducedMotion: true,
     rightPanelFullWidth: false,
+    rightPanelFullView: false,
+    rightPanelSide: "right",
     rightPanelOpen: false,
     rightPanelRequestedWidth: null,
     rootRef,

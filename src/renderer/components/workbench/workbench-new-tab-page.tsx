@@ -12,7 +12,6 @@ import {
 import {
   CanvasIcon,
   ChatActionsIcon,
-  ChatBubbleIcon,
   ClockIcon,
   ChevronDownIcon,
   BoardIcon,
@@ -83,8 +82,6 @@ export interface WorkbenchNewTabPageProps {
   readonly commandKeymapState?: CommandKeymapState | null;
   readonly projects: readonly Project[];
   readonly currentProjectId: string | null;
-  /** Present when the owner's Chat is hidden behind a full-width panel. */
-  readonly onSelectChat: (() => void) | null;
   readonly onSelectAction: (kind: PanelNewTabActionKind) => void;
   readonly onOpenDestination: (destination: PanelDestination) => void;
   /** Present when Terminal can also open in the bottom panel. */
@@ -105,7 +102,6 @@ export function WorkbenchNewTabPage({
   commandKeymapState,
   projects,
   currentProjectId,
-  onSelectChat,
   onSelectAction,
   onOpenDestination,
   bottomTerminal,
@@ -126,7 +122,6 @@ export function WorkbenchNewTabPage({
           commandKeymapState={commandKeymapState}
           projects={projects}
           currentProjectId={currentProjectId}
-          onSelectChat={onSelectChat}
           onSelectAction={onSelectAction}
           onOpenDestination={onOpenDestination}
           bottomTerminal={bottomTerminal}
@@ -198,7 +193,6 @@ function NewTabTools({
   commandKeymapState,
   projects,
   currentProjectId,
-  onSelectChat,
   onSelectAction,
   onOpenDestination,
   bottomTerminal,
@@ -209,7 +203,6 @@ function NewTabTools({
   | "commandKeymapState"
   | "projects"
   | "currentProjectId"
-  | "onSelectChat"
   | "onSelectAction"
   | "onOpenDestination"
   | "bottomTerminal"
@@ -217,19 +210,12 @@ function NewTabTools({
   const shortcutFor = (action: PanelNewTabAction) =>
     resolvePanelActionShortcutLabel(action, isMac, commandKeymapState);
   const hasMore = layout.moreTools.length > 0 || layout.projectContent.length > 0;
-  if (layout.tiles.length === 0 && !hasMore && !onSelectChat) return null;
+  if (layout.tiles.length === 0 && !hasMore) return null;
 
   return (
     <section className="flex flex-col gap-4">
       <NewTabSectionHeading>Tools</NewTabSectionHeading>
       <div className="grid grid-cols-1 gap-x-4 gap-y-1 @md:grid-cols-2">
-        {onSelectChat ? (
-          <NewTabToolTile
-            icon={<ChatBubbleIcon className="icon-xs" />}
-            label="Chat"
-            onClick={onSelectChat}
-          />
-        ) : null}
         {layout.tiles.map((action) =>
           action.kind === "page_stage" ? (
             <OpenPageTile
@@ -777,7 +763,6 @@ export function WorkbenchNewTabSurface({
     void port.open({ owner, surfaceId, intent });
   };
   const layout = resolveNewTabToolLayout(context.actions, {
-    hasChat: context.canReturnToChat,
     hasShortcut: (action) =>
       resolvePanelActionShortcutLabel(action, port.isMac, port.commandKeymapState) !== null,
   });
@@ -788,7 +773,6 @@ export function WorkbenchNewTabSurface({
       commandKeymapState={port.commandKeymapState}
       projects={port.projects}
       currentProjectId={context.currentProjectId}
-      onSelectChat={context.canReturnToChat ? () => open({ kind: "chat" }) : null}
       onSelectAction={(action) => open({ kind: "action", action })}
       onOpenDestination={(destination) => open({ kind: "destination", destination })}
       bottomTerminal={

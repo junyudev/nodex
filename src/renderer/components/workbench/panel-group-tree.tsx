@@ -13,9 +13,10 @@ import {
   type Dispatch,
   type ReactNode,
   type SetStateAction,
+  type SyntheticEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { AppShellTabs, type AppShellTabItem } from "./app-shell-tabs";
+import { AppShellTabs, type AppShellLeadingTab, type AppShellTabItem } from "./app-shell-tabs";
 import { markContextualKeyboardActionPresentationActive } from "@/lib/contextual-keyboard-actions";
 import {
   findWorkbenchPanelLeaf,
@@ -62,6 +63,10 @@ interface PanelGroupTreeProps {
   renderAfterList?: (leafId: string) => ReactNode;
   headerStartInsetPx?: number;
   headerEndInsetPx?: number;
+  /** A fixed tab leading the top-left group, such as a full-view Session's Chat. */
+  leadingTab?: AppShellLeadingTab;
+  /** Every group lists its tabs but selects and presents none, as while the Chat is selected. */
+  contentConcealed?: boolean;
   onSelectTab: (leafId: string, tabId: string) => void;
   onCloseTab: (leafId: string, tabId: string) => void;
   onDirectCloseTab?: (leafId: string, tabId: string) => void;
@@ -91,6 +96,8 @@ export function PanelGroupTree({
   renderAfterList,
   headerStartInsetPx,
   headerEndInsetPx,
+  leadingTab,
+  contentConcealed = false,
   onSelectTab,
   onCloseTab,
   onDirectCloseTab,
@@ -162,6 +169,7 @@ export function PanelGroupTree({
   const headerEndInsetLeafId =
     headerEndInsetPx && headerEndInsetPx > 0 ? getWorkbenchPanelTopRightLeafId(rootNode) : null;
   const afterListLeafId = renderAfterList ? getWorkbenchPanelTopRightLeafId(rootNode) : null;
+  const leadingTabLeafId = leadingTab ? getWorkbenchPanelTopLeftLeafId(rootNode) : null;
   return (
     <div
       data-panel-group-tree={panelId}
@@ -185,6 +193,9 @@ export function PanelGroupTree({
         headerEndInsetPx={headerEndInsetPx}
         headerEndInsetLeafId={headerEndInsetLeafId}
         afterListLeafId={afterListLeafId}
+        leadingTab={leadingTab}
+        leadingTabLeafId={leadingTabLeafId}
+        contentConcealed={contentConcealed}
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}
         onDirectCloseTab={onDirectCloseTab}
@@ -328,6 +339,9 @@ function PanelGroupNode(props: {
   headerEndInsetPx?: number;
   headerEndInsetLeafId: string | null;
   afterListLeafId: string | null;
+  leadingTab?: AppShellLeadingTab;
+  leadingTabLeafId: string | null;
+  contentConcealed: boolean;
   onSelectTab: (leafId: string, tabId: string) => void;
   onCloseTab: (leafId: string, tabId: string) => void;
   onDirectCloseTab?: (leafId: string, tabId: string) => void;
@@ -447,6 +461,9 @@ function PanelGroupLeaf({
   headerEndInsetPx,
   headerEndInsetLeafId,
   afterListLeafId,
+  leadingTab: treeLeadingTab,
+  leadingTabLeafId,
+  contentConcealed,
   onSelectTab,
   onCloseTab,
   onDirectCloseTab,
@@ -457,7 +474,10 @@ function PanelGroupLeaf({
   onActivateGroup,
 }: Omit<Parameters<typeof PanelGroupNode>[0], "node"> & { leaf: WorkbenchPanelSplitLeaf }) {
   const tabs = tabItemsByLeafId[leaf.id] ?? [];
-  const activeTabId = activeTabIdsByLeafId[leaf.id] ?? tabs[0]?.id ?? null;
+  const leadingTab = leaf.id === leadingTabLeafId ? treeLeadingTab : undefined;
+  const activeTabId = contentConcealed
+    ? null
+    : (activeTabIdsByLeafId[leaf.id] ?? tabs[0]?.id ?? null);
   const isActive = leaf.id === activeLeafId;
   const afterTabs = renderAfterTabs?.(leaf.id) ?? null;
   const afterList = leaf.id === afterListLeafId ? (renderAfterList?.(leaf.id) ?? null) : null;
@@ -486,6 +506,10 @@ function PanelGroupLeaf({
     focusLeaf();
     activateLeaf();
   };
+  // The leading tab presents its own surface; interacting with it never focuses this group.
+  const isLeadingTabEvent = (event: SyntheticEvent) =>
+    event.target instanceof Element &&
+    event.target.closest("[data-app-shell-leading-tab]") !== null;
 
   return (
     <div
@@ -493,16 +517,21 @@ function PanelGroupLeaf({
       data-panel-group-leaf-active={isActive ? "true" : "false"}
       className={cn(
         "relative h-full min-h-0 min-w-0 overflow-hidden bg-token-main-surface-primary",
-        isActive && "ring-1 ring-inset ring-token-foreground/10",
+        isActive && !contentConcealed && "ring-1 ring-inset ring-token-foreground/10",
       )}
-      onFocusCapture={focusLeaf}
-      onPointerDownCapture={focusAndActivateLeaf}
+      onFocusCapture={(event) => {
+        if (!isLeadingTabEvent(event)) focusLeaf();
+      }}
+      onPointerDownCapture={(event) => {
+        if (!isLeadingTabEvent(event)) focusAndActivateLeaf();
+      }}
     >
-      {tabs.length > 0 && activeTabId ? (
+      {(tabs.length > 0 && (activeTabId || contentConcealed)) || leadingTab ? (
         <AppShellTabs
           titlebar={titlebar}
           tabs={tabs}
           activeTabId={activeTabId}
+          leadingTab={leadingTab}
           panelId={`${panelId}:${leaf.id}`}
           controllerId={`session-${sessionId}-${panelId}-${leaf.id}`}
           onSelect={(tabId) => {
@@ -531,6 +560,18 @@ function PanelGroupLeaf({
           afterTabsInline={afterTabs}
           afterList={afterList}
           bodyOverlay={<PanelGroupBodyDropOverlay leafId={leaf.id} previewIntent={previewIntent} />}
+          emptyBody={
+            tabs.length === 0 ? (
+              <PanelGroupEmptyBody
+                sessionId={sessionId}
+                panelId={panelId}
+                leafId={leaf.id}
+                previewIntent={previewIntent}
+              >
+                {renderEmptyLeaf(leaf.id)}
+              </PanelGroupEmptyBody>
+            ) : undefined
+          }
           headerEndInsetPx={leafHeaderEndInsetPx}
           headerHeight="toolbar"
         />

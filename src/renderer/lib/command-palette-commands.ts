@@ -12,9 +12,11 @@ import {
 import {
   CREATE_PAGE_COMMAND_ID,
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
+  TOGGLE_FULL_VIEW_COMMAND_ID,
 } from "../../shared/workbench-commands";
 import type { CommandPaletteCommand, CommandPaletteCommandGroup } from "./command-palette";
 import type { WorkbenchPanelActionKind } from "./workbench-panel-capabilities";
+import { formatToggleFullViewShortcutLabel } from "./workbench-command-shortcuts";
 
 export const OPEN_DB_VIEW_TAB_COMMAND_ID = "openDbViewTab";
 
@@ -33,6 +35,7 @@ export type CommandPaletteShellCommandId =
   | typeof TOGGLE_SIDEBAR_COMMAND_ID
   | "toggleSidePanel"
   | typeof TOGGLE_BOTTOM_PANEL_COMMAND_ID
+  | typeof TOGGLE_FULL_VIEW_COMMAND_ID
   | "toggleFileTreePanel"
   | "toggleGitBlame"
   | "openBrowserTab"
@@ -93,6 +96,7 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === TOGGLE_SIDEBAR_COMMAND_ID ||
     id === "toggleSidePanel" ||
     id === TOGGLE_BOTTOM_PANEL_COMMAND_ID ||
+    id === TOGGLE_FULL_VIEW_COMMAND_ID ||
     id === "toggleFileTreePanel" ||
     id === "toggleGitBlame" ||
     id === "openBrowserTab" ||
@@ -451,6 +455,18 @@ export function buildCommandPaletteCommands(
       920,
       {
         shortcut: shortcutLabel(TOGGLE_BOTTOM_PANEL_COMMAND_ID, "CmdOrCtrl+J"),
+        disabled: panelCommandDisabled,
+      },
+    ),
+    command(
+      TOGGLE_FULL_VIEW_COMMAND_ID,
+      "Panels",
+      "Toggle full view",
+      "Expand the content panel to fill the window, or return to split view",
+      ["full", "view", "expand", "content", "panel", "split"],
+      915,
+      {
+        shortcut: formatToggleFullViewShortcutLabel(shortcutState),
         disabled: panelCommandDisabled,
       },
     ),

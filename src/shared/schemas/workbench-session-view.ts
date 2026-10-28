@@ -102,6 +102,7 @@ export const WorkbenchPanelLayoutSchema = z
 
 export const WorkbenchPanelStateSchema = z
   .object({
+    side: z.enum(["left", "right"]).optional(),
     collapsed: z.boolean(),
     layout: WorkbenchPanelLayoutSchema,
     size: z

@@ -88,6 +88,7 @@ import type {
 import { openNodexMenu, render, settleAsyncRender, settleLazyRender } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
 import { RendererStateProvider } from "../../../app-providers";
+import { useThreadStageHeaderSlot } from "@/features/local-conversation/view/thread-stage-header-slot";
 import { NewChatProjectSelector } from "@/features/local-conversation/view/composer/new-chat-project-selector";
 import type {
   NewChatProjectSelectorModel,
@@ -1553,6 +1554,41 @@ vi.mock(".././workbench-terminal-panel", () => ({
   },
 }));
 
+/** Mirrors the thread header's slot contract: the titlebar shows the title, a Chat tab only actions. */
+function MockThreadStageHeader({ title }: { readonly title: string }) {
+  const { variant, paneMove } = useThreadStageHeaderSlot();
+  if (variant === "chat-tab") {
+    return createElement("button", { type: "button", "aria-label": "Chat actions" }, "…");
+  }
+  return createElement(
+    "div",
+    {
+      className:
+        "grid w-full min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-4 electron:h-toolbar extension:py-row-y",
+    },
+    createElement(
+      "div",
+      { className: "flex min-w-0 items-center gap-2 truncate text-base electron:font-medium" },
+      createElement(
+        "span",
+        {
+          "data-testid": "thread-stage-title",
+          className:
+            "inline-flex max-w-[320px] min-w-[2ch] items-center overflow-hidden text-token-foreground",
+        },
+        createElement("span", { className: "min-w-0 truncate" }, title),
+      ),
+    ),
+    paneMove
+      ? createElement(
+          "button",
+          { type: "button", onClick: paneMove.onSelect },
+          `Move to ${paneMove.side} pane`,
+        )
+      : null,
+  );
+}
+
 vi.mock("@/features/local-conversation", () => ({
   useDefaultCodexAppServerManager: () => ({
     readProjectThreadSummaries: () => [],
@@ -1628,26 +1664,7 @@ vi.mock("@/features/local-conversation", () => ({
       summary?.threadPreview ??
       (props.isNewThreadTab ? "New thread" : "No thread");
     const [mockPrompt, setMockPrompt] = useState("");
-    const headerContent = createElement(
-      "div",
-      {
-        className:
-          "grid w-full min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-4 electron:h-toolbar extension:py-row-y",
-      },
-      createElement(
-        "div",
-        { className: "flex min-w-0 items-center gap-2 truncate text-base electron:font-medium" },
-        createElement(
-          "span",
-          {
-            "data-testid": "thread-stage-title",
-            className:
-              "inline-flex max-w-[320px] min-w-[2ch] items-center overflow-hidden text-token-foreground",
-          },
-          createElement("span", { className: "min-w-0 truncate" }, threadTitle),
-        ),
-      ),
-    );
+    const headerContent = createElement(MockThreadStageHeader, { title: threadTitle });
     const actions = props.actions as
       | {
           onOpenSummaryGitReview?: (input: { source: GitReviewSource }) => void | Promise<void>;
@@ -2271,6 +2288,9 @@ export function recordSessionViewMutation(
     const previousPanel = previous.panels[panelId];
     const nextPanel = next.panels[panelId];
     const panelPatch = {
+      ...(panelId === "right" && previous.panels.right.side !== next.panels.right.side
+        ? { side: next.panels.right.side }
+        : {}),
       ...(previousPanel.collapsed === nextPanel.collapsed
         ? {}
         : { collapsed: nextPanel.collapsed }),

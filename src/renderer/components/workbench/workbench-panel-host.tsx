@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { AppShellTabItem } from "./app-shell-tabs";
+import type { AppShellLeadingTab, AppShellTabItem } from "./app-shell-tabs";
 import { PanelGroupTree } from "./panel-group-tree";
 import { EmptyRightPane } from "./workbench-panel-controls";
 import type { PanelDestination } from "./panel-destination-picker-model";
@@ -47,6 +47,8 @@ interface WorkbenchPanelHostProps {
   renderAfterList?: (leafId: string) => ReactNode;
   headerStartInsetPx?: number;
   headerEndInsetPx?: number;
+  leadingTab?: AppShellLeadingTab;
+  contentConcealed?: boolean;
   renderNewTab?: (leafId: string) => ReactNode;
   renderEmptyLeaf?: (leafId: string) => ReactNode;
 }
@@ -67,6 +69,8 @@ export function WorkbenchPanelHost({
   renderAfterList,
   headerStartInsetPx,
   headerEndInsetPx,
+  leadingTab,
+  contentConcealed,
   renderNewTab,
   renderEmptyLeaf,
 }: WorkbenchPanelHostProps) {
@@ -95,6 +99,8 @@ export function WorkbenchPanelHost({
       renderAfterList={renderAfterList}
       headerStartInsetPx={headerStartInsetPx}
       headerEndInsetPx={headerEndInsetPx}
+      leadingTab={leadingTab}
+      contentConcealed={contentConcealed}
       renderEmptyLeaf={(leafId) =>
         renderEmptyLeaf?.(leafId) ?? (
           <EmptyRightPane
