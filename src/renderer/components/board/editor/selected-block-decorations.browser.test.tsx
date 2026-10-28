@@ -161,8 +161,18 @@ function inlinePosition(doc: Node, blockId: string, offset: number) {
   return position;
 }
 
-async function capturePaint(element: HTMLElement): Promise<ImageData> {
-  const base64 = await page.screenshot({ element, save: false, caret: "hide", scale: "css" });
+async function capturePaint(
+  element: HTMLElement,
+  background?: "black" | "white",
+): Promise<ImageData> {
+  const base64 = await page.screenshot({
+    element,
+    save: false,
+    caret: "hide",
+    scale: "css",
+    // Playwright restores screenshot-only styles without mutating ProseMirror's DOM.
+    ...(background ? { style: `* { background: ${background} !important; }` } : {}),
+  });
   const image = new Image();
   image.src = `data:image/png;base64,${base64}`;
   await image.decode();
@@ -175,22 +185,50 @@ async function capturePaint(element: HTMLElement): Promise<ImageData> {
   return context.getImageData(0, 0, image.width, image.height);
 }
 
-/** Compare solid glyph pixels rather than computed colors, which ignore overlaid paint. */
-function expectPreservedInk(before: ImageData, after: ImageData, colors: readonly string[]) {
-  expect([after.width, after.height]).toEqual([before.width, before.height]);
+interface InkPaint {
+  readonly paint: ImageData;
+  readonly black: ImageData;
+  readonly white: ImageData;
+  readonly colors: readonly string[];
+}
+
+/** Opposite backgrounds distinguish opaque ink from rounded antialiased edge colors. */
+async function captureInk(element: HTMLElement): Promise<InkPaint> {
+  const textNodes = document.createTreeWalker(element, window.NodeFilter.SHOW_TEXT);
+  const colors = new Set<string>();
+  for (let node = textNodes.nextNode(); node; node = textNodes.nextNode()) {
+    if (!node.textContent?.trim() || !node.parentElement) continue;
+    colors.add(getComputedStyle(node.parentElement).color);
+  }
+  const paint = await capturePaint(element);
+  const black = await capturePaint(element, "black");
+  const white = await capturePaint(element, "white");
+  return { paint, black, white, colors: [...colors] };
+}
+
+/** Compare actual opaque glyph pixels; computed colors cannot detect overlaid paint. */
+function expectPreservedInk(before: InkPaint, after: ImageData) {
+  const references = [before.paint, before.black, before.white];
+  expect(before.colors.length, "Rendered foreground palette").toBeGreaterThan(0);
+  for (const paint of references) {
+    expect([paint.width, paint.height]).toEqual([after.width, after.height]);
+  }
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 1;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Expected a foreground-color canvas");
 
-  for (const color of new Set(colors)) {
+  for (const color of before.colors) {
     context.fillStyle = color;
     context.fillRect(0, 0, 1, 1);
     const rgb = context.getImageData(0, 0, 1, 1).data.slice(0, 3);
     let solidPixels = 0;
     let changedPixels = 0;
-    for (let offset = 0; offset < before.data.length; offset += 4) {
-      if (!rgb.every((channel, index) => before.data[offset + index] === channel)) continue;
+    for (let offset = 0; offset < before.paint.data.length; offset += 4) {
+      const opaqueInk = references.every((paint) =>
+        rgb.every((channel, index) => paint.data[offset + index] === channel),
+      );
+      if (!opaqueInk) continue;
       solidPixels += 1;
       if (rgb.some((channel, index) => after.data[offset + index] !== channel)) changedPixels += 1;
     }
@@ -227,7 +265,12 @@ describe("selected Block presentation in Chromium", () => {
                 id: "code",
                 type: "codeBlock",
                 props: { language: "typescript" },
-                content: "const clearForeground = true;",
+                // Repeat syntax roles so each palette has opaque glyph witnesses at default sizes.
+                content: [
+                  "const clearForeground = true;",
+                  "const preserveCodeForeground = false;",
+                  "const selectionPaintsUnderText = true;",
+                ].join("\n"),
               },
             ],
           },
@@ -273,11 +316,7 @@ describe("selected Block presentation in Chromium", () => {
         }
         await waitFor(() => expect(renderedImage.naturalWidth).toBe(320));
         await waitFor(() => expect(code.querySelector(".shiki")).not.toBeNull());
-        const inkColors = [
-          rich,
-          ...rich.querySelectorAll<HTMLElement>('a, code, [data-style-type="textColor"]'),
-        ].map((element) => getComputedStyle(element).color);
-        const baseline = await capturePaint(rich);
+        const baseline = await captureInk(rich);
         const presentation = editor.getExtension(SelectedBlockDecorationsExtension);
         if (!presentation) throw new Error("Expected Block selection presentation");
         const select = async (blockId: string) => {
@@ -289,28 +328,22 @@ describe("selected Block presentation in Chromium", () => {
 
         await select("rich");
         const selectedRich = await capturePaint(rich);
-        expectPreservedInk(baseline, selectedRich, inkColors);
-        expect(selectedRich.data).not.toEqual(baseline.data);
+        expectPreservedInk(baseline, selectedRich);
+        expect(selectedRich.data).not.toEqual(baseline.paint.data);
 
-        const parentBaseline = await capturePaint(parent);
+        const parentBaseline = await captureInk(parent);
         await select("parent");
         const selectedParent = await capturePaint(parent);
-        expectPreservedInk(parentBaseline, selectedParent, [getComputedStyle(parent).color]);
-        expect(selectedParent.data).not.toEqual(parentBaseline.data);
+        expectPreservedInk(parentBaseline, selectedParent);
+        expect(selectedParent.data).not.toEqual(parentBaseline.paint.data);
         expect(getComputedStyle(parent, "::after").opacity).toBe("1");
 
         await select("rich");
-        const codeBaseline = await capturePaint(code);
+        const codeBaseline = await captureInk(code);
         await select("code");
         const selectedCode = await capturePaint(code);
-        expectPreservedInk(
-          codeBaseline,
-          selectedCode,
-          [...code.querySelectorAll<HTMLElement>(".shiki")].map(
-            (token) => getComputedStyle(token).color,
-          ),
-        );
-        expect(selectedCode.data).not.toEqual(codeBaseline.data);
+        expectPreservedInk(codeBaseline, selectedCode);
+        expect(selectedCode.data).not.toEqual(codeBaseline.paint.data);
 
         const imageBaseline = await capturePaint(image);
         await select("image");
