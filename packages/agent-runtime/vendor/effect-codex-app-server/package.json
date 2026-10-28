@@ -3,30 +3,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./client": {
-      "types": "./src/client.ts",
-      "import": "./src/client.ts"
-    },
-    "./schema": {
-      "types": "./src/schema.ts",
-      "import": "./src/schema.ts"
-    },
-    "./rpc": {
-      "types": "./src/rpc.ts",
-      "import": "./src/rpc.ts"
-    },
-    "./protocol": {
-      "types": "./src/protocol.ts",
-      "import": "./src/protocol.ts"
-    },
-    "./replay": {
-      "types": "./src/replay.ts",
-      "import": "./src/replay.ts"
-    },
-    "./errors": {
-      "types": "./src/errors.ts",
-      "import": "./src/errors.ts"
-    }
+    "./client": "./src/client.ts",
+    "./schema": "./src/schema.ts",
+    "./rpc": "./src/rpc.ts",
+    "./protocol": "./src/protocol.ts",
+    "./replay": "./src/replay.ts",
+    "./errors": "./src/errors.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit"

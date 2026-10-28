@@ -3,34 +3,13 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./client/definition": {
-      "types": "./src/client/definition.ts",
-      "import": "./src/client/definition.ts"
-    },
-    "./server/driver": {
-      "types": "./src/server/driver.ts",
-      "import": "./src/server/driver.ts"
-    },
-    "./server/ForgejoCli": {
-      "types": "./src/server/ForgejoCli.ts",
-      "import": "./src/server/ForgejoCli.ts"
-    },
-    "./server/forgejoPullRequestJson": {
-      "types": "./src/server/forgejoPullRequestJson.ts",
-      "import": "./src/server/forgejoPullRequestJson.ts"
-    },
-    "./server/ForgejoPullRequestProvider": {
-      "types": "./src/server/ForgejoPullRequestProvider.ts",
-      "import": "./src/server/ForgejoPullRequestProvider.ts"
-    },
-    "./server/forgejoPullRequests": {
-      "types": "./src/server/forgejoPullRequests.ts",
-      "import": "./src/server/forgejoPullRequests.ts"
-    },
-    "./server/ForgejoSourceControlProvider": {
-      "types": "./src/server/ForgejoSourceControlProvider.ts",
-      "import": "./src/server/ForgejoSourceControlProvider.ts"
-    }
+    "./client/definition": "./src/client/definition.ts",
+    "./server/driver": "./src/server/driver.ts",
+    "./server/ForgejoCli": "./src/server/ForgejoCli.ts",
+    "./server/forgejoPullRequestJson": "./src/server/forgejoPullRequestJson.ts",
+    "./server/ForgejoPullRequestProvider": "./src/server/ForgejoPullRequestProvider.ts",
+    "./server/forgejoPullRequests": "./src/server/forgejoPullRequests.ts",
+    "./server/ForgejoSourceControlProvider": "./src/server/ForgejoSourceControlProvider.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit"

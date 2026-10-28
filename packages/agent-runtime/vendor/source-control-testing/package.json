@@ -3,10 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./TestSourceControlHost": {
-      "types": "./src/TestSourceControlHost.ts",
-      "import": "./src/TestSourceControlHost.ts"
-    }
+    "./TestSourceControlHost": "./src/TestSourceControlHost.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit"

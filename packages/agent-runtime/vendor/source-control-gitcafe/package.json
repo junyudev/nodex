@@ -3,38 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./client/definition": {
-      "types": "./src/client/definition.ts",
-      "import": "./src/client/definition.ts"
-    },
-    "./server/driver": {
-      "types": "./src/server/driver.ts",
-      "import": "./src/server/driver.ts"
-    },
-    "./server/gitCafeHosts": {
-      "types": "./src/server/gitCafeHosts.ts",
-      "import": "./src/server/gitCafeHosts.ts"
-    },
-    "./server/GitCafeApi": {
-      "types": "./src/server/GitCafeApi.ts",
-      "import": "./src/server/GitCafeApi.ts"
-    },
-    "./server/GitCafeCredentials": {
-      "types": "./src/server/GitCafeCredentials.ts",
-      "import": "./src/server/GitCafeCredentials.ts"
-    },
-    "./server/gitCafePullRequestJson": {
-      "types": "./src/server/gitCafePullRequestJson.ts",
-      "import": "./src/server/gitCafePullRequestJson.ts"
-    },
-    "./server/GitCafePullRequestProvider": {
-      "types": "./src/server/GitCafePullRequestProvider.ts",
-      "import": "./src/server/GitCafePullRequestProvider.ts"
-    },
-    "./server/GitCafeSourceControlProvider": {
-      "types": "./src/server/GitCafeSourceControlProvider.ts",
-      "import": "./src/server/GitCafeSourceControlProvider.ts"
-    }
+    "./client/definition": "./src/client/definition.ts",
+    "./server/driver": "./src/server/driver.ts",
+    "./server/gitCafeHosts": "./src/server/gitCafeHosts.ts",
+    "./server/GitCafeApi": "./src/server/GitCafeApi.ts",
+    "./server/GitCafeCredentials": "./src/server/GitCafeCredentials.ts",
+    "./server/gitCafePullRequestJson": "./src/server/gitCafePullRequestJson.ts",
+    "./server/GitCafePullRequestProvider": "./src/server/GitCafePullRequestProvider.ts",
+    "./server/GitCafeSourceControlProvider": "./src/server/GitCafeSourceControlProvider.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit"

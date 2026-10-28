@@ -3,26 +3,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./fakeCli": {
-      "types": "./src/fakeCli.ts",
-      "import": "./src/fakeCli.ts"
-    },
-    "./replayGate": {
-      "types": "./src/replayGate.ts",
-      "import": "./src/replayGate.ts"
-    },
-    "./replayTranscript": {
-      "types": "./src/replayTranscript.ts",
-      "import": "./src/replayTranscript.ts"
-    },
-    "./replayWorkspace": {
-      "types": "./src/replayWorkspace.ts",
-      "import": "./src/replayWorkspace.ts"
-    },
-    "./TestProviderHost": {
-      "types": "./src/TestProviderHost.ts",
-      "import": "./src/TestProviderHost.ts"
-    }
+    "./fakeCli": "./src/fakeCli.ts",
+    "./replayGate": "./src/replayGate.ts",
+    "./replayTranscript": "./src/replayTranscript.ts",
+    "./replayWorkspace": "./src/replayWorkspace.ts",
+    "./TestProviderHost": "./src/TestProviderHost.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit"
