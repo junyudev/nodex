@@ -1,0 +1,35 @@
+docs/product-specs/nfm-block-side-menu-behavior.md
+  s_b9e517f4383448::t_34a9177a21d87d 116-118
+  s_b9e517f4383448::t_ec06a16a225c40 122-123
+  s_b9e517f4383448::t_5d0ef38b625006 119
+  s_b9e517f4383448::t_aadc57390c134c 121
+  s_b9e517f4383448::t_deda75cb90a3a7 120
+src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx
+  s_b9e517f4383448::t_436fec3e594e45 16,22,165-202,204-226,233-237,239-244,246-275,281-291,295-297,301-306,314-319,324-333
+  s_b9e517f4383448::t_1035643ca56123 276
+  s_b9e517f4383448::t_92391b11fec7b5 245,277-278,280
+  s_b9e517f4383448::t_f26633db862376 749,806,813,848,1228
+  s_b9e517f4383448::t_70372039a46782 23,227-232,238,279,307-313
+  s_b9e517f4383448::t_440f6a2f84e20e 292-294,298-300,320-323,1231
+docs/product-specs/nfm-editor-structural-editing-behavior.md
+  s_b9e517f4383448::t_4e9012d94d2388 24,30
+src/renderer/globals.css
+  s_b9e517f4383448::t_9543054800784b 1229-1231,1255,1260,1264,1270,1275,1280,1301,1304-1308,1312,1314-1316
+  s_b9e517f4383448::t_a59207c1876557 1254,1256-1258,1263,1269,1271-1273,1302
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2325212aaff32c95d5f2315ef2e75e09bf9b8825",
+  "prompts": {},
+  "sessions": {
+    "s_b9e517f4383448": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180f7-6191-7280-9b8d-bf5bc74e121d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
