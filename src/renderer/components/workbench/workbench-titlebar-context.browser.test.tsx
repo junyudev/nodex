@@ -1,10 +1,15 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { expect, test, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { beforeEach, expect, test, vi } from "vite-plus/test";
+import { page, userEvent } from "vite-plus/test/browser";
 import { resolveFocusedPanelTabCycleScope } from "@/lib/workbench-panel-shortcut-scope";
 import { WorkbenchPaneTitlebar, WorkbenchTitlebarProvider } from "./workbench-titlebar-context";
 import "../../globals.css";
+
+beforeEach(async () => {
+  // The 800px desktop fixture reaches 1000px at its largest tested zoom.
+  await page.viewport(1200, 800);
+});
 
 function TitlebarFixture({
   sidebarWidth,
