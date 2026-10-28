@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="02-lozenge-light-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FF9F98"/><stop offset="1" stop-color="#F24C47"/></linearGradient>
+    <linearGradient id="02-lozenge-light-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FF9F98"/><stop offset="1" stop-color="#F8716B"/></linearGradient>
+    <linearGradient id="02-lozenge-light-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#F24C47"/><stop offset="1" stop-color="#D13631"/></linearGradient>
+    <radialGradient id="02-lozenge-light-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="02-lozenge-light-clip"><path d="M9.173 2.321L13.104 7.252A1.2 1.2 0 0 1 13.104 8.748L9.173 13.679A1.5 1.5 0 0 1 6.827 13.679L2.896 8.748A1.2 1.2 0 0 1 2.896 7.252L6.827 2.321A1.5 1.5 0 0 1 9.173 2.321Z"/><path d="M8.699 5.162L10.643 7.559A0.7 0.7 0 0 1 10.643 8.441L8.699 10.838A0.9 0.9 0 0 1 7.301 10.838L5.357 8.441A0.7 0.7 0 0 1 5.357 7.559L7.301 5.162A0.9 0.9 0 0 1 8.699 5.162Z"/></clipPath>
+  </defs>
+  <g opacity="0.92"><path d="M9.173 2.321L13.104 7.252A1.2 1.2 0 0 1 13.104 8.748L9.173 13.679A1.5 1.5 0 0 1 6.827 13.679L2.896 8.748A1.2 1.2 0 0 1 2.896 7.252L6.827 2.321A1.5 1.5 0 0 1 9.173 2.321Z" fill="url(#02-lozenge-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><path d="M8.699 5.162L10.643 7.559A0.7 0.7 0 0 1 10.643 8.441L8.699 10.838A0.9 0.9 0 0 1 7.301 10.838L5.357 8.441A0.7 0.7 0 0 1 5.357 7.559L7.301 5.162A0.9 0.9 0 0 1 8.699 5.162Z" fill="#D13631" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#02-lozenge-light-glaze)" clip-path="url(#02-lozenge-light-clip)"/>
+</svg>

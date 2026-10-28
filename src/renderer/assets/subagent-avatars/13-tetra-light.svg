@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="13-tetra-light-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#92C3FF"/><stop offset="1" stop-color="#3176F0"/></linearGradient>
+    <linearGradient id="13-tetra-light-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#92C3FF"/><stop offset="1" stop-color="#5D99F7"/></linearGradient>
+    <linearGradient id="13-tetra-light-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#3176F0"/><stop offset="1" stop-color="#2258D2"/></linearGradient>
+    <radialGradient id="13-tetra-light-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="13-tetra-light-clip"><path d="M7.134 2.775A1 1 0 0 1 8.866 2.775L14.322 12.225A1 1 0 0 1 13.456 13.725L2.544 13.725A1 1 0 0 1 1.678 12.225Z"/></clipPath><clipPath id="13-tetra-light-k1"><path d="M7.134 2.775A1 1 0 0 1 8.866 2.775L14.322 12.225A1 1 0 0 1 13.456 13.725L2.544 13.725A1 1 0 0 1 1.678 12.225Z"/></clipPath><clipPath id="13-tetra-light-k2"><path d="M7.134 2.775A1 1 0 0 1 8.866 2.775L14.322 12.225A1 1 0 0 1 13.456 13.725L2.544 13.725A1 1 0 0 1 1.678 12.225Z"/></clipPath>
+  </defs>
+  <g opacity="0.95"><path d="M7.134 2.775A1 1 0 0 1 8.866 2.775L14.322 12.225A1 1 0 0 1 13.456 13.725L2.544 13.725A1 1 0 0 1 1.678 12.225Z" fill="url(#13-tetra-light-c)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.78" clip-path="url(#13-tetra-light-k1)"><path d="M0.812 13.725L8 1.275L8 9.025Z" fill="url(#13-tetra-light-b)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92" clip-path="url(#13-tetra-light-k2)"><path d="M8 1.275L15.188 13.725L8 9.025Z" fill="url(#13-tetra-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#13-tetra-light-glaze)" clip-path="url(#13-tetra-light-clip)"/>
+</svg>

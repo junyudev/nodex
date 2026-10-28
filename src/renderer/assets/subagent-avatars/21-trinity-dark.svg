@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="21-trinity-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#A2CEFF"/><stop offset="1" stop-color="#2F6FE4"/></linearGradient>
+    <linearGradient id="21-trinity-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#A2CEFF"/><stop offset="1" stop-color="#639AF0"/></linearGradient>
+    <linearGradient id="21-trinity-dark-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#2F6FE4"/><stop offset="1" stop-color="#265CC1"/></linearGradient>
+    <radialGradient id="21-trinity-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="21-trinity-dark-clip"><circle cx="8" cy="5.9" r="3.95"/><circle cx="10.382" cy="10.025" r="3.95"/><circle cx="5.618" cy="10.025" r="3.95"/></clipPath>
+  </defs>
+  <g opacity="0.92"><circle cx="8" cy="5.9" r="3.95" fill="url(#21-trinity-dark-a)" stroke="#12306E" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><circle cx="10.382" cy="10.025" r="3.95" fill="url(#21-trinity-dark-b)" stroke="#12306E" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><circle cx="5.618" cy="10.025" r="3.95" fill="url(#21-trinity-dark-b)" stroke="#12306E" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#21-trinity-dark-glaze)" clip-path="url(#21-trinity-dark-clip)"/>
+</svg>

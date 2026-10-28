@@ -68,7 +68,7 @@ test("shares the account menu and Settings identity while native login and local
     await page.route(imageUrl, (route) =>
       route.fulfill({
         contentType: "image/svg+xml",
-        path: path.resolve("src/renderer/assets/subagent-avatars/00-honeycomb-light.svg"),
+        path: path.resolve("src/renderer/assets/subagent-avatars/00-marigold-light.svg"),
       }),
     );
     const seed = new RendererIpcSeedAdapter(page);

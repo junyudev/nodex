@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="16-acorn-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFE68A"/><stop offset="1" stop-color="#E0A400"/></linearGradient>
+    <linearGradient id="16-acorn-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFE68A"/><stop offset="1" stop-color="#EEC23E"/></linearGradient>
+    <linearGradient id="16-acorn-dark-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#E0A400"/><stop offset="1" stop-color="#BD8A00"/></linearGradient>
+    <radialGradient id="16-acorn-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="16-acorn-dark-clip"><path d="M4.898 12.25L7.073 14.461A1.3 1.3 0 0 0 8.927 14.461L11.102 12.25A4.35 4.35 0 1 0 4.898 12.25Z"/><ellipse cx="8" cy="6.15" rx="5.75" ry="3.05"/><path d="M8.845 3.901L9.545 2.051A0.85 0.85 0 0 0 7.955 1.449L7.255 3.299A0.85 0.85 0 0 0 8.845 3.901Z"/></clipPath>
+  </defs>
+  <g opacity="0.92"><path d="M4.898 12.25L7.073 14.461A1.3 1.3 0 0 0 8.927 14.461L11.102 12.25A4.35 4.35 0 1 0 4.898 12.25Z" fill="url(#16-acorn-dark-a)" stroke="#6B4E00" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><ellipse cx="8" cy="6.15" rx="5.75" ry="3.05" fill="#FFF3C2" stroke="#6B4E00" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><path d="M8.845 3.901L9.545 2.051A0.85 0.85 0 0 0 7.955 1.449L7.255 3.299A0.85 0.85 0 0 0 8.845 3.901Z" fill="#FFF3C2" stroke="#6B4E00" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#16-acorn-dark-glaze)" clip-path="url(#16-acorn-dark-clip)"/>
+</svg>

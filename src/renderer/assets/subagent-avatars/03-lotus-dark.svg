@@ -2,13 +2,15 @@
   <defs>
     <linearGradient id="03-lotus-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFADD5"/><stop offset="1" stop-color="#D93E8D"/></linearGradient>
     <linearGradient id="03-lotus-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFADD5"/><stop offset="1" stop-color="#EA70AD"/></linearGradient>
+    <linearGradient id="03-lotus-dark-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#D93E8D"/><stop offset="1" stop-color="#B53276"/></linearGradient>
     <radialGradient id="03-lotus-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-    <clipPath id="03-lotus-dark-clip"><path d="M8 13.4Q5.786 9.27 1.324 10.703Q3.538 14.833 8 13.4Z"/><path d="M8 13.4Q12.462 14.833 14.676 10.703Q10.214 9.27 8 13.4Z"/><path d="M8 13.4Q8.69 6.955 2.595 4.75Q1.905 11.195 8 13.4Z"/><path d="M8 13.4Q14.095 11.195 13.405 4.75Q7.31 6.955 8 13.4Z"/><path d="M8 13.4Q12.4 7.5 8 1.6Q3.6 7.5 8 13.4Z"/></clipPath>
+    <clipPath id="03-lotus-dark-clip"><ellipse cx="4.57" cy="11.202" rx="3.65" ry="2.05" transform="rotate(-160 4.57 11.202)"/><ellipse cx="11.43" cy="11.202" rx="3.65" ry="2.05" transform="rotate(-20 11.43 11.202)"/><ellipse cx="5.208" cy="8.607" rx="4.75" ry="2.35" transform="rotate(-126 5.208 8.607)"/><ellipse cx="10.792" cy="8.607" rx="4.75" ry="2.35" transform="rotate(-54 10.792 8.607)"/><ellipse cx="8" cy="7" rx="5.45" ry="2.6" transform="rotate(-90 8 7)"/><circle cx="8" cy="12.45" r="2.15"/></clipPath>
   </defs>
-  <g opacity="0.92"><path d="M8 13.4Q5.786 9.27 1.324 10.703Q3.538 14.833 8 13.4Z" fill="url(#03-lotus-dark-a)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
-  <g opacity="0.92"><path d="M8 13.4Q12.462 14.833 14.676 10.703Q10.214 9.27 8 13.4Z" fill="url(#03-lotus-dark-a)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
-  <g opacity="0.88"><path d="M8 13.4Q8.69 6.955 2.595 4.75Q1.905 11.195 8 13.4Z" fill="url(#03-lotus-dark-b)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
-  <g opacity="0.88"><path d="M8 13.4Q14.095 11.195 13.405 4.75Q7.31 6.955 8 13.4Z" fill="url(#03-lotus-dark-b)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
-  <g opacity="0.92"><path d="M8 13.4Q12.4 7.5 8 1.6Q3.6 7.5 8 13.4Z" fill="url(#03-lotus-dark-a)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><ellipse cx="4.57" cy="11.202" rx="3.65" ry="2.05" transform="rotate(-160 4.57 11.202)" fill="url(#03-lotus-dark-a)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><ellipse cx="11.43" cy="11.202" rx="3.65" ry="2.05" transform="rotate(-20 11.43 11.202)" fill="url(#03-lotus-dark-a)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><ellipse cx="5.208" cy="8.607" rx="4.75" ry="2.35" transform="rotate(-126 5.208 8.607)" fill="url(#03-lotus-dark-b)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><ellipse cx="10.792" cy="8.607" rx="4.75" ry="2.35" transform="rotate(-54 10.792 8.607)" fill="url(#03-lotus-dark-b)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><ellipse cx="8" cy="7" rx="5.45" ry="2.6" transform="rotate(-90 8 7)" fill="url(#03-lotus-dark-a)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><circle cx="8" cy="12.45" r="2.15" fill="#FFDCEC" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
   <rect width="16" height="16" fill="url(#03-lotus-dark-glaze)" clip-path="url(#03-lotus-dark-clip)"/>
 </svg>

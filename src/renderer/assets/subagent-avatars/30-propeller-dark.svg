@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="30-propeller-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#92EDE8"/><stop offset="1" stop-color="#0E9AA4"/></linearGradient>
+    <linearGradient id="30-propeller-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#92EDE8"/><stop offset="1" stop-color="#49BFC3"/></linearGradient>
+    <linearGradient id="30-propeller-dark-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#0E9AA4"/><stop offset="1" stop-color="#0C8089"/></linearGradient>
+    <radialGradient id="30-propeller-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="30-propeller-dark-clip"><ellipse cx="8" cy="8" rx="6.75" ry="3" transform="rotate(90 8 8)"/><ellipse cx="8" cy="8" rx="6.75" ry="3" transform="rotate(30 8 8)"/><ellipse cx="8" cy="8" rx="6.75" ry="3" transform="rotate(150 8 8)"/><circle cx="8" cy="8" r="2.35"/></clipPath>
+  </defs>
+  <g opacity="0.92"><ellipse cx="8" cy="8" rx="6.75" ry="3" transform="rotate(90 8 8)" fill="url(#30-propeller-dark-a)" stroke="#064449" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><ellipse cx="8" cy="8" rx="6.75" ry="3" transform="rotate(30 8 8)" fill="url(#30-propeller-dark-b)" stroke="#064449" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><ellipse cx="8" cy="8" rx="6.75" ry="3" transform="rotate(150 8 8)" fill="url(#30-propeller-dark-b)" stroke="#064449" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><circle cx="8" cy="8" r="2.35" fill="#D4FAF7" stroke="#064449" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#30-propeller-dark-glaze)" clip-path="url(#30-propeller-dark-clip)"/>
+</svg>

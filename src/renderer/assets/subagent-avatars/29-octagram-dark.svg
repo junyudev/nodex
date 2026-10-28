@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="29-octagram-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#A2CEFF"/><stop offset="1" stop-color="#2F6FE4"/></linearGradient>
+    <linearGradient id="29-octagram-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#A2CEFF"/><stop offset="1" stop-color="#639AF0"/></linearGradient>
+    <linearGradient id="29-octagram-dark-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#2F6FE4"/><stop offset="1" stop-color="#265CC1"/></linearGradient>
+    <radialGradient id="29-octagram-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="29-octagram-dark-clip"><rect x="2.95" y="2.95" width="10.1" height="10.1" rx="2.2"/><rect x="2.95" y="2.95" width="10.1" height="10.1" rx="2.2" transform="rotate(45 8 8)"/><circle cx="8" cy="8" r="2.2"/></clipPath>
+  </defs>
+  <g opacity="0.92"><rect x="2.95" y="2.95" width="10.1" height="10.1" rx="2.2" fill="url(#29-octagram-dark-a)" stroke="#12306E" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><rect x="2.95" y="2.95" width="10.1" height="10.1" rx="2.2" transform="rotate(45 8 8)" fill="url(#29-octagram-dark-b)" stroke="#12306E" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><circle cx="8" cy="8" r="2.2" fill="#DDEBFF" stroke="#12306E" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#29-octagram-dark-glaze)" clip-path="url(#29-octagram-dark-clip)"/>
+</svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="12-tribar-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#D0BEFF"/><stop offset="1" stop-color="#7F52EE"/></linearGradient>
+    <linearGradient id="12-tribar-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#D0BEFF"/><stop offset="1" stop-color="#A383F6"/></linearGradient>
+    <linearGradient id="12-tribar-dark-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#7F52EE"/><stop offset="1" stop-color="#6843CB"/></linearGradient>
+    <radialGradient id="12-tribar-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="12-tribar-dark-clip"><path d="M6.094 2.348A1 1 0 0 0 5.728 3.714L11.208 13.206A1 1 0 0 0 12.574 13.572L13.786 12.872A1 1 0 0 0 14.152 11.506L8.672 2.014A1 1 0 0 0 7.306 1.648Z"/><path d="M14.93 11.05A1 1 0 0 0 13.93 10.05L2.97 10.05A1 1 0 0 0 1.97 11.05L1.97 12.45A1 1 0 0 0 2.97 13.45L13.93 13.45A1 1 0 0 0 14.93 12.45Z"/><path d="M2.976 14.352A1 1 0 0 0 4.342 13.986L9.822 4.494A1 1 0 0 0 9.456 3.128L8.244 2.428A1 1 0 0 0 6.878 2.794L1.398 12.286A1 1 0 0 0 1.764 13.652Z"/></clipPath><clipPath id="12-tribar-dark-k3"><circle cx="8" cy="4.25" r="3.4"/></clipPath>
+  </defs>
+  <g opacity="0.92"><path d="M6.094 2.348A1 1 0 0 0 5.728 3.714L11.208 13.206A1 1 0 0 0 12.574 13.572L13.786 12.872A1 1 0 0 0 14.152 11.506L8.672 2.014A1 1 0 0 0 7.306 1.648Z" fill="url(#12-tribar-dark-a)" stroke="#33207A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><path d="M14.93 11.05A1 1 0 0 0 13.93 10.05L2.97 10.05A1 1 0 0 0 1.97 11.05L1.97 12.45A1 1 0 0 0 2.97 13.45L13.93 13.45A1 1 0 0 0 14.93 12.45Z" fill="url(#12-tribar-dark-b)" stroke="#33207A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.95"><path d="M2.976 14.352A1 1 0 0 0 4.342 13.986L9.822 4.494A1 1 0 0 0 9.456 3.128L8.244 2.428A1 1 0 0 0 6.878 2.794L1.398 12.286A1 1 0 0 0 1.764 13.652Z" fill="url(#12-tribar-dark-c)" stroke="#33207A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92" clip-path="url(#12-tribar-dark-k3)"><path d="M6.094 2.348A1 1 0 0 0 5.728 3.714L11.208 13.206A1 1 0 0 0 12.574 13.572L13.786 12.872A1 1 0 0 0 14.152 11.506L8.672 2.014A1 1 0 0 0 7.306 1.648Z" fill="url(#12-tribar-dark-a)" stroke="#33207A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#12-tribar-dark-glaze)" clip-path="url(#12-tribar-dark-clip)"/>
+</svg>

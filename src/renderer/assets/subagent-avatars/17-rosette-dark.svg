@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="17-rosette-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFC994"/><stop offset="1" stop-color="#F27E12"/></linearGradient>
+    <linearGradient id="17-rosette-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFC994"/><stop offset="1" stop-color="#F8A04D"/></linearGradient>
+    <linearGradient id="17-rosette-dark-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#F27E12"/><stop offset="1" stop-color="#CA680E"/></linearGradient>
+    <radialGradient id="17-rosette-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="17-rosette-dark-clip"><ellipse cx="8" cy="4.05" rx="3.05" ry="2.05" transform="rotate(-90 8 4.05)"/><ellipse cx="11.421" cy="6.025" rx="3.05" ry="2.05" transform="rotate(-30 11.421 6.025)"/><ellipse cx="11.421" cy="9.975" rx="3.05" ry="2.05" transform="rotate(30 11.421 9.975)"/><ellipse cx="8" cy="11.95" rx="3.05" ry="2.05" transform="rotate(90 8 11.95)"/><ellipse cx="4.579" cy="9.975" rx="3.05" ry="2.05" transform="rotate(150 4.579 9.975)"/><ellipse cx="4.579" cy="6.025" rx="3.05" ry="2.05" transform="rotate(210 4.579 6.025)"/><circle cx="8" cy="8" r="2.05"/></clipPath>
+  </defs>
+  <g opacity="0.92"><ellipse cx="8" cy="4.05" rx="3.05" ry="2.05" transform="rotate(-90 8 4.05)" fill="url(#17-rosette-dark-a)" stroke="#6E3305" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><ellipse cx="11.421" cy="6.025" rx="3.05" ry="2.05" transform="rotate(-30 11.421 6.025)" fill="url(#17-rosette-dark-b)" stroke="#6E3305" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><ellipse cx="11.421" cy="9.975" rx="3.05" ry="2.05" transform="rotate(30 11.421 9.975)" fill="url(#17-rosette-dark-a)" stroke="#6E3305" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><ellipse cx="8" cy="11.95" rx="3.05" ry="2.05" transform="rotate(90 8 11.95)" fill="url(#17-rosette-dark-b)" stroke="#6E3305" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><ellipse cx="4.579" cy="9.975" rx="3.05" ry="2.05" transform="rotate(150 4.579 9.975)" fill="url(#17-rosette-dark-a)" stroke="#6E3305" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><ellipse cx="4.579" cy="6.025" rx="3.05" ry="2.05" transform="rotate(210 4.579 6.025)" fill="url(#17-rosette-dark-b)" stroke="#6E3305" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><circle cx="8" cy="8" r="2.05" fill="#FFE3C8" stroke="#6E3305" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#17-rosette-dark-glaze)" clip-path="url(#17-rosette-dark-clip)"/>
+</svg>

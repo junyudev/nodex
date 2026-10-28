@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="18-quadrant-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFAAA4"/><stop offset="1" stop-color="#E4484A"/></linearGradient>
+    <linearGradient id="18-quadrant-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFAAA4"/><stop offset="1" stop-color="#F07473"/></linearGradient>
+    <linearGradient id="18-quadrant-dark-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#E4484A"/><stop offset="1" stop-color="#BE3A3C"/></linearGradient>
+    <radialGradient id="18-quadrant-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="18-quadrant-dark-clip"><rect x="1.2" y="1.2" width="13.6" height="13.6" rx="2.5"/></clipPath><clipPath id="18-quadrant-dark-k1"><rect x="1.2" y="1.2" width="13.6" height="13.6" rx="2.5"/></clipPath><clipPath id="18-quadrant-dark-k2"><rect x="1.2" y="1.2" width="13.6" height="13.6" rx="2.5"/></clipPath><clipPath id="18-quadrant-dark-k3"><rect x="1.2" y="1.2" width="13.6" height="13.6" rx="2.5"/></clipPath><clipPath id="18-quadrant-dark-k4"><rect x="1.2" y="1.2" width="13.6" height="13.6" rx="2.5"/></clipPath>
+  </defs>
+  <g opacity="0.88"><rect x="1.2" y="1.2" width="13.6" height="13.6" rx="2.5" fill="url(#18-quadrant-dark-b)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92" clip-path="url(#18-quadrant-dark-k1)"><path d="M1.2 1.2L7.5 1.2A6.3 6.3 0 0 1 1.2 7.5Z" fill="url(#18-quadrant-dark-a)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.95" clip-path="url(#18-quadrant-dark-k2)"><path d="M8 8L8 1.7A6.3 6.3 0 0 1 14.3 8Z" fill="url(#18-quadrant-dark-c)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92" clip-path="url(#18-quadrant-dark-k3)"><path d="M14.8 14.8L8.5 14.8A6.3 6.3 0 0 1 14.8 8.5Z" fill="url(#18-quadrant-dark-a)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.95" clip-path="url(#18-quadrant-dark-k4)"><path d="M8 8L8 14.3A6.3 6.3 0 0 1 1.7 8Z" fill="url(#18-quadrant-dark-c)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#18-quadrant-dark-glaze)" clip-path="url(#18-quadrant-dark-clip)"/>
+</svg>

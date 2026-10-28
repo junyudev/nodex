@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="23-fan-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#B5F0AC"/><stop offset="1" stop-color="#2CA857"/></linearGradient>
+    <linearGradient id="23-fan-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#B5F0AC"/><stop offset="1" stop-color="#6AC87D"/></linearGradient>
+    <linearGradient id="23-fan-dark-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#2CA857"/><stop offset="1" stop-color="#238C48"/></linearGradient>
+    <radialGradient id="23-fan-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="23-fan-dark-clip"><path d="M8 8L6.811 1.254A6.85 6.85 0 0 1 14.437 10.343Z"/><path d="M8 8L14.746 6.811A6.85 6.85 0 0 1 5.657 14.437Z"/><path d="M8 8L9.189 14.746A6.85 6.85 0 0 1 1.563 5.657Z"/><path d="M8 8L1.254 9.189A6.85 6.85 0 0 1 10.343 1.563Z"/></clipPath>
+  </defs>
+  <g opacity="0.95"><path d="M8 8L6.811 1.254A6.85 6.85 0 0 1 14.437 10.343Z" fill="url(#23-fan-dark-c)" stroke="#0E4A24" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.74"><path d="M8 8L14.746 6.811A6.85 6.85 0 0 1 5.657 14.437Z" fill="url(#23-fan-dark-a)" stroke="#0E4A24" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.95"><path d="M8 8L9.189 14.746A6.85 6.85 0 0 1 1.563 5.657Z" fill="url(#23-fan-dark-c)" stroke="#0E4A24" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.74"><path d="M8 8L1.254 9.189A6.85 6.85 0 0 1 10.343 1.563Z" fill="url(#23-fan-dark-a)" stroke="#0E4A24" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#23-fan-dark-glaze)" clip-path="url(#23-fan-dark-clip)"/>
+</svg>

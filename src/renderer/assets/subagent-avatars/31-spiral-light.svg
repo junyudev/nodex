@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="31-spiral-light-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#A6EA9D"/><stop offset="1" stop-color="#30B35E"/></linearGradient>
+    <linearGradient id="31-spiral-light-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#A6EA9D"/><stop offset="1" stop-color="#65CC7A"/></linearGradient>
+    <linearGradient id="31-spiral-light-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#30B35E"/><stop offset="1" stop-color="#1F9049"/></linearGradient>
+    <radialGradient id="31-spiral-light-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="31-spiral-light-clip"><path d="M7.047 2.875A1.1 1.1 0 0 1 8.953 2.875L14.235 12.025A1.1 1.1 0 0 1 13.283 13.675L2.717 13.675A1.1 1.1 0 0 1 1.765 12.025Z"/><path d="M8.82 5.247A0.8 0.8 0 0 1 10.122 5.721L11.295 12.374A0.8 0.8 0 0 1 10.233 13.264L3.886 10.954A0.8 0.8 0 0 1 3.645 9.589Z"/><path d="M9.451 7.055A0.55 0.55 0 0 1 10.181 7.667L9.414 12.017A0.55 0.55 0 0 1 8.519 12.343L5.135 9.504A0.55 0.55 0 0 1 5.301 8.565Z"/></clipPath>
+  </defs>
+  <g opacity="0.92"><path d="M7.047 2.875A1.1 1.1 0 0 1 8.953 2.875L14.235 12.025A1.1 1.1 0 0 1 13.283 13.675L2.717 13.675A1.1 1.1 0 0 1 1.765 12.025Z" fill="url(#31-spiral-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.78"><path d="M8.82 5.247A0.8 0.8 0 0 1 10.122 5.721L11.295 12.374A0.8 0.8 0 0 1 10.233 13.264L3.886 10.954A0.8 0.8 0 0 1 3.645 9.589Z" fill="url(#31-spiral-light-b)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><path d="M9.451 7.055A0.55 0.55 0 0 1 10.181 7.667L9.414 12.017A0.55 0.55 0 0 1 8.519 12.343L5.135 9.504A0.55 0.55 0 0 1 5.301 8.565Z" fill="#1F9049" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#31-spiral-light-glaze)" clip-path="url(#31-spiral-light-clip)"/>
+</svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="28-twist-light-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#C8B2FF"/><stop offset="1" stop-color="#8857F6"/></linearGradient>
+    <linearGradient id="28-twist-light-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#C8B2FF"/><stop offset="1" stop-color="#A580FA"/></linearGradient>
+    <linearGradient id="28-twist-light-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#8857F6"/><stop offset="1" stop-color="#6A3BE4"/></linearGradient>
+    <radialGradient id="28-twist-light-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="28-twist-light-clip"><rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1.7" transform="rotate(10 8 8)"/><rect x="3.85" y="3.85" width="8.3" height="8.3" rx="1.3" transform="rotate(30 8 8)"/><rect x="4.8" y="4.8" width="6.4" height="6.4" rx="1" transform="rotate(50 8 8)"/><rect x="5.55" y="5.55" width="4.9" height="4.9" rx="0.8" transform="rotate(70 8 8)"/></clipPath>
+  </defs>
+  <g opacity="0.78"><rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1.7" transform="rotate(10 8 8)" fill="url(#28-twist-light-b)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><rect x="3.85" y="3.85" width="8.3" height="8.3" rx="1.3" transform="rotate(30 8 8)" fill="url(#28-twist-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.78"><rect x="4.8" y="4.8" width="6.4" height="6.4" rx="1" transform="rotate(50 8 8)" fill="url(#28-twist-light-b)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><rect x="5.55" y="5.55" width="4.9" height="4.9" rx="0.8" transform="rotate(70 8 8)" fill="#6A3BE4" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#28-twist-light-glaze)" clip-path="url(#28-twist-light-clip)"/>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="15-duo-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#B5F0AC"/><stop offset="1" stop-color="#2CA857"/></linearGradient>
+    <linearGradient id="15-duo-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#B5F0AC"/><stop offset="1" stop-color="#6AC87D"/></linearGradient>
+    <linearGradient id="15-duo-dark-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#2CA857"/><stop offset="1" stop-color="#238C48"/></linearGradient>
+    <radialGradient id="15-duo-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="15-duo-dark-clip"><rect x="1.75" y="4.15" width="7.7" height="7.7" rx="1.9" transform="rotate(45 5.6 8)"/><rect x="6.55" y="4.15" width="7.7" height="7.7" rx="1.9" transform="rotate(45 10.4 8)"/></clipPath>
+  </defs>
+  <g opacity="0.92"><rect x="1.75" y="4.15" width="7.7" height="7.7" rx="1.9" transform="rotate(45 5.6 8)" fill="url(#15-duo-dark-a)" stroke="#0E4A24" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><rect x="6.55" y="4.15" width="7.7" height="7.7" rx="1.9" transform="rotate(45 10.4 8)" fill="url(#15-duo-dark-b)" stroke="#0E4A24" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#15-duo-dark-glaze)" clip-path="url(#15-duo-dark-clip)"/>
+</svg>

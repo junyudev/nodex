@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="06-cube-light-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#80E3DF"/><stop offset="1" stop-color="#0FA4AE"/></linearGradient>
+    <linearGradient id="06-cube-light-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#80E3DF"/><stop offset="1" stop-color="#42C0C4"/></linearGradient>
+    <linearGradient id="06-cube-light-c" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#0FA4AE"/><stop offset="1" stop-color="#08858F"/></linearGradient>
+    <radialGradient id="06-cube-light-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="06-cube-light-clip"><path d="M3.631 3.572L7.45 1.368A1.1 1.1 0 0 1 8.55 1.368L12.369 3.572A1.1 1.1 0 0 1 12.369 5.478L8.125 7.928A0.25 0.25 0 0 1 7.875 7.928L3.631 5.478A1.1 1.1 0 0 1 3.631 3.572Z"/><path d="M3.631 5.478L7.875 7.928A0.25 0.25 0 0 1 8 8.144L8 13.045A1.1 1.1 0 0 1 6.35 13.997L2.531 11.793A1.1 1.1 0 0 1 1.981 10.84L1.981 6.43A1.1 1.1 0 0 1 3.631 5.478Z"/><path d="M8.125 7.928L12.369 5.478A1.1 1.1 0 0 1 14.019 6.43L14.019 10.84A1.1 1.1 0 0 1 13.469 11.793L9.65 13.997A1.1 1.1 0 0 1 8 13.045L8 8.144A0.25 0.25 0 0 1 8.125 7.928Z"/></clipPath>
+  </defs>
+  <g opacity="0.78"><path d="M3.631 3.572L7.45 1.368A1.1 1.1 0 0 1 8.55 1.368L12.369 3.572A1.1 1.1 0 0 1 12.369 5.478L8.125 7.928A0.25 0.25 0 0 1 7.875 7.928L3.631 5.478A1.1 1.1 0 0 1 3.631 3.572Z" fill="url(#06-cube-light-b)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><path d="M3.631 5.478L7.875 7.928A0.25 0.25 0 0 1 8 8.144L8 13.045A1.1 1.1 0 0 1 6.35 13.997L2.531 11.793A1.1 1.1 0 0 1 1.981 10.84L1.981 6.43A1.1 1.1 0 0 1 3.631 5.478Z" fill="url(#06-cube-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.95"><path d="M8.125 7.928L12.369 5.478A1.1 1.1 0 0 1 14.019 6.43L14.019 10.84A1.1 1.1 0 0 1 13.469 11.793L9.65 13.997A1.1 1.1 0 0 1 8 13.045L8 8.144A0.25 0.25 0 0 1 8.125 7.928Z" fill="url(#06-cube-light-c)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#06-cube-light-glaze)" clip-path="url(#06-cube-light-clip)"/>
+</svg>
