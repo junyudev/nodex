@@ -1410,19 +1410,19 @@ describe("extractMcpToolCallIdentity", () => {
       sessionUpdate: "tool_call",
       toolCallId: "exec-f4591587-0754-4bb4-990b-f2767894ba93",
       kind: "execute",
-      title: "mcp.t3-code.orchestrator_capabilities",
+      title: "mcp.nodex_app.list_agent_models",
       status: "in_progress",
-      rawInput: { server: "t3-code", tool: "orchestrator_capabilities", arguments: {} },
+      rawInput: { server: "nodex_app", tool: "list_agent_models", arguments: {} },
       _meta: { is_mcp_tool_call: true },
     });
 
     expect(extractMcpToolCallIdentity(toolCall)).toEqual({
-      server: "t3-code",
-      tool: "orchestrator_capabilities",
+      server: "nodex_app",
+      tool: "list_agent_models",
     });
   });
 
-  it("recovers T3 identity from acp-mcp-call fallback commands", () => {
+  it("recovers Nodex identity from acp-mcp-call fallback commands", () => {
     const toolCall = toolCallFromUpdate({
       sessionUpdate: "tool_call",
       toolCallId: "exec-1",
@@ -1437,10 +1437,10 @@ describe("extractMcpToolCallIdentity", () => {
           '/usr/bin/node /srv/t3/bin.ts acp-mcp-call delegate_task {"task":"x"}',
         ],
       }),
-    ).toEqual({ server: "t3-code", tool: "delegate_task", input: { task: "x" } });
+    ).toEqual({ server: "nodex_app", tool: "delegate_task", input: { task: "x" } });
   });
 
-  it("recovers T3 identity from pi-acp title-only fallback execs", () => {
+  it("recovers Nodex identity from pi-acp title-only fallback execs", () => {
     // Captured verbatim from pi-acp 0.0.33 2026-08-14: rawInput is null and
     // the command line only appears as the verbatim title, which the
     // presentation layer summarizes into "Ran command".
@@ -1449,7 +1449,7 @@ describe("extractMcpToolCallIdentity", () => {
       toolCallId: "call_JdxnvzjHHrbvyASTLVekLYWV|fc_08f5a805a7159aa6016a7ec4afad548191",
       kind: "execute",
       title:
-        '"$NODEX_ACP_MCP_NODE" "$NODEX_ACP_MCP_ENTRYPOINT" acp-mcp-call orchestrator_capabilities \'{}\'',
+        '"$NODEX_ACP_MCP_NODE" "$NODEX_ACP_MCP_ENTRYPOINT" acp-mcp-call list_agent_models \'{}\'',
       status: "in_progress",
       rawInput: null,
       content: [
@@ -1462,13 +1462,13 @@ describe("extractMcpToolCallIdentity", () => {
 
     expect(toolCall.title).toBe("Ran command");
     expect(extractMcpToolCallIdentity(toolCall)).toEqual({
-      server: "t3-code",
-      tool: "orchestrator_capabilities",
+      server: "nodex_app",
+      tool: "list_agent_models",
       input: {},
     });
   });
 
-  it("recovers T3 identity from server-namespaced titles across titleless updates", () => {
+  it("recovers Nodex identity from server-namespaced titles across titleless updates", () => {
     // Captured verbatim from Kilo 7.4.22 2026-08-15: the initial tool_call
     // titles the MCP function "<server>_<tool>" with kind "other", and the
     // completed update carries no title at all, so the merged presentation
@@ -1477,7 +1477,7 @@ describe("extractMcpToolCallIdentity", () => {
       sessionUpdate: "tool_call",
       toolCallId: "chatcmpl-tool-b2a6142ee1a510a5",
       kind: "other",
-      title: "t3-code_orchestrator_capabilities",
+      title: "nodex_app_list_agent_models",
       status: "pending",
       locations: [],
       rawInput: {},
@@ -1491,38 +1491,38 @@ describe("extractMcpToolCallIdentity", () => {
     const merged = mergeToolCallState(created, completed);
 
     expect(extractMcpToolCallIdentity(merged)).toEqual({
-      server: "t3-code",
-      tool: "orchestrator_capabilities",
+      server: "nodex_app",
+      tool: "list_agent_models",
     });
   });
 
-  it("recovers T3 identity from Gemini and qwen MCP-server title templates", () => {
+  it("recovers Nodex identity from Gemini and qwen MCP-server title templates", () => {
     // Gemini CLI 0.55.1: "<tool> (<server> MCP Server)"; qwen-code 0.21.12
     // appends ": <args json>" to the same template.
     const gemini = toolCallFromUpdate({
       sessionUpdate: "tool_call",
       toolCallId: "gemini-1",
       kind: "other",
-      title: "delegate_task (t3-code MCP Server)",
+      title: "delegate_task (nodex_app MCP Server)",
       status: "in_progress",
     });
     const qwen = toolCallFromUpdate({
       sessionUpdate: "tool_call",
       toolCallId: "qwen-1",
       kind: "other",
-      title: 'task_status (t3-code MCP Server): {"taskId":"node:delegated-task:1"}',
+      title: 'task_status (nodex_app MCP Server): {"taskId":"node:delegated-task:1"}',
       status: "pending",
       rawInput: { taskId: "node:delegated-task:1" },
     });
 
     expect(extractMcpToolCallIdentity(gemini)).toEqual({
-      server: "t3-code",
+      server: "nodex_app",
       tool: "delegate_task",
     });
-    expect(extractMcpToolCallIdentity(qwen)).toEqual({ server: "t3-code", tool: "task_status" });
+    expect(extractMcpToolCallIdentity(qwen)).toEqual({ server: "nodex_app", tool: "task_status" });
   });
 
-  it("recovers T3 identity across the registry agents' naming conventions", () => {
+  it("recovers Nodex identity across the registry agents' naming conventions", () => {
     // One representative per surveyed convention (2026-08 registry builds):
     // droid triple underscore, Copilot hyphen, Amp mangled server + detail
     // tail, cline args tail, Auggie tool-first suffix.
@@ -1531,12 +1531,12 @@ describe("extractMcpToolCallIdentity", () => {
     // tail, cline args tail, Auggie tool-first suffix, fast-agent slash,
     // Kimi bare name with args tail.
     for (const title of [
-      "t3-code___delegate_task",
-      "t3-code-delegate_task",
-      'mcp__t3_code__delegate_task: {"mode":"async"}',
-      't3-code__delegate_task: {"mode":"async"}',
-      "delegate_task_t3-code",
-      "t3-code/delegate_task",
+      "nodex_app___delegate_task",
+      "nodex_app-delegate_task",
+      'mcp__nodex_app__delegate_task: {"mode":"async"}',
+      'nodex_app__delegate_task: {"mode":"async"}',
+      "delegate_task_nodex_app",
+      "nodex_app/delegate_task",
       'delegate_task: {"mode":"async"}',
     ]) {
       const toolCall = toolCallFromUpdate({
@@ -1547,13 +1547,13 @@ describe("extractMcpToolCallIdentity", () => {
         status: "pending",
       });
       expect(extractMcpToolCallIdentity(toolCall), title).toEqual({
-        server: "t3-code",
+        server: "nodex_app",
         tool: "delegate_task",
       });
     }
   });
 
-  it("recovers T3 identity from goose _meta despite LLM-rewritten titles", () => {
+  it("recovers Nodex identity from goose _meta despite LLM-rewritten titles", () => {
     // goose enriches titles asynchronously, so only _meta.goose.toolCall is
     // stable; shape from crates/goose/src/acp/server/tool_calls/conversion.rs.
     const toolCall = toolCallFromUpdate({
@@ -1563,19 +1563,19 @@ describe("extractMcpToolCallIdentity", () => {
       status: "in_progress",
       _meta: {
         goose: {
-          toolCall: { toolName: "t3-code__task_status", extensionName: "t3-code" },
+          toolCall: { toolName: "nodex_app__task_status", extensionName: "nodex_app" },
           messageId: "message-1",
         },
       },
     });
 
     expect(extractMcpToolCallIdentity(toolCall)).toEqual({
-      server: "t3-code",
+      server: "nodex_app",
       tool: "task_status",
     });
   });
 
-  it("recovers T3 identity from qwen serverId meta regardless of prefix format", () => {
+  it("recovers Nodex identity from qwen serverId meta regardless of prefix format", () => {
     // qwen-code 0.21.12 emits _meta.serverId + _meta.toolName; serverId is an
     // explicit origin assertion, so a known tool suffix suffices even if the
     // prefix format changes.
@@ -1585,12 +1585,12 @@ describe("extractMcpToolCallIdentity", () => {
       kind: "other",
       title: "unrelated display title",
       status: "pending",
-      _meta: { toolName: "mcp::t3-code::t3_thread_send", serverId: "t3-code", provenance: "mcp" },
+      _meta: { toolName: "mcp::nodex_app::task_send", serverId: "nodex_app", provenance: "mcp" },
     });
 
     expect(extractMcpToolCallIdentity(toolCall)).toEqual({
-      server: "t3-code",
-      tool: "t3_thread_send",
+      server: "nodex_app",
+      tool: "task_send",
     });
   });
 
@@ -1631,12 +1631,12 @@ describe("extractMcpToolCallIdentity", () => {
     },
   );
 
-  it("uses the asserted server instead of a misleading T3 title", () => {
+  it("uses the asserted server instead of a misleading Nodex title", () => {
     const toolCall = toolCallFromUpdate({
       sessionUpdate: "tool_call",
       toolCallId: "foreign-1",
       kind: "other",
-      title: "t3-code_delegate_task",
+      title: "nodex_app_delegate_task",
       status: "pending",
       _meta: { toolName: "delegate_task", serverId: "other-orchestrator" },
     });
@@ -1648,7 +1648,7 @@ describe("extractMcpToolCallIdentity", () => {
   });
 
   it("does not brand path-like or unknown-tool titles", () => {
-    for (const title of ["t3-code/README.md", "t3-code_not_a_real_tool"]) {
+    for (const title of ["nodex_app/README.md", "nodex_app_not_a_real_tool"]) {
       const toolCall = toolCallFromUpdate({
         sessionUpdate: "tool_call",
         toolCallId: "path-1",

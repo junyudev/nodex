@@ -11,9 +11,13 @@ describe("actual test inventory", () => {
         "packages/new-package/behavior.spec.ts",
         "src/a.ts",
         "scripts/fixtures/tooling/invalid.test.ts",
-        "packages/agent-runtime/vendor/contracts/src/upstream.test.ts",
+        "packages/agent-runtime/vendor/contracts/src/background.test.ts",
       ]),
-    ).toEqual([file, "packages/new-package/behavior.spec.ts"]);
+    ).toEqual([
+      file,
+      "packages/new-package/behavior.spec.ts",
+      "packages/agent-runtime/vendor/contracts/src/background.test.ts",
+    ]);
   });
   test("accepts one discovered owner", () => {
     expect(() =>
@@ -41,5 +45,17 @@ describe("actual test inventory", () => {
     expect(() =>
       verifyTestInventory([file], [{ suite: "core-client", tier: "stress", files: [file] }]),
     ).toThrow("discovered");
+  });
+  test("requires vendor collection and keeps live contracts outside the default tier", () => {
+    const vendor = "packages/agent-runtime/vendor/contracts/src/background.test.ts";
+    const live =
+      "packages/agent-runtime/vendor/provider-opencode/src/server/v2/OpenCode2Server.live.test.ts";
+    expect(() => verifyTestInventory([vendor], [])).toThrow("discovered []");
+    expect(() =>
+      verifyTestInventory([live], [{ suite: "agent-runtime", tier: "live", files: [live] }]),
+    ).not.toThrow();
+    expect(() =>
+      verifyTestInventory([live], [{ suite: "agent-runtime", tier: "default", files: [live] }]),
+    ).toThrow("expected agent-runtime:live");
   });
 });

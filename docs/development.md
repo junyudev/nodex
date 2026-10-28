@@ -706,9 +706,16 @@ The test commands follow production boundaries:
   disposable Stores only through public Core APIs.
 - `vp run test:effect-codex` runs the companion app-server package contracts.
 - `vp run test:agent-runtime` runs the execution package contracts in host Node,
-  including persistence, native adapters, delegation and process recovery.
-  Copied vendor tests remain upstream fixtures; Nodex behavior is covered by the
-  owning runtime tests.
+  including persistence, native adapters, delegation, process recovery, and all
+  deterministic vendor package tests. Vendor tests have the same inventory and
+  collection requirements as other owned tests.
+- `OPENCODE2_BIN=/absolute/path/to/opencode vp run test:live` runs the separately
+  registered `.live.test.ts` contracts outside the deterministic and stress
+  gates. The vendor OpenCode contracts require a real OpenCode 2 binary; the
+  client also calls the remote `opencode/big-pickle` model and requires available
+  provider quota. Vendor live selections fail explicitly without the binary.
+  Orchestrator fixtures additionally use the opt-ins and authentication documented
+  in their test files.
 - `vp run test:main` runs Electron main-process adapter and host tests.
 - `vp run test:renderer` runs ordinary `.test.tsx` React behavior and explicit
   `.jsdom.test.ts` DOM behavior in jsdom. A `.test.ts` file must not rely on

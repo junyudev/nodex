@@ -55,6 +55,7 @@ interface TestSuite {
   readonly include: readonly string[];
   readonly exclude: readonly string[];
   readonly stress: readonly string[];
+  readonly live?: readonly string[];
   readonly native: readonly NativeArtifactId[];
 }
 
@@ -101,9 +102,17 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
   "agent-runtime": {
     config: "packages/agent-runtime/vite.config.ts",
     runtime: "host-node",
-    include: ["packages/agent-runtime/src/**/*.test.ts"],
+    include: [
+      "packages/agent-runtime/src/**/*.test.ts",
+      "packages/agent-runtime/vendor/*/src/**/*.test.ts",
+    ],
     exclude: [],
     stress: [],
+    // OpenCode 2 needs OPENCODE2_BIN; orchestrator probes also need explicit fixture/auth setup.
+    live: [
+      "packages/agent-runtime/src/**/*.live.test.ts",
+      "packages/agent-runtime/vendor/*/src/**/*.live.test.ts",
+    ],
     native: [],
   },
   "core-client": {
@@ -165,6 +174,9 @@ export const STANDARD_TEST_SUITES = APP_TEST_SUITES.filter((suite) => suite !== 
 export const STRESS_TEST_SUITES = APP_TEST_SUITES.filter(
   (suite) => suites[suite].stress.length > 0,
 );
+export const LIVE_TEST_SUITES = APP_TEST_SUITES.filter(
+  (suite) => (suites[suite].live?.length ?? 0) > 0,
+);
 export const suiteConfig = (suite: SuiteId): string => suites[suite].config;
 export const runtimeForSuite = (suite: SuiteId): TestRuntime => suites[suite].runtime;
 
@@ -176,15 +188,22 @@ export function parseTestSuite(value: string): SuiteId {
 export function filesForSuite(suite: SuiteId, tier: VitestTestTier = "default") {
   const definition = suites[suite];
   return {
-    include: [...(tier === "stress" ? definition.stress : definition.include)],
-    exclude: [...definition.exclude, ...(tier === "default" ? ["**/*.stress.*"] : [])],
+    include: [...(tier === "default" ? definition.include : (definition[tier] ?? []))],
+    exclude: [
+      ...definition.exclude,
+      ...(tier === "default" ? ["**/*.stress.*", "**/*.live.*"] : []),
+    ],
     isStress: tier === "stress",
   };
 }
 
 export function ownersOfTest(file: string): readonly { suite: SuiteId; tier: VitestTestTier }[] {
   const normalized = file.replaceAll("\\", "/").replace(/^\.\//u, "");
-  const tier: VitestTestTier = normalized.includes(".stress.") ? "stress" : "default";
+  const tier: VitestTestTier = normalized.includes(".live.")
+    ? "live"
+    : normalized.includes(".stress.")
+      ? "stress"
+      : "default";
   return APP_TEST_SUITES.flatMap((suite) => {
     const { include, exclude } = filesForSuite(suite, tier);
     const matches = (glob: string) => path.posix.matchesGlob(normalized, glob);

@@ -7,6 +7,7 @@ import {
   PROFILE_CLONE_TEST,
   ownersOfTest,
   STRESS_TEST_SUITES,
+  LIVE_TEST_SUITES,
   YJS_YRS_TEST,
 } from "./test-suites";
 
@@ -29,6 +30,22 @@ describe("application test ownership", () => {
     ["packages/landing/src/download-cta.jsdom.test.ts", "renderer", "default"],
     ["packages/effect-codex-app-server/src/client.test.ts", "effect-codex", "default"],
     ["packages/agent-runtime/src/nodex/Authority.test.ts", "agent-runtime", "default"],
+    ["packages/agent-runtime/vendor/contracts/src/background.test.ts", "agent-runtime", "default"],
+    [
+      "packages/agent-runtime/vendor/shared/src/orchestrationV2PendingBackgroundWork.test.ts",
+      "agent-runtime",
+      "default",
+    ],
+    [
+      "packages/agent-runtime/vendor/new-package/src/nested/behavior.test.ts",
+      "agent-runtime",
+      "default",
+    ],
+    [
+      "packages/agent-runtime/vendor/provider-opencode/src/server/v2/OpenCode2Client.live.test.ts",
+      "agent-runtime",
+      "live",
+    ],
     [YJS_YRS_TEST, "core-client", "default"],
   ])("assigns %s to one runtime and tier", (file, suite, tier) => {
     expect(ownersOfTest(file)).toEqual([{ suite, tier }]);
@@ -59,6 +76,8 @@ describe("application test ownership", () => {
     ]);
     expect(nativeRequirements("integration")).toEqual(["core-server"]);
     expect(STRESS_TEST_SUITES).toContain("core-client");
+    expect(LIVE_TEST_SUITES).toEqual(["agent-runtime"]);
     expect(filesForSuite("effect-codex", "stress").include).toEqual([]);
+    expect(filesForSuite("effect-codex", "live").include).toEqual([]);
   });
 });

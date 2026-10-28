@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   STANDARD_TEST_SUITES,
   STRESS_TEST_SUITES,
+  LIVE_TEST_SUITES,
   nativeRequirements,
   requiresAgentRuntime,
   parseTestSuite,
@@ -30,13 +31,18 @@ export function parseTestSelection(
   const [name, ...rest] = args;
   const related = rest[0] === "--related";
   const forwarded = related ? rest.slice(1) : rest;
-  if (!name) throw new Error("Expected standard, stress, or a test suite.");
-  if (name === "standard" || name === "stress") {
+  if (!name) throw new Error("Expected standard, stress, live, or a test suite.");
+  if (name === "standard" || name === "stress" || name === "live") {
     if (forwarded.length || related)
       throw new Error("Use a named suite for focused or related tests.");
     return {
-      suites: name === "standard" ? STANDARD_TEST_SUITES : STRESS_TEST_SUITES,
-      tier: name === "standard" ? "default" : "stress",
+      suites:
+        name === "standard"
+          ? STANDARD_TEST_SUITES
+          : name === "stress"
+            ? STRESS_TEST_SUITES
+            : LIVE_TEST_SUITES,
+      tier: name === "standard" ? "default" : name,
       related: false,
       args: [],
     };

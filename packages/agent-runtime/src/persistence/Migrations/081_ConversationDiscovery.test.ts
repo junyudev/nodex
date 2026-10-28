@@ -51,10 +51,9 @@ it.effect(
         })}`;
       }
       const upgraded = yield* runMigrations();
-      assert.deepEqual(
-        upgraded.map(([id]) => id),
-        [81, 82, 83, 84, 85],
-      );
+      assert.deepEqual(upgraded[0], [81, "ConversationDiscovery"]);
+      assert.isTrue(upgraded.every(([id]) => id > 80));
+      assert.deepEqual(yield* runMigrations(), []);
       const result = yield* readSessionCatalog({});
       assert.equal(result.items[0]?.preview, "二次元".repeat(300).slice(0, 512));
       assert.equal(result.items[0]?.recencyAt, "2026-10-03T00:00:00.000Z");

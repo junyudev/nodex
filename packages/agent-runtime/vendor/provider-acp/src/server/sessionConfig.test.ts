@@ -79,7 +79,7 @@ describe("acpProviderOptionDescriptors", () => {
     ]);
   });
 
-  it("flattens grouped select choices and drops empty or duplicate values", () => {
+  it("flattens grouped select choices and preserves whitespace without duplicate values", () => {
     const descriptors = acpProviderOptionDescriptors({
       configOptions: [
         {
@@ -117,6 +117,7 @@ describe("acpProviderOptionDescriptors", () => {
         type: "select",
         options: [
           { id: "workspace", label: "Workspace" },
+          { id: "_t3/value:%20", label: "Blank" },
           { id: "full", label: "Full" },
         ],
         currentValue: "workspace",
@@ -207,7 +208,7 @@ describe("acpProviderOptionDescriptors", () => {
     ]);
   });
 
-  it("preserves canonical opaque option values and omits values the wire would mutate", () => {
+  it("preserves opaque and padded option values while bounding their length", () => {
     const exactValue = "value:with:opaque-markers";
     const descriptors = acpProviderOptionDescriptors({
       configOptions: [
@@ -229,7 +230,10 @@ describe("acpProviderOptionDescriptors", () => {
     expect(descriptors[0]).toMatchObject({
       id: "opaque",
       currentValue: exactValue,
-      options: [{ id: exactValue, label: "Exact" }],
+      options: [
+        { id: exactValue, label: "Exact" },
+        { id: "_t3/value:%20value%20with%20spaces%20", label: "Would be trimmed" },
+      ],
     });
   });
 

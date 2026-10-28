@@ -7,11 +7,10 @@ import { expect, it } from "vite-plus/test";
 const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
 
 it("releases traced results while cached lookup fibers remain alive", async () => {
-  const root = NodeURL.fileURLToPath(new URL("../../../", import.meta.url));
   const fixture = NodeURL.fileURLToPath(
     new URL("./testing/TraceRetention.fixture.mjs", import.meta.url),
   );
-  const { stdout } = await execFile(process.execPath, ["--expose-gc", fixture, root]);
+  const { stdout } = await execFile(process.execPath, ["--expose-gc", fixture]);
   const result = JSON.parse(stdout) as { cacheSize: number; retained: number; exported: number };
   expect(result.cacheSize).toBe(4);
   expect(result.exported).toBe(4);

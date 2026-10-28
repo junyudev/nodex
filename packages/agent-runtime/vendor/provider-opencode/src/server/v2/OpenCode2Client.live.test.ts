@@ -3,7 +3,7 @@
  * It re-proves that OpenCode's schemas decode under the workspace Effect
  * version, which the pnpm overrides force. Run it after bumping either side:
  *
- *   OPENCODE2_BIN=/path/to/opencode vp test run src/provider/opencode2/OpenCode2Client.live.test.ts
+ *   OPENCODE2_BIN=/path/to/opencode vp run test:live
  *
  * The turn uses the free `opencode/big-pickle` model.
  */
@@ -28,6 +28,10 @@ import { describe } from "vite-plus/test";
 import * as OpenCode2Client from "./OpenCode2Client.ts";
 
 const binaryPath = process.env.OPENCODE2_BIN;
+if (!binaryPath)
+  throw new Error(
+    "OpenCode 2 live tests require OPENCODE2_BIN pointing to a real OpenCode 2 executable.",
+  );
 
 const startServer = Effect.fn("OpenCode2ClientLive.startServer")(function* (binary: string) {
   const fs = yield* FileSystem.FileSystem;
@@ -78,7 +82,7 @@ const startServer = Effect.fn("OpenCode2ClientLive.startServer")(function* (bina
   return { baseUrl, password, directory, pid: Number(child.pid) };
 });
 
-describe.runIf(binaryPath !== undefined)("OpenCode2Client live", () => {
+describe("OpenCode2Client live", () => {
   it.live(
     "reads server info, runs one turn, and pages the history",
     () =>
@@ -122,7 +126,7 @@ describe.runIf(binaryPath !== undefined)("OpenCode2Client live", () => {
           Effect.flatMap(Effect.fromOption),
           Effect.timeout("120 seconds"),
         );
-        assert.strictEqual(terminal.type, "session.execution.succeeded");
+        assert.strictEqual(terminal.type, "session.execution.succeeded", JSON.stringify(terminal));
 
         // One message per page makes every request after the first send only a cursor.
         const history = yield* OpenCode2Client.paginate(

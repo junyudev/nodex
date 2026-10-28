@@ -38,6 +38,12 @@ describe("test execution", () => {
     });
     expect(parseTestSelection(["core-client", "--related", ...args], "default").related).toBe(true);
     expect(parseTestSelection(["standard"], "stress").tier).toBe("default");
+    expect(parseTestSelection(["live"], "default")).toEqual({
+      suites: ["agent-runtime"],
+      tier: "live",
+      related: false,
+      args: [],
+    });
     expect(() => parseTestSelection(["main", "--", "file.ts"])).toThrow("without a standalone");
     expect(() => parseTestSelection(["main", "--config=vitest.node.config.ts"])).toThrow(
       "owns its config",

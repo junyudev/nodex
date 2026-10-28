@@ -130,6 +130,7 @@ describe("ACP Registry contracts", () => {
         icon: null,
         authMethods: [authMethod],
         models: [{ id: "default", name: "Default", description: "Agent-selected model" }],
+        supportsModelSelection: true,
         currentModelId: "default",
         configOptions: [],
       }),
@@ -141,6 +142,7 @@ describe("ACP Registry contracts", () => {
         icon: null,
         authMethods: Array.from({ length: 33 }, () => authMethod),
         models: [],
+        supportsModelSelection: true,
         currentModelId: null,
       }),
     ).toThrow();
@@ -151,6 +153,7 @@ describe("ACP Registry contracts", () => {
         icon: null,
         authMethods: [{ ...authMethod, type: "passive" }],
         models: [],
+        supportsModelSelection: true,
         currentModelId: null,
       }),
     ).toThrow();
@@ -165,6 +168,7 @@ describe("ACP Registry contracts", () => {
           name: "Default",
           description: null,
         })),
+        supportsModelSelection: true,
         currentModelId: null,
       }),
     ).toThrow();

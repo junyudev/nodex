@@ -1,17 +1,13 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeCrypto from "node:crypto";
 import * as NodeModule from "node:module";
-import * as NodeURL from "node:url";
 
-const root = process.argv[2];
-const count = Number(process.argv[3] ?? 4);
-const bytes = Number(process.argv[4] ?? 32768);
-const require = NodeModule.createRequire(root + "/packages/shared/package.json");
-const load = (name) => import(NodeURL.pathToFileURL(require.resolve("effect/" + name)));
+const count = Number(process.argv[2] ?? 4);
+const bytes = Number(process.argv[3] ?? 32768);
+const require = NodeModule.createRequire(import.meta.url);
+const load = (name) => import(require.resolve("effect/" + name));
 const [Effect, Cache, Tracer] = await Promise.all(["Effect", "Cache", "Tracer"].map(load));
-const { makeLocalFileTracer } = await import(
-  NodeURL.pathToFileURL(root + "/packages/shared/src/observability.ts")
-);
+const { makeLocalFileTracer } = await import("../observability.ts");
 const refs = [];
 let exported = 0;
 const tracer = await Effect.runPromise(

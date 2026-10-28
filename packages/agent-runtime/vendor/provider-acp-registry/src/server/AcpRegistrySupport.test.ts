@@ -66,6 +66,24 @@ function layerResolver(
   );
 }
 
+// Package commands belong to immutable generations; the generated identity is intentionally opaque.
+const managedPackageCommand = (root: string, distribution: "npm" | "python", command: string) =>
+  expect.stringMatching(
+    new RegExp(
+      `^${RegExp.escape(root)}/tools/example-agent/1\\.2\\.3/${distribution}/generations/[a-f0-9-]{36}/bin/${RegExp.escape(command)}$`,
+      "u",
+    ),
+  );
+
+const expectManagedPackagePath = (
+  command: string,
+  environmentPath: string | undefined,
+  delimiter = ":",
+) => {
+  const directory = command.slice(0, command.lastIndexOf("/"));
+  expect(environmentPath?.split(delimiter)[0]).toBe(directory);
+};
+
 const makeFakeNpmToolchain = Effect.fn("AcpRegistrySupport.test.makeFakeNpmToolchain")(function* (
   rootDirectory: string,
 ) {
@@ -238,6 +256,7 @@ describe("AcpRegistrySupport", () => {
         agentId: "dsh",
         version: null,
         distribution: "local",
+        latestVersion: null,
       });
       const resolved = yield* resolver.resolve(localSettings, "/workspace", environment);
       expect(resolved).toEqual({
@@ -331,6 +350,7 @@ describe("AcpRegistrySupport", () => {
       const unconfigured = decodeAcpRegistrySettings({ source: "local" });
       expect(yield* resolver.inspect(unconfigured, environment)).toEqual({
         status: "unconfigured",
+        latestVersion: null,
       });
       expect(
         yield* resolver.resolve(unconfigured, "/workspace", environment).pipe(Effect.flip),
@@ -345,6 +365,7 @@ describe("AcpRegistrySupport", () => {
           status: "missing_runner",
           version: null,
           distribution: "local",
+          latestVersion: null,
         });
         expect(
           yield* resolver.resolve(localSettings, "/workspace", environment).pipe(Effect.flip),
@@ -414,7 +435,7 @@ describe("AcpRegistrySupport", () => {
     );
   });
 
-  it.effect("installs into T3 home a package and launches its exposed command", () => {
+  it.effect("installs a managed package and launches its exposed command", () => {
     const agent = makeAgent({
       npx: { package: "@example/acp@V1.2.3", args: ["--stdio"] },
     });
@@ -434,11 +455,11 @@ describe("AcpRegistrySupport", () => {
       const second = yield* resolver.resolve(settings(), "/workspace", toolchain.environment);
 
       expect(first.spawn).toMatchObject({
-        command: toolchain.executablePath,
+        command: managedPackageCommand(cacheDir, "npm", "example-agent"),
         args: ["--stdio"],
-        env: { PATH: expect.stringMatching(new RegExp(`^${toolchain.globalBin}:`, "u")) },
       });
-      expect(second.spawn.command).toBe(toolchain.executablePath);
+      expect(second.spawn.command).toBe(first.spawn.command);
+      expectManagedPackagePath(first.spawn.command, first.spawn.env?.PATH);
       const npmCommands = yield* fileSystem.readFileString(toolchain.logPath);
       expect(npmCommands.match(/^install --global /gmu)).toHaveLength(1);
       expect(npmCommands).toContain("install --global @example/acp@V1.2.3");
@@ -477,10 +498,9 @@ describe("AcpRegistrySupport", () => {
       }).pipe(Effect.provideService(HostProcess.Environment, environment));
 
       const resolved = yield* resolver.resolve(settings(), "/workspace", environment);
-      const userGlobalBin = toolchain.globalBin;
+      expectManagedPackagePath(resolved.spawn.command, resolved.spawn.env?.PATH);
       expect(resolved.spawn).toMatchObject({
-        command: path.join(userGlobalBin, "example-agent"),
-        env: { PATH: expect.stringMatching(new RegExp(`^${userGlobalBin}:`, "u")) },
+        command: managedPackageCommand(cacheDir, "npm", "example-agent"),
       });
     }).pipe(
       Effect.scoped,
@@ -492,7 +512,7 @@ describe("AcpRegistrySupport", () => {
     );
   });
 
-  it.effect("installs into T3 home a uv tool and launches its exposed command", () => {
+  it.effect("installs a managed uv tool and launches its exposed command", () => {
     const agent = makeAgent({
       uvx: { package: "fast-agent-acp==V0.10.1", args: ["--acp"] },
     });
@@ -510,10 +530,10 @@ describe("AcpRegistrySupport", () => {
 
       const resolved = yield* resolver.resolve(settings(), "/workspace", toolchain.environment);
 
+      expectManagedPackagePath(resolved.spawn.command, resolved.spawn.env?.PATH);
       expect(resolved.spawn).toMatchObject({
-        command: toolchain.executablePath,
+        command: managedPackageCommand(cacheDir, "python", "fast-agent"),
         args: ["--acp"],
-        env: { PATH: expect.stringMatching(new RegExp(`^${toolchain.globalBin}:`, "u")) },
       });
       expect(yield* fileSystem.readFileString(toolchain.logPath)).toContain(
         "tool install --force fast-agent-acp==V0.10.1",
@@ -568,9 +588,11 @@ describe("AcpRegistrySupport", () => {
         windowsEnvironment,
       );
 
-      expect(resolved.spawn).toMatchObject({
-        env: { PATH: `${toolchain.globalBin};C:\\provider\\bin` },
-      });
+      expect(resolved.spawn.command).toEqual(
+        managedPackageCommand(cacheDir, "python", "fast-agent"),
+      );
+      expectManagedPackagePath(resolved.spawn.command, resolved.spawn.env?.PATH, ";");
+      expect(resolved.spawn.env?.PATH?.split(";").slice(1)).toEqual(["C:\\provider\\bin"]);
     }).pipe(
       Effect.scoped,
       Effect.provide(
@@ -609,8 +631,8 @@ describe("AcpRegistrySupport", () => {
       const second = yield* resolver.resolve(settings(), "/workspace");
 
       expect(first.spawn.command).toBe(second.spawn.command);
-      expect(first.spawn.command).toContain(
-        "/tools/example-agent/1.2.3/linux-x86_64/bin/example-agent",
+      expect(first.spawn.command).toMatch(
+        /\/tools\/example-agent\/1\.2\.3\/linux-x86_64\/[a-f0-9]{64}\/bin\/example-agent$/u,
       );
       expect(yield* fileSystem.readFileString(first.spawn.command)).toBe(
         "#!/bin/sh\necho example\n",
@@ -763,8 +785,8 @@ describe("AcpRegistrySupport", () => {
       );
       yield* resolver.prepare({ agentId: agent.id });
       const resolved = yield* resolver.resolve(settings(), "/workspace", {});
-      expect(resolved.spawn.command).toBe(
-        yield* fileSystem.realPath(`${cacheDir}/tools/example-agent/1.2.3/linux-x86_64/agent`),
+      expect(resolved.spawn.command).toMatch(
+        /\/tools\/example-agent\/1\.2\.3\/linux-x86_64\/[a-f0-9]{64}\/agent$/u,
       );
       expect(yield* fileSystem.readFileString(resolved.spawn.command)).toBe(
         "#!/bin/sh\necho managed\n",
@@ -782,7 +804,7 @@ describe("AcpRegistrySupport", () => {
     );
   });
 
-  it.effect("searches compatible agents with deterministic ranking and bounded metadata", () => {
+  it.effect("ranks agents deterministically and reports incompatible distributions", () => {
     const exact = {
       ...makeAgent({ npx: { package: "@example/acp@1.2.3" } }),
       id: "codex-acp",
@@ -821,7 +843,15 @@ describe("AcpRegistrySupport", () => {
       });
       const result = yield* resolver.search({ query: "codex" });
 
-      expect(result.agents.map((agent) => agent.id)).toEqual(["codex-acp", "other-agent"]);
+      expect(result.agents.map((agent) => agent.id)).toEqual([
+        "codex-acp",
+        "darwin-only",
+        "other-agent",
+      ]);
+      expect(result.agents[1]).toMatchObject({
+        distribution: null,
+        distributions: [{ kind: "binary", available: false, reason: "unsupported_platform" }],
+      });
       expect(result.agents[0]).toMatchObject({
         authors: ["OpenAI", "Zed Industries"],
         distribution: "npx",
@@ -882,7 +912,7 @@ describe("AcpRegistrySupport", () => {
     );
   });
 
-  it.effect("filters runner recipes that the environment cannot prepare", () => {
+  it.effect("reports runner recipes that the environment cannot prepare", () => {
     const runnerAgent = makeAgent({ npx: { package: "@example/acp@1.2.3" } });
     const binaryAgent = {
       ...makeAgent({
@@ -905,7 +935,11 @@ describe("AcpRegistrySupport", () => {
       });
       const result = yield* resolver.search({ query: "" });
 
-      expect(result.agents.map((agent) => agent.id)).toEqual(["binary-agent"]);
+      expect(result.agents.map((agent) => agent.id)).toEqual(["binary-agent", "example-agent"]);
+      expect(result.agents[1]).toMatchObject({
+        distribution: null,
+        distributions: [{ kind: "npx", available: false, reason: "runner_unavailable" }],
+      });
     }).pipe(
       Effect.scoped,
       Effect.provide(
@@ -1079,7 +1113,7 @@ describe("AcpRegistrySupport", () => {
     );
   });
 
-  it.effect("installs into T3 home package recipes during preparation", () => {
+  it.effect("installs managed package recipes during preparation", () => {
     const agent = makeAgent({ npx: { package: "@example/acp@1.2.3", args: ["--stdio"] } });
     const requests: string[] = [];
 
@@ -1095,13 +1129,24 @@ describe("AcpRegistrySupport", () => {
         registryUrl,
       }).pipe(Effect.provideService(HostProcess.Environment, toolchain.environment));
       const prepared = yield* resolver.prepare({ agentId: agent.id });
+      if (prepared.installationId === undefined)
+        throw new Error("Expected a prepared installation identity");
       expect(prepared).toEqual({
         agentId: "example-agent",
         version: "1.2.3",
         distribution: "npx",
+        installationId: expect.stringMatching(/^[a-f0-9]{64}$/u),
         prepared: true,
       });
-      expect(yield* fileSystem.exists(toolchain.executablePath)).toBe(true);
+      const resolved = yield* resolver.resolve(
+        settings({ installationId: prepared.installationId }),
+        "/workspace",
+        toolchain.environment,
+      );
+      expect(resolved.spawn.command).toEqual(
+        managedPackageCommand(cacheDir, "npm", "example-agent"),
+      );
+      expect(yield* fileSystem.exists(resolved.spawn.command)).toBe(true);
       expect(yield* fileSystem.exists(toolchain.environment.FAKE_NPM_PREFIX)).toBe(false);
       expect(yield* fileSystem.readFileString(toolchain.logPath)).toContain(
         "install --global @example/acp@1.2.3",
@@ -1144,7 +1189,7 @@ describe("AcpRegistrySupport", () => {
       const resolved = yield* resolver.resolve(settings(), "/workspace", toolchain.environment);
 
       expect(resolved.spawn).toMatchObject({
-        command: toolchain.executablePath,
+        command: managedPackageCommand(cacheDir, "npm", "example-agent"),
         args: ["--stdio"],
       });
     }).pipe(
@@ -1215,7 +1260,11 @@ describe("AcpRegistrySupport", () => {
       });
       const inspection = yield* resolver.inspect(settings());
 
-      expect(inspection).toMatchObject({ status: "ready", agentId: agent.id });
+      expect(inspection).toMatchObject({
+        status: "unprepared",
+        agentId: agent.id,
+        latestVersion: agent.version,
+      });
       expect(requests).toBe(0);
     }).pipe(
       Effect.scoped,
@@ -1280,10 +1329,14 @@ describe("AcpRegistrySupport", () => {
       const resolved = yield* resolver.resolve(settings(), "/workspace", providerEnvironment);
 
       expect(hostInspection).toMatchObject({ status: "missing_runner", runner: "npm" });
-      expect(instanceInspection).toMatchObject({ status: "ready", distribution: "npx" });
+      expect(instanceInspection).toMatchObject({ status: "unprepared", distribution: "npx" });
+      expect(yield* resolver.inspect(settings(), providerEnvironment)).toMatchObject({
+        status: "ready",
+        distribution: "npx",
+      });
+      expectManagedPackagePath(resolved.spawn.command, resolved.spawn.env?.PATH);
       expect(resolved.spawn).toMatchObject({
-        command: toolchain.executablePath,
-        env: { PATH: expect.stringMatching(new RegExp(`^${toolchain.globalBin}:`, "u")) },
+        command: managedPackageCommand(cacheDir, "npm", "example-agent"),
       });
     }).pipe(
       Effect.scoped,
@@ -1312,8 +1365,7 @@ describe("AcpRegistrySupport", () => {
         prefix: "t3-acp-registry-non-file-",
       });
       const registryDirectory = `${cacheDir}/acp-registry`;
-      const fakeExecutable = `${cacheDir}/tools/example-agent/1.2.3/linux-x86_64/bin/example-agent`;
-      yield* fileSystem.makeDirectory(fakeExecutable, { recursive: true });
+
       yield* fileSystem.makeDirectory(registryDirectory, { recursive: true });
       yield* fileSystem.writeFileString(`${registryDirectory}/registry.json`, makeRegistry(agent));
 
@@ -1322,6 +1374,10 @@ describe("AcpRegistrySupport", () => {
         toolsDir: `${cacheDir}/tools`,
         registryUrl,
       });
+      const installed = yield* resolver.resolve(settings(), "/workspace");
+      const fakeExecutable = installed.spawn.command;
+      yield* fileSystem.remove(fakeExecutable);
+      yield* fileSystem.makeDirectory(fakeExecutable);
       const directoryError = yield* resolver.inspect(settings()).pipe(Effect.flip);
 
       expect(directoryError.reason).toBe("archive_invalid");
@@ -1339,7 +1395,14 @@ describe("AcpRegistrySupport", () => {
       Effect.scoped,
       Effect.provide(
         layerResolver((request) =>
-          Effect.succeed(HttpClientResponse.fromWeb(request, new Response(makeRegistry(agent)))),
+          Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              request.url === registryUrl
+                ? new Response(makeRegistry(agent))
+                : new Response("#!/bin/sh\necho agent\n"),
+            ),
+          ),
         ),
       ),
     );
@@ -1389,8 +1452,16 @@ describe("AcpRegistrySupport", () => {
             },
           },
         });
-        const first = yield* resolver.uninstallManagedBinary({ agentId: "example-agent" });
-        expect(first).toEqual({ agentId: "example-agent", removed: !referenced });
+        if (referenced) {
+          expect(
+            yield* resolver.uninstallManagedBinary({ agentId: "example-agent" }).pipe(Effect.flip),
+          ).toMatchObject({ reason: "busy" });
+        } else {
+          expect(yield* resolver.uninstallManagedBinary({ agentId: "example-agent" })).toEqual({
+            agentId: "example-agent",
+            removed: true,
+          });
+        }
         expect(yield* fileSystem.exists(agentRoot)).toBe(referenced);
         yield* hostSettings.set(DEFAULT_SERVER_SETTINGS);
         const second = yield* resolver.uninstallManagedBinary({ agentId: "example-agent" });
@@ -1413,7 +1484,7 @@ describe("AcpRegistrySupport", () => {
     },
   );
 
-  it.effect("keeps managed package installs when removing the same agent's binaries", () =>
+  it.effect("removes managed package and binary installations together", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const cacheDir = yield* fileSystem.makeTempDirectoryScoped({
@@ -1434,9 +1505,7 @@ describe("AcpRegistrySupport", () => {
         removed: true,
       });
       expect(yield* fileSystem.exists(`${versionRoot}/linux-x86_64`)).toBe(false);
-      expect(yield* fileSystem.readFileString(`${versionRoot}/npm/bin/agent`)).toBe(
-        "package command",
-      );
+      expect(yield* fileSystem.exists(`${versionRoot}/npm`)).toBe(false);
       expect(yield* resolver.uninstallManagedBinary({ agentId: "example-agent" })).toEqual({
         agentId: "example-agent",
         removed: false,
@@ -1483,9 +1552,8 @@ describe("AcpRegistrySupport", () => {
         yield* Deferred.succeed(releaseDownload, undefined);
 
         expect(yield* Fiber.join(prepareFiber)).toMatchObject({ prepared: true });
-        expect(yield* Fiber.join(uninstallFiber)).toEqual({
-          agentId: agent.id,
-          removed: false,
+        expect(yield* Fiber.join(uninstallFiber).pipe(Effect.flip)).toMatchObject({
+          reason: "busy",
         });
         const agentRoot = `${cacheDir}/tools/${agent.id}`;
         expect(yield* fileSystem.exists(agentRoot)).toBe(true);
@@ -1503,10 +1571,9 @@ describe("AcpRegistrySupport", () => {
             },
           },
         });
-        expect(yield* resolver.uninstallManagedBinary({ agentId: agent.id })).toEqual({
-          agentId: agent.id,
-          removed: false,
-        });
+        expect(
+          yield* resolver.uninstallManagedBinary({ agentId: agent.id }).pipe(Effect.flip),
+        ).toMatchObject({ reason: "busy" });
         yield* hostSettings.set(DEFAULT_SERVER_SETTINGS);
         expect(yield* resolver.uninstallManagedBinary({ agentId: agent.id })).toEqual({
           agentId: agent.id,
@@ -1540,7 +1607,7 @@ describe("AcpRegistrySupport", () => {
     });
   });
 
-  it.effect("reserves a prepared binary until a configured instance inspects it", () => {
+  it.effect("keeps a prepared-binary reservation through passive inspection", () => {
     const agent = makeAgent({
       binary: {
         "linux-x86_64": {
@@ -1562,11 +1629,14 @@ describe("AcpRegistrySupport", () => {
       });
 
       yield* resolver.prepare({ agentId: agent.id });
-      expect(yield* resolver.uninstallManagedBinary({ agentId: agent.id })).toEqual({
-        agentId: agent.id,
-        removed: false,
-      });
+      expect(
+        yield* resolver.uninstallManagedBinary({ agentId: agent.id }).pipe(Effect.flip),
+      ).toMatchObject({ reason: "busy" });
       expect(yield* resolver.inspect(settings())).toMatchObject({ status: "ready" });
+      expect(
+        yield* resolver.uninstallManagedBinary({ agentId: agent.id }).pipe(Effect.flip),
+      ).toMatchObject({ reason: "busy" });
+      yield* TestClock.adjust("31 seconds");
       expect(yield* resolver.uninstallManagedBinary({ agentId: agent.id })).toEqual({
         agentId: agent.id,
         removed: true,
@@ -1650,7 +1720,16 @@ describe("acpRegistryManagedBinaryDirectories", () => {
       yield* install("kimi", "1.50.0", "linux-x86_64", "cmd");
       yield* install("kimi", "1.50.0", "darwin-aarch64");
       yield* install("other-agent", "0.2.0", "darwin-aarch64");
-      const globalBin = path.join(cacheDir, "tools", "gemini", "0.56.0", "npm", "bin");
+      const installRoot = path.join(
+        cacheDir,
+        "tools",
+        "gemini",
+        "0.56.0",
+        "npm",
+        "generations",
+        "00000000-0000-4000-8000-000000000001",
+      );
+      const globalBin = path.join(installRoot, "bin");
       const geminiCommand = path.join(globalBin, "gemini");
       const receiptsDirectory = path.join(cacheDir, "acp-registry", "package-installs");
       yield* fileSystem.makeDirectory(globalBin, { recursive: true });
@@ -1665,6 +1744,7 @@ describe("acpRegistryManagedBinaryDirectories", () => {
           distribution: "npx",
           packageSpec: "@google/gemini-cli@0.56.0",
           managerPath: "/usr/bin/npm",
+          installRoot,
           binDirectory: globalBin,
           executablePath: geminiCommand,
           packageRoot: path.join(
@@ -1673,6 +1753,8 @@ describe("acpRegistryManagedBinaryDirectories", () => {
             "gemini",
             "0.56.0",
             "npm",
+            "generations",
+            "00000000-0000-4000-8000-000000000001",
             "lib",
             "node_modules",
             "@google",

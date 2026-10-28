@@ -1,7 +1,7 @@
 /**
  * Live check of the OpenCode 2 server lifecycle against a real binary:
  *
- *   OPENCODE2_BIN=/path/to/opencode vp test run src/provider/opencode2/OpenCode2Server.live.test.ts
+ *   OPENCODE2_BIN=/path/to/opencode vp run test:live
  *
  * No model is called. The server runs with isolated HOME and XDG directories.
  */
@@ -30,6 +30,10 @@ import * as OpenCode2Client from "./OpenCode2Client.ts";
 import * as OpenCode2Server from "./OpenCode2Server.ts";
 
 const binaryPath = process.env.OPENCODE2_BIN;
+if (!binaryPath)
+  throw new Error(
+    "OpenCode 2 live tests require OPENCODE2_BIN pointing to a real OpenCode 2 executable.",
+  );
 
 // A negative pid probes the whole process group, which T3 stops as one unit.
 const isAlive = (pid: number) => {
@@ -94,7 +98,7 @@ const startExternalServer = Effect.fn("OpenCode2ServerLive.startExternalServer")
   return { url, pid };
 });
 
-describe.runIf(binaryPath !== undefined)("OpenCode2Server live", () => {
+describe("OpenCode2Server live", () => {
   it.live(
     "spawns one authenticated server per instance and stops it by PID",
     () =>
@@ -147,7 +151,7 @@ describe.runIf(binaryPath !== undefined)("OpenCode2Server live", () => {
             return { ...connection, pid: info.pid, session };
           }),
         );
-        assert.strictEqual(spawned.version, "2.0.18");
+        assert.match(spawned.version, /^2\./);
         assert.isFalse(spawned.external);
         assert.isTrue(isAlive(spawned.pid));
 
@@ -204,7 +208,7 @@ describe.runIf(binaryPath !== undefined)("OpenCode2Server live", () => {
         const utf8Connection = yield* utf8.withConnection((connection) =>
           Effect.succeed(connection),
         );
-        assert.strictEqual(utf8Connection.version, "2.0.18");
+        assert.strictEqual(utf8Connection.version, spawned.version);
         assert.isTrue(utf8Connection.external);
         const asciiOnly = yield* OpenCode2Server.make({
           binaryPath: binaryPath!,

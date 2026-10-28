@@ -10,7 +10,7 @@ import {
   type HtmlRenderReference,
 } from "./htmlRender.ts";
 import { MCP_APP_OUTPUT_KEY, readMcpAppReference, type McpAppReference } from "./mcpApp.ts";
-import { resolveNodexAppTaskTool } from "./nodexAppMcp.ts";
+import { resolveNodexAppTool } from "./nodexAppMcp.ts";
 
 const MAX_PARSED_BYTES = 16_384;
 const MAX_METADATA_BYTES = 8_192;
@@ -120,7 +120,13 @@ export function compactDynamicToolOutput(value: unknown): CompactToolOutput | un
   const output: CompactToolOutput = result.failed ? { isError: true } : {};
   const data = budget.exceeded ? undefined : result.data;
   if (data !== undefined) {
-    for (const key of ["sessionId", "threadId", "messageId", "taskId", "scheduledTaskId"] as const) {
+    for (const key of [
+      "sessionId",
+      "threadId",
+      "messageId",
+      "taskId",
+      "scheduledTaskId",
+    ] as const) {
       const id = boundedId(data[key]);
       if (id !== undefined) output[key] = id;
     }
@@ -183,12 +189,15 @@ export function compactDynamicToolOutput(value: unknown): CompactToolOutput | un
   return Object.keys(output).length === 0 ? undefined : output;
 }
 
+const HTML_RENDER_TOOL_NAMES: ReadonlySet<string> = new Set([HTML_RENDER_TOOL_NAME]);
+
 /** The page a completed `html_render` tool call published, if this item is one. */
 export function htmlRenderFromToolItem(item: {
   readonly toolName: string | null | undefined;
   readonly output?: unknown;
 }): HtmlRenderReference | undefined {
-  if (resolveNodexAppTaskTool(item.toolName) !== HTML_RENDER_TOOL_NAME) return undefined;
+  if (resolveNodexAppTool(item.toolName, HTML_RENDER_TOOL_NAMES) !== HTML_RENDER_TOOL_NAME)
+    return undefined;
   const output = compactDynamicToolOutput(item.output);
   return output?.isError ? undefined : output?.htmlRender;
 }

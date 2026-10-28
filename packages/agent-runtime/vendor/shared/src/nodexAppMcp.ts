@@ -81,7 +81,7 @@ function normalizeToolLabel(value: string): string {
  * `nodex_app-<thread>_x` (OpenCode 2) and assorted separators from ACP agents.
  * Loose prefixes only count for a known Runtime tool.
  */
-function resolveToolName(value: string): string | null {
+function resolveToolName(value: string, knownTools: ReadonlySet<string>): string | null {
   const label = normalizeToolLabel(value);
   const qualified = /^mcp__(?<server>.+?)__(?<tool>.+)$/i.exec(label);
   if (qualified?.groups) {
@@ -92,19 +92,27 @@ function resolveToolName(value: string): string | null {
   if (namespaced?.groups) return namespaced.groups.tool ?? null;
 
   const candidate = PREFIXED_TOOL.exec(label)?.groups?.tool ?? label;
-  if (NODEX_APP_TASK_TOOL_NAMES.has(candidate)) return candidate;
+  if (knownTools.has(candidate)) return candidate;
   // OpenCode 2 joins its per-thread server to the tool with `_`. Thread ids can
   // hold `_` too, so take the longest known tool name that ends the label.
   if (!PER_THREAD_SERVER.test(label)) return null;
   let longest: string | null = null;
-  for (const tool of NODEX_APP_TASK_TOOL_NAMES) {
+  for (const tool of knownTools) {
     if (label.endsWith(`_${tool}`) && tool.length > (longest?.length ?? 0)) longest = tool;
   }
   return longest;
 }
 
+/** Resolves provider spellings only for the caller's known application tools. */
+export function resolveNodexAppTool(
+  toolName: string | null | undefined,
+  knownTools: ReadonlySet<string>,
+): string | null {
+  const name = toolName == null ? null : resolveToolName(toolName, knownTools);
+  return name !== null && knownTools.has(name) ? name : null;
+}
+
 /** The bare Runtime tool name (`delegate_task`) for any provider's spelling of it. */
 export function resolveNodexAppTaskTool(toolName: string | null | undefined): string | null {
-  const name = toolName == null ? null : resolveToolName(toolName);
-  return name !== null && NODEX_APP_TASK_TOOL_NAMES.has(name) ? name : null;
+  return resolveNodexAppTool(toolName, NODEX_APP_TASK_TOOL_NAMES);
 }

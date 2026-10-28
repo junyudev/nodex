@@ -138,7 +138,7 @@ describe("ServerSettings default permissions", () => {
     expect(DEFAULT_SERVER_SETTINGS.defaultRuntimeMode).toBe("full-access");
   });
 
-  it.each(["full-access", "full-access", "auto", "full-access"])(
+  it.each(["full-access"])(
     "round-trips %s as an environment default and project override",
     (defaultRuntimeMode) => {
       const input = {
@@ -150,15 +150,18 @@ describe("ServerSettings default permissions", () => {
     },
   );
 
-  it("rejects unsupported permission defaults", () => {
-    expect(() => decodeServerSettings({ defaultRuntimeMode: "unsupported" })).toThrow();
-    expect(() => decodeServerSettingsPatch({ defaultRuntimeMode: "unsupported" })).toThrow();
-    expect(() =>
-      decodeServerSettingsPatch({
-        projectSettingsOverrides: { project: { defaultRuntimeMode: "unsupported" } },
-      }),
-    ).toThrow();
-  });
+  it.each(["unsupported", "auto", "read-only", "workspace-write"])(
+    "rejects unsupported permission default %s",
+    (defaultRuntimeMode) => {
+      expect(() => decodeServerSettings({ defaultRuntimeMode })).toThrow();
+      expect(() => decodeServerSettingsPatch({ defaultRuntimeMode })).toThrow();
+      expect(() =>
+        decodeServerSettingsPatch({
+          projectSettingsOverrides: { project: { defaultRuntimeMode } },
+        }),
+      ).toThrow();
+    },
+  );
 });
 
 describe("ServerSettings usage price overrides", () => {

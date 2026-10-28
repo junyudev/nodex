@@ -6,6 +6,7 @@ import {
   APP_TEST_SUITES,
   STANDARD_TEST_SUITES,
   STRESS_TEST_SUITES,
+  LIVE_TEST_SUITES,
   maintainedThirdPartyTests,
   ownersOfTest,
   type SuiteId,
@@ -24,7 +25,6 @@ export interface DiscoveredSuite {
 export function ownedTestCandidates(files: readonly string[]): readonly string[] {
   return files.filter((file) => {
     if (maintainedThirdPartyTests.includes(file)) return true;
-    if (file.startsWith("packages/agent-runtime/vendor/")) return false;
     if (!/^(src|scripts|config|packages)\//u.test(file)) return false;
     // These intentionally invalid programs are inputs to tooling:verify, never runnable tests.
     if (file.startsWith("scripts/fixtures/")) return false;
@@ -57,11 +57,13 @@ export function verifyTestInventory(
       problems.push(file + ": expected " + expected + ", discovered " + JSON.stringify(collected));
     }
     const reachable =
-      tier === "stress"
-        ? STRESS_TEST_SUITES.includes(suite)
-        : STANDARD_TEST_SUITES.includes(suite as Exclude<SuiteId, "browser">) ||
-          suite === "browser";
-    if (!reachable) problems.push(file + ": unreachable from standard/browser/stress gates");
+      tier === "live"
+        ? LIVE_TEST_SUITES.includes(suite)
+        : tier === "stress"
+          ? STRESS_TEST_SUITES.includes(suite)
+          : STANDARD_TEST_SUITES.includes(suite as Exclude<SuiteId, "browser">) ||
+            suite === "browser";
+    if (!reachable) problems.push(file + ": unreachable from standard/browser/stress/live gates");
   }
   if (problems.length) throw new Error("Test inventory failed:\n" + problems.join("\n"));
 }
@@ -82,8 +84,9 @@ export async function verifyRepositoryTestInventory(
     .filter((file) => file && existsSync(path.join(root, file)));
   const candidates = ownedTestCandidates(files);
   const discovered: DiscoveredSuite[] = [];
-  for (const tier of ["default", "stress"] as const) {
-    for (const suite of APP_TEST_SUITES) {
+  for (const tier of ["default", "stress", "live"] as const) {
+    const tierSuites = tier === "live" ? LIVE_TEST_SUITES : APP_TEST_SUITES;
+    for (const suite of tierSuites) {
       if (signal.aborted) throw new Error("Test inventory cancelled.");
       const suiteFiles = await discoverSuite(suite, [], false, {
         cwd: root,
