@@ -20,6 +20,8 @@ use rusqlite::{Connection, OptionalExtension};
 
 use super::sqlite::{StoreError, StoreErrorCode};
 
+const MAX_INBOX_DEPENDENCY_PROBES: usize = 256;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DeliveryAtomDraft {
     pub kind: DeliveryAtomKind,
@@ -37,7 +39,7 @@ pub(crate) fn compile(
     if let Some(project_id) = physical_project_id {
         validate_identity(project_id, "DeliveryAtom physical Project")?;
     }
-    let touches_inbox = touches_inbox_messages(connection, &payload)?;
+    let touches_inbox = touches_inbox_messages(connection, library_id, &payload)?;
     let mut atoms = match payload {
         CoreModuleEventPayload::Library(event) => compile_library(library_id, event)?,
         CoreModuleEventPayload::Database(event) => compile_database(library_id, event),
@@ -68,6 +70,7 @@ pub(crate) fn compile(
 /// them. Inbox operations already announce themselves.
 fn touches_inbox_messages(
     connection: &Connection,
+    library_id: &str,
     payload: &CoreModuleEventPayload,
 ) -> Result<bool, StoreError> {
     use nodex_core_contracts::document::OwnedDocumentEvent;
@@ -82,8 +85,8 @@ fn touches_inbox_messages(
             return Ok(connection.query_row(
                 "SELECT EXISTS(SELECT 1 FROM pages page
                    JOIN inbox_entries entry ON entry.page_id = page.block_id
-                   WHERE page.document_id = ?1)",
-                [document_id],
+                   WHERE page.document_id = ?1 AND entry.library_id = ?2)",
+                [document_id.as_str(), library_id],
                 |row| row.get(0),
             )?);
         }
@@ -92,20 +95,48 @@ fn touches_inbox_messages(
     if pages.is_empty() && data_sources.is_empty() {
         return Ok(false);
     }
-    let pages = serde_json::to_string(pages)
-        .map_err(|error| corrupt(&format!("Inbox Page identities: {error}")))?;
-    let data_sources = serde_json::to_string(data_sources)
-        .map_err(|error| corrupt(&format!("Inbox Data Source identities: {error}")))?;
-    Ok(connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM inbox_entries
-           WHERE page_id IN (SELECT value FROM json_each(?1)))
-           OR EXISTS(SELECT 1 FROM pages page
-             JOIN inbox_entries entry ON entry.page_id = page.block_id
-             WHERE page.parent_kind = 'data_source'
-               AND page.parent_id IN (SELECT value FROM json_each(?2)))",
-        [pages, data_sources],
-        |row| row.get(0),
-    )?)
+    if !pages.is_empty() {
+        let pages = serde_json::to_string(pages)
+            .map_err(|error| corrupt(&format!("Inbox Page identities: {error}")))?;
+        if connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM json_each(?1) changed
+               WHERE (SELECT library_id FROM inbox_entries WHERE page_id = changed.value) = ?2)",
+            [pages.as_str(), library_id],
+            |row| row.get::<_, bool>(0),
+        )? {
+            return Ok(true);
+        }
+    }
+    if data_sources.is_empty() {
+        return Ok(false);
+    }
+    let data_sources = data_sources
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    // Probe Inbox entries, never all Pages in a changed Source. CROSS JOIN fixes
+    // the outer loop; each candidate reads its Page by primary key. A full probe
+    // budget conservatively refreshes this Library's Inbox rather than making
+    // the mutation writer enumerate a user-growing dependency set.
+    let mut statement = connection.prepare(
+        "SELECT page.parent_kind, page.parent_id
+         FROM inbox_entries entry INDEXED BY idx_inbox_entries_scope
+         CROSS JOIN pages page ON page.block_id = entry.page_id
+         WHERE entry.library_id = ?1 LIMIT ?2",
+    )?;
+    let rows = statement.query_map(
+        rusqlite::params![library_id, (MAX_INBOX_DEPENDENCY_PROBES + 1) as i64],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    )?;
+    for (index, row) in rows.enumerate() {
+        let (parent_kind, parent_id) = row?;
+        if index == MAX_INBOX_DEPENDENCY_PROBES
+            || (parent_kind == "data_source" && data_sources.contains(parent_id.as_str()))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn inbox_messages_changed(library_id: &str) -> DeliveryAtomDraft {
@@ -1079,11 +1110,13 @@ mod tests {
         connection
             .execute_batch(
                 "CREATE TABLE pages(block_id TEXT PRIMARY KEY, document_id TEXT NOT NULL UNIQUE,
-                                    parent_kind TEXT NOT NULL, parent_id TEXT NOT NULL);
-                 CREATE TABLE inbox_entries(page_id TEXT PRIMARY KEY);
+                                    parent_kind TEXT NOT NULL, parent_id TEXT NOT NULL) WITHOUT ROWID;
+                 CREATE TABLE inbox_entries(page_id TEXT PRIMARY KEY, library_id TEXT NOT NULL)
+                   WITHOUT ROWID;
+                 CREATE INDEX idx_inbox_entries_scope ON inbox_entries(library_id);
                  INSERT INTO pages VALUES ('page:message', 'document:message', 'data_source', 'source:inbox'),
                                           ('page:note', 'document:note', 'library', 'library:test');
-                 INSERT INTO inbox_entries VALUES ('page:message');",
+                 INSERT INTO inbox_entries VALUES ('page:message', 'library:test');",
             )
             .expect("Inbox compiler tables");
         connection
@@ -1123,6 +1156,172 @@ mod tests {
                 page_file_reference_change: None,
             },
         )
+    }
+
+    fn database_source_event(source_id: &str) -> CoreModuleEventPayload {
+        CoreModuleEventPayload::Database(DatabaseEvent {
+            kind: DatabaseEventKind::DatabaseChanged,
+            project_id: None,
+            database_ids: Vec::new(),
+            data_source_ids: vec![source_id.to_owned()],
+            page_ids: Vec::new(),
+            view_ids: Vec::new(),
+            personal_view_changes: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn inbox_source_dependencies_follow_current_placement_and_library() {
+        let connection = compiler_store();
+        let changed = |library_id, source_id| {
+            announces_inbox_change(
+                &compile(
+                    &connection,
+                    library_id,
+                    None,
+                    database_source_event(source_id),
+                )
+                .expect("source atoms"),
+            )
+        };
+        assert!(changed("library:test", "source:inbox"));
+        assert!(!changed("library:test", "source:other"));
+        assert!(!changed("library:other", "source:inbox"));
+
+        connection
+            .execute(
+                "UPDATE pages SET parent_kind='library', parent_id='library:test'
+                 WHERE block_id='page:message'",
+                [],
+            )
+            .unwrap();
+        assert!(!changed("library:test", "source:inbox"));
+        connection
+            .execute(
+                "UPDATE pages SET parent_kind='data_source', parent_id='source:moved'
+                 WHERE block_id='page:message'",
+                [],
+            )
+            .unwrap();
+        assert!(!changed("library:test", "source:inbox"));
+        assert!(changed("library:test", "source:moved"));
+    }
+
+    #[test]
+    fn inbox_dependency_budget_distinguishes_complete_and_truncated_probes() {
+        for (count, expected) in [
+            (MAX_INBOX_DEPENDENCY_PROBES, false),
+            (MAX_INBOX_DEPENDENCY_PROBES + 1, true),
+        ] {
+            let connection = compiler_store();
+            connection
+                .execute(
+                    "WITH RECURSIVE ids(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ids WHERE n<?1)
+                 INSERT INTO pages SELECT printf('page:pressure-%06d', n),
+                   printf('document:pressure-%06d', n), 'data_source', 'source:other' FROM ids",
+                    [(count - 1) as i64],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO inbox_entries SELECT block_id, 'library:test'
+                 FROM pages WHERE block_id LIKE 'page:pressure-%'",
+                    [],
+                )
+                .unwrap();
+            assert_eq!(
+                touches_inbox_messages(
+                    &connection,
+                    "library:test",
+                    &database_source_event("source:changed"),
+                )
+                .unwrap(),
+                expected,
+                "Inbox entries: {count}"
+            );
+        }
+    }
+
+    #[test]
+    fn inbox_dependency_probes_bound_writer_work_without_missing_large_inboxes() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let measure = |connection: &mut Connection, payload: &CoreModuleEventPayload| {
+            let ticks = Arc::new(AtomicUsize::new(0));
+            let observed = Arc::clone(&ticks);
+            connection
+                .progress_handler(
+                    1,
+                    Some(move || {
+                        observed.fetch_add(1, Ordering::Relaxed);
+                        false
+                    }),
+                )
+                .unwrap();
+            let changed = touches_inbox_messages(connection, "library:test", payload);
+            connection
+                .progress_handler(0, None::<fn() -> bool>)
+                .unwrap();
+            (changed.unwrap(), ticks.load(Ordering::Relaxed))
+        };
+        let mut small_inbox = Vec::new();
+        let mut large_inbox = Vec::new();
+        let mut changed_pages = Vec::new();
+        for count in [1_000, 10_000] {
+            let mut connection = compiler_store();
+            connection
+                .execute(
+                    "WITH RECURSIVE ids(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ids WHERE n<?1)
+                     INSERT INTO pages SELECT printf('page:pressure-%06d', n),
+                       printf('document:pressure-%06d', n), 'data_source', 'source:other' FROM ids",
+                    [count],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO inbox_entries SELECT block_id, 'library:other'
+                     FROM pages WHERE block_id LIKE 'page:pressure-%'",
+                    [],
+                )
+                .unwrap();
+            let (changed, steps) =
+                measure(&mut connection, &database_source_event("source:changed"));
+            assert!(
+                !changed,
+                "unrelated Sources and other Libraries cannot invalidate this Inbox"
+            );
+            small_inbox.push(steps);
+
+            connection
+                .execute(
+                    "UPDATE inbox_entries SET library_id='library:test' WHERE library_id='library:other'",
+                    [],
+                )
+                .unwrap();
+            let (changed, steps) =
+                measure(&mut connection, &database_source_event("source:changed"));
+            assert!(
+                changed,
+                "a full dependency budget must conservatively refresh the Inbox"
+            );
+            large_inbox.push(steps);
+            let (changed, steps) = measure(&mut connection, &library_page_event("page:note"));
+            assert!(!changed, "an unrelated Page cannot invalidate the Inbox");
+            changed_pages.push(steps);
+        }
+        eprintln!(
+            "Inbox dependency VM steps: small={small_inbox:?}, large={large_inbox:?}, pages={changed_pages:?}"
+        );
+        for observations in [small_inbox, large_inbox, changed_pages] {
+            assert!(
+                observations
+                    .iter()
+                    .all(|steps| *steps > 0 && *steps <= observations[0] * 2)
+            );
+        }
     }
 
     #[test]
