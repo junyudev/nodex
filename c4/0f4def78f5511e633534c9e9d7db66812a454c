@@ -1,0 +1,45 @@
+packages/landing/src/replica/icons/conversation.tsx
+  s_d6504674c8e7fb::t_e3a6859aa8ef63 1-17
+packages/landing/src/replica/icons/base.ts
+  s_d6504674c8e7fb::t_e3a6859aa8ef63 1-11
+packages/landing/src/replica/icons/shell.tsx
+  s_d6504674c8e7fb::t_e3a6859aa8ef63 1-349
+packages/landing/src/demos/AgentsDemo.tsx
+  s_d6504674c8e7fb::t_a2420861b3b327 3,113,115-117,121-128,130,223
+  s_d6504674c8e7fb::t_ea14eeb0b4c55b 4,118-120
+packages/landing/src/replica/Window.tsx
+  s_d6504674c8e7fb::t_ea14eeb0b4c55b 80-82,124-127
+  s_d6504674c8e7fb::t_a2420861b3b327 31,35,40-43,84-86,97-103,130
+packages/landing/src/replica/icons/brand.tsx
+  s_d6504674c8e7fb::t_e3a6859aa8ef63 1-33
+packages/landing/src/demos/PagesDemo.tsx
+  s_d6504674c8e7fb::t_3107d2b1a8612d 4
+  s_d6504674c8e7fb::t_aa52df70e9677f 16,75-80,135-136,141-142
+  s_d6504674c8e7fb::t_ea14eeb0b4c55b 137-140
+packages/landing/src/demos/HeroDemo.tsx
+  s_d6504674c8e7fb::t_fd5499254a0421 26
+  s_d6504674c8e7fb::t_ea14eeb0b4c55b 200-202
+  s_d6504674c8e7fb::t_aa52df70e9677f 4
+  s_d6504674c8e7fb::t_0409c5f886d676 197
+  s_d6504674c8e7fb::t_3107d2b1a8612d 14
+packages/landing/src/replica/icons/index.ts
+  s_d6504674c8e7fb::t_e3a6859aa8ef63 1-3
+packages/landing/src/replica/Sidebar.tsx
+  s_d6504674c8e7fb::t_0409c5f886d676 1-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c40f4def78f5511e633534c9e9d7db66812a454c",
+  "prompts": {},
+  "sessions": {
+    "s_d6504674c8e7fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6d7ddc6-82d7-41de-8b95-c0408aeb2d07",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
