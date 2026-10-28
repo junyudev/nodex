@@ -384,22 +384,32 @@ pub(super) fn is_runtime_bound(
         .map_err(Into::into)
 }
 
+pub(super) struct BindingWindowQuery<'a> {
+    pub(super) runtime_id: &'a str,
+    pub(super) project_id: Option<&'a str>,
+    pub(super) temporary_only: bool,
+    pub(super) window: &'a CollectionWindowRequest,
+}
+
 pub(super) fn read_binding_window(
     connection: &Connection,
     context: &BoundModuleContext,
     library_id: &str,
     commit_head: i64,
-    runtime_id: &str,
-    project_id: Option<&str>,
-    temporary_only: bool,
-    request: &CollectionWindowRequest,
+    query: BindingWindowQuery<'_>,
 ) -> Result<CollectionWindow<ProjectWorkspaceAgentRuntimeSessionBinding>, StoreError> {
+    let BindingWindowQuery {
+        runtime_id,
+        project_id,
+        temporary_only,
+        window,
+    } = query;
     require_host(context)?;
     validate_id("runtime_id", runtime_id)?;
     if let Some(project_id) = project_id {
         validate_id("project_id", project_id)?;
     }
-    let normalized = normalize_request(request)?;
+    let normalized = normalize_request(window)?;
     let fingerprint = cursor::query_fingerprint(&(
         "agent_runtime_session_binding_v2",
         runtime_id,
