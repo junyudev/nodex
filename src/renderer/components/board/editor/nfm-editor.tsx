@@ -148,6 +148,7 @@ import { AgentConfigRuntimeProvider, type AgentConfigRuntimeValue } from "./agen
 import { resolveDefaultAgentConfigIntelligence } from "./agent-config-chip";
 import { prepareOwnedBlockDocument } from "@/lib/api";
 import { readSessionMentionSummary } from "@/lib/session-mentions";
+import { readPlainTextBlocks } from "../../../../shared/markdown";
 import { writeMarkdown, readMarkdown } from "../../../../shared/nodex-markdown";
 import type { CodexThreadSummary } from "@/lib/types";
 
@@ -950,7 +951,7 @@ function NfmEditorInstance({
           ? readClipboardMarkdown(pasteResourceDialog.markdownPayload)
           : pasteResourceDialog.htmlPayload
             ? editor.tryParseHTMLToBlocks(pasteResourceDialog.htmlPayload)
-            : readClipboardMarkdown(pasteResourceDialog.textPayload);
+            : markdownBlocksForEditor(readPlainTextBlocks(pasteResourceDialog.textPayload));
       const handled =
         structuralEditingController.current?.handleBlockPaste(
           blocks as Parameters<

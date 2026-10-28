@@ -9,12 +9,12 @@ import {
   derivePastedTextAttachmentName,
   insertBlocksAtPasteTarget,
   insertAttachmentsAtPasteTarget,
-  looksLikeMarkdown,
   normalizeClipboardFileDraftItems,
   shouldPromptForOversizedText,
 } from "./paste-resource";
 import { DEFAULT_PASTE_RESOURCE_SETTINGS } from "../../../lib/paste-resource-settings";
 import { attachNodexClipboardFragment } from "../../../../shared/clipboard-paste";
+import { writeMarkdown, type MarkdownBlock } from "../../../../shared/nodex-markdown";
 
 describe("paste resource helpers", () => {
   test("reads screenshot clipboard images from DataTransfer items when files is empty", () => {
@@ -70,11 +70,6 @@ describe("paste resource helpers", () => {
       shouldPromptForOversizedText("x".repeat(10), 749_995, DEFAULT_PASTE_RESOURCE_SETTINGS),
     ).toBe(true);
     expect(shouldPromptForOversizedText("   ", 900_000)).toBe(false);
-  });
-
-  test("detects Markdown tables with a linear delimiter scan", () => {
-    expect(looksLikeMarkdown("| Name | Status |\n| --- | :---: |\n| Nodex | Ready |")).toBe(true);
-    expect(looksLikeMarkdown(`|${"a|".repeat(100_000)}not-a-closed-row`)).toBe(false);
   });
 
   test("normalizeClipboardFileDraftItems marks pasted blobs as files without links", () => {
@@ -324,20 +319,28 @@ describe("paste resource helpers", () => {
     expect(calls).toEqual([{ blocks: [image], referenceBlockId: "block-1", placement: "after" }]);
   });
 
-  test("continueInlinePaste replays html, markdown, and plain text using paste semantics", () => {
-    const calls: string[] = [];
+  test("continueInlinePaste replays a held-back paste by the rules the paste follows", () => {
+    const read: string[] = [];
+    const pasted: { html: string; raw: boolean }[] = [];
     const editor = {
-      pasteHTML: (html: string, raw?: boolean) => {
-        calls.push(raw ? `blocknote:${html}` : `html:${html}`);
+      blocksToFullHTML: (blocks: unknown) => {
+        read.push(writeMarkdown(blocks as MarkdownBlock[]));
+        return "";
       },
-      pasteMarkdown: (markdown: string) => {
-        calls.push(`md:${markdown}`);
-      },
-      pasteText: (text: string) => {
-        calls.push(`text:${text}`);
-        return true;
+      pasteHTML: (html: string, raw = false) => {
+        pasted.push({ html, raw });
       },
     };
+
+    expect(continueInlinePaste(editor, { textPayload: "one\ntwo" })).toBe(true);
+    expect(read).toEqual(["one\n\ntwo"]);
+    expect(continueInlinePaste(editor, { textPayload: "# Plan\n- one" })).toBe(true);
+    expect(read.at(-1)).toBe("# Plan\n\n- one");
+    expect(continueInlinePaste(editor, { textPayload: "Plan", markdownPayload: "**Plan**" })).toBe(
+      true,
+    );
+    expect(read.at(-1)).toBe("**Plan**");
+    expect(pasted.every((paste) => paste.raw)).toBe(true);
 
     expect(
       continueInlinePaste(editor, {
@@ -345,15 +348,8 @@ describe("paste resource helpers", () => {
         htmlPayload: "<p><strong>bold</strong></p>",
       }),
     ).toBe(true);
-    expect(calls[0]).toBe("md:**bold**");
-
-    expect(
-      continueInlinePaste(editor, {
-        textPayload: "plain",
-        htmlPayload: "<p>plain</p>",
-      }),
-    ).toBe(true);
-    expect(calls[1]).toBe("html:<p>plain</p>");
+    expect(pasted.at(-1)).toEqual({ html: "<p><strong>bold</strong></p>", raw: false });
+    expect(read).toHaveLength(3);
 
     expect(
       continueInlinePaste(editor, {
@@ -361,7 +357,7 @@ describe("paste resource helpers", () => {
         blocknoteHtmlPayload: "<div data-blocknote>plain</div>",
       }),
     ).toBe(true);
-    expect(calls[2]).toBe("blocknote:<div data-blocknote>plain</div>");
+    expect(pasted.at(-1)).toEqual({ html: "<div data-blocknote>plain</div>", raw: true });
 
     const internal = '<div data-pm-slice="0 0 -1 []"><p>Rich fragment</p></div>';
     expect(
@@ -370,6 +366,7 @@ describe("paste resource helpers", () => {
         htmlPayload: attachNodexClipboardFragment("<p>Portable presentation</p>", internal),
       }),
     ).toBe(true);
-    expect(calls[3]).toBe(`blocknote:${internal}`);
+    expect(pasted.at(-1)).toEqual({ html: internal, raw: true });
+    expect(read).toHaveLength(3);
   });
 });

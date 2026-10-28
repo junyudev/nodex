@@ -1,6 +1,8 @@
 import type { PasteResourceSettings } from "../../../lib/paste-resource-settings";
 import { DEFAULT_PASTE_RESOURCE_SETTINGS } from "../../../lib/paste-resource-settings";
 import { readNodexClipboardFragment } from "../../../../shared/clipboard-paste";
+import { readPageTextPaste } from "../../../../shared/markdown";
+import { pasteNfmBlocks, type NfmBlocksPasteEditor } from "./nfm-paste-blocks";
 import { captureNfmPasteTarget, type NfmPasteTarget } from "./nfm-paste-target";
 
 export interface PasteResourceTarget {
@@ -272,91 +274,34 @@ export function shouldPromptForOversizedText(
   );
 }
 
-function hasMarkdownTableRow(src: string): boolean {
-  return src.split(/\r?\n/u).some((line) => {
-    const trimmed = line.trim();
-    return trimmed.length > 2 && trimmed.startsWith("|") && trimmed.endsWith("|");
-  });
-}
-
-export function looksLikeMarkdown(src: string): boolean {
-  const h1 = /(^|\n) {0,3}#{1,6} {1,8}[^\n]{1,64}\r?\n\r?\n\s{0,32}\S/;
-  const bold = /(_|__|\*|\*\*|~~|==|\+\+)(?!\s)(?:[^\s](?:.{0,62}[^\s])?|\S)(?=\1)/;
-  const link = /\[[^\]]{1,128}\]\(https?:\/\/\S{1,999}\)/;
-  const code = /(?:\s|^)`(?!\s)(?:[^\s`](?:[^`]{0,46}[^\s`])?|[^\s`])`([^\w]|$)/;
-  const ul = /(?:^|\n)\s{0,5}-\s{1}[^\n]+\n\s{0,15}-\s/;
-  const ol = /(?:^|\n)\s{0,5}\d+\.\s{1}[^\n]+\n\s{0,15}\d+\.\s/;
-  const hr = /\n{2} {0,3}-{2,48}\n{2}/;
-  const fences =
-    /(?:\n|^)(```|~~~|\$\$)(?!`|~)[^\s]{0,64} {0,64}[^\n]{0,64}\n[\s\S]{0,9999}?\s*\1 {0,64}(?:\n+|$)/;
-  const title = /(?:\n|^)(?!\s)\w[^\n]{0,64}\r?\n(-|=)\1{0,64}\n\n\s{0,64}(\w|$)/;
-  const blockquote = /(?:^|(\r?\n\r?\n))( {0,3}>[^\n]{1,333}\n){1,999}($|(\r?\n))/;
-  const tableRow = hasMarkdownTableRow(src);
-
-  return (
-    h1.test(src) ||
-    bold.test(src) ||
-    link.test(src) ||
-    code.test(src) ||
-    ul.test(src) ||
-    ol.test(src) ||
-    hr.test(src) ||
-    fences.test(src) ||
-    title.test(src) ||
-    blockquote.test(src) ||
-    tableRow
-  );
-}
-
-interface ContinueInlinePasteEditor {
-  pasteHTML: (html: string, raw?: boolean) => void;
-  pasteMarkdown: (markdown: string) => void;
-  pasteText: (text: string) => boolean | undefined;
-}
-
+/** Replays a paste the oversized-text prompt held back, reading its copy as the paste would. */
 export function continueInlinePaste(
-  editor: ContinueInlinePasteEditor,
+  editor: NfmBlocksPasteEditor,
   dialogState: Pick<
     PasteResourceDialogState,
     "textPayload" | "htmlPayload" | "markdownPayload" | "blocknoteHtmlPayload"
   >,
 ): boolean {
-  const plainText = dialogState.textPayload ?? "";
   const blocknoteHtml =
     dialogState.blocknoteHtmlPayload?.trim() ||
     readNodexClipboardFragment(dialogState.htmlPayload ?? "") ||
     "";
-  const markdown = dialogState.markdownPayload?.trim() ?? "";
-  const html = dialogState.htmlPayload?.trim() ?? "";
-
   if (blocknoteHtml.length > 0) {
     editor.pasteHTML(blocknoteHtml, true);
     return true;
   }
-
-  if (markdown.length > 0) {
-    editor.pasteMarkdown(markdown);
+  const html = dialogState.htmlPayload?.trim() ?? "";
+  const copy: Record<string, string> = {
+    "text/plain": dialogState.textPayload ?? "",
+    "text/markdown": dialogState.markdownPayload?.trim() ?? "",
+    "text/html": html,
+  };
+  const types = Object.keys(copy).filter((type) => copy[type]);
+  if (pasteNfmBlocks(editor, readPageTextPaste({ types, getData: (type) => copy[type] ?? "" })))
     return true;
-  }
-
-  if (html.length > 0) {
-    if (plainText && looksLikeMarkdown(plainText)) {
-      editor.pasteMarkdown(plainText);
-      return true;
-    }
-    editor.pasteHTML(html);
-    return true;
-  }
-
-  if (plainText.length > 0) {
-    if (looksLikeMarkdown(plainText)) {
-      editor.pasteMarkdown(plainText);
-      return true;
-    }
-    return editor.pasteText(plainText) ?? false;
-  }
-
-  return false;
+  if (html.length === 0) return false;
+  editor.pasteHTML(html);
+  return true;
 }
 
 export function normalizeClipboardFileDraftItems(files: File[]): PasteResourceDraftItem[] {

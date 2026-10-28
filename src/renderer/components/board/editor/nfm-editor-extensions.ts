@@ -9,7 +9,7 @@ import {
   handleNotionPasteFromClipboard,
 } from "./notion-paste";
 
-import { readMarkdown } from "../../../../shared/nodex-markdown";
+import { readPageTextPaste } from "../../../../shared/markdown";
 import { getNfmSearchState, nfmSearchExtension } from "./search-extension";
 import { selectCurrentBlockContent } from "./select-block-shortcut";
 import { selectedBlockDecorationsExtension } from "./selected-block-decorations";
@@ -26,6 +26,7 @@ import {
 import { type CopiedSelectionPayload } from "./special-block-copy";
 import { canvasCreatePendingExtension } from "./canvas-create-pending-extension";
 import { nfmClipboardPastePendingExtension } from "./nfm-clipboard-paste-pending-extension";
+import { pasteNfmBlocks } from "./nfm-paste-blocks";
 import { nfmPasteTargetExtension } from "./nfm-paste-target";
 import { mentionChipKeyboardNavigationExtension } from "./mention-chip-keyboard-navigation";
 import { nfmTaskShorthandPreviewExtension } from "./nfm-task-shorthand-preview-extension";
@@ -628,44 +629,29 @@ const readPortableClipboardBlocks = (
   if (notionBlocks?.length) {
     return notionBlocks as readonly NfmStructuralReplacementBlockLike[];
   }
-  const types = Array.from(clipboardData.types);
   if (internalHtml) {
     return editor.tryParseHTMLToBlocks(
       sanitizeUntrustedTypedOwnerHtml(internalHtml),
     ) as readonly NfmStructuralReplacementBlockLike[];
   }
-  if (types.includes("text/markdown")) {
-    return readClipboardMarkdown(
-      clipboardData.getData("text/markdown"),
-    ) as readonly NfmStructuralReplacementBlockLike[];
+  const textBlocks = readPageTextPaste(clipboardData);
+  if (textBlocks.length > 0) {
+    return markdownBlocksForEditor(textBlocks) as readonly NfmStructuralReplacementBlockLike[];
   }
-  if (types.includes("text/html")) {
-    return editor.tryParseHTMLToBlocks(
-      sanitizeUntrustedTypedOwnerHtml(clipboardData.getData("text/html")),
-    ) as readonly NfmStructuralReplacementBlockLike[];
-  }
-  if (!types.includes("text/plain")) return null;
-  return readClipboardMarkdown(
-    clipboardData.getData("text/plain"),
+  if (!clipboardData.types.includes("text/html")) return null;
+  return editor.tryParseHTMLToBlocks(
+    sanitizeUntrustedTypedOwnerHtml(clipboardData.getData("text/html")),
   ) as readonly NfmStructuralReplacementBlockLike[];
 };
 
-/** Pastes Markdown as the Blocks the shared Markdown rules read, where the paste goes. */
-function pasteMarkdownAsBlocks(editor: BlockNoteEditor, markdown: string): boolean {
-  const blocks = readClipboardMarkdown(markdown);
-  if (blocks.length === 0) return false;
-  editor.pasteHTML(
-    editor.blocksToFullHTML(blocks as Parameters<typeof editor.blocksToFullHTML>[0]),
-    true,
-  );
-  return true;
-}
-
 export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): NfmPasteHandler {
   return ({ event, editor, defaultPasteHandler }) => {
+    // BlockNote's own Markdown reading stays off: Nodex Markdown reads every text.
+    const pasteNatively = () =>
+      defaultPasteHandler({ prioritizeMarkdownOverHTML: false, plainTextAsMarkdown: false });
     const selection = editor.prosemirrorView?.state.selection;
     if (selection?.$from.parent.type.spec.code && selection.$to.parent.type.spec.code) {
-      return defaultPasteHandler();
+      return pasteNatively();
     }
     const clipboardData = event.clipboardData;
     const types = Array.from(clipboardData?.types ?? []);
@@ -744,44 +730,10 @@ export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): Nfm
       return true;
     }
 
-    // Markdown a source provides, and a table written as Markdown, read by the shared rules.
-    if (types.includes("text/markdown") && !types.includes("vscode-editor-data") && !internalHtml) {
-      const markdown = clipboardData?.getData("text/markdown") ?? "";
-      if (markdown && pasteMarkdownAsBlocks(editor, markdown)) return true;
-    }
-    const plain = clipboardData?.getData("text/plain") ?? "";
-    if (clipboardTextLooksLikeGfmTable(plain) && pasteMarkdownAsBlocks(editor, plain)) return true;
-
-    return defaultPasteHandler();
+    // Text reads by the shared Page paste rules; BlockNote pastes code, files and rich text.
+    const textBlocks = clipboardData ? readPageTextPaste(clipboardData) : [];
+    return pasteNfmBlocks(editor, textBlocks) || pasteNatively();
   };
 }
 
 export { getNfmSearchState };
-
-function clipboardTextLooksLikeGfmTable(text: string): boolean {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (lines.length < 2) return false;
-
-  for (let index = 0; index < lines.length - 1; index += 1) {
-    const headerCells = splitClipboardTableRow(lines[index]!);
-    const delimiterCells = splitClipboardTableRow(lines[index + 1]!);
-    if (headerCells.length < 2 || headerCells.length !== delimiterCells.length) {
-      continue;
-    }
-    // GFM takes one hyphen or more in a delimiter cell.
-    if (delimiterCells.every((cell) => /^:?-+:?$/.test(cell.trim()))) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-const splitClipboardTableRow = (line: string): string[] =>
-  line.replace(/^\s*\||\|\s*$/gu, "").split(/(?<!\\)\|/u);
-
-const readClipboardMarkdown = (text: string) =>
-  markdownBlocksForEditor(readMarkdown(text, "boundary"));

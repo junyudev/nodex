@@ -5,7 +5,7 @@ import {
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
 } from "../clipboard-paste";
 import type { MarkdownBlock, MarkdownInline } from "../nodex-markdown";
-import { writePortableMarkdown } from "../nodex-markdown";
+import { readMarkdown, writePortableMarkdown } from "../nodex-markdown";
 import { htmlToBlocks } from "./html";
 
 /** The parts of a clipboard payload a paste reads. */
@@ -30,6 +30,72 @@ export function readMarkdownPaste(clipboard: ClipboardPayload): string | null {
   const converted = writePortableMarkdown(withoutImages(htmlToBlocks(html))).markdown;
   if (!converted.trim()) return plain || null;
   return !plain || keepsWords(plain, converted) ? converted : plain;
+}
+
+/**
+ * The Blocks the text of a copy pasted into a Page becomes; none when the copy's rich form
+ * decides. Code from an editor and Nodex's own copies keep their rich form. Markdown a source
+ * provides reads as Markdown, and plain text alone reads by `readPlainTextBlocks`. Beside rich
+ * text, plain text counts only when it writes a table, which the rich form shows as text.
+ */
+export function readPageTextPaste(clipboard: ClipboardPayload): MarkdownBlock[] {
+  const { types } = clipboard;
+  if (types.includes("vscode-editor-data") || types.includes("blocknote/html")) return [];
+  const markdown = types.includes("text/markdown") ? clipboard.getData("text/markdown") : "";
+  if (markdown) return readMarkdown(markdown, "boundary");
+  const plain = types.includes("text/plain") ? clipboard.getData("text/plain") : "";
+  if (!types.includes("text/html")) return readPlainTextBlocks(plain);
+  const blocks = readMarkdown(plain, "boundary");
+  return blocks.some((block) => block.type === "table") ? blocks : [];
+}
+
+/**
+ * The Blocks plain text pasted into a Page becomes. Text written in Markdown reads by the Markdown
+ * rules: a newline breaks a line and a blank line separates Blocks. Other text means its lines:
+ * each line becomes a paragraph with exactly its text, and blank lines only separate them.
+ */
+export function readPlainTextBlocks(text: string): MarkdownBlock[] {
+  const markdown = readMarkdown(text, "boundary");
+  if (markdown.some((block) => writesMarkdown(block, text))) return markdown;
+  return text
+    .split(/\r\n?|\n/u)
+    .filter((line) => line.trim())
+    .map((line) => ({ type: "paragraph", content: [{ type: "text", text: line }] }));
+}
+
+/** A fence opens written code. An indented line alone also reads as code, but plain text indents. */
+const FENCE = /^ {0,3}(?:`{3,}|~{3,})/mu;
+
+/**
+ * Whether a Block read from text holds what only Markdown writes. Plain text has lines,
+ * indentation and web addresses of its own, so those alone are not Markdown.
+ */
+function writesMarkdown(block: MarkdownBlock, text: string): boolean {
+  if (block.type === "codeBlock") return FENCE.test(text);
+  return (
+    block.type !== "paragraph" ||
+    Boolean(block.children?.length) ||
+    Object.keys(block.props ?? {}).length > 0 ||
+    inlineWritesMarkdown(block.content)
+  );
+}
+
+function inlineWritesMarkdown(content: unknown): boolean {
+  return (
+    Array.isArray(content) &&
+    (content as MarkdownInline[]).some((item) =>
+      item.type === "text" ? isStyled(item) : item.type !== "link" || !isAddress(item),
+    )
+  );
+}
+
+const isStyled = (item: MarkdownInline) => Object.keys(item.styles ?? {}).length > 0;
+
+/** A web or mail address in text reads as a link to itself. */
+function isAddress(link: MarkdownInline): boolean {
+  const [only, ...rest] = Array.isArray(link.content) ? link.content : [];
+  if (!only || rest.length > 0 || only.type !== "text" || isStyled(only)) return false;
+  return [only.text, `http://${only.text}`, `mailto:${only.text}`].includes(link.href);
 }
 
 function withoutInlineImages(content: unknown): unknown {

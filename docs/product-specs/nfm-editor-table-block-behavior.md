@@ -22,7 +22,7 @@ Page bodies support simple editable tables in Card Stage, inline toggle-list edi
 - The block side menu shows live `Header row` and `Header column` actions for a single selected table block. Development builds can additionally show disabled placeholder rows such as `Fit table width`, row/column color placeholders, and `Create cards from rows`.
 - Table row/column/cell handle menus use the same compact visual language as the Page editor block side menu: 265px main surface, 226px color flyout, 28px action rows, shared side-menu icons for `Color`, `Duplicate`, and `Delete`, right-side shortcuts/checkmarks, tokenized hover/background/shadow, and disabled mock rows only for actions whose product model is not implemented yet.
 - Row and column handle `Duplicate` creates a copied row or column immediately after the selected row or column, preserving inline rich text, cell color props, text alignment, and column width where applicable. `Clear contents` empties selected row, column, or cell content while preserving cell styling and table dimensions. Cell-level duplicate remains absent because the reference simple-table behavior does not duplicate single-cell selections.
-- Table paste priority is Notion block MIME, then BlockNote/default HTML handling, then GFM plain-text table handling. Notion `table` plus `table_row` records paste as table Blocks; database/collection tables are not converted.
+- Table paste priority is Notion block MIME, then a GFM table written in the copied plain text, then BlockNote/default HTML handling. Notion `table` plus `table_row` records paste as table Blocks; database/collection tables are not converted.
 
 ## Layout and Visual Contract
 
@@ -34,4 +34,4 @@ Page bodies support simple editable tables in Card Stage, inline toggle-list edi
 
 - Whole-block copy and Page prompt serialization include table cell text in row-major order.
 - Portable clipboard text writes tables as GFM pipe tables; Page prompts use exact Nodex Markdown with table directives when required.
-- GFM pasted from plain text is parsed as Markdown only when the clipboard text contains a valid GFM table delimiter row, so ordinary pasted text remains plain text.
+- A GFM table in copied plain text becomes a table Block even beside rich text. Plain text alone follows the Page's [plain-text paste rules](../references/markdown-interchange.md#clipboard-sources).

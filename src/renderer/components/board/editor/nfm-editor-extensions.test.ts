@@ -216,10 +216,12 @@ describe("markdown editor extensions", () => {
       "**Ship** it\n- [ ] tag",
     ],
     [
-      "a table written as Markdown",
-      { "text/plain": "| a | b |\n| - | - |\n| 1 | 2 |" },
+      "a table written as Markdown beside rich text",
+      { "text/plain": "| a | b |\n| - | - |\n| 1 | 2 |", "text/html": "<pre>table</pre>" },
       "| a | b |\n| - | - |\n| 1 | 2 |",
     ],
+    ["plain text written in Markdown", { "text/plain": "# Plan\n- one" }, "# Plan\n- one"],
+    ["plain text, a Block per line", { "text/plain": "one\ntwo" }, "one\n\ntwo"],
   ])(
     "pastes %s as the Blocks Nodex reads it as",
     (_source, data: Record<string, string>, markdown) => {
@@ -243,28 +245,33 @@ describe("markdown editor extensions", () => {
       expect(writeMarkdown(blocksToFullHTML.mock.calls[0]?.[0] as MarkdownBlock[])).toBe(
         writeMarkdown(readMarkdown(markdown)),
       );
-      expect(pasteHTML).toHaveBeenCalledWith("<blocks />", true);
+      expect(pasteHTML).toHaveBeenCalledOnce();
+      expect(pasteHTML.mock.calls[0]?.[1]).toBe(true);
       expect(defaultPasteHandler).not.toHaveBeenCalled();
     },
   );
 
-  test("leaves ordinary clipboard content on BlockNote's generic path", () => {
+  test("leaves rich text to BlockNote without its own Markdown reading", () => {
     const defaultPasteHandler = vi.fn(() => true);
     const handler = createNfmPasteHandler({ onStructuralPaste: () => true });
+    const data: Record<string, string> = { "text/html": "<p>- a</p>", "text/plain": "- a\n- b" };
 
     expect(
       handler({
         event: {
           clipboardData: {
-            types: ["text/plain"],
-            getData: (type: string) => (type === "text/plain" ? "ordinary" : ""),
+            types: Object.keys(data),
+            getData: (type: string) => data[type] ?? "",
           },
         } as unknown as ClipboardEvent,
         editor: {} as never,
         defaultPasteHandler,
       }),
     ).toBe(true);
-    expect(defaultPasteHandler).toHaveBeenCalledOnce();
+    expect(defaultPasteHandler).toHaveBeenCalledWith({
+      prioritizeMarkdownOverHTML: false,
+      plainTextAsMarkdown: false,
+    });
   });
 
   test("materializes ordinary clipboard blocks before replacing a typed-owner selection", () => {

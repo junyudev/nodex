@@ -33,7 +33,6 @@ type NfmEditorCommand = "cut" | "copy" | "paste";
 interface NfmEditorCommandEditor {
   isEditable?: boolean;
   pasteHTML?: (html: string, raw?: boolean) => void;
-  pasteMarkdown?: (markdown: string) => void;
   pasteText?: (text: string) => boolean | undefined;
   prosemirrorView?: {
     dom?: HTMLElement;
@@ -232,11 +231,6 @@ async function runPasteCommand(
 
     if (payload?.html && editor.pasteHTML) {
       editor.pasteHTML(payload.html);
-      return true;
-    }
-
-    if (payload?.markdown && editor.pasteMarkdown) {
-      editor.pasteMarkdown(payload.markdown);
       return true;
     }
 

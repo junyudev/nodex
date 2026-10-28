@@ -11,11 +11,13 @@ HTML conversion and portable output. Written-message behavior belongs to
 
 ## Reading Markdown
 
-Markdown and plain text pasted into a Page use the boundary reader. They follow
-GitHub comment line breaks: one newline is a line break, while a blank line
-separates Blocks. A Markdown file uses document reading, which folds soft line
-breaks into spaces. Exact writes refuse malformed Nodex forms with their line
-and reason. The language reference and Rust round-trip fixture own the grammar.
+Markdown pasted into a Page uses the boundary reader. It follows GitHub comment
+line breaks: one newline is a line break, while a blank line separates Blocks.
+Plain text that is not Markdown keeps its lines instead, as
+[Clipboard sources](#clipboard-sources) describes. A Markdown file uses document
+reading, which folds soft line breaks into spaces. Exact writes refuse malformed
+Nodex forms with their line and reason. The language reference and Rust
+round-trip fixture own the grammar.
 
 The app initializes WebAssembly before synchronous rendering, validation and
 clipboard handlers can read text. Clipboard events remain synchronous after
@@ -28,9 +30,19 @@ standard HTML and text are portable presentations, not structural authority.
 The Page editor keeps its own internal formats alongside portable Markdown.
 
 A Page paste chooses structural claims and internal BlockNote HTML first, then
-Notion's structured clipboard, HTML, explicit Markdown and plain text according
-to the editor's source precedence. Notion nodes become BlockNote JSON directly.
-Markdown and plain text use the same boundary reader as messages.
+Notion's structured clipboard; Notion nodes become BlockNote JSON directly. Code
+copied from an editor becomes a code Block. Explicit `text/markdown` reads as
+Markdown. Other rich text pastes as its HTML, unless its plain text writes a GFM
+table, which the rich form shows only as text.
+
+Plain text with nothing richer beside it becomes Blocks by what it is. When
+reading it as Markdown finds Markdown, such as a heading, list, quote, fenced
+code, table, rule, formatting or a written link, it becomes those Blocks. Line
+breaks, indentation and bare web or mail addresses alone are plain text's own.
+Any other plain text becomes one paragraph per line with exactly its text, and
+blank lines only separate them. Continuing an oversized paste inline, and
+pasting over a typed-owner selection, follow the same rules. Nodex Markdown reads
+every text a Page paste takes; the editor's own Markdown detection stays off.
 
 A Composer edits Markdown source. Explicit `text/markdown` stays as written.
 Nodex's own copies and code copied from an editor retain their plain text.

@@ -5,12 +5,69 @@ import {
   withElectronScenario,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { writeTestClipboardRichText } from "./clipboard";
-import { invokeIpc } from "./support/editor-scenario";
+import {
+  createConvergenceBoardPage,
+  createConvergenceProject,
+  invokeIpc,
+} from "./support/editor-scenario";
 import { createAgentSmokeDraft } from "./support/agent-smoke-harness";
+import { openBoardPageFromCard } from "./support/open-board-page";
 
 const primaryShortcut = (key: string): string =>
   `${process.platform === "darwin" ? "Meta" : "Control"}+${key}`;
+
+test("the Page editor pastes plain text as line Blocks and Markdown as structured Blocks", async () => {
+  test.setTimeout(120_000);
+  await withElectronScenario(
+    { label: "markdown-paste-page", scenarioId: null, prepareAgentRuntime: false },
+    async ({ application, page, profile }) => {
+      const project = await createConvergenceProject(
+        page,
+        "Page paste",
+        profile.initialProjectsDirectory,
+      );
+      const fixture = await createConvergenceBoardPage(page, project, "Paste into Page", "");
+      await page.getByRole("button", { name: "Open Page paste", exact: true }).click();
+      await openProjectBoard(page);
+      await openBoardPageFromCard({
+        page,
+        card: page.locator(`[data-board-uuid-v7="${fixture.pageId}"]`),
+        tabName: "Paste into Page",
+      });
+      const editor = page.locator(
+        `[data-page-stage-page-id="${fixture.pageId}"]:visible .nfm-editor:visible`,
+      );
+      const paragraphs = editor.locator('.bn-block-content[data-content-type="paragraph"]');
+      await expect(paragraphs).toHaveText([""]);
+      await paragraphs.locator(".bn-inline-content").click();
+
+      const pastePlainText = async (text: string) => {
+        const types = await application.evaluate(async ({ clipboard }, value) => {
+          await clipboard.writeText(value);
+          return (await clipboard.read()).flatMap((item) => item.types);
+        }, text);
+        expect(types.filter((type) => type.startsWith("text/"))).toEqual(["text/plain"]);
+        await page.keyboard.press(primaryShortcut("v"));
+      };
+
+      await pastePlainText("First line\nsecond line\n\nthird line");
+      await expect(paragraphs).toHaveText(["First line", "second line", "third line"]);
+
+      // The caret stays after the pasted text.
+      await page.keyboard.press("Enter");
+      await expect(paragraphs).toHaveText(["First line", "second line", "third line", ""]);
+      await pastePlainText("# Plan\n\n- one\n- two");
+      await expect(editor.locator('.bn-block-content[data-content-type="heading"]')).toHaveText([
+        "Plan",
+      ]);
+      await expect(
+        editor.locator('.bn-block-content[data-content-type="bulletListItem"]'),
+      ).toHaveText(["one", "two"]);
+    },
+  );
+});
 
 test("the chat Composer pastes rich text with every line it shows", async () => {
   test.setTimeout(120_000);
