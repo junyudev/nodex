@@ -956,6 +956,12 @@ describe("workbench session shell / layout-panel-actions", () => {
       (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
         .__lastConnectedThreadStageProps?.summaryPanelMounted,
     ).toBe(false);
+    // One control owns the summary, so each press alternates opening and closing it.
+    expect(within(rightSlot).getAllByRole("button", { name: "Toggle summary" })).toHaveLength(1);
+    await pointerActivate(contentSummary);
+    await waitFor(() => expect(contentSummary.getAttribute("aria-pressed")).toBe("true"));
+    await pointerActivate(contentSummary);
+    await waitFor(() => expect(contentSummary.getAttribute("aria-pressed")).toBe("false"));
 
     await pointerActivate(await screen.findByRole("tab", { name: "Full summary" }));
     await settleAsyncRender();

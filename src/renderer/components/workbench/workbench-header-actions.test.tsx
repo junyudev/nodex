@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { useMotionValue } from "motion/react";
 import {
@@ -171,6 +171,39 @@ describe("workbench header actions", () => {
     expect(textContent(rail)).toBe("FirstSecondThird");
     expect(measuredWidths[measuredWidths.length - 1]).toBe(70);
     expect(measuredRailWidths[measuredRailWidths.length - 1]).toBe(62);
+  });
+
+  test("mounts each side-slot action once, so a stateful action keeps one state", async () => {
+    let mounts = 0;
+    function CountedAction() {
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      return <button type="button">Counted</button>;
+    }
+    const view = render(
+      <HeaderActionProvider
+        actions={
+          <HeaderAction actionId="counted" slotPosition="right" align="end" order={10}>
+            <CountedAction />
+          </HeaderAction>
+        }
+      >
+        <HeaderShellSlot
+          side="right"
+          slotWidth={80}
+          minWidth={0}
+          fallbackWidth={0}
+          fallbackRailWidth={0}
+          onMeasuredWidthChange={() => undefined}
+          onMeasuredRailWidthChange={() => undefined}
+        />
+      </HeaderActionProvider>,
+    );
+    await settleAsyncRender();
+
+    expect(mounts).toBe(1);
+    expect(view.container.querySelectorAll("button")).toHaveLength(1);
   });
 
   test("accepts a MotionValue as the visible slot width", async () => {

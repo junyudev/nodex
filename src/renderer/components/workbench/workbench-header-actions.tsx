@@ -110,7 +110,7 @@ export function HeaderInlineActionRail({
 
   return (
     <div {...divProps} className={cn("flex shrink-0 items-center", className)}>
-      <HeaderActionRail entries={entries} railKind="visible" />
+      <HeaderActionRail entries={entries} />
     </div>
   );
 }
@@ -217,16 +217,19 @@ export function HeaderShellSlot({
   onMeasuredRailWidthChange: (width: number) => void;
 }) {
   const entries = useHeaderActions(side);
-  const probeRef = useRef<HTMLDivElement | null>(null);
-  const railProbeRef = useRef<HTMLDivElement | null>(null);
+  const slotRef = useRef<HTMLDivElement | null>(null);
+  const railRef = useRef<HTMLDivElement | null>(null);
   const measurementKey = entries
     .map((entry) => `${entry.actionId}:${entry.align}:${entry.order}`)
     .join("|");
   const paddingClassName = resolveHeaderSlotPaddingClassName(side, entries.length);
 
+  // Each action mounts once: the slot's natural width is read from the actions it shows, so
+  // stateful actions such as popovers never gain a hidden twin that shares their state.
   useEffect(() => {
-    const controlsElement = probeRef.current;
-    if (!controlsElement) return undefined;
+    const slot = slotRef.current;
+    const rail = railRef.current;
+    if (!slot || !rail) return undefined;
 
     if (entries.length === 0) {
       onMeasuredWidthChange(0);
@@ -235,9 +238,20 @@ export function HeaderShellSlot({
     }
 
     const measure = () => {
-      const width = Math.ceil(controlsElement.getBoundingClientRect().width);
-      const railWidth = Math.ceil(railProbeRef.current?.getBoundingClientRect().width ?? 0);
-      onMeasuredWidthChange(width > 0 ? width : fallbackWidth);
+      const actions = [...rail.children];
+      const railStyle = getComputedStyle(rail);
+      const slotStyle = getComputedStyle(slot);
+      const railWidth = Math.ceil(
+        actions.reduce((width, action) => width + action.getBoundingClientRect().width, 0) +
+          (Number.parseFloat(railStyle.columnGap) || 0) * Math.max(0, actions.length - 1),
+      );
+      const width =
+        railWidth +
+        Math.ceil(
+          (Number.parseFloat(slotStyle.paddingLeft) || 0) +
+            (Number.parseFloat(slotStyle.paddingRight) || 0),
+        );
+      onMeasuredWidthChange(railWidth > 0 ? width : fallbackWidth);
       onMeasuredRailWidthChange(railWidth > 0 ? railWidth : fallbackRailWidth);
     };
 
@@ -251,7 +265,7 @@ export function HeaderShellSlot({
     }
 
     const resizeObserver = new ResizeObserver(measure);
-    resizeObserver.observe(controlsElement);
+    for (const action of rail.children) resizeObserver.observe(action);
     return () => {
       resizeObserver.disconnect();
     };
@@ -265,41 +279,28 @@ export function HeaderShellSlot({
   ]);
 
   return (
-    <>
-      <div
-        ref={probeRef}
-        aria-hidden="true"
-        className={cn(
-          "invisible pointer-events-none fixed top-0 left-0 min-w-max [&_*]:![view-transition-name:none]",
-          paddingClassName,
-        )}
-      >
-        <HeaderActionRail entries={entries} railRef={railProbeRef} />
-      </div>
-      <motion.div
-        data-test-id="header-shell-slot"
-        data-workbench-header-shell-slot={side}
-        className={cn(
-          "pointer-events-none relative h-full shrink-0 [container-type:inline-size]",
-          paddingClassName,
-        )}
-        style={{ width: slotWidth, minWidth }}
-      >
-        <HeaderActionRail entries={entries} fillSlot />
-      </motion.div>
-    </>
+    <motion.div
+      ref={slotRef}
+      data-test-id="header-shell-slot"
+      data-workbench-header-shell-slot={side}
+      className={cn(
+        "pointer-events-none relative h-full shrink-0 [container-type:inline-size]",
+        paddingClassName,
+      )}
+      style={{ width: slotWidth, minWidth }}
+    >
+      <HeaderActionRail entries={entries} fillSlot railRef={railRef} />
+    </motion.div>
   );
 }
 
 function HeaderActionRail({
   entries,
   fillSlot = false,
-  railKind = fillSlot ? "visible" : "measure",
   railRef,
 }: {
   entries: readonly HeaderActionEntry[];
   fillSlot?: boolean;
-  railKind?: "measure" | "visible";
   railRef?: Ref<HTMLDivElement>;
 }) {
   const startEntries = entries.filter((entry) => entry.align === "start");
@@ -308,7 +309,7 @@ function HeaderActionRail({
   return (
     <div
       ref={railRef}
-      data-workbench-header-action-rail={railKind}
+      data-workbench-header-action-rail="visible"
       className={cn(
         "inline-flex h-full items-center gap-1.5",
         fillSlot ? "pointer-events-none w-full" : "pointer-events-auto w-auto",
