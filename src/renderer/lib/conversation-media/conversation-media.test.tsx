@@ -1,5 +1,13 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  createEvent,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { flushSync } from "react-dom";
 import { TestQueryProvider, createTestQueryClient } from "@/test/query";
 import { installWindowApi } from "@/test/browser-globals";
@@ -78,6 +86,37 @@ describe("ordinary conversation media", () => {
     vi.restoreAllMocks();
   });
 
+  test.each([
+    { description: "plain text", withImage: false },
+    { description: "text beside a loaded image", withImage: true },
+  ])("preserves the native context menu for $description", async ({ withImage }) => {
+    const source = [
+      "Selected transcript text.",
+      ...(withImage ? ["![Adjacent image](/remote/chart.png)"] : []),
+    ].join("\n\n");
+    const view = render(
+      mediaTree(
+        scope,
+        <ConversationTokenRenderer
+          source={source}
+          streaming={false}
+          animate={false}
+          adaptive={false}
+          components={{ ...streamdownComponents, ...conversationMediaComponents }}
+        />,
+      ),
+    );
+    if (withImage) await loaded(await view.findByAltText("Adjacent image"));
+    const text = view.getByText("Selected transcript text.");
+    const event = createEvent.contextMenu(text, { clientX: 40, clientY: 40 });
+    await act(async () => {
+      fireEvent(text, event);
+      await Promise.resolve();
+    });
+    expect(event.defaultPrevented).toBe(false);
+    expect(view.queryByRole("menu")).toBeNull();
+  });
+
   test("opens the loaded image's context menu without opening its preview", async () => {
     const open = vi.fn(async () => true);
     const release = registerUserAttachmentImagePreviewOpener(open);
@@ -88,7 +127,10 @@ describe("ordinary conversation media", () => {
       const image = await view.findByAltText("Chart menu");
       await loaded(image);
       await act(async () => {
-        fireEvent.contextMenu(image, { clientX: 40, clientY: 40 });
+        fireEvent.contextMenu(view.getByRole("button", { name: "Chart menu" }), {
+          clientX: 40,
+          clientY: 40,
+        });
         await Promise.resolve();
       });
       expect(await view.findByRole("menuitem", { name: "Open image in new tab" })).toBeTruthy();
@@ -112,6 +154,52 @@ describe("ordinary conversation media", () => {
     } finally {
       release();
     }
+  });
+
+  test.each([
+    { description: "without a source", source: null, loaded: true },
+    { description: "before loading", source: scope, loaded: false },
+  ])("does not open an empty image menu $description", async (state) => {
+    const view = render(
+      mediaTree(
+        state.source,
+        <ConversationMedia src="https://example.test/chart.png" alt="Unavailable menu" />,
+      ),
+    );
+    const image = await view.findByAltText("Unavailable menu");
+    if (state.loaded) await loaded(image);
+    const event = createEvent.contextMenu(image, { clientX: 40, clientY: 40 });
+    await act(async () => {
+      fireEvent(image, event);
+      await Promise.resolve();
+    });
+    expect(event.defaultPrevented).toBe(false);
+    expect(view.queryByRole("menu")).toBeNull();
+  });
+
+  test("dismisses image actions when their source has retired", async () => {
+    let current = true;
+    const view = render(
+      mediaTree(
+        { ...scope, isCurrent: () => current },
+        <ConversationMedia src="https://example.test/chart.png" alt="Retired menu" />,
+      ),
+    );
+    const image = await view.findByAltText("Retired menu");
+    await loaded(image);
+    await act(async () => {
+      fireEvent.contextMenu(image, { clientX: 40, clientY: 40 });
+      await Promise.resolve();
+    });
+    expect(await view.findByRole("menuitem", { name: "Open image in new tab" })).toBeTruthy();
+    current = false;
+    const event = createEvent.contextMenu(image, { clientX: 40, clientY: 40 });
+    await act(async () => {
+      fireEvent(image, event);
+      await Promise.resolve();
+    });
+    expect(event.defaultPrevented).toBe(false);
+    await waitFor(() => expect(view.queryByRole("menu")).toBeNull());
   });
 
   test("uses local Range playback without binary reading and does not reclassify an HTTP extension", async () => {

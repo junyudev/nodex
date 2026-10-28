@@ -359,6 +359,15 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 
 ## Message Rendering
 
+- Selected transcript text uses the window's native context menu. On macOS,
+  ordinary non-editable text offers `Look Up “…”`, `Search with Google`, and
+  `Copy` in that order, with separators between them and `⌘C` on Copy. Look Up
+  opens the system definition panel; search opens the selected text in the
+  default browser; Copy preserves the actual selection. The Look Up label trims
+  the selection and truncates it to 25 display columns without shortening the
+  copied or searched text. Links omit Look Up. Editable text retains native
+  Cut, Copy, Paste and spelling actions. Surfaces that handle their own context
+  menu keep that interaction without a second native popup.
 - Assistant answers, promoted Markdown and assistant realtime transcripts share one conversation token parser and direct React renderer. Ordinary source search derives compact Markdown text independently of rendering, preserves formula delimiters and normalizes directives outside top-level fences; Voice segments index their raw text. Independent document, plan and reasoning surfaces retain their own document Markdown policy. A completed conversation formula remains visible as authored text while its rendering leaf initializes.
 - Fenced code in assistant answers and user messages uses the shared read-only Code presentation defined by [NFM Editor Code Block Behavior](./nfm-editor-code-block-behavior.md#read-only-presentation): one subdued `--code-block-bg` surface, no nested header/body card, no line numbers, and a language label with Wrap and Copy that appears on code-block hover or while the header has keyboard focus. Syntax colors follow the light or dark scheme. Conversation code leaves consume the shared highlighter directly, without an implicit parser provider.
 - Thread fenced code copy preserves the original source characters and line breaks, including Unicode separators, and goes through Nodex's clipboard fallback path so Electron permission/API gaps do not make code-block Copy inert.

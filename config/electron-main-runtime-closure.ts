@@ -4,4 +4,5 @@ export const BUNDLED_ELECTRON_MAIN_DEPENDENCIES = [
   "@nodex/effect-codex-app-server",
   "@nodex/app-tools-mcp",
   "@opencode-ai/sdk",
+  "electron-context-menu",
 ] as const;

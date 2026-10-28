@@ -142,6 +142,7 @@ describe("ApplicationWindowShellRuntime", () => {
               getPrimaryDisplay: () => ({ scaleFactor: 2 }) as Display,
             },
             iconPath: "",
+            installContextMenu: () => () => undefined,
             platform: "darwin",
             preloadPath: "/tmp/nodex-preload.js",
             rendererUrl: "app://-/index.html",
@@ -192,8 +193,9 @@ describe("ApplicationWindowShellRuntime", () => {
     );
   });
 
-  it.effect("clears pending watchdogs after Electron destroys the window object", () => {
-    const sessions = [session("primary", 1)];
+  it.effect("releases each window's menu and watchdogs after Electron destroys it", () => {
+    const sessions = [session("primary", 2), session("secondary", 1)];
+    const installContextMenu = vi.fn((_window: BrowserWindow) => vi.fn());
     const windows = {
       attach: (_window: BrowserWindow, sessionId: string) =>
         sessions.find((candidate) => candidate.id === sessionId)!,
@@ -218,6 +220,7 @@ describe("ApplicationWindowShellRuntime", () => {
               getPrimaryDisplay: () => ({ scaleFactor: 2 }) as Display,
             },
             iconPath: "",
+            installContextMenu,
             platform: "darwin",
             preloadPath: "/tmp/nodex-preload.js",
             rendererUrl: "app://-/index.html",
@@ -226,10 +229,17 @@ describe("ApplicationWindowShellRuntime", () => {
           }),
         );
         const shell = Context.get(context, ApplicationWindowShellRuntime);
-        const [opened] = shell.openInitial("all");
-        if (!opened) throw new Error("Expected the initial window");
+        const [opened, secondary] = shell.openInitial("all");
+        if (!opened || !secondary) throw new Error("Expected both initial windows");
 
+        expect(installContextMenu).toHaveBeenCalledTimes(2);
+        expect(installContextMenu).toHaveBeenNthCalledWith(1, opened);
+        expect(installContextMenu).toHaveBeenNthCalledWith(2, secondary);
         expect(() => opened.destroy()).not.toThrow();
+        expect(installContextMenu.mock.results[0]?.value).toHaveBeenCalledOnce();
+        expect(installContextMenu.mock.results[1]?.value).not.toHaveBeenCalled();
+        expect(() => secondary.destroy()).not.toThrow();
+        expect(installContextMenu.mock.results[1]?.value).toHaveBeenCalledOnce();
         yield* TestClock.adjust("2 seconds");
         expect(shell.claimPendingActivation()).toEqual([]);
       }),
@@ -266,6 +276,7 @@ describe("ApplicationWindowShellRuntime", () => {
                 getPrimaryDisplay: () => ({ scaleFactor: 2 }) as Display,
               },
               iconPath: "",
+              installContextMenu: () => () => undefined,
               onRendererDocumentLoadFailure,
               platform: "darwin",
               preloadPath: "/tmp/nodex-preload.js",

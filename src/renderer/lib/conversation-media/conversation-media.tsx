@@ -182,26 +182,32 @@ export function ConversationMediaProvider({
   return (
     <MediaContext value={context}>
       <NodexContextMenuRoot
+        open={menu !== null}
         onOpenChange={(open) => {
           if (!open) setMenu(null);
         }}
       >
-        <NodexContextMenuTrigger>
-          <div
-            className="contents"
-            onContextMenu={(event) => {
-              const entry = collection.read().find(({ element }) => element === event.target);
-              const actions = entry?.isCurrent() ? entry.actions() : [];
-              if (!entry || actions.length === 0) {
-                event.preventDefault();
-                return;
-              }
-              setMenu({ entry, actions });
-            }}
-          >
-            {children}
-          </div>
-        </NodexContextMenuTrigger>
+        <div
+          className="contents"
+          onContextMenuCapture={(event) => {
+            const target = event.target;
+            if (!(target instanceof Node)) return;
+            const entry = collection
+              .read()
+              .find(({ element }) => element.parentElement?.contains(target));
+            if (!entry) return;
+            const actions = entry.isCurrent() ? entry.actions() : [];
+            if (actions.length === 0) {
+              // Keep an unavailable image's trigger from consuming the native fallback.
+              event.stopPropagation();
+              setMenu(null);
+              return;
+            }
+            setMenu({ entry, actions });
+          }}
+        >
+          {children}
+        </div>
         <NodexContextMenuPortal>
           <NodexContextMenuContent data-content-search-skip="true">
             {actions.map((action) => (
@@ -634,27 +640,35 @@ function ConversationImage({
     return (
       <MediaUnavailable resource={resource} label={alt || "Image unavailable"} title={title} />
     );
+  const previewButton = (
+    <button
+      type="button"
+      aria-label={alt || "Open image preview"}
+      onClick={(event) => {
+        void open(event.currentTarget);
+      }}
+      disabled={current !== "loaded"}
+      className="inline-flex max-w-full rounded-lg"
+    >
+      <img
+        ref={bindImage}
+        src={resource.url ?? undefined}
+        alt={alt}
+        loading="lazy"
+        className={`my-3 h-auto w-auto rounded-md border border-token-border object-contain shadow-md ${wide && resource.path ? "max-h-40 max-w-full" : "max-h-50 max-w-50"}`}
+        onLoad={() => setState({ identity: resource.identity, status: "loaded" })}
+        onError={() => setState({ identity: resource.identity, status: "error" })}
+      />
+    </button>
+  );
   const element = (
     <span className="relative inline-flex max-w-full">
-      <button
-        type="button"
-        aria-label={alt || "Open image preview"}
-        onClick={(event) => {
-          void open(event.currentTarget);
-        }}
-        disabled={current !== "loaded"}
-        className="inline-flex max-w-full rounded-lg"
-      >
-        <img
-          ref={bindImage}
-          src={resource.url ?? undefined}
-          alt={alt}
-          loading="lazy"
-          className={`my-3 h-auto w-auto rounded-md border border-token-border object-contain shadow-md ${wide && resource.path ? "max-h-40 max-w-full" : "max-h-50 max-w-50"}`}
-          onLoad={() => setState({ identity: resource.identity, status: "loaded" })}
-          onError={() => setState({ identity: resource.identity, status: "error" })}
-        />
-      </button>
+      {context ? (
+        // Native text menus remain available outside the image's own trigger.
+        <NodexContextMenuTrigger>{previewButton}</NodexContextMenuTrigger>
+      ) : (
+        previewButton
+      )}
       {current === "loaded" ? <MediaDownloadButton download={download} kind="image" /> : null}
     </span>
   );

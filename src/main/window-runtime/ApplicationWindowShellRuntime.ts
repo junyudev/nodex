@@ -81,6 +81,7 @@ export interface ApplicationWindowShellRuntimeOptions {
     readonly getPrimaryDisplay: () => Display;
   };
   readonly iconPath: string;
+  readonly installContextMenu: (window: BrowserWindow) => () => void;
   readonly onRendererDocumentLoadFailure?: (input: { readonly cause: unknown }) => void;
   readonly platform: NodeJS.Platform;
   readonly preloadPath: string;
@@ -340,6 +341,8 @@ export const live = (
                 backgroundThrottling: false,
               },
             });
+            const disposeContextMenu = options.installContextMenu(window);
+            window.once("closed", disposeContextMenu);
             const webContentsId = window.webContents.id;
             const record: ShellRecord = {
               activationWatchdogPending: false,
@@ -578,12 +581,25 @@ export const configuredLive: Layer.Layer<
     const desktop = yield* ElectronDesktop;
     const shutdown = yield* MainShutdown;
     const windows = yield* WindowRuntime;
+    const { default: contextMenu } = yield* Effect.promise(() => import("electron-context-menu"));
     const logger = getLogger({ component: "application-window-shell-recovery" });
     let recoveryPromptOpen = false;
     return live({
       iconPath: config.isPackaged
         ? `${config.resourcesPath}/icon.png`
         : `${config.projectRootPath}/resources/icon.png`,
+      installContextMenu: (window) =>
+        contextMenu({
+          window,
+          prepend: (actions) => {
+            actions.cut({}).accelerator = "CmdOrCtrl+X";
+            actions.copy({}).accelerator = "CmdOrCtrl+C";
+            actions.paste({}).accelerator = "CmdOrCtrl+V";
+            return [];
+          },
+          showCopyImage: false,
+          showInspectElement: !config.isPackaged,
+        }),
       platform: config.platform as NodeJS.Platform,
       preloadPath: resolveBundledElectronPreload(__dirname, "index.js"),
       rendererUrl: config.rendererUrl ?? APP_RENDERER_URL,
