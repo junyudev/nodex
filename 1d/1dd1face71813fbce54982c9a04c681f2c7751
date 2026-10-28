@@ -1,0 +1,23 @@
+.github/workflows/_app-tests.yml
+  s_6c9891f66c664a::t_c9c2a224ec9cf9 88-93
+  s_6c9891f66c664a::t_55ed32369041a0 58,81-87
+docs/CI.md
+  s_6c9891f66c664a::t_c9c2a224ec9cf9 73-74
+  s_6c9891f66c664a::t_55ed32369041a0 71-72,75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d1dd1face71813fbce54982c9a04c681f2c7751",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
