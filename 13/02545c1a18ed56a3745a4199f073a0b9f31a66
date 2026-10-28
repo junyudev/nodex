@@ -1,0 +1,25 @@
+docs/product-specs/agent-runtime-behavior.md
+  s_c308b770a17d41::t_45537d29ae2f0c 814-815
+  s_c308b770a17d41::t_6237f5a5b7dff6 816-824
+  s_c308b770a17d41::t_18448aaf61962d 811-813
+CHANGELOG.md
+  s_c308b770a17d41::t_2e404f8985c383 61
+docs/product-specs/thread-summary-panel-behavior.md
+  s_c308b770a17d41::t_a0fd28dcbb66d3 176-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1302545c1a18ed56a3745a4199f073a0b9f31a66",
+  "prompts": {},
+  "sessions": {
+    "s_c308b770a17d41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d99b3b35-7cb1-4ef6-9ebd-c9534cf0280b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
