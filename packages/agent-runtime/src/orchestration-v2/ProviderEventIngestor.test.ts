@@ -1880,11 +1880,14 @@ layer("ProviderEventIngestorV2", (it) => {
         model: "gpt-6.1-sol",
       });
 
-      // A selection the provider reports, effort included, replaces the thread's.
+      // The child's reported effort and speed replace inherited parent options together.
       const reportedSelection = {
         instanceId: modelSelection.instanceId,
         model: "gpt-6.1-sol",
-        options: [{ id: "reasoningEffort", value: "low" }],
+        options: [
+          { id: "reasoningEffort", value: "low" },
+          { id: "serviceTier", value: "fast" },
+        ],
       };
       const reported = yield* ingest({
         ...subagentUpdated,
@@ -1899,8 +1902,24 @@ layer("ProviderEventIngestorV2", (it) => {
         reportedSelection,
       );
 
+      const standardSelection = {
+        ...reportedSelection,
+        options: [
+          { id: "reasoningEffort", value: "low" },
+          { id: "serviceTier", value: "default" },
+        ],
+      };
+      yield* ingest({
+        ...subagentUpdated,
+        subagent: { ...subagentUpdated.subagent, modelSelection: standardSelection },
+      });
+      assert.deepEqual(
+        (yield* projectionStore.getThread(childThreadId)).modelSelection,
+        standardSelection,
+      );
+
       // A subagent recovered after a restart reports its model but no
-      // selection; the same model keeps the effort the thread holds.
+      // selection; the same model keeps both effort and explicit Standard.
       const recovered = yield* ingest(subagentUpdated);
       assert.deepEqual(
         recovered.map((stored) => stored.event.type),
@@ -1908,7 +1927,7 @@ layer("ProviderEventIngestorV2", (it) => {
       );
       assert.deepEqual(
         (yield* projectionStore.getThread(childThreadId)).modelSelection,
-        reportedSelection,
+        standardSelection,
       );
     }),
   );

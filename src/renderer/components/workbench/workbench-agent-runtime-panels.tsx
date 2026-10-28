@@ -32,9 +32,13 @@ import {
 } from "@/features/local-conversation/agent-runtime-delegated-tasks";
 import { useAgentRuntimeConnectionState } from "@/lib/agent-runtime-session-activity";
 import type { CodexSubagentOverviewRow } from "../../../shared/types";
-import { SubagentsPanelOverviewContent } from "@/features/local-conversation/view/subagents-panel/subagents-panel";
+import {
+  SubagentsPanelDetailHeader,
+  SubagentsPanelOverviewContent,
+} from "@/features/local-conversation/view/subagents-panel/subagents-panel";
 import { projectSubagentOverviewRowToOpenPayload } from "./workbench-subagent-status";
 import type { ThreadOpenSubagentPayload } from "@/features/local-conversation/thread-stage-types";
+import { readAgentRuntimeServiceTier } from "../../../shared/agent-runtime-provider";
 
 /** A child keeps its product Session and reads only its own bounded engine history. */
 export function AgentRuntimeChildPanel(input: {
@@ -43,6 +47,7 @@ export function AgentRuntimeChildPanel(input: {
   readonly title: string;
   readonly project: Project | null;
   readonly canInteract: boolean;
+  readonly onBackToSubagents?: () => void;
   readonly composerEnterBehavior: ComposerEnterBehavior;
   readonly queueingEnabled: boolean;
   readonly onRefresh: (projectId: string) => Promise<unknown>;
@@ -80,39 +85,63 @@ export function AgentRuntimeChildPanel(input: {
     },
     { ...input.hostActions, ...agent.actions },
   );
+  const observedSelection = agent.state.conversation?.snapshot.projection.thread.modelSelection;
+  const observedEffort = observedSelection?.options?.find((option) =>
+    /effort|reasoning/iu.test(option.id),
+  )?.value;
   return (
     <ConversationRuntimeContext value={agent.runtime}>
-      <ConnectedThreadStage
-        presentation="panel"
-        provider={agent.provider}
-        projectId={input.session.projectId}
-        composerScopeIdentity={`agent-runtime:${input.session.id}:${input.threadId}`}
-        projectWorkspacePath={projectWorkspaceRootOrNull(input.project)}
-        isNewThreadTab={false}
-        newThreadTarget={null}
-        newThreadProjectSelector={null}
-        newThreadStartInSelector={null}
-        threadStartProgress={null}
-        activeThreadId={input.threadId}
-        activeThreadSummary={agent.summary}
-        backgroundAgentDetail={true}
-        backgroundAgentCanInteract={input.canInteract}
-        availableModels={agent.models}
-        collaborationModes={agent.modes}
-        selectedCollaborationMode={agent.selectedMode}
-        selectedModel={agent.selectedModel}
-        selectedReasoningEffort={agent.selectedEffort}
-        reasoningEffortOptions={agent.reasoningEffortOptions}
+      <div className="flex h-full min-h-0 flex-col">
+        {input.onBackToSubagents ? (
+          <SubagentsPanelDetailHeader
+            threadId={input.threadId}
+            displayName={input.title}
+            threadSettings={
+              observedSelection
+                ? {
+                    model: observedSelection.model,
+                    reasoningEffort: typeof observedEffort === "string" ? observedEffort : null,
+                    serviceTier: readAgentRuntimeServiceTier(observedSelection.options) ?? null,
+                  }
+                : null
+            }
+            onBack={input.onBackToSubagents}
+          />
+        ) : null}
+        <div className="min-h-0 flex-1">
+          <ConnectedThreadStage
+            presentation="panel"
+            provider={agent.provider}
+            projectId={input.session.projectId}
+            composerScopeIdentity={`agent-runtime:${input.session.id}:${input.threadId}`}
+            projectWorkspacePath={projectWorkspaceRootOrNull(input.project)}
+            isNewThreadTab={false}
+            newThreadTarget={null}
+            newThreadProjectSelector={null}
+            newThreadStartInSelector={null}
+            threadStartProgress={null}
+            activeThreadId={input.threadId}
+            activeThreadSummary={agent.summary}
+            backgroundAgentDetail={true}
+            backgroundAgentCanInteract={input.canInteract}
+            availableModels={agent.models}
+            collaborationModes={agent.modes}
+            selectedCollaborationMode={agent.selectedMode}
+            selectedModel={agent.selectedModel}
+            selectedReasoningEffort={agent.selectedEffort}
+            reasoningEffortOptions={agent.reasoningEffortOptions}
 
-        isQueueingEnabled={input.queueingEnabled}
-        composerEnterBehavior={input.composerEnterBehavior}
-        searchOpenTick={0}
-        summaryPanelMounted={false}
-        summaryPanelOpen={false}
-        summaryPanelHideImmediately={false}
-        turnDiffHoverPreviewDisabled={input.turnDiffHoverPreviewDisabled}
-        actions={actions}
-      />
+            isQueueingEnabled={input.queueingEnabled}
+            composerEnterBehavior={input.composerEnterBehavior}
+            searchOpenTick={0}
+            summaryPanelMounted={false}
+            summaryPanelOpen={false}
+            summaryPanelHideImmediately={false}
+            turnDiffHoverPreviewDisabled={input.turnDiffHoverPreviewDisabled}
+            actions={actions}
+          />
+        </div>
+      </div>
     </ConversationRuntimeContext>
   );
 }

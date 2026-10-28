@@ -4,6 +4,7 @@ import {
 } from "@/lib/codex-thread-settings";
 import type { CodexConversationThreadSettings } from "@/lib/types";
 import { BackIcon } from "@/components/shared/icons";
+import { IntelligenceModeIndicatorIcon } from "@/components/shared/agent-runtime/intelligence-controls";
 import { subscribeCodexEvents } from "@/lib/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -509,7 +510,10 @@ export function SubagentsPanelDetailHeader({
   threadId,
   threadSettings,
 }: {
-  threadSettings?: Pick<CodexConversationThreadSettings, "model" | "reasoningEffort"> | null;
+  threadSettings?: Pick<
+    CodexConversationThreadSettings,
+    "model" | "reasoningEffort" | "serviceTier"
+  > | null;
   displayName: string;
   onBack: () => void;
   threadId: string;
@@ -529,11 +533,18 @@ export function SubagentsPanelDetailHeader({
         {displayName}
       </div>
       {threadSettings?.model ? (
-        <span className="max-w-1/2 min-w-0 truncate text-xs text-token-text-tertiary select-none">
-          {formatCodexModelLabel(threadSettings.model, [])}
-          {threadSettings.reasoningEffort
-            ? ` · ${formatCodexReasoningEffortLabel(threadSettings.reasoningEffort)}`
-            : null}
+        <span className="flex max-w-1/2 min-w-0 items-center gap-1.5 text-xs text-token-text-tertiary select-none">
+          {threadSettings.serviceTier === "fast" ? (
+            <span role="img" aria-label="Fast mode" className="inline-flex shrink-0">
+              <IntelligenceModeIndicatorIcon mode="fast" />
+            </span>
+          ) : null}
+          <span className="truncate">
+            {formatCodexModelLabel(threadSettings.model, [])}
+            {threadSettings.reasoningEffort
+              ? ` · ${formatCodexReasoningEffortLabel(threadSettings.reasoningEffort)}`
+              : null}
+          </span>
         </span>
       ) : null}
     </div>

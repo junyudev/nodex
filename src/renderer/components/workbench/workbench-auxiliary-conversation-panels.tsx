@@ -215,36 +215,39 @@ export function SubagentsPanelSessionTab(
       data-subagents-side-panel-tab={props.tab.id}
       data-subagents-selected-hydration={pending ? "pending" : "ready"}
     >
-      <SubagentsPanelDetailHeader
-        threadId={props.tab.selectedThreadId}
-        displayName={displayName}
-        onBack={() => void props.onRouteSubagent(null)}
-      />
-      <div className="min-h-0 flex-1">
-        {pending ? (
-          <BackgroundAgentLoadingPanel title={displayName} />
-        ) : (
-          <AgentRuntimeChildPanel
-            session={props.activeSession}
+      {pending ? (
+        <>
+          <SubagentsPanelDetailHeader
             threadId={props.tab.selectedThreadId}
-            title={displayName}
-            project={props.projects.find((value) => value.id === props.tab.projectId) ?? null}
-            canInteract={props.tab.selectedCanInteract === true}
-            composerEnterBehavior={props.composerEnterBehavior}
-            queueingEnabled={props.threadQueueFollowUpsEnabled}
-            onRefresh={props.onRefreshSessions}
-            onOpenThread={props.onOpenThread}
-            hostActions={{
-              onQueueingEnabledChange: props.onQueueingEnabledChange,
-              onOpenMcpAppSidePanel: props.onOpenMcpAppSidePanel,
-              onOpenHooksSettings: props.onOpenHooksSettings,
-              onOpenTurnDiffReview: props.onOpenTurnDiffReview,
-              onOpenTurnDiffFileInSidePanel: props.onOpenTurnDiffFileInSidePanel,
-            }}
-            turnDiffHoverPreviewDisabled={props.turnDiffHoverPreviewDisabled}
+            displayName={displayName}
+            onBack={() => void props.onRouteSubagent(null)}
           />
-        )}
-      </div>
+          <div className="min-h-0 flex-1">
+            <BackgroundAgentLoadingPanel title={displayName} />
+          </div>
+        </>
+      ) : (
+        <AgentRuntimeChildPanel
+          session={props.activeSession}
+          threadId={props.tab.selectedThreadId}
+          title={displayName}
+          project={props.projects.find((value) => value.id === props.tab.projectId) ?? null}
+          canInteract={props.tab.selectedCanInteract === true}
+          onBackToSubagents={() => void props.onRouteSubagent(null)}
+          composerEnterBehavior={props.composerEnterBehavior}
+          queueingEnabled={props.threadQueueFollowUpsEnabled}
+          onRefresh={props.onRefreshSessions}
+          onOpenThread={props.onOpenThread}
+          hostActions={{
+            onQueueingEnabledChange: props.onQueueingEnabledChange,
+            onOpenMcpAppSidePanel: props.onOpenMcpAppSidePanel,
+            onOpenHooksSettings: props.onOpenHooksSettings,
+            onOpenTurnDiffReview: props.onOpenTurnDiffReview,
+            onOpenTurnDiffFileInSidePanel: props.onOpenTurnDiffFileInSidePanel,
+          }}
+          turnDiffHoverPreviewDisabled={props.turnDiffHoverPreviewDisabled}
+        />
+      )}
     </div>
   );
 }
@@ -287,6 +290,7 @@ function NativeSubagentsPanelSessionTab({
     ? {
         model: selectedConversation.canonicalState.latestModel,
         reasoningEffort: selectedConversation.canonicalState.latestReasoningEffort,
+        serviceTier: selectedConversation.canonicalState.latestThreadSettings?.serviceTier ?? null,
       }
     : selectedConversation?.latestThreadSettings;
   const codexControl = useCodexAppServerControl(

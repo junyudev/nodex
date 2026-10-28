@@ -124,8 +124,10 @@ Session and native generation rather than borrowing a foreground parent Run.
 Main verifies root membership before opening a child. Interactive collaborative
 children open separate background-agent task tabs; read-only children open the
 root's Subagents panel with that child selected. Independent interactive children
-retain independent tabs. Child detail uses its observed model and reasoning
-effort, omitting unknown values.
+retain independent tabs. Child detail uses its observed model, reasoning effort and Fast
+state, omitting unknown values. The detail header uses the same inline Fast indicator as
+the Composer. Its settings belong to the child, independently of the parent's settings
+and the new-chat defaults.
 
 Read-only history loading does not resume execution or acquire the native writer.
 A cold detail reads the child and necessary parent history through the existing

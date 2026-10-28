@@ -758,7 +758,15 @@ loaded in place, so later status changes never discard pages the user loaded; a 
 always wins over an older one. When settling or reopening subagents leave a section with
 fewer rows than it showed and more remain unread, the panel reads its next page. A selected
 provider-spawned subagent opens read-only beside the overview, without a Composer; stopping
-its parent stops it. A delivery gap or Runtime restart attaches the panel again,
+its parent stops it. Its detail header and any interactive child Composer show the child's
+own model, effort and Fast state from its persisted execution selection. Parent choices,
+new-chat defaults and model catalog defaults never replace an observed child choice.
+Codex native children hydrate their complete selection through a metadata-only rejoin in
+the owning provider session, without configuration overrides or starting a Turn. A newer
+settings observation wins over an older lookup; an explicit Standard tier remains distinct
+from an unknown tier. Opening read-only details reads stored Runtime history and never
+performs that native rejoin itself.
+A delivery gap or Runtime restart attaches the panel again,
 and a failed read keeps the last pages visible with Retry, which also happens automatically
 when the Runtime is ready again.
 

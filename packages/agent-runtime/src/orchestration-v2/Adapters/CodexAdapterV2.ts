@@ -1319,21 +1319,12 @@ const decodeCodexResumeMetadata = Schema.decodeUnknownEffect(
   Schema.Struct({ thread: Schema.Struct({ id: Schema.String, updatedAt: Schema.Number }) }),
 );
 
-const CodexChildSelection = Schema.Struct({
-  thread: Schema.Struct({ id: Schema.String }),
-  model: Schema.NullOr(Schema.String),
-  reasoningEffort: Schema.optional(Schema.NullOr(Schema.String)),
-  serviceTier: Schema.optional(Schema.NullOr(Schema.String)),
-});
-const decodeCodexChildModel = Schema.decodeUnknownEffect(CodexChildSelection);
-
-const decodeCodexChildThread = Schema.decodeUnknownEffect(
+const decodeCodexChildSelection = Schema.decodeUnknownEffect(
   Schema.Struct({
-    thread: Schema.Struct({
-      id: Schema.String,
-      model: Schema.optional(Schema.NullOr(Schema.String)),
-      reasoningEffort: Schema.optional(Schema.NullOr(Schema.String)),
-    }),
+    thread: Schema.Struct({ id: Schema.String }),
+    model: Schema.String,
+    reasoningEffort: Schema.NullOr(Schema.String),
+    serviceTier: Schema.NullOr(Schema.String),
   }),
 );
 
@@ -2928,17 +2919,15 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             effort === undefined && tier === undefined
               ? previousOptions
               : [
-                  ...(previousOptions ?? []).filter(({ id }) =>
-                    id === "reasoningEffort"
-                      ? effort === undefined
-                      : id === "serviceTier" && tier === undefined,
+                  ...(previousOptions ?? []).filter(
+                    ({ id }) =>
+                      (id !== "reasoningEffort" || effort === undefined) &&
+                      (id !== "serviceTier" || tier === undefined),
                   ),
-                  ...[
-                    { id: "reasoningEffort", value: effort },
-                    { id: "serviceTier", value: tier },
-                  ].flatMap(({ id, value }) =>
-                    value?.trim() ? [{ id, value: value.trim() }] : [],
-                  ),
+                  ...(effort?.trim() ? [{ id: "reasoningEffort", value: effort.trim() }] : []),
+                  ...(tier === undefined
+                    ? []
+                    : [{ id: "serviceTier", value: tier?.trim() || "default" }]),
                 ];
           const selection = {
             model,
@@ -2965,6 +2954,31 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             subagent: subagent.task,
           });
         });
+
+        const hydrateSubagentSelection = Effect.fn("CodexAdapterV2.hydrateSubagentSelection")(
+          function* (nativeThreadId: string) {
+            for (;;) {
+              const selectionBeforeLookup = subagentSelections.get(nativeThreadId);
+              if (selectionBeforeLookup?.options?.some(({ id }) => id === "serviceTier")) return;
+              // Thread rows omit service tier; rejoin without configuration overrides.
+              const response = yield* client.raw
+                .request("thread/resume", { threadId: nativeThreadId, excludeTurns: true })
+                .pipe(Effect.flatMap(decodeCodexChildSelection));
+              if (response.thread.id !== nativeThreadId) return;
+              // A partial reroute needs a fresh lookup; full settings end hydration on the next pass.
+              if (subagentSelections.get(nativeThreadId) !== selectionBeforeLookup) continue;
+              yield* updateSubagentSelection(
+                nativeThreadId,
+                response.model,
+                response.reasoningEffort,
+                response.serviceTier,
+              );
+              return;
+            }
+          },
+          Effect.timeout("5 seconds"),
+          Effect.catch(() => Effect.void),
+        );
 
         const nameSubagent = Effect.fnUntraced(function* (
           nativeThreadId: string,
@@ -3083,8 +3097,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               parentNodeId: subagentNodeId,
               activeProviderThreadId: providerThread.id,
               providerInstanceId: input.context.input.modelSelection.instanceId,
-              modelSelection: {
-                ...input.context.input.modelSelection,
+              modelSelection: task.modelSelection ?? {
+                instanceId: input.context.input.modelSelection.instanceId,
                 model: task.model ?? input.context.input.modelSelection.model,
               },
               title: subagentThreadTitle({
@@ -3222,47 +3236,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             for (const pendingTurn of pendingTurns) {
               yield* emitSubagentProviderTurnStarted(subagent, pendingTurn);
             }
-            if (task.model === null) {
-              yield* client.raw
-                .request("thread/read", { threadId: input.nativeThreadId, includeTurns: false })
-                .pipe(
-                  Effect.flatMap(decodeCodexChildThread),
-                  Effect.map((response): typeof CodexChildSelection.Type | null =>
-                    response.thread.id === input.nativeThreadId && response.thread.model?.trim()
-                      ? {
-                          thread: response.thread,
-                          model: response.thread.model,
-                          reasoningEffort: response.thread.reasoningEffort,
-                        }
-                      : null,
-                  ),
-                  Effect.catch(() => Effect.succeed(null)),
-                  Effect.flatMap((response) =>
-                    response === null
-                      ? client.raw
-                          .request("thread/resume", {
-                            threadId: input.nativeThreadId,
-                            excludeTurns: true,
-                          })
-                          .pipe(Effect.flatMap(decodeCodexChildModel))
-                      : Effect.succeed(response),
-                  ),
-                  Effect.timeout("5 seconds"),
-                  Effect.flatMap((response) =>
-                    response.thread.id === input.nativeThreadId &&
-                    !subagentSelections.has(input.nativeThreadId)
-                      ? updateSubagentSelection(
-                          input.nativeThreadId,
-                          response.model,
-                          response.reasoningEffort,
-                          response.serviceTier,
-                        )
-                      : Effect.void,
-                  ),
-                  Effect.catch(() => Effect.void),
-                  Effect.forkIn(scope),
-                );
-            }
+            yield* hydrateSubagentSelection(input.nativeThreadId).pipe(Effect.forkIn(scope));
           });
 
         const registerSubagentThreads = (input: {

@@ -7,7 +7,69 @@ import type {
 } from "@nodex/agent-runtime/contracts";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import type { AgentRuntimeSessionEvent } from "../../../shared/agent-runtime-api";
-import { AgentRuntimeSubagentsOverviewPanel } from "./workbench-agent-runtime-panels";
+import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
+import {
+  AgentRuntimeChildPanel,
+  AgentRuntimeSubagentsOverviewPanel,
+} from "./workbench-agent-runtime-panels";
+
+const childAdapter = vi.hoisted(() => vi.fn());
+vi.mock("@/features/local-conversation/agent-runtime-conversation-adapter", () => ({
+  useAgentRuntimeConversationAdapter: childAdapter,
+}));
+vi.mock("@/features/local-conversation/use-agent-instances", () => ({
+  useAgentInstances: () => ({ instances: [] }),
+}));
+vi.mock("@/features/local-conversation", () => ({ ConnectedThreadStage: () => null }));
+
+it("keeps a child header unknown until its own settings load, independently of Fast defaults", () => {
+  const adapter = {
+    runtime: {},
+    actions: {},
+    provider: { serviceTier: "fast" },
+    selectedModel: "global-default-model",
+    selectedEffort: "high",
+    state: { conversation: null },
+  };
+  childAdapter.mockReturnValue(adapter);
+  const props = {
+    session: { id: "session", projectId: null } as WorkbenchSessionRenderProjection,
+    threadId: "child",
+    title: "Explorer",
+    project: null,
+    canInteract: false,
+    onBackToSubagents: vi.fn(),
+    composerEnterBehavior: "enter" as const,
+    queueingEnabled: false,
+    onRefresh: async () => {},
+    onOpenThread: () => {},
+    hostActions: {},
+    turnDiffHoverPreviewDisabled: false,
+  };
+  const view = render(<AgentRuntimeChildPanel {...props} />);
+  expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
+  expect(screen.queryByText("global-default-model")).toBeNull();
+
+  const loaded = (options: { id: string; value: string }[]) => {
+    childAdapter.mockReturnValue({
+      ...adapter,
+      state: {
+        conversation: {
+          snapshot: {
+            projection: { thread: { modelSelection: { model: "child-model", options } } },
+          },
+        },
+      },
+    });
+    view.rerender(<AgentRuntimeChildPanel {...props} />);
+  };
+  loaded([]);
+  expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
+  loaded([{ id: "serviceTier", value: "fast" }]);
+  expect(screen.getByRole("img", { name: "Fast mode" })).toBeTruthy();
+  loaded([{ id: "serviceTier", value: "default" }]);
+  expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
+});
 
 const task = (id: string): AgentSubagentOverviewItem => ({
   id,

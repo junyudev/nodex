@@ -45,6 +45,7 @@ const nowSeconds = () => Math.floor(Date.now() / 1_000);
 const rootThreadId = scenarioThreadId("000000000101");
 const fallbackInterruptThreadId = scenarioThreadId("000000000201");
 const selectedThreadId = scenarioThreadId("000000000202");
+const selectedServiceTier = process.env.NODEX_FAKE_SUBAGENT_SELECTED_SERVICE_TIER ?? null;
 
 const activeDefinitions = [
   {
@@ -370,7 +371,7 @@ const threadResponse = (thread) => ({
   thread,
   model: "gpt-5.5",
   modelProvider: "openai",
-  serviceTier: null,
+  serviceTier: thread.id === selectedThreadId ? selectedServiceTier : null,
   cwd: thread.cwd,
   runtimeWorkspaceRoots: [thread.cwd],
   instructionSources: [],
@@ -432,7 +433,7 @@ const model = {
   supportsPersonality: false,
   multiAgentVersion: "v2",
   additionalSpeedTiers: [],
-  serviceTiers: [],
+  serviceTiers: [{ id: "fast", name: "Fast", description: "Faster output" }],
   defaultServiceTier: null,
   isDefault: true,
 };

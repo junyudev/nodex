@@ -81,6 +81,21 @@ const readRpcEntries = (harness: ElectronScenarioHarness): RpcEntry[] => {
     .map((line) => JSON.parse(line) as RpcEntry);
 };
 
+const childMetadataRejoins = (harness: ElectronScenarioHarness): RpcEntry[] =>
+  readRpcEntries(harness).filter(
+    (entry) =>
+      entry.method === "thread/resume" &&
+      typeof entry.params.threadId === "string" &&
+      childThreadIds.has(entry.params.threadId),
+  );
+
+const waitForChildMetadata = async (harness: ElectronScenarioHarness): Promise<RpcEntry[]> => {
+  await expect
+    .poll(() => childMetadataRejoins(harness).length, { timeout: 30_000 })
+    .toBe(childThreadIds.size);
+  return childMetadataRejoins(harness);
+};
+
 const overviewSections = (page: Page) => {
   const panel = page.locator("[data-subagents-panel-overview]").first();
   return {
@@ -104,7 +119,7 @@ const expandSection = async (section: Locator): Promise<void> => {
   }
 };
 
-test("shows an Agent chat's subagents and reads the selected child without resuming it", async () => {
+test("shows an Agent chat's subagents and reads the selected child without changing execution", async () => {
   test.setTimeout(120_000);
   const harness = await createSubagentHarness("subagent-overview-and-selected-child");
   try {
@@ -129,6 +144,12 @@ test("shows an Agent chat's subagents and reads the selected child without resum
     await expect(rows(done)).toHaveCount(13);
     await expect(done.getByRole("button", { name: "Open subagent Reconnect scout" })).toBeVisible();
 
+    const metadataRejoins = await waitForChildMetadata(harness);
+    expect(metadataRejoins.map((entry) => entry.params)).toEqual(
+      expect.arrayContaining(
+        [...childThreadIds].map((threadId) => ({ threadId, excludeTurns: true })),
+      ),
+    );
     await active.getByRole("button", { name: "Open subagent Deep investigator" }).click();
     const sidePanel = page.locator('[data-subagents-side-panel-tab^="subagents:"]');
     await expect(sidePanel).toHaveAttribute("data-subagents-selected-hydration", "ready", {
@@ -137,19 +158,84 @@ test("shows an Agent chat's subagents and reads the selected child without resum
     await expect(
       sidePanel.getByText("Checking the selected child history.", { exact: true }),
     ).toBeVisible();
-    // A child is read here, never continued: it has no Composer and its Codex thread stays put.
+    // Discovery already read native settings; inspection neither rejoins nor continues the child.
     await expect(sidePanel.locator('[data-codex-composer="true"]')).toHaveCount(0);
     await expect(page.locator('[data-codex-composer="true"]')).toHaveCount(1);
+    expect(childMetadataRejoins(harness)).toEqual(metadataRejoins);
     expect(
       readRpcEntries(harness).filter(
         (entry) =>
-          entry.method === "thread/resume" &&
+          entry.method === "turn/start" &&
           typeof entry.params.threadId === "string" &&
           childThreadIds.has(entry.params.threadId),
       ),
     ).toEqual([]);
     await sidePanel.getByRole("button", { name: "Back to subagents" }).click();
     await expect(panel).toBeVisible();
+  } finally {
+    await harness.close();
+  }
+});
+
+test("shows a child's native Fast tier independently of the parent and restores it after restart", async () => {
+  test.setTimeout(120_000);
+  const artifacts = process.env.NODEX_SUBAGENT_FAST_TIER_ARTIFACT_DIR;
+  if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
+  const harness = await createSubagentHarness("subagent-fast-tier", {
+    NODEX_FAKE_SUBAGENT_SELECTED_SERVICE_TIER: "fast",
+  });
+  try {
+    const page = await startSubagentScenario(harness);
+    await page.setViewportSize({ width: 1440, height: 960 });
+    const rootModel = page.getByRole("button", { name: "Select model", exact: true });
+    await expect(rootModel).toBeVisible();
+    await expect(rootModel.locator('[data-fast-mode-indicator="true"]')).toHaveCount(0);
+    await openSubagentsPanel(page);
+    const { active } = overviewSections(page);
+    await expect(active.getByRole("heading", { name: "Active · 4" })).toBeVisible({
+      timeout: 30_000,
+    });
+    const metadataRejoins = await waitForChildMetadata(harness);
+    const detail = page.locator('[data-subagents-side-panel-tab^="subagents:"]');
+    const openFastChild = async (currentPage: Page): Promise<Locator> => {
+      await overviewSections(currentPage)
+        .active.getByRole("button", { name: "Open subagent Deep investigator", exact: true })
+        .click();
+      const selected = currentPage.locator('[data-subagents-side-panel-tab^="subagents:"]');
+      await expect(selected).toHaveAttribute("data-subagents-selected-hydration", "ready", {
+        timeout: 30_000,
+      });
+      await expect(selected.getByLabel("Fast mode", { exact: true })).toBeVisible();
+      await expect(
+        selected.getByText("Checking the selected child history.", { exact: true }),
+      ).toBeVisible();
+      return selected;
+    };
+    await openFastChild(page);
+    await expect(rootModel.locator('[data-fast-mode-indicator="true"]')).toHaveCount(0);
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, "fast-detail.png") });
+    await detail.getByRole("button", { name: "Back to subagents" }).click();
+    await active.getByRole("button", { name: "Open subagent Lead explorer", exact: true }).click();
+    await expect(detail).toHaveAttribute("data-subagents-selected-hydration", "ready");
+    await expect(detail.getByLabel("Fast mode", { exact: true })).toHaveCount(0);
+    await detail.getByRole("button", { name: "Back to subagents" }).click();
+    await openFastChild(page);
+    expect(childMetadataRejoins(harness)).toEqual(metadataRejoins);
+
+    const restarted = await harness.restart();
+    await restarted.setViewportSize({ width: 1440, height: 960 });
+    await openSubagentsPanel(restarted);
+    await openFastChild(restarted);
+    if (artifacts)
+      await restarted.screenshot({ path: path.join(artifacts, "fast-detail-restarted.png") });
+    await expect(
+      restarted.getByRole("button", { name: "Select model", exact: true }),
+    ).toBeVisible();
+    await expect(
+      restarted
+        .getByRole("button", { name: "Select model", exact: true })
+        .locator('[data-fast-mode-indicator="true"]'),
+    ).toHaveCount(0);
   } finally {
     await harness.close();
   }
@@ -359,6 +445,7 @@ test("keeps delegated work compact while hover and direct navigation expose each
     await expect(hover).toBeVisible();
     claim("Keyboard focus exposes the same task details", true, await hover.isVisible());
     await page.keyboard.press("Escape");
+    const metadataRejoins = await waitForChildMetadata(harness);
     await investigator.click();
     const detail = page.locator('[data-subagents-side-panel-tab^="subagents:"]');
     await expect(detail).toHaveAttribute("data-subagents-selected-hydration", "ready", {
@@ -388,14 +475,9 @@ test("keeps delegated work compact while hover and direct navigation expose each
       await identity(detail.locator("img[data-subagent-avatar-seed]").first()),
     );
     claim(
-      "Inspecting a child does not resume native execution",
-      [],
-      readRpcEntries(harness).filter(
-        (entry) =>
-          entry.method === "thread/resume" &&
-          typeof entry.params.threadId === "string" &&
-          childThreadIds.has(entry.params.threadId),
-      ),
+      "Inspecting a child does not rejoin native execution again",
+      metadataRejoins,
+      childMetadataRejoins(harness),
     );
     await screenshot("child.png");
     if (artifacts) await page.waitForTimeout(800);
@@ -505,7 +587,7 @@ test("keeps delegated work compact while hover and direct navigation expose each
       );
       fs.writeFileSync(
         path.join(artifacts, "README.md"),
-        `# Subagent presentation review\n\nStatus: **${status}**\n\nThe native recording starts after the disposable Profile and delegated work are ready. It follows hover, pointer entry into task details, keyboard focus, direct navigation to the child transcript, return, overflow navigation to all 17 children, and a theme change. The child is read without resuming execution. Identity and artwork are compared across inline activity, detail and overview; a separate application restart verifies restoration from persisted child metadata.\n\n- review.webm: native interaction recording.\n- light.png and dark.png: activity and overview in both themes.\n- hover.png: task details and model metadata.\n- child.png: the selected child transcript.\n- final.png: overflow opens the complete overview.\n- narrow.png: the group at 820 px window width.\n- restart.png: restored conversation and identities after application restart.\n- result.json: exact expected and actual values for the verified claims.\n\nNo production Profile or user content was accessed.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
+        `# Subagent presentation review\n\nStatus: **${status}**\n\nThe native recording starts after the disposable Profile and delegated work are ready. It follows hover, pointer entry into task details, keyboard focus, direct navigation to the child transcript, return, overflow navigation to all 17 children, and a theme change. Inspecting the child does not rejoin or continue its execution. Identity and artwork are compared across inline activity, detail and overview; a separate application restart verifies restoration from persisted child metadata.\n\n- review.webm: native interaction recording.\n- light.png and dark.png: activity and overview in both themes.\n- hover.png: task details and model metadata.\n- child.png: the selected child transcript.\n- final.png: overflow opens the complete overview.\n- narrow.png: the group at 820 px window width.\n- restart.png: restored conversation and identities after application restart.\n- result.json: exact expected and actual values for the verified claims.\n\nNo production Profile or user content was accessed.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
       );
     }
     await harness.close();

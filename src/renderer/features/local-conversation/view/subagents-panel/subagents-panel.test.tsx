@@ -13,6 +13,7 @@ import {
   formatSubagentRelativeTime,
   SubagentsPanelOverview,
   SubagentsPanelOverviewContent,
+  SubagentsPanelDetailHeader,
 } from "./subagents-panel";
 
 const overviewMocks = vi.hoisted(() => ({
@@ -84,6 +85,31 @@ function buildOverview(input: {
 beforeEach(() => {
   overviewMocks.read.mockReset();
   overviewMocks.subscribe.mockClear();
+});
+
+test("shows the selected subagent's observed Fast mode and clears it for Standard or unknown settings", () => {
+  const header = (serviceTier: string | null) => (
+    <SubagentsPanelDetailHeader
+      threadId="child"
+      displayName="Explorer"
+      threadSettings={{ model: "gpt-6-sol", reasoningEffort: "high", serviceTier }}
+      onBack={() => undefined}
+    />
+  );
+  const view = render(header("fast"));
+  expect(screen.getByRole("img", { name: "Fast mode" })).toBeTruthy();
+
+  view.rerender(header(null));
+  expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
+
+  view.rerender(
+    <SubagentsPanelDetailHeader
+      threadId="unknown-child"
+      displayName="Explorer"
+      onBack={() => undefined}
+    />,
+  );
+  expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
 });
 
 describe("SubagentsPanelOverview", () => {

@@ -25,7 +25,6 @@ This spec does not cover:
 - slash commands
 - announcement, upsell, home, or banner CTAs
 - rollout-estimate calculation or metrics IPC
-- per-thread Fast-mode state
 - provider-specific service-tier availability, pricing, or rollout policy
 
 ## Canonical Model
@@ -37,7 +36,8 @@ This spec does not cover:
 - `"fast"` means requests should send `serviceTier: "fast"`.
 - App-server `"default"` and legacy/UI `"standard"` are boundary aliases for domain `null`; neither
   may be persisted as a named tier.
-- Fast mode is global, not per-thread and not per-project.
+- The new-chat Fast preference is global, not per-project. Existing executions, including
+  subagents, retain their own provider-observed service tier.
 
 ## Source Of Truth
 
@@ -82,10 +82,12 @@ This spec does not cover:
 
 ### Composer Model Selector
 
-- When the global service tier is `fast`, the composer model selector shows a leading lightning-bolt indicator before the active model label.
+- When the active execution's service tier is `fast`, the composer model selector shows a leading lightning-bolt indicator before the active model label. New chats use the global default until they have their own selection.
 - The indicator is inline with the label, not a separate badge.
 - `standard` omits the indicator entirely.
-- Nodex uses an inline leading bolt indicator whose visibility is tied to the active Fast preference.
+- Nodex uses an inline leading bolt indicator whose visibility follows the active execution's
+  selection. Subagent detail headers consume that same selection; they never borrow their
+  parent's Fast state. An observed Standard choice overrides a Fast catalog or global default.
 
 ## Request Resolution Rules
 
@@ -147,7 +149,8 @@ Internal helper flows that are not user-facing request starts, such as ephemeral
 ## Non-Goals And Guardrails
 
 - Fast mode must remain independent from rollout and upsell systems.
-- Fast mode must not become per-thread unless a later spec explicitly changes that contract.
+- The global new-chat preference and provider-observed execution settings remain distinct
+  authorities; changing the default does not rewrite an existing execution's choice.
 - Naming stays explicit:
   - `serviceTier`
   - `standard`
