@@ -1,0 +1,19 @@
+src/renderer/features/workspace-files/workspace-pierre-editor.browser.test.tsx
+  s_6c9891f66c664a::t_d0ab0edd821844 69-70,73,79-89,117,127,182,261,309,323-331,358,368,411
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "733cb5e5de50e43d297678f1c849a65a40b21f0e",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
