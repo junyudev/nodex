@@ -1,0 +1,83 @@
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_74e91fd57a1619::t_3b4550f6afd74a 66
+crates/nodex-core-contracts/src/workspace.rs
+  s_74e91fd57a1619::t_a2bcd63e127b36 19,56-58,265-269,1225-1244
+crates/nodex-core/src/workspace/page_chat.rs
+  s_74e91fd57a1619::t_3b12bb2a653c28 10-11,30,208-306,1279-1610
+crates/nodex-core/src/workspace/read.rs
+  s_2c4e63ad87bc1d::t_a2c706f7466a54 217-227
+packages/core-protocol/openapi.json
+  s_70a81944713cd1::t_ac2d530bdc4596 35620-35640,43270-43330,51124-51153
+packages/core-protocol/src/compatibility.generated.ts
+  s_70a81944713cd1::t_576fe06ed5f8cd 24
+packages/core-protocol/src/generated.ts
+  s_70a81944713cd1::t_ac888153158c6a 8444-8447,10318-10331,11951-11957
+src/main/core-client/project-workspace-adapter.ts
+  s_f621238646b415::t_f920e14f5ba526 8,170-186
+src/main/core-client/session-linked-page.node.test.ts
+  s_74e91fd57a1619::t_0f671848f27e63 1-193
+src/main/ipc/handlers/ProjectWorkspaceIpc.test.ts
+  s_74e91fd57a1619::t_1fc25ceff70950 9-13,101-107,112-116,202,212-219
+src/main/ipc/handlers/ProjectWorkspaceIpc.ts
+  s_74e91fd57a1619::t_af3dd53d9d3a96 190-192
+src/main/project-application/ProjectWorkspace.node.test.ts
+  s_74e91fd57a1619::t_3e464e235cbe7c 957-1027
+src/main/project-application/ProjectWorkspace.ts
+  s_f621238646b415::t_073e597b8820dd 13,25-26,90,184-186,1069-1089,1491
+src/renderer/lib/page-chat-runtime.ts
+  s_74e91fd57a1619::t_31c443fdda0413 3,29-32
+src/renderer/lib/session-linked-page.node.test.ts
+  s_74e91fd57a1619::t_5f95d9c54bd2bb 1-227
+src/renderer/lib/session-linked-page.test.tsx
+  s_74e91fd57a1619::t_76845067a10d74 1-41
+src/renderer/lib/session-linked-page.ts
+  s_74e91fd57a1619::t_b3b5e4cc82a855 1-234
+src/shared/ipc-api.ts
+  s_74e91fd57a1619::t_90c59aaa3fd131 411-412,1021-1024
+src/shared/ipc-endpoint-policy.ts
+  s_74e91fd57a1619::t_d7add3d92c9de9 244
+src/shared/schemas/project-sessions.ts
+  s_74e91fd57a1619::t_30409727cc5943 10,44,140-143
+src/shared/types.ts
+  s_74e91fd57a1619::t_546b91cdc7507e 659-681
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b40454dbb420a0fa747dec79ee37e5ad0106bdcf",
+  "prompts": {},
+  "sessions": {
+    "s_2c4e63ad87bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d5f90da2-3832-47dc-be7c-25b6de41f426",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_70a81944713cd1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1830e-8418-7262-9bd1-65bf1fea3d4c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_74e91fd57a1619": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18314-027d-7ba1-ba85-49b58b2804ce",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f621238646b415": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18313-2fb3-77c2-970d-de312beb6c61",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
