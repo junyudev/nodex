@@ -1,0 +1,37 @@
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.tsx
+  s_0eb8085b5125f4::t_3f6522e5c71daa 1022-1023,1026
+  s_0eb8085b5125f4::t_a420583921cb52 194-195,493,561,715,1024-1025,1027-1028,1030
+tests/e2e/composer-portal-radius.spec.ts
+  s_0eb8085b5125f4::t_a6f2bd8b6a52a8 132-135,236
+  s_0eb8085b5125f4::t_c3cba8c43dbff0 99
+  s_0eb8085b5125f4::t_30789c76f7cd72 8-30,57,67,74-81,136-137,148,153
+  s_0eb8085b5125f4::t_8a23808af79cf1 31-56,58-66,68-73,138-147,149-152,154-155
+  s_0eb8085b5125f4::t_5449a7d387800a 1-7,82-98,100-119,123-124,128-131,156-157,162-165,167-178,198-200,202-225,238-241
+  s_0eb8085b5125f4::t_4c8b089ea9b051 120-122,125-127,158-161,166,179-197,201,226-235,237
+src/renderer/features/local-conversation/view/local-conversation-footer.tsx
+  s_0eb8085b5125f4::t_c730b8a2f9e65f 75
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_0eb8085b5125f4::t_3f6522e5c71daa 634
+tests/e2e/fixtures/codex-queue-app-server.mjs
+  s_0eb8085b5125f4::t_a73c63b64330e5 258
+  s_0eb8085b5125f4::t_5449a7d387800a 252-257,259-261
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-goal-status-row.tsx
+  s_0eb8085b5125f4::t_8df95b6593f8f3 350
+  s_0eb8085b5125f4::t_3f6522e5c71daa 351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "442115f15b04529cc3add0a5dd601e17bffa151d",
+  "prompts": {},
+  "sessions": {
+    "s_0eb8085b5125f4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a180f6-6a0e-7e41-a870-8cfa7df2fd28",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
