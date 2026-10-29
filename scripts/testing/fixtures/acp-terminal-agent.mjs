@@ -24,6 +24,11 @@ if (process.argv.includes("login")) {
     child.once("exit", () => process.exit(code));
     child.kill("SIGKILL");
   };
+  const reportSize = (kind) => process.stdout.write(
+    `${kind}:${process.stdout.columns}:${process.stdout.rows}\n`,
+  );
+  // Child-side columns/rows change asynchronously when Node handles the resize.
+  process.stdout.on("resize", () => reportSize("RESIZED"));
   process.stdout.write("READY\n");
   lines.on("line", (line) => {
     if (line === "secret") {
@@ -34,9 +39,7 @@ if (process.argv.includes("login")) {
       return;
     }
     if (line === "size") {
-      process.stdout.write(
-        `SIZE:${process.stdout.columns}:${process.stdout.rows}\n`,
-      );
+      reportSize("SIZE");
       return;
     }
     if (line === "child") {

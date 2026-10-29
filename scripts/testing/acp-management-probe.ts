@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { AgentRuntimeOperations } from "../../packages/agent-runtime/src/nodex/Interface";
 import type { AgentRuntimeNode } from "../agent-runtime-native";
+import { hasCompletePtyLine, probePtyResize } from "./pty-resize-probe";
 
 type Auth = AgentRuntimeOperations["acp.auth.read"]["output"];
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -133,8 +134,11 @@ export async function probeAcpManagement(input: {
       throw new Error("A secret escaped through authentication state");
     return state;
   };
-  const wait = async (predicate: (state: Auth) => boolean, label: string): Promise<Auth> => {
-    const end = Date.now() + 20_000;
+  const wait = async (
+    predicate: (state: Auth) => boolean,
+    label: string,
+    end = Date.now() + 20_000,
+  ): Promise<Auth> => {
     while (Date.now() < end) {
       const state = await read();
       if (predicate(state)) return state;
@@ -212,18 +216,28 @@ export async function probeAcpManagement(input: {
       !masked.interaction.output.includes("TOKEN:[redacted]")
     )
       throw new Error("Split secret was not masked");
-    await respond(first, "roundtrip\r", { cols: 109, rows: 37 });
+    await probePtyResize(
+      {
+        resize: (cols, rows) => respond(first, "roundtrip\r", { cols, rows }),
+        query: () => respond(first, "size\r"),
+        waitForLine: (line, deadline) =>
+          wait(
+            (state) =>
+              state.interaction?.type === "terminal" &&
+              hasCompletePtyLine(state.interaction.output, line),
+            "terminal resize",
+            deadline,
+          ),
+      },
+      109,
+      37,
+      20_000,
+    );
     await wait(
       (state) =>
         state.interaction?.type === "terminal" &&
         state.interaction.output.includes("INPUT:roundtrip"),
       "terminal input",
-    );
-    await respond(first, "size\r");
-    await wait(
-      (state) =>
-        state.interaction?.type === "terminal" && state.interaction.output.includes("SIZE:109:37"),
-      "terminal resize",
     );
     await respond(first, "\u0004");
     await wait((state) => state.phase === "failed", "zero exit must not authenticate");
