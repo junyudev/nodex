@@ -1,0 +1,24 @@
+src/shared/inbox-suggestion-policy.ts
+  s_ba060ac4e330f7::t_8cc395674a55fe 1-123
+src/main/inbox-application/inbox-agent-candidates.ts
+  s_ba060ac4e330f7::t_f612bfb1049721 10,56,60-62
+src/shared/inbox.ts
+  s_ba060ac4e330f7::t_8f7404d26c87b6 223
+  s_ba060ac4e330f7::t_2b3a80fc2548ef 9-13,178,180-184,231-234,237,567-579,581,605
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8ad5ce5567af8af73b8145482b9142b291088bba",
+  "prompts": {},
+  "sessions": {
+    "s_ba060ac4e330f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1a19e173-08d8-4dbe-8247-31ddc3af88af",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
