@@ -1,0 +1,27 @@
+scripts/prepare-electron-runtime.ts
+  s_6c9891f66c664a::t_3d9748b8296307 24-36,109-132
+  s_6c9891f66c664a::t_477568987d3ab9 133-136,188
+docs/development.md
+  s_6c9891f66c664a::t_3d9748b8296307 263-264,266-267
+  s_6c9891f66c664a::t_46c6f4e2ac14b4 265
+scripts/prepare-electron-runtime.test.ts
+  s_6c9891f66c664a::t_3be15a95aaf6c3 3,15-16,32-78,88,97,133-134,185-225,272-294,298
+  s_6c9891f66c664a::t_01c915a3c4c401 226-271,295
+  s_6c9891f66c664a::t_a2a8b16cf3d384 296-297,299-302,310,313
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "47ebca64985127df1ca94e97d730ba03c0613d96",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
