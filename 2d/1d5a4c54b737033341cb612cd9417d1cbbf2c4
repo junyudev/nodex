@@ -1,0 +1,25 @@
+src/main/codex-application/CodexSubagentDirectory.ts
+  s_6c9891f66c664a::t_88033ac1082417 1469,1471-1472,1504,1522,1525-1528,1530-1534,1536-1537,1546
+docs/product-specs/codex-subagent-behavior.md
+  s_6c9891f66c664a::t_767625557c2506 78-80
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_6c9891f66c664a::t_f85b1c2255132b 108-114,379,442-455,569,1005,1009,1018-1027,1050-1054
+src/main/codex-application/CodexSubagentDirectory.node.test.ts
+  s_6c9891f66c664a::t_2c76137b071f2e 1470,1489,2449,2484-2487,2496-2497,2499
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d1d5a4c54b737033341cb612cd9417d1cbbf2c4",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
