@@ -31370,13 +31370,17 @@
               },
               {
                 "type": "object",
-                "description": "Supersedes current open suggestions and asks for a new one.",
+                "description": "Reconciles advice lifecycle and admits or clears sends awaiting automatic advice.",
                 "required": [
+                  "automatic",
                   "request_id",
                   "limit",
                   "kind"
                 ],
                 "properties": {
+                  "automatic": {
+                    "type": "boolean"
+                  },
                   "kind": {
                     "type": "string",
                     "enum": [
@@ -39398,28 +39402,17 @@
       },
       "ProjectWorkspaceInboxPageBasis": {
         "type": "object",
-        "description": "Causal evidence that a proposal was made for the current message content.",
+        "description": "Fingerprint of exactly the message text the suggestion Agent reads.",
         "required": [
-          "placement_revision",
           "page_id",
-          "generation",
-          "head_seq"
+          "content_hash"
         ],
         "properties": {
-          "generation": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "head_seq": {
-            "type": "integer",
-            "format": "int64"
+          "content_hash": {
+            "type": "string"
           },
           "page_id": {
             "type": "string"
-          },
-          "placement_revision": {
-            "type": "integer",
-            "format": "int64"
           }
         }
       },
@@ -39460,6 +39453,7 @@
         "type": "object",
         "required": [
           "basis",
+          "outdated",
           "proposal_id",
           "revision",
           "origin",
@@ -39478,7 +39472,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
-            }
+            },
+            "description": "Current member fingerprints, fenced when the user confirms."
           },
           "chat": {
             "oneOf": [
@@ -39522,6 +39517,10 @@
           },
           "origin": {
             "$ref": "#/components/schemas/ProjectWorkspaceInboxProposalOrigin"
+          },
+          "outdated": {
+            "type": "boolean",
+            "description": "Any current member text differs from the text this advice was written from."
           },
           "page_ids": {
             "type": "array",
@@ -39911,6 +39910,8 @@
       "ProjectWorkspaceInboxSuggestionState": {
         "type": "string",
         "enum": [
+          "none",
+          "waiting",
           "pending",
           "settled",
           "failed"
@@ -42242,13 +42243,17 @@
           },
           {
             "type": "object",
-            "description": "Supersedes current open suggestions and asks for a new one.",
+            "description": "Reconciles advice lifecycle and admits or clears sends awaiting automatic advice.",
             "required": [
+              "automatic",
               "request_id",
               "limit",
               "kind"
             ],
             "properties": {
+              "automatic": {
+                "type": "boolean"
+              },
               "kind": {
                 "type": "string",
                 "enum": [

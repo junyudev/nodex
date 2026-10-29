@@ -195,6 +195,8 @@ export interface ScenarioSeedPort {
   listSidebarSectionItems(sectionId: string): Promise<SidebarSectionItemWindow>;
   /** Sends into the Library Inbox unless a Project's Inbox is named. */
   sendInboxMessage(text: string, scope?: InboxScope): Promise<{ readonly pageId: string }>;
+  /** Admits or clears sends waiting for automatic advice, without starting Agents. */
+  prepareInboxSuggestions(automatic: boolean): Promise<void>;
   /** Records an Agent-shaped suggestion for current message content. Core seeding only. */
   proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void>;
   dispatchInboxEntries(input: ScenarioInboxDispatchSeed): Promise<void>;

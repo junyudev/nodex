@@ -4398,7 +4398,7 @@ CREATE TABLE inbox_entries (
   kind TEXT CHECK (kind IS NULL OR kind IN ('note', 'todo', 'question')),
   kind_set_by_user INTEGER NOT NULL DEFAULT 0 CHECK (kind_set_by_user IN (0, 1)),
   state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'kept', 'done')),
-  suggestion_state TEXT NOT NULL DEFAULT 'pending' CHECK (suggestion_state IN ('pending', 'settled', 'failed')),
+  suggestion_state TEXT NOT NULL DEFAULT 'none' CHECK (suggestion_state IN ('none', 'waiting', 'pending', 'settled', 'failed')),
   suggestion_error TEXT CHECK (suggestion_error IS NULL OR length(suggestion_error) BETWEEN 1 AND 2000),
   current_proposal_id TEXT CHECK (current_proposal_id IS NULL OR length(current_proposal_id) BETWEEN 1 AND 512),
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
@@ -4481,7 +4481,7 @@ CREATE TABLE inbox_suggestion_requests (
   correction TEXT CHECK (correction IS NULL OR length(CAST(correction AS BLOB)) <= 16384),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
-) WITHOUT ROWID, STRICT;
+, inputs_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(inputs_json) AND json_type(inputs_json) = 'array')) WITHOUT ROWID, STRICT;
 CREATE INDEX idx_inbox_requests_pending ON inbox_suggestion_requests(library_id,state,created_at);
 CREATE TABLE inbox_suggestion_request_pages (
   request_id TEXT NOT NULL REFERENCES inbox_suggestion_requests(request_id) ON DELETE CASCADE,
@@ -4515,7 +4515,7 @@ BEGIN
   WHERE page_id=OLD.id AND waiting_in_inbox=1;
 END;
 
-PRAGMA user_version = 193;
+PRAGMA user_version = 194;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

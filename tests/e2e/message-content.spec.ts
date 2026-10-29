@@ -21,7 +21,7 @@ test("an Inbox message shows its Markdown and the images in its Page", async ({}
   await withElectronScenario(
     { label: "message-content", scenarioId: null },
     async ({ page, seed }) => {
-      await invokeIpc(page, "settings:inbox:update", { suggestionsEnabled: false });
+      await invokeIpc(page, "settings:inbox:update", { suggestions: "off" });
       const project = await seed.createProject({ name: "Message content", sources: [] });
       const fileId = createUuidV7();
       await seed.createLibraryFile({
@@ -85,7 +85,7 @@ test("the Inbox composer sends pasted and picked images after the text", async (
   await withElectronScenario(
     { label: "message-content-composer", scenarioId: null },
     async ({ page }) => {
-      await invokeIpc(page, "settings:inbox:update", { suggestionsEnabled: false });
+      await invokeIpc(page, "settings:inbox:update", { suggestions: "off" });
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.getByTestId("sidebar-inbox-row-wrapper").getByRole("button").click();
       const composer = page.getByRole("textbox", { name: "Message your Inbox" });

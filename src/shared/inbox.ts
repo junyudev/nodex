@@ -6,7 +6,11 @@ import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 /** User-editable classification. It never authorizes work. */
 export type InboxEntryKind = "note" | "todo" | "question";
 export type InboxEntryState = "open" | "kept" | "done";
-export type InboxSuggestionState = "pending" | "settled" | "failed";
+/**
+ * Where a message's advice stands. Only a send or a rewrite in the stream queues it as `waiting`
+ * for automatic advice; `pending` has a suggestion running; `none` has no advice requested.
+ */
+export type InboxSuggestionState = "none" | "waiting" | "pending" | "settled" | "failed";
 /** `schedule` proposals are written by a scheduled task for its own firing. */
 export type InboxProposalOrigin = "agent" | "user" | "schedule";
 export type InboxProposalState =
@@ -171,7 +175,13 @@ export interface InboxProposal {
   readonly origin: InboxProposalOrigin;
   readonly state: InboxProposalState;
   readonly pageIds: readonly string[];
+  /** Each member's content as it is now, which a confirmation fences. */
   readonly basis: readonly InboxPageBasis[];
+  /**
+   * A member's content changed after this suggestion was written. It stays visible and can still
+   * be confirmed as the user reviews it; editing the text back makes it current again.
+   */
+  readonly outdated: boolean;
   readonly action: InboxDispatchAction;
   readonly kind: InboxEntryKind | null;
   readonly summary: string;
@@ -210,6 +220,7 @@ export interface InboxItem {
   readonly suggestionError: string | null;
   readonly scope: InboxScope;
   readonly location: InboxLocation;
+  /** The current suggestion. An outdated one stays here while new advice waits, runs or fails. */
   readonly proposal: InboxProposal | null;
   /** Present for a scheduled task's firing. */
   readonly firing: InboxFiring | null;
@@ -217,12 +228,13 @@ export interface InboxItem {
   readonly basis: InboxPageBasis;
 }
 
-/** The exact Document revision the user reviewed. */
+/**
+ * The message content the user reviewed: a fingerprint of exactly the text a suggestion reads.
+ * Writes that leave that text unchanged, such as a move or an editor normalization, keep it.
+ */
 export interface InboxPageBasis {
   readonly pageId: string;
-  readonly generation: number;
-  readonly headSeq: number;
-  readonly placementRevision: number;
+  readonly contentHash: string;
 }
 
 export interface InboxChatTargetsInput {
@@ -552,9 +564,21 @@ export const inboxSuggestionChoice = (
   serviceTier: null,
 });
 
+/**
+ * When suggestions run: `automatic` advises each message as it is sent or rewritten, unless the
+ * suggestion Agent's usage runs short; `on_request` only when the user asks; `off` never, leaving
+ * manual dispatch only.
+ */
+export type InboxSuggestionMode = "automatic" | "on_request" | "off";
+
+export const INBOX_SUGGESTION_MODES: readonly InboxSuggestionMode[] = [
+  "automatic",
+  "on_request",
+  "off",
+];
+
 export interface InboxSettings {
-  /** When off, the Inbox captures messages and supports manual dispatch only. */
-  readonly suggestionsEnabled: boolean;
+  readonly suggestions: InboxSuggestionMode;
   readonly suggestionAgent: InboxAgentBinding;
   /** Optional exact model for suggestions; the runtime default applies when null. */
   readonly suggestionModel: string | null;
@@ -578,7 +602,7 @@ export type UpdateInboxSettingsInput = Partial<InboxSettings>;
 export const MAX_INBOX_INSTRUCTIONS_CHARS = 4_000;
 
 export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
-  suggestionsEnabled: true,
+  suggestions: "automatic",
   suggestionAgent: { instanceId: "codex" },
   suggestionModel: null,
   instructions: "",

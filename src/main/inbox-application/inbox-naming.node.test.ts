@@ -6,7 +6,7 @@ import { inboxPageBasisFromCore } from "../core-client/inbox-adapter";
 
 const LIBRARY = { kind: "library" } as const;
 
-it.effect("names a provisional title only on the exact Page the Agent read", () =>
+it.effect("names a provisional title only while the message content is current", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const { inbox } = yield* inboxOverRealCore();
@@ -21,8 +21,8 @@ it.effect("names a provisional title only on the exact Page the Agent read", () 
 
       const named = yield* inbox.nameEntry({ basis: entry.basis, title: "Homepage positioning" });
       if (!named) return assert.fail("The untouched Page was not named");
-      assert.isAbove(named.head_seq, entry.basis.head_seq);
-      // A stale read never overwrites the Page.
+      assert.deepEqual(named, entry.basis);
+      // A previous suggestion title is no longer provisional.
       assert.isNull(yield* inbox.nameEntry({ basis: entry.basis, title: "Stale name" }));
 
       // The proposal is fenced by the named Page, so it stays confirmable.
@@ -54,7 +54,8 @@ it.effect("names a provisional title only on the exact Page the Agent read", () 
         pageIds: [pageId],
         basis: [inboxPageBasisFromCore(named)],
       });
-      const [again] = yield* inbox.pendingSuggestions(8);
+      const [request] = yield* inbox.suggestionRequests(8);
+      const again = request?.context.entries.find((entry) => entry.page_id === pageId);
       assert.strictEqual(again?.page_id, pageId);
       assert.isFalse(again?.title_provisional);
     }),

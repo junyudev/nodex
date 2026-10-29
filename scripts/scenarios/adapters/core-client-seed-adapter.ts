@@ -482,6 +482,10 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
+  async prepareInboxSuggestions(automatic: boolean): Promise<void> {
+    await runScenarioInbox(this.#runtime, (inbox) => inbox.prepareSuggestions(8, automatic));
+  }
+
   async proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void> {
     await runScenarioInbox(
       this.#runtime,

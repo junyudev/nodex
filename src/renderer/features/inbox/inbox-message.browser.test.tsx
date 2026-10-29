@@ -20,7 +20,7 @@ installRendererThemeFixture();
 const waiting: InboxItem = {
   pageId: "page:1",
   outcome: null,
-  basis: { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
+  basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",
   pageStatus: null,
   title: "Homepage positioning",
@@ -63,7 +63,7 @@ function StreamMessage({
         item={item}
         projects={[]}
         agents={inboxAgentsFixture()}
-        suggestionsEnabled
+        policy={{ kind: "automatic" }}
         awaitingIndicator
         actions={actions}
         manualDraft={null}
@@ -404,6 +404,7 @@ test("a chat suggestion reads as its prompt: full width, the message's size, why
     state: "open",
     pageIds: ["page:1"],
     basis: [waiting.basis],
+    outdated: false,
     action: inboxNewChatAction("project:nodex", prompt),
     kind: "todo",
     summary: "整理合并前的提交历史",

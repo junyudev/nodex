@@ -7,12 +7,10 @@ import {
   type InboxChatAgent,
 } from "../../shared/inbox";
 import { inboxModelGuideNote } from "../../shared/inbox-model-guide";
+import { inboxUsageReading, type InboxBudgetPace } from "../../shared/inbox-suggestion-policy";
 
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
 type ProviderModel = Provider["models"][number];
-
-/** How a usage window is going: room to spare, on track, running short, or used up. */
-export type InboxBudgetPace = "ample" | "steady" | "tight" | "spent";
 
 export interface InboxBudgetWindow {
   readonly label: string;
@@ -49,42 +47,19 @@ const MAX_MODELS_PER_AGENT = 12;
 const HOUR_MS = 3_600_000;
 const round = (value: number) => Math.round(value * 10) / 10;
 
-/**
- * Compares the share of a window left with the share of its time left. A window that has
- * spent more than its time is tight; one with plenty in hand is ample.
- */
-export function inboxBudgetPace(
-  leftPercent: number,
-  timeLeftFraction: number | null,
-): InboxBudgetPace {
-  if (leftPercent <= 2) return "spent";
-  if (timeLeftFraction === null || timeLeftFraction <= 0)
-    return leftPercent >= 50 ? "ample" : "steady";
-  const ratio = leftPercent / 100 / timeLeftFraction;
-  if (ratio >= 1.25) return "ample";
-  if (ratio >= 0.8) return "steady";
-  return "tight";
-}
-
 const budgetOf = (provider: Provider, now: number): InboxAgentCandidate["budget"] => {
   const limits = provider.usageLimits;
   if (!limits || limits.windows.length === 0) return "unknown";
   const readAt = Date.parse(limits.checkedAt);
   const age = Number.isFinite(readAt) ? (now - readAt) / HOUR_MS : null;
   return limits.windows.map((window) => {
-    const left = Math.max(0, Math.min(100, 100 - window.usedPercent));
-    const resetsAt = window.resetsAt ? Date.parse(window.resetsAt) : Number.NaN;
-    const hours = Number.isFinite(resetsAt) ? Math.max(0, (resetsAt - now) / HOUR_MS) : null;
-    const duration = window.windowDurationMins ? window.windowDurationMins / 60 : null;
+    const reading = inboxUsageReading(window, now);
     return {
       label: window.label,
       kind: window.kind,
-      left_percent: Math.round(left),
-      resets_in_hours: hours === null ? null : round(hours),
-      pace: inboxBudgetPace(
-        left,
-        hours !== null && duration ? Math.min(1, hours / duration) : null,
-      ),
+      left_percent: Math.round(reading.leftPercent),
+      resets_in_hours: reading.resetsInHours === null ? null : round(reading.resetsInHours),
+      pace: reading.pace,
       ...(age !== null && age >= 1 ? { read_hours_ago: round(age) } : {}),
     };
   });

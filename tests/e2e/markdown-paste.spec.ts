@@ -106,7 +106,7 @@ test("the Inbox Composer pastes rich text as its Markdown and sends every line",
   await withElectronScenario(
     { label: "markdown-paste-inbox", scenarioId: null },
     async ({ application, page }) => {
-      await invokeIpc(page, "settings:inbox:update", { suggestionsEnabled: false });
+      await invokeIpc(page, "settings:inbox:update", { suggestions: "off" });
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.getByTestId("sidebar-inbox-row-wrapper").getByRole("button").click();
       const composer = page.getByRole("textbox", { name: "Message your Inbox" });

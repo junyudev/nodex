@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { InboxItem, InboxProposal } from "../../../shared/inbox";
+import type { InboxSuggestionPolicy } from "../../../shared/inbox-suggestion-policy";
 import {
   describeInboxAction,
   describeInboxChatStatus,
@@ -12,6 +13,7 @@ import {
   inboxAwaitingIndicatorPageId,
   inboxBuriedImportant,
   inboxPageStatusMark,
+  describeInboxSuggestionPause,
   inboxRowOffers,
   inboxPageRoutingContext,
   inboxTimestampSeparators,
@@ -22,7 +24,7 @@ import {
 const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
   outcome: null,
-  basis: { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
+  basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",
   pageStatus: null,
   title: "Message",
@@ -50,7 +52,8 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   origin: "agent",
   state: "open",
   pageIds: ["page:1"],
-  basis: [{ pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 }],
+  basis: [{ pageId: "page:1", contentHash: "content:1" }],
+  outdated: false,
   action: {
     type: "new_chat",
     projectId: "project:nodex",
@@ -112,16 +115,30 @@ describe("inboxTimestampSeparators", () => {
   });
 });
 
+const AUTOMATIC: InboxSuggestionPolicy = { kind: "automatic" };
+const ON_REQUEST: InboxSuggestionPolicy = { kind: "on_request" };
+const OFF: InboxSuggestionPolicy = { kind: "off" };
+const PAUSED: InboxSuggestionPolicy = {
+  kind: "paused",
+  pause: {
+    pace: "tight",
+    agent: "Codex",
+    window: "Weekly",
+    leftPercent: 38,
+    resetsAt: "2026-10-16T10:00:00.000Z",
+  },
+};
+
 describe("inboxAwaitingIndicatorPageId", () => {
   it("marks only the newest message still waiting for advice", () => {
     const waiting = (pageId: string) => item({ pageId, suggestionState: "pending" });
     const advised = item({ pageId: "page:advised", proposal: proposal() });
     expect(
-      inboxAwaitingIndicatorPageId([waiting("page:a"), waiting("page:b"), advised], true),
+      inboxAwaitingIndicatorPageId([waiting("page:a"), waiting("page:b"), advised], AUTOMATIC),
     ).toBe("page:b");
-    expect(inboxAwaitingIndicatorPageId([advised], true)).toBeNull();
+    expect(inboxAwaitingIndicatorPageId([advised], AUTOMATIC)).toBeNull();
     // Nothing is working on a message while suggestions are off.
-    expect(inboxAwaitingIndicatorPageId([waiting("page:a")], false)).toBeNull();
+    expect(inboxAwaitingIndicatorPageId([waiting("page:a")], OFF)).toBeNull();
   });
 });
 
@@ -149,23 +166,84 @@ describe("inboxPageRoutingContext", () => {
 });
 
 describe("inboxTriageModel", () => {
-  it("shows suggesting only while suggestions are enabled", () => {
+  it("shows a running suggestion in every mode that runs one", () => {
     const pending = item({ suggestionState: "pending" });
-    expect(inboxTriageModel(pending, true).kind).toBe("suggesting");
-    expect(inboxTriageModel(pending, false).kind).toBe("undecided");
+    expect(inboxTriageModel(pending, AUTOMATIC).kind).toBe("suggesting");
+    // The user asked for this one, so it runs while automatic advice steps back.
+    expect(inboxTriageModel(pending, ON_REQUEST).kind).toBe("suggesting");
+    expect(inboxTriageModel(pending, PAUSED).kind).toBe("suggesting");
+    expect(inboxTriageModel(pending, OFF).kind).toBe("undecided");
+  });
+
+  it("shows a message waiting for automatic advice as advised only while it will be", () => {
+    const waiting = item({ suggestionState: "waiting" });
+    expect(inboxTriageModel(waiting, AUTOMATIC).kind).toBe("suggesting");
+    expect(inboxTriageModel(waiting, ON_REQUEST).kind).toBe("undecided");
+    expect(inboxTriageModel(waiting, PAUSED).kind).toBe("undecided");
+    expect(inboxTriageModel(item({ suggestionState: "none" }), AUTOMATIC).kind).toBe("undecided");
   });
 
   it("asks for a decision on an open suggestion and reports failures in place", () => {
-    expect(inboxTriageModel(item({ proposal: proposal() }), true).kind).toBe("suggestion");
+    expect(inboxTriageModel(item({ proposal: proposal() }), AUTOMATIC)).toEqual({
+      kind: "suggestion",
+      proposal: proposal(),
+      refreshing: false,
+      refreshError: null,
+    });
     expect(
-      inboxTriageModel(item({ suggestionState: "failed", suggestionError: "Offline" }), true),
+      inboxTriageModel(item({ suggestionState: "failed", suggestionError: "Offline" }), AUTOMATIC),
     ).toEqual({ kind: "suggestion-failed", message: "Offline" });
     expect(
       inboxTriageModel(
         item({ proposal: proposal({ state: "failed", failureMessage: "Sign in first" }) }),
-        true,
+        AUTOMATIC,
       ),
     ).toMatchObject({ kind: "dispatch-failed", message: "Sign in first" });
+  });
+
+  it("keeps an outdated suggestion while new advice runs or after it fails", () => {
+    const outdated = proposal({ outdated: true });
+    expect(
+      inboxTriageModel(item({ proposal: outdated, suggestionState: "pending" }), ON_REQUEST),
+    ).toMatchObject({ kind: "suggestion", refreshing: true, refreshError: null });
+    expect(
+      inboxTriageModel(
+        item({ proposal: outdated, suggestionState: "failed", suggestionError: "Rate limited" }),
+        AUTOMATIC,
+      ),
+    ).toMatchObject({ kind: "suggestion", refreshing: false, refreshError: "Rate limited" });
+    // A rewrite waits for automatic advice only while suggestions run on their own.
+    expect(
+      inboxTriageModel(item({ proposal: outdated, suggestionState: "waiting" }), PAUSED),
+    ).toMatchObject({ kind: "suggestion", refreshing: false });
+  });
+});
+
+describe("describeInboxSuggestionPause", () => {
+  const now = Date.parse("2026-10-11T10:00:00.000Z");
+
+  it("says which usage ran short, what is left and when it comes back", () => {
+    expect(PAUSED.kind === "paused" && describeInboxSuggestionPause(PAUSED.pause, now)).toBe(
+      "Codex Weekly: 38% left, resets in 5 days",
+    );
+    expect(
+      describeInboxSuggestionPause(
+        {
+          pace: "spent",
+          agent: "Claude Code",
+          window: "Session",
+          leftPercent: 1,
+          resetsAt: "2026-10-11T13:00:00.000Z",
+        },
+        now,
+      ),
+    ).toBe("Claude Code Session: used up, resets in 3 h");
+    expect(
+      describeInboxSuggestionPause(
+        { pace: "spent", agent: "Codex", window: "Weekly", leftPercent: 0, resetsAt: null },
+        now,
+      ),
+    ).toBe("Codex Weekly: used up");
   });
 });
 
@@ -179,7 +257,7 @@ describe("isInboxItemHandled", () => {
       }),
     });
     expect(isInboxItemHandled(uncertain)).toBe(false);
-    expect(inboxTriageModel(uncertain, true)).toMatchObject({
+    expect(inboxTriageModel(uncertain, AUTOMATIC)).toMatchObject({
       kind: "dispatch-failed",
       message: "Check the destination chat",
     });
@@ -509,7 +587,7 @@ describe("inboxPageStatusMark", () => {
 
 describe("inboxRowOffers", () => {
   const offers = (model: Parameters<typeof inboxRowOffers>[0], grouped = false) =>
-    inboxRowOffers(model, { suggestionsEnabled: true, grouped });
+    inboxRowOffers(model, { suggestionsOffered: true, grouped });
 
   it("names what the row shows, so the menu can leave it out", () => {
     expect(offers({ kind: "undecided" })).toEqual({
@@ -528,23 +606,38 @@ describe("inboxRowOffers", () => {
       suggest: true,
     });
     expect(
-      inboxRowOffers({ kind: "undecided" }, { suggestionsEnabled: false, grouped: false }).suggest,
+      inboxRowOffers({ kind: "undecided" }, { suggestionsOffered: false, grouped: false }).suggest,
     ).toBe(false);
   });
 
   it("keeps Handle manually in the menu beside a suggestion, where it changes the suggestion", () => {
-    const proposal = { proposalId: "proposal:1" } as InboxProposal;
-    expect(offers({ kind: "suggestion", proposal })).toEqual({
+    const current = { kind: "suggestion", proposal: proposal(), refreshing: false } as const;
+    expect(offers({ ...current, refreshError: null })).toEqual({
       done: true,
       handleManually: false,
       suggest: false,
     });
+    // An outdated or failed suggestion asks again from the row, so the menu does not.
+    expect(
+      offers({ ...current, proposal: proposal({ outdated: true }), refreshError: null }).suggest,
+    ).toBe(true);
+    expect(offers({ ...current, refreshError: "Timed out" }).suggest).toBe(true);
+    expect(
+      inboxRowOffers(
+        { ...current, proposal: proposal({ outdated: true }), refreshError: null },
+        { suggestionsOffered: false, grouped: false },
+      ).suggest,
+    ).toBe(false);
   });
 
   it("offers nothing beside the menu for a group member or a handled message", () => {
-    const proposal = { proposalId: "proposal:1" } as InboxProposal;
     const nothing = { done: false, handleManually: false, suggest: false };
-    expect(offers({ kind: "suggestion", proposal }, true)).toEqual(nothing);
+    expect(
+      offers(
+        { kind: "suggestion", proposal: proposal(), refreshing: false, refreshError: null },
+        true,
+      ),
+    ).toEqual(nothing);
     expect(offers({ kind: "handled" })).toEqual(nothing);
   });
 });
@@ -594,7 +687,10 @@ describe("a scheduled task's waiting run", () => {
   });
 
   it("waits in the Inbox until it runs, and returns when its run fails before reaching a chat", () => {
-    expect(inboxTriageModel(waiting(), true)).toEqual({ kind: "suggestion", proposal: runTask });
+    expect(inboxTriageModel(waiting(), AUTOMATIC)).toMatchObject({
+      kind: "suggestion",
+      proposal: runTask,
+    });
     const admitted = waiting({
       outcome: "chat",
       firing: { ...firing, status: "admitted" },
@@ -612,7 +708,7 @@ describe("a scheduled task's waiting run", () => {
       proposal: { ...runTask, state: "failed", failureKind: "rejected", failureMessage: null },
     });
     expect(isInboxItemHandled(failed)).toBe(false);
-    expect(inboxTriageModel(failed, true)).toMatchObject({
+    expect(inboxTriageModel(failed, AUTOMATIC)).toMatchObject({
       kind: "dispatch-failed",
       message: "The Agent is off",
     });
@@ -649,11 +745,11 @@ describe("a scheduled task's waiting run", () => {
   });
 
   it("can no longer run once its task is deleted", () => {
-    expect(inboxTriageModel(waiting({ firing: { ...firing, status: "withdrawn" } }), true)).toEqual(
-      {
-        kind: "firing-withdrawn",
-      },
-    );
+    expect(
+      inboxTriageModel(waiting({ firing: { ...firing, status: "withdrawn" } }), AUTOMATIC),
+    ).toEqual({
+      kind: "firing-withdrawn",
+    });
   });
 
   it("says when it fell due, how often since, and where it runs", () => {

@@ -90,9 +90,11 @@ intents, and selection.
   - **Scheduled task:** a run of a task that asks first; see
     [Scheduled runs](#scheduled-runs). Renders left-aligned and labeled
     `From <task>` with the Scheduled glyph; the label opens the task.
-- A suggestion is fenced by the Page revision it was computed from. After the
-  Page is edited, confirming that suggestion fails; `Suggest again` produces a
-  fresh one.
+- A suggestion is about the message text it read. Editing that text, in the
+  stream or in the Page, makes the suggestion outdated rather than withdrawing
+  it, and never asks for new advice by itself; see
+  [Suggestions](#suggestions). A write that leaves the text as
+  it was, such as a rename, a move, or opening the Page, changes nothing.
 
 ## Editing a message
 
@@ -104,14 +106,15 @@ is rewritten, what Nodex made of the old text steps aside.
 
 - Saving is an ordinary write to the message Page under the same rules as
   sending, so the Board, search, and an open Page agree with the stream.
-- Suggestions about the old text are withdrawn, and every message they covered
-  waits for a new suggestion. A provisional title follows the new opening words;
-  a name given by the user or a suggestion is kept.
+- Saving is a send of the new text: a suggestion about the old text stays,
+  outdated, until new advice replaces it, and the message waits for automatic
+  advice as a new message does. A provisional title follows the new opening
+  words; a name given by the user or a suggestion is kept.
 - An edit started from text that has changed since is refused rather than
   overwriting it. The original text remains fixed for the lifetime of that edit,
   including when another view updates the message while its editor is open.
-- Saving the body, updating a provisional title and withdrawing suggestions about
-  the old text are one atomic operation.
+- Saving the body, updating a provisional title and queueing the message for
+  advice are one atomic operation.
 - A message whose Page no longer has the message shape, text followed by
   Library images, or holds more than the stream shows, is edited as its Page:
   its row offers `Edit as Page` instead.
@@ -125,7 +128,7 @@ needs the user; once handled, it moves to History.
 
 - **Inbox:** open messages with no confirmed chat dispatch or an uncertain delivery. This covers
   messages awaiting advice, with a concrete suggestion to decide, with a failed
-  suggestion, with suggestions disabled, or whose delivery failed.
+  suggestion, with no advice asked for, or whose delivery failed.
 - **History:** every handled message: a confirmed chat dispatch (including one
   still being delivered), a message filed in a Project, Keep, or Done.
 
@@ -250,18 +253,45 @@ The user can mark a message important so it stays within reach while it waits.
 
 ## Suggestions
 
-When suggestions are enabled, Main reads pending entries in batches of up to
-eight, waiting briefly so a burst of messages can be considered together. One
-request never mixes Inboxes. Explicit grouped requests retain all selected
-members, up to sixteen, rather than being split by the automatic batch size.
-Each request and response is fenced by its identity and the Page revisions it
-read; an old success or failure cannot replace a newer request.
+Each suggestion spends the suggestion Agent's usage, so only a send asks for
+one on its own. The `Suggestions` preference chooses when they run:
+
+- **Automatically**, the default: each message gets advice once, when it is
+  sent or its rewrite in the stream is saved.
+- **When I ask:** a message gets advice only when the user asks with `Suggest`,
+  `Suggest again`, `Retry`, or `Suggest together`.
+- **Off:** nothing suggests, and the Inbox offers no way to ask.
+
+Automatic suggestions also step back when the suggestion Agent is about to run
+out. When one of its usage windows is used up, or is spending its share faster
+than its time and has less than 10% left, a message sent then waits with
+`Suggest` instead, and a quiet line above the composer, marked with the pause
+glyph, names that window, how much of it is left and when it resets; hovering
+it says why. They resume
+for messages sent after usage recovers. Asking for advice works while they are
+paused.
+
+Messages sent while advice does not run on its own keep no claim on it: they
+never receive it later because the mode changed or usage recovered. Every
+other change leaves advice where it is. Editing a message's Page makes its
+suggestion outdated without asking again. Reopening a message, returning it
+from History, or removing another member of its group leaves it with no
+advice until the user asks. Undoing a decision restores the suggestion it
+decided.
+
+Main gathers messages waiting for automatic advice in batches of up to eight,
+waiting briefly so a burst of messages can be considered together. One request
+never mixes Inboxes. Explicit grouped requests retain all selected members, up
+to sixteen, rather than being split by the automatic batch size. Each request
+and response is fenced by its identity; an old success or failure cannot
+replace a newer request.
 
 Suggestions cover only open messages whose Pages are active. Archiving or
 deleting a Page withdraws the whole request or unconfirmed proposal that
-included it; its remaining open messages wait for fresh advice. A late success
-or failure cannot restore that advice or hold up other requests, including
-after a restart. Restoring an archived message lets it receive fresh advice.
+included it; its remaining open messages have no advice until the user asks. A
+late success or failure cannot restore that advice or hold up other requests,
+including after a restart. A restored archived message can be asked for advice
+again.
 
 The suggestion Agent receives bounded message text and eligible routing
 candidates, including relevant chat previews. Its prompt asks only for a
@@ -324,10 +354,10 @@ form Nodex cannot read. The Agent Runtime waits a suggestion's whole time
 budget, so a slow suggestion fails only as its own timeout.
 
 In the same pass, the Agent names each message that still has its provisional
-title. Core checks the complete request's source versions and atomically applies
-all titles, concrete proposals, and request settlement. The proposals are
-fenced by the resulting Page versions. Any intervening edit rejects the entire
-stale result; no title or partial suggestion from it is applied.
+title. Core atomically applies all titles, concrete proposals, and request
+settlement. A message edited while its request ran still receives its
+suggestion, outdated at once, so advice already paid for is never discarded and
+asked for again; only the title of a message whose text is unchanged is applied.
 
 What Nodex made of a message is not a reply. It is a strip joined to the
 message itself: the message fills the top of one rounded object, and the strip
@@ -379,25 +409,40 @@ and its row show one of these:
     anything is sent;
   - the member count for a group, with access to its complete scope;
   - `Keep`.
-- **Failure:** one short reason and a new decision. Suggestion failures and
-  temporarily unavailable delivery offer `Retry`. Definite rejection requires
-  reviewing `Handle manually`; uncertain delivery offers `Open chat` and `Send again`
-  without an automatic retry.
+- **Failure:** one short reason and a new decision. A failed suggestion, or a
+  delivery that can be tried again, ends the row with `Retry`, with
+  `Handle manually` outlined beside it. Definite rejection ends it with
+  `Handle manually`. Uncertain delivery ends it with `Open chat`, with
+  `Send again` outlined beside it, and never retries on its own.
+- **Outdated suggestion:** the suggestion as it was, in the muted color, under
+  `Suggested before this message changed`. Its decision remains, outlined
+  rather than solid, and can be confirmed as it reads. Asking again is now the
+  obvious next step, so `Suggest again` ends the row as the primary button: the
+  refresh glyph alone, named by its tooltip. While new advice runs, that button
+  becomes a spinner and the suggestion stays until the new one arrives; a
+  failure says so in place of the note, and the same button retries. Editing the
+  text back makes the suggestion current again.
 - **No advice requested, or suggestions off:** `Handle manually`, `Suggest`
-  when suggestions are on, and `Keep`.
+  unless suggestions are off, and `Keep`.
 
-Only the decision keeps a text label, with its action's glyph: the suggested
-action, or `Handle manually` when there is no suggestion. It ends the row, flush with
-the card's right edge, so it is always in the same horizontal place. A row
-without one, the spinner of a running suggestion or a row of icons, ends where
-the card's bottom-right corner curve meets its bottom edge.
-`Keep as a note`, `Retry`, `Suggest`, `Mark done`, `Handle manually` while a
-suggestion runs or after a failure (always the last icon, right of `Mark done`), and
-the message menu are icon buttons named by their tooltips, gathered at the
-trailing edge just before any decision. Every suggestion offers the `Mark done` check. The Nodex
-mark stands for the AI. It appears only on actions that ask for a suggestion and
-never decorates the suggestions themselves. The same glyph
-marks each dispatch kind in the strip, the dispatch editor, and History. A grouped
+The row ends with its decision, flush with the card's right edge, so the step
+the row recommends is always in the same horizontal place. A labeled action
+always has an edge: solid when it is that step, outlined when it is the
+alternative just before it, such as `Handle manually` beside `Retry` or an
+outdated suggestion beside `Suggest again`. With no step to recommend, as on a
+message without advice, `Handle manually` ends the row outlined. A recommended
+step whose glyph says it all, `Suggest again` or `Retry`, is a solid icon named
+by its tooltip. A row without a decision, the spinner of a running suggestion or
+a row of icons, ends where the card's bottom-right corner curve meets its bottom
+edge. `Keep as a note`, `Suggest`, `Mark done`, `Handle manually` while a
+suggestion runs, and the message menu are quiet icon buttons named by their
+tooltips, gathered at the trailing edge before any decision. Every suggestion offers the `Mark done` check.
+Every action that asks for advice, `Suggest`, `Suggest together`, `Suggest
+again` and a failed suggestion's `Retry`, uses the refresh glyph wherever it
+appears, the message menu included: asking first and asking again are one
+action. Suggestions themselves carry no AI mark. Retrying a delivery keeps its
+own retry glyph. Each dispatch kind has one glyph, the same in the strip, the
+dispatch editor, and History. A grouped
 suggestion renders once, on the newest message in its group; the others say
 which message carries it. A missing sign-in is reported as
 `Sign in to the suggestion agent first`.
@@ -416,11 +461,11 @@ own Agent, and its plan can be rewritten.
 ## Dispatch
 
 Only a user action turns a suggestion into work: confirming a proposal, or
-submitting the dispatch editor. Confirmation is fenced by the message revisions
-the proposal was computed from.
+submitting the dispatch editor. Confirmation is fenced by the message text the
+user reviewed, including for an outdated suggestion.
 
-Every confirmation, including an edited action, checks the message versions
-the user reviewed. It freezes the complete original text, final prompt and
+Every confirmation, including an edited action, checks the message text the
+user reviewed. It freezes the complete original text, final prompt and
 destination. New chats also retain the resolved Agent instance, model and
 options: the one their decision names, chosen by the suggestion or by the user,
 or else the Inbox's own. A planned chat's delegation instructions are written
@@ -612,7 +657,7 @@ creates a second message, and does not count against the Agent budget again.
   - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
     Project's Inbox;
   - `Inbox settings`, a panel that changes in place what suggests and what new
-    chats run on: the suggestions switch and the suggestion model, then whether
+    chats run on: when suggestions run and the suggestion model, then whether
     suggestions choose each new chat's models and the model new chats otherwise
     run on, each with the composer's model menu. `Routing preferences and more`
     opens `Settings → Inbox`.
@@ -621,7 +666,7 @@ creates a second message, and does not count against the Agent budget again.
   the start and tools at the end, in the same places as on every other tab.
 
 - `Settings → Inbox` holds these Profile preferences:
-  - whether suggestions run;
+  - when suggestions run: automatically, when the user asks, or never;
   - the suggestion Agent and model, chosen with the composer's model menu among
     the Agents that can write suggestions. Suggestions run each model at a fixed
     effort, high on Codex and medium on Claude, so the menu offers no effort or
@@ -644,7 +689,7 @@ creates a second message, and does not count against the Agent budget again.
   the saved choice unavailable. Only a loaded catalog can establish that a choice
   is missing or unavailable. Agent setting changes refresh the choices.
   An unavailable instance retains its real name rather than appearing as another Agent.
-  Suggestions run for every message, so an omitted suggestion model resolves to
+  Suggestions run often, so an omitted suggestion model resolves to
   GPT-6.1 Sol on Codex, and otherwise, or when the catalog lacks it, to that
   instance's catalog default. Until a chat model is chosen, chats the Inbox
   starts use the Agent's catalog default model at that model's own effort and
@@ -660,5 +705,5 @@ creates a second message, and does not count against the Agent budget again.
   running Turn.
 - Capture happens inside the app window. There is no system-wide capture
   shortcut.
-- Messages are named only when suggestions run. With suggestions turned off or
+- Messages are named only when suggestions run. With no advice asked for, or
   failing, a message keeps its provisional title until the user renames it.

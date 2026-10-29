@@ -15,6 +15,7 @@ import {
   InboxSuggestionAgentPicker,
   useInboxAgents,
 } from "./inbox-agent-picker";
+import { InboxSuggestionModePicker } from "./inbox-suggestion-mode-picker";
 
 export function InboxSettingsPage() {
   const settingsQuery = useInboxSettingsQuery();
@@ -71,23 +72,23 @@ export function InboxSettingsPage() {
       <SectionBlock title="Suggestions">
         <SettingRow
           label="Suggest where messages go"
-          description="Propose what to do with new messages."
+          description="Automatically suggests each message as you send it, pausing when the suggestion Agent’s usage is about to run out. Each suggestion is one request to that Agent."
         >
-          <NodexSwitch
-            ariaLabel="Suggest where messages go"
-            checked={settings.suggestionsEnabled}
-            onCheckedChange={(suggestionsEnabled) => save({ suggestionsEnabled })}
+          <InboxSuggestionModePicker
+            trigger="settings"
+            value={settings.suggestions}
+            onChange={(suggestions) => save({ suggestions })}
           />
         </SettingRow>
         <SettingRow
           label="Suggest with"
-          description="Runs for every message, so on Codex it starts on the economical GPT-6.1 Sol."
+          description="Suggestions run often, so on Codex they start on the economical GPT-6.1 Sol."
         >
           <div className="w-72 max-w-full">
             <InboxSuggestionAgentPicker
               agents={agents}
               trigger="field"
-              disabled={!settings.suggestionsEnabled || !ready}
+              disabled={settings.suggestions === "off" || !ready}
             />
           </div>
         </SettingRow>

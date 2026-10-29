@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Editing an Inbox message no longer asks for a new suggestion every time you pause. The suggestion stays beside the message, marked as written before it changed, and you can still confirm it or choose Suggest again. Opening, moving or renaming a message's Page leaves its suggestion as it was.
+- You choose when Inbox suggestions run: automatically for each message you send, only when you ask, or never, from the Inbox's settings gear or Settings → Inbox. Automatic suggestions pause when the suggestion Agent's usage is about to run out and say so above the composer; Suggest still works on any message.
+
 ### Fixed
 
 - Opening a Page with images no longer saves an unintended edit when its images load.

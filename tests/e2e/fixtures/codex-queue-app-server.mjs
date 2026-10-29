@@ -480,7 +480,12 @@ const handle = (message) => {
       });
       return;
     case "account/rateLimits/read":
-      respond(id, { rateLimits: null });
+      // A scenario can report usage, such as a weekly window that is running short.
+      respond(id, {
+        rateLimits: process.env.NODEX_FAKE_CODEX_RATE_LIMITS
+          ? JSON.parse(process.env.NODEX_FAKE_CODEX_RATE_LIMITS)
+          : null,
+      });
       return;
     case "model/list":
       respond(id, { data: [model], nextCursor: null });

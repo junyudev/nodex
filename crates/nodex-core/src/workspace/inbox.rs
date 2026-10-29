@@ -795,8 +795,8 @@ fn capture_message_in_scope(
                 "INSERT INTO inbox_entries(\
                    page_id, library_id, seq, submitted_at, source_kind, source_session_id, \
                    source_thread_id, source_turn_id, source_project_id, source_label, source_budget_key, source_automation_id, source_dispatch_id, \
-                   provisional_title, scope_project_id, updated_at\
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?4)",
+                   provisional_title, scope_project_id, updated_at, suggestion_state\
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?4, 'waiting')",
                 params![
                     page_id,
                     library_id,
@@ -1096,6 +1096,11 @@ fn insert_proposal(
         ));
     }
     supersede_failed_proposals(connection, proposal.page_ids, now)?;
+    // New advice may split an older group. Uncovered members lose that whole-group
+    // proposal, while any separate request they already own continues normally.
+    let members = serde_json::to_string(proposal.page_ids)
+        .map_err(|_| internal("Inbox members cannot be encoded"))?;
+    connection.execute("UPDATE inbox_entries SET current_proposal_id=NULL,suggestion_state=CASE WHEN suggestion_state='settled' THEN 'none' ELSE suggestion_state END,revision=revision+1,updated_at=?2 WHERE state='open' AND page_id NOT IN (SELECT value FROM json_each(?1)) AND current_proposal_id IN (SELECT previous.proposal_id FROM inbox_proposals previous JOIN inbox_proposal_pages member USING(proposal_id) WHERE previous.state='open' AND member.page_id IN (SELECT value FROM json_each(?1)))",params![members,now])?;
     supersede_open_proposals(connection, proposal.page_ids, "superseded", now)?;
     connection.execute(
         "INSERT INTO inbox_proposals(\
@@ -1199,7 +1204,7 @@ fn supersede_failed_proposals(
     for proposal_id in proposals {
         connection.execute(
             "UPDATE inbox_entries SET current_proposal_id=NULL,outcome=NULL, \
-               suggestion_state='pending',suggestion_request_id=NULL,suggestion_error=NULL, \
+               suggestion_state='none',suggestion_request_id=NULL,suggestion_error=NULL, \
                revision=revision+1,updated_at=?2 \
              WHERE current_proposal_id=?1 AND state='open'",
             params![proposal_id, now],
@@ -1561,7 +1566,7 @@ fn forget_proposals(
 ) -> Result<(), StoreError> {
     let page_ids_json = serde_json::to_string(page_ids)
         .map_err(|_| internal("Inbox message identities cannot be encoded"))?;
-    connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state=CASE WHEN state='open' THEN 'pending' ELSE suggestion_state END WHERE suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&page_ids_json])?;
+    connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state=CASE WHEN state='open' THEN 'none' ELSE suggestion_state END WHERE suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&page_ids_json])?;
     connection.execute("DELETE FROM inbox_suggestion_requests WHERE request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&page_ids_json])?;
     let proposals = connection
         .prepare(
@@ -1592,7 +1597,7 @@ fn forget_proposals(
         connection.execute(
             "UPDATE inbox_entries SET current_proposal_id = NULL, \
                state = CASE WHEN ?2 THEN 'done' ELSE state END, \
-               suggestion_state = CASE WHEN ?2 THEN suggestion_state ELSE 'pending' END, \
+               suggestion_state = CASE WHEN ?2 THEN suggestion_state ELSE 'none' END, \
                suggestion_error = CASE WHEN ?2 THEN suggestion_error ELSE NULL END, \
                revision = revision + 1, updated_at = ?3 \
              WHERE current_proposal_id = ?1 \
@@ -1661,7 +1666,7 @@ fn set_entries_state(
         let ids = serde_json::to_string(page_ids)
             .map_err(|_| internal("Inbox identities cannot be encoded"))?;
         connection.execute("UPDATE inbox_suggestion_requests SET state='superseded',generation=generation+1,correction=NULL WHERE state='pending' AND request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&ids])?;
-        connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state=CASE WHEN state='open' THEN 'pending' ELSE suggestion_state END WHERE suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_requests WHERE state='superseded')",[])?;
+        connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state=CASE WHEN state='open' THEN 'none' ELSE suggestion_state END WHERE suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_requests WHERE state='superseded')",[])?;
     }
     for page_id in page_ids {
         connection.execute(
@@ -1671,8 +1676,9 @@ fn set_entries_state(
                  WHERE firing.page_id=inbox_entries.page_id AND firing.status='skipped') THEN 'done' \
                WHEN outcome = 'chat' THEN outcome \
                WHEN ?2 = 'kept' THEN 'kept' WHEN ?2 = 'done' THEN 'done' ELSE NULL END, \
-               suggestion_state = CASE WHEN suggestion_state = 'pending' AND ?2 <> 'open' \
-                 THEN 'settled' ELSE suggestion_state END, \
+               suggestion_state = CASE WHEN ?2 = 'open' AND source_kind <> 'scheduled_task' THEN 'none' \
+                 WHEN suggestion_state IN ('waiting','pending') AND ?2 <> 'open' \
+                 THEN 'none' ELSE suggestion_state END, suggestion_error = NULL, \
                revision = revision + 1, updated_at = ?3 \
              WHERE page_id = ?1 AND library_id = ?4 AND state <> ?2",
             params![page_id, state, now, library_id],
@@ -1754,9 +1760,8 @@ pub(super) fn set_important(
     )
 }
 
-/// The user rewrote a message's text through the Document owner. Suggestions about the
-/// old text are withdrawn, every message they covered waits for a new one, and a title
-/// that still matches the opening words stays provisional so it can be named again.
+/// A Document write may refresh a provisional title, but never requests advice. Only
+/// SendInboxMessage and a saved stream rewrite queue automatic suggestions.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn revise_message(
     connection: &Connection,
@@ -1784,18 +1789,6 @@ pub(super) fn revise_message(
         .lines()
         .find(|line| !line.trim().is_empty())
         .is_some_and(|line| provisional_title(line) == title);
-    let mut covered = BTreeSet::from([page_id.to_owned()]);
-    let mut statement = connection.prepare(
-        "SELECT DISTINCT other.page_id FROM inbox_proposal_pages member \
-         JOIN inbox_proposals proposal \
-           ON proposal.proposal_id = member.proposal_id AND proposal.state = 'open' \
-         JOIN inbox_proposal_pages other ON other.proposal_id = member.proposal_id \
-         WHERE member.page_id = ?1",
-    )?;
-    for row in statement.query_map([page_id], |row| row.get::<_, String>(0))? {
-        covered.insert(row?);
-    }
-    let covered = covered.into_iter().collect::<Vec<_>>();
     let now = sqlite_now(connection)?;
     run_mutation(
         connection,
@@ -1807,15 +1800,6 @@ pub(super) fn revise_message(
         |_| {
             if scheduled::refence(connection, page_id, &now)? {
                 return Ok(simple_effects("inbox_revise_message", &now));
-            }
-            supersede_open_proposals(connection, &covered, "superseded", &now)?;
-            for covered_page_id in &covered {
-                connection.execute(
-                    "UPDATE inbox_entries SET suggestion_state = 'pending', \
-                       suggestion_error = NULL, revision = revision + 1, updated_at = ?2 \
-                     WHERE page_id = ?1 AND library_id = ?3 AND state = 'open'",
-                    params![covered_page_id, now, library_id],
-                )?;
             }
             if follows_text {
                 connection.execute(
@@ -1856,7 +1840,7 @@ pub(super) fn record_suggestion_failure(
                 connection.execute(
                     "UPDATE inbox_entries SET suggestion_state = 'failed', suggestion_error = ?2, \
                        revision = revision + 1, updated_at = ?3 \
-                     WHERE page_id = ?1 AND library_id = ?4 AND suggestion_state = 'pending'",
+                     WHERE page_id = ?1 AND library_id = ?4 AND suggestion_state IN ('waiting','pending')",
                     params![page_id, message, now, library_id],
                 )?;
             }
@@ -2105,26 +2089,16 @@ pub(super) fn current_basis(
 ) -> Result<Vec<ProjectWorkspaceInboxPageBasis>, StoreError> {
     page_ids
         .iter()
-        .map(|page_id| {
-            connection
-                .query_row(
-                    "SELECT document.generation, document.head_seq, block.placement_revision FROM pages page JOIN blocks block ON block.id=page.block_id \
-                     JOIN documents document ON document.id = page.document_id \
-                     WHERE page.block_id = ?1",
-                    [page_id],
-                    |row| {
-                        Ok(ProjectWorkspaceInboxPageBasis {
-                            page_id: page_id.clone(),
-                            placement_revision: row.get(2)?,
-                            generation: row.get(0)?,
-                            head_seq: row.get(1)?,
-                        })
-                    },
-                )
-                .optional()?
-                .ok_or_else(|| not_found("Inbox entry Page is unavailable"))
-        })
+        .map(|page_id| super::inbox_read::message_basis(connection, page_id))
         .collect()
+}
+
+fn document_head(connection: &Connection, page_id: &str) -> Result<(i64, i64), StoreError> {
+    Ok(connection.query_row(
+        "SELECT document.generation,document.head_seq FROM pages page JOIN documents document ON document.id=page.document_id WHERE page.block_id=?1",
+        [page_id],
+        |row| Ok((row.get(0)?,row.get(1)?)),
+    )?)
 }
 
 fn require_basis(

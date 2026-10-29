@@ -18,7 +18,7 @@ test("a chat the Inbox starts opens with its message's Page beside it unless tur
   await withElectronScenario(
     { label: "inbox-new-chat-page", scenarioId: null },
     async ({ page, seed }) => {
-      await invokeIpc(page, "settings:inbox:update", { suggestionsEnabled: false });
+      await invokeIpc(page, "settings:inbox:update", { suggestions: "off" });
       const shownText = "Sketch a calmer empty state for Boards.";
       const hiddenText = "List the sync settings worth keeping.";
       const shown = await seed.sendInboxMessage(shownText);

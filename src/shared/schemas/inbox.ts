@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  INBOX_SUGGESTION_MODES,
   MAX_INBOX_INSTRUCTIONS_CHARS,
   type InboxAgentBinding,
   type InboxChatAgent,
@@ -107,9 +108,7 @@ export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
 export const InboxPageBasisSchema = z
   .object({
     pageId: id,
-    generation: z.number().int().nonnegative(),
-    headSeq: z.number().int().nonnegative(),
-    placementRevision: z.number().int().nonnegative(),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/u),
   })
   .strict() satisfies z.ZodType<InboxPageBasis>;
 
@@ -287,7 +286,7 @@ export const InboxSetImportantInputSchema = z
 
 export const UpdateInboxSettingsInputSchema = z
   .object({
-    suggestionsEnabled: z.boolean().optional(),
+    suggestions: z.enum(INBOX_SUGGESTION_MODES).optional(),
     suggestionAgent: InboxAgentBindingSchema.optional(),
     suggestionModel: z.string().trim().max(256).nullable().optional(),
     instructions: z.string().max(MAX_INBOX_INSTRUCTIONS_CHARS).optional(),

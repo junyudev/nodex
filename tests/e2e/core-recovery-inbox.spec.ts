@@ -51,7 +51,7 @@ test("recovers Core loss while three Inbox chats run without repeating dispatch 
   try {
     const page = await harness.launch();
     const seed = new RendererIpcSeedAdapter(page);
-    await invokeIpc(page, "settings:inbox:update", { suggestionsEnabled: false });
+    await invokeIpc(page, "settings:inbox:update", { suggestions: "off" });
     await invokeIpc(page, "settings:claude-agents:update", {
       instances: [
         {

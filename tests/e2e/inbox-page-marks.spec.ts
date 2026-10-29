@@ -33,7 +33,7 @@ test("an Inbox message shows where its Page already stands and opens its chats",
     async ({ application, facts, page }) => {
       const seeded = requireInboxTriageScenarioFacts(facts);
       // Nothing here asks an Agent for advice; the seeded suggestions are already settled.
-      await invokeIpc(page, "settings:inbox:update", { suggestionsEnabled: false });
+      await invokeIpc(page, "settings:inbox:update", { suggestions: "off" });
       await application.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: 1280, height: 860 });
       });

@@ -13,7 +13,7 @@ import {
   ImportantFilledIcon,
   ImportantIcon,
   PageIcon,
-  AskAiIcon,
+  RefreshIcon,
   TagsIcon,
 } from "@/components/shared/icons";
 import {
@@ -44,7 +44,8 @@ import {
 export interface InboxMessageMenuHandlers {
   readonly onOpenPage: () => void;
   readonly onDispatch: () => void;
-  readonly onSuggestAgain: () => void;
+  /** Absent while suggestions are off. */
+  readonly onSuggestAgain?: () => void;
   readonly onSetDone: (done: boolean) => void;
   readonly onSetKind: (kind: InboxEntryKind) => void;
   readonly onSetImportant: (important: boolean) => void;
@@ -93,9 +94,9 @@ export function InboxMessageMenu({
         </NodexDropdownItem>
       )}
       {/* A scheduled run takes its decision from its task, never from advice. */}
-      {item.state === "open" && !rowOffers.suggest && !item.firing ? (
+      {item.state === "open" && !rowOffers.suggest && !item.firing && handlers.onSuggestAgain ? (
         <NodexDropdownItem
-          leftSlot={<AskAiIcon className="icon-xs" />}
+          leftSlot={<RefreshIcon className="icon-xs" />}
           onSelect={handlers.onSuggestAgain}
         >
           Suggest again

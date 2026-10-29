@@ -1,6 +1,8 @@
 //! Bounded Inbox read models: the user's stream, the suggestion Agent's routing
 //! context, and the Desktop Host's dispatch outbox.
 
+use std::collections::HashMap;
+
 use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
@@ -77,7 +79,7 @@ pub(super) fn read_summary(
                 "SELECT count(*), \
                    COALESCE(SUM({IN_INBOX}), 0), \
                    COALESCE(SUM(entry.state = 'open' AND proposal.state = 'open'), 0), \
-                   COALESCE(SUM(entry.state = 'open' AND entry.suggestion_state = 'pending' AND entry.source_kind <> 'scheduled_task'), 0), \
+                   COALESCE(SUM(entry.state = 'open' AND entry.suggestion_state IN ('waiting','pending') AND entry.source_kind <> 'scheduled_task'), 0), \
                    COALESCE(SUM(entry.important = 1 AND {IN_INBOX}), 0) \
                  FROM inbox_entries entry \
                  JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
@@ -197,6 +199,43 @@ fn filter_predicate(filter: ProjectWorkspaceInboxWindowFilter) -> String {
     }
 }
 
+/// One pinned read shares content evidence and resolved advice across every group member.
+#[derive(Default)]
+struct InboxReadCache {
+    bases: HashMap<String, ProjectWorkspaceInboxPageBasis>,
+    proposals: HashMap<String, Option<ProjectWorkspaceInboxProposal>>,
+}
+
+impl InboxReadCache {
+    fn basis(
+        &mut self,
+        connection: &Connection,
+        page_id: &str,
+    ) -> Result<ProjectWorkspaceInboxPageBasis, StoreError> {
+        if let Some(basis) = self.bases.get(page_id) {
+            return Ok(basis.clone());
+        }
+        let basis = message_basis(connection, page_id)?;
+        self.bases.insert(page_id.to_owned(), basis.clone());
+        Ok(basis)
+    }
+
+    fn proposal(
+        &mut self,
+        connection: &Connection,
+        library_id: &str,
+        proposal_id: &str,
+    ) -> Result<Option<ProjectWorkspaceInboxProposal>, StoreError> {
+        if let Some(proposal) = self.proposals.get(proposal_id) {
+            return Ok(proposal.clone());
+        }
+        let proposal = read_proposal(connection, library_id, proposal_id, self)?;
+        self.proposals
+            .insert(proposal_id.to_owned(), proposal.clone());
+        Ok(proposal)
+    }
+}
+
 /// Newest-first stream window ordered by submission sequence.
 pub(super) fn read_window(
     connection: &Connection,
@@ -263,8 +302,9 @@ pub(super) fn read_window(
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut candidates = Vec::with_capacity(page_ids.len());
+    let mut cache = InboxReadCache::default();
     for page_id in page_ids {
-        let (item, seq) = read_item(connection, library_id, home.as_ref(), &page_id)?;
+        let (item, seq) = read_item(connection, library_id, home.as_ref(), &page_id, &mut cache)?;
         candidates.push(WindowCandidate {
             coordinate: KeysetCoordinate {
                 values: vec![KeysetValue::Integer { value: seq }],
@@ -316,9 +356,6 @@ struct EntryRow {
     markdown: Option<String>,
     source_body_truncated: bool,
     plain_text: String,
-    generation: i64,
-    head_seq: i64,
-    placement_revision: i64,
 }
 
 /// Admit a small complete Markdown or bounded text prefix in SQLite before decoding.
@@ -393,9 +430,6 @@ fn read_entry(
                     title: row.get(15)?,
                     markdown: row.get(16)?,
                     plain_text: row.get(17)?,
-                    generation: row.get(18)?,
-                    head_seq: row.get(19)?,
-                    placement_revision: row.get(24)?,
                 })
             },
         )
@@ -442,12 +476,7 @@ pub(super) fn read_message_edit(
         .filter(|excerpt| provisional && *excerpt != row.title)
         .map(|excerpt| super::inbox::title_markdown(&excerpt));
     Ok(ProjectWorkspaceInboxMessageEdit {
-        basis: ProjectWorkspaceInboxPageBasis {
-            placement_revision: row.placement_revision,
-            page_id: page_id.to_owned(),
-            generation: row.generation,
-            head_seq: row.head_seq,
-        },
+        basis: message_basis(connection, page_id)?,
         body_markdown: changed.then_some(next.markdown),
         title_markdown,
     })
@@ -487,6 +516,38 @@ fn message_text(row: &EntryRow) -> String {
     crate::domain::markdown::parse_markdown(markdown)
         .map(|blocks| crate::domain::markdown::extract_block_lines(&blocks))
         .unwrap_or_else(|_| row.plain_text.clone())
+}
+
+#[cfg(test)]
+thread_local! {
+    static MESSAGE_BASIS_COMPUTATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(super) fn take_message_basis_computations() -> usize {
+    MESSAGE_BASIS_COMPUTATIONS.with(|count| count.replace(0))
+}
+
+/// Synchronous content evidence: bounded Markdown parsing matches suggestion_input; oversized
+/// Pages hash their complete text even though they cannot be sent to the suggestion Agent.
+pub(crate) fn message_basis(
+    connection: &Connection,
+    page_id: &str,
+) -> Result<ProjectWorkspaceInboxPageBasis, StoreError> {
+    #[cfg(test)]
+    MESSAGE_BASIS_COMPUTATIONS.with(|count| count.set(count.get() + 1));
+    let mut row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
+    if row.source_body_truncated {
+        row.plain_text = connection.query_row(
+            "SELECT COALESCE(materialization.plain_text,'') FROM pages page LEFT JOIN document_materializations materialization ON materialization.document_id=page.document_id WHERE page.block_id=?1",
+            [page_id],
+            |row| row.get(0),
+        )?;
+    }
+    Ok(ProjectWorkspaceInboxPageBasis {
+        page_id: page_id.to_owned(),
+        content_hash: crate::document::sha256(message_text(&row).as_bytes()),
+    })
 }
 
 /// Freeze model-visible text at the reviewed Document head. Images remain on the Page.
@@ -549,6 +610,7 @@ fn read_item(
     library_id: &str,
     home: Option<&super::inbox::InboxHome>,
     page_id: &str,
+    cache: &mut InboxReadCache,
 ) -> Result<(ProjectWorkspaceInboxItem, i64), StoreError> {
     let row = read_entry(connection, page_id, MAX_STREAM_BODY_BYTES)?;
     let (body, body_truncated) = stream_body(&row);
@@ -556,17 +618,12 @@ fn read_item(
     let proposal = row
         .current_proposal_id
         .as_deref()
-        .map(|proposal_id| read_proposal(connection, library_id, proposal_id))
+        .map(|proposal_id| cache.proposal(connection, library_id, proposal_id))
         .transpose()?
         .flatten();
     Ok((
         ProjectWorkspaceInboxItem {
-            basis: ProjectWorkspaceInboxPageBasis {
-                placement_revision: row.placement_revision,
-                page_id: page_id.to_owned(),
-                generation: row.generation,
-                head_seq: row.head_seq,
-            },
+            basis: cache.basis(connection, page_id)?,
             outcome: connection
                 .query_row(
                     "SELECT outcome FROM inbox_entries WHERE page_id=?1",
@@ -644,6 +701,7 @@ fn read_proposal(
     connection: &Connection,
     library_id: &str,
     proposal_id: &str,
+    cache: &mut InboxReadCache,
 ) -> Result<Option<ProjectWorkspaceInboxProposal>, StoreError> {
     let Some(row) = connection
         .query_row(
@@ -746,6 +804,13 @@ fn read_proposal(
         .map(|session_id| read_chat(connection, library_id, &session_id))
         .transpose()?
         .flatten();
+    let written = super::inbox::require_proposal(connection, library_id, proposal_id)?;
+    let basis = written
+        .page_ids
+        .iter()
+        .map(|page| cache.basis(connection, page))
+        .collect::<Result<Vec<_>, _>>()?;
+    let outdated = basis.iter().any(|current| !written.basis.contains(current));
     Ok(Some(ProjectWorkspaceInboxProposal {
         failure_kind: connection
             .query_row(
@@ -758,7 +823,8 @@ fn read_proposal(
                     .map_err(|_| corrupt("Invalid failure kind"))
             })
             .transpose()?,
-        basis: super::inbox::require_proposal(connection, library_id, proposal_id)?.basis,
+        basis,
+        outdated,
         proposal_id: proposal_id.to_owned(),
         revision,
         origin: if origin == "schedule" {
@@ -869,7 +935,7 @@ pub(super) fn read_pending_suggestions(
                SELECT entry.page_id, entry.seq, entry.scope_project_id FROM inbox_entries entry \
                JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
                WHERE entry.library_id = ?1 AND entry.state = 'open' \
-                 AND entry.suggestion_state = 'pending' AND entry.source_kind <> 'scheduled_task'), \
+                 AND entry.suggestion_state IN ('waiting','pending') AND entry.source_kind <> 'scheduled_task'), \
              oldest AS (SELECT scope_project_id FROM waiting ORDER BY seq LIMIT 1) \
              SELECT waiting.page_id FROM waiting, oldest \
              WHERE waiting.scope_project_id IS oldest.scope_project_id \
@@ -894,6 +960,10 @@ pub(super) fn suggestion_input(
         return Err(invalid("Inbox input exceeds the complete 64 KiB bound"));
     }
     let body = full_body;
+    let basis = ProjectWorkspaceInboxPageBasis {
+        page_id: page_id.to_owned(),
+        content_hash: crate::document::sha256(body.as_bytes()),
+    };
     Ok(ProjectWorkspaceInboxSuggestionInput {
         page_id: page_id.to_owned(),
         page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
@@ -903,12 +973,7 @@ pub(super) fn suggestion_input(
         kind: parse_kind(row.kind.as_deref())?,
         submitted_at: row.submitted_at.clone(),
         scope: scope_of(row.scope_project_id.clone()),
-        basis: ProjectWorkspaceInboxPageBasis {
-            placement_revision: row.placement_revision,
-            page_id: page_id.to_owned(),
-            generation: row.generation,
-            head_seq: row.head_seq,
-        },
+        basis,
         // Any rename, by the user or by an earlier suggestion, makes the title theirs.
         title_provisional: row.provisional_title.as_deref() == Some(row.title.as_str()),
     })
@@ -995,6 +1060,15 @@ pub(super) fn read_dispatch_context(
         }
         entries.push(suggestion_input(connection, library_id, page_id)?);
     }
+    dispatch_context_for_inputs(connection, library_id, entries)
+}
+
+/// Message inputs are immutable request evidence; routing targets remain live.
+pub(super) fn dispatch_context_for_inputs(
+    connection: &Connection,
+    library_id: &str,
+    entries: Vec<ProjectWorkspaceInboxSuggestionInput>,
+) -> Result<ProjectWorkspaceInboxDispatchContext, StoreError> {
     let scope = entries
         .first()
         .map(|entry| entry.scope.clone())
@@ -1272,6 +1346,8 @@ fn parse_state(value: &str) -> Result<ProjectWorkspaceInboxEntryState, StoreErro
 
 fn parse_suggestion_state(value: &str) -> Result<ProjectWorkspaceInboxSuggestionState, StoreError> {
     match value {
+        "none" => Ok(ProjectWorkspaceInboxSuggestionState::None),
+        "waiting" => Ok(ProjectWorkspaceInboxSuggestionState::Waiting),
         "pending" => Ok(ProjectWorkspaceInboxSuggestionState::Pending),
         "settled" => Ok(ProjectWorkspaceInboxSuggestionState::Settled),
         "failed" => Ok(ProjectWorkspaceInboxSuggestionState::Failed),
@@ -1383,6 +1459,12 @@ mod tests {
         workspace.kernel.writer().call(|connection| {
             let huge="界".repeat(1_000_000);
             connection.execute("UPDATE document_materializations SET markdown=?1,plain_text=?1 WHERE document_id='document:large'",[huge])?;
+            let fingerprint=message_basis(connection,"page:large")?;
+            assert_eq!(fingerprint.content_hash,crate::document::sha256("界".repeat(1_000_000).as_bytes()));
+            assert!(suggestion_input(connection,"library-1","page:large").is_err());
+            connection.execute("UPDATE document_materializations SET markdown=markdown || 'changed',plain_text=plain_text || 'changed' WHERE document_id='document:large'",[])?;
+            assert_ne!(message_basis(connection,"page:large")?,fingerprint);
+            connection.execute("UPDATE document_materializations SET markdown=substr(markdown,1,1000000),plain_text=substr(plain_text,1,1000000) WHERE document_id='document:large'",[])?;
             for budget in [MAX_STREAM_BODY_BYTES,MAX_AGENT_BODY_BYTES] {
                 let row=read_entry(connection,"page:large",budget)?;
                 assert!(row.markdown.is_none(),"oversized Markdown never crosses the SQL read boundary");

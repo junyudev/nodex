@@ -7476,6 +7476,7 @@ export interface components {
                 readonly kind: "set_inbox_entry_important";
                 readonly page_id: string;
             } | {
+                readonly automatic: boolean;
                 /** @enum {string} */
                 readonly kind: "prepare_inbox_suggestions";
                 /** Format: int32 */
@@ -9436,15 +9437,10 @@ export interface components {
          * @enum {string}
          */
         readonly ProjectWorkspaceInboxOutcome: "kept" | "done" | "moved" | "chat";
-        /** @description Causal evidence that a proposal was made for the current message content. */
+        /** @description Fingerprint of exactly the message text the suggestion Agent reads. */
         readonly ProjectWorkspaceInboxPageBasis: {
-            /** Format: int64 */
-            readonly generation: number;
-            /** Format: int64 */
-            readonly head_seq: number;
+            readonly content_hash: string;
             readonly page_id: string;
-            /** Format: int64 */
-            readonly placement_revision: number;
         };
         /** @description The message Page's current workflow Status option and display name. */
         readonly ProjectWorkspaceInboxPageStatus: {
@@ -9458,6 +9454,7 @@ export interface components {
         };
         readonly ProjectWorkspaceInboxProposal: {
             readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            /** @description Current member fingerprints, fenced when the user confirms. */
             readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
             readonly chat?: components["schemas"]["ProjectWorkspaceInboxChat"] | null;
             readonly created_at: string;
@@ -9465,6 +9462,8 @@ export interface components {
             readonly failure_message?: string | null;
             readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
             readonly origin: components["schemas"]["ProjectWorkspaceInboxProposalOrigin"];
+            /** @description Any current member text differs from the text this advice was written from. */
+            readonly outdated: boolean;
             readonly page_ids: readonly string[];
             readonly produced_by?: string | null;
             readonly proposal_id: string;
@@ -9557,7 +9556,7 @@ export interface components {
             readonly request_id: string;
         };
         /** @enum {string} */
-        readonly ProjectWorkspaceInboxSuggestionState: "pending" | "settled" | "failed";
+        readonly ProjectWorkspaceInboxSuggestionState: "none" | "waiting" | "pending" | "settled" | "failed";
         readonly ProjectWorkspaceInboxSuggestionTitle: {
             readonly page_id: string;
             readonly title: string;
@@ -10064,6 +10063,7 @@ export interface components {
             readonly kind: "set_inbox_entry_important";
             readonly page_id: string;
         } | {
+            readonly automatic: boolean;
             /** @enum {string} */
             readonly kind: "prepare_inbox_suggestions";
             /** Format: int32 */

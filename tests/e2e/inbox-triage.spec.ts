@@ -17,7 +17,7 @@ test("preserves capture and filing decisions while Project counts share the acti
   await withElectronScenario(
     { label: "inbox-reliable-triage", scenarioId: null },
     async ({ page, seed }) => {
-      await invokeIpc(page, "settings:inbox:update", { suggestionsEnabled: false });
+      await invokeIpc(page, "settings:inbox:update", { suggestions: "off" });
       const target = await seed.createProject({ name: "Inbox filing target", sources: [] });
       const openInbox = async () => {
         await page.getByTestId("sidebar-inbox-row-wrapper").getByRole("button").click();

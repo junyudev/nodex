@@ -54,9 +54,13 @@ pub enum ProjectWorkspaceInboxEntryState {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectWorkspaceInboxSuggestionState {
-    /// The suggestion Agent should consider this entry.
+    /// No suggestion is requested.
+    None,
+    /// A send or saved stream rewrite awaits automatic suggestion preparation.
+    Waiting,
+    /// A suggestion request is running for this entry.
     Pending,
-    /// A suggestion exists or no suggestion is wanted.
+    /// A suggestion exists.
     Settled,
     /// The latest suggestion attempt failed and can be retried.
     Failed,
@@ -137,13 +141,11 @@ pub struct ProjectWorkspaceInboxDelegate {
     pub agent: ProjectWorkspaceInboxChatAgent,
 }
 
-/// Causal evidence that a proposal was made for the current message content.
+/// Fingerprint of exactly the message text the suggestion Agent reads.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxPageBasis {
-    pub placement_revision: i64,
     pub page_id: String,
-    pub generation: i64,
-    pub head_seq: i64,
+    pub content_hash: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -231,7 +233,10 @@ pub struct ProjectWorkspaceInboxChat {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxProposal {
     pub failure_kind: Option<ProjectWorkspaceInboxFailureKind>,
+    /// Current member fingerprints, fenced when the user confirms.
     pub basis: Vec<ProjectWorkspaceInboxPageBasis>,
+    /// Any current member text differs from the text this advice was written from.
+    pub outdated: bool,
     pub proposal_id: String,
     pub revision: i64,
     pub origin: ProjectWorkspaceInboxProposalOrigin,

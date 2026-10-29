@@ -45,7 +45,7 @@ describe("Inbox over the real Core transport", () => {
         body: "Survey onboarding flows\nKeep it read-only.",
         source: { kind: "user" },
         location: { kind: "inbox" },
-        suggestionState: "pending",
+        suggestionState: "waiting",
         proposal: null,
       });
       expect(item.pageKey).toMatch(/-1$/);

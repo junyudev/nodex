@@ -8,6 +8,7 @@ mod execution;
 mod inbox;
 pub(crate) use inbox::reliable::discard_replaced_dispatches as discard_replaced_inbox_dispatches;
 mod inbox_read;
+pub(crate) use inbox_read::message_basis as inbox_message_basis_for_migration;
 #[cfg(test)]
 mod inbox_tests;
 mod managed_worktree_lifecycle;

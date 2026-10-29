@@ -140,8 +140,7 @@ export class InboxApplication extends Context.Service<
     ) => InboxEffect<InboxPreparedConfirmation>;
     readonly undo: (input: InboxUndoInput) => InboxMutation;
     /**
-     * Rewrites a waiting message's text as the user's own Page write. Suggestions about the old
-     * text are withdrawn and the message is suggested again.
+     * Saves a stream rewrite and queues automatic advice, keeping the previous proposal visible.
      */
     readonly edit: (input: InboxEditInput) => InboxMutation;
     readonly confirm: (input: InboxConfirmInput) => InboxMutation<InboxDecisionResult>;
@@ -151,7 +150,7 @@ export class InboxApplication extends Context.Service<
     readonly setKind: (input: InboxSetKindInput) => InboxMutation;
     readonly setImportant: (input: InboxSetImportantInput) => InboxMutation;
     readonly requestSuggestion: (input: InboxSuggestionRequestInput) => InboxMutation;
-    readonly prepareSuggestions: (limit: number) => InboxEffect<void>;
+    readonly prepareSuggestions: (limit: number, automatic: boolean) => InboxEffect<void>;
     readonly suggestionRequests: (
       limit: number,
     ) => InboxEffect<readonly CoreInboxSuggestionRequest[]>;
@@ -165,8 +164,8 @@ export class InboxApplication extends Context.Service<
     readonly dispatchContext: (pageIds: readonly string[]) => InboxEffect<CoreInboxDispatchContext>;
     readonly propose: (proposal: InboxSuggestionProposal) => InboxEffect<void>;
     /**
-     * Replaces Core's provisional title with a name, only if the message Page is still exactly
-     * as the Agent read it. Returns the Page's new basis, or null when it changed meanwhile.
+     * Names a still-provisional message whose content matches what the Agent read.
+     * Returns its unchanged content basis, or null when the content or provisional title changed.
      */
     readonly nameEntry: (input: InboxEntryName) => InboxEffect<CoreInboxPageBasis | null>;
     readonly recordSuggestionFailure: (
@@ -520,6 +519,13 @@ export const make = Effect.gen(function* () {
   const requestSuggestion = Effect.fn("InboxApplication.requestSuggestion")(function* (
     input: InboxSuggestionRequestInput,
   ) {
+    const snapshot = yield* settings.snapshot().pipe(Effect.mapError(fail("request-suggestion")));
+    if (snapshot.inbox.suggestions === "off")
+      return yield* new InboxApplicationError({
+        operation: "request-suggestion",
+        message: "Inbox suggestions are off",
+        cause: null,
+      });
     const parsed = yield* parse("request-suggestion", () =>
       InboxSuggestionRequestInputSchema.parse(input),
     );
@@ -538,9 +544,10 @@ export const make = Effect.gen(function* () {
       `inbox.request:${parsed.requestId}`,
     );
   });
-  const prepareSuggestions = (limit: number) =>
+  const prepareSuggestions = (limit: number, automatic: boolean) =>
     apply("prepare-suggestions", {
       kind: "prepare_inbox_suggestions",
+      automatic,
       request_id: createUuidV7(),
       limit,
     }).pipe(Effect.asVoid);
@@ -619,14 +626,12 @@ export const make = Effect.gen(function* () {
     if (snapshot.value.kind !== "page_projection_file") return null;
     const page = snapshot.value.value;
     const titleEtag = page.validators.title_etag;
-    if (
-      !titleEtag ||
-      page.document_generation !== basis.generation ||
-      page.document_head_seq !== basis.head_seq
-    )
+    if (!titleEtag) return null;
+    const current = (yield* dispatchContext([basis.page_id])).entries[0];
+    if (!current?.title_provisional || current.basis.content_hash !== basis.content_hash)
       return null;
-    // The head fence covers the whole Page, so any edit since the Agent read it wins.
-    const applied = yield* core.document
+    // The earlier Document head fences any change before or after the content check.
+    yield* core.document
       .apply(
         {
           operationId: createOperationId("inbox.name"),
@@ -634,8 +639,8 @@ export const make = Effect.gen(function* () {
           intent: {
             kind: "apply_semantic_mutation",
             document_id: page.document_id,
-            generation: basis.generation,
-            expected_head_seq: basis.head_seq,
+            generation: page.document_generation,
+            expected_head_seq: page.document_head_seq,
             commands: [
               {
                 kind: "set_title",
@@ -651,12 +656,7 @@ export const make = Effect.gen(function* () {
         null,
       )
       .pipe(Effect.mapError(fail("name")));
-    return {
-      page_id: basis.page_id,
-      generation: applied.outcome.generation,
-      head_seq: applied.outcome.head_seq,
-      placement_revision: basis.placement_revision,
-    } satisfies CoreInboxPageBasis;
+    return basis;
   });
 
   const recordSuggestionFailure = (pageIds: readonly string[], message: string) =>

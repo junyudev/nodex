@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 50;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 51;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1861,8 +1861,9 @@ pub enum ProjectWorkspaceIntent {
         page_id: String,
         important: bool,
     },
-    /// Supersedes current open suggestions and asks for a new one.
+    /// Reconciles advice lifecycle and admits or clears sends awaiting automatic advice.
     PrepareInboxSuggestions {
+        automatic: bool,
         request_id: String,
         limit: u32,
     },

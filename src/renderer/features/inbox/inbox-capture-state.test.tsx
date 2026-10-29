@@ -319,7 +319,7 @@ describe("Inbox capture ownership", () => {
     async (failure) => {
       const persistence = new MemoryPersistence();
       const pageId = createUuidV7();
-      const basis = [{ pageId, generation: 1, headSeq: 4, placementRevision: 2 }];
+      const basis = [{ pageId, contentHash: "4".repeat(64) }];
       const action = {
         type: "new_chat" as const,
         projectId: null,

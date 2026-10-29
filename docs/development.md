@@ -370,6 +370,11 @@ never starts an Agent:
 vp run dev --home "$HOME/repo/nodex/runs.local/scheduled-ask-in-inbox" --seed scheduled/ask-in-inbox
 ```
 
+`inbox/suggestion-spend` seeds the Library Inbox with a current New chat suggestion,
+an outdated suggestion after a Page edit, a message with no advice requested, and
+a suggestion grouping two related messages. It uses Core operations without starting
+an Agent: `vp run dev --home "$HOME/repo/nodex/runs.local/inbox-suggestion-spend" --seed inbox/suggestion-spend`.
+
 ### Real Profile snapshots
 
 Some defects and performance cliffs only appear with real document shapes,

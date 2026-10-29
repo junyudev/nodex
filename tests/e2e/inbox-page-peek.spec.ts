@@ -17,7 +17,7 @@ test("opens a message's Page beside its Inbox and lists the Inbox Database in Sp
   await withElectronScenario(
     { label: "inbox-page-peek", scenarioId: null },
     async ({ page, seed }) => {
-      await invokeIpc(page, "settings:inbox:update", { suggestionsEnabled: false });
+      await invokeIpc(page, "settings:inbox:update", { suggestions: "off" });
       const project = await seed.createProject({ name: "Peek Project", sources: [] });
       const firstText = "Compare the two sync designs before Friday.";
       const secondText = "Collect the keyboard shortcuts worth keeping.";

@@ -47,14 +47,17 @@ describe("the Inbox's settings panel", () => {
 
   test("turning suggestions off leaves their model visible but not choosable", async () => {
     const agents = inboxAgentsFixture({
-      settings: { ...DEFAULT_INBOX_SETTINGS, suggestionsEnabled: false },
+      settings: { ...DEFAULT_INBOX_SETTINGS, suggestions: "off" },
     });
     render(<InboxAgentsPopover agents={agents} onOpenSettings={vi.fn()} />);
     await click(screen.getByRole("button", { name: "Inbox settings" }));
     const suggestion = await screen.findByRole("button", { name: "Suggestion model" });
     expect((suggestion as HTMLButtonElement).disabled).toBe(true);
-    await click(screen.getByRole("switch", { name: "Suggest where messages go" }));
-    expect(agents.save).toHaveBeenCalledWith({ suggestionsEnabled: true });
+    const when = screen.getByRole("button", { name: "When to suggest" });
+    expect(when.textContent).toContain("Off");
+    await click(when);
+    await click(await screen.findByRole("menuitem", { name: /When I ask/ }));
+    expect(agents.save).toHaveBeenCalledWith({ suggestions: "on_request" });
   });
 
   test("hands routing preferences to Settings and closes", async () => {

@@ -225,7 +225,7 @@ fn sending_creates_one_hidden_inbox_and_streams_messages_newest_first() {
     assert_eq!(newest.state, ProjectWorkspaceInboxEntryState::Open);
     assert_eq!(
         newest.suggestion_state,
-        ProjectWorkspaceInboxSuggestionState::Pending
+        ProjectWorkspaceInboxSuggestionState::Waiting
     );
     assert!(newest.page_key.as_deref().is_some_and(|key| key == "IN-2"));
     assert_eq!(
@@ -484,7 +484,7 @@ fn edited_messages_invalidate_unedited_suggestions() {
     let module = &workspace.module;
     send(module, "stale", "Tighten the onboarding copy");
     let mut entry = pending(module).remove(0);
-    entry.basis.head_seq += 7;
+    entry.basis.content_hash = "0".repeat(64);
     assert_eq!(
         apply_host_error(
             module,
@@ -564,7 +564,7 @@ fn keep_dismisses_suggestions_and_states_filter_the_stream() {
             page_ids: vec!["page:note".into()],
         },
     );
-    assert_eq!(pending(module).len(), 1);
+    assert_eq!(requests(module).len(), 1);
     apply_host(
         module,
         "fail:note",
@@ -1092,7 +1092,7 @@ fn deleting_a_message_erases_it_and_every_suggestion_that_names_it() {
     assert!(items[0].proposal.is_none());
     assert_eq!(
         items[0].suggestion_state,
-        ProjectWorkspaceInboxSuggestionState::Pending
+        ProjectWorkspaceInboxSuggestionState::None
     );
     assert!(window(module, ProjectWorkspaceInboxWindowFilter::Processed).is_empty());
     assert_eq!(count(&workspace, "SELECT count(*) FROM inbox_proposals"), 0);
@@ -1995,7 +1995,7 @@ fn rewriting_a_message_follows_the_rules_of_sending_it() {
 }
 
 #[test]
-fn rewriting_withdraws_suggestions_and_asks_again_for_their_whole_group() {
+fn document_edits_keep_group_advice_visible_and_never_queue_more_spending() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(module, "a", "Survey onboarding flows");
@@ -2010,13 +2010,11 @@ fn rewriting_withdraws_suggestions_and_asks_again_for_their_whole_group() {
             basis: entries.iter().map(|entry| entry.basis.clone()).collect(),
             action: ProjectWorkspaceInboxDispatchAction::Keep,
             entry_kind: None,
-            summary: "Keep both as research notes".to_owned(),
+            summary: "Keep both as research notes".into(),
             rationale: None,
             produced_by: None,
         },
     );
-    assert!(pending(module).is_empty());
-
     let original = item(module, "page:a");
     let edit = prepare_edit(
         module,
@@ -2024,29 +2022,30 @@ fn rewriting_withdraws_suggestions_and_asks_again_for_their_whole_group() {
         &original.body,
         "Survey five onboarding flows",
     )
-    .expect("prepare edit");
+    .unwrap();
     write_message(&workspace, &edit, "Survey five onboarding flows");
     revise(module, "page:a");
-
-    for page_id in ["page:a", "page:b"] {
-        let waiting = item(module, page_id);
+    for page in ["page:a", "page:b"] {
+        let current = item(module, page);
         assert_eq!(
-            waiting.suggestion_state,
-            ProjectWorkspaceInboxSuggestionState::Pending
+            current.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Settled
         );
-        // The suggestion about the old text is gone.
-        assert_eq!(waiting.proposal, None);
+        let proposal = current.proposal.unwrap();
+        assert_eq!(proposal.proposal_id, "proposal:group");
+        assert!(proposal.outdated);
+        assert_eq!(proposal.basis, pages_basis(module, proposal.page_ids));
     }
-    let again = pending(module);
-    let rewritten = again
-        .iter()
-        .find(|entry| entry.page_id == "page:a")
-        .expect("rewritten message waits for a suggestion");
-    assert_eq!(rewritten.body, "Survey five onboarding flows");
-    assert_eq!(rewritten.title, "Survey five onboarding flows");
-    // Its new provisional title can still be named by the next suggestion.
-    assert!(rewritten.title_provisional);
-    assert!(again.iter().any(|entry| entry.page_id == "page:b"));
+    assert!(pending(module).is_empty());
+    let edit = prepare_edit(
+        module,
+        "page:a",
+        "Survey five onboarding flows",
+        &original.body,
+    )
+    .unwrap();
+    write_message(&workspace, &edit, "Survey onboarding flows");
+    assert!(!item(module, "page:b").proposal.unwrap().outdated);
 }
 
 #[test]
@@ -2230,7 +2229,7 @@ fn grouped_request(module: &ProjectWorkspaceModule, id: &str, pages: Vec<String>
     );
 }
 #[test]
-fn atomic_edit_fences_content_and_invalidates_the_complete_request() {
+fn atomic_edit_fences_content_and_keeps_the_in_flight_request() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(module, "a", "Original message");
@@ -2267,12 +2266,23 @@ fn atomic_edit_fences_content_and_invalidates_the_complete_request() {
         .apply(&host(), request("edit:atomic", edit.clone()))
         .expect("atomic edit");
     assert!(result.event.is_some());
-    assert!(requests(module).is_empty());
+    assert_eq!(requests(module).len(), 1);
     let items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
-    assert!(
+    assert_eq!(
         items
             .iter()
-            .all(|i| i.suggestion_state == ProjectWorkspaceInboxSuggestionState::Pending)
+            .find(|item| item.page_id == "page:a")
+            .unwrap()
+            .suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Waiting
+    );
+    assert_eq!(
+        items
+            .iter()
+            .find(|item| item.page_id == "page:b")
+            .unwrap()
+            .suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Pending
     );
     assert_eq!(
         items.iter().find(|i| i.page_id == "page:a").unwrap().body,
@@ -2496,7 +2506,7 @@ fn replacing_a_failed_group_member_retires_its_delivery_and_reopens_the_rest() {
                 ProjectWorkspaceInboxEntryState::Kept
             );
         } else {
-            // A request releases the old membership before a new proposal has settled.
+            // A new request keeps the previous failed proposal visible until it settles.
             grouped_request(module, "request:a", vec!["page:a".into()]);
             assert_eq!(
                 count(
@@ -2509,11 +2519,23 @@ fn replacing_a_failed_group_member_retires_its_delivery_and_reopens_the_rest() {
         }
         let items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
         let remaining = items.iter().find(|item| item.page_id == "page:b").unwrap();
+        if !decide_again {
+            assert_eq!(
+                remaining.proposal.as_ref().unwrap().proposal_id,
+                "proposal:group"
+            );
+            assert_eq!(
+                remaining.suggestion_state,
+                ProjectWorkspaceInboxSuggestionState::Settled
+            );
+            assert!(outbox(module).is_empty());
+            continue;
+        }
         assert!(remaining.proposal.is_none());
         assert_eq!(remaining.state, ProjectWorkspaceInboxEntryState::Open);
         assert_eq!(
             remaining.suggestion_state,
-            ProjectWorkspaceInboxSuggestionState::Pending
+            ProjectWorkspaceInboxSuggestionState::None
         );
         assert_eq!(
             apply_host_error(
@@ -2565,6 +2587,7 @@ fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
             request(
                 "prepare:settled",
                 ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                    automatic: true,
                     request_id: "request:idle".into(),
                     limit: 8,
                 },
@@ -2577,7 +2600,7 @@ fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
         .find(|i| i.page_id == "page:a")
         .unwrap();
     assert_eq!(a.title, "Grouped thought");
-    assert!(a.basis.head_seq > 1);
+    assert_eq!(a.basis.content_hash, crate::document::sha256(b"A thought"));
     assert_eq!(
         a.proposal
             .as_ref()
@@ -2614,11 +2637,26 @@ fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
     assert!(
         window(module, ProjectWorkspaceInboxWindowFilter::Inbox)
             .iter()
-            .all(|i| i.proposal.is_none())
+            .all(|item| item
+                .proposal
+                .as_ref()
+                .is_some_and(|proposal| proposal.proposal_id == "proposal:ab"))
     );
     assert_eq!(
         apply_host_error(module, "settle:late", settlement),
         CoreErrorCode::Conflict
+    );
+    apply_host(module, "settle:refined-a", keep_request(&request, None));
+    let b = item(module, "page:b");
+    assert!(b.proposal.is_none());
+    assert_eq!(
+        b.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::None
+    );
+    assert!(requests(module).is_empty());
+    assert_eq!(
+        item(module, "page:a").proposal.unwrap().page_ids,
+        vec!["page:a"]
     );
 }
 #[test]
@@ -2695,6 +2733,15 @@ fn grouped_move_and_undo_share_one_decision_and_refuse_partial_undo() {
             undo_token: token.clone(),
         },
     );
+    for entry in window(module, ProjectWorkspaceInboxWindowFilter::Inbox) {
+        assert_eq!(
+            entry.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Settled
+        );
+        let restored = entry.proposal.unwrap();
+        assert_eq!(restored.proposal_id, "proposal:move-group");
+        assert_eq!(restored.state, ProjectWorkspaceInboxProposalState::Open);
+    }
     assert_eq!(
         window(module, ProjectWorkspaceInboxWindowFilter::Inbox).len(),
         2
@@ -2902,6 +2949,7 @@ fn migrating_a_pending_abstention_refinement_releases_the_suggestion_lane() {
                 [],
             )?;
             transaction.execute_batch(include_str!("../../schema/migrations/v184_to_v185.sql"))?;
+            transaction.execute("UPDATE inbox_entries SET suggestion_state='waiting' WHERE suggestion_state='pending' AND suggestion_request_id IS NULL",[])?;
             Ok(())
         })
     }).expect("migrate pending historical refinement");
@@ -2910,12 +2958,13 @@ fn migrating_a_pending_abstention_refinement_releases_the_suggestion_lane() {
     assert!(item.proposal.is_none());
     assert_eq!(
         item.suggestion_state,
-        ProjectWorkspaceInboxSuggestionState::Pending
+        ProjectWorkspaceInboxSuggestionState::Waiting
     );
     apply_host(
         module,
         "prepare:concrete",
         ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            automatic: true,
             request_id: "request:concrete".into(),
             limit: 8,
         },
@@ -2978,6 +3027,7 @@ fn successful_suggestion_settlement_requires_a_concrete_action_for_every_member(
         module,
         "prepare:ab",
         ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            automatic: true,
             request_id: "request:ab".into(),
             limit: 8,
         },
@@ -3047,6 +3097,7 @@ fn failed_settlement_rolls_back_titles_and_prior_suggestions() {
         module,
         "prepare:ab",
         ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            automatic: true,
             request_id: "request:ab".into(),
             limit: 8,
         },
@@ -3162,58 +3213,38 @@ fn chat_target_search_reaches_older_sessions_and_binds_its_cursor_to_the_query()
 }
 
 #[test]
-fn stale_failure_cannot_hide_new_document_content_from_suggestions() {
+fn edits_during_or_after_a_failed_request_never_request_advice_automatically() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(module, "a", "Original message");
     grouped_request(module, "request:old", vec!["page:a".into()]);
     let old = requests(module).remove(0);
-    // The regular Page editor can change a Document without an Inbox mutation.
     let edit = prepare_edit(
         module,
         "page:a",
         "Original message",
         "Changed in the Page editor",
     )
-    .expect("prepare document edit");
+    .unwrap();
     write_message(&workspace, &edit, "Changed in the Page editor");
-    assert_eq!(
-        apply_host_error(
-            module,
-            "settle:old-failure",
-            ProjectWorkspaceIntent::SettleInboxSuggestion {
-                request_id: old.request_id,
-                generation: old.generation,
-                titles: vec![],
-                suggestions: vec![],
-                produced_by: None,
-                error: Some("Provider unavailable".into()),
-            }
-        ),
-        CoreErrorCode::Conflict
+    apply_host(
+        module,
+        "settle:old-failure",
+        keep_request(&old, Some("Provider unavailable")),
     );
     apply_host(
         module,
-        "prepare:new-content",
+        "prepare:after-failure",
         ProjectWorkspaceIntent::PrepareInboxSuggestions {
-            request_id: "request:new".into(),
+            automatic: true,
+            request_id: "request:unused".into(),
             limit: 8,
         },
     );
-    let fresh = requests(module).remove(0);
-    assert_eq!(fresh.request_id, "request:new");
-    assert_eq!(fresh.context.entries[0].body, "Changed in the Page editor");
-    apply_host(
-        module,
-        "settle:current-failure",
-        ProjectWorkspaceIntent::SettleInboxSuggestion {
-            request_id: fresh.request_id,
-            generation: fresh.generation,
-            titles: vec![],
-            suggestions: vec![],
-            produced_by: None,
-            error: Some("Provider unavailable".into()),
-        },
+    assert!(requests(module).is_empty());
+    assert_eq!(
+        item(module, "page:a").suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Failed
     );
     let edit = prepare_edit(
         module,
@@ -3225,13 +3256,18 @@ fn stale_failure_cannot_hide_new_document_content_from_suggestions() {
     write_message(&workspace, &edit, "Changed again after the failure");
     apply_host(
         module,
-        "prepare:after-failure",
+        "prepare:later-edit",
         ProjectWorkspaceIntent::PrepareInboxSuggestions {
-            request_id: "request:after-failure".into(),
+            automatic: true,
+            request_id: "request:unused-again".into(),
             limit: 8,
         },
     );
-    assert_eq!(requests(module)[0].request_id, "request:after-failure");
+    assert!(requests(module).is_empty());
+    assert_eq!(
+        item(module, "page:a").suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Failed
+    );
 }
 
 fn change_message_lifecycle(workspace: &TestWorkspace, page_id: &str, change: &str) {
@@ -3381,16 +3417,16 @@ fn unavailable_suggestion_members_never_block_later_requests_even_across_restart
             module,
             "prepare:survivor",
             ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                automatic: true,
                 request_id: "request:survivor".into(),
                 limit: 8,
             },
         );
-        let survivor = first_request(module);
-        assert_eq!(survivor.request_id, "request:survivor");
-        assert_eq!(survivor.page_ids, vec!["page:b"]);
-        assert_eq!(survivor.context.entries[0].body, "Still needs a suggestion");
-        apply_host(module, "settle:survivor", keep_request(&survivor, None));
         assert!(requests(module).is_empty());
+        assert_eq!(
+            item(module, "page:b").suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::None
+        );
         assert_eq!(
             count(
                 &workspace,
@@ -3407,11 +3443,16 @@ fn unavailable_suggestion_members_never_block_later_requests_even_across_restart
             module,
             "prepare:restored",
             ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                automatic: true,
                 request_id: "request:restored".into(),
                 limit: 8,
             },
         );
-        assert_eq!(first_request(module).page_ids, vec!["page:a"]);
+        assert!(requests(module).is_empty());
+        assert_eq!(
+            item(module, "page:a").suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::None
+        );
         assert_eq!(
             apply_host_error(module, "late:after-restore", keep_request(&old, None)),
             CoreErrorCode::Conflict,
@@ -3421,7 +3462,7 @@ fn unavailable_suggestion_members_never_block_later_requests_even_across_restart
 
 #[test]
 fn unavailable_members_retire_failed_requests_and_settled_group_advice() {
-    for failed in [false, true] {
+    for (failed, automatic) in [(false, false), (false, true), (true, false), (true, true)] {
         let workspace = seeded_workspace();
         let module = &workspace.module;
         send(module, "a", "Archive this message");
@@ -3442,20 +3483,18 @@ fn unavailable_members_retire_failed_requests_and_settled_group_advice() {
             module,
             "prepare:remaining",
             ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                automatic,
                 request_id: "request:remaining".into(),
                 limit: 8,
             },
         );
-        let remaining = requests(module).remove(0);
-        assert_eq!(remaining.request_id, "request:remaining");
-        assert_eq!(remaining.page_ids, vec!["page:b"]);
-        let b = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+        assert!(requests(module).is_empty());
+        let b = item(module, "page:b");
         assert!(b.proposal.is_none());
         assert_eq!(
             b.suggestion_state,
-            ProjectWorkspaceInboxSuggestionState::Pending
+            ProjectWorkspaceInboxSuggestionState::None
         );
-        apply_host(module, "settle:remaining", keep_request(&remaining, None));
         assert!(requests(module).is_empty());
     }
 }
@@ -3497,14 +3536,18 @@ fn collected_pages_retire_empty_and_partial_suggestion_groups_once() {
             module,
             "prepare:collected",
             ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                automatic: true,
                 request_id: "request:remaining".into(),
                 limit: 8,
             },
         );
         let current = requests(module);
-        assert_eq!(current.len(), usize::from(remaining));
+        assert!(current.is_empty());
         if remaining {
-            assert_eq!(current[0].page_ids, vec!["page:b"]);
+            assert_eq!(
+                item(module, "page:b").suggestion_state,
+                ProjectWorkspaceInboxSuggestionState::None
+            );
         }
         let next = module
             .apply(
@@ -3512,6 +3555,7 @@ fn collected_pages_retire_empty_and_partial_suggestion_groups_once() {
                 request(
                     "prepare:no-more-reconciliation",
                     ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                        automatic: true,
                         request_id: "request:unused".into(),
                         limit: 8,
                     },
@@ -5677,4 +5721,551 @@ fn scheduled_launch_defaults_and_agent_commands_cannot_escalate_execution() {
     )
     .unwrap_err();
     assert_eq!(invalid.code, CoreErrorCode::NotFound);
+}
+
+#[test]
+fn metadata_and_head_only_writes_keep_advice_current_without_queueing() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "stable", "Compare the onboarding flows.");
+    let input = pending(module).remove(0);
+    assert_eq!(
+        input.basis.content_hash,
+        crate::document::sha256(input.body.as_bytes())
+    );
+    propose(
+        module,
+        "proposal:stable",
+        &input,
+        ProjectWorkspaceInboxDispatchAction::Keep,
+    );
+    workspace.kernel.writer().call(|connection| {
+        connection.execute("UPDATE documents SET head_seq=head_seq+1 WHERE id='document:stable'",[])?;
+        connection.execute("UPDATE document_materializations SET title='Onboarding research' WHERE document_id='document:stable'",[])?;
+        connection.execute("UPDATE blocks SET placement_revision=placement_revision+1 WHERE id='page:stable'",[])?;
+        Ok(())
+    }).unwrap();
+    let current = item(module, "page:stable");
+    assert_eq!(current.basis, input.basis);
+    assert!(!current.proposal.unwrap().outdated);
+    assert_eq!(
+        current.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Settled
+    );
+    apply_host(
+        module,
+        "prepare:stable",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            automatic: true,
+            request_id: "request:unused".into(),
+            limit: 8,
+        },
+    );
+    assert!(requests(module).is_empty());
+    assert!(pending(module).is_empty());
+}
+
+#[test]
+fn outdated_advice_confirms_the_current_content_and_rejects_a_stale_review() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "review", "Compare onboarding flows.");
+    let input = pending(module).remove(0);
+    propose(
+        module,
+        "proposal:review",
+        &input,
+        ProjectWorkspaceInboxDispatchAction::Keep,
+    );
+    apply_host(
+        module,
+        "edit:review",
+        ProjectWorkspaceIntent::EditInboxMessage {
+            page_id: "page:review".into(),
+            basis: input.basis.clone(),
+            original_body: "Compare onboarding flows.".into(),
+            body: "Compare five onboarding flows.".into(),
+        },
+    );
+    let reviewed = item(module, "page:review").proposal.unwrap();
+    assert!(reviewed.outdated);
+    let confirm = |basis| ProjectWorkspaceIntent::ConfirmInboxDispatch {
+        expected_store_epoch: "epoch-1".into(),
+        proposal_id: reviewed.proposal_id.clone(),
+        expected_revision: reviewed.revision,
+        basis,
+        action: None,
+        session_id: None,
+        execution_selection: None,
+    };
+    assert_eq!(
+        apply_host_error(module, "confirm:stale", confirm(vec![input.basis])),
+        CoreErrorCode::Conflict
+    );
+    apply_host(module, "confirm:reviewed", confirm(reviewed.basis.clone()));
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].state,
+        ProjectWorkspaceInboxEntryState::Kept
+    );
+}
+
+#[test]
+fn in_flight_results_keep_their_written_basis_and_name_only_unchanged_members() {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionTitle;
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "changed", "Compare onboarding flows.");
+    send(module, "unchanged", "Review the empty states.");
+    grouped_request(
+        module,
+        "request:flight",
+        vec!["page:changed".into(), "page:unchanged".into()],
+    );
+    let request = requests(module).remove(0);
+    let edit = prepare_edit(
+        module,
+        "page:changed",
+        "Compare onboarding flows.",
+        "Compare five onboarding flows.",
+    )
+    .unwrap();
+    write_message(&workspace, &edit, "Compare five onboarding flows.");
+    assert_eq!(requests(module)[0].request_id, request.request_id);
+    let mut result = keep_request(&request, None);
+    let ProjectWorkspaceIntent::SettleInboxSuggestion { titles, .. } = &mut result else {
+        unreachable!()
+    };
+    *titles = vec![
+        ProjectWorkspaceInboxSuggestionTitle {
+            page_id: "page:changed".into(),
+            title: "Old onboarding plan".into(),
+        },
+        ProjectWorkspaceInboxSuggestionTitle {
+            page_id: "page:unchanged".into(),
+            title: "Empty state review".into(),
+        },
+    ];
+    apply_host(module, "settle:flight", result);
+    assert_eq!(
+        item(module, "page:changed").title,
+        "Compare five onboarding flows."
+    );
+    assert_eq!(item(module, "page:unchanged").title, "Empty state review");
+    let current = item(module, "page:changed");
+    assert_eq!(
+        current.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Settled
+    );
+    assert!(current.proposal.unwrap().outdated);
+    let edit = prepare_edit(
+        module,
+        "page:changed",
+        "Compare five onboarding flows.",
+        "Compare onboarding flows.",
+    )
+    .unwrap();
+    write_message(&workspace, &edit, "Compare onboarding flows.");
+    assert!(!item(module, "page:changed").proposal.unwrap().outdated);
+    assert!(requests(module).is_empty());
+}
+
+#[test]
+fn sends_and_saved_stream_rewrites_wait_while_disabled_preparation_and_reopen_do_not_spend() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "rewrite", "Review the homepage copy.");
+    let initial = item(module, "page:rewrite");
+    assert_eq!(
+        initial.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Waiting
+    );
+    assert_eq!(summary(module).pending_suggestion_count, 1);
+    apply_host(
+        module,
+        "prepare:disabled",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            automatic: false,
+            request_id: "request:disabled".into(),
+            limit: 8,
+        },
+    );
+    assert_eq!(
+        item(module, "page:rewrite").suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::None
+    );
+    assert!(requests(module).is_empty());
+    let context = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchContext {
+            page_ids: vec!["page:rewrite".into()],
+        },
+    );
+    let ProjectWorkspaceReadValue::InboxDispatchContext { context } = context else {
+        panic!("context")
+    };
+    propose(
+        module,
+        "proposal:rewrite",
+        &context.entries[0],
+        ProjectWorkspaceInboxDispatchAction::Keep,
+    );
+    let before = item(module, "page:rewrite");
+    apply_host(
+        module,
+        "edit:stream",
+        ProjectWorkspaceIntent::EditInboxMessage {
+            page_id: before.page_id,
+            basis: before.basis,
+            original_body: before.body,
+            body: "Review homepage copy for new teams.".into(),
+        },
+    );
+    let edited = item(module, "page:rewrite");
+    assert_eq!(
+        edited.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Waiting
+    );
+    assert!(edited.proposal.as_ref().unwrap().outdated);
+    assert_eq!(
+        edited.proposal.as_ref().unwrap().proposal_id,
+        "proposal:rewrite"
+    );
+    apply_host(
+        module,
+        "prepare:rewrite-disabled",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            automatic: false,
+            request_id: "request:unused".into(),
+            limit: 8,
+        },
+    );
+    let disabled = item(module, "page:rewrite");
+    assert_eq!(
+        disabled.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::None
+    );
+    assert_eq!(disabled.proposal, edited.proposal);
+    apply_host(
+        module,
+        "keep:rewrite",
+        ProjectWorkspaceIntent::KeepInboxEntries {
+            page_ids: vec!["page:rewrite".into()],
+        },
+    );
+    apply_host(
+        module,
+        "reopen:rewrite",
+        ProjectWorkspaceIntent::SetInboxEntryState {
+            page_ids: vec!["page:rewrite".into()],
+            state: ProjectWorkspaceInboxEntryState::Open,
+        },
+    );
+    assert_eq!(
+        item(module, "page:rewrite").suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::None
+    );
+    assert!(requests(module).is_empty());
+}
+
+#[test]
+fn a_failed_explicit_retry_keeps_the_previous_outdated_proposal() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "retry", "Review the homepage copy.");
+    let input = pending(module).remove(0);
+    propose(
+        module,
+        "proposal:retry",
+        &input,
+        ProjectWorkspaceInboxDispatchAction::Keep,
+    );
+    let edit = prepare_edit(
+        module,
+        "page:retry",
+        "Review the homepage copy.",
+        "Review the homepage and pricing copy.",
+    )
+    .unwrap();
+    write_message(&workspace, &edit, "Review the homepage and pricing copy.");
+    let before = item(module, "page:retry").proposal.unwrap();
+    grouped_request(module, "request:retry", vec!["page:retry".into()]);
+    let active = item(module, "page:retry");
+    assert_eq!(
+        active.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Pending
+    );
+    assert_eq!(active.proposal, Some(before.clone()));
+    let request = requests(module).remove(0);
+    apply_host(
+        module,
+        "settle:rate-limit",
+        keep_request(&request, Some("Rate limit reached. Try again later.")),
+    );
+    let failed = item(module, "page:retry");
+    assert_eq!(
+        failed.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Failed
+    );
+    assert_eq!(failed.proposal, Some(before));
+}
+
+#[test]
+fn every_suggestion_request_freezes_exact_inputs_before_pickup() {
+    use nodex_core_contracts::inbox::{
+        ProjectWorkspaceInboxSuggestionMode, ProjectWorkspaceInboxSuggestionTitle,
+    };
+    for mode in [
+        ProjectWorkspaceInboxSuggestionMode::Auto,
+        ProjectWorkspaceInboxSuggestionMode::Grouped,
+        ProjectWorkspaceInboxSuggestionMode::Refine,
+    ] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        send(module, "frozen", "Review the onboarding copy.");
+        let mut expected = pending(module).remove(0);
+        if mode == ProjectWorkspaceInboxSuggestionMode::Refine {
+            propose(
+                module,
+                "proposal:previous",
+                &expected,
+                ProjectWorkspaceInboxDispatchAction::Keep,
+            );
+            let ProjectWorkspaceReadValue::InboxDispatchContext { mut context } = read_host(
+                module,
+                ProjectWorkspaceRead::InboxDispatchContext {
+                    page_ids: vec![expected.page_id.clone()],
+                },
+            ) else {
+                panic!("context")
+            };
+            expected = context.entries.remove(0);
+        }
+        if mode == ProjectWorkspaceInboxSuggestionMode::Auto {
+            apply_host(
+                module,
+                "prepare:frozen",
+                ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                    automatic: true,
+                    request_id: "request:frozen".into(),
+                    limit: 8,
+                },
+            );
+        } else {
+            apply_host(
+                module,
+                "request:frozen",
+                ProjectWorkspaceIntent::RequestInboxSuggestion {
+                    request_id: "request:frozen".into(),
+                    mode,
+                    page_ids: vec![expected.page_id.clone()],
+                    basis: vec![expected.basis.clone()],
+                    proposal_id: (mode == ProjectWorkspaceInboxSuggestionMode::Refine)
+                        .then(|| "proposal:previous".into()),
+                    expected_revision: (mode == ProjectWorkspaceInboxSuggestionMode::Refine)
+                        .then_some(1),
+                    correction: (mode == ProjectWorkspaceInboxSuggestionMode::Refine)
+                        .then(|| "Suggest a concrete next step".into()),
+                },
+            );
+        }
+        apply_host(
+            module,
+            "edit:before-pickup",
+            ProjectWorkspaceIntent::EditInboxMessage {
+                page_id: expected.page_id.clone(),
+                basis: expected.basis.clone(),
+                original_body: "Review the onboarding copy.".into(),
+                body: "Review the pricing copy instead.".into(),
+            },
+        );
+        let request = requests(module).remove(0);
+        assert_eq!(request.context.entries, vec![expected.clone()]);
+        assert_eq!(request.basis, vec![expected.basis.clone()]);
+        assert_eq!(
+            request.basis[0].content_hash,
+            crate::document::sha256(request.context.entries[0].body.as_bytes())
+        );
+        let mut settlement = keep_request(&request, None);
+        let ProjectWorkspaceIntent::SettleInboxSuggestion { titles, .. } = &mut settlement else {
+            unreachable!()
+        };
+        *titles = vec![ProjectWorkspaceInboxSuggestionTitle {
+            page_id: expected.page_id.clone(),
+            title: "Onboarding review".into(),
+        }];
+        apply_host(module, "settle:frozen", settlement);
+        let current = item(module, &expected.page_id);
+        assert_eq!(current.title, "Review the pricing copy instead.");
+        assert!(current.proposal.as_ref().unwrap().outdated);
+        apply_host(
+            module,
+            "edit:revert",
+            ProjectWorkspaceIntent::EditInboxMessage {
+                page_id: expected.page_id.clone(),
+                basis: current.basis,
+                original_body: current.body,
+                body: "Review the onboarding copy.".into(),
+            },
+        );
+        assert!(!item(module, &expected.page_id).proposal.unwrap().outdated);
+    }
+}
+
+#[test]
+fn enlarging_a_page_before_pickup_keeps_its_frozen_request_and_the_later_queue_readable() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "Compare the onboarding flows.");
+    grouped_request(module, "request:a", vec!["page:a".into()]);
+    send(module, "b", "Review the empty states.");
+    grouped_request(module, "request:b", vec!["page:b".into()]);
+    // The Page-size boundary is the subject: a captured message can grow past Agent limits.
+    workspace.kernel.writer().call(|connection| {
+        let large="Detailed research notes. ".repeat(4000);
+        connection.execute("UPDATE document_materializations SET markdown=?1,plain_text=?1 WHERE document_id='document:a'",[large])?;
+        connection.execute("UPDATE documents SET head_seq=head_seq+1 WHERE id='document:a'",[])?;
+        Ok(())
+    }).unwrap();
+    apply_host(
+        module,
+        "prepare:grown",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            automatic: true,
+            request_id: "request:unused".into(),
+            limit: 8,
+        },
+    );
+    let eligible = requests(module);
+    assert_eq!(eligible.len(), 2);
+    let first = eligible
+        .iter()
+        .find(|request| request.request_id == "request:a")
+        .unwrap();
+    assert_eq!(
+        first.context.entries[0].body,
+        "Compare the onboarding flows."
+    );
+    apply_host(module, "settle:grown", keep_request(first, None));
+    let later = requests(module).remove(0);
+    assert_eq!(later.request_id, "request:b");
+    apply_host(module, "settle:later", keep_request(&later, None));
+    assert!(requests(module).is_empty());
+    assert!(item(module, "page:a").proposal.unwrap().outdated);
+}
+
+#[test]
+fn unreadable_saved_inputs_fail_individually_and_keep_prior_advice() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "Review the onboarding copy.");
+    let original = pending(module).remove(0);
+    propose(
+        module,
+        "proposal:previous",
+        &original,
+        ProjectWorkspaceInboxDispatchAction::Keep,
+    );
+    let previous = item(module, "page:a").proposal;
+    grouped_request(module, "request:a", vec!["page:a".into()]);
+    send(module, "b", "Review the empty states.");
+    grouped_request(module, "request:b", vec!["page:b".into()]);
+    // Corrupt persistence is the subject; the row is valid JSON but no longer a saved input.
+    workspace.kernel.writer().call(|connection| {
+        connection.execute("UPDATE inbox_suggestion_requests SET inputs_json='[{}]' WHERE request_id='request:a'",[])?;
+        Ok(())
+    }).unwrap();
+    let ProjectWorkspaceReadValue::InboxSuggestionRequests { requests: eligible } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxSuggestionRequests { limit: 1 },
+    ) else {
+        panic!("requests")
+    };
+    assert_eq!(eligible[0].request_id, "request:b");
+    apply_host(
+        module,
+        "prepare:unreadable",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            automatic: false,
+            request_id: "request:unused".into(),
+            limit: 8,
+        },
+    );
+    let failed = item(module, "page:a");
+    assert_eq!(
+        failed.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Failed
+    );
+    assert!(
+        failed
+            .suggestion_error
+            .as_deref()
+            .unwrap()
+            .contains("Saved suggestion inputs are unreadable")
+    );
+    assert_eq!(failed.proposal, previous);
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM inbox_suggestion_requests WHERE request_id='request:a' AND state='failed'"
+        ),
+        1
+    );
+    assert_eq!(requests(module)[0].request_id, "request:b");
+}
+
+#[test]
+fn a_sixteen_member_window_computes_each_content_fingerprint_once() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for index in 0..16 {
+        send(
+            module,
+            &format!("member-{index}"),
+            &format!(
+                "Research area {index}. {}",
+                "Keep the original evidence. ".repeat(300)
+            ),
+        );
+    }
+    let page_ids = (0..16)
+        .map(|index| format!("page:member-{index}"))
+        .collect::<Vec<_>>();
+    grouped_request(module, "request:group", page_ids);
+    let request = requests(module).remove(0);
+    apply_host(module, "settle:group", keep_request(&request, None));
+    workspace
+        .kernel
+        .readers()
+        .read_default(|connection| {
+            super::inbox_read::take_message_basis_computations();
+            let window = super::inbox_read::read_window(
+                connection,
+                &host(),
+                "library-1",
+                0,
+                &ProjectWorkspaceInboxScope::Library,
+                ProjectWorkspaceInboxWindowFilter::Inbox,
+                &CollectionWindowRequest {
+                    first: Some(16),
+                    after: None,
+                },
+            )?;
+            assert_eq!(window.items.len(), 16);
+            assert_eq!(super::inbox_read::take_message_basis_computations(), 16);
+            assert!(
+                window
+                    .items
+                    .iter()
+                    .all(|item| !item.proposal.as_ref().unwrap().outdated)
+            );
+            super::inbox_read::read_summary(
+                connection,
+                &host(),
+                "library-1",
+                &ProjectWorkspaceInboxScope::Library,
+            )?;
+            assert_eq!(super::inbox_read::take_message_basis_computations(), 0);
+            Ok(())
+        })
+        .unwrap();
 }

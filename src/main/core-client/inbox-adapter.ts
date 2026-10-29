@@ -116,15 +116,11 @@ export const inboxScopeFromCore = (scope: CoreInboxScope): InboxScope =>
 
 export const inboxPageBasisFromCore = (basis: CoreInboxPageBasis): InboxPageBasis => ({
   pageId: basis.page_id,
-  generation: basis.generation,
-  headSeq: basis.head_seq,
-  placementRevision: basis.placement_revision,
+  contentHash: basis.content_hash,
 });
 export const inboxPageBasisToCore = (basis: InboxPageBasis): CoreInboxPageBasis => ({
   page_id: basis.pageId,
-  generation: basis.generation,
-  head_seq: basis.headSeq,
-  placement_revision: basis.placementRevision,
+  content_hash: basis.contentHash,
 });
 export const inboxExecutionSelectionToCore = (
   selection: InboxExecutionSelection | null | undefined,
@@ -215,6 +211,7 @@ const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
   state: proposal.state,
   pageIds: [...proposal.page_ids],
   basis: proposal.basis.map(inboxPageBasisFromCore),
+  outdated: proposal.outdated,
   action: inboxDispatchActionFromCore(proposal.action),
   kind: proposal.kind ?? null,
   summary: proposal.summary,

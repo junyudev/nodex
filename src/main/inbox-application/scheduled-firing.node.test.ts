@@ -17,7 +17,7 @@ import type { ProjectWorkspaceApplyInput, ProjectWorkspaceRead } from "../core-c
 import { make } from "./InboxApplication";
 import { scheduledFiringCapture, scheduledFiringTitle } from "./scheduled-firing";
 
-const basis = { page_id: "held-page", generation: 3, head_seq: 19, placement_revision: 4 };
+const basis = { page_id: "held-page", content_hash: "a".repeat(64) };
 const action = {
   type: "run_task",
   automation_id: "task",
@@ -63,7 +63,8 @@ const item: CoreInboxItem = {
     origin: "schedule",
     state: "open",
     page_ids: ["held-page"],
-    basis: [{ ...basis, head_seq: 1 }],
+    basis: [basis],
+    outdated: false,
     action,
     kind: "todo",
     summary: "Run Dependencies",

@@ -152,14 +152,15 @@ pub(in crate::workspace) fn refresh_scheduled_firing(
         if current_body == body {
             return Ok(simple_effects("inbox_refresh_scheduled", &now));
         }
+        let (generation, head_seq) = document_head(connection, &page)?;
         crate::document::edit_page_in_scope(
             connection,
             scope,
             context,
             library_id,
             &page,
-            basis.generation,
-            basis.head_seq,
+            generation,
+            head_seq,
             Some(&body),
             None,
             operation,

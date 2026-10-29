@@ -442,6 +442,10 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     );
   }
 
+  async prepareInboxSuggestions(): Promise<void> {
+    throw new Error("Automatic Inbox advice is prepared only through Core");
+  }
+
   async proposeInboxDispatch(): Promise<void> {
     throw new Error("Inbox suggestions are seeded only through Core; renderers cannot propose");
   }

@@ -145,6 +145,10 @@ class PerformanceSeedPort implements ScenarioSeedPort {
     throw new Error("Inbox seeding is not part of this scenario");
   }
 
+  async prepareInboxSuggestions(): Promise<never> {
+    throw new Error("Not used by this scenario");
+  }
+
   async proposeInboxDispatch(): Promise<never> {
     throw new Error("Inbox seeding is not part of this scenario");
   }

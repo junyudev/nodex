@@ -10,7 +10,7 @@ import {
   UpdateInboxSettingsInputSchema,
 } from "./inbox";
 
-const basis = { pageId: "page-a", generation: 1, headSeq: 9, placementRevision: 1 };
+const basis = { pageId: "page-a", contentHash: "a".repeat(64) };
 
 describe("Inbox boundary contracts", () => {
   it("accepts an optional boolean preference for showing the Page beside new chats", () => {

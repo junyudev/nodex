@@ -9,6 +9,10 @@ import {
   type InboxSendInput,
   type InboxWindowFilter,
 } from "../../../shared/inbox";
+import {
+  inboxSuggestionPolicy,
+  inboxSuggestionsOffered,
+} from "../../../shared/inbox-suggestion-policy";
 import type { Project } from "../../../shared/types";
 import { messageTextOf } from "../../../shared/message-content";
 import { extractMarkdownText } from "../../../shared/nodex-markdown";
@@ -21,7 +25,7 @@ import {
   DispatchIcon,
   HistoryIcon,
   InboxIcon,
-  AskAiIcon,
+  RefreshIcon,
 } from "@/components/shared/icons";
 import { useApplicationPending } from "@/bootstrap/application-surface";
 import { NodexButton } from "@/components/ui/button";
@@ -56,6 +60,7 @@ import {
 } from "./inbox-presentation";
 import { useInboxAgents, type InboxAgents } from "./inbox-agent-picker";
 import { InboxAgentsPopover } from "./inbox-agents-popover";
+import { InboxSuggestionPauseNotice } from "./inbox-suggestion-pause-notice";
 import { InboxTriage } from "./inbox-triage";
 import { inboxDraftLabel } from "./inbox-capture-state";
 import { useInboxCapture } from "./use-inbox-capture";
@@ -317,11 +322,13 @@ export function InboxRoute({
   // The last messages decided still say where they went before the Inbox reads as clear.
   const shownItems = view === "inbox" ? inboxItems : stream.items;
   const nowMs = Date.now();
+  const policy = inboxSuggestionPolicy(settings, agents.providers, nowMs);
+  const suggestionsOffered = inboxSuggestionsOffered(policy);
   const entries = streamEntries(inboxItems, nowMs);
   const anchors = groupAnchors(inboxItems);
   const awaitingPageId = inboxAwaitingIndicatorPageId(
     inboxItems.filter((item) => !departures.outcomeOf(item.pageId)),
-    settings.suggestionsEnabled,
+    policy,
   );
   const keysByPage = new Map(
     inboxItems.map((item) => [item.pageId, item.pageKey ?? "another message"]),
@@ -431,11 +438,13 @@ export function InboxRoute({
         handlers={{
           onOpenPage: () => onOpenPage(item.pageId),
           onDispatch: handleManually,
-          onSuggestAgain: () =>
-            void actions.requestSuggestion(
-              proposal?.pageIds ?? [item.pageId],
-              proposal?.basis ?? [item.basis],
-            ),
+          onSuggestAgain: suggestionsOffered
+            ? () =>
+                void actions.requestSuggestion(
+                  proposal?.pageIds ?? [item.pageId],
+                  proposal?.basis ?? [item.basis],
+                )
+            : undefined,
           onSetDone: (done) => void actions.setState([item.pageId], done ? "done" : "open"),
           onSetKind: (kind) => void actions.setKind(item.pageId, kind),
           onSetImportant: (marked) => void actions.setImportant(item.pageId, marked),
@@ -449,7 +458,7 @@ export function InboxRoute({
         projects={projects}
         agents={agents}
         inboxProjectId={inboxProjectId}
-        suggestionsEnabled={settings.suggestionsEnabled}
+        policy={policy}
         awaitingIndicator={item.pageId === awaitingPageId}
         decided={departures.outcomeOf(item.pageId)}
         actions={actions}
@@ -664,21 +673,23 @@ export function InboxRoute({
                   <span className="mr-1.5 text-sm text-token-foreground tabular-nums">
                     {selectedItems.length} selected
                   </span>
-                  <InboxIconAction
-                    label="Suggest together"
-                    icon={AskAiIcon}
-                    disabled={selectedItems.length > 16}
-                    onClick={() =>
-                      void actions
-                        .requestSuggestion(
-                          selectedPageIds,
-                          selectedItems.map((item) => item.basis),
-                        )
-                        .then((done) => {
-                          if (done) clearSelection();
-                        })
-                    }
-                  />
+                  {suggestionsOffered ? (
+                    <InboxIconAction
+                      label="Suggest together"
+                      icon={RefreshIcon}
+                      disabled={selectedItems.length > 16}
+                      onClick={() =>
+                        void actions
+                          .requestSuggestion(
+                            selectedPageIds,
+                            selectedItems.map((item) => item.basis),
+                          )
+                          .then((done) => {
+                            if (done) clearSelection();
+                          })
+                      }
+                    />
+                  ) : null}
                   <InboxIconAction
                     label="Handle manually"
                     icon={DispatchIcon}
@@ -799,6 +810,9 @@ export function InboxRoute({
             )}
           </div>
         ))}
+        {policy.kind === "paused" && view === "inbox" ? (
+          <InboxSuggestionPauseNotice pause={policy.pause} nowMs={nowMs} />
+        ) : null}
         {capture.validationError ? (
           <p role="alert" className="mb-2 text-xs text-token-error-foreground">
             {capture.validationError}

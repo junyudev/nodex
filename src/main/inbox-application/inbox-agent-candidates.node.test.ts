@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
-import {
-  inboxAgentCandidates,
-  inboxBudgetPace,
-  inboxDefaultChatCandidate,
-} from "./inbox-agent-candidates";
+import { inboxAgentCandidates, inboxDefaultChatCandidate } from "./inbox-agent-candidates";
 import { renderInboxOrchestration } from "./inbox-orchestration";
 
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
@@ -102,13 +98,6 @@ const claude: Provider = {
 };
 
 describe("what a suggestion may run chats on", () => {
-  it("reads each window's pace from the share left against the time left", () => {
-    expect(inboxBudgetPace(80, 0.5)).toBe("ample");
-    expect(inboxBudgetPace(50, 0.5)).toBe("steady");
-    expect(inboxBudgetPace(20, 0.8)).toBe("tight");
-    expect(inboxBudgetPace(1, 0.1)).toBe("spent");
-  });
-
   it("offers each usable Agent's models with their efforts, speeds, guide notes and budget", () => {
     const [openai, anthropic] = inboxAgentCandidates(
       [codex, claude, { ...codex, instanceId: "off", enabled: false }],

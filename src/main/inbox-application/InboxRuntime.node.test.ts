@@ -40,7 +40,7 @@ const choice = (
   reasoningEffort: string | null = null,
 ): InboxChatAgent => ({ instanceId, model, reasoningEffort, serviceTier: null });
 const settings: InboxSettings = {
-  suggestionsEnabled: true,
+  suggestions: "automatic",
   suggestionAgent: claude,
   suggestionModel: null,
   instructions: "Prefer existing chats when relevant.",
@@ -140,7 +140,7 @@ const context = (): CoreInboxDispatchContext => ({
       kind: null,
       submitted_at: "2026-10-15T00:00:00.000Z",
       scope: { kind: "library" },
-      basis: { page_id: "page:one", generation: 1, head_seq: 3, placement_revision: 1 },
+      basis: { page_id: "page:one", content_hash: "a".repeat(64) },
       title_provisional: false,
     },
   ],
@@ -741,7 +741,7 @@ const suggestionHarness = (count = 1, action = "send_to_chat") =>
       entries: Array.from({ length: count }, (_, index) => ({
         ...context().entries[0]!,
         page_id: `page:${index}`,
-        basis: { page_id: `page:${index}`, generation: 1, head_seq: 3, placement_revision: 1 },
+        basis: { page_id: `page:${index}`, content_hash: "a".repeat(64) },
       })),
     };
     const pageIds = routing.entries.map((entry) => entry.page_id);

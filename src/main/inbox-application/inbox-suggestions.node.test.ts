@@ -21,7 +21,7 @@ const entry = (id: string, body: string, titleProvisional = true): CoreInboxSugg
   kind: null,
   submitted_at: "2026-10-11T00:00:00.000Z",
   scope: { kind: "library" },
-  basis: { page_id: id, generation: 1, head_seq: 1, placement_revision: 1 },
+  basis: { page_id: id, content_hash: "a".repeat(64) },
   title_provisional: titleProvisional,
 });
 

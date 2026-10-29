@@ -15,7 +15,7 @@ vi.mock("@/components/ui/toast", () => ({ toast: { success: vi.fn(), danger: vi.
 const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
   outcome: null,
-  basis: { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
+  basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "NOD-1",
   pageStatus: null,
   title: "Homepage positioning",

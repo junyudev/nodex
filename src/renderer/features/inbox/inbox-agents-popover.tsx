@@ -14,6 +14,13 @@ import {
   InboxSuggestionAgentPicker,
   type InboxAgents,
 } from "./inbox-agent-picker";
+import { InboxSuggestionModePicker } from "./inbox-suggestion-mode-picker";
+
+const SUGGESTION_HINTS = {
+  automatic: "Names and routes each message as you send it.",
+  on_request: "Names and routes a message when you ask.",
+  off: "You handle every message by hand.",
+} as const;
 
 function Section({
   title,
@@ -53,7 +60,8 @@ export function InboxAgentsPopover({
   readonly onOpenSettings: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const suggestions = agents.settings.suggestionsEnabled;
+  const mode = agents.settings.suggestions;
+  const suggestions = mode !== "off";
   const ready = agents.state === "ready";
   return (
     <NodexPopover open={open} onOpenChange={setOpen}>
@@ -80,13 +88,12 @@ export function InboxAgentsPopover({
         <div className="flex flex-col divide-y divide-token-border/60">
           <Section
             title="Suggestions"
-            hint="Names and routes each new message."
+            hint={SUGGESTION_HINTS[mode]}
             control={
-              <NodexSwitch
-                size="compact"
-                ariaLabel="Suggest where messages go"
-                checked={suggestions}
-                onCheckedChange={(suggestionsEnabled) => agents.save({ suggestionsEnabled })}
+              <InboxSuggestionModePicker
+                trigger="compact"
+                value={mode}
+                onChange={(next) => agents.save({ suggestions: next })}
               />
             }
           >

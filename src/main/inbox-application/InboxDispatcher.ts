@@ -5,6 +5,10 @@ import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { inboxSuggestionChoice, type InboxSettings } from "../../shared/inbox";
+import {
+  inboxSuggestionPolicy,
+  type InboxSuggestionPolicy,
+} from "../../shared/inbox-suggestion-policy";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import {
   AgentRuntimeApplication,
@@ -47,6 +51,7 @@ export const make = Effect.gen(function* () {
   const config = yield* MainConfig;
   const logger = getLogger({ component: "inbox-dispatcher" });
   const lane = yield* Semaphore.make(1);
+  let previousPolicy: InboxSuggestionPolicy["kind"] | null = null;
 
   const suggest = Effect.fn("InboxDispatcher.suggest")(function* (
     current: InboxSettings,
@@ -187,15 +192,37 @@ export const make = Effect.gen(function* () {
     });
   });
 
+  // Generation and Core requests yield: spending decisions cannot be cached across a drain.
+  const readSuggestionPolicy = Effect.fn("InboxDispatcher.readSuggestionPolicy")(function* () {
+    const snapshot = yield* settings.snapshot();
+    const providers = yield* runtime.catalog();
+    const policy = inboxSuggestionPolicy(snapshot.inbox, providers, yield* Clock.currentTimeMillis);
+    if (policy.kind === "paused" && previousPolicy !== "paused")
+      logger.info("Inbox automatic suggestions paused", { ...policy.pause });
+    if (policy.kind === "automatic" && previousPolicy === "paused")
+      logger.info("Inbox automatic suggestions resumed");
+    previousPolicy = policy.kind;
+    return { current: snapshot.inbox, policy };
+  });
+
   const drain = lane.withPermits(1)(
     Effect.gen(function* () {
-      const snapshot = yield* settings.snapshot();
-      if (!snapshot.inbox.suggestionsEnabled) return;
       for (let batch = 0; batch < MAX_BATCHES_PER_DRAIN; batch += 1) {
-        yield* inbox.prepareSuggestions(INBOX_SUGGESTION_BATCH);
+        const preparation = yield* readSuggestionPolicy();
+        // Each send is considered once. Core releases waiting messages when automatic advice yields.
+        yield* inbox.prepareSuggestions(
+          INBOX_SUGGESTION_BATCH,
+          preparation.policy.kind === "automatic",
+        );
+        if (preparation.policy.kind === "off") return;
         const [request] = yield* inbox.suggestionRequests(1);
         if (!request) return;
-        yield* suggest(snapshot.inbox, request);
+        const admission = yield* readSuggestionPolicy();
+        if (admission.policy.kind === "off") {
+          yield* inbox.prepareSuggestions(INBOX_SUGGESTION_BATCH, false);
+          return;
+        }
+        yield* suggest(admission.current, request);
       }
     }).pipe(
       Effect.catchCause(() =>

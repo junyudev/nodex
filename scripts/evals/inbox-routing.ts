@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
@@ -308,7 +309,10 @@ const fixture = (value: RoutingCase) => {
       kind: null,
       submitted_at: "2026-10-18T00:00:00Z",
       scope,
-      basis: { page_id: `message-${i}`, generation: 1, head_seq: 1, placement_revision: 1 },
+      basis: {
+        page_id: `message-${i}`,
+        content_hash: createHash("sha256").update(body).digest("hex"),
+      },
       title_provisional: false,
     })),
     projects: value.noCandidates

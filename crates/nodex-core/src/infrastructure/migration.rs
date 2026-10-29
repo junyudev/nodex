@@ -380,6 +380,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 193,
         apply: migrate_v192_to_v193,
     },
+    MigrationStep {
+        from_revision: 193,
+        to_revision: 194,
+        apply: migrate_v193_to_v194,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2543,6 +2548,156 @@ fn migrate_v189_to_v190(
             r#"{"session_search_usage":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v193_to_v194(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v193_to_v194.sql"))?;
+    migrate_inbox_content_bases(connection)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_content_fingerprints":true,"inbox_send_advice":true,"inbox_frozen_suggestion_inputs":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+/// Legacy coordinates are decoded only here. Retained Yrs history recovers the actual
+/// written text; pruned history keeps a distinct fingerprint so it cannot claim to be current.
+fn migrate_inbox_content_bases(connection: &Connection) -> Result<(), StoreError> {
+    use rusqlite::OptionalExtension;
+    #[derive(Deserialize)]
+    struct LegacyBasis {
+        page_id: String,
+        generation: i64,
+        head_seq: i64,
+    }
+    fn historical_hash(
+        connection: &Connection,
+        old: &LegacyBasis,
+    ) -> Result<Option<String>, StoreError> {
+        let retained: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM inbox_entries WHERE page_id=?1)",
+            [&old.page_id],
+            |row| row.get(0),
+        )?;
+        if !retained {
+            return Ok(None);
+        }
+        let document_id = connection
+            .query_row(
+                "SELECT document_id FROM pages WHERE block_id=?1",
+                [&old.page_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let Some(document_id) = document_id else {
+            return Ok(None);
+        };
+        let repository =
+            crate::infrastructure::document_repository::DocumentReadRepository::new(connection);
+        let Some(head) = repository.document_head(&document_id)? else {
+            return Ok(None);
+        };
+        if head.generation != old.generation || old.head_seq > head.head_seq {
+            return Ok(None);
+        }
+        if head.head_seq == old.head_seq {
+            return Ok(Some(
+                crate::workspace::inbox_message_basis_for_migration(connection, &old.page_id)?
+                    .content_hash,
+            ));
+        }
+        let snapshot = repository.latest_snapshot(&head.id, old.generation, old.head_seq)?;
+        let mut through = snapshot
+            .as_ref()
+            .map_or(0, |snapshot| snapshot.snapshot_seq);
+        let mut engine = match snapshot {
+            Some(snapshot) => crate::document::YrsDocumentEngine::from_full_state_v1(
+                &head.id,
+                &snapshot.snapshot_update,
+            )
+            .map_err(|_| corrupt("Stored Inbox snapshot is invalid"))?,
+            None => crate::document::YrsDocumentEngine::new(&head.id),
+        };
+        for update in repository.updates_between(&head.id, old.generation, through, old.head_seq)? {
+            if update.seq != through + 1 {
+                return Ok(None);
+            }
+            let candidate = engine
+                .prepare_update_v1(&update.update_blob)
+                .map_err(|_| corrupt("Stored Inbox update is invalid"))?;
+            engine
+                .commit_candidate(candidate)
+                .map_err(|_| corrupt("Stored Inbox update is invalid"))?;
+            through = update.seq;
+        }
+        if through != old.head_seq {
+            return Ok(None);
+        }
+        let schema = crate::document::BlockDocumentSchema::from_identity(
+            &head.schema_key,
+            head.schema_version,
+        )
+        .ok_or_else(|| corrupt("Stored Inbox schema is unavailable"))?;
+        let decoded = crate::document::decode_block_document(engine.document(), schema)
+            .map_err(|_| corrupt("Stored Inbox document is invalid"))?;
+        let materialized = crate::document::materialize_decoded_document(&decoded)
+            .map_err(|_| corrupt("Stored Inbox text is invalid"))?;
+        let blocks = crate::domain::markdown::parse_markdown(&materialized.markdown)
+            .map_err(|_| corrupt("Stored Inbox text is invalid"))?;
+        Ok(Some(crate::document::sha256(
+            crate::domain::markdown::extract_block_lines(&blocks).as_bytes(),
+        )))
+    }
+    fn migrate_basis(connection: &Connection, value: &Value) -> Result<Value, StoreError> {
+        let old: LegacyBasis = serde_json::from_value(value.clone())
+            .map_err(|_| corrupt("Stored Inbox basis is invalid"))?;
+        let hash = historical_hash(connection, &old)?.unwrap_or_else(|| {
+            crate::document::sha256(format!("unavailable-inbox-content:{value}").as_bytes())
+        });
+        Ok(json!({"page_id":old.page_id,"content_hash":hash}))
+    }
+    for (table, key) in [
+        ("inbox_proposals", "proposal_id"),
+        ("inbox_suggestion_requests", "request_id"),
+        ("core_automation_firings", "dispatch_id"),
+    ] {
+        let column = if table == "core_automation_firings" {
+            "hold_basis_json"
+        } else {
+            "basis_json"
+        };
+        let rows = connection
+            .prepare(&format!("SELECT {key},{column} FROM {table}"))?
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (id, json) in rows {
+            let value: Value = serde_json::from_str(&json)
+                .map_err(|_| corrupt("Stored Inbox basis is invalid"))?;
+            let basis = if let Some(members) = value.as_array() {
+                Value::Array(
+                    members
+                        .iter()
+                        .map(|member| migrate_basis(connection, member))
+                        .collect::<Result<Vec<_>, _>>()?,
+                )
+            } else {
+                migrate_basis(connection, &value)?
+            };
+            connection.execute(
+                &format!("UPDATE {table} SET {column}=?2 WHERE {key}=?1"),
+                params![id, basis.to_string()],
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -7448,6 +7603,9 @@ mod tests {
             |row| row.get(0),
         )?;
         connection.execute_batch(&firing_schema)?;
+        // Current capture writes waiting, converted back to the exact historical contract below.
+        connection.pragma_update(None, "ignore_check_constraints", true)?;
+        connection.execute_batch("ALTER TABLE inbox_suggestion_requests ADD COLUMN inputs_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(inputs_json) AND json_type(inputs_json) = 'array');")?;
         connection.execute_batch(
             "ALTER TABLE inbox_entries ADD COLUMN source_automation_id TEXT;
             ALTER TABLE inbox_entries ADD COLUMN source_dispatch_id TEXT;",
@@ -7456,11 +7614,26 @@ mod tests {
     }
 
     fn finish_historical_inbox_capture(connection: &Connection) -> Result<(), StoreError> {
+        restore_historical_inbox_bases(connection)?;
+        connection
+            .execute_batch("ALTER TABLE inbox_suggestion_requests DROP COLUMN inputs_json;")?;
         connection.execute_batch(
             "DROP TABLE core_automation_firings;
             ALTER TABLE inbox_entries DROP COLUMN source_automation_id;
             ALTER TABLE inbox_entries DROP COLUMN source_dispatch_id;",
         )?;
+        Ok(())
+    }
+
+    fn restore_historical_inbox_bases(connection: &Connection) -> Result<(), StoreError> {
+        connection.execute(
+            "UPDATE inbox_entries SET suggestion_state='pending' WHERE suggestion_state='waiting'",
+            [],
+        )?;
+        for table in ["inbox_proposals", "inbox_suggestion_requests"] {
+            connection.execute(&format!("UPDATE {table} SET basis_json=(SELECT json_group_array(json_object('page_id',json_extract(basis.value,'$.page_id'),'generation',document.generation,'head_seq',document.head_seq,'placement_revision',block.placement_revision)) FROM json_each({table}.basis_json) basis JOIN pages page ON page.block_id=json_extract(basis.value,'$.page_id') JOIN documents document ON document.id=page.document_id JOIN blocks block ON block.id=page.block_id)"),[])?;
+        }
+        connection.pragma_update(None, "ignore_check_constraints", false)?;
         Ok(())
     }
 
@@ -7799,7 +7972,7 @@ mod tests {
                 "SELECT state,suggestion_state,current_proposal_id,suggestion_request_id,outcome FROM inbox_entries WHERE page_id='page:open'",
                 [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),
             )?;
-            assert_eq!(open,("open".into(),"pending".into(),None,None,None));
+            assert_eq!(open,("open".into(),"waiting".into(),None,None,None));
             let kept: (String,Option<String>,Option<String>) = connection.query_row(
                 "SELECT state,current_proposal_id,outcome FROM inbox_entries WHERE page_id='page:kept'",
                 [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
@@ -7960,6 +8133,302 @@ mod tests {
         assert_eq!(firing_state("dispatch:1"), ("withdrawn".into(), 0, None));
     }
 
+    fn run_inbox_content_fingerprint_migration(erased_firing: bool) {
+        use crate::infrastructure::store::SqliteStoreKernel;
+        use crate::workspace::ProjectWorkspaceModule;
+        use nodex_core_contracts::inbox::{
+            ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxSuggestionMode,
+        };
+        use nodex_core_contracts::workspace::{
+            ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
+        };
+        use nodex_core_contracts::{
+            AdapterKind, BoundModuleContext, LibraryId, ModuleApplyRequest, ModuleReadRequest,
+            PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId, StoreEpoch,
+        };
+        let profile = tempdir().unwrap();
+        install_intermediate_fixture(profile.path(), 193);
+        let kernel = SqliteStoreKernel::open_test(profile.path()).unwrap();
+        kernel
+            .writer()
+            .call(|connection| {
+                connection.pragma_update(None, "ignore_check_constraints", true)?;
+                connection.execute_batch("ALTER TABLE inbox_suggestion_requests ADD COLUMN inputs_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(inputs_json) AND json_type(inputs_json) = 'array');")?;
+                Ok(())
+            })
+            .unwrap();
+        let (profile_id,library_id,epoch):(String,String,String)=kernel.readers().read_default(|connection| Ok(connection.query_row("SELECT profile_id,id,(SELECT store_epoch FROM block_store_metadata) FROM libraries",[],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?)))?)).unwrap();
+        let module = ProjectWorkspaceModule::new(&profile_id, &library_id, &kernel).unwrap();
+        module.seed_rootless_default_project_for_test();
+        let host = BoundModuleContext {
+            editor_history_owner: None,
+            profile_id: ProfileId(profile_id),
+            library_id: LibraryId(library_id),
+            project_id: None,
+            connection_id: "migration-inbox-content".into(),
+            adapter: AdapterKind::ElectronHost,
+        };
+        let apply = |_operation: &str, intent| {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis();
+            module
+                .apply(
+                    &host,
+                    ModuleApplyRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        operation_id: format!(
+                            "nodexop:v1:{now}:{}:inbox-migration:{}",
+                            now + 7 * 24 * 60 * 60 * 1000,
+                            random_uuid_v7().unwrap()
+                        ),
+                        store_epoch: StoreEpoch(epoch.clone()),
+                        intent,
+                    },
+                )
+                .unwrap()
+        };
+        for id in ["advice", "request", "waiting"] {
+            apply(
+                &format!("send:{id}"),
+                ProjectWorkspaceIntent::SendInboxMessage {
+                    expected_store_epoch: None,
+                    page_id: format!("page:{id}"),
+                    document_id: format!("document:{id}"),
+                    body: format!("Review the {id} message."),
+                    title: None,
+                    project_id: None,
+                },
+            );
+        }
+        let ProjectWorkspaceReadValue::InboxPendingSuggestions { entries } = module
+            .read(
+                &host,
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::InboxPendingSuggestions { limit: 8 },
+                },
+            )
+            .unwrap()
+            .value
+        else {
+            panic!("entries")
+        };
+        let basis = |id: &str| {
+            entries
+                .iter()
+                .find(|entry| entry.page_id == format!("page:{id}"))
+                .unwrap()
+                .basis
+                .clone()
+        };
+        for id in ["advice", "request"] {
+            apply(
+                &format!("propose:{id}"),
+                ProjectWorkspaceIntent::ProposeInboxDispatch {
+                    proposal_id: format!("proposal:{id}"),
+                    page_ids: vec![format!("page:{id}")],
+                    basis: vec![basis(id)],
+                    action: ProjectWorkspaceInboxDispatchAction::Keep,
+                    entry_kind: None,
+                    summary: "Keep this note".into(),
+                    rationale: None,
+                    produced_by: None,
+                },
+            );
+        }
+        apply(
+            "request:active",
+            ProjectWorkspaceIntent::RequestInboxSuggestion {
+                request_id: "request:active".into(),
+                mode: ProjectWorkspaceInboxSuggestionMode::Grouped,
+                page_ids: vec!["page:request".into()],
+                basis: vec![basis("request")],
+                proposal_id: None,
+                expected_revision: None,
+                correction: None,
+            },
+        );
+        if erased_firing {
+            apply(
+                "send:erased",
+                ProjectWorkspaceIntent::SendInboxMessage {
+                    expected_store_epoch: None,
+                    page_id: "page:erased".into(),
+                    document_id: "document:erased".into(),
+                    body: "Prepare the daily report.".into(),
+                    title: None,
+                    project_id: None,
+                },
+            );
+            // Historical scheduled metadata is the subject; erasure itself uses the host operation.
+            kernel.writer().call(|connection| {
+                connection.execute("INSERT INTO codex_scheduled_automations(automation_id,kind,status,name,prompt,rrule,launch,created_at,updated_at) VALUES ('task:erased','cron','PAUSED','Daily report','Prepare the daily report.','FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0','ask',1,1)",[])?;
+                connection.execute("UPDATE inbox_entries SET source_kind='scheduled_task',source_label='Daily report',source_automation_id='task:erased',source_dispatch_id='firing:erased' WHERE page_id='page:erased'",[])?;
+                connection.execute("INSERT INTO core_automation_firings(dispatch_id,automation_id,status,waiting_in_inbox,page_id,first_scheduled_for_ms,last_scheduled_for_ms,hold_basis_json,created_at_ms,updated_at_ms) SELECT 'firing:erased','task:erased','held',1,'page:erased',1,1,json_object('page_id','page:erased','generation',document.generation,'head_seq',document.head_seq,'placement_revision',block.placement_revision),1,1 FROM pages page JOIN documents document ON document.id=page.document_id JOIN blocks block ON block.id=page.block_id WHERE page.block_id='page:erased'",[])?;
+                Ok(())
+            }).unwrap();
+            apply(
+                "delete:erased",
+                ProjectWorkspaceIntent::DeleteInboxMessages {
+                    page_ids: vec!["page:erased".into()],
+                },
+            );
+            kernel
+                .readers()
+                .read_default(|connection| {
+                    assert_eq!(
+                        connection.query_row(
+                            "SELECT count(*) FROM pages WHERE block_id='page:erased'",
+                            [],
+                            |row| row.get::<_, i64>(0)
+                        )?,
+                        1
+                    );
+                    assert_eq!(
+                        connection.query_row(
+                            "SELECT count(*) FROM inbox_entries WHERE page_id='page:erased'",
+                            [],
+                            |row| row.get::<_, i64>(0)
+                        )?,
+                        0
+                    );
+                    Ok(())
+                })
+                .unwrap();
+        }
+        let written_coordinates=kernel.readers().read_default(|connection| Ok(connection.query_row("SELECT json_array(json_object('page_id','page:advice','generation',document.generation,'head_seq',document.head_seq,'placement_revision',block.placement_revision)) FROM pages page JOIN documents document ON document.id=page.document_id JOIN blocks block ON block.id=page.block_id WHERE page.block_id='page:advice'",[],|row|row.get::<_,String>(0))?)).unwrap();
+        apply(
+            "edit:advice",
+            ProjectWorkspaceIntent::EditInboxMessage {
+                page_id: "page:advice".into(),
+                basis: basis("advice"),
+                original_body: "Review the advice message.".into(),
+                body: "Review the revised advice message.".into(),
+            },
+        );
+        kernel.writer().call(move |connection| {
+            restore_historical_inbox_bases(connection)?;
+            connection.execute_batch("ALTER TABLE inbox_suggestion_requests DROP COLUMN inputs_json;")?;
+            connection.execute("UPDATE inbox_entries SET suggestion_state='settled' WHERE page_id='page:advice'",[])?;
+            connection.execute("UPDATE inbox_proposals SET basis_json=?1 WHERE proposal_id='proposal:advice'",[written_coordinates])?;
+            Ok(())
+        }).unwrap();
+        drop(module);
+        drop(kernel);
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        validate_schema_identity(&connection, 193).unwrap();
+        let prepared = prepare_profile_store(&mut connection, profile.path()).unwrap();
+        assert_eq!(prepared.migrated_from_version, Some(193));
+        validate_schema_identity(&connection, 194).unwrap();
+        assert_eq!(
+            connection
+                .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            194
+        );
+        let steps = connection
+            .prepare("SELECT source_revision,target_revision FROM core_store_migration_history WHERE source_revision>=193 ORDER BY source_revision")
+            .unwrap()
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(steps, vec![(193, 194)]);
+        let states = connection
+            .prepare("SELECT page_id,suggestion_state FROM inbox_entries ORDER BY page_id")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(
+            states,
+            vec![
+                ("page:advice".into(), "settled".into()),
+                ("page:request".into(), "failed".into()),
+                ("page:waiting".into(), "waiting".into())
+            ]
+        );
+        let (error, proposal_id, proposal_state): (String, String, String) = connection
+            .query_row(
+                "SELECT entry.suggestion_error,entry.current_proposal_id,proposal.state FROM inbox_entries entry JOIN inbox_proposals proposal ON proposal.proposal_id=entry.current_proposal_id WHERE entry.page_id='page:request'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            error,
+            "Saved suggestion inputs are unavailable. Request a new suggestion."
+        );
+        assert_eq!(proposal_id, "proposal:request");
+        assert_eq!(proposal_state, "open");
+        let (request_state, inputs): (String, String) = connection
+            .query_row(
+                "SELECT state,inputs_json FROM inbox_suggestion_requests WHERE request_id='request:active'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(request_state, "failed");
+        assert_eq!(inputs, "[]");
+        assert_ne!(
+            crate::workspace::inbox_message_basis_for_migration(&connection, "page:advice")
+                .unwrap()
+                .content_hash,
+            crate::document::sha256(b"Review the advice message.")
+        );
+        for (table, id, column) in [
+            ("inbox_proposals", "proposal:advice", "proposal_id"),
+            ("inbox_suggestion_requests", "request:active", "request_id"),
+        ] {
+            let json: String = connection
+                .query_row(
+                    &format!("SELECT basis_json FROM {table} WHERE {column}=?1"),
+                    [id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            let basis: Vec<nodex_core_contracts::inbox::ProjectWorkspaceInboxPageBasis> =
+                serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                basis[0].content_hash,
+                crate::document::sha256(
+                    format!(
+                        "Review the {} message.",
+                        if table == "inbox_proposals" {
+                            "advice"
+                        } else {
+                            "request"
+                        }
+                    )
+                    .as_bytes()
+                )
+            );
+        }
+        if erased_firing {
+            let (state,json):(String,String)=connection.query_row("SELECT status,hold_basis_json FROM core_automation_firings WHERE dispatch_id='firing:erased'",[],|row|Ok((row.get(0)?,row.get(1)?))).unwrap();
+            assert_eq!(state, "withdrawn");
+            let basis: nodex_core_contracts::inbox::ProjectWorkspaceInboxPageBasis =
+                serde_json::from_str(&json).unwrap();
+            assert_eq!(basis.page_id, "page:erased");
+            assert_eq!(basis.content_hash.len(), 64);
+        }
+    }
+
+    #[test]
+    fn inbox_content_fingerprint_migration_preserves_advice_requests_and_waiting_sends() {
+        run_inbox_content_fingerprint_migration(false);
+    }
+
+    #[test]
+    fn inbox_content_fingerprint_migration_accepts_erased_scheduled_members_before_collection() {
+        run_inbox_content_fingerprint_migration(true);
+    }
+
     #[test]
     fn scheduled_firing_migration_converges_from_v192_and_preserves_saved_tasks() {
         let profile = tempdir().unwrap();
@@ -7969,8 +8438,8 @@ mod tests {
         validate_schema_identity(&connection, 192).unwrap();
         let preparation = prepare_profile_store(&mut connection, profile.path()).unwrap();
         assert_eq!(preparation.migrated_from_version, Some(192));
-        assert_eq!(preparation.schema_version, 193);
-        validate_schema_identity(&connection, 193).unwrap();
+        assert_eq!(preparation.schema_version, CURRENT_STORE_REVISION);
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).unwrap();
         let history = connection
             .prepare(
                 "SELECT source_revision,target_revision FROM core_store_migration_history \

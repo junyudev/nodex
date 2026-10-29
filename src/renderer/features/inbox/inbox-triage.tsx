@@ -8,6 +8,10 @@ import type {
   InboxProposal,
   InboxPageBasis,
 } from "../../../shared/inbox";
+import {
+  inboxSuggestionsOffered,
+  type InboxSuggestionPolicy,
+} from "../../../shared/inbox-suggestion-policy";
 import type { Project } from "../../../shared/types";
 import {
   ActivitySpinnerIcon,
@@ -16,9 +20,9 @@ import {
   CompactChevronDownIcon,
   DispatchIcon,
   EditIcon,
+  RefreshIcon,
   RetryIcon,
   ThreadIcon,
-  AskAiIcon,
 } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -104,6 +108,60 @@ function Notice({
   );
 }
 
+/** Advice on its way, held in the place an icon or the decision takes once it arrives. */
+function AdviceSpinner({
+  className,
+  solid = false,
+}: {
+  readonly className?: string;
+  /** Holds the place of the row's primary button, in its colors. */
+  readonly solid?: boolean;
+}) {
+  return (
+    <span
+      role="status"
+      aria-label="Finding where this goes"
+      className={cn(
+        "flex",
+        solid
+          ? "size-6 items-center justify-center rounded-md bg-primary-solid text-primary-solid"
+          : "text-token-description-foreground",
+        className,
+      )}
+    >
+      <ActivitySpinnerIcon className="icon-xs" />
+    </span>
+  );
+}
+
+/**
+ * A labeled action always has an edge: solid when it is the step the row recommends, outlined
+ * when it is the alternative beside one.
+ */
+type DecisionVariant = "primary" | "outline";
+
+/**
+ * The recommended step when its glyph says it all, such as asking again: solid like a decision,
+ * ending the row, named by its tooltip.
+ */
+function SolidIconAction({
+  label,
+  icon: Icon,
+  onClick,
+}: {
+  readonly label: string;
+  readonly icon: InboxIcon;
+  readonly onClick: () => void;
+}) {
+  return (
+    <NodexTooltip tooltipContent={label} side="top">
+      <NodexButton size="icon-xs" variant="primary" aria-label={label} onClick={onClick}>
+        <Icon className="icon-xs" />
+      </NodexButton>
+    </NodexTooltip>
+  );
+}
+
 /** The decision the row asks for, always at the trailing edge where it is easy to find. */
 function Decision({
   label,
@@ -120,7 +178,7 @@ function Decision({
   /** What the suggestion does and why, a hover away. */
   readonly why?: ReactNode;
   readonly icon: InboxIcon;
-  readonly variant?: "primary" | "ghost";
+  readonly variant?: DecisionVariant;
   /** The other half of a split decision, which changes how it runs rather than running it. */
   readonly menu?: ReactNode;
   readonly onClick: () => void;
@@ -129,7 +187,12 @@ function Decision({
     <NodexButton
       size="xs"
       variant={variant}
-      className={cn("min-w-0 gap-1.5", menu && "rounded-e-none")}
+      // An outlined split shares one border between its halves.
+      className={cn(
+        "min-w-0 gap-1.5",
+        menu && "rounded-e-none",
+        menu && variant === "outline" && "border-e-0",
+      )}
       onClick={onClick}
     >
       <Icon className="icon-xs shrink-0" />
@@ -152,7 +215,7 @@ function Decision({
     button
   );
   return menu ? (
-    <div className="flex min-w-0 items-center gap-px">
+    <div className={cn("flex min-w-0 items-center", variant !== "outline" && "gap-px")}>
       {decision}
       {menu}
     </div>
@@ -205,12 +268,15 @@ function ChatAgentMenu({
   value,
   changed,
   label = "Choose the model for this chat",
+  variant,
   onChange,
 }: {
   readonly agents: InboxAgents;
   readonly value: InboxChatAgent;
   readonly changed: boolean;
   readonly label?: string;
+  /** Matches the decision it completes. */
+  readonly variant: DecisionVariant;
   readonly onChange: (next: InboxChatAgent) => void;
 }) {
   return (
@@ -223,7 +289,7 @@ function ChatAgentMenu({
       trigger={
         <NodexButton
           size="xs"
-          variant="primary"
+          variant={variant}
           aria-label={label}
           className="min-w-0 gap-1 rounded-s-none px-1.5"
         >
@@ -254,6 +320,12 @@ function SuggestionStrip({
   /** For a scheduled task's run, how it will go; its instructions are the message above. */
   readonly firingLine: string | null;
 }) {
+  // An outdated suggestion recedes, prompt included: it was written for text the message no
+  // longer has.
+  // Markdown reads `--foreground` directly, so the prompt is muted through it.
+  const tone = proposal.outdated
+    ? "text-token-description-foreground [--foreground:var(--color-token-description-foreground)]"
+    : "text-token-foreground";
   const action = proposal.action;
   if (action.type === "run_task") {
     return (
@@ -268,7 +340,8 @@ function SuggestionStrip({
   return (
     <div
       data-testid="inbox-suggestion"
-      className="flex min-w-0 flex-col gap-2 text-token-foreground"
+      data-outdated={proposal.outdated || undefined}
+      className={cn("flex min-w-0 flex-col gap-2", tone)}
     >
       {isChatAction(action) ? (
         <MessageText text={action.prompt} />
@@ -312,7 +385,7 @@ export function InboxTriage({
   item,
   projects,
   agents,
-  suggestionsEnabled,
+  policy,
   actions,
   manualDraft,
   groupedWithKey,
@@ -345,7 +418,8 @@ export function InboxTriage({
   readonly agents: InboxAgents;
   /** The Project whose Inbox holds the message, or null for the Library Inbox. */
   readonly inboxProjectId: string | null;
-  readonly suggestionsEnabled: boolean;
+  /** What suggestions do right now, which decides whether a waiting message is being advised. */
+  readonly policy: InboxSuggestionPolicy;
   readonly actions: InboxActions;
   /** A hand-written dispatch opened from the message menu. */
   readonly manualDraft: InboxDispatchDraft | null;
@@ -398,8 +472,11 @@ export function InboxTriage({
     readonly basis: InboxPageBasis;
   } | null>(null);
 
-  const model = inboxTriageModel(item, suggestionsEnabled);
-  const offers = inboxRowOffers(model, { suggestionsEnabled, grouped: groupedWithKey != null });
+  const model = inboxTriageModel(item, policy);
+  const offers = inboxRowOffers(model, {
+    suggestionsOffered: inboxSuggestionsOffered(policy),
+    grouped: groupedWithKey != null,
+  });
   const handled = useInboxOutcome(item);
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
@@ -438,6 +515,17 @@ export function InboxTriage({
   const handleManuallyAction = offers.handleManually ? (
     <InboxIconAction label="Handle manually" icon={DispatchIcon} onClick={handleManually} />
   ) : null;
+  // Deciding by hand as a labeled decision: the row's own step, or the alternative to one.
+  const handleManuallyDecision = (variant: DecisionVariant) =>
+    offers.handleManually ? (
+      <Decision
+        label="Handle manually"
+        target={null}
+        icon={DispatchIcon}
+        variant={variant}
+        onClick={handleManually}
+      />
+    ) : null;
   const menuOnly = (
     <Row>
       <InboxIconActions>{menuNode}</InboxIconActions>
@@ -552,13 +640,7 @@ export function InboxTriage({
               {awaitingIndicator ? (
                 // Ends where the card's corner curve meets its bottom edge, not at the
                 // outer edge the curve has already left.
-                <span
-                  role="status"
-                  aria-label="Finding where this goes"
-                  className="mr-(--inbox-card-radius) flex text-token-description-foreground"
-                >
-                  <ActivitySpinnerIcon className="icon-xs" />
-                </span>
+                <AdviceSpinner className="mr-(--inbox-card-radius)" />
               ) : null}
             </Row>
           ),
@@ -573,9 +655,24 @@ export function InboxTriage({
         const runTask = proposal.action.type === "run_task";
         // A Heartbeat's run continues its chat on that chat's own Agent.
         const choosesModel = newChat || (runTask && taskAgent !== null && !firing?.heartbeat);
+        const outdated = proposal.outdated;
+        const askAgain = () => void actions.requestSuggestion(proposal.pageIds, proposal.basis);
+        // An outdated suggestion can still be confirmed as it reads, but asking again is the
+        // obvious next step, so that takes the primary place at the end of the row.
+        const asksAgainFirst = outdated && (model.refreshing || offers.suggest);
+        const variant = outdated ? "outline" : "primary";
         return {
           strip: (
             <Settle id={proposal.proposalId}>
+              {model.refreshError ? (
+                <Notice tone="error">Couldn’t suggest again — {model.refreshError}</Notice>
+              ) : outdated ? (
+                <Notice tone="quiet">
+                  {proposal.pageIds.length > 1
+                    ? "Suggested before one of these messages changed"
+                    : "Suggested before this message changed"}
+                </Notice>
+              ) : null}
               {groupMembers(proposal)}
               <SuggestionStrip
                 proposal={proposal}
@@ -588,12 +685,22 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menuNode}
+                {asksAgainFirst ? null : model.refreshing ? (
+                  <AdviceSpinner className="size-6 items-center justify-center" />
+                ) : offers.suggest ? (
+                  <InboxIconAction
+                    label={model.refreshError ? "Retry" : "Suggest again"}
+                    icon={RefreshIcon}
+                    onClick={askAgain}
+                  />
+                ) : null}
                 {proposal.action.type === "keep" || runTask ? null : keepAction}
                 {doneAction}
               </InboxIconActions>
               <Decision
                 label={presentation.verb}
                 target={presentation.target}
+                variant={variant}
                 why={
                   <SuggestionWhy
                     proposal={proposal}
@@ -610,6 +717,7 @@ export function InboxTriage({
                         !sameInboxChatAgent(chatAgent, baseAgent ?? agents.settings.chatAgent)
                       }
                       label={runTask ? "Choose the model for this run" : undefined}
+                      variant={variant}
                       onChange={(next) => chooseAgent(proposal.proposalId, next)}
                     />
                   ) : null
@@ -620,6 +728,17 @@ export function InboxTriage({
                     : actions.confirm(proposal))
                 }
               />
+              {asksAgainFirst ? (
+                model.refreshing ? (
+                  <AdviceSpinner solid />
+                ) : (
+                  <SolidIconAction
+                    label={model.refreshError ? "Retry" : "Suggest again"}
+                    icon={RefreshIcon}
+                    onClick={askAgain}
+                  />
+                )
+              ) : null}
             </Row>
           ),
         };
@@ -635,29 +754,34 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menuNode}
-                {offers.suggest ? (
-                  <InboxIconAction
-                    label="Retry"
-                    icon={RetryIcon}
-                    onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
-                  />
-                ) : null}
                 {keepAction}
                 {doneAction}
-                {handleManuallyAction}
               </InboxIconActions>
+              {/* Asking again is the obvious next step; deciding by hand stays beside it. */}
+              {handleManuallyDecision(offers.suggest ? "outline" : "primary")}
+              {offers.suggest ? (
+                <SolidIconAction
+                  label="Retry"
+                  icon={RefreshIcon}
+                  onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
+                />
+              ) : null}
             </Row>
           ),
         };
       case "dispatch-failed": {
-        const uncertainChat =
-          model.proposal.failureKind === "unknown" && onOpenSession ? model.proposal.chat : null;
+        const failure = model.proposal.failureKind;
+        const uncertainChat = failure === "unknown" && onOpenSession ? model.proposal.chat : null;
+        // A rejected chat needs a new decision; anything else that failed can be tried again.
+        const retries =
+          failure !== "unknown" &&
+          !(failure === "rejected" && model.proposal.action.type !== "run_task");
         return {
           opensChat: uncertainChat != null,
           strip: (
             <Settle id="dispatch-failed">
               <Notice tone="error">
-                {model.proposal.failureKind === "unknown"
+                {failure === "unknown"
                   ? "Delivery not confirmed"
                   : model.proposal.action.type === "run_task"
                     ? "Couldn’t run"
@@ -670,34 +794,42 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menuNode}
-                {model.proposal.failureKind === "unknown" ? (
-                  uncertainChat ? (
-                    <InboxIconAction
+                {item.firing ? null : keepAction}
+                {doneAction}
+              </InboxIconActions>
+              {failure === "unknown" ? (
+                <>
+                  {/* Whether it arrived is checked in the chat first; sending again may repeat it. */}
+                  {offers.handleManually ? (
+                    <Decision
+                      label="Send again"
+                      target={null}
+                      icon={DispatchIcon}
+                      variant={uncertainChat ? "outline" : "primary"}
+                      onClick={handleManually}
+                    />
+                  ) : null}
+                  {uncertainChat ? (
+                    <Decision
                       label="Open chat"
+                      target={null}
                       icon={ThreadIcon}
                       onClick={() => onOpenSession?.(uncertainChat.sessionId)}
                     />
-                  ) : null
-                ) : model.proposal.failureKind === "rejected" &&
-                  model.proposal.action.type !== "run_task" ? null : (
-                  <InboxIconAction
-                    label="Retry"
-                    icon={RetryIcon}
-                    onClick={() => void actions.retryDispatch(model.proposal.proposalId)}
-                  />
-                )}
-                {item.firing ? null : keepAction}
-                {doneAction}
-                {model.proposal.failureKind !== "unknown" ? (
-                  handleManuallyAction
-                ) : offers.handleManually ? (
-                  <InboxIconAction
-                    label="Send again"
-                    icon={DispatchIcon}
-                    onClick={handleManually}
-                  />
-                ) : null}
-              </InboxIconActions>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {handleManuallyDecision(retries ? "outline" : "primary")}
+                  {retries ? (
+                    <SolidIconAction
+                      label="Retry"
+                      icon={RetryIcon}
+                      onClick={() => void actions.retryDispatch(model.proposal.proposalId)}
+                    />
+                  ) : null}
+                </>
+              )}
             </Row>
           ),
         };
@@ -714,8 +846,8 @@ export function InboxTriage({
               <InboxIconActions>
                 {menuNode}
                 {doneAction}
-                {handleManuallyAction}
               </InboxIconActions>
+              {handleManuallyDecision("outline")}
             </Row>
           ),
         };
@@ -730,22 +862,14 @@ export function InboxTriage({
                 {offers.suggest ? (
                   <InboxIconAction
                     label="Suggest"
-                    icon={AskAiIcon}
+                    icon={RefreshIcon}
                     onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
                   />
                 ) : null}
                 {keepAction}
                 {doneAction}
               </InboxIconActions>
-              {offers.handleManually ? (
-                <Decision
-                  label="Handle manually"
-                  target={null}
-                  icon={DispatchIcon}
-                  variant="ghost"
-                  onClick={handleManually}
-                />
-              ) : null}
+              {handleManuallyDecision("outline")}
             </Row>
           ),
         };

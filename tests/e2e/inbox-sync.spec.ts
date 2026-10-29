@@ -19,7 +19,7 @@ const offsetOf = (page: Page, text: string) =>
 test("keeps a Project Inbox current with its message Pages and keeps the reader's place", async () => {
   test.setTimeout(180_000);
   await withElectronScenario({ label: "inbox-sync", scenarioId: null }, async ({ page, seed }) => {
-    await invokeIpc(page, "settings:inbox:update", { suggestionsEnabled: false });
+    await invokeIpc(page, "settings:inbox:update", { suggestions: "off" });
     const project = await seed.createProject({ name: "Inbox sync", sources: [] });
     for (let index = 1; index <= MESSAGE_COUNT; index += 1) {
       await seed.sendInboxMessage(`Message ${index} for later`, {

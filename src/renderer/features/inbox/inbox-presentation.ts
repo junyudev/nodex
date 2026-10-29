@@ -10,21 +10,33 @@ import type {
   InboxProposal,
   InboxWindowFilter,
 } from "../../../shared/inbox";
+import type {
+  InboxSuggestionPause,
+  InboxSuggestionPolicy,
+} from "../../../shared/inbox-suggestion-policy";
 import type { CodexScheduledAutomation } from "../../../shared/types";
 import { DEFAULT_WORKFLOW_STATUS } from "../../../shared/workflow-status";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import { USER_TURN_TIMESTAMP_GAP_MS } from "../local-conversation/projection/conversation-turn-timestamps";
 import type { SessionLiveIndicator } from "@/lib/session-execution";
+import { formatUsageCountdown } from "@/lib/usage-meter";
 
 /** What the strip attached to a message in the Inbox shows: what Nodex made of it. */
 export type InboxTriageModel =
   | { readonly kind: "suggesting" }
-  | { readonly kind: "suggestion"; readonly proposal: InboxProposal }
+  | {
+      readonly kind: "suggestion";
+      readonly proposal: InboxProposal;
+      /** New advice is on its way; this suggestion stays until it arrives. */
+      readonly refreshing: boolean;
+      /** Why asking again failed, while this suggestion stays. */
+      readonly refreshError: string | null;
+    }
   | { readonly kind: "suggestion-failed"; readonly message: string }
   | { readonly kind: "dispatch-failed"; readonly proposal: InboxProposal; readonly message: string }
   /** A scheduled task's waiting run whose task is gone, so it can no longer run. */
   | { readonly kind: "firing-withdrawn" }
-  /** No advice has arrived, or suggestions are disabled. */
+  /** No advice has been asked for, or suggestions are off. */
   | { readonly kind: "undecided" }
   /** Handled; the message is on its way to History. */
   | { readonly kind: "handled" };
@@ -58,7 +70,7 @@ export function isInboxItemHandled(item: InboxItem): boolean {
   );
 }
 
-export function inboxTriageModel(item: InboxItem, suggestionsEnabled: boolean): InboxTriageModel {
+export function inboxTriageModel(item: InboxItem, policy: InboxSuggestionPolicy): InboxTriageModel {
   const proposal = item.proposal;
   if (
     proposal &&
@@ -80,14 +92,20 @@ export function inboxTriageModel(item: InboxItem, suggestionsEnabled: boolean): 
   }
   if (isInboxItemHandled(item)) return { kind: "handled" };
   if (item.firing?.status === "withdrawn") return { kind: "firing-withdrawn" };
-  if (proposal?.state === "open") return { kind: "suggestion", proposal };
-  if (item.suggestionState === "pending" && suggestionsEnabled) return { kind: "suggesting" };
-  if (item.suggestionState === "failed") {
-    return {
-      kind: "suggestion-failed",
-      message: item.suggestionError ?? "No suggestion was produced",
-    };
-  }
+  // A message waiting for automatic advice gets it only while suggestions run on their own;
+  // otherwise Main releases it and it simply has none.
+  const advising =
+    policy.kind !== "off" &&
+    (item.suggestionState === "pending" ||
+      (item.suggestionState === "waiting" && policy.kind === "automatic"));
+  const failure =
+    item.suggestionState === "failed"
+      ? (item.suggestionError ?? "No suggestion was produced")
+      : null;
+  if (proposal?.state === "open")
+    return { kind: "suggestion", proposal, refreshing: advising, refreshError: failure };
+  if (advising) return { kind: "suggesting" };
+  if (failure !== null) return { kind: "suggestion-failed", message: failure };
   return { kind: "undecided" };
 }
 
@@ -107,7 +125,7 @@ export const NO_ROW_OFFERS: InboxRowOffers = { done: false, handleManually: fals
  */
 export function inboxRowOffers(
   model: InboxTriageModel,
-  input: { readonly suggestionsEnabled: boolean; readonly grouped: boolean },
+  input: { readonly suggestionsOffered: boolean; readonly grouped: boolean },
 ): InboxRowOffers {
   if (input.grouped && model.kind === "suggestion") return NO_ROW_OFFERS;
   switch (model.kind) {
@@ -117,12 +135,18 @@ export function inboxRowOffers(
     case "firing-withdrawn":
       return { done: true, handleManually: true, suggest: false };
     case "suggestion":
-      // Changing a suggestion happens in `Handle manually`, which stays in the menu.
-      return { done: true, handleManually: false, suggest: false };
+      // Changing a suggestion happens in `Handle manually`, which stays in the menu. An outdated
+      // or failed one asks again from the row, where new advice then shows its spinner.
+      return {
+        done: true,
+        handleManually: false,
+        suggest:
+          model.refreshing ||
+          (input.suggestionsOffered && (model.proposal.outdated || model.refreshError !== null)),
+      };
     case "suggestion-failed":
-      return { done: true, handleManually: true, suggest: true };
     case "undecided":
-      return { done: true, handleManually: true, suggest: input.suggestionsEnabled };
+      return { done: true, handleManually: true, suggest: input.suggestionsOffered };
     case "handled":
       return NO_ROW_OFFERS;
   }
@@ -131,12 +155,24 @@ export function inboxRowOffers(
 /** One quiet indicator is enough: only the newest message still waiting for advice shows it. */
 export function inboxAwaitingIndicatorPageId(
   items: readonly InboxItem[],
-  suggestionsEnabled: boolean,
+  policy: InboxSuggestionPolicy,
 ): string | null {
   return (
-    items.findLast((item) => inboxTriageModel(item, suggestionsEnabled).kind === "suggesting")
-      ?.pageId ?? null
+    items.findLast((item) => inboxTriageModel(item, policy).kind === "suggesting")?.pageId ?? null
   );
+}
+
+/**
+ * Which usage ran short, in a few words: how much is left, or that it is used up, and when it
+ * comes back.
+ */
+export function describeInboxSuggestionPause(pause: InboxSuggestionPause, nowMs: number): string {
+  const left = pause.pace === "spent" ? "used up" : `${pause.leftPercent}% left`;
+  const resetsAt = pause.resetsAt ? Date.parse(pause.resetsAt) : Number.NaN;
+  const state = `${pause.agent} ${pause.window}: ${left}`;
+  return Number.isFinite(resetsAt)
+    ? `${state}, resets ${formatUsageCountdown(resetsAt, nowMs)}`
+    : state;
 }
 
 /** Where a message's Page is read from now: its filed Database's Project, else its Inbox's. */

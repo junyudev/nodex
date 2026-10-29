@@ -41,9 +41,11 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
         bodyEditable: true,
         // The provisional title follows the new opening words.
         title: "The homepage should read like a personal…",
-        suggestionState: "pending",
-        proposal: null,
+        suggestionState: "waiting",
       });
+      // The last advice stays visible while a new send waits for its automatic-policy decision.
+      assert.isTrue(item?.proposal?.outdated);
+      assert.deepEqual(item?.proposal?.action, { type: "keep" });
       // The Page itself changed, so the Board, search, and an open Page agree with the stream.
       const page = yield* Effect.promise(() =>
         client.libraryRead({

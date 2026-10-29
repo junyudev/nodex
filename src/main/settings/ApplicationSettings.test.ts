@@ -22,6 +22,7 @@ import {
   make as makeApplicationSettings,
 } from "./ApplicationSettings";
 import { SETTINGS_DOCUMENT_MAX_BYTES } from "./settings-document";
+import { INBOX_SUGGESTION_MODES, type UpdateInboxSettingsInput } from "../../shared/inbox";
 
 const roots: string[] = [];
 
@@ -345,6 +346,89 @@ describe("ApplicationSettings", () => {
       assert.strictEqual(document.server?.unknown, "keep");
       assert.strictEqual(document.server?.backup_interval_hours, 3);
       assert.strictEqual(document.server?.history_retention, 41);
+    }),
+  );
+
+  it.effect.each(INBOX_SUGGESTION_MODES)("persists the Inbox's %s suggestion mode", (mode) =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture();
+      const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+      const settings = yield* makeApplicationSettings(input);
+      assert.strictEqual((yield* settings.snapshot()).inbox.suggestions, "automatic");
+      yield* settings.update({ type: "update-inbox", input: { suggestions: mode } });
+      const reopened = yield* makeApplicationSettings(input);
+      assert.strictEqual((yield* reopened.snapshot()).inbox.suggestions, mode);
+    }),
+  );
+
+  it.effect.each([true, false])("migrates the Inbox's former enabled=%s preference", (enabled) =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture(
+        `[server]\ninbox_suggestions_enabled = ${enabled}\nunknown = "keep"\n`,
+      );
+      const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+      const settings = yield* makeApplicationSettings(input);
+      const mode = enabled ? "automatic" : "off";
+      assert.strictEqual((yield* settings.snapshot()).inbox.suggestions, mode);
+      // A managed Inbox write canonicalizes the stored preference without losing its intent.
+      yield* settings.update({ type: "update-inbox", input: { instructions: "Prefer notes" } });
+      const server = parseToml(readFileSync(settingsPath, "utf8")).server as Record<
+        string,
+        unknown
+      >;
+      assert.strictEqual(server.inbox_suggestions, mode);
+      assert.notProperty(server, "inbox_suggestions_enabled");
+      assert.strictEqual(server.unknown, "keep");
+      const reopened = yield* makeApplicationSettings(input);
+      assert.strictEqual((yield* reopened.snapshot()).inbox.suggestions, mode);
+    }),
+  );
+
+  it.effect("prefers the Inbox's mode over its former boolean and defaults invalid modes", () =>
+    Effect.gen(function* () {
+      for (const [configured, expected] of [
+        ["on_request", "on_request"],
+        ["invalid", "automatic"],
+      ]) {
+        const { root, settingsPath } = fixture(
+          `[server]\ninbox_suggestions = "${configured}"\n` +
+            (configured === "on_request" ? "inbox_suggestions_enabled = false\n" : ""),
+        );
+        const settings = yield* makeApplicationSettings({
+          environment: {},
+          hostHomeDirectory: root,
+          settingsPath,
+        });
+        assert.strictEqual((yield* settings.snapshot()).inbox.suggestions, expected);
+      }
+    }),
+  );
+
+  it.effect("refuses invalid Inbox suggestion modes without changing the saved preference", () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture();
+      const settings = yield* makeApplicationSettings({
+        environment: {},
+        hostHomeDirectory: root,
+        settingsPath,
+      });
+      yield* settings.update({ type: "update-inbox", input: { suggestions: "on_request" } });
+      const before = readFileSync(settingsPath);
+      for (const input of [
+        { suggestions: "invalid" },
+        { suggestions: true },
+        { suggestionsEnabled: true },
+      ]) {
+        const result = yield* settings
+          .update({
+            type: "update-inbox",
+            input: input as unknown as UpdateInboxSettingsInput,
+          })
+          .pipe(Effect.result);
+        assert.strictEqual(result._tag, "Failure");
+        assert.deepEqual(readFileSync(settingsPath), before);
+      }
+      assert.strictEqual((yield* settings.snapshot()).inbox.suggestions, "on_request");
     }),
   );
 

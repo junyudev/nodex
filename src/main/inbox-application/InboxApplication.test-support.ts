@@ -10,7 +10,12 @@ import { StoreAdministration } from "../core-runtime/StoreAdministration";
 import { make as makeInboxApplication } from "./InboxApplication";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { DEFAULT_INBOX_SETTINGS, LIBRARY_INBOX, type InboxScope } from "../../shared/inbox";
+import {
+  DEFAULT_INBOX_SETTINGS,
+  LIBRARY_INBOX,
+  type InboxScope,
+  type InboxSettings,
+} from "../../shared/inbox";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import type { InboxApplication } from "./InboxApplication";
@@ -95,6 +100,7 @@ export const inboxOverRealCore = (
   /** The Agent catalog a chat handoff resolves against; content tests never start one. */
   catalog: AgentRuntimeApplication["Service"]["catalog"] = () =>
     Effect.die("Content tests must not start an Agent catalog"),
+  inboxSettings: () => InboxSettings = () => DEFAULT_INBOX_SETTINGS,
 ) =>
   Effect.gen(function* () {
     const { context } = yield* scenario;
@@ -107,7 +113,7 @@ export const inboxOverRealCore = (
         catalog,
       } as unknown as AgentRuntimeApplication["Service"]),
       Effect.provideService(ApplicationSettings, {
-        snapshot: () => Effect.succeed({ inbox: DEFAULT_INBOX_SETTINGS }),
+        snapshot: () => Effect.sync(() => ({ inbox: inboxSettings() })),
       } as unknown as ApplicationSettings["Service"]),
     );
     return { inbox, client: context.client };

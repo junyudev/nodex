@@ -25,7 +25,8 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   origin: "agent",
   state: "open",
   pageIds: ["page:1"],
-  basis: [{ pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 }],
+  basis: [{ pageId: "page:1", contentHash: "content:1" }],
+  outdated: false,
   action: {
     type: "new_chat",
     projectId: "project:nodex",
@@ -50,7 +51,7 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
 const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
   outcome: null,
-  basis: { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
+  basis: { pageId: "page:1", contentHash: "content:1" },
   pageKey: "IN-1",
   pageStatus: null,
   title: "Homepage positioning",
@@ -104,7 +105,7 @@ const renderTriage = (
         item={item()}
         projects={[project("project:nodex", "Nodex"), project("project:site", "Site")]}
         agents={inboxAgentsFixture()}
-        suggestionsEnabled
+        policy={{ kind: "automatic" }}
         actions={commands}
         manualDraft={null}
         groupedWithKey={null}
@@ -130,6 +131,12 @@ const renderTriage = (
   return commands;
 };
 
+/** The row's recommended step is the last button in it. */
+const lastButtonName = () => {
+  const last = screen.getAllByRole("button").at(-1);
+  return last?.getAttribute("aria-label") ?? last?.textContent?.trim() ?? null;
+};
+
 const click = async (name: string) => {
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name }));
@@ -145,10 +152,7 @@ describe("InboxTriage", () => {
         state,
         failureKind: state === "dispatching" ? "unknown" : null,
         pageIds: ["page:1", "page:2"],
-        basis: [
-          item().basis,
-          { pageId: "page:2", generation: 2, headSeq: 3, placementRevision: 4 },
-        ],
+        basis: [item().basis, { pageId: "page:2", contentHash: "content:3" }],
       });
       const draft = draftForInboxItem(item({ proposal: grouped }), null);
       expect(draft.basis).toEqual(grouped.basis);
@@ -166,7 +170,7 @@ describe("InboxTriage", () => {
           item={waiting}
           projects={[]}
           agents={inboxAgentsFixture()}
-          suggestionsEnabled
+          policy={{ kind: "automatic" }}
           awaitingIndicator
           actions={actions()}
           manualDraft={null}
@@ -211,7 +215,7 @@ describe("InboxTriage", () => {
         projects={[]}
         agents={inboxAgentsFixture()}
         inboxProjectId={null}
-        suggestionsEnabled
+        policy={{ kind: "automatic" }}
         actions={commands}
         manualDraft={null}
         groupedWithKey={null}
@@ -240,7 +244,7 @@ describe("InboxTriage", () => {
         {view(
           item({
             body: "C",
-            basis: { pageId: "page:1", generation: 1, headSeq: 2, placementRevision: 1 },
+            basis: { pageId: "page:1", contentHash: "content:2" },
           }),
         )}
       </TestQueryProvider>,
@@ -345,6 +349,8 @@ describe("InboxTriage", () => {
       onManualDraftChange,
     });
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    // Checking the chat is the recommended step, so it ends the row.
+    expect(lastButtonName()).toBe("Open chat");
     // The row is where the chat is checked, so the message does not offer it a second time.
     expect(rowOpensChat).toBe(true);
     await click("Open chat");
@@ -370,9 +376,26 @@ describe("InboxTriage", () => {
       onManualDraftChange,
     });
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(lastButtonName()).toBe("Handle manually");
     await click("Handle manually");
     expect(onManualDraftChange).toHaveBeenCalled();
     expect(commands.retryDispatch).not.toHaveBeenCalled();
+  });
+
+  test("a delivery that can be tried again ends its row with Retry, beside Handle manually", async () => {
+    const commands = renderTriage({
+      item: item({
+        proposal: proposal({
+          state: "failed",
+          failureKind: "unavailable",
+          failureMessage: "Codex is not running",
+        }),
+      }),
+    });
+    expect(lastButtonName()).toBe("Retry");
+    expect(screen.getByRole("button", { name: "Handle manually" })).toBeTruthy();
+    await click("Retry");
+    await waitFor(() => expect(commands.retryDispatch).toHaveBeenCalledWith("proposal:1"));
   });
 
   test("removing a member refines the remaining group without deleting any message", async () => {
@@ -555,7 +578,7 @@ describe("InboxTriage", () => {
         "page:1",
         "Homepage feels like a dev tool",
         "Homepage should read like an assistant",
-        { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
+        { pageId: "page:1", contentHash: "content:1" },
       ),
     );
     expect(await screen.findByText("Compare both positions.")).toBeTruthy();
@@ -660,6 +683,8 @@ describe("InboxTriage", () => {
       }),
     });
     expect(screen.getByText(/Sign in to the suggestion agent first/)).toBeTruthy();
+    // Asking again ends the row; deciding by hand is the labeled alternative beside it.
+    expect(lastButtonName()).toBe("Retry");
     await click("Retry");
     await waitFor(() =>
       expect(commands.requestSuggestion).toHaveBeenCalledWith(["page:1"], [item().basis]),
@@ -674,6 +699,67 @@ describe("InboxTriage", () => {
         plan: null,
       }),
     );
+  });
+
+  test("an outdated suggestion stays confirmable and asks again only when told to", async () => {
+    const outdated = proposal({
+      outdated: true,
+      basis: [{ pageId: "page:1", contentHash: "content:2" }],
+    });
+    const commands = renderTriage({ item: item({ proposal: outdated }) });
+    expect(screen.getByText("Suggested before this message changed")).toBeTruthy();
+    // Asking again is the obvious next step, so it ends the row where the decision usually does.
+    expect(screen.getAllByRole("button").at(-1)?.getAttribute("aria-label")).toBe("Suggest again");
+    // The user reviews the prompt as it reads now, and may still send it.
+    await click("New chat in Nodex");
+    await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(outdated));
+    await click("Suggest again");
+    await waitFor(() =>
+      expect(commands.requestSuggestion).toHaveBeenCalledWith(["page:1"], outdated.basis),
+    );
+  });
+
+  test("new advice for an outdated suggestion runs beside it, then reports a failure there", () => {
+    const outdated = proposal({ outdated: true });
+    const { unmount } = render(
+      <TestQueryProvider>
+        <InboxTriage
+          item={item({ proposal: outdated, suggestionState: "pending" })}
+          projects={[project("project:nodex", "Nodex")]}
+          agents={inboxAgentsFixture()}
+          policy={{ kind: "on_request" }}
+          actions={actions()}
+          manualDraft={null}
+          groupedWithKey={null}
+          inboxProjectId={null}
+          menu={() => null}
+          onManualDraftChange={vi.fn()}
+        >
+          {({ strip, actions: row }) => (
+            <>
+              {strip}
+              {row}
+            </>
+          )}
+        </InboxTriage>
+      </TestQueryProvider>,
+    );
+    expect(screen.getByRole("status", { name: "Finding where this goes" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Suggest again" })).toBeNull();
+    expect(screen.getByRole("button", { name: "New chat in Nodex" })).toBeTruthy();
+    unmount();
+
+    renderTriage({
+      item: item({
+        proposal: outdated,
+        suggestionState: "failed",
+        suggestionError: "The suggestion Agent is rate limited",
+      }),
+    });
+    expect(
+      screen.getByText(/Couldn’t suggest again — The suggestion Agent is rate limited/),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
   test.each([

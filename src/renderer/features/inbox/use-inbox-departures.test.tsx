@@ -11,7 +11,7 @@ import {
 const message = (pageId: string, submittedAt: string): InboxItem => ({
   pageId,
   outcome: null,
-  basis: { pageId, generation: 1, headSeq: 1, placementRevision: 1 },
+  basis: { pageId, contentHash: "content:1" },
   pageKey: null,
   pageStatus: null,
   title: pageId,
