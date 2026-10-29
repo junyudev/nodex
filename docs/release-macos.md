@@ -528,8 +528,11 @@ A valid version transition runs this sequence:
     the signed Apple silicon snapshot on release deploys. Public feed bytes and every
     enclosure are checked after push.
 
-Sentry source maps are uploaded only by the production arm64 build. Both builds
-use `SENTRY_RELEASE=nodex@<version>` so the generated app identity agrees.
+Sentry source maps are uploaded only by the production arm64 build. Main, preload,
+and renderer uploads use `SENTRY_RELEASE=nodex@<version>` so their app identity
+agrees. Release-registration and source-map upload errors fail the build.
+Require the Sentry plugin's upload-success receipt for each target; the separate
+GitHub source-map artifact upload retains diagnostics and does not prove Sentry delivery.
 
 ## Recovery
 

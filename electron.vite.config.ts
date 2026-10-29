@@ -1,6 +1,5 @@
 import { resolve } from "path";
 import { defineConfig, type UserConfig } from "electron-vite";
-import { sentryVitePlugin } from "@sentry/vite-plugin";
 import type { BuildEnvironmentOptions, Plugin, Rollup } from "vite";
 import { createExcalidrawFontAssetPlugins } from "./config/excalidraw-font-assets";
 import { createStartupShellHtmlPlugin } from "./config/startup-shell-html";
@@ -17,32 +16,7 @@ import {
   rendererViteResolve,
 } from "./config/renderer-vite-shared";
 import { buildTopLevelRendererCsp } from "./src/shared/app-renderer-policy";
-
-function hasSentrySourceMapUploadConfig(): boolean {
-  return Boolean(
-    process.env.SENTRY_AUTH_TOKEN?.trim() &&
-    process.env.SENTRY_ORG?.trim() &&
-    process.env.SENTRY_PROJECT?.trim(),
-  );
-}
-
-function shouldEmitSentrySourceMaps(): boolean {
-  return Boolean(process.env.SENTRY_RELEASE?.trim() || hasSentrySourceMapUploadConfig());
-}
-
-function createSentryPlugins() {
-  if (!hasSentrySourceMapUploadConfig()) return [];
-
-  return sentryVitePlugin({
-    release: {
-      name: process.env.SENTRY_RELEASE?.trim() || undefined,
-    },
-    sourcemaps: {
-      filesToDeleteAfterUpload: "out/**/*.map",
-    },
-    telemetry: false,
-  });
-}
+import { createSentryPlugins, shouldEmitSentrySourceMaps } from "./config/sentry-build";
 
 function enforceSelfContainedSandboxedPreloads(): Plugin {
   return {
