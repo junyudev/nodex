@@ -66,6 +66,11 @@ export function resolveReleaseIdentity(options: {
   readonly ref: string;
 }): ReleaseIdentity {
   const cwd = resolve(options.cwd);
+  if (git(cwd, ["rev-parse", "--is-shallow-repository"]) === "true") {
+    throw new Error(
+      "Release Identity requires complete Git history; shallow repositories cannot assign build versions.",
+    );
+  }
   const sourceSha = git(cwd, ["rev-parse", `${options.ref}^{commit}`]);
   const sourceTree = git(cwd, ["rev-parse", `${options.ref}^{tree}`]);
   const sourceVersion = inspectReleaseSourceAtRef(cwd, sourceSha).packageVersion;
