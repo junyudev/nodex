@@ -1,0 +1,35 @@
+packages/agent-runtime/scripts/acp-pty-probe-worker.ts
+  s_6c9891f66c664a::t_6446d1fe148929 8,51-55,62,66-70,74,78-80,90,104-108
+  s_6c9891f66c664a::t_a7b40013b16613 109-112
+scripts/testing/pty-resize-probe.test.ts
+  s_6c9891f66c664a::t_ef34aecddb4a41 1-11,17-35,39-64,67-72,76-91,116-127,135-144,153-165,170-174,176-177,213-217,222-223,225-228,231-236,248
+  s_6c9891f66c664a::t_15e9a38102def1 175,224
+  s_6c9891f66c664a::t_fb50c96726bc8e 178-179,189,193-195,237-247
+  s_6c9891f66c664a::t_ce3a928d3d4d05 12-16,36-38,65-66,73-75,92-115,128-134,145-152,166-169,180-188,190-192,196-212,218-221,229-230
+  s_6c9891f66c664a::t_3761b27b562886 249-250
+scripts/testing/fixtures/acp-terminal-agent.mjs
+  s_6c9891f66c664a::t_6446d1fe148929 27-31,42
+scripts/testing/acp-management-probe.ts
+  s_6c9891f66c664a::t_6446d1fe148929 7,137-141,219-227
+  s_6c9891f66c664a::t_aa36b23604f771 228-235
+scripts/testing/pty-resize-probe.ts
+  s_6c9891f66c664a::t_ef34aecddb4a41 1-18,21-22,24
+  s_6c9891f66c664a::t_6446d1fe148929 19-20,23
+  s_6c9891f66c664a::t_2b88294fa9dfec 25-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c80c08332a85aa165a9e2e296f211971f9093120",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
