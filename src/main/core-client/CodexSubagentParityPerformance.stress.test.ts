@@ -105,6 +105,13 @@ interface GatewayMeasurement {
 interface DirectoryMeasurement {
   childSubscriptionDependencyReads: number;
   readonly conversationsReadThreadIds: string[];
+  readonly overviewReads: Array<{
+    readonly activeAfter: string | null;
+    readonly doneAfter: string | null;
+    readonly activeRows: number;
+    readonly doneRows: number;
+    readonly elapsedMs: number;
+  }>;
   readonly gateway: GatewayMeasurement;
   readonly resolveCalls: Array<{ readonly fidelity: string; readonly threadId: string }>;
 }
@@ -369,6 +376,7 @@ const makeDirectoryHarness = Effect.fn("SubagentScale.makeDirectoryHarness")(fun
   const measurement: DirectoryMeasurement = {
     childSubscriptionDependencyReads: 0,
     conversationsReadThreadIds: [],
+    overviewReads: [],
     gateway: emptyGatewayMeasurement(),
     resolveCalls: [],
   };
@@ -431,9 +439,20 @@ const makeDirectoryHarness = Effect.fn("SubagentScale.makeDirectoryHarness")(fun
 
   const workspace: CoreModuleClients["workspace"] = {
     read: (read, options) =>
-      Effect.promise(() => input.core.workspaceRead(read, options)) as ReturnType<
-        CoreModuleClients["workspace"]["read"]
-      >,
+      Effect.promise(async () => {
+        const startedAt = performance.now();
+        const response = await input.core.workspaceRead(read, options);
+        if (read.kind === "subagent_overview_window" && response.value.kind === read.kind) {
+          measurement.overviewReads.push({
+            activeAfter: read.active_window?.after ?? null,
+            doneAfter: read.done_window?.after ?? null,
+            activeRows: response.value.overview.active.items.length,
+            doneRows: response.value.overview.done.items.length,
+            elapsedMs: performance.now() - startedAt,
+          });
+        }
+        return response;
+      }) as ReturnType<CoreModuleClients["workspace"]["read"]>,
     apply: (apply, options) =>
       Effect.promise(() => input.core.workspaceApply(apply, options)) as ReturnType<
         CoreModuleClients["workspace"]["apply"]
@@ -547,6 +566,7 @@ const makeDirectoryHarness = Effect.fn("SubagentScale.makeDirectoryHarness")(fun
 const resetMeasurement = (measurement: DirectoryMeasurement): void => {
   measurement.childSubscriptionDependencyReads = 0;
   measurement.conversationsReadThreadIds.length = 0;
+  measurement.overviewReads.length = 0;
   measurement.resolveCalls.length = 0;
   Object.assign(measurement.gateway, emptyGatewayMeasurement());
 };
@@ -982,9 +1002,11 @@ it.live(
           }
           resetMeasurement(harness.measurement);
           const latencySamples: number[] = [];
+          const sampleBreakdown: unknown[] = [];
           let lastOverview: CodexSubagentOverviewWindow | null = null;
           let lastProjection: ReturnType<typeof projectHotOverview> | null = null;
           for (let index = 0; index < SAMPLE_COUNT; index += 1) {
+            const firstRead = harness.measurement.overviewReads.length;
             const sample = yield* measured(
               Effect.gen(function* () {
                 const overview = yield* readOverview(harness, fixture.rootThreadId);
@@ -993,6 +1015,16 @@ it.live(
               }),
             );
             latencySamples.push(sample.elapsedMs);
+            const reads = harness.measurement.overviewReads.slice(firstRead);
+            sampleBreakdown.push({
+              elapsedMs: round(sample.elapsedMs),
+              coreElapsedMs: round(reads.reduce((total, read) => total + read.elapsedMs, 0)),
+              corePages: reads.length,
+              coreRows: reads.reduce((total, read) => total + read.activeRows + read.doneRows, 0),
+              coreFirstPages: reads.filter(
+                (read) => read.activeAfter === null && read.doneAfter === null,
+              ).length,
+            });
             lastOverview = sample.value.overview;
             lastProjection = sample.value.projection;
           }
@@ -1015,6 +1047,11 @@ it.live(
           assert.isAtMost(harness.measurement.conversationsReadThreadIds.length, SAMPLE_COUNT);
 
           const latency = summarize(latencySamples);
+          // Emit the failing cell and physical Core work before any latency assertion aborts.
+          console.log(
+            "NODEX_SUBAGENT_HOT_OVERVIEW",
+            JSON.stringify({ descendantCount, latency, samples: sampleBreakdown }),
+          );
           assert.isAtMost(latency.p95Ms, HOT_OVERVIEW_P95_GATE_MS);
           matrixEvidence.push({
             descendantCount,

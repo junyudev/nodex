@@ -1460,9 +1460,6 @@ it.effect("restarts expanded pagination when the Core projection revision change
           readCount += 1;
           const value = (() => {
             if (readCount === 1) {
-              return overview({ revision: 1, active: ["child-a"], done: [] });
-            }
-            if (readCount === 2) {
               return overview({
                 revision: 1,
                 active: ["child-a"],
@@ -1470,7 +1467,7 @@ it.effect("restarts expanded pagination when the Core projection revision change
                 activeNext: "active-after-a",
               });
             }
-            if (readCount === 3) {
+            if (readCount === 2) {
               return overview({ revision: 2, active: [], done: ["child-a"] });
             }
             return overview({ revision: 2, active: ["child-b"], done: ["child-a"] });
@@ -1489,7 +1486,7 @@ it.effect("restarts expanded pagination when the Core projection revision change
 
       const result = yield* service.readOverview({ rootThreadId: "root-a", mode: "expanded" });
 
-      assert.strictEqual(readCount, 4);
+      assert.strictEqual(readCount, 3);
       assert.strictEqual(result.revision, 2);
       assert.deepEqual(
         result.active.rows.map((row) => row.threadId),
@@ -2382,6 +2379,97 @@ const discoveryItem = (threadId: string, statusType: "active" | "idle" = "active
     evidence: { kind: "notification", source_revision: 12, observed_at_ms: 120_000 },
   }) as unknown as Overview["active"]["items"][number];
 
+it.effect.each([
+  { mode: "initial", publications: 1 },
+  { mode: "known", publications: 1 },
+  { mode: "initial", publications: 2 },
+  { mode: "known", publications: 2 },
+] as const)("pairs Core rows with concurrent discovery: %j", ({ mode, publications }) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const captured = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const refreshCaptured = yield* Deferred.make<void>();
+      const refreshRelease = yield* Deferred.make<void>();
+      const returned = yield* Deferred.make<void>();
+      let nextPause: "initial" | "refresh" | null = "initial";
+      let listed = [child];
+      let complete = true;
+      const ids = new Set<string>();
+      const service = yield* buildDirectory({
+        capability,
+        read: (query) =>
+          Effect.gen(function* () {
+            assert.strictEqual(query.kind, "subagent_overview_window");
+            const response = {
+              commit_head: 1,
+              value: {
+                kind: "subagent_overview_window",
+                overview: discoveryOverview(
+                  [...ids].map((id) => discoveryItem(id)),
+                  complete,
+                ),
+              },
+            } as ProjectWorkspaceReadSnapshot;
+            const pause = nextPause;
+            nextPause = null;
+            if (pause === "initial") {
+              yield* Deferred.succeed(captured, undefined);
+              yield* Deferred.await(release);
+            } else if (pause === "refresh") {
+              yield* Deferred.succeed(refreshCaptured, undefined);
+              yield* Deferred.await(refreshRelease);
+            }
+            return response;
+          }),
+        apply: (input) =>
+          Effect.sync(() => {
+            if (input.intent.kind === "observe_subagent_discovery_page") {
+              complete = input.intent.complete;
+              for (const observation of input.intent.observations) ids.add(observation.thread_id);
+            }
+            return {} as never;
+          }),
+        requestOnHost: ((_host, method) => {
+          assert.strictEqual(method, "thread/list");
+          return Effect.succeed({ data: listed, nextCursor: null, backwardsCursor: null });
+        }) as RequestOnHost,
+      });
+      const pending = yield* Effect.forkChild(
+        (mode === "known"
+          ? service.readKnownOverview({ rootThreadId: "root-a" })
+          : service.readOverview({ rootThreadId: "root-a", mode })
+        ).pipe(Effect.tap(() => Deferred.succeed(returned, undefined))),
+      );
+      yield* Deferred.await(captured);
+      // Finish and publish discovery before delivering the old COMPLETE Core response.
+      yield* service.reconcileAfterReconnect({ loadedThreadIds: ["root-a"] });
+      yield* Effect.yieldNow;
+      assert.isTrue(ids.has(child.id));
+      if (publications === 2) nextPause = "refresh";
+      yield* Deferred.succeed(release, undefined);
+      if (publications === 2) {
+        const next = yield* Effect.raceFirst(
+          Deferred.await(refreshCaptured).pipe(Effect.as("refresh")),
+          Deferred.await(returned).pipe(Effect.as("returned")),
+        );
+        assert.strictEqual(next, "refresh");
+        listed = [child, spawnThread("child-b", "root-a")];
+        yield* service.reconcileAfterReconnect({ loadedThreadIds: ["root-a"] });
+        yield* Effect.yieldNow;
+        yield* Deferred.succeed(refreshRelease, undefined);
+      }
+      const result = yield* Fiber.join(pending);
+      assert.strictEqual(result.completeness, "complete");
+      assert.sameMembers(
+        result.active.rows.map((row) => row.threadId),
+        listed.map(({ id }) => id),
+      );
+      assert.strictEqual(result.active.knownCount, listed.length);
+    }),
+  ),
+);
+
 it.effect("projects resident child status without materializing a transcript presentation", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -2449,7 +2537,7 @@ it.effect("projects resident child status without materializing a transcript pre
   ),
 );
 
-it.effect("collects all raw Core pages before regrouping and limiting initial rows", () =>
+it.effect("reads each Core cursor once before regrouping and limiting initial rows", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const cursors: Array<string | null> = [];
@@ -2484,7 +2572,10 @@ it.effect("collects all raw Core pages before regrouping and limiting initial ro
           Effect.die("Complete snapshot must not discover again")) as RequestOnHost,
       });
       const initial = yield* service.readOverview({ rootThreadId: "root-a", mode: "initial" });
-      assert.include(cursors, "34");
+      const completeCursors = Array.from({ length: 35 }, (_, index) =>
+        index === 0 ? null : String(index),
+      );
+      assert.deepEqual(cursors, completeCursors);
       assert.deepEqual(
         initial.active.rows.map((row) => row.threadId),
         ["running-a", "running-b"],
@@ -2493,7 +2584,10 @@ it.effect("collects all raw Core pages before regrouping and limiting initial ro
       assert.strictEqual(initial.done.knownCount, 34);
       assert.strictEqual(initial.done.totalCount, 34);
       assert.isNull(initial.done.continuation);
+      assert.strictEqual(initial.rows?.length, 36);
+      cursors.length = 0;
       const expanded = yield* service.readOverview({ rootThreadId: "root-a", mode: "expanded" });
+      assert.deepEqual(cursors, completeCursors);
       assert.strictEqual(expanded.done.rows.length, 34);
     }),
   ),

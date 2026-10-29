@@ -90,6 +90,11 @@ type CoreSubagentOverview = Extract<
   { readonly kind: "subagent_overview_window" }
 >["overview"];
 
+interface SubagentOverviewSnapshot {
+  readonly overview: CoreSubagentOverview;
+  readonly discovery: CodexSubagentDiscoverySnapshot | undefined;
+}
+
 type CoreSubagentOverviewItem = Extract<
   ProjectWorkspaceReadSnapshot["value"],
   { readonly kind: "subagent_overview_item" }
@@ -1466,11 +1471,23 @@ export const make: Effect.Effect<
     }
   });
 
-  const readExpanded = Effect.fn("CodexSubagentDirectory.readExpanded")(function* (
+  const readCoherentOverview = Effect.fn("CodexSubagentDirectory.readCoherentOverview")(function* (
     context: RootContext,
-  ): Effect.fn.Return<CodexSubagentOverviewWindow, CodexSubagentDirectoryError> {
-    const overview = yield* readAllOverview(context);
-    const snapshot = discoverySnapshots.get(discoveryKey(context));
+  ): Effect.fn.Return<SubagentOverviewSnapshot, CodexSubagentDirectoryError> {
+    const key = discoveryKey(context);
+    for (;;) {
+      const discovery = discoverySnapshots.get(key);
+      const overview = yield* readAllOverview(context);
+      // Discovery can publish and leave FiberMap while the Core response is in flight.
+      if (discoverySnapshots.get(key) !== discovery) continue;
+      return { overview, discovery };
+    }
+  });
+
+  const projectExpandedOverview = (
+    context: RootContext,
+    { overview, discovery: snapshot }: SubagentOverviewSnapshot,
+  ): CodexSubagentOverviewWindow => {
     if (!snapshot?.complete) return projectOverview(overview, snapshot?.threads);
     const present = new Set(snapshot.threads.map((thread) => thread.id));
     const retained = new Set<string>();
@@ -1501,7 +1518,7 @@ export const make: Effect.Effect<
       },
       snapshot.threads,
     );
-  });
+  };
 
   const initialOverview = (overview: CodexSubagentOverviewWindow): CodexSubagentOverviewWindow => ({
     ...overview,
@@ -1519,16 +1536,22 @@ export const make: Effect.Effect<
     input: CodexSubagentOverviewReadInput,
   ): Effect.fn.Return<CodexSubagentOverviewWindow, CodexSubagentDirectoryError> {
     const context = yield* resolveRootContext(input.rootThreadId, input.expectedHostId);
-    const current = yield* readAllOverview(context);
+    let current = yield* readCoherentOverview(context);
     const key = discoveryKey(context);
     const running = FiberMap.getUnsafe(discoveries, key);
-    if (running._tag === "Some") yield* Fiber.join(running.value);
-    else if (!current.discovery_complete) {
+    if (running._tag === "Some") {
+      yield* Fiber.join(running.value);
+      current = yield* readCoherentOverview(context);
+    } else if (!current.overview.discovery_complete) {
       // A concurrent caller may have finished while this caller's Core read was in flight.
-      const latest = yield* readAllOverview(context);
-      if (!latest.discovery_complete) yield* Fiber.join(startDiscovery(context));
+      current = yield* readCoherentOverview(context);
+      if (!current.overview.discovery_complete) {
+        yield* Fiber.join(startDiscovery(context));
+        current = yield* readCoherentOverview(context);
+      }
     }
-    const overview = yield* readExpanded(context);
+    // A settled read already owns a complete revision-fenced Core collection.
+    const overview = projectExpandedOverview(context, current);
     return input.mode === "expanded" ? overview : initialOverview(overview);
   });
 
@@ -1537,7 +1560,7 @@ export const make: Effect.Effect<
       readonly rootThreadId: string;
     }): Effect.fn.Return<CodexSubagentOverviewWindow, CodexSubagentDirectoryError> {
       const context = yield* resolveRootContext(input.rootThreadId);
-      const overview = yield* readExpanded(context);
+      const overview = projectExpandedOverview(context, yield* readCoherentOverview(context));
       if (overview.completeness !== "complete") scheduleDiscoveryRepair(context);
       return initialOverview(overview);
     },

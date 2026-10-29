@@ -75,7 +75,10 @@ are different: all non-message lifecycle activities establish membership, while
 observed spawn/started events are the triggers for targeted discovery repair.
 
 The overview classifies the complete row collection before applying presentation
-limits. Initially it shows four Active and ten Done rows. Show more expands the
+limits. A settled read projects one complete, revision-fenced Core collection with
+the discovery snapshot captured across that read. Discovery publication during the
+read retries the pair; waiting for discovery refreshes it.
+Initially it shows four Active and ten Done rows. Show more expands the
 local collection; Show less restores those limits. Counts reflect the shared
 visible rows and remain lower bounds until discovery completes. Expansion never
 loads child transcripts. Resident canonical state supplies row evidence without
