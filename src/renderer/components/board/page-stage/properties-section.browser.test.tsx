@@ -29,6 +29,12 @@ const settleLayout = async (): Promise<void> => {
 
 describe("RelatedChatPropertyChip in Chromium", () => {
   test("reveals removal over the label without reserving space or changing chip width", async () => {
+    // Native hover survives replacing the previously clicked target at this position.
+    const previous = render(<button type="button">Previous control</button>);
+    await act(async () => {
+      await userEvent.click(previous.getByRole("button"));
+    });
+    previous.unmount();
     const onOpen = vi.fn(async () => undefined);
     const onRemove = vi.fn(async () => undefined);
     const view = render(
@@ -50,6 +56,15 @@ describe("RelatedChatPropertyChip in Chromium", () => {
     const remove = view.getByRole("button", {
       name: `Remove relation to ${linkedChat.displayTitle}`,
     });
+    expect(chip.matches(":hover")).toBe(true);
+    expect(chip.matches(":focus-within")).toBe(false);
+
+    // Establish rest explicitly instead of inheriting the browser's pointer position.
+    await act(async () => {
+      await userEvent.unhover(chip);
+      await settleLayout();
+    });
+    expect(chip.matches(":hover")).toBe(false);
     const restingChipWidth = chip.getBoundingClientRect().width;
     const restingTailGap = chip.getBoundingClientRect().right - label.getBoundingClientRect().right;
 
@@ -67,6 +82,26 @@ describe("RelatedChatPropertyChip in Chromium", () => {
     expect(getComputedStyle(remove).opacity).toBe("1");
     expect(getComputedStyle(remove).pointerEvents).toBe("auto");
     expect(remove.getBoundingClientRect().left).toBeLessThan(label.getBoundingClientRect().right);
+
+    await act(async () => {
+      await userEvent.unhover(chip);
+      await settleLayout();
+    });
+    expect(getComputedStyle(remove).opacity).toBe("0");
+    expect(getComputedStyle(remove).pointerEvents).toBe("none");
+
+    await act(async () => {
+      await userEvent.tab();
+      await settleLayout();
+    });
+    expect(chip.matches(":hover")).toBe(false);
+    expect(document.activeElement).toBe(
+      view.getByRole("button", { name: linkedChat.displayTitle }),
+    );
+    expect(chip.matches(":focus-within")).toBe(true);
+    expect(getComputedStyle(remove).opacity).toBe("1");
+    expect(getComputedStyle(remove).pointerEvents).toBe("auto");
+    expect(chip.getBoundingClientRect().width).toBeCloseTo(restingChipWidth, 1);
 
     await act(async () => {
       await userEvent.click(remove);
