@@ -1,0 +1,26 @@
+src/main/app-renderer-protocol.integration.ts
+  s_6c9891f66c664a::t_e4a1a2ce458813 140-142,224-226
+  s_6c9891f66c664a::t_bc3bcce24a1f47 341-347
+  s_6c9891f66c664a::t_082428bca1bd4d 5,11,33,57-61,70-72,260-261,283,288-289,296-297,306-307,312-316,326-327,332-334
+  s_6c9891f66c664a::t_1f7562abcfb957 66
+  s_6c9891f66c664a::t_2f28f85db52642 62-65,67-69,298-305,308-311,317-325,328-331
+tests/fixtures/app-renderer-protocol/electron-main.ts
+  s_6c9891f66c664a::t_65de104da6ff1c 15-19,47,50-57,63,65-68,71
+  s_6c9891f66c664a::t_74deabcd4b69ac 20-27,48-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f86250aabb2ea4f164a718fff8cba5200a56b9f6",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
