@@ -84,11 +84,30 @@ jobs:
           GH_TOKEN: ${{ secrets.landing_github_token }}
           PUBLISH_UPDATES: ${{ inputs.publish_updates }}
           SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           target_dir="${RUNNER_TEMP}/target-site"
-          rsync -a --delete --exclude ".git" --exclude "updates/" "packages/landing/dist/" "${target_dir}/"
+          # The pages only move forward. A release promoted from an older commit than the one the
+          # site was last built from (main moved on while it was in flight) keeps the newer pages
+          # and publishes only its update feed.
+          source_stamp="${target_dir}/.landing-source"
+          publish_pages=true
+          if [[ -f "${source_stamp}" ]]; then
+            published_sha="$(tr -d '[:space:]' < "${source_stamp}")"
+            if [[ -n "${published_sha}" && "${published_sha}" != "${SOURCE_SHA}" ]]; then
+              published_is="$(GH_TOKEN="${SOURCE_TOKEN}" gh api "repos/${GITHUB_REPOSITORY}/compare/${SOURCE_SHA}...${published_sha}" --jq .status)"
+              if [[ "${published_is}" == "ahead" ]]; then
+                echo "The published pages come from ${published_sha}, newer than ${SOURCE_SHA}; keeping them."
+                publish_pages=false
+              fi
+            fi
+          fi
+          if [[ "${publish_pages}" == "true" ]]; then
+            rsync -a --delete --exclude ".git" --exclude "updates/" --exclude ".landing-source" "packages/landing/dist/" "${target_dir}/"
+            printf '%s\n' "${SOURCE_SHA}" > "${source_stamp}"
+          fi
           if [[ "${PUBLISH_UPDATES}" == "true" ]]; then
             bundle="${RUNNER_TEMP}/release-bundle/release-bundle.json"
             channel="$(node -e 'const channel = require(process.argv[1]).releaseIdentity?.channel; process.stdout.write(typeof channel === "string" ? channel : "")' "${bundle}")"
@@ -107,7 +126,11 @@ jobs:
           git -C "${target_dir}" config user.name "github-actions[bot]"
           git -C "${target_dir}" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C "${target_dir}" add --all
-          git -C "${target_dir}" commit -m "deploy: refresh landing site from ${GITHUB_REPOSITORY}@${SOURCE_SHA}"
+          if [[ "${publish_pages}" == "true" ]]; then
+            git -C "${target_dir}" commit -m "deploy: refresh landing site from ${GITHUB_REPOSITORY}@${SOURCE_SHA}"
+          else
+            git -C "${target_dir}" commit -m "deploy: publish stable update feed from ${GITHUB_REPOSITORY}@${SOURCE_SHA}"
+          fi
           git -C "${target_dir}" push origin HEAD
       - name: Verify published appcast bytes and enclosures
         if: inputs.publish_updates

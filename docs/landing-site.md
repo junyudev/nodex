@@ -127,6 +127,10 @@ There is no separate landing-only validation workflow or second required check.
     override the destination
   - ordinary deploys replace the built site while preserving the target
     `updates/` tree
+  - only moves the pages forward: `.landing-source` at the target root records the
+    commit the pages were built from, and a deploy from an older commit, such as a
+    release promoted while newer site changes reached `main`, keeps those pages and
+    publishes only its update feed
   - commits only when there is a diff
   - is also called by release promotion after the immutable app Release is
     verified; that mode projects the Release Bundle's exact signed arm64
