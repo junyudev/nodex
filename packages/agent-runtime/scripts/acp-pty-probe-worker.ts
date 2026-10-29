@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { PtyAdapter, type PtyProcess } from "@t3tools/shared/PtyAdapter";
 import { NodePtyAdapterLive, NodePtyModuleLoaderRef } from "../src/nodex/NodePtyAdapter.ts";
+import { hasCompletePtyLine, probePtyResize } from "../../../scripts/testing/pty-resize-probe.ts";
 
 const [packageRoot, peer, home] = process.argv.slice(2);
 if (!packageRoot || !peer || !home) throw new Error("PTY probe requires package, peer and home");
@@ -47,24 +48,36 @@ const start = async () => {
     live.delete(pty);
     exited.resolve(exitCode);
   });
-  const wait = (text: string) =>
+  const waitForOutput = (
+    text: string,
+    matches: (output: string) => boolean,
+    deadline = Date.now() + 10_000,
+  ) =>
     new Promise<void>((resolve, reject) => {
       const cleanup = () => {
         clearTimeout(timer);
         observers.delete(check);
       };
       const check = () => {
-        if (!output.includes(text)) return;
+        if (!matches(output)) return;
         cleanup();
         resolve();
       };
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        reject(new Error(`PTY output missing ${text}: ${output}`));
+        return;
+      }
       const timer = setTimeout(() => {
         cleanup();
         reject(new Error(`PTY output missing ${text}: ${output}`));
-      }, 10_000);
+      }, remaining);
       observers.add(check);
       check();
     });
+  const wait = (text: string) => waitForOutput(text, (output) => output.includes(text));
+  const waitForLine = (text: string, deadline: number) =>
+    waitForOutput(text, (output) => hasCompletePtyLine(output, text), deadline);
   const exit = () =>
     Promise.race([
       exited.promise,
@@ -74,7 +87,7 @@ const start = async () => {
       }),
     ]);
   await wait("READY");
-  return { pty, wait, exit };
+  return { pty, wait, waitForLine, exit };
 };
 const alive = (pid: number) => {
   try {
@@ -88,9 +101,15 @@ try {
   const roundtrip = await start();
   roundtrip.pty.write("echo-probe\r");
   await roundtrip.wait("INPUT:echo-probe");
-  roundtrip.pty.resize(109, 37);
-  roundtrip.pty.write("size\r");
-  await roundtrip.wait("SIZE:109:37");
+  await probePtyResize(
+    {
+      resize: (cols, rows) => roundtrip.pty.resize(cols, rows),
+      query: () => roundtrip.pty.write("size\r"),
+      waitForLine: roundtrip.waitForLine,
+    },
+    109,
+    37,
+  );
   roundtrip.pty.write("\u0004");
   if ((await roundtrip.exit()) !== 0) throw new Error("EOF did not produce a successful exit");
   const cancel = await start();
