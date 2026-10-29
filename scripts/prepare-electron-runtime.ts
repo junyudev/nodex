@@ -21,6 +21,19 @@ import { replaceOwnedDirectory } from "./replace-owned-directory";
 
 const RECEIPT_NAME = ".nodex-electron.json";
 const RECIPE = "dist-v1";
+const DOWNLOAD_RETRY_DELAYS_MS = [1_000, 2_000] as const;
+const TRANSIENT_DOWNLOAD_CODES = new Set([
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ETIMEDOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
 
 interface ElectronArchive {
   readonly arch: string;
@@ -93,6 +106,34 @@ function writeAtomic(filePath: string, contents: string): void {
   }
 }
 
+function isTransientDownloadError(error: unknown): boolean {
+  const visited = new Set<Error>();
+  for (let cause = error; cause instanceof Error && !visited.has(cause); cause = cause.cause) {
+    visited.add(cause);
+    if (
+      "code" in cause &&
+      typeof cause.code === "string" &&
+      TRANSIENT_DOWNLOAD_CODES.has(cause.code)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Only transport failures are retried; archive verification and extraction remain fail-fast. */
+async function downloadElectronArchive(installer: ElectronInstaller, archive: ElectronArchive) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await installer.downloadArtifact(archive);
+    } catch (error) {
+      const delay = DOWNLOAD_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || !isTransientDownloadError(error)) throw error;
+      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 /** Shares verified Electron extraction, while each installation owns independent writable files. */
 export async function prepareElectronRuntime(
   options: PrepareElectronRuntimeOptions,
@@ -144,7 +185,7 @@ export async function prepareElectronRuntime(
             "extract"
           >),
         };
-        const archivePath = await installer.downloadArtifact({
+        const archivePath = await downloadElectronArchive(installer, {
           arch,
           artifactName: "electron",
           checksums,

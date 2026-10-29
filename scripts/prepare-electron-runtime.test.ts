@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
+import { once } from "node:events";
 import {
   chmodSync,
   existsSync,
@@ -11,6 +12,8 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createServer, type RequestListener } from "node:http";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -26,6 +29,53 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+async function archiveServer(handler: RequestListener) {
+  const server = createServer(handler);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing HTTP server address");
+  return {
+    url: `http://127.0.0.1:${address.port}/`,
+    close: async () => {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    },
+  };
+}
+
+function upstreamDownloader(project: PrepareElectronRuntimeOptions, url: string) {
+  const require = createRequire(import.meta.url);
+  const electronRequire = createRequire(require.resolve("electron/package.json"));
+  type Archive = Parameters<
+    NonNullable<PrepareElectronRuntimeOptions["installer"]>["downloadArtifact"]
+  >[0];
+  const { downloadArtifact } = electronRequire("@electron/get") as {
+    downloadArtifact: (
+      input: Archive & {
+        readonly cacheRoot: string;
+        readonly mirrorOptions: { readonly mirror: string };
+        readonly downloadOptions: { readonly quiet: boolean };
+      },
+    ) => Promise<string>;
+  };
+  let attempts = 0;
+  return {
+    downloadArtifact: async (input: Archive) => {
+      attempts++;
+      return await downloadArtifact({
+        ...input,
+        cacheRoot: path.join(project.projectRoot, "electron-download-cache"),
+        mirrorOptions: { mirror: url },
+        downloadOptions: { quiet: true },
+      });
+    },
+    attempts: () => attempts,
+  };
+}
+
 function fixture() {
   const root = mkdtempSync(path.join(os.tmpdir(), "nodex-electron-prepare-"));
   roots.push(root);
@@ -35,7 +85,7 @@ function fixture() {
   const cachePath = path.join(root, "cache");
   let downloads = 0;
   let extractions = 0;
-  let failExtraction = false;
+  let extractionFailure: Error | undefined;
   const installer: NonNullable<PrepareElectronRuntimeOptions["installer"]> = {
     downloadArtifact: async (input) => {
       expect(input).toMatchObject({ version: "44.4.4", platform: "darwin", arch: "arm64" });
@@ -44,7 +94,7 @@ function fixture() {
     },
     extract: async (_archive, { dir }) => {
       extractions++;
-      if (failExtraction) throw new Error("extract failed");
+      if (extractionFailure) throw extractionFailure;
       const executable = path.join(dir, "Electron.app/Contents/MacOS/Electron");
       mkdirSync(path.dirname(executable), { recursive: true });
       writeFileSync(executable, "electron executable");
@@ -80,8 +130,8 @@ function fixture() {
       "dist-v1/content/Electron.app/Contents/MacOS/Electron",
     ),
     counters: () => ({ downloads, extractions }),
-    failExtraction: () => {
-      failExtraction = true;
+    failExtraction: (error = new Error("extract failed")) => {
+      extractionFailure = error;
     },
   };
 }
@@ -132,6 +182,124 @@ test("rejects an archive for another identity before extraction", async () => {
   );
 });
 
+test("recovers dropped downloads through Electron's pinned downloader before publishing", async () => {
+  const setup = fixture();
+  const project = setup.project("recovering-network");
+  let requests = 0;
+  const server = await archiveServer((request, response) => {
+    requests++;
+    if (requests < 3) {
+      request.socket.destroy();
+      return;
+    }
+    response.end(readFileSync(setup.archivePath));
+  });
+  const downloader = upstreamDownloader(project, server.url);
+  const options = { ...project, installer: { ...project.installer!, ...downloader } };
+  try {
+    const executable = await prepareElectronRuntime(options);
+    expect(downloader.attempts()).toBe(3);
+    expect(requests).toBe(3);
+    expect(setup.counters().extractions).toBe(1);
+    expect(readFileSync(executable, "utf8")).toBe("electron executable");
+    await prepareElectronRuntime(options);
+    expect(downloader.attempts()).toBe(3);
+  } finally {
+    await server.close();
+  }
+});
+
+test("bounds persistent transport failures without publishing an Electron distribution", async () => {
+  const setup = fixture();
+  const project = setup.project("offline-network");
+  const server = await archiveServer((request) => request.socket.destroy());
+  const downloader = upstreamDownloader(project, server.url);
+  try {
+    await expect(
+      prepareElectronRuntime({ ...project, installer: { ...project.installer!, ...downloader } }),
+    ).rejects.toThrow("fetch failed");
+    expect(downloader.attempts()).toBe(3);
+    expect(setup.counters().extractions).toBe(0);
+    expect(existsSync(setup.cachedExecutable)).toBe(false);
+    expect(existsSync(path.join(project.projectRoot, "node_modules/electron/path.txt"))).toBe(
+      false,
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test("retries the connection timeout preserved in native fetch's cause", async () => {
+  const setup = fixture();
+  const project = setup.project("connection-timeout");
+  const download = project.installer!.downloadArtifact;
+  let attempts = 0;
+  const executable = await prepareElectronRuntime({
+    ...project,
+    installer: {
+      ...project.installer!,
+      downloadArtifact: async (input) => {
+        attempts++;
+        if (attempts === 1) {
+          throw new TypeError("fetch failed", {
+            cause: Object.assign(new Error("Connect Timeout Error"), {
+              code: "UND_ERR_CONNECT_TIMEOUT",
+            }),
+          });
+        }
+        return await download(input);
+      },
+    },
+  });
+  expect(attempts).toBe(2);
+  expect(readFileSync(executable, "utf8")).toBe("electron executable");
+  expect(setup.counters()).toEqual({ downloads: 1, extractions: 1 });
+});
+
+test.each([403, 404, 503])("does not retry an HTTP %s response", async (status) => {
+  const setup = fixture();
+  const project = setup.project("http-error");
+  const server = await archiveServer((_request, response) => {
+    response.writeHead(status).end();
+  });
+  const downloader = upstreamDownloader(project, server.url);
+  try {
+    await expect(
+      prepareElectronRuntime({ ...project, installer: { ...project.installer!, ...downloader } }),
+    ).rejects.toThrow(`Response code ${status}`);
+    expect(downloader.attempts()).toBe(1);
+    expect(setup.counters().extractions).toBe(0);
+    expect(existsSync(setup.cachedExecutable)).toBe(false);
+  } finally {
+    await server.close();
+  }
+});
+
+test.each([
+  Object.assign(new Error("untrusted TLS certificate"), { code: "CERT_HAS_EXPIRED" }),
+  Object.assign(new Error("invalid archive checksum"), { code: "CHECKSUM_MISMATCH" }),
+  new Error("unrecognized download failure"),
+])("does not retry a fatal download failure: %s", async (failure) => {
+  const setup = fixture();
+  const project = setup.project("fatal-download");
+  let attempts = 0;
+  await expect(
+    prepareElectronRuntime({
+      ...project,
+      installer: {
+        ...project.installer!,
+        downloadArtifact: async () => {
+          attempts++;
+          throw failure;
+        },
+      },
+    }),
+  ).rejects.toThrow(failure.message);
+  expect(attempts).toBe(1);
+  expect(setup.counters().extractions).toBe(0);
+  expect(existsSync(setup.cachedExecutable)).toBe(false);
+});
+
 test("retains the previous complete distribution when replacement generation fails", async () => {
   const setup = fixture();
   const project = setup.project("first");
@@ -139,9 +307,10 @@ test("retains the previous complete distribution when replacement generation fai
   const receipt = path.join(project.projectRoot, "node_modules/electron/.nodex-electron.json");
   rmSync(receipt);
   writeFileSync(setup.cachedExecutable, "damaged cache");
-  setup.failExtraction();
+  setup.failExtraction(Object.assign(new Error("extract failed"), { code: "ECONNRESET" }));
   await expect(prepareElectronRuntime(project)).rejects.toThrow("extract failed");
   expect(readFileSync(executable, "utf8")).toBe("electron executable");
+  expect(setup.counters()).toEqual({ downloads: 2, extractions: 2 });
 });
 
 test("requires the installed package to match the exact repository version", async () => {
