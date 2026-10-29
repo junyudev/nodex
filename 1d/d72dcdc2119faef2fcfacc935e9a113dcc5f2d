@@ -1,0 +1,45 @@
+CHANGELOG.md
+  s_ba060ac4e330f7::t_40c64bff55a175 13-14
+docs/product-specs/document-sync-and-recovery-behavior.md
+  s_5b34a9a7a75543::t_22fdbf025113e5 7-12
+src/renderer/components/board/editor/image-block.tsx
+  s_5b34a9a7a75543::t_90038bf0de8396 10
+src/renderer/components/board/editor/image-layout.browser.test.tsx
+  s_5b34a9a7a75543::t_889cf90b63b911 93,98,101-103,105-108
+src/renderer/components/board/editor/nfm-editor-owner.browser.test.tsx
+  s_6b9a9c15cdadc8::t_e890a2c3da7659 6,11,97-213
+tests/e2e/nfm-editor-lifecycle.spec.ts
+  s_6b9a9c15cdadc8::t_7754d4d7225903 6-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1dd72dcdc2119faef2fcfacc935e9a113dcc5f2d",
+  "prompts": {},
+  "sessions": {
+    "s_5b34a9a7a75543": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a188fe-9eb8-78d2-b1bb-b682e9de945b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_6b9a9c15cdadc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a188fe-d2c9-7b02-b428-e0b1e65282e3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_ba060ac4e330f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1a19e173-08d8-4dbe-8247-31ddc3af88af",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
