@@ -1,0 +1,45 @@
+packages/landing/src/replica/Chat.tsx
+  s_d6504674c8e7fb::t_a4517e8007d4e0 155-158,171-192
+  s_d6504674c8e7fb::t_45f02cc5c8e915 243,250-251,290
+  s_d6504674c8e7fb::t_cbb76374045ac9 193-195
+packages/landing/src/replica/ModelMenu.tsx
+  s_d6504674c8e7fb::t_e34cb32d2066f4 1-9,12-41,43-65,75-80,82-134
+  s_d6504674c8e7fb::t_e70b5d3610dad2 66-74,81
+  s_d6504674c8e7fb::t_d3f3c0c48256ea 10-11,42
+packages/landing/src/replica/Inbox.tsx
+  s_d6504674c8e7fb::t_c6830edc02a84d 317-331,333,335-339
+  s_d6504674c8e7fb::t_026b62420ec417 4-11,36-37,43-46,113,116-117,175,178-179,182,185-186,213-234,254-309,311-313,315,332,334,342-343,345
+  s_d6504674c8e7fb::t_5b995b3746ad0f 310,340-341,344
+  s_d6504674c8e7fb::t_8f79e09715e7c9 3,314,316,346-348
+packages/landing/src/demos/AgentsDemo.tsx
+  s_d6504674c8e7fb::t_22b01a2ac7b6e7 3
+  s_d6504674c8e7fb::t_45f02cc5c8e915 5,9,79,171,174-185
+packages/landing/src/demos/HeroDemo.tsx
+  s_d6504674c8e7fb::t_ffb56df5c406ac 93-95,98-107,110,118,122-124,127,130-137,142
+  s_d6504674c8e7fb::t_a68ebbea116187 167,170-172,243-273,298-310,393,414,462
+  s_d6504674c8e7fb::t_213becd6693298 54-57,76-77,96-97
+  s_d6504674c8e7fb::t_c6830edc02a84d 5,14-15,37,39-40,507,515-520,558-560,566,576,581-582,593-599,708-709,712-714,721
+packages/landing/src/demos/lumen.ts
+  s_d6504674c8e7fb::t_5931973c7ca0f6 27-62
+packages/landing/src/replica/Window.tsx
+  s_d6504674c8e7fb::t_a518d0e33b125a 21
+  s_d6504674c8e7fb::t_c6830edc02a84d 139
+docs/landing-site.md
+  s_d6504674c8e7fb::t_c34a8a5c8722b4 168-172,190-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "17894e986a398a07fd2f5e1574a4876e020082e7",
+  "prompts": {},
+  "sessions": {
+    "s_d6504674c8e7fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6d7ddc6-82d7-41de-8b95-c0408aeb2d07",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
