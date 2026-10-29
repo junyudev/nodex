@@ -1,0 +1,28 @@
+config/sentry-build.ts
+  s_6c9891f66c664a::t_8abf63128395df 25-27
+  s_6c9891f66c664a::t_ec5ec860b725b1 1-24,28-30
+docs/release-macos.md
+  s_6c9891f66c664a::t_8abf63128395df 531-535
+config/sentry-build.test.ts
+  s_6c9891f66c664a::t_8abf63128395df 4
+  s_6c9891f66c664a::t_ec5ec860b725b1 1-3,5-143
+  s_6c9891f66c664a::t_d5cce291035a4b 144-146
+electron.vite.config.ts
+  s_6c9891f66c664a::t_ec5ec860b725b1 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c05df8bfe03a6ff0a655d6bfcdd16d4ea2f0383a",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
