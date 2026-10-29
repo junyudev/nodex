@@ -1,0 +1,21 @@
+README.zh-CN.md
+  s_d6504674c8e7fb::t_652784af4d1e1c 33,93,98-99
+README.md
+  s_d6504674c8e7fb::t_652784af4d1e1c 33,96,101-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e0d7b861004152e3f064586bb9aa4dad0b5db641",
+  "prompts": {},
+  "sessions": {
+    "s_d6504674c8e7fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6d7ddc6-82d7-41de-8b95-c0408aeb2d07",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
