@@ -1,8 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { createRequire } from "node:module";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parse } from "node-html-parser";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
@@ -12,17 +11,12 @@ const outputDir = mkdtempSync(join(tmpdir(), "nodex-landing-build-"));
 const execFileAsync = promisify(execFile);
 
 beforeAll(async () => {
-  const require = createRequire(import.meta.url);
-  const astroPackagePath = require.resolve("astro/package.json");
-  const astroPackage = JSON.parse(readFileSync(astroPackagePath, "utf8")) as {
-    bin: { astro: string };
-  };
-  const astroCli = resolve(dirname(astroPackagePath), astroPackage.bin.astro);
-
-  // Run the real CLI in its own process so Vite's module loader stays outside Vitest.
+  // Build the way the site ships, through the package's astro bin: it is what lets Astro resolve
+  // its own tsconfig presets, whatever environment the tests run in. Its own process also keeps
+  // Vite's module loader outside Vitest.
   await execFileAsync(
-    process.execPath,
-    [astroCli, "build", "--root", landingRoot, "--outDir", outputDir],
+    join(landingRoot, "node_modules", ".bin", "astro"),
+    ["build", "--root", landingRoot, "--outDir", outputDir],
     {
       cwd: landingRoot,
       env: { ...process.env, ASTRO_TELEMETRY_DISABLED: "1" },
