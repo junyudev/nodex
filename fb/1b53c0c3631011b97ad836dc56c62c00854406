@@ -1,0 +1,41 @@
+packages/landing/src/replica/AgentDock.tsx
+  s_d6504674c8e7fb::t_d86f8ae53fb182 1-67
+packages/landing/src/pages/index.astro
+  s_d6504674c8e7fb::t_bc17159e31e814 9,21
+packages/landing/src/demos/TidyDemo.tsx
+  s_d6504674c8e7fb::t_b6185d44bdcffa 48-54,59-65,198-201
+  s_d6504674c8e7fb::t_dd88fd57687022 1-47,55-58,66-83,85-108,110-192,194-197,202-338
+  s_d6504674c8e7fb::t_bc17159e31e814 84,109,193
+docs/landing-site.md
+  s_d6504674c8e7fb::t_b6185d44bdcffa 173
+packages/landing/src/demos/PagesDemo.tsx
+  s_d6504674c8e7fb::t_bc17159e31e814 18,23,208
+packages/landing/src/sections/Everything.astro
+  s_d6504674c8e7fb::t_7f71f0088dd033 18,25
+packages/landing/src/demos/CaptureStage.tsx
+  s_d6504674c8e7fb::t_bc17159e31e814 6,13
+packages/landing/src/sections/Tidy.astro
+  s_d6504674c8e7fb::t_bc17159e31e814 1-17
+packages/landing/src/sections/FinalCta.astro
+  s_d6504674c8e7fb::t_7f71f0088dd033 11
+packages/landing/src/sections/Feature.astro
+  s_d6504674c8e7fb::t_7f71f0088dd033 16,19
+packages/landing/src/demos/capture-demos.ts
+  s_d6504674c8e7fb::t_bc17159e31e814 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fb1b53c0c3631011b97ad836dc56c62c00854406",
+  "prompts": {},
+  "sessions": {
+    "s_d6504674c8e7fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6d7ddc6-82d7-41de-8b95-c0408aeb2d07",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
