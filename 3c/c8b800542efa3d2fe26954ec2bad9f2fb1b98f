@@ -1,0 +1,43 @@
+packages/landing/src/replica/Page.tsx
+  s_d6504674c8e7fb::t_68630b59dbb29c 130-131,213
+docs/landing-site.md
+  s_d6504674c8e7fb::t_e441b3ba7806af 170,186-188
+  s_d6504674c8e7fb::t_4f625f8230c073 171-173
+packages/landing/src/demos/PagesDemo.tsx
+  s_d6504674c8e7fb::t_a2b693b2155410 4,132,305-308
+  s_d6504674c8e7fb::t_557a65320703f3 2,17-23,27,35,164,167-196,291,301-304,309-315
+  s_d6504674c8e7fb::t_434d638e764a2d 316-317
+packages/landing/src/replica/Viewers.tsx
+  s_d6504674c8e7fb::t_a2b693b2155410 95
+  s_d6504674c8e7fb::t_d959d5fe26634b 1-94,96-122
+packages/landing/src/demos/HeroDemo.tsx
+  s_d6504674c8e7fb::t_048071baa365c7 271-331,336-349,351,353-364,366-381,387-397,400,402,406,408-411
+  s_d6504674c8e7fb::t_a2b693b2155410 19,382-386
+  s_d6504674c8e7fb::t_41c61277b97faf 352
+  s_d6504674c8e7fb::t_839351f193fb6b 14,17,23,46,623
+packages/landing/src/sections/Pages.astro
+  s_d6504674c8e7fb::t_93a55530a6da5f 12
+packages/landing/src/replica/Window.tsx
+  s_d6504674c8e7fb::t_41c61277b97faf 1,196-197,355-389
+  s_d6504674c8e7fb::t_9c883e210e016d 346-349
+  s_d6504674c8e7fb::t_68462f4d253dae 2,29-40,43-47,52,65,73-83,121-126,128-130,151-165,173-194
+  s_d6504674c8e7fb::t_dac611f44d30d6 195,198,390
+packages/landing/src/replica/icons/shell.tsx
+  s_d6504674c8e7fb::t_1a8e53e32e0313 374-394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3cc8b800542efa3d2fe26954ec2bad9f2fb1b98f",
+  "prompts": {},
+  "sessions": {
+    "s_d6504674c8e7fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6d7ddc6-82d7-41de-8b95-c0408aeb2d07",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
