@@ -30,7 +30,7 @@
 <picture>
   <source srcset=".github/assets/readme/hero-dark.webp" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/hero-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/hero-light.webp" alt="往 Nodex 收件箱里连发六条消息，每条都被规划给合适的 Agent，其中一条被手动换成 Claude Opus，清空后的收件箱会说明它是怎么规划的；Claude 对话分派 GPT 子 Agent；性能分析对话把 HTML 报告附到 Page 上，在旁边的浏览器 tab 里打开" width="100%">
+  <img src=".github/assets/readme/hero-light.webp" alt="往 Nodex 收件箱里连发六条消息，每条都被规划给合适的 Agent，其中一条被手动换成 Claude Opus，清空后的收件箱会说明它是怎么规划的；Claude 对话分派 GPT 子 Agent，点开其中一个能看到它在 Codex 里干活；性能分析对话把 HTML 报告附到 Page 上，在旁边的浏览器 tab 里打开" width="100%">
 </picture>
 
 ## 安装

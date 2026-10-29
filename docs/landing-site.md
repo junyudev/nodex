@@ -172,7 +172,8 @@ The homepage tells one story in order. The hero headline's three lines are also 
 chapters and jump to them: **One inbox.** captures a burst of messages and plans each one, the
 reader moves one plan's lead from GPT-6.1 Sol to Claude Opus before starting it, and the
 cleared Inbox shows how it plans; **Every agent.** opens that chat, where the reader points at
-its Claude lead and then at one of its GPT subagents; **All local.** opens a chat with its Page
+its Claude lead, then opens one of its GPT subagents in the Subagents tab beside it and watches it
+finish in Codex; **All local.** opens a chat with its Page
 in the side tab group, where the agent attaches its report and the reader opens it. Icons beside the last two lines show what they cover, and a line's short caption appears
 only while its chapter plays. The sentence beside the headline is the README's tagline; change
 both together.
@@ -195,7 +196,8 @@ Product demos are scripted re-enactments built from replicas of the interface, n
   Suggested by, Nodex's Model guide beside what is left of each plan's weekly budget, and the
   reader's Routing preferences. Pointing at a chat's model button shows the model that leads it,
   and a subagent's card marks its provider, so a Claude lead with Codex subagents reads at a
-  glance.
+  glance. A subagent opened in the Subagents tab names the chat that sent its task and marks the
+  provider on both sides.
 - Every demo shares the fictional Lumen workspace in `src/demos/lumen.ts`; never show real
   user data, account names, or paths.
 - Replicas read the app's own artwork where it has some: subagent avatars are loaded from

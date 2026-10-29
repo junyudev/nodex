@@ -5,6 +5,7 @@ import { ProviderMark, cx } from "./Window";
 import { PROVIDER_NAMES } from "../demos/lumen";
 import {
   ActivitySearchIcon,
+  ArrowLeftIcon,
   ArrowUpIcon,
   ChevronDownIcon,
   EditFilesIcon,
@@ -241,9 +242,12 @@ export function ChatComposer({
   input,
   modelTarget,
   modelPopover,
+  running = false,
 }: {
   readonly agent: AgentChoice;
   readonly placeholder?: string;
+  /** While the agent works with nothing typed, the send button becomes Stop. */
+  readonly running?: boolean;
   /** Text being typed; the placeholder shows without it and the send button wakes with it. */
   readonly input?: ReactNode;
   readonly modelTarget?: string;
@@ -289,16 +293,78 @@ export function ChatComposer({
             </span>
             {modelPopover}
           </span>
-          <span
-            className={cx(
-              "flex size-7 shrink-0 items-center justify-center rounded-full bg-app-accent p-0.5 text-white",
-              !input && "opacity-50",
-            )}
-            aria-label="Send"
-          >
-            <ArrowUpIcon className="size-5" />
+          {running && !input ? (
+            <span
+              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-app-primary text-app-on-primary"
+              aria-label="Stop"
+            >
+              <StopIcon className="size-2.5" />
+            </span>
+          ) : (
+            <span
+              className={cx(
+                "flex size-7 shrink-0 items-center justify-center rounded-full bg-app-accent p-0.5 text-white",
+                !input && "opacity-50",
+              )}
+              aria-label="Send"
+            >
+              <ArrowUpIcon className="size-5" />
+            </span>
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One subagent's own conversation, opened from its parent chat into the Subagents tab: who it is
+ * and what it runs on, the task its parent sent, then its work. It names the sending chat and
+ * marks each side's provider, so a task handed from one harness to another reads as such.
+ */
+export function SubagentThread({
+  subagent,
+  prompt,
+  sentBy,
+  running,
+  children,
+}: {
+  readonly subagent: Pick<Subagent, "name" | "avatar" | "agent">;
+  readonly prompt: string;
+  readonly sentBy: { readonly chat: string; readonly agent: AgentChoice };
+  readonly running: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="absolute inset-0 flex flex-col bg-app">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-app-line px-4">
+        <span
+          aria-label="Back to subagents"
+          className="flex size-6 shrink-0 items-center justify-center text-app-muted"
+        >
+          <ArrowLeftIcon className="size-[13px]" />
+        </span>
+        <SubagentAvatar avatar={subagent.avatar} className="size-6" />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{subagent.name}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-app-faint">
+          <ProviderMark kind={subagent.agent.provider} className="size-3 shrink-0" />
+          <span className="truncate">
+            {subagent.agent.model} · {subagent.agent.effort}
           </span>
         </span>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col px-5 pb-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden pt-4">
+          <div className="flex flex-col gap-1.5">
+            <span className="me-1 flex items-center justify-end gap-1.5 text-[12px] text-app-faint">
+              <ProviderMark kind={sentBy.agent.provider} className="size-3" />
+              Sent by {sentBy.chat}
+            </span>
+            <UserBubble>{prompt}</UserBubble>
+          </div>
+          {children}
+        </div>
+        <ChatComposer agent={subagent.agent} running={running} />
       </div>
     </div>
   );

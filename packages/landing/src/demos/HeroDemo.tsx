@@ -4,6 +4,7 @@ import {
   ChatComposer,
   LeadCard,
   SubagentCard,
+  SubagentThread,
   SubagentLine,
   ToolLine,
   UserBubble,
@@ -26,6 +27,7 @@ import {
   InboxIcon,
   PageIcon,
   SettingsIcon,
+  SubagentGlyphIcon,
 } from "../replica/icons";
 import { ColdStartFindings } from "./ColdStartFindings";
 import { Cursor } from "./Cursor";
@@ -120,26 +122,34 @@ function buildSchedule(): Schedule {
   const clear = press - 250;
 
   // The cleared Inbox shows how it planned; then every agent: the passkey chat, whose Claude lead
-  // the reader points at before one of its GPT-6.1 Sol subagents.
+  // the reader points at before opening one of its GPT-6.1 Sol subagents to watch it work in
+  // Codex, beside the chat that sent it.
   const chat = clear + 3100;
+  const subagent = chat + 3300;
   cues.push(
     { id: "clear", at: clear },
     { id: "aim:chat", at: clear + 2300 },
     { id: "press:chat", at: chat - 150 },
     { id: "chat", at: chat },
-    { id: "aim:lead", at: chat + 800 },
-    { id: "lead", at: chat + 1150 },
-    { id: "aim:subagent", at: chat + 2100 },
-    { id: "card", at: chat + 2600 },
-    { id: "tool:2", at: chat + 3000 },
-    { id: "done:0", at: chat + 3700 },
-    { id: "uncard", at: chat + 5000 },
-    { id: "done:1", at: chat + 5400 },
+    { id: "aim:lead", at: chat + 700 },
+    { id: "lead", at: chat + 1000 },
+    { id: "aim:subagent", at: chat + 1900 },
+    { id: "card", at: chat + 2300 },
+    { id: "tool:2", at: chat + 2600 },
+    { id: "press:subagent", at: subagent - 150 },
+    { id: "subagent", at: subagent },
+    { id: "sub:read", at: subagent + 450 },
+    { id: "sub:edit", at: subagent + 1050 },
+    { id: "sub:edit2", at: subagent + 1650 },
+    { id: "sub:test", at: subagent + 2250 },
+    // It finishes while the reader watches, and the chat that sent it sees it done.
+    { id: "done:0", at: subagent + 2950 },
+    { id: "done:1", at: subagent + 3350 },
   );
 
   // All local: the cold-start chat opens beside its Page; the agent writes its findings into the
   // Page, attaches its report, moves the Page to Review, and the reader opens the report.
-  const cold = chat + 6700;
+  const cold = subagent + 4300;
   const findingsAt = COLD_START_FINDINGS.map((_, index) => cold + 1500 + index * 550);
   cues.push(
     { id: "aim:cold", at: cold - 700 },
@@ -178,7 +188,7 @@ function buildSchedule(): Schedule {
 const SCHEDULE = buildSchedule();
 
 /** Presses that open something: each ends at the cue of the same name. */
-const OPENING_PRESSES: readonly string[] = ["chat", "cold", "files", "report"];
+const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "cold", "files", "report"];
 
 /**
  * The hero story in three chapters, one per headline line. The headline buttons
@@ -293,7 +303,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
         ? "files"
         : reached("aim:cold") && !reached("cold")
           ? "chat:Dashboard cold start"
-          : reached("aim:subagent") && !reached("uncard")
+          : reached("aim:subagent") && !reached("cold")
             ? "subagent"
             : reached("aim:lead") && !reached("aim:subagent")
               ? "lead"
@@ -338,14 +348,31 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     scene === "cold" ? "Dashboard cold start" : scene === "passkeys" ? "Passkey sign-in" : null;
   const reportOpen = scene === "cold" && reached("report");
 
-  // A chat started from the Inbox opens its Page in the side group; the report the reader opens
-  // from that Page lands there in a new browser tab.
+  // A chat started from the Inbox opens its Page in the side group. A subagent the reader opens
+  // from the chat lands there in the Subagents tab, and a report opened from a Page in a new
+  // browser tab.
+  const subagentOpen = scene === "passkeys" && reached("subagent");
   const pageGroup =
     scene === "passkeys"
       ? {
-          key: "passkeys",
-          tabs: <Tab icon={<PageIcon className="size-4" />} label="Passkey sign-in" active />,
-          content: (
+          key: subagentOpen ? "subagent" : "passkeys",
+          tabs: (
+            <>
+              <Tab
+                icon={<PageIcon className="size-4" />}
+                label="Passkey sign-in"
+                active={!subagentOpen}
+              />
+              {subagentOpen ? (
+                <NewTab>
+                  <Tab icon={<SubagentGlyphIcon className="size-4" />} label="Subagents" active />
+                </NewTab>
+              ) : null}
+            </>
+          ),
+          content: subagentOpen ? (
+            <WebAuthnSubagent timeline={timeline} />
+          ) : (
             <PagePanel
               title="Passkey sign-in"
               properties={
@@ -391,7 +418,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     scene === "passkeys" ? (
       <PasskeyChat
         lead={reached("lead") && !reached("aim:subagent")}
-        card={reached("card") && !reached("uncard")}
+        card={reached("card") && !reached("subagent")}
         secondTool={reached("tool:2")}
         finished={[reached("done:0"), reached("done:1"), false, false]}
       />
@@ -403,8 +430,9 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     <div ref={root} className="flex w-full flex-col">
       <Stage {...CAPTURE_DEMOS.hero} compactWidth={480} compactHeight={680} compactBelow={900}>
         {({ compact }) => {
-          // On a narrow screen one group fits: the Passkey chat, then the cold start Page.
-          const pageOnly = compact && scene === "cold";
+          // On a narrow screen one group fits: the chat, until the reader opens something in
+          // its side group.
+          const pageOnly = compact && (scene === "cold" || subagentOpen);
           const main =
             scene === "inbox" ? (
               <InboxStream
@@ -592,6 +620,7 @@ function PasskeyChat({
   return (
     <ChatColumn
       agent={AGENTS.opus}
+      running
       modelTarget="lead"
       modelPopover={
         <AnimatePresence>{lead ? <LeadCard agent={AGENTS.opus} /> : null}</AnimatePresence>
@@ -631,12 +660,57 @@ function PasskeyChat({
   );
 }
 
+/** The first passkey subagent's own conversation: Claude sent it, Codex runs it. */
+function WebAuthnSubagent({ timeline }: { readonly timeline: Timeline }) {
+  const { reached } = timeline;
+  const webauthn = PASSKEY_SUBAGENTS[0];
+  const finished = reached("done:0");
+  return (
+    <SubagentThread
+      subagent={webauthn}
+      prompt={webauthn.prompt}
+      sentBy={{ chat: "Passkey sign-in", agent: AGENTS.opus }}
+      running={!finished}
+    >
+      {finished ? <WorkedFor duration="4m 08s" /> : null}
+      <div className="flex flex-col gap-1.5">
+        {reached("sub:read") ? <ToolLine row={{ verb: "Read", target: "lib/session.ts" }} /> : null}
+        {reached("sub:edit") ? (
+          <ToolLine
+            row={{ verb: "Edited", target: "app/api/auth/webauthn/register/route.ts", added: 64 }}
+          />
+        ) : null}
+        {reached("sub:edit2") ? (
+          <ToolLine
+            row={{ verb: "Edited", target: "app/api/auth/webauthn/verify/route.ts", added: 71 }}
+          />
+        ) : null}
+        {reached("sub:test") ? (
+          <ToolLine row={{ verb: "Ran", target: "pnpm test webauthn" }} />
+        ) : null}
+      </div>
+      {finished ? (
+        <motion.p
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-[14px] leading-[21px]"
+        >
+          Registration and assertion routes are in, with a challenge store that expires after five
+          minutes. 12 tests pass, and password sign-in is untouched.
+        </motion.p>
+      ) : (
+        <WorkingLine label={reached("sub:test") ? "Running the tests" : "Writing the routes"} />
+      )}
+    </SubagentThread>
+  );
+}
+
 function ColdStartChat({ timeline }: { readonly timeline: Timeline }) {
   const { reached } = timeline;
   const dispatch = COLD_START.dispatch;
   const page = <PageIcon className="size-3.5" />;
   return (
-    <ChatColumn agent={AGENTS.deepseek}>
+    <ChatColumn agent={AGENTS.deepseek} running={!reached("cold:answer")}>
       <UserBubble>{dispatch.kind === "new_chat" ? dispatch.prompt : COLD_START.text}</UserBubble>
       {reached("cold:answer") ? <WorkedFor duration="3m 12s" /> : null}
       <div className="flex flex-col gap-1.5">
@@ -705,11 +779,13 @@ function ColdStartPage({ timeline }: { readonly timeline: Timeline }) {
 
 function ChatColumn({
   agent,
+  running,
   modelTarget,
   modelPopover,
   children,
 }: {
   readonly agent: AgentChoice;
+  readonly running: boolean;
   readonly modelTarget?: string;
   readonly modelPopover?: ReactNode;
   readonly children: ReactNode;
@@ -718,7 +794,12 @@ function ChatColumn({
     <div className="absolute inset-0 flex flex-col items-center px-6 pb-5">
       <div className="flex min-h-0 w-full max-w-[640px] flex-1 flex-col gap-4 pt-4">{children}</div>
       <div className="mt-3 w-full max-w-[640px]">
-        <ChatComposer agent={agent} modelTarget={modelTarget} modelPopover={modelPopover} />
+        <ChatComposer
+          agent={agent}
+          running={running}
+          modelTarget={modelTarget}
+          modelPopover={modelPopover}
+        />
       </div>
     </div>
   );

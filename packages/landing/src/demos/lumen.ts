@@ -213,24 +213,32 @@ export const PASSKEY_SUBAGENTS = [
     avatar: "04-aperture",
     agent: AGENTS.sol,
     objective: "Add registration and assertion routes with a 5-minute challenge store.",
+    prompt:
+      "Add WebAuthn registration and assertion routes under app/api/auth/webauthn, with a challenge store that expires after five minutes. Leave password sign-in untouched.",
   },
   {
     name: "Credentials migration",
     avatar: "06-cube",
     agent: AGENTS.solHigh,
     objective: "Create the credentials table and backfill existing accounts.",
+    prompt:
+      "Add a credentials table for passkeys and backfill a row for every existing account, in one reversible migration.",
   },
   {
     name: "Sign-in tests",
     avatar: "19-whirl",
     agent: AGENTS.solHigh,
     objective: "Cover passkey and password sign-in end to end.",
+    prompt:
+      "Write end-to-end tests for signing in with a passkey and with a password, including the fallback.",
   },
   {
     name: "Passkey docs",
     avatar: "00-marigold",
     agent: AGENTS.glm,
     objective: "Document passkey sign-in and the one-release password fallback.",
+    prompt:
+      "Document passkey sign-in for users and admins, and when the password fallback goes away.",
   },
 ] as const;
 

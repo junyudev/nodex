@@ -30,7 +30,7 @@
 <picture>
   <source srcset=".github/assets/readme/hero-dark.webp" media="(prefers-color-scheme: dark)">
   <source srcset=".github/assets/readme/hero-light.webp" media="(prefers-color-scheme: light)">
-  <img src=".github/assets/readme/hero-light.webp" alt="Six messages dropped into the Nodex Inbox are planned onto the right agents, one moved to Claude Opus by hand, and the cleared Inbox shows how it plans; a Claude chat fans out to GPT subagents; a profiling chat attaches an HTML report to its Page, which opens in a browser tab beside it" width="100%">
+  <img src=".github/assets/readme/hero-light.webp" alt="Six messages dropped into the Nodex Inbox are planned onto the right agents, one moved to Claude Opus by hand, and the cleared Inbox shows how it plans; a Claude chat fans out to GPT subagents, and the reader opens one to watch it work in Codex; a profiling chat attaches an HTML report to its Page, which opens in a browser tab beside it" width="100%">
 </picture>
 
 ## Install
