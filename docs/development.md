@@ -260,7 +260,11 @@ unchanged. See Apple's [restorable-state debugging documentation](https://develo
 Installation, development, builds, and Electron test preparation run the repository's
 `electron:prepare` owner before a consumer can trigger Electron's lazy installer.
 It verifies the exact package-pinned distribution and creates an independent local
-`dist` from a shared extraction. For a standalone repair after `Error: Electron uninstall`,
+`dist` from a shared extraction. Transient connection, DNS and transfer failures
+receive up to three download attempts, with one- and two-second backoffs.
+Checksum, TLS certificate, HTTP response and archive failures stop immediately; retries never
+bypass verification or publish incomplete distributions.
+For a standalone repair after `Error: Electron uninstall`,
 run `vp run electron:prepare` from the worktree root. The upstream
 `vp exec install-electron` remains an explicit bypass; normal preparation restores
 the package-pinned host distribution. See
