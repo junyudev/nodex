@@ -3,10 +3,12 @@ import { act, render, waitFor } from "@testing-library/react";
 import { BlockNoteViewRaw } from "@blocknote/react";
 import { BlockNoteEditor } from "@blocknote/core";
 import { expect, test, vi } from "vite-plus/test";
+import * as Y from "yjs";
 import { createPageDocumentGenesis } from "../../../../shared/block-documents/block-document-codec";
 import type { OwnedDocumentDescriptor } from "../../../../shared/block-documents";
 import type { BlockDocumentSurfaceRuntime } from "@/lib/block-document-surface-runtime";
 import { EditorSurfaceLease } from "@/lib/document-session-registry";
+import { NodexYProvider, type DocumentSyncAdapter } from "@/lib/nodex-y-provider";
 import { libraryContentRoute } from "../../../../shared/content-routing-context";
 import { pressProseMirrorShortcut } from "@/test/prosemirror-shortcut";
 import { getNfmEditorInstanceKey } from "./nfm-editor-source";
@@ -90,6 +92,123 @@ function EditorView({
     });
   }, [owner, onBind, resolveFileUrl]);
   return <BlockNoteViewRaw editor={owner.editor} />;
+}
+
+for (const withImage of [false, true]) {
+  test(`opening a Page with ${withImage ? "text and an image" : "text"} sends no document update`, async () => {
+    const imageUrl = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+    const { document: canonical, input } = fixture(
+      false,
+      `A message to read${withImage ? `\n\n![Image](${imageUrl})` : ""}`,
+    );
+    const document = new Y.Doc({ guid: canonical.guid });
+    let headSeq = 1;
+    const applyUpdate = vi.fn<DocumentSyncAdapter["applyUpdate"]>(async (request) => {
+      Y.applyUpdate(canonical, request.update);
+      headSeq += 1;
+      return {
+        ok: true,
+        value: {
+          documentId: canonical.guid,
+          storeEpoch: input.source.storeEpoch,
+          generation: 1,
+          updateId: request.updateId,
+          committedSeq: headSeq,
+          headSeq,
+          stateVector: Y.encodeStateVector(canonical),
+          duplicate: false,
+          status: "committed",
+          commit: {
+            store_epoch: input.source.storeEpoch,
+            commit_seq: headSeq,
+            manifest_hash: "f".repeat(64),
+          },
+        },
+      };
+    });
+    const provider = new NodexYProvider({
+      documentId: document.guid,
+      document,
+      clientSessionId: input.source.clientSessionId,
+      localCheckpointStore: null,
+      autoConnect: false,
+      adapter: {
+        sync: async (request) => ({
+          ok: true,
+          value: {
+            documentId: canonical.guid,
+            storeEpoch: input.source.storeEpoch,
+            generation: 1,
+            headSeq,
+            stateVector: Y.encodeStateVector(canonical),
+            update: Y.encodeStateAsUpdate(canonical, request.stateVector),
+          },
+        }),
+        applyUpdate,
+        subscribe: () => () => undefined,
+        publishAwareness: async () => ({ ok: true, value: { accepted: true } }),
+      },
+    });
+    await provider.connect();
+    const before = Y.encodeStateAsUpdate(document);
+    const updates: Uint8Array[] = [];
+    document.on("update", (update: Uint8Array) => updates.push(update));
+    const source = { ...input.source, fragment: document.getXmlFragment("body") };
+    let current: NfmEditorOwner | null = null;
+    const result = render(
+      <StrictMode>
+        <NfmEditorOwnerBoundary
+          input={{
+            ...input,
+            source,
+            editorInstanceKey: getNfmEditorInstanceKey({
+              source,
+              routingContext: input.routingContext,
+            }),
+          }}
+        >
+          {(owner) => (
+            <EditorView
+              owner={owner}
+              onBind={(value) => {
+                current = value;
+              }}
+            />
+          )}
+        </NfmEditorOwnerBoundary>
+      </StrictMode>,
+    );
+    try {
+      await waitFor(() => expect(result.container.querySelector(".ProseMirror")).not.toBeNull());
+      if (withImage) {
+        await waitFor(() => {
+          const image = result.container.querySelector("img");
+          expect(image?.complete).toBe(true);
+          expect(image?.naturalWidth).toBe(1);
+        });
+      }
+      await act(settle);
+      expect(updates).toHaveLength(0);
+      await provider.flush();
+      expect(applyUpdate).not.toHaveBeenCalled();
+      expect(Y.encodeStateAsUpdate(document)).toEqual(before);
+
+      await act(async () => {
+        document.getText("title").insert(0, "An intentional edit: ");
+        await provider.flush();
+      });
+      expect(applyUpdate).toHaveBeenCalledTimes(1);
+      expect(provider.getStatus().headSeq).toBe(2);
+    } finally {
+      await act(async () => {
+        result.unmount();
+        await current?.dispose();
+      });
+      provider.destroy();
+      document.destroy();
+      canonical.destroy();
+    }
+  });
 }
 
 for (const retained of [false, true]) {

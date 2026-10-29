@@ -4,6 +4,12 @@ Nodex edits a local document replica and confirms a save only after Core commits
 it. Connection state, durable save state, and local recovery protection are
 separate facts. The normal save round trip stays visually quiet.
 
+Opening, previewing, or reading an unchanged Page does not edit its Document or
+advance its saved revision. Resolving and decoding images is presentation work;
+it never writes image dimensions back into the Page. Upload and import operations
+may include source dimensions in their explicit content change so subsequent
+views can reserve image space before loading.
+
 Page, Canvas, and manual version saves remain available in long-lived Profiles
 and editor sessions. Each new save receives a fresh bounded submission identity;
 retries retain the original identity and payload. An expired or uncertain older

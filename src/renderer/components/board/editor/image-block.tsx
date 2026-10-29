@@ -7,7 +7,7 @@ import {
   useUploadLoading,
   type ReactCustomBlockRenderProps,
 } from "@blocknote/react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ImageBlockIcon } from "@/components/shared/icons";
 import { readManagedImageByteLength } from "@/lib/assets";
 import { parseAssetSource } from "../../../../shared/assets";
@@ -71,29 +71,6 @@ function ImageLoadingState({
         {failed ? "Image unavailable" : "Loading..."}
       </div>
     </ImageLayoutFrame>
-  );
-}
-
-function usePersistDecodedImageDimensions({
-  block,
-  editor,
-}: Omit<ImageBlockRenderProps, "contentRef">) {
-  return useCallback(
-    (image: HTMLImageElement) => {
-      const dimensions = normalizeImageSourceDimensions(image.naturalWidth, image.naturalHeight);
-      if (!dimensions) return;
-
-      const current = readBlockSourceDimensions(block);
-      if (
-        current?.sourceWidth === dimensions.sourceWidth &&
-        current.sourceHeight === dimensions.sourceHeight
-      ) {
-        return;
-      }
-
-      editor.updateBlock(block, { props: dimensions });
-    },
-    [block, editor],
   );
 }
 
@@ -184,7 +161,6 @@ function useImageFileSize(source: string, pageFileByteLength: number | null): nu
 function ExternalImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) {
   const { block } = props;
   const resolved = useResolveUrl(block.props.url);
-  const persistDecodedDimensions = usePersistDecodedImageDimensions(props);
 
   if (resolved.loadingState !== "loaded") {
     return <ImageLoadingState block={block} failed={resolved.loadingState === "error"} />;
@@ -198,7 +174,6 @@ function ExternalImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) 
         alt={block.props.name || ""}
         width={block.props.sourceWidth}
         height={block.props.sourceHeight}
-        onLoad={(event) => persistDecodedDimensions(event.currentTarget)}
         contentEditable={false}
         draggable={false}
       />
@@ -208,13 +183,11 @@ function ExternalImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) 
 
 function FileImagePreview({
   block,
-  editor,
   runtime,
 }: Omit<ImageBlockRenderProps, "contentRef"> & {
   readonly runtime: FilePlacementRuntime;
 }) {
   const snapshot = useFileReadSnapshot(runtime, block.props.url, { objectUrl: true });
-  const persistDecodedDimensions = usePersistDecodedImageDimensions({ block, editor });
   if (!snapshot.objectUrl) {
     return <ImageLoadingState block={block} failed={Boolean(snapshot.contentError)} />;
   }
@@ -227,7 +200,6 @@ function FileImagePreview({
         alt={block.props.name || ""}
         width={block.props.sourceWidth}
         height={block.props.sourceHeight}
-        onLoad={(event) => persistDecodedDimensions(event.currentTarget)}
         contentEditable={false}
         draggable={false}
       />

@@ -90,18 +90,21 @@ describe("NFM image layout in Chromium", () => {
     expect(Math.abs(rect.height - 320)).toBeLessThan(1);
   });
 
-  test("self-heals legacy image blocks with decoded source dimensions", async () => {
+  test("displays images without stored geometry without changing their content", async () => {
     const svg = encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="300"></svg>',
     );
     const { editor, view } = mountImage({ url: `data:image/svg+xml,${svg}` });
+    const before = structuredClone(editor.document);
 
     await waitFor(() => {
-      expect(editor.getBlock("image-layout")?.props).toMatchObject({
-        sourceWidth: 120,
-        sourceHeight: 300,
-      });
+      const image = view.container.querySelector("img");
+      expect(image?.naturalWidth).toBe(120);
+      expect(image?.naturalHeight).toBe(300);
     });
-    expect(view.container.querySelector('[data-nfm-image-layout-stable="true"]')).not.toBeNull();
+    expect(editor.document).toEqual(before);
+    const image = view.container.querySelector("img")!;
+    expect(image.getBoundingClientRect().width).toBe(120);
+    expect(image.getBoundingClientRect().height).toBe(300);
   });
 });

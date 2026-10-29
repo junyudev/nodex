@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Opening a Page with images no longer saves an unintended edit when its images load.
+
 ## [0.5.0] - 2026-10-29
 
 ### Added
