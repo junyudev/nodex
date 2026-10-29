@@ -1,0 +1,41 @@
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_6c9891f66c664a::t_f85b1c2255132b 108-114,379,442-455,569,1005,1009,1018-1027,1050-1054
+docs/product-specs/codex-subagent-behavior.md
+  s_6c9891f66c664a::t_9ac43450bf9519 78-80
+  s_6c9891f66c664a::t_767625557c2506 81
+src/main/codex-application/CodexSubagentDirectory.node.test.ts
+  s_6c9891f66c664a::t_6602e0f7413760 2383-2386,2388-2389,2410-2413,2443-2444,2466-2469
+  s_6c9891f66c664a::t_2c76137b071f2e 1470,1489,2577-2578,2587-2588,2590
+  s_6c9891f66c664a::t_c23e89ffc6df0a 2382,2387,2394-2398,2416-2418,2421-2423,2437,2441,2451,2453-2463,2470
+  s_6c9891f66c664a::t_20c51726b3273a 2390-2393,2399-2409,2414-2415,2419-2420,2424-2436,2438-2440,2442,2445-2450,2452,2464-2465,2471-2472
+  s_f79dd9d0c7ac54::t_10c760f4d50134 2540
+  s_6c9891f66c664a::t_fa25a3943e3f13 2575-2576
+src/main/codex-application/CodexSubagentDirectory.ts
+  s_6c9891f66c664a::t_c0d686668ba9e9 93-97,1474,1476-1487,1547-1550,1554
+  s_6c9891f66c664a::t_88033ac1082417 1489-1490,1521,1539,1542-1545,1551,1553
+  s_6c9891f66c664a::t_4116b9830446c0 1488,1563
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a73c1994e2307d5f955901703afcf22cbc755651",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    },
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
