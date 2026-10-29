@@ -1,0 +1,33 @@
+packages/landing/src/sections/Hero.astro
+  s_d6504674c8e7fb::t_dea15486b63a81 48,89
+  s_d6504674c8e7fb::t_f38338a85a2d77 90
+  s_d6504674c8e7fb::t_82928b44b89836 13-15,78,91-92,94
+docs/landing-site.md
+  s_d6504674c8e7fb::t_525c0ebb138192 171-173
+  s_d6504674c8e7fb::t_16cc0cae4bfb03 174-176
+packages/landing/src/styles/theme.css
+  s_d6504674c8e7fb::t_7ba147869a142a 143,147
+  s_d6504674c8e7fb::t_677bc8db143da1 135-142,144-146,148-152
+packages/landing/src/sections/DownloadActions.astro
+  s_d6504674c8e7fb::t_63ef0e9fd8cc90 14
+  s_d6504674c8e7fb::t_9722cf6a41c7af 27
+  s_d6504674c8e7fb::t_82928b44b89836 6-7,10,44-51
+packages/landing/src/sections/FinalCta.astro
+  s_d6504674c8e7fb::t_28df1770e91440 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "488f94cb5a581cecd99c1b27b622fe3a391df370",
+  "prompts": {},
+  "sessions": {
+    "s_d6504674c8e7fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6d7ddc6-82d7-41de-8b95-c0408aeb2d07",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
