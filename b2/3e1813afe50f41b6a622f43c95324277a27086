@@ -1,0 +1,90 @@
+tests/e2e/codex-footer-metadata.spec.ts
+  s_a6d99c485a36d0::t_1e226262cd3722 26,29,32-34
+  s_a6d99c485a36d0::t_60981ddd5bb542 1,7-25,27-28,30-31,35-54,94-117
+src/renderer/features/local-conversation/view/shared/thread-message-actions.tsx
+  s_a6d99c485a36d0::t_aa7d38423f487d 72
+src/renderer/features/local-conversation/view/shared/hook-stats-indicator.tsx
+  s_a6d99c485a36d0::t_aa7d38423f487d 27
+src/renderer/features/local-conversation/view/shared/thread-footer-metadata.tsx
+  s_a6d99c485a36d0::t_aa7d38423f487d 49,145,192,339
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a6d99c485a36d0::t_aa7d38423f487d 487
+src/renderer/features/local-conversation/view/shared/hook-stats-indicator.test.tsx
+  s_a6d99c485a36d0::t_208998dfb7832f 45-48,50-54
+  s_a6d99c485a36d0::t_1c79bd2e1f6cae 6,49
+packages/landing/.gitignore
+  s_a93596d298114c::t_5aa06234d5cb88 2
+packages/landing/src/pages/changelog/index.astro
+  s_a93596d298114c::t_5aa06234d5cb88 1-49
+packages/landing/src/components/SiteNav.astro
+  s_a93596d298114c::t_5aa06234d5cb88 1-16
+packages/landing/src/islands/IslandProbe.tsx
+  s_a93596d298114c::t_5aa06234d5cb88 1-15
+packages/landing/src/env.d.ts
+  s_a93596d298114c::t_5aa06234d5cb88 1
+.github/workflows/deploy-landing-site.yml
+  s_a93596d298114c::t_e7bc68a3f7d8a8 12-13
+packages/landing/src/pages/privacy/index.astro
+  s_d6504674c8e7fb::t_96f35bc31632ca 1-61
+packages/landing/src/lib/site.ts
+  s_a93596d298114c::t_5aa06234d5cb88 1-8
+packages/landing/package.json
+  s_a93596d298114c::t_5aa06234d5cb88 6-8,12-18,21-23,25
+  s_a93596d298114c::t_04a58810e83c9f 9
+packages/landing/src/pages/terms/index.astro
+  s_d6504674c8e7fb::t_96f35bc31632ca 1-60
+packages/landing/tsconfig.json
+  s_a93596d298114c::t_a7fa66c0aab01f 4-5,17
+  s_a93596d298114c::t_5aa06234d5cb88 2,15-16,19-20
+packages/landing/src/pages/index.astro
+  s_a93596d298114c::t_5aa06234d5cb88 1-21,23-56
+  s_a93596d298114c::t_3e8b7715b56104 22
+packages/landing/src/styles/global.css
+  s_a93596d298114c::t_5aa06234d5cb88 3-4,21,23
+packages/landing/astro.config.ts
+  s_a93596d298114c::t_5aa06234d5cb88 1,3,6-12
+packages/landing/src/components/SiteFooter.astro
+  s_a93596d298114c::t_5aa06234d5cb88 1-12
+docs/landing-site.md
+  s_a93596d298114c::t_e7bc68a3f7d8a8 7,25,28-30,33,38-46,50,54
+  s_a93596d298114c::t_3e8b7715b56104 31-32
+packages/landing/src/landing-build.test.ts
+  s_a93596d298114c::t_35a8ea90639a53 89
+  s_a93596d298114c::t_5bb63808041674 1,4-8,10-12,14-20,22-35,37-38,41-88,90-105
+packages/landing/src/layouts/BaseLayout.astro
+  s_a93596d298114c::t_5aa06234d5cb88 1-69
+pnpm-lock.yaml
+  s_a93596d298114c::t_824d1c89f49b7b 383,584,716,740,830,862,865,884,890,912,918,943,952,980,992,1014,1020,1054,1063,1085,1091,1149,1158,1183,1192,1214,1220,1236,1242,1264,1273,1295,1304,1329,1338,1357,1366,1417,1423-1438,1443-1451,1795-1892,2020-2072,2103-2110,2301-2318,2658-2819,2953-2959,3000-3002,4921-4923,5086-5088,5781-5784,5809-5812,5833-5836,5845-5854,5872-5875,6089-6092,6113-6116,6139-6141,6150-6153,6187-6189,6193-6199,6208-6215,6419-6421,6437-6439,6450-6453,6498-6501,6623-6625,6736-6738,6798-6803,6807-6809,6851-6864,6959-6965,7005-7007,7102-7104,7197-7199,7209-7213,7376-7378,7633-7635,7729-7731,7970-7976,7991-7993,8019-8021,8042-8045,8085-8087,8166-8169,8174-8181,8185-8187,8254-8256,8342-8345,8354-8357,8500-8502,8684-8686,8690-8692,8782-8784,8789-8792,8851-8859,8921-8923,9091-9095,9140-9142,9147-9150,9163-9165,9285-9287,9292-9297,9319-9321,9355-9416,9488-9491,9517-9524,9685-9687,9730-9733,9750-9753,9862-9977,10130-10164,10197-10208,10332,10335,10430-10463,10465-10470,10749-10855,10996-11009,11044-11045,12522-12526,12728-12731,13235-13238,13253-13257,13318-13319,13328-13425,13436-13437,13662-13663,13675-13676,13689-13690,13695-13696,13729-13732,13741-13753,13761-13766,13998-13999,14010-14011,14019-14020,14074-14075,14218-14219,14279,14292,14371-14372,14449-14454,14457-14460,14521-14532,14632-14637,14697-14708,14912-14913,15001-15002,15012-15013,15136-15137,15329-15334,15555-15556,15913-15918,15933-15934,15972-15973,15992-15993,16040-16045,16133,16137,16157,16168,16190,16198-16201,16206-16212,16215-16216,16282-16283,16362-16363,16368-16369,16510-16511,16737-16738,16743-16748,16882-16898,16901-16902,16960-16993,17088-17089,17274-17283,17337-17338,17341-17342,17352-17353,17486-17487,17490-17493,17515-17521,17561-17571,17632-17633,17649,17661-17662,17712-17715,17836-17837,17866-17867,17888-17889
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b23e1813afe50f41b6a622f43c95324277a27086",
+  "prompts": {},
+  "sessions": {
+    "s_a6d99c485a36d0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18463-eeb5-7311-b554-0b9db5512a9c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a93596d298114c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a182fb-03da-7930-9315-a1a3067cec3a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_d6504674c8e7fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6d7ddc6-82d7-41de-8b95-c0408aeb2d07",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
