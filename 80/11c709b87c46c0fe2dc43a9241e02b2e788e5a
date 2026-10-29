@@ -1,0 +1,73 @@
+packages/landing/src/sections/Hero.astro
+  s_d6504674c8e7fb::t_9e02c958a4b6af 27,29
+  s_d6504674c8e7fb::t_b4ce60c52b078b 16,19
+  s_d6504674c8e7fb::t_387d3eb690ae2c 3,6,9,12,15,17-18,20,22,24-26,28,30-35,38-47,49-51,56-57,60-61
+  s_d6504674c8e7fb::t_67c8be4ea88823 36-37,48,58-59,64
+packages/landing/src/sections/FinalCta.astro
+  s_d6504674c8e7fb::t_67c8be4ea88823 13
+packages/landing/src/demos/FanOutDemo.tsx
+  s_d6504674c8e7fb::t_1913dea1b9cd99 5,20-32
+docs/landing-site.md
+  s_d6504674c8e7fb::t_5f5bb001f0c103 168-183
+packages/landing/src/demos/HeroDemo.tsx
+  s_d6504674c8e7fb::t_bd2b2283e3517c 2,9,13-22,29,48-49,54-57,60-61,69-70,84,86,100-101,112-113,115,118,120-123,126,142,144,157-161,167-168,173-185,188-191,199,201,203-204,206,221-224,231,233-245,271-273,286,291-292,312,330-346,348-371,394-422,426-427,445,526-528,531-540,542-548,552-563,565-570,575,581,585,590-596,598-607,609-614,616-618,620,622-628,630-634,638-650,652
+  s_d6504674c8e7fb::t_2ae0ab2f9c78df 43
+  s_d6504674c8e7fb::t_76a194c3e2047c 541
+  s_d6504674c8e7fb::t_a5fc5df2442255 347,529-530,564,571,576,580,586-588,597,608,615,619,621,629,635,637
+  s_d6504674c8e7fb::t_1a08456ea56300 33,636
+  s_d6504674c8e7fb::t_abfa38aebd2a54 23,35-42,58-59,116-117,119,124-125,127-138,145-147,154-156,162,165,169-172,186-187,192-198,200,202,205,207,225,263,276-277,378-393,423-425
+  s_d6504674c8e7fb::t_67c8be4ea88823 226,573,577-579,582-584
+  s_d6504674c8e7fb::t_58d07ed78a1b0e 549-551
+  s_d6504674c8e7fb::t_5a36dd1eb7421a 166,270,372
+packages/landing/src/sections/Pages.astro
+  s_d6504674c8e7fb::t_f6eba05f54a536 12
+packages/landing/src/demos/CaptureStage.tsx
+  s_d6504674c8e7fb::t_16bf6dd97948b1 8,18
+packages/landing/src/replica/Stage.tsx
+  s_d6504674c8e7fb::t_16bf6dd97948b1 41-42,45-56
+packages/landing/src/replica/Page.tsx
+  s_d6504674c8e7fb::t_67c8be4ea88823 392
+  s_d6504674c8e7fb::t_57e87b7b2b5d1d 383
+  s_d6504674c8e7fb::t_58d07ed78a1b0e 396-403
+  s_d6504674c8e7fb::t_76a194c3e2047c 47,51,71-72,78,215,221,231,352-360
+  s_d6504674c8e7fb::t_fd23d2e9ef179b 1-46,49,52-60,62-70,73-77,79-214,216-220,222-230,232-351,362-370,373-375,378-379,384-385,389-391,393-395,404-414
+  s_d6504674c8e7fb::t_f369f845126b83 48,50,61,361,371-372,376-377,380-382,386-388
+packages/landing/src/demos/PagesDemo.tsx
+  s_d6504674c8e7fb::t_67c8be4ea88823 299-303
+  s_d6504674c8e7fb::t_36a775b5a0b024 1,3-4
+  s_d6504674c8e7fb::t_58d07ed78a1b0e 97-104,110,124,126-136,162-166,275-276,280-288,290-298,306,311-313,317
+  s_d6504674c8e7fb::t_baa5d3a7d3c879 19,23-27,89,96,209,219-225,278,289,305,307-310,315-316
+packages/landing/src/demos/lumen.ts
+  s_d6504674c8e7fb::t_59cc8842adf8ae 7-8,83,193-208,210-220
+packages/landing/src/demos/ColdStartFindings.tsx
+  s_d6504674c8e7fb::t_1a08456ea56300 1-62
+packages/landing/src/styles/theme.css
+  s_d6504674c8e7fb::t_387d3eb690ae2c 107-114,116-117,119,122,132-137,140-149
+  s_d6504674c8e7fb::t_67c8be4ea88823 115,118,120-121,123-131
+  s_d6504674c8e7fb::t_9e02c958a4b6af 138-139
+packages/landing/src/replica/Inbox.tsx
+  s_d6504674c8e7fb::t_49640ef178cbeb 75
+  s_d6504674c8e7fb::t_f369f845126b83 18,87
+packages/landing/src/demos/Cursor.tsx
+  s_d6504674c8e7fb::t_49640ef178cbeb 29-31
+packages/landing/src/demos/timeline.ts
+  s_d6504674c8e7fb::t_f2ca7d8ad53b2a 25-28,77-78,94-95,98-99,165-168,175,184-185
+packages/landing/src/replica/Chat.tsx
+  s_d6504674c8e7fb::t_eeae9a2417c515 31-32,166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8011c709b87c46c0fe2dc43a9241e02b2e788e5a",
+  "prompts": {},
+  "sessions": {
+    "s_d6504674c8e7fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6d7ddc6-82d7-41de-8b95-c0408aeb2d07",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
