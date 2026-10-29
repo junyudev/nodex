@@ -1,0 +1,31 @@
+.github/workflows/release-rehearsal.yml
+  s_6c9891f66c664a::t_9975f4f95c6683 38
+scripts/release/candidate.ts
+  s_6c9891f66c664a::t_9975f4f95c6683 69-73
+scripts/release/candidate.test.ts
+  s_6c9891f66c664a::t_c3331265026f62 1-5,7-23,58-117
+CHANGELOG.md
+  s_6c9891f66c664a::t_d5d8f2473cc561 9-16,18,46,50
+Cargo.lock
+  s_6c9891f66c664a::t_0f135b30368dea 1114,1130,1156,1189,1200,1216,1244,1256,1268,1287,1294
+Cargo.toml
+  s_6c9891f66c664a::t_1d862a7cd7f028 18
+package.json
+  s_6c9891f66c664a::t_6b68ac0a96ddb7 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1dba4c17e47f2a63397c12cecf8ed32864c58c4d",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
