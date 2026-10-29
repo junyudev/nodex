@@ -2,12 +2,13 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
-import { _electron as electron, type ElectronApplication } from "playwright";
+import { _electron as electron, type ElectronApplication, type Page } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { APP_RENDERER_URL, buildTopLevelRendererCsp } from "../shared/app-renderer-policy";
 import { buildAppFilesystemPath, buildAppFilesystemUrl } from "../shared/app-protocol";
 import { isolatedElectronArguments } from "../../scripts/isolated-run/electron-arguments";
+import type { ProtocolImageFixtureControl } from "../../tests/fixtures/app-renderer-protocol/electron-main";
 
 const temporaryDirectories: string[] = [];
 
@@ -29,7 +30,7 @@ function createSilentWaveBuffer(): Buffer {
   return buffer;
 }
 
-async function readImageInRenderer(page: import("playwright").Page, source: string) {
+async function readImageInRenderer(page: Page, source: string) {
   return await page.evaluate(async (url) => {
     const response = await fetch(url);
     const blob = await response.blob();
@@ -51,6 +52,22 @@ async function readImageInRenderer(page: import("playwright").Page, source: stri
       canExport: canvas.toDataURL().startsWith("data:image/png;base64,"),
     };
   }, source);
+}
+
+// A zero naturalWidth can mean an authorized response is still arriving. Native
+// decode completion distinguishes that pending state from an actual image error.
+async function readLoadedImageDimensions(page: Page, ids: readonly string[]) {
+  await page.waitForLoadState("domcontentloaded");
+  return await page.evaluate(async (imageIds) => {
+    return await Promise.all(
+      imageIds.map(async (id) => {
+        const image = document.getElementById(id);
+        if (!(image instanceof HTMLImageElement)) throw new Error(`Missing fixture image ${id}`);
+        await image.decode();
+        return image.naturalWidth;
+      }),
+    );
+  }, ids);
 }
 
 afterEach(() => {
@@ -120,23 +137,10 @@ describe("production app renderer origin", () => {
         secure: true,
         subtleType: "object",
       });
-      await expect
-        .poll(() =>
-          page.evaluate(() => {
-            const image = document.querySelector("#local-image");
-            return image instanceof HTMLImageElement && image.complete && image.naturalWidth;
-          }),
-        )
-        .toBe(1);
+      await expect(
+        readLoadedImageDimensions(page, ["local-image", "static-symlink"]),
+      ).resolves.toEqual([1, 1]);
       await expect(page.locator("#local-image").getAttribute("src")).resolves.toBe(imageUrl);
-      await expect
-        .poll(() =>
-          page.evaluate(() => {
-            const image = document.querySelector("#static-symlink");
-            return image instanceof HTMLImageElement && image.complete && image.naturalWidth;
-          }),
-        )
-        .toBe(1);
       await expect
         .poll(() =>
           page.evaluate(() => {
@@ -217,16 +221,9 @@ describe("production app renderer origin", () => {
           env: childEnvironment,
         });
         const page = await application.firstWindow();
-        await expect
-          .poll(() =>
-            page.evaluate(() =>
-              ["filesystem-image", "static-image"].map((id) => {
-                const image = document.querySelector(`#${id}`);
-                return image instanceof HTMLImageElement && image.complete ? image.naturalWidth : 0;
-              }),
-            ),
-          )
-          .toEqual([1, 1]);
+        await expect(
+          readLoadedImageDimensions(page, ["filesystem-image", "static-image"]),
+        ).resolves.toEqual([1, 1]);
       } finally {
         if (application) await application.close();
       }
@@ -260,6 +257,8 @@ describe("development HTTP renderer origin", () => {
         "base64",
       ),
     );
+    const brokenImagePath = path.join(outputDirectory, "broken.png");
+    writeFileSync(brokenImagePath, "not image data");
     writeFileSync(
       path.join(rendererDirectory, "index.html"),
       `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${buildTopLevelRendererCsp({ mode: "development" })}"></head><body><img id="app-source" src="${buildAppFilesystemUrl(imagePath)}" alt="app"><img id="vite-source" src="${buildAppFilesystemPath(imagePath)}" alt="vite"></body></html>`,
@@ -281,35 +280,71 @@ describe("development HTTP renderer origin", () => {
       const address = developmentServer.httpServer?.address();
       if (!address || typeof address === "string") throw new Error("Vite did not bind a port");
       const developmentRendererUrl = `http://127.0.0.1:${address.port}/`;
-      const childEnvironment: Record<string, string> = {
-        NODEX_TEST_RENDERER_URL: developmentRendererUrl,
-      };
+      const childEnvironment: Record<string, string> = {};
       for (const [name, value] of Object.entries(process.env)) {
         if (value !== undefined) childEnvironment[name] = value;
       }
       delete childEnvironment.ELECTRON_RUN_AS_NODE;
+      childEnvironment.NODEX_TEST_RENDERER_URL = developmentRendererUrl;
+      childEnvironment.NODEX_TEST_HOLD_PROTOCOL_IMAGES = "1";
       application = await electron.launch({
         args: [path.join(outputDirectory, "main.js"), ...isolatedElectronArguments()],
         env: childEnvironment,
       });
       const page = await application.firstWindow();
       await expect.poll(() => page.url()).toBe(developmentRendererUrl);
-      await expect
-        .poll(() =>
-          page.evaluate(() =>
-            ["app-source", "vite-source"].map((id) => {
-              const image = document.querySelector(`#${id}`);
-              return image instanceof HTMLImageElement && image.complete ? image.naturalWidth : 0;
-            }),
-          ),
-        )
-        .toEqual([1, 1]);
+      const imagesReady = readLoadedImageDimensions(page, ["app-source", "vite-source"]);
+      let readiness = "pending";
+      void imagesReady.then(
+        () => {
+          readiness = "fulfilled";
+        },
+        () => {
+          readiness = "rejected";
+        },
+      );
+      await Promise.race([
+        application.evaluate(async () => {
+          const control = Reflect.get(
+            globalThis,
+            "nodexProtocolImages",
+          ) as ProtocolImageFixtureControl;
+          await control.requested;
+        }),
+        imagesReady,
+      ]);
+      await expect(readLoadedImageDimensions(page, ["vite-source"])).resolves.toEqual([1]);
+      await expect(
+        page.evaluate(() => {
+          const image = document.querySelector<HTMLImageElement>("#app-source")!;
+          return { complete: image.complete, width: image.naturalWidth };
+        }),
+      ).resolves.toEqual({ complete: false, width: 0 });
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      );
+      expect(readiness).toBe("pending");
+      await application.evaluate(() => {
+        const control = Reflect.get(
+          globalThis,
+          "nodexProtocolImages",
+        ) as ProtocolImageFixtureControl;
+        control.release();
+      });
+      await expect(imagesReady).resolves.toEqual([1, 1]);
       await expect(readImageInRenderer(page, buildAppFilesystemUrl(imagePath))).resolves.toEqual({
         status: 200,
         mimeType: "image/png",
         dimensions: [1, 1],
         canExport: true,
       });
+      await page.evaluate((url) => {
+        const image = document.createElement("img");
+        image.id = "broken-source";
+        image.src = url;
+        document.body.append(image);
+      }, buildAppFilesystemUrl(brokenImagePath));
+      await expect(readLoadedImageDimensions(page, ["broken-source"])).rejects.toThrow();
     } finally {
       if (application) await application.close();
       if (developmentServer) await developmentServer.close();
