@@ -1,0 +1,23 @@
+.github/workflows/release-rehearsal.yml
+  s_6c9891f66c664a::t_9975f4f95c6683 38
+scripts/release/candidate.ts
+  s_6c9891f66c664a::t_9975f4f95c6683 69-73
+scripts/release/candidate.test.ts
+  s_6c9891f66c664a::t_c3331265026f62 1-5,7-23,58-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "07d229191285665d196606a586b014de79ad8f4e",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
