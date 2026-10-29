@@ -90,7 +90,7 @@ that Chromium never delivered.
 - `src/styles/global.css` for landing-only Tailwind, Geist fonts, and the system-driven dark variant
 - `src/styles/theme.css` for site colors and the app colors the replicas use in each theme
 - `src/lib/site.ts` for typed release and install constants
-- `src/changelog-renderer.ts` for build-time `CHANGELOG.md` parsing and rendering
+- `src/changelog.ts` for build-time `CHANGELOG.md` parsing and the entry helpers the changelog page uses
 - `src/download-cta.ts` for copying the Homebrew install command
 - `public/` for copied brand assets, the committed OG image, and `.nojekyll`
 - `scripts/capture-demos.ts` for recording demos into README and social media
@@ -99,7 +99,7 @@ that Chromium never delivered.
 The site is a static multi-page build. It does not use React Router or any client-side routing fallback.
 The homepage links directly to the stable Apple silicon GitHub Release alias without JavaScript or browser architecture detection.
 The homepage release stamp is build-time data: the typed `VERSION_LABEL` constant imports the root app version from the repository `package.json`, so the published site shows the same semver that release automation cuts.
-The changelog page at `/changelog/` is also build-time data: it reads the root `CHANGELOG.md`, renders `Unreleased` first as an in-development entry, and then renders dated release entries in the same order as the source file.
+The changelog page at `/changelog/` is also build-time data: it reads the root `CHANGELOG.md`, shows `Unreleased` first as in development and then each dated release in source order, marks the newest as Latest, and lists every release in a rail that follows the reader. Kinds of change always read Added, Changed, Deprecated, Removed, Fixed, Security. The release in development and the latest release show all their additions and changes; every other list shows its first entries and opens the rest on request. Each entry leads with its first sentence, so write that sentence to stand on its own.
 
 ## Publishing Topology
 

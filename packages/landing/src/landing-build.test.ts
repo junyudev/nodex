@@ -93,12 +93,35 @@ test("demo capture pages stay out of search results", () => {
   expect(readFileSync(join(outputDir, "robots.txt"), "utf8")).toContain("Disallow: /capture/");
 });
 
-test("the changelog starts with Unreleased and its in-development status", () => {
-  const firstRelease = readPage("changelog").querySelector(".changelog-feed article");
+test("the changelog marks the app's version as Latest, after any release in development", () => {
+  const packageJson = JSON.parse(
+    readFileSync(resolve(landingRoot, "../../package.json"), "utf8"),
+  ) as { version: string };
+  const releases = readPage("changelog").querySelectorAll("article[data-release]");
+  const status = (release: (typeof releases)[number]) =>
+    release.querySelector("[data-release-status]")?.textContent.trim();
+  const dated = releases.filter((release) => release.id !== "unreleased");
 
-  expect(firstRelease?.id).toBe("unreleased");
-  expect(firstRelease?.querySelector("h2")?.textContent).toBe("Unreleased");
-  expect(firstRelease?.querySelector("header p")?.textContent).toBe("In development");
+  expect(dated[0]?.id).toBe(`v${packageJson.version}`);
+  expect(releases.filter((release) => status(release) === "Latest")).toEqual([dated[0]]);
+  expect(
+    releases
+      .filter((release) => release.id === "unreleased")
+      .every((release) => release === releases[0] && status(release) === "In development"),
+  ).toBe(true);
+});
+
+test("every release in the changelog rail jumps to that release", () => {
+  const page = readPage("changelog");
+  const releases = new Set(
+    page.querySelectorAll("article[data-release]").map((release) => release.id),
+  );
+  const links = page.querySelectorAll("[data-release-link]");
+
+  expect(links.length).toBe(releases.size);
+  for (const link of links) {
+    expect(releases.has(link.getAttribute("href")?.slice(1) ?? "")).toBe(true);
+  }
 });
 
 test("the build preserves the custom domain and public asset bytes", () => {

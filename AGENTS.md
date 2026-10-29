@@ -166,6 +166,7 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
 - Do NOT add entries to Changed/Fixed if you are changing/fixing a feature that is Unreleased.
 - If unsure whether a change belongs in release notes, default to leaving `CHANGELOG.md` unchanged and mention that choice in the final response.
 - Use one bullet per user-visible change.
+- Open each bullet with a sentence that stands on its own; the public changelog shows it as the entry's lead and the rest as detail.
 - Prefer impact-oriented wording, not implementation wording.
 
 ## Testing Expectations

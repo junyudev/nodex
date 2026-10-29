@@ -1,3 +1,8 @@
+/**
+ * The root CHANGELOG.md as data for the changelog page: releases in source order, Unreleased
+ * first, each with its categories and entries. Entries keep their Markdown; the page renders their
+ * code spans with `inlineHtml` and leads each one with its first sentence (`splitEntry`).
+ */
 export type ChangelogItem = {
   text: string;
 };
@@ -30,7 +35,8 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function renderInlineMarkdown(value: string): string {
+/** An entry's Markdown as HTML: text escaped, code spans kept. */
+export function inlineHtml(value: string): string {
   let output = "";
   let cursor = 0;
 
@@ -217,40 +223,69 @@ export function parseChangelog(content: string): ChangelogRelease[] {
   });
 }
 
-export function renderChangelogHtml(content: string): string {
-  const releases = parseChangelog(content);
+/** Kinds of change in the order the changelog page reads them, whatever order a release uses. */
+export const CHANGE_ORDER = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"];
 
-  return releases
-    .map((release, index) => {
-      const isUnreleased = release.version === null;
-      const releaseId = isUnreleased ? "unreleased" : `v${release.version}`;
-      const dateLabel = isUnreleased ? "In development" : (release.date ?? "");
-      const categoriesHtml = release.categories
-        .map((category) => {
-          const itemsHtml = category.items
-            .map((item) => `<li>${renderInlineMarkdown(item.text)}</li>`)
-            .join("");
+/**
+ * The releases the changelog page shows: each one with entries, in source order, its kinds of
+ * change in CHANGE_ORDER. An Unreleased section with no entries yet is left out.
+ */
+export function releasesToShow(content: string): ChangelogRelease[] {
+  const rank = (category: ChangelogCategory) => {
+    const index = CHANGE_ORDER.indexOf(category.title);
+    return index === -1 ? CHANGE_ORDER.length : index;
+  };
+  return parseChangelog(content)
+    .filter((release) => release.categories.length > 0)
+    .map((release) => ({
+      ...release,
+      categories: [...release.categories].sort((a, b) => rank(a) - rank(b)),
+    }));
+}
 
-          return [
-            '<section class="changelog-category">',
-            `<h3>${escapeHtml(category.title)}</h3>`,
-            `<ul>${itemsHtml}</ul>`,
-            "</section>",
-          ].join("");
-        })
-        .join("");
+/**
+ * Splits an entry after its first sentence or the clause before its first colon, so the page can
+ * set that lead apart from the detail after it. Code spans are never split.
+ */
+export function splitEntry(text: string): { lead: string; rest: string } {
+  let cursor = 0;
 
-      return [
-        `<article class="changelog-release${index === 0 ? " changelog-release-latest" : ""}" id="${releaseId}">`,
-        '<header class="changelog-release-header">',
-        `<h2>${escapeHtml(release.label)}</h2>`,
-        `<p>${escapeHtml(dateLabel)}</p>`,
-        "</header>",
-        '<div class="changelog-release-body">',
-        categoriesHtml,
-        "</div>",
-        "</article>",
-      ].join("");
-    })
-    .join("");
+  while (cursor < text.length) {
+    if (text[cursor] === "`") {
+      const delimiterLength = countBacktickRun(text, cursor);
+      const closingIndex = findMatchingBacktickRun(text, cursor + delimiterLength, delimiterLength);
+      if (closingIndex === -1) break;
+      cursor = closingIndex + delimiterLength;
+      continue;
+    }
+
+    const character = text[cursor];
+    const next = text[cursor + 2];
+    const endsSentence =
+      (character === "." || character === "!" || character === "?") &&
+      text[cursor + 1] === " " &&
+      next !== undefined &&
+      /[A-Z`"“(]/.test(next);
+    const endsClause = character === ":" && text[cursor + 1] === " ";
+
+    if (endsSentence || endsClause) {
+      return { lead: text.slice(0, cursor + 1), rest: text.slice(cursor + 2) };
+    }
+
+    cursor += 1;
+  }
+
+  return { lead: text, rest: "" };
+}
+
+const releaseDate = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/** A release's YYYY-MM-DD date as people read it, the same in every time zone. */
+export function formatReleaseDate(date: string): string {
+  return releaseDate.format(new Date(`${date}T00:00:00Z`));
 }
