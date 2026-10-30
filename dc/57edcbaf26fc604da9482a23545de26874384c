@@ -1,0 +1,44 @@
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_ba060ac4e330f7::t_565fe8f659fa07 6270-6292
+  s_ba060ac4e330f7::t_c9062d75cd3abb 3752-3755,3757
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_ba060ac4e330f7::t_c9062d75cd3abb 79,104,241
+src/renderer/components/message/message-document.test.tsx
+  s_ba060ac4e330f7::t_c9062d75cd3abb 84-103
+docs/product-specs/inbox-behavior.md
+  s_ba060ac4e330f7::t_c9062d75cd3abb 71-72,119-121
+src/renderer/components/message/message-document.tsx
+  s_ba060ac4e330f7::t_c9062d75cd3abb 18-20,38-39,47,58
+crates/nodex-core/src/workspace/inbox.rs
+  s_ba060ac4e330f7::t_c9062d75cd3abb 329,338,340-344,346-351
+CHANGELOG.md
+  s_ba060ac4e330f7::t_ece7bc3264c3e1 12
+docs/product-specs/message-content-behavior.md
+  s_ba060ac4e330f7::t_c9062d75cd3abb 78-82,94-97,100-104
+src/shared/message-content.ts
+  s_ba060ac4e330f7::t_c9062d75cd3abb 41-45,49-50,52-53,55-65,77,80
+src/renderer/features/inbox/inbox-capture-state.test.tsx
+  s_ba060ac4e330f7::t_c9062d75cd3abb 297-298
+src/shared/message-content.test.ts
+  s_ba060ac4e330f7::t_c9062d75cd3abb 56-65,71,80-85,91,96,102
+src/renderer/features/inbox/inbox-capture-state.ts
+  s_ba060ac4e330f7::t_c9062d75cd3abb 42-45
+tests/e2e/message-content.spec.ts
+  s_ba060ac4e330f7::t_c9062d75cd3abb 80,151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc57edcbaf26fc604da9482a23545de26874384c",
+  "prompts": {},
+  "sessions": {
+    "s_ba060ac4e330f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1a19e173-08d8-4dbe-8247-31ddc3af88af",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
