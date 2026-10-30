@@ -1,4 +1,9 @@
 // @effect-diagnostics strictEffectProvide:off
+import {
+  NodexModelAccessPlatform,
+  NodexModelAccessError,
+} from "../platform/NodexModelAccessPlatform";
+import { modelAccessFixture, unavailableModelAccessFixture } from "./model-access-fixture";
 import { it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -27,7 +32,10 @@ const alice: NodexAccountCredentials = {
   refreshToken: Redacted.make("private-refresh"),
   expiresAt: 9_999_999_999_999,
 };
-const harness = (overrides: Partial<NodexAccountPlatform["Service"]> = {}) =>
+const harness = (
+  overrides: Partial<NodexAccountPlatform["Service"]> = {},
+  modelOverrides: Partial<NodexModelAccessPlatform["Service"]> = {},
+) =>
   Effect.gen(function* () {
     const login = yield* Deferred.make<NodexAccountCredentials, NodexAccountPlatformError>();
     const started = yield* Deferred.make<void>();
@@ -36,6 +44,10 @@ const harness = (overrides: Partial<NodexAccountPlatform["Service"]> = {}) =>
     let released = 0;
     let revocations = 0;
     const owner = yield* make.pipe(
+      Effect.provideService(NodexModelAccessPlatform, {
+        ...unavailableModelAccessFixture,
+        ...modelOverrides,
+      }),
       Effect.provideService(NodexAccountPlatform, {
         configured: true,
         configurationError: false,
@@ -294,5 +306,143 @@ it.effect("keeps remembered identity on network loss but requires login after re
     invalid = true;
     expect((yield* value.owner.refresh).status).toBe("reauthentication-required");
     expect((yield* value.owner.signOut).account).toBeNull();
+  }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "keeps the gateway key private, persists it, and retires execution before clearing storage",
+  () =>
+    Effect.gen(function* () {
+      let persisted: NodexAccountCredentials | null = null;
+      let opened = 0;
+      const value = yield* harness(
+        {
+          save: (credentials) =>
+            Effect.sync(() => {
+              persisted = credentials;
+              return "secure" as const;
+            }),
+        },
+        {
+          exchange: () => Effect.succeed(modelAccessFixture),
+          openTopUp: Effect.sync(() => {
+            opened++;
+          }),
+        },
+      );
+      const ready = yield* watch(value.owner, (state) => state.credit?.balance === 12.5);
+      yield* value.owner.signIn;
+      yield* value.finish();
+      const snapshot = yield* Fiber.join(ready);
+      expect(snapshot.credit).toEqual({ balance: 12.5, unit: "USD" });
+      expect(JSON.stringify(snapshot)).not.toContain("synthetic-gateway-key");
+      expect((persisted as NodexAccountCredentials | null)?.modelAccess).toEqual(
+        modelAccessFixture,
+      );
+      expect((yield* value.owner.managed)?.identity.subject).toBe("alice");
+      yield* value.owner.openTopUp;
+      expect(opened).toBe(1);
+      let retired = false;
+      yield* value.owner.onModelsChanged(
+        Effect.gen(function* () {
+          expect(yield* value.owner.managed).toBeNull();
+          retired = true;
+        }),
+      );
+      yield* value.owner.signOut;
+      expect(retired).toBe(true);
+      expect((yield* value.owner.read).credit).toBeNull();
+      yield* value.owner.openTopUp;
+      expect(opened).toBe(1);
+    }).pipe(Effect.scoped),
+);
+
+it.effect("fences a late gateway exchange after sign-out", () =>
+  Effect.gen(function* () {
+    const started = yield* Deferred.make<void>();
+    const exchanged = yield* Deferred.make<typeof modelAccessFixture>();
+    const value = yield* harness(
+      {},
+      {
+        exchange: () =>
+          Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(exchanged))),
+      },
+    );
+    yield* value.owner.signIn;
+    yield* value.finish();
+    yield* Deferred.await(started);
+    yield* value.owner.signOut;
+    yield* Deferred.succeed(exchanged, modelAccessFixture);
+    expect(yield* value.owner.managed).toBeNull();
+    expect((yield* value.owner.read).status).toBe("signed-out");
+    expect(value.saves()).toBe(1);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("retires the managed account on identity verification failure", () =>
+  Effect.gen(function* () {
+    const value = yield* harness(
+      { refresh: () => Effect.fail(new NodexAccountPlatformError({ code: "identity-changed" })) },
+      { exchange: () => Effect.succeed(modelAccessFixture) },
+    );
+    const ready = yield* watch(
+      value.owner,
+      (state) => state.credit !== undefined && state.credit !== null,
+    );
+    yield* value.owner.signIn;
+    yield* value.finish();
+    yield* Fiber.join(ready);
+    yield* value.owner.refresh;
+    expect(yield* value.owner.managed).toBeNull();
+    expect((yield* value.owner.read).status).toBe("reauthentication-required");
+  }).pipe(Effect.scoped),
+);
+
+it.effect("keeps local login usable when the model exchange rejects an unverified email", () =>
+  Effect.gen(function* () {
+    const value = yield* harness(
+      {},
+      { exchange: () => Effect.fail(new NodexModelAccessError({ code: "email_unverified" })) },
+    );
+    const failed = yield* watch(
+      value.owner,
+      (state) => state.modelAccessError === "email_unverified",
+    );
+    yield* value.owner.signIn;
+    yield* value.finish();
+    expect((yield* Fiber.join(failed)).status).toBe("signed-in");
+    expect(yield* value.owner.managed).toBeNull();
+  }).pipe(Effect.scoped),
+);
+
+it.effect("a balance response captured before sign-out cannot restore the key or credit", () =>
+  Effect.gen(function* () {
+    const started = yield* Deferred.make<void>();
+    const balance = yield* Deferred.make<number>();
+    let delayed = false;
+    const value = yield* harness(
+      {},
+      {
+        exchange: () => Effect.succeed(modelAccessFixture),
+        balance: () =>
+          delayed
+            ? Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(balance)))
+            : Effect.succeed(12.5),
+      },
+    );
+    const ready = yield* watch(value.owner, (state) => state.credit?.balance === 12.5);
+    yield* value.owner.signIn;
+    yield* value.finish();
+    yield* Fiber.join(ready);
+    delayed = true;
+    const pending = yield* value.owner.refresh.pipe(Effect.forkScoped);
+    yield* Deferred.await(started);
+    const saves = value.saves();
+    yield* value.owner.signOut;
+    yield* Deferred.succeed(balance, 99);
+    yield* Fiber.join(pending);
+    expect(value.saves()).toBe(saves);
+    expect(yield* value.owner.managed).toBeNull();
+    expect((yield* value.owner.read).credit).toBeNull();
   }).pipe(Effect.scoped),
 );

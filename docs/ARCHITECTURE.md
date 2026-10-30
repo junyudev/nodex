@@ -76,8 +76,11 @@ native Agent accounts remain independent, and cloud availability cannot gate
 local startup or content access. See [Nodex Account Login](product-specs/nodex-account-login-behavior.md).
 
 [ADR 0070](adr/0070-optional-cloud-account-and-subscription-authority.md) records
-the proposed future cloud subscription and usage authority. Billing, paid
-model admission and the cloud Account mapping are not current runtime owners.
+the prepaid model authority: sub2api owns billing, wallet usage and gateway
+admission; the Nodex API exchanges Clerk access for a per-user gateway key. Main
+owns its private lifecycle and account-isolated managed Codex/Claude instances.
+Renderer receives sanitized credit and semantic commands. See
+[Nodex Account and Model Access](product-specs/nodex-account-and-subscription-behavior.md).
 
 ## Domain and authority model
 

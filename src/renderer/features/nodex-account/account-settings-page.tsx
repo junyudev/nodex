@@ -1,3 +1,4 @@
+import { formatNodexCredit } from "../../../shared/nodex-models";
 import { useEffect, useState } from "react";
 import { NODEX_ACCOUNT_ERROR_COPY } from "../../../shared/nodex-account-copy";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -44,6 +45,15 @@ function AccountSettingsContent() {
   }
 
   const detail = description();
+  const modelError = account.snapshot?.modelAccessError;
+  const modelNotice =
+    modelError === "email_unverified"
+      ? "Verify your email to use Nodex models."
+      : modelError === "forbidden_client"
+        ? "This app cannot access Nodex models."
+        : modelError
+          ? "Nodex models are unavailable. Try again."
+          : null;
 
   return (
     <NodexSettingsPageSurface title="Account">
@@ -139,7 +149,7 @@ function AccountSettingsContent() {
                   Sign out
                 </NodexButton>
               ) : null}
-              {view.offline ? (
+              {view.offline || modelError ? (
                 <NodexButton
                   variant="secondary"
                   size="sm"
@@ -165,6 +175,36 @@ function AccountSettingsContent() {
           ) : null}
         </div>
       </NodexSettingsSection>
+      {view.signedIn ? (
+        <NodexSettingsSection>
+          <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <span className="text-sm text-token-text-secondary">Credit</span>
+            <div className="flex items-center gap-3">
+              <span
+                aria-label="Remaining credit"
+                className="text-sm tabular-nums text-token-text-primary"
+              >
+                {account.snapshot?.credit
+                  ? formatNodexCredit(account.snapshot.credit.balance)
+                  : "—"}
+              </span>
+              <NodexButton
+                variant="secondary"
+                size="sm"
+                disabled={busy}
+                onClick={() => account.act("openTopUp")}
+              >
+                Top up
+              </NodexButton>
+            </div>
+          </div>
+          {modelNotice ? (
+            <p role="alert" className="px-4 pb-3 text-xs text-danger">
+              {modelNotice}
+            </p>
+          ) : null}
+        </NodexSettingsSection>
+      ) : null}
     </NodexSettingsPageSurface>
   );
 }

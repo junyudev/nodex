@@ -112,7 +112,7 @@ export function fallbackTextGenerationModelSelection(
     ),
     ...(options?.includeConfiguredInstances === true
       ? Object.entries(providerInstances).flatMap(([instanceId, instance]) =>
-          TEXT_GENERATION_FALLBACK_DRIVERS.includes(instance.driver)
+          instance.source !== "nodex" && TEXT_GENERATION_FALLBACK_DRIVERS.includes(instance.driver)
             ? [[ProviderInstanceId.make(instanceId), instance.driver] as const]
             : [],
         )

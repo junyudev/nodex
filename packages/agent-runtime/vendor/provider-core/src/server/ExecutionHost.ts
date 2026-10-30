@@ -49,11 +49,20 @@ export interface HostWorkspaceEnvironment {
 export const withWorkspaceEnvironment = (
   environment: NodeJS.ProcessEnv,
   workspace: HostWorkspaceEnvironment | undefined,
+  isolateProviderCredentials = false,
 ): NodeJS.ProcessEnv => {
   if (workspace === undefined) return environment;
   const next = { ...environment };
   for (const name of workspace.exclude) delete next[name];
-  return { ...next, ...workspace.set };
+  const merged = { ...next, ...workspace.set };
+  if (!isolateProviderCredentials) return merged;
+  // Workspace setup can supply tools and project variables, but cannot redirect managed billing
+  // or restore a native account home. Managed launch values remain authoritative.
+  const reserved = (name: string) => /^(?:HOME$|USERPROFILE$|HOMEDRIVE$|HOMEPATH$|XDG_CONFIG_HOME$|ANTHROPIC_|CLAUDE_|CODEX_|OPENAI_|NODEX_GATEWAY_API_KEY$)/iu.test(name);
+  return {
+    ...Object.fromEntries(Object.entries(merged).filter(([name]) => !reserved(name))),
+    ...Object.fromEntries(Object.entries(environment).filter(([name]) => reserved(name))),
+  };
 };
 
 export class ExecutionHostError extends Schema.TaggedError<ExecutionHostError>()(

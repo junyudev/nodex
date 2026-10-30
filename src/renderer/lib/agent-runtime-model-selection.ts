@@ -1,3 +1,4 @@
+import { isNodexProviderId } from "../../shared/nodex-models";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
@@ -30,7 +31,11 @@ export function defaultAgentRuntimeModelSelection(
   saved: AgentRuntimeCodexDefaults = {},
 ): ModelSelection | null {
   const available = providers.filter(
-    (provider) => isAgentRuntimeProviderAvailable(provider) && provider.models.length > 0,
+    (provider) =>
+      provider.source !== "nodex" &&
+      !isNodexProviderId(provider.instanceId) &&
+      isAgentRuntimeProviderAvailable(provider) &&
+      provider.models.length > 0,
   );
   const provider = available.find((entry) => entry.instanceId === "codex") ?? available[0];
   if (!provider) return null;
@@ -83,6 +88,10 @@ export function agentRuntimeBinding(
   instanceId: string,
   instances: readonly { readonly binding: AgentBackendBinding }[],
 ): AgentBackendBinding | undefined {
+  if (isNodexProviderId(instanceId))
+    return instanceId.startsWith("nodex_codex_")
+      ? { kind: "codex", runtimeInstanceId: instanceId }
+      : { kind: "claude", instanceConfigId: instanceId, runtimeInstanceId: instanceId };
   return instanceId === "codex"
     ? { kind: "codex" }
     : instances.find((entry) => agentRuntimeProviderId(entry.binding) === instanceId)?.binding;

@@ -1,6 +1,8 @@
+import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { expect, test } from "@playwright/test";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { openComposerModelPicker } from "./support/composer-model-picker";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { materializeScenario } from "../../scripts/scenarios/seed/scenario-seed";
@@ -189,5 +191,72 @@ test("rejects canceled and wrong-state callbacks and retires a revoked Nodex gra
     } finally {
       await oauth.close();
     }
+  }
+});
+
+test("offers prepaid Nodex models and credit only for the signed-in account", async () => {
+  test.setTimeout(180_000);
+  const oauth = await startNodexOAuthHttpFixture();
+  const harness = await ElectronScenarioHarness.create({
+    label: "nodex-models",
+    environment: oauth.environment,
+  });
+  try {
+    const page = await harness.launch();
+    const readHandoffs = await captureNodexBrowserHandoff(harness.application);
+    const catalog = async () =>
+      (await page.evaluate(() =>
+        window.api!.invoke("agent-runtime:providers:read", {}),
+      )) as AgentRuntimeOperations["providers.read"]["output"];
+    expect((await catalog()).filter((provider) => provider.source === "nodex")).toEqual([]);
+    await openNodexAccount(page);
+    await completeLogin(harness, oauth, readHandoffs);
+    await expect(page.getByLabel("Remaining credit")).toHaveText("$12.50");
+    await page.getByRole("button", { name: "Top up", exact: true }).click();
+    await expect.poll(readHandoffs).toContain("https://console.nodex.jyu.app/topup");
+    const managed = (await catalog()).filter((provider) => provider.source === "nodex");
+    expect(managed).toHaveLength(2);
+    expect(
+      managed.flatMap((provider) => provider.models.map((model) => model.slug)).sort(),
+    ).toEqual(["claude-opus-5-5", "gpt-6-luna", "gpt-6.1-sol"]);
+    expect(JSON.stringify(managed)).not.toContain("scenario-gateway-key");
+    const encrypted = await readFile(
+      path.join(harness.profile.nodexHome, "account/credentials.enc"),
+    );
+    expect(encrypted.includes(Buffer.from("scenario-gateway-key"))).toBe(false);
+    oauth.setBalance(0);
+    await refreshNodexAccount(page);
+    await expect(page.getByLabel("Remaining credit")).toHaveText("$0.00");
+    await page.screenshot({ path: test.info().outputPath("account-credit.png") });
+    await page.getByRole("button", { name: "Back to app", exact: true }).click();
+    await page
+      .getByRole("button", { name: /Start new chat in/u })
+      .first()
+      .click();
+    const search = await openComposerModelPicker(page);
+    await search.fill("Nodex");
+    await expect(page.getByRole("listbox").getByRole("option")).toHaveCount(3);
+    await page.screenshot({ path: test.info().outputPath("nodex-model-picker.png") });
+    await page.getByRole("option", { name: /GPT-6.1 Sol/u }).click();
+    await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
+      "GPT-6.1 Sol",
+    );
+    await openComposerModelPicker(page);
+    await page.getByRole("combobox", { name: "Search models" }).fill("Nodex");
+    await page.getByRole("option", { name: /Claude Opus 5.5/u }).click();
+    await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
+      "Claude Opus 5.5",
+    );
+    await page.getByRole("button", { name: "Account and settings", exact: true }).click();
+    await expect(page.getByRole("menu").getByLabel("Remaining credit")).toHaveText("$0.00");
+    await page.getByRole("menuitem", { name: "Top up" }).click();
+    await page.getByRole("button", { name: "Account and settings", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
+    await expectNodexAccount(page, { status: "signed-out", credit: null });
+    expect((await catalog()).filter((provider) => provider.source === "nodex")).toEqual([]);
+    expect(oauth.evidence().invalidRequests).toEqual([]);
+  } finally {
+    await harness.close();
+    await oauth.close();
   }
 });

@@ -1,3 +1,5 @@
+import { isNodexProviderId } from "../../../shared/nodex-models";
+import { subscribeNodexAccountChanges } from "../../lib/nodex-account-runtime";
 import {
   agentRuntimeChoiceKey,
   agentRuntimeComposerChoicesAtom,
@@ -812,6 +814,13 @@ export function useAgentRuntimeConversationAdapter(input: {
   });
   // A first message sent while the catalog is still loading waits for it to choose a model.
   const catalogLoad = useRef<Promise<readonly AgentRuntimeProvider[]> | null>(null);
+  useEffect(
+    () =>
+      subscribeNodexAccountChanges(() => {
+        setCatalogRequest((value) => ({ ...value, revision: value.revision + 1 }));
+      }),
+    [],
+  );
   useEffect(() => {
     let active = true;
     const load = agentRuntimeRuntime
@@ -819,6 +828,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       .then((providers) =>
         providers.filter(
           (provider) =>
+            isNodexProviderId(provider.instanceId) ||
             provider.instanceId === "codex" ||
             input.instances.some(
               (instance) => agentRuntimeProviderId(instance.binding) === provider.instanceId,
@@ -1100,7 +1110,8 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (refusal) throw new Error(refusal);
     if (chosen.binding.kind === "claude")
       nativeIntelligenceIntentOwner.write(intentKey, nextIntent);
-    if (fitted.binding.kind === "codex") rememberCodexChoice(fitted);
+    if (fitted.binding.kind === "codex" && !fitted.binding.runtimeInstanceId)
+      rememberCodexChoice(fitted);
     await Promise.all([
       setModelOptionMemory((current) => rememberAgentModelOptions(current, fitted)),
       writeChoice(choiceKey ?? draftKey, {

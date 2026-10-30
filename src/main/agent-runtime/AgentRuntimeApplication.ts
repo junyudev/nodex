@@ -127,6 +127,9 @@ export interface AgentRuntimeApplicationOptions {
   readonly runtimeExists?: Effect.Effect<boolean, unknown>;
   /** Serves the last live provider catalog while execution is stopped. */
   readonly providerCatalog?: {
+    readonly project?: (
+      providers: AgentRuntimeOperations["providers.read"]["output"],
+    ) => Effect.Effect<AgentRuntimeOperations["providers.read"]["output"]>;
     readonly lastKnown: Effect.Effect<AgentRuntimeOperations["providers.read"]["output"] | null>;
     readonly saved: Effect.Effect<AgentRuntimeOperations["providers.read"]["output"] | null>;
     readonly record: (
@@ -322,6 +325,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     );
   const ownedWrite = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
     owned(operation, options.withWriter ? options.withWriter(effect) : effect);
+  const projectCatalog =
+    options.providerCatalog?.project ??
+    ((providers: AgentRuntimeOperations["providers.read"]["output"]) => Effect.succeed(providers));
   /** Reads providers from a running process, holding it meanwhile; a whole catalog is kept. */
   const liveCatalog = (input: AgentRuntimeOperations["providers.read"]["input"]) =>
     Effect.gen(function* () {
@@ -334,7 +340,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       );
       if (live && !input.instanceIds && options.providerCatalog)
         yield* options.providerCatalog.record(live);
-      return live;
+      return live === null ? null : yield* projectCatalog(live);
     });
   const withSessionLane = <A, E, R>(
     sessionId: string,
@@ -710,7 +716,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const providers = yield* connection.request("providers.read", {});
     const provider =
       providers.find((entry) => entry.instanceId === "codex" && entry.enabled) ??
-      providers.find((entry) => entry.enabled);
+      providers.find((entry) => entry.enabled && entry.source !== "nodex");
     const model =
       provider?.models.find((entry) => entry.isDefault)?.slug ?? provider?.models[0]?.slug;
     if (!provider || !model)
@@ -3842,12 +3848,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               ? null
               : yield* options.providerCatalog.lastKnown;
           if (known)
-            return named ? known.filter((provider) => named.includes(provider.instanceId)) : known;
+            return yield* projectCatalog(
+              named ? known.filter((provider) => named.includes(provider.instanceId)) : known,
+            );
           const connection = yield* options.connect;
           const providers = yield* connection.request("providers.read", input);
           // Only a whole catalog stands in for the process while it is stopped.
           if (options.providerCatalog && !named) yield* options.providerCatalog.record(providers);
-          return providers;
+          return yield* projectCatalog(providers);
         }),
       ),
     /** Signs the named Agents out of the sign-in their own CLI keeps; answers their new state. */
@@ -3870,7 +3878,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         Effect.gen(function* () {
           const live = yield* liveCatalog({});
           if (live) return live;
-          return options.providerCatalog ? yield* options.providerCatalog.saved : null;
+          const saved = options.providerCatalog ? yield* options.providerCatalog.saved : null;
+          return saved === null ? null : yield* projectCatalog(saved);
         }),
       ),
     /** A provider read only while execution already runs; null when it is stopped. */

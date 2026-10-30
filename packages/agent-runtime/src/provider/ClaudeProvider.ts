@@ -598,6 +598,15 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
   );
 
+  if (claudeSettings.isolated)
+    return buildServerProvider({
+      presentation: CLAUDE_PRESENTATION,
+      enabled: claudeSettings.enabled,
+      checkedAt,
+      models: allModels,
+      probe: { installed: true, version: null, status: "ready", auth: { status: "authenticated" } },
+    });
+
   if (!claudeSettings.enabled) {
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,

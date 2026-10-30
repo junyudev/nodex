@@ -15,6 +15,7 @@ export interface NodexAccountCredentials {
   readonly accessToken: Redacted.Redacted;
   readonly refreshToken: Redacted.Redacted | null;
   readonly expiresAt: number;
+  readonly modelAccess?: import("./NodexModelAccessPlatform").NodexModelAccess;
 }
 
 /** New grants are revoked on Scope release unless the account owner accepts them. */

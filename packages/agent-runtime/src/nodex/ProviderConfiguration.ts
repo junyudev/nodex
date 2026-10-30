@@ -161,7 +161,11 @@ export const makeWithPorts = Effect.fn("AgentRuntime.ProviderConfiguration")(fun
     const deferredInstanceIds: string[] = [];
     for (const id of changed) {
       const old = before[id];
-      if (old !== undefined && busy.has(id)) {
+      if (
+        old !== undefined &&
+        busy.has(id) &&
+        !(old.source === "nodex" && wanted[id] === undefined)
+      ) {
         next[id] = old;
         deferredInstanceIds.push(id);
         continue;
@@ -182,6 +186,9 @@ export const makeWithPorts = Effect.fn("AgentRuntime.ProviderConfiguration")(fun
       Effect.forkScoped,
     );
   return {
+    /** Stops new requests while the host cancels accepted work, without replacing live drivers. */
+    closeAdmission: (config: ProviderInstanceConfigMap) =>
+      lane.withPermits(1)(ports.admission ? ports.admission(config) : Effect.void),
     withSuspended: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       lane.withPermits(1)(
         Effect.acquireUseRelease(

@@ -232,3 +232,32 @@ it.effect("refuses both provider settings write paths without persisting secrets
     expect(yield* stored.getSettings).toEqual(before);
   }),
 );
+
+it.effect(
+  "retires a busy Nodex instance after closing admission while retaining native providers",
+  () =>
+    Effect.gen(function* () {
+      const id = ProviderInstanceId.make("nodex_codex_account");
+      const nativeId = ProviderInstanceId.make("codex");
+      const initial = {
+        [id]: { driver: ProviderDriverKind.make("codex"), source: "nodex" as const },
+        [nativeId]: { driver: ProviderDriverKind.make("codex") },
+      };
+      const policy = yield* makePolicy(initial);
+      const closed: string[] = [];
+      const configuration = yield* makeWithPorts(initial, {
+        busyInstances: Effect.succeed(new Set([id, nativeId])),
+        admission: policy.setDesired,
+        closeIdleInstance: (instanceId) =>
+          Effect.gen(function* () {
+            expect((yield* policy.admission)[id]?.enabled).toBe(false);
+            closed.push(instanceId);
+          }),
+        reconcile: policy.replace,
+      });
+      const result = yield* configuration.configure({ [nativeId]: initial[nativeId]! });
+      expect(result).toEqual({ applied: true, deferredInstanceIds: [] });
+      expect(closed).toEqual([id]);
+      expect(yield* policy.current).toEqual({ [nativeId]: initial[nativeId]! });
+    }),
+);

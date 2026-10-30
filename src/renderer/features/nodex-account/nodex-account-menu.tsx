@@ -1,3 +1,4 @@
+import { formatNodexCredit } from "../../../shared/nodex-models";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { NODEX_ACCOUNT_ERROR_COPY } from "../../../shared/nodex-account-copy";
 import { ActivitySpinnerIcon, SettingsGeneralIcon } from "@/components/shared/icons";
@@ -192,6 +193,21 @@ function AccountMenuActions({
           onSelect={() => account.act("signIn")}
         >
           {view.reauthentication ? "Sign in again" : "Sign in"}
+        </AccountMenuItem>
+      ) : null}
+      {view.signedIn ? (
+        <AccountMenuItem
+          disabled={busy}
+          keyboardShortcut={
+            account.snapshot?.credit ? (
+              <span aria-label="Remaining credit" className="text-tertiary tabular-nums">
+                {formatNodexCredit(account.snapshot.credit.balance)}
+              </span>
+            ) : undefined
+          }
+          onSelect={() => account.act("openTopUp")}
+        >
+          Top up
         </AccountMenuItem>
       ) : null}
       {view.signedIn || view.reauthentication ? (

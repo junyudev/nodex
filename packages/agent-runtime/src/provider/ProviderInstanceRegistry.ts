@@ -48,6 +48,7 @@
  *
  * @module provider/ProviderInstanceRegistry
  */
+import { constrainProviderCatalog } from "../nodex/NodexModelPolicy.ts";
 import {
   providerInstanceConfigEnabledFlag,
   ProviderInstanceId,
@@ -60,6 +61,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -269,10 +271,39 @@ const buildEntry = <R>(input: {
       };
     }
 
+    const generation = createResult.success.textGeneration;
+    // Utility calls belong to the same instance lifetime as conversational execution.
+    const owned = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      Effect.acquireUseRelease(Effect.forkIn(effect, childScope), Fiber.join, Fiber.interrupt);
     return {
       kind: "live" as const,
       live: {
-        instance: createResult.success,
+        instance: {
+          ...createResult.success,
+          textGeneration: {
+            ...generation,
+            generateThreadTitle: (input) => owned(generation.generateThreadTitle(input)),
+            generateCommitMessage: (input) => owned(generation.generateCommitMessage(input)),
+            generatePrContent: (input) => owned(generation.generatePrContent(input)),
+            generateBranchName: (input) => owned(generation.generateBranchName(input)),
+            generateReviewGuide: (input) => owned(generation.generateReviewGuide(input)),
+            ...(generation.generateStructured
+              ? { generateStructured: (input) => owned(generation.generateStructured!(input)) }
+              : {}),
+          },
+          snapshot: {
+            ...createResult.success.snapshot,
+            getSnapshot: createResult.success.snapshot.getSnapshot.pipe(
+              Effect.map((snapshot) => constrainProviderCatalog(snapshot, entry)),
+            ),
+            refresh: createResult.success.snapshot.refresh.pipe(
+              Effect.map((snapshot) => constrainProviderCatalog(snapshot, entry)),
+            ),
+            streamChanges: createResult.success.snapshot.streamChanges.pipe(
+              Stream.map((snapshot) => constrainProviderCatalog(snapshot, entry)),
+            ),
+          },
+        },
         scope: childScope,
         entry,
       },

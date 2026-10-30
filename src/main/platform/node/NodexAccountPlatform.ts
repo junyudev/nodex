@@ -27,6 +27,8 @@ import {
 import { SecretEncryption } from "../SecretEncryption";
 import { resolveNodexAccountConfiguration } from "../../nodex-account/configuration";
 
+import { modelAccessSchema } from "./NodexModelAccessPlatform";
+
 const failure = (code: NodexAccountErrorCode) => new NodexAccountPlatformError({ code });
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const callbackStyleHash = createHash("sha256").update(NODEX_ACCOUNT_CALLBACK_CSS).digest("base64");
@@ -60,6 +62,7 @@ const storedSchema = z
     accessToken: z.string().min(1).max(16_384),
     refreshToken: z.string().min(1).max(16_384).nullable(),
     expiresAt: z.number().finite().positive(),
+    modelAccess: modelAccessSchema.optional(),
   })
   .strict();
 
@@ -324,6 +327,14 @@ export const make = Effect.fn("NodexAccountPlatform.make")(function* (host: Node
             accessToken: Redacted.make(stored.accessToken),
             refreshToken: stored.refreshToken ? Redacted.make(stored.refreshToken) : null,
             expiresAt: stored.expiresAt,
+            ...(stored.modelAccess
+              ? {
+                  modelAccess: {
+                    ...stored.modelAccess,
+                    apiKey: Redacted.make(stored.modelAccess.apiKey),
+                  },
+                }
+              : {}),
           };
         } finally {
           await file.close();
@@ -350,6 +361,14 @@ export const make = Effect.fn("NodexAccountPlatform.make")(function* (host: Node
               ? Redacted.value(credentials.refreshToken)
               : null,
             expiresAt: credentials.expiresAt,
+            ...(credentials.modelAccess
+              ? {
+                  modelAccess: {
+                    ...credentials.modelAccess,
+                    apiKey: Redacted.value(credentials.modelAccess.apiKey),
+                  },
+                }
+              : {}),
           };
           const ciphertext = encryption.encryptString(JSON.stringify(payload));
           await requirePrivateDirectory();

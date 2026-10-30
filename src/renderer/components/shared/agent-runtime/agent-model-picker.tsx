@@ -1,3 +1,5 @@
+import { isNodexProviderId } from "../../../../shared/nodex-models";
+import { NodexLogoMarkIcon } from "@/components/shared/icons";
 import { useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import type { AgentBackendBinding } from "../../../../shared/agent-backend";
 import type { AgentModelSelection } from "../../../../shared/agent-model-catalog";
@@ -348,7 +350,12 @@ export function AgentModelPicker(
     const qualifier = agentRuntimeQualifier(entry.binding, entry.label);
     return {
       value: agentModelKey(entry.binding, entry.model.id),
-      leftSlot: <AgentProviderIcon kind={entry.binding.kind} className="size-3.5" />,
+      leftSlot:
+        entry.binding.runtimeInstanceId && isNodexProviderId(entry.binding.runtimeInstanceId) ? (
+          <NodexLogoMarkIcon monochrome className="size-3.5" />
+        ) : (
+          <AgentProviderIcon kind={entry.binding.kind} className="size-3.5" />
+        ),
       label: qualifier ? (
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className="truncate">{entry.model.displayName}</span>

@@ -156,7 +156,10 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv, Path.Pat
       const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
       const modelCatalog = yield* ModelCatalog.ModelCatalog;
       const currentCatalog = modelCatalog.current(DRIVER_KIND);
-      const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+      const processEnv = yield* mergeProviderInstanceEnvironment(
+        environment,
+        config.isolated ? {} : process.env,
+      );
       const executionHost = yield* ExecutionHost.ExecutionHost;
       const authentication = config.hostAuthentication
         ? (executionHost.readProviderAuth?.({

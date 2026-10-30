@@ -1298,10 +1298,11 @@ export function makeClaudeQueryOptions(input: {
     ...(input.supportedDialogKinds === undefined
       ? {}
       : { supportedDialogKinds: input.supportedDialogKinds }),
-    ...(input.settings?.binaryPath
+    ...(input.settings?.binaryPath && !input.settings.isolated
       ? { pathToClaudeCodeExecutable: input.settings.binaryPath }
       : {}),
     ...(input.environment === undefined ? {} : { env: input.environment }),
+    ...(input.settings?.isolated ? { settingSources: [] } : {}),
     ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
     systemPrompt: {
       type: "preset" as const,
@@ -8642,6 +8643,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             environment: ExecutionHost.withWorkspaceEnvironment(
               adapterOptions.environment,
               yield* readWorkspaceEnvironment(turnInput),
+              adapterOptions.settings.isolated,
             ),
             tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
             ...(mcpOverrides.allowedTools === undefined
@@ -9642,14 +9644,19 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     const queryRunner = yield* ClaudeAgentSdkQueryRunner;
     const serverConfig = yield* ServerConfig.ServerConfig;
     const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
-    const baseEnvironment = yield* mergeProviderInstanceEnvironment(environment, hostEnvironment);
+    const baseEnvironment = yield* mergeProviderInstanceEnvironment(
+      environment,
+      config.isolated ? {} : hostEnvironment,
+    );
     const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
     const path = yield* Path.Path;
     const crypto = yield* Crypto.Crypto;
-    const binaryPath = yield* resolveClaudeSdkExecutablePath(
-      expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
-      claudeEnvironment,
-    );
+    const binaryPath = config.isolated
+      ? ""
+      : yield* resolveClaudeSdkExecutablePath(
+          expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
+          claudeEnvironment,
+        );
     return yield* makeClaudeAdapterV2({
       instanceId,
       settings: { ...config, enabled, binaryPath },

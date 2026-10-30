@@ -1,17 +1,12 @@
 # Product Specifications
 
-## Proposed
-
-| Spec                                                                                     | Status   | Last Updated | Summary                                                                                                                              |
-| ---------------------------------------------------------------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| [nodex-account-and-subscription-behavior.md](nodex-account-and-subscription-behavior.md) | Proposed | 2026-10-22   | Optional Clerk account, Stripe subscription, server-owned model capacity, and preservation of local Profiles and native Agent logins |
-
 ## Active
 
 | Spec                                                                                     | Status | Last Updated | Summary                                                                                                                                                                   |
 | ---------------------------------------------------------------------------------------- | ------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [nodex-account-and-subscription-behavior.md](nodex-account-and-subscription-behavior.md) | Active | 2026-10-30   | Optional Clerk account, prepaid sub2api credit, managed Nodex models and independent native Agent logins                                                                  |
 | [plugins-behavior.md](plugins-behavior.md)                                               | Active | 2026-10-26   | Native plugin and skill inventory, account-scoped directory feeds, protected desktop tools and mutation settlement                                                        |
-| [nodex-account-login-behavior.md](nodex-account-login-behavior.md)                       | Active | 2026-10-23   | Optional browser OAuth login, Profile-scoped encrypted credentials and independent native Agent accounts                                                                  |
+| [nodex-account-login-behavior.md](nodex-account-login-behavior.md)                       | Active | 2026-10-30   | Optional browser OAuth login, Profile-scoped encrypted credentials and independent native Agent accounts                                                                  |
 | [page-files-behavior.md](page-files-behavior.md)                                         | Active | 2026-09-05   | Page-local File paths, body occurrences, deduplicated inventory, relationship operations, history, and resource lifecycle                                                 |
 | [library-files-behavior.md](library-files-behavior.md)                                   | Active | 2026-09-05   | Independent Library Files, exact versions, bounded usage queries, Page relationships and lifecycle                                                                        |
 | desktop-startup-behavior.md                                                              | Active | 2026-08-25   | Canonical first window, parser-time brand frame, native material, progress, ordered multi-window activation, and same-window failure recovery                             |

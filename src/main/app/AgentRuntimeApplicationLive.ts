@@ -1,3 +1,8 @@
+import { NodexAccount } from "../nodex-account/NodexAccount";
+import {
+  managedNodexProviders,
+  projectManagedNodexCatalog,
+} from "../nodex-account/managed-providers";
 import { acpProviderStorageScopes } from "../platform/node/AcpProfilePaths";
 import { CodexVisualizationState } from "../codex-application/CodexVisualizationState";
 import { CodexConversations } from "../codex-application/CodexConversations";
@@ -8,6 +13,7 @@ import { join, resolve } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type {
   AgentRuntimeConfiguration,
+  AgentRuntimeOperations,
   AgentRuntimeIdentity,
 } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
@@ -156,6 +162,7 @@ const supervisor = Layer.effectContext(
     const platform = yield* CodexPlatform;
     const codexLaunch = yield* CodexLocalLaunch;
     const settings = yield* ApplicationSettings;
+    const nodexAccount = yield* NodexAccount;
     const shell = yield* WorktreeShellEnvironmentRuntime;
     const core = yield* CoreAuthority;
     const images = yield* NativePromptImages;
@@ -185,7 +192,7 @@ const supervisor = Layer.effectContext(
     const restoredHistories = yield* Effect.cached(
       Effect.tryPromise(() => readAgentRuntimeNativeHistory(config.nodexHome)),
     );
-    const providerCatalog = yield* makeProviderCatalog({
+    const keptProviderCatalog = yield* makeProviderCatalog({
       home: join(config.nodexHome, "agent-runtime"),
       // Everything the engine reads to declare providers, except secrets and probe results.
       identity: Effect.gen(function* () {
@@ -201,6 +208,7 @@ const supervisor = Layer.effectContext(
           ],
           providers: [snapshot.claudeAgents, snapshot.openCodeAgents, snapshot.acpAgents],
           histories: [...(yield* restoredHistories)],
+          nodex: (yield* nodexAccount.managed)?.identity ?? null,
         };
         return createHash("sha256").update(JSON.stringify(declaration)).digest("hex");
       }),
@@ -209,6 +217,13 @@ const supervisor = Layer.effectContext(
         Effect.map((identity) => identity !== null),
       ),
     });
+    const providerCatalog = {
+      ...keptProviderCatalog,
+      project: (providers: AgentRuntimeOperations["providers.read"]["output"]) =>
+        nodexAccount.managed.pipe(
+          Effect.map((managed) => projectManagedNodexCatalog(providers, managed)),
+        ),
+    };
     // Projectless work and Agent execution's own working directory share one Profile directory;
     // the app path is never a working directory (packaged, it is a file inside the archive).
     const projectlessWorkspaceRoot = join(config.nodexHome, "tasks");
@@ -549,6 +564,17 @@ const supervisor = Layer.effectContext(
         );
         providers[id] = { ...provider, config: { ...provider.config, ...storageScopes } };
       }
+      const managed = managedNodexProviders({
+        home: config.nodexHome,
+        codexBinary: resolve(platform.runtime.binaryPath),
+        environment,
+        managed: yield* nodexAccount.managed,
+      });
+      Object.assign(providers, managed);
+      for (const provider of Object.values(managed)) {
+        const home = (provider.config as { homePath: string }).homePath;
+        yield* fs.makeDirectory(home, { recursive: true, mode: 0o700 });
+      }
       const configuration: AgentRuntimeConfiguration = {
         home: join(config.nodexHome, "agent-runtime"),
         cwd: projectlessWorkspaceRoot,
@@ -688,6 +714,20 @@ const supervisor = Layer.effectContext(
       Effect.map((result) => result ?? { applied: true, deferredInstanceIds: [] }),
     );
     yield* Deferred.succeed(ready, runtime);
+    yield* nodexAccount.onModelsChanged(
+      refresh.pipe(
+        Effect.asVoid,
+        Effect.catchCause(() =>
+          runtime
+            .withStopped(
+              Effect.logWarning(
+                "Agent execution stopped because Nodex model retirement could not be confirmed",
+              ),
+            )
+            .pipe(Effect.orDie),
+        ),
+      ),
+    );
     const claudeUsage = yield* makeClaudeUsage({
       declared: settings.snapshot().pipe(
         Effect.map((snapshot) =>

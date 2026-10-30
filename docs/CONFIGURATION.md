@@ -22,12 +22,14 @@ Profile home resolves in this order:
 
 Nodex Account has its own production identity domain and user pool:
 
-| Domain                   | Purpose                                                                  |
-| ------------------------ | ------------------------------------------------------------------------ |
-| `nodex.jyu.app`          | Product website, downloads and update feeds                              |
-| `accounts.nodex.jyu.app` | Clerk-hosted sign-in and account management                              |
-| `clerk.nodex.jyu.app`    | Clerk OAuth issuer and Frontend API                                      |
-| `api.nodex.jyu.app`      | Reserved for the proposed Nodex Cloud API; no service is implemented yet |
+| Domain                   | Purpose                                                |
+| ------------------------ | ------------------------------------------------------ |
+| `nodex.jyu.app`          | Product website, downloads and update feeds            |
+| `accounts.nodex.jyu.app` | Clerk-hosted sign-in and account management            |
+| `clerk.nodex.jyu.app`    | Clerk OAuth issuer and Frontend API                    |
+| `api.nodex.jyu.app`      | Clerk-token exchange for per-user model gateway access |
+| `api.jyu.app`            | sub2api model gateway, prepaid wallet and usage        |
+| `console.nodex.jyu.app`  | Prepaid credit purchases and web console               |
 
 The account portal is not the OAuth issuer. Other products under `jyu.app`
 do not share Nodex identities or subscription access. Development and
@@ -80,11 +82,15 @@ callback `https://clerk.nodex.jyu.app/v1/oauth_callback`. It requests only
 Wildcard callbacks and Device Flow remain disabled. Google remains disabled
 until its own production credentials and sign-in have been verified.
 
-Credentials are encrypted under `${NODEX_HOME}/account/credentials.enc`, bound
+OAuth and per-user model gateway credentials are encrypted under `${NODEX_HOME}/account/credentials.enc`, bound
 to the Profile, issuer and client. They are separate from native Agent homes
 and content backups. The test-only `NODEX_TEST_CLERK_LOOPBACK=1` flag permits a
 `127.0.0.1` HTTP issuer in unpackaged fixtures; packaged builds always require
-HTTPS. See [Nodex Account Login](product-specs/nodex-account-login-behavior.md).
+HTTPS. Managed models have private account-specific homes under
+`${NODEX_HOME}/account/models/`; their configuration never changes user Agent
+settings. Credit is prepaid through the web console, with sub2api owning billing
+and usage. See [Nodex Account and Model Access](product-specs/nodex-account-and-subscription-behavior.md)
+and [Nodex Account Login](product-specs/nodex-account-login-behavior.md).
 
 ## Composer prediction assignments
 

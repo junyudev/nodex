@@ -5,6 +5,10 @@ import type { AgentBackendBinding } from "./agent-backend";
 
 /** Provider keys are shared by desktop configuration and model selection. */
 export function agentRuntimeProviderId(binding: AgentBackendBinding): string | null {
+  if (binding.runtimeInstanceId)
+    return /^[a-z][a-z0-9_-]{0,127}$/u.test(binding.runtimeInstanceId)
+      ? binding.runtimeInstanceId
+      : null;
   if (binding.kind === "codex") return "codex";
   const id = binding.instanceConfigId;
   if (!id || id.trim() !== id || id.length > 128) return null;

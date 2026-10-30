@@ -508,7 +508,10 @@ notices match. Output corruption triggers a rebuild. Compilation happens in a
 temporary sibling tree and publishes only a complete bundle, preserving the
 previous output if a rebuild fails.
 
-The Claude Agent SDK dependency supplies its matching platform runtime. Update
+The Claude Agent SDK dependency supplies its matching platform runtime. The
+standalone bundle includes the SDK and its native executable package, allowing
+managed Nodex Claude execution without a user-installed CLI. Both enter the
+build identity and output verification. Update
 the root and Agent Runtime manifests together; installation and bundling derive
 the runtime version and build receipt from that SDK closure. Scripted ACP peers
 use the SDK's `/unstable` v1 entrypoint to retain the negotiated lifecycle and

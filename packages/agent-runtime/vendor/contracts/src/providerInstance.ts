@@ -126,6 +126,8 @@ export const ProviderInstanceConfig = Schema.Struct({
   displayName: Schema.optional(TrimmedNonEmptyString),
   accentColor: Schema.optional(TrimmedNonEmptyString),
   environment: Schema.optionalKey(ProviderInstanceEnvironment),
+  source: Schema.optionalKey(Schema.Literal("nodex")),
+  modelAllowlist: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   enabled: Schema.optionalKey(Schema.Boolean),
   config: Schema.optionalKey(Schema.Unknown),
 });

@@ -1,5 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { NodexModelAccessPlatform } from "../platform/NodexModelAccessPlatform";
+import * as NativeModelAccess from "../platform/node/NodexModelAccessPlatform";
 import * as NodexAccount from "../nodex-account/NodexAccount";
 import { NodexAccountPlatform, NodexAccountPlatformError } from "../platform/NodexAccountPlatform";
 import * as NativeNodexAccount from "../platform/node/NodexAccountPlatform";
@@ -25,4 +27,17 @@ const platform = Layer.effect(
   }),
 ).pipe(Layer.provide(SecretEncryption.live));
 
-export const live = NodexAccount.live.pipe(Layer.provide(platform));
+const models = Layer.effect(
+  NodexModelAccessPlatform,
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    const desktop = yield* ElectronDesktop;
+    return NativeModelAccess.make({
+      isPackaged: config.isPackaged,
+      environment: config.environment,
+      openExternal: (url) => desktop.shell.openExternal(url),
+    });
+  }),
+);
+
+export const live = NodexAccount.live.pipe(Layer.provide(Layer.merge(platform, models)));

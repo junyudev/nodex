@@ -29,6 +29,14 @@ export type NodexAccountErrorCode = (typeof NODEX_ACCOUNT_ERROR_CODES)[number];
 
 export const NodexAccountSnapshotSchema = z
   .object({
+    credit: z
+      .object({ balance: z.number().finite(), unit: z.literal("USD") })
+      .nullable()
+      .optional(),
+    modelAccessError: z
+      .enum(["unauthenticated", "forbidden_client", "email_unverified", "unavailable"])
+      .nullable()
+      .optional(),
     revision: z.number().int().nonnegative(),
     configured: z.boolean(),
     status: z.enum(["signed-out", "signing-in", "signed-in", "reauthentication-required"]),

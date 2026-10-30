@@ -160,6 +160,15 @@ it("a kept catalog never replaces an Agent that was checked more recently", () =
   assert.deepEqual(adoptClaudeRows([fresh], []), []);
 });
 
+it("leaves Nodex-managed Claude instances out of the subscription meters", () => {
+  const own = claude({});
+  const managed = {
+    ...claude({ instanceId: "nodex_claude_account" }),
+    source: "nodex",
+  } as Provider;
+  assert.deepEqual(adoptClaudeRows(null, [own, managed]), [own]);
+});
+
 it.effect("keeps a shown reading no older than five minutes while execution runs", () =>
   Effect.scoped(
     Effect.gen(function* () {

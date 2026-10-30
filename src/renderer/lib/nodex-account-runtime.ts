@@ -31,6 +31,14 @@ const refreshCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
+const topUpCommand = defineRendererCommand({
+  key: "nodex_account.open_top_up",
+  channel: "nodex-account:open-top-up",
+  authority: "main",
+  owner: "NodexAccount",
+  protocol: { kind: "returned_value" },
+});
+
 export const nodexAccountQueryKey = ["nodexAccount"] as const;
 
 /** Read and command replies share the same revision fence as Main's broadcasts. */
@@ -66,6 +74,7 @@ export const nodexAccountQueryOptions = queryOptions({
 });
 
 export const nodexAccountActions = {
+  openTopUp: () => invokePlainCommand(topUpCommand),
   signIn: () => invokePlainCommand(signInCommand),
   cancelSignIn: () => invokePlainCommand(cancelSignInCommand),
   signOut: () => invokePlainCommand(signOutCommand),

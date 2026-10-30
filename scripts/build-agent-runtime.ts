@@ -50,8 +50,28 @@ function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "
   const binary = require.resolve("esbuild/bin/esbuild");
   const sdk = dirname(require.resolve("@anthropic-ai/claude-agent-sdk"));
   const native = materializeAgentRuntimeNative(root);
+  const sdkRequire = createRequire(join(sdk, "package.json"));
+  const platformPackage = `@anthropic-ai/claude-agent-sdk-${native.node.platform}-${native.node.architecture}`;
+  const optionalDependencies =
+    (
+      JSON.parse(readFileSync(join(sdk, "package.json"), "utf8")) as {
+        optionalDependencies?: Record<string, string>;
+      }
+    ).optionalDependencies ?? {};
+  const sdkNativePackages = [platformPackage, `${platformPackage}-musl`].flatMap((name) => {
+    if (!optionalDependencies[name]) return [];
+    try {
+      return [{ name, directory: dirname(sdkRequire.resolve(`${name}/package.json`)) }];
+    } catch {
+      return [];
+    }
+  });
+  if (sdkNativePackages.length === 0)
+    throw new Error(
+      "The Claude Agent SDK native runtime is missing. Install optional dependencies before building.",
+    );
   const identityFor = (inputs: readonly string[]) =>
-    agentRuntimeBuildIdentity({ root, binary, sdk, mode, inputs, native });
+    agentRuntimeBuildIdentity({ root, binary, sdk, sdkNativePackages, mode, inputs, native });
   const receipt = readAgentRuntimeBuildReceipt(receiptPath);
   const reusable = canReuseAgentRuntimeBuild(root);
   if (reusable && receipt) {
@@ -111,6 +131,8 @@ function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "
     const packagedSdk = join(temporaryOutput, "node_modules/@anthropic-ai/claude-agent-sdk");
     mkdirSync(dirname(packagedSdk), { recursive: true });
     cpSync(sdk, packagedSdk, { recursive: true });
+    for (const pkg of sdkNativePackages)
+      cpSync(pkg.directory, join(temporaryOutput, "node_modules", pkg.name), { recursive: true });
     cpSync(native.packageRoot, join(temporaryOutput, "node_modules/node-pty"), { recursive: true });
     cpSync(native.manifestPath, join(temporaryOutput, "native-dependencies.json"));
     for (const notice of ["LICENSE.t3code", "UPSTREAM.json"])

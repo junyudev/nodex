@@ -111,3 +111,32 @@ describe("native snapshot history sources", () => {
     expect(read()).toBe("/fallback/.claude");
   });
 });
+
+it("never substitutes the user Codex or Claude home for a managed account in a Profile snapshot", () => {
+  expect(
+    nativeHistorySources({
+      configuration: {
+        home: "/profile/runtime",
+        cwd: "/repo",
+        providers: {
+          nodex_codex: {
+            driver: "codex",
+            source: "nodex",
+            config: { homePath: "/profile/account/models/codex" },
+          },
+          nodex_claude: {
+            driver: "claudeAgent",
+            source: "nodex",
+            config: { homePath: "/profile/account/models/claude" },
+          },
+        },
+      },
+      environment: { CLAUDE_CONFIG_DIR: "/native/claude" },
+      homeDirectory: "/native",
+      codexHome: "/native/codex",
+    }),
+  ).toEqual([
+    { providerInstanceId: "nodex_codex", driver: "codex", homePath: null },
+    { providerInstanceId: "nodex_claude", driver: "claudeAgent", homePath: null },
+  ]);
+});

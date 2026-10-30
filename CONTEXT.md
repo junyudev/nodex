@@ -938,32 +938,26 @@ explicitly invalidate the same worker-owned read plane.
   for storage/transport mechanics.
 - Say **Card** only for visual structures such as Board or request cards.
 
-## Proposed cloud account vocabulary
-
-These terms belong to the unimplemented
-[Nodex Account proposal](docs/product-specs/nodex-account-and-subscription-behavior.md).
-They do not change the current Profile or native Agent account model.
+## Nodex account vocabulary
 
 ### Nodex Account
 
-A Nodex Account identifies a person using optional Nodex cloud capabilities
-across local Profiles. It does not own a local Profile or its Library.
+A Nodex Account identifies a person using optional cloud model access across
+local Profiles. It does not own a local Profile or Library. Clerk owns identity;
+Main owns each Profile's verified connection and private credential lifecycle.
 
-### Nodex Subscription
+### Prepaid credit
 
-A Nodex Subscription is an Account's recurring purchase of Nodex-provided
-capabilities and included usage for defined service periods.
+The user's USD wallet balance managed by sub2api, which owns billing, usage
+accounting and model gateway admission. Desktop observes remaining credit and
+opens the web console for Top up; local state cannot authorize spending.
 
-### Usage Grant
+### Nodex models
 
-A Usage Grant is a fixed amount of an Account's included model capacity,
-available for a specified service period. Unused capacity expires with that
-period unless the plan explicitly provides otherwise.
-
-### Usage Reservation
-
-A Usage Reservation sets aside capacity from a Usage Grant for one model
-request until its actual consumption or non-execution is established.
+The closed model catalog served through two account-isolated managed Codex and
+Claude provider instances. The Nodex API exchanges Clerk access for their
+per-user gateway key. They require explicit selection and retire with the
+account connection. See [Nodex Account and Model Access](docs/product-specs/nodex-account-and-subscription-behavior.md).
 
 ## Code orientation
 

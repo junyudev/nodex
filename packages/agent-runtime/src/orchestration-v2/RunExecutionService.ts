@@ -1,3 +1,4 @@
+import { nodexCreditFailure, nodexProviderEvent } from "../nodex/NodexModelPolicy.ts";
 import { makeAssistantStreamingFilter } from "./assistantStreaming.ts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
@@ -951,7 +952,10 @@ export const layer: Layer.Layer<
                       providerThreadId: input.terminal.providerThreadId,
                       providerTurnId: input.terminal.providerTurnId,
                       itemOrdinal: input.terminal.failureItemOrdinal,
-                      failure: input.terminal.failure,
+                      failure: nodexCreditFailure(
+                        input.run.providerInstanceId,
+                        input.terminal.failure,
+                      ),
                       occurredAt: completedAt,
                     }),
                   },
@@ -1440,6 +1444,7 @@ export const layer: Layer.Layer<
                 return accepted;
               }),
             ),
+            Stream.map((event) => nodexProviderEvent(input.run.providerInstanceId, event)),
             Stream.tap((event) =>
               ingestion.withPermits(1)(
                 Effect.gen(function* () {

@@ -78,8 +78,9 @@ export interface AgentRuntimeClaudeUsageOptions {
   readonly refreshFloor?: Duration.Input;
 }
 
+/** The user's own Claude accounts; Nodex-managed instances are prepaid gateway access, not subscriptions. */
 const claudeRows = (providers: Providers): Providers =>
-  providers.filter((provider) => provider.driver === "claudeAgent");
+  providers.filter((provider) => provider.driver === "claudeAgent" && provider.source !== "nodex");
 
 /**
  * The Claude Agents a catalog describes, each as of its latest check. A kept catalog can be older

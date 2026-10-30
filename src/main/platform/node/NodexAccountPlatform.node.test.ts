@@ -1,4 +1,9 @@
 // @effect-diagnostics strictEffectProvide:off
+import { NodexModelAccessPlatform } from "../NodexModelAccessPlatform";
+import {
+  modelAccessFixture,
+  unavailableModelAccessFixture,
+} from "../../nodex-account/model-access-fixture";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -189,18 +194,22 @@ it.live(
       yield* Effect.scoped(
         Effect.gen(function* () {
           const lease = yield* value.platform.login;
-          yield* value.platform.save(lease.credentials);
+          yield* value.platform.save({ ...lease.credentials, modelAccess: modelAccessFixture });
           yield* lease.retain;
         }),
       );
       expect(value.revocations()).toBe(0);
       const stored = yield* value.platform.load;
       expect(stored?.identity.subject).toBe("alice");
+      expect(stored?.modelAccess && Redacted.value(stored.modelAccess.apiKey)).toBe(
+        "synthetic-gateway-key",
+      );
       expect(stored && Redacted.value(stored.accessToken)).toBe("secret-access");
       const ciphertext = yield* Effect.promise(() =>
         readFile(join(value.home, "account/credentials.enc")),
       );
       expect(ciphertext.toString("utf8")).not.toContain("secret-access");
+      expect(ciphertext.toString("utf8")).not.toContain("synthetic-gateway-key");
       const changedClient = yield* make({
         ...value.host,
         environment: { ...value.host.environment, NODEX_CLERK_CLIENT_ID: "other-client" },
@@ -237,6 +246,7 @@ it.live(
       yield* Effect.scoped(
         Effect.gen(function* () {
           const owner = yield* makeAccount.pipe(
+            Effect.provideService(NodexModelAccessPlatform, unavailableModelAccessFixture),
             Effect.provideService(NodexAccountPlatform, value.platform),
           );
           const unavailable = yield* owner.changes.pipe(
@@ -255,6 +265,7 @@ it.live(
       );
       value.setUserinfoFailure(false);
       const restarted = yield* makeAccount.pipe(
+        Effect.provideService(NodexModelAccessPlatform, unavailableModelAccessFixture),
         Effect.provideService(NodexAccountPlatform, value.platform),
       );
       const recovered = yield* restarted.changes.pipe(

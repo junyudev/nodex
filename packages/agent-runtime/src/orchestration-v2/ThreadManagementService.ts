@@ -416,6 +416,7 @@ export interface ThreadManagementServiceShape {
     readonly projectId: ProjectId;
     readonly commandId: CommandId;
     readonly instanceId: ProviderInstanceId;
+    readonly model?: string;
   }) => Effect.Effect<void, ThreadManagementProviderInstanceDisabledError>;
   /**
    * Effective enablement for candidate selection, without the receipt-replay
@@ -559,7 +560,16 @@ const make = Effect.gen(function* () {
             : serverSettings.getSettings.pipe(
                 Effect.orDie,
                 Effect.flatMap((current) =>
-                  resolveProjectProviderInstanceEnabled(current, input.projectId, input.instanceId)
+                  resolveProjectProviderInstanceEnabled(
+                    current,
+                    input.projectId,
+                    input.instanceId,
+                  ) &&
+                  (!current.providerInstances[input.instanceId]?.modelAllowlist ||
+                    (input.model !== undefined &&
+                      current.providerInstances[input.instanceId]!.modelAllowlist!.includes(
+                        input.model,
+                      )))
                     ? Effect.void
                     : new ThreadManagementProviderInstanceDisabledError({
                         projectId: input.projectId,
@@ -662,6 +672,7 @@ const make = Effect.gen(function* () {
               projectId: projection.thread.projectId,
               commandId: command.commandId,
               instanceId: (command.modelSelection ?? projection.thread.modelSelection).instanceId,
+              model: (command.modelSelection ?? projection.thread.modelSelection).model,
             }),
           ),
         );
@@ -672,6 +683,7 @@ const make = Effect.gen(function* () {
               projectId: parent.thread.projectId,
               commandId: command.commandId,
               instanceId: command.modelSelection.instanceId,
+              model: command.modelSelection.model,
             }),
           ),
         );

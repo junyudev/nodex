@@ -733,6 +733,7 @@ type PlainResultCommandEndpointPolicy =
   | "nodex-account:cancel-sign-in"
   | "nodex-account:sign-out"
   | "nodex-account:refresh"
+  | "nodex-account:open-top-up"
   | "settings:codex-home:update"
   | "settings:backup:update"
   | "settings:codex-developer:update"

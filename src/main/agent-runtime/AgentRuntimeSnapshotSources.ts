@@ -21,6 +21,10 @@ export function nativeHistorySources(input: {
   const directory = (value: string) =>
     resolve(value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value);
   return Object.entries(input.configuration.providers).map(([providerInstanceId, provider]) => {
+    // Managed providers recover from portable execution history; native user-account snapshots
+    // must never be substituted for an account-isolated managed home.
+    if (provider.source === "nodex")
+      return { providerInstanceId, driver: provider.driver, homePath: null };
     const restored = restoredHome.safeParse(provider.config);
     const retained = restored.success ? restored.data : undefined;
     if (provider.driver === "codex" && retained?.hostAuthentication && retained.homePath)

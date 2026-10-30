@@ -1,7 +1,7 @@
 # Nodex Account Login Behavior
 
 - Status: Active
-- Last updated: 2026-10-25
+- Last updated: 2026-10-30
 
 ## Scope
 
@@ -10,12 +10,11 @@ the rail's account menu or Settings → Account. Local startup, content, backups
 export and local CLI operations remain independent of that connection. Codex,
 Claude Code and other native Agent accounts keep their existing homes and authentication.
 
-This slice supplies sign-in, identity display, refresh, encrypted persistence
-and sign-out. It does not enable purchases, grant model capacity, upload the
-Library or introduce a cloud Account database. The current identity is the
-pair `(issuer, subject)`. A future cloud service maps that pair to its own
-Account ID and independently verifies access before authorizing spending; see
-the [subscription proposal](nodex-account-and-subscription-behavior.md).
+This document owns sign-in, identity display, refresh, encrypted persistence
+and sign-out. The current identity is `(issuer, subject)`. The separate
+[Nodex model access contract](nodex-account-and-subscription-behavior.md) owns
+Clerk-token exchange, prepaid credit and managed execution. Signing in never
+uploads or reassigns the Library.
 
 Nodex Account is a product-specific identity. Other products on `jyu.app` do
 not share its user pool or subscription access. Production identity is bound
@@ -40,9 +39,8 @@ Sign-out removes the prior identity from both surfaces. The menu supports keyboa
 outside dismissal, Escape and focus restoration through the shared menu
 primitive. Settings navigation preserves the Workbench return route.
 
-Native Codex login and quota controls remain separate. The Nodex menu does not
-present a subscription plan, remaining quota or purchasing action before those
-capabilities have a cloud authority.
+Native Codex login and quota controls remain separate. Nodex credit and Top up
+use the prepaid gateway authority described in the model access contract.
 
 ## Ownership and public Interface
 
@@ -81,8 +79,8 @@ Discovery must match the configured issuer. Token, user-info and revocation
 requests stay on that origin, reject redirects, bound response size and time,
 and never expose raw responses through IPC. The access token is verified by
 Clerk's user-info endpoint before the identity is adopted. ID tokens are not
-used as authorization evidence. This identity check does not authorize any
-future subscription service.
+used as authorization evidence. Model access requires a separate server-side
+Clerk-token exchange; a local identity snapshot cannot authorize spending.
 
 The callback accepts only the expected method, host, path, state and one code.
 Malformed or unrelated callbacks do not consume a valid attempt. Its response

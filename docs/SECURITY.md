@@ -613,7 +613,14 @@ read through the authenticated Profile and exact execution identity boundary.
   with no plaintext fallback, provider-home copying or content backup inclusion.
   Cancellation and account changes retire the generation; uncommitted issued
   credentials receive bounded revocation cleanup. Local work does not depend
-  on account availability. See [Nodex Account Login](product-specs/nodex-account-login-behavior.md).
+  on account availability. Per-user gateway keys share the encrypted credential
+  envelope and remain private to Main and managed execution. Isolated per-account
+  homes and restricted environments prevent reuse of native Agent credentials;
+  sign-out closes admission and cancels managed execution before dropping access.
+  Direct injection permits only spending that user's prepaid credit; sub2api owns
+  remote key revocation and wallet enforcement. See
+  [Nodex Account and Model Access](product-specs/nodex-account-and-subscription-behavior.md)
+  and [Nodex Account Login](product-specs/nodex-account-login-behavior.md).
 - Codex and Claude conversation imports require a trusted renderer, an exact native conversation identity and the previewed canonical history home. Claude sources also retain the selected profile identity. The Runtime verifies the physical source home and copies bounded visible history and supported media into its own store, then continues through its own native conversation. Source execution, native ancestry references, authentication, queues and pending approvals are never adopted. Import failures cannot turn a retained execution binding into an empty new chat. Stable request identities reconcile retries without mutating or deleting source history; a changed captured history prefix is rejected. Completed receipts remain usable without the source.
 - Copy setup is a separate trusted-renderer workflow backed by expiring opaque scan ids. It offers configuration and Agent resources without conversation admission. Source homes are canonicalized. Native file copies never replace a target, reject symlinks, stage directory trees before rename, and do not copy SQLite/WAL/SHM files. Config translation allowlists passive settings, removes literal MCP environment/header/token material, and omits authentication, approval, sandbox, and connection state.
 - Application tools use a verified Profile connection and captured execution

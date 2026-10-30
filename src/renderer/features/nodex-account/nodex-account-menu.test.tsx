@@ -171,3 +171,14 @@ describe("Nodex account menu", () => {
     expect(controls.nativeAction).not.toHaveBeenCalled();
   });
 });
+
+test("shows compact prepaid credit and dispatches semantic Top up from the menu", async () => {
+  const controls = renderAccountControls({ ...signedIn, credit: { balance: 7.25, unit: "USD" } });
+  await screen.findByText("Nodex Scenario");
+  await openNodexMenu(controls.trigger());
+  expect(within(screen.getByRole("menu")).getByLabelText("Remaining credit").textContent).toBe(
+    "$7.25",
+  );
+  await selectMenuItem(/^Top up/u);
+  await waitFor(() => expect(controls.invoke).toHaveBeenCalledWith("nodex-account:open-top-up"));
+});

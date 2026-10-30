@@ -161,3 +161,27 @@ describe("Account settings", () => {
     expect(screen.queryByText("private IPC diagnostic")).toBeNull();
   });
 });
+
+test("shows prepaid credit and opens Top up through the account command", async () => {
+  const account = renderAccount({
+    ...signedOut,
+    status: "signed-in",
+    account: {
+      issuer: "https://clerk.nodex.jyu.app",
+      subject: "alice",
+      email: "alice@example.com",
+      name: "Alice",
+      imageUrl: null,
+    },
+    credit: { balance: 12.5, unit: "USD" },
+  });
+  await waitFor(() => expect(screen.getByLabelText("Remaining credit").textContent).toBe("$12.50"));
+  await clickAction("Top up");
+  await waitFor(() => expect(account.invoke).toHaveBeenCalledWith("nodex-account:open-top-up"));
+  await act(async () => {
+    account.emit({ ...signedOut, revision: 1 });
+    await Promise.resolve();
+  });
+  await screen.findByRole("button", { name: "Sign in" });
+  expect(screen.queryByRole("button", { name: "Top up" })).toBeNull();
+});

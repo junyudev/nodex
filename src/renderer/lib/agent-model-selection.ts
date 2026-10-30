@@ -6,11 +6,13 @@ import type {
 import type { AgentModelCatalog, AgentModelSelection } from "../../shared/agent-model-catalog";
 
 export const agentBindingKey = (binding: AgentBackendBinding): string =>
-  binding.kind === "codex"
-    ? "codex"
-    : binding.kind === "acp"
-      ? JSON.stringify([binding.kind, binding.agentDefinitionId, binding.instanceConfigId])
-      : `${binding.kind}:${binding.instanceConfigId}`;
+  binding.runtimeInstanceId
+    ? `runtime:${binding.runtimeInstanceId}`
+    : binding.kind === "codex"
+      ? "codex"
+      : binding.kind === "acp"
+        ? JSON.stringify([binding.kind, binding.agentDefinitionId, binding.instanceConfigId])
+        : `${binding.kind}:${binding.instanceConfigId}`;
 
 export const agentModelKey = (binding: AgentBackendBinding, model: string): string =>
   JSON.stringify([agentBindingKey(binding), model]);

@@ -2667,3 +2667,54 @@ it.each([false, true])(
     }
   },
 );
+
+it("keeps managed Codex and Claude choices without user-configured instances", async () => {
+  const managed = [
+    {
+      ...provider,
+      source: "nodex",
+      displayName: "Nodex",
+      instanceId: `nodex_codex_${"a".repeat(32)}`,
+      models: [{ ...provider.models[0]!, slug: "gpt-6.1-sol", name: "GPT-6.1 Sol" }],
+    },
+    {
+      ...provider,
+      source: "nodex",
+      driver: "claudeAgent",
+      displayName: "Nodex",
+      instanceId: `nodex_claude_${"a".repeat(32)}`,
+      models: [{ ...provider.models[0]!, slug: "claude-opus-5-5", name: "Claude Opus 5.5" }],
+    },
+  ] as AgentRuntimeProvider[];
+  vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([provider, ...managed]);
+  const { result, unmount } = renderHook(
+    () =>
+      useAgentRuntimeConversationAdapter({
+        sessionId: "nodex-draft",
+        sessionUnread: false,
+        projectId: "project",
+        modelProjectId: "project",
+        instances,
+        onRefresh: async () => {},
+        onOpenThread: () => {},
+        ensureDraft: async () => ({ id: "nodex-draft" }),
+      }),
+    { wrapper: RuntimeWorkbench },
+  );
+  await waitFor(() => expect(result.current.provider.modelCatalog?.entries).toHaveLength(3));
+  for (const instance of managed) {
+    const entry = result.current.provider.modelCatalog!.entries.find(
+      (entry) => agentRuntimeProviderId(entry.binding) === instance.instanceId,
+    )!;
+    expect(entry.label).toBe("Nodex");
+    await act(async () => {
+      await result.current.provider.modelCatalog!.choose(entry.selection);
+    });
+    await waitFor(() =>
+      expect(agentRuntimeProviderId(result.current.provider.modelCatalog!.selected.binding)).toBe(
+        instance.instanceId,
+      ),
+    );
+  }
+  await act(async () => unmount());
+});

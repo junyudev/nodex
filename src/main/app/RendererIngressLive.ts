@@ -13,7 +13,6 @@ import * as WorkbenchAgentIpc from "../ipc/handlers/WorkbenchAgentIpc";
 import * as AppUpdateIpc from "../ipc/handlers/AppUpdateIpc";
 import * as OpenCodeSetupIpc from "../ipc/handlers/OpenCodeSetupIpc";
 import * as NodexAccountIpc from "../ipc/handlers/NodexAccountIpc";
-import * as NodexAccountLive from "./NodexAccountLive";
 import * as OpenCodeSetup from "../host-runtime/OpenCodeSetup";
 import * as OpenCodeInstallPlatform from "../platform/node/OpenCodeInstallPlatform";
 import * as ApplicationLifecycleIpc from "../ipc/handlers/ApplicationLifecycleIpc";
@@ -77,7 +76,7 @@ const terminalIngress = TerminalIpc.live.pipe(Layer.provideMerge(TerminalProject
 export const live = Layer.mergeAll(
   WorkbenchAgentIpc.live,
   AppUpdateIpc.live,
-  NodexAccountIpc.live.pipe(Layer.provide(NodexAccountLive.live)),
+  NodexAccountIpc.live,
   OpenCodeSetupIpc.live.pipe(
     Layer.provide(OpenCodeSetup.live.pipe(Layer.provide(OpenCodeInstallPlatform.nodeLive))),
   ),

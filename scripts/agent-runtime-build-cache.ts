@@ -186,6 +186,7 @@ export interface AgentRuntimeBuildIdentity {
   readonly root: string;
   readonly binary: string;
   readonly sdk: string;
+  readonly sdkNativePackages: readonly { readonly name: string; readonly directory: string }[];
   readonly mode: NodeBuildMode;
   readonly inputs: readonly string[];
   readonly native: AgentRuntimeNative;
@@ -242,6 +243,10 @@ export function agentRuntimeBuildIdentity(input: AgentRuntimeBuildIdentity): str
         .filter(Boolean)
         .map((path) => [path, dependencyLinks(path)]),
       sdk: [input.sdk, immutableDirectoryDigest(input.sdk)],
+      sdkNativePackages: input.sdkNativePackages.map((pkg) => [
+        pkg.name,
+        immutableDirectoryDigest(pkg.directory),
+      ]),
       native: [
         input.native.identity,
         immutableDirectoryDigest(input.native.packageRoot),

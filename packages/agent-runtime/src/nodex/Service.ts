@@ -905,8 +905,41 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* storageSnapshot.acquire;
       case "storage.snapshot.release":
         return yield* storageSnapshot.release(input.input.leaseId);
-      case "providers.configure":
-        return yield* providerConfiguration.configure(input.input.providers);
+      case "providers.configure": {
+        const before = yield* providerPolicy.current;
+        const wanted = input.input.providers;
+        const retiring = Object.entries(before).filter(
+          ([id, entry]) => entry.source === "nodex" && !wanted[id as ProviderInstanceId],
+        );
+        // Queue cancellation precedes native teardown: Stop alone holds queued work for later.
+        if (retiring.length) yield* providerConfiguration.closeAdmission(wanted);
+        for (const [id] of retiring) {
+          const active = yield* sql<{
+            readonly run_id: string;
+            readonly thread_id: string;
+            readonly status: string;
+          }>`
+            SELECT run_id, thread_id, status FROM orchestration_v2_projection_runs
+            WHERE provider_instance_id = ${id} AND status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
+          `;
+          for (const row of active.filter((run) => run.status === "queued"))
+            yield* orchestrator.dispatch({
+              type: "queued-run.cancel",
+              commandId: CommandId.make(`nodex-retire:queue:${row.run_id}`),
+              threadId: ThreadId.make(row.thread_id),
+              runId: RunId.make(row.run_id),
+            });
+          for (const row of active.filter((run) => run.status !== "queued"))
+            yield* orchestrator.dispatch({
+              type: "thread.stop",
+              commandId: CommandId.make(`nodex-retire:active:${row.run_id}`),
+              threadId: ThreadId.make(row.thread_id),
+              reason: "Nodex Account disconnected",
+            });
+          yield* providerSessions.closeInstance(ProviderInstanceId.make(id));
+        }
+        return yield* providerConfiguration.configure(wanted);
+      }
       case "thread.send": {
         const shell = yield* orchestrator.getThreadShell(input.input.threadId);
         if (!shell) return yield* Effect.fail(new Error("Target execution is unavailable"));
@@ -1000,6 +1033,11 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           return yield* Effect.fail(
             new Error("This Agent is disabled. Enable it before starting a utility request."),
           );
+        if (
+          target.modelAllowlist &&
+          !target.modelAllowlist.includes(input.input.modelSelection.model)
+        )
+          return yield* Effect.fail(new Error("This model is unavailable from Nodex."));
         if (!textGeneration.generateStructured)
           return yield* Effect.fail(new Error("Structured generation is unavailable"));
         return yield* textGeneration.generateStructured(input.input);
@@ -1018,6 +1056,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         });
       }
       case "providers.read": {
+        const policy = yield* providerPolicy.admission;
         const named = input.input.instanceIds;
         return yield* (
           input.input.refresh
@@ -1034,7 +1073,22 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
               : providers.getCheckedProviders
         ).pipe(
           Effect.map((all) =>
-            named ? all.filter((provider) => named.includes(provider.instanceId)) : all,
+            all.flatMap((provider) => {
+              const declaration = policy[provider.instanceId];
+              if (!declaration || (named && !named.includes(provider.instanceId))) return [];
+              if (declaration.source === "nodex" && declaration.enabled === false) return [];
+              return [
+                {
+                  ...provider,
+                  ...(declaration.source ? { source: declaration.source } : {}),
+                  models: declaration.modelAllowlist
+                    ? provider.models.filter((model) =>
+                        declaration.modelAllowlist!.includes(model.slug),
+                      )
+                    : provider.models,
+                },
+              ];
+            }),
           ),
           Effect.flatMap(encodeProviders),
         );

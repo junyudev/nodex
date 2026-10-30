@@ -183,15 +183,16 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     );
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
-      if (images?.length) {
+      if (images?.length || claudeSettings.isolated) {
         const sdk = yield* Effect.tryPromise({
           try: loadClaudeAgentSdk,
           catch: (cause) =>
             normalizeCliError("claude", operation, cause, "Failed to load Claude SDK"),
         });
-        const binaryPath = claudeSettings.binaryPath
-          ? yield* resolveClaudeSdkExecutablePath(claudeSettings.binaryPath, claudeEnvironment)
-          : undefined;
+        const binaryPath =
+          claudeSettings.binaryPath && !claudeSettings.isolated
+            ? yield* resolveClaudeSdkExecutablePath(claudeSettings.binaryPath, claudeEnvironment)
+            : undefined;
         const userMessage: SDKUserMessage = {
           type: "user",
           parent_tool_use_id: null,
@@ -199,7 +200,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
             role: "user",
             content: [
               { type: "text", text: prompt },
-              ...images.map((image) => ({
+              ...(images ?? []).map((image) => ({
                 type: "image" as const,
                 source: { type: "base64" as const, media_type: image.mediaType, data: image.data },
               })),
@@ -216,6 +217,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                 options: {
                   cwd,
                   env: claudeEnvironment,
+                  ...(claudeSettings.isolated ? { settingSources: [] } : {}),
                   model: resolveClaudeCatalogApiModelId(catalog, resolvedModelSelection),
                   permissionMode: "bypassPermissions",
                   allowDangerouslySkipPermissions: true,

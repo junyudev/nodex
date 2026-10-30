@@ -1,7 +1,7 @@
 export const CODEX_AGENT_BACKEND_BINDING = { kind: "codex" } as const;
 
 /** Durable runtime identity. Backend-specific settings remain in their owning stores. */
-export type AgentBackendBinding =
+export type AgentBackendBinding = (
   | typeof CODEX_AGENT_BACKEND_BINDING
   | { readonly kind: "claude"; readonly instanceConfigId: string }
   | { readonly kind: "opencode"; readonly instanceConfigId: string }
@@ -9,7 +9,8 @@ export type AgentBackendBinding =
       readonly kind: "acp";
       readonly agentDefinitionId: string;
       readonly instanceConfigId: string | null;
-    };
+    }
+) & { readonly runtimeInstanceId?: string };
 
 export const isCodexAgentBackendBinding = (
   binding: AgentBackendBinding,

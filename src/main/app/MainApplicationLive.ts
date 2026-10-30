@@ -74,6 +74,7 @@ import * as CoreApplicationLive from "./CoreApplicationLive";
 import * as HostApplicationLive from "./HostApplicationLive";
 import * as ApplicationStateLive from "./ApplicationStateLive";
 import * as ApplicationOperationsLive from "./ApplicationOperationsLive";
+import * as NodexAccountLive from "./NodexAccountLive";
 import * as AgentRuntimeApplicationLive from "./AgentRuntimeApplicationLive";
 import { AgentRuntimeProfileSnapshot } from "../agent-runtime/AgentRuntimeProfileSnapshot";
 import * as RendererIngressLive from "./RendererIngressLive";
@@ -117,7 +118,7 @@ const conversationGraph = ConversationApplicationLive.live.pipe(
   ),
 );
 const executionGraph = AgentRuntimeApplicationLive.runtime.pipe(
-  Layer.provideMerge(conversationGraph),
+  Layer.provideMerge(NodexAccountLive.live.pipe(Layer.provideMerge(conversationGraph))),
 );
 const interactionsGraph = ConversationApplicationLive.interactions.pipe(
   Layer.provideMerge(executionGraph),

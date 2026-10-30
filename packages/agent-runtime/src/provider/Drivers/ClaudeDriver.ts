@@ -130,7 +130,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       const modelCatalog = catalogService
         .current(DRIVER_KIND)
         .pipe(Effect.map(resolveClaudeModelCatalog));
-      const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+      const processEnv = yield* mergeProviderInstanceEnvironment(
+        environment,
+        config.isolated ? {} : process.env,
+      );
       const fallbackContinuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,

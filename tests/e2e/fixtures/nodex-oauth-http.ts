@@ -22,6 +22,8 @@ export interface NodexOAuthEvidence {
   readonly authorizations: number;
   readonly verifiedCodeExchanges: number;
   readonly refreshes: number;
+  readonly modelAccesses: number;
+  readonly usageReads: number;
   readonly revocations: number;
   readonly invalidRequests: readonly string[];
 }
@@ -33,6 +35,8 @@ export interface NodexOAuthHttpFixture {
   readonly evidence: () => NodexOAuthEvidence;
   readonly authorize: (authorizationUrl: string) => Promise<URL>;
   readonly revokeGrants: () => void;
+  readonly setBalance: (balance: number) => void;
+  readonly setModelAccessError: (code: "email_unverified" | "forbidden_client" | "unavailable" | null) => void;
   readonly setAvailable: (available: boolean) => void;
   readonly close: () => Promise<void>;
 }
@@ -63,6 +67,10 @@ export async function startNodexOAuthHttpFixture(
   let verifiedCodeExchanges = 0;
   let refreshes = 0;
   let revocations = 0;
+  let modelAccesses = 0;
+  let usageReads = 0;
+  let balance = 12.5;
+  let modelAccessError: "email_unverified" | "forbidden_client" | "unavailable" | null = null;
 
   const invalid = (response: ServerResponse, reason: string): void => {
     invalidRequests.push(reason);
@@ -94,6 +102,27 @@ export async function startNodexOAuthHttpFixture(
         response_types_supported: ["code"],
         code_challenge_methods_supported: ["S256"],
       });
+    }
+    if (request.method === "POST" && url.pathname === "/v1/model-access") {
+      const token = request.headers.authorization?.replace(/^Bearer /u, "") ?? "";
+      const grant = accessTokens.get(token);
+      if (!grant || grant.revoked) return sendJson(response, 401, { error: { code: "unauthenticated", message: "Sign in" } });
+      modelAccesses++;
+      if (modelAccessError) return sendJson(response, modelAccessError === "unavailable" ? 503 : 403, { error: { code: modelAccessError, message: "Model access unavailable" } });
+      return sendJson(response, 200, {
+        apiKey: "scenario-gateway-key", openaiBaseUrl: "https://api.jyu.app/v1", anthropicBaseUrl: "https://api.jyu.app",
+        models: [
+          { id: "gpt-6.1-sol", label: "GPT-6.1 Sol", protocol: "openai" },
+          { id: "gpt-6-luna", label: "GPT-6 Luna", protocol: "openai" },
+          { id: "claude-opus-5-5", label: "Claude Opus 5.5", protocol: "anthropic" },
+          { id: "unapproved-model", label: "Unapproved", protocol: "openai" },
+        ], consoleUrl: "https://console.nodex.jyu.app", topUpUrl: "https://console.nodex.jyu.app/topup",
+      });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/usage") {
+      if (request.headers.authorization !== "Bearer scenario-gateway-key") return invalid(response, "Usage requires the gateway key");
+      usageReads++;
+      return sendJson(response, 200, { balance, unit: "USD" });
     }
     if (request.method === "GET" && url.pathname === "/authorize") {
       const params = url.searchParams;
@@ -206,6 +235,7 @@ export async function startNodexOAuthHttpFixture(
       NODEX_CLERK_ISSUER: issuer,
       NODEX_CLERK_CLIENT_ID: CLIENT_ID,
       NODEX_TEST_CLERK_LOOPBACK: "1",
+      NODEX_TEST_MODEL_ACCESS_ORIGIN: issuer,
     },
     email: IDENTITY.email,
     subject: IDENTITY.sub,
@@ -213,6 +243,8 @@ export async function startNodexOAuthHttpFixture(
       authorizations,
       verifiedCodeExchanges,
       refreshes,
+      modelAccesses,
+      usageReads,
       revocations,
       invalidRequests: [...invalidRequests],
     }),
@@ -227,6 +259,8 @@ export async function startNodexOAuthHttpFixture(
     revokeGrants: () => {
       for (const grant of grants) grant.revoked = true;
     },
+    setBalance: (next) => { balance = next; },
+    setModelAccessError: (next) => { modelAccessError = next; },
     setAvailable: (next) => {
       available = next;
     },
