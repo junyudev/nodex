@@ -1,6 +1,11 @@
 //! Bounded Inbox read models: the user's stream, the suggestion Agent's routing
 //! context, and the Desktop Host's dispatch outbox.
 
+use super::inbox_content::{
+    MAX_MESSAGE_BYTES as MAX_AGENT_BODY_BYTES, MAX_SUGGESTION_IMAGES, MessageContent,
+    MessageContentLimit, agent_markdown, read_message_content,
+};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use nodex_core_contracts::BoundModuleContext;
@@ -40,7 +45,6 @@ use super::inbox::{
 };
 
 const MAX_STREAM_BODY_BYTES: usize = 8 * 1024;
-const MAX_AGENT_BODY_BYTES: usize = 64 * 1024;
 const MAX_CONTEXT_PROJECTS: i64 = 50;
 const MAX_CONTEXT_SESSIONS: i64 = 30;
 const MAX_CONTEXT_PROPOSALS: i64 = 20;
@@ -508,16 +512,6 @@ fn stream_body(row: &EntryRow) -> (String, bool) {
     (super::inbox::text_paragraphs_markdown(&text), true)
 }
 
-/// The message's text, one line per Block, for the suggestion Agent.
-fn message_text(row: &EntryRow) -> String {
-    let Some(markdown) = &row.markdown else {
-        return row.plain_text.clone();
-    };
-    crate::domain::markdown::parse_markdown(markdown)
-        .map(|blocks| crate::domain::markdown::extract_block_lines(&blocks))
-        .unwrap_or_else(|_| row.plain_text.clone())
-}
-
 #[cfg(test)]
 thread_local! {
     static MESSAGE_BASIS_COMPUTATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -528,40 +522,43 @@ pub(super) fn take_message_basis_computations() -> usize {
     MESSAGE_BASIS_COMPUTATIONS.with(|count| count.replace(0))
 }
 
-/// Synchronous content evidence: bounded Markdown parsing matches suggestion_input; oversized
-/// Pages hash their complete text even though they cannot be sent to the suggestion Agent.
+/// A stream can still show a Page that grew beyond the complete-body Agent limit. Its
+/// evidence uses the same content definition; only delivery and advice require that bound.
 pub(crate) fn message_basis(
     connection: &Connection,
     page_id: &str,
 ) -> Result<ProjectWorkspaceInboxPageBasis, StoreError> {
     #[cfg(test)]
     MESSAGE_BASIS_COMPUTATIONS.with(|count| count.set(count.get() + 1));
-    let mut row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
-    if row.source_body_truncated {
-        row.plain_text = connection.query_row(
-            "SELECT COALESCE(materialization.plain_text,'') FROM pages page LEFT JOIN document_materializations materialization ON materialization.document_id=page.document_id WHERE page.block_id=?1",
-            [page_id],
-            |row| row.get(0),
-        )?;
-    }
+    let markdown: String = connection.query_row(
+        "SELECT COALESCE(body.markdown,'') FROM pages page LEFT JOIN document_materializations body ON body.document_id=page.document_id WHERE page.block_id=?1",
+        [page_id], |row| row.get(0),
+    )?;
+    let content = super::inbox_content::content_from_markdown(connection, markdown)?;
     Ok(ProjectWorkspaceInboxPageBasis {
         page_id: page_id.to_owned(),
-        content_hash: crate::document::sha256(message_text(&row).as_bytes()),
+        content_hash: content.fingerprint(),
     })
 }
 
-/// Freeze model-visible text at the reviewed Document head. Images remain on the Page.
+/// Scheduled runs retain the exact Markdown. Their image markers deliberately have no
+/// attachments: the run's prompt links back to the Page rather than loading image bytes.
 pub(super) fn frozen_message_text(
     connection: &Connection,
     page_id: &str,
 ) -> Result<String, StoreError> {
-    let row = read_entry(connection, page_id, 1024 * 1024)?;
-    if row.source_body_truncated {
-        return Err(invalid(
-            "The complete message exceeds the scheduled prompt limit",
-        ));
-    }
-    Ok(message_text(&row))
+    let content = read_message_content(connection, page_id, MessageContentLimit::ScheduledPrompt)?;
+    let numbers = image_numbers(&content, 0);
+    agent_markdown(&content, &numbers, 0)
+}
+
+pub(super) fn image_numbers(content: &MessageContent, offset: usize) -> HashMap<String, usize> {
+    content
+        .images
+        .iter()
+        .enumerate()
+        .map(|(index, image)| (image.source.clone(), offset + index + 1))
+        .collect()
 }
 
 fn bounded_utf8(value: &str, maximum: usize) -> (String, bool) {
@@ -943,10 +940,69 @@ pub(super) fn read_pending_suggestions(
         )?
         .query_map(params![library_id, limit], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    page_ids
-        .iter()
-        .map(|page_id| suggestion_input(connection, library_id, page_id))
-        .collect()
+    let mut entries = Vec::new();
+    let mut count = 0;
+    for frozen in frozen_suggestion_inputs(connection, library_id, &page_ids)? {
+        if count + frozen.input.images.len() > MAX_SUGGESTION_IMAGES {
+            break;
+        }
+        count += frozen.input.images.len();
+        entries.push(frozen.input);
+    }
+    Ok(entries)
+}
+
+/// The durable envelope retains canonical content as well as the exact Agent projection.
+/// This lets pickup verify the saved fingerprint without rereading an edited Page or File.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct FrozenSuggestionInput {
+    pub input: ProjectWorkspaceInboxSuggestionInput,
+    pub content: MessageContent,
+}
+
+pub(crate) fn frozen_input_for_content(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+    content: MessageContent,
+    image_offset: usize,
+) -> Result<FrozenSuggestionInput, StoreError> {
+    if content.markdown.len() > MAX_AGENT_BODY_BYTES {
+        return Err(invalid("Inbox input exceeds the complete 64 KiB bound"));
+    }
+    let row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
+    let input = ProjectWorkspaceInboxSuggestionInput {
+        page_id: page_id.to_owned(),
+        page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
+        body: agent_markdown(&content, &image_numbers(&content, image_offset), usize::MAX)?,
+        images: content.images.clone(),
+        source: source(&row),
+        kind: parse_kind(row.kind.as_deref())?,
+        submitted_at: row.submitted_at.clone(),
+        scope: scope_of(row.scope_project_id.clone()),
+        basis: ProjectWorkspaceInboxPageBasis {
+            page_id: page_id.to_owned(),
+            content_hash: content.fingerprint(),
+        },
+        title_provisional: row.provisional_title.as_deref() == Some(row.title.as_str()),
+    };
+    Ok(FrozenSuggestionInput { input, content })
+}
+
+pub(super) fn frozen_suggestion_inputs(
+    connection: &Connection,
+    library_id: &str,
+    pages: &[String],
+) -> Result<Vec<FrozenSuggestionInput>, StoreError> {
+    let mut offset = 0;
+    let mut inputs = Vec::new();
+    for page in pages {
+        let content = read_message_content(connection, page, MessageContentLimit::Message)?;
+        let frozen = frozen_input_for_content(connection, library_id, page, content, offset)?;
+        offset += frozen.input.images.len();
+        inputs.push(frozen);
+    }
+    Ok(inputs)
 }
 
 pub(super) fn suggestion_input(
@@ -954,46 +1010,14 @@ pub(super) fn suggestion_input(
     library_id: &str,
     page_id: &str,
 ) -> Result<ProjectWorkspaceInboxSuggestionInput, StoreError> {
-    let row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
-    let full_body = message_text(&row);
-    if row.source_body_truncated || full_body.len() > MAX_AGENT_BODY_BYTES {
-        return Err(invalid("Inbox input exceeds the complete 64 KiB bound"));
-    }
-    let body = full_body;
-    let basis = ProjectWorkspaceInboxPageBasis {
-        page_id: page_id.to_owned(),
-        content_hash: crate::document::sha256(body.as_bytes()),
-    };
-    Ok(ProjectWorkspaceInboxSuggestionInput {
-        page_id: page_id.to_owned(),
-        page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
-        title: row.title.clone(),
-        body,
-        source: source(&row),
-        kind: parse_kind(row.kind.as_deref())?,
-        submitted_at: row.submitted_at.clone(),
-        scope: scope_of(row.scope_project_id.clone()),
-        basis,
-        // Any rename, by the user or by an earlier suggestion, makes the title theirs.
-        title_provisional: row.provisional_title.as_deref() == Some(row.title.as_str()),
-    })
-}
-
-/// The Library images of a message's Page as it is now, for a chat that receives it.
-pub(super) fn message_image_sources(
-    connection: &Connection,
-    page_id: &str,
-    sources: &mut Vec<String>,
-) -> Result<(), StoreError> {
-    let row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
-    if let Some(blocks) = row
-        .markdown
-        .as_deref()
-        .and_then(|markdown| crate::domain::markdown::parse_markdown(markdown).ok())
-    {
-        super::inbox::collect_image_sources(&blocks, sources);
-    }
-    Ok(())
+    Ok(frozen_input_for_content(
+        connection,
+        library_id,
+        page_id,
+        read_message_content(connection, page_id, MessageContentLimit::Message)?,
+        0,
+    )?
+    .input)
 }
 
 /// Small lexical hints let related older chats compete with recent activity. This does
@@ -1001,12 +1025,12 @@ pub(super) fn message_image_sources(
 fn context_search_terms(entries: &[ProjectWorkspaceInboxSuggestionInput]) -> Vec<String> {
     let mut terms = Vec::new();
     for entry in entries {
-        let text = format!(
-            "{} {}",
-            entry.title,
-            entry.body.chars().take(4096).collect::<String>()
-        )
-        .to_lowercase();
+        let text = entry
+            .body
+            .chars()
+            .take(4096)
+            .collect::<String>()
+            .to_lowercase();
         for word in text.split(|ch: char| !ch.is_alphanumeric()) {
             let chars = word.chars().collect::<Vec<_>>();
             if chars.len() < 3 {
@@ -1058,8 +1082,12 @@ pub(super) fn read_dispatch_context(
         if !exists {
             return Err(super::inbox::not_found("Inbox entry is unavailable"));
         }
-        entries.push(suggestion_input(connection, library_id, page_id)?);
     }
+    entries.extend(
+        frozen_suggestion_inputs(connection, library_id, page_ids)?
+            .into_iter()
+            .map(|frozen| frozen.input),
+    );
     dispatch_context_for_inputs(connection, library_id, entries)
 }
 
@@ -1273,10 +1301,10 @@ pub(super) fn read_dispatch_outbox(
                     |row| row.get(0),
                 )
                 .optional()?,
-            image_sources: super::inbox::reliable::read_handoff_json(
+            images: super::inbox::reliable::read_handoff_json(
                 connection,
                 &proposal_id,
-                "image_sources_json",
+                "images_json",
             )?
             .unwrap_or_default(),
             launch_id: super::inbox::reliable::stored_handoff_identity(
@@ -1460,7 +1488,7 @@ mod tests {
             let huge="界".repeat(1_000_000);
             connection.execute("UPDATE document_materializations SET markdown=?1,plain_text=?1 WHERE document_id='document:large'",[huge])?;
             let fingerprint=message_basis(connection,"page:large")?;
-            assert_eq!(fingerprint.content_hash,crate::document::sha256("界".repeat(1_000_000).as_bytes()));
+            assert_eq!(fingerprint.content_hash,MessageContent { markdown: "界".repeat(1_000_000), images: Vec::new() }.fingerprint());
             assert!(suggestion_input(connection,"library-1","page:large").is_err());
             connection.execute("UPDATE document_materializations SET markdown=markdown || 'changed',plain_text=plain_text || 'changed' WHERE document_id='document:large'",[])?;
             assert_ne!(message_basis(connection,"page:large")?,fingerprint);
@@ -1469,7 +1497,7 @@ mod tests {
                 let row=read_entry(connection,"page:large",budget)?;
                 assert!(row.markdown.is_none(),"oversized Markdown never crosses the SQL read boundary");
                 assert!(row.plain_text.len()<=budget*4);assert!(row.source_body_truncated);
-                let (body,truncated)=bounded_utf8(&message_text(&row),budget);
+                let (body,truncated)=bounded_utf8(&row.plain_text,budget);
                 assert!(truncated);assert!(body.len()<=budget);assert!(!body.is_empty());
                 assert!(body.chars().all(|value|value=='界'));
             }

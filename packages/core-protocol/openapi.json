@@ -39007,7 +39007,7 @@
         "type": "object",
         "description": "A confirmed dispatch that the Desktop Host must deliver.",
         "required": [
-          "image_sources",
+          "images",
           "launch_id",
           "message_id",
           "proposal_id",
@@ -39057,12 +39057,12 @@
             ],
             "description": "None only for pre-snapshot history that must be reconciled, never sent."
           },
-          "image_sources": {
+          "images": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/ProjectWorkspaceInboxMessageImage"
             },
-            "description": "Library images of the delivered messages, frozen with the text and sent with it."
+            "description": "Bindings to the reviewed Library image bytes, in marker order. Delivery must read\nbytes matching content_hash or mark the image unavailable; File heads may change."
           },
           "launch_id": {
             "type": "string"
@@ -39351,6 +39351,27 @@
           }
         }
       },
+      "ProjectWorkspaceInboxMessageImage": {
+        "type": "object",
+        "description": "One Library image referenced by a message, in body reading order.",
+        "required": [
+          "source",
+          "file_id",
+          "content_hash"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string",
+            "description": "Lowercase SHA-256 of the Library's stored bytes."
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
       "ProjectWorkspaceInboxModelOption": {
         "type": "object",
         "required": [
@@ -39402,7 +39423,7 @@
       },
       "ProjectWorkspaceInboxPageBasis": {
         "type": "object",
-        "description": "Fingerprint of exactly the message text the suggestion Agent reads.",
+        "description": "Fingerprint of the exact Page-body Markdown and ordered Library image content hashes.",
         "required": [
           "page_id",
           "content_hash"
@@ -39790,8 +39811,8 @@
         "description": "One entry the suggestion Agent should consider, with bounded content.",
         "required": [
           "page_id",
-          "title",
           "body",
+          "images",
           "source",
           "submitted_at",
           "scope",
@@ -39803,7 +39824,14 @@
             "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
           },
           "body": {
-            "type": "string"
+            "type": "string",
+            "description": "Exact body Markdown with numbered Library image markers."
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceInboxMessageImage"
+            }
           },
           "kind": {
             "oneOf": [
@@ -39831,9 +39859,6 @@
             "$ref": "#/components/schemas/ProjectWorkspaceInboxSource"
           },
           "submitted_at": {
-            "type": "string"
-          },
-          "title": {
             "type": "string"
           },
           "title_provisional": {

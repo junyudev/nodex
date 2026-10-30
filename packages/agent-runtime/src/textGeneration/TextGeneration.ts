@@ -66,7 +66,9 @@ export const make = Effect.gen(function* () {
             : Effect.fail(
                 new TextGenerationError({
                   operation: "generateStructured",
-                  detail: "This provider does not support structured generation.",
+                  detail: input.images?.length
+                    ? "This Agent cannot read images here. Structured generation is unavailable."
+                    : "This provider does not support structured generation.",
                 }),
               ),
         ),

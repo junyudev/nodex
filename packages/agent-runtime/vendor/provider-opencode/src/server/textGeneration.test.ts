@@ -230,6 +230,38 @@ const advanceIdleClock = Effect.gen(function* () {
 });
 
 it.layer(layerOpenCodeTextGenerationTest)("OpenCodeTextGeneration", (it) => {
+  it.effect("rejects structured images before opening a native session", () =>
+    withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (generation) =>
+      Effect.gen(function* () {
+        const error = yield* generation.generateStructured!({
+          cwd: process.cwd(),
+          prompt: "Inspect these images",
+          images: [{ mediaType: "image/png", data: "AQID" }],
+          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+          outputSchema: {},
+        }).pipe(Effect.flip);
+        expect(error).toBeInstanceOf(TextGenerationError);
+        expect(error.message).toContain("Agent cannot read images here");
+        expect(runtimeMock.state.sessionCreateCalls).toBe(0);
+        expect(runtimeMock.state.startCalls).toEqual([]);
+        const input = {
+          cwd: process.cwd(),
+          prompt: "Generate text",
+          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+          outputSchema: {},
+        };
+        for (const images of [undefined, []]) {
+          const result = yield* generation.generateStructured!({ ...input, images });
+          expect(result).toEqual({
+            subject: "Improve OpenCode reuse",
+            body: "Reuse one server for the full action.",
+          });
+        }
+        expect(runtimeMock.state.sessionCreateCalls).toBe(2);
+      }),
+    ),
+  );
+
   it.effect("excludes generic files from thread title generation", () =>
     withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (textGeneration) =>
       Effect.gen(function* () {

@@ -996,7 +996,7 @@ fn routing_context_is_bounded_to_active_targets() {
         panic!("context");
     };
     assert_eq!(context.entries.len(), 1);
-    assert_eq!(context.entries[0].title, "Where should this go?");
+    assert_eq!(context.entries[0].body, "Where should this go?");
     assert_eq!(
         context
             .projects
@@ -2064,7 +2064,7 @@ fn only_message_shaped_waiting_messages_are_rewritten_in_place() {
             // formatting alone does not. One was also named by an earlier suggestion.
             connection.execute(
                 "UPDATE document_materializations SET markdown = \
-                 'Ship the changelog\n<image source=\"nodex://files/shot\">Shot</image>\nThen tell people' \
+                 'Ship the changelog\n\n![Shot](nodex://files/shot)\n\nThen tell people' \
                  WHERE document_id = 'document:rich'",
                 [],
             )?;
@@ -2135,7 +2135,7 @@ fn only_message_shaped_waiting_messages_are_rewritten_in_place() {
         .into_iter()
         .find(|entry| entry.page_id == "page:named")
         .expect("named message waits for a suggestion");
-    assert_eq!(entry.title, "Homepage positioning");
+    assert_eq!(item(module, "page:named").title, "Homepage positioning");
     assert!(!entry.title_provisional);
 }
 
@@ -2309,7 +2309,7 @@ fn a_dispatched_chat_receives_the_messages_images_with_their_text() {
     send(
         module,
         "pictured",
-        "The banner is cut off\n\n![](nodex://files/shot)\n\n![](nodex://files/detail)",
+        "The banner is cut off\n\n- **Fix** the crop\n- Keep the logo\n\n![](nodex://files/shot)\n\n![](nodex://files/detail)",
     );
     // The same screenshot in a second message is sent once.
     send(
@@ -2339,12 +2339,18 @@ fn a_dispatched_chat_receives_the_messages_images_with_their_text() {
     );
     let work = outbox(module).remove(0);
     assert_eq!(
-        work.image_sources,
+        work.images
+            .iter()
+            .map(|image| image.source.as_str())
+            .collect::<Vec<_>>(),
         vec!["nodex://files/shot", "nodex://files/detail"]
     );
     let text = work.final_text.unwrap();
     assert!(text.contains("> The banner is cut off"));
-    assert!(!text.contains("<image"));
+    assert!(text.contains("> - **Fix** the crop\n> - Keep the logo"));
+    assert!(text.contains("> [Image 1]\n> \n> [Image 2]"));
+    assert_eq!(text.matches("[Image 1]").count(), 2);
+    assert!(!text.contains("nodex://files/"));
 }
 
 #[test]
@@ -2600,7 +2606,14 @@ fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
         .find(|i| i.page_id == "page:a")
         .unwrap();
     assert_eq!(a.title, "Grouped thought");
-    assert_eq!(a.basis.content_hash, crate::document::sha256(b"A thought"));
+    assert_eq!(
+        a.basis.content_hash,
+        super::inbox_content::MessageContent {
+            markdown: "A thought".into(),
+            images: Vec::new()
+        }
+        .fingerprint()
+    );
     assert_eq!(
         a.proposal
             .as_ref()
@@ -4699,6 +4712,21 @@ mod scheduled {
     }
 
     #[test]
+    fn inbox_scheduled_admission_preserves_a_seventy_kib_prompt() {
+        let workspace = seeded_workspace();
+        let prompt = "x".repeat(70 * 1024);
+        let mut input = task_input();
+        input.prompt = Some(prompt.clone());
+        let hold = setup(&workspace, input);
+        assert!(item(&workspace).body_truncated);
+        confirm(&workspace);
+        let run = claim(&workspace, "claim-large-prompt");
+        assert_eq!(run.dispatch_id, hold.dispatch_id);
+        assert_eq!(run.purpose, AutomationLeasePurpose::Run);
+        assert_eq!(run.admission.unwrap().prompt, prompt);
+    }
+
+    #[test]
     fn hold_folds_and_edited_confirmation_admits_only_the_reviewed_text() {
         let workspace = seeded_workspace();
         let lease = setup(&workspace, task_input());
@@ -5729,7 +5757,11 @@ fn metadata_and_head_only_writes_keep_advice_current_without_queueing() {
     let input = pending(module).remove(0);
     assert_eq!(
         input.basis.content_hash,
-        crate::document::sha256(input.body.as_bytes())
+        super::inbox_content::MessageContent {
+            markdown: input.body.clone(),
+            images: input.images.clone()
+        }
+        .fingerprint()
     );
     propose(
         module,
@@ -6081,7 +6113,11 @@ fn every_suggestion_request_freezes_exact_inputs_before_pickup() {
         assert_eq!(request.basis, vec![expected.basis.clone()]);
         assert_eq!(
             request.basis[0].content_hash,
-            crate::document::sha256(request.context.entries[0].body.as_bytes())
+            super::inbox_content::MessageContent {
+                markdown: request.context.entries[0].body.clone(),
+                images: request.context.entries[0].images.clone()
+            }
+            .fingerprint()
         );
         let mut settlement = keep_request(&request, None);
         let ProjectWorkspaceIntent::SettleInboxSuggestion { titles, .. } = &mut settlement else {
@@ -6269,6 +6305,409 @@ fn a_sixteen_member_window_computes_each_content_fingerprint_once() {
 }
 
 #[test]
+fn inbox_image_fingerprints_track_body_order_and_library_bytes_without_metadata() {
+    use nodex_core_contracts::LIBRARY_CONTRACT_VERSION;
+    use nodex_core_contracts::library::{LibraryFileChange, LibraryIntent};
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for id in ["first", "second", "replacement"] {
+        super::test_support::create_library_image(&workspace, id);
+    }
+    send(module, "images", "Can you look at this?");
+    let original = item(module, "page:images").basis;
+    let edit = |operation: &str, body: &str| {
+        let current = item(module, "page:images");
+        apply_host(
+            module,
+            operation,
+            ProjectWorkspaceIntent::EditInboxMessage {
+                page_id: current.page_id,
+                basis: current.basis,
+                original_body: current.body,
+                body: body.into(),
+            },
+        );
+        item(module, "page:images").basis
+    };
+    let one = edit(
+        "image:add",
+        "![](nodex://files/first)\n\nCan you look at this?",
+    );
+    assert_ne!(one, original);
+    let two = edit(
+        "image:add-second",
+        "![](nodex://files/first)\n\n![](nodex://files/second)\n\nCan you look at this?",
+    );
+    assert_ne!(two, one);
+    let reordered = edit(
+        "image:reorder",
+        "![](nodex://files/second)\n\n![](nodex://files/first)\n\nCan you look at this?",
+    );
+    assert_ne!(reordered, two);
+    assert_eq!(
+        edit(
+            "image:remove",
+            "![](nodex://files/first)\n\nCan you look at this?"
+        ),
+        one
+    );
+
+    let library = crate::library::LibraryModule::new("profile-1", "library-1", &workspace.kernel);
+    let change = |operation: &str, change| {
+        library
+            .apply(
+                &host(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: operation.into(),
+                    store_epoch: StoreEpoch("epoch-1".into()),
+                    intent: LibraryIntent::ApplyFileChange {
+                        change,
+                        turn_id: None,
+                    },
+                },
+            )
+            .expect("File change");
+    };
+    change(
+        "image:rename",
+        LibraryFileChange::Rename {
+            file_id: "first".into(),
+            expected_revision: 1,
+            default_name: "Renamed screenshot.png".into(),
+        },
+    );
+    assert_eq!(item(module, "page:images").basis, one);
+    let bytes = b"image bytes for replacement";
+    let hash = crate::document::sha256(bytes);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    library
+        .register_prepared_file_blob(
+            &host(),
+            "epoch-1",
+            "image:replace",
+            "receipt:replace",
+            &hash,
+            &format!("{hash}.blob"),
+            bytes.len() as u64,
+            now + 60_000,
+        )
+        .unwrap();
+    change(
+        "image:replace",
+        LibraryFileChange::ReplaceContent {
+            file_id: "first".into(),
+            expected_revision: 2,
+            expected_head_version: 1,
+            mime_type: "image/png".into(),
+            prepared_blob_receipt_id: "receipt:replace".into(),
+        },
+    );
+    let replaced = item(module, "page:images").basis;
+    assert_ne!(replaced, one);
+    let input = pending(module).remove(0);
+    assert_eq!(input.images[0].content_hash, hash);
+    // Replacing a File with identical bytes advances metadata but preserves message meaning.
+    library
+        .register_prepared_file_blob(
+            &host(),
+            "epoch-1",
+            "image:replace-same",
+            "receipt:replace-same",
+            &hash,
+            &format!("{hash}.blob"),
+            bytes.len() as u64,
+            now + 60_000,
+        )
+        .unwrap();
+    change(
+        "image:replace-same",
+        LibraryFileChange::ReplaceContent {
+            file_id: "first".into(),
+            expected_revision: 3,
+            expected_head_version: 2,
+            mime_type: "image/png".into(),
+            prepared_blob_receipt_id: "receipt:replace-same".into(),
+        },
+    );
+    assert_eq!(item(module, "page:images").basis, replaced);
+    apply_host(
+        module,
+        "image:move",
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            proposal_id: "proposal:image-move".into(),
+            page_ids: vec!["page:images".into()],
+            basis: vec![replaced.clone()],
+            action: ProjectWorkspaceInboxDispatchAction::MoveToProject {
+                project_id: PROJECT.into(),
+            },
+            session_id: None,
+            execution_selection: None,
+        },
+    );
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].basis,
+        replaced
+    );
+}
+
+#[test]
+fn inbox_suggestions_freeze_markdown_and_number_images_across_members() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for id in ["one", "two", "three"] {
+        super::test_support::create_library_image(&workspace, id);
+    }
+    send(
+        module,
+        "first",
+        "![Overview](nodex://files/one)\n\n![](nodex://files/two)\n\n- **First** finding\n- Second finding",
+    );
+    send(
+        module,
+        "second",
+        "Check [this link](https://example.com).\n\n![Detail](nodex://files/three)",
+    );
+    grouped_request(
+        module,
+        "request:images",
+        vec!["page:first".into(), "page:second".into()],
+    );
+    let request = requests(module).remove(0);
+    assert_eq!(
+        request.context.entries[0].body,
+        "[Image 1: Overview]\n\n[Image 2]\n\n- **First** finding\n- Second finding"
+    );
+    assert_eq!(
+        request.context.entries[1].body,
+        "Check [this link](https://example.com).\n\n[Image 3: Detail]"
+    );
+    let images = request
+        .context
+        .entries
+        .iter()
+        .flat_map(|entry| &entry.images)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        images
+            .iter()
+            .map(|image| image.source.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "nodex://files/one",
+            "nodex://files/two",
+            "nodex://files/three"
+        ]
+    );
+    for image in images {
+        assert_eq!(
+            image.content_hash,
+            crate::document::sha256(format!("image bytes for {}", image.file_id).as_bytes())
+        );
+    }
+    let before = item(module, "page:first");
+    apply_host(
+        module,
+        "rewrite:after-freeze",
+        ProjectWorkspaceIntent::EditInboxMessage {
+            page_id: before.page_id,
+            basis: before.basis,
+            original_body: before.body,
+            body: "Different instructions".into(),
+        },
+    );
+    assert_eq!(requests(module)[0], request);
+}
+
+fn inbox_picture_body(range: std::ops::Range<usize>) -> String {
+    let mut images = range
+        .map(|index| format!("![](nodex://files/budget-{index})"))
+        .collect::<Vec<_>>();
+    images.push("Can you look at this?".into());
+    images.join("\n\n")
+}
+
+#[test]
+fn inbox_automatic_batches_stop_before_exceeding_the_image_budget() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for index in 0..21 {
+        super::test_support::create_library_image(&workspace, &format!("budget-{index}"));
+    }
+    send(module, "first", &inbox_picture_body(0..12));
+    send(module, "second", &inbox_picture_body(12..21));
+    for id in ["first", "second"] {
+        apply_host(
+            module,
+            &format!("prepare:{id}"),
+            ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                automatic: true,
+                request_id: format!("request:{id}"),
+                limit: 8,
+            },
+        );
+    }
+    let requests = requests(module);
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].page_ids, vec!["page:first"]);
+    assert_eq!(requests[1].page_ids, vec!["page:second"]);
+    for request in requests {
+        assert!(
+            request
+                .context
+                .entries
+                .iter()
+                .map(|entry| entry.images.len())
+                .sum::<usize>()
+                <= 20
+        );
+    }
+}
+
+#[test]
+fn inbox_over_budget_suggestions_fail_readably_and_preserve_the_proposal() {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode;
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for index in 0..21 {
+        super::test_support::create_library_image(&workspace, &format!("budget-{index}"));
+    }
+    send(module, "many", &inbox_picture_body(0..1));
+    let input = pending(module).remove(0);
+    propose(
+        module,
+        "proposal:keep",
+        &input,
+        ProjectWorkspaceInboxDispatchAction::Keep,
+    );
+    let before = item(module, "page:many");
+    apply_host(
+        module,
+        "edit:many",
+        ProjectWorkspaceIntent::EditInboxMessage {
+            page_id: before.page_id,
+            basis: before.basis,
+            original_body: before.body,
+            body: inbox_picture_body(0..21),
+        },
+    );
+    apply_host(
+        module,
+        "prepare:many",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            automatic: true,
+            request_id: "request:many".into(),
+            limit: 8,
+        },
+    );
+    let failed = item(module, "page:many");
+    assert_eq!(
+        failed.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Failed
+    );
+    assert_eq!(
+        failed.suggestion_error.as_deref(),
+        Some("More images than a suggestion can read (20)")
+    );
+    assert_eq!(failed.proposal.unwrap().proposal_id, "proposal:keep");
+    assert!(requests(module).is_empty());
+    let error = module
+        .apply(
+            &host(),
+            request(
+                "request:too-many",
+                ProjectWorkspaceIntent::RequestInboxSuggestion {
+                    request_id: "request:too-many".into(),
+                    mode: ProjectWorkspaceInboxSuggestionMode::Grouped,
+                    page_ids: vec!["page:many".into()],
+                    basis: pages_basis(module, vec!["page:many".into()]),
+                    proposal_id: None,
+                    expected_revision: None,
+                    correction: None,
+                },
+            ),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::Conflict);
+    assert_eq!(
+        error.message,
+        "Select messages with at most 20 images in all"
+    );
+    assert_eq!(
+        item(module, "page:many").proposal.unwrap().proposal_id,
+        "proposal:keep"
+    );
+    // A confirmed chat can still receive its bounded attachment set and name the remainder.
+    apply_host(
+        module,
+        "dispatch:many",
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            proposal_id: "proposal:many".into(),
+            page_ids: vec!["page:many".into()],
+            basis: pages_basis(module, vec!["page:many".into()]),
+            action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                project_id: None,
+                prompt: "Review these screenshots".into(),
+                agent: None,
+                delegates: Vec::new(),
+                plan: None,
+            },
+            session_id: Some("session:many".into()),
+            execution_selection: Some(selection()),
+        },
+    );
+    let handoff = outbox(module).remove(0);
+    assert_eq!(handoff.images.len(), 20);
+    assert!(
+        handoff
+            .final_text
+            .unwrap()
+            .contains("[Image 21; stays on the Page]")
+    );
+}
+
+#[test]
+fn inbox_explicit_groups_refuse_a_combined_image_budget_without_starting_work() {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode;
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for index in 0..21 {
+        super::test_support::create_library_image(&workspace, &format!("budget-{index}"));
+    }
+    send(module, "first", &inbox_picture_body(0..12));
+    send(module, "second", &inbox_picture_body(12..21));
+    let pages = vec!["page:first".into(), "page:second".into()];
+    let error = module
+        .apply(
+            &host(),
+            request(
+                "request:combined",
+                ProjectWorkspaceIntent::RequestInboxSuggestion {
+                    request_id: "request:combined".into(),
+                    mode: ProjectWorkspaceInboxSuggestionMode::Grouped,
+                    basis: pages_basis(module, pages.clone()),
+                    page_ids: pages,
+                    proposal_id: None,
+                    expected_revision: None,
+                    correction: None,
+                },
+            ),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::Conflict);
+    assert_eq!(
+        error.message,
+        "Select messages with at most 20 images in all"
+    );
+    assert!(requests(module).is_empty());
+}
+
+#[test]
 fn inbox_message_shape_accepts_one_image_run_at_either_edge_only() {
     for markdown in [
         "![](nodex://files/one)\n\n![](nodex://files/two)\n\nMessage",
@@ -6288,5 +6727,235 @@ fn inbox_message_shape_accepts_one_image_run_at_either_edge_only() {
     ] {
         let blocks = crate::domain::markdown::parse_markdown(markdown).unwrap();
         assert!(!super::inbox::has_message_shape(&blocks), "{markdown}");
+    }
+}
+
+#[test]
+fn inbox_migration_recovers_historical_markdown_with_proven_image_hashes() {
+    for missing_file in [false, true] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        for id in ["old", "current", "second"] {
+            super::test_support::create_library_image(&workspace, id);
+        }
+        send(
+            module,
+            "historical",
+            "- **First** finding\n- Second finding\n\n![Original](nodex://files/old)",
+        );
+        send(
+            module,
+            "second",
+            "![](nodex://files/second)\n\nReview this too.",
+        );
+        grouped_request(
+            module,
+            "request:historical",
+            vec!["page:historical".into(), "page:second".into()],
+        );
+        let old_basis = workspace.kernel.readers().read_default(|connection| {
+            Ok(connection.query_row("SELECT json_group_array(json_object('page_id',member.page_id,'generation',document.generation,'head_seq',document.head_seq)) FROM inbox_suggestion_request_pages member JOIN pages page ON page.block_id=member.page_id JOIN documents document ON document.id=page.document_id WHERE member.request_id='request:historical' ORDER BY member.position", [], |row| row.get::<_, String>(0))?)
+        }).unwrap();
+        let before = item(module, "page:historical");
+        apply_host(
+            module,
+            "rewrite:historical",
+            ProjectWorkspaceIntent::EditInboxMessage {
+                page_id: before.page_id,
+                basis: before.basis,
+                original_body: before.body,
+                body: "Changed text\n\n![](nodex://files/current)".into(),
+            },
+        );
+        workspace.kernel.writer().call(move |connection| {
+            // Historical storage, including a collected File, is the subject of this fixture.
+            // Its Page edits and request membership were authored through public operations.
+            if missing_file {
+                connection.execute_batch("PRAGMA foreign_keys=OFF; DELETE FROM document_version_file_refs WHERE file_id='old'; INSERT INTO retired_file_ids(file_id,library_id,retired_at) SELECT file_id,library_id,updated_at FROM library_files WHERE file_id='old'; DELETE FROM library_files WHERE file_id='old'; DELETE FROM file_versions WHERE file_id='old'; PRAGMA foreign_keys=ON;")?;
+            }
+            connection.execute("UPDATE inbox_entries SET suggestion_state='pending' WHERE suggestion_request_id='request:historical'", [])?;
+            connection.execute("UPDATE inbox_suggestion_requests SET basis_json=?1,inputs_json='[]' WHERE request_id='request:historical'", [&old_basis])?;
+            crate::infrastructure::migration::migrate_inbox_content_bases(connection)?;
+            let (state, basis_json, inputs_json): (String, String, String) = connection.query_row("SELECT state,basis_json,inputs_json FROM inbox_suggestion_requests WHERE request_id='request:historical'", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+            let basis: Vec<nodex_core_contracts::inbox::ProjectWorkspaceInboxPageBasis> = serde_json::from_str(&basis_json).unwrap();
+            if missing_file {
+                assert_eq!(state, "failed");
+                assert_eq!(inputs_json, "[]");
+                let legacy: serde_json::Value = serde_json::from_str(&old_basis).unwrap();
+                assert_eq!(basis[0].content_hash, crate::document::sha256(format!("unavailable-inbox-content:{}", legacy[0]).as_bytes()));
+                return Ok(());
+            }
+            assert_eq!(state, "pending");
+            let frozen: Vec<super::inbox_read::FrozenSuggestionInput> = serde_json::from_str(&inputs_json).unwrap();
+            assert_eq!(frozen[0].content.markdown, "- **First** finding\n- Second finding\n\n![Original](nodex://files/old)");
+            assert_eq!(frozen[0].input.body, "- **First** finding\n- Second finding\n\n[Image 1: Original]");
+            assert_eq!(frozen[0].input.images[0].file_id, "old");
+            assert_eq!(frozen[0].input.images[0].content_hash, crate::document::sha256(b"image bytes for old"));
+            assert_eq!(frozen[1].input.body, "[Image 2]\n\nReview this too.");
+            assert_eq!(basis, frozen.iter().map(|input| input.input.basis.clone()).collect::<Vec<_>>());
+            assert_eq!(basis[0].content_hash, frozen[0].content.fingerprint());
+            Ok(())
+        }).unwrap();
+    }
+}
+
+/// Reuses actual prepared Library bytes while replacing a File through its public boundary.
+fn replace_inbox_test_image(workspace: &TestWorkspace, file_id: &str, replacement_id: &str) {
+    use nodex_core_contracts::library::{LibraryFileChange, LibraryIntent};
+    let library = crate::library::LibraryModule::new("profile-1", "library-1", &workspace.kernel);
+    let bytes = format!("image bytes for {replacement_id}");
+    let hash = crate::document::sha256(bytes.as_bytes());
+    let operation = format!("replace:{file_id}");
+    let receipt = format!("receipt:replace:{file_id}");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    library
+        .register_prepared_file_blob(
+            &host(),
+            "epoch-1",
+            &operation,
+            &receipt,
+            &hash,
+            &format!("{hash}.blob"),
+            bytes.len() as u64,
+            now + 60_000,
+        )
+        .unwrap();
+    library
+        .apply(
+            &host(),
+            ModuleApplyRequest {
+                contract_version: nodex_core_contracts::LIBRARY_CONTRACT_VERSION,
+                operation_id: operation,
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: LibraryIntent::ApplyFileChange {
+                    change: LibraryFileChange::ReplaceContent {
+                        file_id: file_id.into(),
+                        expected_revision: 1,
+                        expected_head_version: 1,
+                        mime_type: "image/png".into(),
+                        prepared_blob_receipt_id: receipt,
+                    },
+                    turn_id: None,
+                },
+            },
+        )
+        .unwrap();
+}
+
+#[test]
+fn inbox_confirmed_handoff_freezes_reviewed_image_hashes_across_file_replacement() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for id in ["reviewed", "replacement"] {
+        super::test_support::create_library_image(&workspace, id);
+    }
+    send(
+        module,
+        "reviewed",
+        "![Screenshot](nodex://files/reviewed)\n\nReview this screenshot.",
+    );
+    let before = item(module, "page:reviewed").basis;
+    apply_host(
+        module,
+        "confirm:reviewed",
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            proposal_id: "proposal:reviewed".into(),
+            page_ids: vec!["page:reviewed".into()],
+            basis: vec![before.clone()],
+            action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                project_id: None,
+                prompt: "Review it".into(),
+                agent: None,
+                delegates: Vec::new(),
+                plan: None,
+            },
+            session_id: Some("session:reviewed".into()),
+            execution_selection: Some(selection()),
+        },
+    );
+    let confirmed = outbox(module).remove(0);
+    assert_eq!(
+        confirmed.images,
+        vec![
+            nodex_core_contracts::inbox::ProjectWorkspaceInboxMessageImage {
+                source: "nodex://files/reviewed".into(),
+                file_id: "reviewed".into(),
+                content_hash: crate::document::sha256(b"image bytes for reviewed"),
+            }
+        ]
+    );
+    assert!(
+        confirmed
+            .final_text
+            .as_ref()
+            .unwrap()
+            .contains("[Image 1: Screenshot]")
+    );
+    replace_inbox_test_image(&workspace, "reviewed", "replacement");
+    assert_ne!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].basis,
+        before
+    );
+    let delivered = outbox(module).remove(0);
+    assert_eq!(delivered.images, confirmed.images);
+    assert_eq!(delivered.final_text, confirmed.final_text);
+    assert_ne!(
+        delivered.images[0].content_hash,
+        crate::document::sha256(b"image bytes for replacement")
+    );
+}
+
+#[test]
+fn inbox_migration_never_claims_replaced_images_as_reviewed_even_at_the_same_document_head() {
+    for edit_document in [false, true] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        for id in ["reviewed", "replacement"] {
+            super::test_support::create_library_image(&workspace, id);
+        }
+        send(
+            module,
+            "reviewed",
+            "![Original](nodex://files/reviewed)\n\n- **First** finding\n- Second finding",
+        );
+        let input = pending(module).remove(0);
+        propose(
+            module,
+            "proposal:legacy",
+            &input,
+            ProjectWorkspaceInboxDispatchAction::Keep,
+        );
+        grouped_request(module, "request:legacy", vec!["page:reviewed".into()]);
+        let legacy = workspace.kernel.readers().read_default(|connection| {
+            Ok(connection.query_row("SELECT json_array(json_object('page_id',page.block_id,'generation',document.generation,'head_seq',document.head_seq)) FROM pages page JOIN documents document ON document.id=page.document_id WHERE page.block_id='page:reviewed'", [], |row| row.get::<_, String>(0))?)
+        }).unwrap();
+        if edit_document {
+            let before = item(module, "page:reviewed");
+            apply_host(module, "edit:reviewed", ProjectWorkspaceIntent::EditInboxMessage {
+                page_id: before.page_id, basis: before.basis, original_body: before.body,
+                body: "![Original](nodex://files/reviewed)\n\n- **First** finding\n- Revised second finding".into(),
+            });
+        }
+        replace_inbox_test_image(&workspace, "reviewed", "replacement");
+        workspace.kernel.writer().call(move |connection| {
+            connection.execute("UPDATE inbox_proposals SET basis_json=?1 WHERE proposal_id='proposal:legacy'", [&legacy])?;
+            connection.execute("UPDATE inbox_suggestion_requests SET basis_json=?1,inputs_json='[]' WHERE request_id='request:legacy'", [&legacy])?;
+            connection.execute("UPDATE inbox_entries SET suggestion_state='pending' WHERE page_id='page:reviewed'", [])?;
+            crate::infrastructure::migration::migrate_inbox_content_bases(connection)?;
+            let (state, inputs): (String, String) = connection.query_row("SELECT state,inputs_json FROM inbox_suggestion_requests WHERE request_id='request:legacy'", [], |row| Ok((row.get(0)?,row.get(1)?)))?;
+            assert_eq!(state, "failed");
+            assert_eq!(inputs, "[]");
+            Ok(())
+        }).unwrap();
+        let current = item(module, "page:reviewed");
+        assert!(current.proposal.unwrap().outdated);
+        assert_eq!(
+            current.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Failed
+        );
     }
 }

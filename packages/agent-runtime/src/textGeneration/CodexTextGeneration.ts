@@ -16,6 +16,7 @@ import {
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
 import { resolveAttachmentPath } from "../attachmentStore.ts";
+import { inferImageExtension } from "../imageMime.ts";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { codexExecLaunchArgs, resolveCodexLaunchArgs } from "../provider/codexLaunchArgs.ts";
@@ -78,34 +79,32 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       .remove(path.dirname(filePath), { recursive: true })
       .pipe(Effect.catch(() => Effect.void));
 
-  // Deliberately unscoped: text generation runs from background fibers whose
-  // ambient scope may already be closed (a closed scope reaps the temp
-  // directory the moment it is created). Each allocation removes its own
-  // directory on failure; success-path cleanup is explicit in runCodexJson.
+  // Each request owns a fresh Scope, so temporary files cannot inherit a closed
+  // background Scope and are released even if a later allocation or write fails.
   const writeTempFile = (
     operation: string,
     prefix: string,
-    content: string,
-  ): Effect.Effect<string, TextGenerationError> =>
-    fileSystem
-      .makeTempFile({
-        prefix: `nodex-${prefix}-${process.pid}-`,
-      })
-      .pipe(
-        Effect.tap((filePath) =>
-          fileSystem
-            .writeFileString(filePath, content)
-            .pipe(Effect.onError(() => removeTempFileDir(filePath))),
-        ),
-        Effect.mapError(
-          (cause) =>
-            new TextGenerationError({
-              operation,
-              detail: `Failed to write temp file`,
-              cause,
-            }),
-        ),
-      );
+    content: string | Uint8Array,
+    suffix?: string,
+  ): Effect.Effect<string, TextGenerationError, Scope.Scope> =>
+    Effect.acquireRelease(
+      fileSystem.makeTempFile({ prefix: `nodex-${prefix}-${process.pid}-`, suffix }),
+      removeTempFileDir,
+    ).pipe(
+      Effect.tap((filePath) =>
+        typeof content === "string"
+          ? fileSystem.writeFileString(filePath, content)
+          : fileSystem.writeFile(filePath, content),
+      ),
+      Effect.mapError(
+        (cause) =>
+          new TextGenerationError({
+            operation,
+            detail: "Failed to write temp file.",
+            cause,
+          }),
+      ),
+    );
 
   const encodeJsonForOperation = (
     operation: TextGenerationOperations.Operation,
@@ -158,6 +157,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     outputSchema: outputSchemaJson,
     modelSelection,
     attachments,
+    images,
     investigate,
     jsonSchema,
     maxOutputBytes,
@@ -165,7 +165,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
   }: TextGenerationOperations.Request<S>): Effect.fn.Return<
     S["Type"],
     TextGenerationError,
-    S["DecodingServices"]
+    S["DecodingServices"] | Scope.Scope
   > {
     const imagePaths = yield* materializeImageAttachments(attachments);
     const schemaJson = yield* encodeJsonForOperation(
@@ -173,9 +173,16 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       jsonSchema ?? toJsonSchemaObject(outputSchemaJson),
     );
     const schemaPath = yield* writeTempFile(operation, "codex-schema", schemaJson);
-    const outputPath = yield* writeTempFile(operation, "codex-output", "").pipe(
-      Effect.onError(() => removeTempFileDir(schemaPath)),
-    );
+    const outputPath = yield* writeTempFile(operation, "codex-output", "");
+    for (const image of images ?? []) {
+      const imagePath = yield* writeTempFile(
+        operation,
+        "codex-image",
+        Buffer.from(image.data, "base64"),
+        inferImageExtension({ mimeType: image.mediaType }),
+      );
+      imagePaths.push(imagePath);
+    }
 
     const runCodexCommand = Effect.fn("runCodexJson.runCodexCommand")(function* () {
       const resolved = resolveRuntime
@@ -195,11 +202,11 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
           (candidate) => !candidate.isCustom && codexModelFamily(candidate.slug) === requestedModel,
         )?.slug ??
         requestedModel;
-      const launchArgs = resolveCodexLaunchArgs(effectiveConfig.launchArgs, effectiveEnvironment);
       const reasoningEffort =
         getModelSelectionStringOptionValue(modelSelection, "reasoningEffort") ??
         DEFAULT_TEXT_GENERATION_REASONING_EFFORT;
       const serviceTier = resolved ? undefined : getCodexServiceTierOptionValue(modelSelection);
+      const launchArgs = resolveCodexLaunchArgs(effectiveConfig.launchArgs, effectiveEnvironment);
       const spawnCommand = yield* resolveSpawnCommand(
         effectiveConfig.binaryPath || "codex",
         [
@@ -276,62 +283,58 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       }
     });
 
-    const cleanup = Effect.all([removeTempFileDir(schemaPath), removeTempFileDir(outputPath)], {
-      concurrency: "unbounded",
-    }).pipe(Effect.asVoid);
+    yield* runCodexCommand().pipe(
+      Effect.scoped,
+      Effect.timeoutOption(timeoutMs ?? investigate?.timeoutMs ?? CODEX_TIMEOUT_MS),
+      Effect.flatMap(
+        Option.match({
+          onNone: () =>
+            Effect.fail(
+              new TextGenerationError({ operation, detail: "Codex CLI request timed out." }),
+            ),
+          onSome: () => Effect.void,
+        }),
+      ),
+    );
 
-    return yield* Effect.gen(function* () {
-      yield* runCodexCommand().pipe(
-        Effect.scoped,
-        Effect.timeoutOption(timeoutMs ?? investigate?.timeoutMs ?? CODEX_TIMEOUT_MS),
-        Effect.flatMap(
-          Option.match({
-            onNone: () =>
-              Effect.fail(
-                new TextGenerationError({ operation, detail: "Codex CLI request timed out." }),
-              ),
-            onSome: () => Effect.void,
-          }),
+    const outputInfo = yield* fileSystem
+      .stat(outputPath)
+      .pipe(
+        Effect.mapError((cause) =>
+          normalizeCliError("codex", operation, cause, "Cannot inspect utility output"),
         ),
       );
+    if (outputInfo.size > BigInt(maxOutputBytes ?? 1024 * 1024))
+      return yield* new TextGenerationError({
+        operation,
+        detail: "Structured output exceeded its byte budget.",
+      });
+    const decodeOutput = Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson));
 
-      const outputInfo = yield* fileSystem
-        .stat(outputPath)
-        .pipe(
-          Effect.mapError((cause) =>
-            normalizeCliError("codex", operation, cause, "Cannot inspect utility output"),
-          ),
-        );
-      if (outputInfo.size > BigInt(maxOutputBytes ?? 1024 * 1024))
-        return yield* new TextGenerationError({
-          operation,
-          detail: "Structured output exceeded its byte budget.",
-        });
-      const decodeOutput = Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson));
-
-      return yield* fileSystem.readFileString(outputPath).pipe(
-        Effect.mapError(
-          (cause) =>
+    return yield* fileSystem.readFileString(outputPath).pipe(
+      Effect.mapError(
+        (cause) =>
+          new TextGenerationError({
+            operation,
+            detail: "Failed to read Codex output file.",
+            cause,
+          }),
+      ),
+      Effect.flatMap(decodeOutput),
+      Effect.catchTags({
+        SchemaError: (cause) =>
+          Effect.fail(
             new TextGenerationError({
               operation,
-              detail: "Failed to read Codex output file.",
+              detail: "Codex returned invalid structured output.",
               cause,
             }),
-        ),
-        Effect.flatMap(decodeOutput),
-        Effect.catchTags({
-          SchemaError: (cause) =>
-            Effect.fail(
-              new TextGenerationError({
-                operation,
-                detail: "Codex returned invalid structured output.",
-                cause,
-              }),
-            ),
-        }),
-      );
-    }).pipe(Effect.ensuring(cleanup));
-  });
+          ),
+      }),
+    );
+  }, Effect.scoped);
 
-  return TextGenerationOperations.fromRunner("CodexTextGeneration", runCodexJson);
+  return TextGenerationOperations.fromRunner("CodexTextGeneration", runCodexJson, {
+    supportsImages: true,
+  });
 });

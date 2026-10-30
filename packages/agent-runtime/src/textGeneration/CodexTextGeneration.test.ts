@@ -33,6 +33,7 @@ interface FakeCodexInput {
   exitCode?: number;
   stderr?: string;
   requireImage?: boolean;
+  expectedImages?: readonly { readonly extension: string; readonly data: string }[];
   requireServiceTier?: string;
   requireReasoningEffort?: string;
   forbidReasoningEffort?: boolean;
@@ -49,6 +50,7 @@ interface FakeCodexInput {
 function makeFakeCodexBinary(dir: string, input: FakeCodexInput) {
   const check = JSON.stringify({
     requireImage: input.requireImage ?? false,
+    expectedImages: input.expectedImages ?? null,
     requireServiceTier: input.requireServiceTier ?? null,
     requireReasoningEffort: input.requireReasoningEffort ?? null,
     forbidReasoningEffort: input.forbidReasoningEffort ?? false,
@@ -72,12 +74,13 @@ function makeFakeCodexBinary(dir: string, input: FakeCodexInput) {
         'const originalArgs = ` ${args.join(" ")} `;',
         "let outputPath = null;",
         "let seenImage = false;",
+        "const imagePaths = [];",
         'let seenServiceTier = "";',
         'let seenReasoningEffort = "";',
         "for (let index = 0; index < args.length; index += 1) {",
         '  if (args[index] === "--image") {',
         "    index += 1;",
-        "    if (args[index]) seenImage = true;",
+        "    if (args[index]) { seenImage = true; imagePaths.push(args[index]); }",
         '  } else if (args[index] === "--config") {',
         "    index += 1;",
         '    const value = args[index] ?? "";',
@@ -102,6 +105,10 @@ function makeFakeCodexBinary(dir: string, input: FakeCodexInput) {
         '  fail("forbidden arg: " + check.forbidArg, 9);',
         "}",
         'if (check.requireImage && !seenImage) fail("missing --image input", 2);',
+        "if (check.expectedImages !== null) {",
+        '  const images = imagePaths.map(path => ({ extension: path.slice(path.lastIndexOf(".")), data: NodeFS.readFileSync(path).toString("base64") }));',
+        '  if (JSON.stringify(images) !== JSON.stringify(check.expectedImages)) fail("image files differ: " + JSON.stringify(images), 10);',
+        "}",
         "if (",
         "  check.requireServiceTier !== null &&",
         '  seenServiceTier !== `service_tier="${check.requireServiceTier}"`',
@@ -662,6 +669,51 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
           expect(generated.branch).toBe("fix/ui-regression");
         }),
     ),
+  );
+
+  it.effect(
+    "appends prepared images after existing attachments without removing the attachment",
+    () =>
+      withFakeCodexEnv(
+        {
+          output: '{"title":"Ordered images"}',
+          expectedImages: [
+            { extension: ".png", data: "AAEC" },
+            { extension: ".jpg", data: "AwQF" },
+          ],
+        },
+        (generation) =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const config = yield* ServerConfig.ServerConfig;
+            const attachmentId = "thread-images-12345678-1234-1234-1234-123456789abc";
+            const attachmentPath = path.join(config.attachmentsDir, `${attachmentId}.png`);
+            yield* fs.makeDirectory(config.attachmentsDir, { recursive: true });
+            yield* fs.writeFile(attachmentPath, Buffer.from([0, 1, 2]));
+            yield* Effect.addFinalizer(() => fs.remove(attachmentPath).pipe(Effect.ignore));
+            const input = {
+              cwd: process.cwd(),
+              prompt: "Read these images in order",
+              modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+              outputSchema: { type: "object", properties: { title: { type: "string" } } },
+              attachments: [
+                {
+                  type: "image" as const,
+                  id: attachmentId,
+                  name: "existing.png",
+                  mimeType: "image/png",
+                  sizeBytes: 3,
+                },
+              ],
+              images: [{ mediaType: "image/jpeg" as const, data: "AwQF" }],
+            };
+            expect(yield* generation.generateStructured!(input)).toEqual({
+              title: "Ordered images",
+            });
+            expect(yield* fs.readFile(attachmentPath)).toEqual(Buffer.from([0, 1, 2]));
+          }),
+      ),
   );
 
   it.effect("ignores missing attachment ids for codex image inputs", () =>

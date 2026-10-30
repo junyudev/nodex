@@ -88,6 +88,8 @@ export class NativePromptImages extends Context.Service<
     readonly prepare: (
       images: readonly CodexPromptImageInput[],
     ) => Effect.Effect<readonly AgentPromptImage[], AgentRuntimeError>;
+    /** Proves that the native codec can decode an image with positive dimensions. */
+    readonly validate: (image: PromptImageBytes) => Effect.Effect<void, AgentRuntimeError>;
     /** Fits images already read to what an Agent takes with one message. */
     readonly fit: (
       images: readonly PromptImageBytes[],
@@ -141,6 +143,11 @@ export const layer = Layer.effect(
           try: () => prepareNativePromptImages(images, assets.readManagedAssetImage, fit),
           catch: failure,
         }),
+      validate: (image) =>
+        Effect.tryPromise({
+          try: () => fit(image, MAX_SOURCE_BYTES),
+          catch: failure,
+        }).pipe(Effect.asVoid),
       fit: (images) =>
         Effect.tryPromise({
           try: async () => (await fitPromptImages(images, fit)).map(toPromptImage),

@@ -1,6 +1,6 @@
 import type { PlanType } from "@nodex/codex-app-server-protocol";
 
-export const PAID_AGENT_SMOKE_CASES = ["file", "browser", "subagent"] as const;
+export const PAID_AGENT_SMOKE_CASES = ["file", "browser", "subagent", "inbox-image"] as const;
 
 export const PAID_AGENT_SMOKE_DISABLED_SKILL_NAMES = ["agent-browser", "qa-testing"] as const;
 
@@ -37,6 +37,14 @@ export const PAID_AGENT_SMOKE_DEFINITIONS: Readonly<
     modelId: "gpt-5.6-terra",
     reasoningEffort: "medium",
     expectedLogicalExecutions: 2,
+  },
+  "inbox-image": {
+    id: "inbox-image",
+    grep: "@paid-agent-inbox-image",
+    modelId: "gpt-6-luna",
+    // resolveInboxModel fixes Codex suggestion effort at high, independently of chat settings.
+    reasoningEffort: "high",
+    expectedLogicalExecutions: 1,
   },
 };
 

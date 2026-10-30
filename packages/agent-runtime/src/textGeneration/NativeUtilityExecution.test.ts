@@ -2,6 +2,13 @@ import { CodexSettings, ClaudeSettings, ProviderInstanceId } from "@t3tools/cont
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
+import * as NodeFS from "node:fs";
+import * as Application from "../nodex/Application.ts";
+import { AgentRuntime } from "../nodex/Service.ts";
+import { writeFakeCli } from "@t3tools/provider-testing/fakeCli";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -101,6 +108,7 @@ for (const driver of ["codex", "claude"] as const) {
         const structured = yield* generation.generateStructured!({
           cwd: directory,
           prompt: "Generate a title",
+          images: [],
           modelSelection,
           outputSchema,
           maxOutputBytes: 1024,
@@ -137,3 +145,135 @@ for (const driver of ["codex", "claude"] as const) {
       ),
   );
 }
+
+const promptImages = [
+  { mediaType: "image/png", data: "AAECA/8=" },
+  { mediaType: "image/jpeg", data: "BAUGBw==" },
+  { mediaType: "image/gif", data: "CAkKCw==" },
+  { mediaType: "image/webp", data: "DA0ODw==" },
+] as const;
+const imageOutputSchema = {
+  type: "object",
+  properties: { title: { type: "string" } },
+  required: ["title"],
+  additionalProperties: false,
+};
+const imageProof = Schema.Struct({
+  args: Schema.Array(Schema.String),
+  prompt: Schema.String,
+  images: Schema.Array(Schema.Struct({ path: Schema.String, data: Schema.String })),
+});
+const decodeImageProof = Schema.decodeSync(Schema.fromJsonString(imageProof));
+
+it.live.each(["success", "failure", "output-budget", "interruption"] as const)(
+  "production Runtime sends exact image bytes and cleans temporary files after %s",
+  (behavior) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-utility-images-" });
+      const proofPath = path.join(home, "image-proof.json");
+      const peerReady = yield* Deferred.make<void>();
+      if (behavior === "interruption")
+        yield* Effect.acquireRelease(
+          Effect.sync(() =>
+            NodeFS.watch(home, (_event, fileName) => {
+              if (fileName?.toString() === "image-proof.json")
+                Deferred.doneUnsafe(peerReady, Effect.void);
+            }),
+          ),
+          (watcher) => Effect.sync(() => watcher.close()),
+        );
+      const binaryPath = writeFakeCli({
+        directory: path.join(home, "bin"),
+        name: "codex",
+        source: `
+import fs from "node:fs";
+const args = process.argv.slice(2);
+if (args[0] !== "exec") process.exit(0);
+let prompt = "";
+for await (const chunk of process.stdin) prompt += chunk;
+const images = args.flatMap((arg, index) => arg === "--image" ? [args[index + 1]] : []);
+fs.writeFileSync(${JSON.stringify(proofPath + ".tmp")}, JSON.stringify({
+  args, prompt, images: images.map(path => ({ path, data: fs.readFileSync(path).toString("base64") })),
+}));
+fs.renameSync(${JSON.stringify(proofPath + ".tmp")}, ${JSON.stringify(proofPath)});
+const behavior = ${JSON.stringify(behavior)};
+if (behavior === "failure") process.exit(23);
+if (behavior === "interruption") {
+  setInterval(() => {}, 1000);
+  await new Promise(() => {});
+}
+fs.writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify({ title: "Image suggestion" }));
+`,
+      });
+      yield* Effect.gen(function* () {
+        const runtime = yield* AgentRuntime;
+        // Invocation has only the runtime's captured services, as in the Desktop Host.
+        const execution = runtime
+          .handle({
+            id: "image-suggestion",
+            method: "text.generate-structured",
+            input: {
+              cwd: home,
+              prompt: "Read these images in order",
+              images: promptImages,
+              modelSelection: { instanceId: "codex", model: "gpt-6-luna" },
+              outputSchema: imageOutputSchema,
+              ...(behavior === "output-budget" ? { maxOutputBytes: 1 } : {}),
+            },
+          })
+          .pipe(Effect.setContext(Context.empty()));
+        if (behavior === "interruption") {
+          const running = yield* Effect.forkChild(execution);
+          yield* Deferred.await(peerReady).pipe(Effect.timeout("5 seconds"));
+          yield* Fiber.interrupt(running);
+          return;
+        }
+        if (behavior !== "success") {
+          const error = yield* execution.pipe(Effect.flip);
+          assert.instanceOf(error, Error);
+          assert.include(error.message, behavior === "failure" ? "code 23" : "byte budget");
+          return;
+        }
+        assert.deepEqual(yield* execution, { title: "Image suggestion" });
+      }).pipe(
+        Effect.provide(
+          Application.layer(
+            {
+              home,
+              cwd: home,
+              providers: {
+                codex: {
+                  driver: "codex",
+                  config: {
+                    binaryPath,
+                    homePath: path.join(home, "codex-home"),
+                    setupMode: "existing",
+                  },
+                },
+              },
+            },
+            () => Effect.void,
+          ),
+        ),
+      );
+      const proof = decodeImageProof(yield* fs.readFileString(proofPath));
+      assert.strictEqual(proof.args[0], "exec");
+      assert.strictEqual(proof.prompt, "Read these images in order");
+      assert.deepEqual(
+        proof.images.map(({ data }) => data),
+        promptImages.map(({ data }) => data),
+      );
+      assert.deepEqual(
+        proof.images.map(({ path: file }) => path.extname(file)),
+        [".png", ".jpg", ".gif", ".webp"],
+      );
+      const temporaryPaths = [
+        proof.args[proof.args.indexOf("--output-schema") + 1]!,
+        proof.args[proof.args.indexOf("--output-last-message") + 1]!,
+        ...proof.images.map(({ path }) => path),
+      ];
+      for (const file of temporaryPaths) assert.isFalse(yield* fs.exists(path.dirname(file)));
+    }).pipe(Effect.provide(NodeServices.layer)),
+);

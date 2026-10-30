@@ -11,6 +11,8 @@ import {
   type InboxSuggestionMode,
 } from "../../shared/inbox";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import { NativePromptImages } from "../agent-backend/NativePromptImages";
+import { LibraryModule } from "../library-application/LibraryModule";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { testLayer as configLayer } from "../app/MainConfig";
 import { subscribeToBackendLogs, type BackendLogEntry } from "../logging/logger";
@@ -91,6 +93,13 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
   });
   const { inbox } = yield* inboxOverRealCore(Effect.void, catalog, () => current);
   const { drain } = yield* make.pipe(
+    Effect.provideService(LibraryModule, {
+      readFileBlob: () => Effect.die("Text-only suggestions must not read image files"),
+    } as unknown as LibraryModule["Service"]),
+    Effect.provideService(NativePromptImages, {
+      validate: () => Effect.die("Text-only suggestions must not decode images"),
+      fit: () => Effect.die("Text-only suggestions must not fit images"),
+    } as unknown as NativePromptImages["Service"]),
     Effect.provideService(InboxApplication, inbox),
     Effect.provideService(ApplicationSettings, {
       snapshot: () => Effect.sync(() => ({ inbox: current })),

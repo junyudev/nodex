@@ -17,6 +17,9 @@ import {
 import { readPaidAgentRolloutEvidence } from "../../scripts/paid-agent-rollout-evidence";
 import type { CodexExecutionProfile } from "../../src/shared/codex-execution-profile";
 import type { CodexModelOption } from "../../src/shared/types";
+import { inboxSuggestionChoice, resolveInboxModel, type InboxItem } from "../../src/shared/inbox";
+import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
+import { invokeIpc as invokeTypedIpc } from "./support/editor-scenario";
 import {
   collectRecords,
   createAgentSmokeDraft,
@@ -640,5 +643,352 @@ test("spawns exactly one child and converges to Done @paid-agent-subagent", asyn
     );
   } finally {
     fs.rmSync(childPath, { force: true });
+  }
+});
+
+// Run explicitly: vp run agent:smoke:paid --case inbox-image
+test("reads the image in an explicit Inbox suggestion @paid-agent-inbox-image", async ({}, testInfo) => {
+  test.setTimeout(240_000);
+  const caseId = "inbox-image";
+  const definition = PAID_AGENT_SMOKE_DEFINITIONS[caseId];
+  const sourceCodexHome = process.env.NODEX_PAID_AGENT_SMOKE_SOURCE_CODEX_HOME;
+  if (!sourceCodexHome) throw new Error("Use `vp run agent:smoke:paid --case inbox-image`");
+  const artifacts =
+    process.env.NODEX_PAID_INBOX_IMAGE_ARTIFACT_DIR ?? testInfo.outputPath("review");
+  fs.mkdirSync(artifacts, { recursive: true });
+  const wirePath = path.join(artifacts, "wire.jsonl");
+  fs.writeFileSync(wirePath, "");
+  const harness = await ElectronScenarioHarness.create({
+    label: "paid-agent-inbox-image",
+    codex: "copy-auth",
+    sourceCodexHome,
+    cwd: repositoryRoot,
+    prepareAgentRuntime: false,
+    environment: {
+      NODEX_LOG_FILE: "1",
+      NODEX_LOG_CONSOLE: "0",
+      NODEX_PAID_INBOX_WIRE_LOG: wirePath,
+      NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: repositoryRoot,
+      NODEX_TEST_AGENT_RUNTIME_NODE_EXECUTABLE: path.join(artifacts, "node-runtime"),
+    },
+  });
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  const observer = path.join(repositoryRoot, "tests/e2e/fixtures/paid-inbox-wire-observer.cjs");
+  const copiedAuthPath = path.join(harness.profile.codexHome, "auth.json");
+  const claims: { name: string; expected: unknown; actual: unknown }[] = [];
+  const claim = (name: string, expected: unknown, actual: unknown) => {
+    claims.push({ name, expected, actual });
+    expect(actual, name).toEqual(expected);
+  };
+  const wireRecords = (): Record<string, unknown>[] =>
+    fs
+      .readFileSync(wirePath, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  const fixturePath = path.join(repositoryRoot, "tests/e2e/fixtures/inbox-image.png");
+  let status = "failed";
+  let failure: ReturnType<typeof sanitizeFailure> | null = null;
+  let page: Page | null = null;
+  let recording = false;
+  let explicitlyRequested = false;
+  let item: InboxItem | undefined;
+  let account: unknown;
+  let selection: unknown;
+  let providerPreflight: unknown;
+  const diagnostics: string[] = [];
+  try {
+    fs.writeFileSync(
+      path.join(artifacts, "node-runtime"),
+      `#!/bin/sh\nexec ${quote(process.execPath)} --require ${quote(observer)} "$@"\n`,
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(
+      path.join(harness.profile.codexHome, "config.toml"),
+      buildPaidAgentSmokeCodexConfig(caseId),
+      { encoding: "utf8", flag: "wx", mode: 0o600 },
+    );
+    page = await harness.launch();
+    page.on("pageerror", (error) => diagnostics.push(error.message));
+    account = await preflightPaidAccount(page);
+    await preflightExecutionProfile(page, caseId);
+    const seed = new RendererIpcSeedAdapter(page);
+    const project = await seed.createProject({
+      name: "Image smoke",
+      sources: [harness.profile.initialProjectsDirectory],
+    });
+    const settings = await invokeTypedIpc(page, "settings:inbox:update", {
+      suggestions: "on_request",
+      suggestionAgent: { instanceId: "codex" },
+      suggestionModel: definition.modelId,
+      suggestionsChooseModels: false,
+    });
+    const readProviders = async () => {
+      const providers = await invokeTypedIpc(harness.page, "agent-runtime:providers:read", {
+        refresh: true,
+      });
+      const resolution = resolveInboxModel(
+        providers,
+        inboxSuggestionChoice(settings),
+        "suggestion",
+      );
+      providerPreflight = {
+        resolution: resolution.kind,
+        reason: resolution.kind === "unavailable" ? resolution.message : null,
+        providers: providers.map((provider) => ({
+          instanceId: provider.instanceId,
+          enabled: provider.enabled,
+          status: provider.status,
+          availability: provider.availability,
+          installed: provider.installed,
+          models: provider.models.map((model) => model.slug),
+        })),
+      };
+      return providers;
+    };
+    let providers = await readProviders();
+    await expect
+      .poll(() => wireRecords().some((record) => record.type === "observer.started"))
+      .toBe(true);
+    // A cold catalog may not be ready with the window; refresh readiness before asking for work.
+    await expect
+      .poll(
+        async () => {
+          const resolution = resolveInboxModel(
+            providers,
+            inboxSuggestionChoice(settings),
+            "suggestion",
+          );
+          if (resolution.kind === "ready") return resolution.kind;
+          providers = await readProviders();
+          return resolveInboxModel(providers, inboxSuggestionChoice(settings), "suggestion").kind;
+        },
+        { timeout: 45_000 },
+      )
+      .toBe("ready");
+    const resolved = resolveInboxModel(providers, inboxSuggestionChoice(settings), "suggestion");
+    if (resolved.kind !== "ready") throw new Error(`Inbox model is ${resolved.kind}`);
+    selection = resolved.selection;
+    expect(resolved.selection.model).toBe(definition.modelId);
+    await harness.application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: 1280, height: 800 });
+    });
+    await page.getByTestId("sidebar-inbox-row-wrapper").getByRole("button").click();
+    const inbox = page.locator('[data-inbox-scope="library"]');
+    await expect(inbox).toBeVisible();
+    const composer = inbox.getByTestId("inbox-composer");
+    await composer.getByTestId("message-image-picker").setInputFiles(fixturePath);
+    const text = "Can you take care of this?";
+    await composer.getByRole("textbox", { name: "Message your Inbox" }).fill(text);
+    await expect(
+      composer.getByRole("button", { name: "Send to Inbox", exact: true }),
+    ).toBeEnabled();
+    await page.screencast.start({
+      path: path.join(artifacts, "review.webm"),
+      size: { width: 1280, height: 800 },
+    });
+    recording = true;
+    await page.screencast.showActions({ position: "bottom" });
+    await composer.getByRole("button", { name: "Send to Inbox", exact: true }).click();
+    await expect(inbox.getByTestId("inbox-message").filter({ hasText: text })).toBeVisible();
+    item = (await seed.readInbox("inbox")).items[0];
+    if (!item) throw new Error("The sent Inbox message is missing");
+    const row = inbox.locator(`[data-inbox-page-id="${item.pageId}"]`);
+    claim(
+      "The Page body begins with the image",
+      true,
+      /^!\[.*?\]\(nodex:\/\/files\//u.test(item.body),
+    );
+    claim(
+      "The canonical Page begins with an image Block",
+      "image",
+      (await seed.readPageBlockTree(project.id, item.pageId))[0]?.type,
+    );
+    claim(
+      "The message text does not reveal the task",
+      text,
+      item.body.replace(/^!\[.*?\]\([^\n]+\)\s*/u, "").trim(),
+    );
+    const message = row.getByTestId("inbox-message-unit");
+    const image = message.locator("img");
+    await expect(image).toBeVisible();
+    await expect
+      .poll(() =>
+        image.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0),
+      )
+      .toBe(true);
+    const imageBox = await image.boundingBox();
+    const textBox = await message.getByText(text, { exact: true }).boundingBox();
+    claim(
+      "The Inbox shows the image above the message text",
+      true,
+      Boolean(imageBox && textBox && imageBox.y + imageBox.height <= textBox.y),
+    );
+    claim(
+      "No model ran before the explicit request",
+      0,
+      wireRecords().filter((record) => record.type === "runtime.request").length,
+    );
+    // A send may still be waiting for the background drain; the offered action is readiness.
+    const suggest = row.getByRole("button", { name: "Suggest", exact: true });
+    await expect(suggest).toBeVisible();
+    await suggest.click();
+    explicitlyRequested = true;
+    await expect
+      .poll(
+        async () => {
+          const items = (await seed.readInbox("inbox")).items;
+          item = items[0];
+          if (item?.suggestionState === "failed")
+            throw new Error(item.suggestionError ?? "Inbox suggestion failed");
+          return item?.suggestionState;
+        },
+        { timeout: 120_000 },
+      )
+      .toBe("settled");
+    if (!item?.proposal) throw new Error("The settled message has no suggestion");
+    const suggestion = row.getByTestId("inbox-suggestion");
+    await expect(suggestion).toBeVisible();
+    await expect(suggestion).toContainText(/Billing|Payments/i);
+    const action = item.proposal.action;
+    const prompt =
+      action.type === "new_chat" || action.type === "send_to_chat" ? action.prompt : null;
+    claim(
+      "The real suggestion describes the image-only instruction",
+      true,
+      /Billing|Payments/i.test(`${item.proposal.summary} ${prompt ?? ""}`),
+    );
+    const wire = wireRecords();
+    const requests = wire.filter((record) => record.type === "runtime.request");
+    claim(
+      "Exactly one suggestion execution ran",
+      definition.expectedLogicalExecutions,
+      requests.length,
+    );
+    const request = requests[0]!;
+    claim(
+      "The dispatched model matches Inbox settings",
+      resolved.selection,
+      request.modelSelection,
+    );
+    claim(
+      "The model's text input does not reveal the image instruction",
+      false,
+      /Billing|Payments/i.test(String(request.prompt)),
+    );
+    claim("The model receives an image marker", true, String(request.prompt).includes("[Image 1]"));
+    const executions = wire.filter((record) => record.type === "codex.exec");
+    claim("One production codex exec process ran", 1, executions.length);
+    const execution = requireRecord(executions[0], "Codex exec evidence");
+    claim("Codex exec uses the authorized model", definition.modelId, execution.model);
+    claim("Codex exec uses the Inbox's fixed effort", definition.reasoningEffort, execution.effort);
+    claim("Codex exec receives one --image argument", 1, execution.imageArgumentCount);
+    const fixture = fs.readFileSync(fixturePath);
+    claim(
+      "The --image file contains the exact fixture bytes",
+      [{ byteLength: fixture.length, sha256: digest(fixture) }],
+      execution.images,
+    );
+    claim(
+      "The image bytes reach Codex unchanged",
+      [{ mediaType: "image/png", byteLength: fixture.length, sha256: digest(fixture) }],
+      request.images,
+    );
+    claim(
+      "Codex exec completed successfully",
+      [{ code: 0, signal: null }],
+      wire
+        .filter(
+          (record) => record.type === "codex.exec.exit" && record.childPid === execution.childPid,
+        )
+        .map((record) => ({ code: record.code, signal: record.signal })),
+    );
+    // Clear hover chrome before capturing the settled suggestion.
+    await page.mouse.move(600, 140);
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+    await page.screenshot({ path: path.join(artifacts, "final.png") });
+    const decision = row
+      .getByTestId("inbox-actions")
+      .getByRole("button", { name: /New (?:projectless )?chat|Send to/ })
+      .first();
+    if (await decision.count()) {
+      await decision.hover();
+      const tooltip = page.getByRole("tooltip");
+      await expect(tooltip).toBeVisible();
+      await page.screenshot({ path: path.join(artifacts, "decision-tooltip.png") });
+    }
+    claim("No renderer errors occurred", [], diagnostics);
+    status = "passed";
+  } catch (error) {
+    failure = sanitizeFailure(error);
+    await page?.screenshot({ path: path.join(artifacts, "final.png") }).catch(() => undefined);
+    throw error;
+  } finally {
+    try {
+      if (recording) await page?.screencast.stop();
+      await harness.stopElectron();
+      fs.writeFileSync(
+        path.join(artifacts, "runtime.log"),
+        await readBoundedElectronRuntimeLogs(harness.profile),
+      );
+      const action = item?.proposal?.action;
+      const execution = wireRecords();
+      const nativeExec = execution.find((record) => record.type === "codex.exec");
+      const verification = {
+        status,
+        failure,
+        case: caseId,
+        request: {
+          mode: "explicit",
+          suggestions: "on_request",
+          trigger: "Suggest",
+          clicked: explicitlyRequested,
+        },
+        account,
+        selection,
+        providerPreflight,
+        actualModel: nativeExec?.model ?? null,
+        actualEffort: nativeExec?.effort ?? null,
+        claims,
+        diagnostics,
+        fixture: { path: fixturePath, sha256: digest(fs.readFileSync(fixturePath)) },
+        suggestion: item?.proposal
+          ? {
+              summary: item.proposal.summary,
+              prompt:
+                action && (action.type === "new_chat" || action.type === "send_to_chat")
+                  ? action.prompt
+                  : null,
+              producedBy: item.proposal.producedBy,
+            }
+          : null,
+        message: item
+          ? {
+              pageId: item.pageId,
+              body: item.body,
+              suggestionState: item.suggestionState,
+              suggestionError: item.suggestionError,
+            }
+          : null,
+        execution: execution.filter(
+          (record) => record.type === "codex.exec" || record.type === "codex.exec.exit",
+        ),
+      };
+      fs.writeFileSync(
+        path.join(artifacts, "verification.json"),
+        `${JSON.stringify(verification, null, 2)}\n`,
+      );
+      fs.writeFileSync(
+        path.join(artifacts, "README.md"),
+        `# Inbox image suggestion\n\nStatus: ${status}.\n\nWith suggestions set to on_request, the Inbox composer imports the image and sends it before “Can you take care of this?”, then the user explicitly asks with the message row's Suggest button.\n\nObserved codex exec model: ${String(verification.actualModel)}. Effort: ${String(verification.actualEffort)}. The observer hashes the --image file before cleanup; verification.json checks its exact fixture bytes, the image-first Page and UI, and the returned suggestion. Only allowlisted execution fields are recorded; raw arguments, environment and native output are excluded.\n\nSummary: ${verification.suggestion?.summary ?? "No suggestion produced."}\n\nPrompt: ${verification.suggestion?.prompt ?? "No chat prompt produced."}\n\nRun: vp run agent:smoke:paid --case inbox-image\n`,
+      );
+      await testInfo.attach("inbox-image-verification", {
+        path: path.join(artifacts, "verification.json"),
+        contentType: "application/json",
+      });
+    } finally {
+      fs.rmSync(copiedAuthPath, { force: true });
+      await harness.close();
+    }
   }
 });

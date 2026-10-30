@@ -77,6 +77,7 @@ import * as NativeMessageReceipts from "./NativeMessageReceipts.ts";
 import * as RuntimeMessageReceipts from "./RuntimeMessageReceipts.ts";
 import * as NativeRuntimePolicy from "../orchestration-v2/RuntimePolicy.ts";
 import { TextGeneration } from "../textGeneration/TextGeneration.ts";
+import { PromptImage } from "./PromptImage.ts";
 import { make as makeThreadAttachmentReader } from "./Attachment.ts";
 import { compactThread } from "./Compact.ts";
 import {
@@ -226,6 +227,7 @@ const AgentRequest = Schema.Union([
     Schema.Struct({
       cwd: Schema.String,
       prompt: Schema.String.check(Schema.isMaxLength(262144)),
+      images: Schema.optional(Schema.Array(PromptImage)),
       modelSelection: ModelSelection,
       outputSchema: Schema.Record(Schema.String, Schema.Unknown),
       maxOutputBytes: Schema.optional(

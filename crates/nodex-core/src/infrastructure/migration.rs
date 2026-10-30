@@ -2556,6 +2556,7 @@ fn migrate_v193_to_v194(
     context: &MigrationContext,
 ) -> Result<(), StoreError> {
     connection.execute_batch(include_str!("../../schema/migrations/v193_to_v194.sql"))?;
+    migrate_inbox_handoff_images(connection)?;
     migrate_inbox_content_bases(connection)?;
     connection.execute(
         "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
@@ -2567,9 +2568,67 @@ fn migrate_v193_to_v194(
     Ok(())
 }
 
+/// A legacy Inbox basis has no File-version binding. Even a matching Document head
+/// cannot prove current bytes: File replacement does not advance that head. Only a
+/// never-replaced File is unambiguous; uncertain evidence must remain outdated.
+fn legacy_inbox_image_hash(
+    connection: &Connection,
+    file_id: &str,
+) -> Result<Option<String>, StoreError> {
+    use rusqlite::OptionalExtension;
+    Ok(connection.query_row(
+        "SELECT version.blob_hash FROM library_files file JOIN file_versions version ON version.file_id=file.file_id AND version.version=1 WHERE file.file_id=?1 AND file.head_version=1 AND NOT EXISTS(SELECT 1 FROM file_versions other WHERE other.file_id=file.file_id AND other.version<>1)",
+        [file_id], |row| row.get(0),
+    ).optional()?)
+}
+
+/// Pre-v194 handoffs retained image identities but no reviewed digests. Never attach a
+/// newer head to that confirmation; ambiguous or collected images remain unavailable.
+fn migrate_inbox_handoff_images(connection: &Connection) -> Result<(), StoreError> {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxMessageImage;
+    let rows = connection
+        .prepare("SELECT proposal_id,images_json FROM inbox_handoffs")?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (proposal_id, json) in rows {
+        let sources: Vec<String> = serde_json::from_str(&json)
+            .map_err(|_| corrupt("Stored Inbox handoff images are invalid"))?;
+        let images = sources
+            .into_iter()
+            .map(|source| {
+                let file_id = crate::domain::derived_records::parse_page_file_source(&source)
+                    .ok_or_else(|| corrupt("Stored Inbox image is not a Library File"))?;
+                let content_hash =
+                    legacy_inbox_image_hash(connection, &file_id)?.unwrap_or_else(|| {
+                        crate::document::sha256(
+                            format!("unavailable-inbox-handoff-image:{proposal_id}:{file_id}")
+                                .as_bytes(),
+                        )
+                    });
+                Ok(ProjectWorkspaceInboxMessageImage {
+                    source,
+                    file_id,
+                    content_hash,
+                })
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        connection.execute(
+            "UPDATE inbox_handoffs SET images_json=?2 WHERE proposal_id=?1",
+            params![
+                proposal_id,
+                serde_json::to_string(&images)
+                    .map_err(|_| corrupt("Stored Inbox handoff images are invalid"))?
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 /// Legacy coordinates are decoded only here. Retained Yrs history recovers the actual
 /// written text; pruned history keeps a distinct fingerprint so it cannot claim to be current.
-fn migrate_inbox_content_bases(connection: &Connection) -> Result<(), StoreError> {
+pub(crate) fn migrate_inbox_content_bases(connection: &Connection) -> Result<(), StoreError> {
     use rusqlite::OptionalExtension;
     #[derive(Deserialize)]
     struct LegacyBasis {
@@ -2577,10 +2636,10 @@ fn migrate_inbox_content_bases(connection: &Connection) -> Result<(), StoreError
         generation: i64,
         head_seq: i64,
     }
-    fn historical_hash(
+    fn historical_content(
         connection: &Connection,
         old: &LegacyBasis,
-    ) -> Result<Option<String>, StoreError> {
+    ) -> Result<Option<crate::workspace::inbox_content::MessageContent>, StoreError> {
         let retained: bool = connection.query_row(
             "SELECT EXISTS(SELECT 1 FROM inbox_entries WHERE page_id=?1)",
             [&old.page_id],
@@ -2606,12 +2665,6 @@ fn migrate_inbox_content_bases(connection: &Connection) -> Result<(), StoreError
         };
         if head.generation != old.generation || old.head_seq > head.head_seq {
             return Ok(None);
-        }
-        if head.head_seq == old.head_seq {
-            return Ok(Some(
-                crate::workspace::inbox_message_basis_for_migration(connection, &old.page_id)?
-                    .content_hash,
-            ));
         }
         let snapshot = repository.latest_snapshot(&head.id, old.generation, old.head_seq)?;
         let mut through = snapshot
@@ -2649,18 +2702,26 @@ fn migrate_inbox_content_bases(connection: &Connection) -> Result<(), StoreError
             .map_err(|_| corrupt("Stored Inbox document is invalid"))?;
         let materialized = crate::document::materialize_decoded_document(&decoded)
             .map_err(|_| corrupt("Stored Inbox text is invalid"))?;
-        let blocks = crate::domain::markdown::parse_markdown(&materialized.markdown)
-            .map_err(|_| corrupt("Stored Inbox text is invalid"))?;
-        Ok(Some(crate::document::sha256(
-            crate::domain::markdown::extract_block_lines(&blocks).as_bytes(),
-        )))
+        let mut content = crate::workspace::inbox_content::content_from_markdown(
+            connection,
+            materialized.markdown,
+        )?;
+        for image in &mut content.images {
+            let Some(hash) = legacy_inbox_image_hash(connection, &image.file_id)? else {
+                return Ok(None);
+            };
+            image.content_hash = hash;
+        }
+        Ok(Some(content))
     }
     fn migrate_basis(connection: &Connection, value: &Value) -> Result<Value, StoreError> {
         let old: LegacyBasis = serde_json::from_value(value.clone())
             .map_err(|_| corrupt("Stored Inbox basis is invalid"))?;
-        let hash = historical_hash(connection, &old)?.unwrap_or_else(|| {
-            crate::document::sha256(format!("unavailable-inbox-content:{value}").as_bytes())
-        });
+        let hash = historical_content(connection, &old)?
+            .map(|content| content.fingerprint())
+            .unwrap_or_else(|| {
+                crate::document::sha256(format!("unavailable-inbox-content:{value}").as_bytes())
+            });
         Ok(json!({"page_id":old.page_id,"content_hash":hash}))
     }
     for (table, key) in [
@@ -2682,6 +2743,56 @@ fn migrate_inbox_content_bases(connection: &Connection) -> Result<(), StoreError
         for (id, json) in rows {
             let value: Value = serde_json::from_str(&json)
                 .map_err(|_| corrupt("Stored Inbox basis is invalid"))?;
+            if table == "inbox_suggestion_requests" {
+                let library_id: String = connection.query_row(
+                    "SELECT library_id FROM inbox_suggestion_requests WHERE request_id=?1",
+                    [&id],
+                    |row| row.get(0),
+                )?;
+                let mut inputs = Vec::new();
+                let mut offset = 0;
+                let mut available = true;
+                for member in value
+                    .as_array()
+                    .ok_or_else(|| corrupt("Stored Inbox request basis is invalid"))?
+                {
+                    let old: LegacyBasis = serde_json::from_value(member.clone())
+                        .map_err(|_| corrupt("Stored Inbox request basis is invalid"))?;
+                    let Some(content) = historical_content(connection, &old)? else {
+                        available = false;
+                        break;
+                    };
+                    if content.markdown.len() > crate::workspace::inbox_content::MAX_MESSAGE_BYTES
+                        || offset + content.images.len()
+                            > crate::workspace::inbox_content::MAX_SUGGESTION_IMAGES
+                    {
+                        available = false;
+                        break;
+                    }
+                    let count = content.images.len();
+                    inputs.push(crate::workspace::frozen_input_for_content(
+                        connection,
+                        &library_id,
+                        &old.page_id,
+                        content,
+                        offset,
+                    )?);
+                    offset += count;
+                }
+                if available && !inputs.is_empty() {
+                    connection.execute(
+                        "UPDATE inbox_suggestion_requests SET inputs_json=?2 WHERE request_id=?1",
+                        params![
+                            id,
+                            serde_json::to_string(&inputs)
+                                .map_err(|_| corrupt("Stored Inbox request inputs are invalid"))?
+                        ],
+                    )?;
+                } else {
+                    connection.execute("UPDATE inbox_entries SET suggestion_state='failed',suggestion_error='Saved suggestion inputs are unavailable. Request a new suggestion.',revision=revision+1 WHERE suggestion_request_id=?1 AND suggestion_state='pending'", [&id])?;
+                    connection.execute("UPDATE inbox_suggestion_requests SET state='failed' WHERE request_id=?1 AND state='pending'", [&id])?;
+                }
+            }
             let basis = if let Some(members) = value.as_array() {
                 Value::Array(
                     members
@@ -8196,7 +8307,7 @@ mod tests {
                     expected_store_epoch: None,
                     page_id: format!("page:{id}"),
                     document_id: format!("document:{id}"),
-                    body: format!("Review the {id} message."),
+                    body: format!("- Review the **{id}** message.\n- Keep the list."),
                     title: None,
                     project_id: None,
                 },
@@ -8304,7 +8415,7 @@ mod tests {
             ProjectWorkspaceIntent::EditInboxMessage {
                 page_id: "page:advice".into(),
                 basis: basis("advice"),
-                original_body: "Review the advice message.".into(),
+                original_body: "- Review the **advice** message.\n- Keep the list.".into(),
                 body: "Review the revised advice message.".into(),
             },
         );
@@ -8349,21 +8460,18 @@ mod tests {
             states,
             vec![
                 ("page:advice".into(), "settled".into()),
-                ("page:request".into(), "failed".into()),
+                ("page:request".into(), "pending".into()),
                 ("page:waiting".into(), "waiting".into())
             ]
         );
-        let (error, proposal_id, proposal_state): (String, String, String) = connection
+        let (error, proposal_id, proposal_state): (Option<String>, String, String) = connection
             .query_row(
                 "SELECT entry.suggestion_error,entry.current_proposal_id,proposal.state FROM inbox_entries entry JOIN inbox_proposals proposal ON proposal.proposal_id=entry.current_proposal_id WHERE entry.page_id='page:request'",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(
-            error,
-            "Saved suggestion inputs are unavailable. Request a new suggestion."
-        );
+        assert_eq!(error, None);
         assert_eq!(proposal_id, "proposal:request");
         assert_eq!(proposal_state, "open");
         let (request_state, inputs): (String, String) = connection
@@ -8373,8 +8481,19 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        assert_eq!(request_state, "failed");
-        assert_eq!(inputs, "[]");
+        assert_eq!(request_state, "pending");
+        let frozen: Vec<crate::workspace::FrozenSuggestionInput> =
+            serde_json::from_str(&inputs).unwrap();
+        assert_eq!(frozen.len(), 1);
+        assert_eq!(
+            frozen[0].content.markdown,
+            "- Review the **request** message.\n- Keep the list."
+        );
+        assert_eq!(frozen[0].input.body, frozen[0].content.markdown);
+        assert_eq!(
+            frozen[0].input.basis.content_hash,
+            frozen[0].content.fingerprint()
+        );
         assert_ne!(
             crate::workspace::inbox_message_basis_for_migration(&connection, "page:advice")
                 .unwrap()
@@ -8396,17 +8515,19 @@ mod tests {
                 serde_json::from_str(&json).unwrap();
             assert_eq!(
                 basis[0].content_hash,
-                crate::document::sha256(
+                crate::workspace::inbox_content::content_from_markdown(
+                    &connection,
                     format!(
-                        "Review the {} message.",
+                        "- Review the **{}** message.\n- Keep the list.",
                         if table == "inbox_proposals" {
                             "advice"
                         } else {
                             "request"
                         }
                     )
-                    .as_bytes()
                 )
+                .unwrap()
+                .fingerprint()
             );
         }
         if erased_firing {
@@ -8417,6 +8538,60 @@ mod tests {
             assert_eq!(basis.page_id, "page:erased");
             assert_eq!(basis.content_hash.len(), 64);
         }
+    }
+
+    #[test]
+    fn inbox_handoff_migration_never_substitutes_an_unproven_file_head() {
+        use nodex_core_contracts::inbox::ProjectWorkspaceInboxMessageImage;
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_current_schema(&mut connection).unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .unwrap();
+        // Historical attachment storage is the subject; no current Page workflow owns
+        // the legacy source-only handoff this fixture reconstructs.
+        let first = "a".repeat(64);
+        let old = "b".repeat(64);
+        let replacement = "c".repeat(64);
+        for hash in [&first, &old, &replacement] {
+            connection.execute("INSERT INTO managed_blobs(content_hash,physical_asset_name,byte_length,created_at) VALUES (?1,?2,1,'2026-01-01T00:00:00Z')", params![hash,format!("{hash}.blob")]).unwrap();
+        }
+        for (file, version, hash) in [
+            ("single", 1, &first),
+            ("replaced", 1, &old),
+            ("replaced", 2, &replacement),
+        ] {
+            connection.execute("INSERT INTO file_versions(file_id,version,library_id,blob_hash,mime_type,byte_length,operation_id,occurred_at) VALUES (?1,?2,'library',?3,'image/png',1,'legacy-import','2026-01-01T00:00:00Z')", params![file,version,hash]).unwrap();
+        }
+        for (file, head) in [("single", 1), ("replaced", 2)] {
+            connection.execute("INSERT INTO library_files(file_id,library_id,default_name,head_version,revision,lifecycle,created_at,updated_at) VALUES (?1,'library','image.png',?2,?2,'live','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')", params![file,head]).unwrap();
+        }
+        let sources = vec![
+            "nodex://files/single",
+            "nodex://files/replaced",
+            "nodex://files/gone",
+        ];
+        connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,images_json) VALUES ('legacy','epoch','Confirmed prompt','launch','message',?1)", [serde_json::to_string(&sources).unwrap()]).unwrap();
+        migrate_inbox_handoff_images(&connection).unwrap();
+        let json: String = connection
+            .query_row(
+                "SELECT images_json FROM inbox_handoffs WHERE proposal_id='legacy'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let images: Vec<ProjectWorkspaceInboxMessageImage> = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            images
+                .iter()
+                .map(|image| image.source.as_str())
+                .collect::<Vec<_>>(),
+            sources
+        );
+        assert_eq!(images[0].content_hash, first);
+        assert_ne!(images[1].content_hash, replacement);
+        assert_ne!(images[1].content_hash, old);
+        assert_eq!(images[2].file_id, "gone");
     }
 
     #[test]

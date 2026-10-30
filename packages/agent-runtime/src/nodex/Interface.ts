@@ -353,6 +353,7 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     readonly input: { readonly threadId?: string };
     readonly output: null;
   };
+  /** Prepared images accompany the prompt, after its text and in their supplied order. */
   readonly "text.generate-structured": {
     readonly input: AgentWire<
       import("@t3tools/provider-core/server/textGeneration").StructuredGenerationInput

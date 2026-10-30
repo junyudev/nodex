@@ -244,7 +244,7 @@ pub const PUBLISHED_STORE_FORMATS: &[PublishedStoreFormat] = &[
     ),
     format(
         194,
-        "a7b58e3582b508292fec8c86c5add769c0d53a024393d16c77b66c9ffc7d857f",
+        "195f0f1e2e34c6e80a73ffe4b2482eafc166eef5a1a417fda32667585c6e3e00",
     ),
 ];
 

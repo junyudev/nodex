@@ -4467,7 +4467,7 @@ CREATE TABLE inbox_handoffs (
   message_id TEXT NOT NULL UNIQUE,
   execution_selection_json TEXT CHECK (execution_selection_json IS NULL OR json_valid(execution_selection_json)),
   target_execution_ref_json TEXT CHECK (target_execution_ref_json IS NULL OR json_valid(target_execution_ref_json))
-  , image_sources_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(image_sources_json) AND json_type(image_sources_json) = 'array')) WITHOUT ROWID, STRICT;
+  , images_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(images_json) AND json_type(images_json) = 'array')) WITHOUT ROWID, STRICT;
 CREATE TABLE inbox_suggestion_requests (
   request_id TEXT PRIMARY KEY,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

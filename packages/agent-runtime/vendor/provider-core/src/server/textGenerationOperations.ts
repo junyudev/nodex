@@ -13,7 +13,7 @@ import { type ChatAttachment, type ModelSelection, TextGenerationError } from "@
 import { formatGeneratedBranchName, sanitizeFeatureBranchName } from "@t3tools/shared/git";
 import { extractJsonObject } from "@t3tools/shared/schemaJson";
 
-import type { ProviderTextGeneration } from "./textGeneration.ts";
+import type { ProviderTextGeneration, StructuredGenerationInput } from "./textGeneration.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
@@ -34,6 +34,7 @@ export interface Request<S extends Schema.Top> {
   readonly operation: Operation;
   readonly cwd: string;
   readonly prompt: string;
+  readonly images?: StructuredGenerationInput["images"];
   readonly outputSchema: S;
   readonly modelSelection: ModelSelection;
   /** The user's attachments, already listed in the prompt. Providers that accept images send them. */
@@ -98,7 +99,11 @@ export const decodeJsonReply = <S extends Schema.Top>(
 };
 
 /** The text generation service over `run`. `name` prefixes each operation's span. */
-export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
+export function fromRunner(
+  name: string,
+  run: Runner,
+  options: { readonly supportsImages?: boolean } = {},
+): ProviderTextGeneration {
   const generateCommitMessage: ProviderTextGeneration["generateCommitMessage"] = Effect.fn(
     `${name}.generateCommitMessage`,
   )(function* (input) {
@@ -194,7 +199,21 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
   });
 
   return {
-    generateStructured: (input) => run({ ...input, operation: "generateStructured", outputSchema: Schema.Unknown, jsonSchema: input.outputSchema }),
+    generateStructured: (input) => {
+      if (input.images?.length && !options.supportsImages)
+        return Effect.fail(
+          new TextGenerationError({
+            operation: "generateStructured",
+            detail: "This Agent cannot read images here. Choose an Agent that supports images.",
+          }),
+        );
+      return run({
+        ...input,
+        operation: "generateStructured",
+        outputSchema: Schema.Unknown,
+        jsonSchema: input.outputSchema,
+      });
+    },
     generateCommitMessage,
     generatePrContent,
     generateBranchName,

@@ -9334,8 +9334,11 @@ export interface components {
             readonly failure_kind?: components["schemas"]["ProjectWorkspaceInboxFailureKind"] | null;
             /** @description None only for pre-snapshot history that must be reconciled, never sent. */
             readonly final_text?: string | null;
-            /** @description Library images of the delivered messages, frozen with the text and sent with it. */
-            readonly image_sources: readonly string[];
+            /**
+             * @description Bindings to the reviewed Library image bytes, in marker order. Delivery must read
+             *     bytes matching content_hash or mark the image unavailable; File heads may change.
+             */
+            readonly images: readonly components["schemas"]["ProjectWorkspaceInboxMessageImage"][];
             readonly launch_id: string;
             readonly message_id: string;
             readonly page_ids: readonly string[];
@@ -9423,6 +9426,13 @@ export interface components {
             /** @description The new provisional title, only while the title is still provisional. */
             readonly title_markdown?: string | null;
         };
+        /** @description One Library image referenced by a message, in body reading order. */
+        readonly ProjectWorkspaceInboxMessageImage: {
+            /** @description Lowercase SHA-256 of the Library's stored bytes. */
+            readonly content_hash: string;
+            readonly file_id: string;
+            readonly source: string;
+        };
         readonly ProjectWorkspaceInboxModelOption: {
             readonly id: string;
             readonly value: unknown;
@@ -9437,7 +9447,7 @@ export interface components {
          * @enum {string}
          */
         readonly ProjectWorkspaceInboxOutcome: "kept" | "done" | "moved" | "chat";
-        /** @description Fingerprint of exactly the message text the suggestion Agent reads. */
+        /** @description Fingerprint of the exact Page-body Markdown and ordered Library image content hashes. */
         readonly ProjectWorkspaceInboxPageBasis: {
             readonly content_hash: string;
             readonly page_id: string;
@@ -9529,14 +9539,15 @@ export interface components {
         /** @description One entry the suggestion Agent should consider, with bounded content. */
         readonly ProjectWorkspaceInboxSuggestionInput: {
             readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
+            /** @description Exact body Markdown with numbered Library image markers. */
             readonly body: string;
+            readonly images: readonly components["schemas"]["ProjectWorkspaceInboxMessageImage"][];
             readonly kind?: components["schemas"]["ProjectWorkspaceInboxEntryKind"] | null;
             readonly page_id: string;
             readonly page_key?: string | null;
             readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
             readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
             readonly submitted_at: string;
-            readonly title: string;
             /** @description The Page still has Core's provisional title, so the suggestion Agent may name it. */
             readonly title_provisional: boolean;
         };

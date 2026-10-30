@@ -20,12 +20,12 @@ export interface PaidAgentSmokeInvocation {
 const parseCaseArgument = (arguments_: readonly string[]): PaidAgentSmokeCase => {
   if (arguments_.includes("--")) {
     throw new Error(
-      "Do not pass a standalone `--`. Use: vp run agent:smoke:paid --case file|browser|subagent",
+      "Do not pass a standalone `--`. Use: vp run agent:smoke:paid --case file|browser|subagent|inbox-image",
     );
   }
   if (arguments_.length !== 2 || arguments_[0] !== "--case") {
     throw new Error(
-      "Paid Agent smoke requires exactly one case: vp run agent:smoke:paid --case file|browser|subagent",
+      "Paid Agent smoke requires exactly one case: vp run agent:smoke:paid --case file|browser|subagent|inbox-image",
     );
   }
   return requirePaidAgentSmokeCase(arguments_[1]);
@@ -120,7 +120,7 @@ const runPaidAgentSmoke = (arguments_: readonly string[]): void => {
   runCommand("vp", ["run", "core:binaries:build:dev"]);
   runCommand("vp", ["run", "build"]);
   runCommand(
-    "pnpm",
+    "vp",
     [
       "exec",
       "playwright",

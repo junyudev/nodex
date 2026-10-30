@@ -92,7 +92,7 @@ CREATE TABLE inbox_handoffs (
   message_id TEXT NOT NULL UNIQUE,
   execution_selection_json TEXT CHECK (execution_selection_json IS NULL OR json_valid(execution_selection_json)),
   target_execution_ref_json TEXT CHECK (target_execution_ref_json IS NULL OR json_valid(target_execution_ref_json))
-  , image_sources_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(image_sources_json) AND json_type(image_sources_json) = 'array')) WITHOUT ROWID, STRICT;
+  , images_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(images_json) AND json_type(images_json) = 'array')) WITHOUT ROWID, STRICT;
 INSERT INTO inbox_handoffs SELECT * FROM saved_inbox_handoffs;
 DROP TABLE saved_inbox_handoffs;
 CREATE TABLE inbox_suggestion_request_pages (
@@ -116,7 +116,3 @@ INSERT INTO inbox_decision_undo SELECT * FROM saved_inbox_decision_undo;
 DROP TABLE saved_inbox_decision_undo;
 UPDATE inbox_entries SET suggestion_state='waiting' WHERE suggestion_state='pending' AND suggestion_request_id IS NULL AND source_kind<>'scheduled_task';
 ALTER TABLE inbox_suggestion_requests ADD COLUMN inputs_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(inputs_json) AND json_type(inputs_json) = 'array');
--- Old requests lack the exact inputs the Agent would read. Retire them without spending again.
-UPDATE inbox_entries SET suggestion_state='failed',suggestion_error='Saved suggestion inputs are unavailable. Request a new suggestion.',revision=revision+1
-WHERE suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_requests WHERE state='pending');
-UPDATE inbox_suggestion_requests SET state='failed' WHERE state='pending';

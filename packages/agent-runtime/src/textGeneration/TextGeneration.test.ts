@@ -5,7 +5,7 @@ import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import { describe, expect } from "vite-plus/test";
 
-import { ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderInstanceId, TextGenerationError } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
@@ -64,6 +64,34 @@ const makeStubRegistry = (
 };
 
 describe("TextGeneration.make", () => {
+  it.effect("explains image rejection for an Agent without structured generation", () =>
+    Effect.gen(function* () {
+      const instanceId = ProviderInstanceId.make("unsupported");
+      const generation = yield* TextGeneration.make.pipe(
+        Effect.provideService(
+          ProviderInstanceRegistry.ProviderInstanceRegistry,
+          makeStubRegistry([makeStubInstance(instanceId, makeStubTextGeneration({}))]),
+        ),
+      );
+      const input = {
+        cwd: process.cwd(),
+        prompt: "Inspect an image",
+        modelSelection: createModelSelection(instanceId, "model"),
+        outputSchema: {},
+      };
+      const error = yield* generation.generateStructured!({
+        ...input,
+        images: [{ mediaType: "image/png", data: "AQID" }],
+      }).pipe(Effect.flip);
+      expect(error).toBeInstanceOf(TextGenerationError);
+      expect(error.message).toContain("Agent cannot read images here");
+      for (const images of [undefined, []]) {
+        const error = yield* generation.generateStructured!({ ...input, images }).pipe(Effect.flip);
+        expect(error.detail).toBe("This provider does not support structured generation.");
+      }
+    }),
+  );
+
   it.effect("retains supplied subject context in the provider prompt", () =>
     Effect.gen(function* () {
       const instanceId = ProviderInstanceId.make("codex");

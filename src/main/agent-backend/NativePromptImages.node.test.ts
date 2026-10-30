@@ -99,7 +99,7 @@ const image = (width: number, height: number, bytesPerPixel: { png: number; jpeg
 };
 
 it("keeps a screenshot PNG while it fits, and steps its size down before giving up", async () => {
-  const source = { mediaType: "image/png" as const, bytes: new Uint8Array(1) };
+  const source = { mediaType: "image/png" as const, bytes: new Uint8Array(6 * MB) };
   // A Retina screenshot: too large as it is, a sharp PNG once its longest edge is 2048px.
   const screenshot = await fitWithImageCodec(() => image(5120, 2880, { png: 0.5, jpeg: 0.3 }))(
     source,

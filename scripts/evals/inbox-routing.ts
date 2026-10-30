@@ -303,15 +303,18 @@ const fixture = (value: RoutingCase) => {
     entries: value.messages.map((body, i) => ({
       page_id: `message-${i}`,
       page_key: `IN-${i + 1}`,
-      title: "Captured message",
       body,
+      images: [],
       source: { kind: "user" },
       kind: null,
       submitted_at: "2026-10-18T00:00:00Z",
       scope,
       basis: {
         page_id: `message-${i}`,
-        content_hash: createHash("sha256").update(body).digest("hex"),
+        // Core's message fingerprint: its Markdown and, here, no images.
+        content_hash: createHash("sha256")
+          .update(JSON.stringify(["nodex-inbox-message", 1, body, []]))
+          .digest("hex"),
       },
       title_provisional: false,
     })),

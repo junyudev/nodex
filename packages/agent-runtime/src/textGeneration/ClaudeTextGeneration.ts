@@ -1,13 +1,13 @@
 /**
- * ClaudeTextGeneration – Text generation layer using the Claude CLI.
- *
- * Implements the same TextGeneration service contract as CodexTextGeneration but
- * delegates to the `claude` CLI (`claude -p`) with structured JSON output
- * instead of the `codex exec` CLI.
+ * Claude text generation uses native structured output. Text-only utility tasks
+ * use the CLI; image-bearing tasks use an SDK user message with image blocks.
  *
  * @module ClaudeTextGeneration
  */
 import * as Effect from "effect/Effect";
+import type { SDKUserMessage, Options } from "@anthropic-ai/claude-agent-sdk";
+import { loadClaudeAgentSdk } from "../provider/ClaudeAgentSdk.ts";
+import { resolveClaudeSdkExecutablePath } from "../provider/Drivers/ClaudeExecutable.ts";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -126,6 +126,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     operation,
     cwd,
     prompt,
+    images,
     outputSchema: outputSchemaJson,
     modelSelection,
     investigate,
@@ -182,6 +183,70 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     );
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
+      if (images?.length) {
+        const sdk = yield* Effect.tryPromise({
+          try: loadClaudeAgentSdk,
+          catch: (cause) =>
+            normalizeCliError("claude", operation, cause, "Failed to load Claude SDK"),
+        });
+        const binaryPath = claudeSettings.binaryPath
+          ? yield* resolveClaudeSdkExecutablePath(claudeSettings.binaryPath, claudeEnvironment)
+          : undefined;
+        const userMessage: SDKUserMessage = {
+          type: "user",
+          parent_tool_use_id: null,
+          message: {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              ...images.map((image) => ({
+                type: "image" as const,
+                source: { type: "base64" as const, media_type: image.mediaType, data: image.data },
+              })),
+            ],
+          },
+        };
+        const query = yield* Effect.acquireRelease(
+          Effect.try({
+            try: () =>
+              sdk.query({
+                prompt: (async function* () {
+                  yield userMessage;
+                })(),
+                options: {
+                  cwd,
+                  env: claudeEnvironment,
+                  model: resolveClaudeCatalogApiModelId(catalog, resolvedModelSelection),
+                  permissionMode: "bypassPermissions",
+                  allowDangerouslySkipPermissions: true,
+                  persistSession: false,
+                  settings,
+                  ...(cliEffort ? { effort: cliEffort as NonNullable<Options["effort"]> } : {}),
+                  ...(binaryPath ? { pathToClaudeCodeExecutable: binaryPath } : {}),
+                  outputFormat: {
+                    type: "json_schema",
+                    schema: JSON.parse(jsonSchemaStr) as Record<string, unknown>,
+                  },
+                },
+              }),
+            catch: (cause) =>
+              normalizeCliError("claude", operation, cause, "Failed to start Claude SDK query"),
+          }),
+          (query) => Effect.sync(() => query.close()),
+        );
+        return yield* Effect.tryPromise({
+          try: async () => {
+            for await (const message of query) {
+              if (message.type !== "result") continue;
+              if (message.subtype !== "success") throw new Error(message.errors.join("\n"));
+              return JSON.stringify({ structured_output: message.structured_output });
+            }
+            throw new Error("Claude returned no structured result.");
+          },
+          catch: (cause) =>
+            normalizeCliError("claude", operation, cause, "Claude image generation failed"),
+        });
+      }
       // Titles need only the supplied prompt, not configuration from the checkout.
       const workingDirectory =
         operation === "generateThreadTitle"
@@ -311,5 +376,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     );
   });
 
-  return TextGenerationOperations.fromRunner("ClaudeTextGeneration", runClaudeJson);
+  return TextGenerationOperations.fromRunner("ClaudeTextGeneration", runClaudeJson, {
+    supportsImages: true,
+  });
 });

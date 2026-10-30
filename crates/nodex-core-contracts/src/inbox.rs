@@ -141,7 +141,7 @@ pub struct ProjectWorkspaceInboxDelegate {
     pub agent: ProjectWorkspaceInboxChatAgent,
 }
 
-/// Fingerprint of exactly the message text the suggestion Agent reads.
+/// Fingerprint of the exact Page-body Markdown and ordered Library image content hashes.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxPageBasis {
     pub page_id: String,
@@ -347,13 +347,23 @@ pub struct ProjectWorkspaceInboxCounts {
     pub projects: Vec<ProjectWorkspaceInboxProjectCount>,
 }
 
+/// One Library image referenced by a message, in body reading order.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxMessageImage {
+    pub source: String,
+    pub file_id: String,
+    /// Lowercase SHA-256 of the Library's stored bytes.
+    pub content_hash: String,
+}
+
 /// One entry the suggestion Agent should consider, with bounded content.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxSuggestionInput {
     pub page_id: String,
     pub page_key: Option<String>,
-    pub title: String,
+    /// Exact body Markdown with numbered Library image markers.
     pub body: String,
+    pub images: Vec<ProjectWorkspaceInboxMessageImage>,
     pub source: ProjectWorkspaceInboxSource,
     pub kind: Option<ProjectWorkspaceInboxEntryKind>,
     pub submitted_at: String,
@@ -406,8 +416,9 @@ pub struct ProjectWorkspaceInboxDispatchContext {
 pub struct ProjectWorkspaceInboxDispatchWork {
     /// None only for pre-snapshot history that must be reconciled, never sent.
     pub final_text: Option<String>,
-    /// Library images of the delivered messages, frozen with the text and sent with it.
-    pub image_sources: Vec<String>,
+    /// Bindings to the reviewed Library image bytes, in marker order. Delivery must read
+    /// bytes matching content_hash or mark the image unavailable; File heads may change.
+    pub images: Vec<ProjectWorkspaceInboxMessageImage>,
     pub launch_id: String,
     pub message_id: String,
     pub execution_selection: Option<ProjectWorkspaceInboxExecutionSelection>,

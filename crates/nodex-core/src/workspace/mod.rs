@@ -7,8 +7,13 @@ mod codex_thread_navigation;
 mod execution;
 mod inbox;
 pub(crate) use inbox::reliable::discard_replaced_dispatches as discard_replaced_inbox_dispatches;
+pub(crate) mod inbox_content;
 mod inbox_read;
-pub(crate) use inbox_read::message_basis as inbox_message_basis_for_migration;
+pub(crate) use inbox_read::frozen_input_for_content;
+#[cfg(test)]
+pub(crate) use inbox_read::{
+    FrozenSuggestionInput, message_basis as inbox_message_basis_for_migration,
+};
 #[cfg(test)]
 mod inbox_tests;
 mod managed_worktree_lifecycle;

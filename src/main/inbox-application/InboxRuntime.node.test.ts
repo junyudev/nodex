@@ -1,8 +1,12 @@
+import { createHash } from "node:crypto";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import { TestClock } from "effect/testing";
 import { vi } from "vitest";
+import type { LibraryModuleReadRequest } from "../../shared/library-module";
+import type { ReadFileBytesInput } from "../../shared/library-files";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
 import type { InboxAgentBinding, InboxChatAgent, InboxSettings } from "../../shared/inbox";
 import type { Project, ProjectSession } from "../../shared/types";
@@ -15,6 +19,7 @@ import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import type { CoreInboxDispatchContext, CoreInboxDispatchWork } from "../core-client/inbox-adapter";
 import { fitPromptImages, type PromptImageBytes } from "../agent-backend/AgentImageFitting";
 import { NativePromptImages } from "../agent-backend/NativePromptImages";
+import { agentRuntimeError } from "../agent-backend/AgentRuntimeError";
 import { LibraryModule } from "../library-application/LibraryModule";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -23,7 +28,11 @@ import {
   InboxApplicationError,
   type InboxSuggestionSettlement,
 } from "./InboxApplication";
-import { inboxDispatchIdentity, make as makeDelivery } from "./InboxDispatchRuntime";
+import {
+  inboxDispatchFingerprint,
+  inboxDispatchIdentity,
+  make as makeDelivery,
+} from "./InboxDispatchRuntime";
 import { make as makeSuggestions } from "./InboxDispatcher";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
 import {
@@ -91,7 +100,7 @@ const work = (
   },
 ): CoreInboxDispatchWork => ({
   final_text: "Frozen complete message",
-  image_sources: [],
+  images: [],
   launch_id: "launch:stable",
   message_id: "message:stable",
   execution_selection: {
@@ -134,8 +143,8 @@ const context = (): CoreInboxDispatchContext => ({
     {
       page_id: "page:one",
       page_key: "IN-1",
-      title: "Investigate",
       body: "Captured evidence",
+      images: [],
       source: { kind: "user" },
       kind: null,
       submitted_at: "2026-10-15T00:00:00.000Z",
@@ -167,40 +176,80 @@ const settingsService = ApplicationSettings.of({
 } as unknown as ApplicationSettings["Service"]);
 const FITTED_JPEG = new Uint8Array([255, 216, 255]);
 
+type ImageFiles = Readonly<
+  Record<string, { readonly mimeType: string; readonly bytes: Uint8Array }>
+>;
+const imageLayer = (files: ImageFiles = {}, fit?: NativePromptImages["Service"]["fit"]) =>
+  Layer.merge(
+    Layer.succeed(NativePromptImages, {
+      validate: () => Effect.void,
+      // Fitting shrinks an oversized image to a small JPEG, as the Electron codec would.
+      fit:
+        fit ??
+        ((images: readonly PromptImageBytes[]) =>
+          Effect.promise(() =>
+            fitPromptImages(images, async () => ({
+              mediaType: "image/jpeg",
+              bytes: FITTED_JPEG,
+            })),
+          ).pipe(
+            Effect.map((fitted) =>
+              fitted.map((image) => ({
+                mediaType: image.mediaType,
+                data: Buffer.from(image.bytes).toString("base64"),
+              })),
+            ),
+          )),
+    } as unknown as NativePromptImages["Service"]),
+    Layer.succeed(LibraryModule, {
+      read: (_routing: unknown, request: LibraryModuleReadRequest) => {
+        if (request.read.mode !== "file_versions") return Effect.die("Expected File versions");
+        const file = files[request.read.file_id];
+        return Effect.succeed({
+          ok: true,
+          value: {
+            profileId: "profile",
+            libraryId: "library",
+            storeEpoch: "epoch",
+            commitSeq: 1,
+            value: {
+              kind: "file_versions",
+              value: {
+                items: file
+                  ? [
+                      {
+                        version: 1,
+                        blob_etag: createHash("sha256").update(file.bytes).digest("hex"),
+                      },
+                    ]
+                  : [],
+                has_more: false,
+                next_cursor: null,
+              },
+            },
+          },
+        });
+      },
+      readFileBlob: (_routing: unknown, request: ReadFileBytesInput) => {
+        if (request.version !== 1) return Effect.die("Expected an immutable File version");
+        const file = files[request.fileId];
+        return file
+          ? Effect.succeed({ ...file, etag: request.fileId })
+          : Effect.fail(new Error("File unavailable"));
+      },
+    } as unknown as LibraryModule["Service"]),
+  );
+
 const delivery = (input: {
   runtime: Partial<Runtime>;
   inbox: Partial<InboxApplication["Service"]>;
   session: () => ProjectSession;
   project?: () => Project | null;
   /** Library Files by id; any other File is unavailable. */
-  files?: Readonly<Record<string, { readonly mimeType: string; readonly bytes: Uint8Array }>>;
+  files?: ImageFiles;
 }) =>
   makeDelivery.pipe(
-    // Fitting shrinks an oversized image to a small JPEG, as the Electron codec would.
-    Effect.provideService(NativePromptImages, {
-      fit: (images: readonly PromptImageBytes[]) =>
-        Effect.promise(() =>
-          fitPromptImages(images, async () => ({
-            mediaType: "image/jpeg",
-            bytes: FITTED_JPEG,
-          })),
-        ).pipe(
-          Effect.map((fitted) =>
-            fitted.map((image) => ({
-              mediaType: image.mediaType,
-              data: Buffer.from(image.bytes).toString("base64"),
-            })),
-          ),
-        ),
-    } as unknown as NativePromptImages["Service"]),
-    Effect.provideService(LibraryModule, {
-      readFileBlob: (_routing: unknown, request: { readonly fileId: string }) => {
-        const file = input.files?.[request.fileId];
-        return file
-          ? Effect.succeed({ ...file, etag: request.fileId })
-          : Effect.fail(new Error("File unavailable"));
-      },
-    } as unknown as LibraryModule["Service"]),
+    Effect.provide(imageLayer(input.files)),
     Effect.provideService(AgentRuntimeApplication, {
       messageAdmission: () => Effect.succeed(null),
       ...input.runtime,
@@ -381,6 +430,7 @@ it.effect("reconciles durable acceptance after lost replies and archive without 
     assert.strictEqual(pending, false);
     assert.strictEqual(calls.length, 1);
     assert.strictEqual(calls[0]?.message.text, confirmed.final_text);
+    assert.strictEqual(calls[0]?.messageFingerprint, inboxDispatchFingerprint(confirmed));
     assert.strictEqual(calls[0]?.message.messageId, confirmed.message_id);
     assert.strictEqual(calls[0]?.launchId, confirmed.launch_id);
     assert.strictEqual(calls[0]?.acceptedAt, Date.parse(confirmed.confirmed_at));
@@ -394,14 +444,15 @@ it.effect("a dispatched chat receives the messages' Library images with their te
   Effect.gen(function* () {
     const calls: AgentRuntimeLaunch[] = [];
     const png = new Uint8Array([137, 80, 78, 71]);
+    const huge = new Uint8Array(6 * 1024 * 1024);
     const confirmed = {
       ...work(),
-      image_sources: [
-        "nodex://files/shot",
-        "nodex://files/vector",
-        "nodex://files/trashed",
-        "nodex://files/huge",
-        "nodex://files/detail",
+      images: [
+        suggestionImage("shot", png),
+        suggestionImage("vector", png),
+        suggestionImage("trashed", png),
+        suggestionImage("huge", huge),
+        suggestionImage("detail", png),
       ],
     };
     const { drain } = yield* delivery({
@@ -420,7 +471,7 @@ it.effect("a dispatched chat receives the messages' Library images with their te
       files: {
         shot: { mimeType: "image/png", bytes: png },
         vector: { mimeType: "image/svg+xml", bytes: png },
-        huge: { mimeType: "image/png", bytes: new Uint8Array(6 * 1024 * 1024) },
+        huge: { mimeType: "image/png", bytes: huge },
         detail: { mimeType: "image/jpeg", bytes: png },
       },
     });
@@ -428,11 +479,23 @@ it.effect("a dispatched chat receives the messages' Library images with their te
     // A kind of image an Agent cannot read, or one no longer in the Library, stays on its Page;
     // an oversized one is fitted rather than left out.
     assert.deepEqual(calls[0]?.message.images, [
-      { source: `data:image/png;base64,${Buffer.from(png).toString("base64")}` },
-      { source: `data:image/jpeg;base64,${Buffer.from(FITTED_JPEG).toString("base64")}` },
-      { source: `data:image/jpeg;base64,${Buffer.from(png).toString("base64")}` },
+      {
+        source: `data:image/png;base64,${Buffer.from(png).toString("base64")}`,
+        caption: "[Image 1]",
+      },
+      {
+        source: `data:image/jpeg;base64,${Buffer.from(FITTED_JPEG).toString("base64")}`,
+        caption: "[Image 4]",
+      },
+      {
+        source: `data:image/jpeg;base64,${Buffer.from(png).toString("base64")}`,
+        caption: "[Image 5]",
+      },
     ]);
-    assert.strictEqual(calls[0]?.message.text, confirmed.final_text);
+    assert.strictEqual(
+      calls[0]?.message.text,
+      `${confirmed.final_text}\n\n[Image 2], [Image 3] could not be attached.`,
+    );
   }),
 );
 
@@ -440,23 +503,38 @@ it.effect("hands busy follow-ups to the Runtime queue and does not starve a nint
   Effect.gen(function* () {
     const items = Array.from({ length: 9 }, (_, index) => ({
       ...work({ type: "send_to_chat", session_id: "session:one", prompt: "Follow up" }),
+      images: index === 0 ? [suggestionImage("missing", new Uint8Array([1]))] : [],
       proposal_id: `proposal:${index}`,
       message_id: `message:${index}`,
       thread_status: { status_type: "active" as const, active_flags: [] },
     }));
-    const queueMessage = vi.fn<Runtime["queueMessage"]>(() => Effect.succeed({ sequence: 5 }));
+    const sendMessage = vi.fn<Runtime["sendMessage"]>(() =>
+      Effect.succeed({ sequence: 5 } as never),
+    );
     const complete = vi.fn(() => Effect.void);
     const { drain } = yield* delivery({
       session: () => session(true),
-      runtime: { queueMessage },
+      runtime: { sendMessage },
       inbox: {
         outbox: () => Effect.succeed(items),
         completeDispatch: complete,
       },
     });
     yield* drain;
-    assert.strictEqual(queueMessage.mock.calls.length, 9);
-    assert.isTrue(queueMessage.mock.calls.every(([target]) => target.threadId === "thread:one"));
+    assert.strictEqual(sendMessage.mock.calls.length, 9);
+    assert.isTrue(
+      sendMessage.mock.calls.every(
+        ([target]) => target.threadId === "thread:one" && target.mode === "queue",
+      ),
+    );
+    assert.strictEqual(
+      sendMessage.mock.calls[0]?.[0].message.text,
+      `${items[0]!.final_text}\n\n[Image 1] could not be attached.`,
+    );
+    assert.strictEqual(
+      sendMessage.mock.calls[0]?.[0].messageFingerprint,
+      inboxDispatchFingerprint(items[0]!),
+    );
     assert.strictEqual(complete.mock.calls.length, 9);
   }),
 );
@@ -624,6 +702,8 @@ it.effect("persists remote uncertainty before submitting and never automatically
         prompt: "Follow up",
       }),
       thread_id: "thread:remote",
+      final_text: "Read [Image 1] and [Image 2]",
+      images: [suggestionImage("missing", FITTED_JPEG), suggestionImage("present", FITTED_JPEG)],
     };
     const start = vi.fn(() =>
       Effect.sync(() => {
@@ -633,6 +713,7 @@ it.effect("persists remote uncertainty before submitting and never automatically
     const complete = vi.fn(() => Effect.void);
     const { drain } = yield* delivery({
       session: () => nativeSession,
+      files: { present: { mimeType: "image/jpeg", bytes: FITTED_JPEG } },
       runtime: {},
       inbox: {
         outbox: () => Effect.succeed(pending ? [confirmed] : []),
@@ -652,6 +733,24 @@ it.effect("persists remote uncertainty before submitting and never automatically
     yield* drain;
     assert.deepEqual(calls, ["persist-unknown", "start"]);
     assert.strictEqual(start.mock.calls.length, 1);
+    const delivered = `${confirmed.final_text}\n\n[Image 1] could not be attached.`;
+    assert.deepEqual(start.mock.calls[0], [
+      "thread:remote",
+      delivered,
+      {
+        clientUserMessageId: confirmed.message_id,
+        promptInput: {
+          text: delivered,
+          agentConfigs: [],
+          images: [
+            {
+              source: `data:image/jpeg;base64,${Buffer.from(FITTED_JPEG).toString("base64")}`,
+              caption: "[Image 2]",
+            },
+          ],
+        },
+      },
+    ]);
     assert.strictEqual(complete.mock.calls.length, 0);
   }),
 );
@@ -733,16 +832,26 @@ const suggestionOutput = (pageIds: string[], action = "send_to_chat") => ({
   ],
 });
 
-const suggestionHarness = (count = 1, action = "send_to_chat") =>
+const suggestionHarness = (
+  count = 1,
+  action = "send_to_chat",
+  input: {
+    readonly entries?: CoreInboxDispatchContext["entries"];
+    readonly files?: ImageFiles;
+    readonly fit?: NativePromptImages["Service"]["fit"];
+  } = {},
+) =>
   Effect.gen(function* () {
     let pending = true;
     const routing = {
       ...context(),
-      entries: Array.from({ length: count }, (_, index) => ({
-        ...context().entries[0]!,
-        page_id: `page:${index}`,
-        basis: { page_id: `page:${index}`, content_hash: "a".repeat(64) },
-      })),
+      entries:
+        input.entries ??
+        Array.from({ length: count }, (_, index) => ({
+          ...context().entries[0]!,
+          page_id: `page:${index}`,
+          basis: { page_id: `page:${index}`, content_hash: "a".repeat(64) },
+        })),
     };
     const pageIds = routing.entries.map((entry) => entry.page_id);
     const generated = vi.fn<Runtime["generateStructured"]>(() =>
@@ -776,6 +885,7 @@ const suggestionHarness = (count = 1, action = "send_to_chat") =>
         }),
     };
     const worker = yield* makeSuggestions.pipe(
+      Effect.provide(imageLayer(input.files, input.fit)),
       Effect.provideService(InboxApplication, inbox as unknown as InboxApplication["Service"]),
       Effect.provideService(ApplicationSettings, settingsService),
       Effect.provideService(AgentRuntimeApplication, {
@@ -858,5 +968,165 @@ it.effect(
       assert.deepEqual(settlements[0]?.suggestions, []);
       assert.isNotNull(settlements[0]?.error);
       assert.isNull(settlements[0]?.produced_by);
+    }),
+);
+
+const suggestionImage = (id: string, bytes: Uint8Array) => ({
+  source: `nodex://files/${id}`,
+  file_id: id,
+  content_hash: createHash("sha256").update(bytes).digest("hex"),
+});
+
+it.effect(
+  "suggestions read Markdown and images in marker order across messages without renumbering missing or changed files",
+  () =>
+    Effect.gen(function* () {
+      const before = new Uint8Array([137, 80, 78, 71]);
+      const after = new Uint8Array([255, 216, 255]);
+      const entries = [
+        {
+          ...context().entries[0]!,
+          body: "## Before\n\n**Compare** [Image 1: Before]\n\n[Image 2]",
+          images: [suggestionImage("before", before), suggestionImage("missing", before)],
+        },
+        {
+          ...context().entries[0]!,
+          page_id: "page:two",
+          body: "[Image 3: Changed]\n\n- [ ] Inspect [Image 4: After]",
+          images: [suggestionImage("changed", before), suggestionImage("after", after)],
+        },
+      ];
+      const { drain, generated, settlements } = yield* suggestionHarness(2, "keep", {
+        entries,
+        files: {
+          before: { mimeType: "image/png", bytes: before },
+          changed: { mimeType: "image/png", bytes: after },
+          after: { mimeType: "image/jpeg", bytes: after },
+        },
+      });
+      yield* drain;
+      assert.strictEqual(generated.mock.calls.length, 1);
+      const request = generated.mock.calls[0]![0];
+      assert.deepEqual(request.images, [
+        { mediaType: "image/png", data: Buffer.from(before).toString("base64") },
+        { mediaType: "image/jpeg", data: Buffer.from(after).toString("base64") },
+      ]);
+      const data = JSON.parse(request.prompt.split("JSON data:\n")[1]!);
+      assert.deepEqual(
+        data.messages.map((message: { body: string }) => message.body),
+        entries.map((entry) => entry.body),
+      );
+      assert.deepEqual(data.messages[0].attached_images, ["[Image 1]"]);
+      assert.deepEqual(data.messages[0].unavailable_images, ["[Image 2]"]);
+      assert.deepEqual(data.messages[1].attached_images, ["[Image 4]"]);
+      assert.deepEqual(data.messages[1].unavailable_images, ["[Image 3]"]);
+      assert.strictEqual(settlements[0]?.error, null);
+    }),
+);
+
+it.effect("a fitting failure still suggests with every image marked unavailable", () =>
+  Effect.gen(function* () {
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const { drain, generated, settlements } = yield* suggestionHarness(1, "keep", {
+      entries: [
+        {
+          ...context().entries[0]!,
+          body: "Read [Image 1] and [Image 2]",
+          images: [suggestionImage("before", bytes), suggestionImage("after", bytes)],
+        },
+      ],
+      files: {
+        before: { mimeType: "image/png", bytes },
+        after: { mimeType: "image/png", bytes },
+      },
+      fit: () =>
+        Effect.fail(
+          agentRuntimeError({
+            operation: "fit",
+            reason: "request",
+            retryable: false,
+            cause: new Error("Image codec failed"),
+          }),
+        ),
+    });
+    yield* drain;
+    assert.strictEqual(generated.mock.calls.length, 1);
+    const request = generated.mock.calls[0]![0];
+    assert.deepEqual(request.images, []);
+    const data = JSON.parse(request.prompt.split("JSON data:\n")[1]!);
+    assert.deepEqual(data.messages[0].attached_images, []);
+    assert.deepEqual(data.messages[0].unavailable_images, ["[Image 1]", "[Image 2]"]);
+    assert.strictEqual(settlements[0]?.error, null);
+  }),
+);
+
+it.effect(
+  "a handoff rejects changed File bytes and preserves unavailable markers on admission replay",
+  () =>
+    Effect.gen(function* () {
+      const original = new Uint8Array([137, 80, 78, 71]);
+      const changed = new Uint8Array([255, 216, 255]);
+      const files: Record<string, { mimeType: string; bytes: Uint8Array }> = {
+        changed: { mimeType: "image/png", bytes: changed },
+        present: { mimeType: "image/png", bytes: original },
+      };
+      const confirmed: CoreInboxDispatchWork = {
+        ...work(),
+        final_text: "Read [Image 1], [Image 2] and [Image 3]",
+        images: [
+          suggestionImage("missing", original),
+          suggestionImage("present", original),
+          suggestionImage("changed", original),
+        ],
+      };
+      let accepted = false;
+      const calls: AgentRuntimeLaunch[] = [];
+      const complete = vi.fn(() => Effect.void);
+      const input = {
+        session: () => session(),
+        files,
+        inbox: { outbox: () => Effect.succeed([confirmed]), completeDispatch: complete },
+        runtime: {
+          launch: (input: AgentRuntimeLaunch) =>
+            Effect.suspend(() => {
+              calls.push(input);
+              accepted = true;
+              return Effect.fail(applicationError());
+            }),
+          messageAdmission: () =>
+            Effect.succeed(
+              accepted
+                ? {
+                    status: "accepted" as const,
+                    sequence: 1,
+                    error: null,
+                    runtimeId: "runtime:one",
+                    threadId: "thread:one",
+                    messageId: confirmed.message_id,
+                    commandId: "command:one",
+                  }
+                : null,
+            ),
+        },
+      };
+      yield* delivery(input).pipe(Effect.flatMap(({ drain }) => drain));
+      files.missing = { mimeType: "image/png", bytes: original };
+      files.changed = { mimeType: "image/png", bytes: original };
+      // A recreated worker reconciles the same receipt before re-reading mutable Library state.
+      yield* delivery(input).pipe(Effect.flatMap(({ drain }) => drain));
+      assert.strictEqual(calls.length, 1);
+      assert.strictEqual(calls[0]?.message.messageId, confirmed.message_id);
+      assert.strictEqual(calls[0]?.messageFingerprint, inboxDispatchFingerprint(confirmed));
+      assert.strictEqual(
+        calls[0]?.message.text,
+        `${confirmed.final_text}\n\n[Image 1], [Image 3] could not be attached.`,
+      );
+      assert.deepEqual(calls[0]?.message.images, [
+        {
+          source: `data:image/png;base64,${Buffer.from(original).toString("base64")}`,
+          caption: "[Image 2]",
+        },
+      ]);
+      assert.isAtLeast(complete.mock.calls.length, 1);
     }),
 );

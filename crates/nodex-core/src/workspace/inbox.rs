@@ -44,7 +44,7 @@ pub(super) const INBOX_DATABASE_NAME: &str = "Inbox";
 const INBOX_PAGE_KEY_PREFIX: &str = "IN";
 const INBOX_STATUS_GROUP_KEY: &str = "triage";
 const INBOX_PLACEMENT_RANK_KEY: &str = "7fffffffffffffffffffffffffffffff";
-const MAX_MESSAGE_BYTES: usize = 64 * 1024;
+use super::inbox_content::MAX_MESSAGE_BYTES;
 const MAX_GIVEN_TITLE_CHARS: usize = 200;
 const PROVISIONAL_TITLE_COLUMNS: usize = 48;
 /// More than any opening line a provisional title can be cut from.
@@ -353,22 +353,20 @@ pub(super) fn has_message_shape(blocks: &[Block]) -> bool {
 
 /// Collects both Block images and inline images, including table cells.
 pub(super) fn collect_image_sources(blocks: &[Block], sources: &mut Vec<String>) {
-    let mut append = |url: &str| {
+    fn append(sources: &mut Vec<String>, url: &str) {
         if parse_page_file_source(url).is_some() && !sources.iter().any(|source| source == url) {
             sources.push(url.into());
         }
-    };
+    }
     for block in blocks {
         if let BlockKind::Image { url, .. } = &block.kind {
-            append(url);
+            append(sources, url);
         }
         for item in block_inline(block) {
             if let Inline::Image(image) = item {
-                append(&image.url);
+                append(sources, &image.url);
             }
         }
-    }
-    for block in blocks {
         collect_image_sources(&block.children, sources);
     }
 }

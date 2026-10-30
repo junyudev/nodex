@@ -15,7 +15,7 @@ export interface PromptImageBytes {
   readonly bytes: Uint8Array;
 }
 
-/** Re-encodes one image to fit a byte budget, or fails when it cannot. */
+/** Decodes one image and re-encodes it only when needed to fit its byte budget. */
 export type FitPromptImage = (
   image: PromptImageBytes,
   budgetBytes: number,
@@ -77,6 +77,9 @@ export const fitWithImageCodec =
     const source = decode(image.bytes);
     if (source.isEmpty()) throw new Error("An image could not be read to send to the Agent");
     const { width, height } = source.getSize();
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
+      throw new Error("An image could not be read to send to the Agent");
+    if (image.bytes.byteLength <= budgetBytes) return image;
     const longest = Math.max(width, height);
     for (const edge of FITTED_EDGES) {
       const scale = Math.min(1, edge / longest);

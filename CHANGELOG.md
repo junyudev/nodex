@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Editing an Inbox message no longer asks for a new suggestion every time you pause. The suggestion stays beside the message, marked as written before it changed, and you can still confirm it or choose Suggest again. Opening, moving or renaming a message's Page leaves its suggestion as it was.
+- Inbox suggestions read each message whole: its formatting, links and lists as you wrote them, and its images as images. A screenshot with a single line of text is understood for what it shows, and a chat started from the Inbox receives the message the same way.
 - Images in a message you send to the Inbox now come first on its Page, matching how the stream shows them above the text.
 - You choose when Inbox suggestions run: automatically for each message you send, only when you ask, or never, from the Inbox's settings gear or Settings → Inbox. Automatic suggestions pause when the suggestion Agent's usage is about to run out and say so above the composer; Suggest still works on any message.
 

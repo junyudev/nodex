@@ -38,7 +38,7 @@ use super::{AutomationApplyOutcome, assert_identity};
 const MODULE_NAME: &str = "automation";
 const MAX_ID_LENGTH: usize = 512;
 const MAX_NAME_CHARS: usize = 256;
-const MAX_PROMPT_BYTES: usize = 1024 * 1024;
+use super::MAX_PROMPT_BYTES;
 const MAX_CWDS: usize = 128;
 const MAX_PATH_BYTES: usize = 16 * 1024;
 const MAX_MODEL_BYTES: usize = 512;

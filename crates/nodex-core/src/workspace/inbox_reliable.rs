@@ -1,12 +1,16 @@
 //! One owner for the decision transaction and its immutable delivery evidence.
 use super::*;
 use crate::infrastructure::durable_mutation::DurableMutationScope;
+use crate::workspace::inbox_content::{
+    MAX_SUGGESTION_IMAGES, MessageContentLimit, agent_markdown, read_message_content,
+};
 use nodex_core_contracts::inbox::*;
 use nodex_core_contracts::library::{LibraryBlockTransferUndoToken, LibraryPageWriteDestination};
 use nodex_core_contracts::workspace::{
     ProjectWorkspaceIntent, ProjectWorkspaceSessionExecutionRef,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 
 pub(in crate::workspace) fn handoff_identity(
@@ -47,9 +51,7 @@ pub(in crate::workspace) fn read_handoff_json<T: serde::de::DeserializeOwned>(
         "target_execution_ref_json" => {
             "SELECT target_execution_ref_json FROM inbox_handoffs WHERE proposal_id=?1"
         }
-        "image_sources_json" => {
-            "SELECT image_sources_json FROM inbox_handoffs WHERE proposal_id=?1"
-        }
+        "images_json" => "SELECT images_json FROM inbox_handoffs WHERE proposal_id=?1",
         _ => return Err(internal("Unknown handoff field")),
     };
     let json: Option<String> = connection
@@ -61,7 +63,7 @@ pub(in crate::workspace) fn read_handoff_json<T: serde::de::DeserializeOwned>(
 }
 
 /// An Agent takes at most this many images with one message; the rest stay on their Pages.
-const MAX_HANDOFF_IMAGES: usize = 20;
+const MAX_HANDOFF_IMAGES: usize = MAX_SUGGESTION_IMAGES;
 
 fn encode<T: Serialize + ?Sized>(value: &T) -> Result<String, StoreError> {
     serde_json::to_string(value).map_err(|_| internal("Inbox value cannot be encoded"))
@@ -311,11 +313,20 @@ pub(in crate::workspace) fn apply_reliable(
                     }
                     let pages=connection.prepare("WITH waiting AS (SELECT entry.page_id,entry.seq,entry.scope_project_id FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.library_id=?1 AND entry.state='open' AND entry.suggestion_state='waiting' AND entry.source_kind<>'scheduled_task'), oldest AS (SELECT scope_project_id FROM waiting ORDER BY seq LIMIT 1) SELECT waiting.page_id FROM waiting,oldest WHERE waiting.scope_project_id IS oldest.scope_project_id ORDER BY waiting.seq LIMIT ?2")?.query_map(params![library_id,i64::from(limit.clamp(1,8))],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
                     let mut complete = Vec::new();
+                    let mut image_count = 0;
                     for page in pages {
-                        match super::super::inbox_read::suggestion_input(
-                            connection, library_id, &page,
-                        ) {
-                            Ok(_) => complete.push(page),
+                        match read_message_content(connection, &page, MessageContentLimit::Message)
+                            .and_then(|content| {
+                                content.require_suggestion_budget()?;
+                                Ok(content)
+                            }) {
+                            Ok(content) => {
+                                if image_count + content.images.len() > MAX_SUGGESTION_IMAGES {
+                                    break;
+                                }
+                                image_count += content.images.len();
+                                complete.push(page);
+                            }
                             Err(error) => {
                                 connection.execute("UPDATE inbox_entries SET suggestion_state='failed',suggestion_error=?2,revision=revision+1,updated_at=?3 WHERE page_id=?1",params![page,failure_text(&error.message),now])?;
                             }
@@ -612,20 +623,34 @@ fn decide(
             }
             text.push_str("\n\nOriginal Inbox messages:\n");
             let mut images = Vec::new();
+            let mut numbers = HashMap::new();
             for (index, page_id) in pages.iter().enumerate() {
-                super::super::inbox_read::message_image_sources(connection, page_id, &mut images)?;
-                let entry =
-                    super::super::inbox_read::suggestion_input(connection, library_id, page_id)?;
+                let content =
+                    read_message_content(connection, page_id, MessageContentLimit::Message)?;
+                for image in &content.images {
+                    if numbers.contains_key(&image.source) {
+                        continue;
+                    }
+                    images.push(image.clone());
+                    numbers.insert(image.source.clone(), images.len());
+                }
+                let body = agent_markdown(&content, &numbers, MAX_HANDOFF_IMAGES)?;
+                let title: String = connection.query_row(
+                    "SELECT COALESCE(body.title,'') FROM pages page LEFT JOIN document_materializations body ON body.document_id=page.document_id WHERE page.block_id=?1",
+                    [page_id], |row| row.get(0),
+                )?;
                 text.push_str(&format!(
                     "\n{}. {}",
                     index + 1,
-                    entry.title.replace(['\r', '\n'], " ")
+                    title.replace(['\r', '\n'], " ")
                 ));
-                if let Some(key) = &entry.page_key {
+                if let Some(key) =
+                    crate::database::current_page_key_for_page(connection, library_id, page_id)?
+                {
                     text.push_str(&format!(" ({key})"));
                 }
                 text.push('\n');
-                for line in entry.body.split('\n') {
+                for line in body.split('\n') {
                     text.push_str("> ");
                     text.push_str(line);
                     text.push('\n');
@@ -641,7 +666,7 @@ fn decide(
                 _=>None,
             };
             images.truncate(MAX_HANDOFF_IMAGES);
-            connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json,target_execution_ref_json,image_sources_json) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",params![proposal_id,scope.store_epoch(),text,handoff_identity(proposal_id,"launch",scope.store_epoch()),handoff_identity(proposal_id,"message",scope.store_epoch()),selection.map(encode).transpose()?,target.as_ref().map(encode).transpose()?,encode(&images)?])?;
+            connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json,target_execution_ref_json,images_json) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",params![proposal_id,scope.store_epoch(),text,handoff_identity(proposal_id,"launch",scope.store_epoch()),handoff_identity(proposal_id,"message",scope.store_epoch()),selection.map(encode).transpose()?,target.as_ref().map(encode).transpose()?,encode(&images)?])?;
         }
         ProjectWorkspaceInboxDispatchAction::MoveToProject { .. } => {
             connection.execute(
@@ -801,13 +826,18 @@ fn create_request(
 ) -> Result<(), StoreError> {
     validate_id("request_id", id)?;
     let inbox_scope = require_one_scope(connection, pages)?;
-    let inputs = pages
+    let inputs = super::super::inbox_read::frozen_suggestion_inputs(connection, library_id, pages)?;
+    if inputs
         .iter()
-        .map(|page| super::super::inbox_read::suggestion_input(connection, library_id, page))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|frozen| frozen.content.images.len())
+        .sum::<usize>()
+        > MAX_SUGGESTION_IMAGES
+    {
+        return Err(conflict("Select messages with at most 20 images in all"));
+    }
     let basis = inputs
         .iter()
-        .map(|input| input.basis.clone())
+        .map(|frozen| frozen.input.basis.clone())
         .collect::<Vec<_>>();
     if correction.is_some_and(|s| s.len() > 16_384) {
         return Err(invalid("The correction is too long"));
@@ -1001,8 +1031,9 @@ fn pickup_request(
         [&row.id],
         |row| row.get(0),
     )?;
-    let inputs: Vec<ProjectWorkspaceInboxSuggestionInput> = serde_json::from_str(&saved_inputs)
-        .map_err(|_| corrupt("Saved suggestion inputs are unreadable"))?;
+    let inputs: Vec<super::super::inbox_read::FrozenSuggestionInput> =
+        serde_json::from_str(&saved_inputs)
+            .map_err(|_| corrupt("Saved suggestion inputs are unreadable"))?;
     let basis: Vec<ProjectWorkspaceInboxPageBasis> = serde_json::from_str(&row.basis)
         .map_err(|_| corrupt("Saved suggestion basis is unreadable"))?;
     if page_ids.is_empty()
@@ -1014,20 +1045,34 @@ fn pickup_request(
             "Saved suggestion inputs do not cover every message",
         ));
     }
-    for ((input, page), written) in inputs.iter().zip(&page_ids).zip(&basis) {
+    let mut image_offset = 0;
+    for ((frozen, page), written) in inputs.iter().zip(&page_ids).zip(&basis) {
+        let input = &frozen.input;
+        let projected = agent_markdown(
+            &frozen.content,
+            &super::super::inbox_read::image_numbers(&frozen.content, image_offset),
+            usize::MAX,
+        )?;
+        image_offset += frozen.content.images.len();
         if input.page_id != *page
             || input.basis != *written
             || written.page_id != *page
-            || input.body.len() > MAX_MESSAGE_BYTES
-            || crate::document::sha256(input.body.as_bytes()) != written.content_hash
+            || frozen.content.markdown.len() > MAX_MESSAGE_BYTES
+            || image_offset > MAX_SUGGESTION_IMAGES
+            || input.images != frozen.content.images
+            || input.body != projected
+            || frozen.content.fingerprint() != written.content_hash
         {
             return Err(corrupt(
                 "Saved suggestion input does not match its content fingerprint",
             ));
         }
     }
-    let mut context =
-        super::super::inbox_read::dispatch_context_for_inputs(connection, library_id, inputs)?;
+    let mut context = super::super::inbox_read::dispatch_context_for_inputs(
+        connection,
+        library_id,
+        inputs.into_iter().map(|frozen| frozen.input).collect(),
+    )?;
     if let Some(id) = row.proposal_id.as_deref() {
         let proposal = require_proposal(connection, library_id, id)?;
         let summary: String = connection.query_row(

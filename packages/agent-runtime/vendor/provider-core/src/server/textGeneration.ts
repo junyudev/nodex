@@ -115,10 +115,18 @@ export type ReviewGuideGenerationResult = Omit<
   "headSha" | "generatedAt" | "modelSelection"
 >;
 
+/** An image the host has already fitted to native limits, as base64. */
+export interface StructuredGenerationImage {
+  readonly mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  readonly data: string;
+}
+
 /** Commit, change request, branch, and title generation backed by one provider instance. */
 export interface StructuredGenerationInput {
   readonly cwd: string;
   readonly prompt: string;
+  /** Prepared images follow the prompt in order; Main owns fitting to native limits. */
+  readonly images?: readonly StructuredGenerationImage[] | undefined;
   readonly modelSelection: ModelSelection;
   readonly outputSchema: Readonly<Record<string, unknown>>;
   readonly maxOutputBytes?: number | undefined;
@@ -126,7 +134,9 @@ export interface StructuredGenerationInput {
 }
 
 export interface ProviderTextGeneration {
-  readonly generateStructured?: (input: StructuredGenerationInput) => Effect.Effect<unknown, TextGenerationError>;
+  readonly generateStructured?: (
+    input: StructuredGenerationInput,
+  ) => Effect.Effect<unknown, TextGenerationError>;
   /**
    * Generate a commit message from staged change context.
    */

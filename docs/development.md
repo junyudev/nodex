@@ -371,8 +371,9 @@ vp run dev --home "$HOME/repo/nodex/runs.local/scheduled-ask-in-inbox" --seed sc
 ```
 
 `inbox/suggestion-spend` seeds the Library Inbox with a current New chat suggestion,
-an outdated suggestion after a Page edit, a message with no advice requested, and
-a suggestion grouping two related messages. It uses Core operations without starting
+an outdated suggestion after a Page edit, a message with no advice requested, a
+suggestion grouping two related messages, a suggestion that failed, and a message
+that opens with a Library image before its text. It uses Core operations without starting
 an Agent: `vp run dev --home "$HOME/repo/nodex/runs.local/inbox-suggestion-spend" --seed inbox/suggestion-spend`.
 
 ### Real Profile snapshots

@@ -20,6 +20,8 @@ type Schemas = components["schemas"];
 export type CoreInboxDispatchAction = Schemas["ProjectWorkspaceInboxDispatchAction"];
 export type CoreInboxItem = Schemas["CollectionWindow_ProjectWorkspaceInboxItem"]["items"][number];
 export type CoreInboxProposal = Schemas["ProjectWorkspaceInboxProposal"];
+/** Frozen File identity and digest; resolve a matching immutable File version before delivery. */
+export type CoreInboxMessageImage = Schemas["ProjectWorkspaceInboxMessageImage"];
 export type CoreInboxSuggestionInput = Schemas["ProjectWorkspaceInboxSuggestionInput"];
 export type CoreInboxDispatchContext = Schemas["ProjectWorkspaceInboxDispatchContext"];
 export type CoreInboxDispatchWork = Schemas["ProjectWorkspaceInboxDispatchWork"];

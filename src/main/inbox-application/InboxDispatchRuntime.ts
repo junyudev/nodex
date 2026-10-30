@@ -5,11 +5,8 @@ import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import { parseFileSource } from "../../shared/file-resources";
 import type { CodexPromptImageInput } from "../../shared/types";
 import { createUuidV7FromTimestamp } from "../../shared/uuid-v7";
-import { AGENT_IMAGE_LIMITS, type PromptImageBytes } from "../agent-backend/AgentImageFitting";
-import { isNativePromptImageType, NativePromptImages } from "../agent-backend/NativePromptImages";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
@@ -19,10 +16,10 @@ import {
   type CoreInboxDispatchWork,
 } from "../core-client/inbox-adapter";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
-import { LibraryModule } from "../library-application/LibraryModule";
 import { getLogger } from "../logging/logger";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { InboxApplication } from "./InboxApplication";
+import { makeInboxImageLoader } from "./inbox-images";
 
 const OUTBOX_BATCH = 200;
 const SAFETY_POLL = "30 seconds";
@@ -44,59 +41,58 @@ export const inboxDispatchIdentity = (
   );
 };
 
+/** Runtime retains the first prepared message against the immutable confirmed intent. */
+export const inboxDispatchFingerprint = (
+  work: Pick<CoreInboxDispatchWork, "message_id" | "final_text" | "images">,
+): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify([
+        "nodex-inbox-dispatch",
+        1,
+        work.message_id,
+        work.final_text,
+        work.images.map((image) => [image.file_id, image.content_hash]),
+      ]),
+    )
+    .digest("hex");
+
 /** Core owns confirmed intent; the Runtime is the sole owner of local queued execution. */
 export const make = Effect.gen(function* () {
   const inbox = yield* InboxApplication;
   const runtime = yield* AgentRuntimeApplication;
   const workspace = yield* ProjectWorkspace;
-  const library = yield* LibraryModule;
-  const promptImages = yield* NativePromptImages;
+  const loadImages = yield* makeInboxImageLoader;
   const remoteTurns = yield* Effect.serviceOption(CodexTurnCommands);
   const logger = getLogger({ component: "inbox-dispatch-runtime" });
   const lane = yield* Semaphore.make(1);
 
-  /**
-   * The messages' frozen Library images travel inline with their text, in order, each fitted to
-   * what an Agent takes with one message. An image that is gone from the Library, or of a kind
-   * an Agent cannot read, stays on its Page, which the text names.
-   */
-  const images = Effect.fn("InboxDispatchRuntime.images")(function* (work: CoreInboxDispatchWork) {
-    const read: PromptImageBytes[] = [];
-    for (const source of work.image_sources) {
-      const fileId = parseFileSource(source);
-      if (!fileId || read.length >= AGENT_IMAGE_LIMITS.count) continue;
-      const file = yield* library
-        .readFileBlob({ kind: "library" }, { fileId, source: { kind: "direct" } })
-        .pipe(Effect.option);
-      if (
-        Option.isNone(file) ||
-        !isNativePromptImageType(file.value.mimeType) ||
-        file.value.bytes.byteLength > AGENT_IMAGE_LIMITS.sourceBytes
-      ) {
-        logger.warn("Inbox handoff leaves an image on its Page", {
-          proposalId: work.proposal_id,
-          fileId,
-        });
-        continue;
-      }
-      read.push({
-        mediaType: file.value.mimeType as PromptImageBytes["mediaType"],
-        bytes: file.value.bytes,
+  const prepareMessage = Effect.fn("InboxDispatchRuntime.prepareMessage")(function* (
+    work: CoreInboxDispatchWork,
+    text: string,
+  ) {
+    const loaded = yield* loadImages(work.images);
+    const attached = new Set(loaded.attachedMarkers);
+    const unavailable = work.images
+      .map((_, index) => index + 1)
+      .filter((marker) => !attached.has(marker));
+    if (unavailable.length > 0)
+      logger.warn("Inbox handoff leaves images on their Pages", {
+        proposalId: work.proposal_id,
+        imageCount: work.images.length,
+        attachedImageCount: loaded.images.length,
       });
-    }
-    const fitted = yield* promptImages.fit(read).pipe(
-      Effect.catch(() =>
-        Effect.sync(() => {
-          logger.warn("Inbox handoff leaves its images on their Pages", {
-            proposalId: work.proposal_id,
-          });
-          return [];
-        }),
-      ),
-    );
-    return fitted.map((image): CodexPromptImageInput => ({
-      source: `data:${image.mediaType};base64,${image.data}`,
-    }));
+    // Stable marker order and fixed wording keep the availability note deterministic on replay.
+    const note = unavailable.map((marker) => `[Image ${marker}]`).join(", ");
+    return {
+      messageId: work.message_id,
+      text: note ? `${text}\n\n${note} could not be attached.` : text,
+      agentConfigs: [],
+      images: loaded.images.map((image, index): CodexPromptImageInput => ({
+        source: `data:${image.mediaType};base64,${image.data}`,
+        caption: `[Image ${loaded.attachedMarkers[index]}]`,
+      })),
+    };
   });
 
   const reconcile = Effect.fn("InboxDispatchRuntime.reconcile")(function* (
@@ -161,12 +157,7 @@ export const make = Effect.gen(function* () {
           "unavailable",
         );
     }
-    const message = {
-      messageId: work.message_id,
-      text: work.final_text,
-      agentConfigs: [],
-      images: yield* images(work),
-    };
+    const message = yield* prepareMessage(work, work.final_text);
     if (action.type === "new_chat") {
       if (session.projectId !== action.projectId)
         return yield* inbox.failDispatch(
@@ -189,6 +180,7 @@ export const make = Effect.gen(function* () {
       const selection = inboxExecutionSelectionFromCore(work.execution_selection);
       const started = yield* runtime.launch({
         launchId: work.launch_id,
+        messageFingerprint: inboxDispatchFingerprint(work),
         acceptedAt: Date.parse(work.confirmed_at),
         sessionId: work.session_id,
         projectId: action.projectId,
@@ -211,9 +203,11 @@ export const make = Effect.gen(function* () {
           "The chat's execution owner changed; review this decision",
           "rejected",
         );
-      yield* runtime.queueMessage({
+      yield* runtime.sendMessage({
         sessionId: work.session_id,
         threadId: session.executionRef.threadId,
+        mode: "queue",
+        messageFingerprint: inboxDispatchFingerprint(work),
         message,
       });
       return yield* inbox.completeDispatch(work, session.executionRef.threadId);
@@ -243,9 +237,9 @@ export const make = Effect.gen(function* () {
     yield* inbox.beginDispatch(work);
     const startedWork = { ...work, revision: work.revision + 1 };
     const result = yield* remoteTurns.value
-      .start(thread.threadId, work.final_text, {
+      .start(thread.threadId, message.text, {
         clientUserMessageId: work.message_id,
-        promptInput: { text: work.final_text, agentConfigs: [], images: message.images },
+        promptInput: { text: message.text, agentConfigs: [], images: message.images },
       })
       .pipe(Effect.result);
     if (result._tag === "Failure" || !result.success) return;

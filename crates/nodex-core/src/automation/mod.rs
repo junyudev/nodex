@@ -1,3 +1,5 @@
+pub(crate) const MAX_PROMPT_BYTES: usize = 1024 * 1024;
+
 mod agent_command;
 pub(crate) mod firing;
 mod mutation;

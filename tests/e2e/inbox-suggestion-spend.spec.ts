@@ -22,9 +22,16 @@ const primaryShortcut = (key: string) =>
 const OUTDATED_NOTE = "Suggested before this message changed";
 
 const shot = async (page: Page, target: Locator, file: string) => {
+  await target.scrollIntoViewIfNeeded();
   const box = await target.boundingBox();
   if (!box) throw new Error(`${file} is not on screen`);
   await page.screenshot({ path: file, clip: box });
+};
+
+/** The step a message's row recommends is the last button in it. */
+const lastButtonName = async (row: Locator) => {
+  const last = row.getByRole("button").last();
+  return (await last.getAttribute("aria-label")) ?? (await last.textContent())?.trim() ?? null;
 };
 
 test("Inbox advice answers a send, survives edits, and steps back while usage runs short", async ({}, testInfo) => {
@@ -79,6 +86,25 @@ test("Inbox advice answers a send, survives edits, and steps back while usage ru
         // The Inbox settles into place before it is captured.
         await page.waitForTimeout(600);
         await shot(page, stream, path.join(artifacts, "1-advice-states.png"));
+        // Each state's row, framed on its own, for review.
+        for (const key of ["unrequested", "current", "outdated", "failed", "pictured"])
+          await shot(page, row(key), path.join(artifacts, `1-${key}.png`));
+        await expect(row("failed").getByText(/Couldn’t suggest/)).toBeVisible();
+        claim(
+          "Each row ends with the step it recommends, any labeled alternative outlined beside it",
+          {
+            unrequested: "Handle manually",
+            current: "Choose the model for this chat",
+            outdated: "Suggest again",
+            failed: "Retry",
+          },
+          {
+            unrequested: await lastButtonName(row("unrequested")),
+            current: await lastButtonName(row("current")),
+            outdated: await lastButtonName(row("outdated")),
+            failed: await lastButtonName(row("failed")),
+          },
+        );
         claim(
           "Each message shows where its advice stands",
           {

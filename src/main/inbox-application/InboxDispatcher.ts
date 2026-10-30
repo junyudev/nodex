@@ -38,6 +38,7 @@ import {
 import { resolveInboxModel } from "./InboxRuntimeSelection";
 import { inboxAgentCandidates, inboxDefaultChatCandidate } from "./inbox-agent-candidates";
 import { InboxRuntimeError } from "./InboxRuntimeError";
+import { makeInboxImageLoader } from "./inbox-images";
 
 const SETTLE_DELAY_MS = 1_500;
 const SAFETY_POLL = "60 seconds";
@@ -49,6 +50,7 @@ export const make = Effect.gen(function* () {
   const settings = yield* ApplicationSettings;
   const runtime = yield* AgentRuntimeApplication;
   const config = yield* MainConfig;
+  const loadImages = yield* makeInboxImageLoader;
   const logger = getLogger({ component: "inbox-dispatcher" });
   const lane = yield* Semaphore.make(1);
   let previousPolicy: InboxSuggestionPolicy["kind"] | null = null;
@@ -92,6 +94,8 @@ export const make = Effect.gen(function* () {
             defaultChat: inboxDefaultChatCandidate(providers, current.chatAgent),
           }
         : null;
+      const references = request.context.entries.flatMap((entry) => entry.images);
+      const loaded = yield* loadImages(references);
       const prompt = yield* Effect.try({
         try: () =>
           buildInboxSuggestionPrompt({
@@ -99,6 +103,7 @@ export const make = Effect.gen(function* () {
             instructions: current.instructions,
             request: identity,
             agents,
+            attachedImageMarkers: loaded.attachedMarkers,
           }),
         catch: (cause) =>
           new InboxRuntimeError({
@@ -120,10 +125,14 @@ export const make = Effect.gen(function* () {
         schemaVersion: INBOX_SCHEMA_VERSION,
         inputBytes: Buffer.byteLength(prompt),
         memberCount: request.page_ids.length,
+        imageCount: references.length,
+        attachedImageCount: loaded.images.length,
+        unavailableImageCount: references.length - loaded.images.length,
       });
       const output = yield* runtime.generateStructured({
         modelSelection,
         prompt,
+        images: loaded.images,
         cwd: config.nodexHome,
         outputSchema: INBOX_SUGGESTION_OUTPUT_SCHEMA,
         maxOutputBytes: INBOX_SUGGESTION_MAX_OUTPUT_BYTES,

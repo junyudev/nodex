@@ -481,5 +481,6 @@ export interface AgentRuntimeIpcApi {
   };
 }
 
+/** Main supplies fitted AgentPromptImage bytes in `images`, following the prompt in order. */
 export type AgentRuntimeStructuredGenerationInput =
   AgentRuntimeOperations["text.generate-structured"]["input"];

@@ -861,7 +861,7 @@ configuration in memory and cannot persist a second configuration source. See
 [ACP Agent behavior](product-specs/acp-agent-behavior.md) and
 [ADR 0071](adr/0071-configured-acp-agents-and-explicit-management.md).
 
-Inbox confirmation freezes the reviewed message text, complete message, target and execution
+Inbox confirmation freezes the reviewed message, its Markdown and images, target and execution
 selection in Core before Main hands the stable command to the Runtime. Durable message
 admission ends the local Inbox handoff; execution progress remains owned by the chat.
 Uncertain remote delivery requires explicit reconciliation rather than automatic replay.

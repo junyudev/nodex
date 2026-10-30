@@ -8,8 +8,12 @@ import {
   type ScenarioSeedPort,
 } from "../contracts";
 
+/** A small app screenshot, so a message that opens with an image reads as one. */
+const INBOX_SCREENSHOT_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAPAAAACWCAIAAABvmpKCAAACxklEQVR42u3dP0scQRjA4XfP1QvBIhYKClZpAoLg97FJKWlT5QNYpRVLG7+PIATSWAkRIqigCGKC6Y6wOxFPNvtn9nmq8zgSb+fHMjs3txZXN7cBuZg4BAgaBA2CBkEjaBA09E35khc9ffk0e1zsHyRfMz3ZnT1+2DlOvubzt4+zx1+3jhx9OjhD/11z/cd6zfUf6zXXf4Q2gk7mW3kymW/lyWS+msYcGgSNoCHDoJNrGpUnk2salSeTaxoWOujgDF3JN5l4Jd9k4pV81cz/UNgPjTk0CBoEDYJG0JCFcrFcGMrv+vjrtwGjge2jPbH89o0Bw5QDQYOgQdAgaBA0ggZBg6BB0BBzfPR9/uNnm7/K5sZag//a97Nzo5uHD+83GzhDt1xzs/+jmnMy12hORv7+yWxMzaFxUQiChi6DbnbNIVpf5SAs2ykMUw4QNAgaxhj0XJ+UktmYTnz6T06jWdze3Q/ljU2XFo0uMc7ddphD57PbDkGDoEHQIGiw247xsQ6NKQcIGsKfpHidi8trQ9tn66srztBqNkamHJhDg912YR0au+3CbjtMOTq7gqb/Y1Q6XjhDg6DBbjsIu+0I69Dhk1WGf+VtLwdZHWcXhVjlAEGDoCEaW7br2267ly/buS6Msa5y/DPoTva+Pd+0dWhMORA0CBoEDVY5wipHWD8Z0W47NY+5aVMOzKFB0CBocF8O9zCwyhG+U4gzNAgaBA2CJtyXI3zDPqwhOEOr2fERNAgaBI2gQdCu4h2fcH/osJcDZ2gQNIIGQYOgQdAgaAQNggZBQ/jGSsL23s3Q38Lp4TuNhr0cGaQsa1MOyDHozE7PWb4jQYOgETQIGgQNggZBI2gQNAgaBB3j2spjc5IzNGH7aGR2KzD7oQXt3naYcoCgQdAgaAQNggZBg6BB0AgaBA2CBkGDoBE0CBoEDYIGQSNo6L8/xwzAtxQwALEAAAAASUVORK5CYII=";
+
 export const INBOX_SUGGESTION_SPEND_SCENARIO_ID = "inbox/suggestion-spend" as const;
-export const INBOX_SUGGESTION_SPEND_SCENARIO_REVISION = 1 as const;
+export const INBOX_SUGGESTION_SPEND_SCENARIO_REVISION = 3 as const;
 
 export interface InboxSuggestionSpendScenarioFacts extends ScenarioFacts {
   readonly messageCount: number;
@@ -17,6 +21,7 @@ export interface InboxSuggestionSpendScenarioFacts extends ScenarioFacts {
   readonly outdatedProposalCount: number;
   readonly unrequestedCount: number;
   readonly groupedMemberCount: number;
+  readonly failedCount: number;
 }
 
 export const requireInboxSuggestionSpendScenarioFacts = (
@@ -33,6 +38,7 @@ export const requireInboxSuggestionSpendScenarioFacts = (
       "outdatedProposalCount",
       "unrequestedCount",
       "groupedMemberCount",
+      "failedCount",
     ].every((key) => Number.isInteger(candidate[key]) && (candidate[key] as number) >= 0)
   ) {
     throw new Error("inbox/suggestion-spend facts are invalid");
@@ -105,6 +111,28 @@ const materialize = async (
       "These messages describe the same navigation workflow and should be investigated together.",
   });
 
+  const failed = await port.sendInboxMessage(
+    "Summarize this week's support tickets by theme and flag anything urgent.",
+  );
+  await port.recordInboxSuggestionFailure(
+    [failed.pageId],
+    "The suggestion Agent is rate limited. Try again in a few minutes.",
+  );
+
+  const screenshotFileId = createUuidV7();
+  await port.createLibraryFile({
+    projectId: project.id,
+    operationId: createUuidV7(),
+    fileId: screenshotFileId,
+    defaultName: "inbox-screenshot.png",
+    mimeType: "image/png",
+    bytes: new Uint8Array(Buffer.from(INBOX_SCREENSHOT_PNG, "base64")),
+  });
+  const pictured = await port.sendInboxMessage(
+    `![](nodex://files/${screenshotFileId})\n\nCan you look at this?`,
+  );
+  await port.prepareInboxSuggestions(false);
+
   return {
     version: 1,
     scenarioId: INBOX_SUGGESTION_SPEND_SCENARIO_ID,
@@ -117,7 +145,10 @@ const materialize = async (
       unrequested: unrequested.pageId,
       navigation: navigation.pageId,
       keyboard: keyboard.pageId,
+      failed: failed.pageId,
+      pictured: pictured.pageId,
     },
+    entityIdsByKey: { screenshotFile: screenshotFileId },
     minimumCommitSeq: 0,
     materializedAt: new Date().toISOString(),
   };
@@ -144,13 +175,15 @@ const inspect = async (
     unrequestedCount: items.filter((item) => item.suggestionState === "none" && !item.proposal)
       .length,
     groupedMemberCount: items.filter((item) => (item.proposal?.pageIds.length ?? 0) > 1).length,
+    failedCount: items.filter((item) => item.suggestionState === "failed").length,
   };
   if (
-    facts.messageCount !== 5 ||
+    facts.messageCount !== 7 ||
     facts.currentProposalCount !== 2 ||
     facts.outdatedProposalCount !== 1 ||
-    facts.unrequestedCount !== 1 ||
-    facts.groupedMemberCount !== 2
+    facts.unrequestedCount !== 2 ||
+    facts.groupedMemberCount !== 2 ||
+    facts.failedCount !== 1
   ) {
     throw new Error(
       `inbox/suggestion-spend materialized facts do not match: ${JSON.stringify(facts)}`,

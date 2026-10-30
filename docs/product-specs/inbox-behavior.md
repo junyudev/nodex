@@ -91,11 +91,14 @@ intents, and selection.
   - **Scheduled task:** a run of a task that asks first; see
     [Scheduled runs](#scheduled-runs). Renders left-aligned and labeled
     `From <task>` with the Scheduled glyph; the label opens the task.
-- A suggestion is about the message text it read. Editing that text, in the
-  stream or in the Page, makes the suggestion outdated rather than withdrawing
-  it, and never asks for new advice by itself; see
-  [Suggestions](#suggestions). A write that leaves the text as
-  it was, such as a rename, a move, or opening the Page, changes nothing.
+- A message is its Page body, read as Nodex Markdown, with the Library images in
+  it. That is what the stream shows, what a suggestion reads, and what a chat
+  it is handed to receives; the Page title is only its label.
+- A suggestion is about the message it read. Editing the message, its text or
+  its images, in the stream or in the Page, makes the suggestion outdated rather
+  than withdrawing it, and never asks for new advice by itself; see
+  [Suggestions](#suggestions). A write that leaves the message as it was, such
+  as a rename, a move, or opening the Page, changes nothing.
 
 ## Editing a message
 
@@ -295,9 +298,14 @@ late success or failure cannot restore that advice or hold up other requests,
 including after a restart. A restored archived message can be asked for advice
 again.
 
-The suggestion Agent receives bounded message text and eligible routing
-candidates, including relevant chat previews. Its prompt asks only for a
-structured proposal.
+The suggestion Agent reads each message whole: its body as Nodex Markdown, as the
+user wrote it, with its Library images attached as images in the order they
+appear, each marked in the text where it sits. An image that cannot be read is
+marked as unavailable rather than dropped silently. One request reads at most
+20 images: automatic batches stop short of that, a single message with more
+fails with that reason, and a selection with more is refused. It also receives
+eligible routing candidates, including relevant chat previews. Its prompt asks
+only for a structured proposal.
 
 While suggestions choose models, it also receives every Agent that can take a
 chat now, with each model's effort and speed choices, the note Nodex's model
@@ -463,12 +471,13 @@ own Agent, and its plan can be rewritten.
 ## Dispatch
 
 Only a user action turns a suggestion into work: confirming a proposal, or
-submitting the dispatch editor. Confirmation is fenced by the message text the
-user reviewed, including for an outdated suggestion.
+submitting the dispatch editor. Confirmation is fenced by the message the user
+reviewed, including for an outdated suggestion.
 
-Every confirmation, including an edited action, checks the message text the
-user reviewed. It freezes the complete original text, final prompt and
-destination. New chats also retain the resolved Agent instance, model and
+Every confirmation, including an edited action, checks the message the user
+reviewed. It freezes the complete original message, final prompt and
+destination; a chat receives each message as written, its images attached in
+place. New chats also retain the resolved Agent instance, model and
 options: the one their decision names, chosen by the suggestion or by the user,
 or else the Inbox's own. A planned chat's delegation instructions are written
 at confirmation against the catalog that resolved it and frozen with it. Retries do
