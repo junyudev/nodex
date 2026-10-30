@@ -68,7 +68,8 @@ intents, and selection.
   `Enter` sends, and `Shift+Enter` inserts a line break.
 - Each image becomes a Library File as soon as it is added and shows in the row
   above the text; the message is sent once every image is in. A sent message is
-  its text followed by its images. An image the draft imported and then let go
+  its images followed by its text, so its Page opens with them as the stream
+  shows them. An image the draft imported and then let go
   of before sending, by removing it, cancelling it while it imports, or
   cancelling the rewrite it was added to, goes to Trash. It stays in the
   Library if it changed or came into use anywhere since it was imported. A
@@ -115,8 +116,9 @@ is rewritten, what Nodex made of the old text steps aside.
   including when another view updates the message while its editor is open.
 - Saving the body, updating a provisional title and queueing the message for
   advice are one atomic operation.
-- A message whose Page no longer has the message shape, text followed by
-  Library images, or holds more than the stream shows, is edited as its Page:
+- A message whose Page no longer has the message shape, Library images at its
+  start or end around its text, or holds more than the stream shows, is edited
+  as its Page:
   its row offers `Edit as Page` instead.
 - Handled messages are a record of what was decided and are not edited from
   History.

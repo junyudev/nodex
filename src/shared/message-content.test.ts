@@ -53,12 +53,22 @@ describe("message text", () => {
 });
 
 describe("splitMessageContent", () => {
-  it("reads the images after the text as its attachments", () => {
+  it("reads the images before the text as its attachments, shown first", () => {
+    const content = splitMessageContent(
+      readMarkdown([image("a"), image("b"), "The banner is cut off", "- on hover"].join("\n\n")),
+    );
+    expect(sources(content.text)).toEqual(["paragraph", "bulletListItem"]);
+    expect(sources(content.attachments)).toEqual(["nodex://files/a", "nodex://files/b"]);
+    expect(content.attachmentsAt).toBe("start");
+  });
+
+  it("keeps the images of a message that ends with them where they are", () => {
     const content = splitMessageContent(
       readMarkdown(["The banner is cut off", "- on hover", image("a"), image("b")].join("\n\n")),
     );
     expect(sources(content.text)).toEqual(["paragraph", "bulletListItem"]);
     expect(sources(content.attachments)).toEqual(["nodex://files/a", "nodex://files/b"]);
+    expect(content.attachmentsAt).toBe("end");
   });
 
   it("keeps an image between paragraphs in the text, in order", () => {
@@ -67,23 +77,29 @@ describe("splitMessageContent", () => {
     );
     expect(sources(content.text)).toEqual(["paragraph", "nodex://files/a", "paragraph"]);
     expect(sources(content.attachments)).toEqual(["nodex://files/b"]);
+    // Only one run is the row: images at both ends leave the last ones in the text.
+    const both = splitMessageContent(
+      readMarkdown([image("a"), "Between", image("b")].join("\n\n")),
+    );
+    expect(sources(both.attachments)).toEqual(["nodex://files/a"]);
+    expect(sources(both.text)).toEqual(["paragraph", "nodex://files/b"]);
   });
 
   it("drafts a prompt from the text alone, as written", () => {
     expect(
       messageTextOf(
-        ["**Ship** the changelog", "- tag it", "Keep a \\< b", image("a")].join("\n\n"),
+        [image("a"), "**Ship** the changelog", "- tag it", "Keep a \\< b"].join("\n\n"),
       ),
     ).toBe("**Ship** the changelog\n\n- tag it\n\nKeep a < b");
   });
 
-  it("writes a Composer's text and then its images, which read back as its attachments", () => {
+  it("writes a Composer's images and then its text, which read back as its attachments", () => {
     const body = composeMessageText("Settings are cut off\r\n- on hover\n\n", [
       messageImageBlock("a"),
       messageImageBlock("b"),
     ]);
     expect(body).toBe(
-      "Settings are cut off\n- on hover\n\n![](nodex://files/a)\n\n![](nodex://files/b)",
+      "![](nodex://files/a)\n\n![](nodex://files/b)\n\nSettings are cut off\n- on hover",
     );
     const content = splitMessageContent(parseMessageText(body));
     expect(sources(content.text)).toEqual(["paragraph", "bulletListItem"]);

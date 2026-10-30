@@ -77,7 +77,7 @@ test("an Inbox message shows its Markdown and the images in its Page", async ({}
   );
 });
 
-test("the Inbox composer sends pasted and picked images after the text", async ({}, testInfo) => {
+test("the Inbox composer sends pasted and picked images ahead of the text", async ({}, testInfo) => {
   test.setTimeout(120_000);
   const artifacts =
     process.env.NODEX_MESSAGE_CONTENT_ARTIFACT_DIR ?? testInfo.outputPath("message-content-review");
@@ -148,7 +148,7 @@ test("the Inbox composer sends pasted and picked images after the text", async (
         await invokeIpc(page, "inbox:window", { scope: { kind: "library" }, filter: "inbox" })
       ).items;
       expect(item?.body).toMatch(
-        /^The toolbar is cut off on \*\*narrow\*\* windows\nwhen the sidebar is open\n\n- the gear\n- the close button\n\n!\[\]\(nodex:\/\/files\/[^)]+\)\n\n!\[\]\(nodex:\/\/files\/[^)]+\)$/,
+        /^!\[\]\(nodex:\/\/files\/[^)]+\)\n\n!\[\]\(nodex:\/\/files\/[^)]+\)\n\nThe toolbar is cut off on \*\*narrow\*\* windows\nwhen the sidebar is open\n\n- the gear\n- the close button$/,
       );
       await page.screenshot({ path: path.join(artifacts, "sent.png") });
 

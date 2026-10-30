@@ -76,7 +76,7 @@ function Composer({ onSend }: { readonly onSend: (draft: InboxDraft) => void }) 
   );
 }
 
-test("a pasted image becomes a Library File sent after the message's text", async () => {
+test("a pasted image becomes a Library File sent ahead of the message's text", async () => {
   const onSend = vi.fn();
   const view = render(
     <TestQueryProvider>
@@ -101,7 +101,7 @@ test("a pasted image becomes a Library File sent after the message's text", asyn
     await Promise.resolve();
   });
   expect(inboxDraftBody(onSend.mock.calls[0]![0])).toBe(
-    "The toolbar is cut off\n\n![](nodex://files/shot)",
+    "![](nodex://files/shot)\n\nThe toolbar is cut off",
   );
 });
 
@@ -238,7 +238,7 @@ test("a rewrite of the text keeps the message's images", async () => {
     fireEvent.click(save);
     await Promise.resolve();
   });
-  expect(onSave).toHaveBeenCalledWith("Settings, again\n\n![](nodex://files/shot)");
+  expect(onSave).toHaveBeenCalledWith("![](nodex://files/shot)\n\nSettings, again");
 });
 
 test("a rewrite can drop one of the message's images", async () => {

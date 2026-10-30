@@ -294,8 +294,8 @@ describe("Inbox capture ownership", () => {
       });
       const capture = hook.result.current.pending[0]!;
       expect(capture.status).toBe("needs_review");
-      // The images follow the text in the message body, as the message shape requires.
-      expect(capture.intent.body).toBe("Check whether this was saved\n\n![](nodex://files/shot)");
+      // The images lead the message body, as they show above its text.
+      expect(capture.intent.body).toBe("![](nodex://files/shot)\n\nCheck whether this was saved");
       await act(async () => {
         await hook.result.current.retry(capture);
       });

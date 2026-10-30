@@ -81,6 +81,26 @@ test("a message shows its attached Library images and opens them", async () => {
   ).toBeDefined();
 });
 
+test("the image row sits where the message keeps its images", () => {
+  const order = (markdown: string) => {
+    const view = render(
+      <MessageDocument
+        blocks={readMarkdown(markdown)}
+        contentKey={markdown}
+        fileAuthority={null}
+      />,
+    );
+    const image = view.getByRole("status", { name: "Image unavailable" });
+    const text = view.getByText("The banner is cut off");
+    const before = Boolean(image.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING);
+    view.unmount();
+    return before ? "images first" : "text first";
+  };
+  expect(order("![](nodex://files/shot)\n\nThe banner is cut off")).toBe("images first");
+  // A message written before images came first keeps them after its text.
+  expect(order("The banner is cut off\n\n![](nodex://files/shot)")).toBe("text first");
+});
+
 test("an image the message cannot read says so instead of loading forever", () => {
   const view = render(
     <MessageDocument

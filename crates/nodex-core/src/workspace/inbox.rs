@@ -326,7 +326,7 @@ pub(super) fn message_body(body: &str) -> Result<MessageBody, StoreError> {
     }
     if !has_message_shape(&blocks) {
         return Err(invalid(
-            "An Inbox message is its text followed by its images; edit other bodies as their Page",
+            "An Inbox message has its Library images together before or after its text; edit other bodies as their Page",
         ));
     }
     Ok(MessageBody {
@@ -335,15 +335,20 @@ pub(super) fn message_body(body: &str) -> Result<MessageBody, StoreError> {
     })
 }
 
-/// Text Blocks followed by Library File images: the shape a Composer writes and can
-/// therefore rewrite exactly. Images inside the text, with Blocks of their own, or from
-/// elsewhere belong to Pages.
+/// Library image Blocks form one contiguous run at either edge, without inline or nested images.
 pub(super) fn has_message_shape(blocks: &[Block]) -> bool {
-    let attachments = blocks
+    let plain_image = |block: &Block| matches!(&block.kind, BlockKind::Image { url, .. } if block.children.is_empty() && parse_page_file_source(url).is_some());
+    let Some(first) = blocks.iter().position(contains_image) else {
+        return true;
+    };
+    let end = blocks[first..]
         .iter()
-        .position(|block| matches!(block.kind, BlockKind::Image { .. }))
-        .unwrap_or(blocks.len());
-    blocks[..attachments].iter().all(|block| !contains_image(block)) && blocks[attachments..].iter().all(|block| matches!(&block.kind, BlockKind::Image { url, .. } if block.children.is_empty() && parse_page_file_source(url).is_some()))
+        .take_while(|block| plain_image(block))
+        .count()
+        + first;
+    end > first
+        && (first == 0 || end == blocks.len())
+        && blocks[end..].iter().all(|block| !contains_image(block))
 }
 
 /// Collects both Block images and inline images, including table cells.

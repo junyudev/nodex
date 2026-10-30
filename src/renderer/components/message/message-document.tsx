@@ -15,8 +15,9 @@ import { parseMessageText, splitMessageContent } from "../../../shared/message-c
 import type { MarkdownBlock } from "../../../shared/nodex-markdown";
 
 /**
- * A written message, read-only, as a bubble shows it: the images attached to it as thumbnails
- * above its text, and the text in chat typography, collapsed after as many lines as a chat
+ * A written message, read-only, as a bubble shows it: the images attached to it as a row of
+ * thumbnails where they sit, usually above its text, and the text in chat typography, collapsed
+ * after as many lines as a chat
  * message. `contentKey` identifies the message, so an expanded message collapses again when it
  * changes. `fileAuthority` reads the message's Library Files; without it, images show as
  * unavailable. `lead` opens the first line of text, which flows on after it and wraps beneath it.
@@ -34,7 +35,8 @@ export function MessageDocument({
   readonly collapsedLineCount?: number;
   readonly lead?: ReactNode;
 }) {
-  const { text, attachments } = splitMessageContent(blocks);
+  const { text, attachments, attachmentsAt } = splitMessageContent(blocks);
+  const images = attachments.length > 0 ? <MessageImages images={attachments} /> : null;
   return (
     <FileReadBoundary authority={fileAuthority}>
       <div className="flex min-w-0 flex-col gap-2">
@@ -42,7 +44,7 @@ export function MessageDocument({
         {lead != null && text.length === 0 ? (
           <span className="flex h-lh items-center">{lead}</span>
         ) : null}
-        {attachments.length > 0 ? <MessageImages images={attachments} /> : null}
+        {attachmentsAt === "start" ? images : null}
         {text.length > 0 ? (
           <UserMessageCollapse contentKey={contentKey} collapsedLineCount={collapsedLineCount}>
             <NfmDocument
@@ -53,6 +55,7 @@ export function MessageDocument({
             />
           </UserMessageCollapse>
         ) : null}
+        {attachmentsAt === "end" ? images : null}
       </div>
     </FileReadBoundary>
   );

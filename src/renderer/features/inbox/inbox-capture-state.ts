@@ -39,7 +39,10 @@ export const inboxDraftBody = (draft: InboxDraft): string =>
     draft.images.map((image) => messageImageBlock(image.fileId)),
   );
 
-/** Every stored message is editable as exact Markdown, with ordinary File images as attachments. */
+/**
+ * Every stored message is editable as exact Markdown, with ordinary File images as attachments.
+ * Saving writes them first, where a Composer keeps them, even for a message that ended with them.
+ */
 export function inboxDraftFromBody(body: string): InboxDraft {
   const { text, attachments } = splitMessageContent(readMarkdown(body));
   const written = serializeMessageText(text);

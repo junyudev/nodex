@@ -38,15 +38,31 @@ export function writtenMessageText(
   return writePortableMarkdown(blocks, { pageTitles }).markdown;
 }
 
+/**
+ * A message's plain images form one run, shown as a row of images where it sits: first, where
+ * a Composer writes them, or last, where a message written before images came first keeps them.
+ * Any other image belongs to the text, in place.
+ */
 export interface MessageContent {
   readonly text: readonly MarkdownBlock[];
   readonly attachments: readonly MarkdownBlock[];
+  /** Whether the row comes before the text or after it. */
+  readonly attachmentsAt: "start" | "end";
 }
+const isPlainImage = (block: MarkdownBlock | undefined): boolean =>
+  block?.type === "image" && !block.children?.length;
 export function splitMessageContent(blocks: readonly MarkdownBlock[]): MessageContent {
-  let start = blocks.length;
-  while (start > 0 && blocks[start - 1]?.type === "image" && !blocks[start - 1]?.children?.length)
-    start -= 1;
-  return { text: blocks.slice(0, start), attachments: blocks.slice(start) };
+  let start = 0;
+  while (start < blocks.length && isPlainImage(blocks[start])) start += 1;
+  if (start > 0)
+    return {
+      attachments: blocks.slice(0, start),
+      text: blocks.slice(start),
+      attachmentsAt: "start",
+    };
+  let end = blocks.length;
+  while (end > 0 && isPlainImage(blocks[end - 1])) end -= 1;
+  return { text: blocks.slice(0, end), attachments: blocks.slice(end), attachmentsAt: "end" };
 }
 export const messageTextOf = (markdown: string): string =>
   writeMarkdown(splitMessageContent(readMarkdown(markdown)).text);
@@ -58,7 +74,8 @@ export const isComposerImage = (image: MarkdownBlock): boolean =>
   writeMarkdown([image]) ===
   writeMarkdown([{ type: "image", props: { url: image.props?.url ?? "" } }]);
 
+/** A Composer's message: its images first, as they show above the text, then the text. */
 export function composeMessageText(text: string, images: readonly MarkdownBlock[]): string {
   const written = text.replace(/\r\n?/gu, "\n").trimEnd();
-  return [written, images.length ? writeMarkdown(images) : ""].filter(Boolean).join("\n\n");
+  return [images.length ? writeMarkdown(images) : "", written].filter(Boolean).join("\n\n");
 }

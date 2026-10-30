@@ -75,8 +75,11 @@ otherwise becoming JPEG. The original is unchanged where the message keeps it.
 Every bubble that shows written content, in the Inbox and in a chat, renders it
 with one read-only message renderer in chat typography: lines of a paragraph sit
 together, paragraphs and headings are a short step apart, and images, file
-chips, links and mentions render in place. The images attached after the text
-show as thumbnails above it, as in the Composer, and open in the image viewer.
+chips, links and mentions render in place. The images attached to a message, a
+run of plain images at its start, show as thumbnails above the text, as in the
+Composer, and open in the image viewer. A message that ends with such a run
+instead, as messages did before images came first, shows it below the text,
+where the Page keeps it.
 Images are read with the access of the Page the message belongs to, and one
 that cannot be read says so. An Inbox bubble shows its Page as it is now,
 including anything later added in the Page; the stream shows a bounded part of
@@ -88,14 +91,17 @@ read by the same Markdown rules.
 
 ## Inbox message shape
 
-A message written in a Composer has text Blocks followed by image Blocks of
-Library Files, which the Composer imports as each image is added and writes
-after the text as `![](nodex://files/…)`.
+A message written in a Composer has image Blocks of Library Files followed by
+its text Blocks: the Composer imports each image as it is added and writes them
+before the text as `![](nodex://files/…)`, so its Page opens with the images
+the bubble shows first.
 
 Every stored body can be edited in the Composer as its exact Markdown source.
-Ordinary trailing Library File images reopen in the attachment row. A body with
-other image state, such as a caption, width or image between paragraphs, reopens
-as complete Markdown source so its content stays exact. Underlining, toggles and
+Ordinary Library File images at the start of the body, or at its end in a
+message written before images came first, reopen in the attachment row; saving
+writes them first. A body with other image state, such as a caption, width or
+image between paragraphs, reopens as complete Markdown source so its content
+stays exact. Underlining, toggles and
 other directives do not require a separate Page-editing fallback. Editing a
 truncated stream item loads its complete body first. Concurrent changes remain
 protected by the message rewrite boundary.

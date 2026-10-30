@@ -3749,14 +3749,12 @@ fn a_message_keeps_its_images_after_its_text() {
     // A message of images alone is labeled by its first caption.
     assert_eq!(item(module, "page:picture").title, "Banner");
 
-    assert_eq!(
-        send_error(
-            module,
-            "out-of-shape",
-            "![Banner](nodex://files/shot)\n\nThe banner is cut off",
-        ),
-        CoreErrorCode::InvalidInput
+    send(
+        module,
+        "leading-image",
+        "![Banner](nodex://files/shot)\n\nThe banner is cut off",
     );
+    assert!(item(module, "page:leading-image").body_editable);
     // An attachment is a Library File, so an image from elsewhere is Page content, not a message.
     assert_eq!(
         send_error(
@@ -6268,4 +6266,27 @@ fn a_sixteen_member_window_computes_each_content_fingerprint_once() {
             Ok(())
         })
         .unwrap();
+}
+
+#[test]
+fn inbox_message_shape_accepts_one_image_run_at_either_edge_only() {
+    for markdown in [
+        "![](nodex://files/one)\n\n![](nodex://files/two)\n\nMessage",
+        "Message\n\n![](nodex://files/one)\n\n![](nodex://files/two)",
+        "![](nodex://files/one)",
+        "Message",
+    ] {
+        let blocks = crate::domain::markdown::parse_markdown(markdown).unwrap();
+        assert!(super::inbox::has_message_shape(&blocks), "{markdown}");
+    }
+    for markdown in [
+        "Before\n\n![](nodex://files/one)\n\nAfter",
+        "![](nodex://files/one)\n\nMessage\n\n![](nodex://files/two)",
+        "Text ![](nodex://files/one)",
+        "![](https://example.com/image.png)",
+        "- Parent\n  - ![](nodex://files/one)",
+    ] {
+        let blocks = crate::domain::markdown::parse_markdown(markdown).unwrap();
+        assert!(!super::inbox::has_message_shape(&blocks), "{markdown}");
+    }
 }
