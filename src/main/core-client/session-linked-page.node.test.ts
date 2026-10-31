@@ -43,6 +43,7 @@ test("Status edits, renamed options and link changes refresh independent Session
       const projections = new Set<(message: ProjectionStreamMessage) => void>();
       const sessions = new Set<(event: ProjectSessionsChangeEvent) => void>();
       let latest: ProjectionCursor | null = null;
+      let lastReadCommitHead = 0;
       const stream = await broker.openProjectionEventStream(
         [scope],
         (event) => {
@@ -80,6 +81,7 @@ test("Status edits, renamed options and link changes refresh independent Session
           });
           if (snapshot.value.kind !== "session_linked_page_summaries")
             throw new Error("Missing Session Linked Pages");
+          lastReadCommitHead = snapshot.commit_head;
           return {
             summaries: snapshot.value.summaries.map(
               projectWorkspaceSessionLinkedPageSummaryFromCore,
@@ -98,6 +100,7 @@ test("Status edits, renamed options and link changes refresh independent Session
       const release = store.subscribeSession(sessionId, () => {});
       return {
         store,
+        readCommitHead: () => lastReadCommitHead,
         close: () => {
           release();
           registry.dispose();
@@ -109,6 +112,7 @@ test("Status edits, renamed options and link changes refresh independent Session
     let right: Awaited<ReturnType<typeof recipient>> | undefined;
     try {
       right = await recipient(peer);
+      const recipients = [left, right];
       const stores = [left.store, right.store];
       await expect
         .poll(() => stores.map((store) => store.read(sessionId)?.status?.optionId))
@@ -163,6 +167,32 @@ test("Status edits, renamed options and link changes refresh independent Session
       await expect
         .poll(() => stores.map((store) => store.read(sessionId)?.status?.label))
         .toEqual(["Ready for review", "Ready for review"]);
+      const notesPageId = createUuidV7();
+      await ctx.seed.createStandalonePage({
+        pageId: notesPageId,
+        documentId: createUuidV7(),
+        operationId: createUuidV7(),
+        projectId,
+        title: "Research notes",
+      });
+      const linkedNotes = await client.workspaceApply({
+        operationId: createUuidV7(),
+        intent: {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "link_page", page_id: notesPageId },
+        },
+      });
+      await expect
+        .poll(() =>
+          recipients.every(
+            (recipient) => recipient.readCommitHead() >= applyResultCursor(linkedNotes),
+          ),
+        )
+        .toBe(true);
+      await expect
+        .poll(() => stores.map((store) => store.read(sessionId)?.status?.label))
+        .toEqual(["Ready for review", "Ready for review"]);
       await client.workspaceApply({
         operationId: createUuidV7(),
         intent: {
@@ -171,13 +201,41 @@ test("Status edits, renamed options and link changes refresh independent Session
           intent: { kind: "unlink_page", page_id: pageId },
         },
       });
-      await expect.poll(() => stores.map((store) => store.read(sessionId))).toEqual([null, null]);
-      await client.workspaceApply({
+      await expect
+        .poll(() => stores.map((store) => store.read(sessionId)))
+        .toEqual(
+          stores.map(() => ({
+            pageId: notesPageId,
+            pageKey: null,
+            title: "Research notes",
+            status: null,
+          })),
+        );
+      const relinkedWork = await client.workspaceApply({
         operationId: createUuidV7(),
         intent: {
           kind: "mutate_session",
           session_id: sessionId,
           intent: { kind: "link_page", page_id: pageId },
+        },
+      });
+      await expect
+        .poll(() =>
+          recipients.every(
+            (recipient) => recipient.readCommitHead() >= applyResultCursor(relinkedWork),
+          ),
+        )
+        .toBe(true);
+      await expect
+        .poll(() => stores.map((store) => store.read(sessionId)?.pageId))
+        .toEqual([notesPageId, notesPageId]);
+      expect(stores.map((store) => store.read(sessionId)?.status)).toEqual([null, null]);
+      await client.workspaceApply({
+        operationId: createUuidV7(),
+        intent: {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "unlink_page", page_id: notesPageId },
         },
       });
       await expect

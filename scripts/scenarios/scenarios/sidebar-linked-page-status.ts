@@ -13,7 +13,7 @@ import {
 } from "../contracts";
 
 export const SIDEBAR_LINKED_PAGE_STATUS_SCENARIO_ID = "sidebar/linked-page-status" as const;
-export const SIDEBAR_LINKED_PAGE_STATUS_SCENARIO_REVISION = 1 as const;
+export const SIDEBAR_LINKED_PAGE_STATUS_SCENARIO_REVISION = 2 as const;
 
 const PAGE_TITLES = {
   triage: "Investigate slow search",
@@ -67,7 +67,7 @@ const CHATS = {
   multiple: {
     title: "Coordinate search and export",
     pageKeys: ["build", "review"],
-    expectedStatusOptionId: null,
+    expectedStatusOptionId: "build",
     pinned: false,
   },
   noStatus: {

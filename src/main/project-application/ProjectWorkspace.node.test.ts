@@ -950,7 +950,7 @@ it.effect("fails invalid Page Chat input before I/O and propagates caller interr
 );
 
 it.effect(
-  "reads sole linked Pages with current Status labels and rejects oversized Session batches",
+  "reads earliest linked Pages with current Status labels and rejects oversized Session batches",
   () =>
     Effect.gen(function* () {
       let readCount = 0;

@@ -13,7 +13,7 @@ const threadRow = (page: Page, title: string) =>
     `[data-app-action-sidebar-thread-row][data-app-action-sidebar-thread-title="${title}"]:visible`,
   );
 
-test("shows a sole linked Page's Status, opens the Page, and follows live Status and link changes", async ({}, testInfo) => {
+test("shows the earliest linked Page's Status, opens the Page, and follows live Status and link changes", async ({}, testInfo) => {
   test.setTimeout(180_000);
   let captureWindow: (() => Promise<Buffer>) | undefined;
   await withElectronScenario(
@@ -142,21 +142,33 @@ test("shows a sole linked Page's Status, opens the Page, and follows live Status
       );
 
       await pageStage.getByRole("button", { name: "Edit Status", exact: true }).click();
-      await page.getByRole("option", { name: "Review", exact: true }).click();
+      await page.getByRole("option", { name: "Ship", exact: true }).click();
       await page.mouse.move(1000, 900);
       await expect(
         buildRow.locator("[data-app-action-sidebar-thread-page-status]"),
-      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "review");
+      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "ship");
       await expect(
         threadRow(page, observed.chats.pinnedBuild.title).locator(
           "[data-app-action-sidebar-thread-page-status]",
         ),
-      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "review");
+      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "ship");
       await expect(
         threadRow(page, observed.chats.multiple.title).locator(
           "[data-app-action-sidebar-thread-page-status]",
         ),
-      ).toHaveCount(0);
+      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "ship");
+
+      const multipleChat = observed.chats.multiple;
+      const multipleStatus = threadRow(page, multipleChat.title).locator(
+        "[data-app-action-sidebar-thread-page-status]",
+      );
+      await invokeIpc(page, "page-chats:unlink", multipleChat.sessionId, {
+        pageId: buildPage.pageId,
+      });
+      await expect(multipleStatus).toHaveAttribute(
+        "data-app-action-sidebar-thread-page-status",
+        "review",
+      );
 
       await invokeIpc(page, "page-chats:unlink", buildChat.sessionId, {
         pageId: buildPage.pageId,
@@ -173,7 +185,7 @@ test("shows a sole linked Page's Status, opens the Page, and follows live Status
         threadRow(page, observed.chats.pinnedBuild.title).locator(
           "[data-app-action-sidebar-thread-page-status]",
         ),
-      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "review");
+      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "ship");
     },
   );
 });

@@ -797,7 +797,7 @@ function SidebarThreadOrganizerSections({
   onSelectSidebarThread: (item: CodexSidebarThreadItem) => void | Promise<void>;
   onPreviewSidebarThread?: (item: CodexSidebarThreadItem) => void;
   onOpenSessionContextMenu?: (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => void;
-  /** Takes the person to a chat with its sole linked Page beside it. */
+  /** Takes the person to a chat with its earliest-linked live Page beside it. */
   onOpenSessionLinkedPage?: (session: ProjectSession, page: SessionLinkedPage) => void;
   onSessionTitleDoubleClick?: (
     session: ProjectSession,
@@ -1802,7 +1802,7 @@ export interface ProjectSessionSidebarProps extends Omit<
   onSelectSidebarThread: (item: CodexSidebarThreadItem) => void | Promise<void>;
   onPreviewSidebarThread?: (item: CodexSidebarThreadItem) => void;
   onOpenSessionContextMenu?: (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => void;
-  /** Takes the person to a chat with its sole linked Page beside it. */
+  /** Takes the person to a chat with its earliest-linked live Page beside it. */
   onOpenSessionLinkedPage?: (session: ProjectSession, page: SessionLinkedPage) => void;
   onSessionTitleDoubleClick?: (
     session: ProjectSession,

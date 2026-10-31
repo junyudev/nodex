@@ -645,7 +645,7 @@ describe("codex sidebar linked Page status", () => {
     return view;
   }
 
-  test("rests a settled chat on its sole linked Page's Status", async () => {
+  test("rests a settled chat on its earliest linked Page's Status", async () => {
     const view = await renderLinkedRow({});
     const slot = view.container.querySelector<HTMLElement>(
       "[data-app-action-sidebar-thread-page-status]",
@@ -679,7 +679,7 @@ describe("codex sidebar linked Page status", () => {
     ).toBeNull();
   });
 
-  test("leaves the slot empty without a sole linked Page or its Status", async () => {
+  test("leaves the slot empty without a live linked Page or its Status", async () => {
     const none = await renderLinkedRow({ page: null });
     expect(none.container.querySelector("[data-app-action-sidebar-thread-page-status]")).toBeNull();
     none.unmount();

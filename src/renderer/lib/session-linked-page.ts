@@ -221,7 +221,7 @@ export const sessionLinkedPageStore = createSessionLinkedPageStore({
     getRendererProjectionInvalidationRegistry().register(registration),
 });
 
-/** The sole live linked Page, or null for no eligible Page, multiple Pages, or a pending read. */
+/** The earliest-linked live Page, or null when no Page is eligible or the read is pending. */
 export function useSessionLinkedPage(
   sessionId: string | null,
   store: SessionLinkedPageStore = sessionLinkedPageStore,

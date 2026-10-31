@@ -71,12 +71,24 @@ describe("sidebar/linked-page-status over the real Core transport", () => {
             }
           }
           expect(new Set(linkedPageIds)).toEqual(new Set(chat.linkedPageIds));
-          const solePage = Object.values(observed.pages).find(
-            (page) => linkedPageIds.length === 1 && page.pageId === linkedPageIds[0],
+          const summary = await project.workspaceRead({
+            kind: "session_linked_page_summaries",
+            session_ids: [chat.sessionId],
+          });
+          if (summary.value.kind !== "session_linked_page_summaries") {
+            throw new Error("Expected Session Linked Page summaries");
+          }
+          // Each Chat's initial links share one operation timestamp.
+          const earliestPageId = [...linkedPageIds].sort()[0];
+          expect(summary.value.summaries.map((item) => item.page.page_id)).toEqual(
+            earliestPageId ? [earliestPageId] : [],
           );
-          expect(chat.expectedStatusOptionId).toBe(solePage?.statusOptionId ?? null);
+          expect(summary.value.summaries[0]?.page.status?.option_id ?? null).toBe(
+            chat.expectedStatusOptionId,
+          );
         }
         expect(observed.chats.multiple.linkedPageIds).toHaveLength(2);
+        expect(observed.chats.multiple.expectedStatusOptionId).toBe("build");
         expect(observed.chats.noStatus.linkedPageIds).toEqual([observed.pages.noStatus.pageId]);
         expect(observed.chats.unlinked.linkedPageIds).toEqual([]);
         expect(observed.chats.pinnedBuild).toMatchObject({

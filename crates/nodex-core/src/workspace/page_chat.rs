@@ -205,7 +205,8 @@ pub(super) fn unlink_page(
     )
 }
 
-/// Counts only readable, live Pages before projecting the sole linked Page. Session placement
+/// Projects the earliest-linked readable, live Page, ordered by linked_at then Page ID.
+/// Its Status may be absent; later Pages never supply a fallback Status. Session placement
 /// and its Project do not grant content access; the bound Library and Block lifecycle do.
 pub(super) fn read_session_linked_page_summaries(
     connection: &Connection,
@@ -241,8 +242,10 @@ pub(super) fn read_session_linked_page_summaries(
         .join(", ");
     let sql = format!(
         "WITH requested(session_id, ordinal) AS (VALUES {requested}), \
-         sole AS ( \
-           SELECT session.id AS session_id, requested.ordinal, MIN(page.block_id) AS page_id \
+         ranked_live_links AS ( \
+           SELECT session.id AS session_id, requested.ordinal, page.block_id AS page_id, \
+             ROW_NUMBER() OVER (PARTITION BY session.id \
+               ORDER BY relation.linked_at, relation.page_id) AS link_order \
            FROM requested \
            JOIN project_sessions session ON session.id = requested.session_id AND session.archived = 0 \
              AND (session.project_id IS NULL OR EXISTS ( \
@@ -252,12 +255,13 @@ pub(super) fn read_session_linked_page_summaries(
            JOIN pages page ON page.block_id = relation.page_id AND page.library_id = ?1 \
            JOIN blocks block ON block.id = page.block_id AND block.library_id = ?1 \
              AND block.lifecycle = 'active' \
-           GROUP BY session.id, requested.ordinal HAVING COUNT(*) = 1 \
+         ), earliest_linked_page AS ( \
+           SELECT session_id, ordinal, page_id FROM ranked_live_links WHERE link_order = 1 \
          ) \
-         SELECT sole.session_id, page.block_id, model.title, \
+         SELECT earliest.session_id, page.block_id, model.title, \
            json_extract(option.value, '$.id'), json_extract(option.value, '$.name') \
-         FROM sole \
-         JOIN pages page ON page.block_id = sole.page_id \
+         FROM earliest_linked_page earliest \
+         JOIN pages page ON page.block_id = earliest.page_id \
          JOIN page_read_model model ON model.page_block_id = page.block_id AND model.library_id = ?1 \
          LEFT JOIN data_source_page_memberships membership \
            ON page.parent_kind = 'data_source' AND membership.data_source_id = page.parent_id \
@@ -270,7 +274,7 @@ pub(super) fn read_session_linked_page_summaries(
              AND value.property_id = property.id AND value.value_type = 'select' \
          LEFT JOIN json_each(property.config_json, '$.options') option \
            ON json_extract(option.value, '$.id') = json_extract(value.value_json, '$') \
-         ORDER BY sole.ordinal"
+         ORDER BY earliest.ordinal"
     );
     let rows = connection
         .prepare(&sql)?
@@ -1329,7 +1333,7 @@ mod tests {
     }
 
     #[test]
-    fn linked_page_summary_counts_only_live_pages_and_active_sessions() {
+    fn linked_page_summary_selects_earliest_live_page_for_active_sessions() {
         use nodex_core_contracts::library::{LibraryIntent, LibraryPageLifecycleMutation};
         let workspace = seeded_workspace();
         create_library_page(&workspace, "page:one", "project:default");
@@ -1352,10 +1356,11 @@ mod tests {
                 session_id: "session:many".to_owned(),
                 project_id: Some("project:default".to_owned()),
                 title: "Many links".to_owned(),
-                initial_page_ids: vec!["page:one".to_owned(), "page:two".to_owned()],
+                // Same-operation links use Page ID order, regardless of request order.
+                initial_page_ids: vec!["page:two".to_owned(), "page:one".to_owned()],
             },
         );
-        let single = linked_pages(
+        let summaries = linked_pages(
             &workspace,
             &[
                 "session:zero",
@@ -1364,47 +1369,37 @@ mod tests {
                 "session:missing",
             ],
         );
-        assert_eq!(single.len(), 1);
-        assert_eq!(single[0].session_id, "session:single");
-        assert_eq!(single[0].page.page_id, "page:one");
-        assert_eq!(single[0].page.title, "page:one");
-        assert_eq!(single[0].page.page_key, None);
-        assert_eq!(single[0].page.status, None);
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].session_id, "session:single");
+        assert_eq!(summaries[1].session_id, "session:many");
+        assert_eq!(summaries[0].page, summaries[1].page);
+        assert_eq!(summaries[0].page.page_id, "page:one");
+        assert_eq!(summaries[0].page.title, "page:one");
+        assert_eq!(summaries[0].page.page_key, None);
+        assert_eq!(summaries[0].page.status, None);
 
         library_apply(
             &workspace,
-            "archive-two",
+            "archive-one",
             LibraryIntent::ApplyPageLifecycle {
                 mutation: Box::new(LibraryPageLifecycleMutation::ArchivePage {
-                    page_id: "page:two".to_owned(),
+                    page_id: "page:one".to_owned(),
                     expected_metadata_revision: 1,
                 }),
             },
         );
         assert_eq!(
             linked_pages(&workspace, &["session:many"])[0].page.page_id,
-            "page:one"
+            "page:two"
         );
+        assert!(linked_pages(&workspace, &["session:single"]).is_empty());
         library_apply(
             &workspace,
-            "unarchive-two",
+            "unarchive-one",
             LibraryIntent::ApplyPageLifecycle {
                 mutation: Box::new(LibraryPageLifecycleMutation::UnarchivePage {
-                    page_id: "page:two".to_owned(),
+                    page_id: "page:one".to_owned(),
                     expected_metadata_revision: 2,
-                }),
-            },
-        );
-        assert!(linked_pages(&workspace, &["session:many"]).is_empty());
-        library_apply(
-            &workspace,
-            "delete-two",
-            LibraryIntent::ApplyPageLifecycle {
-                mutation: Box::new(LibraryPageLifecycleMutation::DeletePage {
-                    page_id: "page:two".to_owned(),
-                    expected_metadata_revision: 3,
-                    expected_parent_revision: 1,
-                    parent_document_head: None,
                 }),
             },
         );
@@ -1421,6 +1416,95 @@ mod tests {
             },
         );
         assert!(linked_pages(&workspace, &["session:single"]).is_empty());
+        library_apply(
+            &workspace,
+            "delete-one",
+            LibraryIntent::ApplyPageLifecycle {
+                mutation: Box::new(LibraryPageLifecycleMutation::DeletePage {
+                    page_id: "page:one".to_owned(),
+                    expected_metadata_revision: 3,
+                    expected_parent_revision: 1,
+                    parent_document_head: None,
+                }),
+            },
+        );
+        assert_eq!(
+            linked_pages(&workspace, &["session:many"])[0].page.page_id,
+            "page:two"
+        );
+        for lifecycle in [
+            nodex_core_contracts::workspace::ProjectLifecycle::Inactive,
+            nodex_core_contracts::workspace::ProjectLifecycle::Archived,
+        ] {
+            apply(
+                &workspace.module,
+                &format!("set-project-{lifecycle:?}"),
+                ProjectWorkspaceIntent::SetProjectLifecycle {
+                    project_id: "project:default".to_owned(),
+                    lifecycle,
+                },
+            );
+            assert!(linked_pages(&workspace, &["session:many"]).is_empty());
+        }
+    }
+
+    #[test]
+    fn linked_page_summary_orders_by_link_time_before_page_id_and_advances_on_unlink() {
+        let workspace = seeded_workspace();
+        for page_id in ["page:a", "page:z"] {
+            create_library_page(&workspace, page_id, "project:default");
+        }
+        apply(
+            &workspace.module,
+            "create-ordered",
+            ProjectWorkspaceIntent::CreateSession {
+                session_id: "session:ordered".to_owned(),
+                project_id: None,
+                title: "Ordered links".to_owned(),
+                initial_page_ids: vec![],
+            },
+        );
+        // Exact edge timestamps distinguish chronological order from the Page-ID tie-break.
+        workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                super::link_pages(
+                    connection,
+                    "session:ordered",
+                    &["page:z".to_owned()],
+                    "2026-07-19T06:00:00.000Z",
+                )?;
+                super::link_pages(
+                    connection,
+                    "session:ordered",
+                    &["page:a".to_owned()],
+                    "2026-07-19T06:01:00.000Z",
+                )
+            })
+            .expect("timestamped Linked chat edges");
+        assert_eq!(
+            linked_pages(&workspace, &["session:ordered"])[0]
+                .page
+                .page_id,
+            "page:z"
+        );
+        apply(
+            &workspace.module,
+            "unlink-earliest",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "session:ordered".to_owned(),
+                intent: ProjectSessionIntent::UnlinkPage {
+                    page_id: "page:z".to_owned(),
+                },
+            },
+        );
+        assert_eq!(
+            linked_pages(&workspace, &["session:ordered"])[0]
+                .page
+                .page_id,
+            "page:a"
+        );
     }
 
     #[test]
@@ -1466,6 +1550,41 @@ mod tests {
         );
         let in_source = linked_pages(&workspace, &["session:work"]);
         assert_eq!(in_source[0].page.page_key.as_deref(), Some("LAB-1"));
+        create_library_page(&workspace, "page:z-later", "project:default");
+        database_apply(
+            &workspace,
+            "move-later",
+            DatabaseIntent::TransferPage {
+                page_id: "page:z-later".to_owned(),
+                expected_parent_revision: 1,
+                expected_active_membership_revision: 0,
+                target: DatabaseTransferTarget::DataSource {
+                    data_source_id: data_source_id.clone(),
+                },
+            },
+        );
+        apply(
+            &workspace.module,
+            "link-later",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "session:work".to_owned(),
+                intent: ProjectSessionIntent::LinkPage {
+                    page_id: "page:z-later".to_owned(),
+                },
+            },
+        );
+        create_page_session(
+            &workspace,
+            "create-later-chat",
+            "session:later",
+            "page:z-later",
+        );
+        assert!(
+            linked_pages(&workspace, &["session:later"])[0]
+                .page
+                .status
+                .is_some()
+        );
         let value_revision = workspace.kernel.readers().read_default(|connection| {
             Ok(connection.query_row("SELECT value.revision FROM data_source_property_values value JOIN data_source_page_memberships membership ON membership.id = value.membership_id WHERE membership.page_block_id = 'page:work' AND value.property_id = 'status'", [], |row| row.get::<_, i64>(0))?)
         }).expect("current Status value revision");
@@ -1515,6 +1634,7 @@ mod tests {
             },
         );
         let summary = linked_pages(&workspace, &["session:work"]);
+        assert_eq!(summary[0].page.page_id, "page:work");
         assert_eq!(
             summary[0]
                 .page
@@ -1523,6 +1643,20 @@ mod tests {
                 .map(|status| (status.option_id.as_str(), status.label.as_str())),
             Some(("build", "In progress"))
         );
+        create_library_page(&workspace, "page:notes", "project:default");
+        apply(
+            &workspace.module,
+            "create-notes-chat",
+            ProjectWorkspaceIntent::CreateSession {
+                session_id: "session:notes".to_owned(),
+                project_id: Some("project:default".to_owned()),
+                title: "Notes first".to_owned(),
+                initial_page_ids: vec!["page:work".to_owned(), "page:notes".to_owned()],
+            },
+        );
+        let notes = linked_pages(&workspace, &["session:notes"]);
+        assert_eq!(notes[0].page.page_id, "page:notes");
+        assert_eq!(notes[0].page.status, None);
         database_apply(
             &workspace,
             "rename-lab-prefix",
@@ -1557,10 +1691,9 @@ mod tests {
                 }],
             },
         );
-        assert_eq!(
-            linked_pages(&workspace, &["session:work"])[0].page.status,
-            None
-        );
+        let without_status = linked_pages(&workspace, &["session:work"]);
+        assert_eq!(without_status[0].page.page_id, "page:work");
+        assert_eq!(without_status[0].page.status, None);
         database_apply(
             &workspace,
             "detach-work",
@@ -1574,6 +1707,7 @@ mod tests {
             },
         );
         let detached = linked_pages(&workspace, &["session:work"]);
+        assert_eq!(detached[0].page.page_id, "page:work");
         assert_eq!(detached[0].page.status, None);
         assert_eq!(detached[0].page.page_key, None);
     }

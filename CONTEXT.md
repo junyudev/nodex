@@ -512,6 +512,9 @@ dispatch links its message Pages to the receiving chat in the same transaction.
 Page navigation, Scenes, mentions, references, links, and prompt text do not
 infer one.
 
+A Session rests on its earliest-linked live Page, the Page it started from; later
+links never displace it.
+
 Workspace owns the relation and derives bounded Page Chat activity from it,
 Project Sessions, and optional Threads. Execution and unread are orthogonal
 signals. Database Page rows do not store or project Chat state; renderer

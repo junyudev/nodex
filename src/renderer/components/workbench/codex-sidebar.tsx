@@ -1799,7 +1799,7 @@ type CodexSidebarThreadRowProps = {
   runtime?: { readonly sessionId: string; readonly rootThreadId: string } | null;
   /** Live Session activity; tests inject an isolated store. */
   activityStore?: AgentRuntimeActivityStore;
-  /** The Session's sole linked Page; tests inject an isolated store. */
+  /** The Session's earliest-linked live Page; tests inject an isolated store. */
   linkedPageStore?: SessionLinkedPageStore;
   active: boolean;
   /** Grouped rows are nested under a Project; root lanes and Sections stay edge-aligned. */
