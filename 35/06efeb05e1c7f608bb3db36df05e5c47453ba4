@@ -1,0 +1,39 @@
+src/renderer/components/board/editor/nfm-ask-for-change.tsx
+  s_e2f9f3a29b34ef::t_e92cb514c7ba4a 15,254-256,279-284,286,288,306-308
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_e2f9f3a29b34ef::t_60702f4389f59a 106-110,749
+  s_e2f9f3a29b34ef::t_5a6733ecf652cb 1833-1849,1862-1864,1866-1874
+docs/product-specs/nfm-editor-prompt-block-behavior.md
+  s_e2f9f3a29b34ef::t_aaa0c5467f61e2 30-33,38-47,116
+src/renderer/components/board/editor/prompt-block.tsx
+  s_e2f9f3a29b34ef::t_a9673a3e9e86a0 7-10,18-19,24-25,89-102,105,113-124,126-155,157-189,282-287
+src/renderer/components/board/editor/nfm-prompt-block-model.ts
+  s_e2f9f3a29b34ef::t_9a3b9916982ebf 2,9,16-27,29,33-49
+  s_e2f9f3a29b34ef::t_d68884fe4ab9fa 51-68
+  s_e2f9f3a29b34ef::t_6cf68697f02ea4 50
+src/renderer/components/board/editor/nfm-prompt-block-model.test.ts
+  s_e2f9f3a29b34ef::t_9a3b9916982ebf 18,21-30
+  s_e2f9f3a29b34ef::t_a9673a3e9e86a0 31,38-39
+  s_e2f9f3a29b34ef::t_d68884fe4ab9fa 4,32-36,41
+src/renderer/components/board/editor/nfm-chat-send-shortcut-controller.test.tsx
+  s_e2f9f3a29b34ef::t_60702f4389f59a 15,59
+src/renderer/components/board/editor/nfm-prompt-runtime.tsx
+  s_e2f9f3a29b34ef::t_5a6733ecf652cb 8-12,19-21
+  s_e2f9f3a29b34ef::t_60702f4389f59a 15-16,24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3506efeb05e1c7f608bb3db36df05e5c47453ba4",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
