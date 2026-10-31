@@ -1,0 +1,58 @@
+scripts/scenarios/seed/source-folder.ts
+  s_bbfca6b9cc3ecc::t_ede802791d28c0 1-48,59-81,83-85,90-95,104-109
+  s_bbfca6b9cc3ecc::t_e3ab3eb886edfe 49-54,86-89,96-103
+  s_bbfca6b9cc3ecc::t_ce7b1d3bd31d6b 55-58
+  s_bbfca6b9cc3ecc::t_696e8f69526998 82
+docs/development.md
+  s_bbfca6b9cc3ecc::t_71b57cdae48ff0 335-345,348-355,374-375
+  s_bbfca6b9cc3ecc::t_ff90808d9ac22c 346-347,376-377
+scripts/scenarios/seed/source-folder.test.ts
+  s_bbfca6b9cc3ecc::t_ce7b1d3bd31d6b 29,33-34,70
+  s_bbfca6b9cc3ecc::t_71b57cdae48ff0 1-28,30-32,35-69,71-96
+  s_bbfca6b9cc3ecc::t_314242fcc2ed95 97-98
+tests/e2e/inbox-capture.spec.ts
+  s_bbfca6b9cc3ecc::t_71b57cdae48ff0 34
+scripts/scenarios/fixtures/tinyboard/package.json
+  s_bbfca6b9cc3ecc::t_ede802791d28c0 1-6
+scripts/scenarios/fixtures/tinyboard/src/styles.css
+  s_bbfca6b9cc3ecc::t_ede802791d28c0 1-37
+scripts/dev-launcher.ts
+  s_bbfca6b9cc3ecc::t_ede802791d28c0 43,746-748
+scripts/scenarios/fixtures/tinyboard/README.md
+  s_bbfca6b9cc3ecc::t_ede802791d28c0 1-10
+scripts/scenarios/contracts.ts
+  s_bbfca6b9cc3ecc::t_71b57cdae48ff0 239
+scripts/scenarios/fixtures/tinyboard/src/main.js
+  s_bbfca6b9cc3ecc::t_ede802791d28c0 1-25
+scripts/scenarios/fixtures/tinyboard/index.html
+  s_bbfca6b9cc3ecc::t_ede802791d28c0 1-16
+scripts/scenarios/harness/development-seed.ts
+  s_bbfca6b9cc3ecc::t_ede802791d28c0 10,21-24,34
+  s_bbfca6b9cc3ecc::t_e3ab3eb886edfe 1
+src/main/core-client/development-seed-sandbox.node.test.ts
+  s_bbfca6b9cc3ecc::t_d8c0869ce7d16b 19-41,47-53,55-63,65,67
+  s_bbfca6b9cc3ecc::t_ff90808d9ac22c 42-46
+  s_bbfca6b9cc3ecc::t_ce7b1d3bd31d6b 54
+  s_bbfca6b9cc3ecc::t_223a8081d52f2e 66
+  s_bbfca6b9cc3ecc::t_71b57cdae48ff0 1-18,64
+scripts/scenarios/scenarios/inbox-triage.ts
+  s_bbfca6b9cc3ecc::t_ff90808d9ac22c 209
+scripts/scenarios/fixtures/tinyboard/src/tasks.js
+  s_bbfca6b9cc3ecc::t_ede802791d28c0 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b458ff569974448c363c2cbc696a24ebed48d047",
+  "prompts": {},
+  "sessions": {
+    "s_bbfca6b9cc3ecc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-3c8c-78a3-90b4-74e14f6a0ec0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
