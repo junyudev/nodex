@@ -1,0 +1,86 @@
+src/main/project-application/ProjectWorkspace.ts
+  s_8a269fcdcbb297::t_2d6789acc177b7 1-5,198-200,1562-1571,1584-1592
+  s_51fd26322ffbcf::t_8232b88d77196b 1572-1583,1593-1595
+src/main/ipc/handlers/ProjectWorkspaceIpc.ts
+  s_8a269fcdcbb297::t_2d6789acc177b7 197-199
+crates/nodex-core/src/library/mod.rs
+  s_8a269fcdcbb297::t_2d6789acc177b7 7742
+crates/nodex-core-contracts/src/workspace.rs
+  s_8a269fcdcbb297::t_2d6789acc177b7 1451-1453
+  s_8a269fcdcbb297::t_b8812e972f3034 1464
+  s_51fd26322ffbcf::t_56eb71ff956b0b 19,1441-1450,1454-1463,1465-1468,1472-1478,2051-2052
+crates/nodex-core/src/library/mutation.rs
+  s_8a269fcdcbb297::t_2d6789acc177b7 3627
+crates/nodex-core/src/workspace/page_create.rs
+  s_8a269fcdcbb297::t_9e814b6e6efe5c 32,39-50,63,646,648,665-669,671-673,679
+  s_8a269fcdcbb297::t_b8812e972f3034 265
+  s_8a269fcdcbb297::t_2d6789acc177b7 77,87,104-264,266-642,687-819
+  s_8a269fcdcbb297::t_4f0dbe1e5f9fec 657-664,670
+  s_8a269fcdcbb297::t_b6f09cb10431e8 38,643-645,647,649-656,674,676,678,823
+  s_51fd26322ffbcf::t_9053138e0f3c2c 1-31,33-37,51-62,64-76,78-86,88-103,675,677,680-686,820-822,824
+src/shared/workspace-page-create.ts
+  s_8a269fcdcbb297::t_2d6789acc177b7 1-36,38-54
+  s_8a269fcdcbb297::t_b8812e972f3034 37
+crates/nodex-core/src/workspace/mutation.rs
+  s_51fd26322ffbcf::t_510471ee0f6c49 314-319,1322-1324,1550,1581,1625-1634
+  s_51fd26322ffbcf::t_3f425255cb2d9f 224,1635-1637,1711,2355
+src/main/core-client/workspace-page-create-scenario.node.test.ts
+  s_8a269fcdcbb297::t_4d6096b4948750 1-25,33-39,41,48-50,74-76,84-85,97-98,120,122,148-150
+  s_8a269fcdcbb297::t_2d6789acc177b7 26-32,42-47,51-73,77-83,87-89,91-92,94-96,99-108,113-119,123-124,137-147
+  s_8a269fcdcbb297::t_b8812e972f3034 40,86,121
+  s_51fd26322ffbcf::t_e98685d3b9f247 90,93,109-112,125-136
+crates/nodex-core/src/workspace/mod.rs
+  s_51fd26322ffbcf::t_510471ee0f6c49 23
+crates/nodex-core/src/database/manual_order.rs
+  s_51fd26322ffbcf::t_d6a362e97d19b4 429-445,3050-3080
+crates/nodex-core/src/database/mod.rs
+  s_51fd26322ffbcf::t_ab7b6055d99821 41-42
+crates/nodex-core/src/database/mutation.rs
+  s_51fd26322ffbcf::t_225131a5eb8650 3554-3572
+crates/nodex-core/src/library/agent_page_create.rs
+  s_51fd26322ffbcf::t_bc1bd6e07ceaf2 704-709,722
+crates/nodex-core/src/library/block_transfer.rs
+  s_51fd26322ffbcf::t_3d6bd2ceeb7786 4626,4646,4663,4714
+crates/nodex-core/src/library/page_genesis.rs
+  s_51fd26322ffbcf::t_de6ef7e902264a 37-41,45,47-91,112,133
+crates/nodex-core/src/workspace/inbox.rs
+  s_51fd26322ffbcf::t_d3eacd4a9a79ef 794
+packages/core-protocol/openapi.json
+  s_51fd26322ffbcf::t_1807d2a6dd7701 29137-29166,38511-38585,40140-40169,43325-43364,48657-48666,48749-48758
+packages/core-protocol/src/compatibility.generated.ts
+  s_51fd26322ffbcf::t_1ebfce9e8716c9 24
+packages/core-protocol/src/generated.ts
+  s_51fd26322ffbcf::t_816f982926233f 7008-7014,9215-9231,9630-9636,10324-10332,11426,11441
+src/main/ipc/handlers/ProjectWorkspaceIpc.test.ts
+  s_51fd26322ffbcf::t_dae2df318b8123 1,109-120,125-129,220,230-239
+src/renderer/lib/workspace-page-create.ts
+  s_51fd26322ffbcf::t_d11d72605b0c43 1-24
+src/shared/ipc-api.ts
+  s_51fd26322ffbcf::t_dd9f27efca2579 1033-1036
+src/shared/ipc-endpoint-policy.ts
+  s_51fd26322ffbcf::t_c6a4743798644b 708
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c0d0aecc78b7258881dc6ae36f9a339be792f09",
+  "prompts": {},
+  "sessions": {
+    "s_51fd26322ffbcf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19003-1a52-7fa3-94b2-c49b5cf4106f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8a269fcdcbb297": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5303ae91-8c35-4b85-b8df-343523a3e7e4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
