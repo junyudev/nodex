@@ -1,0 +1,136 @@
+docs/KEYBOARD_SHORTCUTS.md
+  s_9b1cc9a64fc25d::t_fc95f64fbb51cd 7,9,198,205
+  s_9b1cc9a64fc25d::t_f5b788aef7051c 206
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.ts
+  s_9b1cc9a64fc25d::t_d36c2c409ae4d9 1-7,11,13,16,19,21-25
+src/renderer/lib/use-command-keymap-state.ts
+  s_9b1cc9a64fc25d::t_d36c2c409ae4d9 6-13,52-64
+docs/product-specs/nfm-editor-text-action-menu-behavior.md
+  s_9b1cc9a64fc25d::t_fc95f64fbb51cd 58,63,85,87,89-95
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_9b1cc9a64fc25d::t_9594578b8b986e 16,18,85,101-103
+  s_9b1cc9a64fc25d::t_df64e7910a5c4d 416-424,428
+  s_9b1cc9a64fc25d::t_19e4e00fcbce8b 7-11,104-107,193,425-427,429-434
+  s_e2f9f3a29b34ef::t_995984273bd53b 17,192
+src/renderer/components/board/editor/nfm-side-menu-model.ts
+  s_9b1cc9a64fc25d::t_768e8fbd2c8928 67-68,286-287
+  s_9b1cc9a64fc25d::t_ecdcbd8419bd66 288
+src/renderer/components/board/editor/nfm-side-menu-model.test.ts
+  s_9b1cc9a64fc25d::t_e2a50ed3542979 32,45-46,64-65
+  s_9b1cc9a64fc25d::t_d11141eff43928 2-5
+docs/product-specs/nfm-block-side-menu-behavior.md
+  s_9b1cc9a64fc25d::t_fc95f64fbb51cd 59,62,65-66
+src/shared/command-keybindings.ts
+  s_9b1cc9a64fc25d::t_d36c2c409ae4d9 5-6,763-766,768-775,777-780,1957
+  s_e2f9f3a29b34ef::t_33768d0db29894 767,776
+src/shared/command-keybindings.test.ts
+  s_9b1cc9a64fc25d::t_df64e7910a5c4d 45-50
+src/renderer/components/board/editor/prompt-block.tsx
+  s_9b1cc9a64fc25d::t_768e8fbd2c8928 9-10,152
+  s_9b1cc9a64fc25d::t_fe2a66f9baabf9 153-155
+  s_e2f9f3a29b34ef::t_a9673a3e9e86a0 107
+docs/product-specs/nfm-editor-prompt-block-behavior.md
+  s_9b1cc9a64fc25d::t_fc95f64fbb51cd 40-43
+src/renderer/components/board/editor/nfm-side-menu.tsx
+  s_9b1cc9a64fc25d::t_768e8fbd2c8928 112,1416-1417,1505-1506,1533-1534
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_9b1cc9a64fc25d::t_768e8fbd2c8928 82,1052-1053,1120,1165
+src/renderer/components/board/editor/nfm-chat-send-shortcut-controller.test.tsx
+  s_9b1cc9a64fc25d::t_9594578b8b986e 1-57,62-131
+  s_9b1cc9a64fc25d::t_5e656dff62a682 132-183
+  s_e2f9f3a29b34ef::t_de86f194710862 58-61
+src/renderer/components/board/editor/nfm-chat-send-shortcut-controller.tsx
+  s_9b1cc9a64fc25d::t_d36c2c409ae4d9 3,32-33,40-41,43-44,51-52
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.test.ts
+  s_9b1cc9a64fc25d::t_9ad7b64fa590b2 2-7,20-48,50-57,60-70
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_3915316a9c4493::t_86891f85687092 2702
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "80431907de6ebe655f008bd3146c1b9cba7e6f88",
+  "prompts": {},
+  "sessions": {
+    "s_03d9ba21390430": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19154-03f8-7c03-922f-31e2c81efe43",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_1f106d27429efa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-9dcc-74f1-8dde-9f675dc31816",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_2d7b784dacd638": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1914f-6e55-7af3-9446-f9507906e41f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3915316a9c4493": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-db3f-7c12-a8e5-ed6cea9f07b5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_486d93085a121f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1914f-ae87-7bb3-b485-41daf1c08649",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9b1cc9a64fc25d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-1167-7372-999f-6df67dc7e34a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_bbfca6b9cc3ecc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-3c8c-78a3-90b4-74e14f6a0ec0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cf85cf70b2613b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19152-c6af-77d2-a12d-c09a0cb00a3b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fa2a1bb1a9bd0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19159-a559-7f33-a1c4-1abdaf6954c2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
