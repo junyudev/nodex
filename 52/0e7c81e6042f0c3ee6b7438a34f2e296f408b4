@@ -1,0 +1,21 @@
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_039f18d9f057b1::t_ab6e43fe018f0d 1616-1620
+src/renderer/components/workbench/codex-sidebar.test.tsx
+  s_039f18d9f057b1::t_ab6e43fe018f0d 121-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "520e7c81e6042f0c3ee6b7438a34f2e296f408b4",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
