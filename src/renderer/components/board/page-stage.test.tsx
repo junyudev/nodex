@@ -86,12 +86,22 @@ vi.mock("@/lib/use-page-backlinks", () => ({
 }));
 
 vi.mock("@/components/block-documents/collaborative-page-title", () => ({
-  CollaborativePageTitle: ({ onValueChange }: { onValueChange?: (title: string) => void }) => {
+  CollaborativePageTitle: ({
+    onValueChange,
+    onKeyDown,
+  }: {
+    onValueChange?: (title: string) => void;
+    onKeyDown?: import("react").KeyboardEventHandler<HTMLDivElement>;
+  }) => {
     publishCollaborativeTitle = onValueChange ?? null;
     useEffect(() => {
       onValueChange?.("Live title");
     }, [onValueChange]);
-    return <div>Live title</div>;
+    return (
+      <div role="textbox" aria-label="Page title" tabIndex={0} onKeyDown={onKeyDown}>
+        Live title
+      </div>
+    );
   },
 }));
 
@@ -359,6 +369,7 @@ describe("page stage", () => {
           focusBlock,
           focus: () => true,
           focusBoundary: () => true,
+          openLineAtStart: () => true,
         };
         const attachNavigation = () => {
           const ref =
@@ -396,6 +407,39 @@ describe("page stage", () => {
       }
     },
   );
+
+  test("Enter in the title continues on the body's first line", async () => {
+    const view = renderStage();
+    try {
+      await settleAsyncRender();
+      const openLineAtStart = vi.fn(() => true);
+      const navigation: NfmEditorBoundaryHandle = {
+        focusBlock: () => true,
+        focus: () => true,
+        focusBoundary: () => true,
+        openLineAtStart,
+      };
+      const ref = lastNfmEditorProps?.navigationRef as import("react").Ref<NfmEditorBoundaryHandle>;
+      await act(async () => {
+        if (typeof ref === "function") ref(navigation);
+        else if (ref) ref.current = navigation;
+        await Promise.resolve();
+      });
+      const title = await view.findByRole("textbox", { name: "Page title" });
+      await act(async () => {
+        fireEvent.keyDown(title, { key: "Enter" });
+        await Promise.resolve();
+      });
+      expect(openLineAtStart).toHaveBeenCalledOnce();
+      await act(async () => {
+        fireEvent.keyDown(title, { key: "Enter", shiftKey: true });
+        await Promise.resolve();
+      });
+      expect(openLineAtStart).toHaveBeenCalledOnce();
+    } finally {
+      view.unmount();
+    }
+  });
 
   test("mounts the rich editor only from the collaborative Document source", async () => {
     writePageStageContentWidthPreference(true);

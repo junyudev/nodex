@@ -97,6 +97,8 @@ interface PageStageDescriptionEditorProps {
   readonly viewportSessionRef: RefObject<PageStageViewportSession | null>;
   readonly editorSession?: EditorSurfaceLease;
   readonly focusIntent: PageBlockFocusIntent | null;
+  /** The body's navigation, shared with the title so Enter can continue into the body. */
+  readonly bodyNavigationRef: RefObject<NfmEditorBoundaryHandle | null>;
 }
 
 const useLivePageDocumentNfm = (document: Y.Doc): string => {
@@ -146,6 +148,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   viewportSessionRef,
   editorSession,
   focusIntent,
+  bodyNavigationRef,
 }: PageStageDescriptionEditorProps) {
   const navigationRef = useRef<NfmEditorBoundaryHandle | null>(null);
   const consumedFocusIntentRef = useRef<number | null>(null);
@@ -190,9 +193,10 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   const bindNavigation = useCallback(
     (handle: NfmEditorBoundaryHandle | null) => {
       navigationRef.current = handle;
+      bodyNavigationRef.current = handle;
       if (handle) focusPendingBlock();
     },
-    [focusPendingBlock],
+    [bodyNavigationRef, focusPendingBlock],
   );
 
   useEffect(
@@ -324,12 +328,14 @@ function PageStageDocumentTitle({
   historyScope,
   onValueChange,
   autoFocus,
+  bodyNavigationRef,
 }: {
   readonly title: Y.Text;
   readonly pageId: string;
   readonly historyScope: ContentInteractionHistoryScope;
   readonly onValueChange: (title: string) => void;
   readonly autoFocus?: boolean;
+  readonly bodyNavigationRef: RefObject<NfmEditorBoundaryHandle | null>;
 }) {
   return (
     <CollaborativePageTitle
@@ -339,12 +345,29 @@ function PageStageDocumentTitle({
       autoFocus={autoFocus}
       onValueChange={onValueChange}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+        if (event.nativeEvent.isComposing || event.altKey || event.metaKey || event.ctrlKey) return;
+        // The title is one line: Enter continues into the body, as does ↓ from its end.
+        if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
+          bodyNavigationRef.current?.openLineAtStart();
+          return;
+        }
+        if (event.key === "ArrowDown" && !event.shiftKey && isCaretAtEnd(event.currentTarget)) {
+          if (bodyNavigationRef.current?.focusBoundary("down")) event.preventDefault();
         }
       }}
     />
   );
+}
+
+function isCaretAtEnd(root: HTMLElement): boolean {
+  const selection = root.ownerDocument.getSelection();
+  if (!selection?.isCollapsed || selection.rangeCount === 0) return false;
+  const rest = root.ownerDocument.createRange();
+  rest.selectNodeContents(root);
+  const caret = selection.getRangeAt(0);
+  rest.setStart(caret.endContainer, caret.endOffset);
+  return rest.toString().length === 0;
 }
 
 export function PageStage(props: PageStageProps) {
@@ -353,6 +376,7 @@ export function PageStage(props: PageStageProps) {
   const documentRuntimeRef = useRef<BlockDocumentSurfaceRuntime | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const viewportSessionRef = useRef<PageStageViewportSession | null>(null);
+  const bodyNavigationRef = useRef<NfmEditorBoundaryHandle | null>(null);
   const persistDocument = useCallback(async () => {
     const runtime = documentRuntimeRef.current;
     if (!runtime || runtime.getStatus().reloadRequired) return;
@@ -404,6 +428,7 @@ export function PageStage(props: PageStageProps) {
           pageId={surface.descriptor.ownerBlockId}
           onValueChange={controller.handleDocumentTitleChange}
           autoFocus={props.autoFocusTitle}
+          bodyNavigationRef={bodyNavigationRef}
         />
       }
       syncStatus={
@@ -441,6 +466,7 @@ export function PageStage(props: PageStageProps) {
           viewportSessionRef={viewportSessionRef}
           editorSession={editorSession}
           focusIntent={focusIntent}
+          bodyNavigationRef={bodyNavigationRef}
         />
       }
       referencedBy={

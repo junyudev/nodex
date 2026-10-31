@@ -4,6 +4,7 @@ import { readNodexClipboardFragment } from "../../../../shared/clipboard-paste";
 import { readPageTextPaste } from "../../../../shared/markdown";
 import { pasteNfmBlocks, type NfmBlocksPasteEditor } from "./nfm-paste-blocks";
 import { captureNfmPasteTarget, type NfmPasteTarget } from "./nfm-paste-target";
+import { isEmptyParagraphBlock } from "./nfm-empty-paragraph";
 
 export interface PasteResourceTarget {
   readonly selection?: NfmPasteTarget;
@@ -126,12 +127,6 @@ export function insertBlocksAtPasteTarget(
   }
 
   return false;
-}
-
-function isEmptyParagraphBlock(block: SelectionBlockLike | null): boolean {
-  if (!block || block.type !== "paragraph") return false;
-  if (!Array.isArray(block.children) || block.children.length > 0) return false;
-  return Array.isArray(block.content) ? block.content.length === 0 : true;
 }
 
 function canBlockAcceptInlineContent(

@@ -197,6 +197,7 @@ import {
   resolveNfmEditorBlockActionCapabilities,
   type NfmEditorSource,
 } from "./nfm-editor-source";
+import { isEmptyParagraphBlock } from "./nfm-empty-paragraph";
 import {
   hasNfmEditorTransientInput,
   prepareNfmEditorObservation,
@@ -283,6 +284,8 @@ export interface NfmEditorBoundaryHandle {
   focus(): boolean;
   focusBlock(blockId: string): boolean;
   focusBoundary(direction: VerticalArrowDirection): boolean;
+  /** Puts the caret on an empty first line, opening one above the content when needed. */
+  openLineAtStart(): boolean;
 }
 
 export interface NfmEditorProps extends NfmEditorCommonProps {
@@ -1342,6 +1345,17 @@ function NfmEditorInstance({
       },
       focusBoundary: (direction) =>
         focusEmbeddedEditorBoundary(editor as unknown as EmbeddedSurfaceHostEditor, direction),
+      openLineAtStart: () => {
+        const first = editor.document[0];
+        if (!first || !editor.isEditable) return false;
+        const lineId = isEmptyParagraphBlock(first)
+          ? first.id
+          : editor.insertBlocks([{ type: "paragraph" }], first.id, "before")[0]?.id;
+        if (!lineId) return false;
+        editor.setTextCursorPosition(lineId, "start");
+        editor.focus();
+        return true;
+      },
     }),
     [editor],
   );

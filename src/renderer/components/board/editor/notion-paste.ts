@@ -1,6 +1,7 @@
 import type { MarkdownBlock, MarkdownInline } from "../../../../shared/nodex-markdown";
 import type { RichTextColor } from "../../../../shared/rich-text/colors";
 import { normalizeCodeLanguageId } from "../../../../shared/code-languages/code-language-catalog";
+import { isEmptyParagraphBlock } from "./nfm-empty-paragraph";
 export const CHROMIUM_WEB_CUSTOM_DATA_MIME = "org.chromium.web-custom-data";
 export const NOTION_BLOCKS_MIME = "text/_notion-blocks-v3-production";
 export const NOTION_MULTI_TEXT_MIME = "text/_notion-multi-text-production";
@@ -162,14 +163,6 @@ function getCursorBlock(editor: ClipboardEditorLike): ClipboardEditorBlock | nul
   } catch {
     return null;
   }
-}
-
-function isEmptyParagraphBlock(block: ClipboardEditorBlock): boolean {
-  if (block.type !== "paragraph") return false;
-  if (Array.isArray(block.children) && block.children.length > 0) return false;
-
-  if (!Array.isArray(block.content)) return true;
-  return block.content.length === 0;
 }
 
 function readJsonClipboardData(clipboardData: ClipboardDataLike, mimeType: string): unknown | null {

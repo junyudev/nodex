@@ -175,11 +175,12 @@ respect_system_proxy = false
           const title = scene.getByRole("textbox", { name: "Page title", exact: true });
           await expect(title).toBeFocused();
           await page.keyboard.type("Draft");
+          // Enter continues from the title onto the body's first line.
+          await page.keyboard.press("Enter");
+          await page.keyboard.type(besideDraft);
           const body = scene.locator(
             '[data-page-stage-page-id]:visible .ProseMirror[contenteditable="true"]',
           );
-          await body.click();
-          await page.keyboard.type(besideDraft);
           const draft = body.getByText(besideDraft, { exact: true });
           await draft.click({ clickCount: 3 });
           // Beside a chat there is nothing to choose: Send goes to that chat.
