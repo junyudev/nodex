@@ -27,6 +27,7 @@ import {
 } from "../../lib/page-detail-projection-dependencies";
 import { libraryPageDetailQueryOptions } from "../../lib/library-page-detail-query";
 import { useApplicationPending } from "@/bootstrap/application-surface";
+import { usePageLinkedChats, type PageChatCommands } from "@/lib/use-page-linked-chats";
 
 const ignoreLibraryPageClose = (): void => undefined;
 
@@ -39,6 +40,8 @@ export function WorkbenchLibraryPageSurface({
   onOpenDatabase,
   onOpenPage,
   onOpenCanvas,
+  pageChats,
+  currentSessionId = null,
 }: {
   readonly pageId: string;
   readonly surfaceId?: string;
@@ -48,8 +51,12 @@ export function WorkbenchLibraryPageSurface({
   readonly onOpenDatabase: (databaseId: DatabaseId) => void;
   readonly onOpenPage?: (pageId: string, titleSnapshot?: string) => void;
   readonly onOpenCanvas?: (canvasBlockId: string, titleSnapshot?: string) => void;
+  readonly pageChats?: PageChatCommands;
+  /** The chat whose Scene shows this Page, if any. */
+  readonly currentSessionId?: string | null;
 }) {
   const queryClient = useQueryClient();
+  const linkedChats = usePageLinkedChats(pageId, { enabled: pageChats !== undefined });
   // A Page created a moment ago opens ready to be named; reopening one never moves focus.
   const [focusTitle] = useState(() => consumePageTitleFocus(pageId));
   const detailQueryKey = useMemo(() => queryKeys.library.pageDetail(pageId), [pageId]);
@@ -184,6 +191,17 @@ export function WorkbenchLibraryPageSurface({
       }
       onClose={onClose}
       isActivePanelTab={isActivePanelTab}
+      {...(pageChats
+        ? {
+            ...linkedChats,
+            sessionId: currentSessionId,
+            relatedChatCandidates: pageChats.candidates,
+            onOpenRelatedChat: pageChats.openChat,
+            onLinkRelatedChat: async (sessionId: string) => {
+              await pageChats.linkPage({ pageId, sessionId });
+            },
+          }
+        : {})}
       onUpdate={async (targetPageId, patch) => {
         const result = await commitLibraryPageDetailMetadataPatch({
           pageId: targetPageId,

@@ -6,6 +6,7 @@ import type {
 import { makeWorkbenchSceneKey } from "../../../shared/workbench-scene";
 import { workbenchPageEditorKey } from "@/lib/workbench-page-editor-key";
 import type { WorkbenchWindowOwner } from "@/lib/workbench-window-owner";
+import type { PageChatCommands } from "@/lib/use-page-linked-chats";
 import { WorkbenchLibraryPageSurface } from "./workbench-library-page-surface";
 import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
@@ -26,6 +27,7 @@ export function WorkbenchLibraryResourceSurface({
   onClose,
   onTitleChange,
   onOpenTarget,
+  pageChats,
 }: {
   readonly surface: ResourceSurface;
   readonly owner: WorkbenchWindowOwner;
@@ -39,6 +41,7 @@ export function WorkbenchLibraryResourceSurface({
     target: LibraryRouteTarget,
     options?: { readonly titleSnapshot?: string; readonly mode?: "durable" | "preview" },
   ) => void;
+  readonly pageChats?: PageChatCommands;
 }) {
   if (surface.config.routingContext.kind !== "library")
     throw new Error("Library resource body requires Library routing context");
@@ -57,6 +60,8 @@ export function WorkbenchLibraryResourceSurface({
         onOpenCanvas={(canvasId, titleSnapshot) =>
           onOpenTarget({ kind: "canvas", canvasId }, { titleSnapshot })
         }
+        {...(pageChats ? { pageChats } : {})}
+        currentSessionId={sceneOwner.kind === "session" ? sceneOwner.sessionId : null}
       />
     );
   if (surface.kind === "canvas_stage")

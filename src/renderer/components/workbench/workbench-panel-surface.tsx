@@ -184,6 +184,15 @@ export function WorkbenchTabProjectionPanel({
             ...options,
           });
         }}
+        {...(onOpenRelatedChat
+          ? {
+              pageChats: {
+                candidates: relatedChatCandidates,
+                openChat: onOpenRelatedChat,
+                linkPage: onLinkPageToChat,
+              },
+            }
+          : {})}
       />
     );
   }

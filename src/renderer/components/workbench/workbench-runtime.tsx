@@ -338,6 +338,7 @@ import {
 } from "@/lib/workbench-panel-actions";
 import { requestPageTitleFocus } from "@/lib/page-title-focus-intent";
 import { createPageFor, type CreatePageForResult } from "@/lib/workspace-page-create";
+import type { PageChatCommands } from "@/lib/use-page-linked-chats";
 import type { PanelDestination } from "./panel-destination-picker-model";
 import { WorkbenchBrowserSidebarPanel } from "./workbench-new-tab-page";
 import {
@@ -2678,6 +2679,18 @@ export function WorkbenchRuntime({
     setNewThreadComposerIntentsBySessionId,
     setProcessManagerOpen,
   });
+  const pageChatCommands = useMemo<PageChatCommands>(
+    () => ({
+      candidates: pageStageRelatedChatCandidates,
+      openChat: sessionCommands.openProjectSessionById,
+      linkPage: sessionCommands.linkPageToChat,
+    }),
+    [
+      pageStageRelatedChatCandidates,
+      sessionCommands.linkPageToChat,
+      sessionCommands.openProjectSessionById,
+    ],
+  );
   const {
     ensureDefaultDraftSessionForProject,
     startNewChatInProject,
@@ -4298,6 +4311,7 @@ export function WorkbenchRuntime({
                 placement: { kind: "same-group", sourceSurfaceId: surface.id },
               });
             }}
+            pageChats={pageChatCommands}
           />
         );
       }
@@ -4585,6 +4599,7 @@ export function WorkbenchRuntime({
       openAttachedThreadSessionById,
       openResourceTarget,
       openSettingsAt,
+      pageChatCommands,
       presentProjectSceneSurface,
       openBrowserSettings,
       openProjectSceneCanvas,
@@ -4739,6 +4754,7 @@ export function WorkbenchRuntime({
             onOpenCanvas={(canvasId, titleSnapshot) =>
               openInSourceGroup({ kind: "canvas", canvasId }, titleSnapshot)
             }
+            pageChats={pageChatCommands}
           />
         );
       }
@@ -4776,6 +4792,7 @@ export function WorkbenchRuntime({
       librarySceneKey,
       libraryScenePresentedPageIds,
       librarySceneOwner,
+      pageChatCommands,
       pageStageCloseRef,
       projects,
       sessionCommands.openPageInNewChat,

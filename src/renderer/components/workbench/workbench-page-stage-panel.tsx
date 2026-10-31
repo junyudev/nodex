@@ -8,7 +8,6 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { OwnedBlockDocumentBoundary } from "@/components/block-documents/owned-block-document-boundary";
 import { PageStageLoadingFrame } from "@/components/board/page-stage/frame";
@@ -56,9 +55,7 @@ import type { OpenCanvasStageHandler } from "@/lib/use-workbench-panel-openers";
 import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
 import type { WorkbenchProjectionPageStageTabConfig } from "../../../shared/types";
 import { PageStage } from "./workbench-page-stage";
-import { pageChatWindowQueryOptions } from "@/lib/query-options";
-import { queryKeys } from "@/lib/query-keys";
-import { unlinkPageChat } from "@/lib/page-chat-runtime";
+import { usePageLinkedChats } from "@/lib/use-page-linked-chats";
 import { useApplicationPending } from "@/bootstrap/application-surface";
 
 export interface OpenPageTabOptions {
@@ -205,25 +202,7 @@ export function PageStageSessionTab({
   const [focusTitle] = useState(() => consumePageTitleFocus(tab.config.pageId));
   const workbenchOwner = useWorkbenchWindowOwner();
   const launchAgentRuntimeSession = useAgentRuntimeSessionLaunch();
-  const queryClient = useQueryClient();
-  const relatedChatsQuery = useInfiniteQuery({
-    ...pageChatWindowQueryOptions({
-      pageId: tab.config.pageId,
-      includeArchived: false,
-      first: 20,
-    }),
-    enabled: project !== null,
-  });
-  const relatedChats = relatedChatsQuery.data?.pages.flatMap((window) => window.items) ?? [];
-  const removeRelatedChat = useCallback(
-    async (relatedSessionId: string): Promise<void> => {
-      await unlinkPageChat(relatedSessionId, {
-        pageId: tab.config.pageId,
-      });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.pageChats.all() });
-    },
-    [queryClient, tab.config.pageId],
-  );
+  const linkedChats = usePageLinkedChats(tab.config.pageId, { enabled: project !== null });
   const editorSessionKey = makeEditorSurfaceKey(sessionId, tab.id);
 
   const detailSnapshot = usePageDetail(
@@ -527,11 +506,7 @@ export function PageStageSessionTab({
             sessionId={sessionId}
             sessionThread={sessionThread}
             canStartThreadInSession={canStartThreadInSession}
-            relatedChats={relatedChats}
-            relatedChatsLoading={relatedChatsQuery.isPending}
-            relatedChatsError={relatedChatsQuery.error ? "Couldn’t load linked chats" : null}
-            relatedChatsHasMore={relatedChatsQuery.hasNextPage}
-            relatedChatsLoadingMore={relatedChatsQuery.isFetchingNextPage}
+            {...linkedChats}
             relatedChatCandidates={relatedChatCandidates}
             onOpenRelatedChat={onOpenRelatedChat}
             onCreateRelatedChat={
@@ -550,13 +525,6 @@ export function PageStageSessionTab({
                 pageId: tab.config.pageId,
                 sessionId: relatedSessionId,
               });
-            }}
-            onRemoveRelatedChat={removeRelatedChat}
-            onRetryRelatedChats={async () => {
-              await relatedChatsQuery.refetch();
-            }}
-            onLoadMoreRelatedChats={async () => {
-              await relatedChatsQuery.fetchNextPage();
             }}
             onOpenCodexThread={onOpenThread}
             onOpenPage={async ({ routingContext, pageId, titleSnapshot, sourceBlockId }) => {

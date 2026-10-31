@@ -123,7 +123,7 @@ test("replaces Project New tabs with Pages and keeps the action menu on right-cl
   );
 });
 
-test("creates a chat's New page in its Project and links it to the chat", async ({}, testInfo) => {
+test("creates a chat's New page where the chat works and links it to the chat", async ({}, testInfo) => {
   test.setTimeout(120_000);
   await withElectronScenario(
     {
@@ -183,6 +183,36 @@ test("creates a chat's New page in its Project and links it to the chat", async 
       await expect(chatChip).toContainText("Update implementation notes");
       await expect(chatChip.locator('button[aria-current="true"]')).toBeVisible();
       await expect(scene.getByText("Status", { exact: true })).toBeVisible();
+
+      await test.step("puts a projectless chat's Page in Space, still linked to the chat", async () => {
+        // The Chats section reveals its New chat action on hover; keyboard activation needs none.
+        const newProjectlessChat = page.getByRole("button", {
+          name: "New projectless chat",
+          exact: true,
+        });
+        await newProjectlessChat.focus();
+        await newProjectlessChat.press("Enter");
+        const projectless = page.locator('[data-workbench-scene-owner^="session:"]:visible');
+        await expect(projectless).not.toHaveAttribute(
+          "data-workbench-scene-owner",
+          `session:${chatId}`,
+        );
+        await page.getByRole("button", { name: "New tab", exact: true }).first().click();
+        await projectless
+          .locator("[data-new-tab-scroll-root]")
+          .getByRole("button", { name: "New page", exact: true })
+          .click();
+        const spaceTitle = projectless.getByRole("textbox", { name: "Page title", exact: true });
+        await expect(spaceTitle).toBeFocused();
+        await page.keyboard.type("Loose ends");
+        await expect(spaceTitle).toHaveText("Loose ends");
+        await expect(
+          projectless.locator(
+            '[data-page-stage-related-chat-chip="true"] button[aria-current="true"]',
+          ),
+        ).toBeVisible();
+        await expect(projectless.getByText("Status", { exact: true })).toHaveCount(0);
+      });
     },
   );
 });
