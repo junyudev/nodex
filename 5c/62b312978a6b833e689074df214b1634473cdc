@@ -1,0 +1,21 @@
+packages/agent-runtime/src/mcp/TaskQuestions.test.ts
+  s_3c10c33b50886f::t_3dc7b529b47d48 68,581
+packages/agent-runtime/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
+  s_3c10c33b50886f::t_b7023a04836185 2196-2197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5c62b312978a6b833e689074df214b1634473cdc",
+  "prompts": {},
+  "sessions": {
+    "s_3c10c33b50886f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19288-822f-7ae1-bfb0-beeb7d666bcd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
