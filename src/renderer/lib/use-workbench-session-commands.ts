@@ -109,6 +109,7 @@ import type {
 } from "./types";
 import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
 import { readCodexThreadSummary } from "./codex-thread-summary";
+import { resolveChatSessionForThreadId } from "./chat-session-for-thread";
 
 function isResidentSubagentDescendant(
   rootThreadId: string,
@@ -325,22 +326,14 @@ export function useWorkbenchSessionCommands({
   );
 
   const resolveChatSessionForThread = useCallback(
-    async (threadId: string): Promise<ProjectSessionDomain | ProjectSession> => {
-      const normalizedThreadId = threadId.trim();
-      if (!normalizedThreadId) throw new Error("Chat thread ID is required");
-      const known = knownSessions.find(
-        (session) =>
-          (session.executionRef?.threadId ?? session.thread?.threadId) === normalizedThreadId &&
-          !session.archived,
-      );
-      if (known) return known;
-      const materialized = await sessionCatalog.ensureThreadSession(normalizedThreadId);
-      if (!materialized || materialized.archived) {
-        throw new Error("This chat is no longer available");
-      }
-      return materialized;
-    },
-    [knownSessions, sessionCatalog],
+    async (threadId: string): Promise<ProjectSessionDomain | ProjectSession> =>
+      await resolveChatSessionForThreadId<ProjectSessionDomain | ProjectSession>(threadId, {
+        knownSessions,
+        readAgentThreadSessionId: async (id) => (await readCodexThreadSummary(id))?.sessionId,
+        resolveSessionById: resolveChatSessionById,
+        ensureThreadSession: (id) => sessionCatalog.ensureThreadSession(id),
+      }),
+    [knownSessions, resolveChatSessionById, sessionCatalog],
   );
 
   const linkPageToChat = useCallback(
