@@ -1,3 +1,4 @@
+import { sessionQuestionSchema } from "./session-question-schema";
 import { z } from "zod";
 import { NODEX_AGENT_V6_TOOL_CONTRACTS } from "../nodex-agent-tools/v6-contracts";
 import { accountSchemas } from "./account-schemas";
@@ -46,6 +47,7 @@ export const appToolArgumentSchemas: Readonly<Record<string, z.ZodType>> = {
   create_session: createSessionSchema,
   merge_session_back: sessionMergeSchema,
   send_message_to_session: sessionMessageSchema,
+  session_question: sessionQuestionSchema,
   read_session_terminal: readSessionTerminalSchema,
   load_workspace_dependencies: emptyAppToolArguments,
   list_projects: emptyAppToolArguments,

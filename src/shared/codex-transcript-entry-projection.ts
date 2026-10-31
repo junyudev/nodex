@@ -79,6 +79,7 @@ export function projectCodexItemViewToTranscriptEntry(
     questionReplies: item.questionReplies,
     userInputQuestions: item.userInputQuestions,
     userInputAnswers: item.userInputAnswers,
+    respondedBy: item.respondedBy,
     rawItem: item.rawItem,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,

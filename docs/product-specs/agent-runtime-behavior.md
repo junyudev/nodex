@@ -649,6 +649,10 @@ Answer admission records cumulative per-question answers and a separate message 
 Synchronous question projection preserves custom-answer eligibility, private intent, initial answers, required questions and native blocking policy. A nonblocking synchronous question in a focused presented chat waits for 60 seconds of inactivity before a 90-second countdown; a background question starts that countdown immediately. Card interaction snoozes it, and timeout returns an empty response without choosing a default option. One host-owned deadline follows the exact request and process generation across windows; equal Thread and request IDs on different hosts remain independent.
 
 Answered synchronous questionnaires appear as a collapsed question-and-answer history item. Expanding it shows the submitted choices and text, with private answers replaced by `Hidden response`. Copied and exported Markdown uses the same private-answer presentation. The source response record retains its metadata and attachments independently of that private presentation.
+Agent-supplied responses also retain the answering Thread and, when known, its Session.
+The Runtime request and question answer carry the same responder; an absent responder means
+the user. Asynchronous Agent answers retain Agent message provenance and their answering
+conversation while continuing to project as question/answer content.
 
 ## Execution location and worktree handoff
 
@@ -759,7 +763,16 @@ question set for a requestId, and `respond` submits answers through the Runtime'
 question-response command. Every action requires a taskId owned by the caller;
 permissions and approvals cannot be answered through this tool. Live questions resume
 the waiting provider, while asynchronous questions send answers into the child's conversation.
-Answered or dismissed requests cannot be answered again through the tool.
+Answered or dismissed requests cannot be answered again through the tool. The answer is
+attributed to the coordinating Thread, including its asynchronous answer message.
+
+`session_question` provides the same question selection and response semantics for an
+explicit product Session, including a selected Runtime child. Its Profile-wide access is
+subject to current execution authority and the caller's runtime and Plan permissions.
+Fresh responses require a pending user question under the command lock; exact retries
+replay their accepted operation without answering twice. Informational elicitations
+normalized to user questions are included, while approvals and permission elicitations
+remain excluded. Partial asynchronous responses retain unanswered siblings.
 
 Task status and wait results report `hasPendingQuestion` for a live question that blocks
 an unfinished task, and `pendingApproval` for its oldest live approval on an active task

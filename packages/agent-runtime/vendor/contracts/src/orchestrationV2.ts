@@ -62,6 +62,7 @@ import {
   ProviderUserInputAnswers,
   UserInputAttachments,
   UserInputAttachmentAnswerPayload,
+  UserInputResponder,
   RuntimeMode,
 } from "./providerPolicy.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
@@ -1247,6 +1248,9 @@ export const OrchestrationV2RuntimeRequest = Schema.Struct({
   resolvedAt: Schema.NullOr(Schema.DateTimeUtc),
   decision: Schema.optional(ProviderApprovalDecision),
   answers: Schema.optional(ProviderUserInputAnswers),
+  respondedBy: Schema.optional(UserInputResponder),
+  /** Retained with the accepted response for exact Session-tool retries. */
+  responseFingerprint: Schema.optional(Schema.String),
   /** Live information requests alone may expire after host-managed inactivity. */
   isBlocking: Schema.optional(Schema.Boolean),
   autoResolutionMs: Schema.optional(Schema.NullOr(NonNegativeInt)),
@@ -1334,6 +1338,7 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
   scheduledTaskId: Schema.optional(ScheduledTaskId),
   // The sending agent's thread in this environment, separate from the receiving thread.
   senderThreadId: Schema.optional(ThreadId),
+  respondedBy: Schema.optional(UserInputResponder),
   id: MessageId,
   delivery: Schema.optional(OrchestrationV2MessageDelivery),
   threadId: ThreadId,
@@ -1735,6 +1740,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
     delivery: Schema.optional(OrchestrationV2MessageDelivery),
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
+    respondedBy: Schema.optional(UserInputResponder),
     inputIntent: OrchestrationV2UserMessageInputIntent,
     text: Schema.String,
     context: Schema.optional(OrchestrationMessageContext),
@@ -2588,6 +2594,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     delivery: Schema.optional(OrchestrationV2MessageDelivery),
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
+    respondedBy: Schema.optional(UserInputResponder),
     inputIntent: OrchestrationV2UserMessageInputIntent,
     text: Schema.String,
     context: Schema.optional(OrchestrationMessageContext),
@@ -3313,6 +3320,7 @@ export const OrchestrationV2Command = Schema.Union([
     ...OrchestrationV2CreationFields,
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
+    respondedBy: Schema.optional(UserInputResponder),
     /** Captured sending Run; null denotes a Session-only source. */
     senderRunId: Schema.optional(Schema.NullOr(RunId)),
     commandId: CommandId,
@@ -3468,6 +3476,10 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("runtime-request.respond"),
+    respondedBy: Schema.optional(UserInputResponder),
+    /** Agent question tools cannot revise a resolved asynchronous request. */
+    requirePending: Schema.optional(Schema.Boolean),
+    responseFingerprint: Schema.optional(Schema.String),
     commandId: CommandId,
     threadId: ThreadId,
     requestId: RuntimeRequestId,

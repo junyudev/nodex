@@ -703,3 +703,90 @@ it.live("enforces Host mode limits on the shared dispatch and send boundaries", 
     );
   }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it.live(
+  "lists every pending question beyond the renderer control window and excludes permissions",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-session-questions-" });
+      yield* Effect.gen(function* () {
+        const runtime = yield* AgentRuntime;
+        yield* runtime.handle({
+          id: "project",
+          method: "project.upsert",
+          input: { id: "project:questions", title: "Questions", workspaceRoot: home },
+        });
+        yield* runtime.handle({
+          id: "thread",
+          method: "command.dispatch",
+          input: {
+            command: {
+              type: "thread.create",
+              commandId: "create:questions",
+              threadId: "thread:questions",
+              projectId: "project:questions",
+              title: "Questions",
+              modelSelection: { instanceId: "codex", model: "model" },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdBy: "user",
+              creationSource: "web",
+            },
+          },
+        });
+        // Pressure fixture: only request count is inserted directly; ordinary response behavior is covered by RuntimeQuestionResponses.
+        yield* Effect.sync(() => {
+          const database = new DatabaseSync(runtime.identity.databasePath);
+          try {
+            const insert =
+              database.prepare(`INSERT INTO orchestration_v2_projection_runtime_requests
+          (runtime_request_id,thread_id,node_id,provider_turn_id,kind,status,created_at,resolved_at,payload_json) VALUES(?,?,?,NULL,?,?,?,NULL,?)`);
+            for (let index = 0; index < 43; index += 1) {
+              const id = `request:${String(index).padStart(2, "0")}`;
+              const kind =
+                index === 40 ? "permission" : index === 41 ? "mcp-elicitation" : "user_input";
+              const status = index === 42 ? "resolved" : "pending";
+              const payload = {
+                id,
+                nodeId: id,
+                providerTurnId: null,
+                nativeRequestRef: null,
+                kind,
+                status,
+                createdAt: "2026-10-31T00:00:00.000Z",
+                resolvedAt: null,
+                responseCapability: { type: "message" },
+              };
+              insert.run(
+                id,
+                "thread:questions",
+                id,
+                kind,
+                status,
+                payload.createdAt,
+                JSON.stringify(payload),
+              );
+            }
+          } finally {
+            database.close();
+          }
+        });
+        const result = yield* runtime.handle({
+          id: "questions",
+          method: "thread.questions.list",
+          input: { threadId: "thread:questions" },
+        });
+        expect(result).toEqual({
+          requestIds: Array.from(
+            { length: 40 },
+            (_, index) => `request:${String(index).padStart(2, "0")}`,
+          ),
+        });
+      }).pipe(
+        Effect.provide(Application.layer({ home, cwd: home, providers: {} }, () => Effect.void)),
+      );
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);

@@ -1,3 +1,4 @@
+import { pendingUserQuestionIds } from "./PendingUserQuestions.ts";
 import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
 import {
   ImportChatAttachmentsInput,
@@ -297,6 +298,7 @@ const AgentRequest = Schema.Union([
     }),
   ),
   request("thread.read", Schema.Struct({ threadId: ThreadId })),
+  request("thread.questions.list", Schema.Struct({ threadId: ThreadId })),
   request(
     "thread.control",
     Schema.Struct({
@@ -1190,6 +1192,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* orchestrator.getThreadForkSource(input.input.threadId, input.input.runId);
       case "thread.side-chat-save-source":
         return yield* orchestrator.getSideChatSaveSource(input.input.threadId);
+      case "thread.questions.list": {
+        const projection = yield* projections.getThreadRecords(input.input.threadId, [
+          "runtimeRequests",
+        ]);
+        return { requestIds: pendingUserQuestionIds(projection.runtimeRequests) };
+      }
       case "thread.control":
       case "thread.snapshot": {
         const snapshot = yield* orchestrator.getThreadSnapshotWindow(input.input.threadId, {
@@ -1580,6 +1588,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "thread.queued-preview":
       case "shell.read":
       case "thread.snapshot":
+      case "thread.questions.list":
       case "thread.control":
       case "thread.fork-source":
       case "thread.side-chat-save-source":

@@ -1210,6 +1210,7 @@ function projectCanonicalItemViews(
           normalizedKind: "userInputResponse",
           semanticKind: "userInputResponse",
           requestId: item.requestId,
+          ...(item.respondedBy ? { respondedBy: item.respondedBy } : {}),
           status: item.completed ? "completed" : "inProgress",
           markdownText:
             item.questions.length === 1
@@ -1332,6 +1333,7 @@ function projectCanonicalItemViews(
           ...(userAttachments.length === 0 ? {} : { userAttachments }),
           ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
           ...(item.origin ? { userMessageOrigin: item.origin } : {}),
+          ...(item.respondedBy ? { respondedBy: item.respondedBy } : {}),
           ...(item.inputIntent ? { userInputIntent: item.inputIntent } : {}),
         },
       ];

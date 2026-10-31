@@ -277,6 +277,28 @@ The product `sessionId` always names the root Session; an execution coordinate n
 an independent product Session. Core verifies the caller and destination binding, and the
 canonical writer's stable message identity prevents duplicate work on retries.
 
+`session_question` lists, reads and answers pending information questions in an unarchived
+Session's conversation. `execution.threadId` selects a Runtime child within that Session;
+omitting it selects the root conversation. Both caller backends have the tool. Every action
+uses current execution authority and the same Profile-wide target access, runtime ceiling
+and Plan permissions as Session messaging. It never opens, resumes or adopts a Native Session.
+
+The input is `{ action: "list" | "read" | "respond", sessionId, execution?, requestId?,
+answers?, idempotencyKey? }`. Read requires `requestId`; respond requires both `requestId` and
+`answers`, keyed by question ID with string or string-array values. List returns `{ requestIds }`,
+read returns `{ requestId, questions }`, and respond returns `{ requestId, status: "answered",
+operationId }`. Live questions and asynchronous questions remain addressable through their
+original requests, including informational elicitation normalized to a user question.
+Approvals, permission requests and MCP permission elicitations never appear in this tool
+and cannot be answered through it.
+
+The Agent answers only when the user's instructions decide the answer; otherwise it asks
+the user. Answers identify the answering conversation. A fresh response to a resolved or
+otherwise nonpending question fails. Reusing an idempotencyKey and identical arguments
+replays the accepted answer without another delivery; changed retry arguments are refused.
+Unavailable Native question delivery returns `unsupported`. Other typed failures are
+`not_found`, `not_pending`, `forbidden` and `unavailable`.
+
 Attachments refer to Library Files (optionally pinned to a version or Page) or visible Session
 attachments. Their resource owners authorize and materialize them before intake; caller-supplied
 local paths are not accepted. Image and file limits are the same as ordinary Agent messages.

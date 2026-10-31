@@ -3395,6 +3395,7 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   questionReplies?: import("./codex-async-user-input").CodexAsyncQuestionReply[];
   userInputQuestions?: CodexUserInputQuestion[];
   userInputAnswers?: Record<string, string[]>;
+  respondedBy?: import("./codex-conversation-state/codex-conversation-state").CodexQuestionResponder;
   rawItem?: unknown;
   createdAt: number;
   updatedAt: number;
@@ -3459,6 +3460,7 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   questionReplies?: import("./codex-async-user-input").CodexAsyncQuestionReply[];
   userInputQuestions?: CodexUserInputQuestion[];
   userInputAnswers?: Record<string, string[]>;
+  respondedBy?: import("./codex-conversation-state/codex-conversation-state").CodexQuestionResponder;
   rawItem?: unknown;
   createdAt: number;
   updatedAt: number;

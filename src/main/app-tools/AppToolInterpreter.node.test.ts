@@ -222,6 +222,7 @@ it.effect(
         const tools = result.structuredContent?.tools as string[];
         assert.include(tools, "query_content");
         assert.include(tools, "send_message_to_session");
+        assert.include(tools, "session_question");
         assert.notInclude(tools, "consume_usage_reset");
         assert.deepEqual(
           (yield* execute({ ...capabilityCall, name: "consume_usage_reset" })).structuredContent,

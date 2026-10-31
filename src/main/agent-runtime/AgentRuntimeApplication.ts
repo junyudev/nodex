@@ -195,6 +195,9 @@ export class AgentRuntimeApplicationError extends Schema.TaggedError<AgentRuntim
     /** Actionable source-owned search continuation failure; transport outages omit this field. */
     cursorReason: Schema.optionalKey(Schema.Literals(["invalid_cursor", "cursor_stale"])),
     adoptionReason: Schema.optionalKey(Schema.Literal("active_source_busy")),
+    questionReason: Schema.optionalKey(
+      Schema.Literals(["not_found", "not_pending", "unsupported", "operation_conflict"]),
+    ),
   },
 ) {}
 
@@ -217,6 +220,27 @@ const searchFailure = (cause: unknown) => {
     message: "Search continuation is no longer usable; start a new search.",
     cause,
     cursorReason: cause.engineReason,
+  });
+};
+const questionResponseFailure = (cause: unknown) => {
+  if (
+    !Schema.is(AgentRuntimeProcessError)(cause) ||
+    cause.engineTag !== "OrchestratorDispatchError"
+  )
+    return cause;
+  const reason = cause.engineReason;
+  if (
+    reason !== "not_found" &&
+    reason !== "not_pending" &&
+    reason !== "unsupported" &&
+    reason !== "operation_conflict"
+  )
+    return cause;
+  return new AgentRuntimeApplicationError({
+    operation: "respond",
+    message: cause.message,
+    cause,
+    questionReason: reason,
   });
 };
 const importRefusal = (message: string) =>
@@ -2725,19 +2749,28 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     if (request.responseCapability.type === "not_resumable" && input.submissionId === undefined)
       return yield* failure("respond", request.responseCapability.reason);
     const { decision, answers, attachmentsByQuestionId } = input;
-    return yield* dispatch(connection, {
-      type: "runtime-request.respond",
-      commandId: commandId("response", {
+    return yield* dispatch(
+      connection,
+      {
+        type: "runtime-request.respond",
+        commandId: commandId("response", {
+          threadId: loaded.threadId,
+          requestId: input.requestId,
+          ...(input.submissionId === undefined ? {} : { submissionId: input.submissionId }),
+        }),
         threadId: loaded.threadId,
         requestId: input.requestId,
-        ...(input.submissionId === undefined ? {} : { submissionId: input.submissionId }),
-      }),
-      threadId: loaded.threadId,
-      requestId: input.requestId,
-      ...(decision === undefined ? {} : { decision }),
-      ...(answers === undefined ? {} : { answers }),
-      ...(attachmentsByQuestionId === undefined ? {} : { attachmentsByQuestionId }),
-    });
+        ...(decision === undefined ? {} : { decision }),
+        ...(input.respondedBy === undefined ? {} : { respondedBy: input.respondedBy }),
+        ...(input.requirePending === undefined ? {} : { requirePending: input.requirePending }),
+        ...(input.responseFingerprint === undefined
+          ? {}
+          : { responseFingerprint: input.responseFingerprint }),
+        ...(answers === undefined ? {} : { answers }),
+        ...(attachmentsByQuestionId === undefined ? {} : { attachmentsByQuestionId }),
+      },
+      input.interactionModeCeiling,
+    );
   });
 
   const setModes = Effect.fn("AgentRuntimeApplication.setModes")(function* (
@@ -3458,6 +3491,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           Effect.map(conversation),
         ),
       ),
+    listQuestionIds: (target: AgentRuntimeSessionTarget) =>
+      owned(
+        "questions",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, target, true);
+          return yield* connection.request("thread.questions.list", { threadId: loaded.threadId });
+        }),
+      ),
     control: (target: AgentRuntimeControlInput) =>
       owned(
         "control",
@@ -3465,10 +3507,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           if (target.runId !== undefined && !validId(target.runId))
             return yield* failure("control", "Run identity is invalid");
           const connection = yield* options.connect;
-          const loaded = yield* targetInfo(connection, target);
+          const loaded = yield* targetInfo(connection, target, target.requireActive);
           const snapshot = yield* connection.request("thread.control", {
             threadId: loaded.threadId,
             ...(target.runId === undefined ? {} : { runId: target.runId }),
+            ...(target.requestId === undefined ? {} : { requestId: target.requestId }),
           });
           return {
             sessionId: loaded.binding.session_id,
@@ -3824,7 +3867,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     retryPreparation: (input: Parameters<typeof retryPreparation>[0]) =>
       ownedWrite("retry-preparation", retryPreparation(input)),
     reconcileLiveExecutions: () => owned("reconcile-live", reconcileLiveExecutions()),
-    respond: (input: Parameters<typeof respond>[0]) => ownedWrite("respond", respond(input)),
+    respond: (input: Parameters<typeof respond>[0]) =>
+      ownedWrite("respond", respond(input).pipe(Effect.mapError(questionResponseFailure))),
     setModes: (input: Parameters<typeof setModes>[0]) => ownedWrite("mode", setModes(input)),
     compact: (input: import("../../shared/agent-runtime-api").AgentRuntimeCompactInput) =>
       ownedWrite(

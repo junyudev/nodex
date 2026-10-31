@@ -402,10 +402,14 @@ it.effect.each(["live", "message", "codex_question_reply"] as const)(
       expect(context.request).toMatchObject({
         status: "resolved",
         answers: { format: "Markdown" },
+        respondedBy: { kind: "agent", senderThreadId: parentId },
       });
       expect(context.item).toMatchObject({
         type: "user_input_request",
-        questionAnswer: { answers: { format: "Markdown" } },
+        questionAnswer: {
+          answers: { format: "Markdown" },
+          respondedBy: { kind: "agent", senderThreadId: parentId },
+        },
       });
       if (capability !== "live") {
         const child = yield* f.projections.getThreadRecords(f.task.childThreadId!, ["messages"]);
@@ -745,6 +749,20 @@ it.effect("answers asynchronous questions after the delegated child finishes", (
     expect(
       (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, approval.payload.id))?.status,
     ).toBe("pending");
+    const response = yield* f.projections.getRuntimeResponseContext(
+      f.task.childThreadId!,
+      event.payload.id,
+    );
+    expect(response.request?.respondedBy).toEqual({ kind: "agent", senderThreadId: parentId });
+    expect(
+      response.item?.type === "user_input_request" && response.item.questionAnswer?.respondedBy,
+    ).toEqual({ kind: "agent", senderThreadId: parentId });
+    const messages = yield* f.projections.getThreadRecords(f.task.childThreadId!, ["messages"]);
+    expect(messages.messages.at(-1)).toMatchObject({
+      createdBy: "agent",
+      creationSource: "mcp",
+      senderThreadId: parentId,
+    });
   }).pipe(Effect.provide(layerTest)),
 );
 

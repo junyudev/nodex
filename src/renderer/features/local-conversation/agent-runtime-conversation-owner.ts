@@ -617,7 +617,11 @@ export class AgentRuntimeConversationOwner {
     });
     if (generation !== this.#generation || !this.#transcriptActive || !item) return item;
     this.#rememberItem(source, item);
-    const value = projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "");
+    const value = projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "", {
+      sessionId: this.#target.sessionId,
+      rootThreadId: this.#thread()?.lineage.rootThreadId ?? this.#target.threadId ?? "",
+      parentThreadId: this.#thread()?.lineage.parentThreadId,
+    });
     if (value)
       this.#applyChanges([
         {
@@ -1067,7 +1071,11 @@ export class AgentRuntimeConversationOwner {
         hookTurns.add(entityKey);
         continue;
       }
-      const value = projectAgentRuntimeItem(item, thread.worktreePath ?? "");
+      const value = projectAgentRuntimeItem(item, thread.worktreePath ?? "", {
+        sessionId: this.#target.sessionId,
+        rootThreadId: thread.lineage.rootThreadId,
+        parentThreadId: thread.lineage.parentThreadId,
+      });
       if (!value) continue;
       if (item.type === "subagent") this.#residentTaskIds.add(item.subagentId);
       let entityKey: string;
@@ -1588,7 +1596,11 @@ export class AgentRuntimeConversationOwner {
       if (this.#transcriptActive && this.#transcriptHydrated) {
         const resident = this.#items.get(item.id);
         const value = resident
-          ? projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "")
+          ? projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "", {
+              sessionId: this.#target.sessionId,
+              rootThreadId: this.#thread()?.lineage.rootThreadId ?? this.#target.threadId ?? "",
+              parentThreadId: this.#thread()?.lineage.parentThreadId,
+            })
           : null;
         if (resident) {
           this.#rememberItem(resident, item);

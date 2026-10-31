@@ -77,7 +77,14 @@ const authority: NodexAgentTurnContext = {
   admittedAtMs: 1791993600000,
   runtime: { sessionId: "session:root", runtimeId: "runtime", turnKind: "run" },
 };
-const fixture = () => {
+const fixture = (
+  options: {
+    archived?: boolean;
+    native?: boolean;
+    restricted?: boolean;
+    targetDefault?: boolean;
+  } = {},
+) => {
   const frozen = authority;
   const deliveries = new Map<string, Record<string, unknown>>();
   const createdSessions = new Set<string>();
@@ -121,11 +128,14 @@ const fixture = () => {
               kind: "agent_session",
               session: {
                 id: request.session_id,
-                archived: false,
-                execution_ref: {
-                  runtime_id: "runtime",
-                  thread_id: request.session_id === "session:root" ? "root" : "target",
-                },
+                archived: request.session_id === "other" && options.archived === true,
+                execution_ref:
+                  options.native && request.session_id === "other"
+                    ? null
+                    : {
+                        runtime_id: "runtime",
+                        thread_id: request.session_id === "session:root" ? "root" : "target",
+                      },
               },
             },
           }),
@@ -137,16 +147,48 @@ const fixture = () => {
       replayMessage: (input: { messageId: string }) =>
         Effect.succeed(deliveries.get(input.messageId) ?? null),
       resumeMessageLaunch: () => Effect.succeed(null),
-      inspect: method("inspect", {
-        sessionId: "session:root",
-        projectId: "project",
-        threadId: "child",
-        thread: {
-          modelSelection: { instanceId: "claude_instance", model: "sonnet" },
-          interactionMode: "plan",
-          runtimeMode: "full-access",
+      inspect: (input: { sessionId: string }) =>
+        method("inspect", {
+          sessionId: input.sessionId,
+          projectId: "project",
+          threadId: input.sessionId === "session:root" ? "child" : "target",
+          thread: {
+            modelSelection: { instanceId: "claude_instance", model: "sonnet" },
+            interactionMode:
+              input.sessionId === "other" && options.targetDefault ? "default" : "plan",
+            runtimeMode:
+              input.sessionId === "session:root" && options.restricted
+                ? "approval-required"
+                : "full-access",
+          },
+        })(input),
+      listQuestionIds: method("listQuestions", { requestIds: ["question"] }),
+      control: method("control", {
+        snapshot: {
+          projection: {
+            runtimeRequests: [
+              {
+                id: "question",
+                kind: "user_input",
+                status: "pending",
+                nodeId: "node",
+                responseCapability: { type: "message" },
+              },
+            ],
+            turnItems: [
+              {
+                type: "user_input_request",
+                requestId: "question",
+                questions: [
+                  { id: "format", header: "Format", question: "Which format?", options: [] },
+                ],
+              },
+            ],
+            nodes: [{ id: "node", runId: "source-run" }],
+          },
         },
       }),
+      respond: method("respond", { sequence: 1 }),
       launch: (input: { sessionId: string }) =>
         Effect.gen(function* () {
           createdSessions.add(input.sessionId);
@@ -233,8 +275,8 @@ it.effect(
           target: { type: "project", projectId: "project", environment: { type: "local" } },
         },
       };
-      yield* execute(invocation);
-      yield* execute(invocation);
+      yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
+      yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
       const launches = f.calls.filter((call) => call.name === "launch");
       assert.deepEqual(launches[0]!.input, launches[1]!.input);
       assert.equal(
@@ -634,5 +676,89 @@ it.effect("Session retries preserve the first host admission time and Session id
     const launches = f.calls.filter((call) => call.name === "launch");
     assert.deepStrictEqual(launches[0]?.input, launches[1]?.input);
     assert.equal((launches[0]?.input as { acceptedAt: number }).acceptedAt, 1_000);
+  }),
+);
+
+it.effect(
+  "answers Session questions with captured caller identity and stable operation arguments",
+  () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const execute = yield* f.execute;
+      const invocation = {
+        caller: f.caller,
+        name: "session_question",
+        arguments: {
+          action: "respond",
+          sessionId: "other",
+          execution: { threadId: "target-child" },
+          requestId: "question",
+          answers: { format: "Markdown" },
+          idempotencyKey: "answer-format",
+        },
+      };
+      const first = yield* execute(invocation);
+      assert.isFalse(first.isError ?? false);
+      assert.deepInclude(first.structuredContent, { requestId: "question", status: "answered" });
+      yield* execute({ ...invocation, caller: f.makeCaller("later", "retry") });
+      const responses = f.calls.filter((call) => call.name === "respond");
+      assert.deepEqual(responses[0]?.input, responses[1]?.input);
+      assert.deepInclude(responses[0]?.input, {
+        threadId: "target-child",
+        runId: "source-run",
+        respondedBy: { kind: "agent", senderThreadId: "child", senderSessionId: "session:root" },
+        requirePending: true,
+        interactionModeCeiling: "plan",
+      });
+      assert.isNotNull(responses[0]?.agent);
+    }),
+);
+
+for (const action of ["list", "read", "respond"] as const) {
+  for (const [options, code] of [
+    [{ archived: true }, "not_found"],
+    [{ restricted: true }, "forbidden"],
+    [{ targetDefault: true }, "forbidden"],
+    [{ native: true }, "unsupported"],
+  ] as const) {
+    it.effect(`checks ${JSON.stringify(options)} admission for session_question ${action}`, () =>
+      Effect.gen(function* () {
+        const f = fixture(options);
+        const execute = yield* f.execute;
+        const result = yield* execute({
+          caller: f.caller,
+          name: "session_question",
+          arguments: {
+            action,
+            sessionId: "other",
+            requestId: "question",
+            answers: { format: "Markdown" },
+          },
+        });
+        assert.isTrue(result.isError);
+        assert.deepInclude(result.structuredContent, { error: { code } });
+        assert.isFalse(
+          f.calls.some(
+            (call) =>
+              call.name === "listQuestions" || call.name === "control" || call.name === "respond",
+          ),
+        );
+      }),
+    );
+  }
+}
+
+it.effect("withdrawn Session question calls cannot inspect or answer their target", () =>
+  Effect.gen(function* () {
+    const f = fixture();
+    const execute = yield* f.execute;
+    f.withdraw();
+    const result = yield* execute({
+      caller: f.caller,
+      name: "session_question",
+      arguments: { action: "list", sessionId: "other" },
+    });
+    assert.deepInclude(result.structuredContent, { error: { code: "call_withdrawn" } });
+    assert.equal(f.calls.length, 0);
   }),
 );

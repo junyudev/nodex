@@ -86,6 +86,7 @@ export const make = Effect.gen(function* () {
       !isWorkbenchTool &&
       input.name !== "create_session" &&
       input.name !== "send_message_to_session" &&
+      input.name !== "session_question" &&
       input.name !== "send_to_inbox" &&
       input.name !== "fork_session" &&
       input.name !== "merge_session_back" &&
@@ -121,7 +122,8 @@ export const make = Effect.gen(function* () {
       input.name === "create_session" ||
       input.name === "fork_session" ||
       input.name === "merge_session_back" ||
-      input.name === "send_message_to_session"
+      input.name === "send_message_to_session" ||
+      input.name === "session_question"
     )
       return yield* sessionCommands(input);
     if (input.name === "get_app_capabilities")

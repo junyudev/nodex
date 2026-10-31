@@ -585,3 +585,53 @@ it.effect(
       assert.deepEqual(item.nativeItemRef, nativeItemRef);
     }).pipe(Effect.provide(layerReceipt)),
 );
+
+it.effect(
+  "attributes Agent answers durably and replays only the same pending-question operation",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* seedQuestion("agent-attribution");
+      const respondedBy = {
+        kind: "agent" as const,
+        senderThreadId: ThreadId.make("answering-thread"),
+        senderSessionId: "answering-session",
+      };
+      const command = {
+        type: "runtime-request.respond" as const,
+        commandId: CommandId.make("agent-answer"),
+        threadId: f.threadId,
+        requestId: f.requestId,
+        answers: { first: "Use the screenshot", second: "main" },
+        respondedBy,
+        requirePending: true,
+        responseFingerprint: "exact-answer",
+      };
+      const first = yield* f.orchestrator.dispatch(command);
+      assert.deepEqual(yield* f.orchestrator.dispatch(command), first);
+      const response = yield* f.projections.getRuntimeResponseContext(f.threadId, f.requestId);
+      assert.deepEqual(response.request?.respondedBy, respondedBy);
+      assert.ok(response.item?.type === "user_input_request");
+      assert.deepEqual(response.item.questionAnswer?.respondedBy, respondedBy);
+      const records = yield* f.projections.getThreadRecords(f.threadId, ["messages", "turnItems"]);
+      assert.equal(records.messages.length, 1);
+      assert.equal(records.messages[0]?.createdBy, "agent");
+      assert.equal(records.messages[0]?.creationSource, "mcp");
+      assert.equal(records.messages[0]?.senderThreadId, respondedBy.senderThreadId);
+      assert.deepEqual(records.messages[0]?.respondedBy, respondedBy);
+      const answerItem = records.turnItems.find((item) => item.type === "user_message");
+      assert.ok(answerItem?.type === "user_message");
+      assert.deepEqual(answerItem.respondedBy, respondedBy);
+      assert.equal(
+        (yield* f.orchestrator
+          .dispatch({ ...command, commandId: CommandId.make("fresh-agent-answer") })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.equal(
+        (yield* f.orchestrator
+          .dispatch({ ...command, responseFingerprint: "changed-answer" })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+    }).pipe(Effect.provide(layerTest)),
+);

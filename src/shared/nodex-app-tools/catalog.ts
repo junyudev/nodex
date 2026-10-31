@@ -1,3 +1,4 @@
+import { sessionQuestionTool } from "./session-question-schema";
 import { sessionHandoffTools } from "./session-handoff-schemas";
 import { contentToolCatalog } from "./content-catalog";
 import { readSessionTerminalTool } from "./terminal-schema";
@@ -33,6 +34,7 @@ export const appToolCatalog: readonly Tool[] = [
   ...sessionHandoffTools,
   createSessionTool,
   sessionMessageTool,
+  sessionQuestionTool,
   sendToInboxTool,
   sessionForkTool,
   sessionMergeTool,

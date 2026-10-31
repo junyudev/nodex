@@ -15,6 +15,7 @@ import type {
 import type {
   CodexCanonicalFileUpdateChange,
   CodexCanonicalHookRun,
+  CodexQuestionResponder,
 } from "../../../shared/codex-conversation-state/codex-conversation-state";
 import type {
   CodexCanonicalItem,
@@ -541,7 +542,30 @@ const isImportedImageView = (item: Extract<AgentTurnItem, { type: "dynamic_tool"
   (Boolean(item.unavailableImages?.length) ||
     Boolean(item.attachments?.some((attachment) => attachment.type === "image")));
 
-export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCanonicalItem | null {
+interface QuestionProjectionContext {
+  readonly sessionId: string;
+  readonly rootThreadId: string;
+  readonly parentThreadId?: string | null | undefined;
+}
+
+function projectQuestionResponder(
+  responder: CodexQuestionResponder | undefined,
+  context: QuestionProjectionContext | undefined,
+): CodexQuestionResponder | undefined {
+  if (!responder || responder.senderSessionId !== undefined || !context) return responder;
+  if (
+    responder.senderThreadId !== context.rootThreadId &&
+    responder.senderThreadId !== context.parentThreadId
+  )
+    return responder;
+  return { ...responder, senderSessionId: context.sessionId };
+}
+
+export function projectAgentRuntimeItem(
+  item: AgentTurnItem,
+  cwd = "",
+  context?: QuestionProjectionContext,
+): CodexCanonicalItem | null {
   if (isAgentRuntimeItemHidden(item)) return null;
   const id = item.id;
   const status = agentRuntimeItemStatus(item.status);
@@ -554,7 +578,14 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
       : null;
   switch (item.type) {
     case "user_message": {
-      const origin = userMessageOrigin(item);
+      const isQuestionAnswer = item.messageId.startsWith("async-answer:");
+      const responder =
+        item.respondedBy ??
+        (isQuestionAnswer && item.createdBy === "agent" && item.senderThreadId
+          ? { kind: "agent" as const, senderThreadId: item.senderThreadId }
+          : undefined);
+      const respondedBy = projectQuestionResponder(responder, context);
+      const origin = isQuestionAnswer ? undefined : userMessageOrigin(item);
       const inputIntent = INPUT_INTENT[item.inputIntent];
       const missing = unavailableImages(item);
       return {
@@ -565,6 +596,7 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         textSelections: readRuntimeThreadTextSelections(item.context),
         pageReferences: readRuntimePageReferences(item.context),
         ...(origin ? { origin } : {}),
+        ...(respondedBy ? { respondedBy } : {}),
         ...(inputIntent ? { inputIntent } : {}),
         ...(missing.length ? { unavailableImages: missing } : {}),
         content: [
@@ -806,6 +838,9 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
           ]),
         ),
         ...(item.questionAnswer ? { questionAnswer: item.questionAnswer } : {}),
+        ...(item.questionAnswer?.respondedBy
+          ? { respondedBy: projectQuestionResponder(item.questionAnswer.respondedBy, context) }
+          : {}),
       };
     }
     case "secret_request":

@@ -1,3 +1,6 @@
+import { sessionQuestionSchema } from "../../shared/nodex-app-tools/session-question-schema";
+import { make as makeSessionQuestions } from "./SessionQuestionIntake";
+import { SessionQuestionError } from "./SessionQuestions";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
@@ -29,6 +32,7 @@ export const make = Effect.gen(function* () {
   const modules = yield* CoreModules;
   const turns = yield* CodexTurnAuthority;
   const intake = yield* makeSessionMessageIntake;
+  const questions = yield* makeSessionQuestions;
   return Effect.fn("RuntimeSessionCommands.execute")(function* (input: AppToolInvocation) {
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
     const authority = yield* captureAppToolAuthority(input.caller, turns);
@@ -51,6 +55,33 @@ export const make = Effect.gen(function* () {
 
     const provenance = toCoreAgentTurnProvenance(core.identity.profileId, authority);
     const execute = Effect.gen(function* () {
+      if (input.name === "session_question") {
+        const parsed = parseAppToolArguments(sessionQuestionSchema, input.arguments);
+        if (!parsed.success) return parsed.result;
+        const request = parsed.data;
+        const backend = yield* questions(callerTarget, request);
+        if (!input.caller.isActive()) return toolFailure("call_withdrawn");
+        if (request.action === "list") return toolSuccess(yield* backend.list(request));
+        if (!request.requestId) return toolFailure("invalid_arguments");
+        if (request.action === "read")
+          return toolSuccess(yield* backend.read(request, request.requestId));
+        if (request.answers === undefined) return toolFailure("invalid_arguments");
+        const operation = yield* admitOperation(input, authority, core.identity.profileId, request);
+        if (!operation.success) return operation.result;
+        const { operationId } = operation;
+        const result = yield* backend.respond(
+          request,
+          request.requestId,
+          request.answers,
+          {
+            kind: "agent",
+            senderThreadId: hosted?.threadId ?? input.caller.threadId,
+            senderSessionId: sessionId,
+          },
+          operationId,
+        );
+        return toolSuccess({ ...result, operationId });
+      }
       if (input.name === "send_message_to_session") {
         const parsed = parseAppToolArguments(sessionMessageSchema, input.arguments);
         if (!parsed.success) return parsed.result;
@@ -167,13 +198,15 @@ export const make = Effect.gen(function* () {
       Effect.catch((error) =>
         Effect.succeed(
           toolFailure(
-            Schema.is(AgentRuntimeApplicationError)(error) && error.adoptionReason
-              ? error.adoptionReason
-              : error instanceof Error &&
-                  (error.message === "runtime_mode_escalation_denied" ||
-                    error.message === "interaction_mode_escalation_denied")
-                ? error.message
-                : "session_command_failed",
+            Schema.is(SessionQuestionError)(error)
+              ? error.code
+              : Schema.is(AgentRuntimeApplicationError)(error) && error.adoptionReason
+                ? error.adoptionReason
+                : error instanceof Error &&
+                    (error.message === "runtime_mode_escalation_denied" ||
+                      error.message === "interaction_mode_escalation_denied")
+                  ? error.message
+                  : "session_command_failed",
             error instanceof Error ? error.message : "Session command is unavailable",
           ),
         ),

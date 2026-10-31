@@ -231,6 +231,7 @@ const setup = (
     mode: "auto",
     runtimeId: "engine",
     failMessage: false,
+    questionResponseReason: null as "not_found" | "not_pending" | "unsupported" | null,
     taskOperationError: null as AgentRuntimeProcessError | null,
     admitMessageRuns: false,
     holdMessages: false,
@@ -629,6 +630,13 @@ const setup = (
         ) as AgentRuntimeOperations[M]["output"];
       if (method === "command.dispatch") {
         const command = (input as AgentRuntimeOperations["command.dispatch"]["input"]).command;
+        if (command.type === "runtime-request.respond" && state.questionResponseReason)
+          return yield* new AgentRuntimeProcessError({
+            reason: "rejected",
+            message: "The question changed during admission",
+            engineTag: "OrchestratorDispatchError",
+            engineReason: state.questionResponseReason,
+          });
         if (command.type === "thread.delete" && state.failEngineDelete)
           return yield* Effect.fail(new Error("Engine disconnected before deletion"));
         if (command.type === "thread.archive" && state.failEngineArchive)
@@ -947,6 +955,8 @@ const setup = (
             : null
         ) as AgentRuntimeOperations[M]["output"];
       }
+      if (method === "thread.questions.list")
+        return { requestIds: [] } as AgentRuntimeOperations[M]["output"];
       if (method === "thread.snapshot" || method === "thread.control") {
         const value = snapshots.get((input as { threadId: string }).threadId);
         if (!value) return yield* Effect.fail(new Error("Thread missing"));
@@ -2176,6 +2186,8 @@ it.effect("control reads retain Session ownership without hydrating transcript h
     const owner = yield* fixture.owner;
     const opened = yield* owner.launch(launch);
     const target = { sessionId: opened.sessionId, threadId: opened.threadId };
+    yield* owner.listQuestionIds(target);
+    assert.isTrue(fixture.calls.some((call) => call.method === "thread.questions.list"));
     const value = yield* owner.control(target);
     assert.equal(value.sessionId, opened.sessionId);
     assert.equal(value.threadId, opened.threadId);
@@ -3199,7 +3211,18 @@ for (const kind of ["user_input", "mcp-elicitation"] as const) {
         runId: "run",
         requestId: "request",
         answers: { question: ["Yes"] },
-        ...(kind === "mcp-elicitation" ? { decision: "accept" as const } : {}),
+        ...(kind === "mcp-elicitation"
+          ? { decision: "accept" as const }
+          : {
+              respondedBy: {
+                kind: "agent" as const,
+                senderThreadId: "coordinator",
+                senderSessionId: "source-session",
+              },
+              requirePending: true,
+              responseFingerprint: "exact-response",
+              interactionModeCeiling: "plan" as const,
+            }),
       });
       const command = [...fixture.commands.values()].at(-1)!;
       assert.equal(command.type, "runtime-request.respond");
@@ -3207,6 +3230,31 @@ for (const kind of ["user_input", "mcp-elicitation"] as const) {
       assert.deepEqual(command.answers, { question: ["Yes"] });
       assert.equal(command.requestId, "request");
       assert.equal(command.decision, kind === "mcp-elicitation" ? "accept" : undefined);
+      if (kind === "user_input") {
+        assert.deepEqual(command.respondedBy, {
+          kind: "agent",
+          senderThreadId: "coordinator",
+          senderSessionId: "source-session",
+        });
+        assert.isTrue(command.requirePending);
+        assert.equal(command.responseFingerprint, "exact-response");
+        const dispatched = fixture.calls
+          .filter((call) => call.method === "command.dispatch")
+          .at(-1);
+        assert.deepInclude(dispatched?.input, {
+          modeLimit: { runtimeMode: "full-access", interactionMode: "plan" },
+        });
+        fixture.state.questionResponseReason = "not_pending";
+        const rejected = yield* owner
+          .respond({
+            sessionId: launch.sessionId,
+            runId: "run",
+            requestId: "request",
+            answers: { question: "Yes" },
+          })
+          .pipe(Effect.flip);
+        assert.equal(rejected.questionReason, "not_pending");
+      }
     }),
   );
 }

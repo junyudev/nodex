@@ -1,3 +1,4 @@
+import { encodeCodexAsyncQuestionReplies } from "@nodex/agent-runtime/codex-conventions";
 import { prepareAgentMessage } from "../../../shared/agent-prompt";
 import { describe, expect, test } from "vite-plus/test";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
@@ -1190,6 +1191,40 @@ describe("Runtime question history", () => {
       questionAnswer: { attachmentsByQuestionId: { choice: [attachment] } },
     });
   });
+  test("projects the answering Agent and its Session into answered question history", () => {
+    const answered = {
+      ...request,
+      questionAnswer: {
+        ...request.questionAnswer!,
+        respondedBy: { kind: "agent" as const, senderThreadId: "coordinator" },
+      },
+    };
+    const canonical = projectAgentRuntimeItem(answered, "", {
+      sessionId: "session",
+      rootThreadId: "coordinator",
+    })!;
+    expect(canonical).toMatchObject({
+      respondedBy: { kind: "agent", senderThreadId: "coordinator", senderSessionId: "session" },
+    });
+    const [view] = projectCodexCanonicalTurnItemViews({
+      threadId: request.threadId,
+      turnId: request.runId,
+      items: [canonical],
+      observedAtMs: 1,
+      turnStatus: "completed",
+    });
+    const entry = projectCodexItemViewToTranscriptEntry(view!, "replay", 1);
+    expect(entry.respondedBy).toEqual({
+      kind: "agent",
+      senderThreadId: "coordinator",
+      senderSessionId: "session",
+    });
+    expect(entry.userInputAnswers).toEqual({
+      choice: ["Blue", "Green"],
+      secret: ["private-token"],
+    });
+  });
+
   test("keeps pending synchronous requests out of answered history", () => {
     const pending = {
       ...request,
@@ -1219,4 +1254,52 @@ test("Page reference-only messages project their chips without internal context 
   const entry = projectCodexItemViewToTranscriptEntry(views[0]!, "bootstrap", 1);
   expect(entry.markdownText).toBe("");
   expect(entry.pageReferences).toEqual(pageReferences);
+});
+
+test("Agent asynchronous answers retain their Q/A presentation and answering conversation", () => {
+  const replies = [{ questionItemId: "choice", question: "Which color?", answer: "Blue" }];
+  const respondedBy = {
+    kind: "agent" as const,
+    senderThreadId: "other-thread",
+    senderSessionId: "other-session",
+  };
+  const canonical = projectAgentRuntimeItem(
+    message({
+      messageId: "async-answer:request:operation",
+      text: encodeCodexAsyncQuestionReplies(replies),
+      createdBy: "agent",
+      creationSource: "mcp",
+      senderThreadId: "other-thread",
+      respondedBy,
+    }),
+  )!;
+  const [view] = projectCodexCanonicalTurnItemViews({
+    threadId: "parent",
+    turnId: "parent-run",
+    items: [canonical],
+    observedAtMs: 1,
+    turnStatus: "completed",
+  });
+  const entry = projectCodexItemViewToTranscriptEntry(view!, "replay", 1);
+  expect(entry.questionReplies).toEqual(replies);
+  expect(entry.respondedBy).toEqual(respondedBy);
+  expect(entry.userMessageOrigin).toBeUndefined();
+  expect(entry.markdownText).not.toContain("send_user_message_question_reply");
+});
+
+test("a delegated asynchronous answer resolves its parent conversation within the Session", () => {
+  const canonical = projectAgentRuntimeItem(
+    message({
+      messageId: "async-answer:request:operation",
+      createdBy: "agent",
+      creationSource: "mcp",
+      senderThreadId: "parent-child",
+      respondedBy: { kind: "agent", senderThreadId: "parent-child" },
+    }),
+    "",
+    { sessionId: "root-session", rootThreadId: "root", parentThreadId: "parent-child" },
+  );
+  expect(canonical).toMatchObject({
+    respondedBy: { kind: "agent", senderThreadId: "parent-child", senderSessionId: "root-session" },
+  });
 });

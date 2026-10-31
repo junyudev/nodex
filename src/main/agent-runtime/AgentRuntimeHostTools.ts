@@ -114,7 +114,8 @@ export const make = Effect.gen(function* () {
       name === "create_session" ||
       name === "fork_session" ||
       name === "merge_session_back" ||
-      name === "send_message_to_session"
+      name === "send_message_to_session" ||
+      name === "session_question"
     )
       return yield* commands(invocation);
     if (Object.keys(input).length !== 0) return toolFailure("invalid_arguments");

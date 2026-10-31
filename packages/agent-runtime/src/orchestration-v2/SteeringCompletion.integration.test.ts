@@ -717,7 +717,7 @@ it.effect("starts a steer that missed the turn on the saved next-turn selection"
   ),
 );
 
-it.effect("keeps a steer the running turn refused as the next message", () =>
+it.effect("keeps a refused Agent answer as the next message with its provenance", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const { events, started, steered, layer, startFirstTurn } = yield* nextTurnSelectionHarness(
@@ -729,6 +729,11 @@ it.effect("keeps a steer the running turn refused as the next message", () =>
         const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
         const threadId = yield* startFirstTurn;
         const first = started[0]!;
+        const respondedBy = {
+          kind: "agent" as const,
+          senderThreadId: ThreadId.make("answering-thread"),
+          senderSessionId: "answering-session",
+        };
         yield* orchestrator.dispatch({
           type: "message.dispatch",
           commandId: CommandId.make("refused-steer"),
@@ -737,8 +742,10 @@ it.effect("keeps a steer the running turn refused as the next message", () =>
           text: "refused steer",
           attachments: [],
           dispatchMode: { type: "steer_active", targetRunId: first.runId },
-          createdBy: "user",
-          creationSource: "web",
+          createdBy: "agent",
+          creationSource: "mcp",
+          senderThreadId: respondedBy.senderThreadId,
+          respondedBy,
         });
         yield* worker.drain();
         // The running turn keeps going; the message waits instead of starting new work now.
@@ -781,6 +788,17 @@ it.effect("keeps a steer the running turn refused as the next message", () =>
         yield* worker.drain();
         assert.equal(started.length, 2);
         assert.equal(started[1]?.message.messageId, MessageId.make("message:refused-steer"));
+        const finished = yield* orchestrator.getThreadProjection(threadId);
+        const answer = finished.messages.find((message) => message.id === "message:refused-steer");
+        assert.equal(answer?.createdBy, "agent");
+        assert.equal(answer?.creationSource, "mcp");
+        assert.equal(answer?.senderThreadId, respondedBy.senderThreadId);
+        assert.deepEqual(answer?.respondedBy, respondedBy);
+        const answerItem = finished.turnItems.find(
+          (item) => item.type === "user_message" && item.messageId === "message:refused-steer",
+        );
+        assert.ok(answerItem?.type === "user_message");
+        assert.deepEqual(answerItem.respondedBy, respondedBy);
       }).pipe(Effect.provide(layer));
     }),
   ),

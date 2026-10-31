@@ -5,7 +5,7 @@ import {
 } from "./chatAttachment.ts";
 import * as Schema from "effect/Schema";
 
-import { MessageId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { MessageId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",
@@ -70,8 +70,16 @@ export const UserInputAttachments = Schema.Record(
 );
 export type UserInputAttachments = typeof UserInputAttachments.Type;
 
+export const UserInputResponder = Schema.Struct({
+  kind: Schema.Literal("agent"),
+  senderThreadId: ThreadId,
+  senderSessionId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+});
+export type UserInputResponder = typeof UserInputResponder.Type;
+
 export const UserInputAttachmentAnswerPayload = Schema.Struct({
   requestId: TrimmedNonEmptyString,
+  respondedBy: Schema.optional(UserInputResponder),
   /** Separate answer messages rendered as part of this question's history. */
   messageIds: Schema.optional(Schema.Array(MessageId)),
   questionTextById: Schema.optional(Schema.Record(Schema.String, Schema.String)),

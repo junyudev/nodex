@@ -161,6 +161,9 @@ import * as ServerSettings from "../serverSettings.ts";
 export class OrchestratorDispatchError extends Schema.TaggedError<OrchestratorDispatchError>()(
   "OrchestratorDispatchError",
   {
+    reason: Schema.optional(
+      Schema.Literals(["not_found", "not_pending", "unsupported", "operation_conflict"]),
+    ),
     commandId: CommandId,
     commandType: Schema.String,
     cause: Schema.optional(Schema.Defect()),
@@ -1797,6 +1800,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ...(queuedMessage.senderThreadId === undefined
             ? {}
             : { senderThreadId: queuedMessage.senderThreadId }),
+          ...(queuedMessage.respondedBy === undefined
+            ? {}
+            : { respondedBy: queuedMessage.respondedBy }),
         }),
         inputIntent: "queued_turn",
         startedAt: now,
@@ -4344,6 +4350,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly creationSource: OrchestrationV2ConversationMessage["creationSource"];
     readonly scheduledTaskId?: OrchestrationV2ConversationMessage["scheduledTaskId"];
     readonly senderThreadId?: OrchestrationV2ConversationMessage["senderThreadId"];
+    readonly respondedBy?: OrchestrationV2ConversationMessage["respondedBy"];
     readonly delegatedCompletion?: OrchestrationV2ConversationMessage["delegatedCompletion"];
     readonly forceRestart: boolean;
   }) =>
@@ -4496,6 +4503,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               ? {}
               : { scheduledTaskId: input.scheduledTaskId }),
             ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
+            ...(input.respondedBy === undefined ? {} : { respondedBy: input.respondedBy }),
             id: input.messageId,
             delivery: "pending",
             threadId: input.command.threadId,
@@ -4516,6 +4524,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               ? {}
               : { scheduledTaskId: input.scheduledTaskId }),
             ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
+            ...(input.respondedBy === undefined ? {} : { respondedBy: input.respondedBy }),
             id: idAllocator.derive.userTurnItem({ messageId: input.messageId }),
             threadId: input.command.threadId,
             runId: messageInput.runId,
@@ -5429,6 +5438,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ...(command.senderThreadId === undefined
             ? {}
             : { senderThreadId: command.senderThreadId }),
+          ...(command.respondedBy === undefined ? {} : { respondedBy: command.respondedBy }),
           forceRestart: dispatchMode.type === "restart_active",
         });
         return;
@@ -5632,6 +5642,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ...(command.senderThreadId === undefined
             ? {}
             : { senderThreadId: command.senderThreadId }),
+          ...(command.respondedBy === undefined ? {} : { respondedBy: command.respondedBy }),
           id: command.messageId,
           ...(delivery === undefined ? {} : { delivery }),
           threadId: command.threadId,
@@ -6011,6 +6022,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ...(command.senderThreadId === undefined
             ? {}
             : { senderThreadId: command.senderThreadId }),
+          ...(command.respondedBy === undefined ? {} : { respondedBy: command.respondedBy }),
           id: command.messageId,
           ...(delivery === undefined ? {} : { delivery }),
           threadId: command.threadId,
@@ -6035,6 +6047,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ...(command.senderThreadId === undefined
             ? {}
             : { senderThreadId: command.senderThreadId }),
+          ...(command.respondedBy === undefined ? {} : { respondedBy: command.respondedBy }),
           id: idAllocator.derive.userTurnItem({ messageId: command.messageId }),
           threadId: command.threadId,
           runId,
@@ -6710,6 +6723,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ? {}
           : { scheduledTaskId: command.scheduledTaskId }),
         ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
+        ...(command.respondedBy === undefined ? {} : { respondedBy: command.respondedBy }),
         id: command.messageId,
         ...(delivery === undefined ? {} : { delivery }),
         threadId: command.threadId,
@@ -6732,6 +6746,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ? {}
           : { scheduledTaskId: command.scheduledTaskId }),
         ...(command.senderThreadId === undefined ? {} : { senderThreadId: command.senderThreadId }),
+        ...(command.respondedBy === undefined ? {} : { respondedBy: command.respondedBy }),
         id: idAllocator.derive.userTurnItem({ messageId: command.messageId }),
         threadId: command.threadId,
         runId,
@@ -7924,17 +7939,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
+          reason: "not_found",
           cause: `Runtime request ${command.requestId} was not found.`,
         });
       }
-      if (runtimeRequest.kind !== "user_input" && runtimeRequest.kind !== "mcp-elicitation") {
+      if (
+        (command.requirePending && runtimeRequest.kind !== "user_input") ||
+        (runtimeRequest.kind !== "user_input" && runtimeRequest.kind !== "mcp-elicitation")
+      ) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
+          reason: "not_found",
           cause: "Only user questions accept a response.",
         });
       }
       const canReviseMessageAnswers =
+        !command.requirePending &&
         runtimeRequest.responseCapability.type === "message" &&
         runtimeRequest.status === "resolved" &&
         runtimeRequest.decision !== "decline" &&
@@ -7943,6 +7964,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
+          reason: "not_pending",
           cause: `Runtime request ${command.requestId} is ${runtimeRequest.status}.`,
         });
       }
@@ -7950,6 +7972,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
+          reason: "unsupported",
           cause: runtimeRequest.responseCapability.reason,
         });
       }
@@ -7989,7 +8012,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           attachmentsByQuestionId: command.attachmentsByQuestionId,
           previous: previousAnswer,
         });
-        if (batch.type === "unchanged") return;
+        if (batch.type === "unchanged") {
+          if (command.requirePending)
+            return yield* new OrchestratorDispatchError({
+              commandId: command.commandId,
+              commandType: command.type,
+              reason: "not_pending",
+              cause: "The user-input request was already answered.",
+            });
+          return;
+        }
         if (batch.type === "invalid")
           return yield* new OrchestratorDispatchError({
             commandId: command.commandId,
@@ -8019,12 +8051,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ]),
         ),
       };
+      const {
+        respondedBy: _previousResponder,
+        responseFingerprint: _previousFingerprint,
+        ...requestState
+      } = runtimeRequest;
       const resolvedRequest = {
-        ...runtimeRequest,
+        ...requestState,
         status: fullyAnswered ? ("resolved" as const) : ("pending" as const),
         resolvedAt: fullyAnswered ? now : null,
         ...(command.decision === undefined ? {} : { decision: command.decision }),
         ...(answers === undefined ? {} : { answers }),
+        ...(command.respondedBy === undefined ? {} : { respondedBy: command.respondedBy }),
+        ...(command.responseFingerprint === undefined
+          ? {}
+          : { responseFingerprint: command.responseFingerprint }),
       };
       const emitEvent = emit(events, command);
       const requestNode = context.node;
@@ -8087,6 +8128,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               ? {
                   questionAnswer: {
                     requestId: command.requestId,
+                    ...(command.respondedBy ? { respondedBy: command.respondedBy } : {}),
                     ...(messageResponse
                       ? { messageIds: [...(previousAnswer?.messageIds ?? []), messageId] }
                       : {}),
@@ -8172,8 +8214,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 ),
               ).values(),
             ],
-            createdBy: "user",
-            creationSource: "server",
+            ...(command.respondedBy
+              ? {
+                  createdBy: "agent" as const,
+                  creationSource: "mcp" as const,
+                  senderThreadId: command.respondedBy.senderThreadId,
+                  respondedBy: command.respondedBy,
+                }
+              : { createdBy: "user" as const, creationSource: "server" as const }),
             dispatchMode,
           },
           events,
@@ -8378,6 +8426,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(queuedMessage.senderThreadId === undefined
           ? {}
           : { senderThreadId: queuedMessage.senderThreadId }),
+        ...(queuedMessage.respondedBy === undefined
+          ? {}
+          : { respondedBy: queuedMessage.respondedBy }),
         forceRestart: false,
       });
     });
@@ -12293,6 +12344,22 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             }),
         ),
       );
+      if (command.type === "runtime-request.respond" && command.responseFingerprint !== undefined) {
+        const response = storedEvents.find(
+          ({ event }) => event.type === "runtime-request.updated",
+        )?.event;
+        if (
+          response?.type !== "runtime-request.updated" ||
+          response.payload.id !== command.requestId ||
+          response.payload.responseFingerprint !== command.responseFingerprint
+        )
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            reason: "operation_conflict",
+            cause: "Question operationId was reused with different arguments.",
+          });
+      }
       if (command.type === "queue.resume") {
         yield* mapDispatchError(command)(startNextQueuedRun(command.threadId));
       }

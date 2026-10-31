@@ -16,6 +16,7 @@
     "./orchestration/*": "./src/orchestration-v2/*.ts",
     "./palette-search": "./vendor/shared/src/paletteSearch.ts",
     "./context-usage": "./vendor/provider-core/src/contextUsage.ts",
+    "./pending-user-questions": "./src/nodex/PendingUserQuestions.ts",
     "./history-read": "./src/nodex/HistoryRead.ts",
     "./history-contracts": "./src/nodex/history-contracts.ts",
     "./image-mime": "./src/imageMime.ts",

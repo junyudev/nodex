@@ -304,6 +304,13 @@ export type CodexCanonicalMcpElicitation =
       readonly schema: McpElicitationSchema;
     });
 
+/** The answering conversation, when an Agent supplies a question response. */
+export interface CodexQuestionResponder {
+  readonly kind: "agent";
+  readonly senderThreadId: string;
+  readonly senderSessionId?: string | null;
+}
+
 /** Request-caused state rows are explicit local variants, never fake ThreadItem. */
 export type CodexCanonicalRequestSyntheticItem =
   | {
@@ -313,6 +320,7 @@ export type CodexCanonicalRequestSyntheticItem =
       readonly turnId: string;
       readonly questions: readonly CodexCanonicalUserInputQuestion[];
       readonly answers: CodexCanonicalUserInputAnswers;
+      readonly respondedBy?: CodexQuestionResponder;
       readonly questionAnswer?: NonNullable<
         Extract<
           import("@nodex/agent-runtime/contracts").AgentTurnItem,
@@ -496,6 +504,7 @@ export type CodexUserMessageInputIntent = "queued" | "steer" | "promotedToSteer"
 /** App-side delivery context carried beside a generated user message. */
 export type CodexCanonicalUserMessageItem = Extract<ThreadItem, { type: "userMessage" }> & {
   readonly origin?: CodexUserMessageOrigin;
+  readonly respondedBy?: CodexQuestionResponder;
   readonly runtimeDelivery?: "pending" | "unknown" | "accepted";
   readonly inputIntent?: CodexUserMessageInputIntent;
   readonly textSelections?: import("../thread-text-selection").ThreadTextSelectionContext;

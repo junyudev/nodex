@@ -632,6 +632,10 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     readonly input: { readonly threadId: string };
     readonly output: AgentSnapshot;
   };
+  readonly "thread.questions.list": {
+    readonly input: { readonly threadId: string };
+    readonly output: { readonly requestIds: readonly string[] };
+  };
   readonly "thread.control": {
     readonly input: {
       readonly threadId: string;

@@ -10,6 +10,7 @@
         "automation_update": { "approval_mode": "prompt" },
         "create_session": { "approval_mode": "prompt" },
         "send_message_to_session": { "approval_mode": "prompt" },
+        "session_question": { "approval_mode": "prompt" },
         "fork_session": { "approval_mode": "prompt" },
         "merge_session_back": { "approval_mode": "prompt" },
         "handoff_session": { "approval_mode": "prompt" }

@@ -1,4 +1,5 @@
 import { recordTaskResult } from "./TaskResultDelivery.ts";
+import { pendingUserQuestionIds, readUserQuestion } from "../nodex/PendingUserQuestions.ts";
 import {
   delegatedTaskExecutionState,
   delegatedTaskRun,
@@ -1505,28 +1506,12 @@ export const make = Effect.gen(function* () {
         )
         .pipe(Effect.mapError(threadManagementFailure));
       if (input.action === "list")
-        return {
-          requestIds: projection.runtimeRequests
-            .filter((request) => request.kind === "user_input" && request.status === "pending")
-            .map((request) => request.id),
-        };
+        return { requestIds: pendingUserQuestionIds(projection.runtimeRequests) };
       if (input.requestId === undefined)
         return yield* failure("invalid_request", "This action needs `requestId`.");
-      const request = projection.runtimeRequests.find(
-        (request) => request.id === input.requestId && request.kind === "user_input",
-      );
-      const item = projection.turnItems.find(
-        (item) => item.type === "user_input_request" && item.requestId === input.requestId,
-      );
-      if (request === undefined || item?.type !== "user_input_request")
-        return yield* failure("invalid_request", "The pending user-input request was not found.");
-      if (request.status !== "pending")
-        return yield* failure(
-          "invalid_request",
-          request.status === "resolved"
-            ? "The user-input request was already answered."
-            : `The user-input request is no longer pending (${request.status}).`,
-        );
+      const selected = readUserQuestion(projection, input.requestId);
+      if ("error" in selected) return yield* failure("invalid_request", selected.message);
+      const { request, item } = selected;
       if (input.action === "read") return { requestId: request.id, questions: item.questions };
       if (input.answers === undefined)
         return yield* failure("invalid_request", "This action needs `answers`.");
@@ -1542,6 +1527,8 @@ export const make = Effect.gen(function* () {
           }),
           requestId: request.id,
           answers: input.answers,
+          respondedBy: { kind: "agent", senderThreadId: yield* taskOwner(scope, input.taskId) },
+          requirePending: true,
         })
         .pipe(Effect.mapError(dispatchFailure));
       return { sequence: result.sequence };

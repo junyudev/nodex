@@ -69,7 +69,11 @@ export interface AgentRuntimeSessionTarget {
 }
 
 /** Retains one exact Run's control metadata without reading its transcript. */
-export type AgentRuntimeControlInput = AgentRuntimeSessionTarget & { readonly runId?: string };
+export type AgentRuntimeControlInput = AgentRuntimeSessionTarget & {
+  readonly requestId?: string;
+  readonly runId?: string;
+  readonly requireActive?: boolean;
+};
 
 export interface AgentRuntimeLaunchResult {
   readonly sessionId: string;
@@ -132,10 +136,20 @@ export type AgentRuntimeStopInput = AgentRuntimeSessionTarget & { readonly runId
 /** The fork Session whose newest finished Run merges back into the chat it came from. */
 export type AgentRuntimeMergeBackInput = AgentRuntimeSessionTarget & { readonly requestId: string };
 export type AgentRuntimeResponseInput = AgentRuntimeSessionTarget &
-  Pick<Respond, "requestId" | "decision" | "answers" | "attachmentsByQuestionId"> & {
+  Pick<
+    Respond,
+    | "requestId"
+    | "decision"
+    | "answers"
+    | "attachmentsByQuestionId"
+    | "respondedBy"
+    | "requirePending"
+    | "responseFingerprint"
+  > & {
     readonly runId: string | null;
     /** One accepted answer batch; retries reuse it and later answers allocate a new identity. */
     readonly submissionId?: string;
+    readonly interactionModeCeiling?: "plan";
   };
 export type AgentRuntimeModeInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;
