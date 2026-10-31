@@ -1,0 +1,19 @@
+docs/product-specs/command-palette-behavior.md
+  s_10c9ccdba0b010::t_51b5af67fb5b95 274
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62faccab6fb54b4c0af02d1e44253ce61704019a",
+  "prompts": {},
+  "sessions": {
+    "s_10c9ccdba0b010": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2948dcce-9216-43f5-af71-b571fcc1fac0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
