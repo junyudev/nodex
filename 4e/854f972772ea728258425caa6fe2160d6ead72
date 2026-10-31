@@ -1,0 +1,100 @@
+docs/product-specs/composer-page-references-behavior.md
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-38
+src/renderer/lib/use-page-editor-selection.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-33
+src/renderer/lib/workbench-page-content.node.test.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 108-109
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 5787-5809
+packages/agent-runtime/src/nodex/Instructions.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 8
+src/renderer/features/local-conversation/view/composer/composer-context-suggestions.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 9,33,176
+src/renderer/lib/composer-page-context.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-34
+src/renderer/lib/page-editor-observation-registry.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 8-9,25,27,29-31,38-65
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.test.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 7-8,872-885
+  s_6836a64be4dd26::t_ce11ffedd0a4da 886
+src/renderer/features/local-conversation/view/shared/user-message-page-references.test.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-28
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 502
+src/renderer/features/local-conversation/view/composer/use-composer-page-context.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-98
+src/shared/agent-prompt.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 2-5,26,154,212-228
+  s_6836a64be4dd26::t_6705792576012f 1,229
+src/shared/types.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 2819,3416,3480
+src/shared/page-reference.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-100
+src/shared/codex-prompt-preparation.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 2-5,273-279,286,299
+  s_6836a64be4dd26::t_cc77950ce8f7fe 1
+src/renderer/features/local-conversation/view/composer/use-composer-page-suggestions.test.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-61
+src/renderer/lib/page-title-projection-context.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 285-325
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1,59,170-175,246-250,291-298,859,945,1419
+src/shared/codex-canonical-item-projector.test.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1202-1227
+src/shared/codex-transcript-entry-projection.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 67
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-2,27,810,1096-1116,1123,1156,1165,1205-1206
+src/shared/page-reference.test.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-98
+src/renderer/lib/use-page-editor-selection.test.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-40
+docs/product-specs/agent-runtime-behavior.md
+  s_6836a64be4dd26::t_9587a2b7cdc31d 157
+CHANGELOG.md
+  s_6836a64be4dd26::t_9587a2b7cdc31d 10
+src/renderer/features/local-conversation/view/shared/user-message-page-references.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-38
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-3,391,405-408,438,479-480,490,1436-1439,1752-1754,1756-1758,1760-1762,1765,2264-2273,2314,2400,2689-2693,4502-4505
+src/shared/codex-canonical-item-projector.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1,477,481-484,508,536,1297,1299-1302,1314,1331
+src/renderer/features/local-conversation/view/composer/use-composer-page-context.test.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-164
+src/renderer/lib/page-editor-selection.test.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-65
+src/renderer/lib/page-editor-selection.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-50
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1203-1221
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-4,1164-1171,1183-1186
+src/renderer/lib/workbench-agent-context.node.test.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1,594-647
+  s_6836a64be4dd26::t_9ba4929ecbfe36 648
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 2-4,566,915-920
+  s_6836a64be4dd26::t_5d9c0ebb45f43e 1
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1,124,965,1080-1083
+src/renderer/features/local-conversation/view/composer/composer-page-context-chips.tsx
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-32
+src/renderer/features/local-conversation/view/composer/use-composer-page-suggestions.ts
+  s_6836a64be4dd26::t_9587a2b7cdc31d 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e854f972772ea728258425caa6fe2160d6ead72",
+  "prompts": {},
+  "sessions": {
+    "s_6836a64be4dd26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e93c001d-fc6b-488c-b1a0-4a8c9a712e11",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
