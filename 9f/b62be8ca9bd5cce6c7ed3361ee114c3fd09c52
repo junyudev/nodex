@@ -1,0 +1,113 @@
+CHANGELOG.md
+  s_6232bdbdc99b0f::t_5274132a7bd67a 9
+CONTEXT.md
+  s_6232bdbdc99b0f::t_6628106f0bdf3b 947
+docs/CONFIGURATION.md
+  s_f2b92eaeeb961c::t_f4cc58f6fe343a 25-32,91-101
+docs/adr/0070-optional-cloud-account-and-subscription-authority.md
+  s_6232bdbdc99b0f::t_8e724c2b68430d 17-22,28,34-40
+docs/product-specs/nodex-account-and-subscription-behavior.md
+  s_51fd26322ffbcf::t_07cf9c21e0e8e2 4,10,20-50,62,68,71,80-91,94-95,105,124,130-138
+packages/agent-runtime/src/nodex/NodexModelPolicy.test.ts
+  s_6232bdbdc99b0f::t_3566a3820f38b4 35-39,41-67
+packages/agent-runtime/src/nodex/NodexModelPolicy.ts
+  s_51fd26322ffbcf::t_eb401e9e1674c4 37,39-42,45-49
+src/main/ipc/handlers/NodexAccountIpc.ts
+  s_6232bdbdc99b0f::t_5ffb533781930b 48-52
+src/main/nodex-account/NodexAccount.node.test.ts
+  s_6232bdbdc99b0f::t_1d6e7d887b59e5 6-10,12,333-336,349,361,455-620
+src/main/nodex-account/NodexAccount.ts
+  s_51fd26322ffbcf::t_a3d73028bf5972 34-35,69-76,84-96,99-100,102-107,121-126,148-155,157,213,226-249,264-268,275-338
+src/main/nodex-account/managed-providers.node.test.ts
+  s_f2b92eaeeb961c::t_5c65cdb61a6f88 27,34
+src/main/nodex-account/model-access-fixture.ts
+  s_6232bdbdc99b0f::t_73f8863b4c7365 15-25,30-32
+src/main/platform/NodexModelAccessPlatform.ts
+  s_6232bdbdc99b0f::t_27c34e4202786c 5,25-26,37-42
+src/main/platform/node/NodexModelAccessPlatform.node.test.ts
+  s_51fd26322ffbcf::t_2ce59cc5920661 5,75-156
+src/main/platform/node/NodexModelAccessPlatform.ts
+  s_6232bdbdc99b0f::t_8d36b3618f1454 5,21-27,30-38,105-132
+src/renderer/components/shared/agent-runtime/agent-model-picker.test.tsx
+  s_51fd26322ffbcf::t_a963d40cebe576 564-592
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_51fd26322ffbcf::t_bb043792dfcfd0 359-367,369-371
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_51fd26322ffbcf::t_e063fff140230c 60-74,90,2706,2735-2743
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_6232bdbdc99b0f::t_38cb21f67998ea 2,800,1057-1067,1090-1095,1588-1591
+src/renderer/features/nodex-account/account-settings-page.tsx
+  s_6232bdbdc99b0f::t_7029db594ebeec 10,21-24,196,199-201
+src/renderer/features/nodex-account/nodex-account-menu.test.tsx
+  s_51fd26322ffbcf::t_13ed7ea3f13bce 4-14,48,50,56-59,100,149-153,192-196,202-239
+src/renderer/features/nodex-account/nodex-account-menu.tsx
+  s_6232bdbdc99b0f::t_0ecc66308b91a9 9,24,88-94,207-218,220-227
+src/renderer/features/nodex-account/nodex-top-up.tsx
+  s_50111ed310628a::t_f9dbe00aaecc0e 1-88
+src/renderer/features/nodex-account/use-nodex-account.test.tsx
+  s_6232bdbdc99b0f::t_216eabda472c30 282-302
+src/renderer/features/nodex-account/use-nodex-account.ts
+  s_51fd26322ffbcf::t_ccaaae9c473d21 1,18,36-51,56-59,88-92,96,107
+src/renderer/lib/nodex-account-runtime.ts
+  s_6232bdbdc99b0f::t_6237ad35d33c23 34-41,85-86
+src/shared/ipc-api.ts
+  s_6232bdbdc99b0f::t_ea5c3411960641 1378-1385
+src/shared/ipc-endpoint-policy.ts
+  s_6232bdbdc99b0f::t_2c6407419ec1ad 736
+src/shared/nodex-account.ts
+  s_6232bdbdc99b0f::t_19bd4352d15e40 30-55,58-60
+src/shared/nodex-models.ts
+  s_6232bdbdc99b0f::t_a5c0dedbeba405 6
+tests/e2e/fixtures/nodex-oauth-http.ts
+  s_8a269fcdcbb297::t_82c774a1245fe1 1,28-29,41-42,78-82,116-135,148,150,279-280,295-296
+tests/e2e/nodex-account.spec.ts
+  s_51fd26322ffbcf::t_e0c2928ddfaa52 3,215-229,231-242,247,264-274,282,284,288-337,344-345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9fb62be8ca9bd5cce6c7ed3361ee114c3fd09c52",
+  "prompts": {},
+  "sessions": {
+    "s_50111ed310628a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19004-cd46-7592-ad1e-c7adeba3c68c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_51fd26322ffbcf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19003-1a52-7fa3-94b2-c49b5cf4106f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_6232bdbdc99b0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "83b3d77d-09d2-4902-95c8-545643ed273c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8a269fcdcbb297": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5303ae91-8c35-4b85-b8df-343523a3e7e4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f2b92eaeeb961c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19000-883e-7253-89ee-e98a1617c6e5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
