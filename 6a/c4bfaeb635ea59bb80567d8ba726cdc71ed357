@@ -1,0 +1,90 @@
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.ts
+  s_e711b050289d29::t_61a671dfe6a649 62,141
+src/renderer/components/board/editor/prompt-block.tsx
+  s_039f18d9f057b1::t_6483d75e3fce22 104
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_09d0010c59e717::t_339b12584dfa25 4,35,62-68,81,87,117,131-134,185-220,845-873,875-878,889,942-958,977,1052-1067,1116,1121,1135,1429,1432,1492
+  s_09d0010c59e717::t_5b4c75f4dbb87c 1446,1468,1484-1491,1493-1515,1517-1535,1540
+packages/agent-runtime/src/mcp/toolkits/task/tools.ts
+  s_09d0010c59e717::t_7709174993ee69 5-6,11,16,18,70,73-74,89-91,99-101,106-109,252,279,304-316,364
+  s_09d0010c59e717::t_06d8e1c9002d2c 71-72,92-97,102-105
+  s_09d0010c59e717::t_3158739c696823 98
+packages/agent-runtime/src/orchestration-v2/DelegatedTaskQuestionReactor.ts
+  s_09d0010c59e717::t_0cc870565d3950 1-182
+  s_09d0010c59e717::t_5fe0c62d605392 183-198
+packages/agent-runtime/src/mcp/TaskQuestions.test.ts
+  s_09d0010c59e717::t_0bb0014b2d42d5 1-855
+  s_09d0010c59e717::t_e16531b19786c4 856-894
+packages/agent-runtime/src/mcp/toolkits/task/handlers.ts
+  s_09d0010c59e717::t_7709174993ee69 22-23,61-62
+  s_09d0010c59e717::t_96c340067ee59d 63
+packages/agent-runtime/src/nodex/Mcp.test.ts
+  s_09d0010c59e717::t_06d8e1c9002d2c 6,26,32
+  s_09d0010c59e717::t_0ae0a1cac50dcf 33-34
+CHANGELOG.md
+  s_09d0010c59e717::t_b2702f5802092e 9
+docs/product-specs/agent-runtime-behavior.md
+  s_09d0010c59e717::t_f90b5d25b414c6 708,716-735
+packages/agent-runtime/src/mcp/TaskToolkit.integration.test.ts
+  s_09d0010c59e717::t_78b6f36f305508 659
+packages/agent-runtime/src/nodex/Instructions.ts
+  s_09d0010c59e717::t_265d9485dcb8f3 11,13
+packages/agent-runtime/src/orchestration-v2/DelegatedTaskState.ts
+  s_09d0010c59e717::t_2989933461495b 5,66-78
+packages/agent-runtime/src/orchestration-v2/runtimeLayer.ts
+  s_09d0010c59e717::t_895a9a817a2cfa 2,18,316-322,338
+packages/agent-runtime/vendor/contracts/src/orchestratorMcp.test.ts
+  s_09d0010c59e717::t_8a7d2e4a1fe20c 54-55
+packages/agent-runtime/vendor/contracts/src/orchestratorMcp.ts
+  s_09d0010c59e717::t_daa205a11c54bb 14,26,195-200,217-220
+packages/agent-runtime/vendor/shared/src/nodexAppMcp.ts
+  s_09d0010c59e717::t_433f3ccf60bf80 59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ac4bfaeb635ea59bb80567d8ba726cdc71ed357",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_09d0010c59e717": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191e2-e63f-75c0-9db1-5e7360d5b9fd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7b92b23925bc6e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191f1-1028-7201-b17a-dc8cffb3674d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e711b050289d29": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191e3-47cd-7100-aa5c-74830433ef87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f3c664e4de7c67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191f7-29d8-74f1-ae55-33d29df95203",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
