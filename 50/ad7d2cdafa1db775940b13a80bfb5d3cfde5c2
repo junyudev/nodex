@@ -1,0 +1,182 @@
+src/renderer/lib/page-create-target-registry.ts
+  s_848f0431ef5ef9::t_06f6ff7ac67903 4-5,22,27-29,36-39,48,51-53,61
+src/renderer/lib/command-palette-commands.ts
+  s_8a269fcdcbb297::t_6dbde92dd3f66b 13,29-30,66-67,92-93,236-240,242-250,252-253
+src/renderer/components/workbench/command-palette-scope.test.tsx
+  s_8a269fcdcbb297::t_3c6cd3e4d4ad90 64-65,96
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_8a269fcdcbb297::t_b9e6a099a98383 43-44,213-214
+src/renderer/components/workbench/command-palette.test.tsx
+  s_8a269fcdcbb297::t_3c6cd3e4d4ad90 79,114-119,121-124
+src/renderer/features/inbox/inbox-composer.tsx
+  s_8a269fcdcbb297::t_b893b9113c8990 32-33,35,46-48,51-52,71-77,82,92-109,116,137-138
+  s_8a269fcdcbb297::t_34d31195f9c3da 13,19-21,139-169
+src/renderer/features/inbox/inbox-quick-capture.tsx
+  s_8a269fcdcbb297::t_42772963cd3a31 1,74-75,92,131-147
+  s_8a269fcdcbb297::t_75b7e17dd277b3 121-123
+  s_8a269fcdcbb297::t_9be23162a687d1 102
+  s_8a269fcdcbb297::t_44ae3f54c9567d 2-73,76-91,93-101,103-120,124-130,148-154
+  s_8a269fcdcbb297::t_ded7fd3a3c24af 155-174
+src/shared/command-keybindings.ts
+  s_8a269fcdcbb297::t_ee67b1bfa1668e 552-560
+src/renderer/components/workbench/workbench-shell.tsx
+  s_8a269fcdcbb297::t_ee67b1bfa1668e 385-386
+  s_8a269fcdcbb297::t_a0ef04bf5f2da7 41
+src/main/inbox-application/InboxApplication.ts
+  s_7fe5a7d3da39f9::t_10e42a235d5018 317
+CHANGELOG.md
+  s_8a269fcdcbb297::t_71b3eaeabd5844 10,13-14
+  s_8a269fcdcbb297::t_723c6404fd2eff 9
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_8a269fcdcbb297::t_08f3f0b7ed5dd7 5509-5516
+  s_8a269fcdcbb297::t_2000f97165ef8e 2089-2093,2095-2096
+  s_8a269fcdcbb297::t_e0feca78546609 2251,2254-2255
+  s_8a269fcdcbb297::t_7fe3ffe18d7f09 345-346,2266-2283,2302,2304-2314
+  s_8a269fcdcbb297::t_2bbeab2c71dbcf 42-43
+  s_8a269fcdcbb297::t_d997c6ad3003a1 2052,2061,3604
+  s_8a269fcdcbb297::t_a6b55404800b3d 113-119,397,2030-2047,2049-2051,2053-2060,2062-2073,2075-2081,2084-2088,2094,2097-2108,3593,3631
+  s_8a269fcdcbb297::t_a0ef04bf5f2da7 2074,2082-2083,4182
+src/shared/command-keybindings.test.ts
+  s_8a269fcdcbb297::t_3c6cd3e4d4ad90 585,587,591-592
+src/renderer/lib/use-workbench-command-ingress.test.tsx
+  s_8a269fcdcbb297::t_3c6cd3e4d4ad90 59,65-66
+src/renderer/lib/page-create-target.ts
+  s_848f0431ef5ef9::t_a5665e6949beef 15-16
+src/renderer/lib/command-palette.node.test.ts
+  s_8a269fcdcbb297::t_3c6cd3e4d4ad90 205
+src/renderer/lib/page-create-focus.jsdom.test.ts
+  s_848f0431ef5ef9::t_a71e62cf8fc00a 44,56
+tests/e2e/inbox-capture.spec.ts
+  s_8a269fcdcbb297::t_a4caaa574dd198 89-90
+  s_8a269fcdcbb297::t_447700b611c7c0 1-74,76,80-88,91,94-119
+  s_8a269fcdcbb297::t_6a3bbdda8e22fc 75,77-79
+  s_8a269fcdcbb297::t_509c115f9c0743 92-93
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_7fe5a7d3da39f9::t_c0534cff86afa0 41,102,328
+  s_7fe5a7d3da39f9::t_ad23ed832ee409 43
+  s_6232bdbdc99b0f::t_4a3bfee19fe4a5 42
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_8a269fcdcbb297::t_c34badfca9a179 554,559,563-566,1486
+src/renderer/lib/page-create-target-registry.node.test.ts
+  s_848f0431ef5ef9::t_424cc1dc30df87 1-14,35-37,39-41,44,46-50,52-53,55,57-58,61-65,67-68,70-71
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_8a269fcdcbb297::t_d8aec2db9fd9bd 138-149,151-163,165-184,187-193,196,198-199,203,205-206,214
+  s_8a269fcdcbb297::t_eaba1dd15e463d 150,164
+  s_8a269fcdcbb297::t_47df1a0a7d2834 185-186,194-195,197,200-202,204,207-213,298
+src/renderer/features/inbox/use-send-inbox-message.ts
+  s_7fe5a7d3da39f9::t_c0534cff86afa0 1-8,16
+  s_7fe5a7d3da39f9::t_5a86055403f95c 9-15
+src/renderer/features/inbox/inbox-capture-scope.ts
+  s_8a269fcdcbb297::t_d49af92c183f21 1-14
+docs/product-specs/workbench-shell.md
+  s_8a269fcdcbb297::t_723c6404fd2eff 225
+src/renderer/features/inbox/inbox-capture-scope.node.test.ts
+  s_8a269fcdcbb297::t_d49af92c183f21 1-27
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_8a269fcdcbb297::t_77f9eb73c483c3 85-86,89,91-92
+  s_7fe5a7d3da39f9::t_298206babde64c 84,87-88,90,93-94
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_8a269fcdcbb297::t_8b0333932f47e0 123,4529,4576-4577,4732-4733
+src/shared/schemas/inbox.ts
+  s_7fe5a7d3da39f9::t_ce42109fb5ad65 169-172
+  s_7fe5a7d3da39f9::t_c0534cff86afa0 164-167,173
+  s_8a269fcdcbb297::t_77f9eb73c483c3 36-37
+  s_7fe5a7d3da39f9::t_7a9b6e17b2460e 168
+src/renderer/lib/use-workbench-shortcuts.jsdom.test.ts
+  s_8a269fcdcbb297::t_8b0333932f47e0 364,367,407,422,485,490,494
+src/renderer/lib/capture-selection.jsdom.test.ts
+  s_8a269fcdcbb297::t_7b0409895e5307 2,14-15,17,20,30,37,59
+  s_8a269fcdcbb297::t_018575a5d559a0 1,3-13,16,18-19,21-29,31-36,38-58,60-61
+src/renderer/lib/use-workbench-shortcuts.ts
+  s_8a269fcdcbb297::t_ee67b1bfa1668e 4,51,90,196,244-247,257,387
+src/renderer/features/inbox/use-send-inbox-message.test.tsx
+  s_7fe5a7d3da39f9::t_ece1113d649b25 1-59
+src/renderer/features/inbox/inbox-capture-state.test.tsx
+  s_7fe5a7d3da39f9::t_ad23ed832ee409 37,174,180,187,197,234,244,273,406,431
+  s_7fe5a7d3da39f9::t_a63906148dc836 67-68,72-73,297-326
+  s_7fe5a7d3da39f9::t_346e3b63efa7d3 25-28,31-32,34-36,38,97,128-173,175-179,181-186,188-196,198-215,327-330,373,425,445
+  s_6232bdbdc99b0f::t_f8fb0940f26d09 331
+src/shared/schemas/inbox.test.ts
+  s_8a269fcdcbb297::t_ee958109f2f816 10
+  s_7fe5a7d3da39f9::t_346e3b63efa7d3 78-92,95-99,101-102,104-108
+  s_7fe5a7d3da39f9::t_ce42109fb5ad65 100
+  s_8a269fcdcbb297::t_33cf23fb267877 93-94,103
+  s_6232bdbdc99b0f::t_464c85abaf27ca 109-110
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_8a269fcdcbb297::t_106ff786011595 19,93-94,126,184,217,219,223
+src/renderer/components/board/page-create-dialog.tsx
+  s_848f0431ef5ef9::t_a5665e6949beef 1,53,57,115,130
+src/renderer/features/inbox/use-inbox-capture.ts
+  s_7fe5a7d3da39f9::t_c0534cff86afa0 36,162
+  s_7fe5a7d3da39f9::t_ad23ed832ee409 34-35,95,102,116-117,129,135-136,138,146,152,158
+src/renderer/lib/capture-selection.ts
+  s_8a269fcdcbb297::t_9d75fb0c1cc17e 35-51
+  s_8a269fcdcbb297::t_018575a5d559a0 1-33,52
+src/renderer/components/board/page-create-dialog.test.tsx
+  s_8a269fcdcbb297::t_9eb4e09583bc47 202
+  s_848f0431ef5ef9::t_a71e62cf8fc00a 183,399-402,416
+docs/KEYBOARD_SHORTCUTS.md
+  s_8a269fcdcbb297::t_e1139830e6195e 15-46,73
+src/shared/inbox.ts
+  s_7fe5a7d3da39f9::t_c0534cff86afa0 308-309
+src/shared/workbench-commands.ts
+  s_8a269fcdcbb297::t_ee67b1bfa1668e 5,12
+docs/product-specs/inbox-behavior.md
+  s_8a269fcdcbb297::t_134f5b92ab6dff 68-72,665-676
+  s_8a269fcdcbb297::t_db98f2ee35ea2c 677-679
+src/renderer/features/inbox/inbox-capture-state.ts
+  s_7fe5a7d3da39f9::t_c0534cff86afa0 21,23,28,55,57,68,92,137,153,162
+src/renderer/lib/page-create-workflow.tsx
+  s_848f0431ef5ef9::t_a5665e6949beef 4,6-7,13,16,19
+src/main/inbox-application/inbox-capture.node.test.ts
+  s_8a269fcdcbb297::t_7ebd68e1801f8c 7
+  s_8a269fcdcbb297::t_058ed8373ec75f 19-20
+  s_7fe5a7d3da39f9::t_318b4ba67849fe 11-18,21-53
+  s_6232bdbdc99b0f::t_0b87f5a1c940f1 54
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_8a269fcdcbb297::t_3c6cd3e4d4ad90 73-74,105
+src/renderer/lib/page-create-focus.ts
+  s_848f0431ef5ef9::t_a5665e6949beef 1
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_8a269fcdcbb297::t_9eb4e09583bc47 532
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "50ad7d2cdafa1db775940b13a80bfb5d3cfde5c2",
+  "prompts": {},
+  "sessions": {
+    "s_6232bdbdc99b0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "83b3d77d-09d2-4902-95c8-545643ed273c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7fe5a7d3da39f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19076-83f9-71f2-bedb-cd22b4fe52ca",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_848f0431ef5ef9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1907f-380b-78a0-9605-bcb3df9fca8f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8a269fcdcbb297": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5303ae91-8c35-4b85-b8df-343523a3e7e4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
