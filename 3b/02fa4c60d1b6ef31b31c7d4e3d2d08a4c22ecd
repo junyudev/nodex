@@ -1,0 +1,21 @@
+src/renderer/lib/usage-meter.node.test.ts
+  s_8df07eefe56282::t_42cc7b9fdc9397 108-110
+src/renderer/lib/usage-meter.ts
+  s_8df07eefe56282::t_4b3b83cb07df06 80-82,91-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b02fa4c60d1b6ef31b31c7d4e3d2d08a4c22ecd",
+  "prompts": {},
+  "sessions": {
+    "s_8df07eefe56282": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192d1-c217-7fa1-8aa5-21543f076f34",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
