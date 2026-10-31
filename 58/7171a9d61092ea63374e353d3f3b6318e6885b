@@ -1,0 +1,119 @@
+CHANGELOG.md
+  s_c6667ad51c16de::t_d44a1d687cc2cd 9
+docs/product-specs/agent-interface-behavior.md
+  s_c6667ad51c16de::t_86f28108a805b5 263-284
+docs/product-specs/agent-runtime-behavior.md
+  s_c6667ad51c16de::t_55966dd17660ec 621-624,726-735
+packages/agent-runtime/package.json
+  s_b7fb0b74db0314::t_4dd96d4951cf5e 19
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_b7fb0b74db0314::t_1da7ffff30f24b 1,1496,1499-1501,1517-1518
+packages/agent-runtime/src/mcp/TaskQuestions.test.ts
+  s_b7fb0b74db0314::t_e9da5fec120516 404,408-411,747-760
+packages/agent-runtime/src/nodex/Application.test.ts
+  s_b7fb0b74db0314::t_775f31539b5b51 706-792
+packages/agent-runtime/src/nodex/Interface.ts
+  s_b7fb0b74db0314::t_9fdab4dba83100 624-627
+packages/agent-runtime/src/nodex/PendingUserQuestions.ts
+  s_b7fb0b74db0314::t_2bf847d2e7b07c 1-42
+packages/agent-runtime/src/nodex/Service.ts
+  s_b7fb0b74db0314::t_35d8c3aae23e2d 1,301,1182-1187,1578
+packages/agent-runtime/src/orchestration-v2/EffectWorker.ts
+  s_b7fb0b74db0314::t_d604573dd5c685 387-389
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_c1d9de27a914b0::t_81474dbf804833 157-159,1793-1795,4343,4496,4517,5431,5635,6015,6040,6716,6739,7932,7936-7939,7943,7948,7957,7965,8005-8014,8044-8048,8050,8055-8058,8121,8207-8214,8419-8421,12133-12148
+packages/agent-runtime/src/orchestration-v2/RuntimeQuestionResponses.test.ts
+  s_b7fb0b74db0314::t_667a2969b75b49 588-637
+packages/agent-runtime/src/orchestration-v2/SteeringCompletion.integration.test.ts
+  s_b7fb0b74db0314::t_6f4002da0907dd 720,732-736,745-748,791-801
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_b7fb0b74db0314::t_42ddb26d82edd4 65,1242-1244,1332,1721,2546,3270,3418-3421
+packages/agent-runtime/vendor/contracts/src/providerPolicy.ts
+  s_b7fb0b74db0314::t_acbadd05c1718e 8,73-79,82
+packages/nodex-app-tools-mcp/desktop-mcp.json
+  s_b7fb0b74db0314::t_e0da0ff0a204e7 13
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_c1d9de27a914b0::t_04a6bbc88eaf5c 234,633-639,958-959,2189-2190,3214-3225,3233-3257
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_b7fb0b74db0314::t_e2257eabb973b9 196-198,223-243,2750-2758,2761-2771,3492-3500,3508,3512,3868-3869
+src/main/agent-runtime/AgentRuntimeHostTools.ts
+  s_b7fb0b74db0314::t_cd5a6c928e5162 117-118
+src/main/app-tools/AppToolInterpreter.node.test.ts
+  s_b7fb0b74db0314::t_eb4bfc558dcb7f 222
+src/main/app-tools/AppToolInterpreter.ts
+  s_b7fb0b74db0314::t_7a08699f2af9b8 84,118-119
+src/main/app-tools/HostedAppToolCatalog.ts
+  s_b7fb0b74db0314::t_ac6079d7b6dd19 14
+src/main/app-tools/RuntimeSessionCommands.node.test.ts
+  s_b7fb0b74db0314::t_fea98a92eb9859 79-86,123-130,141-179,182,598-680
+src/main/app-tools/RuntimeSessionCommands.ts
+  s_b7fb0b74db0314::t_787ef8ef85581e 1-3,34,65-89,196-204
+src/main/app-tools/RuntimeSessionQuestions.node.test.ts
+  s_c1d9de27a914b0::t_dc06e85e9a157f 1-227
+src/main/app-tools/RuntimeSessionQuestions.ts
+  s_c1d9de27a914b0::t_e1dbfff64c877e 1-98
+src/main/app-tools/SessionQuestionIntake.ts
+  s_b7fb0b74db0314::t_c7f4dc81a74620 1-94
+src/main/app-tools/SessionQuestions.ts
+  s_b7fb0b74db0314::t_56992c7bdae3a1 1-55
+src/main/app-tools/UnsupportedSessionQuestions.ts
+  s_c1d9de27a914b0::t_7648287defb68a 1-17
+src/main/app-tools/session-dispatch-identity.ts
+  s_c1d9de27a914b0::t_3dd99b1de4d975 2,10-14
+src/main/codex/app-tools-launch-config.node.test.ts
+  s_b7fb0b74db0314::t_49eaefebe88e72 61
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_b7fb0b74db0314::t_00811f910f77f2 598-602,1052-1056,1490-1494
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_b7fb0b74db0314::t_c26a8414536f04 1,1193-1226,1257-1304
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_b7fb0b74db0314::t_6633286a367fd7 18,545-568,581-588,599,841-843
+src/shared/agent-runtime-api.ts
+  s_b7fb0b74db0314::t_106bed4dc3e378 72-76,139-148,152
+src/shared/codex-canonical-item-projector.ts
+  s_b7fb0b74db0314::t_c1c98e71c2f4d2 1213,1336
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_b7fb0b74db0314::t_5e33001f367665 307-313,323,507
+src/shared/codex-transcript-entry-projection.ts
+  s_b7fb0b74db0314::t_23d3075d972ca2 82
+src/shared/nodex-app-tools/catalog.ts
+  s_b7fb0b74db0314::t_8dddfdffc553e4 1,37
+src/shared/nodex-app-tools/session-question-schema.test.ts
+  s_b7fb0b74db0314::t_8ac567c6fc3c37 1-63
+src/shared/nodex-app-tools/session-question-schema.ts
+  s_b7fb0b74db0314::t_411edaf9dae426 1-34
+src/shared/types.ts
+  s_b7fb0b74db0314::t_8a92250381549e 3398,3463
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "587171a9d61092ea63374e353d3f3b6318e6885b",
+  "prompts": {},
+  "sessions": {
+    "s_b7fb0b74db0314": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19252-b0de-7072-82b5-072523b4e955",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c1d9de27a914b0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19252-fbf1-7a23-8ed4-b48195d1c1f4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c6667ad51c16de": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19253-86de-7c01-80d1-3fece2efe1ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
