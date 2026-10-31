@@ -1,0 +1,42 @@
+scripts/ci/verify-static.ts
+  s_f5d73c6ecdef66::t_baa1cc3c2c5174 32
+  s_f5d73c6ecdef66::t_55e64b7fde9d49 33-37
+scripts/ci/verify-token-color-utilities.ts
+  s_f5d73c6ecdef66::t_55e64b7fde9d49 1-38
+  s_f5d73c6ecdef66::t_1f1378862196b2 39-57
+scripts/ci/token-color-utilities.test.ts
+  s_f5d73c6ecdef66::t_be7bd8e96d9f64 6-10,13-14,18-25,28-29,32-35,40-75,80-84,97-108,115-124,142-163,176-186
+  s_f5d73c6ecdef66::t_bb7b6aa5e421df 189-190
+  s_f5d73c6ecdef66::t_bed6f5643d6496 1-5,11-12,15-17,26-27,30-31,36-39,76-79,85-96,109-114,125-141,164-175,187-188
+scripts/ci/verify-static.test.ts
+  s_f5d73c6ecdef66::t_7da7be1fc97774 35-37
+  s_f5d73c6ecdef66::t_bed6f5643d6496 26-34
+src/renderer/styles/theme-token-bridge.css
+  s_f5d73c6ecdef66::t_9dfe0f2a51bcef 50
+  s_f5d73c6ecdef66::t_ee89ec1adb13d5 51-53,82-84
+  s_f5d73c6ecdef66::t_bed6f5643d6496 41-43,45,47-48,59,62-63,69,77,80-81
+  s_f5d73c6ecdef66::t_55e64b7fde9d49 1
+package.json
+  s_f5d73c6ecdef66::t_55e64b7fde9d49 162
+scripts/ci/token-color-utilities.ts
+  s_f5d73c6ecdef66::t_be7bd8e96d9f64 30,125-130,168-171
+  s_f5d73c6ecdef66::t_55e64b7fde9d49 1-29,31-124,131-160,190,194-196,200-204,207-219,225-228,239-240,253-258
+  s_f5d73c6ecdef66::t_90ead0d370c200 205-206
+  s_f5d73c6ecdef66::t_9dfe0f2a51bcef 161-167,172-189,191-193,197-199,220-224,229-238,241-252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4f261746134db1aa54b609e94cd94e4a4040a5d2",
+  "prompts": {},
+  "sessions": {
+    "s_f5d73c6ecdef66": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19204-615a-7120-a060-b641eebee2db",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
