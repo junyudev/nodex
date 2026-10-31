@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Pages can hold Prompts: write a prompt with `/prompt`, then press `⌘↵` or its send button to send it to the chat beside the Page, or to a new chat in the Page's Project. The Prompt stays in the Page and follows its own turn in that chat, from Queued to Answered; open it to read the reply, jump to the message in the chat, or insert the reply into the Page under the Prompt. A Page can keep a series of prompts or one you reuse.
 - Ask for change rewrites a Page selection with AI and shows you the result before anything changes. Pick it from the selection menu, say what you want or tap Improve writing, Make shorter or Fix spelling & grammar, then Accept, Try again, or ask for another change to the proposal.
 - Chats can reference Pages beside the Composer, including highlighted Blocks, or mention any Library Page with `@`. Sent references reopen their Page without creating a Linked chat relationship.
+- An empty Inbox shows how it will plan your next messages: the model that writes suggestions, Nodex's model guide beside what is left of each Agent's weekly budget, and your routing preferences. Change the suggestion model or write your routing preferences right there.
 - Inbox suggestions know which OpenCode models are free, so routine work such as docs and notes can go to them without spending a plan's budget.
 
 ### Changed

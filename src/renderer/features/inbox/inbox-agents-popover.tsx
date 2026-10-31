@@ -93,7 +93,7 @@ export function InboxAgentsPopover({
               <InboxSuggestionModePicker
                 trigger="compact"
                 value={mode}
-                onChange={(next) => agents.save({ suggestions: next })}
+                onChange={(next) => void agents.save({ suggestions: next })}
               />
             }
           >
@@ -117,7 +117,7 @@ export function InboxAgentsPopover({
                 checked={agents.settings.suggestionsChooseModels}
                 disabled={!suggestions}
                 onCheckedChange={(suggestionsChooseModels) =>
-                  agents.save({ suggestionsChooseModels })
+                  void agents.save({ suggestionsChooseModels })
                 }
               />
             }

@@ -204,8 +204,8 @@ place: `Starting a chat in <Project>` or `Sending to “<chat>”` with
 `Open chat`, `Moved to <Project>`, `Kept as <kind>`, or `Done`. It folds out of
 the stream after a moment, or soon after the pointer resting on it leaves. Keep,
 Done and filing also offer `Undo` in a toast. A message handled elsewhere simply
-folds away. Clearing the last message shows an `All clear` state with a way to
-History.
+folds away. Clearing the last message shows an `All clear` state, and beneath
+it [how the Inbox plans](#how-the-inbox-plans).
 
 History is a dense log, newest first. Work still under way leads under
 `In progress`: messages handed to a chat that is being delivered, working,
@@ -478,6 +478,49 @@ editor shows what it runs on beside `Start chat`, as the composer shows its
 model beside Send, and opens the same model menu. A planned chat's parts each
 keep their own model menu and can be removed, leaving that part to the chat's
 own Agent, and its plan can be rewritten.
+
+## How the Inbox plans
+
+An empty Inbox, cleared or not yet used, shows how it will plan the next
+messages beneath its heading, so suggestions never have to be taken on trust.
+It reads the same settings, catalog and usage readings suggestions are written
+with, reads the catalog again every minute while it shows, and shows nothing
+until the Inbox's settings have loaded. A Project's Inbox shows the same plan,
+since its settings and Agents are the Profile's; its closing line adds that
+chats stay in the Project.
+
+- `Suggested by` names the suggestion Agent's model at the effort suggestions
+  run it, such as `GPT-6.1 Sol · High`, and opens the composer's model menu to
+  choose another. It reads `When you ask` beside it when suggestions run only on
+  request, and `Paused` while automatic suggestions are paused.
+- While suggestions choose models, `Model guide` lists each family of Nodex's
+  model guide among the models suggestions are offered on each Agent able to
+  take a chat, at most twelve an Agent, with the guide's note in one line, then
+  each other such Agent by name. Each line carries its Agent's mark in the
+  rail's usage ring and what is left of that Agent's weekly window, or of its
+  longest window, named, when it has no weekly one; a window that limits one
+  model only stays in the Agent's usage card, which the ring opens on hover as
+  the rail's does when the Agent reports any windows. A family the guide marks free reads `Free`. Without
+  the guide, the list is `Budgets`: each Agent once, with its budget alone.
+- Nothing is claimed that is not known. A window that has reset since it was
+  read reads `Reset since read`, an Agent that reports no usage reads
+  `Not reported`, and an old reading is faded, as on the rail, and says how
+  long ago it was read. The rail reads each account on its own schedule, so the
+  two can differ for a moment.
+- While suggestions only route, `New chats` shows what every chat the Inbox
+  starts runs on, with the composer's model menu.
+- `Routing preferences` quotes the user's preferences, or offers
+  `Add your own…`. Choosing them edits them in place: `⌘↵` or `Save` saves,
+  and `Escape` or `Cancel` keeps them as they were.
+- A closing line says what each suggestion weighs: what a model does well and
+  how much of its weekly budget is left, or each Agent's budget alone without
+  the guide, after following the routing preferences first when there are
+  some. While suggestions only route, it says they choose where a message goes
+  and not which model runs it.
+
+With suggestions off, it says so and shows only what new chats run on. Turning
+suggestions, model choice or the guide on and off stays in the settings gear
+and `Settings → Inbox`.
 
 ## Dispatch
 

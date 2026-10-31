@@ -656,3 +656,7 @@ export function formatInboxWhen(submittedAt: string, now: Date): string {
     ? formatInboxTime(submittedAt)
     : inboxDayLabel(date, now);
 }
+
+/** An example of what routing preferences say, wherever they are written. */
+export const INBOX_ROUTING_PREFERENCES_PLACEHOLDER =
+  "Research and comparisons go to new read-only chats. UI fixes for Nodex go to the Nodex Project.";

@@ -63,6 +63,17 @@ const agentName = (catalog: InboxAgentCatalog, instanceId: string) => {
         ?.label ?? (instanceId === "codex" ? "Codex" : instanceId));
 };
 
+/** How the Inbox names an Agent: its name, its mark, and whether the name says more than the mark. */
+export function inboxAgentIdentity(
+  catalog: InboxAgentCatalog,
+  instanceId: string,
+): Pick<InboxAgentPresentation, "agent" | "kind" | "named"> {
+  const agent = agentName(catalog, instanceId);
+  const provider = catalog.providers.find((candidate) => candidate.instanceId === instanceId);
+  const kind = provider ? agentRuntimeProviderBackendKind(provider) : null;
+  return { agent, kind, named: !kind || agentRuntimeQualifier({ kind }, agent) !== null };
+}
+
 const effortDescriptor = (model: ProviderModel | undefined) =>
   model?.capabilities?.optionDescriptors?.find(isAgentRuntimeEffortOption);
 
@@ -102,12 +113,10 @@ export function describeInboxAgent(
   choice: InboxChatAgent,
   purpose: InboxAgentPurpose = "chat",
 ): InboxAgentPresentation {
-  const agent = agentName(catalog, choice.instanceId);
+  const { agent, kind, named } = inboxAgentIdentity(catalog, choice.instanceId);
   const provider = catalog.providers.find(
     (candidate) => candidate.instanceId === choice.instanceId,
   );
-  const kind = provider ? agentRuntimeProviderBackendKind(provider) : null;
-  const named = !kind || agentRuntimeQualifier({ kind }, agent) !== null;
   const present = (status: InboxAgentPresentation["status"], detail: string) => ({
     status,
     kind,

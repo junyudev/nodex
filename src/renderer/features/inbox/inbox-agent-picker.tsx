@@ -1,6 +1,7 @@
 import { forwardRef, type ComponentPropsWithoutRef, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  DEFAULT_INBOX_SETTINGS,
   inboxSuggestionChoice,
   type InboxChatAgent,
   type InboxSettings,
@@ -17,7 +18,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
 import { cn } from "@/lib/utils";
 import { useAgentInstances } from "../local-conversation/use-agent-instances";
-import { useInboxSettings, useUpdateInboxSettings } from "./use-inbox";
+import { useInboxSettingsQuery, useUpdateInboxSettings } from "./use-inbox";
 import {
   chooseInboxChatOptions,
   chooseInboxModel,
@@ -37,7 +38,10 @@ export interface InboxAgents extends InboxAgentCatalog {
   readonly readFailed: boolean;
   /** The Inbox's preferences; a chat runs on `chatAgent` unless its message chooses another. */
   readonly settings: InboxSettings;
-  readonly save: (input: UpdateInboxSettingsInput) => void;
+  /** The user's preferences have arrived; until then `settings` are the defaults. */
+  readonly settingsReady: boolean;
+  /** Resolves whether the change was saved; a failure is reported as it happens. */
+  readonly save: (input: UpdateInboxSettingsInput) => Promise<boolean>;
   /** Reads the catalog as it is now without forcing a check. */
   readonly reload: () => void;
   /** Asks every Agent to check its models again. */
@@ -49,18 +53,23 @@ export function useInboxAgents(): InboxAgents {
   const client = useQueryClient();
   const catalog = useAgentRuntimeProviders();
   const { instances } = useAgentInstances();
-  const settings = useInboxSettings();
+  const settingsQuery = useInboxSettingsQuery();
   const update = useUpdateInboxSettings();
   return {
     providers: catalog.data ?? [],
     state: catalog.data ? "ready" : catalog.error ? "error" : "loading",
     readFailed: Boolean(catalog.error),
     instances,
-    settings,
+    settings: settingsQuery.data ?? DEFAULT_INBOX_SETTINGS,
+    settingsReady: settingsQuery.data !== undefined,
     save: (input) =>
-      update.mutate(input, {
-        onError: (error) => toast.danger(readableIpcError(error, "Inbox settings were not saved")),
-      }),
+      update.mutateAsync(input).then(
+        () => true,
+        (error: unknown) => {
+          toast.danger(readableIpcError(error, "Inbox settings were not saved"));
+          return false;
+        },
+      ),
     reload: () => void catalog.refetch(),
     refresh: () =>
       void agentRuntimeRuntime
@@ -98,7 +107,7 @@ export function InboxAgentLabel({
 }
 
 /** A quiet inline trigger, as the composer's model selector sits beside its send button. */
-const InboxAgentInlineTrigger = forwardRef<
+export const InboxAgentInlineTrigger = forwardRef<
   HTMLButtonElement,
   ComponentPropsWithoutRef<"button"> & { readonly presentation: InboxAgentPresentation }
 >(function InboxAgentInlineTrigger({ presentation, className, ...props }, ref) {
@@ -209,7 +218,12 @@ export function InboxAgentPicker({
         },
         // A choice for one decision can become the Inbox's own, so the two never drift apart unseen.
         actions: differs
-          ? [{ label: "Use for all Inbox chats", run: () => agents.save({ chatAgent: value }) }]
+          ? [
+              {
+                label: "Use for all Inbox chats",
+                run: () => void agents.save({ chatAgent: value }),
+              },
+            ]
           : [],
       }}
     />
@@ -235,7 +249,7 @@ export function InboxSuggestionAgentPicker({
       trigger={trigger}
       disabled={disabled}
       onChange={(next) =>
-        agents.save({
+        void agents.save({
           suggestionAgent: { instanceId: next.instanceId },
           suggestionModel: next.model,
         })
@@ -262,7 +276,7 @@ export function InboxChatAgentPicker({
       value={agents.settings.chatAgent}
       trigger={trigger}
       disabled={disabled}
-      onChange={(chatAgent) => agents.save({ chatAgent })}
+      onChange={(chatAgent) => void agents.save({ chatAgent })}
     />
   );
 }

@@ -16,6 +16,7 @@ import {
   useInboxAgents,
 } from "./inbox-agent-picker";
 import { InboxSuggestionModePicker } from "./inbox-suggestion-mode-picker";
+import { INBOX_ROUTING_PREFERENCES_PLACEHOLDER } from "./inbox-presentation";
 
 export function InboxSettingsPage() {
   const settingsQuery = useInboxSettingsQuery();
@@ -114,7 +115,7 @@ export function InboxSettingsPage() {
             maxLength={MAX_INBOX_INSTRUCTIONS_CHARS}
             rows={5}
             value={instructions}
-            placeholder="Research and comparisons go to new read-only chats. UI fixes for Nodex go to the Nodex Project."
+            placeholder={INBOX_ROUTING_PREFERENCES_PLACEHOLDER}
             onChange={(event) => setInstructionsDraft(event.currentTarget.value)}
             className="mt-1.5 w-full resize-y rounded-md border border-token-input-border bg-token-input-background px-2.5 py-2 text-sm text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border"
           />

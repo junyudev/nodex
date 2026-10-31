@@ -10,11 +10,10 @@ import type {
   InboxCounts,
   InboxItem,
   InboxScope,
-  InboxSettings,
   InboxWindowFilter,
   UpdateInboxSettingsInput,
 } from "../../../shared/inbox";
-import { DEFAULT_INBOX_SETTINGS, inboxScopeKey } from "../../../shared/inbox";
+import { inboxScopeKey } from "../../../shared/inbox";
 import { subscribeInboxChanges } from "@/lib/api";
 import {
   readInboxCounts,
@@ -83,10 +82,6 @@ export function useInboxSettingsQuery() {
     queryFn: readInboxSettings,
     staleTime: 30_000,
   });
-}
-
-export function useInboxSettings(): InboxSettings {
-  return useInboxSettingsQuery().data ?? DEFAULT_INBOX_SETTINGS;
 }
 
 export function useUpdateInboxSettings() {

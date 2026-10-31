@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   inboxNewChatAction,
@@ -60,6 +60,7 @@ import {
 } from "./inbox-presentation";
 import { useInboxAgents, type InboxAgents } from "./inbox-agent-picker";
 import { InboxAgentsPopover } from "./inbox-agents-popover";
+import { InboxPlanningSummary } from "./inbox-planning-summary";
 import { InboxSuggestionPauseNotice } from "./inbox-suggestion-pause-notice";
 import { InboxTriage } from "./inbox-triage";
 import { inboxDraftLabel } from "./inbox-capture-state";
@@ -158,13 +159,14 @@ function EmptyState({
   view,
   everUsed,
   projectName,
-  onShowHistory,
+  planning,
 }: {
   readonly view: InboxWindowFilter;
   readonly everUsed: boolean;
   /** Set for a Project's Inbox. */
   readonly projectName: string | null;
-  readonly onShowHistory: () => void;
+  /** How the Inbox plans the next messages, beneath an empty Inbox. */
+  readonly planning: ReactNode;
 }) {
   if (view === "processed") {
     return (
@@ -178,15 +180,18 @@ function EmptyState({
   }
   if (!everUsed) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-base font-medium text-token-foreground">
-          {projectName ? `Nothing in ${projectName} yet` : "Nothing in your Inbox yet"}
-        </p>
-        <p className="max-w-sm text-sm text-balance text-token-description-foreground">
-          {projectName
-            ? "Drop thoughts, todos, and questions about this Project. Each becomes a Page on its Board, and Nodex suggests what to do with it."
-            : "Drop a thought, a todo, or a question. Review a suggestion or decide where it goes."}
-        </p>
+      <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-6">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <p className="text-base font-medium text-token-foreground">
+            {projectName ? `Nothing in ${projectName} yet` : "Nothing in your Inbox yet"}
+          </p>
+          <p className="max-w-sm text-sm text-balance text-token-description-foreground">
+            {projectName
+              ? "Drop thoughts, todos, and questions about this Project. Each becomes a Page on its Board, and Nodex suggests what to do with it."
+              : "Drop a thought, a todo, or a question. Review a suggestion or decide where it goes."}
+          </p>
+        </div>
+        {planning}
       </div>
     );
   }
@@ -196,25 +201,32 @@ function EmptyState({
       initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.35, ease: INBOX_EASE_OUT }}
-      className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center"
+      className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-6"
     >
-      <motion.span
-        initial={{ scale: 0.6, rotate: -12 }}
-        animate={{ scale: 1, rotate: 0 }}
-        transition={{ type: "spring", stiffness: 420, damping: 22, delay: 0.08 }}
-        className="flex size-10 items-center justify-center rounded-full bg-token-foreground/[0.05] text-token-foreground"
-      >
-        <CheckmarkIcon className="icon-sm" />
-      </motion.span>
-      <div className="flex flex-col gap-1">
-        <p className="text-base font-medium text-token-foreground">All clear</p>
-        <p className="text-sm text-token-description-foreground">
-          Everything you dropped here has somewhere to be.
-        </p>
+      <div className="flex flex-col items-center gap-3 text-center">
+        <motion.span
+          initial={{ scale: 0.6, rotate: -12 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: "spring", stiffness: 420, damping: 22, delay: 0.08 }}
+          className="flex size-10 items-center justify-center rounded-full bg-token-foreground/[0.05] text-token-foreground"
+        >
+          <CheckmarkIcon className="icon-sm" />
+        </motion.span>
+        <div className="flex flex-col gap-1">
+          <p className="text-base font-medium text-token-foreground">All clear</p>
+          <p className="text-sm text-token-description-foreground">
+            Everything you dropped here has somewhere to be.
+          </p>
+        </div>
       </div>
-      <NodexButton size="xs" variant="ghost" onClick={onShowHistory}>
-        Show History
-      </NodexButton>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25, duration: 0.4, ease: INBOX_EASE_OUT }}
+        className="flex w-full justify-center"
+      >
+        {planning}
+      </motion.div>
     </motion.div>
   );
 }
@@ -585,7 +597,14 @@ export function InboxRoute({
                 view={view}
                 everUsed={(summary.data?.entryCount ?? 0) > 0}
                 projectName={projectName}
-                onShowHistory={() => changeView("processed")}
+                planning={
+                  <InboxPlanningSummary
+                    agents={agents}
+                    policy={policy}
+                    nowMs={nowMs}
+                    projectName={projectName}
+                  />
+                }
               />
             )
           ) : view === "processed" ? (

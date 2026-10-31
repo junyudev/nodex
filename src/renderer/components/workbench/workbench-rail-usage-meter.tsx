@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
 import { NODEX_BUTTON_COLOR_CLASS } from "@/components/ui/button";
 import { NodexHoverCard } from "@/components/ui/hover-card";
@@ -16,6 +16,7 @@ import {
   type UsageSeverity,
   type UsageWindowView,
 } from "@/lib/usage-meter";
+import { useClockAt } from "@/lib/use-clock-at";
 import { cn } from "@/lib/utils";
 
 const RING_RADIUS = 12;
@@ -41,7 +42,6 @@ const OPEN_PLUS_PATH = (() => {
   const arm = 3.2;
   return `M ${(x - arm).toFixed(3)} ${y.toFixed(3)} H ${(x + arm).toFixed(3)} M ${x.toFixed(3)} ${(y - arm).toFixed(3)} V ${(y + arm).toFixed(3)}`;
 })();
-const MAX_TIMEOUT_MS = 2_147_483_647;
 
 const SEVERITY_TONE: Readonly<Record<UsageSeverity, string>> = {
   normal: "currentColor",
@@ -377,14 +377,7 @@ export function RailUsageMeter({
   const [now, setNow] = useState(Date.now);
   const view = describeUsageMeter(reading, now);
   // The view changes on its own only when a window resets or the reading ages out.
-  useEffect(() => {
-    if (view.nextChangeAt === null) return;
-    const timeout = window.setTimeout(
-      () => setNow(Date.now()),
-      Math.min(Math.max(view.nextChangeAt - Date.now(), 0) + 50, MAX_TIMEOUT_MS),
-    );
-    return () => window.clearTimeout(timeout);
-  }, [view.nextChangeAt]);
+  useClockAt(view.nextChangeAt, setNow);
   return (
     <NodexHoverCard
       ariaLabel={`${reading.title} usage details`}
