@@ -6,11 +6,11 @@ import { ProjectionInvalidationRegistry } from "./projection-invalidation-regist
 import { createSessionLinkedPageStore, type SessionLinkedPage } from "./session-linked-page";
 
 const scope: ProjectionScope = { kind: "library", libraryId: "library:one" };
-const page = (label = "Build"): SessionLinkedPage => ({
+const page = (label = "Doing"): SessionLinkedPage => ({
   pageId: "page:one",
   pageKey: "LAB-1",
   title: "Current title",
-  status: { optionId: "build", label },
+  status: { optionId: "doing", label },
 });
 const result = (
   sessionIds: string[],
@@ -151,7 +151,7 @@ describe("Session Linked Page store", () => {
 
   test("repairs a first snapshot older than the subscription checkpoint", async () => {
     const f = fixture(2);
-    f.read.mockResolvedValueOnce(result(["session:a"], page("Build"), 1));
+    f.read.mockResolvedValueOnce(result(["session:a"], page("Doing"), 1));
     f.read.mockResolvedValue(result(["session:a"], page("In progress"), 2));
     const release = f.store.subscribeSession("session:a", () => {});
     await vi.waitFor(() => expect(f.store.read("session:a")?.status?.label).toBe("In progress"));

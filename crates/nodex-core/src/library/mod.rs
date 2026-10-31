@@ -2369,7 +2369,7 @@ mod tests {
                         project_ids: vec!["project-1".to_owned()],
                         query: "say hi".to_owned(),
                         filters: Some(LibraryProjectPageSearchFilters {
-                            statuses: Some(vec![LibraryPageWorkflowStatus::Ship]),
+                            statuses: Some(vec![LibraryPageWorkflowStatus::Done]),
                             priorities: None,
                             include_empty_priority: true,
                             tags: Vec::new(),
@@ -4920,7 +4920,7 @@ mod tests {
                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id: VIEW.to_owned(),
                     preferences_override: Default::default(),
-                    group_key: Some("ship".to_owned()),
+                    group_key: Some("done".to_owned()),
                     before_page_id: None,
                     sorted_property_values: Vec::new(),
                 }),
@@ -5000,10 +5000,10 @@ mod tests {
                     occurrence_key,
                     group_key: Some(group_key),
                     ..
-                } if group_key == "ship" => Some(occurrence_key.clone()),
+                } if group_key == "done" => Some(occurrence_key.clone()),
                 _ => None,
             })
-            .expect("Ship List group");
+            .expect("Done List group");
         let list_expectation = DatabaseListProjectionExpectation {
             scope_key: list_before.projection.scope.canonical_key.clone(),
             schema_version: list_before.projection.scope.schema_version,
@@ -5069,7 +5069,7 @@ mod tests {
                     [&list_page_id],
                     |row| row.get::<_, String>(0),
                 )?;
-                assert_eq!(status, "\"ship\"");
+                assert_eq!(status, "\"done\"");
                 Ok(())
             })
             .expect("List group Property adoption");
@@ -5442,7 +5442,7 @@ mod tests {
                                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                                     view_id: VIEW.to_owned(),
                                     preferences_override: Default::default(),
-                                    group_key: Some("ship".to_owned()),
+                                    group_key: Some("done".to_owned()),
                                     before_page_id: None,
                                     sorted_property_values: Vec::new(),
                                 }),
@@ -5497,7 +5497,7 @@ mod tests {
                     .collect::<rusqlite::Result<BTreeMap<_, _>>>()?;
                 assert_eq!(values.get("priority").map(String::as_str), Some("\"p1-high\""));
                 assert_eq!(values.get("estimate").map(String::as_str), Some("\"xl\""));
-                assert_eq!(values.get("status").map(String::as_str), Some("\"ship\""));
+                assert_eq!(values.get("status").map(String::as_str), Some("\"done\""));
                 let stored_tags = serde_json::from_str::<Vec<String>>(&values["tags"]).expect("stored tags");
                 assert_eq!(
                     stored_tags
@@ -5595,7 +5595,7 @@ mod tests {
                                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                                     view_id: VIEW.to_owned(),
                                     preferences_override: Default::default(),
-                                    group_key: Some("ship".to_owned()),
+                                    group_key: Some("done".to_owned()),
                                     before_page_id: None,
                                     sorted_property_values: Vec::new(),
                                 }),
@@ -5823,11 +5823,11 @@ mod tests {
                             "data_source".to_owned(),
                             DATA_SOURCE.to_owned(),
                             1,
-                            "\"ship\"".to_owned(),
+                            "\"done\"".to_owned(),
                         ),
                         (
                             2,
-                            "ship".to_owned(),
+                            "done".to_owned(),
                             1,
                             DATABASE.to_owned(),
                             VIEW.to_owned(),
@@ -5946,7 +5946,7 @@ mod tests {
                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id: VIEW.to_owned(),
                     preferences_override: Default::default(),
-                    group_key: Some("ship".to_owned()),
+                    group_key: Some("done".to_owned()),
                     before_page_id: None,
                     sorted_property_values: Vec::new(),
                 }),
@@ -6564,7 +6564,7 @@ mod tests {
                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id: VIEW.to_owned(),
                     preferences_override: Default::default(),
-                    group_key: Some("ship".to_owned()),
+                    group_key: Some("done".to_owned()),
                     before_page_id: None,
                     sorted_property_values: Vec::new(),
                 }),
@@ -6696,7 +6696,7 @@ mod tests {
                                     LibraryBlockTransferDataSourcePlacement::Direct {
                                         view_id: VIEW.to_owned(),
                                         preferences_override: Default::default(),
-                                        group_key: Some("ship".to_owned()),
+                                        group_key: Some("done".to_owned()),
                                         before_page_id: None,
                                         sorted_property_values: Vec::new(),
                                     },

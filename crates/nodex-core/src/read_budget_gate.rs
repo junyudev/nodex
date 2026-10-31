@@ -379,8 +379,8 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                     for index in 0..DATABASE_ROW_COUNT {
                         let status = match index % 3 {
                             0 => "\"triage\"",
-                            1 => "\"build\"",
-                            _ => "\"ship\"",
+                            1 => "\"doing\"",
+                            _ => "\"done\"",
                         };
                         let membership_id = format!("membership:scale:{index:05}");
                         insert_status.execute(params![
@@ -425,8 +425,8 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                     for index in 0..DATABASE_ROW_COUNT {
                         let status = match index % 3 {
                             0 => "triage",
-                            1 => "build",
-                            _ => "ship",
+                            1 => "doing",
+                            _ => "done",
                         };
                         let rank_key = evenly_spaced_rank(index, DATABASE_ROW_COUNT);
                         statement.execute(params![
@@ -1097,7 +1097,7 @@ fn read_budget_gate_large_fixture() {
                         first: Some(200),
                     },
                     group_scope: Some(nodex_core_contracts::database::DatabaseGroupScope::Path {
-                        group_key: Some("build".to_owned()),
+                        group_key: Some("doing".to_owned()),
                         subgroup_key: None,
                     }),
                 },
@@ -1115,7 +1115,7 @@ fn read_budget_gate_large_fixture() {
             .rows
             .items
             .iter()
-            .all(|row| row.effective_group_key.as_deref() == Some("build"))
+            .all(|row| row.effective_group_key.as_deref() == Some("doing"))
     );
     assert!(
         serde_json::to_vec(&scoped)

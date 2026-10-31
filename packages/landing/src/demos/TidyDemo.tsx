@@ -41,36 +41,36 @@ interface Task {
 const TASKS: readonly Task[] = [
   { key: "LUM-40", title: "Upgrade React to 20", priority: "low" },
   { key: "LUM-38", title: "Dashboard cold start", priority: "medium", to: "Review" },
-  { key: "LUM-36", title: "Settings dark mode contrast", priority: "low", to: "Ship" },
+  { key: "LUM-36", title: "Settings dark mode contrast", priority: "low", to: "Done" },
   { key: "LUM-35", title: "Idempotent Stripe webhooks", priority: "high", to: "Review" },
   { key: "LUM-33", title: "Onboarding checklist copy", priority: "low" },
-  { key: "LUM-31", title: "Fix the flaky upload test", priority: "medium", to: "Ship" },
+  { key: "LUM-31", title: "Fix the flaky upload test", priority: "medium", to: "Done" },
   { key: "LUM-30", title: "Audit log export", priority: "medium", to: "Plan" },
   {
     key: "LUM-28",
     title: "Remember auth on trusted devices",
     priority: "low",
-    to: "Build",
+    to: "Doing",
     raise: true,
   },
-  { key: "LUM-26", title: "Rate limiter for the public API", priority: "medium", to: "Ship" },
+  { key: "LUM-26", title: "Rate limiter for the public API", priority: "medium", to: "Done" },
   { key: "LUM-24", title: "Weekly workspace digest", priority: "low", to: "Plan" },
-  { key: "LUM-23", title: "SSO auth loop in Safari", priority: "medium", to: "Build", raise: true },
+  { key: "LUM-23", title: "SSO auth loop in Safari", priority: "medium", to: "Doing", raise: true },
   { key: "LUM-21", title: "Billing page copy", priority: "low", to: "Plan" },
   {
     key: "LUM-19",
     title: "Auth tokens expire mid-session",
     priority: "medium",
-    to: "Build",
+    to: "Doing",
     raise: true,
   },
-  { key: "LUM-17", title: "Passkey sign-in", priority: "medium", to: "Build", raise: true },
-  { key: "LUM-12", title: "Dark mode for the marketing site", priority: "low", to: "Ship" },
+  { key: "LUM-17", title: "Passkey sign-in", priority: "medium", to: "Doing", raise: true },
+  { key: "LUM-12", title: "Dark mode for the marketing site", priority: "low", to: "Done" },
 ];
 
 const MOVED = TASKS.filter((task) => task.to);
 const REQUEST =
-  "Tidy up the backlog: shipped work to Ship, auth to Build at P1, the rest where it belongs.";
+  "Tidy up the backlog: finished work to Done, auth to Doing at P1, the rest where it belongs.";
 
 const TYPE_AT = 500;
 const TYPE_MS = 17;

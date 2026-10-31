@@ -97,7 +97,7 @@ Switch models mid-chat and your next message hands the conversation to the new A
 </picture>
 
 Pages with properties, relations, sub-pages and history, organized in Board and List views. Every
-Inbox message is a Page that moves through Triage → Plan → Build → Review → Ship. Agents read and
+Inbox message is a Page that moves through Triage → Plan → Doing → Review → Done. Agents read and
 write Pages through the `nodex` CLI and Agent Skill, and attach reports, screenshots and traces
 as Page Files that open in a tab beside the Page, with HTML rendered in a browser tab. Their edits
 appear live in the window you have open.

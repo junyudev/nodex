@@ -951,7 +951,7 @@ describe("Database Module v2 transport boundary", () => {
           kind: "view_collapsed_occurrences",
           value: {
             targets: [
-              { kind: "group", occurrenceKey: 'GROUP_"ship"' },
+              { kind: "group", occurrenceKey: 'GROUP_"done"' },
               { kind: "page", occurrenceKey: "ITEM_parent/child" },
             ],
           },

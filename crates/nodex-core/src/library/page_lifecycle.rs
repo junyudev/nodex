@@ -411,9 +411,9 @@ fn workflow_status(value: &Value) -> Result<LibraryPageWorkflowStatus, StoreErro
     match value.as_str() {
         Some("triage") => Ok(LibraryPageWorkflowStatus::Triage),
         Some("plan") => Ok(LibraryPageWorkflowStatus::Plan),
-        Some("build") => Ok(LibraryPageWorkflowStatus::Build),
+        Some("doing") => Ok(LibraryPageWorkflowStatus::Doing),
         Some("review") => Ok(LibraryPageWorkflowStatus::Review),
-        Some("ship") => Ok(LibraryPageWorkflowStatus::Ship),
+        Some("done") => Ok(LibraryPageWorkflowStatus::Done),
         _ => Err(corrupt("Page membership status is invalid")),
     }
 }

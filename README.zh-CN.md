@@ -94,7 +94,7 @@ Qwen Code、GLM Agent。OpenCode 的免费模型就在同一个模型菜单里�
 </picture>
 
 Pages 支持属性、关联、子页面和历史版本，用 Board 和 List 视图来组织。每条收件箱消息本身就是一个
-Page，沿着 Triage → Plan → Build → Review → Ship 推进。Agent 通过 `nodex` CLI 和 Agent Skill
+Page，沿着 Triage → Plan → Doing → Review → Done 推进。Agent 通过 `nodex` CLI 和 Agent Skill
 读写 Pages，把报告、截图和 trace 作为 Page Files 附上去；点开文件会在 Page 旁边的新 tab 里打开，HTML
 直接在浏览器 tab 里渲染。改动会实时出现在你打开的窗口里。
 

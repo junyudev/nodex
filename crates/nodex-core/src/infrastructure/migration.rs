@@ -395,6 +395,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 196,
         apply: migrate_v195_to_v196,
     },
+    MigrationStep {
+        from_revision: 196,
+        to_revision: 197,
+        apply: migrate_v196_to_v197,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2576,6 +2581,21 @@ fn migrate_v195_to_v196(
     Ok(())
 }
 
+fn migrate_v196_to_v197(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    let evidence = super::workflow_status_migration::migrate(connection)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            evidence.to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v194_to_v195(
     connection: &Connection,
     context: &MigrationContext,
@@ -3459,6 +3479,10 @@ fn test_current_store_template() -> Result<&'static Mutex<Connection>, StoreErro
 #[cfg(test)]
 #[path = "migration_derivation_tests.rs"]
 mod derivation_tests;
+
+#[cfg(test)]
+#[path = "workflow_status_migration_tests.rs"]
+mod workflow_status_tests;
 
 #[cfg(test)]
 mod tests {
@@ -8489,7 +8513,7 @@ mod tests {
             .unwrap()
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
-        assert_eq!(steps, vec![(193, 194), (194, 195), (195, 196)]);
+        assert_eq!(steps, vec![(193, 194), (194, 195), (195, 196), (196, 197)]);
         let states = connection
             .prepare("SELECT page_id,suggestion_state FROM inbox_entries ORDER BY page_id")
             .unwrap()
@@ -8752,7 +8776,7 @@ mod tests {
         }).unwrap();
         let preparation = prepare_profile_store(&mut connection, profile.path()).unwrap();
         assert_eq!(preparation.migrated_from_version, Some(195));
-        assert_eq!(preparation.schema_version, 196);
+        assert_eq!(preparation.schema_version, CURRENT_STORE_REVISION);
         let provenance: (String,Option<String>) = connection.query_row("SELECT attached_by_json,attached_at FROM page_file_entries WHERE file_id='file:historical'",[],|row| Ok((row.get(0)?,row.get(1)?))).unwrap();
         assert_eq!(
             serde_json::from_str::<nodex_core_contracts::library::LibraryPageFileAttachmentActor>(

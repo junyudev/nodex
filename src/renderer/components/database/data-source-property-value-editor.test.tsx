@@ -84,14 +84,14 @@ describe("DataSourcePropertyValueEditor", () => {
     const view = render(
       <DataSourcePropertyValueEditor
         property={statusProperty}
-        value="build"
+        value="doing"
         revision={3}
         disabled={false}
         showLabel={false}
         presentation="page"
         options={[
-          { id: "build", name: "In progress" },
-          { id: "ship", name: "Released" },
+          { id: "doing", name: "In progress" },
+          { id: "done", name: "Released" },
         ]}
         onChange={onChange}
       />,
@@ -106,7 +106,7 @@ describe("DataSourcePropertyValueEditor", () => {
       fireEvent.click(view.getByRole("option", { name: "Released" }));
       await Promise.resolve();
     });
-    expect(onChange).toHaveBeenCalledWith("ship");
+    expect(onChange).toHaveBeenCalledWith("done");
   });
 
   test("uses the shared Empty value for focused semantic Properties", () => {

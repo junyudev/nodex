@@ -205,7 +205,7 @@ fn complete(
             source_page_id: page_id,
             new_page_id: created_page_id,
             lifecycle: "archived",
-            status: "ship",
+            status: "done",
             scheduled_start: &occurrence_start,
             scheduled_end: &occurrence_end,
             is_all_day: target.page.is_all_day,

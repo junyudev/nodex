@@ -13,14 +13,14 @@ import {
 } from "../contracts";
 
 export const SIDEBAR_LINKED_PAGE_STATUS_SCENARIO_ID = "sidebar/linked-page-status" as const;
-export const SIDEBAR_LINKED_PAGE_STATUS_SCENARIO_REVISION = 2 as const;
+export const SIDEBAR_LINKED_PAGE_STATUS_SCENARIO_REVISION = 3 as const;
 
 const PAGE_TITLES = {
   triage: "Investigate slow search",
   plan: "Plan keyboard navigation",
-  build: "Add search shortcuts",
+  doing: "Add search shortcuts",
   review: "Review export flow",
-  ship: "Ship sidebar polish",
+  done: "Ship sidebar polish",
   noStatus: "Search research notes",
 } as const;
 
@@ -34,10 +34,10 @@ interface ChatRecipe {
 }
 
 const CHATS = {
-  build: {
+  doing: {
     title: "Implement search shortcuts",
-    pageKeys: ["build"],
-    expectedStatusOptionId: "build",
+    pageKeys: ["doing"],
+    expectedStatusOptionId: "doing",
     pinned: false,
   },
   review: {
@@ -46,10 +46,10 @@ const CHATS = {
     expectedStatusOptionId: "review",
     pinned: false,
   },
-  ship: {
+  done: {
     title: "Prepare sidebar release",
-    pageKeys: ["ship"],
-    expectedStatusOptionId: "ship",
+    pageKeys: ["done"],
+    expectedStatusOptionId: "done",
     pinned: false,
   },
   triage: {
@@ -66,8 +66,8 @@ const CHATS = {
   },
   multiple: {
     title: "Coordinate search and export",
-    pageKeys: ["build", "review"],
-    expectedStatusOptionId: "build",
+    pageKeys: ["doing", "review"],
+    expectedStatusOptionId: "doing",
     pinned: false,
   },
   noStatus: {
@@ -82,10 +82,10 @@ const CHATS = {
     expectedStatusOptionId: null,
     pinned: false,
   },
-  pinnedBuild: {
+  pinnedDoing: {
     title: "Track shortcut implementation",
-    pageKeys: ["build"],
-    expectedStatusOptionId: "build",
+    pageKeys: ["doing"],
+    expectedStatusOptionId: "doing",
     pinned: true,
   },
 } as const satisfies Readonly<Record<string, ChatRecipe>>;

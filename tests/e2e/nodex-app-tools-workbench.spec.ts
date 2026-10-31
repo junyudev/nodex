@@ -173,7 +173,7 @@ test("native Workbench tools arrange, read and safely edit the exact Page", asyn
           pageId,
           operationId: createUuidV7(),
           projectId: draft.projectId,
-          status: "build",
+          status: "doing",
           title: "Workbench Page",
           markdown: "Keep this Page intact while arranging its view.",
         });

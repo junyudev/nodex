@@ -101,7 +101,7 @@ export function WorkflowTriageIcon(props: IconProps) {
   );
 }
 
-export function WorkflowShipIcon(props: IconProps) {
+export function WorkflowDoneIcon(props: IconProps) {
   return (
     <svg {...base(props, "0 0 14 14")} fill="none">
       <path
@@ -137,7 +137,7 @@ export function WorkflowPlanIcon(props: IconProps) {
   );
 }
 
-export function WorkflowBuildIcon(props: IconProps) {
+export function WorkflowDoingIcon(props: IconProps) {
   return (
     <svg {...base(props, "0 0 14 14")} fill="none">
       <rect

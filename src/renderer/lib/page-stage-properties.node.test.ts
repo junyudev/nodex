@@ -35,7 +35,7 @@ const withoutProperty = (source: PageDetail, propertyId: string): PageDetail => 
 
 describe("Page Stage properties", () => {
   test("reads workflow Status for compact Page presentation", () => {
-    expect(readPageDetailWorkflowStatus(detail())).toBe("build");
+    expect(readPageDetailWorkflowStatus(detail())).toBe("doing");
     expect(
       readPageDetailWorkflowStatus({
         ...detail(),
@@ -60,7 +60,7 @@ describe("Page Stage properties", () => {
           (item) => item.property.propertyId === removedPropertyId,
         ),
       ).toBe(false);
-      expect(model.databaseContext.semanticProperties.status?.value).toBe("build");
+      expect(model.databaseContext.semanticProperties.status?.value).toBe("doing");
     },
   );
 
@@ -184,7 +184,7 @@ describe("Page Stage properties", () => {
         ?.error,
     ).toBe("Expected an ISO date");
     expect(model.databaseContext.semanticProperties.dueDate?.value).toBeNull();
-    expect(model.databaseContext.semanticProperties.status?.value).toBe("build");
+    expect(model.databaseContext.semanticProperties.status?.value).toBe("doing");
   });
 
   test("does not grant built-in semantics to a wrong-type reserved Property", () => {

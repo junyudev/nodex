@@ -109,7 +109,7 @@ export default function FanOutDemo() {
                   <span
                     className={cx(
                       "mt-1 text-[12px]",
-                      reached("merged") ? "text-status-ship" : "text-ink-3",
+                      reached("merged") ? "text-status-done" : "text-ink-3",
                     )}
                   >
                     {reached("merged")
@@ -259,7 +259,7 @@ function ChildCard({
             <span className="rounded bg-free/15 px-1 text-[10px] font-medium text-free">FREE</span>
           ) : null}
         </span>
-        <span className={cx("tabular-nums", done ? "text-status-ship" : "")}>
+        <span className={cx("tabular-nums", done ? "text-status-done" : "")}>
           {done ? "Done" : <motion.span>{clock}</motion.span>}
         </span>
       </span>
@@ -273,7 +273,7 @@ function ChildCard({
             <motion.span
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="shrink-0 font-mono text-[11px] text-status-ship"
+              className="shrink-0 font-mono text-[11px] text-status-done"
             >
               {child.diff}
             </motion.span>

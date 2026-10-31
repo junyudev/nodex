@@ -116,7 +116,7 @@ test("Status edits, renamed options and link changes refresh independent Session
       const stores = [left.store, right.store];
       await expect
         .poll(() => stores.map((store) => store.read(sessionId)?.status?.optionId))
-        .toEqual(["build", "build"]);
+        .toEqual(["doing", "doing"]);
       const row = await client.databaseRead({ kind: "row_detail", page_id: pageId });
       if (row.value.kind !== "row_detail") throw new Error("Missing row");
       const changed = await client.databaseApply({

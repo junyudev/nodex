@@ -1897,7 +1897,7 @@ vi.mock("@/lib/use-board", () => ({
         ? {
             id: "card-beta",
             projectId: "beta",
-            status: "build",
+            status: "doing",
             title: "Beta Card",
             description: "",
             tags: [],
@@ -1907,7 +1907,7 @@ vi.mock("@/lib/use-board", () => ({
             {
               id: "card-1",
               projectId: "alpha",
-              status: "build",
+              status: "doing",
               title: "Card One",
               description: "",
               tags: [],
@@ -1916,7 +1916,7 @@ vi.mock("@/lib/use-board", () => ({
             {
               id: "card-2",
               projectId: "alpha",
-              status: "build",
+              status: "doing",
               title: "Card Two",
               description: "",
               tags: [],
@@ -1931,7 +1931,7 @@ vi.mock("@/lib/use-board", () => ({
     const timestamp = "2026-08-11T00:00:00.000Z";
     const rows = visibleCards.map((card, index) => ({
       pageId: card.id,
-      groupKey: "build",
+      groupKey: "doing",
       subgroupKey: null,
       title: card.title,
       preview: "",
@@ -1955,10 +1955,10 @@ vi.mock("@/lib/use-board", () => ({
       commitSeq: 1,
       columns: [
         {
-          id: "build",
-          groupKey: "build",
-          name: "Build",
-          scopeKey: 'key:"build"',
+          id: "doing",
+          groupKey: "doing",
+          name: "Doing",
+          scopeKey: 'key:"doing"',
           rows,
         },
       ],
@@ -2010,8 +2010,8 @@ vi.mock("@/lib/use-board", () => ({
       board: {
         columns: [
           {
-            id: "build",
-            name: "Build",
+            id: "doing",
+            name: "Doing",
             cards: visibleCards,
           },
         ],
@@ -3217,21 +3217,21 @@ export function renderWorkbench({
           projectId: "alpha",
           pageKey: "ALPHA-1",
           title: "Card One",
-          status: "build",
+          status: "doing",
         },
         {
           pageId: "card-2",
           projectId: "alpha",
           pageKey: "ALPHA-2",
           title: "Card Two",
-          status: "build",
+          status: "doing",
         },
         {
           pageId: "card-beta",
           projectId: "beta",
           pageKey: "BETA-1",
           title: "Beta Card",
-          status: "build",
+          status: "doing",
         },
       ]
         .filter((document) => projectIds.includes(document.projectId))
@@ -3241,11 +3241,11 @@ export function renderWorkbench({
           pageKey: document.pageKey,
           title: document.title,
           preview: document.title,
-          status: document.status as "build",
+          status: document.status as "doing",
           priority: null,
           tags: [],
           assignee: null,
-          locationLabel: `${document.projectId} / Build`,
+          locationLabel: `${document.projectId} / Doing`,
           updatedAt: "2026-08-14T00:00:00.000Z",
           properties: [],
           projectIds: [document.projectId],
@@ -3273,11 +3273,11 @@ export function renderWorkbench({
                 pageId: "card-beta",
                 pageKey: "BETA-1",
                 title: "Beta Card",
-                status: "build" as const,
+                status: "doing" as const,
                 priority: null,
                 tags: [],
                 assignee: null,
-                locationLabel: "Beta / Build",
+                locationLabel: "Beta / Doing",
                 titleParts: [],
                 excerpt: "Beta Card",
                 excerptParts: [],
@@ -3689,13 +3689,13 @@ export function renderWorkbench({
           ? {
               columns: [
                 {
-                  id: "build",
-                  name: "Build",
+                  id: "doing",
+                  name: "Doing",
                   cards: [
                     {
                       id: "card-beta",
                       projectId: "beta",
-                      status: "build",
+                      status: "doing",
                       title: "Beta Card",
                       tags: [],
                       archived: false,
@@ -3713,13 +3713,13 @@ export function renderWorkbench({
           : {
               columns: [
                 {
-                  id: "build",
-                  name: "Build",
+                  id: "doing",
+                  name: "Doing",
                   cards: [
                     {
                       id: "card-1",
                       projectId: "alpha",
-                      status: "build",
+                      status: "doing",
                       title: "Card One",
                       tags: [],
                       archived: false,
@@ -3733,7 +3733,7 @@ export function renderWorkbench({
                     {
                       id: "card-2",
                       projectId: "alpha",
-                      status: "build",
+                      status: "doing",
                       title: "Card Two",
                       tags: [],
                       archived: false,
@@ -3843,7 +3843,7 @@ export function renderWorkbench({
           {
             id: "card-beta",
             projectId: "beta",
-            status: "build",
+            status: "doing",
             title: "Beta Card",
             description: "",
             tags: [],
@@ -3861,7 +3861,7 @@ export function renderWorkbench({
           {
             id: "card-2",
             projectId: "alpha",
-            status: "build",
+            status: "doing",
             title: "Card Two",
             description: "",
             tags: [],
@@ -3881,7 +3881,7 @@ export function renderWorkbench({
         {
           id: "card-1",
           projectId: "alpha",
-          status: "build",
+          status: "doing",
           title: "Card One",
           description: "",
           tags: [],

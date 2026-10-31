@@ -184,9 +184,9 @@ const querySnapshot = (
     view,
     properties,
     rows: [
-      row("page-a", input.status ?? "build", "p1-high", "a", 2),
-      row("page-b", "build", "p1-high", "b", 3),
-      row("page-target", "ship", "p2-medium", "c", 4),
+      row("page-a", input.status ?? "doing", "p1-high", "a", 2),
+      row("page-b", "doing", "p1-high", "b", 3),
+      row("page-target", "done", "p2-medium", "c", 4),
     ],
   };
   return {
@@ -203,8 +203,8 @@ describe("Database Page drag compiler", () => {
     const compiled = compileDatabasePageDrag({
       move: {
         pageId: "page-b",
-        fromStatus: "build",
-        toStatus: "build",
+        fromStatus: "doing",
+        toStatus: "doing",
         newOrder: 0,
       },
       snapshot: querySnapshot(),
@@ -230,8 +230,8 @@ describe("Database Page drag compiler", () => {
     const compiled = compileDatabasePageDrag({
       move: {
         pageId: "page-b",
-        fromStatus: "build",
-        toStatus: "build",
+        fromStatus: "doing",
+        toStatus: "doing",
         newOrder: 0,
       },
       snapshot: querySnapshot({ emptySort: true }),
@@ -252,8 +252,8 @@ describe("Database Page drag compiler", () => {
     const compiled = compileDatabasePageDrag({
       move: {
         pageId: "page-a",
-        fromStatus: "build",
-        toStatus: "ship",
+        fromStatus: "doing",
+        toStatus: "done",
         newOrder: 0,
         fieldPatch: { priority: "p2-medium" },
       },
@@ -295,8 +295,8 @@ describe("Database Page drag compiler", () => {
     const compiled = compileDatabasePagesDrag({
       move: {
         pageIds: ["page-b", "page-a"],
-        fromStatus: "build",
-        toStatus: "ship",
+        fromStatus: "doing",
+        toStatus: "done",
         newOrder: 0,
       },
       snapshot: querySnapshot(),
@@ -317,8 +317,8 @@ describe("Database Page drag compiler", () => {
       compileDatabasePageDrag({
         move: {
           pageId: "page-a",
-          fromStatus: "build",
-          toStatus: "ship",
+          fromStatus: "doing",
+          toStatus: "done",
         },
         snapshot: querySnapshot({ status: "review" }),
       });

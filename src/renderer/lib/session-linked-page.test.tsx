@@ -30,7 +30,7 @@ test("works without a Query provider, skips null IDs, and observes an injected k
       pageId: "page:a",
       pageKey: null,
       title: "A",
-      status: { optionId: "build", label: "In progress" },
+      status: { optionId: "doing", label: "In progress" },
     };
     for (const listener of listeners) listener();
     await Promise.resolve();

@@ -63,6 +63,7 @@ pub(crate) use relation::{
 pub(crate) use view_contract::is_exact_primary_board_config;
 pub(crate) use window::{
     default_page_move_view_id, mint_page_move_etag_prevalidated, page_relocation_database_targets,
+    presented_list_projection,
 };
 
 #[derive(Clone, Debug)]
@@ -1870,7 +1871,7 @@ mod tests {
                                 edit: DatabasePropertyValueEdit::Replace {
                                     expected_value_revision: 99,
                                     value: DatabasePropertyValueInput::Select {
-                                        option_id: "build".to_owned(),
+                                        option_id: "doing".to_owned(),
                                     },
                                 },
                             }],
@@ -3021,7 +3022,7 @@ mod tests {
             vec![GroupRowSpec {
                 page_id: "page:format-row",
                 title: "Formatted",
-                value_json: Some("\"build\""),
+                value_json: Some("\"doing\""),
                 rank_key: Some("a0"),
             }],
         );
@@ -3761,7 +3762,7 @@ mod tests {
                 GroupRowSpec {
                     page_id: "page:personal-filter-other",
                     title: "Other",
-                    value_json: Some("\"build\""),
+                    value_json: Some("\"doing\""),
                     rank_key: Some("b0"),
                 },
             ],
@@ -3839,7 +3840,7 @@ mod tests {
                 GroupRowSpec {
                     page_id: "page:draft-two",
                     title: "Two",
-                    value_json: Some("\"build\""),
+                    value_json: Some("\"doing\""),
                     rank_key: Some("b0"),
                 },
             ],
@@ -5360,9 +5361,9 @@ mod tests {
                     rank_key: Some("c"),
                 },
                 GroupRowSpec {
-                    page_id: "page:ship-target",
-                    title: "Ship target",
-                    value_json: Some("\"ship\""),
+                    page_id: "page:done-target",
+                    title: "Done target",
+                    value_json: Some("\"done\""),
                     rank_key: Some("d"),
                 },
             ],
@@ -5409,10 +5410,10 @@ mod tests {
                     occurrence_key,
                     group_key: Some(group_key),
                     ..
-                } if group_key == "ship" => Some(occurrence_key.clone()),
+                } if group_key == "done" => Some(occurrence_key.clone()),
                 _ => None,
             })
-            .expect("Ship group target");
+            .expect("Done group target");
         let moved = module
             .apply(
                 &context(),
@@ -5454,7 +5455,7 @@ mod tests {
             ],
         );
         assert_eq!(move_root_page_ids, ["page:move-parent"]);
-        assert_eq!(normalized_target.group_key.as_deref(), Some("ship"));
+        assert_eq!(normalized_target.group_key.as_deref(), Some("done"));
         assert_eq!(normalized_target.parent_page_id, None);
 
         let after = read_list_window(&module, 50, None).expect("read moved List");
@@ -5476,7 +5477,7 @@ mod tests {
         ] {
             assert_eq!(
                 summaries[page_id].database_values.get("status"),
-                Some(&json!("ship")),
+                Some(&json!("done")),
             );
         }
         assert_eq!(summaries["page:move-parent"].task_parent_page_id, None);
@@ -5512,7 +5513,7 @@ mod tests {
                             edit: DatabasePropertyValueEdit::Replace {
                                 expected_value_revision: parent_status_revision,
                                 value: DatabasePropertyValueInput::Select {
-                                    option_id: "build".to_owned(),
+                                    option_id: "doing".to_owned(),
                                 },
                             },
                         }],
@@ -5554,16 +5555,16 @@ mod tests {
             guarded_summaries["page:move-parent"]
                 .database_values
                 .get("status"),
-            Some(&json!("build")),
+            Some(&json!("doing")),
         );
         for page_id in ["page:move-child", "page:move-grandchild"] {
             assert_eq!(
                 guarded_summaries[page_id].database_values.get("status"),
-                Some(&json!("ship")),
+                Some(&json!("done")),
             );
         }
 
-        let parent_build_revision =
+        let parent_doing_revision =
             guarded_summaries["page:move-parent"].database_value_revisions["status"];
         module
             .apply(
@@ -5581,9 +5582,9 @@ mod tests {
                                 property_id: "status".to_owned(),
                             },
                             edit: DatabasePropertyValueEdit::Replace {
-                                expected_value_revision: parent_build_revision,
+                                expected_value_revision: parent_doing_revision,
                                 value: DatabasePropertyValueInput::Select {
-                                    option_id: "ship".to_owned(),
+                                    option_id: "done".to_owned(),
                                 },
                             },
                         }],
@@ -5971,19 +5972,19 @@ mod tests {
                 GroupRowSpec {
                     page_id: "page:sorted-source",
                     title: "Sorted source",
-                    value_json: Some("\"ship\""),
+                    value_json: Some("\"done\""),
                     rank_key: Some("a"),
                 },
                 GroupRowSpec {
                     page_id: "page:sorted-low-a",
                     title: "Sorted low A",
-                    value_json: Some("\"ship\""),
+                    value_json: Some("\"done\""),
                     rank_key: Some("b"),
                 },
                 GroupRowSpec {
                     page_id: "page:sorted-low-b",
                     title: "Sorted low B",
-                    value_json: Some("\"ship\""),
+                    value_json: Some("\"done\""),
                     rank_key: Some("c"),
                 },
             ],
@@ -6204,7 +6205,7 @@ mod tests {
             rows.push(GroupRowSpec {
                 page_id,
                 title: page_id,
-                value_json: Some("\"ship\""),
+                value_json: Some("\"done\""),
                 rank_key: Some(if index % 2 == 0 { "c" } else { "d" }),
             });
         }
@@ -8204,12 +8205,12 @@ mod tests {
                 .expect("read completion timestamp")
         };
 
-        write_status("operation:complete", 1, "ship");
+        write_status("operation:complete", 1, "done");
         let completed_at = read_completed_at().expect("completion timestamp");
         assert!(completed_at.ends_with('Z'));
-        write_status("operation:repeat-complete", 2, "ship");
+        write_status("operation:repeat-complete", 2, "done");
         assert_eq!(read_completed_at().as_deref(), Some(completed_at.as_str()));
-        write_status("operation:reopen", 3, "build");
+        write_status("operation:reopen", 3, "doing");
         assert_eq!(read_completed_at(), None);
     }
 
@@ -8230,13 +8231,13 @@ mod tests {
                 GroupRowSpec {
                     page_id: "page:recently-completed",
                     title: "Recent",
-                    value_json: Some("\"ship\""),
+                    value_json: Some("\"done\""),
                     rank_key: Some("b"),
                 },
                 GroupRowSpec {
                     page_id: "page:older-completed",
                     title: "Older",
-                    value_json: Some("\"ship\""),
+                    value_json: Some("\"done\""),
                     rank_key: Some("a"),
                 },
             ],
@@ -8343,9 +8344,9 @@ mod tests {
                     rank_key: Some("b"),
                 },
                 GroupRowSpec {
-                    page_id: "page:ship-high",
-                    title: "Ship high",
-                    value_json: Some("\"ship\""),
+                    page_id: "page:done-high",
+                    title: "Done high",
+                    value_json: Some("\"done\""),
                     rank_key: Some("c"),
                 },
             ],
@@ -8356,7 +8357,7 @@ mod tests {
                 for (page_id, priority) in [
                     ("page:triage-high", "p1-high"),
                     ("page:triage-medium", "p2-medium"),
-                    ("page:ship-high", "p1-high"),
+                    ("page:done-high", "p1-high"),
                 ] {
                     let membership_id = format!("membership:{page_id}");
                     connection.execute(
@@ -8432,7 +8433,7 @@ mod tests {
                 .groups
                 .iter()
                 .find(|group| {
-                    group.group_key.as_deref() == Some("build")
+                    group.group_key.as_deref() == Some("doing")
                         && group.subgroup_key.as_deref() == Some("p3-low")
                 })
                 .map(|group| group.total_rows),

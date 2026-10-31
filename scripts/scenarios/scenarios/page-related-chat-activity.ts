@@ -90,7 +90,7 @@ const materializePageRelatedChatActivity = async (
       pageId: createUuidV7(),
       operationId: createUuidV7(),
       projectId: project.id,
-      status: "build",
+      status: "doing",
       title: "Trace related Chat activity",
       markdown: "Verify that durable Page relationships project execution and unread activity.",
     },

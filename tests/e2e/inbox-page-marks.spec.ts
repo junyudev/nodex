@@ -65,8 +65,8 @@ test("an Inbox message shows where its Page already stands and opens its chats",
         await streamShot(page, stream, path.join(artifacts, "2-marks.png"));
 
         claim(
-          "A Page moved to Build shows its status and its working chat",
-          ["Status: Build", true],
+          "A Page moved to Doing shows its status and its working chat",
+          ["Status: Doing", true],
           [
             await moved.getByRole("img", { name: /^Status:/ }).getAttribute("aria-label"),
             /working chat/.test((await chatMarkOf(moved).getAttribute("aria-label")) ?? ""),
@@ -155,7 +155,7 @@ test("an Inbox message shows where its Page already stands and opens its chats",
         await expect(libraryMoved).toBeVisible();
         claim(
           "The Library Inbox shows a Library Page's status and chats too",
-          ["Status: Build", 1],
+          ["Status: Doing", 1],
           [
             await libraryMoved.getByRole("img", { name: /^Status:/ }).getAttribute("aria-label"),
             await chatMarkOf(libraryMoved).count(),

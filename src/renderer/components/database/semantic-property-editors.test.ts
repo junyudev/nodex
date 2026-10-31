@@ -10,17 +10,17 @@ describe("semantic Property option authority", () => {
       orderSemanticPropertyOptions("status", [
         { id: "review", name: "QA" },
         { id: "triage", name: "Inbox" },
-        { id: "ship", name: "Done" },
+        { id: "done", name: "Done" },
         { id: "plan", name: "Ready" },
-        { id: "build", name: "Doing" },
+        { id: "doing", name: "Doing" },
       ]).map((option) => option.name),
     ).toEqual(["Inbox", "Ready", "Doing", "QA", "Done"]);
   });
 
   test("never restores a fixed option that ready registry authority deleted", () => {
     expect(
-      presentSemanticPropertyOptions("status", [{ id: "build", name: "Doing" }], "build", "ready"),
-    ).toEqual([{ id: "build", name: "Doing" }]);
+      presentSemanticPropertyOptions("status", [{ id: "doing", name: "Doing" }], "doing", "ready"),
+    ).toEqual([{ id: "doing", name: "Doing" }]);
   });
 
   test("uses a non-authoritative fallback only to present the selected value while loading", () => {

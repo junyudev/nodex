@@ -118,7 +118,7 @@ const materialize = async (
     pageId: createUuidV7(),
     operationId: createUuidV7(),
     projectId: project.id,
-    status: "build",
+    status: "doing",
     title: "Exercise Equation and Mermaid",
     markdown: NFM_EQUATION_AND_MERMAID_NFM,
   };
@@ -127,7 +127,7 @@ const materialize = async (
     pageId: createUuidV7(),
     operationId: createUuidV7(),
     projectId: project.id,
-    status: "build",
+    status: "doing",
     title: "Exercise Viewport Continuity",
     markdown: NFM_VIEWPORT_CONTINUITY_NFM,
   };

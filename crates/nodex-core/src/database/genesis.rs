@@ -144,9 +144,9 @@ fn initial_property_definitions(
                 "options": [
                     { "id": "triage", "name": "Triage" },
                     { "id": "plan", "name": "Plan" },
-                    { "id": "build", "name": "Build" },
+                    { "id": "doing", "name": "Doing" },
                     { "id": "review", "name": "Review" },
-                    { "id": "ship", "name": "Ship" }
+                    { "id": "done", "name": "Done" }
                 ]
             }),
         ),

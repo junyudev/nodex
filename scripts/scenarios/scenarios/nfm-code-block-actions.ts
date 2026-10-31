@@ -74,7 +74,7 @@ const materialize = async (
     pageId: createUuidV7(),
     operationId: createUuidV7(),
     projectId: project.id,
-    status: "build",
+    status: "doing",
     title: "Exercise Code Block actions",
     markdown: NFM_CODE_BLOCK_ACTIONS_NFM,
   };

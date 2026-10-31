@@ -3382,7 +3382,7 @@ fn group_expression(
 fn completed_status_expression(parameters: &mut Vec<SqlValue>) -> String {
     let raw_json = canonical_property_value_json_expression("status", parameters)
         .expect("built-in status Property identity");
-    format!("json_extract({raw_json}, '$') IS 'ship'")
+    format!("json_extract({raw_json}, '$') IS 'done'")
 }
 
 fn compile_completion_predicate(

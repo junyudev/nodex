@@ -12,13 +12,13 @@ import {
 const board: BoardSummary = {
   columns: [
     {
-      id: "build",
-      name: "Build",
+      id: "doing",
+      name: "Doing",
       cards: [
         {
           id: "a",
           pageKey: null,
-          status: "build",
+          status: "doing",
           archived: false,
           title: "A",
           richTitle: plainTextToPortableRichText("A"),
@@ -33,7 +33,7 @@ const board: BoardSummary = {
         {
           id: "b",
           pageKey: null,
-          status: "build",
+          status: "doing",
           archived: false,
           title: "B",
           richTitle: plainTextToPortableRichText("B"),

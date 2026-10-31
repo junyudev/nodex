@@ -628,11 +628,11 @@ describe("codex sidebar section", () => {
 });
 
 describe("codex sidebar linked Page status", () => {
-  const buildPage: SessionLinkedPage = {
+  const doingPage: SessionLinkedPage = {
     pageId: "page-build",
     pageKey: "LAB-13",
     title: "Tighten sidebar spacing",
-    status: { optionId: "build", label: "Build" },
+    status: { optionId: "doing", label: "Doing" },
   };
   const linkedPageStore = (page: SessionLinkedPage | null): SessionLinkedPageStore => ({
     read: (sessionId) => (sessionId === "session-test" ? page : null),
@@ -653,7 +653,7 @@ describe("codex sidebar linked Page status", () => {
           <NodexTooltipProvider>
             <CodexSidebarThreadRow
               item={makeThreadItem(input.item)}
-              linkedPageStore={linkedPageStore(input.page === undefined ? buildPage : input.page)}
+              linkedPageStore={linkedPageStore(input.page === undefined ? doingPage : input.page)}
               active={false}
               hoverCardOpen={input.hoverCardOpen}
               onSelect={input.onSelect ?? (() => {})}
@@ -671,12 +671,12 @@ describe("codex sidebar linked Page status", () => {
     const slot = view.container.querySelector<HTMLElement>(
       "[data-app-action-sidebar-thread-page-status]",
     );
-    expect(slot?.dataset.appActionSidebarThreadPageStatus).toBe("build");
-    expect(view.getByRole("img", { name: "Page status: Build" })).not.toBeNull();
+    expect(slot?.dataset.appActionSidebarThreadPageStatus).toBe("doing");
+    expect(view.getByRole("img", { name: "Page status: Doing" })).not.toBeNull();
     expect(
       view.getByRole("button", {
         name: "X Plan Codex terminal reverse engineer",
-        description: "Page status: Build",
+        description: "Page status: Doing",
       }),
     ).not.toBeNull();
   });
@@ -705,7 +705,7 @@ describe("codex sidebar linked Page status", () => {
     expect(none.container.querySelector("[data-app-action-sidebar-thread-page-status]")).toBeNull();
     none.unmount();
 
-    const statusless = await renderLinkedRow({ page: { ...buildPage, status: null } });
+    const statusless = await renderLinkedRow({ page: { ...doingPage, status: null } });
     expect(
       statusless.container.querySelector("[data-app-action-sidebar-thread-page-status]"),
     ).toBeNull();
@@ -725,15 +725,15 @@ describe("codex sidebar linked Page status", () => {
     });
     const hoverCard = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
     const linkedPage = hoverCard.querySelector<HTMLButtonElement>(
-      `button[data-app-action-sidebar-thread-hover-card-linked-page="${buildPage.pageId}"]`,
+      `button[data-app-action-sidebar-thread-hover-card-linked-page="${doingPage.pageId}"]`,
     )!;
     expect(textContent(linkedPage)).toContain("LAB-13");
-    expect(textContent(linkedPage)).toContain(buildPage.title);
+    expect(textContent(linkedPage)).toContain(doingPage.title);
     await act(async () => {
       fireEvent.click(linkedPage);
       await Promise.resolve();
     });
-    expect(opened).toEqual([buildPage]);
+    expect(opened).toEqual([doingPage]);
     expect(selected).toBe(0);
   });
 });

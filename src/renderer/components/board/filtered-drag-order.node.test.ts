@@ -21,7 +21,7 @@ function createPage(id: string, status: WorkflowStatus, order: number): Database
 }
 
 function createBoard(columns: Record<WorkflowStatus, string[]>): BoardSummary {
-  const orderedStatuses: WorkflowStatus[] = ["triage", "plan", "build", "review", "ship"];
+  const orderedStatuses: WorkflowStatus[] = ["triage", "plan", "doing", "review", "done"];
   return {
     columns: orderedStatuses.map((status) => ({
       id: status,
@@ -36,23 +36,23 @@ describe("resolveFilteredDropOrder", () => {
     const board = createBoard({
       triage: [],
       plan: [],
-      build: ["hidden-a", "visible-b", "hidden-c", "visible-d", "hidden-e"],
+      doing: ["hidden-a", "visible-b", "hidden-c", "visible-d", "hidden-e"],
       review: ["moved"],
-      ship: [],
+      done: [],
     });
     const visibleBoard = createBoard({
       triage: [],
       plan: [],
-      build: ["visible-b", "visible-d"],
+      doing: ["visible-b", "visible-d"],
       review: ["moved"],
-      ship: [],
+      done: [],
     });
 
     const order = resolveFilteredDropOrder({
       board,
       visibleBoard,
       draggedPageIds: ["moved"],
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 1,
     });
 
@@ -63,23 +63,23 @@ describe("resolveFilteredDropOrder", () => {
     const board = createBoard({
       triage: [],
       plan: [],
-      build: ["hidden-a", "visible-b", "hidden-c", "visible-d", "hidden-e"],
+      doing: ["hidden-a", "visible-b", "hidden-c", "visible-d", "hidden-e"],
       review: ["moved"],
-      ship: [],
+      done: [],
     });
     const visibleBoard = createBoard({
       triage: [],
       plan: [],
-      build: ["visible-b", "visible-d"],
+      doing: ["visible-b", "visible-d"],
       review: ["moved"],
-      ship: [],
+      done: [],
     });
 
     const order = resolveFilteredDropOrder({
       board,
       visibleBoard,
       draggedPageIds: ["moved"],
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 2,
     });
 
@@ -90,23 +90,23 @@ describe("resolveFilteredDropOrder", () => {
     const board = createBoard({
       triage: [],
       plan: [],
-      build: ["visible-a", "hidden-b"],
+      doing: ["visible-a", "hidden-b"],
       review: [],
-      ship: [],
+      done: [],
     });
     const visibleBoard = createBoard({
       triage: [],
       plan: [],
-      build: ["visible-a"],
+      doing: ["visible-a"],
       review: [],
-      ship: [],
+      done: [],
     });
 
     const order = resolveFilteredDropOrder({
       board,
       visibleBoard,
       draggedPageIds: ["visible-a"],
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 1,
     });
 
@@ -117,23 +117,23 @@ describe("resolveFilteredDropOrder", () => {
     const board = createBoard({
       triage: [],
       plan: [],
-      build: ["hidden-a", "visible-b", "hidden-c", "visible-d", "hidden-e"],
+      doing: ["hidden-a", "visible-b", "hidden-c", "visible-d", "hidden-e"],
       review: [],
-      ship: [],
+      done: [],
     });
     const visibleBoard = createBoard({
       triage: [],
       plan: [],
-      build: ["visible-b", "visible-d"],
+      doing: ["visible-b", "visible-d"],
       review: [],
-      ship: [],
+      done: [],
     });
 
     const order = resolveFilteredDropOrder({
       board,
       visibleBoard,
       draggedPageIds: ["visible-b"],
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 1,
     });
 
@@ -144,16 +144,16 @@ describe("resolveFilteredDropOrder", () => {
     const board = createBoard({
       triage: [],
       plan: [],
-      build: ["a", "b", "c"],
+      doing: ["a", "b", "c"],
       review: [],
-      ship: [],
+      done: [],
     });
 
     const order = resolveFilteredDropOrder({
       board,
       visibleBoard: board,
       draggedPageIds: ["a"],
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 1,
     });
 

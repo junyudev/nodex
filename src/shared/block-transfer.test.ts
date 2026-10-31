@@ -122,7 +122,7 @@ describe("BlockTransfer contract", () => {
             },
             presentationOverride: {},
           },
-          groupKey: "ship",
+          groupKey: "done",
           beforePageId: "card-2",
           sortedPropertyValues: [{ propertyId: "priority", value: "p3-low" }],
         },

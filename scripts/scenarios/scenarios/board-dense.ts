@@ -11,14 +11,14 @@ import {
 import { createProjectListView } from "../seed/project-list-view";
 
 export const BOARD_DENSE_SCENARIO_ID = "board/dense" as const;
-export const BOARD_DENSE_SCENARIO_REVISION = 3 as const;
-export const BOARD_DENSE_PRIMARY_PAGE_KEY = "primaryBuildPage" as const;
+export const BOARD_DENSE_SCENARIO_REVISION = 4 as const;
+export const BOARD_DENSE_PRIMARY_PAGE_KEY = "primaryDoingPage" as const;
 
 export interface BoardDenseScenarioFacts extends ScenarioFacts {
   readonly totalRows: number;
   readonly groups: Readonly<Record<WorkflowStatus, number>>;
   readonly listViewId: string;
-  readonly primaryBuildPage: {
+  readonly primaryDoingPage: {
     readonly pageId: string;
     readonly title: string;
     readonly descriptionPreview: string;
@@ -32,13 +32,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 export const requireBoardDenseScenarioFacts = (value: unknown): BoardDenseScenarioFacts => {
   const envelope = parseScenarioFacts(value);
   const candidate = value as Record<string, unknown>;
-  const primary = candidate.primaryBuildPage;
+  const primary = candidate.primaryDoingPage;
   const groups = candidate.groups;
   if (
     typeof candidate.totalRows !== "number" ||
     candidate.totalRows < 0 ||
     !isRecord(groups) ||
-    !["triage", "plan", "build", "review", "ship"].every(
+    !["triage", "plan", "doing", "review", "done"].every(
       (status) => typeof groups[status] === "number" && groups[status] >= 0,
     ) ||
     typeof candidate.listViewId !== "string" ||
@@ -104,7 +104,7 @@ export const BOARD_DENSE_PAGES: readonly BoardDensePageDefinition[] = [
   },
   {
     key: BOARD_DENSE_PRIMARY_PAGE_KEY,
-    status: "build",
+    status: "doing",
     title: "Unify Database View rendering",
     markdown: "",
     replaceAfterCreate:
@@ -112,14 +112,14 @@ export const BOARD_DENSE_PAGES: readonly BoardDensePageDefinition[] = [
   },
   {
     key: "boundedProjection",
-    status: "build",
+    status: "doing",
     title: "Keep projection updates bounded",
     markdown:
       "A deliberately longer preview explains that local commits should update only the affected projection window while preserving causal coverage.",
   },
   {
     key: "localFirstIdentity",
-    status: "build",
+    status: "doing",
     title: "Preserve local-first identity",
     markdown: "Canonical identifiers remain stable across every projection.",
   },
@@ -131,7 +131,7 @@ export const BOARD_DENSE_PAGES: readonly BoardDensePageDefinition[] = [
   },
   {
     key: "isolatedWorkflow",
-    status: "ship",
+    status: "done",
     title: "Ship the isolated UI workflow",
     markdown: "The same recipe now serves Core, Electron, and seeded development homes.",
   },
@@ -223,7 +223,7 @@ const inspectBoardDense = async (
     totalRows: board.totalRows,
     groups: board.groups,
     listViewId,
-    primaryBuildPage: {
+    primaryDoingPage: {
       pageId: primary.pageId,
       title: primary.title,
       descriptionPreview: primary.descriptionPreview,
@@ -234,12 +234,12 @@ const inspectBoardDense = async (
     facts.totalRows !== BOARD_DENSE_PAGES.length ||
     facts.groups.triage !== 3 ||
     facts.groups.plan !== 2 ||
-    facts.groups.build !== 3 ||
+    facts.groups.doing !== 3 ||
     facts.groups.review !== 1 ||
-    facts.groups.ship !== 1 ||
+    facts.groups.done !== 1 ||
     facts.listViewId !== listViewId ||
-    facts.primaryBuildPage.title !== "Unify Database View rendering" ||
-    facts.primaryBuildPage.documentReadiness !== "ready"
+    facts.primaryDoingPage.title !== "Unify Database View rendering" ||
+    facts.primaryDoingPage.documentReadiness !== "ready"
   ) {
     throw new Error(
       `board/dense materialized facts do not match revision ${BOARD_DENSE_SCENARIO_REVISION}`,

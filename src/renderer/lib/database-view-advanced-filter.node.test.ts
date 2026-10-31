@@ -12,7 +12,7 @@ const root = (): DatabaseViewFilterGroup => ({
   operator: "and",
   children: [
     { kind: "clause", propertyId: "name", operator: "text_contains", value: "alpha" },
-    { kind: "clause", propertyId: "status", operator: "select_is", value: "build" },
+    { kind: "clause", propertyId: "status", operator: "select_is", value: "doing" },
   ],
 });
 

@@ -14,7 +14,7 @@ use crate::database::{
 use crate::document::{ContentRoutingContext, DocumentHeadRevision};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 58;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 59;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -2436,9 +2436,9 @@ pub struct LibrarySearchHit {
 pub enum LibraryPageWorkflowStatus {
     Triage,
     Plan,
-    Build,
+    Doing,
     Review,
-    Ship,
+    Done,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

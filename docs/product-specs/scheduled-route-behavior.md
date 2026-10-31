@@ -69,7 +69,7 @@ keeps advancing.
 The message is that run's instructions: editing it changes this run only. Before
 running, the user may choose another Agent or model for this run. A Heartbeat
 keeps its chat's Agent. Running freezes the reviewed text and choice and moves
-the Page from Triage to Build. The run then starts through the same schedule,
+the Page from Triage to Doing. The run then starts through the same schedule,
 workspace preparation and run record as an automatic run, and its chat links to
 the message Page. Images in the message stay on its Page. Running, retrying, or
 finishing a waiting run never moves the task's schedule. A run that fails before

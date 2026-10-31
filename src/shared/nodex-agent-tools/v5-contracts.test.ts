@@ -22,7 +22,7 @@ describe("nodex_app@5 contracts", () => {
           {
             title: "Ship compact identities",
             values: [
-              { propertyId: "status", value: "ship" },
+              { propertyId: "status", value: "done" },
               { propertyId: "p_AAAAAAAA", value: "value" },
             ],
           },
@@ -38,7 +38,7 @@ describe("nodex_app@5 contracts", () => {
             values: [
               {
                 propertyId: "database:project:primary:property:status",
-                value: "ship",
+                value: "done",
               },
             ],
           },

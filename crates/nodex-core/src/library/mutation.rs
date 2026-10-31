@@ -7322,7 +7322,7 @@ mod tests {
             .expect("post-canonical-group move ETag");
         let move_within_view_request = ModuleApplyRequest {
             contract_version: LIBRARY_CONTRACT_VERSION,
-            operation_id: "native-cli:move-page-to-build".to_owned(),
+            operation_id: "native-cli:move-page-to-doing".to_owned(),
             store_epoch: StoreEpoch("epoch-1".to_owned()),
             intent: LibraryIntent::MovePage {
                 page_id: copied.page_id.clone(),
@@ -7330,7 +7330,7 @@ mod tests {
                     data_source_id: "018f0000-0000-7000-8000-000000000002".to_owned(),
                     view_id: Some("018f0000-0000-7000-8000-000000000003".to_owned()),
                     group: Some(nodex_core_contracts::database::DatabaseGroupScope::Path {
-                        group_key: Some("build".to_owned()),
+                        group_key: Some("doing".to_owned()),
                         subgroup_key: None,
                     }),
                     at: Some(LibraryAgentSiblingAnchor::End),
@@ -7366,7 +7366,7 @@ mod tests {
                 .page_view_placements
                 .get(&copied.page_id)
                 .map(|placement| placement.group_key.as_deref()),
-            Some(Some("build"))
+            Some(Some("doing"))
         );
         let stale_move_etag = moved_within_view
             .move_etags
@@ -7401,8 +7401,8 @@ mod tests {
             })
             .expect("concurrent View position revision");
         let state_after_concurrent_write = read_page_view_state(&kernel, &copied.page_id);
-        assert_eq!(state_after_concurrent_write.4, "\"build\"");
-        assert_eq!(state_after_concurrent_write.6.as_deref(), Some("build"));
+        assert_eq!(state_after_concurrent_write.4, "\"doing\"");
+        assert_eq!(state_after_concurrent_write.6.as_deref(), Some("doing"));
         let stale_move = module
             .apply(
                 &context(),

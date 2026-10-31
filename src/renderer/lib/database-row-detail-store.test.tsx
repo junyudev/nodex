@@ -18,7 +18,7 @@ function buildCard(overrides: Partial<DatabasePage> = {}): DatabasePage {
   const title = overrides.title ?? "Persisted title";
   return {
     id: "card-1",
-    status: "build",
+    status: "doing",
     archived: false,
     title,
     richTitle: plainTextToPortableRichText(title),
@@ -222,7 +222,7 @@ describe("card detail store", () => {
     );
 
     function RevisionHarness() {
-      const detail = useDatabaseRowDetail("project-1", "card-1", "build", 2);
+      const detail = useDatabaseRowDetail("project-1", "card-1", "doing", 2);
       return <span data-testid="detail-title">{detail.card?.title ?? "empty"}</span>;
     }
 

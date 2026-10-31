@@ -27,7 +27,7 @@ export const documentSyncRecoveryScenario: ScenarioDomainRecipe = {
       pageId: source,
       projectId: project.id,
       operationId: createUuidV7(),
-      status: "build",
+      status: "doing",
       title: "Edit and recover",
       markdown: "",
     });
@@ -36,7 +36,7 @@ export const documentSyncRecoveryScenario: ScenarioDomainRecipe = {
       pageId: other,
       projectId: project.id,
       operationId: createUuidV7(),
-      status: "build",
+      status: "doing",
       title: "Independent page",
       markdown: "This document remains independent.",
     });

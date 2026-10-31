@@ -15,13 +15,13 @@ const instanceId = Symbol("test-dnd");
 const board: BoardSummary = {
   columns: [
     {
-      id: "build",
-      name: "Build",
+      id: "doing",
+      name: "Doing",
       cards: [
         {
           id: "a",
           pageKey: null,
-          status: "build",
+          status: "doing",
           archived: false,
           title: "A",
           richTitle: plainTextToPortableRichText("A"),
@@ -36,7 +36,7 @@ const board: BoardSummary = {
         {
           id: "b",
           pageKey: null,
-          status: "build",
+          status: "doing",
           archived: false,
           title: "B",
           richTitle: plainTextToPortableRichText("B"),
@@ -78,7 +78,7 @@ describe("pragmatic drop location", () => {
           data: buildBoardCardDropTargetData({
             instanceId,
             pageId: "b",
-            columnId: "build",
+            columnId: "doing",
           }),
         },
       ],
@@ -87,7 +87,7 @@ describe("pragmatic drop location", () => {
       resolveColumnSurface: () => surface,
     });
 
-    expect(result?.columnId).toBe("build");
+    expect(result?.columnId).toBe("doing");
     expect(result?.index).toBe(0);
   });
 
@@ -101,7 +101,7 @@ describe("pragmatic drop location", () => {
           data: buildBoardCardDropTargetData({
             instanceId,
             pageId: "a",
-            columnId: "build",
+            columnId: "doing",
           }),
         },
       ],
@@ -115,7 +115,7 @@ describe("pragmatic drop location", () => {
         {
           data: buildBoardColumnDropTargetData({
             instanceId,
-            columnId: "build",
+            columnId: "doing",
           }),
         },
       ],
@@ -136,7 +136,7 @@ describe("pragmatic drop location", () => {
           data: buildBoardCardDropTargetData({
             instanceId,
             pageId: "a",
-            columnId: "build",
+            columnId: "doing",
           }),
         },
       ],
@@ -158,7 +158,7 @@ describe("pragmatic drop location", () => {
       dataSourceId: "source-default",
       storeEpoch: "epoch-default",
       activePage: board.columns[0]!.cards[0]!,
-      columnId: "build",
+      columnId: "doing",
     });
     const surface = createSurface();
 
@@ -169,13 +169,13 @@ describe("pragmatic drop location", () => {
           data: buildBoardCardDropTargetData({
             instanceId,
             pageId: "a",
-            columnId: "build",
+            columnId: "doing",
           }),
         },
         {
           data: buildBoardColumnDropTargetData({
             instanceId,
-            columnId: "build",
+            columnId: "doing",
           }),
         },
       ],
@@ -185,7 +185,7 @@ describe("pragmatic drop location", () => {
       resolveColumnSurface: () => surface,
     });
 
-    expect(result?.columnId).toBe("build");
+    expect(result?.columnId).toBe("doing");
     expect(result?.index).toBe(0);
   });
 
@@ -198,7 +198,7 @@ describe("pragmatic drop location", () => {
         {
           data: buildBoardColumnDropTargetData({
             instanceId,
-            columnId: "build",
+            columnId: "doing",
           }),
         },
       ],
@@ -218,7 +218,7 @@ describe("pragmatic drop location", () => {
         {
           data: buildBoardColumnDropTargetData({
             instanceId,
-            columnId: "build",
+            columnId: "doing",
           }),
         },
       ],

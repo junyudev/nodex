@@ -2579,13 +2579,13 @@ test.describe("parallel functional Electron smoke", () => {
       const statusItem = page.getByRole("menuitem", { name: /Status/ });
       await expect(statusItem).toBeVisible();
       await statusItem.click();
-      const buildOption = page.getByRole("option", { name: "Build", exact: true });
-      await expect(buildOption).toBeVisible();
-      await buildOption.click();
+      const doingOption = page.getByRole("option", { name: "Doing", exact: true });
+      await expect(doingOption).toBeVisible();
+      await doingOption.click();
 
-      const buildColumn = page.locator('[data-board-column-root][data-board-column-id="build"]');
+      const doingColumn = page.locator('[data-board-column-root][data-board-column-id="doing"]');
       await expect(
-        buildColumn.locator("[data-board-uuid-v7]").filter({
+        doingColumn.locator("[data-board-uuid-v7]").filter({
           hasText: "Modal-created Page",
         }),
       ).toHaveCount(1, { timeout: 15_000 });

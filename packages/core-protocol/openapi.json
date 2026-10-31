@@ -25092,9 +25092,9 @@
         "enum": [
           "triage",
           "plan",
-          "build",
+          "doing",
           "review",
-          "ship"
+          "done"
         ]
       },
       "LibraryPageWriteDestination": {

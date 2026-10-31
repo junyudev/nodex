@@ -66,7 +66,7 @@ describe("Page property rows", () => {
   test("keeps layout order and reports which rows the layout shows", () => {
     const rows = pageStagePropertyRows(
       [
-        withId("status", item("text", "build", "hide_when_empty")),
+        withId("status", item("text", "doing", "hide_when_empty")),
         withId("priority", item("text", null, "hide_when_empty")),
         withId("p_noteNote", item("text", "", "always_show")),
         withId("p_secret00", item("text", "value", "always_hide")),

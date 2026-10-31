@@ -49,9 +49,9 @@ const SUPPORTED_SORT_FIELDS = new Set<DbViewSortField>(["board-order", "priority
 const WORKFLOW_STATUS_NAMES: Record<WorkflowStatus, string> = {
   triage: "Triage",
   plan: "Plan",
-  build: "Build",
+  doing: "Doing",
   review: "Review",
-  ship: "Ship",
+  done: "Done",
 };
 
 function hasOwn<T extends object, K extends keyof T>(value: T, key: K): boolean {

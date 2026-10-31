@@ -652,7 +652,7 @@ const materialize = async (
       pageId,
       operationId: createUuidV7(),
       projectId: project.id,
-      status: key === "configured" ? "build" : "plan",
+      status: key === "configured" ? "doing" : "plan",
       title: key === "configured" ? "Configured property values" : "Empty property values",
       markdown: key === "configured" ? "Every settings surface has durable evidence." : "",
     });

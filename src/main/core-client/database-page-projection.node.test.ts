@@ -81,7 +81,7 @@ const databaseValue = (
   revision: 1,
 });
 
-const makeRow = (pageId: string, status: "triage" | "build" = "build"): DataSourcePageRowV2 => ({
+const makeRow = (pageId: string, status: "triage" | "doing" = "doing"): DataSourcePageRowV2 => ({
   pageKey: null,
   page: {
     pageId,
@@ -264,7 +264,7 @@ describe("native Database Page projections", () => {
 
     expect(page).toMatchObject({
       id: "page:one",
-      status: "build",
+      status: "doing",
       title: "Title page:one",
       description: "# Detail\n\nA body with **structure**.",
       priority: "p1-high",

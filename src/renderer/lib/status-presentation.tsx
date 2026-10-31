@@ -48,9 +48,9 @@ const STATUS_LABEL_CLASS_NAME =
 const STATUS_ID_BY_LABEL: Record<string, StatusVisualId> = {
   Triage: "triage",
   Plan: "plan",
-  Build: "build",
+  Doing: "doing",
   Review: "review",
-  Ship: "ship",
+  Done: "done",
   Archived: "archived",
 };
 
@@ -114,9 +114,9 @@ const STATUS_ICON_DEFINITIONS: Record<StatusVisualId, StatusIconDefinition> = {
     ],
   },
   plan: createProgressIconDefinition(0),
-  build: createProgressIconDefinition(0.5),
+  doing: createProgressIconDefinition(0.5),
   review: createProgressIconDefinition(0.75),
-  ship: {
+  done: {
     viewBox: WORKFLOW_ICON_VIEW_BOX,
     shapes: [
       {
@@ -153,11 +153,11 @@ export const columnStyles: Record<string, StatusTone> = {
     dropBg: "bg-[var(--column-plan-drop-bg)]",
     accentColor: "var(--status-plan-dot)",
   },
-  build: {
-    dotColor: "bg-[var(--column-build-dot)]",
-    headerBg: "bg-[var(--column-build-header-bg)]",
-    dropBg: "bg-[var(--column-build-drop-bg)]",
-    accentColor: "var(--status-build-dot)",
+  doing: {
+    dotColor: "bg-[var(--column-doing-dot)]",
+    headerBg: "bg-[var(--column-doing-header-bg)]",
+    dropBg: "bg-[var(--column-doing-drop-bg)]",
+    accentColor: "var(--status-doing-dot)",
   },
   review: {
     dotColor: "bg-[var(--column-review-dot)]",
@@ -165,11 +165,11 @@ export const columnStyles: Record<string, StatusTone> = {
     dropBg: "bg-[var(--column-review-drop-bg)]",
     accentColor: "var(--status-review-dot)",
   },
-  ship: {
-    dotColor: "bg-[var(--column-ship-dot)]",
-    headerBg: "bg-[var(--column-ship-header-bg)]",
-    dropBg: "bg-[var(--column-ship-drop-bg)]",
-    accentColor: "var(--status-ship-dot)",
+  done: {
+    dotColor: "bg-[var(--column-done-dot)]",
+    headerBg: "bg-[var(--column-done-header-bg)]",
+    dropBg: "bg-[var(--column-done-drop-bg)]",
+    accentColor: "var(--status-done-dot)",
   },
   archived: {
     dotColor: "bg-[var(--column-archive-dot)]",

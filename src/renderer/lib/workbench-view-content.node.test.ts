@@ -61,9 +61,9 @@ const row: DataSourcePageRowV2 = {
   },
   pageKey: "P-1",
   membership: { membershipId: "member-a", dataSourceId, revision: 6, createdAt: timestamp },
-  values: { [propertyId]: { propertyId, valueType: "select", value: "build", revision: 7 } },
+  values: { [propertyId]: { propertyId, valueType: "select", value: "doing", revision: 7 } },
   position: { rankKey: "rank-a", revision: 8 },
-  effectiveGroupKey: "build",
+  effectiveGroupKey: "doing",
   effectiveSubgroupKey: null,
   taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
 };
@@ -124,7 +124,7 @@ function fixture() {
     row,
     displayKey: "occurrence-first",
     occurrenceKey: "occurrence-first",
-    groupPath: ["build"],
+    groupPath: ["doing"],
     ancestorPageIds: ["parent-a"],
     mounted: true,
     inViewport: false,
@@ -134,7 +134,7 @@ function fixture() {
     row,
     displayKey: "occurrence-second",
     occurrenceKey: "occurrence-second",
-    groupPath: ["ship"],
+    groupPath: ["done"],
     ancestorPageIds: ["parent-b"],
     mounted: true,
     inViewport: true,
@@ -216,8 +216,8 @@ describe("Workbench View display observation", () => {
       excludedOccurrenceKeys: ["occurrence-first"],
     });
     expect(selected.occurrences.map((entry) => entry.displayKey)).toEqual(["occurrence-second"]);
-    expect(boardWorkbenchOccurrenceKey("page-a", "build", null)).not.toBe(
-      boardWorkbenchOccurrenceKey("page-a", "ship", null),
+    expect(boardWorkbenchOccurrenceKey("page-a", "doing", null)).not.toBe(
+      boardWorkbenchOccurrenceKey("page-a", "done", null),
     );
   });
 

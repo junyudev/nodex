@@ -46,7 +46,7 @@ describe("Database option registry requirements", () => {
           status: {
             propertyId: "status",
             valueType: "select",
-            value: "build",
+            value: "doing",
             revision: 1,
           },
         },

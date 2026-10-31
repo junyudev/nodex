@@ -47,8 +47,8 @@ describe("remote Page Stage placement commands", () => {
   test("delegates delete and move through the selected View store", async () => {
     const handlers = makeRemotePageStageHandlers("project-1", "view-1");
 
-    await handlers.onMove?.("plan", "page-1", "ship");
-    await handlers.onDelete?.("ship", "page-1");
+    await handlers.onMove?.("plan", "page-1", "done");
+    await handlers.onDelete?.("done", "page-1");
 
     expect(testState.moveBoardPage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -57,7 +57,7 @@ describe("remote Page Stage placement commands", () => {
         move: {
           pageId: "page-1",
           fromStatus: "plan",
-          toStatus: "ship",
+          toStatus: "done",
         },
       }),
     );
@@ -65,7 +65,7 @@ describe("remote Page Stage placement commands", () => {
       expect.objectContaining({
         store: testState.store,
         projectId: "project-1",
-        columnId: "ship",
+        columnId: "done",
         pageId: "page-1",
       }),
     );

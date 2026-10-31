@@ -960,34 +960,34 @@ test("materializes and opens the authoritative board/dense environment", async (
             }),
         )
         .toEqual({ opaque: true, zIndex: 20 });
-      const buildHeader = page
+      const doingHeader = page
         .locator('[data-database-board-column-header="true"]')
-        .filter({ hasText: "Build" });
-      await buildHeader.hover();
-      const moreOptions = buildHeader.getByRole("button", {
-        name: "More options for Build",
+        .filter({ hasText: "Doing" });
+      await doingHeader.hover();
+      const moreOptions = doingHeader.getByRole("button", {
+        name: "More options for Doing",
       });
       await expect(moreOptions).toHaveCSS("opacity", "1");
       const labelBox = await requireLocatorGeometry(
-        buildHeader.locator('[data-database-board-column-label="true"]'),
+        doingHeader.locator('[data-database-board-column-label="true"]'),
         "Board Column label",
       );
       const countBox = await requireLocatorGeometry(
-        buildHeader.locator('[data-database-board-column-count="true"]'),
+        doingHeader.locator('[data-database-board-column-count="true"]'),
         "Board Column count",
       );
       expect(countBox.x - (labelBox.x + labelBox.width)).toBeLessThanOrEqual(8);
       await moreOptions.click();
       await page.getByRole("button", { name: "Collapse column", exact: true }).click();
-      const buildColumn = page.locator('[data-board-column-root][data-board-column-id="build"]');
-      await expect(buildColumn).toHaveAttribute("data-board-column-collapsed", "true");
-      await expect.poll(async () => (await buildColumn.boundingBox())?.width ?? null).toBe(52);
-      await expect(buildHeader.locator('[data-database-board-collapsed-label="true"]')).toHaveText(
-        "Build",
+      const doingColumn = page.locator('[data-board-column-root][data-board-column-id="doing"]');
+      await expect(doingColumn).toHaveAttribute("data-board-column-collapsed", "true");
+      await expect.poll(async () => (await doingColumn.boundingBox())?.width ?? null).toBe(52);
+      await expect(doingHeader.locator('[data-database-board-collapsed-label="true"]')).toHaveText(
+        "Doing",
       );
       const collapsedHeaderUnderlay = page
         .locator('[data-database-board-collapsed-header-underlay="true"]')
-        .filter({ hasText: "Build" });
+        .filter({ hasText: "Doing" });
       await expect
         .poll(
           async () =>
@@ -1002,21 +1002,21 @@ test("materializes and opens the authoritative board/dense environment", async (
         )
         .toBe(true);
       const collapsedIconBox = await requireLocatorGeometry(
-        buildHeader.locator("svg").first(),
+        doingHeader.locator("svg").first(),
         "Collapsed Board Column icon",
       );
       const collapsedLabelBox = await requireLocatorGeometry(
-        buildHeader.locator('[data-database-board-collapsed-label="true"]'),
+        doingHeader.locator('[data-database-board-collapsed-label="true"]'),
         "Collapsed Board Column label",
       );
       expect(
         collapsedLabelBox.y - (collapsedIconBox.y + collapsedIconBox.height),
       ).toBeLessThanOrEqual(10);
-      await buildColumn.getByRole("button", { name: "Expand Build" }).click();
-      await expect(buildColumn).toHaveAttribute("data-board-column-collapsed", "false");
-      const headerBox = await requireLocatorGeometry(buildHeader, "Board Column header");
+      await doingColumn.getByRole("button", { name: "Expand Doing" }).click();
+      await expect(doingColumn).toHaveAttribute("data-board-column-collapsed", "false");
+      const headerBox = await requireLocatorGeometry(doingHeader, "Board Column header");
       const buildBodyBox = await requireLocatorGeometry(
-        page.locator('[data-board-column-root][data-board-column-id="build"]'),
+        page.locator('[data-board-column-root][data-board-column-id="doing"]'),
         "Board Column body",
       );
       expect(Math.abs(headerBox.y + headerBox.height - buildBodyBox.y)).toBeLessThanOrEqual(1);
@@ -1026,7 +1026,7 @@ test("materializes and opens the authoritative board/dense environment", async (
       const observation = await observeBoardDenseUi(page);
       expect(observation).toEqual({
         totalCards: 10,
-        cardsByStatus: { triage: 3, plan: 2, build: 3, review: 1, ship: 1 },
+        cardsByStatus: { triage: 3, plan: 2, doing: 3, review: 1, done: 1 },
         pageStageVisible: true,
         editorVisible: true,
       });
@@ -1091,7 +1091,7 @@ test("materializes and opens the authoritative board/dense environment", async (
 
       await commandPaletteSearch.fill("isolated");
       await page.getByRole("button", { name: "Filter pages" }).click();
-      await page.getByRole("button", { name: "Ship", exact: true }).click();
+      await page.getByRole("button", { name: "Done", exact: true }).click();
       await page.keyboard.press("Escape");
       await expect(page.getByText("No matching pages.", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Filter pages" }).click();
@@ -1313,7 +1313,7 @@ test("materializes and opens the authoritative board/dense environment", async (
       await expect(targetMentionOption.locator(".font-medium")).toHaveCount(4);
       await expect(targetMentionOption.locator("svg")).toHaveAttribute(
         "style",
-        /status-build-dot/u,
+        /status-doing-dot/u,
       );
       await targetMentionOption.click();
       await page.keyboard.type("tomorrow");
@@ -1348,7 +1348,7 @@ test("materializes and opens the authoritative board/dense environment", async (
       expect(insertedMentionStyle.opacity).toBe("1");
       expect(insertedMentionStyle.paddingLeft).toBe("0px");
       expect(insertedMentionStyle.paddingRight).toBe("0px");
-      await expect(insertedMention.locator("svg")).toHaveAttribute("style", /status-build-dot/u);
+      await expect(insertedMention.locator("svg")).toHaveAttribute("style", /status-doing-dot/u);
       const mentionLabel = insertedMention
         .locator("span")
         .filter({

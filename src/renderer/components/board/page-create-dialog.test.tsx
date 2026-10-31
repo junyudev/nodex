@@ -136,8 +136,8 @@ const target: PageCreateTarget = {
   columns: [
     { id: "triage", name: "Triage" },
     { id: "plan", name: "Plan" },
-    { id: "build", name: "Build" },
-    { id: "ship", name: "Ship" },
+    { id: "doing", name: "Doing" },
+    { id: "done", name: "Done" },
   ],
 };
 
@@ -458,11 +458,11 @@ describe("PageCreateDialog", () => {
     expect(dialogForm?.contains(search)).toBe(false);
 
     await act(async () => {
-      fireEvent.change(search, { target: { value: "bui" } });
+      fireEvent.change(search, { target: { value: "doi" } });
       await Promise.resolve();
     });
-    expect((search as HTMLInputElement).value).toBe("bui");
-    expect(view.getByRole("option", { name: "Build" })).toBeTruthy();
+    expect((search as HTMLInputElement).value).toBe("doi");
+    expect(view.getByRole("option", { name: "Doing" })).toBeTruthy();
     expect(view.queryByRole("option", { name: "Triage" })).toBeNull();
 
     fireEvent.keyDown(document, { key: "Escape" });
@@ -481,25 +481,25 @@ describe("PageCreateDialog", () => {
     await view.findByRole("dialog");
 
     fireEvent.click(view.getByRole("button", { name: "Status" }));
-    const buildOption = await view.findByRole("option", { name: "Build" });
+    const doingOption = await view.findByRole("option", { name: "Doing" });
     await act(async () => {
-      fireEvent.pointerDown(buildOption, {
+      fireEvent.pointerDown(doingOption, {
         button: 0,
         pointerId: 1,
         pointerType: "mouse",
       });
-      fireEvent.pointerUp(buildOption, {
+      fireEvent.pointerUp(doingOption, {
         button: 0,
         pointerId: 1,
         pointerType: "mouse",
       });
-      fireEvent.click(buildOption);
+      fireEvent.click(doingOption);
       await Promise.resolve();
     });
 
     expect(view.getByRole("dialog")).toBeTruthy();
     await waitFor(() =>
-      expect(view.getByRole("button", { name: "Status" }).textContent).toContain("Build"),
+      expect(view.getByRole("button", { name: "Status" }).textContent).toContain("Doing"),
     );
   });
 

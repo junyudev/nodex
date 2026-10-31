@@ -24,7 +24,7 @@ const materialize = async (
     pageId,
     operationId: createUuidV7(),
     projectId: project.id,
-    status: "build",
+    status: "doing",
     title: AGENT_CLI_PAGE_TITLE,
     markdown: "# Release meeting\n\nRelease date: Friday.\n\nKeep the rollback checklist intact.",
   });

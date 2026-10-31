@@ -333,7 +333,7 @@ describe("NFM structural editing session", () => {
             placement: {
               kind: "direct",
               viewId: "view:test",
-              groupKey: "ship",
+              groupKey: "done",
               preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
             },
           },
@@ -403,7 +403,7 @@ describe("NFM structural editing session", () => {
               sourceDocumentId: "document:test",
               sourceDocumentGeneration: 1,
               rootBlockIds: ["page"],
-              destination: { kind: "db-column", projectId: "project:test", columnId: "ship" },
+              destination: { kind: "db-column", projectId: "project:test", columnId: "done" },
             });
         const rejected = expect(pending).rejects.toThrow("Lost Promotion response");
         expect(history.snapshot().undo).toMatchObject({

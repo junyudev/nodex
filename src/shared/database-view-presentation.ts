@@ -39,7 +39,7 @@ export interface DatabaseViewCapabilities {
     DatabaseViewField,
     { readonly kind: "intrinsic" }
   >["field"][];
-  /** The Source has a canonical workflow status whose completed state is `ship`. */
+  /** The Source has a canonical workflow status whose completed state is `done`. */
   readonly taskStatusPropertyId?: string;
 }
 

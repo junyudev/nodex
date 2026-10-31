@@ -20,7 +20,7 @@ const page = (
   row: {
     pageId,
     pageKey: null,
-    groupKey: "build",
+    groupKey: "doing",
     subgroupKey: null,
     title: pageId,
     preview: "",
@@ -32,7 +32,7 @@ const page = (
     metadataRevision: 1,
     createdAt: new Date("2026-08-12T00:00:00.000Z"),
   },
-  groupKey: "build",
+  groupKey: "doing",
   subgroupKey: null,
   ancestorPageIds,
   depth: ancestorPageIds.length,
@@ -88,8 +88,8 @@ describe("Database List nesting guides", () => {
       page("first", "child-a", ["root"]),
       {
         ...duplicate,
-        groupKey: "ship",
-        row: { ...duplicate.row, groupKey: "ship" },
+        groupKey: "done",
+        row: { ...duplicate.row, groupKey: "done" },
       },
     ];
 

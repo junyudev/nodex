@@ -327,13 +327,13 @@ test("a Page that has moved on opens its first line with its status and chats, a
     <Stream>
       <StreamMessage
         key="page:1"
-        item={{ ...waiting, body, important: true, pageStatus: { id: "build", label: "Build" } }}
+        item={{ ...waiting, body, important: true, pageStatus: { id: "doing", label: "Doing" } }}
         linkedChats={chats}
       />
     </Stream>,
   );
   const marks = screen.getByTestId("inbox-page-marks");
-  const status = screen.getByRole("img", { name: "Status: Build" }).getBoundingClientRect();
+  const status = screen.getByRole("img", { name: "Status: Doing" }).getBoundingClientRect();
   const chat = screen.getByRole("button", { name: /1 linked chat/ }).getBoundingClientRect();
   const lines = textLines(screen.getByText(body));
   const [first, next] = [lines[0]!, lines[1]!];

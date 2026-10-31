@@ -31,9 +31,9 @@ pub struct SearchOption {
 pub enum WorkflowStatus {
     Triage,
     Plan,
-    Build,
+    Doing,
     Review,
-    Ship,
+    Done,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

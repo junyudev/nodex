@@ -463,7 +463,7 @@ test("structural gestures preserve Files and hand off source and target independ
         initialLoadAverage,
         scenario: scenarioId,
         scenarioRevision: 1,
-        build: process.env.ELECTRON_RENDERER_URL ? "development" : "production",
+        doing: process.env.ELECTRON_RENDERER_URL ? "development" : "production",
         coreBuild: "debug",
         coreExecutable,
         coreSha256,

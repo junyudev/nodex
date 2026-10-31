@@ -7,6 +7,6 @@ describe("calendar occurrence status resolution", () => {
   });
 
   test("maps archived display ids back to the canonical done status", () => {
-    expect(resolveOccurrenceMutationStatus("archived", { status: "ship" })).toBe("ship");
+    expect(resolveOccurrenceMutationStatus("archived", { status: "done" })).toBe("done");
   });
 });

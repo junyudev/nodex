@@ -138,7 +138,7 @@ describe("NFM Block move runtime", () => {
       request({
         kind: "db-column",
         projectId,
-        columnId: "ship",
+        columnId: "done",
       }),
       {
         ...dependencies(),
@@ -158,7 +158,7 @@ describe("NFM Block move runtime", () => {
           kind: "direct",
           viewId: statusViewId,
           preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
-          groupKey: "ship",
+          groupKey: "done",
         },
       },
       causalDependencies: [
@@ -172,7 +172,7 @@ describe("NFM Block move runtime", () => {
   });
 
   test("rejects a source fence from another generation before compiling a request", async () => {
-    const input = request({ kind: "db-column", projectId, columnId: "ship" });
+    const input = request({ kind: "db-column", projectId, columnId: "done" });
     await expect(
       prepareNfmBlockPromotion(
         { ...input, sourceHead: { ...input.sourceHead, generation: 4 } },
@@ -194,7 +194,7 @@ describe("NFM Block move runtime", () => {
         request({
           kind: "db-column",
           projectId: "project-other",
-          columnId: "ship",
+          columnId: "done",
         }),
         {
           readDatabase,

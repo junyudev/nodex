@@ -88,7 +88,7 @@ describe("db view prefs", () => {
     expect(normalized.rules.filter.any[0]?.all[0]).toEqual({
       field: "status",
       op: "in",
-      values: ["triage", "review", "ship"],
+      values: ["triage", "review", "done"],
     });
     expect(normalizeDbViewPrefs("list", normalized)).toEqual(normalized);
   });
@@ -213,7 +213,7 @@ describe("db view prefs", () => {
     prefs.rules.filter.any = [
       {
         all: [
-          { field: "status", op: "in", values: ["build"] },
+          { field: "status", op: "in", values: ["doing"] },
           { field: "tags", op: "hasAny", values: ["ops"] },
         ],
       },
@@ -221,8 +221,8 @@ describe("db view prefs", () => {
 
     const filtered = filterDbViewCards(
       [
-        makeCard({ id: "a", columnId: "build", tags: ["ops"] }),
-        makeCard({ id: "b", columnId: "build", tags: ["design"], boardIndex: 1 }),
+        makeCard({ id: "a", columnId: "doing", tags: ["ops"] }),
+        makeCard({ id: "b", columnId: "doing", tags: ["design"], boardIndex: 1 }),
         makeCard({ id: "c", columnId: "plan", tags: ["ops"], boardIndex: 2 }),
       ],
       prefs.rules,

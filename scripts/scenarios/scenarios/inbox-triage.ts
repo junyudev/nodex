@@ -147,7 +147,7 @@ const setInboxPageStatus = async (
   projectId: string,
   pageId: string,
   dataSourceId: DataSourceId,
-  status: "build" | "review",
+  status: "doing" | "review",
 ) => {
   const snapshot = requireSuccess(
     await port.readDatabase({
@@ -438,14 +438,14 @@ const materializeInboxTriage = async (
     project.id,
     libraryInboxMovedWithChat.pageId,
     librarySource.dataSourceId,
-    "build",
+    "doing",
   );
   await setInboxPageStatus(
     port,
     project.id,
     inboxMovedWithChat.pageId,
     projectSource.dataSourceId,
-    "build",
+    "doing",
   );
   await setInboxPageStatus(
     port,
@@ -610,7 +610,7 @@ const inspectInboxTriage = async (
     inboxPlainTriage,
     libraryInboxMovedWithChat,
   ] = await Promise.all([
-    inspectOpenMessage(PAGE_KEYS.inboxMovedWithChat, "build", [CHAT_KEYS.moved], {
+    inspectOpenMessage(PAGE_KEYS.inboxMovedWithChat, "doing", [CHAT_KEYS.moved], {
       workingCount: 1,
     }),
     inspectOpenMessage(PAGE_KEYS.inboxMovedNoChat, "review", []),
@@ -624,7 +624,7 @@ const inspectInboxTriage = async (
     inspectOpenMessage(PAGE_KEYS.inboxPlainTriage, "triage", []),
     inspectOpenMessage(
       PAGE_KEYS.libraryInboxMovedWithChat,
-      "build",
+      "doing",
       [CHAT_KEYS.moved],
       { workingCount: 1 },
       true,

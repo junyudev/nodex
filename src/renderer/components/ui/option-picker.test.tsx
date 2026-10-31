@@ -99,7 +99,7 @@ describe("NodexOptionPicker", () => {
         searchAriaLabel="Search statuses"
         options={[
           { value: "plan", label: "Plan" },
-          { value: "build", label: "Build" },
+          { value: "doing", label: "Doing" },
           { value: "review", label: "Review" },
         ]}
         onValueChange={onValueChange}

@@ -442,7 +442,7 @@ describe("Library Module transport", () => {
               pageId: "page:target",
               title: "Projection notes",
               pageKey: "NDX-42",
-              status: "build",
+              status: "doing",
               locationLabel: "Product / Editor",
               matchExcerpt: "The projection stays bounded.",
               matchSource: "content",

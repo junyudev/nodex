@@ -31,7 +31,7 @@ const row = (
 ): DatabaseViewRenderRow => ({
   pageId,
   pageKey: null,
-  groupKey: "build",
+  groupKey: "doing",
   subgroupKey: null,
   title: pageId,
   preview: "",
@@ -46,10 +46,10 @@ const row = (
 });
 
 const column = (rows: readonly DatabaseViewRenderRow[]): DatabaseViewRenderColumn => ({
-  id: "build",
-  groupKey: "build",
-  name: "Build",
-  scopeKey: 'key:"build"',
+  id: "doing",
+  groupKey: "doing",
+  name: "Doing",
+  scopeKey: 'key:"doing"',
   rows,
 });
 
@@ -161,7 +161,7 @@ describe("Database List projection", () => {
       grouped: true,
       subgrouped: false,
       nested: false,
-      collapsedOccurrenceKeys: new Set([databaseListGroupKey("build")]),
+      collapsedOccurrenceKeys: new Set([databaseListGroupKey("doing")]),
     });
 
     expect(projection).toHaveLength(1);
@@ -294,7 +294,7 @@ describe("Database List projection", () => {
       ]),
       targetOccurrenceKey: parent.key,
       position: "nest",
-      groupKey: "build",
+      groupKey: "doing",
       subgroupKey: null,
     });
 
@@ -320,7 +320,7 @@ describe("Database List projection", () => {
     const duplicateNested = listPage({
       key: "duplicate:nested",
       pageId: "duplicate",
-      groupKey: "build",
+      groupKey: "doing",
       depth: 2,
       ancestorPageIds: ["outer", "inner"],
       subtreeOccurrenceCount: 2,
@@ -329,14 +329,14 @@ describe("Database List projection", () => {
     const nestedChild = listPage({
       key: "duplicate:nested:child",
       pageId: "child",
-      groupKey: "build",
+      groupKey: "doing",
       depth: 3,
       ancestorPageIds: ["outer", "inner", "duplicate"],
     });
     const target = listPage({
       key: "target",
       pageId: "target",
-      groupKey: "ship",
+      groupKey: "done",
       depth: 0,
     });
 
@@ -345,7 +345,7 @@ describe("Database List projection", () => {
       occurrenceKeys: new Set(["duplicate:nested"]),
       targetOccurrenceKey: "target",
       position: "after",
-      groupKey: "ship",
+      groupKey: "done",
       subgroupKey: null,
     });
     const movedRoot = projected.find((row) => row.key === "duplicate:nested");

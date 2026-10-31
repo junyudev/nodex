@@ -1,17 +1,17 @@
-export const WORKFLOW_STATUS_ORDER = ["triage", "plan", "build", "review", "ship"] as const;
+export const WORKFLOW_STATUS_ORDER = ["triage", "plan", "doing", "review", "done"] as const;
 
 export type WorkflowStatus = (typeof WORKFLOW_STATUS_ORDER)[number];
 
 export const WORKFLOW_STATUS_LABELS: Record<WorkflowStatus, string> = {
   triage: "Triage",
   plan: "Plan",
-  build: "Build",
+  doing: "Doing",
   review: "Review",
-  ship: "Ship",
+  done: "Done",
 };
 
 export const DEFAULT_WORKFLOW_STATUS: WorkflowStatus = "triage";
-export const COMPLETED_WORKFLOW_STATUS: WorkflowStatus = "ship";
+export const COMPLETED_WORKFLOW_STATUS: WorkflowStatus = "done";
 
 export const WORKFLOW_STATUS_COLUMNS = WORKFLOW_STATUS_ORDER.map((status) => ({
   id: status,

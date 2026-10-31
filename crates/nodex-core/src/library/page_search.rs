@@ -351,9 +351,9 @@ fn kernel_workflow_status(status: LibraryPageWorkflowStatus) -> KernelWorkflowSt
     match status {
         LibraryPageWorkflowStatus::Triage => KernelWorkflowStatus::Triage,
         LibraryPageWorkflowStatus::Plan => KernelWorkflowStatus::Plan,
-        LibraryPageWorkflowStatus::Build => KernelWorkflowStatus::Build,
+        LibraryPageWorkflowStatus::Doing => KernelWorkflowStatus::Doing,
         LibraryPageWorkflowStatus::Review => KernelWorkflowStatus::Review,
-        LibraryPageWorkflowStatus::Ship => KernelWorkflowStatus::Ship,
+        LibraryPageWorkflowStatus::Done => KernelWorkflowStatus::Done,
     }
 }
 
@@ -525,9 +525,9 @@ fn workflow_status(value: Option<&str>) -> Option<LibraryPageWorkflowStatus> {
     match value {
         Some("triage") => Some(LibraryPageWorkflowStatus::Triage),
         Some("plan") => Some(LibraryPageWorkflowStatus::Plan),
-        Some("build") => Some(LibraryPageWorkflowStatus::Build),
+        Some("doing") => Some(LibraryPageWorkflowStatus::Doing),
         Some("review") => Some(LibraryPageWorkflowStatus::Review),
-        Some("ship") => Some(LibraryPageWorkflowStatus::Ship),
+        Some("done") => Some(LibraryPageWorkflowStatus::Done),
         _ => None,
     }
 }
@@ -2399,12 +2399,12 @@ mod tests {
                     properties: Vec::new(),
                     status: Some(if index >= 3_000 {
                         if eligible {
-                            LibraryPageWorkflowStatus::Ship
+                            LibraryPageWorkflowStatus::Done
                         } else {
                             LibraryPageWorkflowStatus::Plan
                         }
                     } else {
-                        LibraryPageWorkflowStatus::Ship
+                        LibraryPageWorkflowStatus::Done
                     }),
                     priority: None,
                     tags: Vec::new(),
@@ -2440,7 +2440,7 @@ mod tests {
         };
         let project_ids = vec!["project:test".to_owned()];
         let filters = LibraryProjectPageSearchFilters {
-            statuses: Some(vec![LibraryPageWorkflowStatus::Ship]),
+            statuses: Some(vec![LibraryPageWorkflowStatus::Done]),
             priorities: None,
             include_empty_priority: true,
             tags: Vec::new(),

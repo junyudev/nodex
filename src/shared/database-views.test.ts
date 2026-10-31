@@ -5,7 +5,7 @@ import type { DatabasePageSummary } from "./types";
 const makePage = (id: string): DatabasePageSummary => ({
   id,
   pageKey: null,
-  status: "build",
+  status: "doing",
   archived: false,
   title: id,
   richTitle: [{ type: "text", text: id, styles: {} }],

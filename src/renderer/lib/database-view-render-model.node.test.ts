@@ -149,7 +149,7 @@ const makeSnapshot = (
           [statusPropertyId]: {
             propertyId: statusPropertyId,
             valueType: "select",
-            value: "build",
+            value: "doing",
             revision: 2,
           },
           [tagsPropertyId]: {
@@ -161,7 +161,7 @@ const makeSnapshot = (
         },
         taskParent: { parentPageId: null, siblingRank: null, valueRevision: 1 },
         position: { rankKey: "a", revision: 2 },
-        effectiveGroupKey: input.groupedByStatus === false ? null : "build",
+        effectiveGroupKey: input.groupedByStatus === false ? null : "doing",
         effectiveSubgroupKey: null,
       },
     ],
@@ -277,7 +277,7 @@ describe("Database View render model", () => {
           kind: "clause" as const,
           propertyId: statusPropertyId,
           operator: "equals" as const,
-          value: "build",
+          value: "doing",
         },
       },
     };
@@ -310,7 +310,7 @@ describe("Database View render model", () => {
         ruleId: "rule-build",
         propertyId: statusPropertyId,
         operator: "select_is" as const,
-        value: "build",
+        value: "doing",
         colorSource: "fixed" as const,
         color: "blue" as const,
       },

@@ -98,7 +98,7 @@ describe("Page create draft", () => {
     const snapshot = capturePageCreateDraftSnapshot({
       title: "Recover this Page",
       descriptionDraft: first,
-      status: "build",
+      status: "doing",
       priority: "p1-high",
       estimate: "m",
       selectedTagIds: ["tag-ui"],
@@ -115,7 +115,7 @@ describe("Page create draft", () => {
     expect(snapshot).toEqual({
       title: "Recover this Page",
       descriptionMarkdown: "Recover this body",
-      status: "build",
+      status: "doing",
       priority: "p1-high",
       estimate: "m",
       tagNames: ["UI"],
@@ -136,7 +136,7 @@ describe("Page create draft", () => {
     expect(pageCreateDraftSnapshotsEqual(snapshot, { ...snapshot })).toBe(true);
     expect(
       pageCreateDraftSnapshotsEqual(
-        createEmptyPageCreateDraftSnapshot("build", {
+        createEmptyPageCreateDraftSnapshot("doing", {
           priority: "p1-high",
           estimate: "m",
           tagNames: ["UI"],

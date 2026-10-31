@@ -136,7 +136,7 @@ describe("usePageStageProperties", () => {
     optionRuntime.readWindow.mockResolvedValue({
       options: [
         { id: "plan", name: "Plan", color: "gray" },
-        { id: "ship", name: "Ship", color: "green" },
+        { id: "done", name: "Done", color: "green" },
       ],
       nextCursor: null,
       projectionRevision: 1,
@@ -186,14 +186,14 @@ describe("usePageStageProperties", () => {
     await act(async () => {
       result = await hook.result.current.edit(statusItem, {
         kind: "replace",
-        value: "ship",
+        value: "done",
         expectedValueRevision: 4,
       });
     });
 
     expect(onUpdateProperty).toHaveBeenCalledWith("page-1", "status", {
       kind: "replace",
-      value: "ship",
+      value: "done",
       expectedValueRevision: 4,
     });
     expect(result?.status).toBe("conflict");

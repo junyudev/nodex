@@ -724,12 +724,17 @@ budget. Large or multi-row changes publish the same exact View read requirement
 without a partial row patch. Mounted consumers then repair their loaded span
 from the canonical, commit-fenced read.
 
-Workflow-status List groups use the canonical `Triage`, `Plan`, `Build`,
-`Review`, and `Ship` labels. Each writable status group ends with a compact
+Workflow status has five fixed stages: Triage, Plan, Doing, Review, and Done
+([CONTEXT.md](../../CONTEXT.md#data-source) defines what each means and what may
+move a Page between them). A Data Source may rename its stages but not add,
+remove, or reorder them. An empty stage stays out of a Board or List unless the
+View shows empty groups, so a Database that never uses Review never shows it.
+
+Each writable List status group ends with a compact
 create action that opens the standard Page composer already seeded to that
 status. Their icons form one compact progress family: Triage uses a segmented
-ring, Plan an empty ring, Build a half-filled ring, Review a three-quarter-filled
-ring, and Ship a filled ring with a knocked-out check. Shape communicates state
+ring, Plan an empty ring, Doing a half-filled ring, Review a three-quarter-filled
+ring, and Done a filled ring with a knocked-out check. Shape communicates state
 at 14–16px while semantic color remains supplementary. Status values use a flat
 icon-and-neutral-label presentation; the surrounding row or trigger owns hover,
 focus, and selection backgrounds, so status itself never adds a nested pill.

@@ -62,7 +62,7 @@ describe("inbox/triage scenario", () => {
         "triage",
         "triage",
         "review",
-        "build",
+        "doing",
       ]);
       expect(items.map((item) => item.proposal?.action.type)).toEqual([
         "keep",

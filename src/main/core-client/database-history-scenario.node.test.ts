@@ -145,7 +145,7 @@ test.each(["data", "list"] as const)(
         projectId: foreign.id,
         client,
       });
-      for (const guess of ["review", "build"]) {
+      for (const guess of ["review", "doing"]) {
         const request: Parameters<typeof adapter.apply>[0] = {
           operationId: createUuidV7(),
           projectId: foreign.id,
@@ -164,7 +164,7 @@ test.each(["data", "list"] as const)(
                           propertyId: statusPropertyId,
                         },
                         propertyType: "select",
-                        beforeValue: statusValue("ship"),
+                        beforeValue: statusValue("done"),
                         afterValue: statusValue(guess),
                       },
                     ],
@@ -180,7 +180,7 @@ test.each(["data", "list"] as const)(
                       {
                         pageId,
                         propertyId: statusPropertyId,
-                        beforeValue: statusValue("ship"),
+                        beforeValue: statusValue("done"),
                         afterValue: statusValue(guess),
                       },
                     ],
@@ -206,7 +206,7 @@ test.each(["data", "list"] as const)(
         expect(retry.value.commitSeq).toBe(result.value.commitSeq);
         expect(retry.value.operationOutcomes).toEqual(result.value.operationOutcomes);
       }
-      expect((await db.readRow(pageId)).database_values.status).toBe("ship");
+      expect((await db.readRow(pageId)).database_values.status).toBe("done");
     });
   },
 );
@@ -226,7 +226,7 @@ test("cross-Project history validates the entire inverse before an atomic commit
       pageId: ownPageId,
       projectId: other.id,
       operationId: createUuidV7(),
-      status: "build",
+      status: "doing",
       title: "Other Project row",
       markdown: "Independent content",
     });
@@ -252,7 +252,7 @@ test("cross-Project history validates the entire inverse before an atomic commit
     const beforeCommit = (
       await ctx.seed.readBoard(ctx.manifest.projectId, protectedModel.databaseViewId)
     ).commitSeq;
-    for (const ownPostValue of ["build", "review"]) {
+    for (const ownPostValue of ["doing", "review"]) {
       const result = await adapter.apply({
         operationId: createUuidV7(),
         projectId: other.id,
@@ -270,7 +270,7 @@ test("cross-Project history validates the entire inverse before an atomic commit
                     propertyId: statusPropertyId,
                   },
                   propertyType: "select",
-                  beforeValue: statusValue("ship"),
+                  beforeValue: statusValue("done"),
                   afterValue: statusValue(ownPostValue),
                 },
                 {
@@ -280,8 +280,8 @@ test("cross-Project history validates the entire inverse before an atomic commit
                     propertyId: statusPropertyId,
                   },
                   propertyType: "select",
-                  beforeValue: statusValue("ship"),
-                  afterValue: statusValue(ownPostValue === "build" ? "review" : "build"),
+                  beforeValue: statusValue("done"),
+                  afterValue: statusValue(ownPostValue === "doing" ? "review" : "doing"),
                 },
               ],
               positionStates: [],
@@ -315,8 +315,8 @@ test("cross-Project history validates the entire inverse before an atomic commit
                   propertyId: statusPropertyId,
                 },
                 propertyType: "select",
-                beforeValue: statusValue("ship"),
-                afterValue: statusValue("build"),
+                beforeValue: statusValue("done"),
+                afterValue: statusValue("doing"),
               },
               {
                 address: {
@@ -325,8 +325,8 @@ test("cross-Project history validates the entire inverse before an atomic commit
                   propertyId: statusPropertyId,
                 },
                 propertyType: "select",
-                beforeValue: statusValue("ship"),
-                afterValue: statusValue("build"),
+                beforeValue: statusValue("done"),
+                afterValue: statusValue("doing"),
               },
             ],
             positionStates: [],
@@ -340,10 +340,10 @@ test("cross-Project history validates the entire inverse before an atomic commit
     expect(applied.value.affectedPageIds).toEqual(
       expect.arrayContaining([ownPageId, protectedPageId]),
     );
-    expect((await db.readRow(protectedPageId)).database_values.status).toBe("ship");
+    expect((await db.readRow(protectedPageId)).database_values.status).toBe("done");
     const ownAfter = await client.databaseRead({ kind: "row_detail", page_id: ownPageId });
     if (ownAfter.value.kind !== "row_detail") throw new Error("Missing cross-Project row");
-    expect(ownAfter.value.value.summary.database_values.status).toBe("ship");
+    expect(ownAfter.value.value.summary.database_values.status).toBe("done");
     const retry = await adapter.apply(request);
     expect(retry.ok).toBe(true);
     if (!retry.ok) throw new Error(retry.error.message);
@@ -371,10 +371,10 @@ test.each(["project", "library"] as const)(
         expect.arrayContaining(pages),
       );
       const b = db.recipe(
-        await db.apply([await db.edit(pages[0]!, "status", statusValue("ship"))]),
+        await db.apply([await db.edit(pages[0]!, "status", statusValue("done"))]),
       );
       await expect(db.reverse(a)).rejects.toThrow(/changed/);
-      expect(await statuses()).toEqual(expect.arrayContaining(["ship", "review"]));
+      expect(await statuses()).toEqual(expect.arrayContaining(["done", "review"]));
       const redoB = db.recipe(await db.reverse(b));
       const operationId = createUuidV7();
       const undone = await db.reverse(a, operationId);
@@ -382,11 +382,11 @@ test.each(["project", "library"] as const)(
       expect(duplicate.duplicate).toBe(true);
       expect(duplicate.commitSeq).toBe(undone.commitSeq);
       expect(duplicate.operationOutcomes).toEqual(undone.operationOutcomes);
-      expect(await statuses()).toEqual(["build", "build"]);
+      expect(await statuses()).toEqual(["doing", "doing"]);
       await db.reverse(db.recipe(undone));
       await db.reverse(redoB);
-      expect(await statuses()).toEqual(expect.arrayContaining(["ship", "review"]));
-      const noChange = await db.apply([await db.edit(pages[0]!, "status", statusValue("ship"))]);
+      expect(await statuses()).toEqual(expect.arrayContaining(["done", "review"]));
+      const noChange = await db.apply([await db.edit(pages[0]!, "status", statusValue("done"))]);
       expect(noChange.operationOutcomes).toEqual([
         { kind: "data_edit", operationIndex: 0, operationCount: 1, undoRecipe: null },
       ]);
@@ -408,7 +408,7 @@ test.each(["asc", "desc"] as const)(
           pageId: createUuidV7(),
           projectId: ctx.manifest.projectId,
           operationId: createUuidV7(),
-          status: "build",
+          status: "doing",
           title: key,
           markdown: "Body",
         });
@@ -484,7 +484,7 @@ test.each(["asc", "desc"] as const)(
         expect(
           (await db.read()).query.rows.find((row) => row.page.pageId === ids[2])?.values.status
             ?.value,
-        ).toBe("build");
+        ).toBe("doing");
         expect(await history.undoLast()).toBe(true);
         expect((await db.read()).query.rows.map((row) => row.page.pageId)).toEqual(ids);
       }
@@ -525,7 +525,7 @@ test.each(["asc", "desc"] as const)(
       expect(
         (await db.read()).query.rows.find((row) => row.page.pageId === affected)?.values.status
           ?.value,
-      ).toBe("build");
+      ).toBe("doing");
       await db.reverse(redoCombined);
       expect((await db.read()).query.rows[0]?.page.pageId).toBe(affected);
       const beforeDirection = (await db.read()).query.view;

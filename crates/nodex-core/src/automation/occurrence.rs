@@ -1344,9 +1344,9 @@ fn status_label(value: &str) -> Option<&'static str> {
     match value {
         "triage" => Some("Triage"),
         "plan" => Some("Plan"),
-        "build" => Some("Build"),
+        "doing" => Some("Doing"),
         "review" => Some("Review"),
-        "ship" => Some("Ship"),
+        "done" => Some("Done"),
         _ => None,
     }
 }

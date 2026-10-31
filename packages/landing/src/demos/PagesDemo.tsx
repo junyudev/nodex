@@ -57,21 +57,21 @@ const CARDS: readonly BoardCard[] = [
     id: "passkeys",
     title: "Passkey sign-in",
     body: "Replace password sign-in with passkeys; keep passwords for one release.",
-    status: "Build",
+    status: "Doing",
     chat: { provider: "claude", working: true },
   },
   {
     id: "webhooks",
     title: "Idempotent Stripe webhooks",
     body: "Overlapping retries must never charge twice.",
-    status: "Build",
+    status: "Doing",
     chat: { provider: "codex", working: true },
   },
   {
     id: "coldstart",
     title: "Dashboard cold start",
     body: "Profile the cold start and report the three biggest costs.",
-    status: "Build",
+    status: "Doing",
     chat: { provider: "opencode", working: true },
   },
   {
@@ -84,7 +84,7 @@ const CARDS: readonly BoardCard[] = [
     id: "ratelimit",
     title: "Rate limiter",
     body: "Per-workspace limits on the public API.",
-    status: "Ship",
+    status: "Done",
   },
 ];
 

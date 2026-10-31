@@ -32,7 +32,7 @@ const board: BoardSummary = {
   columns: [
     { id: "triage", name: "Triage", cards: [card("a", "triage"), card("b", "triage")] },
     { id: "plan", name: "Plan", cards: [] },
-    { id: "build", name: "Build", cards: [card("c", "build")] },
+    { id: "doing", name: "Doing", cards: [card("c", "doing")] },
   ],
 };
 

@@ -93,14 +93,14 @@ describe("database Board presentation model", () => {
   test("projects workflow, option, scalar, checkbox, and unassigned markers", () => {
     const status = projectDatabaseBoardGroup({
       property: property("status", "select", "Status"),
-      groupKey: "build",
-      label: "Build",
-      pathKey: "status/build",
+      groupKey: "doing",
+      label: "Doing",
+      pathKey: "status/doing",
       options: [],
     });
-    expect(status.marker).toEqual({ kind: "status", statusId: "build" });
-    expect(status.surfaceColor).toBe("var(--column-build-header-bg)");
-    expect(status.activeSurfaceColor).toBe("var(--column-build-drop-bg)");
+    expect(status.marker).toEqual({ kind: "status", statusId: "doing" });
+    expect(status.surfaceColor).toBe("var(--column-doing-header-bg)");
+    expect(status.activeSurfaceColor).toBe("var(--column-doing-drop-bg)");
 
     expect(
       projectDatabaseBoardGroup({
@@ -196,7 +196,7 @@ describe("database Board presentation model", () => {
     const notes = property("p_NOTES001", "text", "Notes");
     const slots = projectDatabaseBoardCardFooter({
       authority: authority({
-        status: "build",
+        status: "doing",
         priority: "p1-high",
         tags: [],
         estimate: null,

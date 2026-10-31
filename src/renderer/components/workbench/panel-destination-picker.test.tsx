@@ -76,9 +76,9 @@ describe("PanelDestinationPickerSurface", () => {
         {
           columns: [
             {
-              id: "build",
-              name: "Build",
-              cards: [makePage("other-page", "OTH-21", "Other result", "build")],
+              id: "doing",
+              name: "Doing",
+              cards: [makePage("other-page", "OTH-21", "Other result", "doing")],
             },
           ],
         },

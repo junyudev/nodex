@@ -27,7 +27,7 @@ export const agentCrossProviderDelegationScenario: ScenarioDomainRecipe = {
       pageId,
       operationId: createUuidV7(),
       projectId: project.id,
-      status: "build",
+      status: "doing",
       title: "Lumen passkeys",
       markdown: "Add passkey sign-in to Lumen. Keep password sign-in available during the rollout.",
     });

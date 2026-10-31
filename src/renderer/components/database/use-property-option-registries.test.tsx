@@ -168,16 +168,16 @@ describe("usePropertyOptionRegistries", () => {
       name: "Status",
       ...testPropertySemantics("select", 5),
       valueType: "select",
-      config: { options: [{ id: "build", name: "In progress" }] },
+      config: { options: [{ id: "doing", name: "In progress" }] },
       optionCount: 5,
     };
     optionRuntime.readWindow.mockResolvedValueOnce({
       options: [
         { id: "triage", name: "Triage" },
         { id: "plan", name: "Planned" },
-        { id: "build", name: "In progress" },
+        { id: "doing", name: "In progress" },
         { id: "review", name: "Review" },
-        { id: "ship", name: "Shipped" },
+        { id: "done", name: "Shipped" },
       ],
       nextCursor: null,
       projectionRevision: 1,

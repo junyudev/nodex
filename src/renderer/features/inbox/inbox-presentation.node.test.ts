@@ -573,9 +573,9 @@ describe("inboxPageStatusMark", () => {
   it("marks a message only once its Page has left Triage", () => {
     expect(inboxPageStatusMark(item({ pageStatus: { id: "triage", label: "Triage" } }))).toBeNull();
     expect(inboxPageStatusMark(item({ pageStatus: null }))).toBeNull();
-    expect(inboxPageStatusMark(item({ pageStatus: { id: "build", label: "Build" } }))).toEqual({
-      id: "build",
-      label: "Build",
+    expect(inboxPageStatusMark(item({ pageStatus: { id: "doing", label: "Doing" } }))).toEqual({
+      id: "doing",
+      label: "Doing",
     });
   });
 

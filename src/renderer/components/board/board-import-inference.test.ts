@@ -29,7 +29,7 @@ function makeCard(
 }
 
 function makeBoard(columns: Partial<Record<WorkflowStatus, DatabasePageSummary[]>>): BoardSummary {
-  const orderedStatuses: WorkflowStatus[] = ["triage", "plan", "build", "review", "ship"];
+  const orderedStatuses: WorkflowStatus[] = ["triage", "plan", "doing", "review", "done"];
   return {
     columns: orderedStatuses.map((status) => ({
       id: status,
@@ -45,7 +45,7 @@ function makeRules(partial: Partial<DbViewRules> = {}): DbViewRules {
       any: [
         {
           all: [
-            { field: "status", op: "in", values: ["triage", "plan", "build", "review", "ship"] },
+            { field: "status", op: "in", values: ["triage", "plan", "doing", "review", "done"] },
             {
               field: "priority",
               op: "in",
@@ -64,17 +64,17 @@ function makeRules(partial: Partial<DbViewRules> = {}): DbViewRules {
 describe("resolveBoardImportInference", () => {
   test("maps filtered board-order imports back into persisted order and applies unambiguous filter defaults", () => {
     const board = makeBoard({
-      build: [
-        makeCard("hidden-a", "build", 0, { priority: "p2-medium" }),
-        makeCard("visible-b", "build", 1, { priority: "p1-high" }),
-        makeCard("hidden-c", "build", 2, { priority: "p3-low" }),
-        makeCard("visible-d", "build", 3, { priority: "p1-high" }),
+      doing: [
+        makeCard("hidden-a", "doing", 0, { priority: "p2-medium" }),
+        makeCard("visible-b", "doing", 1, { priority: "p1-high" }),
+        makeCard("hidden-c", "doing", 2, { priority: "p3-low" }),
+        makeCard("visible-d", "doing", 3, { priority: "p1-high" }),
       ],
     });
     const visibleBoard = makeBoard({
-      build: [
-        makeCard("visible-b", "build", 0, { priority: "p1-high" }),
-        makeCard("visible-d", "build", 1, { priority: "p1-high" }),
+      doing: [
+        makeCard("visible-b", "doing", 0, { priority: "p1-high" }),
+        makeCard("visible-d", "doing", 1, { priority: "p1-high" }),
       ],
     });
 
@@ -86,14 +86,14 @@ describe("resolveBoardImportInference", () => {
           any: [
             {
               all: [
-                { field: "status", op: "in", values: ["build"] },
+                { field: "status", op: "in", values: ["doing"] },
                 { field: "priority", op: "in", values: ["p1-high"] },
               ],
             },
           ],
         },
       }),
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 1,
       cards: [{ title: "Dropped block" }],
       hasSearchFilter: false,
@@ -110,17 +110,17 @@ describe("resolveBoardImportInference", () => {
 
   test("uses sortable neighbor properties to keep exact-slot imports under a priority sort", () => {
     const board = makeBoard({
-      build: [
-        makeCard("p1-a", "build", 0, { priority: "p1-high" }),
-        makeCard("p1-b", "build", 1, { priority: "p1-high" }),
-        makeCard("p2-a", "build", 2, { priority: "p2-medium" }),
+      doing: [
+        makeCard("p1-a", "doing", 0, { priority: "p1-high" }),
+        makeCard("p1-b", "doing", 1, { priority: "p1-high" }),
+        makeCard("p2-a", "doing", 2, { priority: "p2-medium" }),
       ],
     });
     const visibleBoard = makeBoard({
-      build: [
-        makeCard("p1-a", "build", 0, { priority: "p1-high" }),
-        makeCard("p1-b", "build", 1, { priority: "p1-high" }),
-        makeCard("p2-a", "build", 2, { priority: "p2-medium" }),
+      doing: [
+        makeCard("p1-a", "doing", 0, { priority: "p1-high" }),
+        makeCard("p1-b", "doing", 1, { priority: "p1-high" }),
+        makeCard("p2-a", "doing", 2, { priority: "p2-medium" }),
       ],
     });
 
@@ -130,7 +130,7 @@ describe("resolveBoardImportInference", () => {
       rules: makeRules({
         sort: [{ field: "priority", direction: "asc" }],
       }),
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 2,
       cards: [{ title: "Dropped block" }],
       hasSearchFilter: false,
@@ -147,9 +147,9 @@ describe("resolveBoardImportInference", () => {
 
   test("falls back to column-only import when the active sort depends on title", () => {
     const board = makeBoard({
-      build: [
-        makeCard("alpha", "build", 0, { title: "Alpha" }),
-        makeCard("beta", "build", 1, { title: "Beta" }),
+      doing: [
+        makeCard("alpha", "doing", 0, { title: "Alpha" }),
+        makeCard("beta", "doing", 1, { title: "Beta" }),
       ],
     });
 
@@ -159,7 +159,7 @@ describe("resolveBoardImportInference", () => {
       rules: makeRules({
         sort: [{ field: "title", direction: "asc" }],
       }),
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 1,
       cards: [{ title: "Dropped block" }],
       hasSearchFilter: false,
@@ -170,14 +170,14 @@ describe("resolveBoardImportInference", () => {
 
   test("blocks board import while search is active", () => {
     const board = makeBoard({
-      build: [makeCard("match", "build", 0)],
+      doing: [makeCard("match", "doing", 0)],
     });
 
     const result = resolveBoardImportInference({
       board,
       visibleBoard: board,
       rules: makeRules(),
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 0,
       cards: [{ title: "Dropped block" }],
       hasSearchFilter: true,
@@ -188,7 +188,7 @@ describe("resolveBoardImportInference", () => {
 
   test("blocks filtered imports when matching a tag subset would require inventing an ambiguous tag", () => {
     const board = makeBoard({
-      build: [makeCard("visible", "build", 0, { tags: ["backend"] })],
+      doing: [makeCard("visible", "doing", 0, { tags: ["backend"] })],
     });
 
     const result = resolveBoardImportInference({
@@ -199,14 +199,14 @@ describe("resolveBoardImportInference", () => {
           any: [
             {
               all: [
-                { field: "status", op: "in", values: ["build"] },
+                { field: "status", op: "in", values: ["doing"] },
                 { field: "tags", op: "hasAny", values: ["backend", "frontend"] },
               ],
             },
           ],
         },
       }),
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 1,
       cards: [{ title: "Dropped block" }],
       hasSearchFilter: false,
@@ -217,10 +217,10 @@ describe("resolveBoardImportInference", () => {
 
   test("keeps a sorted import column-only when explicit imported sort values conflict with the hovered slot", () => {
     const board = makeBoard({
-      build: [
-        makeCard("p1-a", "build", 0, { priority: "p1-high" }),
-        makeCard("p1-b", "build", 1, { priority: "p1-high" }),
-        makeCard("p2-a", "build", 2, { priority: "p2-medium" }),
+      doing: [
+        makeCard("p1-a", "doing", 0, { priority: "p1-high" }),
+        makeCard("p1-b", "doing", 1, { priority: "p1-high" }),
+        makeCard("p2-a", "doing", 2, { priority: "p2-medium" }),
       ],
     });
 
@@ -230,7 +230,7 @@ describe("resolveBoardImportInference", () => {
       rules: makeRules({
         sort: [{ field: "priority", direction: "asc" }],
       }),
-      targetColumnId: "build",
+      targetColumnId: "doing",
       targetVisibleIndex: 2,
       cards: [{ title: "Snapshot card", priority: "p3-low" } satisfies PageInput],
       hasSearchFilter: false,

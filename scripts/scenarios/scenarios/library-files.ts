@@ -25,7 +25,7 @@ const SHARED_IMAGE_BYTES = new Uint8Array([
 const PAGE_DEFINITIONS = [
   {
     key: LIBRARY_FILES_PAGE_A_KEY,
-    status: "build" as const,
+    status: "doing" as const,
     title: "Shared image A",
     logicalPath: "assets/shared.png",
   },

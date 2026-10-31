@@ -199,7 +199,7 @@ describe("Core Block Transfer Adapter", () => {
             },
             presentationOverride: {},
           },
-          groupKey: "ship",
+          groupKey: "done",
           sortedPropertyValues: [
             {
               propertyId: "priority",
@@ -296,7 +296,7 @@ describe("Core Block Transfer Adapter", () => {
               },
               presentation_override: {},
             },
-            group_key: "ship",
+            group_key: "done",
             sorted_property_values: [
               {
                 property_id: "priority",

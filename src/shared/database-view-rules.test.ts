@@ -40,7 +40,7 @@ describe("Database View effective rules", () => {
       advancedFilter: {
         kind: "group",
         operator: "or",
-        children: [{ kind: "clause", propertyId: "status", operator: "select_is", value: "build" }],
+        children: [{ kind: "clause", propertyId: "status", operator: "select_is", value: "doing" }],
       },
       sorts: [],
     };
@@ -75,7 +75,7 @@ describe("Database View effective rules", () => {
             kind: "group",
             operator: "and",
             children: [
-              { kind: "clause", propertyId: "status", operator: "select_is", value: "build" },
+              { kind: "clause", propertyId: "status", operator: "select_is", value: "doing" },
               { kind: "clause", propertyId: "tags", operator: "multi_select_contains", value: [] },
             ],
           },
@@ -93,7 +93,7 @@ describe("Database View effective rules", () => {
             kind: "group",
             operator: "and",
             children: [
-              { kind: "clause", propertyId: "status", operator: "select_is", value: "build" },
+              { kind: "clause", propertyId: "status", operator: "select_is", value: "doing" },
             ],
           },
         ],

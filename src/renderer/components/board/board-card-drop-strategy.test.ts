@@ -29,7 +29,7 @@ function makeCard(
 }
 
 function makeBoard(columns: Partial<Record<WorkflowStatus, DatabasePageSummary[]>>): BoardSummary {
-  const orderedStatuses: WorkflowStatus[] = ["triage", "plan", "build", "review", "ship"];
+  const orderedStatuses: WorkflowStatus[] = ["triage", "plan", "doing", "review", "done"];
   return {
     columns: orderedStatuses.map((status) => ({
       id: status,
@@ -45,7 +45,7 @@ function makeRules(sort: DbViewRules["sort"]): DbViewRules {
       any: [
         {
           all: [
-            { field: "status", op: "in", values: ["triage", "plan", "build", "review", "ship"] },
+            { field: "status", op: "in", values: ["triage", "plan", "doing", "review", "done"] },
             {
               field: "priority",
               op: "in",
@@ -74,7 +74,7 @@ describe("board card drop strategy", () => {
 
   test("keeps visible-slot reordering enabled when board-order stays primary", () => {
     const board = makeBoard({
-      build: [makeCard("a", "build", 0), makeCard("b", "build", 1), makeCard("c", "build", 2)],
+      doing: [makeCard("a", "doing", 0), makeCard("b", "doing", 1), makeCard("c", "doing", 2)],
     });
 
     const intent = resolveBoardCardDropIntent({
@@ -84,11 +84,11 @@ describe("board card drop strategy", () => {
         { field: "board-order", direction: "asc" },
         { field: "created", direction: "desc" },
       ]),
-      destinationColumnId: "build",
+      destinationColumnId: "doing",
       destinationIndex: 1,
       dragItems: [
         {
-          columnId: "build",
+          columnId: "doing",
           card: board.columns[2]!.cards[0]!,
         },
       ],
@@ -103,10 +103,10 @@ describe("board card drop strategy", () => {
 
   test("returns a property patch when a priority-sorted drop crosses buckets", () => {
     const board = makeBoard({
-      build: [
-        makeCard("p1-a", "build", 0, { priority: "p1-high" }),
-        makeCard("p1-b", "build", 1, { priority: "p1-high" }),
-        makeCard("p2-a", "build", 2, { priority: "p2-medium" }),
+      doing: [
+        makeCard("p1-a", "doing", 0, { priority: "p1-high" }),
+        makeCard("p1-b", "doing", 1, { priority: "p1-high" }),
+        makeCard("p2-a", "doing", 2, { priority: "p2-medium" }),
       ],
       review: [makeCard("review", "review", 0, { priority: "p3-low" })],
     });
@@ -115,7 +115,7 @@ describe("board card drop strategy", () => {
       board,
       visibleBoard: board,
       rules: makeRules([{ field: "priority", direction: "asc" }]),
-      destinationColumnId: "build",
+      destinationColumnId: "doing",
       destinationIndex: 2,
       dragItems: [
         {
@@ -135,10 +135,10 @@ describe("board card drop strategy", () => {
 
   test("keeps within-bucket priority drops as pure reorders", () => {
     const board = makeBoard({
-      build: [
-        makeCard("p1-a", "build", 0, { priority: "p1-high" }),
-        makeCard("p1-b", "build", 1, { priority: "p1-high" }),
-        makeCard("p2-a", "build", 2, { priority: "p2-medium" }),
+      doing: [
+        makeCard("p1-a", "doing", 0, { priority: "p1-high" }),
+        makeCard("p1-b", "doing", 1, { priority: "p1-high" }),
+        makeCard("p2-a", "doing", 2, { priority: "p2-medium" }),
       ],
     });
 
@@ -146,11 +146,11 @@ describe("board card drop strategy", () => {
       board,
       visibleBoard: board,
       rules: makeRules([{ field: "priority", direction: "asc" }]),
-      destinationColumnId: "build",
+      destinationColumnId: "doing",
       destinationIndex: 1,
       dragItems: [
         {
-          columnId: "build",
+          columnId: "doing",
           card: board.columns[2]!.cards[1]!,
         },
       ],
@@ -161,10 +161,10 @@ describe("board card drop strategy", () => {
 
   test("maps same-column downward priority drops from the remaining visible slot space", () => {
     const board = makeBoard({
-      build: [
-        makeCard("p1-a", "build", 0, { priority: "p1-high" }),
-        makeCard("p1-b", "build", 1, { priority: "p1-high" }),
-        makeCard("p2-a", "build", 2, { priority: "p2-medium" }),
+      doing: [
+        makeCard("p1-a", "doing", 0, { priority: "p1-high" }),
+        makeCard("p1-b", "doing", 1, { priority: "p1-high" }),
+        makeCard("p2-a", "doing", 2, { priority: "p2-medium" }),
       ],
     });
 
@@ -172,11 +172,11 @@ describe("board card drop strategy", () => {
       board,
       visibleBoard: board,
       rules: makeRules([{ field: "priority", direction: "asc" }]),
-      destinationColumnId: "build",
+      destinationColumnId: "doing",
       destinationIndex: 1,
       dragItems: [
         {
-          columnId: "build",
+          columnId: "doing",
           card: board.columns[2]!.cards[0]!,
         },
       ],
@@ -191,9 +191,9 @@ describe("board card drop strategy", () => {
 
   test("blocks same-column ranking when title owns the sort", () => {
     const board = makeBoard({
-      build: [
-        makeCard("a", "build", 0, { title: "Alpha" }),
-        makeCard("b", "build", 1, { title: "Beta" }),
+      doing: [
+        makeCard("a", "doing", 0, { title: "Alpha" }),
+        makeCard("b", "doing", 1, { title: "Beta" }),
       ],
     });
 
@@ -201,11 +201,11 @@ describe("board card drop strategy", () => {
       board,
       visibleBoard: board,
       rules: makeRules([{ field: "title", direction: "asc" }]),
-      destinationColumnId: "build",
+      destinationColumnId: "doing",
       destinationIndex: 1,
       dragItems: [
         {
-          columnId: "build",
+          columnId: "doing",
           card: board.columns[2]!.cards[0]!,
         },
       ],
@@ -216,7 +216,7 @@ describe("board card drop strategy", () => {
 
   test("keeps cross-column moves enabled when title owns the sort", () => {
     const board = makeBoard({
-      build: [makeCard("a", "build", 0, { title: "Alpha" })],
+      doing: [makeCard("a", "doing", 0, { title: "Alpha" })],
       review: [makeCard("b", "review", 0, { title: "Beta" })],
     });
 
@@ -224,11 +224,11 @@ describe("board card drop strategy", () => {
       board,
       visibleBoard: board,
       rules: makeRules([{ field: "title", direction: "asc" }]),
-      destinationColumnId: "ship",
+      destinationColumnId: "done",
       destinationIndex: 0,
       dragItems: [
         {
-          columnId: "build",
+          columnId: "doing",
           card: board.columns[2]!.cards[0]!,
         },
       ],

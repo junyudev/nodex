@@ -4055,8 +4055,8 @@ fn inbox_messages_project_the_current_page_status_in_library_and_project_scopes(
         };
         assert_eq!(read_status(), Some(("triage".into(), "Triage".into())));
 
-        let changed = set_status_by_hand(&workspace, &format!("page:{id}"), "build");
-        assert_eq!(read_status(), Some(("build".into(), "Build".into())));
+        let changed = set_status_by_hand(&workspace, &format!("page:{id}"), "doing");
+        assert_eq!(read_status(), Some(("doing".into(), "Doing".into())));
         assert_inbox_invalidated(&workspace, changed.committed.commit_seq);
 
         set_status_option_by_hand(&workspace, &format!("page:{id}"), None);
@@ -4181,7 +4181,7 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
         },
         Some("session:chat"),
     );
-    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("build"));
+    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("doing"));
     let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read_host(
         module,
         ProjectWorkspaceRead::InboxDispatchOutbox { limit: 8 },
@@ -4198,16 +4198,16 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
             dispatched_thread_id: Some("thread:chat".into()),
         },
     );
-    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("build"));
+    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("doing"));
 
-    // Closing the chat's work ships it, and the message still says which chat did it.
+    // Closing the chat's work completes it, and the message still says which chat did it.
     set_state(
         module,
         "done:chat",
         "page:chat",
         ProjectWorkspaceInboxEntryState::Done,
     );
-    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("ship"));
+    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("done"));
     assert_eq!(
         handled_outcome(module, "page:chat"),
         Some(ProjectWorkspaceInboxOutcome::Chat)
@@ -4218,7 +4218,7 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
         "page:chat",
         ProjectWorkspaceInboxEntryState::Open,
     );
-    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("build"));
+    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("doing"));
     assert_eq!(
         handled_outcome(module, "page:chat"),
         Some(ProjectWorkspaceInboxOutcome::Chat)
@@ -4253,7 +4253,7 @@ fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
         "page:done",
         ProjectWorkspaceInboxEntryState::Done,
     );
-    assert_eq!(status_of(&workspace, "page:done").as_deref(), Some("ship"));
+    assert_eq!(status_of(&workspace, "page:done").as_deref(), Some("done"));
     set_state(
         module,
         "undo:done",
@@ -4809,7 +4809,7 @@ mod scheduled {
         confirm(&workspace);
         assert_eq!(
             status_of(&workspace, "page:firing").as_deref(),
-            Some("build")
+            Some("doing")
         );
         assert_eq!(
             count(

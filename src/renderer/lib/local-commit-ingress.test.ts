@@ -75,7 +75,7 @@ const databaseRowEffect = (
       description_preview: "",
       description_length: 0,
       has_description: false,
-      database_values: { status: "ship" },
+      database_values: { status: "done" },
       intrinsic_properties: {
         "run.target": "localProject",
         "run.localPath": null,
@@ -101,7 +101,7 @@ const databaseRowEffect = (
       membership_created_at: "2026-08-09T00:00:00.000Z",
       created_at: "2026-08-09T00:00:00.000Z",
       updated_at: "2026-08-09T00:00:00.000Z",
-      effective_group_key: "ship",
+      effective_group_key: "done",
       rank_key: "rank-page-1",
       position_revision: 2,
       position_order: positionOrder,
@@ -431,7 +431,7 @@ describe("RendererLocalCommitIngress", () => {
               kind: "database_row_upsert",
               row: expect.objectContaining({
                 id: "page-1",
-                status: "ship",
+                status: "done",
                 order: 3,
               }),
             }),

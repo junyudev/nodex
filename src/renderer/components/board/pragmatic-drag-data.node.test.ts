@@ -7,13 +7,13 @@ import { buildBoardCardDragData, canDropOnBoardCard } from "./pragmatic-drag-dat
 const board: BoardSummary = {
   columns: [
     {
-      id: "build",
-      name: "Build",
+      id: "doing",
+      name: "Doing",
       cards: [
         {
           id: "card-1",
           pageKey: null,
-          status: "build",
+          status: "doing",
           archived: false,
           title: "Task",
           richTitle: plainTextToPortableRichText("Task"),
@@ -28,7 +28,7 @@ const board: BoardSummary = {
         {
           id: "card-2",
           pageKey: null,
-          status: "build",
+          status: "doing",
           archived: false,
           title: "Peer",
           richTitle: plainTextToPortableRichText("Peer"),
@@ -56,7 +56,7 @@ describe("pragmatic drag data", () => {
       dataSourceId: "source-default",
       storeEpoch: "epoch-default",
       activePage: board.columns[0]!.cards[0]!,
-      columnId: "build",
+      columnId: "doing",
     });
 
     expect(result.sourcePage.descriptionPreview).toBe("Persisted body");
@@ -78,7 +78,7 @@ describe("pragmatic drag data", () => {
       dataSourceId: "source-default",
       storeEpoch: "epoch-default",
       activePage: board.columns[0]!.cards[0]!,
-      columnId: "build",
+      columnId: "doing",
     });
 
     expect(

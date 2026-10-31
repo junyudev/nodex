@@ -902,14 +902,14 @@ fn simple_effects(operation_kind: &'static str, now: &str) -> WorkspaceMutationE
 // ---------------------------------------------------------------------------
 
 /// The workflow status a message's handling implies for its Page: Triage while it waits,
-/// Build once its work is handed to a chat, Plan when it is kept or filed, Ship when done.
+/// Doing once its work is handed to a chat, Plan when it is kept or filed, Done when done.
 fn implied_status(connection: &Connection, page_id: &str) -> Result<String, StoreError> {
     Ok(connection.query_row(
-        "SELECT CASE entry.state WHEN 'done' THEN 'ship' WHEN 'kept' THEN 'plan' \
+        "SELECT CASE entry.state WHEN 'done' THEN 'done' WHEN 'kept' THEN 'plan' \
            ELSE CASE WHEN COALESCE(proposal.state, '') IN ('dispatching', 'completed', 'failed') \
              AND COALESCE(json_extract(proposal.action_json, '$.type'), '') \
                IN ('new_chat', 'send_to_chat', 'run_task') \
-           THEN 'build' ELSE 'triage' END END \
+           THEN 'doing' ELSE 'triage' END END \
          FROM inbox_entries entry \
          LEFT JOIN inbox_proposals proposal ON proposal.proposal_id = entry.current_proposal_id \
          WHERE entry.page_id = ?1",

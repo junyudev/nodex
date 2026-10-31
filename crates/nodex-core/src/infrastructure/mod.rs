@@ -31,4 +31,5 @@ pub mod store_lock;
 pub mod store_replacement;
 pub(crate) mod store_validation;
 pub(crate) mod store_validation_receipt;
+mod workflow_status_migration;
 pub mod writer;

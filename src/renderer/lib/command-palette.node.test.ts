@@ -33,7 +33,7 @@ function makePage(overrides: Partial<DatabasePageSummary> = {}): DatabasePageSum
     descriptionPreview,
     descriptionLength: overrides.descriptionLength ?? descriptionPreview.length,
     hasDescription: overrides.hasDescription ?? descriptionPreview.length > 0,
-    status: overrides.status ?? "build",
+    status: overrides.status ?? "doing",
     archived: overrides.archived ?? false,
     priority: overrides.priority,
     estimate: overrides.estimate,
@@ -346,7 +346,7 @@ describe("filterCommandPaletteItems", () => {
     const summaries = summarizeCommandPalettePageFilters(
       {
         ...getDefaultCommandPalettePageFilters(),
-        statuses: ["plan", "build"],
+        statuses: ["plan", "doing"],
         priorities: ["p0-critical"],
         includeEmptyPriority: true,
         tags: ["search"],
@@ -358,7 +358,7 @@ describe("filterCommandPaletteItems", () => {
 
     expect(summaries.length).toBe(5);
     expect(summaries[0]?.label).toBe("Status");
-    expect(summaries[0]?.value).toBe("Plan, Build");
+    expect(summaries[0]?.value).toBe("Plan, Doing");
     expect(summaries[1]?.value).toBe("P0, -");
     expect(summaries[2]?.label).toBe("Tags (any)");
     expect(summaries[4]?.value).toBe("Ops Console");

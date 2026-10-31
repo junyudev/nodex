@@ -32,7 +32,7 @@ const page = (input: {
   row: {
     pageId: input.pageId,
     pageKey: null,
-    groupKey: input.groupKey ?? "build",
+    groupKey: input.groupKey ?? "doing",
     subgroupKey: null,
     title: input.pageId,
     preview: "",
@@ -45,7 +45,7 @@ const page = (input: {
     metadataRevision: 1,
     createdAt: new Date("2026-08-13T00:00:00.000Z"),
   },
-  groupKey: input.groupKey ?? "build",
+  groupKey: input.groupKey ?? "doing",
   subgroupKey: null,
   ancestorPageIds: input.ancestors ?? [],
   depth: input.depth ?? 0,
@@ -94,7 +94,7 @@ describe("Database List receipt materialization", () => {
     targetPageId: "anchor",
     parentPageId: null,
     beforePageId: "anchor",
-    groupKey: "build",
+    groupKey: "doing",
     subgroupKey: null,
     depth: 0,
     edge: "before",
@@ -182,8 +182,8 @@ describe("Database List receipt materialization", () => {
 
   test("finds the exact destination occurrence without rejecting copies in another group", () => {
     const rows = [
-      page({ key: "other-a", pageId: "A", groupKey: "ship" }),
-      page({ key: "other-b", pageId: "B", groupKey: "ship" }),
+      page({ key: "other-a", pageId: "A", groupKey: "done" }),
+      page({ key: "other-b", pageId: "B", groupKey: "done" }),
       rootA,
       rootB,
       anchor,
@@ -468,7 +468,7 @@ describe("Database List subtree drag model", () => {
   test("deduplicates a fully visible Page closure for the overlay count", () => {
     const rows = [
       page({ key: "first", pageId: "same" }),
-      page({ key: "second", pageId: "same", groupKey: "ship" }),
+      page({ key: "second", pageId: "same", groupKey: "done" }),
     ];
     const sources = resolveDatabaseListDragSources({
       rows,

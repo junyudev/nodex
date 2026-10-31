@@ -178,10 +178,10 @@ test("native Database View tools distinguish displayed rows from the effective s
         const fixturePages = [
           ...Array.from({ length: 30 }, (_, index) => ({
             title: `needle ${String(index).padStart(2, "0")}`,
-            status: "build" as const,
+            status: "doing" as const,
             matches: true,
           })),
-          { title: "Unsearched build Page", status: "build" as const, matches: false },
+          { title: "Unsearched Doing Page", status: "doing" as const, matches: false },
           { title: "needle excluded by shared filter", status: "plan" as const, matches: false },
         ];
         for (const [index, fixture] of fixturePages.entries()) {
@@ -255,7 +255,7 @@ test("native Database View tools distinguish displayed rows from the effective s
                           kind: "clause",
                           propertyId: "status",
                           operator: "select_is",
-                          value: "build",
+                          value: "doing",
                         },
                       },
                     ],

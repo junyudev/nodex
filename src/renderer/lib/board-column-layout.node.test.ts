@@ -40,7 +40,7 @@ function withMockedLocalStorage(run: () => void): void {
 
 describe("board column layout prefs", () => {
   test("defaults each column to expanded with the standard width", () => {
-    expect(JSON.stringify(getBoardColumnLayout({}, "build"))).toBe(
+    expect(JSON.stringify(getBoardColumnLayout({}, "doing"))).toBe(
       JSON.stringify({
         collapsed: false,
         width: DEFAULT_BOARD_COLUMN_WIDTH,
@@ -68,7 +68,7 @@ describe("board column layout prefs", () => {
           collapsed: true,
           width: 416,
         },
-        ship: {
+        done: {
           width: 224,
         },
       }),
@@ -110,16 +110,16 @@ describe("board column layout prefs", () => {
     const next = updateBoardColumnLayoutPrefs(
       {
         plan: { collapsed: true, width: 360 },
-        ship: { width: 240 },
+        done: { width: 240 },
       },
-      "ship",
+      "done",
       { collapsed: true, width: 288 },
     );
 
     expect(JSON.stringify(next)).toBe(
       JSON.stringify({
         plan: { collapsed: true, width: 360 },
-        ship: { collapsed: true, width: 288 },
+        done: { collapsed: true, width: 288 },
       }),
     );
   });

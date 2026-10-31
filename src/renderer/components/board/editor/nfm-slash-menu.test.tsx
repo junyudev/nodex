@@ -618,7 +618,7 @@ describe("NfmSlashMenu", () => {
           pageId: "page-title",
           title: "Projection notes",
           pageKey: "NDX-42",
-          status: "build",
+          status: "doing",
           locationLabel: "Product / Editor",
           lifecycle: "active",
           matchExcerpt: "Projection notes",
@@ -694,7 +694,7 @@ describe("NfmSlashMenu", () => {
     });
     const [statusRow, genericPageRow] = view.getAllByRole("option");
     expect(statusRow?.querySelector("svg")?.classList.contains("size-4")).toBe(true);
-    expect(statusRow?.querySelector("svg")?.getAttribute("style")).toContain("--status-build-dot");
+    expect(statusRow?.querySelector("svg")?.getAttribute("style")).toContain("--status-doing-dot");
     expect(genericPageRow?.querySelector("svg")?.classList.contains("icon-xs")).toBe(true);
     items[1]?.onItemClick();
     expect(insertInlineContent).toHaveBeenCalledWith(

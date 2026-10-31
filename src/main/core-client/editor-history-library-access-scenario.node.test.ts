@@ -22,7 +22,7 @@ test("structural history remains usable across Project presentations in one Libr
       projectId: other.id,
       pageId,
       operationId: createUuidV7(),
-      status: "build",
+      status: "doing",
       title: "Other Project",
       markdown: "Other content",
     });

@@ -59,7 +59,7 @@ test("opens an empty-query Page destination flow and resumes the mention session
       });
       await focusBoardDenseUi(page, manifest);
 
-      const sourcePageId = manifest.pageIdsByKey.primaryBuildPage;
+      const sourcePageId = manifest.pageIdsByKey.primaryDoingPage;
       if (!sourcePageId) throw new Error("board/dense has no primary Page");
       const editor = page
         .locator(`[data-page-stage-page-id="${sourcePageId}"]:visible .nfm-editor`)
@@ -99,7 +99,7 @@ test("opens Page Stage references in the invoking tab group", async () => {
       });
       await focusBoardDenseUi(page, manifest);
 
-      const sourcePageId = manifest.pageIdsByKey.primaryBuildPage;
+      const sourcePageId = manifest.pageIdsByKey.primaryDoingPage;
       const targetPageId = manifest.pageIdsByKey.boundedProjection;
       if (!sourcePageId || !targetPageId) {
         throw new Error("board/dense Page reference fixtures are missing");
@@ -143,7 +143,7 @@ test("creates Page mentions atomically under current and chosen parent Pages", a
       });
       await focusBoardDenseUi(page, manifest);
 
-      const sourcePageId = manifest.pageIdsByKey.primaryBuildPage;
+      const sourcePageId = manifest.pageIdsByKey.primaryDoingPage;
       if (!sourcePageId) throw new Error("board/dense has no primary Page");
       const editor = page
         .locator(`[data-page-stage-page-id="${sourcePageId}"]:visible .nfm-editor`)

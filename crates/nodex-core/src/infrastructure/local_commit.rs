@@ -1462,6 +1462,47 @@ pub(crate) fn read_manifest(
     load_verified_commit(connection, commit_seq).map(|verified| verified.manifest)
 }
 
+/// Reseals the receipt reference when a Store migration must update live restore
+/// evidence. Physical history, projection evidence and operation identity stay exact.
+pub(crate) fn refresh_migrated_receipt(
+    connection: &Connection,
+    commit_seq: i64,
+    result_hash: &str,
+) -> Result<(), StoreError> {
+    let row = read_commit(connection, commit_seq)?
+        .ok_or_else(|| corrupt("Migrated receipt has no LocalCommit"))?;
+    load_verified_commit(connection, commit_seq)?;
+    let context = CommitContext {
+        commit_seq,
+        store_epoch: row.store_epoch.clone(),
+        operation_id: row.operation_id.clone(),
+        intent_hash: row.intent_hash.clone(),
+        committed_at: row.committed_at.clone(),
+    };
+    let coordinate = context.coordinate();
+    let effects =
+        canonical_effects_from_evidence(&physical_effect_evidence(connection, coordinate)?)?;
+    let library_effects = canonical_library_effects(connection, coordinate)?;
+    let atoms = canonical_delivery_atoms(connection, &context)?;
+    let documents = canonical_document_effects(connection, coordinate)?;
+    let mut receipt = row.receipt;
+    receipt.result_hash = result_hash.to_owned();
+    let manifest = compile_manifest(
+        &context,
+        ManifestEvidence {
+            effects: &effects,
+            library_effects: &library_effects,
+            atoms: &atoms,
+            documents: &documents,
+            projection: &row.projection,
+            receipt: &receipt,
+            audience: &row.audience,
+        },
+    )?;
+    connection.execute("UPDATE local_commits SET receipt_json=?1,manifest_json=?2,canonical_hash=?3 WHERE commit_seq=?4", params![serde_json::to_string(&receipt).map_err(|_| corrupt("Migrated receipt reference is invalid"))?,serde_json::to_string(&manifest).map_err(|_| corrupt("Migrated CommitManifest is invalid"))?,manifest.identity.manifest_hash,commit_seq])?;
+    Ok(())
+}
+
 /// Rebinds finalized commit evidence after a Store replacement rotates epoch.
 pub(crate) fn rebase_store_epoch(
     connection: &Connection,

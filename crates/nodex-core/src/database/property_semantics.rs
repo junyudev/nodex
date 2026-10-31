@@ -12,7 +12,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 pub(crate) const PRIORITY_PROPERTY_ID: &str = "priority";
 pub(crate) const STATUS_PROPERTY_ID: &str = "status";
 pub(crate) const TASK_PARENT_PROPERTY_ID: &str = "task_parent";
-pub(crate) const COMPLETED_STATUS_OPTION_ID: &str = "ship";
+pub(crate) const COMPLETED_STATUS_OPTION_ID: &str = "done";
 const BUILT_IN_PROPERTY_IDS: [&str; 9] = [
     STATUS_PROPERTY_ID,
     PRIORITY_PROPERTY_ID,
@@ -24,7 +24,7 @@ const BUILT_IN_PROPERTY_IDS: [&str; 9] = [
     "assignee",
     TASK_PARENT_PROPERTY_ID,
 ];
-const STATUS_OPTION_IDS: [&str; 5] = ["triage", "plan", "build", "review", "ship"];
+const STATUS_OPTION_IDS: [&str; 5] = ["triage", "plan", "doing", "review", "done"];
 const ESTIMATE_OPTION_IDS: [&str; 5] = ["xs", "s", "m", "l", "xl"];
 const MAX_OPTION_NAME_LENGTH: usize = 256;
 const MAX_OPTION_COLOR_LENGTH: usize = 128;
@@ -427,4 +427,17 @@ pub(crate) fn schema_from_storage(
 
 fn corrupt(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::StoreCorrupt, message, false)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn workflow_options_accept_only_the_current_five_stage_identities() {
+        for id in ["triage", "plan", "doing", "review", "done"] {
+            assert!(super::is_canonical_option_id("status", id));
+        }
+        for id in ["build", "ship", "in_progress", "in_review"] {
+            assert!(!super::is_canonical_option_id("status", id));
+        }
+    }
 }

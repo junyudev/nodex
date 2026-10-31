@@ -5,7 +5,7 @@ export function buildPageStageFixturePage(): DatabasePage {
   return {
     id: "fixture-page-stage-1",
     pageKey: "LAB-13",
-    status: "build",
+    status: "doing",
     archived: false,
     title: "Refine related Chat property UI",
     richTitle: plainTextToPortableRichText("Refine related Chat property UI"),

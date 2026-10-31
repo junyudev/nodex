@@ -198,7 +198,7 @@ test("projectless agents use Profile content and Automation tools in both intera
           operationId: createUuidV7(),
           projectId: seedProject.projectId,
           title: "Projectless content",
-          status: "build",
+          status: "doing",
           markdown: "Original projectless content.",
         });
         const database = await seed.readDatabase({

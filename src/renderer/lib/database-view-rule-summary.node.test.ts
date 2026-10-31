@@ -15,7 +15,7 @@ const property = (propertyId: string, name: string): DataSourcePropertyRecordV2 
   name,
   ...testPropertySemantics("select", 2),
   valueType: "select",
-  config: { options: [{ id: "build", name: "Build" }] },
+  config: { options: [{ id: "doing", name: "Doing" }] },
   rankKey: propertyId,
   lifecycle: "active",
   revision: 1,
@@ -31,13 +31,13 @@ describe("database View rule summaries", () => {
           kind: "group",
           operator: "and",
           children: [
-            { kind: "clause", propertyId: "p_status00", operator: "equals", value: "build" },
+            { kind: "clause", propertyId: "p_status00", operator: "equals", value: "doing" },
             {
               kind: "group",
               operator: "or",
               children: [
                 { kind: "clause", propertyId: "p_priorit0", operator: "is_empty" },
-                { kind: "clause", propertyId: "p_priorit0", operator: "equals", value: "build" },
+                { kind: "clause", propertyId: "p_priorit0", operator: "equals", value: "doing" },
               ],
             },
           ],
@@ -45,7 +45,7 @@ describe("database View rule summaries", () => {
         [property("p_status00", "Status"), property("p_priorit0", "Priority")],
       ),
     ).toEqual([
-      { key: "p_status00", label: "Status", value: "is Build" },
+      { key: "p_status00", label: "Status", value: "is Doing" },
       { key: "p_priorit0", label: "Priority", value: "2 rules" },
     ]);
   });
@@ -58,9 +58,9 @@ describe("database View rule summaries", () => {
         options: [
           { id: "triage", name: "Triage" },
           { id: "plan", name: "Plan" },
-          { id: "build", name: "Build" },
+          { id: "doing", name: "Doing" },
           { id: "review", name: "Review" },
-          { id: "ship", name: "Ship" },
+          { id: "done", name: "Done" },
         ],
       },
     };

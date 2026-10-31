@@ -161,7 +161,7 @@ describe("general Database mutation contract", () => {
 
   test("resolves the first matching conditional color with typed empty and membership semantics", () => {
     const values = new Map<string, unknown>([
-      ["status", "build"],
+      ["status", "doing"],
       ["tags", ["urgent", "frontend"]],
       ["estimate", 0],
       ["done", false],
@@ -176,7 +176,7 @@ describe("general Database mutation contract", () => {
           ruleId: "rule-1",
           propertyId: "status",
           operator: "equals",
-          value: "build",
+          value: "doing",
           colorSource: "fixed",
           color: "orange",
         },
@@ -275,7 +275,7 @@ describe("general Database mutation contract", () => {
           kind: "clause",
           propertyId: "status",
           operator: "equals",
-          value: "ship",
+          value: "done",
         },
         sort: [
           {
@@ -331,7 +331,7 @@ describe("general Database mutation contract", () => {
       databaseBlockId: "database-1",
       propertyId: "status-property",
       expectedValueRevision: 1,
-      value: "ship",
+      value: "done",
     };
     const position = {
       kind: "position_page" as const,
@@ -399,7 +399,7 @@ describe("general Database mutation contract", () => {
       pageId: `card-${index}`,
       propertyId: "status-property",
       expectedValueRevision: index + 1,
-      value: "ship",
+      value: "done",
     }));
     const pages = entries.map((entry, index) => ({
       pageId: entry.pageId,
@@ -454,7 +454,7 @@ describe("general Database mutation contract", () => {
               kind: "position_pages",
               viewId: "view-1",
               pages,
-              groupKey: "ship",
+              groupKey: "done",
               beforePageId: pages[0]?.pageId,
             },
           ],
@@ -470,7 +470,7 @@ describe("general Database mutation contract", () => {
               kind: "position_pages",
               viewId: "view-1",
               pages,
-              groupKey: "ship",
+              groupKey: "done",
             },
             {
               kind: "set_values",

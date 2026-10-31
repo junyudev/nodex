@@ -105,10 +105,10 @@ describe("database identities", () => {
   });
 
   test("validates built-in option identities against their owning Property", () => {
-    expect(isBuiltInDataSourceOptionId("status", "ship")).toBe(true);
+    expect(isBuiltInDataSourceOptionId("status", "done")).toBe(true);
     expect(isBuiltInDataSourceOptionId("priority", "p0-critical")).toBe(true);
     expect(isBuiltInDataSourceOptionId("estimate", "xs")).toBe(true);
-    expect(isBuiltInDataSourceOptionId("priority", "ship")).toBe(false);
+    expect(isBuiltInDataSourceOptionId("priority", "done")).toBe(false);
     for (const priority of ["p0-critical", "p1-high", "p2-medium", "p3-low"]) {
       expect(parseDataSourceOptionId({ propertyId: "priority", value: priority })).toBe(priority);
     }
@@ -118,10 +118,10 @@ describe("database identities", () => {
         value: "p4-later",
       }),
     ).toThrow("not valid");
-    expect(isBuiltInDataSourceOptionId("tags", "ship")).toBe(false);
+    expect(isBuiltInDataSourceOptionId("tags", "done")).toBe(false);
     expect(isBuiltInDataSourceOptionId("toString", "call")).toBe(false);
 
-    expect(parseDataSourceOptionId({ propertyId: "status", value: "ship" })).toBe("ship");
+    expect(parseDataSourceOptionId({ propertyId: "status", value: "done" })).toBe("done");
     expect(
       parseDataSourceOptionId({
         propertyId: "tags",
@@ -135,10 +135,10 @@ describe("database identities", () => {
       }),
     ).toBe("o_0123abcd");
 
-    expect(() => parseDataSourceOptionId({ propertyId: "priority", value: "ship" })).toThrow(
+    expect(() => parseDataSourceOptionId({ propertyId: "priority", value: "done" })).toThrow(
       "not valid",
     );
-    expect(() => parseDataSourceOptionId({ propertyId: "status", value: "done" })).toThrow(
+    expect(() => parseDataSourceOptionId({ propertyId: "status", value: "ship" })).toThrow(
       "not valid",
     );
     expect(() => parseDataSourceOptionId({ propertyId: "tags", value: "bug" })).toThrow(

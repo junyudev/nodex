@@ -371,7 +371,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
               title="Passkey sign-in"
               properties={
                 <TaskProperties
-                  status="Build"
+                  status="Doing"
                   chat={{ title: "Passkey sign-in", provider: "claude" }}
                 />
               }
@@ -763,7 +763,7 @@ function ColdStartPage({ timeline }: { readonly timeline: Timeline }) {
       properties={
         <>
           <TaskProperties
-            status={reached("cold:review") ? "Review" : "Build"}
+            status={reached("cold:review") ? "Review" : "Doing"}
             chat={{ title: "Dashboard cold start", provider: "opencode" }}
           />
           <FilesProperty

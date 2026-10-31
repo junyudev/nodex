@@ -250,17 +250,17 @@ const model: DatabaseViewRenderModel = {
   },
   columns: [
     {
-      id: "build",
-      groupKey: "build",
-      scopeKey: "key:build",
+      id: "doing",
+      groupKey: "doing",
+      scopeKey: "key:doing",
       name: "In Progress",
       rows: [
         {
           pageId: "page-focused",
           pageKey: null,
-          groupKey: "build",
+          groupKey: "doing",
           subgroupKey: null,
-          status: "build",
+          status: "doing",
           title: "Focused Page",
           preview: "",
           plainText: "",
@@ -489,7 +489,7 @@ const groupedListModel = (): DatabaseViewRenderModel => {
     name: "Status",
     ...testPropertySemantics("select", 1),
     valueType: "select" as const,
-    config: { options: [{ id: "build", name: "build" }] },
+    config: { options: [{ id: "doing", name: "doing" }] },
     rankKey: "0",
     lifecycle: "active" as const,
     revision: 1,
@@ -519,11 +519,11 @@ const groupedListModel = (): DatabaseViewRenderModel => {
           [statusPropertyId]: {
             propertyId: statusPropertyId,
             valueType: "select" as const,
-            value: "build",
+            value: "doing",
             revision: 1,
           },
         },
-        effectiveGroupKey: "build",
+        effectiveGroupKey: "doing",
       })),
     },
   };
@@ -683,7 +683,7 @@ const editableSemanticListModel = (): DatabaseViewRenderModel => {
           [statusPropertyId]: {
             propertyId: statusPropertyId,
             valueType: "select" as const,
-            value: "build",
+            value: "doing",
             revision: 1,
           },
           [priorityPropertyId]: {
@@ -699,7 +699,7 @@ const editableSemanticListModel = (): DatabaseViewRenderModel => {
       ...column,
       rows: column.rows.map((row) => ({
         ...row,
-        status: "build",
+        status: "doing",
         priority: "p1-high",
       })),
     })),
@@ -747,9 +747,9 @@ describe("DatabaseViewSurface", () => {
           ? [
               { id: "triage", name: "Triage" },
               { id: "plan", name: "Planned" },
-              { id: "build", name: "In progress" },
+              { id: "doing", name: "In progress" },
               { id: "review", name: "Review" },
-              { id: "ship", name: "Shipped" },
+              { id: "done", name: "Shipped" },
             ]
           : property.propertyId === priorityPropertyId
             ? [
@@ -1886,7 +1886,7 @@ describe("DatabaseViewSurface", () => {
             propertyType: "select",
             beforeValue: {
               kind: "select",
-              optionId: parseDataSourceOptionId({ propertyId: statusPropertyId, value: "build" }),
+              optionId: parseDataSourceOptionId({ propertyId: statusPropertyId, value: "doing" }),
             },
             afterValue: {
               kind: "select",
@@ -2841,12 +2841,12 @@ describe("DatabaseViewTabSurface", () => {
       />,
     );
 
-    expect(screen.getByText("Build")).toBeTruthy();
-    expect(screen.queryByText("build")).toBeNull();
+    expect(screen.getByText("Doing")).toBeTruthy();
+    expect(screen.queryByText("doing")).toBeNull();
     expect(
       screen.container.querySelector('[data-page-create-surface-id="surface-list"]'),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Create new Page" }));
-    expect(onRequestCreatePage).toHaveBeenCalledWith("build");
+    expect(onRequestCreatePage).toHaveBeenCalledWith("doing");
   });
 });

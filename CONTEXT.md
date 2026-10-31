@@ -405,6 +405,16 @@ Priority has four assigned option identities in severity order:
 `p0-critical`, `p1-high`, `p2-medium`, and `p3-low`.
 An unset value is `No priority`; planning horizons such as “later” belong to workflow or scheduling rather than the priority scale.
 
+Status has five assigned stage identities in workflow order: `triage`, not yet
+decided; `plan`, decided but not started; `doing`, in progress, including every
+round of checking and redirecting an Agent's work; `review`, waiting on someone
+else's verdict; and `done`, accepted. Their default names are Triage, Plan,
+Doing, Review, and Done. A Data Source may rename them.
+Status moves only on intent: a person's edit or an Inbox decision. Agent
+execution never moves it; whose turn it is belongs to Page Chat activity.
+Nothing enters or leaves `review` on its own, and only a person's decision
+completes a Page.
+
 The standard **Task Parent** is a non-owning cardinality-one self-Relation on a
 Data Source Page. Its children have one shared manual order independent of any
 View's personal sorting or presentation.
@@ -575,8 +585,8 @@ dispatch, filing in another Project, Keep, or Done hands it to History; where
 its Page lives never does.
 Work handed to a chat stays in progress until the user marks it done; a chat
 finishing never does. The message Page's workflow status follows the handling,
-Triage while waiting, Build once handed to a chat, Plan when kept or filed,
-Ship when done, but only while it still shows the status the previous handling
+Triage while waiting, Doing once handed to a chat, Plan when kept or filed,
+Done when done, but only while it still shows the status the previous handling
 gave it, so a status set by hand is never overwritten.
 Deleting a message erases it: the entry, every suggestion naming it, the Page,
 and its revisions go, with no restore path.

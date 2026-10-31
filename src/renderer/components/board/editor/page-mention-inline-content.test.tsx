@@ -176,7 +176,7 @@ describe("Page mention inline content", () => {
     expect(view.container.querySelector('[data-mention-inline-guard="start"]')).not.toBeNull();
     expect(view.container.querySelector('[data-mention-inline-guard="end"]')).not.toBeNull();
     expect(mention.getAttribute("title")).toBe(null);
-    expect(mention.querySelector("svg")?.getAttribute("style")).toContain("status-build-dot");
+    expect(mention.querySelector("svg")?.getAttribute("style")).toContain("status-doing-dot");
 
     fireEvent.pointerMove(mention, { pointerType: "mouse" });
     fireEvent.mouseEnter(mention);

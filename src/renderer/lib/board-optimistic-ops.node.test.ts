@@ -16,7 +16,7 @@ function createPageSummary(id: string, order: number): DatabasePageSummary {
   return {
     id,
     pageKey: null,
-    status: "build",
+    status: "doing",
     archived: false,
     title: id,
     richTitle: plainTextToPortableRichText(id),
@@ -43,8 +43,8 @@ function createBoard(): BoardSummary {
         cards: [],
       },
       {
-        id: "build",
-        name: "Build",
+        id: "doing",
+        name: "Doing",
         cards: ["a", "b", "c", "d"].map((id, order) => createPageSummary(id, order)),
       },
       {
@@ -53,8 +53,8 @@ function createBoard(): BoardSummary {
         cards: [],
       },
       {
-        id: "ship",
-        name: "Ship",
+        id: "done",
+        name: "Done",
         cards: [],
       },
     ],
@@ -74,7 +74,7 @@ describe("board optimistic ops", () => {
     const board = createBoard();
     const card = createPageSummary("new", 0);
 
-    const nextBoard = buildCreateCardTransform("build", card, { beforePageId: "c" })(board);
+    const nextBoard = buildCreateCardTransform("doing", card, { beforePageId: "c" })(board);
 
     expect(nextBoard.columns[2]?.cards.map((item) => item.id)).toEqual(["a", "b", "new", "c", "d"]);
   });
@@ -86,7 +86,7 @@ describe("board optimistic ops", () => {
       title: "Optimistic title",
       richTitle: plainTextToPortableRichText("Optimistic title"),
     };
-    const transform = buildCreateCardTransform("build", optimisticCard, "top");
+    const transform = buildCreateCardTransform("doing", optimisticCard, "top");
 
     const created = transform(board);
     const reapplied = transform(created);
@@ -110,7 +110,7 @@ describe("board optimistic ops", () => {
     const board: BoardSummary = {
       ...baseBoard,
       columns: baseBoard.columns.map((column) =>
-        column.id === "build" ? { ...column, cards: [...column.cards, canonicalCard] } : column,
+        column.id === "doing" ? { ...column, cards: [...column.cards, canonicalCard] } : column,
       ),
     };
     const optimisticCard = {
@@ -120,7 +120,7 @@ describe("board optimistic ops", () => {
       revision: undefined,
     };
 
-    const projected = buildCreateCardTransform("build", optimisticCard, "top")(board);
+    const projected = buildCreateCardTransform("doing", optimisticCard, "top")(board);
 
     expect(projected.columns[2]?.cards[0]).toMatchObject({
       id: canonicalCard.id,
@@ -141,13 +141,13 @@ describe("board optimistic ops", () => {
     const board = createBoard();
 
     expect(
-      buildPatchPageTransform("build", "a", {
+      buildPatchPageTransform("doing", "a", {
         title: "a",
         tags: [],
       })(board),
     ).toBe(board);
 
-    const renamed = buildPatchPageTransform("build", "a", {
+    const renamed = buildPatchPageTransform("doing", "a", {
       title: "Renamed",
     })(board);
     expect(renamed).not.toBe(board);
@@ -162,8 +162,8 @@ describe("board optimistic ops", () => {
 
     const nextBoard = buildMovePageTransform({
       pageId: "a",
-      fromStatus: "build",
-      toStatus: "build",
+      fromStatus: "doing",
+      toStatus: "doing",
       newOrder: 1,
     })(board);
 
@@ -173,8 +173,8 @@ describe("board optimistic ops", () => {
   test("move-card converges by target column, slot, and projected fields", () => {
     const transform = buildMovePageTransform({
       pageId: "a",
-      fromStatus: "build",
-      toStatus: "ship",
+      fromStatus: "doing",
+      toStatus: "done",
       newOrder: 0,
       fieldPatch: { priority: "p1-high" },
     });
@@ -184,7 +184,7 @@ describe("board optimistic ops", () => {
 
     expect(movedCard).toMatchObject({
       id: "a",
-      status: "ship",
+      status: "done",
       priority: "p1-high",
     });
     expect(transform(moved)).toBe(moved);
@@ -195,8 +195,8 @@ describe("board optimistic ops", () => {
 
     const nextBoard = buildMovePagesTransform({
       pageIds: ["a", "c"],
-      fromStatus: "build",
-      toStatus: "build",
+      fromStatus: "doing",
+      toStatus: "doing",
       newOrder: 1,
     })(board);
 
@@ -206,15 +206,15 @@ describe("board optimistic ops", () => {
   test("move-many preserves the visual input order and converges atomically", () => {
     const transform = buildMovePagesTransform({
       pageIds: ["c", "a"],
-      fromStatus: "build",
-      toStatus: "ship",
+      fromStatus: "doing",
+      toStatus: "done",
       newOrder: 0,
     });
 
     const moved = transform(createBoard());
 
     expect(moved.columns[4]?.cards.map((card) => card.id)).toEqual(["c", "a"]);
-    expect(moved.columns[4]?.cards.every((card) => card.status === "ship")).toBe(true);
+    expect(moved.columns[4]?.cards.every((card) => card.status === "done")).toBe(true);
     expect(transform(moved)).toBe(moved);
   });
 
@@ -224,8 +224,8 @@ describe("board optimistic ops", () => {
     expect(
       buildMovePagesTransform({
         pageIds: ["a", "missing"],
-        fromStatus: "build",
-        toStatus: "ship",
+        fromStatus: "doing",
+        toStatus: "done",
         newOrder: 0,
       })(board),
     ).toBe(board);
@@ -236,8 +236,8 @@ describe("board optimistic ops", () => {
 
     const nextBoard = buildMovePageTransform({
       pageId: "a",
-      fromStatus: "build",
-      toStatus: "build",
+      fromStatus: "doing",
+      toStatus: "doing",
       newOrder: 1,
       fieldPatch: { priority: "p1-high" },
     })(board);
@@ -250,8 +250,8 @@ describe("board optimistic ops", () => {
 
     const nextBoard = buildMovePagesTransform({
       pageIds: ["a", "c"],
-      fromStatus: "build",
-      toStatus: "build",
+      fromStatus: "doing",
+      toStatus: "doing",
       newOrder: 1,
       fieldPatch: { estimate: "m" },
     })(board);
@@ -269,13 +269,13 @@ describe("board optimistic ops", () => {
   test("different Page moves coexist while the placement lane serializes authority", () => {
     const first = conflictKeysForMove({
       pageId: "a",
-      fromStatus: "build",
-      toStatus: "ship",
+      fromStatus: "doing",
+      toStatus: "done",
     });
     const second = conflictKeysForMove({
       pageId: "b",
-      fromStatus: "build",
-      toStatus: "ship",
+      fromStatus: "doing",
+      toStatus: "done",
     });
 
     expect(overlap(first, second)).toBe(false);
@@ -284,7 +284,7 @@ describe("board optimistic ops", () => {
         first,
         conflictKeysForMove({
           pageId: "a",
-          fromStatus: "build",
+          fromStatus: "doing",
           toStatus: "plan",
         }),
       ),

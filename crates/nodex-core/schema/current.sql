@@ -4521,7 +4521,7 @@ BEGIN
   WHERE page_id=OLD.id AND waiting_in_inbox=1;
 END;
 
-PRAGMA user_version = 196;
+PRAGMA user_version = 197;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

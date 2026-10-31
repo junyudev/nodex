@@ -207,8 +207,8 @@ function createBoard(title = "Initial title"): BoardSummary {
         cards: [createPageSummary(title)],
       },
       {
-        id: "ship",
-        name: "Ship",
+        id: "done",
+        name: "Done",
         cards: [],
       },
     ],
@@ -295,7 +295,7 @@ function createTwoPageBoardSnapshot(
     {
       columns: [
         { id: "triage", name: "Ideas", cards },
-        { id: "ship", name: "Ship", cards: [] },
+        { id: "done", name: "Done", cards: [] },
       ],
     },
     commitSeq,
@@ -1249,7 +1249,7 @@ describe("board store", () => {
     const second = createBoardSnapshot({
       columns: [
         { id: "triage", name: "Ideas", cards: [secondCard] },
-        { id: "ship", name: "Ship", cards: [] },
+        { id: "done", name: "Done", cards: [] },
       ],
     });
     const requests: unknown[] = [];
@@ -1331,9 +1331,9 @@ describe("board store", () => {
       order: index,
     }));
     const shipCard = {
-      ...createPageSummary("Ship 0"),
-      id: "ship-0",
-      status: "ship" as const,
+      ...createPageSummary("Done 0"),
+      id: "done-0",
+      status: "done" as const,
       order: 0,
     };
     const windowFor = (
@@ -1344,7 +1344,7 @@ describe("board store", () => {
       ...createBoardSnapshot({
         columns: [
           { id: "triage", name: "Ideas", cards: columnId === "triage" ? [...cards] : [] },
-          { id: "ship", name: "Ship", cards: columnId === "ship" ? [...cards] : [] },
+          { id: "done", name: "Done", cards: columnId === "done" ? [...cards] : [] },
         ],
       }),
       nextCursor,
@@ -1362,14 +1362,14 @@ describe("board store", () => {
           grouped: true,
           totalRows: 4,
           groups: [
-            { groupKey: "ship", subgroupKey: null, totalRows: 1 },
+            { groupKey: "done", subgroupKey: null, totalRows: 1 },
             { groupKey: "triage", subgroupKey: null, totalRows: 3 },
           ],
         }),
       readViewWindow: async (_projectId, request) => {
         requests.push(request);
         const key = request.groupScope?.groupKey ?? "unassigned";
-        if (key === "ship") return windowFor([shipCard], "ship", null);
+        if (key === "done") return windowFor([shipCard], "done", null);
         if (request.after === "triage-cursor") {
           return windowFor(
             [{ ...createPageSummary("Triage 2"), id: "triage-2", order: 2 }],
@@ -1387,7 +1387,7 @@ describe("board store", () => {
 
     expect(store.getSnapshot().totalRows).toBe(4);
     const triageScopeKey = groupScopeKeyForColumn("triage");
-    const shipScopeKey = groupScopeKeyForColumn("ship");
+    const doneScopeKey = groupScopeKeyForColumn("done");
     const triagePagination = store.getSnapshot().groupPagination.get(triageScopeKey);
     expect(triagePagination).toMatchObject({
       loadedRows: 2,
@@ -1395,7 +1395,7 @@ describe("board store", () => {
       hasMore: true,
       loadingMore: false,
     });
-    expect(store.getSnapshot().groupPagination.get(shipScopeKey)).toMatchObject({
+    expect(store.getSnapshot().groupPagination.get(doneScopeKey)).toMatchObject({
       loadedRows: 1,
       totalRows: 1,
       hasMore: false,
@@ -1409,7 +1409,7 @@ describe("board store", () => {
       groupScope: { kind: "path", groupKey: "triage", subgroupKey: null },
     });
     expect([...store.getSnapshot().pageIndex.keys()].sort()).toEqual([
-      "ship-0",
+      "done-0",
       "triage-0",
       "triage-1",
       "triage-2",
@@ -1433,7 +1433,7 @@ describe("board store", () => {
         {
           columns: [
             { id: "triage", name: "Ideas", cards: loaded },
-            { id: "ship", name: "Ship", cards: [] },
+            { id: "done", name: "Done", cards: [] },
           ],
         },
         commitSeq,
@@ -2229,19 +2229,19 @@ describe("board store", () => {
       conflictKeys: conflictKeysForMove({
         pageId: "018f0f85-6d56-7625-bdea-000000000000",
         fromStatus: "triage",
-        toStatus: "ship",
+        toStatus: "done",
       }),
       apply: buildMovePageTransform({
         pageId: "018f0f85-6d56-7625-bdea-000000000000",
         fromStatus: "triage",
-        toStatus: "ship",
+        toStatus: "done",
       }),
       runRemote: async () => {
         const result = await moveRemoteDeferred.promise;
         serverBoard = buildMovePageTransform({
           pageId: "018f0f85-6d56-7625-bdea-000000000000",
           fromStatus: "triage",
-          toStatus: "ship",
+          toStatus: "done",
         })(serverBoard);
         return result;
       },
@@ -2249,13 +2249,13 @@ describe("board store", () => {
 
     expect(
       store.getSnapshot().pageIndex.get("018f0f85-6d56-7625-bdea-000000000000")?.columnId,
-    ).toBe("ship");
+    ).toBe("done");
 
     createRemoteDeferred.resolve({ id: "018f0f85-6d56-7625-bdea-000000000000" });
     await createMutation;
     expect(
       store.getSnapshot().pageIndex.get("018f0f85-6d56-7625-bdea-000000000000")?.columnId,
-    ).toBe("ship");
+    ).toBe("done");
     expect(store.getSnapshot().pageIndex.get("018f0f85-6d56-7625-bdea-000000000000")?.title).toBe(
       "Created edited",
     );
@@ -2264,7 +2264,7 @@ describe("board store", () => {
     await updateMutation;
     expect(
       store.getSnapshot().pageIndex.get("018f0f85-6d56-7625-bdea-000000000000")?.columnId,
-    ).toBe("ship");
+    ).toBe("done");
     expect(store.getSnapshot().pageIndex.get("018f0f85-6d56-7625-bdea-000000000000")?.title).toBe(
       "Created edited",
     );
@@ -2273,7 +2273,7 @@ describe("board store", () => {
     await moveMutation;
     expect(
       store.getSnapshot().pageIndex.get("018f0f85-6d56-7625-bdea-000000000000")?.columnId,
-    ).toBe("ship");
+    ).toBe("done");
     expect(store.getSnapshot().pageIndex.get("018f0f85-6d56-7625-bdea-000000000000")?.title).toBe(
       "Created edited",
     );
@@ -2578,7 +2578,7 @@ describe("board store", () => {
     const moveInput = {
       pageId: "card-1",
       fromStatus: "triage" as const,
-      toStatus: "ship" as const,
+      toStatus: "done" as const,
       newOrder: 0,
     };
     const fallbackCard = initialBoard.columns[0]?.cards[0];
@@ -2612,7 +2612,7 @@ describe("board store", () => {
     commitSeq = 2;
     await mutation;
 
-    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
+    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("done");
 
     canonicalBoard = buildMovePageTransform(moveInput)(cloneBoard(initialBoard));
     await store.refreshBoardAtLeast(2);
@@ -2780,7 +2780,7 @@ describe("board store", () => {
     const moveInput = {
       pageId: "card-1",
       fromStatus: "triage" as const,
-      toStatus: "ship" as const,
+      toStatus: "done" as const,
       newOrder: 0,
     };
     const canonicalBoard = buildMovePageTransform(moveInput)(cloneBoard(initialBoard));
@@ -2814,27 +2814,27 @@ describe("board store", () => {
     });
     recordColumn();
 
-    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
+    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("done");
     remote.resolve({ ok: true });
     await waitForMicrotasks();
 
     expect(readCount).toBe(2);
     expect(store.getSnapshot().pendingMutationCount).toBe(0);
-    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
+    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("done");
 
     store.applyRemoteCardSummary({
       ...createPageSummary("Unrelated canonical update"),
       id: "card-2",
       order: 1,
     });
-    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
+    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("done");
 
     canonicalRefresh.resolve(createBoardSnapshot(canonicalBoard));
     await mutation;
     await store.fetchBoard();
 
-    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
-    expect(new Set(observedColumns)).toEqual(new Set(["ship"]));
+    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("done");
+    expect(new Set(observedColumns)).toEqual(new Set(["done"]));
     const renderToken = store.getSnapshot().materializationRenderToken;
     expect(renderToken).not.toBeNull();
     store.markRendered((renderToken ?? 0) + 1);
@@ -2857,7 +2857,7 @@ describe("board store", () => {
     const move = {
       pageId: "card-1",
       fromStatus: "triage" as const,
-      toStatus: "ship" as const,
+      toStatus: "done" as const,
       newOrder: 0,
     };
     let canonical = createBoard();
@@ -2894,7 +2894,7 @@ describe("board store", () => {
     expect(store.getSnapshot().mutationActivity.acknowledged).toBe(1);
     store.markRendered(token!);
     expect(store.getSnapshot().mutationActivity.acknowledged).toBe(0);
-    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
+    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("done");
   });
 
   test("serializes placement commands through the preceding receipt refresh", async () => {
@@ -3053,7 +3053,7 @@ describe("board store", () => {
     const moveInput = {
       pageId: "card-1",
       fromStatus: "triage" as const,
-      toStatus: "ship" as const,
+      toStatus: "done" as const,
       newOrder: 0,
     };
     const canonicalBoard = buildMovePageTransform(moveInput)(cloneBoard(initialBoard));
@@ -3079,13 +3079,13 @@ describe("board store", () => {
     });
     store.applyRemoteCardSummary(canonicalCard);
 
-    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
+    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("done");
     expect(store.getSnapshot().pendingMutationCount).toBe(1);
 
     remote.resolve({ ok: true });
     await mutation;
 
-    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
+    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("done");
     expect(store.getSnapshot().pendingMutationCount).toBe(0);
     const renderToken = store.getSnapshot().materializationRenderToken;
     expect(renderToken).not.toBeNull();

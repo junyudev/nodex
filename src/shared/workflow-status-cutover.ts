@@ -26,9 +26,9 @@ export const LEGACY_WORKFLOW_STATUS_COLUMNS = LEGACY_WORKFLOW_STATUS_ORDER.map((
 export const WORKFLOW_STATUS_CUTOVER_MAP: Readonly<Record<LegacyWorkflowStatus, WorkflowStatus>> = {
   draft: "triage",
   backlog: "plan",
-  in_progress: "build",
+  in_progress: "doing",
   in_review: "review",
-  done: "ship",
+  done: "done",
 };
 
 export function isLegacyWorkflowStatus(value: unknown): value is LegacyWorkflowStatus {
@@ -40,6 +40,8 @@ export function isLegacyWorkflowStatus(value: unknown): value is LegacyWorkflowS
 
 export function upgradeLegacyWorkflowStatus(value: unknown): WorkflowStatus | null {
   if (isWorkflowStatus(value)) return value;
+  if (value === "build") return "doing";
+  if (value === "ship") return "done";
   if (!isLegacyWorkflowStatus(value)) return null;
   return WORKFLOW_STATUS_CUTOVER_MAP[value];
 }

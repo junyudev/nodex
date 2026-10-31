@@ -25,7 +25,7 @@ const page = (input: {
   row: {
     pageId: input.pageId,
     pageKey: input.pageKey ?? null,
-    groupKey: "build",
+    groupKey: "doing",
     subgroupKey: null,
     title: input.pageId,
     preview: "",
@@ -39,7 +39,7 @@ const page = (input: {
     metadataRevision: 1,
     createdAt: new Date("2026-08-13T00:00:00.000Z"),
   },
-  groupKey: "build",
+  groupKey: "doing",
   subgroupKey: null,
   ancestorPageIds: [],
   depth: 0,
@@ -94,7 +94,7 @@ describe("Database List dnd-kit controller", () => {
       pageKey: "LAB-13",
       top: 0,
       priority: "p1-high",
-      status: "build",
+      status: "doing",
     });
     const target = page({ key: "target", pageId: "Target", top: 44, hasChildren: true });
     const commits: DatabaseListDndCommit[] = [];

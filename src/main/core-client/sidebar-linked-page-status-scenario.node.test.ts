@@ -88,13 +88,13 @@ describe("sidebar/linked-page-status over the real Core transport", () => {
           );
         }
         expect(observed.chats.multiple.linkedPageIds).toHaveLength(2);
-        expect(observed.chats.multiple.expectedStatusOptionId).toBe("build");
+        expect(observed.chats.multiple.expectedStatusOptionId).toBe("doing");
         expect(observed.chats.noStatus.linkedPageIds).toEqual([observed.pages.noStatus.pageId]);
         expect(observed.chats.unlinked.linkedPageIds).toEqual([]);
-        expect(observed.chats.pinnedBuild).toMatchObject({
+        expect(observed.chats.pinnedDoing).toMatchObject({
           pinned: true,
-          linkedPageIds: [observed.pages.build.pageId],
-          expectedStatusOptionId: "build",
+          linkedPageIds: [observed.pages.doing.pageId],
+          expectedStatusOptionId: "doing",
         });
 
         expect(() =>

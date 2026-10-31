@@ -68,7 +68,7 @@ const materialize = async (
       pageId: sourcePageId,
       operationId: createUuidV7(),
       projectId: sourceProject.id,
-      status: "build",
+      status: "doing",
       title: "Move this Page",
       markdown: "This content and Page identity must survive relocation and Undo.",
     }),

@@ -522,7 +522,7 @@ mod tests {
                         "kind": "clause",
                         "propertyId": "status",
                         "operator": "equals",
-                        "value": "build"
+                        "value": "doing"
                     },
                     {
                         "kind": "clause",
@@ -595,7 +595,7 @@ mod tests {
                     "kind": "clause",
                     "propertyId": "status",
                     "operator": "select_is",
-                    "value": "build"
+                    "value": "doing"
                 }
             ]
         });
@@ -613,7 +613,7 @@ mod tests {
                         "kind": "clause",
                         "propertyId": "status",
                         "operator": "select_is",
-                        "value": "build"
+                        "value": "doing"
                     }]
                 }]
             })

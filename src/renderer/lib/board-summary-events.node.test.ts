@@ -45,7 +45,7 @@ function makeBoard(): BoardSummary {
   return {
     columns: [
       { id: "triage", name: "Triage", cards: [makeCard("card-1", "triage", 0)] },
-      { id: "ship", name: "Ship", cards: [] },
+      { id: "done", name: "Done", cards: [] },
     ],
   };
 }
@@ -73,7 +73,7 @@ describe("board summary events", () => {
 
   test("moves a card when the summary status changes", () => {
     const board = makeBoard();
-    const moved = { ...makeCard("card-1", "ship", 0), title: "Moved", revision: 2 };
+    const moved = { ...makeCard("card-1", "done", 0), title: "Moved", revision: 2 };
     const next = applyBoardChangeEventToBoard(board, makeEvent(moved));
 
     expect(next?.columns[0]?.cards.length).toBe(0);

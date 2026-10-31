@@ -96,7 +96,7 @@ test("replays Board, List, and editor transfers through their content participan
     await page.getByRole("button", { name: "Open Surface history", exact: true }).click();
     await openProjectBoard(page);
     const triage = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-    const build = page.locator('[data-board-column-root][data-board-column-id="build"]');
+    const doing = page.locator('[data-board-column-root][data-board-column-id="doing"]');
     const card = `[data-board-uuid-v7="${first.pageId}"]`;
     const viewTab = (viewId: string) =>
       page.locator(`[data-database-view-tab-sortable="${viewId}"]`).getByRole("tab");
@@ -111,16 +111,16 @@ test("replays Board, List, and editor transfers through their content participan
             .locator('[data-card-context-menu-trigger="true"]')
             .click({ button: "right" });
           await page.getByRole("menuitem", { name: /Status/ }).click();
-          await page.getByRole("option", { name: "Build", exact: true }).click();
-          await expect(build.locator(card)).toBeVisible();
+          await page.getByRole("option", { name: "Doing", exact: true }).click();
+          await expect(doing.locator(card)).toBeVisible();
           await expect(triage.locator(card)).toHaveCount(0);
           await invokeHistoryMenu(harness, "undo", "Move Pages");
           await expect(triage.locator(card)).toBeVisible();
         },
       );
-      await expect(build.locator(card)).toHaveCount(0);
+      await expect(doing.locator(card)).toHaveCount(0);
       await invokeHistoryMenu(harness, "redo", "Move Pages");
-      await expect(build.locator(card)).toBeVisible();
+      await expect(doing.locator(card)).toBeVisible();
       await invokeHistoryMenu(harness, "undo", "Move Pages");
       await expect(triage.locator(card)).toBeVisible();
     });

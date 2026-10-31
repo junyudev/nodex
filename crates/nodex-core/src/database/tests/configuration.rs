@@ -253,7 +253,7 @@ fn configuration_filters_resolve_in_transaction_preserve_on_omission_and_clear_e
     let mut with_quick_filter = renamed.clone();
     with_quick_filter.rules.property_filters.push(DatabaseViewPropertyFilter {
         filter_id: "quick-status".into(),
-        clause: serde_json::from_value(json!({"kind":"clause","propertyId":"status","operator":"select_is_not","value":"ship"})).unwrap(),
+        clause: serde_json::from_value(json!({"kind":"clause","propertyId":"status","operator":"select_is_not","value":"done"})).unwrap(),
     });
     module
         .apply(

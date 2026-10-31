@@ -80,7 +80,7 @@ describe("status presentation", () => {
   });
 
   test("creates the filled completed icon for editor-rendered status labels", () => {
-    const icon = createStatusIconElement("ship", {
+    const icon = createStatusIconElement("done", {
       documentRef: createMockDocument(),
     });
 
@@ -92,7 +92,7 @@ describe("status presentation", () => {
   });
 
   test("creates stroked progress geometry through the DOM renderer", () => {
-    const icon = createStatusIconElement("build", {
+    const icon = createStatusIconElement("doing", {
       documentRef: createMockDocument(),
     });
     const ring = icon.querySelectorAll("rect")[0];
@@ -107,6 +107,6 @@ describe("status presentation", () => {
 
   test("maps status labels back to shared status metadata", () => {
     expect(getStatusIdByLabel("Plan")).toBe("plan");
-    expect(getStatusAccentColorByLabel("Ship")).toBe("var(--status-ship-dot)");
+    expect(getStatusAccentColorByLabel("Done")).toBe("var(--status-done-dot)");
   });
 });

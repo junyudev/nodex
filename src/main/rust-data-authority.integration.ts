@@ -919,7 +919,7 @@ describe("Electron native data authority", () => {
             kind: "direct" as const,
             viewId: primaryView.viewId,
             preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
-            groupKey: "ship",
+            groupKey: "done",
           },
         },
       };
@@ -987,7 +987,7 @@ describe("Electron native data authority", () => {
               { kind: "project", projectId },
               {
                 first: 200,
-                groupScope: { kind: "path", groupKey: "ship", subgroupKey: null },
+                groupScope: { kind: "path", groupKey: "done", subgroupKey: null },
               },
             );
             const nativeGroups = yield* databaseApplication.viewGroups(
@@ -997,7 +997,7 @@ describe("Electron native data authority", () => {
             const row = yield* databaseApplication.readRowPage({
               projectId,
               pageId: copiedDataSourcePageId,
-              status: "ship",
+              status: "done",
             });
             return { agentContext, nativeWindow, scopedWindow, nativeGroups, row };
           }),
@@ -1022,25 +1022,25 @@ describe("Electron native data authority", () => {
         },
       });
       const { nativeWindow, scopedWindow, nativeGroups } = finalApplications;
-      expect(nativeWindow.board.columns.find((column) => column.id === "ship")?.cards).toEqual(
+      expect(nativeWindow.board.columns.find((column) => column.id === "done")?.cards).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             id: copiedDataSourcePageId,
-            status: "ship",
+            status: "done",
             hasDescription: false,
           }),
         ]),
       );
       expect(scopedWindow.rows.length).toBeGreaterThan(0);
-      expect(scopedWindow.rows.every((row) => row.groupKey === "ship")).toBe(true);
+      expect(scopedWindow.rows.every((row) => row.groupKey === "done")).toBe(true);
       expect(nativeGroups.grouped).toBe(true);
       expect(nativeGroups.totalRows).toBeGreaterThan(0);
-      expect(nativeGroups.groups.find((group) => group.groupKey === "ship")?.totalRows).toBe(
+      expect(nativeGroups.groups.find((group) => group.groupKey === "done")?.totalRows).toBe(
         scopedWindow.rows.length,
       );
       expect(finalApplications.row).toMatchObject({
         id: copiedDataSourcePageId,
-        status: "ship",
+        status: "done",
         order: 1,
       });
       const lifecycleLibrary = createCoreLibraryModuleAdapter({
@@ -1072,7 +1072,7 @@ describe("Electron native data authority", () => {
                 dataSourceId: primaryDataSource.dataSourceId,
               },
               membership: {
-                status: "ship",
+                status: "done",
                 viewId: primaryView.viewId,
                 position: { rankKey: expect.any(String), revision: 1 },
               },
@@ -1210,7 +1210,7 @@ describe("Electron native data authority", () => {
           database.readRowPage({
             projectId,
             pageId: copiedDataSourcePageId,
-            status: "ship",
+            status: "done",
           }),
         ),
       ).resolves.toMatchObject({ archived: true });
@@ -1312,7 +1312,7 @@ describe("Electron native data authority", () => {
           database.readRowPage({
             projectId,
             pageId: copiedDataSourcePageId,
-            status: "ship",
+            status: "done",
           }),
         ),
       ).resolves.toMatchObject({ archived: false });
@@ -1365,7 +1365,7 @@ describe("Electron native data authority", () => {
             kind: "direct" as const,
             viewId: primaryView.viewId,
             preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
-            groupKey: "ship",
+            groupKey: "done",
           },
         },
       };

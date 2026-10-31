@@ -171,12 +171,12 @@ or marked done still shows Keep or Done and can return to its original Inbox;
 returning does not move its Page.
 
 A message's Page shows its handling on its Board. It waits in Triage; handing
-its work to a chat moves it to Build, keeping or filing it to Plan, and Done to
-Ship. Returning it to the Inbox, reopening it, or undoing the decision moves it
+its work to a chat moves it to Doing, keeping or filing it to Plan, and marking
+it done to Done. Returning it to the Inbox, reopening it, or undoing the decision moves it
 back the same way. Each step happens only while the Page still shows the status
 the previous handling gave it, and only to a status its Database still offers,
 so a status set on the Board is never overwritten. Delivery does not change it:
-a failed delivery leaves the Page in Build.
+a failed delivery leaves the Page in Doing.
 
 The Inbox reads like a conversation: newest at the bottom, resting against the
 composer, with time shown the way a chat shows it. A centered time appears above

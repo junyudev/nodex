@@ -1499,7 +1499,7 @@ mod tests {
         connection
             .execute(
                 "UPDATE page_read_model SET document_schema_version = 2, \
-                   database_values_json = '{\"status\":\"ship\"}' \
+                   database_values_json = '{\"status\":\"done\"}' \
                  WHERE page_block_id = 'page-owner'",
                 [],
             )
@@ -1523,7 +1523,7 @@ mod tests {
                     |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
                 )
                 .expect("repaired Page projection"),
-            (4, "{\"status\":\"ship\"}".to_owned())
+            (4, "{\"status\":\"done\"}".to_owned())
         );
     }
     #[test]

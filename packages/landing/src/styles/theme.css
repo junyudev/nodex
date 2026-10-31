@@ -86,9 +86,9 @@
 
   --color-status-triage: #8e8e93;
   --color-status-plan: #a78bfa;
-  --color-status-build: #3a83f7;
+  --color-status-doing: #3a83f7;
   --color-status-review: #e5652e;
-  --color-status-ship: #30a46c;
+  --color-status-done: #30a46c;
   --color-free: #e7b549;
 
   --animate-shimmer: shimmer 2.2s linear infinite;

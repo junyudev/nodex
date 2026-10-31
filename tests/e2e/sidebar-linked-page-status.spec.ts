@@ -107,85 +107,85 @@ test("shows the earliest linked Page's Status, opens the Page, and follows live 
         ).toBeVisible();
       }
 
-      const buildChat = observed.chats.build;
-      const buildPage = observed.pages.build;
-      const buildRow = threadRow(page, buildChat.title);
+      const doingChat = observed.chats.doing;
+      const doingPage = observed.pages.doing;
+      const doingRow = threadRow(page, doingChat.title);
       const hoverCard = page.getByRole("dialog", {
-        name: `Chat details for ${buildChat.title}`,
+        name: `Chat details for ${doingChat.title}`,
         exact: true,
       });
       // Sidebar layout can still shift after seeding, cancelling the delayed hover.
       // Reacquire the row and keep a real pointer inside it until its card opens.
       await expect(async () => {
-        await buildRow.hover();
-        const bounds = await buildRow.boundingBox();
-        if (!bounds) throw new Error("Build Chat row has no visible bounds");
+        await doingRow.hover();
+        const bounds = await doingRow.boundingBox();
+        if (!bounds) throw new Error("Doing Chat row has no visible bounds");
         await page.mouse.move(bounds.x + bounds.width / 2 + 4, bounds.y + bounds.height / 2, {
           steps: 3,
         });
-        await expect(buildRow).toHaveAttribute("data-hover-card-state", "open", {
+        await expect(doingRow).toHaveAttribute("data-hover-card-state", "open", {
           timeout: 2_000,
         });
         await expect(hoverCard).toBeVisible({ timeout: 2_000 });
       }).toPass({ timeout: 10_000 });
       const linkedPage = hoverCard.locator(
-        `button[data-app-action-sidebar-thread-hover-card-linked-page="${buildPage.pageId}"]`,
+        `button[data-app-action-sidebar-thread-hover-card-linked-page="${doingPage.pageId}"]`,
       );
-      await expect(linkedPage).toContainText(buildPage.title);
+      await expect(linkedPage).toContainText(doingPage.title);
       await linkedPage.click();
       const pageStage = page.locator(
-        `[data-page-stage-page-id="${buildPage.pageId}"][data-page-stage-surface="true"]:visible`,
+        `[data-page-stage-page-id="${doingPage.pageId}"][data-page-stage-surface="true"]:visible`,
       );
       await expect(pageStage).toBeVisible();
       await expect(pageStage.getByRole("textbox", { name: "Page title", exact: true })).toHaveText(
-        buildPage.title,
+        doingPage.title,
       );
 
       await pageStage.getByRole("button", { name: "Edit Status", exact: true }).click();
-      await page.getByRole("option", { name: "Ship", exact: true }).click();
+      await page.getByRole("option", { name: "Done", exact: true }).click();
       await page.mouse.move(1000, 900);
       await expect(
-        buildRow.locator("[data-app-action-sidebar-thread-page-status]"),
-      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "ship");
+        doingRow.locator("[data-app-action-sidebar-thread-page-status]"),
+      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "done");
       await expect(
-        threadRow(page, observed.chats.pinnedBuild.title).locator(
+        threadRow(page, observed.chats.pinnedDoing.title).locator(
           "[data-app-action-sidebar-thread-page-status]",
         ),
-      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "ship");
+      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "done");
       await expect(
         threadRow(page, observed.chats.multiple.title).locator(
           "[data-app-action-sidebar-thread-page-status]",
         ),
-      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "ship");
+      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "done");
 
       const multipleChat = observed.chats.multiple;
       const multipleStatus = threadRow(page, multipleChat.title).locator(
         "[data-app-action-sidebar-thread-page-status]",
       );
       await invokeIpc(page, "page-chats:unlink", multipleChat.sessionId, {
-        pageId: buildPage.pageId,
+        pageId: doingPage.pageId,
       });
       await expect(multipleStatus).toHaveAttribute(
         "data-app-action-sidebar-thread-page-status",
         "review",
       );
 
-      await invokeIpc(page, "page-chats:unlink", buildChat.sessionId, {
-        pageId: buildPage.pageId,
+      await invokeIpc(page, "page-chats:unlink", doingChat.sessionId, {
+        pageId: doingPage.pageId,
       });
       await expect
         .poll(async () => {
-          const linked = await seed.readPageChats(buildPage.pageId);
-          return linked.items.some((chat) => chat.sessionId === buildChat.sessionId);
+          const linked = await seed.readPageChats(doingPage.pageId);
+          return linked.items.some((chat) => chat.sessionId === doingChat.sessionId);
         })
         .toBe(false);
-      await expect(buildRow).toBeVisible();
-      await expect(buildRow.locator("[data-app-action-sidebar-thread-page-status]")).toHaveCount(0);
+      await expect(doingRow).toBeVisible();
+      await expect(doingRow.locator("[data-app-action-sidebar-thread-page-status]")).toHaveCount(0);
       await expect(
-        threadRow(page, observed.chats.pinnedBuild.title).locator(
+        threadRow(page, observed.chats.pinnedDoing.title).locator(
           "[data-app-action-sidebar-thread-page-status]",
         ),
-      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "ship");
+      ).toHaveAttribute("data-app-action-sidebar-thread-page-status", "done");
     },
   );
 });

@@ -3537,12 +3537,12 @@ mod tests {
                 expected_data_source_revision: 1,
                 values: vec![LibraryPageCopyValue {
                     property_id: "status".to_owned(),
-                    value: serde_json::json!("ship"),
+                    value: serde_json::json!("done"),
                 }],
                 view: Some(LibraryPageCopyViewPlacement {
                     view_id: "018f0000-0000-7000-8000-000000000103".to_owned(),
                     expected_view_revision: 1,
-                    group_key: Some("ship".to_owned()),
+                    group_key: Some("done".to_owned()),
                     before: None,
                 }),
             },
@@ -3735,7 +3735,7 @@ mod tests {
                             "data_source".to_owned(),
                             "018f0000-0000-7000-8000-000000000102".to_owned(),
                             1,
-                            "\"ship\"".to_owned(),
+                            "\"done\"".to_owned(),
                         ),
                         (
                             2,
@@ -3752,8 +3752,8 @@ mod tests {
                             ),
                             "018f0000-0000-7000-8000-000000000101".to_owned(),
                             "018f0000-0000-7000-8000-000000000103".to_owned(),
-                            "ship".to_owned(),
-                            "ship".to_owned(),
+                            "done".to_owned(),
+                            "done".to_owned(),
                             0,
                             0,
                         ),
@@ -3779,7 +3779,7 @@ mod tests {
                         ))
                     },
                 )?;
-                assert_eq!(copied_value, ("\"ship\"".to_owned(), 1, 1, 2));
+                assert_eq!(copied_value, ("\"done\"".to_owned(), 1, 1, 2));
                 let copied_relation = connection.query_row(
                     "SELECT value.value_json, edge.target_page_block_id \
                      FROM data_source_page_memberships membership \

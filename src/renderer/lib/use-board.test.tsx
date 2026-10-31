@@ -408,7 +408,7 @@ describe("useBoard createPage result", () => {
       moved = await result.current.movePage({
         pageId: "page-1",
         fromStatus: "plan",
-        toStatus: "ship",
+        toStatus: "done",
       });
     });
 
@@ -417,7 +417,7 @@ describe("useBoard createPage result", () => {
     expect(testState.commitDatabasePageDrag).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "project-test",
-        move: expect.objectContaining({ pageId: "page-1", toStatus: "ship" }),
+        move: expect.objectContaining({ pageId: "page-1", toStatus: "done" }),
       }),
     );
   });

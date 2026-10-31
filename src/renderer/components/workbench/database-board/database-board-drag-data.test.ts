@@ -18,7 +18,7 @@ const dataSourceId = parseDataSourceId("source-board");
 const row = (
   pageId: string,
   groupKey: string,
-  status: "build" | "review",
+  status: "doing" | "review",
 ): DatabaseViewRenderRow => ({
   pageId,
   pageKey: null,
@@ -36,7 +36,7 @@ const row = (
   createdAt: new Date(timestamp),
 });
 
-const rows = [row("page-a", "p1-high", "build"), row("page-b", "p3-low", "review")];
+const rows = [row("page-a", "p1-high", "doing"), row("page-b", "p3-low", "review")];
 const model = {
   routingContext: { kind: "project", projectId: "project-1" },
   libraryId: "library-1",

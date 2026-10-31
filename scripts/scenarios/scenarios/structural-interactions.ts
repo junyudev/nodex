@@ -121,7 +121,7 @@ const materialize = async (
     pageId: targetPageId,
     operationId: createUuidV7(),
     projectId: project.id,
-    status: "build",
+    status: "doing",
     title: "Paste target",
     markdown: "Paste here",
   });

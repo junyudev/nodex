@@ -21,8 +21,8 @@ const latest = releases.find((release) => release.version !== null);
 
 // Each kind of change keeps the color its status has in the app.
 const TONE: Record<string, string> = {
-  Added: "bg-status-ship",
-  Changed: "bg-status-build",
+  Added: "bg-status-done",
+  Changed: "bg-status-doing",
   Deprecated: "bg-ink-3",
   Removed: "bg-status-review",
   Fixed: "bg-status-plan",
@@ -119,14 +119,14 @@ const entryClass =
                 {release.version === null ? (
                   <span
                     data-release-status
-                    class="rounded-full bg-status-build/12 px-2 py-0.5 text-[12px] font-medium text-status-build"
+                    class="rounded-full bg-status-doing/12 px-2 py-0.5 text-[12px] font-medium text-status-doing"
                   >
                     In development
                   </span>
                 ) : release === latest ? (
                   <span
                     data-release-status
-                    class="rounded-full bg-status-ship/12 px-2 py-0.5 text-[12px] font-medium text-status-ship"
+                    class="rounded-full bg-status-done/12 px-2 py-0.5 text-[12px] font-medium text-status-done"
                   >
                     Latest
                   </span>

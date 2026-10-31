@@ -175,7 +175,7 @@ test("empty-result oracle rejects extra Pages even when the answer claims none",
       pageId: createUuidV7(),
       operationId: createUuidV7(),
       projectId: context.manifest.projectId,
-      status: "build",
+      status: "doing",
       title: "Unexpected Page",
       markdown: "",
     });
@@ -223,7 +223,7 @@ test("bulk oracle accepts exact public mutation and rejects an extra target", as
     });
     if (!mutation.ok) throw new Error(mutation.error.message);
     expect(await prepared.verify("Done")).toMatchObject({ passed: true });
-    const other = allRows.find((row) => row.database_values.status === "build")!;
+    const other = allRows.find((row) => row.database_values.status === "doing")!;
     const unwanted = await context.seed.applyDatabase({
       projectId: context.manifest.projectId,
       storeEpoch: context.runtime.identity.storeEpoch,

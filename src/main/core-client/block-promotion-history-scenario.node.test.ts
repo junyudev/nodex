@@ -37,7 +37,7 @@ const promotionTarget = async (
       placement: {
         kind: "direct",
         view_id: ctx.manifest.databaseViewId!,
-        group_key: "build",
+        group_key: "doing",
         before_page_id: null,
         sorted_property_values: [],
         preferences_override: {

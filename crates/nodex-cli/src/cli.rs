@@ -1163,7 +1163,7 @@ mod tests {
             "--view",
             "@view_1",
             "--group",
-            "build",
+            "doing",
             "--at",
             "end",
             "--if-match",
@@ -1182,7 +1182,7 @@ mod tests {
         );
         assert_eq!(
             arguments.destination.data_source.group.as_deref(),
-            Some("build")
+            Some("doing")
         );
 
         let group_conflict = Cli::try_parse_from([
@@ -1193,7 +1193,7 @@ mod tests {
             "--to",
             "database",
             "--group",
-            "build",
+            "doing",
             "--unassigned",
         ])
         .expect_err("group and unassigned are exclusive");

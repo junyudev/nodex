@@ -109,7 +109,7 @@ const materializePageFileProvenance = async (
     pageId: mixedPageId,
     operationId: createUuidV7(),
     projectId: project.id,
-    status: "build",
+    status: "doing",
     title: "Settings dark mode",
     markdown: SETTINGS_BODY,
   });

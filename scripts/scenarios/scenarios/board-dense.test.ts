@@ -270,7 +270,7 @@ class RecordingSeedPort implements ScenarioSeedPort {
     return {
       totalRows: BOARD_DENSE_PAGES.length,
       commitSeq: 12,
-      groups: { triage: 3, plan: 2, build: 3, review: 1, ship: 1 },
+      groups: { triage: 3, plan: 2, doing: 3, review: 1, done: 1 },
     };
   }
 
@@ -394,9 +394,9 @@ describe("board/dense authoritative scenario", () => {
       scenarioId: BOARD_DENSE_SCENARIO_ID,
       scenarioRevision: BOARD_DENSE_SCENARIO_REVISION,
       totalRows: BOARD_DENSE_PAGES.length,
-      groups: { triage: 3, plan: 2, build: 3, review: 1, ship: 1 },
+      groups: { triage: 3, plan: 2, doing: 3, review: 1, done: 1 },
       listViewId: manifest.entityIdsByKey?.listView,
-      primaryBuildPage: {
+      primaryDoingPage: {
         pageId: manifest.pageIdsByKey[BOARD_DENSE_PRIMARY_PAGE_KEY],
         title: "Unify Database View rendering",
         descriptionPreview: "Rendering contract",

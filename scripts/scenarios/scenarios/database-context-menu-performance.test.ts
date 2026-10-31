@@ -93,7 +93,7 @@ class PerformanceSeedPort implements ScenarioSeedPort {
     return {
       totalRows: this.pages.length,
       commitSeq: 205,
-      groups: { triage: 32, plan: 32, build: 32, review: 32, ship: 32 },
+      groups: { triage: 32, plan: 32, doing: 32, review: 32, done: 32 },
     };
   }
 

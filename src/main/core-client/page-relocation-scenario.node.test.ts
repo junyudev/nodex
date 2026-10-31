@@ -34,7 +34,7 @@ describe("library/page-relocation authoritative scenario", () => {
         throw new Error(`Unexpected Database read: ${sourceBeforeMove.value.kind}`);
       }
       expect(sourceBeforeMove.value.value.rows.items).toHaveLength(1);
-      expect(sourceBeforeMove.value.value.rows.items[0]?.database_values.status).toBe("build");
+      expect(sourceBeforeMove.value.value.rows.items[0]?.database_values.status).toBe("doing");
 
       const [destinations, pageDestinations] = await Promise.all([
         library.read({
@@ -132,7 +132,7 @@ describe("library/page-relocation authoritative scenario", () => {
         throw new Error(`Unexpected Database read: ${sourceWindowAfterUndo.value.kind}`);
       }
       expect(sourceWindowAfterUndo.value.value.rows.items).toHaveLength(1);
-      expect(sourceWindowAfterUndo.value.value.rows.items[0]?.database_values.status).toBe("build");
+      expect(sourceWindowAfterUndo.value.value.rows.items[0]?.database_values.status).toBe("doing");
 
       const standaloneDestinations = await library.read({
         read: {

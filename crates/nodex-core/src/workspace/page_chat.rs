@@ -1590,7 +1590,7 @@ mod tests {
         }).expect("current Status value revision");
         database_apply(
             &workspace,
-            "set-build",
+            "set-doing",
             DatabaseIntent::EditPropertyValues {
                 edits: vec![DatabasePropertyValueMutation {
                     expected_membership_revision: None,
@@ -1602,7 +1602,7 @@ mod tests {
                     edit: DatabasePropertyValueEdit::Replace {
                         expected_value_revision: value_revision,
                         value: DatabasePropertyValueInput::Select {
-                            option_id: "build".to_owned(),
+                            option_id: "doing".to_owned(),
                         },
                     },
                 }],
@@ -1623,11 +1623,11 @@ mod tests {
         );
         database_apply(
             &workspace,
-            "rename-build",
+            "rename-doing",
             DatabaseIntent::PutOption {
                 data_source_id: data_source_id.clone(),
                 property_id: "status".to_owned(),
-                option_id: "build".to_owned(),
+                option_id: "doing".to_owned(),
                 name: "In progress".to_owned(),
                 color: None,
                 expected_property_revision: 2,
@@ -1641,7 +1641,7 @@ mod tests {
                 .status
                 .as_ref()
                 .map(|status| (status.option_id.as_str(), status.label.as_str())),
-            Some(("build", "In progress"))
+            Some(("doing", "In progress"))
         );
         create_library_page(&workspace, "page:notes", "project:default");
         apply(

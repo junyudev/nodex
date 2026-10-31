@@ -89,9 +89,9 @@ const BOARD_MAP = new Map<string, BoardSummary>([
           ],
         },
         {
-          id: "ship",
-          name: "Ship",
-          cards: [makePage("ship-plan", "Ship plan", "ship", 0)],
+          id: "done",
+          name: "Done",
+          cards: [makePage("ship-plan", "Ship plan", "done", 0)],
         },
       ],
     },
@@ -171,7 +171,7 @@ describe("markdown move-to menu model", () => {
 
     expect(sections.map((section) => section.label).join(",")).toBe("DB,Page");
     expect(rows.map((row) => row.id).join(",")).toBe(
-      "db:alpha,db-column:alpha:triage,db-column:alpha:plan,db-column:alpha:build,db-column:alpha:review,db-column:alpha:ship,db:beta,page:alpha:draft-spec,page:alpha:command-palette,page:alpha:ship-plan",
+      "db:alpha,db-column:alpha:triage,db-column:alpha:plan,db-column:alpha:doing,db-column:alpha:review,db-column:alpha:done,db:beta,page:alpha:draft-spec,page:alpha:command-palette,page:alpha:ship-plan",
     );
     expect(rows[0]?.kind).toBe("db");
     const firstRow = rows[0];
@@ -219,26 +219,26 @@ describe("markdown move-to menu model", () => {
       "db:beta",
       "db-column:beta:triage",
       "db-column:beta:plan",
-      "db-column:beta:build",
+      "db-column:beta:doing",
       "db-column:beta:review",
-      "db-column:beta:ship",
+      "db-column:beta:done",
     ]);
   });
 
   test("filters DB, column, and page rows while excluding the source page", () => {
     const runtime = pageHit("beta", "runtime", "Runtime polish", "plan", "Plan");
-    const ship = pageHit("alpha", "ship-plan", "Ship plan", "ship", "Ship");
+    const ship = pageHit("alpha", "ship-plan", "Ship plan", "done", "Done");
     const pageRows = flattenNfmMoveToRows(buildSections("runtime", undefined, [runtime]));
-    const columnRows = flattenNfmMoveToRows(buildSections("ship", undefined, [ship]));
+    const columnRows = flattenNfmMoveToRows(buildSections("done", undefined, [ship]));
     const projectRows = flattenNfmMoveToRows(buildSections("beta", undefined, [runtime]));
     const sourceRows = flattenNfmMoveToRows(buildSections("source"));
 
     expect(pageRows.map((row) => row.id).join(",")).toBe("page:beta:runtime");
     expect(columnRows.map((row) => row.id).join(",")).toBe(
-      "db:alpha,db-column:alpha:ship,db:beta,db-column:beta:ship,page:alpha:ship-plan",
+      "db:alpha,db-column:alpha:done,db:beta,db-column:beta:done,page:alpha:ship-plan",
     );
     expect(projectRows.map((row) => row.id).join(",")).toBe(
-      "db:beta,db-column:beta:triage,db-column:beta:plan,db-column:beta:build,db-column:beta:review,db-column:beta:ship,page:beta:runtime",
+      "db:beta,db-column:beta:triage,db-column:beta:plan,db-column:beta:doing,db-column:beta:review,db-column:beta:done,page:beta:runtime",
     );
     expect(sourceRows.map((row) => row.id).join(",")).toBe("");
   });
@@ -268,7 +268,7 @@ describe("markdown move-to menu model", () => {
     expect(pageTitleSections.map((section) => section.label).join(",")).toBe("DB");
     expect(pageTitleRows.map((row) => row.id).join(",")).toBe("");
     expect(dbRows.map((row) => row.id).join(",")).toBe(
-      "db:beta,db-column:beta:triage,db-column:beta:plan,db-column:beta:build,db-column:beta:review,db-column:beta:ship",
+      "db:beta,db-column:beta:triage,db-column:beta:plan,db-column:beta:doing,db-column:beta:review,db-column:beta:done",
     );
   });
 
@@ -332,8 +332,8 @@ describe("markdown move-to menu model", () => {
     const rows = flattenNfmMoveToRows(buildSections());
 
     expect(getInitialNfmMoveToFocusedRowId("", rows) === null).toBe(true);
-    expect(getInitialNfmMoveToFocusedRowId("ship", rows)).toBe("db:alpha");
-    expect(resolveNfmMoveToFocusedRowId("missing", "ship", rows)).toBe("db:alpha");
+    expect(getInitialNfmMoveToFocusedRowId("done", rows)).toBe("db:alpha");
+    expect(resolveNfmMoveToFocusedRowId("missing", "done", rows)).toBe("db:alpha");
     expect(moveNfmMoveToFocusedRowId(null, 1, rows)).toBe("db:alpha");
     expect(moveNfmMoveToFocusedRowId("db:alpha", -1, rows)).toBe(rows[rows.length - 1]?.id);
     expect(moveNfmMoveToFocusedRowId(rows[rows.length - 1]?.id ?? null, 1, rows)).toBe("db:alpha");

@@ -1362,7 +1362,7 @@ fn saved_filter_example_and_updates_return_exact_rows_and_preserve_unrelated_sta
             "kind":"group","operator":"or","children":[
                 {"kind":"group","operator":"and","children":[
                     {"kind":"clause","propertyId":"status","operator":"select_is","value":"review"},
-                    {"kind":"clause","propertyId":"Status","operator":"select_is_not","value":"ship"}
+                    {"kind":"clause","propertyId":"Status","operator":"select_is_not","value":"done"}
                 ]},
                 {"kind":"clause","propertyId":"status","operator":"select_is","value":"triage"}
             ]

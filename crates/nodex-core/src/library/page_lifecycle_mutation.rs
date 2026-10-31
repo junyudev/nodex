@@ -3345,9 +3345,9 @@ fn workflow_status(value: &str) -> Option<LibraryPageWorkflowStatus> {
     match value {
         "triage" => Some(LibraryPageWorkflowStatus::Triage),
         "plan" => Some(LibraryPageWorkflowStatus::Plan),
-        "build" => Some(LibraryPageWorkflowStatus::Build),
+        "doing" => Some(LibraryPageWorkflowStatus::Doing),
         "review" => Some(LibraryPageWorkflowStatus::Review),
-        "ship" => Some(LibraryPageWorkflowStatus::Ship),
+        "done" => Some(LibraryPageWorkflowStatus::Done),
         _ => None,
     }
 }
@@ -3356,9 +3356,9 @@ fn workflow_status_key(value: LibraryPageWorkflowStatus) -> &'static str {
     match value {
         LibraryPageWorkflowStatus::Triage => "triage",
         LibraryPageWorkflowStatus::Plan => "plan",
-        LibraryPageWorkflowStatus::Build => "build",
+        LibraryPageWorkflowStatus::Doing => "doing",
         LibraryPageWorkflowStatus::Review => "review",
-        LibraryPageWorkflowStatus::Ship => "ship",
+        LibraryPageWorkflowStatus::Done => "done",
     }
 }
 
@@ -3500,7 +3500,7 @@ mod tests {
                     property_id: "status".to_owned(),
                     value_type: "select".to_owned(),
                     config_json: json!({
-                        "options": [{ "id": "build", "name": "Build" }]
+                        "options": [{ "id": "doing", "name": "Doing" }]
                     })
                     .to_string(),
                     schema_revision: 1,
@@ -3519,7 +3519,7 @@ mod tests {
 
         let values = validate_create_values(
             &properties,
-            LibraryPageWorkflowStatus::Build,
+            LibraryPageWorkflowStatus::Doing,
             Some("p1-high"),
             Some("m"),
             Some("2026-08-04"),
@@ -3531,7 +3531,7 @@ mod tests {
         .expect("sparse schema should accept absent optional semantics");
 
         assert_eq!(values.len(), 1);
-        assert_eq!(values["status"].1, Value::String("build".to_owned()));
+        assert_eq!(values["status"].1, Value::String("doing".to_owned()));
         assert!(!values.contains_key("due_date"));
         assert!(!values.contains_key("assignee"));
     }

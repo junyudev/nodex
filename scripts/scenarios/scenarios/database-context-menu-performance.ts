@@ -36,7 +36,7 @@ export const requireDatabaseContextMenuPerformanceFacts = (
   return value as DatabaseContextMenuPerformanceFacts;
 };
 
-const statuses: readonly WorkflowStatus[] = ["triage", "plan", "build", "review", "ship"];
+const statuses: readonly WorkflowStatus[] = ["triage", "plan", "doing", "review", "done"];
 
 const materialize = async (
   port: ScenarioSeedPort,

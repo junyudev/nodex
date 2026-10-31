@@ -18,8 +18,12 @@ describe("workflow status cutover", () => {
 
   it("normalizes legacy and current values at migration boundaries", () => {
     expect(upgradeLegacyWorkflowStatus("draft")).toBe("triage");
+    expect(upgradeLegacyWorkflowStatus("in_progress")).toBe("doing");
     expect(upgradeLegacyWorkflowStatus("in_review")).toBe("review");
-    expect(upgradeLegacyWorkflowStatus("ship")).toBe("ship");
+    expect(upgradeLegacyWorkflowStatus("done")).toBe("done");
+    expect(upgradeLegacyWorkflowStatus("doing")).toBe("doing");
+    expect(upgradeLegacyWorkflowStatus("build")).toBe("doing");
+    expect(upgradeLegacyWorkflowStatus("ship")).toBe("done");
     expect(upgradeLegacyWorkflowStatus("unknown")).toBeNull();
     expect(upgradeLegacyWorkflowStatus(null)).toBeNull();
   });

@@ -114,7 +114,7 @@ const rowDetailSnapshot = (commitHead: number): DatabaseReadSnapshot => ({
       summary: {
         created_at: "2026-08-23T00:00:00.000Z",
         database_value_revisions: { status: 1 },
-        database_values: { status: "ship" },
+        database_values: { status: "done" },
         description_length: 17,
         description_preview: "Canonical details",
         document_generation: 1,
@@ -423,14 +423,14 @@ it.effect("reads a causally fenced Database row through the Project authority", 
       const page = yield* database.readRowPage({
         projectId,
         pageId: "page:test",
-        status: "ship",
+        status: "done",
         minimumCommitCursor: { storeEpoch: identity.storeEpoch, commitSeq: 31 },
       });
 
       assert.isNotNull(page);
       assert.strictEqual(page?.id, "page:test");
       assert.strictEqual(page?.description, "Canonical details");
-      assert.strictEqual(page?.status, "ship");
+      assert.strictEqual(page?.status, "done");
       assert.deepEqual(projectScopes, [projectId]);
       assert.deepEqual(
         client.databaseReads.map(({ kind }) => kind),

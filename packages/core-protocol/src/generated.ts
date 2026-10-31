@@ -6059,7 +6059,7 @@ export interface components {
             readonly view_id: string;
         };
         /** @enum {string} */
-        readonly LibraryPageWorkflowStatus: "triage" | "plan" | "build" | "review" | "ship";
+        readonly LibraryPageWorkflowStatus: "triage" | "plan" | "doing" | "review" | "done";
         readonly LibraryPageWriteDestination: {
             readonly at?: components["schemas"]["LibraryAgentSiblingAnchor"] | null;
             /** @enum {string} */

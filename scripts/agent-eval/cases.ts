@@ -161,7 +161,7 @@ async function createPage(
   context: Context,
   title: string,
   markdown: string,
-  status: "build" | "review" = "build",
+  status: "doing" | "review" = "doing",
 ) {
   const pageId = createUuidV7();
   await context.seed.createPage({

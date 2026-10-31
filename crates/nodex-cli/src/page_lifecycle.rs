@@ -712,9 +712,9 @@ mod tests {
     #[test]
     fn data_source_placement_uses_stable_keys_and_rejects_other_parents() {
         assert_eq!(
-            group_scope(&placement(Some("@view-1"), Some("build"), false)).expect("stable group"),
+            group_scope(&placement(Some("@view-1"), Some("doing"), false)).expect("stable group"),
             Some(DatabaseGroupScope::Path {
-                group_key: Some("build".to_owned()),
+                group_key: Some("doing".to_owned()),
                 subgroup_key: None,
             })
         );

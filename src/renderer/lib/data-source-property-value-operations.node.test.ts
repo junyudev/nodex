@@ -282,7 +282,7 @@ describe("Data Source Property value operations", () => {
         pageId: "page-1",
         dataSourceId,
         property: definition,
-        current: value(definition, "build", 4),
+        current: value(definition, "doing", 4),
         option: { id: "custom-status", name: "Custom" },
       }),
     ).toThrow(/incompatible/u);

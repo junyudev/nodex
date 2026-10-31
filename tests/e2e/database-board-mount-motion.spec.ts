@@ -14,12 +14,12 @@ test("keeps Board headers settled when a sibling tab group opens and closes", as
       await page.getByRole("button", { name: "Name", exact: true }).click();
       await expect(page.getByTestId("database-view-rules-bar")).toBeVisible();
       await page.keyboard.press("Escape");
-      const build = page
+      const doing = page
         .locator('[data-database-board-column-header="true"]')
-        .filter({ hasText: "Build" });
-      await build.hover();
-      await build.getByRole("button", { name: "More options for Build" }).click();
-      const column = page.locator('[data-board-column-root][data-board-column-id="build"]');
+        .filter({ hasText: "Doing" });
+      await doing.hover();
+      await doing.getByRole("button", { name: "More options for Doing" }).click();
+      const column = page.locator('[data-board-column-root][data-board-column-id="doing"]');
       const expandedWidth = (await column.boundingBox())!.width;
       await column.evaluate((element) => {
         const widths: number[] = [];

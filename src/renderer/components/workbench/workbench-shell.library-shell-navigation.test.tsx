@@ -1410,7 +1410,7 @@ describe("workbench session shell / library-shell-navigation", () => {
       resolveCardDetail({
         id: "card-1",
         projectId: "alpha",
-        status: "build",
+        status: "doing",
         title: "Card One",
         description: "",
         tags: [],

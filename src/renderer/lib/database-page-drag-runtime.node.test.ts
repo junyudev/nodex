@@ -179,7 +179,7 @@ describe("Database Page drag runtime", () => {
       move: {
         pageId: "page-1",
         fromStatus: "triage",
-        toStatus: "ship",
+        toStatus: "done",
       },
       dependencies,
     });
@@ -218,7 +218,7 @@ describe("Database Page drag runtime", () => {
         move: {
           pageId: "page-1",
           fromStatus: "triage",
-          toStatus: "ship",
+          toStatus: "done",
         },
         dependencies,
       }),
