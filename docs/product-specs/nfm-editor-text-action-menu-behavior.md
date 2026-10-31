@@ -43,7 +43,8 @@ the menu then overlaps the selection as needed to keep its actions visible.
 
 ## Layout
 
-From top to bottom the menu holds the chat actions, the block type picker, and
+From top to bottom the menu holds [Ask for change](nfm-editor-ask-for-change-behavior.md)
+and the chat actions, the block type picker, and
 two rows of formatting controls ending in `More`, which opens the
 [Block side menu](nfm-block-side-menu-behavior.md) for the same selection,
 including `Move to`. The menu contains only working actions.

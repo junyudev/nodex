@@ -112,6 +112,7 @@ import { findNfmPromptBlockAtCaret } from "./nfm-prompt-block-model";
 import { writeNfmPromptCollapsed } from "./nfm-prompt-collapse-store";
 import { NfmSideMenuRuntimeProvider } from "./nfm-side-menu-runtime";
 import { NfmChatSendShortcutController } from "./nfm-chat-send-shortcut-controller";
+import { NfmAskForChangeProvider } from "./nfm-ask-for-change";
 import { ReadonlyMarkdownBlockNotePreview } from "./readonly-nfm-blocknote-preview";
 import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
 import { resolveSendBlockSelection } from "./send-block-selection";
@@ -2699,32 +2700,37 @@ function NfmEditorInstance({
                         data-theming-css-variables-demo
                       >
                         <NfmSideMenuOpenProvider>
-                          <NfmCodeBlockController />
-                          <NfmSideMenuShortcutController />
-                          <NfmChatSendShortcutController />
-                          <SideMenuController
-                            sideMenu={customSideMenu}
-                            floatingUIOptions={sideMenuFloatingOptions}
-                          />
-                          <NfmFormattingToolbarController
-                            formattingToolbar={NfmFormattingToolbar}
-                          />
-                          <NfmLinkToolbarController
-                            linkToolbar={renderLinkToolbar}
-                            floatingUIOptions={{
-                              useTransitionStylesProps: {
-                                duration: 0,
-                              },
-                              useTransitionStatusProps: {
-                                duration: 0,
-                              },
-                            }}
-                          />
-                          <NfmSlashMenu
-                            executionProjectId={executionProjectId}
-                            allowPageReferences
-                          />
-                          <NfmTableHandlesController />
+                          <NfmAskForChangeProvider
+                            projectId={executionProjectId}
+                            pageId={sourcePageContext?.pageId ?? null}
+                          >
+                            <NfmCodeBlockController />
+                            <NfmSideMenuShortcutController />
+                            <NfmChatSendShortcutController />
+                            <SideMenuController
+                              sideMenu={customSideMenu}
+                              floatingUIOptions={sideMenuFloatingOptions}
+                            />
+                            <NfmFormattingToolbarController
+                              formattingToolbar={NfmFormattingToolbar}
+                            />
+                            <NfmLinkToolbarController
+                              linkToolbar={renderLinkToolbar}
+                              floatingUIOptions={{
+                                useTransitionStylesProps: {
+                                  duration: 0,
+                                },
+                                useTransitionStatusProps: {
+                                  duration: 0,
+                                },
+                              }}
+                            />
+                            <NfmSlashMenu
+                              executionProjectId={executionProjectId}
+                              allowPageReferences
+                            />
+                            <NfmTableHandlesController />
+                          </NfmAskForChangeProvider>
                         </NfmSideMenuOpenProvider>
                       </BlockNoteView>
                     </NfmSideMenuRuntimeProvider>

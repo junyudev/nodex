@@ -30,6 +30,7 @@ import {
   NfmSideMenuTextBlockIcon,
   NfmSideMenuToggleListBlockIcon,
   ActivitySpinnerIcon,
+  AskAiIcon,
   TextActionBoldIcon,
   TextActionClearFormatIcon,
   TextActionEllipsisIcon,
@@ -91,6 +92,7 @@ import {
 } from "./nfm-text-action-menu-model";
 import { useNfmTextActionMenuRuntime } from "./nfm-text-action-menu-runtime";
 import { NfmChatSendTooltip } from "./nfm-chat-send-tooltip";
+import { useNfmAskForChange } from "./nfm-ask-for-change";
 import {
   useNfmRetainedSelectionPresentation,
   type NfmRetainedSelectionPresentation,
@@ -198,6 +200,8 @@ export interface NfmTextActionMenuSurfaceProps {
   canConvertToEquation?: boolean;
   linkControl: ReactNode;
   chat?: TextActionChat | null;
+  /** Rewrites the selection in place, after the user reviews it. */
+  onAskForChange?: () => void;
   onSelectBlockType: (item: TextActionBlockTypeItem) => void;
   onToggleStyle: (style: TextActionBasicStyle) => void;
   onSetTextColor: (color: TextActionColorValue) => void;
@@ -1167,6 +1171,7 @@ export function NfmTextActionMenuSurface({
   canConvertToEquation = false,
   linkControl,
   chat = null,
+  onAskForChange,
   onSelectBlockType,
   onToggleStyle,
   onSetTextColor,
@@ -1271,13 +1276,23 @@ export function NfmTextActionMenuSurface({
         onFocusCapture={handleToolbarFocusCapture}
         onBlurCapture={handleToolbarBlurCapture}
       >
-        {chat ? (
+        {onAskForChange || chat ? (
           <>
-            <TextActionChatSection
-              chat={chat}
-              renderSendToThreadMenu={renderSendToThreadMenu}
-              onPickerOpenChange={handleNodexActionPopoverOpenChange}
-            />
+            {onAskForChange ? (
+              <TextActionChatRow
+                icon={<AskAiIcon className="size-4 text-token-text-secondary" />}
+                label="Ask for change"
+                tooltip="Rewrite the selection with AI, then review it"
+                onActivate={onAskForChange}
+              />
+            ) : null}
+            {chat ? (
+              <TextActionChatSection
+                chat={chat}
+                renderSendToThreadMenu={renderSendToThreadMenu}
+                onPickerOpenChange={handleNodexActionPopoverOpenChange}
+              />
+            ) : null}
             <TextActionDivider />
           </>
         ) : null}
@@ -1381,6 +1396,7 @@ export function NfmTextActionMenu() {
     editor,
   });
   const runtime = useNfmTextActionMenuRuntime();
+  const askForChange = useNfmAskForChange();
   const sideMenuOpenController = useNfmSideMenuOpenController();
   const [selectionPresentationState, setSelectionPresentationState] = useState<{
     presentation: NfmRetainedSelectionPresentation;
@@ -1508,6 +1524,14 @@ export function NfmTextActionMenu() {
       canConvertToEquation={snapshot.canConvertToEquation}
       linkControl={<NfmCreateLinkButton renderTrigger={renderCreateLinkTrigger} />}
       chat={chat}
+      onAskForChange={
+        askForChange && editor.isEditable
+          ? () => {
+              formattingToolbar.store.setState(false);
+              askForChange.open();
+            }
+          : undefined
+      }
       onSelectBlockType={selectBlockType}
       onToggleStyle={toggleStyle}
       onSetTextColor={setTextColor}

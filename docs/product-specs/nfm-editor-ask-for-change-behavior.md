@@ -3,6 +3,30 @@
 Status: Active
 Last updated: 2026-10-31
 
+Ask for change rewrites a Page selection with AI and lets the user review the rewrite before it
+replaces anything.
+
+## Review
+
+`Ask for change` leads the [text selection menu](nfm-editor-text-action-menu-behavior.md) in any
+editable Page editor. It replaces the menu with a panel anchored under the selection, which stays
+highlighted while the panel is open:
+
+- **Ask.** An input, `Ask for a change…`, with one-tap `Improve writing`, `Make shorter` and
+  `Fix spelling & grammar`.
+- **Rewriting.** The instruction with a spinner; `Stop` cancels the request.
+- **Review.** The proposal rendered as Page content, with `Discard`, `Try again` and `Accept`.
+  Typing `Ask for another change…` refines the proposal on screen rather than the original.
+  `Enter` with an empty input, or `⌘/Ctrl+Enter`, accepts.
+- **Failed.** The short reason and `Try again`; the selection is unchanged.
+
+Accept replaces the selection exactly as pasting the proposal's Nodex Markdown there would, as one
+undoable change. `Escape`, `Discard` or pointing anywhere outside the panel ends the review and
+cancels any request in flight; nothing in the Page changes until Accept.
+
+The request carries the selection, the instruction and up to three Blocks on either side of the
+selection as context.
+
 ## Rewrite backend
 
 Ask for change generates a proposed replacement from a selection snapshot and a user instruction.
