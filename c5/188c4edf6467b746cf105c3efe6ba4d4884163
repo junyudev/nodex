@@ -1,0 +1,160 @@
+docs/product-specs/agent-runtime-behavior.md
+  s_2d7b784dacd638::t_8895ea343f0d8e 345-351
+  s_fa2a1bb1a9bd0d::t_c0ba6fb5de56ef 91-103,107-111,752-753,758-762
+packages/agent-runtime/package.json
+  s_aba0b408ef9828::t_f95ffbec6905a8 21-22
+packages/agent-runtime/src/nodex/Rollback.test.ts
+  s_aba0b408ef9828::t_7acbfd440f81d4 15-16,55,57,63,65,144,204-245,315-317,400,402,408,410,456,462-470,493-520
+packages/agent-runtime/src/nodex/Rollback.ts
+  s_aba0b408ef9828::t_028cfdef528afe 1-5,14,46-47,49-51,57
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.test.ts
+  s_fa2a1bb1a9bd0d::t_4af937f23a8130 387,389-397,411-412,459-464,498-499,503,579-583,636
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.ts
+  s_aba0b408ef9828::t_57044162f37a6b 1-5,181-195
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_aba0b408ef9828::t_69945b72ed8562 1-6,10690-10698,10702
+  s_fa2a1bb1a9bd0d::t_b4b8df18e5f63a 7,301-302,503,5367-5369,11547-11557,11559-11565,11582-11663,11665-11670,11673-11737,11815-11834,12028-12030,12504-12518,12590-12616,12764
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_fa2a1bb1a9bd0d::t_05d501bcb62279 1-8,273-275,277-279,719,7826,7828-7836,7855-7863,8654,8883-8895,10614,11660-11671,11802-11815
+  s_fa2a1bb1a9bd0d::t_2ea46818f7cda7 208-209,429-431,1390-1396,4864-4866,10407-10412
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_fa2a1bb1a9bd0d::t_dd6ab709dbeb60 2177-2184,2186-2202,2204,3847
+  s_fa2a1bb1a9bd0d::t_5a1368251aea9a 639-645,1154-1156,1515-1526,1528,3349-3356
+packages/agent-runtime/vendor/shared/package.json
+  s_aba0b408ef9828::t_9e0cbbc6d26e3b 79-80
+packages/agent-runtime/vendor/shared/src/orchestrationV2Rewind.test.ts
+  s_aba0b408ef9828::t_3cd7cdcc5f28d7 1-19,21-147
+packages/agent-runtime/vendor/shared/src/orchestrationV2Rewind.ts
+  s_aba0b408ef9828::t_e9a0133a7d7392 1-15,17-57,59-188
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_aba0b408ef9828::t_a96540d409e908 3111-3127,3129-3176
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_aba0b408ef9828::t_a329e14573558e 1-4,1208-1242,1243-1255,1257,1262-1271,1276,1277-1293,1295,1630,1633-1636,2062-2072,2133
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_aba0b408ef9828::t_c562920d65be2b 682-688,697-701,706-708,714
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_aba0b408ef9828::t_594bf9c620def4 1934-1968
+src/shared/testing/agent-runtime-snapshot.ts
+  s_2d7b784dacd638::t_ebb02b22864598 83
+src/shared/types.ts
+  s_aba0b408ef9828::t_d0188286c293fe 4544-4545
+packages/agent-runtime/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
+  s_fa2a1bb1a9bd0d::t_886e84a3ab942c 9-13,20-26,1974-2178,2214-2215,2219,2223,2289-2361
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_fa2a1bb1a9bd0d::t_c57d8efb5fe735 603
+src/shared/agent-runtime-api.ts
+  s_fa2a1bb1a9bd0d::t_b3234056c28f0b 144-147
+src/renderer/features/local-conversation/view/conversation-recovery-actions.tsx
+  s_fa2a1bb1a9bd0d::t_68487ca56542a2 14,30,37-39,43,59,64-66,70-76
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_fa2a1bb1a9bd0d::t_6f8bc508208bde 35,37,290-298,305,985,1251-1257,1259,1342,1357-1358
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_fa2a1bb1a9bd0d::t_4f5eda786cc2d3 158
+packages/agent-runtime/src/nodex/Interface.ts
+  s_fa2a1bb1a9bd0d::t_8c63d1fdda336b 541-545
+src/shared/conversation-recovery.ts
+  s_fa2a1bb1a9bd0d::t_a041eb8ca5a3d5 5,28
+packages/agent-runtime/src/nodex/Compact.ts
+  s_fa2a1bb1a9bd0d::t_fdc3ab1c6efa44 1,9,12-16,18-37,41-46
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderReplayHarness.ts
+  s_fa2a1bb1a9bd0d::t_9c21d7254257d9 542
+packages/agent-runtime/src/nodex/Runtime.ts
+  s_fa2a1bb1a9bd0d::t_01016e0ed19b3a 279
+src/renderer/features/local-conversation/view/local-conversation-thread-body.tsx
+  s_fa2a1bb1a9bd0d::t_7f5732e158069e 251
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_fa2a1bb1a9bd0d::t_ba2abbe2673783 3838
+packages/agent-runtime/src/orchestration-v2/testkit/OrchestratorScenario.ts
+  s_fa2a1bb1a9bd0d::t_45bbc5c056f395 165
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_fa2a1bb1a9bd0d::t_28fd427e2ff8cc 1641,1656
+packages/agent-runtime/src/orchestration-v2/testkit/HistoryPressure.ts
+  s_fa2a1bb1a9bd0d::t_942c988c10eaff 61
+packages/agent-runtime/src/persistence/Migrations/087_ContextRecovery.ts
+  s_fa2a1bb1a9bd0d::t_ebfeeb63bef7df 1-12
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
+  s_fa2a1bb1a9bd0d::t_272965a95a81ec 6-7,132-133,403,423-443,444-445,4908-4909,4911-4914,4917-4920,4925-4933,4935-4938,4951-4964,4966-4972,4974-5061,5063,5085-5128,5146-5299
+src/renderer/features/local-conversation/projection/conversation-recovery-presentation.ts
+  s_fa2a1bb1a9bd0d::t_78b792bbe2dda6 27-28,76
+  s_1291aa7602df08::t_d1da93d607e27a 72
+packages/agent-runtime/src/orchestration-v2/ProjectionRecovery.test.ts
+  s_fa2a1bb1a9bd0d::t_720d3a0a197193 666,683
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_fa2a1bb1a9bd0d::t_ee26b3cf5169a5 406-410,996-1004,7248,7252-7270,7292-7297
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_fa2a1bb1a9bd0d::t_5219d39cf0b633 511
+packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.ts
+  s_fa2a1bb1a9bd0d::t_4845e9c1985f66 1,697-700,702-706,710-711,713-719,730
+packages/agent-runtime/src/nodex/Service.ts
+  s_fa2a1bb1a9bd0d::t_4b3aa7ec15571e 370-377
+src/renderer/features/local-conversation/agent-runtime-stage-actions.node.test.ts
+  s_fa2a1bb1a9bd0d::t_fc0c2d33e6f434 236-265
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_fa2a1bb1a9bd0d::t_b25526181ddd59 406,437-445,618
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_fa2a1bb1a9bd0d::t_9c11926db6f8cb 2163,2228-2230,3941-4001
+packages/agent-runtime/src/orchestration-v2/ProjectionRecoveryQueries.ts
+  s_fa2a1bb1a9bd0d::t_01d5df87f67012 9-10,38-39
+src/renderer/features/local-conversation/view/conversation-recovery-actions.test.tsx
+  s_fa2a1bb1a9bd0d::t_186cd5927990d8 42,45-48,57,82-108,110-112,114-115
+  s_1291aa7602df08::t_d1da93d607e27a 109,113
+packages/agent-runtime/src/orchestration-v2/ContextHandoffDelivery.ts
+  s_fa2a1bb1a9bd0d::t_c5c9dc8d4939a8 3,11,29,39,47-48,93-102
+packages/agent-runtime/src/orchestration-v2/DelegatedResultReceipt.ts
+  s_fa2a1bb1a9bd0d::t_362ba10dabe53a 13-16,27-28
+  s_fa2a1bb1a9bd0d::t_1ce654758e026e 29-34,36,40-42,45-47,56,79,91-92,98-99,121
+  s_1291aa7602df08::t_1e2262a6c96163 2-12,22,35,37-38,43-44,72-78,80-90,93-97,100-120
+packages/agent-runtime/vendor/provider-core/src/server/handoffBudget.ts
+  s_fa2a1bb1a9bd0d::t_b603126fb841ff 4,25-31,92-95,102,112-113,120,123-131
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_fa2a1bb1a9bd0d::t_44780a974c6a4e 103,204
+packages/agent-runtime/src/orchestration-v2/ContextHandoffBudget.test.ts
+  s_fa2a1bb1a9bd0d::t_ce4f0532878f84 1-4,26,216-254,425-426,723-734,745-759
+CHANGELOG.md
+  s_fa2a1bb1a9bd0d::t_d44cb55e721348 36
+src/renderer/features/local-conversation/view/shared/conversation-recovery-surface.tsx
+  s_1291aa7602df08::t_d1da93d607e27a 185
+  s_fa2a1bb1a9bd0d::t_07c431227350de 24,106,174-184,215
+packages/agent-runtime/vendor/provider-core/src/server/failure.ts
+  s_fa2a1bb1a9bd0d::t_5e2d01528330a7 13,23,35-51,173-175,178-180,188-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5188c4edf6467b746cf105c3efe6ba4d4884163",
+  "prompts": {},
+  "sessions": {
+    "s_1291aa7602df08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "37db4cd4-622c-478e-b114-45dddfc61e3a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
+    "s_2d7b784dacd638": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1914f-6e55-7af3-9446-f9507906e41f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_aba0b408ef9828": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1916f-ade3-7732-a737-d16b88fecf5d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fa2a1bb1a9bd0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19159-a559-7f33-a1c4-1abdaf6954c2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

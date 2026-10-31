@@ -1,0 +1,30 @@
+tests/e2e/scripted-agent-runtime.spec.ts
+  s_ad37a285de23ae::t_b90d86ab6ccd0b 539-598,604-610,612-657,662-670,674-677,681,685-686,690-705,707
+  s_ad37a285de23ae::t_01ff9c2ab35705 599-603,611,658-661,671-673,678-680,682-684,687-689
+  s_ad37a285de23ae::t_c881af0a2c0710 706
+  s_e2f9f3a29b34ef::t_6244e3279297fb 708-709
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7c4d758c45689a9103742be14d1ca3d065dde92f",
+  "prompts": {},
+  "sessions": {
+    "s_ad37a285de23ae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19183-d975-7831-82a8-473cb9cbb488",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
