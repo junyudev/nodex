@@ -1,0 +1,63 @@
+docs/product-specs/database-pages-and-views-behavior.md
+  s_8a269fcdcbb297::t_be85f3498be45c 83
+src/renderer/lib/page-chat-actions.ts
+  s_8a269fcdcbb297::t_1d0513c443bbe1 4-6
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_8a269fcdcbb297::t_927f7a2d53d01f 228,348,419-425
+  s_8a269fcdcbb297::t_4f4e64adbee358 96-98
+docs/product-specs/nfm-editor-text-action-menu-behavior.md
+  s_8a269fcdcbb297::t_be85f3498be45c 48-49
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_8a269fcdcbb297::t_b08e77fd6597ba 395,419,522,534,621,635,669,682
+src/renderer/components/board/page-stage.tsx
+  s_8a269fcdcbb297::t_927f7a2d53d01f 84,131,261,422
+src/renderer/components/workbench/database-view-page-actions.ts
+  s_8a269fcdcbb297::t_8659675609337c 1,18-19
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_8a269fcdcbb297::t_8659675609337c 337,357-358,1014
+  s_8a269fcdcbb297::t_9d33db0e438689 62
+src/renderer/components/board/page-stage/properties-section.tsx
+  s_8a269fcdcbb297::t_b08e77fd6597ba 37,230
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.ts
+  s_8a269fcdcbb297::t_4f4e64adbee358 3,56-63,65-68,71-82,89
+  s_8a269fcdcbb297::t_fa465862c7f7b2 128-136
+  s_8a269fcdcbb297::t_927f7a2d53d01f 20,64,69-70,83-88
+  s_8a269fcdcbb297::t_b0ab5e49ef7e64 25
+  s_8a269fcdcbb297::t_fc5e697a69d078 90-91
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
+  s_8a269fcdcbb297::t_d2db557ec4211d 261-274
+  s_8a269fcdcbb297::t_b08e77fd6597ba 299,313,327,351,365,379
+  s_8a269fcdcbb297::t_a62b9a14645583 14,245-260,275-285
+  s_8a269fcdcbb297::t_d2243ad6510857 286-287
+src/renderer/components/workbench/database-view-page-context-menu.tsx
+  s_8a269fcdcbb297::t_8659675609337c 210
+src/renderer/components/board/page-stage/types.ts
+  s_8a269fcdcbb297::t_927f7a2d53d01f 93-94
+src/renderer/components/workbench/database-view-page-context-menu.test.tsx
+  s_8a269fcdcbb297::t_89cd5cbfe8e6aa 260-261
+  s_8a269fcdcbb297::t_b566a2b77640ce 31,37,41,241-259
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_8a269fcdcbb297::t_a8c17358630ac9 35
+  s_8a269fcdcbb297::t_9d33db0e438689 153-159,237,258-261,263,311
+  s_8a269fcdcbb297::t_5c2637f8452e55 36,262,322
+src/renderer/lib/page-stage-related-chat-candidates.ts
+  s_8a269fcdcbb297::t_5c2637f8452e55 4-10,27
+src/renderer/components/workbench/workbench-page-stage-panel.tsx
+  s_8a269fcdcbb297::t_5c2637f8452e55 143,172,511
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b3ea548919198bdf5db1656e1b285a581140a622",
+  "prompts": {},
+  "sessions": {
+    "s_8a269fcdcbb297": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5303ae91-8c35-4b85-b8df-343523a3e7e4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
