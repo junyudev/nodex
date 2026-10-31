@@ -1,8 +1,8 @@
-import { useConversationImageAsset } from "../use-conversation-image-asset";
+import { useContentImage } from "@/lib/content-image";
 
 /** The owning conversation resolves scoped result images only while this leaf is mounted. */
 export function ToolOutputImage({ source }: { readonly source: string }) {
-  const asset = useConversationImageAsset(source);
+  const asset = useContentImage(source);
   if (!asset.previewSrc) {
     return (
       <p role="status" className="text-token-description-foreground">

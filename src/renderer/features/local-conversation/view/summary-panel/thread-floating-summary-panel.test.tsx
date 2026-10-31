@@ -174,8 +174,6 @@ vi.mock("../../../../lib/api", () => ({
 }));
 
 vi.mock("@/features/user-attachment-image-editor", () => ({
-  resolveImageDisplaySource: (source: string) =>
-    source.startsWith("/") ? `app://fs/@fs${source}` : source,
   ImagePreviewDialog: ({
     open,
     src,

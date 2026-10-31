@@ -8,12 +8,17 @@ import {
 } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useResolvedImageAsset } from "../adapters/use-resolved-image-asset";
+import {
+  useResolvedImageAsset,
+  type GeneratedImageDescriptor,
+  type PlaygroundTool,
+} from "@/lib/content-image";
 import {
   formatGeneratedImageGroupTime,
   isGeneratedImageTileEmphasized,
 } from "../model/generated-image-canvas-presentation";
-import type { GeneratedImageDescriptor, ImageComment, PlaygroundTool } from "../model/types";
+
+import type { ImageComment } from "../model/types";
 import { ImageCommentSurface } from "./image-comment-surface";
 import { ImageCommentModeToolbar, ImageEditorToolbarPill } from "./image-editor-toolbar";
 import { ImageZoomControl } from "./image-zoom-control";

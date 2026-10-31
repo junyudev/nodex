@@ -23,7 +23,15 @@ import {
   type ImageEditComposerAttachment,
   type ImageEditComposerDraftSnapshot,
 } from "@/lib/image-edit-composer-channel";
-import { trackImageToolOpen, trackImageView } from "../analytics/image-editor-analytics";
+import {
+  trackImageToolOpen,
+  trackImageView,
+  type EditableImageDescriptor,
+  type GeneratedImageDescriptor,
+  type ImageEditorView,
+  type NormalizedUserAttachmentImageEditorOptions,
+  type PlaygroundTool,
+} from "@/lib/content-image";
 import { useImageEditSubmission } from "../adapters/use-image-edit-submission";
 import {
   getGeneratedImageLiveCollectionSnapshot,
@@ -46,15 +54,8 @@ import {
   type GeneratedImageOptimisticFocus,
   type GeneratedImageReplacement,
 } from "../model/generated-image-collection";
-import type {
-  EditableImageDescriptor,
-  GeneratedImageDescriptor,
-  ImageComment,
-  ImageEditorView,
-  NormalizedUserAttachmentImageEditorOptions,
-  PlaygroundTool,
-  SingleImageTool,
-} from "../model/types";
+
+import type { ImageComment, SingleImageTool } from "../model/types";
 import {
   GeneratedImagePlayground,
   type GeneratedImagePlaygroundGroup,

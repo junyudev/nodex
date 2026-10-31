@@ -1,8 +1,8 @@
 import { useCallback, useLayoutEffect, useRef, type WheelEvent } from "react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import { useResolvedImageAsset } from "../adapters/use-resolved-image-asset";
-import type { EditableImageDescriptor } from "../model/types";
+import { useResolvedImageAsset, type EditableImageDescriptor } from "@/lib/content-image";
+
 import { GeneratedImageDotField } from "./generated-image-dot-field";
 
 const THUMBNAIL_SIZE_PX = 46;

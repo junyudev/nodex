@@ -35,10 +35,8 @@ import {
 import { DiffStats } from "../shared/tools/diff-file-shared";
 import { ConnectorFallbackIcon, ConnectorGlobeIcon, PluginsIcon } from "@/components/shared/icons";
 import { openFileLink } from "../../../../lib/file-system-operations";
-import {
-  ImagePreviewDialog,
-  resolveImageDisplaySource,
-} from "@/features/user-attachment-image-editor";
+import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
+import { resolveImageDisplaySource } from "@/lib/content-image";
 import { useMcpResource, useMcpServerStatuses } from "../../../../lib/use-mcp-queries";
 import { useCodexMcpApps } from "../../use-codex-mcp-apps";
 import { useGitBranchState } from "../../../../lib/use-git-branch-state";

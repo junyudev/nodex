@@ -1,4 +1,4 @@
-import type { GeneratedImageDescriptor } from "../model/types";
+import type { GeneratedImageDescriptor } from "@/lib/content-image";
 import type { CodexConversationSnapshot } from "@/lib/types";
 import { buildCodexTurnOccurrenceKey } from "../../../../shared/codex-turn-identity";
 import { projectCodexMarkdownLabel } from "../../../../shared/codex-markdown-text";

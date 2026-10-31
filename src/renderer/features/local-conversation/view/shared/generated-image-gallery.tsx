@@ -13,13 +13,17 @@ import {
   GeneratedImagePlaceholder,
   getGeneratedImageLiveCollectionSnapshot,
   ImagePreviewDialog,
-  openUserAttachmentImagePreview,
   replaceGeneratedImageCanonicalGroups,
   replaceGeneratedImageLiveGroup,
   subscribeGeneratedImageLiveCollections,
-  type GeneratedImageDescriptor,
   useGeneratedImageCollectionGroups,
 } from "@/features/user-attachment-image-editor";
+import {
+  openUserAttachmentImagePreview,
+  type GeneratedImageDescriptor,
+  useContentImageScope,
+  useContentImage,
+} from "@/lib/content-image";
 import {
   ChevronRightIcon,
   EditIcon,
@@ -30,8 +34,6 @@ import { cn } from "../../../../lib/utils";
 import type { ThreadGeneratedImageGalleryItemModel } from "../../thread-stage-types";
 import { CodexTranscriptReadOwnerContext } from "../../normalized-transcript-hooks";
 import { calculateGeneratedImageGalleryLayout } from "../../projection/generated-image-gallery-layout";
-import { useConversationImageAssetContext } from "../conversation-image-asset-context";
-import { useConversationImageAsset } from "./use-conversation-image-asset";
 
 const EMPTY_IMAGE_SRC = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 const MAX_IMAGE_REFETCHES = 2;
@@ -115,10 +117,10 @@ function GeneratedImageTile({
   square: boolean;
   widthPx: number;
 }) {
-  const previewAsset = useConversationImageAsset(image.previewSrc ?? image.src, {
+  const previewAsset = useContentImage(image.previewSrc ?? image.src, {
     shouldLoadFileDataUrl: false,
   });
-  const fullAsset = useConversationImageAsset(image.src ?? image.previewSrc ?? "", {
+  const fullAsset = useContentImage(image.src ?? image.previewSrc ?? "", {
     shouldLoadFileDataUrl: false,
   });
   const [failure, setFailure] = useState<{ count: number; src: string } | null>(null);
@@ -211,7 +213,7 @@ function GeneratedImagePreview({
   onPreviousImage?: () => void;
   onEditImage?: () => void;
 }) {
-  const fullAsset = useConversationImageAsset(image.src ?? image.previewSrc ?? "");
+  const fullAsset = useContentImage(image.src ?? image.previewSrc ?? "");
   const alt = `Generated image ${imageNumber}`;
 
   return (
@@ -251,7 +253,7 @@ export function GeneratedImageGallery({
   nativeItemIds,
   turnStartedAtMs = null,
 }: GeneratedImageGalleryProps) {
-  const { composerTarget, conversationId, hostId } = useConversationImageAssetContext();
+  const { composerTarget, conversationId, hostId } = useContentImageScope();
   const contextOwner = useContext(CodexTranscriptReadOwnerContext);
   const owner = contextOwner?.key.hostId === hostId ? contextOwner : null;
   const canonicalGeneratedGroups = useGeneratedImageCollectionGroups(conversationId, owner);

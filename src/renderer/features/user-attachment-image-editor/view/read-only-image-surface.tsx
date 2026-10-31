@@ -5,15 +5,12 @@ import { toast } from "@/components/ui/toast";
 import {
   useResolvedImageAsset,
   type ResolvedImageAsset,
-} from "../adapters/use-resolved-image-asset";
-import {
   createImageDownloadFilename,
   downloadImageDataUrl,
-} from "../adapters/resolved-image-asset";
-import type {
-  EditableImageDescriptor,
-  NormalizedUserAttachmentImageEditorOptions,
-} from "../model/types";
+  type EditableImageDescriptor,
+  type NormalizedUserAttachmentImageEditorOptions,
+} from "@/lib/content-image";
+
 import { ImageZoomViewer } from "./image-zoom-viewer";
 
 async function downloadReadOnlyImage(

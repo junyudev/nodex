@@ -6,19 +6,79 @@ import { fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { render, settleAsyncRender } from "../../../../test/dom";
 import { installWindowApi } from "../../../../test/browser-globals";
-import { TestQueryProvider } from "../../../../test/query";
-import { ConversationImageAssetProvider } from "../conversation-image-asset-context";
-import { UserAttachmentStrip } from "./user-message-attachments";
+import { createTestQueryClient, TestQueryProvider } from "../../../../test/query";
 import {
+  ContentImageScopeProvider,
+  THIS_COMPUTER_IMAGE_SCOPE,
   registerUserAttachmentImagePreviewOpener,
   type OpenUserAttachmentImagePreviewOptions,
-} from "@/features/user-attachment-image-editor";
+} from "@/lib/content-image";
+import { conversationImageScope } from "../conversation-markdown-source";
+import { UserAttachmentStrip } from "./user-message-attachments";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe("UserAttachmentStrip", () => {
+  test("waits, without reading, until the chat holds the attachment's source", async () => {
+    const invoke = vi.fn(async () => ({ contentsBase64: "aW1hZ2U=", mimeType: "image/png" }));
+    const resolveRuntimeAttachment = vi.fn(async () => "/managed/image.png");
+    installWindowApi({ invoke, on: () => () => {} });
+    const scope = (held: boolean) =>
+      conversationImageScope(
+        {
+          projectId: null,
+          hostId: "local",
+          threadId: "thread",
+          cwd: "/workspace",
+          workspaceRoot: "/workspace",
+          sourceIdentity: "loading-item",
+          authority: {},
+          nativeConnection: { sourceEpoch: "epoch", transportKind: "stdio", generation: 1 },
+          sourceRoot: { hostId: "local", threadId: "thread" },
+          isCurrent: () => true,
+          isResourceCurrent: () => true,
+        },
+        { resolveRuntimeAttachment },
+        held,
+      );
+    const attachments = buildCodexUserAttachmentsFromContent(
+      [
+        {
+          type: "image",
+          url: buildAgentRuntimeAttachmentSource({
+            sourceThreadId: "source",
+            itemId: "item",
+            attachmentId: "attachment",
+          }),
+        },
+      ],
+      "user-message",
+    );
+    const strip = (held: boolean) => (
+      <TestQueryProvider client={client}>
+        <ContentImageScopeProvider scope={scope(held)}>
+          <UserAttachmentStrip attachments={attachments} />
+        </ContentImageScopeProvider>
+      </TestQueryProvider>
+    );
+    const client = createTestQueryClient();
+    const view = render(strip(false));
+    await view.findByRole("status", { name: "Loading user attachment" });
+    expect(resolveRuntimeAttachment).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+
+    // The chat's transcript arrives: its scope now holds the source.
+    view.rerender(strip(true));
+    await view.findByRole("button", { name: "Open image preview" });
+    expect(resolveRuntimeAttachment).toHaveBeenCalledTimes(1);
+    expect(view.container.querySelector("img")?.getAttribute("src")).toBe(
+      "data:image/png;base64,aW1hZ2U=",
+    );
+    view.unmount();
+  });
+
   test("resolves a mounted Runtime image's exact descriptor to display bytes", async () => {
     const invoke = vi.fn(async () => ({
       contentsBase64: "aW1hZ2U=",
@@ -33,10 +93,13 @@ describe("UserAttachmentStrip", () => {
     const resolveRuntimeAttachment = vi.fn(async () => "/managed/runtime/attachments/image.png");
     const view = render(
       <TestQueryProvider>
-        <ConversationImageAssetProvider
-          conversationId="selected-child"
-          hostId="local"
-          resolveRuntimeAttachment={resolveRuntimeAttachment}
+        <ContentImageScopeProvider
+          scope={{
+            ...THIS_COMPUTER_IMAGE_SCOPE,
+            conversationId: "selected-child",
+            hostId: "local",
+            resolveRuntimeAttachment: resolveRuntimeAttachment,
+          }}
         >
           <UserAttachmentStrip
             attachments={buildCodexUserAttachmentsFromContent(
@@ -44,7 +107,7 @@ describe("UserAttachmentStrip", () => {
               reference.itemId,
             )}
           />
-        </ConversationImageAssetProvider>
+        </ContentImageScopeProvider>
       </TestQueryProvider>,
     );
     await view.findByRole("button", { name: "Open image preview" });
@@ -67,14 +130,16 @@ describe("UserAttachmentStrip", () => {
     installWindowApi({ invoke, on: () => () => {} });
     const view = render(
       <TestQueryProvider>
-        <ConversationImageAssetProvider conversationId="thread" hostId="local">
+        <ContentImageScopeProvider
+          scope={{ ...THIS_COMPUTER_IMAGE_SCOPE, conversationId: "thread", hostId: "local" }}
+        >
           <UserAttachmentStrip
             attachments={buildCodexUserAttachmentsFromContent(
               [{ type: "image", fileId: "asset-native" }],
               "native-user-message",
             )}
           />
-        </ConversationImageAssetProvider>
+        </ContentImageScopeProvider>
       </TestQueryProvider>,
     );
 
@@ -99,10 +164,13 @@ describe("UserAttachmentStrip", () => {
     const resolveHistoryImage = vi.fn(async () => "nodex://assets/native-image.png");
     const view = render(
       <TestQueryProvider>
-        <ConversationImageAssetProvider
-          conversationId="thread"
-          hostId="local"
-          resolveHistoryImage={resolveHistoryImage}
+        <ContentImageScopeProvider
+          scope={{
+            ...THIS_COMPUTER_IMAGE_SCOPE,
+            conversationId: "thread",
+            hostId: "local",
+            resolveHistoryImage: resolveHistoryImage,
+          }}
         >
           <UserAttachmentStrip
             attachments={[
@@ -114,7 +182,7 @@ describe("UserAttachmentStrip", () => {
               },
             ]}
           />
-        </ConversationImageAssetProvider>
+        </ContentImageScopeProvider>
       </TestQueryProvider>,
     );
     await view.findByRole("button", { name: "Open image preview" });
@@ -134,10 +202,13 @@ describe("UserAttachmentStrip", () => {
     installWindowApi({ invoke, on: () => () => {} });
     const view = render(
       <TestQueryProvider>
-        <ConversationImageAssetProvider
-          conversationId="thread"
-          hostId="local"
-          resolveHistoryImage={async () => "/private/secret.png"}
+        <ContentImageScopeProvider
+          scope={{
+            ...THIS_COMPUTER_IMAGE_SCOPE,
+            conversationId: "thread",
+            hostId: "local",
+            resolveHistoryImage: async () => "/private/secret.png",
+          }}
         >
           <UserAttachmentStrip
             attachments={[
@@ -153,7 +224,7 @@ describe("UserAttachmentStrip", () => {
               },
             ]}
           />
-        </ConversationImageAssetProvider>
+        </ContentImageScopeProvider>
       </TestQueryProvider>,
     );
     await view.findByRole("img", { name: "Image failed to load" });
@@ -240,13 +311,16 @@ describe("UserAttachmentStrip", () => {
     const source = "data:image/png;base64,dGhyZWFk";
     const view = render(
       <TestQueryProvider>
-        <ConversationImageAssetProvider
-          composerTarget={{
-            channelId: "AppScope:app/ThreadScope:session:task::root",
-            placement: "root",
+        <ContentImageScopeProvider
+          scope={{
+            ...THIS_COMPUTER_IMAGE_SCOPE,
+            composerTarget: {
+              channelId: "AppScope:app/ThreadScope:session:task::root",
+              placement: "root",
+            },
+            conversationId: "thread-1",
+            hostId: "local",
           }}
-          conversationId="thread-1"
-          hostId="local"
         >
           <UserAttachmentStrip
             attachments={[
@@ -258,7 +332,7 @@ describe("UserAttachmentStrip", () => {
               },
             ]}
           />
-        </ConversationImageAssetProvider>
+        </ContentImageScopeProvider>
       </TestQueryProvider>,
     );
 
@@ -455,7 +529,13 @@ describe("UserAttachmentStrip", () => {
 
     const view = render(
       <TestQueryProvider>
-        <ConversationImageAssetProvider conversationId="remote-conversation" hostId="ssh:remote">
+        <ContentImageScopeProvider
+          scope={{
+            ...THIS_COMPUTER_IMAGE_SCOPE,
+            conversationId: "remote-conversation",
+            hostId: "ssh:remote",
+          }}
+        >
           <UserAttachmentStrip
             attachments={[
               {
@@ -466,7 +546,7 @@ describe("UserAttachmentStrip", () => {
               },
             ]}
           />
-        </ConversationImageAssetProvider>
+        </ContentImageScopeProvider>
       </TestQueryProvider>,
     );
 

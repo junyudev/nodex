@@ -1,7 +1,6 @@
+import { FileLinkWorkspaceContext } from "@/lib/file-link-workspace";
 import {
-  createContext,
   useContext,
-  useMemo,
   type MouseEventHandler,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -18,30 +17,6 @@ import { resolveNfmLinkAction, resolveNfmLinkTooltipLabel } from "@/lib/nfm-link
 import { cn } from "@/lib/utils";
 import { openWebLinkContextMenu } from "@/lib/web-link-context-menu";
 import { useWebLinkNavigation } from "@/lib/web-link-navigation";
-
-export interface FileLinkWorkspaceContextValue {
-  cwd?: string | null;
-  workspacePath?: string | null;
-}
-
-export const FileLinkWorkspaceContext = createContext<FileLinkWorkspaceContextValue | undefined>(
-  undefined,
-);
-
-export function FileLinkWorkspaceProvider({
-  children,
-  cwd,
-  workspacePath,
-}: {
-  children: ReactNode;
-  cwd?: string | null;
-  workspacePath?: string | null;
-}) {
-  const value = useMemo(() => ({ cwd, workspacePath }), [cwd, workspacePath]);
-  return (
-    <FileLinkWorkspaceContext.Provider value={value}>{children}</FileLinkWorkspaceContext.Provider>
-  );
-}
 
 interface FileLinkAnchorProps {
   href?: string;

@@ -5,21 +5,21 @@ import {
   useCodexConversationValue,
 } from "@/features/local-conversation/local-conversation-store";
 import type { CodexPromptInput } from "@/lib/types";
-import { parseAbsoluteImagePath } from "@/lib/codex-conversation-image-assets";
-import { parseAssetSource } from "../../../../shared/assets";
-import { DEFAULT_CODEX_HOST_ID } from "../../../../shared/codex-host";
-import type {
-  EditableImageDescriptor,
-  ImageEditComposerTarget,
-  ImageEditSubmissionIntent,
-} from "../model/types";
-import { requestImageEditComposerSubmit } from "@/lib/image-edit-composer-channel";
 import {
+  parseAbsoluteImagePath,
+  type EditableImageDescriptor,
+  type ImageEditComposerTarget,
+  type ImageEditSubmissionIntent,
   trackImageEditSubmit,
   trackImageEditSubmitOutcome,
-} from "../analytics/image-editor-analytics";
+  resolveImageInputSupport,
+} from "@/lib/content-image";
+import { parseAssetSource } from "../../../../shared/assets";
+import { DEFAULT_CODEX_HOST_ID } from "../../../../shared/codex-host";
+
+import { requestImageEditComposerSubmit } from "@/lib/image-edit-composer-channel";
+
 import { beginOptimisticGeneratedImageEdit } from "./generated-image-collection-store";
-import { resolveImageInputSupport } from "../model/feature-policy";
 
 function resolveSubmissionSource(image: EditableImageDescriptor): string | null {
   const candidates = [image.dataUrl, image.downloadSrc, image.attachmentSrc, image.src];

@@ -15,12 +15,14 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
-import { trackImageView, type ImageViewAnalytics } from "../analytics/image-editor-analytics";
-import { useResolvedImageAsset } from "../adapters/use-resolved-image-asset";
 import {
+  trackImageView,
+  type ImageViewAnalytics,
+  useResolvedImageAsset,
   createImageDownloadFilename,
   downloadImageDataUrl,
-} from "../adapters/resolved-image-asset";
+} from "@/lib/content-image";
+
 import { computeFitZoomPercent, computeManualImageSize } from "../model/image-geometry";
 import type { ImageSize } from "../model/types";
 

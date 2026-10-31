@@ -24,7 +24,7 @@ import {
 import { markdownPublicLeafComponents } from "./markdown-public-leaves";
 import { useResolvedReducedMotion } from "../use-reduced-motion";
 import { findMarkdownOpenCodeFence } from "./markdown-prefix";
-import { classifyConversationMedia } from "../conversation-media/conversation-media-model";
+import { classifyConversationMedia } from "@/lib/content-image";
 
 type Owner = ReturnType<typeof createConversationDocumentOwner>;
 interface RenderOptions {

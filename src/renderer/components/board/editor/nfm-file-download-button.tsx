@@ -16,7 +16,7 @@ import {
   createImageDownloadFilename,
   downloadImageDataUrl,
   materializeImageSourceAsDataUrl,
-} from "@/features/user-attachment-image-editor";
+} from "@/lib/content-image";
 import { readManagedImageDataUrl } from "@/lib/assets";
 import { parseFileSource } from "../../../../shared/file-resources";
 import { useFilePlacementRuntime } from "./file-runtime";

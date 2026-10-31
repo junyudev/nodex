@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { render } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
 import { ImagePreviewDialog } from "./image-preview-dialog";
-import * as resolvedImageAsset from "../adapters/resolved-image-asset";
+import * as resolvedImageAsset from "@/lib/content-image";
 
 const IMAGE_DATA_URL = "data:image/png;base64,AQID";
 

@@ -8,8 +8,8 @@ import {
   createResolvedComposerImageAttachment,
   type ComposerImageAttachment,
   type ComposerImageAttachmentMaterialization,
-  type ResolvedComposerImageInput,
 } from "./composer-image-attachment-model";
+import type { ResolvedComposerImageInput } from "@/lib/content-image";
 
 type SetComposerImageAttachments = (
   update: (current: readonly ComposerImageAttachment[]) => readonly ComposerImageAttachment[],

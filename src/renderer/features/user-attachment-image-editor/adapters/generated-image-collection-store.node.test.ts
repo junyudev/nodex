@@ -7,7 +7,7 @@ import {
   replaceGeneratedImageCanonicalGroups,
   replaceGeneratedImageLiveGroup,
 } from "./generated-image-collection-store";
-import type { GeneratedImageDescriptor } from "../model/types";
+import type { GeneratedImageDescriptor } from "@/lib/content-image";
 
 function image(id: string): GeneratedImageDescriptor {
   return {

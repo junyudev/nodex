@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
 import { NfmDocument, markdownImageAlt } from "@/components/board/nfm-renderer";
 import { useMarkdownImage } from "@/components/board/markdown-image";
-import { FileLinkWorkspaceProvider } from "@/components/shared/file-link-anchor";
+import { FileLinkWorkspaceProvider } from "@/lib/file-link-workspace";
 import {
   ImageErrorTile,
   ImageLoadingTile,

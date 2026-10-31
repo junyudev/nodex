@@ -29,12 +29,16 @@ import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { openFileLink, openPathWithDefaultApplication } from "@/lib/file-system-operations";
 import { cn } from "@/lib/utils";
-import { trackImageToolOpen } from "../analytics/image-editor-analytics";
 import {
+  trackImageToolOpen,
   createImageDownloadFilename,
   downloadImageDataUrl,
-} from "../adapters/resolved-image-asset";
-import { useResolvedImageAsset } from "../adapters/use-resolved-image-asset";
+  useResolvedImageAsset,
+  type EditableImageDescriptor,
+  type ImageEditSubmissionIntent,
+  type ImagePreviewEntrypoint,
+} from "@/lib/content-image";
+
 import {
   buildCommentSubmissionIntent,
   buildRemoveBackgroundSubmissionIntent,
@@ -42,14 +46,8 @@ import {
   buildResizeSubmissionIntent,
   IMAGE_ASPECT_RATIO_OPTIONS,
 } from "../model/image-edit-submission";
-import type {
-  EditableImageDescriptor,
-  ImageAspectRatio,
-  ImageComment,
-  ImageEditSubmissionIntent,
-  ImagePreviewEntrypoint,
-  SingleImageTool,
-} from "../model/types";
+
+import type { ImageAspectRatio, ImageComment, SingleImageTool } from "../model/types";
 import type { ImageEditComposerSubmitResult } from "@/lib/image-edit-composer-channel";
 import { ImageCommentSurface } from "./image-comment-surface";
 import { ImageCommentModeToolbar, ImageEditorToolbarPill } from "./image-editor-toolbar";

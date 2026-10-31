@@ -1,6 +1,6 @@
 import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { ActivitySpinnerIcon, CloseIcon } from "@/components/shared/icons";
-import { resolveImageDisplaySource } from "@/features/user-attachment-image-editor";
+import { resolveImageDisplaySource } from "@/lib/content-image";
 import { cn } from "@/lib/utils";
 import type { ComposerImageAttachment } from "./composer-image-attachment-model";
 

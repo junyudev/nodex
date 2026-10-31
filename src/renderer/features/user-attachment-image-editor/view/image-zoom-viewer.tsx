@@ -17,7 +17,8 @@ import {
   computeZoomViewportCenter,
 } from "../model/image-geometry";
 import { readImageEditorWindowZoom } from "../model/generated-image-view-transition";
-import type { ImageReferrerPolicy, ImageSize } from "../model/types";
+import type { ImageReferrerPolicy } from "@/lib/content-image";
+import type { ImageSize } from "../model/types";
 import { ImageZoomControl } from "./image-zoom-control";
 
 const IMAGE_RAIL_WIDTH_PX = 72;

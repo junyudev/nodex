@@ -1,4 +1,4 @@
-import type { ImageEditSubmissionIntent } from "@/features/user-attachment-image-editor/model/types";
+import type { ImageEditSubmissionIntent, ResolvedComposerImageInput } from "@/lib/content-image";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../../shared/codex-host";
 import {
   createResolvedComposerImageAttachment,
@@ -7,7 +7,6 @@ import {
   isPortableComposerImagePromptSource,
   selectComposerImagePromptSource,
   type ComposerImageAttachment,
-  type ResolvedComposerImageInput,
 } from "./composer-image-attachment-model";
 
 function firstSource(

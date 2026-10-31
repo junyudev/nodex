@@ -24,13 +24,8 @@ import {
   redoRemoveStroke,
   undoRemoveStroke,
 } from "../model/remove-mask";
-import type {
-  ImagePoint,
-  ImageReferrerPolicy,
-  ImageSize,
-  RemoveHistory,
-  RemoveStroke,
-} from "../model/types";
+import type { ImagePoint, ImageSize, RemoveHistory, RemoveStroke } from "../model/types";
+import type { ImageReferrerPolicy } from "@/lib/content-image";
 import { ImageEditorToolbarPill } from "./image-editor-toolbar";
 
 export interface ImageRemoveEditorProps {

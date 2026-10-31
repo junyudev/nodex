@@ -19,10 +19,8 @@ import {
   ImageEditorTabIcon,
 } from "@/components/shared/icons";
 import { BrowserTabFavicon } from "@/features/browser-sidebar/browser-tab-favicon";
-import {
-  restoreNormalizedImageEditorOptions,
-  UserAttachmentImageEditorSurface,
-} from "@/features/user-attachment-image-editor";
+import { restoreNormalizedImageEditorOptions } from "@/lib/content-image";
+import { UserAttachmentImageEditorSurface } from "@/features/user-attachment-image-editor";
 import {
   SubagentAvatar,
   SubagentGlyphIcon,

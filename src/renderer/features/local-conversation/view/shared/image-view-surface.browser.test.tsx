@@ -10,7 +10,7 @@ import {
   installRendererThemeFixture,
   readRendererThemeColor,
 } from "@/test/renderer-theme";
-import { ConversationImageAssetProvider } from "../conversation-image-asset-context";
+import { ContentImageScopeProvider, THIS_COMPUTER_IMAGE_SCOPE } from "@/lib/content-image";
 import { ImageViewSurface } from "./image-view-surface";
 
 installRendererThemeFixture();
@@ -75,9 +75,15 @@ describe("inspected images in Chromium", () => {
         const client = createTestQueryClient();
         const view = render(
           <TestQueryProvider client={client}>
-            <ConversationImageAssetProvider conversationId={`images-${theme}`} hostId="local">
+            <ContentImageScopeProvider
+              scope={{
+                ...THIS_COMPUTER_IMAGE_SCOPE,
+                conversationId: `images-${theme}`,
+                hostId: "local",
+              }}
+            >
               <ImageViewSurface imagePaths={imagePaths} />
-            </ConversationImageAssetProvider>
+            </ContentImageScopeProvider>
           </TestQueryProvider>,
         );
         try {

@@ -1,4 +1,4 @@
-import type { PlaygroundTool } from "./types";
+import type { PlaygroundTool } from "@/lib/content-image";
 
 const groupTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 

@@ -13,6 +13,12 @@ import type { CodexHistoryBoundaryRef } from "../../../shared/codex-conversation
 import type { CodexConversationHistoryTurnItemsRef } from "../../../shared/codex-conversation-history-page";
 import type { CodexPromptRailPreview } from "../../../shared/codex-prompt-rail-history";
 
+/** One resident execution source; replacing its reader invalidates already admitted UI work. */
+export interface ConversationContentSource {
+  readonly identity: string;
+  readonly isCurrent: () => boolean;
+}
+
 /** Viewport demand addresses the publishing owner; native read envelopes stay in its Adapter. */
 export interface ConversationHistoryPort {
   readonly loadBoundary: (boundary: CodexHistoryBoundaryRef) => Promise<"applied" | "stale">;
@@ -51,12 +57,6 @@ export interface ConversationPromptRailPort {
 export interface ConversationAsyncQuestionPort {
   readonly runtime: AsyncQuestionRuntime;
   readonly deliver: AsyncQuestionDelivery;
-}
-
-/** One resident execution source; replacing its reader invalidates already admitted UI work. */
-export interface ConversationContentSource {
-  readonly identity: string;
-  readonly isCurrent: () => boolean;
 }
 
 /** Configured Agent names and marks for the Agents a conversation's work ran on. */

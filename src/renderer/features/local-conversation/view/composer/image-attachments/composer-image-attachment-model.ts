@@ -1,17 +1,12 @@
+import type {
+  ComposerImageAttachmentOrigin,
+  ResolvedComposerImageInput,
+} from "@/lib/content-image";
 import {
   codexImageFileIdFromSource,
   codexImageInputSource,
 } from "../../../../../../shared/codex-image-input";
 import { parseAssetSource } from "../../../../../../shared/assets";
-
-export type ComposerImageAttachmentOrigin =
-  | "picker"
-  | "paste"
-  | "drop"
-  | "browser"
-  | "conversation"
-  | "image-editor"
-  | "restored";
 
 export type ComposerImageAttachmentMaterialization = {
   readonly hostId: string;
@@ -42,20 +37,6 @@ export interface ComposerImageAttachment {
   readonly uploadStatus: "idle" | "uploading" | "failed";
   readonly uploadProgress?: number;
   readonly generation: number;
-}
-
-export interface ResolvedComposerImageInput {
-  readonly id?: string;
-  readonly filename: string;
-  readonly mimeType?: string;
-  readonly src: string;
-  readonly origin: Extract<
-    ComposerImageAttachmentOrigin,
-    "browser" | "conversation" | "image-editor" | "picker" | "restored"
-  >;
-  readonly localPath?: string | null;
-  readonly managedSource?: string | null;
-  readonly hostId?: string | null;
 }
 
 export interface ComposerImagePromptInput {

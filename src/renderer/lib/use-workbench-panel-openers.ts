@@ -20,7 +20,8 @@ import {
   resolveImagePreviewOpenDisposition,
   type NormalizedUserAttachmentImageEditorOptions,
   type OpenUserAttachmentImagePreviewOptions,
-} from "@/features/user-attachment-image-editor";
+} from "@/lib/content-image";
+
 import { toast } from "@/components/ui/toast";
 import { workspaceTextDocumentRegistry } from "@/features/workspace-files/workspace-text-document-controller";
 import {

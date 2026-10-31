@@ -4,7 +4,7 @@ import {
   buildRemoveSubmissionIntent,
   IMAGE_REMOVE_BACKGROUND_PROMPT,
 } from "../model/image-edit-submission";
-import type { EditableImageDescriptor } from "../model/types";
+import type { EditableImageDescriptor } from "@/lib/content-image";
 import { compileImageEditPromptInput } from "./use-image-edit-submission";
 
 const MASK: EditableImageDescriptor = {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import { normalizeUserAttachmentImageEditorOptions } from "@/features/user-attachment-image-editor";
+import { normalizeUserAttachmentImageEditorOptions } from "@/lib/content-image";
 import type { WorkbenchSessionRenderProjection } from "./workbench-session-presentation";
 import {
   consumeImagePanelAutoExpansion,

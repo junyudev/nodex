@@ -10,7 +10,7 @@ import { ConversationVisualizationContext } from "../../inline-visualization-con
 import { LocalConversationInlineVisualization } from "../../local-conversation-inline-visualization";
 import { resolveInlineVisualizationMode } from "../../../../../lib/inline-visualization/inline-visualization-presentation";
 import { MARKDOWN_CONTENT_CLASS_NAME } from "@/components/shared/inline-markdown-code";
-import { FileLinkWorkspaceProvider } from "@/components/shared/file-link-anchor";
+import { FileLinkWorkspaceProvider } from "@/lib/file-link-workspace";
 import {
   FileMarkdownMediaProvider,
   fileMarkdownMediaComponents,
@@ -19,14 +19,14 @@ import type { FileMarkdownMediaScope } from "@/lib/file-markdown-media/file-mark
 import {
   ConversationMediaProvider,
   conversationMediaComponents,
-} from "@/lib/conversation-media/conversation-media";
+} from "@/components/conversation-media/conversation-media";
 import type { ReactNode } from "react";
 import { streamdownComponents } from "../../../../../lib/streamdown";
 
 import type { MarkdownDisplayDialect } from "../../../../../../shared/conversation-markdown-display";
 import {
   ConversationMarkdownItemSourceProvider,
-  useConversationMarkdownSource,
+  useConversationImageScope,
   type ConversationMarkdownNativeSource,
 } from "../../conversation-markdown-source";
 import { renderConversationInline } from "../../conversation-markdown-inline";
@@ -64,8 +64,8 @@ const conversationComponents: Components = {
   ...conversationMediaComponents,
 };
 function ConversationResources({ children }: { readonly children: ReactNode }) {
-  const source = useConversationMarkdownSource();
-  return <ConversationMediaProvider source={source}>{children}</ConversationMediaProvider>;
+  const scope = useConversationImageScope();
+  return <ConversationMediaProvider source={scope}>{children}</ConversationMediaProvider>;
 }
 function renderVisualization(token: ConversationDirectiveToken) {
   if (token.name === "codex-live-vis") return null;

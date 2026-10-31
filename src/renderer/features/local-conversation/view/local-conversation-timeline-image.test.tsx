@@ -4,18 +4,20 @@ import { ConversationRuntimeContext, type ConversationRuntime } from "../convers
 import { describe, expect, test, vi } from "vite-plus/test";
 import { renderWithMaitai as render } from "../../../test/thread-maitai";
 import { installMotionPreferenceForTest } from "@/test/browser-globals";
+import { getGeneratedImageLiveCollectionSnapshot } from "@/features/user-attachment-image-editor";
 import {
-  getGeneratedImageLiveCollectionSnapshot,
   registerUserAttachmentImagePreviewOpener,
   type OpenUserAttachmentImagePreviewOptions,
-} from "@/features/user-attachment-image-editor";
+  ContentImageScopeProvider,
+  THIS_COMPUTER_IMAGE_SCOPE,
+} from "@/lib/content-image";
 import { CodexTranscriptReadOwnerContext } from "../normalized-transcript-hooks";
 import { isCodexTimelineTurnEntry } from "../projection/normalized-timeline-entries";
 import {
   nativeGeneratedImage,
   nativeImageTimelineFixture,
 } from "../projection/normalized-timeline-image.test-fixtures";
-import { ConversationImageAssetProvider } from "./conversation-image-asset-context";
+
 import { LocalConversationTurnEntry } from "./local-conversation-turn-entry";
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
 
@@ -29,10 +31,13 @@ function renderImageReceipts(
 ) {
   return (
     <CodexTranscriptReadOwnerContext.Provider value={fixture.owner}>
-      <ConversationImageAssetProvider
-        conversationId="thread"
-        hostId="local"
-        composerTarget={composerTarget}
+      <ContentImageScopeProvider
+        scope={{
+          ...THIS_COMPUTER_IMAGE_SCOPE,
+          conversationId: "thread",
+          hostId: "local",
+          composerTarget: composerTarget,
+        }}
       >
         {fixture
           .project()
@@ -50,7 +55,7 @@ function renderImageReceipts(
               canForkTurn={false}
             />
           ))}
-      </ConversationImageAssetProvider>
+      </ContentImageScopeProvider>
     </CodexTranscriptReadOwnerContext.Provider>
   );
 }

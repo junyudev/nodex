@@ -5,7 +5,7 @@ import { TestQueryProvider } from "../../../../../test/query";
 import {
   registerUserAttachmentImagePreviewOpener,
   type OpenUserAttachmentImagePreviewOptions,
-} from "@/features/user-attachment-image-editor";
+} from "@/lib/content-image";
 import type { ComposerImageAttachment } from "./composer-image-attachment-model";
 import {
   ComposerImageAttachmentRow,

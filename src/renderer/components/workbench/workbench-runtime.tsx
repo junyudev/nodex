@@ -126,7 +126,7 @@ import {
   useLocalConversationConnection,
 } from "@/features/local-conversation";
 import { APP_SHELL_GLOBAL_HEADER_LAYER_CLASS } from "@/lib/app-shell-layers";
-import { registerUserAttachmentImagePreviewOpener } from "@/features/user-attachment-image-editor";
+import { registerUserAttachmentImagePreviewOpener } from "@/lib/content-image";
 import { readDatabaseViewWindow, subscribeCodexPendingWorktreeWarnings } from "@/lib/api";
 import {
   consumeForkSidePanelTransfer,

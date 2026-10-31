@@ -46,7 +46,7 @@
       "reason": "Browser test fixture supplies inert SVG image bytes to verify MCP image preview rendering; it is not product artwork."
     },
     "src/renderer/features/local-conversation/view/shared/turn-diff-surface.tsx": 1,
-    "src/renderer/features/user-attachment-image-editor/adapters/resolved-image-asset.node.test.ts": 1,
+    "src/renderer/lib/content-image/image-bytes.node.test.ts": 1,
     "src/renderer/lib/mermaid-runtime.browser.test.ts": {
       "count": 1,
       "reason": "Browser test fixture intentionally passes sanitized Mermaid SVG markup through the security pipeline; it is generated diagram content, not an icon."

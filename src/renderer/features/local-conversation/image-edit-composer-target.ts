@@ -1,4 +1,4 @@
-import type { ImageEditComposerTarget } from "@/features/user-attachment-image-editor";
+import type { ImageEditComposerTarget } from "@/lib/content-image";
 
 /**
  * Derives the runtime-only image editing route from the stable ThreadScope.

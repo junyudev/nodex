@@ -1,5 +1,4 @@
-import type { ImageEditComposerTarget } from "@/features/user-attachment-image-editor/model/types";
-import type { ResolvedComposerImageInput } from "@/features/local-conversation/view/composer/image-attachments/composer-image-attachment-model";
+import type { ImageEditComposerTarget, ResolvedComposerImageInput } from "@/lib/content-image";
 
 export interface ComposerImageAttachmentTarget {
   readonly hostId: string;

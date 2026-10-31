@@ -1,4 +1,4 @@
-import type { ImageEditSubmissionIntent } from "@/features/user-attachment-image-editor/model/types";
+import type { ImageEditSubmissionIntent } from "@/lib/content-image";
 
 export type ImageEditComposerChannelId = string;
 

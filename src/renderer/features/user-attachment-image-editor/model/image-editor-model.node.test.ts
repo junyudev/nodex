@@ -4,7 +4,9 @@ import {
   normalizeUserAttachmentImageEditorOptions,
   resolveImageInputSupport,
   resolveImagePreviewOpenDisposition,
-} from "./feature-policy";
+  type EditableImageDescriptor,
+  type GeneratedImageDescriptor,
+} from "@/lib/content-image";
 import {
   captureGeneratedImageOptimisticFocus,
   reconcileGeneratedImageCollection,
@@ -52,7 +54,6 @@ import {
   undoRemoveStroke,
 } from "./remove-mask";
 import type { CodexModelOption } from "../../../../shared/types";
-import type { EditableImageDescriptor, GeneratedImageDescriptor } from "./types";
 
 function makeImage(
   id: string,

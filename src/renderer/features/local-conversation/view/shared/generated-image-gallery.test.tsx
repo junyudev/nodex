@@ -5,11 +5,13 @@ import { renderWithMaitai } from "../../../../test/thread-maitai";
 import { TestQueryProvider } from "../../../../test/query";
 import { GeneratedImageGallery } from "./generated-image-gallery";
 import { getGeneratedImageAnimationClockSubscriberCount } from "../../../user-attachment-image-editor/view/generated-image-animation-clock";
-import { ConversationImageAssetProvider } from "../conversation-image-asset-context";
 import {
+  ContentImageScopeProvider,
+  THIS_COMPUTER_IMAGE_SCOPE,
   registerUserAttachmentImagePreviewOpener,
   type OpenUserAttachmentImagePreviewOptions,
-} from "@/features/user-attachment-image-editor";
+} from "@/lib/content-image";
+
 import { installMotionPreferenceForTest } from "@/test/browser-globals";
 
 const originalIntersectionObserver = globalThis.IntersectionObserver;
@@ -165,13 +167,16 @@ describe("GeneratedImageGallery pending scheduling", () => {
     const src = "data:image/png;base64,aW1hZ2U=";
     const view = renderWithMaitai(
       <TestQueryProvider>
-        <ConversationImageAssetProvider
-          composerTarget={{
-            channelId: "ThreadScope:task-1::root",
-            placement: "root",
+        <ContentImageScopeProvider
+          scope={{
+            ...THIS_COMPUTER_IMAGE_SCOPE,
+            composerTarget: {
+              channelId: "ThreadScope:task-1::root",
+              placement: "root",
+            },
+            conversationId: "task-1",
+            hostId: "local",
           }}
-          conversationId="task-1"
-          hostId="local"
         >
           <GeneratedImageGallery
             images={[
@@ -180,7 +185,7 @@ describe("GeneratedImageGallery pending scheduling", () => {
             ]}
             pendingImageCount={0}
           />
-        </ConversationImageAssetProvider>
+        </ContentImageScopeProvider>
       </TestQueryProvider>,
     );
 

@@ -384,13 +384,15 @@ export function workspaceFileTextQueryOptions(input: WorkspaceFileTextReadInput)
 
 export function workspaceFileBinaryQueryOptions(
   input: WorkspaceFileRequest,
-  cacheScope?: { conversationId: string | null },
+  /** A conversation's reads are kept apart per source, so a new source never sees older bytes. */
+  cacheScope?: { conversationId: string | null; sourceIdentity: string },
 ) {
   return queryOptions({
     queryKey: cacheScope
       ? queryKeys.conversationImages.file(
           input.hostId ?? "local",
           cacheScope.conversationId,
+          cacheScope.sourceIdentity,
           input.path,
         )
       : queryKeys.workspaceFiles.binary(input),

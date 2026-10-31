@@ -3,7 +3,7 @@ import { toast } from "@/components/ui/toast";
 import {
   materializeWorkbenchImageEditorSurfaceConfig,
   trackImageEditorPinOutcome,
-} from "@/features/user-attachment-image-editor";
+} from "@/lib/content-image";
 import { terminalSessionStore } from "./terminal-session-store";
 import { makeWorkbenchSessionPanelSlotKey } from "./workbench-panel-slot-key";
 import { resolveSameLeafInsertionIndex } from "@/components/workbench/panel-tab-dnd";

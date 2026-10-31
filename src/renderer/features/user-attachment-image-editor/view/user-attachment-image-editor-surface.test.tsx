@@ -9,7 +9,7 @@ import {
   replaceImageEditComposerDraft,
 } from "@/lib/image-edit-composer-channel";
 import { clearManagedAssetDisplayUrlCache } from "@/lib/assets";
-import type { NormalizedUserAttachmentImageEditorOptions } from "../model/types";
+import type { NormalizedUserAttachmentImageEditorOptions } from "@/lib/content-image";
 import {
   beginOptimisticGeneratedImageEdit,
   replaceGeneratedImageLiveGroup,

@@ -2,13 +2,12 @@ import { serializeImageCommentGroups } from "./comment-serialization";
 import type { ImageCommentLocale } from "./comment-serialization";
 import type {
   EditableImageDescriptor,
-  ImageAspectRatio,
-  ImageComment,
   ImageEditAttachmentInput,
   ImageEditMode,
   ImageEditSubmissionIntent,
   ImagePreviewEntrypoint,
-} from "./types";
+} from "@/lib/content-image";
+import type { ImageAspectRatio, ImageComment } from "./types";
 
 export const IMAGE_REMOVE_PROMPT =
   "Remove the area marked in the second image from the first image";

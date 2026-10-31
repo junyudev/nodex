@@ -3,11 +3,12 @@ import { cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { buildAgentRuntimeAttachmentSource } from "../../../../../shared/agent-runtime-attachments";
-import { ConversationMediaProvider } from "@/lib/conversation-media/conversation-media";
+import { ConversationMediaProvider } from "@/components/conversation-media/conversation-media";
 import { installWindowApi } from "../../../../test/browser-globals";
 import { render, settleAsyncRender } from "../../../../test/dom";
 import { TestQueryProvider } from "../../../../test/query";
-import { ConversationImageAssetProvider } from "../conversation-image-asset-context";
+import { ContentImageScopeProvider, THIS_COMPUTER_IMAGE_SCOPE } from "@/lib/content-image";
+import { conversationImageScope } from "../conversation-markdown-source";
 import { ImageViewSurface } from "./image-view-surface";
 import { ImportedMarkdownImagesProvider } from "./imported-markdown-images";
 import { MarkdownRenderer } from "./markdown/markdown-renderer";
@@ -44,13 +45,16 @@ const withImages = (
 ) => (
   <TestQueryProvider>
     <NodexTooltipProvider>
-      <ConversationImageAssetProvider
-        conversationId="imported-thread"
-        hostId="local"
-        resolveRuntimeAttachment={resolveRuntimeAttachment}
+      <ContentImageScopeProvider
+        scope={{
+          ...THIS_COMPUTER_IMAGE_SCOPE,
+          conversationId: "imported-thread",
+          hostId: "local",
+          resolveRuntimeAttachment: resolveRuntimeAttachment,
+        }}
       >
         {children}
-      </ConversationImageAssetProvider>
+      </ContentImageScopeProvider>
     </NodexTooltipProvider>
   </TestQueryProvider>
 );
@@ -76,15 +80,22 @@ describe("imported conversation images", () => {
       const view = render(
         withImages(
           <ConversationMediaProvider
-            source={{
-              hostId: "local",
-              threadId: "imported-thread",
-              sourceIdentity: "imported-thread",
-              authority: {},
-              nativeConnection: { sourceEpoch: "fixture", generation: 1 },
-              isCurrent: () => true,
-              isResourceCurrent: () => true,
-            }}
+            source={conversationImageScope(
+              {
+                projectId: null,
+                cwd: null,
+                workspaceRoot: null,
+                sourceRoot: { hostId: "local", threadId: "imported-thread" },
+                hostId: "local",
+                threadId: "imported-thread",
+                sourceIdentity: "imported-thread",
+                authority: {},
+                nativeConnection: { sourceEpoch: "fixture", transportKind: "stdio", generation: 1 },
+                isCurrent: () => true,
+                isResourceCurrent: () => true,
+              },
+              {},
+            )}
           >
             <ImportedMarkdownImagesProvider
               images={[

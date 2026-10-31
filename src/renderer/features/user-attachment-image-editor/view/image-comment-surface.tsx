@@ -8,12 +8,8 @@ import {
   computeCommentEditorPlacement,
   IMAGE_COMMENT_MARKER_DIAMETER_PX,
 } from "../model/image-geometry";
-import type {
-  CommentEditorLayoutMetrics,
-  ImageComment,
-  ImagePoint,
-  ImageReferrerPolicy,
-} from "../model/types";
+import type { CommentEditorLayoutMetrics, ImageComment, ImagePoint } from "../model/types";
+import type { ImageReferrerPolicy } from "@/lib/content-image";
 
 type ActiveCommentDraft = ImagePoint &
   CommentEditorLayoutMetrics & {

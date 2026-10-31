@@ -27,7 +27,7 @@ import {
   type WorkbenchSceneSnapshot,
   type WorkbenchSurfaceDescriptor,
 } from "../../shared/workbench-scene";
-import { normalizeUserAttachmentImageEditorOptions } from "../features/user-attachment-image-editor/model/feature-policy";
+import { normalizeUserAttachmentImageEditorOptions } from "@/lib/content-image";
 import { makeTestWorkbenchTab } from "../components/workbench/workbench-testkit/panel-fixtures";
 import { createWorkbenchEphemeralPanelState } from "./workbench-ephemeral-panel-state";
 import {

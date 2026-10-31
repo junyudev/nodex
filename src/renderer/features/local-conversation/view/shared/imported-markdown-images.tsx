@@ -1,12 +1,12 @@
 import { useRef, useState, type ReactNode } from "react";
 import type { CodexImportedMarkdownImage } from "@/lib/types";
-import { ConversationMediaReplacementContext } from "@/lib/conversation-media/conversation-media";
+import { ConversationMediaReplacementContext } from "@/components/conversation-media/conversation-media";
 import { decodeConversationText } from "@/lib/markdown/conversation-tokens";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import { ImageErrorTile } from "./user-message-attachments";
 import { UnavailableImageChip } from "./unavailable-image";
-import { useConversationImageAsset } from "./use-conversation-image-asset";
+import { useContentImage } from "@/lib/content-image";
 
 /**
  * Imported destinations are mdast URLs: entities decoded, percent encoding kept. The token
@@ -21,7 +21,7 @@ function destinationKey(destination: string): string {
 }
 
 function ImportedMarkdownImage({ source, alt }: { source: string; alt: string }) {
-  const asset = useConversationImageAsset(source);
+  const asset = useContentImage(source);
   const [previewing, setPreviewing] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   // Markdown images sit inside paragraphs, so every state stays phrasing content.

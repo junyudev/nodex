@@ -72,7 +72,8 @@ import {
   type AgentRuntimeThread,
 } from "./agent-runtime-transcript-projection";
 
-import type { ConversationContentSource, ConversationPromptTurn } from "./conversation-runtime";
+import type { ConversationContentSource } from "./conversation-runtime";
+import type { ConversationPromptTurn } from "./conversation-runtime";
 import { createAsyncQuestionRuntime } from "./async-question-runtime";
 import { questionDraftStore } from "./question-draft-store";
 import type { CodexCanonicalHookRun } from "../../../shared/codex-conversation-state/codex-conversation-state";

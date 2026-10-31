@@ -4,8 +4,8 @@ import {
   ConversationAudio,
   ConversationVideo,
   type ConversationMediaResource,
-} from "@/lib/conversation-media/conversation-media";
-import { conversationMediaDataUrl } from "@/lib/conversation-media/conversation-media-model";
+} from "@/components/conversation-media/conversation-media";
+import { conversationMediaDataUrl } from "@/lib/content-image";
 import { workspaceFileBinaryQueryOptions } from "@/lib/query-options";
 import { buildAppFilesystemUrl } from "../../../shared/app-protocol";
 import { getWorkspaceFileName } from "./workspace-file-model";

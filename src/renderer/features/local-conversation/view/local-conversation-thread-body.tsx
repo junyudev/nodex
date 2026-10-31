@@ -18,7 +18,6 @@ import {
 } from "./local-conversation-thread-scroll-controller";
 import { ConversationRecoveryActionsProvider } from "./conversation-recovery-actions";
 import { HookFeedbackSettingsNavigationProvider } from "./hook-feedback-settings-navigation";
-import { ConversationImageAssetProvider } from "./conversation-image-asset-context";
 import { ConversationToolOutputProvider } from "./conversation-tool-output-context";
 import { McpAppFollowUpProvider } from "../../../lib/mcp-app/mcp-app-follow-up-context";
 import {
@@ -33,7 +32,10 @@ import {
 } from "./local-conversation-thread-view-state";
 import { resolveImageEditComposerTarget } from "../image-edit-composer-target";
 import { CodexTranscriptReadOwnerProvider } from "../normalized-transcript-hooks";
-import { ConversationMarkdownSourceProvider } from "./conversation-markdown-source";
+import {
+  ConversationImageScopeProvider,
+  ConversationMarkdownSourceProvider,
+} from "./conversation-markdown-source";
 import { ComposerAppModelContextProvider } from "./composer/composer-app-model-context";
 import {
   InlineVisualizationFollowUpProvider,
@@ -233,10 +235,10 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
           hostId={model.hostId}
           onOpenHooksSettings={props.actions.onOpenHooksSettings}
         >
-          <ConversationImageAssetProvider
+          <ConversationImageScopeProvider
             composerTarget={composerTarget}
             hostId={model.hostId}
-            conversationId={model.threadId}
+            cwd={model.cwd}
             resolveHistoryImage={props.resolveHistoryImage}
             resolveRuntimeAttachment={props.resolveRuntimeAttachment}
           >
@@ -267,7 +269,7 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
                 </EnsureLocalConversationThreadScrollController>
               </ConversationRecoveryActionsProvider>
             </ConversationToolOutputProvider>
-          </ConversationImageAssetProvider>
+          </ConversationImageScopeProvider>
         </HookFeedbackSettingsNavigationProvider>
       </ConversationMarkdownSourceProvider>
     </CodexTranscriptReadOwnerProvider>

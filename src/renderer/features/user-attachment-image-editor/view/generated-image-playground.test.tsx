@@ -3,7 +3,8 @@ import { fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { render } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
-import type { GeneratedImageDescriptor, ImageComment, PlaygroundTool } from "../model/types";
+import type { GeneratedImageDescriptor, PlaygroundTool } from "@/lib/content-image";
+import type { ImageComment } from "../model/types";
 import { GeneratedImagePlayground } from "./generated-image-playground";
 
 const IMAGE_SRC = "data:image/png;base64,AQID";

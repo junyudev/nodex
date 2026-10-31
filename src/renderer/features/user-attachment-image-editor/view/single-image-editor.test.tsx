@@ -6,9 +6,9 @@ import { renderWithMaitai } from "../../../test/thread-maitai";
 import { settleAsyncRender } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
 import { IMAGE_REMOVE_BACKGROUND_PROMPT } from "../model/image-edit-submission";
-import type { EditableImageDescriptor, ImageEditSubmissionIntent } from "../model/types";
+import type { EditableImageDescriptor, ImageEditSubmissionIntent } from "@/lib/content-image";
 import { SingleImageEditor } from "./single-image-editor";
-import * as resolvedImageAsset from "../adapters/resolved-image-asset";
+import * as resolvedImageAsset from "@/lib/content-image";
 
 const IMAGE_SRC = "data:image/png;base64,AQID";
 const invokeCalls: Array<[string, ...unknown[]]> = [];

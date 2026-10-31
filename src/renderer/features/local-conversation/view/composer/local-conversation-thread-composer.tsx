@@ -238,8 +238,14 @@ import {
   useComposerImageAttachments,
   type ComposerImageAttachment,
   type ComposerPastedFiles,
-  type ResolvedComposerImageInput,
 } from "./image-attachments";
+import {
+  type ResolvedComposerImageInput,
+  type ImageEditSubmissionIntent,
+  resolveImageInputSupport,
+  trackImageEditSubmit,
+  trackImageEditSubmitOutcome,
+} from "@/lib/content-image";
 import { buildComposerImageEditAttachments } from "./image-attachments/image-edit-intent-attachments";
 import {
   useScopedAtom,
@@ -305,13 +311,8 @@ import {
 } from "./composer-app-model-context";
 import { ComposerAppModelContextAttachments } from "./composer-app-model-context-attachments";
 import { isCodexAppModelContextVisible } from "../../../../../shared/codex-untrusted-app-input";
-import {
-  beginOptimisticGeneratedImageEdit,
-  resolveImageInputSupport,
-  trackImageEditSubmit,
-  trackImageEditSubmitOutcome,
-  type ImageEditSubmissionIntent,
-} from "@/features/user-attachment-image-editor";
+import { beginOptimisticGeneratedImageEdit } from "@/features/user-attachment-image-editor";
+
 import { uploadResourceAsset } from "@/lib/assets";
 import { resolveImageEditComposerTarget } from "../../image-edit-composer-target";
 

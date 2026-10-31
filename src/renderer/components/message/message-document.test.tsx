@@ -1,7 +1,7 @@
 import { act, fireEvent, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
-import { ConversationImageAssetProvider } from "@/features/local-conversation/view/conversation-image-asset-context";
+import { ContentImageScopeProvider, THIS_COMPUTER_IMAGE_SCOPE } from "@/lib/content-image";
 import { installWindowApi } from "@/test/browser-globals";
 import { libraryMetadataQueryOptions } from "@/lib/use-library-navigation";
 import { createTestQueryClient, TestQueryProvider } from "@/test/query";
@@ -162,9 +162,11 @@ test("a managed asset shows from this Profile's cache, even in a chat on another
   });
   const view = render(
     <TestQueryProvider>
-      <ConversationImageAssetProvider conversationId="thread" hostId="devbox">
+      <ContentImageScopeProvider
+        scope={{ ...THIS_COMPUTER_IMAGE_SCOPE, conversationId: "thread", hostId: "devbox" }}
+      >
         <MessageText text={"Before\n\n![](nodex://assets/diagram.svg)\n\nAfter"} />
-      </ConversationImageAssetProvider>
+      </ContentImageScopeProvider>
     </TestQueryProvider>,
   );
   const image = within(view.getByRole("button", { name: "Open Image" })).getByRole("img");
@@ -228,9 +230,11 @@ test("in a chat, a file path reads from the chat's host", async () => {
   installWindowApi({ invoke, on: () => () => {} });
   const view = render(
     <TestQueryProvider>
-      <ConversationImageAssetProvider conversationId="thread" hostId="devbox">
+      <ContentImageScopeProvider
+        scope={{ ...THIS_COMPUTER_IMAGE_SCOPE, conversationId: "thread", hostId: "devbox" }}
+      >
         <MessageText text={"Before\n\n![](/home/me/shot.png)\n\nAfter"} />
-      </ConversationImageAssetProvider>
+      </ContentImageScopeProvider>
     </TestQueryProvider>,
   );
   const image = within(await view.findByRole("button", { name: "Open Image" })).getByRole("img");

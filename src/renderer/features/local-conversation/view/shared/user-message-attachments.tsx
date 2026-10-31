@@ -16,9 +16,15 @@ import { InlineReferenceVisual } from "@/components/board/inline-reference-visua
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   createConversationImageActions,
-  showConversationImageMenu,
-} from "@/lib/conversation-media/conversation-image-actions";
-import { conversationMediaFilename } from "@/lib/conversation-media/conversation-media-model";
+  conversationMediaFilename,
+  downloadImageDataUrl,
+  fetchImageSourceAsDataUrl,
+  openUserAttachmentImagePreview,
+  useContentImageScope,
+  useContentImage,
+} from "@/lib/content-image";
+import { showConversationImageMenu } from "@/components/conversation-media/conversation-image-menu";
+
 import { classifyImageSource } from "../../../../../shared/image-source";
 import {
   imagePlaceholderCount,
@@ -30,14 +36,9 @@ import type {
   CodexUserImageAttachment,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import {
-  downloadImageDataUrl,
-  fetchImageSourceAsDataUrl,
-  ImagePreviewDialog,
-  openUserAttachmentImagePreview,
-} from "@/features/user-attachment-image-editor";
-import { useConversationImageAssetContext } from "../conversation-image-asset-context";
-import { useConversationImageAsset } from "./use-conversation-image-asset";
+
+import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
+
 import { NO_UNAVAILABLE_IMAGES, UnavailableImageChip } from "./unavailable-image";
 
 export function ImageLoadingTile({ label }: { label: string }) {
@@ -209,7 +210,7 @@ const UserMessageImagesContext = createContext<UserMessageImages | null>(null);
 
 /** An image's actions, as an Agent's images have them, at the pointer. */
 function useUserImageMenu(attachment: CodexUserImageAttachment, url: string | null) {
-  const { composerTarget, conversationId, hostId } = useConversationImageAssetContext();
+  const { composerTarget, conversationId, hostId } = useContentImageScope();
   const lifetime = useRef<AbortController | null>(null);
   useEffect(() => () => lifetime.current?.abort(), []);
   return (event: ReactMouseEvent<HTMLElement>) => {
@@ -250,7 +251,7 @@ function useUserImageMenu(attachment: CodexUserImageAttachment, url: string | nu
 
 function UserImageAttachment({ attachment }: { attachment: CodexUserImageAttachment }) {
   const gallery = useContext(UserMessageImagesContext)!;
-  const asset = useConversationImageAsset(attachment.source);
+  const asset = useContentImage(attachment.source);
   const { previewSrc: src, downloadSrc, isLoading, isError } = asset;
   const showMenu = useUserImageMenu(attachment, isError ? null : src);
   const register = gallery.register;
@@ -286,7 +287,7 @@ function UserImageAttachment({ attachment }: { attachment: CodexUserImageAttachm
 export function UserMessageImageReference({ reference }: { reference: ImagePlaceholderReference }) {
   const gallery = useContext(UserMessageImagesContext);
   const attachment = gallery?.numbersImages ? gallery.images[reference.number - 1] : undefined;
-  const asset = useConversationImageAsset(attachment?.source ?? "");
+  const asset = useContentImage(attachment?.source ?? "");
   const url = attachment && !asset.isError ? asset.previewSrc : null;
   const showMenu = useUserImageMenu(
     attachment ?? { type: "image", id: "", source: "", sourceKind: "inline-image" },
@@ -351,7 +352,7 @@ export function UserMessageImageGallery({
   text: string;
   children: ReactNode;
 }) {
-  const { composerTarget, conversationId } = useConversationImageAssetContext();
+  const { composerTarget, conversationId } = useContentImageScope();
   const [resolvedImages, setResolvedImages] = useState<
     ReadonlyMap<string, ResolvedUserImagePreview>
   >(() => new Map());

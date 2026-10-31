@@ -337,6 +337,10 @@ than inferring it from its DOM environment.
 - Flush a mounted Document through its typed mutation barrier before a
   structural command consumes collaborative shape. The durability contract is
   defined in [Reliability](RELIABILITY.md), not reconstructed in renderer code.
+- An image in content displays through `@/lib/content-image`, inside the
+  `ContentImageScope` of the content around it, which says what host, folder and
+  owner its sources belong to. An authored image source is never a DOM URL: a path,
+  Library File or managed asset becomes one only through that Module's resolvers.
 - Large text or diff sources use bounded or virtualized viewers. CSS clipping
   and scroll containers do not reduce mounted DOM, parsing, or accessibility
   work.

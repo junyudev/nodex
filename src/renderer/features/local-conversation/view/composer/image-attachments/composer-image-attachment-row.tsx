@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
+import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import {
-  ImagePreviewDialog,
   openUserAttachmentImagePreview,
   type ImageEditComposerTarget,
   type ImageEditorFeaturePolicy,
-} from "@/features/user-attachment-image-editor";
+} from "@/lib/content-image";
 import type { ComposerImageAttachmentController } from "./use-composer-image-attachments";
 import {
   resolveComposerImageAttachmentSize,

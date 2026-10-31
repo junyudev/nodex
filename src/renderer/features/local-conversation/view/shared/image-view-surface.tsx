@@ -4,7 +4,7 @@ import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import type { CodexUnavailableImage } from "@/lib/types";
 import { ThreadActivityShell, ThreadRichActivityHeader } from "./tools/tool-primitives";
 import { NO_UNAVAILABLE_IMAGES, UnavailableImageTile } from "./unavailable-image";
-import { useConversationImageAsset } from "./use-conversation-image-asset";
+import { useContentImage } from "@/lib/content-image";
 import { ConversationImageThumbnail } from "./user-message-attachments";
 
 interface InspectedImagePreview {
@@ -27,7 +27,7 @@ function InspectedImageThumbnail({
   onOpenPreview: () => void;
   registerPreview: RegisterImagePreview;
 }) {
-  const asset = useConversationImageAsset(source);
+  const asset = useContentImage(source);
   const trigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     const element = trigger.current;

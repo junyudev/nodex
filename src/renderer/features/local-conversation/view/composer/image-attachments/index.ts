@@ -9,8 +9,6 @@ export {
   selectComposerImagePromptSource,
   type ComposerImageAttachment,
   type ComposerImageAttachmentMaterialization,
-  type ComposerImageAttachmentOrigin,
-  type ResolvedComposerImageInput,
 } from "./composer-image-attachment-model";
 export {
   classifyComposerDataTransfer,

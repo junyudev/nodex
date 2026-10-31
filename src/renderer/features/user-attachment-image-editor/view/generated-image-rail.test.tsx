@@ -3,7 +3,7 @@ import { fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { render } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
-import type { GeneratedImageDescriptor } from "../model/types";
+import type { GeneratedImageDescriptor } from "@/lib/content-image";
 import { GeneratedImageRail } from "./generated-image-rail";
 
 const IMAGE_SRC = "data:image/png;base64,AQID";

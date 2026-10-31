@@ -1,5 +1,5 @@
 import type { WorkspaceFilesTab } from "@/features/workspace-files";
-import type { NormalizedUserAttachmentImageEditorOptions } from "@/features/user-attachment-image-editor";
+import type { NormalizedUserAttachmentImageEditorOptions } from "@/lib/content-image";
 import type {
   ThreadMcpAppSidePanelInput,
   ThreadOpenSubagentPayload,

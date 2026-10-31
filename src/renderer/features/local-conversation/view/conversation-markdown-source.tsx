@@ -12,9 +12,16 @@ import {
   type ConversationContentSource,
   type ConversationRuntime,
 } from "../conversation-runtime";
+import {
+  ContentImageScopeProvider,
+  THIS_COMPUTER_IMAGE_SCOPE,
+  useContentImageScope,
+  type ContentImageScope,
+  type ImageEditComposerTarget,
+} from "@/lib/content-image";
 import type { CodexComposerSkill, CodexConnectionState } from "../../../../shared/types";
 import type { ThreadStageActions } from "../thread-stage-types";
-import type { ImageEditComposerTarget } from "@/features/user-attachment-image-editor";
+
 import { CodexTranscriptReadOwnerContext } from "../normalized-transcript-hooks";
 import type { CodexTranscriptReadOwner } from "../normalized-transcript-read-owner";
 import {
@@ -327,4 +334,98 @@ function hasNativeSource(
       ? owner.readItem(source.entityKey, source.itemId)
       : owner.readRealtimeItem(source.itemId)) !== null
   );
+}
+
+type ImageResolvers = Pick<ContentImageScope, "resolveHistoryImage" | "resolveRuntimeAttachment">;
+
+const connectionIds = new WeakMap<object, number>();
+let nextConnectionId = 0;
+/** A physical connection by identity, so a new one reads afresh even at the same epoch. */
+function connectionId(connection: object | undefined): number | null {
+  if (!connection) return null;
+  const known = connectionIds.get(connection);
+  if (known !== undefined) return known;
+  connectionIds.set(connection, ++nextConnectionId);
+  return nextConnectionId;
+}
+
+const ignoreStructure = () => () => {};
+
+/**
+ * Whether the chat's transcript owner has read the transcript yet; until then its sources hold
+ * no content. Subscribing lets a scope change, and its images read, once the owner has it.
+ */
+function useTranscriptLoaded(): boolean {
+  const owner = useContext(CodexTranscriptReadOwnerContext);
+  return useSyncExternalStore(
+    owner?.subscribeStructure ?? ignoreStructure,
+    () => owner?.readStructure() != null,
+  );
+}
+
+/**
+ * Conversation content's image scope: the chat's host, working folder and Composer, admitting
+ * reads only while the chat's owner holds the content's source over a live connection.
+ */
+export function conversationImageScope(
+  source: ConversationMarkdownSource,
+  resolvers: ImageResolvers,
+  transcriptLoaded = true,
+): ContentImageScope {
+  return {
+    hostId: source.hostId,
+    conversationId: source.threadId,
+    cwd: source.cwd,
+    composerTarget: source.imageComposerTarget ?? null,
+    authority: source.authority,
+    sourceIdentity: JSON.stringify([source.sourceIdentity, connectionId(source.nativeConnection)]),
+    isCurrent: source.isCurrent,
+    isResourceCurrent: () =>
+      transcriptLoaded &&
+      (source.nativeConnection !== undefined || source.executionSource?.isCurrent() === true) &&
+      source.isResourceCurrent(),
+    ...resolvers,
+  };
+}
+
+/** The image scope of the conversation Markdown around it, narrowed to its item; null outside one. */
+export function useConversationImageScope(): ContentImageScope | null {
+  const source = useConversationMarkdownSource();
+  const loaded = useTranscriptLoaded();
+  const { resolveHistoryImage, resolveRuntimeAttachment } = useContentImageScope();
+  return useMemo(
+    () =>
+      source
+        ? conversationImageScope(source, { resolveHistoryImage, resolveRuntimeAttachment }, loaded)
+        : null,
+    [source, loaded, resolveHistoryImage, resolveRuntimeAttachment],
+  );
+}
+
+/**
+ * Everything a chat shows reads its images within the chat: user messages, attachments and
+ * tool output as the Agent's replies do. Before the chat has a source, its host and folder hold.
+ */
+export function ConversationImageScopeProvider({
+  hostId,
+  cwd,
+  composerTarget,
+  resolveHistoryImage,
+  resolveRuntimeAttachment,
+  children,
+}: ImageResolvers & {
+  readonly hostId: string;
+  readonly cwd: string | null;
+  readonly composerTarget: ImageEditComposerTarget | null;
+  readonly children: ReactNode;
+}) {
+  const source = useConversationMarkdownSource();
+  const loaded = useTranscriptLoaded();
+  const scope = useMemo<ContentImageScope>(() => {
+    const resolvers = { resolveHistoryImage, resolveRuntimeAttachment };
+    return source
+      ? conversationImageScope(source, resolvers, loaded)
+      : { ...THIS_COMPUTER_IMAGE_SCOPE, hostId, cwd, composerTarget, ...resolvers };
+  }, [source, loaded, hostId, cwd, composerTarget, resolveHistoryImage, resolveRuntimeAttachment]);
+  return <ContentImageScopeProvider scope={scope}>{children}</ContentImageScopeProvider>;
 }

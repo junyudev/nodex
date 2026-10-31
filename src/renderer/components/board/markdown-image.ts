@@ -1,6 +1,6 @@
 import { useContext, useState } from "react";
-import { FileLinkWorkspaceContext } from "@/components/shared/file-link-anchor";
-import { useConversationImageAsset } from "@/features/local-conversation/view/shared/use-conversation-image-asset";
+import { FileLinkWorkspaceContext } from "@/lib/file-link-workspace";
+import { useContentImage, useContentImageScope } from "@/lib/content-image";
 import { resolveAssetSourceToDisplayUrl } from "@/lib/assets";
 import { parseAssetSource } from "../../../shared/assets";
 import { parseFileSource } from "../../../shared/file-resources";
@@ -23,12 +23,16 @@ export interface MarkdownImage {
  */
 export function useMarkdownImage(authored: string): MarkdownImage {
   const runtime = useFilePlacementRuntime();
+  const scope = useContentImageScope();
   const workspace = useContext(FileLinkWorkspaceContext);
   const image = classifyImageSource(authored);
   // A relative path reads from the content's working folder, as its relative links do.
   const relative =
     image.kind === "relative"
-      ? resolveRelativeImagePath(image.path, workspace?.cwd ?? workspace?.workspacePath)
+      ? resolveRelativeImagePath(
+          image.path,
+          scope.cwd ?? workspace?.cwd ?? workspace?.workspacePath,
+        )
       : null;
   // A source that names nothing readable, such as an authored `app:` URL, never loads.
   const unreadable = image.kind === "unsupported" || (image.kind === "relative" && !relative);
@@ -37,7 +41,7 @@ export function useMarkdownImage(authored: string): MarkdownImage {
   // A managed asset lives in this Profile's cache wherever the content lives.
   const isAsset = parseAssetSource(source) !== null;
   const snapshot = useFileReadSnapshot(runtime, source, { objectUrl: true });
-  const asset = useConversationImageAsset(isFile || isAsset ? "" : source, {
+  const asset = useContentImage(isFile || isAsset ? "" : source, {
     shouldLoadFileDataUrl: false,
   });
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
