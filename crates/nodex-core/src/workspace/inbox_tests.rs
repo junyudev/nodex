@@ -81,6 +81,17 @@ fn send(module: &ProjectWorkspaceModule, id: &str, text: &str) {
     send_to(module, id, text, None);
 }
 
+#[test]
+fn sender_titles_are_short_labels_on_one_line() {
+    for title in [String::new(), " \t ".into(), "a".repeat(201)] {
+        assert!(super::inbox::message_page("Message body", Some(&title)).is_err());
+    }
+    let page = super::inbox::message_page("Message body", Some("First\n  Second")).unwrap();
+    assert!(page.provisional_title.is_none());
+    let page = super::inbox::message_page("Message body", Some(&"中".repeat(200))).unwrap();
+    assert!(page.provisional_title.is_none());
+}
+
 fn send_to(module: &ProjectWorkspaceModule, id: &str, text: &str, project_id: Option<&str>) {
     apply_host(
         module,

@@ -135,6 +135,83 @@ test("rich text pasted into the message arrives as its Markdown, every line kept
   expect(send.disabled).toBe(false);
 });
 
+function TitledComposer({ onSend }: { readonly onSend: (draft: InboxDraft) => void }) {
+  const [draft, setDraft] = useState<InboxDraft>(EMPTY_INBOX_DRAFT);
+  const [titleOpen, setTitleOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setTitleOpen(true)}>
+        Add title
+      </button>
+      <InboxComposer
+        draft={draft}
+        onDraftChange={setDraft}
+        images={null}
+        titleOpen={titleOpen}
+        onTitleOpenChange={setTitleOpen}
+        onSend={async () => onSend(draft)}
+      />
+    </>
+  );
+}
+
+test("an opened title takes the keyboard, Enter returns to the message, empty Backspace closes it", async () => {
+  const onSend = vi.fn();
+  const view = render(<TitledComposer onSend={onSend} />);
+  const text = view.getByRole("textbox", { name: "Message your Inbox" });
+  expect(view.queryByRole("textbox", { name: "Message title" })).toBe(null);
+
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Add title" }));
+    await Promise.resolve();
+  });
+  const title = view.getByRole("textbox", { name: "Message title" });
+  expect(document.activeElement).toBe(title);
+
+  await act(async () => {
+    fireEvent.keyDown(title, { key: "Backspace" });
+    await Promise.resolve();
+  });
+  expect(view.queryByRole("textbox", { name: "Message title" })).toBe(null);
+  expect(document.activeElement).toBe(text);
+
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Add title" }));
+    await Promise.resolve();
+  });
+  const reopened = view.getByRole("textbox", { name: "Message title" });
+  await act(async () => {
+    fireEvent.change(reopened, { target: { value: "Release notes" } });
+    fireEvent.keyDown(reopened, { key: "Enter" });
+    await Promise.resolve();
+  });
+  expect(document.activeElement).toBe(text);
+  await act(async () => {
+    fireEvent.change(text, { target: { value: "List what shipped" } });
+    fireEvent.keyDown(text, { key: "Enter" });
+    await Promise.resolve();
+  });
+  expect(onSend).toHaveBeenCalledTimes(1);
+  expect(onSend.mock.calls[0]![0]).toMatchObject({
+    title: "Release notes",
+    text: "List what shipped",
+  });
+});
+
+test("a title already in the draft shows without being opened, so it is never sent unseen", () => {
+  const view = render(
+    <InboxComposer
+      draft={{ ...EMPTY_INBOX_DRAFT, title: "Release notes", text: "List what shipped" }}
+      onDraftChange={() => undefined}
+      images={null}
+      onSend={async () => undefined}
+    />,
+  );
+  expect((view.getByRole("textbox", { name: "Message title" }) as HTMLInputElement).value).toBe(
+    "Release notes",
+  );
+});
+
 test("a removed image leaves the draft, and an image alone can be sent", async () => {
   const onSend = vi.fn();
   const view = render(
@@ -218,6 +295,7 @@ const editor = (onSave: (body: string) => Promise<boolean>, onCancel = vi.fn()) 
 
 test("a message whose image was resized in its Page keeps its exact Markdown in the editor", () => {
   expect(inboxDraftFromBody("Settings\n\n![|320](nodex://files/shot)")).toEqual({
+    title: "",
     text: "Settings\n\n![|320](nodex://files/shot)",
     images: [],
   });

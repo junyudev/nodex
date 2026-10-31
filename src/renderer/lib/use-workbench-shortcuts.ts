@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { resolveCodexRendererCommandPlatform } from "./codex-window-runtime";
 import {
-  CREATE_PAGE_COMMAND_ID,
+  CAPTURE_TO_INBOX_COMMAND_ID,
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
   TOGGLE_FULL_VIEW_COMMAND_ID,
   type WorkbenchCommandId,
@@ -48,8 +48,7 @@ export interface WorkbenchShortcutActions {
   onRequestGoToSettings?: () => void;
   onRequestLatestToastAction?: () => boolean;
   onRequestProcessManager?: () => void;
-  onRequestCreatePage?: () => boolean;
-  onRequestCreatePageExpanded?: () => boolean;
+  onRequestInboxCapture?: () => boolean;
   onRequestWorkbenchCommand?: (commandId: WorkbenchCommandId) => void;
   navigateBack?: (source: WorkbenchNavigationCommandSource) => void;
   navigateForward?: (source: WorkbenchNavigationCommandSource) => void;
@@ -88,7 +87,7 @@ const APP_COMMAND_POLICY: KeyboardActionPolicy = {
   allowRepeat: false,
 };
 
-const CREATE_PAGE_COMMAND_POLICY: KeyboardActionPolicy = {
+const BARE_KEY_COMMAND_POLICY: KeyboardActionPolicy = {
   runWithEditableFocus: false,
   runInsideLocalSurface: false,
   runInsideTerminal: false,
@@ -194,7 +193,7 @@ export function handleWorkbenchShortcut(
   if (!keyboardActionMayRun(actionEvent, APP_COMMAND_POLICY)) return false;
 
   const isBareGesture = !e.metaKey && !e.ctrlKey && !e.altKey;
-  if (isBareGesture && !keyboardActionMayRun(actionEvent, CREATE_PAGE_COMMAND_POLICY)) {
+  if (isBareGesture && !keyboardActionMayRun(actionEvent, BARE_KEY_COMMAND_POLICY)) {
     runtimeState.sequence = EMPTY_KEYBOARD_SHORTCUT_SEQUENCE_STATE;
     return false;
   }
@@ -242,15 +241,10 @@ export function handleWorkbenchShortcut(
     return Boolean(actions.onRequestCommandPalette);
   }
 
-  if (matchesCommandShortcut(e, actions, CREATE_PAGE_COMMAND_ID, isMac)) {
-    if (!keyboardActionMayRun(actionEvent, CREATE_PAGE_COMMAND_POLICY)) return false;
-    if (!actions.onRequestCreatePage) return false;
-    return actions.onRequestCreatePage();
-  }
-
-  if (matchesCommandShortcut(e, actions, "createPageExpanded", isMac)) {
-    if (!keyboardActionMayRun(actionEvent, CREATE_PAGE_COMMAND_POLICY)) return false;
-    return actions.onRequestCreatePageExpanded?.() ?? false;
+  if (matchesCommandShortcut(e, actions, CAPTURE_TO_INBOX_COMMAND_ID, isMac)) {
+    if (!keyboardActionMayRun(actionEvent, BARE_KEY_COMMAND_POLICY)) return false;
+    if (!actions.onRequestInboxCapture) return false;
+    return actions.onRequestInboxCapture();
   }
 
   if (matchesCommandShortcut(e, actions, "openModelPicker", isMac)) {
@@ -260,7 +254,7 @@ export function handleWorkbenchShortcut(
   for (const commandId of CONTEXTUAL_COMMAND_IDS) {
     if (commandId === "openModelPicker") continue;
     if (!matchesCommandShortcut(e, actions, commandId, isMac)) continue;
-    if (!keyboardActionMayRun(actionEvent, CREATE_PAGE_COMMAND_POLICY)) return false;
+    if (!keyboardActionMayRun(actionEvent, BARE_KEY_COMMAND_POLICY)) return false;
     return executeContextualKeyboardAction(commandId);
   }
 
@@ -390,7 +384,7 @@ export function useWorkbenchShortcuts(actions: WorkbenchShortcutActions): void {
     const onKeyUp = (e: KeyboardEvent) => {
       if (!matchesCommandShortcut(e, actions, "boardPeek", isMac)) return;
       const actionEvent = toKeyboardActionEvent(e);
-      if (!keyboardActionMayRun(actionEvent, CREATE_PAGE_COMMAND_POLICY)) return;
+      if (!keyboardActionMayRun(actionEvent, BARE_KEY_COMMAND_POLICY)) return;
       if (!executeContextualKeyboardAction("boardPeek", "keyup")) return;
       e.preventDefault();
     };

@@ -65,7 +65,11 @@ intents, and selection.
   suggestion has changed is never replaced.
 - A message is saved whether or not any suggestion runtime is available. The
   composer accepts message text and images by paste, drop, or `Add photos`.
-  `Enter` sends, and `Shift+Enter` inserts a line break.
+  `Enter` sends, and `Shift+Enter` inserts a line break. A title given with
+  `C`'s `Add title` (see [Entry points](#entry-points-and-settings)) shows above
+  the text in whichever composer holds the draft, so it is never sent unseen;
+  `Enter` there returns to the text, and `Backspace` or `Escape` in an empty
+  title closes it.
 - Each image becomes a Library File as soon as it is added and shows in the row
   above the text; the message is sent once every image is in. A sent message is
   its images followed by its text, so its Page opens with them as the stream
@@ -658,10 +662,21 @@ creates a second message, and does not count against the Agent budget again.
 - The sidebar's `Inbox` row sits directly above `New chat` and opens the
   Library Inbox on its Inbox tab; tabs opened beside it stay open. A Project
   row opens that Project on its Inbox Home.
-- `⌘/Ctrl+Shift+D` captures where the user is: in a Project it shows that
-  Project's Inbox Home, and anywhere else it opens the Library Inbox. Either
-  way it focuses the composer. The command palette exposes the same command as
-  `Open Inbox`.
+- `⌘/Ctrl+Shift+D` goes to the Inbox where the user is: in a Project or one of
+  its chats it shows that Project's Inbox Home, and anywhere else it opens the
+  Library Inbox. Either way it focuses the composer. The command palette
+  exposes the same command as `Open Inbox`.
+- `C` (or `⌘/Ctrl+Shift+C`), `Capture to Inbox` in the command palette, writes
+  a message to that same Inbox without leaving. It opens that Inbox's own
+  composer over the current place, with the same draft, title and images. The
+  Inbox it lands in is named above it, with `Add title` opposite for a sender
+  who wants to name the message rather than leave it to Nodex. `Enter` sends
+  and closes it with `Sent to <Inbox>` and an `Open` action; `Escape` closes it
+  and keeps the draft. A message that cannot be saved waits in that Inbox to be
+  retried or recovered. When the Inbox's composer is already on screen, `C`
+  focuses it instead. Text selected on an app surface starts the message. A
+  capture is never linked to the chat it was written in: the Inbox is for
+  deciding later where it belongs.
 - The Inbox header offers:
   - the `Inbox` and `History` views, as pills with their glyphs like a
     Database's views, the Inbox showing its count;

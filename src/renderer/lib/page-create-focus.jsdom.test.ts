@@ -41,7 +41,7 @@ describe("restorePageCreateFocus", () => {
     expect(surface.scrollTop).toBe(240);
   });
 
-  test("returns an ambient create request to its Project scene", () => {
+  test("returns focus to the Project when the originating View and panel have unmounted", () => {
     let runFrame: FrameRequestCallback = () => undefined;
     globalThis.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
       runFrame = callback;
@@ -53,12 +53,7 @@ describe("restorePageCreateFocus", () => {
     const focus = vi.spyOn(projectRoot, "focus");
     document.body.append(projectRoot);
 
-    restorePageCreateFocus({
-      ...origin,
-      surfaceId: "project-default:project-1",
-      panelTabId: "project-scene:project-1",
-      kind: "keyboard",
-    });
+    restorePageCreateFocus(origin);
     runFrame(0);
 
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });

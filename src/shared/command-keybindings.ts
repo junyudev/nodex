@@ -549,6 +549,15 @@ export const CODEX_COMMAND_REGISTRY = [
   command("openInbox", "Open Inbox", "Open the Inbox and focus its composer", 25, "app", [
     "CmdOrCtrl+Shift+D",
   ]),
+  command(
+    "captureToInbox",
+    "Capture to Inbox",
+    "Write a message to the Inbox where you are, without leaving",
+    26,
+    "app",
+    ["C", "CmdOrCtrl+Shift+C"],
+    { allowsMultiple: true },
+  ),
   command("openSideChat", "Open side chat", "Open a side chat for the current chat", 30, "app", [
     "CmdOrCtrl+Alt+S",
   ]),
@@ -680,23 +689,6 @@ export const CODEX_COMMAND_REGISTRY = [
   command("searchPages", "Search Pages", "Search Pages in the command palette", 210, "app", [
     "CmdOrCtrl+P",
   ]),
-  command(
-    "createPage",
-    "Create Page",
-    "Create a Page in the active Project",
-    212,
-    "app",
-    ["C", "CmdOrCtrl+Shift+C"],
-    { allowsMultiple: true },
-  ),
-  command(
-    "createPageExpanded",
-    "Create Page in expanded composer",
-    "Create a Page using the full-window composer",
-    213,
-    "app",
-    ["V"],
-  ),
   command("searchAll", "Search", "Search Pages and chats", 214, "app", ["/"], {
     commandMenuGroupKey: "general",
   }),

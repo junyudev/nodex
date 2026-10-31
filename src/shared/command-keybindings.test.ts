@@ -582,14 +582,14 @@ describe("command keybindings", () => {
     expect(byId.get("toggleBrowserPanel")?.available).toBe(false);
   });
 
-  test("offers bare C as the primary Create Page shortcut with a modifier fallback", () => {
+  test("offers bare C as the primary Capture to Inbox shortcut with a modifier fallback", () => {
     const state = createCommandKeymapState({}, "macOS");
-    const entry = state.entries.find((candidate) => candidate.id === "createPage");
+    const entry = state.entries.find((candidate) => candidate.id === "captureToInbox");
 
     expect(entry?.keybindings).toEqual([{ key: "C" }, { key: "CmdOrCtrl+Shift+C" }]);
     expect(entry?.allowsMultiple).toBe(true);
-    expect(getPrimaryCommandAccelerator(state, "createPage")).toBe("C");
-    expect(formatCommandShortcutLabel(state, "createPage")).toBe("C");
+    expect(getPrimaryCommandAccelerator(state, "captureToInbox")).toBe("C");
+    expect(formatCommandShortcutLabel(state, "captureToInbox")).toBe("C");
   });
 
   test("matches configurable two-chord sequences without treating their prefix as a command", () => {

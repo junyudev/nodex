@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { DatabasePropertyOption } from "../../../shared/database-kernel";
 import { createCustomOptionId } from "../../../shared/database-identities";
 import { MAX_PAGE_TITLE_LENGTH } from "../../../shared/page-limits";
@@ -46,30 +46,16 @@ import { cn } from "@/lib/utils";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import type { ModalCloseProps } from "@/lib/modal-registry";
 import type { PageCreateTarget } from "@/lib/page-create-target-registry";
-import type { PageCreateSeed } from "@/lib/page-create-selection";
 import { restorePageCreateDraft } from "@/lib/page-create-workflow";
 import type { NfmEditorBoundaryHandle } from "./editor/nfm-editor";
 import { PageCreateDescriptionEditor } from "./page-create-description-editor";
 
-interface PageCreateDialogPropsBase extends ModalCloseProps {
+export interface PageCreateDialogProps extends ModalCloseProps {
   readonly requestId: string;
   readonly target: PageCreateTarget;
   readonly origin: PageCreateOrigin;
-  readonly initialExpanded?: boolean;
-  readonly expandRequestId?: string;
+  readonly restoredSnapshot?: PageCreateDraftSnapshot;
 }
-
-export type PageCreateDialogProps = PageCreateDialogPropsBase &
-  (
-    | {
-        readonly restoredSnapshot: PageCreateDraftSnapshot;
-        readonly seed?: never;
-      }
-    | {
-        readonly restoredSnapshot?: undefined;
-        readonly seed?: PageCreateSeed;
-      }
-  );
 
 const formatError = (cause: unknown): string => {
   if (cause instanceof Error && cause.message.trim()) return cause.message;
@@ -116,9 +102,6 @@ function PageCreateDialogContent({
   target,
   origin,
   restoredSnapshot,
-  seed,
-  initialExpanded = false,
-  expandRequestId,
   onClose,
 }: PageCreateDialogProps) {
   const appHandle = useScopeHandle(appScope);
@@ -129,7 +112,7 @@ function PageCreateDialogContent({
   const initialStatus = target.columns.some((column) => column.id === restoredSnapshot?.status)
     ? (restoredSnapshot?.status ?? origin.columnId)
     : origin.columnId;
-  const [title, setTitle] = useState(restoredSnapshot?.title ?? seed?.title ?? "");
+  const [title, setTitle] = useState(restoredSnapshot?.title ?? "");
   const [status, setStatus] = useState<WorkflowStatus>(initialStatus);
   const [priority, setPriority] = useState<Priority | null>(restoredSnapshot?.priority ?? null);
   const [estimate, setEstimate] = useState<Estimate | null>(restoredSnapshot?.estimate ?? null);
@@ -144,13 +127,10 @@ function PageCreateDialogContent({
     restoredSnapshot?.descriptionMarkdown ?? "",
   );
   const [createMore, setCreateMore] = useState(restoredSnapshot?.createMore ?? false);
-  const [expanded, setExpanded] = useState(restoredSnapshot?.expanded ?? initialExpanded);
+  const [expanded, setExpanded] = useState(restoredSnapshot?.expanded ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nestedSurfaces, setNestedSurfaces] = useState(INITIAL_PAGE_CREATE_NESTED_SURFACES);
-  useEffect(() => {
-    if (expandRequestId) setExpanded(true);
-  }, [expandRequestId]);
   const nestedSurfaceOpen = Object.values(nestedSurfaces).some(Boolean);
   const setNestedSurfaceOpen = (surface: PageCreateNestedSurface, open: boolean) => {
     setNestedSurfaces((current) => {

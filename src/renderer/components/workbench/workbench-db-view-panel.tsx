@@ -64,7 +64,6 @@ import type { OpenPageInNewChatInput, SendPageToChatInput } from "@/lib/page-cha
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { materializePageCreateTarget } from "@/lib/page-create-target";
 import {
-  markPageCreateTargetActive,
   registerPageCreateTarget,
   unregisterPageCreateTarget,
 } from "@/lib/page-create-target-registry";
@@ -530,13 +529,7 @@ export function DbViewSessionTab({
     }
     registerPageCreateTarget(appHandle, listPageCreateRegistrationToken, listPageCreateTarget);
     return () => unregisterPageCreateTarget(appHandle, surfaceId, listPageCreateRegistrationToken);
-  }, [
-    appHandle,
-    effectivePresentation?.layout,
-    listPageCreateRegistrationToken,
-    listPageCreateTarget,
-    surfaceId,
-  ]);
+  }, [appHandle, listPageCreateRegistrationToken, listPageCreateTarget, surfaceId]);
   const requestListPageCreate = useCallback(
     (groupKey: string) => {
       if (!isWorkflowStatus(groupKey)) return;
@@ -544,7 +537,6 @@ export function DbViewSessionTab({
         toast.danger("Page creation is unavailable until the Project is loaded.");
         return;
       }
-      markPageCreateTargetActive(appHandle, surfaceId, groupKey);
       requestPageCreate(appHandle, {
         target: listPageCreateTarget,
         origin: {

@@ -305,6 +305,8 @@ export interface InboxSendInput {
   readonly issuedAt: number;
   readonly storeEpoch: string;
   readonly scope: InboxScope;
+  /** A final Page title as plain text; omitted titles are provisionally derived from the body. */
+  readonly title?: string;
   /** The message in Nodex Markdown: its text, then its images. */
   readonly body: string;
 }

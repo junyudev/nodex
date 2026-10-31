@@ -76,7 +76,7 @@ function makeCommandContext(
     canGoForward: true,
     canStartNewChat: true,
     canStartNewChatInProject: true,
-    pageCreateUnavailableReason: null,
+    canCreatePage: true,
     showMockCommands: false,
     hasActiveSession: true,
     activeSessionPinned: false,
@@ -111,21 +111,17 @@ describe("buildCommandPaletteCommands", () => {
     expect(commands()).toEqual([]);
   });
 
-  test("exposes Create Page with contextual availability", () => {
-    const available = buildCommandPaletteCommands(makeCommandContext()).find(
-      (command) => command.id === "createPage",
-    );
-    const unavailable = buildCommandPaletteCommands(
-      makeCommandContext({
-        pageCreateUnavailableReason: "Focus a Board before creating a Page.",
-      }),
-    ).find((command) => command.id === "createPage");
+  test("offers Capture to Inbox everywhere and New page only where a Page can live", () => {
+    const commands = (context: Partial<CommandPaletteShellCommandContext> = {}) =>
+      buildCommandPaletteCommands(makeCommandContext(context));
+    const capture = commands().find((command) => command.id === "captureToInbox");
+    expect(capture?.shortcut).toBe("C");
+    expect(Boolean(capture?.disabled)).toBe(false);
 
-    expect(available?.shortcut).toBe("C");
-    expect(Boolean(available?.disabled)).toBe(false);
-    expect(unavailable?.disabled).toBe(true);
-    expect(unavailable?.disabledReason).toBe("Focus a Board before creating a Page.");
-    expect(unavailable?.mockReason).toBeUndefined();
+    expect(Boolean(commands().find((command) => command.id === "newPage")?.disabled)).toBe(false);
+    const nowhere = commands({ canCreatePage: false }).find((command) => command.id === "newPage");
+    expect(nowhere?.disabled).toBe(true);
+    expect(nowhere?.disabledReason).toBe("Open a chat, Project, or Space");
   });
 
   test("includes the Codex toggleSidebar command with Cmd+B shortcut", async () => {

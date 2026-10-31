@@ -1,26 +1,4 @@
-import { MAX_PAGE_TITLE_LENGTH } from "../../shared/page-limits";
 import { classifyKeyboardActionPath } from "./keyboard-action-runtime";
-
-export interface PageCreateSeed {
-  readonly title: string;
-}
-
-const normalizeWhitespace = (value: string): string =>
-  value.replace(/\p{White_Space}+/gu, " ").trim();
-
-const truncateUtf16WithoutSplittingSurrogate = (value: string, maxLength: number): string => {
-  if (value.length <= maxLength) return value;
-  const truncated = value.slice(0, maxLength);
-  const finalCodeUnit = truncated.charCodeAt(truncated.length - 1);
-  if (finalCodeUnit < 0xd800 || finalCodeUnit > 0xdbff) return truncated;
-  return truncated.slice(0, -1);
-};
-
-export function normalizePageCreateSelectionText(text: string): string | null {
-  const normalized = normalizeWhitespace(text);
-  if (!normalized) return null;
-  return truncateUtf16WithoutSplittingSurrogate(normalized, MAX_PAGE_TITLE_LENGTH);
-}
 
 function nodePath(node: Node | null): readonly EventTarget[] {
   const path: EventTarget[] = [];
@@ -54,7 +32,11 @@ function rangeCrossesOwnedSurface(range: Range): boolean {
   return false;
 }
 
-export function capturePageCreateSeed(selection: Selection | null): PageCreateSeed | null {
+/**
+ * Text the user selected on the app's own surfaces, ready to start an Inbox message. Editors,
+ * fields and local surfaces keep their selections to themselves.
+ */
+export function readCaptureSelection(selection: Selection | null): string | null {
   if (!selection || selection.isCollapsed || selection.rangeCount < 1) {
     return null;
   }
@@ -65,6 +47,6 @@ export function capturePageCreateSeed(selection: Selection | null): PageCreateSe
   if (!nodeIsGloballyOwned(range.commonAncestorContainer)) return null;
   if (rangeCrossesOwnedSurface(range)) return null;
 
-  const title = normalizePageCreateSelectionText(selection.toString());
-  return title ? { title } : null;
+  const text = selection.toString().replace(/\r\n?/gu, "\n").trim();
+  return text || null;
 }

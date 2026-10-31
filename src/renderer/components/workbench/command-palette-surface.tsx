@@ -40,6 +40,8 @@ import {
   FilterIcon,
   ActivitySpinnerIcon,
   BackIcon,
+  InboxIcon,
+  NewPageIcon,
   PageIcon,
   FileIcon,
   FolderIcon,
@@ -208,7 +210,8 @@ function resolveSelectableIndex(
 }
 
 function getCommandGlyph(id: string) {
-  if (id === "createPage") return PageIcon;
+  if (id === "captureToInbox") return InboxIcon;
+  if (id === "newPage") return NewPageIcon;
   if (id === NAVIGATE_BACK_COMMAND_ID)
     return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
   if (id === NAVIGATE_FORWARD_COMMAND_ID)

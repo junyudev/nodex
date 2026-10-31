@@ -361,10 +361,10 @@ describe("handleWorkbenchShortcut", () => {
     expect(commands).toEqual([]);
   });
 
-  test("Create Page bindings run only for fresh events outside locally owned surfaces", () => {
+  test("Capture to Inbox bindings run only for fresh events outside locally owned surfaces", () => {
     let requests = 0;
     const actions = makeActions({
-      onRequestCreatePage: () => {
+      onRequestInboxCapture: () => {
         requests += 1;
         return true;
       },
@@ -404,7 +404,7 @@ describe("handleWorkbenchShortcut", () => {
     expect(requests).toBe(2);
   });
 
-  test("leaves Create Page unhandled when the workflow rejects the request", () => {
+  test("leaves Capture to Inbox unhandled when the capture declines the request", () => {
     const handled = handleWorkbenchShortcut(
       {
         key: "c",
@@ -419,35 +419,11 @@ describe("handleWorkbenchShortcut", () => {
         keyCode: 67,
         composedPath: () => [],
       },
-      makeActions({ onRequestCreatePage: () => false }),
+      makeActions({ onRequestInboxCapture: () => false }),
       true,
     );
 
     expect(handled).toBe(false);
-  });
-
-  test("opens the expanded Page composer with V outside editable surfaces", () => {
-    const commands: string[] = [];
-    const handled = handleWorkbenchShortcut(
-      {
-        key: "v",
-        ctrlKey: false,
-        metaKey: false,
-        shiftKey: false,
-        altKey: false,
-        target: null,
-      },
-      makeActions({
-        onRequestCreatePageExpanded: () => {
-          commands.push("createPageExpanded");
-          return true;
-        },
-      }),
-      true,
-    );
-
-    expect(handled).toBe(true);
-    expect(commands).toEqual(["createPageExpanded"]);
   });
 
   test("routes G then P through the sequence runtime and fails open in inputs", () => {
@@ -506,16 +482,16 @@ describe("handleWorkbenchShortcut", () => {
     expect(calls).toBe(1);
   });
 
-  test("uses a remapped Create Page binding instead of the default", () => {
+  test("uses a remapped Capture to Inbox binding instead of the default", () => {
     let requests = 0;
     const actions = makeActions({
       commandKeymapState: createCommandKeymapState(
         {
-          createPage: ["CmdOrCtrl+Alt+C"],
+          captureToInbox: ["CmdOrCtrl+Alt+C"],
         },
         "macOS",
       ),
-      onRequestCreatePage: () => {
+      onRequestInboxCapture: () => {
         requests += 1;
         return true;
       },

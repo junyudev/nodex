@@ -202,7 +202,7 @@ describe("command palette discovery sections", () => {
       query: "",
       commands: [
         makeCommand({ id: "openFolder", title: "Open folder", priority: 900 }),
-        makeCommand({ id: "createPage", title: "Create Page", priority: 800 }),
+        makeCommand({ id: "captureToInbox", title: "Capture to Inbox", priority: 800 }),
         makeCommand({ id: "newThread", title: "New chat", priority: 1 }),
         makeCommand(),
       ],

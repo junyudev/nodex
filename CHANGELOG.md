@@ -6,8 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- New page in the command palette creates a page where you are and opens it beside you: in your Project's database in a Project or one of its chats, and in Space otherwise.
+
 ### Changed
 
+- `C` now captures a thought to the Inbox where you are instead of opening the new-page form. You just write; Nodex names the message, or you can name it yourself with Add title. It lands in your Project's Inbox when you are in a Project or one of its chats, and in your main Inbox otherwise, without taking you anywhere. The full-window `V` form is gone; a board's own New page still opens the page form.
+- `⌘⇧D` in a Project's chat now opens that Project's Inbox, the same Inbox its Agents send to, instead of your main Inbox.
 - A chat in the sidebar keeps showing the status of the page it started from when more pages are linked to it, instead of showing none. The first linked page that still exists is the one it follows.
 - New page in a New tab now creates the page in its Project's database instead of Space, where it gets a key and a status and sits with the Project's other pages. A page made from a chat is also linked to that chat, so the page keeps a way back to the chat after its tab closes. Chats without a Project still put new pages in Space.
 - Editing an Inbox message no longer asks for a new suggestion every time you pause. The suggestion stays beside the message, marked as written before it changed, and you can still confirm it or choose Suggest again. Opening, moving or renaming a message's Page leaves its suggestion as it was.

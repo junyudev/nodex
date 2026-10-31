@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { capturePageCreateSeed } from "./page-create-selection";
+import { readCaptureSelection } from "./capture-selection";
 
 const selectNodeContents = (element: HTMLElement): Selection => {
   const selection = window.getSelection();
@@ -11,15 +11,13 @@ const selectNodeContents = (element: HTMLElement): Selection => {
   return selection;
 };
 
-describe("Page create selection capture", () => {
-  test("captures expanded text from a global surface", () => {
+describe("Capture selection", () => {
+  test("keeps the lines of text selected on a global surface", () => {
     const surface = document.createElement("p");
-    surface.textContent = "  Fix   release\nnotes  ";
+    surface.textContent = "  Fix release\r\nnotes  ";
     document.body.append(surface);
 
-    expect(capturePageCreateSeed(selectNodeContents(surface))).toEqual({
-      title: "Fix release notes",
-    });
+    expect(readCaptureSelection(selectNodeContents(surface))).toBe("Fix release\nnotes");
 
     surface.remove();
   });
@@ -29,14 +27,14 @@ describe("Page create selection capture", () => {
     editor.setAttribute("contenteditable", "true");
     editor.textContent = "Editor title";
     document.body.append(editor);
-    expect(capturePageCreateSeed(selectNodeContents(editor))).toBeNull();
+    expect(readCaptureSelection(selectNodeContents(editor))).toBeNull();
     editor.remove();
 
     const localSurface = document.createElement("div");
     localSurface.dataset.nodexKeyboardScope = "local";
     localSurface.textContent = "Dialog title";
     document.body.append(localSurface);
-    expect(capturePageCreateSeed(selectNodeContents(localSurface))).toBeNull();
+    expect(readCaptureSelection(selectNodeContents(localSurface))).toBeNull();
     localSurface.remove();
   });
 
@@ -58,7 +56,7 @@ describe("Page create selection capture", () => {
     selection.removeAllRanges();
     selection.addRange(range);
 
-    expect(capturePageCreateSeed(selection)).toBeNull();
+    expect(readCaptureSelection(selection)).toBeNull();
     surface.remove();
   });
 });

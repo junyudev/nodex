@@ -58,7 +58,6 @@ import {
   pointerDownAndSettle,
   releasePointerDrag,
   renderWorkbench,
-  requestPageCreateFromContextMock,
   setWindowInnerWidthForTest,
   sideChatConversations,
   startSideChatCalls,
@@ -552,22 +551,19 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toEqual([{ collapsed: false }]);
   });
 
-  test("delegates the Page-create command to the registered workflow", async () => {
+  test("captures to the Inbox of the Project the chat belongs to, without leaving it", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
 
     await act(async () => {
-      screen.requestPageCreateCommand("keyboard_shortcut");
+      screen.requestInboxCaptureCommand("command_palette");
       await Promise.resolve();
     });
 
-    expect(requestPageCreateFromContextMock).toHaveBeenCalledTimes(1);
-    expect(requestPageCreateFromContextMock).toHaveBeenCalledWith(expect.any(Object), {
-      activeProjectId: "alpha",
-      captureSelection: true,
-      expanded: false,
-      unavailableFeedback: "silent",
-    });
+    const capture = await screen.findByRole("dialog", { name: "Capture to Alpha Inbox" });
+    const message = within(capture).getByRole("textbox", { name: "Message your Inbox" });
+    await waitFor(() => expect(document.activeElement).toBe(message));
+    expect(within(capture).queryByRole("textbox", { name: "Message title" })).toBe(null);
   });
 
   test("bottom-panel commands safely no-op without an active session", async () => {
@@ -1487,7 +1483,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(pageStageProps?.historyPanelActive).toBe(true);
     const historyPanelProps = (globalThis as { __lastHistoryPanelProps?: Record<string, unknown> })
       .__lastHistoryPanelProps;
-    expect(typeof historyPanelProps?.onPageMutated).toBe("function");
+    expect(historyPanelProps?.projectId).toBe("alpha");
 
     await pointerActivate(screen.getByRole("button", { name: "History" }));
     await settleAsyncRender();

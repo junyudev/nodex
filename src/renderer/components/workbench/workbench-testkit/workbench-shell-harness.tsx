@@ -120,7 +120,7 @@ import type {
   WorkbenchSidebarToggleCommandSource,
 } from "../../../../shared/window-navigation";
 import {
-  CREATE_PAGE_COMMAND_ID,
+  CAPTURE_TO_INBOX_COMMAND_ID,
   type WorkbenchCommandRequest,
   type WorkbenchCommandSource,
 } from "../../../../shared/workbench-commands";
@@ -517,12 +517,6 @@ export const mockCodexControl = {
   },
 };
 
-const pageCreateWorkflowMocks = vi.hoisted(() => ({
-  requestFromContext: vi.fn(() => true),
-}));
-
-export const requestPageCreateFromContextMock = pageCreateWorkflowMocks.requestFromContext;
-
 // Navigation tests have no layout engine; browser and native tests own titlebar geometry.
 vi.mock("../workbench-titlebar-context", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../workbench-titlebar-context")>();
@@ -532,10 +526,6 @@ vi.mock("../workbench-titlebar-context", async (importOriginal) => {
       children,
   };
 });
-
-vi.mock("@/lib/page-create-workflow", () => ({
-  requestPageCreateFromContext: pageCreateWorkflowMocks.requestFromContext,
-}));
 
 vi.mock("@/features/workspace-files/workspace-pierre-editor", () => ({
   WorkspacePierreEditor: ({
@@ -4536,7 +4526,7 @@ export function renderWorkbench({
   let requestPanelTabClose: () => void = () => undefined;
   let requestSidebarToggle: (source: WorkbenchSidebarToggleCommandSource) => void = () => undefined;
   let requestWorkbenchCommand: (source: WorkbenchCommandSource) => void = () => undefined;
-  let requestPageCreateCommand: (source: WorkbenchCommandSource) => void = () => undefined;
+  let requestInboxCaptureCommand: (source: WorkbenchCommandSource) => void = () => undefined;
   let openCommandPalette: (
     mode?: "root" | "chats" | "pages" | "files",
     initialQuery?: string,
@@ -4583,8 +4573,8 @@ export function renderWorkbench({
     requestWorkbenchCommand = (source) => {
       commandPortRef.current?.execute("toggleBottomPanel", source);
     };
-    requestPageCreateCommand = (source) => {
-      commandPortRef.current?.execute(CREATE_PAGE_COMMAND_ID, source);
+    requestInboxCaptureCommand = (source) => {
+      commandPortRef.current?.execute(CAPTURE_TO_INBOX_COMMAND_ID, source);
     };
     openCommandPalette = (mode = "root", initialQuery = "") => {
       commandPortRef.current?.openCommandPalette({
@@ -4739,8 +4729,8 @@ export function renderWorkbench({
     requestWorkbenchCommand: (source: WorkbenchCommandSource) => {
       requestWorkbenchCommand(source);
     },
-    requestPageCreateCommand: (source: WorkbenchCommandSource) => {
-      requestPageCreateCommand(source);
+    requestInboxCaptureCommand: (source: WorkbenchCommandSource) => {
+      requestInboxCaptureCommand(source);
     },
     getScheduledAutomations: () => scheduledAutomations,
     getRunNowAutomationIds: () => runNowAutomationIds,
@@ -4814,8 +4804,6 @@ beforeEach(() => {
   projectSessionListeners.clear();
   pendingWorktreeWarningListener = null;
   mockInvokeImpl = null;
-  requestPageCreateFromContextMock.mockReset();
-  requestPageCreateFromContextMock.mockReturnValue(true);
   setWindowInnerWidthForTest(1024);
   localStorage.clear();
   sessionStorage.clear();

@@ -66,21 +66,6 @@ export function closeModal<Props extends ModalCloseProps>(
   });
 }
 
-export function updateOpenModalProps<Props extends ModalCloseProps>(
-  appHandle: ScopeHandle,
-  component: ComponentType<Props>,
-  patch: Partial<ModalOpenProps<Props>>,
-): boolean {
-  if (!isModalOpen(appHandle, component)) return false;
-  appHandle.set(modalRegistryAtom, (previous) => ({
-    ...previous,
-    modals: previous.modals.map((entry) =>
-      entry.component === component ? { ...entry, props: { ...entry.props, ...patch } } : entry,
-    ),
-  }));
-  return true;
-}
-
 export function isModalOpen<Props extends ModalCloseProps>(
   appHandle: ScopeHandle,
   component: ComponentType<Props>,

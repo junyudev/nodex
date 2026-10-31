@@ -16,7 +16,7 @@ import type { Project } from "@/lib/types";
 import type { RecentPageSession } from "@/lib/use-workbench-profile-preferences";
 import type { WorkbenchNavigationDirection } from "../../../shared/window-navigation";
 import {
-  CREATE_PAGE_COMMAND_ID,
+  CAPTURE_TO_INBOX_COMMAND_ID,
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
   TOGGLE_FULL_VIEW_COMMAND_ID,
   type WorkbenchCommandInvocation,
@@ -33,7 +33,6 @@ import type {
 } from "@/lib/command-palette-commands";
 import type { useWorkbenchSidebarController } from "./use-workbench-sidebar-controller";
 import { CommandPalette } from "./command-palette";
-import { usePageCreateTargetResolution } from "@/lib/page-create-target-registry";
 import {
   hasSessionConversation,
   resolveSessionExecution,
@@ -91,6 +90,8 @@ interface WorkbenchCommandPaletteHostProps {
   readonly toggleSidePanel: () => void;
   readonly openAutomations: () => void;
   readonly openInbox: () => void;
+  /** Creates a Page where the current place's work lives, or null where there is none. */
+  readonly newPage: (() => void) | null;
   readonly openLibraryFiles: () => void;
   readonly openProcessManager: () => void;
   readonly openSettings: () => void;
@@ -122,6 +123,7 @@ export function WorkbenchCommandPaletteHost({
   toggleSidePanel,
   openAutomations,
   openInbox,
+  newPage,
   openLibraryFiles,
   openProcessManager,
   openSettings,
@@ -132,7 +134,6 @@ export function WorkbenchCommandPaletteHost({
   const workspaceSearchContext = useSelectedWorkspaceSearchContext();
   const fileRouter = useFileReferenceRouter();
   const skillsReloadControl = useSelectedConversationSkillsReloadControl();
-  const pageCreateTargetResolution = usePageCreateTargetResolution(activeProjectId);
   const openingFolder = useRef(false);
   const openFolder = async () => {
     if (openingFolder.current) return;
@@ -180,10 +181,7 @@ export function WorkbenchCommandPaletteHost({
     canGoForward: canNavigateForward,
     canStartNewChat: true,
     canStartNewChatInProject: Boolean(activeProjectId),
-    pageCreateUnavailableReason:
-      pageCreateTargetResolution.status === "unavailable"
-        ? pageCreateTargetResolution.reason
-        : null,
+    canCreatePage: newPage !== null,
     hasActiveSession: Boolean(activeSession),
     activeSessionPinned: activeSession?.pinned ?? false,
     hasAttachedThread: hasSessionConversation(activeSession),
@@ -216,12 +214,13 @@ export function WorkbenchCommandPaletteHost({
     newThreadInProject: () => {
       void sessionCommands.startNewChatInProject(activeProjectId);
     },
-    createPage: () => {
+    captureToInbox: () => {
       executeWorkbenchCommand({
-        commandId: CREATE_PAGE_COMMAND_ID,
+        commandId: CAPTURE_TO_INBOX_COMMAND_ID,
         source: "command_palette",
       });
     },
+    newPage: () => newPage?.(),
     renameThread: () => {
       if (!activeSession) return;
       sidebarCommands.openRenameSessionDialog(activeSession);

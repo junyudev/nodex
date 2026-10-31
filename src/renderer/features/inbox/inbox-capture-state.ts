@@ -18,13 +18,14 @@ import { readMarkdown } from "../../../shared/nodex-markdown";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 
-/** What the composer holds: the text as typed, read as message text, and its images. */
+/** What the composer holds: an optional title, the message text as typed, and its images. */
 export interface InboxDraft {
+  readonly title: string;
   readonly text: string;
   readonly images: readonly MessageDraftImage[];
 }
 
-export const EMPTY_INBOX_DRAFT: InboxDraft = { text: "", images: [] };
+export const EMPTY_INBOX_DRAFT: InboxDraft = { title: "", text: "", images: [] };
 
 export const isEmptyInboxDraft = (draft: InboxDraft): boolean =>
   draft.text.trim().length === 0 && draft.images.length === 0;
@@ -51,8 +52,9 @@ export function inboxDraftFromBody(body: string): InboxDraft {
       (block) => isComposerImage(block) && parseFileSource(String(block.props?.url ?? "")),
     )
   )
-    return { text: body, images: [] };
+    return { title: "", text: body, images: [] };
   return {
+    title: "",
     text: written,
     images: attachments.flatMap((block) => {
       const fileId = parseFileSource(String(block.props?.url ?? ""));
@@ -63,7 +65,7 @@ export function inboxDraftFromBody(body: string): InboxDraft {
 
 export interface PendingInboxCapture {
   readonly intent: InboxSendInput;
-  /** The draft it was sent from, so recovering it restores the text and images exactly. */
+  /** The draft it was sent from, so recovering it restores its title, text, and images exactly. */
   readonly draft: InboxDraft;
   readonly draftRevision: number;
   readonly status: "pending" | "accepted" | "failed" | "needs_review";
@@ -87,6 +89,7 @@ export const EMPTY_INBOX_CAPTURE_STATE: InboxCaptureState = {
 };
 
 const draftSchema = z.object({
+  title: z.string().default(""),
   text: z.string(),
   images: z.array(
     z.object({
@@ -131,6 +134,7 @@ export const changeInboxDraft = (
 
 /** A capture that may not have been saved goes back into the draft, after what is there. */
 export const recoverInboxDraft = (draft: InboxDraft, recovered: InboxDraft): InboxDraft => ({
+  title: draft.title.trim() ? draft.title : recovered.title,
   text: [draft.text, recovered.text].filter((text) => text.trim()).join("\n\n"),
   images: [
     ...draft.images,
@@ -146,6 +150,7 @@ export function createInboxCapture(
   storeEpoch: string,
 ): PendingInboxCapture {
   const issuedAt = Date.now();
+  const title = state.draft.title.trim();
   return {
     intent: {
       operationId: createBoundedOperationId("inbox.capture", issuedAt),
@@ -154,6 +159,7 @@ export function createInboxCapture(
       issuedAt,
       storeEpoch,
       scope,
+      ...(title ? { title } : {}),
       body: inboxDraftBody(state.draft),
     },
     draft: state.draft,

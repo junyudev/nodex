@@ -12,9 +12,8 @@ export interface MaterializePageCreateTargetInput {
 }
 
 /**
- * Builds the immutable authoring context shared by mounted Boards and the
- * active Project fallback. The access-context guard prevents a stale store
- * snapshot from ever being registered for a different Project.
+ * Builds the immutable authoring context for a mounted View. The access-context
+ * guard prevents a stale store snapshot from being registered for another Project.
  */
 export function materializePageCreateTarget({
   surfaceId,

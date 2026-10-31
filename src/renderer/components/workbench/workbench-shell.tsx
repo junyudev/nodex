@@ -38,10 +38,7 @@ import type {
 } from "@/lib/types";
 import { WorkbenchLayoutSnapshotSchema } from "../../../shared/schemas/workbench-layout";
 import { getWorkbenchSceneReturnLocation } from "../../../shared/workbench-layout";
-import {
-  CREATE_PAGE_COMMAND_ID,
-  CREATE_PAGE_EXPANDED_COMMAND_ID,
-} from "../../../shared/workbench-commands";
+import { CAPTURE_TO_INBOX_COMMAND_ID } from "../../../shared/workbench-commands";
 import { toast } from "@/components/ui/toast";
 
 const WORKBENCH_V2_FLAG_KEY = "workbenchV2";
@@ -385,10 +382,8 @@ export function WorkbenchShell({
     onRequestContentSearch: handleOpenContentSearch,
     onRequestSettingsToggle: workbenchCommands.toggleSettings,
     onRequestKeyboardShortcuts: workbenchCommands.openKeyboardShortcuts,
-    onRequestCreatePage: () =>
-      workbenchCommands.execute(CREATE_PAGE_COMMAND_ID, "keyboard_shortcut"),
-    onRequestCreatePageExpanded: () =>
-      workbenchCommands.execute(CREATE_PAGE_EXPANDED_COMMAND_ID, "keyboard_shortcut"),
+    onRequestInboxCapture: () =>
+      workbenchCommands.execute(CAPTURE_TO_INBOX_COMMAND_ID, "keyboard_shortcut"),
     navigateBack: (source) => {
       workbenchCommands.navigate("back", source);
     },

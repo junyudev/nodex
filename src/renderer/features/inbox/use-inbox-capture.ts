@@ -31,6 +31,9 @@ import {
 
 const definitions = new Map<string, PersistedAtomDefinition<InboxCaptureState>>();
 
+/** An untouched draft stays unsent; a consumed draft with a delivery error waits for recovery. */
+export type InboxSubmitOutcome = "sent" | "unsent" | "failed";
+
 export function inboxCaptureAtom(windowSessionId: string, scope: InboxScope) {
   const key = inboxCaptureStorageKey(windowSessionId, scope);
   const existing = definitions.get(key);
@@ -89,14 +92,14 @@ export function useInboxCapture({
     );
   }, [visiblePageIds, storeEpoch, state.value.captures, write]);
 
-  const deliver = async (capture: PendingInboxCapture) => {
+  const deliver = async (capture: PendingInboxCapture): Promise<InboxSubmitOutcome> => {
     const { intent } = capture;
     if (
       capture.status === "needs_review" ||
       intent.storeEpoch !== storeEpoch ||
       inFlight.current.has(intent.pageId)
     )
-      return;
+      return "failed";
     inFlight.current.add(intent.pageId);
     try {
       // Retry may follow a failed local write. Admission always waits for the envelope's disk write.
@@ -110,6 +113,8 @@ export function useInboxCapture({
           ? observeInboxCaptures(current, new Set([intent.pageId]), intent.storeEpoch)
           : settleInboxCapture(current, intent.pageId, null),
       );
+      // A deleted receipt also confirms this capture was saved, then removed elsewhere.
+      return "sent";
     } catch (error) {
       await write((current) =>
         settleInboxCapture(
@@ -121,15 +126,16 @@ export function useInboxCapture({
           inboxReceiptNeedsReview(error),
         ),
       ).catch(() => undefined);
+      return "failed";
     } finally {
       inFlight.current.delete(intent.pageId);
     }
   };
 
-  const submit = async () => {
-    if (preparing.current || !storeEpoch || state.status !== "ready") return;
+  const submit = async (): Promise<InboxSubmitOutcome> => {
+    if (preparing.current || !storeEpoch || state.status !== "ready") return "unsent";
     const current = read();
-    if (isEmptyInboxDraft(current.draft)) return;
+    if (isEmptyInboxDraft(current.draft)) return "unsent";
     preparing.current = true;
     const capture =
       current.captures.find((entry) => entry.draftRevision === current.draftRevision) ??
@@ -137,23 +143,23 @@ export function useInboxCapture({
     if (capture.status === "needs_review" || capture.intent.storeEpoch !== storeEpoch) {
       setValidationError("Review the earlier capture before sending again.");
       preparing.current = false;
-      return;
+      return "unsent";
     }
     const validation = InboxSendInputSchema.safeParse(capture.intent);
     if (!validation.success) {
       setValidationError(validation.error.issues[0]?.message ?? "Message could not be saved");
       preparing.current = false;
-      return;
+      return "unsent";
     }
     try {
       await write((latest) => retainInboxCapture(latest, capture));
       await write((latest) => consumeInboxDraft(latest, capture));
     } catch {
-      return;
+      return read().draftRevision === capture.draftRevision ? "unsent" : "failed";
     } finally {
       preparing.current = false;
     }
-    await deliver(capture);
+    return deliver(capture);
   };
 
   return {

@@ -22,10 +22,20 @@ import {
 } from "../../../shared/inbox";
 import {
   decodeInboxCaptureState,
+  changeInboxDraft,
+  consumeInboxDraft,
+  createInboxCapture,
+  EMPTY_INBOX_DRAFT,
   EMPTY_INBOX_CAPTURE_STATE,
   inboxCaptureStorageKey,
+  isEmptyInboxDraft,
+  recoverInboxDraft,
 } from "./inbox-capture-state";
-import { useInboxCapture, useInboxCaptureState } from "./use-inbox-capture";
+import {
+  useInboxCapture,
+  useInboxCaptureState,
+  type InboxSubmitOutcome,
+} from "./use-inbox-capture";
 import { useInboxActions } from "./use-inbox-actions";
 import { prepareInboxConfirmation, dispatchInboxEntries } from "@/lib/inbox-runtime";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
@@ -54,10 +64,13 @@ beforeEach(() => vi.resetAllMocks());
 class MemoryPersistence implements PersistedAtomTransport {
   snapshot: PersistedAtomSnapshot = { revision: 0, values: {} };
   failNext = false;
+  failAtMutation: number | null = null;
+  mutationCount = 0;
   readonly listeners = new Set<(event: PersistedAtomEvent) => void>();
   readSnapshot = async () => this.snapshot;
   mutate = async (input: PersistedAtomMutation): Promise<PersistedAtomEvent> => {
-    if (this.failNext) {
+    this.mutationCount += 1;
+    if (this.failNext || this.failAtMutation === this.mutationCount) {
       this.failNext = false;
       throw new Error("disk unavailable");
     }
@@ -81,7 +94,7 @@ function setup(
   persistence: MemoryPersistence,
   windowSessionId: string,
   onSend: (input: InboxSendInput) => Promise<InboxSendResult>,
-  epoch = "epoch:1",
+  epoch: string | null = "epoch:1",
 ) {
   const store = createMaitaiStore();
   setMaitaiPersistenceTransport(store, persistence);
@@ -112,6 +125,94 @@ function setup(
 }
 
 describe("Inbox capture ownership", () => {
+  test("carries a trimmed title into a capture, clears it on consume, and restores it on recovery", () => {
+    const draft = { title: "  *Release* [notes]  ", text: "Prepare the release", images: [] };
+    const state = { ...EMPTY_INBOX_CAPTURE_STATE, draft };
+    const capture = createInboxCapture(state, LIBRARY_INBOX, "epoch:1");
+    expect(capture.intent.title).toBe("*Release* [notes]");
+    expect(consumeInboxDraft(state, capture).draft).toEqual(EMPTY_INBOX_DRAFT);
+    expect(recoverInboxDraft(EMPTY_INBOX_DRAFT, capture.draft)).toEqual(draft);
+
+    const newer = changeInboxDraft(state, (current) => ({ ...current, title: "New title" }));
+    expect(consumeInboxDraft(newer, capture).draft).toEqual(newer.draft);
+    expect(recoverInboxDraft(newer.draft, capture.draft).title).toBe("New title");
+  });
+
+  test("a title alone is empty and blank titles are omitted from capture intents", () => {
+    expect(isEmptyInboxDraft({ ...EMPTY_INBOX_DRAFT, title: "A label" })).toBe(true);
+    expect(
+      isEmptyInboxDraft({
+        ...EMPTY_INBOX_DRAFT,
+        title: "A label",
+        images: [{ fileId: "shot", name: "shot.png" }],
+      }),
+    ).toBe(false);
+    const state = {
+      ...EMPTY_INBOX_CAPTURE_STATE,
+      draft: { ...EMPTY_INBOX_DRAFT, title: " \t ", text: "Message" },
+    };
+    expect(createInboxCapture(state, LIBRARY_INBOX, "epoch:1").intent).not.toHaveProperty("title");
+  });
+
+  test("decodes saved drafts and pending captures written before titles were available", () => {
+    const draft = { text: "Older draft", images: [] };
+    const capture = createInboxCapture(
+      { ...EMPTY_INBOX_CAPTURE_STATE, draft: { ...draft, title: "" } },
+      LIBRARY_INBOX,
+      "epoch:1",
+    );
+    const decoded = decodeInboxCaptureState({
+      ...EMPTY_INBOX_CAPTURE_STATE,
+      draft,
+      captures: [{ ...capture, draft }],
+    });
+    expect(decoded.draft).toEqual({ ...draft, title: "" });
+    expect(decoded.captures[0]?.draft).toEqual({ ...draft, title: "" });
+    expect(decoded.captures[0]?.intent).toEqual(capture.intent);
+  });
+
+  test("reports unsent for unready, title-only, and invalid drafts, then sent after saving", async () => {
+    const onSend = vi.fn(saved);
+    const hook = setup(new MemoryPersistence(), "window:submit-outcome", onSend, null);
+    try {
+      await waitFor(() => expect(hook.result.current.canEdit).toBe(true));
+      await act(async () => {
+        expect(await hook.result.current.submit()).toBe("unsent");
+      });
+      hook.rerender({ visiblePageIds: [], storeEpoch: "epoch:1" });
+      await act(async () => {
+        hook.result.current.changeDraft((draft) => ({ ...draft, title: "A label" }));
+      });
+      await act(async () => {
+        expect(await hook.result.current.submit()).toBe("unsent");
+      });
+      await act(async () => {
+        hook.result.current.changeDraft((draft) => ({
+          ...draft,
+          title: "Two\nlines",
+          text: "A message",
+        }));
+      });
+      await act(async () => {
+        expect(await hook.result.current.submit()).toBe("unsent");
+      });
+      expect(hook.result.current.validationError).toBeTruthy();
+      expect(onSend).not.toHaveBeenCalled();
+      await act(async () => {
+        hook.result.current.changeDraft((draft) => ({ ...draft, title: "  *Final* [label]  " }));
+      });
+      await act(async () => {
+        expect(await hook.result.current.submit()).toBe("sent");
+      });
+      expect(onSend).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "*Final* [label]", body: "A message" }),
+      );
+      expect(hook.result.current.draft).toEqual(EMPTY_INBOX_DRAFT);
+    } finally {
+      hook.dispose();
+    }
+  });
+
   test("retains A across a lost response while B remains editable, and reuses A's identity", async () => {
     const persistence = new MemoryPersistence();
     let rejectFirst!: (error: Error) => void;
@@ -130,7 +231,7 @@ describe("Inbox capture ownership", () => {
       await act(async () => {
         hook.result.current.changeDraft((draft) => ({ ...draft, text: "A" }));
       });
-      let first!: Promise<void>;
+      let first!: Promise<InboxSubmitOutcome>;
       await act(async () => {
         first = hook.result.current.submit();
         await Promise.resolve();
@@ -140,7 +241,7 @@ describe("Inbox capture ownership", () => {
       await act(async () => {
         hook.result.current.changeDraft((draft) => ({ ...draft, text: "B" }));
         rejectFirst(new Error("response lost"));
-        await first;
+        expect(await first).toBe("failed");
       });
       expect(hook.result.current.draft.text).toBe("B");
       expect(hook.result.current.pending[0]?.intent.body).toBe("A");
@@ -169,7 +270,7 @@ describe("Inbox capture ownership", () => {
       });
       persistence.failNext = true;
       await act(async () => {
-        await hook.result.current.submit();
+        expect(await hook.result.current.submit()).toBe("unsent");
       });
       expect(onSend).not.toHaveBeenCalled();
       expect(hook.result.current.draft.text).toBe("Keep this text");
@@ -188,6 +289,41 @@ describe("Inbox capture ownership", () => {
         await hook.result.current.submit();
       });
       expect(onSend).toHaveBeenCalledTimes(1);
+    } finally {
+      hook.dispose();
+    }
+  });
+
+  test("reports failed when clearing the captured draft could not be persisted, then retries it", async () => {
+    const persistence = new MemoryPersistence();
+    const onSend = vi.fn(saved);
+    const hook = setup(persistence, "window:consume-disk-failure", onSend);
+    try {
+      await waitFor(() => expect(hook.result.current.ready).toBe(true));
+      await act(async () => {
+        hook.result.current.changeDraft((draft) => ({
+          ...draft,
+          title: "A captured label",
+          text: "A captured message",
+        }));
+      });
+      persistence.failAtMutation = persistence.mutationCount + 2;
+      await act(async () => {
+        expect(await hook.result.current.submit()).toBe("failed");
+      });
+      expect(onSend).not.toHaveBeenCalled();
+      expect(hook.result.current.draft).toEqual(EMPTY_INBOX_DRAFT);
+      expect(hook.result.current.pending).toHaveLength(1);
+      expect(hook.result.current.error?.message).toBe("disk unavailable");
+      await act(async () => {
+        await hook.result.current.retryPersistence();
+      });
+      await act(async () => {
+        expect(await hook.result.current.retry(hook.result.current.pending[0]!)).toBe("sent");
+      });
+      expect(onSend).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ title: "A captured label", body: "A captured message" }),
+      );
     } finally {
       hook.dispose();
     }
@@ -234,6 +370,7 @@ describe("Inbox capture ownership", () => {
 
   test("a saved draft still knows which images it imported, so it can discard them later", () => {
     const draft = {
+      title: "",
       text: "",
       images: [
         { fileId: "pasted", name: "pasted.png", importedRevision: 1 },
@@ -266,7 +403,7 @@ describe("Inbox capture ownership", () => {
         hook.result.current.changeDraft((draft) => ({ ...draft, text: "Deleted elsewhere" }));
       });
       await act(async () => {
-        await hook.result.current.submit();
+        expect(await hook.result.current.submit()).toBe("sent");
       });
       expect(hook.result.current.pending).toEqual([]);
       expect(onSend).toHaveBeenCalledTimes(1);
@@ -285,12 +422,13 @@ describe("Inbox capture ownership", () => {
       await waitFor(() => expect(hook.result.current.ready).toBe(true));
       await act(async () => {
         hook.result.current.changeDraft(() => ({
+          title: "Check this capture",
           text: "Check whether this was saved",
           images: [{ fileId: "shot", name: "shot.png" }],
         }));
       });
       await act(async () => {
-        await hook.result.current.submit();
+        expect(await hook.result.current.submit()).toBe("failed");
       });
       const capture = hook.result.current.pending[0]!;
       expect(capture.status).toBe("needs_review");
@@ -304,6 +442,7 @@ describe("Inbox capture ownership", () => {
         await hook.result.current.recover(capture);
       });
       expect(hook.result.current.draft).toEqual({
+        title: "Check this capture",
         text: "Check whether this was saved",
         images: [{ fileId: "shot", name: "shot.png" }],
       });

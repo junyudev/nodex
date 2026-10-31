@@ -10,7 +10,7 @@ import {
   TOGGLE_SIDEBAR_COMMAND_ID,
 } from "../../shared/window-navigation";
 import {
-  CREATE_PAGE_COMMAND_ID,
+  CAPTURE_TO_INBOX_COMMAND_ID,
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
   TOGGLE_FULL_VIEW_COMMAND_ID,
 } from "../../shared/workbench-commands";
@@ -26,7 +26,8 @@ export type CommandPaletteShellCommandId =
   | "newThread"
   | "newThreadInProject"
   | "openFolder"
-  | typeof CREATE_PAGE_COMMAND_ID
+  | typeof CAPTURE_TO_INBOX_COMMAND_ID
+  | "newPage"
   | typeof RENAME_THREAD_COMMAND_ID
   | "archiveThread"
   | "copyConversationMarkdown"
@@ -62,7 +63,8 @@ export interface CommandPaletteShellCommandContext {
   canGoForward: boolean;
   canStartNewChat: boolean;
   canStartNewChatInProject: boolean;
-  pageCreateUnavailableReason: string | null;
+  /** Whether the current place has somewhere for a new Page to live. */
+  canCreatePage: boolean;
   showMockCommands: boolean;
   hasActiveSession: boolean;
   activeSessionPinned: boolean;
@@ -87,7 +89,8 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === "newThread" ||
     id === "newThreadInProject" ||
     id === "openFolder" ||
-    id === CREATE_PAGE_COMMAND_ID ||
+    id === CAPTURE_TO_INBOX_COMMAND_ID ||
+    id === "newPage" ||
     id === RENAME_THREAD_COMMAND_ID ||
     id === "archiveThread" ||
     id === "copyConversationMarkdown" ||
@@ -230,16 +233,24 @@ export function buildCommandPaletteCommands(
       },
     ),
     command(
-      CREATE_PAGE_COMMAND_ID,
-      "Project",
-      "Create Page",
-      "Create a Page in the active Project Board",
-      ["create", "new", "page", "board", "board"],
+      CAPTURE_TO_INBOX_COMMAND_ID,
+      "Suggested",
+      "Capture to Inbox",
+      "Write a thought, task, or question to the Inbox where you are",
+      ["capture", "inbox", "note", "thought", "task", "todo", "message", "new"],
       1185,
+      { shortcut: shortcutLabel(CAPTURE_TO_INBOX_COMMAND_ID, "C") },
+    ),
+    command(
+      "newPage",
+      "Suggested",
+      "New page",
+      "Create a Page where this work lives and open it",
+      ["new", "create", "page", "document", "note"],
+      1184,
       {
-        shortcut: shortcutLabel(CREATE_PAGE_COMMAND_ID, "CmdOrCtrl+Shift+C"),
-        disabled: context.pageCreateUnavailableReason !== null,
-        disabledReason: context.pageCreateUnavailableReason ?? undefined,
+        disabled: !context.canCreatePage,
+        disabledReason: context.canCreatePage ? undefined : "Open a chat, Project, or Space",
       },
     ),
     command(

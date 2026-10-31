@@ -27,7 +27,6 @@ import {
   prepareInboxConfirmation,
   requestInboxSuggestion,
   retryInboxDispatch,
-  sendInboxMessage,
   setInboxEntryImportant,
   setInboxEntryKind,
   setInboxEntryState,
@@ -39,6 +38,9 @@ import { RendererCommandRejectedError } from "@/lib/renderer-command";
 import { inboxReceiptNeedsReview, type InboxDecision } from "./inbox-presentation";
 import { invalidateInbox } from "./use-inbox";
 import { useInboxCaptureState } from "./use-inbox-capture";
+import { useSendInboxMessage } from "./use-send-inbox-message";
+
+export { useSendInboxMessage };
 
 export interface InboxActions {
   readonly send: (intent: InboxSendInput) => Promise<InboxSendResult>;
@@ -97,6 +99,7 @@ export function useInboxActions(
   onDecided: (pageIds: readonly string[], decision: InboxDecision) => void = () => {},
 ): InboxActions {
   const queryClient = useQueryClient();
+  const send = useSendInboxMessage();
   const local = useInboxCaptureState(windowSessionId, scope);
   const deciding = useRef(
     new Map<string, { readonly draft: InboxConfirmationDraft; readonly promise: Promise<void> }>(),
@@ -322,13 +325,7 @@ export function useInboxActions(
           ),
         })),
       ),
-    send: async (input) => {
-      try {
-        return (await sendInboxMessage(input)).value;
-      } finally {
-        void invalidateInbox(queryClient);
-      }
-    },
+    send,
     edit: (pageId, originalBody, body, basis) =>
       run("The message could not be edited", () =>
         editInboxMessage({ pageId, basis, originalBody, body }),

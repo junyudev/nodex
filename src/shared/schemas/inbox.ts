@@ -33,6 +33,8 @@ import { AgentRuntimeModelSelectionSchema } from "./agent-runtime-api";
 import { InboxScopeSchema } from "./inbox-scope";
 
 export const MAX_INBOX_MESSAGE_BYTES = 64 * 1024;
+/** A sender's title is a short label; Core enforces the same bound for every sender. */
+export const MAX_INBOX_TITLE_LENGTH = 200;
 export const MAX_INBOX_DISPATCH_PAGES = 16;
 export const MAX_INBOX_BULK_PAGES = 200;
 export const MAX_INBOX_PROMPT_BYTES = 32 * 1024;
@@ -159,6 +161,16 @@ export const InboxSendInputSchema = z
     issuedAt: z.number().int().nonnegative(),
     storeEpoch: id,
     scope: InboxScopeSchema,
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(MAX_INBOX_TITLE_LENGTH)
+      .refine(
+        (value) => !/[\r\n\t\u2028\u2029]/u.test(value),
+        "Title must be a single line without tabs",
+      )
+      .optional(),
     body: messageBody,
   })
   .strict() satisfies z.ZodType<InboxSendInput>;

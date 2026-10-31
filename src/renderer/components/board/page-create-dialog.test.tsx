@@ -165,14 +165,10 @@ const createPage = (id: string, title: string) => ({
 function ModalLauncher({
   children,
   onAncestorPointerDown,
-  seedTitle,
-  initialExpanded = false,
   visible = true,
 }: {
   readonly children?: ReactNode;
   readonly onAncestorPointerDown?: () => void;
-  readonly seedTitle?: string;
-  readonly initialExpanded?: boolean;
   readonly visible?: boolean;
 }) {
   const appHandle = useScopeHandle(appScope);
@@ -184,27 +180,10 @@ function ModalLauncher({
         type="button"
         onClick={() => {
           registerPageCreateTarget(appHandle, "registration-test", target);
-          requestPageCreate(
-            appHandle,
-            seedTitle
-              ? { target, origin, seed: { title: seedTitle }, initialExpanded }
-              : { target, origin, initialExpanded },
-          );
+          requestPageCreate(appHandle, { target, origin });
         }}
       >
         Open Page create
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          requestPageCreate(appHandle, {
-            target,
-            origin,
-            initialExpanded: true,
-          });
-        }}
-      >
-        Open Page create expanded
       </button>
       {children}
     </div>
@@ -214,22 +193,13 @@ function ModalLauncher({
 function TestShell({
   launcherVisible = true,
   onAncestorPointerDown,
-  seedTitle,
-  initialExpanded = false,
 }: {
   readonly launcherVisible?: boolean;
   readonly onAncestorPointerDown?: () => void;
-  readonly seedTitle?: string;
-  readonly initialExpanded?: boolean;
 }) {
   return (
     <NodexToastProvider>
-      <ModalLauncher
-        visible={launcherVisible}
-        onAncestorPointerDown={onAncestorPointerDown}
-        seedTitle={seedTitle}
-        initialExpanded={initialExpanded}
-      />
+      <ModalLauncher visible={launcherVisible} onAncestorPointerDown={onAncestorPointerDown} />
       <div data-board-root data-board-surface-id={target.surfaceId} tabIndex={-1}>
         <button type="button" data-page-create-trigger="header" data-page-create-column-id="plan">
           Source trigger
@@ -265,17 +235,6 @@ describe("PageCreateDialog", () => {
 
     view.rerender(<TestShell launcherVisible={false} />);
     expect(view.getByRole("dialog")).toBeTruthy();
-  });
-
-  test("uses selected text only as the initial title of a new draft", async () => {
-    const view = renderWithMaitai(<TestShell seedTitle="Fix release notes" />);
-
-    fireEvent.click(view.getByRole("button", { name: "Open Page create" }));
-
-    expect(((await view.findByLabelText("Page title")) as HTMLInputElement).value).toBe(
-      "Fix release notes",
-    );
-    expect((view.getByLabelText("Page description") as HTMLTextAreaElement).value).toBe("");
   });
 
   test("treats a repeated create request as focus, not a second draft", async () => {
@@ -402,34 +361,6 @@ describe("PageCreateDialog", () => {
     );
   });
 
-  test("opens directly in expanded mode when the request asks for it", async () => {
-    const view = renderWithMaitai(<TestShell initialExpanded />);
-    fireEvent.click(view.getByRole("button", { name: "Open Page create" }));
-
-    expect(
-      (await view.findByRole("button", { name: "Collapse Page composer" })).getAttribute(
-        "aria-expanded",
-      ),
-    ).toBe("true");
-  });
-
-  test("expands an existing draft without replacing its editor state", async () => {
-    const view = renderWithMaitai(<TestShell />);
-    fireEvent.click(view.getByRole("button", { name: "Open Page create" }));
-    const title = await view.findByLabelText("Page title");
-    fireEvent.change(title, { target: { value: "Keep this draft" } });
-
-    fireEvent.click(view.getByText("Open Page create expanded"));
-
-    expect(await view.findByRole("button", { name: "Collapse Page composer" })).not.toBeNull();
-    expect((view.getByLabelText("Page title") as HTMLInputElement).value).toBe("Keep this draft");
-
-    fireEvent.click(view.getByRole("button", { name: "Collapse Page composer" }));
-    fireEvent.click(view.getByText("Open Page create expanded"));
-
-    expect(await view.findByRole("button", { name: "Collapse Page composer" })).not.toBeNull();
-  });
-
   test("supports create-more keyboard submission and resets only the writing fields", async () => {
     commandState.create.mockResolvedValue({
       status: "created",
@@ -465,6 +396,10 @@ describe("PageCreateDialog", () => {
     const firstDocumentId = description.getAttribute("data-document-id");
     fireEvent.change(title, { target: { value: "Recover me" } });
     fireEvent.change(description, { target: { value: "Recovered body" } });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Expand Page composer" }));
+      await Promise.resolve();
+    });
     fireEvent.click(view.getByRole("button", { name: "Close Page creation" }));
 
     const recoveryToast = await view.findByRole("alert");
@@ -478,6 +413,7 @@ describe("PageCreateDialog", () => {
     expect(view.getByLabelText("Page description").getAttribute("data-document-id")).not.toBe(
       firstDocumentId,
     );
+    expect(view.getByRole("button", { name: "Collapse Page composer" })).toBeTruthy();
   });
 
   test("always closes even when an unexpected draft snapshot cannot be encoded", async () => {

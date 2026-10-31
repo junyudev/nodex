@@ -1,10 +1,18 @@
-import { describe, expect, test } from "vite-plus/test";
-import type {
-  PageCreateTarget,
-  PageCreateTargetCapability,
-  PageCreateTargetRegistryState,
+import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import {
+  createMaitaiStore,
+  createScopeHandle,
+  disposeMaitaiStore,
+  getMaitaiRootView,
+  type MaitaiStore,
+  type ScopeHandle,
+} from "./maitai/maitai-store";
+import {
+  getPageCreateTarget,
+  registerPageCreateTarget,
+  unregisterPageCreateTarget,
+  type PageCreateTarget,
 } from "./page-create-target-registry";
-import { resolvePageCreateTarget } from "./page-create-target-registry";
 
 const target = (surfaceId: string, projectId: string): PageCreateTarget => ({
   surfaceId,
@@ -24,148 +32,42 @@ const target = (surfaceId: string, projectId: string): PageCreateTarget => ({
   ],
 });
 
-const ready = (value: PageCreateTarget): PageCreateTargetCapability => ({
-  status: "ready",
-  target: value,
-});
+describe("Page create target registration", () => {
+  let store: MaitaiStore;
+  let appHandle: ScopeHandle;
 
-const state = (
-  boardTargets: readonly PageCreateTarget[],
-  activeSurfaceId: string | null,
-  projectDefaults: Readonly<Record<string, PageCreateTargetCapability>> = {},
-): PageCreateTargetRegistryState => ({
-  activeSurfaceId,
-  nextActivitySequence: boardTargets.length + 1,
-  boardRegistrations: Object.fromEntries(
-    boardTargets.map((item, index) => [
-      item.surfaceId,
-      {
-        token: `token:${item.surfaceId}`,
-        target: item,
-        activeColumnId: item.surfaceId === activeSurfaceId ? "plan" : null,
-        activitySequence: item.surfaceId === activeSurfaceId ? index + 1 : 0,
-      },
-    ]),
-  ),
-  projectDefaultRegistrations: Object.fromEntries(
-    Object.entries(projectDefaults).map(([projectId, capability]) => [
-      projectId,
-      {
-        token: `token:${projectId}`,
-        projectId,
-        capability,
-      },
-    ]),
-  ),
-});
-
-describe("Page create target resolution", () => {
-  test("prefers the exact active Board and its active column", () => {
-    const resolution = resolvePageCreateTarget(
-      state([target("left", "project:alpha"), target("right", "project:beta")], "right"),
-      "project:alpha",
-    );
-
-    expect(resolution).toMatchObject({
-      status: "resolved",
-      target: { surfaceId: "right" },
-      columnId: "plan",
-    });
+  beforeEach(() => {
+    store = createMaitaiStore();
+    appHandle = createScopeHandle(getMaitaiRootView(store));
   });
 
-  test("does not silently fall back when the exact active Board has no workflow columns", () => {
-    const resolution = resolvePageCreateTarget(
-      state([{ ...target("empty", "project:alpha"), columns: [] }], "empty", {
-        "project:alpha": ready(target("ambient", "project:alpha")),
-      }),
-      "project:alpha",
-    );
+  afterEach(() => disposeMaitaiStore(store));
 
-    expect(resolution).toEqual({
-      status: "unavailable",
-      reason: "This Database View has no workflow columns.",
-    });
+  test("keeps mounted View targets separate and removes only the unmounted View", () => {
+    const left = target("left", "project:alpha");
+    const right = target("right", "project:alpha");
+    registerPageCreateTarget(appHandle, "left-token", left);
+    registerPageCreateTarget(appHandle, "right-token", right);
+
+    expect(getPageCreateTarget(appHandle, left.surfaceId)).toBe(left);
+    expect(getPageCreateTarget(appHandle, right.surfaceId)).toBe(right);
+
+    unregisterPageCreateTarget(appHandle, left.surfaceId, "left-token");
+
+    expect(getPageCreateTarget(appHandle, left.surfaceId)).toBeNull();
+    expect(getPageCreateTarget(appHandle, right.surfaceId)).toBe(right);
   });
 
-  test("uses recent Board intent only within the active Project", () => {
-    const previous = state(
-      [target("alpha", "project:alpha"), target("beta", "project:beta")],
-      null,
-      {
-        "project:alpha": ready(target("ambient", "project:alpha")),
-      },
-    );
-    const resolution = resolvePageCreateTarget(
-      {
-        ...previous,
-        boardRegistrations: {
-          ...previous.boardRegistrations,
-          alpha: { ...previous.boardRegistrations.alpha!, activitySequence: 4 },
-          beta: { ...previous.boardRegistrations.beta!, activitySequence: 9 },
-        },
-        nextActivitySequence: 10,
-      },
-      "project:alpha",
-    );
+  test("returns the latest target and ignores cleanup from an earlier mount", () => {
+    const original = target("view", "project:alpha");
+    const updated = { ...original, clientSessionId: "replacement-session" };
+    registerPageCreateTarget(appHandle, "original-token", original);
+    registerPageCreateTarget(appHandle, "replacement-token", updated);
 
-    expect(resolution).toMatchObject({
-      status: "resolved",
-      target: { surfaceId: "alpha" },
-      columnId: "triage",
-    });
-  });
+    unregisterPageCreateTarget(appHandle, original.surfaceId, "original-token");
+    expect(getPageCreateTarget(appHandle, original.surfaceId)).toBe(updated);
 
-  test("falls back to the active Project default target without Board focus", () => {
-    const resolution = resolvePageCreateTarget(
-      state([target("beta", "project:beta")], null, {
-        "project:alpha": ready(target("ambient", "project:alpha")),
-      }),
-      "project:alpha",
-    );
-
-    expect(resolution).toMatchObject({
-      status: "resolved",
-      target: { surfaceId: "ambient" },
-      columnId: "triage",
-    });
-  });
-
-  test("surfaces ambient loading and unavailable reasons", () => {
-    expect(
-      resolvePageCreateTarget(
-        state([], null, {
-          "project:alpha": {
-            status: "loading",
-            reason: "Preparing this Project’s default Database View…",
-          },
-        }),
-        "project:alpha",
-      ),
-    ).toEqual({
-      status: "unavailable",
-      reason: "Preparing this Project’s default Database View…",
-    });
-
-    expect(
-      resolvePageCreateTarget(
-        state([], null, {
-          "project:alpha": {
-            status: "unavailable",
-            reason: "This Project has no active default Database View.",
-          },
-        }),
-        "project:alpha",
-      ),
-    ).toEqual({
-      status: "unavailable",
-      reason: "This Project has no active default Database View.",
-    });
-  });
-
-  test("never guesses a target without an active Project or exact Board", () => {
-    expect(resolvePageCreateTarget(state([target("alpha", "project:alpha")], null), null)).toEqual({
-      status: "unavailable",
-      reason: "Select a Project before creating a Page.",
-    });
+    unregisterPageCreateTarget(appHandle, original.surfaceId, "replacement-token");
+    expect(getPageCreateTarget(appHandle, original.surfaceId)).toBeNull();
   });
 });

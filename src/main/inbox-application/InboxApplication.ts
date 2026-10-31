@@ -314,6 +314,7 @@ export const make = Effect.gen(function* () {
         page_id: parsed.pageId,
         document_id: parsed.documentId,
         body: parsed.body,
+        ...(parsed.title === undefined ? {} : { title: parsed.title }),
         project_id: parsed.scope.kind === "project" ? parsed.scope.projectId : null,
         expected_store_epoch: parsed.storeEpoch,
       },

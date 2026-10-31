@@ -56,14 +56,14 @@ describe("useWorkbenchCommandIngress", () => {
     const { result } = renderHook(() => useWorkbenchCommandIngress());
     const port = makePort();
 
-    expect(result.current.execute("createPage", "keyboard_shortcut")).toBe(false);
+    expect(result.current.execute("captureToInbox", "keyboard_shortcut")).toBe(false);
 
     act(() => {
       result.current.register(port);
     });
 
-    expect(result.current.execute("createPage", "keyboard_shortcut")).toBe(true);
-    expect(port.execute).toHaveBeenCalledWith("createPage", "keyboard_shortcut");
+    expect(result.current.execute("captureToInbox", "keyboard_shortcut")).toBe(true);
+    expect(port.execute).toHaveBeenCalledWith("captureToInbox", "keyboard_shortcut");
   });
 
   test("forwards native commands directly to the registered port", async () => {

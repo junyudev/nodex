@@ -1,4 +1,4 @@
-export type PageCreateOriginKind = "header" | "footer" | "auto-collapsed-column" | "keyboard";
+export type PageCreateOriginKind = "header" | "footer" | "auto-collapsed-column";
 
 export interface PageCreateOrigin {
   readonly surfaceId: string;

@@ -7,6 +7,7 @@ import {
   InboxPreparedConfirmationSchema,
   InboxSendInputSchema,
   InboxSuggestionRequestInputSchema,
+  MAX_INBOX_TITLE_LENGTH,
   UpdateInboxSettingsInputSchema,
 } from "./inbox";
 
@@ -72,6 +73,39 @@ describe("Inbox boundary contracts", () => {
     expect(
       InboxSendInputSchema.safeParse({ ...capture, operationId: "new-on-every-retry" }).success,
     ).toBe(false);
+  });
+
+  it("accepts only trimmed, nonempty, single-line Page titles within the Page title bound", () => {
+    const capture = {
+      scope: { kind: "library" },
+      operationId: createBoundedOperationId("inbox.send"),
+      pageId: "page-a",
+      documentId: "document-a",
+      issuedAt: Date.now(),
+      storeEpoch: "epoch-a",
+      body: "The message body",
+    };
+    expect(InboxSendInputSchema.parse(capture)).not.toHaveProperty("title");
+    expect(InboxSendInputSchema.parse({ ...capture, title: "  *Literal* [title]  " }).title).toBe(
+      "*Literal* [title]",
+    );
+    expect(
+      InboxSendInputSchema.parse({ ...capture, title: "中".repeat(MAX_INBOX_TITLE_LENGTH) }).title,
+    ).toHaveLength(MAX_INBOX_TITLE_LENGTH);
+    for (const title of [
+      "",
+      " \t ",
+      "First\nSecond",
+      "First\rSecond",
+      "First\tSecond",
+      "First\u2028Second",
+      "First\u2029Second",
+      "a".repeat(MAX_INBOX_TITLE_LENGTH + 1),
+      null,
+      42,
+    ]) {
+      expect(InboxSendInputSchema.safeParse({ ...capture, title }).success).toBe(false);
+    }
   });
 
   it("refuses to edit with another Page's revision", () => {

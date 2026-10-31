@@ -39,7 +39,8 @@ import {
 import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
 import { InboxRoute } from "@/features/inbox/inbox-route";
-import { inboxScopeProjectId } from "../../../shared/inbox";
+import { inboxScopeProjectId, LIBRARY_INBOX, type InboxScope } from "../../../shared/inbox";
+import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
 import { parseDatabaseId } from "../../../shared/database-identities";
 import { useInboxCounts, useInboxInvalidation } from "@/features/inbox/use-inbox";
 import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header";
@@ -109,8 +110,13 @@ import { toast } from "@/components/ui/toast";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import { libraryContentRoute, projectContentRoute } from "../../../shared/content-routing-context";
-import { requestPageCreateFromContext } from "@/lib/page-create-workflow";
-import { useProjectPageCreateTarget } from "@/lib/use-project-page-create-target";
+import { readCaptureSelection } from "@/lib/capture-selection";
+import {
+  InboxQuickCapture,
+  type InboxCaptureDestination,
+  type InboxQuickCaptureRequest,
+} from "@/features/inbox/inbox-quick-capture";
+import { resolveInboxCaptureScope } from "@/features/inbox/inbox-capture-scope";
 import { useMutationAuditSessionId } from "@/lib/mutation-audit-session";
 import {
   useCodexAppServerControl,
@@ -142,7 +148,6 @@ import {
 } from "@/features/plugins/plugins-routes";
 import type { ScheduledTaskChatOption } from "@/features/scheduled/scheduled-task-fields";
 import { buildScheduledTaskReplyPrompt } from "@/features/scheduled/scheduled-task-model";
-import { useBoard } from "@/lib/use-board";
 import { createPageTitleProjectionStore } from "@/lib/page-title-projection-store";
 import { PageTitleProjectionProvider } from "@/lib/page-title-projection-context";
 import { useLibraryNavigationInvalidation } from "@/lib/use-library-navigation";
@@ -337,7 +342,8 @@ import {
   type PanelNewTabActionKind,
 } from "@/lib/workbench-panel-actions";
 import { requestPageTitleFocus } from "@/lib/page-title-focus-intent";
-import { createPageFor, type CreatePageForResult } from "@/lib/workspace-page-create";
+import { createPageFor } from "@/lib/workspace-page-create";
+import { useLibraryCreateCommands } from "../library/library-new-menu";
 import type { PageChatCommands } from "@/lib/use-page-linked-chats";
 import type { PanelDestination } from "./panel-destination-picker-model";
 import { WorkbenchBrowserSidebarPanel } from "./workbench-new-tab-page";
@@ -388,8 +394,7 @@ import {
   type WorkbenchNavigationCommandState,
 } from "../../../shared/window-navigation";
 import {
-  CREATE_PAGE_COMMAND_ID,
-  CREATE_PAGE_EXPANDED_COMMAND_ID,
+  CAPTURE_TO_INBOX_COMMAND_ID,
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
   TOGGLE_FULL_VIEW_COMMAND_ID,
   type WorkbenchCommandInvocation,
@@ -1559,20 +1564,6 @@ export function WorkbenchRuntime({
     sceneCommands.executor,
   );
   const codexAppServerRegistry = useCodexAppServerRegistry();
-  const activeProjectBoard = useBoard({
-    projectId: activeProject?.id ?? activeProjectId ?? "",
-    databaseViewId: activeProject?.defaultDatabaseViewId ?? undefined,
-    enabled: Boolean(activeProject?.id && activeProject.defaultDatabaseViewId),
-    sessionId: activeSession ? `${activeSession.id}:right-panel-actions` : "right-panel-actions",
-  });
-  useProjectPageCreateTarget({
-    appHandle,
-    project: activeProject,
-    board: activeProjectBoard.board,
-    databaseView: activeProjectBoard.databaseView,
-    error: activeProjectBoard.error,
-    clientSessionId: mutationAuditSessionId,
-  });
   const [pageStageHistoryModal, setPageStageHistoryModal] =
     useState<PageStageHistoryModalContext | null>(null);
   const activeSessionPanelModel = useMemo(
@@ -2036,20 +2027,85 @@ export function WorkbenchRuntime({
       { location: { kind: "inbox" } },
     );
   }, [closePendingWorktreeRoute, executeSceneCommand, workbenchWindow]);
-  // Capture where you are: inside a Project the shortcut opens that Project's own Inbox.
-  const captureInbox = useCallback(() => {
-    const home = activeProjectScene?.primary;
-    if (
-      workbenchWindow.location.kind === "project" &&
-      activeProjectScene &&
-      home?.kind === "inbox"
-    ) {
+  /** The Inbox a capture from here lands in, named as the capture shows it. */
+  const resolveInboxCaptureDestination = useCallback((): InboxCaptureDestination => {
+    const scope = resolveInboxCaptureScope(workbenchWindow.location);
+    const project =
+      scope.kind === "project"
+        ? (projects.find((candidate) => candidate.id === scope.projectId) ?? null)
+        : null;
+    return project
+      ? {
+          scope,
+          project: { name: project.name.trim() || "Untitled", appearance: project.appearance },
+        }
+      : { scope: LIBRARY_INBOX, project: null };
+  }, [projects, workbenchWindow.location]);
+  /** Shows a Project's Inbox Home and focuses its composer. */
+  const openProjectInbox = useCallback(
+    (projectId: string) => {
+      closePendingWorktreeRoute();
       setInboxFocusToken((current) => current + 1);
-      void executeSceneCommand(activeProjectScene.owner, { kind: "activate_tab", tabId: home.id });
-      return;
-    }
-    openInbox();
-  }, [activeProjectScene, executeSceneCommand, openInbox, workbenchWindow.location.kind]);
+      const owner = { kind: "project", projectId } as const;
+      const home = workbenchWindow.scenesByOwnerKey[makeWorkbenchSceneKey(owner)]?.primary;
+      if (home?.kind !== "inbox") {
+        workbenchWindow.selectProject(projectId);
+        return;
+      }
+      void executeSceneCommand(
+        owner,
+        { kind: "activate_tab", tabId: home.id },
+        { location: { kind: "project", projectId } },
+      );
+    },
+    [closePendingWorktreeRoute, executeSceneCommand, workbenchWindow],
+  );
+  const openInboxScope = useCallback(
+    (scope: InboxScope) => {
+      if (scope.kind === "project") openProjectInbox(scope.projectId);
+      else openInbox();
+    },
+    [openInbox, openProjectInbox],
+  );
+  // Capture where you are: in a Project or one of its chats, that Project's own Inbox.
+  const captureInbox = useCallback(() => {
+    openInboxScope(resolveInboxCaptureDestination().scope);
+  }, [openInboxScope, resolveInboxCaptureDestination]);
+  const [inboxQuickCapture, setInboxQuickCapture] = useState<InboxQuickCaptureRequest | null>(null);
+  /**
+   * Writes a message to the Inbox where the user is without leaving. When that Inbox's own
+   * composer is already on screen, the capture simply focuses it.
+   */
+  const captureToInbox = useCallback(
+    (source: WorkbenchCommandInvocation["source"]): boolean => {
+      const destination = resolveInboxCaptureDestination();
+      const seed =
+        source === "keyboard_shortcut" ? readCaptureSelection(window.getSelection()) : null;
+      const homeOwner: WorkbenchSceneOwner =
+        destination.scope.kind === "project"
+          ? { kind: "project", projectId: destination.scope.projectId }
+          : INBOX_SCENE_OWNER;
+      const home = workbenchWindow.scenesByOwnerKey[makeWorkbenchSceneKey(homeOwner)]?.primary;
+      const { location } = workbenchWindow;
+      const homeSceneShowing =
+        homeOwner.kind === "project"
+          ? location.kind === "project" && location.projectId === homeOwner.projectId
+          : location.kind === "inbox";
+      const homeShowing =
+        homeSceneShowing &&
+        home?.kind === "inbox" &&
+        readWorkbenchAgentContext(workbenchWindow.owner.read(), homeOwner)?.groups.some(
+          (group) => group.visible && group.selectedTabId === home.id,
+        ) === true;
+      if (homeShowing && seed === null) {
+        setInboxFocusToken((current) => current + 1);
+        return true;
+      }
+      setInboxQuickCapture({ destination, seed });
+      return true;
+    },
+    [resolveInboxCaptureDestination, workbenchWindow],
+  );
   const inboxCounts = useInboxCounts();
   useInboxInvalidation();
   useEffect(() => {
@@ -2192,10 +2248,11 @@ export function WorkbenchRuntime({
     },
     [presentLibraryTarget],
   );
+  const { createPage: createSpacePage } = useLibraryCreateCommands();
   /**
    * Creates an Untitled Page where the owner's work lives and opens it in the owner's panel
-   * group, title first: a Project's Pages join its primary Database, a projectless chat's join
-   * Space, and a chat's Page is linked to it.
+   * group, title first: a Project's Pages join its primary Database, a projectless chat's and
+   * Space's join Space, and a chat's Page is linked to it.
    */
   const openNewPage = useCallback(
     async (
@@ -2206,18 +2263,24 @@ export function WorkbenchRuntime({
         readonly isCurrent?: () => boolean;
       },
     ): Promise<boolean> => {
-      if (owner.kind !== "project" && owner.kind !== "session") return false;
-      let created: CreatePageForResult;
-      try {
-        created = await createPageFor({
-          for:
-            owner.kind === "project"
-              ? { kind: "project", projectId: owner.projectId }
-              : { kind: "session", sessionId: owner.sessionId },
-        });
-      } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Could not create Page");
-        return false;
+      let created: { readonly pageId: string; readonly projectId: string | null };
+      if (owner.kind === "project" || owner.kind === "session") {
+        try {
+          created = await createPageFor({
+            for:
+              owner.kind === "project"
+                ? { kind: "project", projectId: owner.projectId }
+                : { kind: "session", sessionId: owner.sessionId },
+          });
+        } catch (error) {
+          toast.danger(error instanceof Error ? error.message : "Could not create Page");
+          return false;
+        }
+      } else {
+        // Space and the Library Inbox hold Library content, so their Pages enter Space.
+        const target = await createSpacePage();
+        if (target?.kind !== "page") return false;
+        created = { pageId: target.pageId, projectId: null };
       }
       // The Page stays where it was created when the user moved on in the meantime.
       if (placement.isCurrent?.() === false) return false;
@@ -2236,8 +2299,19 @@ export function WorkbenchRuntime({
         },
       );
     },
-    [presentLibraryTarget],
+    [createSpacePage, presentLibraryTarget],
   );
+  /** The palette's New page: the Scene the user is in decides where the Page lives. */
+  const newPageOwner: WorkbenchSceneOwner | null =
+    workbenchWindow.location.kind === "session"
+      ? { kind: "session", sessionId: workbenchWindow.location.sessionId }
+      : workbenchWindow.location.kind === "project"
+        ? { kind: "project", projectId: workbenchWindow.location.projectId }
+        : workbenchWindow.location.kind === "library"
+          ? LIBRARY_SCENE_OWNER
+          : workbenchWindow.location.kind === "inbox"
+            ? INBOX_SCENE_OWNER
+            : null;
 
   useRegisterFileLocationNavigator(presentLibraryTarget);
 
@@ -3516,14 +3590,7 @@ export function WorkbenchRuntime({
 
   const executeWorkbenchCommand = useCallback(
     ({ commandId, source }: WorkbenchCommandInvocation): boolean => {
-      if (commandId === CREATE_PAGE_COMMAND_ID || commandId === CREATE_PAGE_EXPANDED_COMMAND_ID) {
-        return requestPageCreateFromContext(appHandle, {
-          activeProjectId: activeProject?.id ?? activeProjectId,
-          unavailableFeedback: source === "keyboard_shortcut" ? "silent" : "toast",
-          captureSelection: source === "keyboard_shortcut",
-          expanded: commandId === CREATE_PAGE_EXPANDED_COMMAND_ID,
-        });
-      }
+      if (commandId === CAPTURE_TO_INBOX_COMMAND_ID) return captureToInbox(source);
       if (commandId === TOGGLE_BOTTOM_PANEL_COMMAND_ID) {
         toggleActiveBottomPanel();
         return true;
@@ -3534,13 +3601,7 @@ export function WorkbenchRuntime({
       }
       return false;
     },
-    [
-      activeProject?.id,
-      activeProjectId,
-      appHandle,
-      toggleActiveBottomPanel,
-      toggleActiveWorkspaceFullView,
-    ],
+    [captureToInbox, toggleActiveBottomPanel, toggleActiveWorkspaceFullView],
   );
 
   const commandPort = useMemo<WorkbenchCommandPort>(
@@ -3567,7 +3628,7 @@ export function WorkbenchRuntime({
         closeFocusedPanelTab(null, { respectActiveElementGuard: true });
       },
       execute: (commandId, source) => {
-        if (commandId === CREATE_PAGE_COMMAND_ID || commandId === CREATE_PAGE_EXPANDED_COMMAND_ID) {
+        if (commandId === CAPTURE_TO_INBOX_COMMAND_ID) {
           return executeWorkbenchCommand({ commandId, source });
         }
         if (!selectedSessionDetailReady) {
@@ -4118,6 +4179,7 @@ export function WorkbenchRuntime({
       toggleSidebar={toggleSidebarCollapsed}
       toggleSidePanel={toggleActiveSidePanel}
       openInbox={captureInbox}
+      newPage={newPageOwner ? () => void openNewPage(newPageOwner, { panelId: "right" }) : null}
       openAutomations={openAutomations}
       openLibraryFiles={() => {
         const projectId = activeProject?.id ?? activeProjectId;
@@ -5444,6 +5506,14 @@ export function WorkbenchRuntime({
             >
               <ContentSearchSurface />
               {commandPalette}
+              {inboxQuickCapture ? (
+                <InboxQuickCapture
+                  request={inboxQuickCapture}
+                  windowSessionId={windowSessionId}
+                  onClose={() => setInboxQuickCapture(null)}
+                  onOpenInbox={openInboxScope}
+                />
+              ) : null}
               <KeyboardShortcutHelpDialog
                 open={keyboardShortcutHelpOpen}
                 onOpenChange={setKeyboardShortcutHelpOpen}
@@ -5715,9 +5785,6 @@ export function WorkbenchRuntime({
                                 )}
                                 open={pageStageHistoryModal !== null}
                                 onClose={closePageStageHistoryModal}
-                                onPageMutated={() => {
-                                  void activeProjectBoard.refresh();
-                                }}
                               />
                             ) : null,
                           }}
