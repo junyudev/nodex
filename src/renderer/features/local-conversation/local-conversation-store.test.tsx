@@ -8706,13 +8706,37 @@ describe("local-conversation-store", () => {
       await flushAsyncWork();
       invokeRecords = [];
 
-      expect(
-        await manager.respondUserInput(
+      const questionResponse = {
+        operationId: "agent-answer",
+        respondedBy: {
+          kind: "agent" as const,
+          senderThreadId: "answering-thread",
+          senderSessionId: "answering-session",
+        },
+      };
+      const request = {
+        method: "thread-follower-submit-user-input" as const,
+        params: {
+          conversationId: "thread-owner-scope-second",
           requestId,
-          { q1: ["Only the selected conversation"] },
-          "thread-owner-scope-second",
-        ),
-      ).toBe(true);
+          response: { answers: { q1: { answers: ["Only the selected conversation"] } } },
+          questionResponse,
+        },
+      };
+      expect(await manager.handleThreadFollowerRequest(request)).toMatchObject({
+        result: { ok: true },
+      });
+      expect(await manager.handleThreadFollowerRequest(request)).toMatchObject({
+        result: { ok: true },
+      });
+      const response = manager
+        .readConversation("thread-owner-scope-second")
+        ?.turns.flatMap((turn) => turn.items)
+        .find((item) => item.semanticKind === "userInputResponse");
+      expect(response?.respondedBy).toEqual(questionResponse.respondedBy);
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:app-server:respond"),
+      ).toHaveLength(1);
 
       const responseCall = invokeRecords.find(
         (record) => record.channel === "codex:app-server:respond",
@@ -8775,7 +8799,7 @@ describe("local-conversation-store", () => {
 
       expect(result).toEqual({
         method: "thread-follower-submit-user-input",
-        result: { ok: true },
+        result: { ok: false },
       });
       expect(manager.readConversation(threadId)?.resumeState).toBe("resumed");
       expect(invokeRecords.some((record) => record.channel === "codex:app-server:respond")).toBe(

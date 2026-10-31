@@ -523,6 +523,9 @@ function projectTurnParamsUserView(input: {
     status: "completed",
     markdownText,
     questionReplies,
+    ...(input.params.questionResponse
+      ? { respondedBy: input.params.questionResponse.respondedBy }
+      : {}),
     ...(input.goalProjection ? { goal: true } : {}),
     ...(input.opening?.origin ? { userMessageOrigin: input.opening.origin } : {}),
     ...(input.opening?.inputIntent ? { userInputIntent: input.opening.inputIntent } : {}),
@@ -572,6 +575,9 @@ function projectSteeringUserMessage(
       status: "completed",
       markdownText,
       questionReplies,
+      ...(item.restoreMessage.questionResponse
+        ? { respondedBy: item.restoreMessage.questionResponse.respondedBy }
+        : {}),
       steeringStatus: item.status,
       steeringInput: [...item.input],
       steeringCompareKey: JSON.stringify(item.compareKey),

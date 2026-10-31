@@ -1,3 +1,7 @@
+import {
+  isCodexUserInputResponseRetry,
+  type CodexQuestionResponseMetadata,
+} from "../../../shared/codex-question-response";
 import { assertCodexFailedTurnContinuation } from "../../../shared/codex-conversation-state/codex-failed-turn-continuation";
 import type { CodexAsyncQuestionResponseInput } from "../../../shared/codex-async-user-input";
 import { questionDraftStore } from "./question-draft-store";
@@ -3062,7 +3066,7 @@ export class CodexAppServerManager {
       const params =
         request.params as ConversationFollowerParams["thread-follower-submit-user-input"];
       this.assertOwnerForConversation(params.conversationId);
-      await this.respondUserInputAsOwner(
+      const result = await this.respondUserInputAsOwner(
         params.requestId,
         Object.fromEntries(
           Object.entries(params.response.answers).map(([id, answer]) => [
@@ -3071,8 +3075,9 @@ export class CodexAppServerManager {
           ]),
         ),
         params.conversationId,
+        params.questionResponse,
       );
-      return { method: request.method, result: { ok: true } };
+      return { method: request.method, result: { ok: result.accepted } };
     }
     if (request.method === "thread-follower-submit-mcp-server-elicitation-response") {
       const params =
@@ -7843,7 +7848,18 @@ export class CodexAppServerManager {
     requestId: CodexProtocolRequestId,
     answers: Record<string, string[]>,
     requestedConversationId?: string | null,
+    questionResponse?: CodexQuestionResponseMetadata,
   ): Promise<OwnerServerRequestReplyResult> {
+    const retryState = requestedConversationId
+      ? this.historyClient.getConversation(requestedConversationId)
+      : null;
+    if (
+      retryState &&
+      isCodexUserInputResponseRetry(retryState, requestId, answers, questionResponse)
+    ) {
+      this.assertOwnerForConversation(requestedConversationId!);
+      return { accepted: true };
+    }
     const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
     if (!conversationId) return { accepted: false };
     const response = {
@@ -7871,7 +7887,10 @@ export class CodexAppServerManager {
       response,
     };
     return this.commitNativeUserResponse(conversationId, native, (draft) =>
-      mutateCodexConversationUserInputResponse(draft, requestId, answers, { now: Date.now }),
+      mutateCodexConversationUserInputResponse(draft, requestId, answers, {
+        now: Date.now,
+        questionResponse,
+      }),
     );
   }
 

@@ -1,3 +1,7 @@
+import type {
+  CodexQuestionResponseMetadata,
+  CodexQuestionResponder,
+} from "./codex-question-response";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import {
   codexAsyncQuestionId,
@@ -29,6 +33,9 @@ export interface CodexAsyncQuestion {
 export interface CodexAsyncQuestionResponseInput {
   readonly threadId: string;
   readonly submissionId: string;
+  /** Session tools fence the already-loaded execution instead of acquiring one. */
+  readonly expectedExecution?: { readonly hostId: string; readonly generation: number };
+  readonly questionResponse?: CodexQuestionResponseMetadata;
   readonly sourceTurnIds: readonly string[];
   readonly replies: readonly CodexAsyncQuestionReply[];
   readonly collaborationMode?: CodexCollaborationModeKind | null;
@@ -114,6 +121,12 @@ export function readCodexAsyncQuestionReplies(
 export function collectCodexAsyncQuestionAnswers(
   items: readonly CodexCanonicalItem[],
 ): Map<string, string> {
+  return new Map(
+    [...collectCodexAsyncQuestionAnswerItems(items)].map(([id, record]) => [id, record.answer]),
+  );
+}
+
+function collectCodexAsyncQuestionAnswerItems(items: readonly CodexCanonicalItem[]) {
   const questionPositions = new Map(
     items.flatMap((item, index) =>
       expandCodexAsyncQuestions(item).map((question) => [question.id, index] as const),
@@ -131,7 +144,7 @@ export function collectCodexAsyncQuestionAnswers(
       ? [{ item, index, text, replies }]
       : [];
   });
-  const answers = new Map<string, { answer: string; index: number }>();
+  const answers = new Map<string, { answer: string; index: number; item: CodexCanonicalItem }>();
   for (const candidate of candidates) {
     const { item, index, replies, text } = candidate;
     if (item.type === "steeringUserMessage" && item.status !== "accepted") continue;
@@ -155,10 +168,10 @@ export function collectCodexAsyncQuestionAnswers(
         origin <= (answers.get(reply.questionItemId)?.index ?? -1)
       )
         continue;
-      answers.set(reply.questionItemId, { answer: reply.answer, index: origin });
+      answers.set(reply.questionItemId, { answer: reply.answer, index: origin, item });
     }
   }
-  return new Map([...answers].map(([id, { answer }]) => [id, answer]));
+  return answers;
 }
 
 export function formatCodexAsyncQuestionReplies(
@@ -167,4 +180,68 @@ export function formatCodexAsyncQuestionReplies(
   return replies
     .map((reply) => `**${projectCodexMarkdownToPlainText(reply.question)}**\n${reply.answer}`)
     .join("\n\n");
+}
+
+export interface CodexAsyncQuestionAnswerRecord {
+  readonly answer: string;
+  readonly submissionId: string | null;
+  readonly respondedBy?: CodexQuestionResponder;
+  readonly operationId?: string;
+}
+
+/** Accepted messages remain answer authority; local provenance follows their submission identity. */
+export function collectCodexAsyncQuestionAnswerRecords(
+  turns: readonly CodexCanonicalTurnState[],
+): Map<string, CodexAsyncQuestionAnswerRecord> {
+  const entries = turns.flatMap((turn) => {
+    const submissionId = turn.params.clientUserMessageId;
+    const opening =
+      turn.turnId !== null && submissionId
+        ? [
+            {
+              item: {
+                type: "userMessage" as const,
+                id: `question-reply:${submissionId}`,
+                clientId: submissionId,
+                content: [...turn.params.input],
+              },
+              questionResponse: turn.params.questionResponse,
+            },
+          ]
+        : [];
+    return [
+      ...opening,
+      ...turn.items.map((item) => ({
+        item,
+        questionResponse:
+          item.type === "steeringUserMessage"
+            ? item.restoreMessage.questionResponse
+            : item.type === "userMessage" && item.clientId === submissionId
+              ? turn.params.questionResponse
+              : undefined,
+      })),
+    ];
+  });
+  const answers = collectCodexAsyncQuestionAnswerItems(entries.map(({ item }) => item));
+  return new Map(
+    [...answers].map(([id, { answer, item }]) => {
+      const entry = entries.find((entry) => entry.item === item);
+      const submissionId =
+        item?.type === "userMessage"
+          ? item.clientId
+          : item?.type === "steeringUserMessage"
+            ? item.clientUserMessageId
+            : null;
+      const questionResponse =
+        entry?.questionResponse ??
+        entries.findLast(
+          (candidate) =>
+            candidate.item.type === "steeringUserMessage" &&
+            candidate.item.status === "accepted" &&
+            (candidate.item.clientUserMessageId === submissionId ||
+              (item?.id && candidate.item.serverUserMessageId === item.id)),
+        )?.questionResponse;
+      return [id, { answer, submissionId, ...(questionResponse ?? {}) }];
+    }),
+  );
 }

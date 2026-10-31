@@ -22,6 +22,8 @@ import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { createHostedAppToolCaller } from "./AppToolCaller";
 import { make } from "./RuntimeSessionCommands";
+import { nativeQuestionTestLayers } from "./native-question-test-layers";
+import { nativeQuestionFixture } from "./native-question-test-fixture";
 const intakeServices = Layer.mergeAll(
   Layer.succeed(ProjectWorkspace, {
     getProjectSession: () =>
@@ -83,6 +85,7 @@ const fixture = (
     native?: boolean;
     restricted?: boolean;
     targetDefault?: boolean;
+    nativeQuestions?: typeof nativeQuestionTestLayers;
   } = {},
 ) => {
   const frozen = authority;
@@ -117,6 +120,7 @@ const fixture = (
     });
   const caller = makeCaller();
   const execute = make.pipe(
+    Effect.provide(options.nativeQuestions ?? nativeQuestionTestLayers),
     Effect.provide(intakeServices),
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
     Effect.provideService(CoreModules, {
@@ -407,6 +411,7 @@ it.effect(
         isActive: () => active,
       };
       const execute = yield* make.pipe(
+        Effect.provide(nativeQuestionTestLayers),
         Effect.provideService(CodexThreadDirectory, {
           resolve: () =>
             Effect.succeed({
@@ -719,7 +724,7 @@ for (const action of ["list", "read", "respond"] as const) {
     [{ archived: true }, "not_found"],
     [{ restricted: true }, "forbidden"],
     [{ targetDefault: true }, "forbidden"],
-    [{ native: true }, "unsupported"],
+    [{ native: true }, "unavailable"],
   ] as const) {
     it.effect(`checks ${JSON.stringify(options)} admission for session_question ${action}`, () =>
       Effect.gen(function* () {
@@ -747,6 +752,74 @@ for (const action of ["list", "read", "respond"] as const) {
     );
   }
 }
+
+it.effect.each(["live", "async"] as const)(
+  "lists, reads and answers a native %s question through session_question",
+  (kind) =>
+    Effect.gen(function* () {
+      const native = nativeQuestionFixture();
+      const f = fixture({ native: true, nativeQuestions: native.services });
+      const execute = yield* f.execute;
+      const requestId = kind === "live" ? native.syncId : `native:async:${native.asyncQuestionId}`;
+      const questionId = kind === "live" ? "scope" : native.asyncQuestionId;
+      const idempotencyKey = `native-question-${kind}`;
+      const invoke = (action: "list" | "read" | "respond") =>
+        execute({
+          caller: f.caller,
+          name: "session_question",
+          arguments: {
+            action,
+            sessionId: "other",
+            ...(action === "list" ? {} : { requestId }),
+            ...(action === "respond"
+              ? { answers: { [questionId]: "Project" }, idempotencyKey }
+              : {}),
+          },
+        });
+      assert.deepEqual((yield* invoke("list")).structuredContent, {
+        requestIds: [native.syncId, `native:async:${native.asyncQuestionId}`],
+      });
+      const read = yield* invoke("read");
+      assert.isFalse(read.isError ?? false);
+      assert.deepInclude(read.structuredContent, { requestId });
+      const answered = yield* invoke("respond");
+      const operationId = answered.structuredContent?.operationId;
+      if (typeof operationId !== "string") throw new Error("Missing admitted operation identity");
+      assert.deepEqual(answered.structuredContent, {
+        requestId,
+        status: "answered",
+        operationId,
+      });
+      assert.deepEqual((yield* invoke("respond")).structuredContent, answered.structuredContent);
+      assert.deepEqual((yield* invoke("list")).structuredContent, {
+        requestIds: [kind === "live" ? `native:async:${native.asyncQuestionId}` : native.syncId],
+      });
+      assert.deepEqual((yield* invoke("read")).structuredContent, {
+        error: { code: "not_pending" },
+      });
+      const respondedBy = {
+        kind: "agent" as const,
+        senderThreadId: "child",
+        senderSessionId: "session:root",
+      };
+      assert.equal(native.syncCalls.length, kind === "live" ? 1 : 0);
+      assert.equal(native.asyncCalls.length, kind === "async" ? 1 : 0);
+      if (kind === "live") {
+        assert.deepEqual(native.syncCalls[0], {
+          threadId: "native-root",
+          requestId: "live",
+          answers: { scope: ["Project"] },
+          questionResponse: { respondedBy, operationId },
+        });
+      } else {
+        assert.deepEqual(native.asyncCalls[0]?.sourceTurnIds, ["source"]);
+        assert.deepEqual(native.answerRecords().get(questionId)?.respondedBy, respondedBy);
+      }
+      assert.isFalse(
+        f.calls.some(({ name }) => ["respond", "launch", "sendMessage"].includes(name)),
+      );
+    }),
+);
 
 it.effect("withdrawn Session question calls cannot inspect or answer their target", () =>
   Effect.gen(function* () {

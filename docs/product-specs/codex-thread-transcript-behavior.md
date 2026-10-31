@@ -214,6 +214,12 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 
 - Question shortcuts defer to active editors, dialogs and suggestion lists. Escape dismisses an accessible popup before the question; hidden or inert background popups do not intercept the question's shortcuts.
 
+### Answers from other Sessions
+
+- Agents can list, read and answer pending native questions through `session_question`. Native targets address the Session root without an execution selector. Questions are available only while that native conversation is loaded and its execution owner is available; observing questions never resumes the conversation or changes its execution backend.
+- Live questionnaires and unanswered asynchronous questions share this interface. Each live questionnaire has one request identity; each asynchronous question has its own stable source-message identity, so answering one leaves its siblings pending. Approvals, permission requests, MCP elicitation and private setup or option pickers are excluded.
+- Native answers use the current local or remote execution owner. Repeating the same answer operation retains its submission identity and does not deliver another answer. Answered questions stop appearing as pending. Canonical answers retain the answering Agent's Thread and Session identity; an answer without Agent attribution is a user response. Attribution stays in Nodex conversation data and never changes the native response payload.
+
 ### Asynchronous questions
 
 - An Agent can ask optional questions while continuing its current Turn. A live asynchronous assistant message opens a separate question panel above the ordinary Composer. In chats run by Agent execution, the question belongs to the Agent's request under [Agent Runtime Behavior](agent-runtime-behavior.md). In native conversations it belongs to its source message and Turn; ending that Turn does not end its answerability. Both choices and freeform questions are supported; a missing structured list falls back to one freeform question using the message text. These messages never create a blocking server request or mark the Agent's output as a final answer.

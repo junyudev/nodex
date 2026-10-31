@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { make as makeRuntime } from "./RuntimeSessionQuestions";
-import { make as makeNative } from "./UnsupportedSessionQuestions";
+import { makeNativeSessionQuestions as makeNative } from "./NativeSessionQuestions";
 import { make as makeMessageIntake } from "./SessionMessageIntake";
 import { sessionMessageCeilingError, type SessionMessageFacts } from "./session-message-policy";
 import {

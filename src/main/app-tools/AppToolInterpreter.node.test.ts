@@ -38,6 +38,7 @@ import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import { WorkbenchObservation } from "./WorkbenchObservation";
 import { WorkbenchContentRouting } from "./WorkbenchContentRouting";
 import { createHostedAppToolCaller } from "./AppToolCaller";
+import { nativeQuestionTestLayers } from "./native-question-test-layers";
 
 const input: AppToolInvocation = {
   name: "get_session_context",
@@ -55,6 +56,7 @@ const input: AppToolInvocation = {
 const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) =>
   make
     .pipe(
+      Effect.provide(nativeQuestionTestLayers),
       Effect.provideService(NodexAgentApplication, {} as never),
       Effect.provideService(TerminalSessions, {} as never),
       Effect.provideService(CodexAccount, {} as never),

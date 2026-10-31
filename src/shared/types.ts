@@ -2837,6 +2837,8 @@ export interface CodexSteerTurnInput {
   expectedTurnId?: string;
   /** Optional answers may originate in older completed Turns of this same Thread. */
   questionSourceTurnIds?: readonly string[];
+  expectedExecution?: { readonly hostId: string; readonly generation: number };
+  questionResponse?: import("./codex-question-response").CodexQuestionResponseMetadata;
   prompt: string;
   promptInput?: CodexPromptInput;
   collaborationMode?: CodexCollaborationModeKind | null;
@@ -3395,7 +3397,8 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   questionReplies?: import("./codex-async-user-input").CodexAsyncQuestionReply[];
   userInputQuestions?: CodexUserInputQuestion[];
   userInputAnswers?: Record<string, string[]>;
-  respondedBy?: import("./codex-conversation-state/codex-conversation-state").CodexQuestionResponder;
+  /** The Agent conversation that answered this question or question reply. */
+  respondedBy?: import("./codex-question-response").CodexQuestionResponder;
   rawItem?: unknown;
   createdAt: number;
   updatedAt: number;
@@ -3460,7 +3463,8 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   questionReplies?: import("./codex-async-user-input").CodexAsyncQuestionReply[];
   userInputQuestions?: CodexUserInputQuestion[];
   userInputAnswers?: Record<string, string[]>;
-  respondedBy?: import("./codex-conversation-state/codex-conversation-state").CodexQuestionResponder;
+  /** The Agent conversation that answered this question or question reply. */
+  respondedBy?: import("./codex-question-response").CodexQuestionResponder;
   rawItem?: unknown;
   createdAt: number;
   updatedAt: number;

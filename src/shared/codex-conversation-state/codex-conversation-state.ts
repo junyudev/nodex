@@ -1,3 +1,7 @@
+import type {
+  CodexQuestionResponder,
+  CodexQuestionResponseMetadata,
+} from "../codex-question-response";
 import { produce, type Draft } from "immer";
 import { mergeCodexItemCompletionEvidence } from "./codex-item-completion";
 import {
@@ -192,6 +196,8 @@ export interface CodexCanonicalUserInputQuestion extends Readonly<
   readonly isOther?: ToolRequestUserInputQuestion["isOther"];
   readonly isSecret?: ToolRequestUserInputQuestion["isSecret"];
   readonly multiSelect?: boolean;
+  readonly required?: boolean;
+  readonly initialAnswer?: string;
 }
 
 export type CodexCanonicalUserInputAnswers = Readonly<Record<string, readonly string[]>>;
@@ -304,13 +310,6 @@ export type CodexCanonicalMcpElicitation =
       readonly schema: McpElicitationSchema;
     });
 
-/** The answering conversation, when an Agent supplies a question response. */
-export interface CodexQuestionResponder {
-  readonly kind: "agent";
-  readonly senderThreadId: string;
-  readonly senderSessionId?: string | null;
-}
-
 /** Request-caused state rows are explicit local variants, never fake ThreadItem. */
 export type CodexCanonicalRequestSyntheticItem =
   | {
@@ -321,6 +320,7 @@ export type CodexCanonicalRequestSyntheticItem =
       readonly questions: readonly CodexCanonicalUserInputQuestion[];
       readonly answers: CodexCanonicalUserInputAnswers;
       readonly respondedBy?: CodexQuestionResponder;
+      readonly responseOperationId?: string;
       readonly questionAnswer?: NonNullable<
         Extract<
           import("@nodex/agent-runtime/contracts").AgentTurnItem,
@@ -355,6 +355,7 @@ export interface CodexCanonicalSteeringCompareKey {
 }
 
 export interface CodexCanonicalSteeringRestoreMessage {
+  readonly questionResponse?: CodexQuestionResponseMetadata;
   readonly id?: string;
   readonly cwd?: string | null;
   readonly responsesapiClientMetadata?: TurnStartParams["responsesapiClientMetadata"];
@@ -876,17 +877,19 @@ export type CodexCanonicalLiveTurnParams<
   TAttachment = unknown,
   TCommentAttachment = unknown,
 > = CodexCanonicalTurnParamsBase<TAttachment, TCommentAttachment> & {
+  readonly questionResponse?: CodexQuestionResponseMetadata;
   readonly permissions: string | null;
   readonly sandboxPolicy: NonNullable<TurnStartParams["sandboxPolicy"]>;
   readonly runtimeWorkspaceRoots: NonNullable<TurnStartParams["runtimeWorkspaceRoots"]> | null;
 };
 
-export type CodexCanonicalTurnParams<TAttachment = unknown, TCommentAttachment = unknown> =
+export type CodexCanonicalTurnParams<TAttachment = unknown, TCommentAttachment = unknown> = (
   | CodexCanonicalHydratedProfileTurnParams<TAttachment, TCommentAttachment>
   | CodexCanonicalHydratedSandboxTurnParams<TAttachment, TCommentAttachment>
   | CodexCanonicalResumedProfileTurnParams<TAttachment, TCommentAttachment>
   | CodexCanonicalLiveTurnParams<TAttachment, TCommentAttachment>
-  | CodexCanonicalSyntheticTurnParams;
+  | CodexCanonicalSyntheticTurnParams
+) & { readonly questionResponse?: CodexQuestionResponseMetadata };
 
 /** Exact `C6e` wrapper: repeated hook IDs receive a stable local run key. */
 export interface CodexCanonicalHookRun {
@@ -1522,10 +1525,21 @@ function mergeCodexCanonicalTurnParams(
     hasCodexHeartbeatAutomationInput(incoming.input) ||
     !hasCodexHeartbeatAutomationInput(existing.input)
   ) {
-    return incoming;
+    return existing.questionResponse &&
+      !incoming.questionResponse &&
+      (incoming.clientUserMessageId != null
+        ? incoming.clientUserMessageId === existing.clientUserMessageId
+        : areStructurallyEqual(existing.input, incoming.input))
+      ? {
+          ...incoming,
+          clientUserMessageId: incoming.clientUserMessageId ?? existing.clientUserMessageId,
+          questionResponse: existing.questionResponse,
+        }
+      : incoming;
   }
   return {
     ...incoming,
+    questionResponse: incoming.questionResponse ?? existing.questionResponse,
     input: existing.input,
   } as CodexCanonicalTurnParams;
 }

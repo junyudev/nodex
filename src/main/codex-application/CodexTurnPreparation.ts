@@ -132,6 +132,7 @@ export interface CodexTurnStartPreparationInput {
   readonly threadId: string;
   readonly prompt: string;
   readonly overrides?: {
+    readonly questionResponse?: import("../../shared/codex-question-response").CodexQuestionResponseMetadata;
     readonly presentationClaim?: CodexTurnPresentationClaim;
     readonly clientUserMessageId?: string;
     readonly preparedPrompt?: CodexPreparedPrompt;
@@ -619,6 +620,8 @@ export const make: Effect.Effect<
       const canonicalParams: CodexTurnStartPlan["canonicalParams"] = canonicalRequired
         ? {
             threadId: input.threadId,
+            questionResponse:
+              input.originalContext?.questionResponse ?? input.overrides?.questionResponse,
             clientUserMessageId,
             input: prepared.inputItems,
             additionalContext,
@@ -772,6 +775,7 @@ export const make: Effect.Effect<
           ...prepared.addedFiles,
         ]),
         restoreMessage: {
+          questionResponse: input.command.questionResponse,
           queueRow: input.recoveryRow,
           context: { commentAttachments: [...prepared.commentAttachments] },
         },

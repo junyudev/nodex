@@ -347,8 +347,23 @@ export const install = Effect.gen(function* () {
               value ? [[key, value.answers]] : [],
             ),
           );
-          yield* responses.userInput({ threadId, requestId: id, answers });
-          return { ok: true };
+          const { questionResponse } = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({
+              questionResponse: Schema.optionalKey(
+                Schema.Struct({
+                  operationId: Schema.String,
+                  respondedBy: Schema.Struct({
+                    kind: Schema.Literal("agent"),
+                    senderThreadId: Schema.String,
+                    senderSessionId: Schema.NullOr(Schema.String),
+                  }),
+                }),
+              ),
+            }),
+          )(params);
+          return {
+            ok: yield* responses.userInput({ threadId, requestId: id, answers, questionResponse }),
+          };
         }
         default:
           return yield* new MainConversationManagerError({

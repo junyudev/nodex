@@ -160,6 +160,7 @@ const makeHarness = (input: {
   readonly awaitSettings?: Effect.Effect<void>;
   readonly failAcceptedProjection?: boolean;
   readonly initialState?: CodexCanonicalConversationState;
+  readonly loadedQuestionExecution?: boolean;
   readonly preparedPlan?: CodexTurnStartPlan;
   readonly inject?: Effect.Effect<unknown, ReturnType<typeof missingThread>>;
   readonly readPassiveContext?: CodexVisualizationState["Service"]["readPassiveContext"];
@@ -389,6 +390,7 @@ const makeHarness = (input: {
     const conversations = Context.get(conversationsContext, ConversationEntityMap);
     const aggregate = conversations.entity("thread-a");
     if (input.initialState) aggregate.acceptCanonicalState(input.initialState);
+    if (input.loadedQuestionExecution) aggregate.setResumeState("resumed");
     aggregate.installQueuedFollowUpProjection({
       status: "ready",
       ledgerRevision: 1,
@@ -437,6 +439,14 @@ const makeHarness = (input: {
       | Parameters<CodexMainConversationManagers["Service"]["registerFollowerHandler"]>[0]
       | undefined;
     const managers = {
+      current: () =>
+        input.loadedQuestionExecution
+          ? {
+              generation,
+              assertCurrent,
+              stream: { getRole: () => (!hasRole ? null : ownsState ? ownerRole : followerRole) },
+            }
+          : null,
       registerFollowerHandler: (
         handler: Parameters<CodexMainConversationManagers["Service"]["registerFollowerHandler"]>[0],
       ) => {
@@ -1367,18 +1377,37 @@ it.effect.each(["completed", "interrupted"] as const)(
   (status) =>
     Effect.gen(function* () {
       const fixture = terminalQuestionFixture(status);
+      const input = {
+        ...fixture.input,
+        expectedExecution: { hostId: OWNER_HOST, generation: 1 },
+        questionResponse: {
+          operationId: "answer-operation",
+          respondedBy: {
+            kind: "agent" as const,
+            senderThreadId: "answering-thread",
+            senderSessionId: null,
+          },
+        },
+      };
       const harness = yield* makeHarness({
         initialState: fixture.initialState,
+        loadedQuestionExecution: true,
         preparedPlan: fixture.preparedPlan,
         request: () => Effect.succeed(response()),
       });
-      assert.deepEqual(yield* harness.commands.respondAsyncQuestions(fixture.input), {
+      assert.deepEqual(yield* harness.commands.respondAsyncQuestions(input), {
         turnId: "turn-accepted",
       });
-      assert.deepEqual(yield* harness.commands.respondAsyncQuestions(fixture.input), {
+      assert.deepEqual(yield* harness.commands.respondAsyncQuestions(input), {
         turnId: "turn-accepted",
       });
       assert.strictEqual(harness.requests(), 1);
+      assert.strictEqual(harness.events.filter((event) => event === "ensure").length, 0);
+      assert.deepEqual(
+        harness.preparationInputs[0]?.originalContext?.questionResponse ??
+          harness.preparationInputs[0]?.overrides?.questionResponse,
+        input.questionResponse,
+      );
       const changed = yield* harness.commands
         .respondAsyncQuestions({
           ...fixture.input,
@@ -3727,3 +3756,24 @@ for (const explicit of [false, true])
         yield* Scope.close(harness.scope, Exit.void);
       }),
   );
+
+it.effect("does not resume an unavailable native question execution", () =>
+  Effect.gen(function* () {
+    const fixture = terminalQuestionFixture("completed");
+    const harness = yield* makeHarness({
+      initialState: fixture.initialState,
+      preparedPlan: fixture.preparedPlan,
+      request: () => Effect.die("Unavailable questions cannot dispatch"),
+    });
+    const result = yield* harness.commands
+      .respondAsyncQuestions({
+        ...fixture.input,
+        expectedExecution: { hostId: OWNER_HOST, generation: 1 },
+      })
+      .pipe(Effect.result);
+    assert.strictEqual(result._tag, "Failure");
+    assert.strictEqual(harness.events.filter((event) => event === "ensure").length, 0);
+    assert.strictEqual(harness.requests(), 0);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);

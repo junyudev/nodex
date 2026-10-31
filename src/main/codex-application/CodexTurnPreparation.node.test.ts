@@ -127,9 +127,20 @@ it.effect(
       const input = command(prompt, "current-turn");
       const prepared = yield* preparation.steer({
         ...input,
-        command: { ...input.command, questionSourceTurnIds: ["old-question-turn"] },
+        command: {
+          ...input.command,
+          questionSourceTurnIds: ["old-question-turn"],
+          questionResponse: {
+            operationId: "question-operation",
+            respondedBy: { kind: "agent", senderThreadId: "sender", senderSessionId: null },
+          },
+        },
       });
       assert.strictEqual(prepared.clientUserMessageId, "client-message");
+      assert.deepEqual(prepared.restoreMessage.questionResponse, {
+        operationId: "question-operation",
+        respondedBy: { kind: "agent", senderThreadId: "sender", senderSessionId: null },
+      });
       assert.strictEqual(prepared.input[0]?.type, "text");
     }),
 );

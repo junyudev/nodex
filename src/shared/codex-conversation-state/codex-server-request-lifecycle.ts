@@ -1,3 +1,4 @@
+import type { CodexQuestionResponseMetadata } from "../codex-question-response";
 import { current, produce, type Draft } from "immer";
 import {
   residentConversationTurns,
@@ -69,6 +70,7 @@ type UserInputRequest = Extract<
 >;
 export interface CodexServerRequestLifecycleContext {
   readonly now: () => number;
+  readonly questionResponse?: CodexQuestionResponseMetadata;
   readonly isOpenAIFormElicitationsEnabled?: boolean;
 }
 
@@ -885,6 +887,7 @@ function buildUserInputSynthetic(
     requestId,
     turnId: params.turnId,
     questions: params.questions.map((question) => ({
+      ...question,
       id: question.id,
       header: question.header,
       question: question.question,
@@ -1454,7 +1457,20 @@ export function reduceCodexServerRequestUserInputResponseRawState(
   const upserted = upsertRawRequestSynthetic(
     state,
     request.params.turnId,
-    buildUserInputSynthetic(request.id, request.params, true, normalizeUserInputAnswers(answers)),
+    {
+      ...buildUserInputSynthetic(
+        request.id,
+        request.params,
+        true,
+        normalizeUserInputAnswers(answers),
+      ),
+      ...(context.questionResponse
+        ? {
+            respondedBy: context.questionResponse.respondedBy,
+            responseOperationId: context.questionResponse.operationId,
+          }
+        : {}),
+    },
     context,
   );
   return selectedRawReplyResult(

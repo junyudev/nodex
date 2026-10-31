@@ -1,3 +1,7 @@
+import {
+  isCodexUserInputResponseRetry,
+  type CodexQuestionResponseMetadata,
+} from "../../shared/codex-question-response";
 import type { CodexNativeUserResponseInput } from "../../shared/codex-native-server-response";
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import type { DynamicToolCallResponse } from "@nodex/codex-app-server-protocol/v2/DynamicToolCallResponse";
@@ -53,6 +57,7 @@ export class CodexServerRequestResponseProjectionError extends Data.TaggedError(
 }> {}
 
 export interface CodexUserInputResponseInput {
+  readonly questionResponse?: CodexQuestionResponseMetadata;
   readonly threadId: string;
   readonly requestId: RequestId;
   readonly answers: Readonly<Record<string, readonly string[]>>;
@@ -316,7 +321,7 @@ export const make: Effect.Effect<
         before,
         input.requestId,
         normalized.transcript,
-        { now: () => observedAtMs },
+        { now: () => observedAtMs, questionResponse: input.questionResponse },
       );
       return lifecycle.selectedRequests.length === 0
         ? null
@@ -381,7 +386,23 @@ export const make: Effect.Effect<
       }),
     );
   const userInput: CodexServerRequestResponsesService["userInput"] = (input) =>
-    runSerial(input.threadId, userInputInTransaction(input));
+    runSerial(
+      input.threadId,
+      Effect.suspend(() => {
+        const state = aggregate(input.threadId)?.readCanonicalState();
+        if (
+          state &&
+          isCodexUserInputResponseRetry(
+            state,
+            input.requestId,
+            input.answers,
+            input.questionResponse,
+          )
+        )
+          return Effect.succeed(true);
+        return userInputInTransaction(input);
+      }),
+    );
 
   const mcpElicitationInTransaction = (
     input: CodexMcpElicitationResponseInput,

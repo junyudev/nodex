@@ -282,6 +282,9 @@ Session's conversation. `execution.threadId` selects a Runtime child within that
 omitting it selects the root conversation. Both caller backends have the tool. Every action
 uses current execution authority and the same Profile-wide target access, runtime ceiling
 and Plan permissions as Session messaging. It never opens, resumes or adopts a Native Session.
+Loaded Native Codex conversations expose live questionnaires and asynchronous questions on
+local and remote hosts. A follower routes a live answer to the current conversation owner;
+an asynchronous answer keeps its source question, Turn and answering conversation.
 
 The input is `{ action: "list" | "read" | "respond", sessionId, execution?, requestId?,
 answers?, idempotencyKey? }`. Read requires `requestId`; respond requires both `requestId` and
@@ -296,8 +299,8 @@ The Agent answers only when the user's instructions decide the answer; otherwise
 the user. Answers identify the answering conversation. A fresh response to a resolved or
 otherwise nonpending question fails. Reusing an idempotencyKey and identical arguments
 replays the accepted answer without another delivery; changed retry arguments are refused.
-Unavailable Native question delivery returns `unsupported`. Other typed failures are
-`not_found`, `not_pending`, `forbidden` and `unavailable`.
+Unavailable Native question delivery returns `unavailable`. Other typed failures are
+`not_found`, `not_pending`, `unsupported` and `forbidden`.
 
 Attachments refer to Library Files (optionally pinned to a version or Page) or visible Session
 attachments. Their resource owners authorize and materialize them before intake; caller-supplied

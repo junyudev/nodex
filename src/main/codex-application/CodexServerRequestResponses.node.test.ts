@@ -300,6 +300,14 @@ it.effect("commits one semantic response and releases duplicate physical occurre
           threadId,
           requestId,
           answers: { answer: ["Continue"] },
+          questionResponse: {
+            operationId: "answer-operation",
+            respondedBy: {
+              kind: "agent",
+              senderThreadId: "sender-thread",
+              senderSessionId: "sender-session",
+            },
+          },
         }),
       );
       yield* Effect.yieldNow;
@@ -314,6 +322,31 @@ it.effect("commits one semantic response and releases duplicate physical occurre
           { occurrenceToken: 2, response: CodexAppServerNoResponse },
         ],
       );
+      const answer = aggregate
+        .readCanonicalState()
+        ?.turns.flatMap((turn) => turn.items)
+        .find((item) => item.type === "userInputResponse");
+      assert.deepEqual(answer?.type === "userInputResponse" ? answer.respondedBy : null, {
+        kind: "agent",
+        senderThreadId: "sender-thread",
+        senderSessionId: "sender-session",
+      });
+      assert.isTrue(
+        yield* harness.responses.userInput({
+          threadId,
+          requestId,
+          answers: { answer: ["Continue"] },
+          questionResponse: {
+            operationId: "answer-operation",
+            respondedBy: {
+              kind: "agent",
+              senderThreadId: "sender-thread",
+              senderSessionId: "sender-session",
+            },
+          },
+        }),
+      );
+      assert.strictEqual(harness.completions.length, 2);
       assert.strictEqual(aggregate.readServerRequests().length, 0);
       assert.deepEqual(harness.emitted, [
         {

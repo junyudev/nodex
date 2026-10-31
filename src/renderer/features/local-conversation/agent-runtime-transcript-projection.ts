@@ -15,8 +15,8 @@ import type {
 import type {
   CodexCanonicalFileUpdateChange,
   CodexCanonicalHookRun,
-  CodexQuestionResponder,
 } from "../../../shared/codex-conversation-state/codex-conversation-state";
+import type { CodexQuestionResponder } from "../../../shared/codex-question-response";
 import type {
   CodexCanonicalItem,
   CodexConversationServerRequest,

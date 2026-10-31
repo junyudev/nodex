@@ -1,3 +1,4 @@
+import type { CodexQuestionResponseMetadata } from "./codex-question-response";
 import type { McpServerElicitationRequestResponse } from "@nodex/codex-app-server-protocol/v2/McpServerElicitationRequestResponse";
 import type { ToolRequestUserInputResponse } from "@nodex/codex-app-server-protocol/v2/ToolRequestUserInputResponse";
 import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2/TurnStartParams";
@@ -14,6 +15,7 @@ export interface ConversationFollowerTurnStart {
   /** Revalidated by the owner immediately before admitting the new turn. */
   expectedFailedTurnId?: string;
   context?: {
+    questionResponse?: CodexQuestionResponseMetadata;
     localTurnMetadata?: unknown;
     attachments?: unknown;
     commentAttachments?: unknown;
@@ -37,7 +39,10 @@ export interface ConversationFollowerParams extends CodexQueuedMessageFollowerPa
   "thread-follower-submit-mcp-server-elicitation-response": Request & {
     response: McpServerElicitationRequestResponse;
   };
-  "thread-follower-submit-user-input": Request & { response: ToolRequestUserInputResponse };
+  "thread-follower-submit-user-input": Request & {
+    response: ToolRequestUserInputResponse;
+    questionResponse?: CodexQuestionResponseMetadata;
+  };
   "thread-follower-compact-thread": Conversation;
   "thread-follower-edit-last-user-turn": Conversation &
     Omit<CanonicalEditOptions, "additionalContext"> & {

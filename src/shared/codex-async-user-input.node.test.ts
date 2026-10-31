@@ -178,3 +178,75 @@ describe("asynchronous user input contract", () => {
     expect(views[0]?.rawItem).toMatchObject({ content: [{ type: "text", text }] });
   });
 });
+
+test("keeps accepted answer attribution through echoes and history hydration", async () => {
+  const { conversationFixture, turnFixture } =
+    await import("../main/codex-application/conversation-test-fixture");
+  const { collectCodexAsyncQuestionAnswerRecords } = await import("./codex-async-user-input");
+  const { mergeCodexCanonicalTurnState } =
+    await import("./codex-conversation-state/codex-conversation-state");
+  const state = conversationFixture("thread", [turnFixture("source"), turnFixture("reply")]);
+  const source = { ...state.turns[0]!, items: [question] };
+  const questionId = expandCodexAsyncQuestions(question)[0]!.id;
+  const input = [
+    {
+      type: "text" as const,
+      text: encodeCodexAsyncQuestionReplies([
+        { questionItemId: questionId, question: "Where?", answer: "There" },
+      ]),
+      text_elements: [],
+    },
+  ];
+  const questionResponse = {
+    operationId: "operation",
+    respondedBy: { kind: "agent" as const, senderThreadId: "sender", senderSessionId: null },
+  };
+  const reply = {
+    ...state.turns[1]!,
+    params: {
+      ...state.turns[1]!.params,
+      clientUserMessageId: "submission",
+      input,
+      questionResponse,
+    },
+    items: [{ type: "userMessage" as const, id: "echo", clientId: "submission", content: input }],
+  };
+  const hydrated = mergeCodexCanonicalTurnState(reply, {
+    ...reply,
+    params: { ...state.turns[1]!.params, input },
+  });
+  const records = collectCodexAsyncQuestionAnswerRecords(
+    JSON.parse(JSON.stringify([source, hydrated])),
+  );
+  expect(records.get(questionId)).toEqual({
+    answer: "There",
+    submissionId: "submission",
+    ...questionResponse,
+  });
+  const steering: import("./codex-conversation-state/codex-conversation-state").CodexCanonicalSteeringUserMessageItem =
+    {
+      type: "steeringUserMessage",
+      id: "steer",
+      targetTurnId: "source",
+      targetTurnStartedAtMs: null,
+      status: "pending",
+      clientUserMessageId: "steer-submission",
+      input,
+      attachments: [],
+      compareKey: { rawText: "", imageCount: 0 },
+      restoreMessage: { questionResponse, context: { commentAttachments: [] } },
+    };
+  const steered = { ...source, items: [question, steering] };
+  expect(collectCodexAsyncQuestionAnswerRecords([steered])).toEqual(new Map());
+  const accepted = {
+    ...steered,
+    items: [
+      question,
+      { ...steering, status: "accepted" as const, serverUserMessageId: "echo" },
+      { type: "userMessage" as const, id: "echo", clientId: "steer-submission", content: input },
+    ],
+  };
+  expect(collectCodexAsyncQuestionAnswerRecords([accepted]).get(questionId)?.respondedBy).toEqual(
+    questionResponse.respondedBy,
+  );
+});

@@ -160,6 +160,8 @@ const uncertainPeerDelivery = (
 };
 
 export type CodexTurnStartOverrides = CodexTurnStartOptions & {
+  readonly expectedExecution?: { readonly hostId: string; readonly generation: number };
+  readonly questionResponse?: import("../../shared/codex-question-response").CodexQuestionResponseMetadata;
   /**
    * Binds the first Turn to the exact live native Thread returned by `thread/start`.
    * This lets Main adopt that fresh Thread without replaying it through `thread/resume`.
@@ -1042,9 +1044,16 @@ export const make: Effect.Effect<
   ) {
     const threadId = input.threadId;
     const hostId = yield* executionHost(threadId);
+    if (input.expectedExecution?.hostId !== undefined && input.expectedExecution.hostId !== hostId)
+      return yield* commandError(
+        "steer",
+        threadId,
+        new Error("Native question execution host changed"),
+      );
+    if (input.expectedExecution) yield* resumeForStart(threadId, input.expectedExecution);
     const manager = yield* managers.get(hostId);
     const connection = captureTurnConnection(manager);
-    if (!manager.stream.getRole(threadId)) yield* resumeForStart(threadId);
+    if (!manager.stream.getRole(threadId)) yield* resumeForStart(threadId, input.expectedExecution);
     yield* Effect.try(() => assertTurnConnection(connection));
     return yield* Effect.acquireUseRelease(
       commands.prepareNativeSteer(input),
@@ -1102,7 +1111,7 @@ export const make: Effect.Effect<
                     conversations.current(threadId)?.setResumeState("needs_resume");
                     conversations.current(threadId)?.setStreaming(false);
                   });
-                  yield* resumeForStart(threadId);
+                  yield* resumeForStart(threadId, input.expectedExecution);
                   return null;
                 }),
               ),
@@ -1279,8 +1288,24 @@ export const make: Effect.Effect<
 
   // Peer dispatch must remain outside the Thread lane: the selected owner's native
   // execution acquires that lane after its canonical preparation is complete.
-  const resumeForStart = (threadId: string) =>
-    resume
+  const resumeForStart = (
+    threadId: string,
+    expected?: { readonly hostId: string; readonly generation: number },
+  ) => {
+    if (expected)
+      return Effect.try({
+        try: () => {
+          const manager = managers.current(expected.hostId);
+          if (
+            !manager?.stream.getRole(threadId) ||
+            conversations.current(threadId)?.readResumeState() !== "resumed"
+          )
+            throw new Error("Native execution is not loaded");
+          manager.assertCurrent(expected.generation);
+        },
+        catch: (cause) => commandError("start", threadId, cause),
+      });
+    return resume
       .resume(threadId)
       .pipe(
         Effect.flatMap((result) =>
@@ -1295,6 +1320,7 @@ export const make: Effect.Effect<
               ),
         ),
       );
+  };
   const adoptFreshNativeThread = Effect.fn("CodexTurnCommands.adoptFreshNativeThread")(function* (
     threadId: string,
     fresh: NonNullable<CodexTurnStartOverrides["freshNativeThread"]>,
@@ -1337,8 +1363,14 @@ export const make: Effect.Effect<
     function* (threadId: string, prompt: string, overrides: CodexTurnStartOverrides | undefined) {
       if (overrides?.freshNativeThread)
         yield* adoptFreshNativeThread(threadId, overrides.freshNativeThread);
-      yield* resumeForStart(threadId);
+      yield* resumeForStart(threadId, overrides?.expectedExecution);
       const hostId = yield* executionHost(threadId);
+      if (overrides?.expectedExecution && overrides.expectedExecution.hostId !== hostId)
+        return yield* commandError(
+          "start",
+          threadId,
+          new Error("Native question execution host changed"),
+        );
       const manager = yield* managers.get(hostId);
       const connection = captureTurnConnection(manager);
       const clientUserMessageId = overrides?.clientUserMessageId ?? createUuidV7();
@@ -1425,7 +1457,7 @@ export const make: Effect.Effect<
                           conversations.current(threadId)?.setStreaming(false);
                         }
                       });
-                      yield* resumeForStart(threadId);
+                      yield* resumeForStart(threadId, overrides?.expectedExecution);
                       return null;
                     }),
                   ),
@@ -1467,7 +1499,11 @@ export const make: Effect.Effect<
         );
       const response = yield* execute().pipe(
         Effect.catch((cause) => {
-          if (!isThreadNotFound(cause) || manager.stream.getRole(threadId)?.role !== "owner")
+          if (
+            overrides?.expectedExecution ||
+            !isThreadNotFound(cause) ||
+            manager.stream.getRole(threadId)?.role !== "owner"
+          )
             return Effect.fail(cause);
           return Effect.try(() => assertTurnConnection(connection))
             .pipe(
@@ -1936,6 +1972,8 @@ export const make: Effect.Effect<
               throw new Error("Native queued input does not match the prepared start");
             // Capture the peer wire value before retaining authority. JSON peers omit undefined
             // fields, while Electron's structured clone preserves them.
+            if (overrides?.questionResponse)
+              context = { ...context, questionResponse: overrides.questionResponse };
             const admitted = JSON.parse(
               JSON.stringify({
                 request: original,
@@ -2361,7 +2399,7 @@ export const make: Effect.Effect<
             input.threadId,
             new Error("Answer identity is required"),
           );
-        yield* resumeForStart(input.threadId);
+        yield* resumeForStart(input.threadId, input.expectedExecution);
         const state = yield* projection.read(input.threadId);
         const turns = residentConversationTurns(state.canonical);
         const replies = yield* Effect.try({
@@ -2372,6 +2410,7 @@ export const make: Effect.Effect<
         const fingerprint = encodeQuestionReplyIdentity({
           sourceTurnIds: [...new Set(input.sourceTurnIds)].sort(),
           replies,
+          questionResponse: input.questionResponse,
         });
         const previous = questionReplyAttempts.get(key);
         if (previous && previous.fingerprint !== fingerprint)
@@ -2457,6 +2496,8 @@ export const make: Effect.Effect<
                   threadId: input.threadId,
                   ...(active.turnId === null ? {} : { expectedTurnId: active.turnId }),
                   questionSourceTurnIds: input.sourceTurnIds,
+                  expectedExecution: input.expectedExecution,
+                  questionResponse: input.questionResponse,
                   clientUserMessageId: input.submissionId,
                   prompt,
                   serviceTier: input.serviceTier,
@@ -2478,6 +2519,8 @@ export const make: Effect.Effect<
               }
               const started = yield* startThroughOwner(input.threadId, prompt, {
                 clientUserMessageId: input.submissionId,
+                expectedExecution: input.expectedExecution,
+                questionResponse: input.questionResponse,
                 serviceTier: input.serviceTier,
                 collaborationMode: input.collaborationMode ?? undefined,
               });
