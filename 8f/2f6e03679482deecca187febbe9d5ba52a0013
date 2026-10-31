@@ -1,0 +1,42 @@
+src/renderer/features/nodex-account/nodex-account-menu.test.tsx
+  s_a511629060f414::t_7aec0ee00a84e6 3,21,192,198,200,203-207,209-224,245
+src/renderer/features/nodex-account/account-settings-page.tsx
+  s_a511629060f414::t_5f0fac80db5ee5 22,24-25
+src/renderer/features/nodex-account/nodex-credit-meter.tsx
+  s_a511629060f414::t_112e569a057b66 2-8,11-28,32-44,53-54,62,66-99,104-113,115-192,194-224
+  s_a511629060f414::t_751c9177db4d4f 9-10,114,193
+  s_a511629060f414::t_f16479260fabea 1,45-52,55-61,63-65
+  s_a511629060f414::t_fd9fe46338dc6c 29-31,100-103
+src/renderer/components/workbench/workbench-rail-account-controls.tsx
+  s_a511629060f414::t_fd9fe46338dc6c 3,240,393
+tests/e2e/nodex-account.spec.ts
+  s_a511629060f414::t_67db15ce573a5a 232,235
+  s_a511629060f414::t_6aa65e4b4b5829 286-291,295-298,300
+docs/product-specs/nodex-account-and-subscription-behavior.md
+  s_a511629060f414::t_6aa65e4b4b5829 20-26
+src/renderer/components/workbench/workbench-rail-usage-meter.tsx
+  s_a511629060f414::t_76b21eb40d5272 88,95-96,161-168
+src/renderer/features/nodex-account/account-settings-page.test.tsx
+  s_a511629060f414::t_5f0fac80db5ee5 177-184,188-189
+src/renderer/features/nodex-account/nodex-top-up.tsx
+  s_a511629060f414::t_4a111f9abf0911 62
+  s_a511629060f414::t_bd3474ceef0fc3 14-15,52-55,61,63-67,84
+  s_a511629060f414::t_df9e4abb250d2d 47-51,56-57,60
+  s_a511629060f414::t_fd9fe46338dc6c 58-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8f2f6e03679482deecca187febbe9d5ba52a0013",
+  "prompts": {},
+  "sessions": {
+    "s_a511629060f414": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8c3b5423-b1a8-4408-9e0b-0c21625f459b",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
