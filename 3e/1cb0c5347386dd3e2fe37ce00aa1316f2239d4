@@ -1,0 +1,26 @@
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_e2f9f3a29b34ef::t_eda207d4784ff8 208,1846-1852
+  s_e2f9f3a29b34ef::t_fe6d8b289af96f 1878
+src/renderer/components/board/editor/nfm-ask-for-change.tsx
+  s_e2f9f3a29b34ef::t_33845b161af909 189-190,196,198-203,267,269
+src/renderer/components/board/editor/nfm-prompt-runtime.tsx
+  s_e2f9f3a29b34ef::t_fe6d8b289af96f 15-16,25
+src/renderer/components/board/editor/prompt-block.tsx
+  s_e2f9f3a29b34ef::t_fe6d8b289af96f 11-12,113-124,129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e1cb0c5347386dd3e2fe37ce00aa1316f2239d4",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
