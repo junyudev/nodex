@@ -12,6 +12,7 @@ src/main/app-tools/NativeSessionQuestions.ts
   s_3c10c33b50886f::t_2b1fd5aa34c0be 1-380
 src/main/app-tools/RuntimeSessionCommands.node.test.ts
   s_3c10c33b50886f::t_b1a2359a1b6b1c 25-26,88,123,414,727,756-786,788-823
+  s_3c10c33b50886f::t_beb88f6708137e 787
 src/main/app-tools/SessionQuestionIntake.ts
   s_3c10c33b50886f::t_433a648975d4ea 5
 src/main/app-tools/native-question-test-fixture.ts
