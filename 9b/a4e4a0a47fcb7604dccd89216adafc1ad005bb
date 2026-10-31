@@ -1,0 +1,141 @@
+CHANGELOG.md
+  s_364ff3b09373da::t_848634177d5179 9-10
+Cargo.lock
+  s_364ff3b09373da::t_1079e5a1cee3b5 1246
+agent-skills/nodex/references/markdown.md
+  s_364ff3b09373da::t_a93e7105c6d192 4,11
+crates/nodex-cli/src/agent_interface.rs
+  s_364ff3b09373da::t_bfe074118d9809 15
+crates/nodex-core-contracts/src/library.rs
+  s_364ff3b09373da::t_33daaeae9102c6 17,709
+crates/nodex-core/src/domain/block_materialization.rs
+  s_364ff3b09373da::t_8c48d44a54af95 23
+crates/nodex-core/src/domain/block_to_page.rs
+  s_364ff3b09373da::t_c662ed7f562e04 27,299-337
+crates/nodex-core/src/domain/block_tree.rs
+  s_364ff3b09373da::t_c8a9e61b3e268c 35,842,844-854
+crates/nodex-core/src/domain/derived_records.rs
+  s_364ff3b09373da::t_9da5f1ea73da9c 422-440
+crates/nodex-core/src/domain/ordinary_block.rs
+  s_364ff3b09373da::t_ce018e5d4f8455 36-42
+crates/nodex-core/src/domain/page_to_block.rs
+  s_364ff3b09373da::t_038acb14ef6684 128,154
+crates/nodex-core/src/workspace/inbox.rs
+  s_364ff3b09373da::t_ef17cf49937d5b 383
+crates/nodex-core/src/workspace/inbox_content.rs
+  s_364ff3b09373da::t_23577e71e5b252 187,203-219
+crates/nodex-core/tests/fixtures/yjs-yrs/manifest.json
+  s_364ff3b09373da::t_60f73d18585c7f 14,18
+crates/nodex-core/tests/fixtures/yjs-yrs/markdown-parser-oracle.json
+  s_364ff3b09373da::t_267daf10e17a72 2,143-195,214,231,248,266,282,301,316,332,338,351,420,428,437,445,454
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-materialization.json
+  s_364ff3b09373da::t_2a362e0b2a098c 142-194,455-457,560,563-583,590,597,604,611,618,625,632,639,646,653,660,667,674,681,688,695
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-state-vector.bin
+  s_364ff3b09373da::t_0dde6d74b9a32b 1
+crates/nodex-core/tests/yjs_yrs_conformance.rs
+  s_364ff3b09373da::t_40a58f8e0188af 68-82
+crates/nodex-markdown/Cargo.toml
+  s_364ff3b09373da::t_76502d23a37032 16
+crates/nodex-markdown/src/model.rs
+  s_364ff3b09373da::t_d32e95c0f95358 286-290,325-356,400,415-416,534-551,912,1214-1220
+crates/nodex-markdown/src/read/blocks.rs
+  s_364ff3b09373da::t_9f87e558cf4d89 414,465-468
+crates/nodex-markdown/src/read/syntax.rs
+  s_364ff3b09373da::t_fccc76a03b5df3 670-673
+crates/nodex-markdown/src/read/values.rs
+  s_364ff3b09373da::t_b605c5929e171b 294-319
+crates/nodex-markdown/src/text.rs
+  s_364ff3b09373da::t_9782c8cb53f498 67,104
+crates/nodex-markdown/src/write/blocks.rs
+  s_364ff3b09373da::t_a5aad2f5cca868 209-217
+crates/nodex-markdown/src/write/portable.rs
+  s_364ff3b09373da::t_e69f4fc9f1834c 112-120
+crates/nodex-markdown/tests/fixtures/cases.json
+  s_364ff3b09373da::t_d20191cf4f8f37 4-140,2173-2180
+crates/nodex-markdown/tests/prompt.rs
+  s_364ff3b09373da::t_1e3cac2e710503 1-71
+docs/product-specs/nfm-editor-block-children-behavior.md
+  s_364ff3b09373da::t_c9ae154a8b167d 20,25-30
+docs/product-specs/nfm-editor-structural-editing-behavior.md
+  s_364ff3b09373da::t_2914ab722538db 104-105
+docs/product-specs/nfm-page-prompt-image-inputs.md
+  s_364ff3b09373da::t_73fd458787b61d 4,136,157
+docs/references/nodex-markdown.md
+  s_364ff3b09373da::t_04ea7a3cfae541 126-153,291
+packages/core-protocol/openapi.json
+  s_364ff3b09373da::t_8616cda75f8adc 26371-26384
+packages/core-protocol/src/compatibility.generated.ts
+  s_364ff3b09373da::t_d9c3bc1b537b5b 12
+packages/core-protocol/src/generated.ts
+  s_364ff3b09373da::t_f35c6e28103c4e 6338-6340
+src/renderer/components/board/editor/block-document-schema-parity.test.ts
+  s_364ff3b09373da::t_8da756e76b8e48 44-51
+src/renderer/components/board/editor/nfm-codex-prompt-input.test.ts
+  s_364ff3b09373da::t_bb689e9ca147bd 2-6,80-143
+src/renderer/components/board/editor/nfm-codex-prompt-input.ts
+  s_364ff3b09373da::t_5372b7f62fb93c 4
+src/renderer/components/board/editor/nfm-schema.tsx
+  s_364ff3b09373da::t_6284261accc9e1 14,46
+src/renderer/components/board/editor/prompt-block-export.jsdom.test.ts
+  s_364ff3b09373da::t_061f9f84730d57 1-24
+src/renderer/components/board/editor/prompt-block.tsx
+  s_364ff3b09373da::t_11e2e2bf7ea02e 1-7
+src/renderer/components/board/editor/readonly-nfm-blocknote-preview.tsx
+  s_364ff3b09373da::t_040c87766a2f14 48,276
+src/renderer/lib/codex-prompt-input.ts
+  s_364ff3b09373da::t_7abc7e84fcff21 12-21,98
+src/renderer/lib/nfm-turn-into-targets.test.ts
+  s_364ff3b09373da::t_f314b001b77225 7-8,34
+src/renderer/lib/nfm-turn-into-targets.ts
+  s_364ff3b09373da::t_debcb104db4377 81-86
+src/shared/block-documents/block-children-policy-v1.json
+  s_364ff3b09373da::t_d5e00debb90877 21
+src/shared/block-documents/block-children-policy.test.ts
+  s_364ff3b09373da::t_25919bba3feb36 42,105
+src/shared/block-documents/block-semantic-content.ts
+  s_364ff3b09373da::t_131a91afc14e2d 25
+src/shared/block-documents/blocknote-schema-config.ts
+  s_364ff3b09373da::t_2852ec856c46de 27-35,147
+src/shared/block-documents/headless-blocknote-schema.ts
+  s_364ff3b09373da::t_c7f634acdb7fbe 18,53-57,60-62,77-80
+src/shared/block-documents/yjs-yrs-conformance.test.ts
+  s_364ff3b09373da::t_f4e13aa74de9a5 9-10,477-487
+src/shared/block-documents/yjs-yrs-fixture-generator.test.ts
+  s_364ff3b09373da::t_4333fcfc5fb139 124-137
+src/shared/generated/nodex-markdown-wasm/nodex_markdown.js
+  s_49320c692fbf90::t_5f5ed6a1d36804 223-225
+src/shared/library-module-transport.test.ts
+  s_364ff3b09373da::t_de6cd65fc2ac0a 33-60
+src/shared/library-module-transport.ts
+  s_364ff3b09373da::t_ab2107c204accf 433
+src/shared/library-module.ts
+  s_364ff3b09373da::t_a5099655fd4eb2 647
+src/shared/nodex-markdown/agent-guide.ts
+  s_364ff3b09373da::t_0011e552ee3518 10,22
+src/shared/nodex-markdown/nodex-markdown-fixture.test.ts
+  s_364ff3b09373da::t_89f8f491b5082d 10-16,228-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ba4e4a0a47fcb7604dccd89216adafc1ad005bb",
+  "prompts": {},
+  "sessions": {
+    "s_364ff3b09373da": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19084-ad42-7262-9a9d-ade0be9236a5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_49320c692fbf90": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19085-fa75-7f82-abff-5757d98309ad",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
