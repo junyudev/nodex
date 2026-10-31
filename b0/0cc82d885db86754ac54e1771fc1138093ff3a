@@ -1,0 +1,23 @@
+docs/product-specs/inbox-behavior.md
+  s_1deb5b54d7eed1::t_4a2157f8b31d89 322-330
+src/main/inbox-application/inbox-agent-candidates.node.test.ts
+  s_1deb5b54d7eed1::t_c11ed6469a7934 139-219
+src/main/inbox-application/inbox-agent-candidates.ts
+  s_1deb5b54d7eed1::t_18cb43a842566f 55,57-68,70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b00cc82d885db86754ac54e1771fc1138093ff3a",
+  "prompts": {},
+  "sessions": {
+    "s_1deb5b54d7eed1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192cf-d71d-7bc0-9861-94f533b7fc0c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
