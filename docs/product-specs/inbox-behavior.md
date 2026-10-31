@@ -308,8 +308,22 @@ appear, each marked in the text where it sits. An image that cannot be read is
 marked as unavailable rather than dropped silently. One request reads at most
 20 images: automatic batches stop short of that, a single message with more
 fails with that reason, and a selection with more is refused. It also receives
-eligible routing candidates, including relevant chat previews. Its prompt asks
-only for a structured proposal.
+eligible routing candidates: Projects with their source directories, and
+relevant chat previews.
+
+Before proposing, it takes a short look where that makes a proposal better
+informed: it reads files in a Project's sources or searches the web. It looks
+for what shapes the proposal, such as what an unfamiliar name refers to, which
+Project or chat already owns the work, or where in a Project's sources the work
+lives and how large it is. Notes, reminders and messages whose handling is already plain need
+no look, and it stops after a few reads or searches, as soon as more would not
+change the proposal. It decides where and how work runs and never does the
+work: it answers no question, investigates no cause, runs no build or test, and
+changes no file, Nodex content or other state. What a lookup finds that the
+chat needs goes into the proposed prompt with its file paths or links, and the
+rationale says what it checked. A Project's Inbox looks from
+that Project's primary source directory when it exists; anything else looks
+from the Profile's home.
 
 Image markers use `[Image #N]`, followed by ` (caption: <alt text>)` when the
 occurrence has alt text. Within a message, repeated occurrences of a Library
@@ -331,14 +345,14 @@ not a hard cut-off.
 
 The user's routing preferences are its standing instructions, not data. They
 outrank Nodex's model guide and every guideline in its prompt, including how
-to route, how to weigh budgets and when to delegate. Only the required output
-structure, the allowed actions, the eligible targets, the Inbox's scope and
-covering every message stay above them. So turning the guide off and writing
-the same knowledge, or a different view, as preferences takes effect at least
-as strongly as the guide did.
+to route, how to weigh budgets, when to delegate and when to look things up.
+Only the required output structure, the allowed actions, the eligible targets,
+the Inbox's scope, covering every message and changing nothing stay above them.
+So turning the guide off and writing the same knowledge, or a different view, as
+preferences takes effect at least as strongly as the guide did.
 
 It uses the shared Agent Runtime utility policy: read-only native execution without approval
-prompts. The prompt and output schema constrain its output.
+prompts, with web search allowed. The prompt and output schema constrain its output.
 
 A Project's Inbox narrows that context to the Project. Its messages are already
 that Project's Pages, so a new chat starts in the Project, an existing chat must
@@ -371,8 +385,9 @@ one it was offered, since Nodex starts and delegates to them exactly. An explici
 covering all its members. Generation and transport failures remain failures
 with Retry; they do not masquerade as completed advice. A failure names its own
 cause: a timeout, missing sign-in, a rate limit, or an answer too long or in a
-form Nodex cannot read. The Agent Runtime waits a suggestion's whole time
-budget, so a slow suggestion fails only as its own timeout.
+form Nodex cannot read. A suggestion's time budget is three minutes, the longest
+any utility request may run, and the Agent Runtime waits all of it, so a slow
+suggestion fails only as its own timeout.
 
 In the same pass, the Agent names each message that still has its provisional
 title. Core atomically applies all titles, concrete proposals, and request

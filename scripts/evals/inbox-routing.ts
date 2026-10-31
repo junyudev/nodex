@@ -321,8 +321,8 @@ const fixture = (value: RoutingCase) => {
     projects: value.noCandidates
       ? []
       : [
-          { project_id: "nodex", name: "Nodex", description: "Desktop app" },
-          { project_id: "website", name: "Website", description: "Marketing site" },
+          { project_id: "nodex", name: "Nodex", description: "Desktop app", sources: [] },
+          { project_id: "website", name: "Website", description: "Marketing site", sources: [] },
         ],
     sessions: value.noCandidates
       ? []

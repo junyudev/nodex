@@ -1110,11 +1110,19 @@ pub(super) fn dispatch_context_for_inputs(
     let project_id = scope.project_id();
     let projects = connection
         .prepare(
-            "SELECT project.id, project.name, substr(project.description,1,400) FROM projects project \
-             LEFT JOIN project_order ordering ON ordering.project_id = project.id \
-             WHERE project.library_id = ?1 AND project.lifecycle = 'active' \
-               AND (?3 IS NULL OR project.id = ?3) \
-             ORDER BY COALESCE(ordering.\"order\", 0), project.id LIMIT ?2",
+            "WITH context_projects AS ( \
+               SELECT project.id, project.name, substr(project.description,1,400) AS description, \
+                 COALESCE(ordering.\"order\", 0) AS project_order \
+               FROM projects project \
+               LEFT JOIN project_order ordering ON ordering.project_id = project.id \
+               WHERE project.library_id = ?1 AND project.lifecycle = 'active' \
+                 AND (?3 IS NULL OR project.id = ?3) \
+               ORDER BY project_order, project.id LIMIT ?2 \
+             ) \
+             SELECT project.id, project.name, project.description, source.root \
+             FROM context_projects project \
+             LEFT JOIN project_sources source ON source.project_id = project.id \
+             ORDER BY project.project_order, project.id, source.\"order\", source.root",
         )?
         .query_map(
             params![library_id, MAX_CONTEXT_PROJECTS, project_id],
@@ -1126,10 +1134,23 @@ pub(super) fn dispatch_context_for_inputs(
                         row.get::<_, String>(2)?.trim(),
                         MAX_CONTEXT_DESCRIPTION_CHARS,
                     ),
+                    sources: row.get::<_, Option<String>>(3)?.into_iter().collect(),
                 })
             },
         )?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+        .try_fold(
+            Vec::<ProjectWorkspaceInboxContextProject>::new(),
+            |mut projects, project| {
+                let project = project?;
+                match projects.last_mut() {
+                    Some(existing) if existing.project_id == project.project_id => {
+                        existing.sources.extend(project.sources);
+                    }
+                    _ => projects.push(project),
+                }
+                Ok::<_, rusqlite::Error>(projects)
+            },
+        )?;
     let terms = serde_json::to_string(&context_search_terms(&entries))
         .map_err(|_| corrupt("Inbox context terms cannot be encoded"))?;
     let sessions = connection

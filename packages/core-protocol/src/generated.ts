@@ -9410,6 +9410,8 @@ export interface components {
             readonly description: string;
             readonly name: string;
             readonly project_id: string;
+            /** @description The Project's source directories, primary first. */
+            readonly sources: readonly string[];
         };
         readonly ProjectWorkspaceInboxContextProposal: {
             readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];

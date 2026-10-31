@@ -35,6 +35,7 @@ export interface Request<S extends Schema.Top> {
   readonly cwd: string;
   readonly prompt: string;
   readonly images?: StructuredGenerationInput["images"];
+  readonly webSearch?: StructuredGenerationInput["webSearch"];
   readonly outputSchema: S;
   readonly modelSelection: ModelSelection;
   /** The user's attachments, already listed in the prompt. Providers that accept images send them. */

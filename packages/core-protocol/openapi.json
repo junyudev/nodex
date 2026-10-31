@@ -39293,7 +39293,8 @@
         "required": [
           "project_id",
           "name",
-          "description"
+          "description",
+          "sources"
         ],
         "properties": {
           "description": {
@@ -39304,6 +39305,13 @@
           },
           "project_id": {
             "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The Project's source directories, primary first."
           }
         }
       },

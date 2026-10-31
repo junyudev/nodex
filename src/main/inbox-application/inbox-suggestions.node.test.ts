@@ -31,7 +31,9 @@ const context = (
 ): CoreInboxDispatchContext => ({
   scope,
   entries,
-  projects: [{ project_id: "project:nodex", name: "Nodex", description: "Desktop app" }],
+  projects: [
+    { project_id: "project:nodex", name: "Nodex", description: "Desktop app", sources: [] },
+  ],
   sessions: [
     {
       session_id: "session:sidebar",

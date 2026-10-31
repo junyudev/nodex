@@ -253,6 +253,31 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
       ),
   );
 
+  it.effect.each([true, false])(
+    "searches the web only when a structured request asks (%s)",
+    (webSearch) =>
+      withFakeCodexEnv(
+        {
+          output: JSON.stringify({ route: "keep" }),
+          ...(webSearch
+            ? { requireArg: '--config web_search="live"' }
+            : { forbidArg: 'web_search="live"' }),
+        },
+        (textGeneration) =>
+          Effect.gen(function* () {
+            expect(
+              yield* textGeneration.generateStructured!({
+                cwd: process.cwd(),
+                prompt: "Route this message",
+                modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+                outputSchema: { type: "object", properties: { route: { type: "string" } } },
+                webSearch,
+              }),
+            ).toEqual({ route: "keep" });
+          }),
+      ),
+  );
+
   it.effect("omits a persisted service tier for managed ChatGPT text generation", () =>
     withFakeCodexEnv(
       {

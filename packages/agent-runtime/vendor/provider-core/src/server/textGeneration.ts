@@ -131,6 +131,8 @@ export interface StructuredGenerationInput {
   readonly outputSchema: Readonly<Record<string, unknown>>;
   readonly maxOutputBytes?: number | undefined;
   readonly timeoutMs?: number | undefined;
+  /** The model may search the web before answering. Providers that always offer it ignore this. */
+  readonly webSearch?: boolean | undefined;
 }
 
 export interface ProviderTextGeneration {

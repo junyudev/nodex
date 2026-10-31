@@ -24,9 +24,12 @@ const path = require("node:path");
 const args = process.argv.slice(2);
 const codex = args[0] === "exec";
 const valueOf = flag => args[args.indexOf(flag) + 1];
+const config = value => args.some((arg, index) => args[index - 1] === "--config" && arg === value);
+const tools = valueOf("--tools");
 const readOnly = codex
-  ? valueOf("--sandbox") === "read-only" && args.some((arg, index) => args[index - 1] === "--config" && arg === 'approval_policy="never"')
-  : valueOf("--permission-mode") === "dontAsk" && valueOf("--tools") === "Read,Grep,Glob" && valueOf("--allowedTools") === "Read,Grep,Glob";
+  ? valueOf("--sandbox") === "read-only" && config('approval_policy="never"')
+  : valueOf("--permission-mode") === "dontAsk" && /^Read,Grep,Glob(,WebSearch,WebFetch)?$/.test(tools) && valueOf("--allowedTools") === tools;
+const web = codex ? config('web_search="live"') : tools.includes("WebSearch");
 if (!readOnly || args.some(arg => arg.startsWith("--dangerously-"))) {
   process.stderr.write("Native utility must be read-only without approval prompts");
   process.exit(7);
@@ -45,7 +48,7 @@ process.stdin.on("end", () => {
   if (investigation && fs.readFileSync("workspace.txt", "utf8") !== "Review this workspace") throw new Error("Workspace is unreadable");
   const result = investigation ? { stops: [] } : { title: "Inspect exact native execution" };
   const ephemeral = args.includes(codex ? "--ephemeral" : "--no-session-persistence");
-  fs.appendFileSync(path.join(process.env.NATIVE_UTILITY_PROOF_DIR, "accepted.jsonl"), JSON.stringify({ investigation, ephemeral, cwd: process.cwd() }) + "\\n");
+  fs.appendFileSync(path.join(process.env.NATIVE_UTILITY_PROOF_DIR, "accepted.jsonl"), JSON.stringify({ investigation, ephemeral, web, cwd: process.cwd() }) + "\\n");
   if (codex) fs.writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify(result));
   else process.stdout.write(JSON.stringify({ structured_output: result }));
 });
@@ -127,16 +130,34 @@ for (const driver of ["codex", "claude"] as const) {
           maxOutputBytes: 1,
         }).pipe(Effect.result);
         assert.equal(oversized._tag, "Failure");
+        const searched = yield* generation.generateStructured!({
+          cwd: directory,
+          prompt: "Generate a title",
+          modelSelection,
+          outputSchema,
+          webSearch: true,
+        });
+        assert.deepEqual(searched, { title: "Inspect exact native execution" });
         const accepted = (yield* fs.readFileString(path.join(directory, "accepted.jsonl")))
           .trim()
           .split("\n")
           .map(
             (line) =>
-              JSON.parse(line) as { investigation: boolean; ephemeral: boolean; cwd: string },
+              JSON.parse(line) as {
+                investigation: boolean;
+                ephemeral: boolean;
+                web: boolean;
+                cwd: string;
+              },
           );
         assert.deepEqual(
           accepted.map((row) => row.investigation),
-          [false, true, false, false],
+          [false, true, false, false, false],
+        );
+        // Only a request that asks for the web may search it, and it stays read-only.
+        assert.deepEqual(
+          accepted.map((row) => row.web),
+          [false, false, false, false, true],
         );
         // Utility tasks never leave a conversation in the user's native history.
         assert.isTrue(accepted.every((row) => row.ephemeral));

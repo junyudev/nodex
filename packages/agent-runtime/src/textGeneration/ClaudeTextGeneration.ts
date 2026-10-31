@@ -40,6 +40,8 @@ import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
 const READ_ONLY_TOOLS = ["Read", "Grep", "Glob"];
+/** Reading the web changes nothing either, so a request that asks for it may also search. */
+const WEB_READ_TOOLS = ["WebSearch", "WebFetch"];
 /**
  * Schema for the wrapper JSON returned by `claude -p --output-format json`.
  * Verbose mode wraps the result in an array of conversation messages.
@@ -134,6 +136,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     jsonSchema,
     maxOutputBytes,
     timeoutMs,
+    webSearch,
   }: TextGenerationOperations.Request<S>): Effect.fn.Return<
     S["Type"],
     TextGenerationError,
@@ -172,6 +175,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       thinkingDescriptor?.type === "boolean" ? thinkingDescriptor.currentValue : undefined;
     const fastMode =
       fastModeDescriptor?.type === "boolean" ? fastModeDescriptor.currentValue : undefined;
+    const readTools = webSearch ? [...READ_ONLY_TOOLS, ...WEB_READ_TOOLS] : READ_ONLY_TOOLS;
     const settings = {
       disableAllHooks: true,
       ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
@@ -221,8 +225,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                   ...(claudeSettings.isolated ? { settingSources: [] } : {}),
                   model: resolveClaudeCatalogApiModelId(catalog, resolvedModelSelection),
                   permissionMode: "dontAsk",
-                  tools: READ_ONLY_TOOLS,
-                  allowedTools: READ_ONLY_TOOLS,
+                  tools: readTools,
+                  allowedTools: readTools,
                   persistSession: false,
                   settings,
                   ...(cliEffort ? { effort: cliEffort as NonNullable<Options["effort"]> } : {}),
@@ -278,9 +282,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           "--permission-mode",
           "dontAsk",
           "--tools",
-          READ_ONLY_TOOLS.join(","),
+          readTools.join(","),
           "--allowedTools",
-          READ_ONLY_TOOLS.join(","),
+          readTools.join(","),
           // A utility task is not a conversation: it never joins the user's Claude history.
           "--no-session-persistence",
         ],

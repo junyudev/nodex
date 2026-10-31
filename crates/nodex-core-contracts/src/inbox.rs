@@ -378,6 +378,8 @@ pub struct ProjectWorkspaceInboxContextProject {
     pub project_id: String,
     pub name: String,
     pub description: String,
+    /// The Project's source directories, primary first.
+    pub sources: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

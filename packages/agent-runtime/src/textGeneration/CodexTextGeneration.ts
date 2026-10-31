@@ -162,6 +162,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     jsonSchema,
     maxOutputBytes,
     timeoutMs,
+    webSearch,
   }: TextGenerationOperations.Request<S>): Effect.fn.Return<
     S["Type"],
     TextGenerationError,
@@ -223,6 +224,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
           "--config",
           `model_reasoning_effort="${reasoningEffort}"`,
           ...(serviceTier ? ["--config", `service_tier="${serviceTier}"`] : []),
+          ...(webSearch ? ["--config", 'web_search="live"'] : []),
           "--output-schema",
           schemaPath,
           "--output-last-message",

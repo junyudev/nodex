@@ -34,6 +34,7 @@ import {
   make as makeDelivery,
 } from "./InboxDispatchRuntime";
 import { make as makeSuggestions } from "./InboxDispatcher";
+import { suggestionHostLayer } from "./InboxApplication.test-support";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
 import {
   INBOX_SUGGESTION_MAX_OUTPUT_BYTES,
@@ -155,7 +156,7 @@ const context = (): CoreInboxDispatchContext => ({
     },
   ],
   scope: { kind: "library" },
-  projects: [{ project_id: "project:one", name: "Project", description: "" }],
+  projects: [{ project_id: "project:one", name: "Project", description: "", sources: [] }],
   sessions: [
     {
       session_id: "session:one",
@@ -893,6 +894,7 @@ const suggestionHarness = (
         catalog: () => Effect.succeed([provider(), { ...provider(claude), displayName: "Claude" }]),
         generateStructured: generated,
       } as unknown as Runtime),
+      Effect.provide(suggestionHostLayer()),
       Effect.provide(configLayer({ nodexHome: "/profiles/inbox" })),
     );
     return { ...worker, generated, settlements, pageIds };

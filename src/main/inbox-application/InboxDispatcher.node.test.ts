@@ -7,6 +7,7 @@ import { vi } from "vitest";
 import {
   DEFAULT_INBOX_SETTINGS,
   LIBRARY_INBOX,
+  projectInbox,
   type InboxSettings,
   type InboxSuggestionMode,
 } from "../../shared/inbox";
@@ -18,7 +19,11 @@ import { testLayer as configLayer } from "../app/MainConfig";
 import { subscribeToBackendLogs, type BackendLogEntry } from "../logging/logger";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { InboxApplication } from "./InboxApplication";
-import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
+import {
+  captureInbox,
+  inboxOverRealCore,
+  suggestionHostLayer,
+} from "./InboxApplication.test-support";
 import { make } from "./InboxDispatcher";
 
 type Runtime = AgentRuntimeApplication["Service"];
@@ -91,7 +96,9 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
       })),
     });
   });
-  const { inbox } = yield* inboxOverRealCore(Effect.void, catalog, () => current);
+  const { inbox, projectId } = yield* inboxOverRealCore(Effect.void, catalog, () => current);
+  // Source directories that exist on this machine; every other path is missing.
+  const directories = new Set<string>();
   const { drain } = yield* make.pipe(
     Effect.provideService(LibraryModule, {
       readFileBlob: () => Effect.die("Text-only suggestions must not read image files"),
@@ -108,6 +115,7 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
       catalog,
       generateStructured: generated,
     } as unknown as Runtime),
+    Effect.provide(suggestionHostLayer(directories)),
     Effect.provide(configLayer({ nodexHome: "/profiles/inbox" })),
   );
   const item = Effect.fn("InboxDispatcher.testItem")(function* (pageId: string) {
@@ -132,6 +140,8 @@ const harness = Effect.fn("InboxDispatcher.testHarness")(function* (mode: Mode) 
     catalog,
     item,
     request,
+    projectId,
+    directories,
     setMode: (suggestions: InboxSuggestionMode) => {
       current = { ...current, suggestions };
     },
@@ -309,6 +319,41 @@ it.effect("resumes only for new sends and logs each usage transition once", () =
         ],
       );
       assert.notInclude(JSON.stringify(logs), "private message");
+    }),
+  ),
+);
+
+it.effect("looks things up from a Project Inbox's source directory while it exists", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { inbox, drain, generated, projectId, directories } = yield* harness("automatic");
+      const suggested = Effect.fn("InboxDispatcher.testSuggested")(function* (
+        body: string,
+        scope = projectInbox(projectId),
+      ) {
+        yield* captureInbox(inbox, body, scope);
+        yield* drain;
+        const call = generated.mock.calls.at(-1);
+        if (!call) return assert.fail("No suggestion ran");
+        const data = JSON.parse(call[0].prompt.split("JSON data:\n")[1]!) as {
+          projects: { project_id: string; sources: string[] }[];
+        };
+        return { input: call[0], projects: data.projects };
+      });
+
+      const missing = yield* suggested("Which module owns the suggestion prompt?");
+      const source = missing.projects.find((project) => project.project_id === projectId)
+        ?.sources[0];
+      if (!source) return assert.fail("The Project's source directory was not offered");
+      assert.strictEqual(missing.input.cwd, "/profiles/inbox");
+      assert.isTrue(missing.input.webSearch);
+
+      directories.add(source);
+      assert.strictEqual((yield* suggested("Where are routing rules tested?")).input.cwd, source);
+      assert.strictEqual(
+        (yield* suggested("Remember the venue", LIBRARY_INBOX)).input.cwd,
+        "/profiles/inbox",
+      );
     }),
   ),
 );

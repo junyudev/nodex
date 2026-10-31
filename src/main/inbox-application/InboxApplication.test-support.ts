@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import {
   withCoreScenario,
   type CoreScenarioContext,
@@ -37,6 +38,15 @@ export const captureInbox = (
       issuedAt: Date.now(),
       storeEpoch: summary.storeEpoch,
     })).value;
+  });
+
+/** The machine a suggestion looks around on: only `directories` exist there. */
+export const suggestionHostLayer = (directories: ReadonlySet<string> = new Set()) =>
+  FileSystem.layerNoop({
+    stat: (path) =>
+      directories.has(path)
+        ? Effect.succeed({ type: "Directory" } as FileSystem.File.Info)
+        : FileSystem.makeNoop({}).stat(path),
   });
 
 type ScenarioClient = CoreScenarioContext["client"];
@@ -116,5 +126,5 @@ export const inboxOverRealCore = (
         snapshot: () => Effect.sync(() => ({ inbox: inboxSettings() })),
       } as unknown as ApplicationSettings["Service"]),
     );
-    return { inbox, client: context.client };
+    return { inbox, client: context.client, projectId: context.manifest.projectId };
   });

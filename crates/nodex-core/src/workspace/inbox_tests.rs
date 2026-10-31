@@ -1020,6 +1020,65 @@ fn routing_context_is_bounded_to_active_targets() {
 }
 
 #[test]
+fn routing_context_includes_ordered_project_sources_and_empty_rootless_projects() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    let source_roots = vec![
+        "/workspace/z-primary".to_owned(),
+        "/workspace/a-secondary".to_owned(),
+        "/workspace/m-tertiary".to_owned(),
+    ];
+    apply_host(
+        module,
+        "create:source-project",
+        ProjectWorkspaceIntent::CreateProject {
+            project_id: "project:sources".into(),
+            name: "Sources".into(),
+            description: String::new(),
+            appearance: None,
+            source_roots: source_roots.clone(),
+            page_key_prefix: None,
+        },
+    );
+    for (id, project_id) in [("sources", "project:sources"), ("rootless", PROJECT)] {
+        send_to(module, id, "Where should this go?", Some(project_id));
+        let ProjectWorkspaceReadValue::InboxDispatchContext { context } = read_host(
+            module,
+            ProjectWorkspaceRead::InboxDispatchContext {
+                page_ids: vec![format!("page:{id}")],
+            },
+        ) else {
+            panic!("context");
+        };
+        assert_eq!(context.projects.len(), 1);
+        assert_eq!(context.projects[0].project_id, project_id);
+        let expected = if project_id == PROJECT {
+            Vec::new()
+        } else {
+            source_roots.clone()
+        };
+        assert_eq!(context.projects[0].sources, expected);
+    }
+    send(module, "library-sources", "Where should this go?");
+    let ProjectWorkspaceReadValue::InboxDispatchContext { context } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchContext {
+            page_ids: vec!["page:library-sources".into()],
+        },
+    ) else {
+        panic!("context");
+    };
+    assert_eq!(context.projects.len(), 2);
+    let sources = context
+        .projects
+        .into_iter()
+        .map(|project| (project.project_id, project.sources))
+        .collect::<std::collections::HashMap<_, _>>();
+    assert_eq!(sources["project:sources"], source_roots);
+    assert!(sources[PROJECT].is_empty());
+}
+
+#[test]
 fn provisional_titles_are_short_labels_of_the_opening_words() {
     use super::inbox::provisional_title;
     assert_eq!(provisional_title("  Fix   the flicker "), "Fix the flicker");

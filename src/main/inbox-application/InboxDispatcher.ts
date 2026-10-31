@@ -1,5 +1,6 @@
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
@@ -17,6 +18,7 @@ import {
 import { MainConfig } from "../app/MainConfig";
 import {
   inboxDispatchActionToCore,
+  type CoreInboxDispatchContext,
   type CoreInboxSuggestionRequest,
 } from "../core-client/inbox-adapter";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
@@ -50,10 +52,28 @@ export const make = Effect.gen(function* () {
   const settings = yield* ApplicationSettings;
   const runtime = yield* AgentRuntimeApplication;
   const config = yield* MainConfig;
+  const fs = yield* FileSystem.FileSystem;
   const loadImages = yield* makeInboxImageLoader;
   const logger = getLogger({ component: "inbox-dispatcher" });
   const lane = yield* Semaphore.make(1);
   let previousPolicy: InboxSuggestionPolicy["kind"] | null = null;
+
+  /** A Project's Inbox looks around from its primary source; anything else from the Profile. */
+  const workingDirectory = Effect.fn("InboxDispatcher.workingDirectory")(function* (
+    context: CoreInboxDispatchContext,
+  ) {
+    const { scope } = context;
+    const source =
+      scope.kind === "project"
+        ? context.projects.find((project) => project.project_id === scope.project_id)?.sources[0]
+        : undefined;
+    if (!source) return config.nodexHome;
+    const present = yield* fs.stat(source).pipe(
+      Effect.map((info) => info.type === "Directory"),
+      Effect.orElseSucceed(() => false),
+    );
+    return present ? source : config.nodexHome;
+  });
 
   const suggest = Effect.fn("InboxDispatcher.suggest")(function* (
     current: InboxSettings,
@@ -133,10 +153,11 @@ export const make = Effect.gen(function* () {
         modelSelection,
         prompt,
         images: loaded.images,
-        cwd: config.nodexHome,
+        cwd: yield* workingDirectory(request.context),
         outputSchema: INBOX_SUGGESTION_OUTPUT_SCHEMA,
         maxOutputBytes: INBOX_SUGGESTION_MAX_OUTPUT_BYTES,
         timeoutMs: INBOX_SUGGESTION_TIMEOUT_MS,
+        webSearch: true,
       });
       const validated = yield* Effect.try({
         try: () =>

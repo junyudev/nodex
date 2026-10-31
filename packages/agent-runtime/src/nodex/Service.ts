@@ -258,6 +258,7 @@ const AgentRequest = Schema.Union([
           }),
         ),
       ),
+      webSearch: Schema.optional(Schema.Boolean),
     }),
   ),
   request(
