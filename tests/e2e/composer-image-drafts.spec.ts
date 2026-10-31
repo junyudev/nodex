@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { createAgentSmokeDraft } from "./support/agent-smoke-harness";
+import { chooseComposerModel, refreshComposerModels } from "./support/composer-model-picker";
 
 // A 192 by 96 PNG, so a loaded thumbnail reports real pixels.
 const PNG = Buffer.from(
@@ -32,6 +33,10 @@ test("a chat draft keeps its pasted image across a reload, and it opens to view 
   try {
     const page = await harness.launch();
     await createAgentSmokeDraft(page, harness.profile.runRoot, "Image drafts");
+    // Load the fixture's image-capable model into the Composer's cold Runtime catalog.
+    // Its single effort needs no selection and has no Effort slider.
+    await refreshComposerModels(page);
+    await chooseComposerModel(page, "GPT-5.5 Codex", "GPT-5.5");
     const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
     await composer.click();
     await composer.fill("Why is this cut off?");

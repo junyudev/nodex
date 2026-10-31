@@ -4,6 +4,7 @@ import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { createAgentSmokeDraft, sendAgentPrompt } from "./support/agent-smoke-harness";
+import { selectNativeContextMenuItem } from "./support/native-context-menu";
 
 const silentWave = () => {
   const samples = 8_000;
@@ -130,8 +131,10 @@ test("reads message media through its native source and preserves it when stream
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(trigger).toBeFocused();
-    await image.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Open image in new tab", exact: true }).click();
+    // The image's actions open in Electron's native menu, which Chromium cannot click.
+    await selectNativeContextMenuItem(harness.application, "open", () =>
+      image.click({ button: "right" }),
+    );
     const imageTab = page.getByRole("tab", { name: /message-image\.png/u });
     const imageTabChrome = imageTab.locator("xpath=ancestor::*[@data-panel-tab-id][1]");
     await expect(imageTab).toBeVisible();
