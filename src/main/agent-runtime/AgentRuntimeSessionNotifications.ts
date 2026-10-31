@@ -36,15 +36,15 @@ const terminalStatus = (status: string | null): CodexNotificationTurnStatus | nu
 };
 
 /** One waiting episode of a root shares a question identity until its questions resolve. */
-export const runtimeQuestionRequestId = (transition: {
-  readonly rootThreadId: string;
-  readonly activeRunId: string | null;
-}) => `agent-runtime:${transition.rootThreadId}:${transition.activeRunId ?? "session"}`;
+export const runtimeQuestionRequestId = (rootThreadId: string) =>
+  `agent-runtime:${rootThreadId}:session`;
 
 /**
  * Turns Session activity transitions into unread state and desktop notifications. A foreground
  * Run ending (including automatic wake Runs) or a new information question marks an unpresented
  * Session unread and raises the shared notification owner with native conversation copy.
+ * User attention replaces completion while the Session waits, including questions revealed at
+ * turn end. Temporary side chats surface their questions through their visible source Session.
  */
 export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
   options: AgentRuntimeSessionNotificationOptions,
@@ -87,12 +87,11 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
           type: "request-resolved",
           hostId: DEFAULT_CODEX_HOST_ID,
           conversationId: rootThreadId,
-          requestId: runtimeQuestionRequestId({
-            rootThreadId,
-            activeRunId: before.activeRunId,
-          }),
+          requestId: runtimeQuestionRequestId(rootThreadId),
         });
-      if (!status && !questionStarted) return;
+      const turnCompleted = status && endedRun && after?.status !== "waiting";
+      if (!turnCompleted && !questionStarted) return;
+      if (after?.sideChatSourceThreadId) return;
       const session = yield* options.readSession(sessionId);
       if (!session) return;
       if (!session.archived && !session.unread && !options.isPresentedInForeground(rootThreadId))
@@ -106,7 +105,7 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
         sideConversationParentNavigationPath: null,
         runtimeSessionId: sessionId,
       };
-      if (status && endedRun) {
+      if (turnCompleted) {
         // Delegated work that will wake the root, or a queued follow-up, continues this turn.
         const hasPendingContinuation =
           after?.status === "background" ||
@@ -135,7 +134,7 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
           type: "user-input-requested",
           hostId: DEFAULT_CODEX_HOST_ID,
           conversation,
-          requestId: runtimeQuestionRequestId({ rootThreadId, activeRunId: after.activeRunId }),
+          requestId: runtimeQuestionRequestId(rootThreadId),
           turnId: after.activeRunId ?? "",
           questionCount: after.pendingRequestCount,
         });

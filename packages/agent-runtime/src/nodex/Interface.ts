@@ -216,7 +216,13 @@ export type AgentBackgroundTask =
 /** Live execution facts for one non-idle root Thread. */
 export interface AgentRootActivity {
   readonly rootThreadId: string;
-  /** `waiting`: an information question awaits the user; `background`: no foreground Run. */
+  /** Temporary side chats surface user attention through their source Session. */
+  readonly sideChatSourceThreadId?: string;
+  /**
+   * `waiting`: own approvals/live input, async questions between working Runs, live secret
+   * cards, or live delegated approvals need the user. Side-chat attention reaches its source.
+   * `background`: live work remains without a foreground Run. Waiting takes precedence.
+   */
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
@@ -750,11 +756,6 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
       readonly afterSequence: number;
     };
   };
-  /**
-   * Non-idle root Threads from SQL: an active Run, a pending information request, live delegated
-   * or native background work, or a delegated completion that will wake the root. Idle roots are
-   * absent. `rootThreadIds` point-reads those roots; otherwise pages follow `cursor`.
-   */
   readonly "sessions.search": {
     readonly input: import("../orchestration-v2/SessionSearch.ts").SessionSearchInput;
     readonly output: import("../orchestration-v2/SessionSearch.ts").SessionSearchPage;
@@ -771,6 +772,13 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     readonly input: import("../orchestration-v2/SessionCatalog.ts").SessionCatalogInput;
     readonly output: import("../orchestration-v2/SessionCatalog.ts").SessionCatalogPage;
   };
+  /**
+   * Non-idle roots from live-state SQL indexes: active Runs, user attention, delegated/native
+   * background work, or completions that will wake the root. Child questions never require user
+   * attention; live delegated approvals do, except provider-native children that ask on their
+   * parent. Side-chat attention also reaches its source. Idle roots are absent. `rootThreadIds`
+   * point-reads those roots; otherwise pages follow `cursor`.
+   */
   readonly "execution.activity": {
     readonly input: {
       readonly cursor?: string;

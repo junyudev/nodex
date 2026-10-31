@@ -84,6 +84,7 @@ import {
   EXECUTION_ACTIVITY_MAX_PAGE_LIMIT,
   EXECUTION_ACTIVITY_MAX_POINT_READS,
   readRootActivity,
+  readActivityRootIds,
 } from "../orchestration-v2/ExecutionActivity.ts";
 import {
   SESSION_CATALOG_MAX_LIMIT,
@@ -695,15 +696,17 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const providerSessions = yield* ProviderSessionManagerV2;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const sql = yield* SqlClient.SqlClient;
-  // A Thread's root never changes; observation resolves it once per Thread.
-  const roots = new Map<string, string>();
-  const rootOf = Effect.fnUntraced(function* (threadId: ThreadId) {
+  // Execution ancestry and captured side-chat sources never change.
+  const roots = new Map<string, readonly string[]>();
+  const activityRootsOf = Effect.fnUntraced(function* (threadId: ThreadId) {
     const known = roots.get(threadId);
     if (known !== undefined) return known;
-    const root = (yield* projections.getThread(threadId)).lineage.rootThreadId;
+    const affected = yield* readActivityRootIds(threadId).pipe(
+      Effect.provideService(SqlClient.SqlClient, sql),
+    );
     if (roots.size >= 4096) roots.delete(roots.keys().next().value!);
-    roots.set(threadId, root);
-    return root;
+    roots.set(threadId, affected);
+    return affected;
   });
   const projects = yield* Projects.ProjectService;
   const projections = yield* ProjectionStoreV2;
@@ -1460,6 +1463,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                 "runtime-request.updated",
                 "subagent.updated",
                 "provider-thread.updated",
+                "turn-item.updated",
               ]
             : input.input.eventTypes;
         // Type-specific channels filter before retaining live events or decoding SQL replay.
@@ -1491,7 +1495,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                     ? { runId: event.event.payload.id, runStatus: event.event.payload.status }
                     : {}),
                 });
-              changedRoots.set(yield* rootOf(event.event.threadId), event.sequence);
+              for (const root of yield* activityRootsOf(event.event.threadId))
+                changedRoots.set(root, event.sequence);
             }
             // One compact change per root and burst; readers point-read the root's activity.
             for (const [rootThreadId, sequence] of changedRoots)
@@ -1500,6 +1505,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         const consume: Effect.Effect<void, unknown> =
           input.method === "execution.observe"
             ? stream.pipe(
+                // Only secret cards change attention; transcript updates never enter the burst.
+                Stream.filter(
+                  (stored) =>
+                    stored.event.type !== "turn-item.updated" ||
+                    stored.event.payload.type === "secret_request",
+                ),
                 Stream.groupedWithin(64, Duration.millis(50)),
                 Stream.runForEach(observeExecution),
               )

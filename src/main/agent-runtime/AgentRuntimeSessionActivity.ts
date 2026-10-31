@@ -91,6 +91,7 @@ const sameActivity = (left: SessionActivity | null, right: SessionActivity | nul
   (left !== null &&
     right !== null &&
     left.status === right.status &&
+    left.sideChatSourceThreadId === right.sideChatSourceThreadId &&
     left.activeRunId === right.activeRunId &&
     left.pendingRequestCount === right.pendingRequestCount &&
     left.backgroundTasks.length === right.backgroundTasks.length &&
@@ -112,6 +113,9 @@ const sameActivity = (left: SessionActivity | null, right: SessionActivity | nul
 
 const toSessionActivity = (sessionId: string, root: AgentRootActivity): SessionActivity => ({
   sessionId,
+  ...(root.sideChatSourceThreadId === undefined
+    ? {}
+    : { sideChatSourceThreadId: root.sideChatSourceThreadId }),
   threadId: root.rootThreadId,
   status: root.status,
   activeRunId: root.activeRunId,

@@ -6,10 +6,12 @@ import {
   type OrchestrationV2AppThread,
   type OrchestrationV2Run,
   type OrchestrationV2PendingBackgroundTask,
+  type OrchestrationV2RuntimeRequest,
   type OrchestrationV2Subagent,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  ProviderSessionId,
   ProviderThreadId,
   RunId,
   RuntimeRequestId,
@@ -25,7 +27,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
-import { readRootActivity } from "./ExecutionActivity.ts";
+import { readActivityRootIds, readRootActivity } from "./ExecutionActivity.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import {
   explainExecutedSql,
@@ -49,7 +51,11 @@ const fixture = Effect.gen(function* () {
       occurredAt: now,
       ...input,
     } as never);
-  const thread = Effect.fnUntraced(function* (id: string, parent?: ThreadId) {
+  const thread = Effect.fnUntraced(function* (
+    id: string,
+    parent?: ThreadId,
+    overrides: Partial<OrchestrationV2AppThread> = {},
+  ) {
     const threadId = ThreadId.make(id);
     const root = parent === undefined ? threadId : ThreadId.make(`root:${parent.split(":")[1]}`);
     const payload: OrchestrationV2AppThread = {
@@ -77,6 +83,7 @@ const fixture = Effect.gen(function* () {
       settledAt: null,
       lastVisitedAt: null,
       deletedAt: null,
+      ...overrides,
     };
     yield* apply({ type: "thread.created", threadId, payload });
     return threadId;
@@ -145,7 +152,13 @@ const fixture = Effect.gen(function* () {
     });
     return payload;
   });
-  const request = (threadId: ThreadId, id: string, status: "pending" | "resolved") =>
+  const request = (
+    threadId: ThreadId,
+    id: string,
+    status: "pending" | "resolved",
+    responseCapability: OrchestrationV2RuntimeRequest["responseCapability"] = { type: "message" },
+    kind: OrchestrationV2RuntimeRequest["kind"] = "user_input",
+  ) =>
     apply({
       type: "runtime-request.updated",
       threadId,
@@ -154,9 +167,9 @@ const fixture = Effect.gen(function* () {
         nodeId: NodeId.make(`node:${id}`),
         providerTurnId: null,
         nativeRequestRef: null,
-        kind: "user_input",
+        kind,
         status,
-        responseCapability: { type: "message" },
+        responseCapability,
         createdAt: now,
         resolvedAt: status === "pending" ? null : now,
       },
@@ -197,7 +210,32 @@ const fixture = Effect.gen(function* () {
             : tasks,
       },
     });
-  return { thread, run, task, request, roster, now };
+  const secret = (threadId: ThreadId, owner: OrchestrationV2Run | null, pending = true) =>
+    apply({
+      type: "turn-item.updated",
+      threadId,
+      payload: {
+        id: TurnItemId.make(`secret:${threadId}`),
+        threadId,
+        runId: owner?.id ?? null,
+        nodeId: owner?.rootNodeId ?? null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 1,
+        type: "secret_request",
+        status: pending ? "waiting" : "completed",
+        title: "API key",
+        label: "API key",
+        reason: "Connect the service",
+        secretStatus: pending ? "pending" : "saved",
+        startedAt: now,
+        completedAt: pending ? null : now,
+        updatedAt: now,
+      },
+    });
+  return { thread, run, task, request, roster, secret, now };
 });
 
 const activity = (rootThreadIds?: ReadonlyArray<string>) =>
@@ -222,7 +260,7 @@ it.effect("reports running, waiting and background roots and rolls descendants u
     const running = yield* thread("root:running");
     const runningRun = yield* run(running, "running");
     const waiting = yield* thread("root:waiting");
-    yield* run(waiting, "running");
+    yield* run(waiting, "waiting");
     yield* request(waiting, "request:question", "pending");
     yield* request(waiting, "request:answered", "resolved");
     // The parent turn ended while its delegated child keeps working in its own Thread.
@@ -371,6 +409,190 @@ it.effect(
     }).pipe(Effect.provide(layer)),
 );
 
+const liveCapability = {
+  type: "live" as const,
+  providerSessionId: ProviderSessionId.make("provider-session:activity"),
+};
+
+it.effect("waits on root input between working Runs and only live delegated approvals", () =>
+  Effect.gen(function* () {
+    const { thread, run, request } = yield* fixture;
+    const root = yield* thread("root:asking");
+    const ownRun = yield* run(root, "running");
+    yield* request(root, "request:root", "pending");
+    assert.deepEqual((yield* activity([root]))[root], {
+      status: "running",
+      activeRunId: ownRun.id,
+      pendingRequestCount: 0,
+    });
+    // A waiting Run has ended its provider turn even while effects are draining.
+    yield* run(root, "waiting");
+    assert.deepEqual((yield* activity([root]))[root], {
+      status: "waiting",
+      activeRunId: ownRun.id,
+      pendingRequestCount: 1,
+    });
+    yield* run(root, "completed");
+    assert.deepEqual((yield* activity([root]))[root], {
+      status: "waiting",
+      activeRunId: null,
+      pendingRequestCount: 1,
+    });
+    const child = yield* thread("child:asking", root);
+    yield* run(child, "running");
+    // A child's work does not hide its root's own unanswered question.
+    assert.equal((yield* activity([root]))[root]?.status, "waiting");
+    yield* request(root, "request:root", "resolved");
+    yield* request(child, "request:child-async", "pending");
+    yield* request(child, "request:child-live", "pending", liveCapability);
+    assert.deepEqual((yield* activity([root]))[root], {
+      status: "running",
+      activeRunId: null,
+      pendingRequestCount: 0,
+    });
+    yield* request(child, "request:approval", "pending", liveCapability, "command");
+    assert.deepEqual((yield* activity([root]))[root], {
+      status: "waiting",
+      activeRunId: null,
+      pendingRequestCount: 1,
+    });
+    yield* run(child, "waiting");
+    assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 1);
+    yield* run(child, "completed");
+    assert.deepEqual(yield* activity([root]), {});
+    // Root live questions and approvals remain attention even without a working Run.
+    yield* request(root, "request:live", "pending", liveCapability);
+    yield* request(root, "request:approval", "pending", liveCapability, "permission");
+    assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 2);
+    yield* run(root, "running", { ordinal: 2 });
+    assert.equal((yield* activity([root]))[root]?.status, "waiting");
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each(["preparing", "starting", "running"] as const)(
+  "keeps asynchronous root questions out of attention while %s",
+  (status) =>
+    Effect.gen(function* () {
+      const { thread, run, request } = yield* fixture;
+      const root = yield* thread("root:working");
+      yield* run(root, status);
+      yield* request(root, "request:async", "pending");
+      assert.equal((yield* activity([root]))[root]?.status, "running");
+      assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 0);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "excludes provider-native requests and internal requests but includes delegated elicitation",
+  () =>
+    Effect.gen(function* () {
+      const { thread, run, request } = yield* fixture;
+      const root = yield* thread("root:provider");
+      const child = yield* thread("child:provider", root, { creationSource: "provider" });
+      yield* run(child, "running");
+      for (const kind of ["command", "mcp-elicitation", "user_input"] as const)
+        yield* request(child, `request:native:${kind}`, "pending", liveCapability, kind);
+      for (const kind of ["auth_refresh", "dynamic_tool_call"] as const)
+        yield* request(root, `request:internal:${kind}`, "pending", liveCapability, kind);
+      assert.deepEqual((yield* activity([root]))[root], {
+        status: "running",
+        activeRunId: null,
+        pendingRequestCount: 0,
+      });
+      const delegated = yield* thread("child:delegated", root);
+      yield* run(delegated, "running");
+      yield* request(
+        delegated,
+        "request:elicitation",
+        "pending",
+        liveCapability,
+        "mcp-elicitation",
+      );
+      assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 1);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect("counts root secret cards only while their owning Run is live", () =>
+  Effect.gen(function* () {
+    const { thread, run, secret } = yield* fixture;
+    const root = yield* thread("root:secret");
+    const owner = yield* run(root, "running");
+    yield* secret(root, owner);
+    assert.equal((yield* activity([root]))[root]?.status, "waiting");
+    yield* secret(root, owner, false);
+    assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 0);
+    yield* secret(root, owner);
+    yield* run(root, "completed");
+    assert.deepEqual(yield* activity([root]), {});
+    // A card from a finished Run does not attach to a newer Run.
+    yield* run(root, "running", { ordinal: 2 });
+    assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 0);
+    const child = yield* thread("child:secret", root);
+    yield* secret(child, yield* run(child, "running"));
+    assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 0);
+    const unbound = yield* thread("root:unbound-secret");
+    yield* secret(unbound, null);
+    assert.deepEqual(yield* activity([unbound]), {});
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("rolls hidden side-chat attention to its source when its own Thread waits", () =>
+  Effect.gen(function* () {
+    const { thread, run, request, secret } = yield* fixture;
+    const root = yield* thread("root:source");
+    const side = yield* thread("side:source", undefined, {
+      sideChat: { sourceThreadId: root, sourceRunId: null, nativeFork: false },
+    });
+    yield* run(root, "running");
+    yield* run(side, "running");
+    yield* request(side, "request:side", "pending");
+    assert.equal((yield* activity([root]))[root]?.status, "running");
+    yield* run(side, "waiting");
+    for (const id of [root, side])
+      assert.equal((yield* activity([id]))[id]?.pendingRequestCount, 1);
+    yield* run(side, "completed");
+    assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 1);
+    yield* request(side, "request:side", "resolved");
+    assert.equal((yield* activity([root]))[root]?.status, "running");
+    yield* request(side, "request:side-live", "pending", liveCapability);
+    yield* request(side, "request:side-approval", "pending", liveCapability, "permission");
+    assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 2);
+    yield* run(side, "running");
+    yield* secret(side, yield* run(side, "running"));
+    assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 3);
+    assert.sameMembers(yield* readActivityRootIds(side), [side, root]);
+    const own = (yield* readRootActivity({ rootThreadIds: [side] })).items[0];
+    assert.equal(own?.sideChatSourceThreadId, root);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("follows nested side-chat sources through a delegated conversation's root", () =>
+  Effect.gen(function* () {
+    const { thread, run, request } = yield* fixture;
+    const root = yield* thread("root:nested");
+    const child = yield* thread("child:nested", root);
+    const side = yield* thread("side:nested", undefined, {
+      sideChat: { sourceThreadId: child, sourceRunId: null, nativeFork: false },
+    });
+    const nested = yield* thread("side:inner", undefined, {
+      sideChat: { sourceThreadId: side, sourceRunId: null, nativeFork: false },
+    });
+    yield* request(nested, "request:nested", "pending");
+    yield* request(nested, "request:nested-second", "pending");
+    for (const id of [root, side, nested])
+      assert.equal((yield* activity([id]))[id]?.pendingRequestCount, 2);
+    assert.sameMembers(yield* readActivityRootIds(nested), [root, side, nested]);
+    const delegated = yield* thread("child:side", side, {
+      lineage: { parentThreadId: side, relationshipToParent: "subagent", rootThreadId: side },
+    });
+    yield* run(delegated, "running");
+    yield* request(delegated, "request:delegated", "pending", liveCapability, "command");
+    assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 3);
+    yield* run(delegated, "completed");
+    assert.equal((yield* activity([root]))[root]?.pendingRequestCount, 2);
+  }).pipe(Effect.provide(layer)),
+);
+
 it.effect("keeps a finished parent in the background until its delegated result wakes it", () =>
   Effect.gen(function* () {
     const { thread, run, task } = yield* fixture;
@@ -446,24 +668,31 @@ it.effect("pages non-idle roots by cursor", () =>
 
 it.effect("reads activity from live-state indexes only at 10,000 historical Runs", () =>
   Effect.gen(function* () {
-    const { thread, run, roster, now } = yield* fixture;
+    const { thread, run, roster, request, secret, now } = yield* fixture;
     const settled = yield* thread("root:history");
     yield* seedUndecodableHistory({ threadId: settled, at: DateTime.formatIso(now) });
     const live = yield* thread("root:live");
     yield* run(live, "running", { ordinal: 1 });
     yield* roster(live, 1);
+    yield* request(live, "request:pressure", "pending");
+    yield* secret(live, yield* run(live, "running"));
+    const side = yield* thread("side:pressure", undefined, {
+      sideChat: { sourceThreadId: live, sourceRunId: null, nativeFork: false },
+    });
+    yield* request(side, "request:pressure-side", "pending");
+    const ancestry = yield* explainExecutedSql(readActivityRootIds(side));
     const page = yield* explainExecutedSql(readRootActivity({}));
     const point = yield* explainExecutedSql(readRootActivity({ rootThreadIds: ["root:live"] }));
     assert.deepEqual(
       page.result.items.map((item) => item.rootThreadId),
-      ["root:live"],
+      ["root:live", "side:pressure"],
     );
     assert.deepEqual(
       point.result.items.map((item) => item.rootThreadId),
       ["root:live"],
     );
     assert.equal(page.result.items[0]?.backgroundTasks[0]?.taskId, "background-0");
-    for (const { plan } of [...page.plans, ...point.plans]) {
+    for (const { plan } of [...page.plans, ...point.plans, ...ancestry.plans]) {
       // Window/aggregate subqueries consume only the indexed live facts above.
       const boundedSubqueries = plan.flatMap(({ detail }) =>
         /^SCAN \(subquery-\d+\)$/.test(detail) ? [detail.slice(5)] : [],
@@ -474,6 +703,9 @@ it.effect("reads activity from live-state indexes only at 10,000 historical Runs
           "rooted",
           "task",
           "activity",
+          "attention",
+          "activity_facts",
+          "roots",
           "roster_tasks",
           "ranked_tasks",
           ...boundedSubqueries,
@@ -481,7 +713,7 @@ it.effect("reads activity from live-state indexes only at 10,000 historical Runs
         [],
       );
     }
-    assert.deepEqual(historyWideReads([...page.plans, ...point.plans]), []);
+    assert.deepEqual(historyWideReads([...page.plans, ...point.plans, ...ancestry.plans]), []);
   }).pipe(Effect.provide(layer)),
 );
 

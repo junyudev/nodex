@@ -204,6 +204,122 @@ it.effect("a new question asks for input and its resolution withdraws the notifi
   }),
 );
 
+it.effect("an asynchronous question revealed at turn end replaces completion", () =>
+  Effect.gen(function* () {
+    const h = harness({});
+    yield* h.deliver([
+      transition(activity("running"), activity("running")),
+      transition(activity("running"), activity("waiting", { activeRunId: null }), {
+        runId: "run:1",
+        status: "completed",
+      }),
+      transition(activity("waiting", { activeRunId: null }), null),
+    ]);
+    assert.deepEqual(
+      h.events.map((event) => event.type),
+      ["user-input-requested", "request-resolved"],
+    );
+    assert.deepEqual(
+      h.shown.map((notification) => notification.kind),
+      ["question"],
+    );
+    assert.deepEqual(h.unread, ["session:a"]);
+    assert.deepEqual(h.requests, []);
+    assert.deepEqual(h.dismissed, [{ occurrenceId: h.shown[0]!.occurrenceId! }]);
+  }),
+);
+
+it.effect("a live question that remains pending through turn end does not notify completion", () =>
+  Effect.gen(function* () {
+    const h = harness({});
+    yield* h.deliver([
+      transition(activity("running"), activity("waiting")),
+      transition(activity("waiting"), activity("waiting", { activeRunId: null }), {
+        runId: "run:1",
+        status: "completed",
+      }),
+      transition(activity("waiting", { activeRunId: null }), null),
+    ]);
+    assert.deepEqual(
+      h.shown.map((notification) => notification.kind),
+      ["question"],
+    );
+    assert.deepEqual(
+      h.events.map((event) => event.type),
+      ["user-input-requested", "request-resolved"],
+    );
+    assert.deepEqual(h.unread, ["session:a"]);
+    assert.deepEqual(h.dismissed, [{ occurrenceId: h.shown[0]!.occurrenceId! }]);
+    assert.notInclude(h.requests, "thread.item");
+  }),
+);
+
+it.effect("delegated approvals notify their root while child questions leave it running", () =>
+  Effect.gen(function* () {
+    const h = harness({});
+    const running = activity("running", { activeRunId: null });
+    const waiting = activity("waiting", { activeRunId: null });
+    yield* h.deliver([
+      transition(null, running),
+      transition(running, running),
+      transition(running, waiting),
+      transition(waiting, null),
+    ]);
+    assert.deepEqual(
+      h.shown.map((notification) => notification.kind),
+      ["question"],
+    );
+    assert.deepEqual(
+      h.events.map((event) => event.type),
+      ["user-input-requested", "request-resolved"],
+    );
+    assert.deepEqual(h.unread, ["session:a"]);
+  }),
+);
+
+it.effect("a temporary side chat notifies once through its visible source", () =>
+  Effect.gen(function* () {
+    const h = harness({});
+    yield* h.deliver([
+      transition(
+        activity("running"),
+        activity("waiting", { activeRunId: null, sideChatSourceThreadId: "thread:source" }),
+        { runId: "run:1", status: "completed" },
+      ),
+      {
+        ...transition(null, activity("waiting", { activeRunId: null })),
+        sessionId: "session:source",
+        rootThreadId: "thread:source",
+      },
+    ]);
+    assert.deepEqual(
+      h.shown.map((notification) => notification.conversationId),
+      ["thread:source"],
+    );
+    assert.deepEqual(h.unread, ["session:source"]);
+    assert.deepEqual(
+      h.events.map((event) => event.type),
+      ["user-input-requested"],
+    );
+  }),
+);
+
+it.effect("a new waiting episode can notify again after resolution", () =>
+  Effect.gen(function* () {
+    const h = harness({});
+    yield* h.deliver([
+      transition(activity("running"), activity("waiting")),
+      transition(activity("waiting"), activity("running")),
+      transition(activity("running"), activity("waiting")),
+    ]);
+    assert.deepEqual(
+      h.shown.map((notification) => notification.kind),
+      ["question", "question"],
+    );
+    assert.deepEqual(h.dismissed, [{ occurrenceId: h.shown[0]!.occurrenceId! }]);
+  }),
+);
+
 it.effect.each([{ reply: null }, { outcomeUnavailable: true }])(
   "a known terminal Run without a readable reply retains completion fallback",
   (options) =>

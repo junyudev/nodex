@@ -873,12 +873,24 @@ their acknowledged tombstones prevent a deleted execution from being adopted aga
 ## Session activity
 
 Main keeps one projection of live execution for Runtime-bound Sessions and serves it to every
-window. A Session is running while its root has an active Run, waiting while an information
-question awaits the user, and background while delegated or native background work is live
-or a delegated result will wake it; idle Sessions are absent. Each activity names the root
-Thread, active Run, pending question count, its provider and model, and the live background
-tasks of the root and its delegated conversations (at most 25, each with its owning
-conversation, name, command and start time). Core never stores these facts.
+window. Waiting takes precedence over running and background. The root's pending approvals
+and live user-input requests wait immediately, including non-blocking live questions. Its
+asynchronous questions wait only while it has no preparing, starting or running Run; a waiting
+Run has ended its provider turn and only drains effects. A pending secret card waits only while
+its own Run is live. Delegated conversations roll up only approvals, including MCP elicitation,
+and only while their Run is live. Their questions belong to the delegating Agent. Provider-native
+children ask on their parent, so none of their requests roll up. Tool calls and authentication
+refreshes never count as user attention.
+
+Temporary side chats have independent execution roots and no catalog row. Their questions,
+secret cards and approvals also reach their source Session whenever their own conversation
+would wait; nested side chats follow the source chain. Their execution activity remains
+independent. A Session is otherwise running while its root or a delegated conversation has a
+live Run, and background while delegated or native background work is live or a delegated
+result will wake it; idle Sessions are absent. Only requests that make the Session wait count
+in its pending request count. Each activity names the root Thread, active Run, provider, model,
+and up to 25 live background tasks with their owning conversation, name, command and start time.
+Core never stores these facts.
 
 Each Agent reports its own background tasks. Claude Code reports background shells, Monitors
 and workflows as it starts and ends them. Codex background terminals appear as command tasks

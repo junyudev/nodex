@@ -27,9 +27,11 @@ const decodeBackgroundTasks = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Array(BackgroundTask)),
 );
 
-/** Live execution facts for one non-idle root Thread; descendants roll up to their root. */
+/** Live work for one non-idle root; only user attention rolls up from hidden side chats. */
 export interface RootActivity {
   readonly rootThreadId: string;
+  /** Temporary side chats surface user attention through their source Session. */
+  readonly sideChatSourceThreadId?: string;
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
@@ -59,11 +61,60 @@ const WAKING_LIVE_TASK_PREDICATE = `status IN ('pending', 'running', 'waiting') 
       AND CASE WHEN json_valid(payload_json)
         THEN json_extract(payload_json, '$.completionWake') = 'always' ELSE 0 END`;
 
+/** A provider turn is working until it ends; a waiting Run only drains effects. */
+const WORKING_RUN_PREDICATE = `status IN ('preparing', 'starting', 'running')`;
+
+/** Message-capable questions await the user only after their own Thread stops working. */
+const ASYNC_QUESTION_PREDICATE = `kind = 'user_input' AND CASE WHEN json_valid(payload_json)
+      THEN json_extract(payload_json, '$.responseCapability.type') = 'message' ELSE 0 END`;
+
+/** Own approvals and live input always wait; asynchronous questions wait between working Runs. */
+const OWN_ATTENTION_PREDICATE = `facts.thread_id = json_extract(thread.payload_json, '$.lineage.rootThreadId')
+      AND (facts.kind <> 'question' OR NOT EXISTS (
+        SELECT 1 FROM orchestration_v2_projection_runs AS working
+        INDEXED BY orchestration_v2_projection_runs_thread_status_idx
+        WHERE working.thread_id = facts.thread_id AND ${WORKING_RUN_PREDICATE}))`;
+
+/** Coordinators answer child questions; only live delegated approvals need user attention. */
+const CHILD_APPROVAL_PREDICATE = `facts.kind = 'approval'
+      AND json_extract(thread.payload_json, '$.lineage.relationshipToParent') = 'subagent'
+      AND json_extract(thread.payload_json, '$.creationSource') IS NOT 'provider'
+      AND EXISTS (SELECT 1 FROM orchestration_v2_projection_runs AS live
+        INDEXED BY orchestration_v2_projection_runs_thread_status_idx
+        WHERE live.thread_id = facts.thread_id AND ${LIVE_RUN_PREDICATE})`;
+
 /**
- * Non-idle roots from live-state indexes only: active Runs, pending information requests, live
- * delegated or native background tasks, results already queued for delivery, and live async
- * tasks whose completion will wake their parent.
- * No message, item or result body is read; cost follows live work, never retained history.
+ * A side chat has its own execution root but no catalog row. Its user attention also reaches
+ * the source's root; source lookups follow only exact Thread identities, never retained history.
+ */
+const SIDE_CHAT_SOURCE_ROOT = `SELECT json_extract(source.payload_json, '$.lineage.rootThreadId')
+      FROM orchestration_v2_projection_threads AS source
+      WHERE source.thread_id = json_extract(owner.payload_json, '$.sideChat.sourceThreadId')
+        AND source.deleted_at IS NULL`;
+
+/** Roots affected by a Thread change, including the visible sources of temporary side chats. */
+export const readActivityRootIds = Effect.fn("ExecutionActivity.readActivityRootIds")(function* (
+  threadId: string,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ readonly root_thread_id: string }>`
+    WITH RECURSIVE roots(root_thread_id) AS (
+      SELECT json_extract(payload_json, '$.lineage.rootThreadId')
+      FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId}
+      UNION
+      SELECT (${sql.literal(SIDE_CHAT_SOURCE_ROOT)})
+      FROM roots CROSS JOIN orchestration_v2_projection_threads AS owner
+        ON owner.thread_id = roots.root_thread_id
+      WHERE json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL
+    ) SELECT root_thread_id FROM roots WHERE root_thread_id IS NOT NULL`;
+  return rows.map((row) => row.root_thread_id);
+});
+
+/**
+ * Non-idle roots from indexed live work and pending attention. Root approvals, live input and
+ * live secret cards wait immediately; asynchronous root questions wait after working Runs end.
+ * Only live, non-provider child approvals roll up. Side-chat attention also reaches its source.
+ * No message or result body is read; cost follows live work, never retained history.
  */
 export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(function* (input: {
   readonly cursor?: string | undefined;
@@ -101,13 +152,24 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         readonly fact_at: string | null;
         readonly background_tasks_json: string;
       }>`
-        WITH facts(thread_id, kind, at, amount, background_task) AS MATERIALIZED (
+        WITH RECURSIVE facts(thread_id, kind, at, amount, background_task) AS MATERIALIZED (
           SELECT thread_id, 'run', requested_at, 1, NULL FROM orchestration_v2_projection_runs
           WHERE ${sql.literal(LIVE_RUN_PREDICATE)}
           UNION ALL
-          SELECT thread_id, 'request', created_at, 1, NULL
+          SELECT thread_id,
+            CASE WHEN kind <> 'user_input' THEN 'approval'
+              WHEN ${sql.literal(ASYNC_QUESTION_PREDICATE)} THEN 'question' ELSE 'input' END,
+            created_at, 1, NULL
           FROM orchestration_v2_projection_runtime_requests
           WHERE status = 'pending' AND kind NOT IN ('dynamic_tool_call', 'auth_refresh')
+          UNION ALL
+          SELECT secret.thread_id, 'input', secret.updated_at, 1, NULL
+          FROM orchestration_v2_projection_turn_items AS secret
+            INDEXED BY orchestration_v2_projection_turn_items_pending_secret_idx
+          WHERE secret.type = 'secret_request' AND secret.status = 'waiting'
+            AND json_extract(secret.payload_json, '$.nodeId') IS NOT NULL
+            AND EXISTS (SELECT 1 FROM orchestration_v2_projection_runs AS live
+              WHERE live.run_id = secret.run_id AND ${sql.literal(LIVE_RUN_PREDICATE)})
           UNION ALL
           SELECT thread_id, 'task', updated_at, 1, NULL FROM orchestration_v2_projection_subagents
           WHERE status IN ('pending', 'running', 'waiting')
@@ -135,6 +197,24 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           CROSS JOIN orchestration_v2_projection_threads AS thread
             ON thread.thread_id = facts.thread_id
           WHERE thread.deleted_at IS NULL
+            AND (facts.kind NOT IN ('approval', 'input', 'question')
+              OR (${sql.literal(OWN_ATTENTION_PREDICATE)})
+              OR (${sql.literal(CHILD_APPROVAL_PREDICATE)}))
+        ), attention(root_thread_id, thread_id, at, amount) AS (
+          SELECT root_thread_id, thread_id, MAX(at), SUM(amount)
+          FROM rooted WHERE kind IN ('approval', 'input', 'question')
+          GROUP BY root_thread_id, thread_id
+          UNION
+          SELECT (${sql.literal(SIDE_CHAT_SOURCE_ROOT)}), attention.thread_id,
+            attention.at, attention.amount
+          FROM attention CROSS JOIN orchestration_v2_projection_threads AS owner
+            ON owner.thread_id = attention.root_thread_id
+          WHERE json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL
+        ), activity_facts AS MATERIALIZED (
+          SELECT root_thread_id, thread_id, kind, at, amount FROM rooted
+          WHERE kind NOT IN ('approval', 'input', 'question')
+          UNION ALL
+          SELECT root_thread_id, thread_id, 'request', at, amount FROM attention
         ), activity AS MATERIALIZED (
         SELECT root_thread_id,
           SUM(kind = 'run') AS active_runs,
@@ -142,7 +222,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           SUM(CASE WHEN kind = 'task' THEN amount ELSE 0 END) AS active_tasks,
           MAX(kind = 'wake' AND thread_id = root_thread_id) AS resumes,
           MAX(at) AS fact_at
-        FROM rooted
+        FROM activity_facts
         WHERE root_thread_id IS NOT NULL
           AND (${input.cursor ?? null} IS NULL OR root_thread_id > ${input.cursor ?? null})
           ${roots === undefined ? sql`` : sql`AND root_thread_id IN ${sql.in(roots)}`}
@@ -190,10 +270,12 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
               readonly model: string | null;
               readonly updated_at: string;
               readonly active_run_id: string | null;
+              readonly side_chat_source_thread_id: string | null;
             }>`
               SELECT thread.thread_id, thread.provider_instance_id,
                 json_extract(thread.payload_json, '$.modelSelection.model') AS model,
                 thread.updated_at,
+                json_extract(thread.payload_json, '$.sideChat.sourceThreadId') AS side_chat_source_thread_id,
                 (SELECT run.run_id FROM orchestration_v2_projection_runs AS run
                   INDEXED BY orchestration_v2_projection_runs_thread_status_idx
                   WHERE run.thread_id = thread.thread_id
@@ -208,6 +290,9 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         if (head === undefined) continue;
         items.push({
           rootThreadId: row.root_thread_id,
+          ...(head.side_chat_source_thread_id === null
+            ? {}
+            : { sideChatSourceThreadId: head.side_chat_source_thread_id }),
           status:
             row.pending_requests > 0 ? "waiting" : row.active_runs > 0 ? "running" : "background",
           activeRunId: head.active_run_id,

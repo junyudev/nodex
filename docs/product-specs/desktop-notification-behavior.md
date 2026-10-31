@@ -20,7 +20,7 @@ Native execution permission requests are approved automatically and produce no t
   questions and supported option/onboarding/setup inputs with no question
   rows.
 
-MCP elicitation, plan-implementation confirmation, setup context selection,
+For native conversations, MCP elicitation, plan-implementation confirmation, setup context selection,
 and unsupported private requests do not produce desktop notifications.
 
 ## Ownership and Ordering
@@ -285,9 +285,14 @@ title is the Session title, and its host is the local host.
   failed or interrupted Runs. A newer Run or child reply cannot supply its body;
   an absent reply uses the ordinary completion fallback. Missed terminal status
   is also read from that outcome. Delegated children never notify on their own.
-- `question`: the root starts waiting for an information answer or gains
-  another pending question. One notification represents the waiting episode
-  and is withdrawn when the root stops waiting.
+- `question`: the Session starts waiting for user attention or gains another pending request.
+  Root approvals and live questions notify immediately. An asynchronous root question notifies
+  once its Run stops working, including when the provider turn ends. Only live delegated
+  approvals roll up; delegated questions and provider-native child requests never notify the
+  user. Temporary side-chat attention notifies through the source Session. Attention replaces
+  turn completion while the Session waits, so a question revealed at turn end produces one
+  question notification. One identity follows the waiting episode across Run changes and is
+  withdrawn when the Session stops waiting.
 
 Either event marks the Session unread in Core unless a focused window presents
 its conversation or the Session is archived. A Runtime conversation reports its

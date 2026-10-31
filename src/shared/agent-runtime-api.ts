@@ -272,6 +272,7 @@ export type AgentRuntimeSessionEvent =
  */
 export interface AgentRuntimeSessionActivity {
   readonly sessionId: string;
+  readonly sideChatSourceThreadId?: AgentRootActivity["sideChatSourceThreadId"];
   readonly threadId: string;
   readonly status: "running" | "waiting" | "background";
   readonly activeRunId: string | null;
