@@ -4,7 +4,13 @@ import type { ReactNode } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
 import { installWindowApi } from "@/test/browser-globals";
-import { useNodexAccount } from "./use-nodex-account";
+import { useNodexAccount, useNodexCreditRefreshOnFocus } from "./use-nodex-account";
+
+function useCreditSurface(visible: boolean) {
+  const account = useNodexAccount(true);
+  useNodexCreditRefreshOnFocus(visible, account.refreshModels);
+  return account;
+}
 
 const signedOut: NodexAccountSnapshot = {
   revision: 0,
@@ -284,7 +290,9 @@ test("observes new credit on focus and accepts Main's pending-checkout completio
   const account = prepareAccount(
     Promise.resolve({ ...signedIn, checkoutPending: true, credit: { balance: 1, unit: "USD" } }),
   );
-  const { result } = renderHook(() => useNodexAccount(true), { wrapper: account.wrapper });
+  const { result } = renderHook(() => useCreditSurface(true), {
+    wrapper: account.wrapper,
+  });
   await waitFor(() => expect(result.current.snapshot?.checkoutPending).toBe(true));
   account.invoke.mockResolvedValue({
     ...signedIn,
@@ -299,4 +307,31 @@ test("observes new credit on focus and accepts Main's pending-checkout completio
   await waitFor(() => expect(result.current.snapshot?.credit?.balance).toBe(15));
   expect(account.invoke).toHaveBeenCalledWith("nodex-account:refresh-models");
   expect(result.current.snapshot?.checkoutPending).toBe(false);
+});
+
+test("ordinary account consumers never refresh credit on focus", async () => {
+  const account = prepareAccount(Promise.resolve(signedIn));
+  const view = renderHook(({ showsCredit }) => useCreditSurface(showsCredit), {
+    wrapper: account.wrapper,
+    initialProps: { showsCredit: false },
+  });
+  await waitFor(() => expect(view.result.current.snapshot).toEqual(signedIn));
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+    await Promise.resolve();
+  });
+  expect(account.invoke).not.toHaveBeenCalledWith("nodex-account:refresh-models");
+  view.rerender({ showsCredit: true });
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(account.invoke).toHaveBeenCalledWith("nodex-account:refresh-models"));
+  account.invoke.mockClear();
+  view.rerender({ showsCredit: false });
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+    await Promise.resolve();
+  });
+  expect(account.invoke).not.toHaveBeenCalled();
 });

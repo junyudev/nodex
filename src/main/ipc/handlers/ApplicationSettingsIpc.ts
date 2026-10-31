@@ -1,3 +1,7 @@
+import {
+  USAGE_METER_SETTINGS_CHANGED_CHANNEL,
+  UsageMeterSettingsSchema,
+} from "../../../shared/usage-meter-settings";
 import { AcpAgentSettingsUpdateSchema } from "../../../shared/acp-agent-settings";
 import {
   COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL,
@@ -76,6 +80,7 @@ type SettingsReadChannel =
   | "settings:telemetry:get"
   | "settings:thread-notifications:get"
   | "settings:window-restore:get"
+  | "settings:usage-meters:get"
   | "settings:composer-predictions:get"
   | "settings:inbox:get";
 
@@ -175,6 +180,14 @@ export const live: Layer.Layer<
           safeBroadcastToWindows(windows.all(), COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL, [
             settings,
           ]);
+        }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
+    yield* applicationSettings.usageMeterSettingsChanges.pipe(
+      Stream.runForEach((settings) =>
+        Effect.sync(() => {
+          safeBroadcastToWindows(windows.all(), USAGE_METER_SETTINGS_CHANGED_CHANNEL, [settings]);
         }),
       ),
       Effect.forkScoped({ startImmediately: true }),
@@ -623,6 +636,25 @@ export const live: Layer.Layer<
             "update-composer-prediction-settings",
             { type: "update-composer-predictions", input: parsed },
             (value) => value.composerPredictions,
+          ),
+        ),
+      ),
+    );
+    yield* handleRead(
+      "settings:usage-meters:get",
+      "Usage meter settings",
+      (value) => value.usageMeters,
+    );
+    yield* ipc.handlePlainCommand("settings:usage-meters:update", (event, input: unknown) =>
+      authorize(event, "Usage meter settings").pipe(
+        Effect.andThen(
+          parse("parse-usage-meter-settings", () => UsageMeterSettingsSchema.parse(input)),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-usage-meter-settings",
+            { type: "update-usage-meters", input: parsed },
+            (value) => value.usageMeters,
           ),
         ),
       ),

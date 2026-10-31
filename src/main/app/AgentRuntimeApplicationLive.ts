@@ -729,6 +729,10 @@ const supervisor = Layer.effectContext(
       ),
     );
     const claudeUsage = yield* makeClaudeUsage({
+      meterEnabled: (yield* settings.snapshot()).usageMeters.claude,
+      meterEnabledChanges: settings.usageMeterSettingsChanges.pipe(
+        Stream.map((value) => value.claude),
+      ),
       declared: settings.snapshot().pipe(
         Effect.map((snapshot) =>
           snapshot.claudeAgents.instances.flatMap((configured) => {

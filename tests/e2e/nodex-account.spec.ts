@@ -3,7 +3,11 @@ import { expect, test } from "@playwright/test";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { openComposerModelPicker } from "./support/composer-model-picker";
-import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import { openWorkbenchSettings } from "./support/workbench-settings";
+import {
+  ElectronScenarioHarness,
+  openNodexWindow,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { materializeScenario } from "../../scripts/scenarios/seed/scenario-seed";
 import {
@@ -339,6 +343,74 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
   } finally {
     if (process.env.NODEX_REVIEW_ARTIFACTS && !harness.page.isClosed())
       await harness.page.screencast.stop().catch(() => undefined);
+    await harness.close();
+    await oauth.close();
+  }
+});
+
+test("usage meter choices follow the Profile across windows and restart", async () => {
+  test.setTimeout(180_000);
+  const oauth = await startNodexOAuthHttpFixture();
+  const harness = await ElectronScenarioHarness.create({
+    label: "usage-meters",
+    environment: oauth.environment,
+  });
+  try {
+    let first = await harness.launch();
+    const handoffs = await captureNodexBrowserHandoff(harness.application);
+    await openNodexAccount(first);
+    await completeLogin(harness, oauth, handoffs);
+    await first.getByRole("button", { name: "Back to app", exact: true }).click();
+    const rail = first.locator("[data-workbench-rail-account-controls]");
+    await expect(rail.locator("[data-nodex-credit-meter]")).toBeVisible();
+    await expect(rail.locator('[data-usage-meter="codex"]')).toBeVisible();
+    const second = await openNodexWindow(harness.application, async () => {
+      expect(await first.evaluate(() => window.api!.invoke("window:new", {}))).toBe(true);
+    });
+    await openWorkbenchSettings(second);
+    await second.getByRole("link", { name: "General", exact: true }).click();
+    const section = second.getByRole("region", { name: "Usage meters", exact: true });
+    const codex = section.getByRole("switch", { name: "Codex", exact: true });
+    await expect(codex).toBeChecked();
+    await codex.click();
+    await expect(codex).not.toBeChecked();
+    await expect(rail.locator('[data-usage-meter="codex"]')).toHaveCount(0);
+    await expect(rail.locator("[data-nodex-credit-meter]")).toBeVisible();
+    const artifacts = process.env.NODEX_REVIEW_ARTIFACTS;
+    if (artifacts) {
+      await mkdir(artifacts, { recursive: true });
+      await section.scrollIntoViewIfNeeded();
+      await second.screenshot({ path: path.join(artifacts, "usage-meters-general.png") });
+      await first.screenshot({ path: path.join(artifacts, "usage-meters-hidden-rail.png") });
+    }
+    const credit = section.getByRole("switch", { name: "Nodex credit", exact: true });
+    await credit.click();
+    await expect(credit).not.toBeChecked();
+    await expect(rail.locator("[data-nodex-credit-meter]")).toHaveCount(0);
+    first = await harness.restart();
+    await openWorkbenchSettings(first);
+    await first.getByRole("link", { name: "General", exact: true }).click();
+    const restored = first.getByRole("region", { name: "Usage meters", exact: true });
+    await expect(restored.getByRole("switch", { name: "Claude", exact: true })).toBeChecked();
+    await expect(restored.getByRole("switch", { name: "Codex", exact: true })).not.toBeChecked();
+    await expect(
+      restored.getByRole("switch", { name: "Nodex credit", exact: true }),
+    ).not.toBeChecked();
+    // Account settings remains an explicit credit surface even with the rail meter off. Main
+    // coalesces credit reads within five seconds of startup's, so revisit until it reads again.
+    oauth.setBalance(23.5);
+    await expect
+      .poll(
+        async () => {
+          await first.getByRole("link", { name: "General", exact: true }).click();
+          await openNodexAccount(first);
+          return first.getByLabel("Remaining credit").textContent();
+        },
+        { intervals: [2_000], timeout: 20_000 },
+      )
+      .toBe("$23.50");
+    expect(oauth.evidence().invalidRequests).toEqual([]);
+  } finally {
     await harness.close();
     await oauth.close();
   }

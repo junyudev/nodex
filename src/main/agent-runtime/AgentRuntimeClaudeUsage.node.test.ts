@@ -61,6 +61,7 @@ const claude = (overrides: {
 const codex = { instanceId: "codex", driver: "codex" } as unknown as Provider;
 
 const harness = (options: {
+  readonly meter?: SubscriptionRef.SubscriptionRef<boolean>;
   readonly declared?: readonly string[];
   /** Whether Agent execution is running; mutable so a test can stop or start it. */
   readonly execution?: { running: boolean };
@@ -84,6 +85,8 @@ const harness = (options: {
       );
     const check = () => options.check?.() ?? now(30);
     const usage = yield* make({
+      meterEnabled: options.meter ? yield* SubscriptionRef.get(options.meter) : true,
+      meterEnabledChanges: options.meter ? SubscriptionRef.changes(options.meter) : undefined,
       declared: Effect.succeed(options.declared ?? ["claude-default"]),
       known: Effect.suspend(() => {
         reads.push("known");
@@ -453,6 +456,46 @@ it.effect("signing out replaces the Agent's reading with its signed-out state", 
       yield* settle;
       assert.strictEqual(failure.message, "Claude Code is still signed in.");
       assert.strictEqual(reads.length, count + 1);
+    }),
+  ).pipe(Effect.provide(TestClock.layer())),
+);
+
+it.effect("idles every Claude usage read while hidden and reads once immediately when shown", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const meter = yield* SubscriptionRef.make(false);
+      const value = yield* harness({ meter });
+      yield* value.usage.refresh;
+      yield* value.usage.reread;
+      yield* PubSub.publish(value.connection, { status: "ready" } as AgentRuntimeConnectionState);
+      yield* TestClock.adjust("15 minutes");
+      yield* value.settle;
+      assert.deepEqual(value.reads, []);
+      // Catalog observations stay passive and are still adopted while hidden.
+      yield* PubSub.publish(value.served, [claude({ usedPercent: 41 })]);
+      yield* value.settle;
+      assert.strictEqual(
+        (yield* SubscriptionRef.get(value.usage.snapshot)).providers?.[0]?.usageLimits?.windows[0]
+          ?.usedPercent,
+        41,
+      );
+      yield* SubscriptionRef.set(meter, true);
+      yield* value.settle;
+      assert.deepEqual(value.reads, ["asked"]);
+      yield* SubscriptionRef.set(meter, true);
+      yield* value.settle;
+      assert.deepEqual(value.reads, ["asked"]);
+      yield* SubscriptionRef.set(meter, false);
+      yield* value.settle;
+      yield* TestClock.adjust("10 minutes");
+      yield* value.usage.refresh;
+      assert.deepEqual(value.reads, ["asked"]);
+      yield* SubscriptionRef.set(meter, true);
+      yield* value.settle;
+      assert.deepEqual(value.reads, ["asked", "asked"]);
+      yield* TestClock.adjust("5 minutes");
+      yield* value.settle;
+      assert.deepEqual(value.reads, ["asked", "asked", "poll"]);
     }),
   ).pipe(Effect.provide(TestClock.layer())),
 );

@@ -74,6 +74,8 @@ export interface AgentRuntimeClaudeUsageOptions {
   readonly served: Stream.Stream<Providers>;
   readonly connectionChanges: Stream.Stream<AgentRuntimeConnectionState>;
   readonly activityChanges: Stream.Stream<AgentRuntimeSessionActivityChange>;
+  readonly meterEnabled?: boolean;
+  readonly meterEnabledChanges?: Stream.Stream<boolean>;
   readonly pollInterval?: Duration.Input;
   readonly refreshFloor?: Duration.Input;
 }
@@ -122,6 +124,7 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
   /** Floors explicit refreshes: from-scratch reads that actually ran. */
   const lastFreshReadAt = yield* Ref.make<number | null>(null);
   const reads = yield* Semaphore.make(1);
+  const meterEnabled = yield* Ref.make(options.meterEnabled ?? true);
   // Each wakes its loop to reconsider; sliding so a burst of requests asks once.
   const schedule = yield* Queue.sliding<void>(1);
   const rereads = yield* Queue.sliding<void>(1);
@@ -146,6 +149,7 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
    */
   const readKnown = reads.withPermits(1)(
     Effect.gen(function* () {
+      if (!(yield* Ref.get(meterEnabled))) return;
       const result = yield* Effect.result(
         options.declared.pipe(
           Effect.flatMap((instanceIds) =>
@@ -182,18 +186,18 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
    */
   const readNow = (start: boolean) =>
     Effect.gen(function* () {
+      if (!(yield* Ref.get(meterEnabled))) return;
       const now = yield* Clock.currentTimeMillis;
       yield* Ref.set(lastAttemptAt, now);
       const result = yield* Effect.result(
-        options.declared.pipe(
-          Effect.flatMap((instanceIds) =>
-            instanceIds.length === 0
-              ? Effect.succeed([] as Providers)
-              : start
-                ? options.refresh(instanceIds)
-                : options.refreshWhileRunning(instanceIds),
-          ),
-        ),
+        Effect.gen(function* () {
+          const instanceIds = yield* options.declared;
+          if (!(yield* Ref.get(meterEnabled))) return null;
+          if (instanceIds.length === 0) return [] as Providers;
+          return yield* start
+            ? options.refresh(instanceIds)
+            : options.refreshWhileRunning(instanceIds);
+        }),
       );
       if (Result.isFailure(result)) return yield* publishFailure(result.failure);
       if (result.success === null) return;
@@ -254,6 +258,7 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
   // While execution runs, a shown meter is kept no older than the interval, and a read that
   // failed with nothing to show is retried at the same pace. Neither starts execution.
   const nextRead = Effect.gen(function* () {
+    if (!(yield* Ref.get(meterEnabled))) return null;
     const current = yield* SubscriptionRef.get(snapshot);
     const metered = meteredClaudeProviders(current.providers);
     if (metered.length > 0)
@@ -276,7 +281,14 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
         Effect.sleep(Duration.millis(delay)).pipe(Effect.as(true)),
         Queue.take(schedule).pipe(Effect.as(false)),
       );
-      if (due) yield* reads.withPermits(1)(readNow(false));
+      if (!due) return;
+      yield* reads.withPermits(1)(
+        Effect.gen(function* () {
+          const reconsidered = yield* nextRead;
+          if (reconsidered === null || reconsidered > (yield* Clock.currentTimeMillis)) return;
+          yield* readNow(false);
+        }),
+      );
     }),
   ).pipe(Effect.forkScoped);
 
@@ -329,6 +341,18 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
     Effect.forkScoped,
   );
 
+  if (options.meterEnabledChanges)
+    yield* options.meterEnabledChanges.pipe(
+      Stream.runForEach((enabled) =>
+        Effect.gen(function* () {
+          const previous = yield* Ref.getAndSet(meterEnabled, enabled);
+          if (previous === enabled) return;
+          yield* Queue.offer(schedule, undefined);
+          if (enabled) yield* reads.withPermits(1)(readNow(true)).pipe(Effect.forkIn(scope));
+        }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
   yield* reread;
 
   const logout = (instanceIds: readonly string[]) =>

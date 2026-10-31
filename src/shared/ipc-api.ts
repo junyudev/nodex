@@ -1509,6 +1509,14 @@ export interface IpcApi
     args: [input: UpdateAppUpdateSettingsInput];
     result: AppUpdateSettings;
   };
+  "settings:usage-meters:get": {
+    args: [];
+    result: import("./usage-meter-settings").UsageMeterSettings;
+  };
+  "settings:usage-meters:update": {
+    args: [input: import("./usage-meter-settings").UsageMeterSettings];
+    result: import("./usage-meter-settings").UsageMeterSettings;
+  };
   "settings:composer-predictions:get": {
     args: [];
     result: import("./composer-prediction-settings").ComposerPredictionSettings;
@@ -3078,6 +3086,7 @@ export interface IpcEvents {
   "chrome-control-settings-changed": ChromeControlRuntimeSnapshot;
   "claude-agent-settings-changed": void;
   "agent-settings-changed": void;
+  "usage-meter-settings-changed": import("./usage-meter-settings").UsageMeterSettings;
   "composer-prediction-settings-changed": import("./composer-prediction-settings").ComposerPredictionSettings;
   "desktop-notification:action": DesktopNotificationActionInvocation;
   "electron-window:focus-changed": { isFocused: boolean };

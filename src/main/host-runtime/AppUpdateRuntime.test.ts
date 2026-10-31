@@ -105,6 +105,7 @@ const buildHarness = (input: {
     } as unknown as ElectronWindowHost["Service"]);
     const scope = yield* Scope.make();
     const settings = ApplicationSettings.of({
+      usageMeterSettingsChanges: Stream.empty,
       composerPredictionSettingsChanges: Stream.empty,
       acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
       openCodeLaunchConfiguration: () => Effect.die("Unused OpenCode launch configuration"),

@@ -23,6 +23,7 @@ import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/error
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import { CODEX_INTEGRATION_CAPABILITIES } from "../../shared/codex-integration-capabilities";
 import { codexCliAppServerArgs } from "../../shared/codex-app-server-launch";
 import { resolveCodexRuntimeEffect, type ResolvedCodexRuntime } from "../codex/codex-runtime";
@@ -373,7 +374,19 @@ const foundations = Layer.mergeAll(
 const transport = runtime.pipe(Layer.provideMerge(localLaunch), Layer.provideMerge(foundations));
 const kernel = pendingRequests.pipe(Layer.provideMerge(transport));
 
-const account = codexAccountLive({ pollInterval: "60 seconds" }).pipe(Layer.provideMerge(kernel));
+const account = Layer.unwrap(
+  Effect.gen(function* () {
+    const settings = yield* ApplicationSettings;
+    const snapshot = yield* settings.snapshot().pipe(Effect.orDie);
+    return codexAccountLive({
+      pollInterval: "60 seconds",
+      meterEnabled: snapshot.usageMeters.codex,
+      meterEnabledChanges: settings.usageMeterSettingsChanges.pipe(
+        Stream.map((value) => value.codex),
+      ),
+    });
+  }),
+).pipe(Layer.provideMerge(kernel));
 const nativePlugins = Layer.unwrap(
   Effect.gen(function* () {
     const codex = yield* CodexPlatform;

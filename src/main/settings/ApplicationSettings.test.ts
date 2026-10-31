@@ -652,3 +652,47 @@ describe("ApplicationSettings", () => {
     }),
   );
 });
+
+it.effect(
+  "defaults all usage meters on, persists independent choices and only publishes effective saved changes",
+  () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture(
+        '[plugin]\nname = "keep"\n[server.usage_meters]\ncodex = false\n',
+      );
+      const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+      const settings = yield* makeApplicationSettings(input);
+      const defaults = { claude: true, codex: false, nodexCredit: true };
+      assert.deepEqual((yield* settings.snapshot()).usageMeters, defaults);
+      const changes = yield* settings.usageMeterSettingsChanges.pipe(
+        Stream.take(3),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* Effect.yieldNow;
+      const hidden = { claude: false, codex: false, nodexCredit: false };
+      yield* settings.update({ type: "update-usage-meters", input: hidden });
+      yield* settings.update({ type: "update-usage-meters", input: hidden });
+      const reopened = yield* makeApplicationSettings(input);
+      assert.deepEqual((yield* reopened.snapshot()).usageMeters, hidden);
+      const malformed = yield* Effect.result(
+        settings.update({
+          type: "update-usage-meters",
+          input: { ...hidden, codex: "yes" as unknown as boolean },
+        }),
+      );
+      assert.strictEqual(malformed._tag, "Failure");
+      assert.deepEqual((yield* settings.snapshot()).usageMeters, hidden);
+      const shown = { claude: true, codex: true, nodexCredit: true };
+      yield* settings.update({ type: "update-usage-meters", input: shown });
+      assert.deepEqual(yield* Fiber.join(changes), [defaults, hidden, shown]);
+      assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
+      const missing = fixture();
+      const fresh = yield* makeApplicationSettings({
+        environment: {},
+        hostHomeDirectory: missing.root,
+        settingsPath: missing.settingsPath,
+      });
+      assert.deepEqual((yield* fresh.snapshot()).usageMeters, shown);
+    }),
+);

@@ -28,9 +28,9 @@ starts Checkout. Unavailable tiers stay visible and disabled; paused supply read
 Checkout and open its returned URL in the system browser. Account management
 requires no website or web console.
 
-Main observes credit automatically on return to the app, on opening account or
-model surfaces, during regular maintenance, and every ten seconds for up to five
-minutes while a Checkout is pending. A higher observed balance completes that
+Main observes credit on opening Account settings, on window focus while a credit
+surface is mounted, during regular maintenance while the rail credit meter is
+enabled, and every ten seconds for up to five minutes while a Checkout is pending. A higher observed balance completes that
 pending state. Closing the UI does not stop payment observation. Expiry, sign-out
 and account replacement retire pending observation; a canceled Checkout never
 leaves an unbounded fast poll. A browser return does not grant credit. A failed
@@ -95,8 +95,8 @@ browser or restore pending state after account retirement.
 
 `GET https://api.jyu.app/v1/usage` uses the gateway API key as its Bearer token.
 Wallet-backed responses include numeric `balance` and `unit: "USD"`. Main
-reads credit on access acquisition, explicit Account refresh, surface/focus
-refresh and bounded pending-Checkout polling, as well as periodic account maintenance. The displayed amount is an observation, never permission
+reads credit on explicit Account refresh, credit-surface focus, bounded
+pending-Checkout polling, and periodic account maintenance while the rail meter is enabled. The displayed amount is an observation, never permission
 to spend. Concurrent devices and actual model costs are enforced by sub2api.
 
 ## Managed execution and retirement
@@ -143,3 +143,5 @@ without paid model calls.
 
 Production gateway availability, payment checkout and real paid inference need
 separate deployment acceptance. Desktop test fixtures do not prove those services.
+
+The Profile's **Nodex credit** switch in Settings → General → Usage meters controls the rail meter and its periodic balance reads. Turning it off preserves OAuth renewal, managed model access, and the public model and top-up supply refresh. Account settings and pending Checkout still read credit, and enabling the meter reads once immediately. Only credit surfaces refresh balance on window focus; observing identity or model access does not.

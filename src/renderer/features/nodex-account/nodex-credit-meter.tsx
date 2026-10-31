@@ -7,7 +7,7 @@ import type { UsageSeverity } from "@/lib/usage-meter";
 import { cn } from "@/lib/utils";
 import { resolveNodexAccountView } from "./nodex-account-identity";
 import { formatNodexCredit } from "../../../shared/nodex-models";
-import { useNodexAccount } from "./use-nodex-account";
+import { useNodexAccount, useNodexCreditRefreshOnFocus } from "./use-nodex-account";
 
 type Account = ReturnType<typeof useNodexAccount>;
 
@@ -189,7 +189,9 @@ export function NodexCreditMeter({
   const account = useNodexAccount(true);
   const view = resolveNodexAccountView(account);
   const { gauge, funded } = useNodexCreditGauge(account);
-  if (!view.signedIn || !(funded || account.snapshot?.checkoutPending)) return null;
+  const visible = view.signedIn && Boolean(funded || account.snapshot?.checkoutPending);
+  useNodexCreditRefreshOnFocus(visible, account.refreshModels);
+  if (!visible) return null;
   const level = gauge ? describeCreditGauge(gauge) : null;
   const label = gauge ? `Nodex credit, ${formatNodexCredit(gauge.balance)} left` : "Nodex credit";
   return (

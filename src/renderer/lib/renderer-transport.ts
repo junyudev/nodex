@@ -23,6 +23,9 @@ export interface RendererTransport {
   subscribeClaudeUsageChanges?: (
     callback: (snapshot: import("../../shared/agent-runtime-api").ClaudeUsageSnapshot) => void,
   ) => () => void;
+  subscribeUsageMeterSettingsChanges: (
+    callback: (settings: import("../../shared/usage-meter-settings").UsageMeterSettings) => void,
+  ) => () => void;
   subscribeComposerPredictionSettingsChanges: (
     callback: (
       settings: import("../../shared/composer-prediction-settings").ComposerPredictionSettings,

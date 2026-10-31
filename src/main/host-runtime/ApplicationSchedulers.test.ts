@@ -350,6 +350,7 @@ const buildHarness = (input: {
             Layer.succeed(
               ApplicationSettings,
               ApplicationSettings.of({
+                usageMeterSettingsChanges: Stream.empty,
                 composerPredictionSettingsChanges: Stream.empty,
                 acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
                 openCodeLaunchConfiguration: () =>

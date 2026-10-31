@@ -43,11 +43,6 @@ export function useNodexAccount(open: boolean) {
       })
       .catch(() => undefined);
   }, [queryClient]);
-  useEffect(() => {
-    if (!open) return;
-    window.addEventListener("focus", refreshModels);
-    return () => window.removeEventListener("focus", refreshModels);
-  }, [open, refreshModels]);
 
   const query = useQuery({ ...nodexAccountQueryOptions, enabled: open });
   const mutation = useMutation({
@@ -116,4 +111,13 @@ export function useNodexAccount(open: boolean) {
       void query.refetch();
     },
   };
+}
+
+/** Only a mounted surface displaying credit owns a balance refresh on return to its window. */
+export function useNodexCreditRefreshOnFocus(visible: boolean, refresh: () => void) {
+  useEffect(() => {
+    if (!visible) return;
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [visible, refresh]);
 }

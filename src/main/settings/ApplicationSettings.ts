@@ -1,3 +1,9 @@
+import {
+  DEFAULT_USAGE_METER_SETTINGS,
+  sameUsageMeterSettings,
+  type UsageMeterSettings,
+} from "../../shared/usage-meter-settings";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { ComposerPredictionSettings } from "../../shared/composer-prediction-settings";
 import type {
   OpenCodeAgentSettings,
@@ -74,6 +80,8 @@ import {
   getThreadNotificationSettings,
   getWindowRestoreSettings,
   getComposerPredictionSettings,
+  getUsageMeterSettings,
+  updateUsageMeterSettings,
   getInboxSettings,
   resetCommandKeybindings,
   updateAppUpdateSettings,
@@ -117,6 +125,7 @@ export interface ApplicationSettingsSnapshot {
   readonly windowRestore: WindowRestoreSettings;
   readonly inbox: InboxSettings;
   readonly composerPredictions: ComposerPredictionSettings;
+  readonly usageMeters: UsageMeterSettings;
 }
 
 export type ApplicationSettingsCommand =
@@ -154,6 +163,7 @@ export type ApplicationSettingsCommand =
   | { readonly type: "update-app-update"; readonly input: UpdateAppUpdateSettingsInput }
   | { readonly type: "update-window-restore"; readonly input: UpdateWindowRestoreSettingsInput }
   | { readonly type: "update-composer-predictions"; readonly input: ComposerPredictionSettings }
+  | { readonly type: "update-usage-meters"; readonly input: UsageMeterSettings }
   | { readonly type: "update-inbox"; readonly input: UpdateInboxSettingsInput };
 
 export class ApplicationSettingsError extends Schema.TaggedError<ApplicationSettingsError>()(
@@ -169,6 +179,8 @@ export class ApplicationSettingsConflictError extends Schema.TaggedError<Applica
 export class ApplicationSettings extends Context.Service<
   ApplicationSettings,
   {
+    /** Current Profile meter choices and subsequent saved changes. */
+    readonly usageMeterSettingsChanges: Stream.Stream<UsageMeterSettings>;
     /** Latest saved preference; slow observers may coalesce intermediate invalidations. */
     readonly composerPredictionSettingsChanges: Stream.Stream<ComposerPredictionSettings>;
     readonly acpLaunchConfiguration: (
@@ -272,6 +284,7 @@ function makeSnapshot(
     windowRestore: getWindowRestoreSettings(snapshotSource),
     inbox: getInboxSettings(snapshotSource),
     composerPredictions: getComposerPredictionSettings(snapshotSource),
+    usageMeters: getUsageMeterSettings(snapshotSource),
   };
 }
 
@@ -335,6 +348,9 @@ function applyCommand(
     case "update-composer-predictions":
       updateComposerPredictionSettings(command.input, source);
       return;
+    case "update-usage-meters":
+      updateUsageMeterSettings(command.input, source);
+      return;
     case "update-inbox":
       updateInboxSettings(command.input, source);
       return;
@@ -354,6 +370,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     ...(input.secretEncryption ? { secretEncryption: input.secretEncryption } : {}),
   };
   const writes = yield* Semaphore.make(1);
+  const usageMeters = yield* SubscriptionRef.make(DEFAULT_USAGE_METER_SETTINGS);
   // Observers invalidate predictions and reread settings before admitting new work.
   const composerPredictionChanges = yield* PubSub.sliding<ComposerPredictionSettings>(1);
   yield* Effect.addFinalizer(() => PubSub.shutdown(composerPredictionChanges));
@@ -374,6 +391,9 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
   ) {
     const snapshot = yield* attempt("read", () => makeSnapshot(source, buildDefaultChannel));
+    if (!sameUsageMeterSettings(yield* SubscriptionRef.get(usageMeters), snapshot.usageMeters)) {
+      yield* SubscriptionRef.set(usageMeters, snapshot.usageMeters);
+    }
     const previousHome = yield* Ref.get(activeCodexHome);
     if (previousHome === undefined) {
       yield* Ref.set(activeCodexHome, {
@@ -399,6 +419,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   });
 
   return ApplicationSettings.of({
+    usageMeterSettingsChanges: SubscriptionRef.changes(usageMeters),
     composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
     acpLaunchConfiguration: (instanceId) =>
       writes.withPermits(1)(

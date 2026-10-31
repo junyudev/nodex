@@ -1,3 +1,5 @@
+import * as Stream from "effect/Stream";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { NodexModelAccessPlatform } from "../platform/NodexModelAccessPlatform";
@@ -40,4 +42,16 @@ const models = Layer.effect(
   }),
 );
 
-export const live = NodexAccount.live.pipe(Layer.provide(Layer.merge(platform, models)));
+export const live = Layer.effect(
+  NodexAccount.NodexAccount,
+  Effect.gen(function* () {
+    const settings = yield* ApplicationSettings;
+    const snapshot = yield* settings.snapshot().pipe(Effect.orDie);
+    return yield* NodexAccount.make({
+      meterEnabled: snapshot.usageMeters.nodexCredit,
+      meterEnabledChanges: settings.usageMeterSettingsChanges.pipe(
+        Stream.map((value) => value.nodexCredit),
+      ),
+    });
+  }),
+).pipe(Layer.provide(Layer.merge(platform, models)));

@@ -245,7 +245,7 @@ it.live(
       value.setUserinfoFailure(true);
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const owner = yield* makeAccount.pipe(
+          const owner = yield* makeAccount().pipe(
             Effect.provideService(NodexModelAccessPlatform, unavailableModelAccessFixture),
             Effect.provideService(NodexAccountPlatform, value.platform),
           );
@@ -264,7 +264,7 @@ it.live(
         }),
       );
       value.setUserinfoFailure(false);
-      const restarted = yield* makeAccount.pipe(
+      const restarted = yield* makeAccount().pipe(
         Effect.provideService(NodexModelAccessPlatform, unavailableModelAccessFixture),
         Effect.provideService(NodexAccountPlatform, value.platform),
       );

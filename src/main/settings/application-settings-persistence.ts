@@ -1,4 +1,9 @@
 import {
+  UsageMeterSettingsSchema,
+  DEFAULT_USAGE_METER_SETTINGS,
+  type UsageMeterSettings,
+} from "../../shared/usage-meter-settings";
+import {
   presentAcpInstances,
   readStoredAcpInstances,
   resolveAcpLaunchConfiguration,
@@ -116,6 +121,7 @@ interface ServerTomlConfig {
   app_updates_channel?: "stable" | "nightly";
   window_restore_policy?: WindowRestorePolicy;
   composer_predictions_enabled?: boolean;
+  usage_meters?: Partial<UsageMeterSettings>;
   inbox_suggestions?: InboxSuggestionMode;
   /** Read only to migrate the former boolean preference. */
   inbox_suggestions_enabled?: boolean;
@@ -1405,4 +1411,24 @@ export function updateComposerPredictionSettings(
     composer_predictions_enabled: enabled,
   });
   return { enabled };
+}
+
+export function getUsageMeterSettings(
+  source: ApplicationSettingsDocumentSource,
+): UsageMeterSettings {
+  const stored = loadProfileServerTomlConfig(source).usage_meters;
+  const parsed = UsageMeterSettingsSchema.partial().safeParse(stored);
+  return { ...DEFAULT_USAGE_METER_SETTINGS, ...(parsed.success ? parsed.data : {}) };
+}
+
+export function updateUsageMeterSettings(
+  input: UsageMeterSettings,
+  source: ApplicationSettingsDocumentSource,
+): UsageMeterSettings {
+  const settings = UsageMeterSettingsSchema.parse(input);
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
+    usage_meters: settings,
+  });
+  return settings;
 }

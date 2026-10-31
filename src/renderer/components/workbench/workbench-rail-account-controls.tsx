@@ -1,3 +1,4 @@
+import { useUsageMeterSettings } from "@/features/usage-meters/usage-meter-settings";
 import { useRef, useState } from "react";
 import { NodexAccountMenu } from "@/features/nodex-account/nodex-account-menu";
 import { NodexCreditMeter } from "@/features/nodex-account/nodex-credit-meter";
@@ -258,13 +259,18 @@ export function WorkbenchRailAccountControls({
   onErrorMessage,
   claudeUsage,
 }: WorkbenchRailAccountControlsProps) {
+  const { settings: meters } = useUsageMeterSettings();
   const [loginBusy, setLoginBusy] = useState(false);
   const accountState = resolveRailAccountState(account ?? null, connection);
   const showUsageMeter = Boolean(
-    accountState.kind === "signedIn" && connection && onRefreshAccount && onLogout,
+    meters.codex && accountState.kind === "signedIn" && connection && onRefreshAccount && onLogout,
   );
   const showSignIn = Boolean(
-    accountState.kind === "signedOut" && onStartChatGptLogin && onStartApiKeyLogin && onCancelLogin,
+    meters.codex &&
+    accountState.kind === "signedOut" &&
+    onStartChatGptLogin &&
+    onStartApiKeyLogin &&
+    onCancelLogin,
   );
   const claudeAccounts = claudeUsageAccounts(claudeUsage?.snapshot);
   const claudePlaceholder = claudeUsagePlaceholder(claudeUsage?.snapshot);
@@ -320,7 +326,7 @@ export function WorkbenchRailAccountControls({
       className="mt-auto flex flex-col items-center gap-2"
     >
       <div data-workbench-rail-account="" className="contents">
-        {claudeUsage
+        {meters.claude && claudeUsage
           ? claudeAccounts.map((claude) => (
               <span
                 key={claude.reading.key}
@@ -334,7 +340,7 @@ export function WorkbenchRailAccountControls({
               </span>
             ))
           : null}
-        {claudeUsage && claudePlaceholder ? (
+        {meters.claude && claudeUsage && claudePlaceholder ? (
           <RailUsagePlaceholder
             provider="claude"
             subject="Claude usage"
@@ -381,7 +387,8 @@ export function WorkbenchRailAccountControls({
             onApiKeyLogin={(apiKey) => void handleApiKeyLogin(apiKey)}
             onCancelLogin={(loginId) => void handleCancelLogin(loginId)}
           />
-        ) : accountState.kind === "loading" || accountState.kind === "unavailable" ? (
+        ) : meters.codex &&
+          (accountState.kind === "loading" || accountState.kind === "unavailable") ? (
           <RailUsagePlaceholder
             provider="codex"
             subject="Codex account"
@@ -390,10 +397,12 @@ export function WorkbenchRailAccountControls({
           />
         ) : null}
       </div>
-      <NodexCreditMeter
-        onOpenAccountSettings={onOpenAccountSettings}
-        className={WORKBENCH_RAIL_BUTTON_CLASS}
-      />
+      {meters.nodexCredit ? (
+        <NodexCreditMeter
+          onOpenAccountSettings={onOpenAccountSettings}
+          className={WORKBENCH_RAIL_BUTTON_CLASS}
+        />
+      ) : null}
       <NodexAccountMenu
         onOpenSettings={onOpenSettings}
         onOpenAccountSettings={onOpenAccountSettings}

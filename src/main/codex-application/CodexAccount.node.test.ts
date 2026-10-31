@@ -418,3 +418,92 @@ it.effect(
       }),
     ),
 );
+
+it.effect(
+  "pauses hidden Codex usage polling while preserving recovery and push notifications",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const meter = yield* SubscriptionRef.make(false);
+        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+        const requests: string[] = [];
+        let unavailable = true;
+        const gateway = {
+          localHostId: "local",
+          events: Stream.fromPubSub(events),
+          connectionChanges: () => Stream.empty,
+          awaitReady: () => Effect.void,
+          requestLocal: (method: string) =>
+            Effect.suspend((): Effect.Effect<unknown, Error> => {
+              requests.push(method);
+              if (method === "account/rateLimits/read")
+                return Effect.succeed({ rateLimits: { primary: { usedPercent: 25 } } });
+              if (unavailable) return Effect.fail(new Error("Offline"));
+              return Effect.succeed({
+                account: { type: "chatgpt", email: "agent@example.com", planType: "pro" },
+                requiresOpenaiAuth: false,
+              });
+            }),
+        } as unknown as CodexGateway["Service"];
+        const context = yield* Layer.buildWithScope(
+          accountLive({
+            pollInterval: "60 seconds",
+            meterEnabled: false,
+            meterEnabledChanges: SubscriptionRef.changes(meter),
+          }).pipe(
+            Layer.provide(
+              Layer.merge(Layer.succeed(CodexGateway, gateway), executionHostAuthStateLive),
+            ),
+          ),
+          yield* Scope.Scope,
+        );
+        const account = Context.get(context, CodexAccount);
+        const settle = Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow, {
+          discard: true,
+        });
+        yield* settle;
+        yield* account.refresh.pipe(Effect.ignore);
+        assert.strictEqual((yield* SubscriptionRef.get(account.snapshot)).status, "unavailable");
+        unavailable = false;
+        yield* TestClock.adjust("60 seconds");
+        yield* settle;
+        assert.strictEqual((yield* SubscriptionRef.get(account.snapshot)).status, "ready");
+        assert.deepEqual(requests, ["account/read", "account/read"]);
+        yield* TestClock.adjust("120 seconds");
+        assert.deepEqual(requests, ["account/read", "account/read"]);
+        yield* PubSub.publish(events, {
+          kind: "notification",
+          hostId: "local",
+          value: {
+            method: "account/rateLimits/updated",
+            params: { rateLimits: { primary: { usedPercent: 42 } } },
+          },
+        } as CodexEndpointEvent);
+        yield* settle;
+        assert.strictEqual(
+          (yield* SubscriptionRef.get(account.snapshot)).rateLimits?.primary?.usedPercent,
+          42,
+        );
+        yield* PubSub.publish(events, {
+          kind: "notification",
+          hostId: "local",
+          value: { method: "account/updated", params: { authMode: "chatgpt" } },
+        } as CodexEndpointEvent);
+        yield* settle;
+        assert.deepEqual(requests, ["account/read", "account/read", "account/read"]);
+        yield* SubscriptionRef.set(meter, true);
+        yield* settle;
+        assert.deepEqual(requests.slice(3), ["account/rateLimits/read"]);
+        yield* SubscriptionRef.set(meter, true);
+        yield* settle;
+        assert.strictEqual(requests.length, 4);
+        yield* SubscriptionRef.set(meter, false);
+        yield* settle;
+        yield* TestClock.adjust("120 seconds");
+        assert.strictEqual(requests.length, 4);
+        yield* SubscriptionRef.set(meter, true);
+        yield* settle;
+        assert.deepEqual(requests.slice(3), ["account/rateLimits/read", "account/rateLimits/read"]);
+      }),
+    ).pipe(Effect.provide(TestClock.layer())),
+);

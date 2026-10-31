@@ -32,6 +32,8 @@ import {
 export interface CodexAccountOptions {
   readonly pollInterval: Duration.Input;
   readonly refreshOnStart?: boolean;
+  readonly meterEnabled?: boolean;
+  readonly meterEnabledChanges?: Stream.Stream<boolean>;
 }
 
 export class CodexAccountInputError extends Schema.TaggedError<CodexAccountInputError>()(
@@ -87,8 +89,10 @@ export const live = (
     CodexAccount,
     Effect.gen(function* () {
       const gateway = yield* CodexGateway;
+      const scope = yield* Effect.scope;
       const authState = yield* CodexExecutionHostAuthState;
       const snapshot = yield* SubscriptionRef.make<CodexAccountSnapshot>(loadingAccountSnapshot());
+      const meterEnabled = yield* Ref.make(options.meterEnabled ?? true);
       const refreshLock = yield* Semaphore.make(1);
       const refreshInFlight = yield* Ref.make<AccountRefreshEffect | null>(null);
       const authGeneration = yield* Ref.make(0);
@@ -139,11 +143,13 @@ export const live = (
           before.account?.type === "chatgpt" &&
           before.account.email === account.email;
         const rateLimitState =
-          account?.type === "chatgpt"
+          account?.type === "chatgpt" && (yield* Ref.get(meterEnabled))
             ? yield* readRateLimits(
                 sameAccount ? keptRateLimitState(before) : emptyAccountRateLimitState(),
               )
-            : emptyAccountRateLimitState();
+            : sameAccount
+              ? keptRateLimitState(before)
+              : emptyAccountRateLimitState();
         const currentGeneration = yield* Ref.get(authGeneration);
         if (currentGeneration !== generation) return yield* SubscriptionRef.get(snapshot);
         const previous = yield* SubscriptionRef.get(snapshot);
@@ -195,6 +201,7 @@ export const live = (
       });
 
       const refreshRateLimits = Effect.gen(function* () {
+        if (!(yield* Ref.get(meterEnabled))) return yield* SubscriptionRef.get(snapshot);
         const rateLimitState = yield* readRateLimits(
           keptRateLimitState(yield* SubscriptionRef.get(snapshot)),
         );
@@ -208,8 +215,9 @@ export const live = (
       // until the account is known; a signed-out answer waits for the user to sign in.
       const pollOnce = Effect.gen(function* () {
         const current = yield* SubscriptionRef.get(snapshot);
-        if (current.account?.type === "chatgpt") return yield* refreshRateLimits;
         if (current.status === "unavailable") return yield* refresh;
+        if (!(yield* Ref.get(meterEnabled))) return;
+        if (current.account?.type === "chatgpt") return yield* refreshRateLimits;
       }).pipe(Effect.ignore);
       yield* Effect.repeat(pollOnce, Schedule.spaced(options.pollInterval)).pipe(Effect.forkScoped);
 
@@ -245,6 +253,23 @@ export const live = (
         }),
         Effect.forkScoped,
       );
+
+      if (options.meterEnabledChanges)
+        yield* options.meterEnabledChanges.pipe(
+          Stream.runForEach((enabled) =>
+            Effect.gen(function* () {
+              const previous = yield* Ref.getAndSet(meterEnabled, enabled);
+              if (!enabled || previous === enabled) return;
+              const current = yield* SubscriptionRef.get(snapshot);
+              yield* (
+                current.status === "ready" && current.account?.type === "chatgpt"
+                  ? refreshRateLimits
+                  : refresh
+              ).pipe(Effect.ignore, Effect.forkIn(scope));
+            }),
+          ),
+          Effect.forkScoped({ startImmediately: true }),
+        );
 
       // A real catalog/account/remote consumer has already acquired the endpoint. Observing
       // its cold state never starts a process, while ready generations publish account facts.

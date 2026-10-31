@@ -1,3 +1,4 @@
+import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
 import { startTransition } from "react";
 import { NodexButton } from "@/components/ui/button";
 import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
@@ -67,6 +68,8 @@ export function GeneralSettingsPage({
           </NodexButton>
         </SettingRow>
       </SectionBlock>
+
+      <UsageMeterSettingRows />
 
       <SectionBlock id="chats" title="Chats">
         <SettingRow

@@ -135,6 +135,25 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
+        anchor: "usage-meters",
+        title: "Usage meters",
+        entries: [
+          entry("Claude", "Show Claude usage in the rail.", ["usage", "limits", "rail", "meter"]),
+          entry("Codex", "Show Codex usage in the rail.", [
+            "usage",
+            "rate limits",
+            "rail",
+            "meter",
+          ]),
+          entry("Nodex credit", "Show Nodex credit in the rail.", [
+            "credit",
+            "balance",
+            "rail",
+            "meter",
+          ]),
+        ],
+      },
+      {
         anchor: "chats",
         title: "Chats",
         entries: [

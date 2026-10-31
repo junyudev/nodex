@@ -13,6 +13,10 @@ const modelStatusFixture = {
   },
 };
 import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
+import {
+  DEFAULT_USAGE_METER_SETTINGS,
+  USAGE_METER_SETTINGS_CHANGED_CHANNEL,
+} from "../../../shared/usage-meter-settings";
 import { WorkbenchRailAccountControls } from "@/components/workbench/workbench-rail-account-controls";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { installWindowApi } from "@/test/browser-globals";
@@ -55,10 +59,13 @@ function renderAccountControls(snapshot: NodexAccountSnapshot, settingsShortcutL
   const accountSettings = vi.fn();
   installWindowApi({
     invoke: (channel: string, ...args: unknown[]) =>
-      channel === "nodex-account:refresh-models"
-        ? Promise.resolve(observed)
-        : invoke(channel, ...args),
+      channel === "settings:usage-meters:get"
+        ? Promise.resolve(DEFAULT_USAGE_METER_SETTINGS)
+        : channel === "nodex-account:refresh-models"
+          ? Promise.resolve(observed)
+          : invoke(channel, ...args),
     on: (channel: string, listener: (value: unknown) => void) => {
+      if (channel === USAGE_METER_SETTINGS_CHANGED_CHANNEL) return () => undefined;
       if (channel !== "nodex-account:changed") throw new Error(`Unexpected event ${channel}`);
       listeners.add(listener);
       return () => listeners.delete(listener);

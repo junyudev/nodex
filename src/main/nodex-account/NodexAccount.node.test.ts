@@ -1,3 +1,5 @@
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import type { NodexAccountOptions } from "./NodexAccount";
 // @effect-diagnostics strictEffectProvide:off
 import {
   NodexModelAccessPlatform,
@@ -40,6 +42,7 @@ const alice: NodexAccountCredentials = {
 const harness = (
   overrides: Partial<NodexAccountPlatform["Service"]> = {},
   modelOverrides: Partial<NodexModelAccessPlatform["Service"]> = {},
+  options: NodexAccountOptions = {},
 ) =>
   Effect.gen(function* () {
     const login = yield* Deferred.make<NodexAccountCredentials, NodexAccountPlatformError>();
@@ -48,7 +51,7 @@ const harness = (
     let loginCount = 0;
     let released = 0;
     let revocations = 0;
-    const owner = yield* make.pipe(
+    const owner = yield* make(options).pipe(
       Effect.provideService(NodexModelAccessPlatform, {
         ...unavailableModelAccessFixture,
         ...modelOverrides,
@@ -643,4 +646,144 @@ it.effect("renews remembered model access once per launch and keeps it when offl
       expect(exchanges).toBe(online ? 1 : 2);
     }
   }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "hides periodic balance reads while keeping tokens, managed access and public supply fresh",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const meter = yield* SubscriptionRef.make(false);
+        let balances = 0;
+        let refreshes = 0;
+        let statuses = 0;
+        let exchanges = 0;
+        const value = yield* harness(
+          {
+            load: Effect.succeed(alice),
+            refresh: (credentials) =>
+              Effect.sync(() => {
+                refreshes++;
+                return { credentials, retain: Effect.void, verified: true };
+              }),
+          },
+          {
+            status: Effect.sync(() => {
+              statuses++;
+              return modelStatusFixture;
+            }),
+            exchange: () =>
+              Effect.sync(() => {
+                exchanges++;
+                return modelAccessFixture;
+              }),
+            balance: () =>
+              Effect.sync(() => {
+                balances++;
+                return 12.5;
+              }),
+          },
+          { meterEnabled: false, meterEnabledChanges: SubscriptionRef.changes(meter) },
+        );
+        const settle = Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow, {
+          discard: true,
+        });
+        yield* settle;
+        expect(refreshes).toBe(1);
+        expect(exchanges).toBe(1);
+        expect(balances).toBe(0);
+        expect((yield* value.owner.managed)?.access).toEqual(modelAccessFixture);
+        expect((yield* value.owner.read).credit).toBeUndefined();
+        const initialStatuses = statuses;
+        yield* TestClock.adjust("60 seconds");
+        yield* settle;
+        expect(balances).toBe(0);
+        expect(statuses).toBe(initialStatuses + 1);
+        expect(value.saves()).toBeGreaterThan(1);
+        yield* SubscriptionRef.set(meter, true);
+        yield* settle;
+        expect(balances).toBe(1);
+        yield* SubscriptionRef.set(meter, true);
+        yield* settle;
+        expect(balances).toBe(1);
+        yield* SubscriptionRef.set(meter, false);
+        yield* settle;
+        yield* TestClock.adjust("60 seconds");
+        expect(balances).toBe(1);
+        // An explicit Account surface still reads credit while its rail meter is hidden.
+        yield* value.owner.refreshModels;
+        expect(balances).toBe(2);
+        yield* value.owner.openTopUp(2);
+        yield* TestClock.adjust("10 seconds");
+        expect(balances).toBe(3);
+      }),
+    ),
+);
+
+it.effect("renews expiring OAuth credentials even with the credit meter hidden", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let refreshes = 0;
+      let balances = 0;
+      const value = yield* harness(
+        {
+          load: Effect.succeed({ ...alice, expiresAt: 10_000 }),
+          refresh: (credentials) =>
+            Effect.sync(() => {
+              refreshes++;
+              return { credentials, retain: Effect.void, verified: true };
+            }),
+        },
+        {
+          balance: () =>
+            Effect.sync(() => {
+              balances++;
+              return 12.5;
+            }),
+        },
+        { meterEnabled: false },
+      );
+      yield* TestClock.adjust("60 seconds");
+      expect(refreshes).toBeGreaterThanOrEqual(3);
+      expect(balances).toBe(0);
+      expect((yield* value.owner.read).status).toBe("signed-in");
+    }),
+  ),
+);
+
+it.effect("a hidden meter skips credit after an already-started model exchange completes", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const meter = yield* SubscriptionRef.make(true);
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      let balances = 0;
+      const value = yield* harness(
+        { load: Effect.succeed(alice) },
+        {
+          exchange: () =>
+            Deferred.succeed(started, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.as(modelAccessFixture),
+            ),
+          balance: () =>
+            Effect.sync(() => {
+              balances++;
+              return 12.5;
+            }),
+        },
+        { meterEnabledChanges: SubscriptionRef.changes(meter) },
+      );
+      yield* Deferred.await(started);
+      yield* SubscriptionRef.set(meter, false);
+      yield* Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow, { discard: true });
+      yield* Deferred.succeed(release, undefined);
+      yield* Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow, { discard: true });
+      expect(balances).toBe(0);
+      expect((yield* value.owner.managed)?.access).toEqual(modelAccessFixture);
+      yield* SubscriptionRef.set(meter, true);
+      yield* Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow, { discard: true });
+      expect(balances).toBe(1);
+    }),
+  ),
 );

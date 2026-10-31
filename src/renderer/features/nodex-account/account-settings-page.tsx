@@ -14,7 +14,7 @@ import {
   useNodexCreditGauge,
 } from "./nodex-credit-meter";
 import { NodexTopUpTiers } from "./nodex-top-up";
-import { useNodexAccount } from "./use-nodex-account";
+import { useNodexAccount, useNodexCreditRefreshOnFocus } from "./use-nodex-account";
 
 export function AccountSettingsPage({ open }: { open: boolean }) {
   if (!open) return null;
@@ -25,6 +25,7 @@ function AccountSettingsContent() {
   const account = useNodexAccount(true);
   const view = resolveNodexAccountView(account);
   const { refreshModels } = account;
+  useNodexCreditRefreshOnFocus(view.signedIn, refreshModels);
   // Only a signed-in account has credit and model access to refresh.
   useEffect(() => {
     if (view.signedIn) refreshModels();

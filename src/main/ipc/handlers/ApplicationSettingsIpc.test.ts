@@ -158,6 +158,8 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:third-party-notices:get",
       "settings:thread-notifications:get",
       "settings:thread-notifications:update",
+      "settings:usage-meters:get",
+      "settings:usage-meters:update",
       "settings:window-restore:get",
       "settings:window-restore:update",
     ]);
@@ -166,6 +168,24 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       sender: { getType: () => "window", id: 7, mainFrame: frame },
       senderFrame: frame,
     } as unknown as IpcMainInvokeEvent;
+    assert.deepEqual(yield* handlers.get("settings:usage-meters:get")!(event), {
+      claude: true,
+      codex: true,
+      nodexCredit: true,
+    });
+    assert.deepEqual(
+      yield* handlers.get("settings:usage-meters:update")!(event, {
+        claude: false,
+        codex: true,
+        nodexCredit: false,
+      }),
+      { claude: false, codex: true, nodexCredit: false },
+    );
+    yield* Effect.yieldNow;
+    assert.deepEqual(
+      broadcasts.filter(({ channel }) => channel === "usage-meter-settings-changed").at(-1)?.value,
+      { claude: false, codex: true, nodexCredit: false },
+    );
     assert.strictEqual(
       yield* handlers.get("settings:notification-authorization:read")!(event),
       "authorized",

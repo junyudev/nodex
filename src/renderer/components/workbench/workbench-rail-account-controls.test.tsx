@@ -23,7 +23,10 @@ function renderRail(ui: ReactElement) {
     error: null,
   };
   installWindowApi({
-    invoke: async () => snapshot,
+    invoke: async (channel: string) =>
+      channel === "settings:usage-meters:get"
+        ? { claude: true, codex: true, nodexCredit: true }
+        : snapshot,
     on: () => () => undefined,
   });
   const client = new QueryClient({
