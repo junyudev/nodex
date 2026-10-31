@@ -188,6 +188,7 @@ describe("session context menu model", () => {
           lifecycle: "active",
           directItemCount: 1,
           effectiveSessionCount: 1,
+          hasWaiting: false,
           hasRunning: false,
           hasUnread: false,
         },

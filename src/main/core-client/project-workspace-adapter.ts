@@ -103,6 +103,7 @@ export const projectWorkspaceSidebarSectionSummaryFromCore = (
   lifecycle: section.lifecycle,
   directItemCount: section.direct_item_count,
   effectiveSessionCount: section.effective_session_count,
+  hasWaiting: section.has_waiting,
   hasRunning: section.has_running,
   hasUnread: section.has_unread,
 });

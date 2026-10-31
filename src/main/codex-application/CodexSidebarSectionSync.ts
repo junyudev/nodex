@@ -804,6 +804,7 @@ export const make: Effect.Effect<
         lifecycle: "active",
         direct_item_count: 0,
         effective_session_count: 0,
+        has_waiting: false,
         has_running: false,
         has_unread: false,
       });

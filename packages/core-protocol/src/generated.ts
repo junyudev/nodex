@@ -1863,6 +1863,7 @@ export interface components {
                 readonly effective_session_count: number;
                 readonly has_running: boolean;
                 readonly has_unread: boolean;
+                readonly has_waiting: boolean;
                 readonly kind: components["schemas"]["ProjectWorkspaceSidebarSectionKind"];
                 readonly lifecycle: components["schemas"]["ProjectWorkspaceSidebarSectionLifecycle"];
                 readonly name?: string | null;

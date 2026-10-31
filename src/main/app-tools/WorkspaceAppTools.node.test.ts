@@ -388,6 +388,7 @@ const builtinSection = (kind: "pinned" | "projects" | "chats") => ({
   lifecycle: "active" as const,
   directItemCount: 0,
   effectiveSessionCount: 0,
+  hasWaiting: false,
   hasRunning: false,
   hasUnread: false,
 });

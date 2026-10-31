@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 52;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 53;
 
 /// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -454,6 +454,7 @@ pub struct ProjectWorkspaceSidebarSectionSummary {
     pub lifecycle: ProjectWorkspaceSidebarSectionLifecycle,
     pub direct_item_count: u32,
     pub effective_session_count: u32,
+    pub has_waiting: bool,
     pub has_running: bool,
     pub has_unread: bool,
 }

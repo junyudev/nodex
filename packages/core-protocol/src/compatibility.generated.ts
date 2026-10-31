@@ -21,7 +21,7 @@ export const CORE_CLIENT_REQUIREMENTS = {
     },
     {
       "module": "project_workspace",
-      "contract_version": 52
+      "contract_version": 53
     },
     {
       "module": "automation",

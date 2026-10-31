@@ -24,6 +24,7 @@ export interface SidebarSectionSummary {
   readonly lifecycle: SidebarSectionLifecycle;
   readonly directItemCount: number;
   readonly effectiveSessionCount: number;
+  readonly hasWaiting: boolean;
   readonly hasRunning: boolean;
   readonly hasUnread: boolean;
 }

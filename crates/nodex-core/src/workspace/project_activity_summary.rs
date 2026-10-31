@@ -6,6 +6,8 @@ use rusqlite::{Connection, params_from_iter};
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
+use super::session_activity::NATIVE_THREAD_WAITING_PREDICATE;
+
 const MAX_PROJECT_ACTIVITY_SUMMARY_PROJECTS: usize = 200;
 
 pub(super) fn read_project_activity_summaries(
@@ -33,10 +35,7 @@ pub(super) fn read_project_activity_summaries(
         })
         .collect::<Vec<_>>()
         .join(", ");
-    let waiting_predicate = "thread.status_type = 'active' AND EXISTS (\
-      SELECT 1 FROM json_each(thread.status_active_flags_json) flag \
-      WHERE flag.value IN ('waitingOnApproval', 'waitingOnUserInput')\
-    )";
+    let waiting_predicate = NATIVE_THREAD_WAITING_PREDICATE;
     let sql = format!(
         "WITH requested(project_id, ordinal) AS (VALUES {requested_values}) \
          SELECT requested.project_id, \

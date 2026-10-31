@@ -7975,6 +7975,7 @@
                 "lifecycle",
                 "direct_item_count",
                 "effective_session_count",
+                "has_waiting",
                 "has_running",
                 "has_unread"
               ],
@@ -7993,6 +7994,9 @@
                   "type": "boolean"
                 },
                 "has_unread": {
+                  "type": "boolean"
+                },
+                "has_waiting": {
                   "type": "boolean"
                 },
                 "kind": {

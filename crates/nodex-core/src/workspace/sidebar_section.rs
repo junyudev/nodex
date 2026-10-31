@@ -25,6 +25,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
 use super::mutation::{WorkspaceMutationEffects, finish_mutation};
+use super::session_activity::NATIVE_THREAD_WAITING_PREDICATE;
 use super::session_mutation::{sqlite_now, validate_id};
 
 const MAX_SECTION_NAME_CHARS: usize = 120;
@@ -937,7 +938,7 @@ fn section_summary(
 ) -> Result<ProjectWorkspaceSidebarSectionSummary, StoreError> {
     let kind = parse_section_kind(&row.kind)?;
     let lifecycle = parse_lifecycle(&row.lifecycle)?;
-    let (direct_item_count, effective_session_count, has_running, has_unread) =
+    let (direct_item_count, effective_session_count, has_waiting, has_running, has_unread) =
         section_metrics(connection, library_id, &row.section_id, kind, lifecycle)?;
     Ok(ProjectWorkspaceSidebarSectionSummary {
         section_id: row.section_id,
@@ -948,6 +949,7 @@ fn section_summary(
         lifecycle,
         direct_item_count,
         effective_session_count,
+        has_waiting,
         has_running,
         has_unread,
     })
@@ -959,9 +961,9 @@ fn section_metrics(
     section_id: &str,
     kind: ProjectWorkspaceSidebarSectionKind,
     lifecycle: ProjectWorkspaceSidebarSectionLifecycle,
-) -> Result<(u32, u32, bool, bool), StoreError> {
+) -> Result<(u32, u32, bool, bool, bool), StoreError> {
     if lifecycle == ProjectWorkspaceSidebarSectionLifecycle::Deleted {
-        return Ok((0, 0, false, false));
+        return Ok((0, 0, false, false, false));
     }
     let (direct, session_ids) = match kind {
         ProjectWorkspaceSidebarSectionKind::Custom => {
@@ -1041,11 +1043,12 @@ fn section_metrics(
         }
         ProjectWorkspaceSidebarSectionKind::Pages => (0, Vec::new()),
     };
-    let (has_running, has_unread) = session_activity(connection, &session_ids)?;
+    let (has_waiting, has_running, has_unread) = session_activity(connection, &session_ids)?;
     Ok((
         u32::try_from(direct).map_err(|_| corrupt("Sidebar Section item count overflowed"))?,
         u32::try_from(session_ids.len())
             .map_err(|_| corrupt("Sidebar Section Session count overflowed"))?,
+        has_waiting,
         has_running,
         has_unread,
     ))
@@ -1086,26 +1089,33 @@ fn effective_session_ids(
 fn session_activity(
     connection: &Connection,
     session_ids: &[String],
-) -> Result<(bool, bool), StoreError> {
+) -> Result<(bool, bool, bool), StoreError> {
     if session_ids.is_empty() {
-        return Ok((false, false));
+        return Ok((false, false, false));
     }
     let encoded = serde_json::to_string(session_ids)
         .map_err(|_| corrupt("Sidebar Section Session activity input could not be encoded"))?;
+    let waiting_predicate = NATIVE_THREAD_WAITING_PREDICATE;
+    let sql = format!(
+        "WITH requested(session_id) AS (SELECT value FROM json_each(?1)) \
+         SELECT EXISTS(SELECT 1 FROM requested \
+           JOIN project_sessions session ON session.id = requested.session_id \
+           JOIN project_session_threads link ON link.session_id = session.id \
+           JOIN codex_threads thread ON thread.thread_id = link.thread_id \
+           WHERE {waiting_predicate}), \
+         EXISTS(SELECT 1 FROM requested \
+           JOIN project_sessions session ON session.id = requested.session_id \
+           JOIN project_session_threads link ON link.session_id = session.id \
+           JOIN codex_threads thread ON thread.thread_id = link.thread_id \
+           WHERE thread.status_type = 'active' AND NOT ({waiting_predicate})), \
+         EXISTS(SELECT 1 FROM requested \
+           JOIN project_sessions session ON session.id = requested.session_id \
+           WHERE session.unread = 1)"
+    );
     connection
-        .query_row(
-            "WITH requested(session_id) AS (SELECT value FROM json_each(?1)) \
-             SELECT EXISTS(SELECT 1 FROM requested \
-               JOIN project_sessions session ON session.id = requested.session_id \
-               JOIN project_session_threads link ON link.session_id = session.id \
-               JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-               WHERE thread.status_type = 'active'), \
-             EXISTS(SELECT 1 FROM requested \
-               JOIN project_sessions session ON session.id = requested.session_id \
-               WHERE session.unread = 1)",
-            [encoded],
-            |row| Ok((row.get::<_, i64>(0)? == 1, row.get::<_, i64>(1)? == 1)),
-        )
+        .query_row(&sql, [encoded], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
         .map_err(Into::into)
 }
 
@@ -1518,12 +1528,14 @@ fn corrupt(message: &str) -> StoreError {
 mod tests {
     use nodex_core_contracts::collection::CollectionWindowRequest;
     use nodex_core_contracts::workspace::{
-        ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
+        CodexThreadActiveFlag, CodexThreadStatusType, ProjectSessionIntent, ProjectWorkspaceIntent,
+        ProjectWorkspaceRead, ProjectWorkspaceReadValue,
         ProjectWorkspaceSidebarSectionItemPlacement, ProjectWorkspaceSidebarSectionItemRef,
         ProjectWorkspaceSidebarSectionKind, ProjectWorkspaceSidebarSectionLifecycle,
+        ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadStatus,
     };
 
-    use super::super::test_support::{apply, read, seeded_workspace};
+    use super::super::test_support::{apply, create_session_thread, read, seeded_workspace};
     use crate::infrastructure::sqlite::with_immediate_transaction;
 
     fn window() -> CollectionWindowRequest {
@@ -1815,6 +1827,190 @@ mod tests {
             panic!("Session snapshot");
         };
         assert_eq!(session.project_id.as_deref(), Some("project:default"));
+    }
+
+    #[test]
+    fn section_activity_distinguishes_waiting_running_and_unread() {
+        let workspace = seeded_workspace();
+        apply(
+            &workspace.module,
+            "section-activity",
+            ProjectWorkspaceIntent::CreateSidebarSection {
+                section_id: "section:activity".to_owned(),
+                name: "Activity".to_owned(),
+                initial_item: None,
+            },
+        );
+        let observe = || {
+            let section = sections(&workspace.module, false)
+                .into_iter()
+                .find(|section| section.section_id == "section:activity")
+                .expect("Activity Section");
+            (section.has_waiting, section.has_running, section.has_unread)
+        };
+        assert_eq!(observe(), (false, false, false));
+        create_session_thread(
+            &workspace.module,
+            "activity",
+            "session:activity",
+            "thread:activity",
+            None,
+            1,
+        );
+        apply(
+            &workspace.module,
+            "place-activity",
+            ProjectWorkspaceIntent::MoveSidebarSectionItem {
+                item: ProjectWorkspaceSidebarSectionItemRef::Session {
+                    session_id: "session:activity".to_owned(),
+                },
+                section_id: Some("section:activity".to_owned()),
+                placement: ProjectWorkspaceSidebarSectionItemPlacement::End,
+            },
+        );
+
+        use CodexThreadActiveFlag::{WaitingOnApproval, WaitingOnUserInput};
+        use CodexThreadStatusType::{Active, Idle};
+        for (index, (status_type, active_flags, unread, expected)) in [
+            (Active, vec![WaitingOnApproval], false, (true, false, false)),
+            (
+                Active,
+                vec![WaitingOnUserInput],
+                false,
+                (true, false, false),
+            ),
+            (
+                Active,
+                vec![WaitingOnApproval, WaitingOnUserInput],
+                true,
+                (true, false, true),
+            ),
+            (Active, vec![], false, (false, true, false)),
+            (Active, vec![], true, (false, true, true)),
+            (Idle, vec![], true, (false, false, true)),
+            (Idle, vec![], false, (false, false, false)),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            apply(
+                &workspace.module,
+                &format!("activity-status-{index}"),
+                ProjectWorkspaceIntent::UpsertThread {
+                    thread_id: "thread:activity".to_owned(),
+                    patch: Box::new(ProjectWorkspaceThreadPatch {
+                        status: Some(ProjectWorkspaceThreadStatus {
+                            status_type,
+                            active_flags,
+                        }),
+                        ..Default::default()
+                    }),
+                },
+            );
+            apply(
+                &workspace.module,
+                &format!("activity-unread-{index}"),
+                ProjectWorkspaceIntent::MutateSession {
+                    session_id: "session:activity".to_owned(),
+                    intent: ProjectSessionIntent::SetUnread { unread },
+                },
+            );
+            assert_eq!(observe(), expected, "activity case {index}");
+        }
+    }
+
+    #[test]
+    fn section_activity_follows_inherited_sessions_overrides_and_lifecycle() {
+        let workspace = seeded_workspace();
+        create_session_thread(
+            &workspace.module,
+            "inherited-activity",
+            "session:activity",
+            "thread:activity",
+            Some("project:default"),
+            1,
+        );
+        apply(
+            &workspace.module,
+            "inherited-waiting",
+            ProjectWorkspaceIntent::UpsertThread {
+                thread_id: "thread:activity".to_owned(),
+                patch: Box::new(ProjectWorkspaceThreadPatch {
+                    status: Some(ProjectWorkspaceThreadStatus {
+                        status_type: CodexThreadStatusType::Active,
+                        active_flags: vec![CodexThreadActiveFlag::WaitingOnUserInput],
+                    }),
+                    ..Default::default()
+                }),
+            },
+        );
+        apply(
+            &workspace.module,
+            "section-inherited",
+            ProjectWorkspaceIntent::CreateSidebarSection {
+                section_id: "section:inherited".to_owned(),
+                name: "Inherited".to_owned(),
+                initial_item: Some(ProjectWorkspaceSidebarSectionItemRef::Project {
+                    project_id: "project:default".to_owned(),
+                }),
+            },
+        );
+        let inherited = sections(&workspace.module, false)
+            .into_iter()
+            .find(|section| section.section_id == "section:inherited")
+            .expect("Inherited Section");
+        assert_eq!(inherited.effective_session_count, 1);
+        assert!(inherited.has_waiting);
+        assert!(!inherited.has_running);
+
+        apply(
+            &workspace.module,
+            "section-override-activity",
+            ProjectWorkspaceIntent::CreateSidebarSection {
+                section_id: "section:override".to_owned(),
+                name: "Override".to_owned(),
+                initial_item: Some(ProjectWorkspaceSidebarSectionItemRef::Session {
+                    session_id: "session:activity".to_owned(),
+                }),
+            },
+        );
+        let observe = |id: &str| {
+            let section = sections(&workspace.module, true)
+                .into_iter()
+                .find(|section| section.section_id == id)
+                .expect("Section");
+            (section.has_waiting, section.has_running, section.has_unread)
+        };
+        assert_eq!(observe("section:inherited"), (false, false, false));
+        assert_eq!(observe("section:override"), (true, false, false));
+        apply(
+            &workspace.module,
+            "archive-activity",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "session:activity".to_owned(),
+                intent: ProjectSessionIntent::SetArchived { archived: true },
+            },
+        );
+        assert_eq!(observe("section:override"), (false, false, false));
+        apply(
+            &workspace.module,
+            "restore-activity",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "session:activity".to_owned(),
+                intent: ProjectSessionIntent::SetArchived { archived: false },
+            },
+        );
+        assert_eq!(observe("section:override"), (true, false, false));
+        apply(
+            &workspace.module,
+            "delete-activity-section",
+            ProjectWorkspaceIntent::DeleteSidebarSection {
+                section_id: "section:override".to_owned(),
+                expected_revision: 1,
+            },
+        );
+        assert_eq!(observe("section:override"), (false, false, false));
+        assert_eq!(observe("section:inherited"), (true, false, false));
     }
 
     #[test]

@@ -26,6 +26,7 @@ mod project_activity_summary;
 mod project_window;
 mod queued_message_state;
 mod read;
+mod session_activity;
 mod session_lifecycle;
 mod session_listing;
 mod session_mutation;

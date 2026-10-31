@@ -21,6 +21,7 @@ const section = {
   lifecycle: "active" as const,
   direct_item_count: 1,
   effective_session_count: 1,
+  has_waiting: false,
   has_running: false,
   has_unread: false,
 };
