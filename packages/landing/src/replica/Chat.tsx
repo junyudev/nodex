@@ -84,7 +84,7 @@ export function SubagentAvatar({
   );
 }
 
-/** The quiet transcript line for delegated work: avatars, names, then where they stand. */
+/** Avatars stay centered on the first text line, including when the summary wraps. */
 export function SubagentLine({
   subagents,
   cursorTarget,
@@ -99,6 +99,7 @@ export function SubagentLine({
         {subagents.slice(0, 4).map((agent, index) => (
           <motion.span
             key={agent.name}
+            className="inline-flex shrink-0 items-center justify-center"
             initial={{ scale: 0.4, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: index * 0.12, type: "spring", stiffness: 500, damping: 22 }}
