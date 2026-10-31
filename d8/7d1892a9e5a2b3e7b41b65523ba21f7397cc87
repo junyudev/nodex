@@ -1,0 +1,23 @@
+src/renderer/components/board/editor/prompt-block.tsx
+  s_039f18d9f057b1::t_6483d75e3fce22 104
+src/renderer/components/shared/chat-waiting-icon.tsx
+  s_039f18d9f057b1::t_6483d75e3fce22 9
+src/renderer/styles/theme-token-bridge.css
+  s_039f18d9f057b1::t_6483d75e3fce22 51-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d87d1892a9e5a2b3e7b41b65523ba21f7397cc87",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
