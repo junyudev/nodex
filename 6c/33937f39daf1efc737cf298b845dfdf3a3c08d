@@ -1,0 +1,34 @@
+src/renderer/components/workbench/database-view-rules-bar.tsx
+  s_6836a64be4dd26::t_d4db2da811b85c 946-959
+  s_6836a64be4dd26::t_a9eeae183dbb0b 44,75-76,101,105-129,913,915-939,945,960
+CHANGELOG.md
+  s_6232bdbdc99b0f::t_66caae9170249a 9
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_6232bdbdc99b0f::t_d370fac43fdc20 1093
+docs/product-specs/database-pages-and-views-behavior.md
+  s_6836a64be4dd26::t_2de31ce6133e62 215-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c33937f39daf1efc737cf298b845dfdf3a3c08d",
+  "prompts": {},
+  "sessions": {
+    "s_6232bdbdc99b0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "83b3d77d-09d2-4902-95c8-545643ed273c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_6836a64be4dd26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e93c001d-fc6b-488c-b1a0-4a8c9a712e11",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
