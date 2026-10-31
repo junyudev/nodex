@@ -253,8 +253,9 @@ function Outcome({ dispatch }: { readonly dispatch: Dispatch }) {
 }
 
 /**
- * The cleared Inbox, and how it plans the next burst: the model that suggests, Nodex's model
- * guide with what is left of each plan this week, and the reader's own routing preferences.
+ * The cleared Inbox, and how it plans the next burst, as the app shows it: the model that
+ * suggests, each family of Nodex's model guide beside what is left of its plan this week, and the
+ * reader's own routing preferences, which suggestions follow first.
  */
 export function InboxAllClear({
   usage,
@@ -265,16 +266,16 @@ export function InboxAllClear({
 }) {
   const guide = [
     {
+      icon: <UsageRing left={usage.codex} kind="codex" className="size-[22px]" />,
+      model: "GPT-6.1",
+      note: "Backend, systems and data. Very economical, even at its highest effort.",
+      detail: `${Math.round(usage.codex * 100)}% left`,
+    },
+    {
       icon: <UsageRing left={usage.claude} kind="claude" className="size-[22px]" />,
       model: "Claude Opus 5.5",
       note: "Frontend, UI and copy, with real taste. Spends the Claude budget faster.",
       detail: `${Math.round(usage.claude * 100)}% left`,
-    },
-    {
-      icon: <UsageRing left={usage.codex} kind="codex" className="size-[22px]" />,
-      model: "GPT-6.1 Sol",
-      note: "Backend, systems and data. Very economical, even at its highest effort.",
-      detail: `${Math.round(usage.codex * 100)}% left`,
     },
     {
       icon: (
@@ -283,7 +284,7 @@ export function InboxAllClear({
         </span>
       ),
       model: "OpenCode free models",
-      note: null,
+      note: "Docs, notes and simple changes. Weaker at hard problems.",
       detail: "Free",
     },
   ];
@@ -316,8 +317,9 @@ export function InboxAllClear({
       >
         <dl className="grid grid-cols-[124px_minmax(0,1fr)] gap-x-3 gap-y-3">
           <dt className="text-app-faint">Suggested by</dt>
-          <dd className="flex min-w-0 items-center gap-1.5 text-app-fg">
+          <dd className="flex min-w-0 items-center gap-1 text-app-fg">
             <AgentLabel agent={suggestedBy} className="gap-1.5 [&>svg]:size-3.5" />
+            <ChevronDownIcon className="size-3 text-app-muted" />
           </dd>
           <dt className="pt-[3px] text-app-faint">Model guide</dt>
           <dd className="flex min-w-0 flex-col gap-2">
@@ -331,7 +333,7 @@ export function InboxAllClear({
                       {entry.detail}
                     </span>
                   </span>
-                  {entry.note ? <span className="text-app-muted">{entry.note}</span> : null}
+                  <span className="text-app-muted">{entry.note}</span>
                 </span>
               </div>
             ))}
@@ -340,7 +342,8 @@ export function InboxAllClear({
           <dd className="text-app-fg">“{ROUTING_PREFERENCES}”</dd>
         </dl>
         <p className="border-t-[0.5px] border-app-line pt-2.5 text-[11.5px] text-app-faint">
-          Each suggestion weighs what a model does well and how much of its weekly budget is left.
+          Each suggestion follows your routing preferences first, then weighs what a model does well
+          and how much of its weekly budget is left.
         </p>
       </motion.div>
     </motion.div>

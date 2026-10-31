@@ -192,12 +192,13 @@ Product demos are scripted re-enactments built from replicas of the interface, n
 - Split tab groups follow the app: each group's tabs sit in the titlebar above its own pane,
   and a chat's Page opens in the side group. A file opened from a Page's Files opens as a new
   tab in that Page's group: HTML in a browser tab that renders it, any other file in a file tab.
-- The cleared Inbox summarizes how it plans, with the app's own labels: the model it is
-  Suggested by, Nodex's Model guide beside what is left of each plan's weekly budget, and the
-  reader's Routing preferences. Pointing at a chat's model button shows the model that leads it,
-  and a subagent's card marks its provider, so a Claude lead with Codex subagents reads at a
-  glance. A subagent opened in the Subagents tab names the chat that sent its task and marks the
-  provider on both sides.
+- The cleared Inbox copies the app's own summary of how it plans: the model it is Suggested by,
+  each Model guide family beside what is left of its plan's weekly budget, and the reader's
+  Routing preferences, in the app's labels and with the guide's one-line notes from
+  `src/shared/inbox-model-guide.ts`; change the replica when the app changes them.
+- Pointing at a chat's model button shows the model that leads it, and a subagent's card marks
+  its provider, so a Claude lead with Codex subagents reads at a glance. A subagent opened in the
+  Subagents tab names the chat that sent its task and marks the provider on both sides.
 - Every demo shares the fictional Lumen workspace in `src/demos/lumen.ts`; never show real
   user data, account names, or paths.
 - Replicas read the app's own artwork where it has some: subagent avatars are loaded from
