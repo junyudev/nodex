@@ -1,0 +1,22 @@
+docs/landing-site.md
+  s_3500ddfb1933ec::t_bedb6b074775ef 199-201
+  s_3500ddfb1933ec::t_848d239f545c9d 195-198
+packages/landing/src/replica/Inbox.tsx
+  s_3500ddfb1933ec::t_4a6d4cd459ff40 256-258,268-273,287,320,322,336,345-346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25730b4d30809767a7cbb1383faef5fcdb4c5e38",
+  "prompts": {},
+  "sessions": {
+    "s_3500ddfb1933ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2805826-88de-4be0-aea1-fc13723372c5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
