@@ -1,0 +1,33 @@
+scripts/scenarios/scenarios/board-dense.test.ts
+  s_039f18d9f057b1::t_51ee475af59e1f 309-312
+scripts/scenarios/scenarios/sidebar-chat-status.ts
+  s_039f18d9f057b1::t_51ee475af59e1f 12,20,24-33,39,44,49,59,64,79,84,158-168,171-172,206,210-223
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_039f18d9f057b1::t_51ee475af59e1f 581-590
+scripts/scenarios/contracts.ts
+  s_039f18d9f057b1::t_51ee475af59e1f 190-191
+scripts/scenarios/scenarios/database-context-menu-performance.test.ts
+  s_039f18d9f057b1::t_51ee475af59e1f 144-147
+docs/development.md
+  s_039f18d9f057b1::t_51ee475af59e1f 367-368,371
+src/main/core-client/sidebar-chat-status-scenario.node.test.ts
+  s_039f18d9f057b1::t_51ee475af59e1f 10,13,16-26,29,47,58,73,78,91
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_039f18d9f057b1::t_51ee475af59e1f 469-477
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c6f9eea8026ad23b323b7df2fff981b91c6ddb90",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
