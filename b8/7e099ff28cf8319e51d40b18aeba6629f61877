@@ -1,0 +1,71 @@
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_f3c664e4de7c67::t_3aef612f727ecf 67
+crates/nodex-core-contracts/src/workspace.rs
+  s_f3c664e4de7c67::t_f24820022685f0 19,59-62,269-272,454-462
+crates/nodex-core/src/workspace/read.rs
+  s_f3c664e4de7c67::t_c8413f621a4ae7 219-228
+crates/nodex-core/src/workspace/sidebar_section.rs
+  s_f3c664e4de7c67::t_abc37ad9082ca1 9-15,75-127,1595-1776
+docs/product-specs/workbench-shell.md
+  s_f3c664e4de7c67::t_c88a2508f8e333 13
+packages/core-protocol/openapi.json
+  s_039f18d9f057b1::t_c1d9023d0f79df 35703-35724,43626-43653,51443-51468
+packages/core-protocol/src/compatibility.generated.ts
+  s_039f18d9f057b1::t_4cccde29bd57ab 24
+packages/core-protocol/src/generated.ts
+  s_039f18d9f057b1::t_4a8a8445ad6fa7 8461-8464,10405-10411,12025-12030
+src/main/core-client/project-workspace-adapter.node.test.ts
+  s_f3c664e4de7c67::t_c2d615d0150acc 3-6,38-54
+src/main/core-client/project-workspace-adapter.ts
+  s_f3c664e4de7c67::t_23b464c736e4f5 21,96-107
+src/main/ipc/handlers/ProjectWorkspaceIpc.ts
+  s_f3c664e4de7c67::t_9efed2b8d6719d 368-370
+src/main/project-application/ProjectWorkspace.ts
+  s_f3c664e4de7c67::t_5a21dd1350ab45 79,98,250-252,818-831,1505
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_f3c664e4de7c67::t_ee155821c3bb2c 112-114,858,992-993,1021,1048,1289
+src/renderer/components/workbench/sidebar-custom-sections.tsx
+  s_f3c664e4de7c67::t_6a3e9c03a96019 42-47,92,103,106,109,111-113,451,465,538-543
+src/renderer/components/workbench/workbench-session-sidebar.tsx
+  s_f3c664e4de7c67::t_e83ad748d7ea01 82,843,1460,1666
+src/renderer/lib/sidebar-runtime-group-activity.test.ts
+  s_f3c664e4de7c67::t_c20e2ba9a13e38 1-120
+src/renderer/lib/sidebar-runtime-group-activity.ts
+  s_f3c664e4de7c67::t_ba6d684acd35b7 1-63
+src/renderer/lib/sidebar-sections-api.ts
+  s_f3c664e4de7c67::t_9ef1cc2de79051 8-13
+src/renderer/lib/use-sidebar-runtime-group-activity.jsdom.test.ts
+  s_f3c664e4de7c67::t_ad284e4a2902f7 1-113
+src/renderer/lib/use-sidebar-runtime-group-activity.ts
+  s_f3c664e4de7c67::t_59d9c6aaed1fb8 1-31
+src/shared/ipc-api.ts
+  s_f3c664e4de7c67::t_137aa0dd2df005 139,1153-1156
+src/shared/ipc-endpoint-policy.ts
+  s_f3c664e4de7c67::t_c340c7cccd9014 297
+src/shared/sidebar-sections.ts
+  s_f3c664e4de7c67::t_d32e0f9a59656c 32-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b87e099ff28cf8319e51d40b18aeba6629f61877",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f3c664e4de7c67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191f7-29d8-74f1-ae55-33d29df95203",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
