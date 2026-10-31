@@ -1,0 +1,23 @@
+docs/product-specs/agent-runtime-behavior.md
+  s_b5c41a13e9511c::t_e492a8b05cb695 104-106
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_b5c41a13e9511c::t_f3206de469685b 11664,11671-11672
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
+  s_b5c41a13e9511c::t_c2d864937c4df4 4910,4915-4916,4921-4924,4934,4939-4950,4965,4973,5062,5064-5084,5129-5145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5a1df2f6a939a7177040fd8c0f60c8fe1a63ac69",
+  "prompts": {},
+  "sessions": {
+    "s_b5c41a13e9511c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1919a-f51e-7522-8c2b-1ee25c262243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
