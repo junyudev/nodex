@@ -23,6 +23,18 @@ describe("static CI groups", () => {
     ]);
   });
 
+  test("runs token color validation for renderer and theme changes", () => {
+    for (const path of ["src/renderer/new.tsx", "src/renderer/styles/theme-token-bridge.css"]) {
+      const plan = classifyChangedPaths([path]);
+      const execute = vi.fn();
+      runStaticChecks(selectStaticChecks(STATIC_CHECKS, plan.staticGroups), execute);
+      expect(execute).toHaveBeenCalledWith(process.platform === "win32" ? "vp.cmd" : "vp", [
+        "run",
+        "verify:token-color-utilities",
+      ]);
+    }
+  });
+
   test("executes source ownership across independent change routes", () => {
     for (const path of [
       "packages/landing/auxiliary.mts",

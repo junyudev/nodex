@@ -1,3 +1,4 @@
+/* Token color classes must compile: vp run verify:token-color-utilities (CI ui-contracts). */
 @theme static {
   /* Product utilities adapt established surfaces to shared semantic roles. */
   --color-background: var(--background);
@@ -37,21 +38,35 @@
   --color-token-link: var(--color-token-text-link-foreground);
   --color-token-terminal-background: var(--color-token-main-surface-primary);
   --color-token-background: var(--color-surface-elevated);
+  --color-token-background-primary: var(--color-surface);
+  --color-token-background-secondary: var(--color-surface-secondary);
+  --color-token-bg: var(--color-surface);
   --color-token-bg-fog: var(--color-background-secondary-soft);
+  --color-token-bg-primary: var(--color-surface);
   --color-token-bg-subtle: var(--color-background-secondary-soft);
+  --color-token-border-subtle: var(--color-border-subtle);
+  --color-token-border-xstrong: var(--color-border-strong);
   --color-token-button-foreground: var(--color-text-primary-solid);
+  --color-token-button-tertiary-foreground: var(
+    --app-color-text-button-tertiary,
+    var(--color-text-tertiary)
+  );
   --color-token-charts-green: var(--color-text-success);
   --color-token-charts-orange: var(--color-text-warning);
   --color-token-charts-purple: var(--color-text-discovery);
   --color-token-charts-red: var(--color-text-danger);
   --color-token-charts-yellow: var(--color-text-caution);
+  --color-token-danger-foreground: var(--color-text-danger);
   --color-token-editor-error-foreground: var(--color-text-danger);
   --color-token-editor-foreground: var(--color-text);
+  --color-token-editor-warning-background: var(--color-background-warning-surface);
+  --color-token-error-background: var(--color-background-danger-surface);
   --color-token-error-foreground: var(--color-text-danger);
   --color-token-warning-foreground: var(--color-text-warning);
   --color-token-warning-background: var(--color-background-warning-surface);
   --color-token-git-decoration-added-resource-foreground: var(--color-codex-git-added);
   --color-token-git-decoration-deleted-resource-foreground: var(--color-codex-git-deleted);
+  --color-token-foreground-muted: var(--color-text-secondary);
   --color-token-icon-foreground: var(--color-codex-icon);
   --color-token-input-background: var(--color-surface-elevated-secondary);
   --color-token-input-foreground: var(--color-text);
@@ -59,8 +74,14 @@
   --color-token-list-active-selection-background: var(--color-background-primary-soft-active);
   --color-token-list-active-selection-foreground: var(--color-text-emphasis);
   --color-token-list-active-selection-icon-foreground: var(--color-codex-icon-active);
+  --color-token-main-surface-secondary: var(--color-surface-secondary);
   --color-token-menu-background: var(--color-surface-elevated-secondary);
   --color-token-menu-border: var(--color-border);
+  --color-token-muted-foreground: var(--color-text-secondary);
+  --color-token-primary: var(--color-background-primary-solid);
+  --color-token-success-foreground: var(--color-text-success);
+  --color-token-surface-muted: var(--color-surface-secondary);
+  --color-token-surface-secondary: var(--color-surface-secondary);
   --color-token-terminal-ansi-black: var(--color-codex-terminal-ansi-black);
   --color-token-terminal-ansi-blue: var(--color-codex-terminal-ansi-blue);
   --color-token-terminal-ansi-bright-black: var(--color-codex-terminal-ansi-bright-black);

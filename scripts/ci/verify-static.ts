@@ -30,6 +30,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "semantic theme",
   },
   {
+    command: ["run", "verify:token-color-utilities"],
+    group: "ui-contracts",
+    id: "token-color-utilities",
+    name: "renderer token color utilities",
+  },
+  {
     command: ["run", "verify:icons"],
     group: "ui-contracts",
     id: "icon-boundaries",
