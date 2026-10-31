@@ -12,7 +12,8 @@ import {
   readCodexSubmissionPresentation,
 } from "@/lib/codex-turn-presentation";
 import { materializePromptFileImages } from "@/lib/prompt-file-images";
-import { readThreadQueueFollowUpsEnabled } from "@/lib/thread-composer-follow-up-mode";
+import { useScopedAtomValue } from "@/lib/maitai";
+import { threadQueueFollowUpsEnabledAtom } from "@/lib/thread-queue-follow-ups-atom";
 import type { CodexPromptInput } from "@/lib/types";
 import { useAgentRuntimeSessionLaunch } from "@/lib/use-agent-runtime-session-launch";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
@@ -55,6 +56,7 @@ export function usePageChatSendPort({
 }: PageChatSendPortInput) {
   const workbenchOwner = useWorkbenchWindowOwner();
   const launchAgentRuntimeSession = useAgentRuntimeSessionLaunch();
+  const queueFollowUps = useScopedAtomValue(threadQueueFollowUpsEnabledAtom);
 
   const startNewSessionThread = useCallback(
     async (input: {
@@ -168,8 +170,9 @@ export function usePageChatSendPort({
         submittedPresentation,
       );
       await onLinkPageToChat({ pageId, sessionId: targetSession.id });
-      // A Page send into a running chat follows the Composer's own Queue/Steer default.
-      const deliver = readThreadQueueFollowUpsEnabled()
+      // A Page send into a running chat follows the Composer's own Queue/Steer default,
+      // the same one its send controls describe.
+      const deliver = queueFollowUps
         ? agentRuntimeRuntime.queueMessage
         : agentRuntimeRuntime.message;
       await deliver({
@@ -190,7 +193,14 @@ export function usePageChatSendPort({
         },
       });
     },
-    [onLinkPageToChat, onResolveChatSessionForThread, pageId, routingContext, workbenchOwner],
+    [
+      onLinkPageToChat,
+      onResolveChatSessionForThread,
+      pageId,
+      queueFollowUps,
+      routingContext,
+      workbenchOwner,
+    ],
   );
 
   const addPromptToChatComposer = useCallback(

@@ -50,8 +50,9 @@ children), and `⌘⇧↵` with a bare caret inside it all send the Prompt.
 The chat receives the Prompt's content — the first line as a paragraph followed by
 its children — never the Prompt wrapper or its send record. Images and Agent
 config behave as in any Page send. A Prompt with Agent config always starts a new
-Turn; otherwise a running chat receives it according to the Composer's Queue or
-Steer default.
+Turn; otherwise a chat in a Turn receives it according to the Composer's Queue or
+Steer default. While the chat beside the Page is in a Turn, the send button's
+tooltip adds which of the two will happen.
 
 After the chat accepts the Prompt, Nodex records the receiving Session and the
 send time on the Block and folds a Prompt that has children. Sending again

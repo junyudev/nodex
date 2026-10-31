@@ -11,10 +11,8 @@ import {
   readTaskShorthandPagePromotionEnabled,
   writeTaskShorthandPagePromotionEnabled,
 } from "../../lib/page-promotion-preference";
-import {
-  readThreadQueueFollowUpsEnabled,
-  writeThreadQueueFollowUpsEnabled,
-} from "../../lib/thread-composer-follow-up-mode";
+import { writeThreadQueueFollowUpsEnabled } from "../../lib/thread-composer-follow-up-mode";
+import { threadQueueFollowUpsEnabledAtom } from "../../lib/thread-queue-follow-ups-atom";
 import type { WorktreeStartMode } from "../../lib/types";
 import {
   readWorktreeAutoBranchPrefix,
@@ -46,11 +44,6 @@ const threadSummaryPanelPinnedOpenAtom = scopedAtomWithInitializer(
   appScope,
   readThreadSummaryPanelPinnedOpen,
   { debugLabel: "thread-summary-panel-pinned-open" },
-);
-const threadQueueFollowUpsEnabledAtom = scopedAtomWithInitializer(
-  appScope,
-  readThreadQueueFollowUpsEnabled,
-  { debugLabel: "thread-queue-follow-ups-enabled" },
 );
 const worktreeStartModeAtom = scopedAtomWithInitializer(appScope, readWorktreeStartMode, {
   debugLabel: "worktree-start-mode",

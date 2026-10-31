@@ -93,6 +93,7 @@ import {
   type TextActionColorValue,
 } from "./nfm-text-action-menu-model";
 import { useNfmTextActionMenuRuntime } from "./nfm-text-action-menu-runtime";
+import { NfmChatSendTooltip } from "./nfm-chat-send-tooltip";
 import {
   useNfmRetainedSelectionPresentation,
   type NfmRetainedSelectionPresentation,
@@ -1120,9 +1121,12 @@ function TextActionChatSection({
               shortcut={NFM_SEND_TO_CHAT_SHORTCUT_LABEL}
               pending={pending}
               tooltip={
-                contextualTarget
-                  ? `Send to ${describeNfmSendToThreadPreferredTarget(contextualTarget)}`
-                  : undefined
+                contextualTarget ? (
+                  <NfmChatSendTooltip
+                    label={`Send to ${describeNfmSendToThreadPreferredTarget(contextualTarget)}`}
+                    sessionId={contextualTarget.sessionId}
+                  />
+                ) : undefined
               }
               hasPopup={contextualTarget ? undefined : "dialog"}
               expanded={contextualTarget ? undefined : pickerOpen}

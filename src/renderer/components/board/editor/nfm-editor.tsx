@@ -1835,6 +1835,7 @@ function NfmEditorInstance({
         : sessionSendToThreadPreferredTarget
           ? {
               kind: "beside",
+              sessionId: sessionSendToThreadPreferredTarget.sessionId,
               title: describeNfmSendToThreadPreferredTarget(sessionSendToThreadPreferredTarget),
             }
           : { kind: "new-chat" },

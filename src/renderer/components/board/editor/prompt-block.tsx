@@ -11,8 +11,10 @@ import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
 import {
   describeNfmPromptSend,
   findNfmPromptBlockAtCaret,
+  nfmPromptStartsNewTurn,
   resolveNfmPromptSentPresentation,
 } from "./nfm-prompt-block-model";
+import { NfmChatSendTooltip } from "./nfm-chat-send-tooltip";
 import { useNfmPromptCollapsed, writeNfmPromptCollapsed } from "./nfm-prompt-collapse-store";
 import { useNfmPromptRuntime } from "./nfm-prompt-runtime";
 import { resolveNfmSendToThreadTitle } from "./nfm-send-to-thread-menu-model";
@@ -128,11 +130,15 @@ function PromptSentStatus({ sessionId, sentAt }: { sessionId: string; sentAt: st
 
 function PromptSendButton({
   label,
+  sessionId,
+  startsNewTurn,
   disabled,
   visible,
   onSend,
 }: {
   label: string;
+  sessionId: string | null;
+  startsNewTurn: boolean;
   disabled: boolean;
   visible: boolean;
   onSend: () => Promise<void>;
@@ -140,7 +146,9 @@ function PromptSendButton({
   const [pending, setPending] = useState(false);
   return (
     <NodexTooltip
-      tooltipContent={label}
+      tooltipContent={
+        <NfmChatSendTooltip label={label} sessionId={sessionId} startsNewTurn={startsNewTurn} />
+      }
       shortcutLabel={PROMPT_SEND_SHORTCUT_LABEL}
       side="top"
       delay={0}
@@ -211,6 +219,8 @@ export const createPromptBlockSpec = createReactBlockSpec(promptBlockConfig, {
           {destination ? (
             <PromptSendButton
               label={describeNfmPromptSend(destination, Boolean(sentSessionId))}
+              sessionId={destination.kind === "beside" ? destination.sessionId : null}
+              startsNewTurn={nfmPromptStartsNewTurn(block)}
               disabled={isEmpty}
               visible={caretWithin}
               onSend={() => runtime.send(block.id)}

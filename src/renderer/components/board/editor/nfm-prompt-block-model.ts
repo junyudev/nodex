@@ -3,7 +3,7 @@ import type { AgentRuntimeSessionActivity } from "../../../../shared/agent-runti
 
 /** Where a Prompt's send button goes: the chat beside the Page, or a new chat. */
 export type NfmPromptDestination =
-  | { readonly kind: "beside"; readonly title: string }
+  | { readonly kind: "beside"; readonly sessionId: string; readonly title: string }
   | { readonly kind: "new-chat" };
 
 export type NfmPromptStatusTone = "working" | "attention" | "idle";
@@ -34,6 +34,23 @@ export function describeNfmPromptSend(
 ): string {
   const where = destination.kind === "beside" ? destination.title : "a new chat";
   return sentBefore ? `Send again to ${where}` : `Send to ${where}`;
+}
+
+interface PromptContentNode {
+  readonly type?: string;
+  readonly content?: unknown;
+  readonly children?: readonly unknown[];
+}
+
+/** Agent config anywhere in a Prompt makes its send a Turn of its own, never a steer. */
+export function nfmPromptStartsNewTurn(block: PromptContentNode): boolean {
+  const inline = (items: unknown): boolean =>
+    Array.isArray(items) &&
+    items.some((item: PromptContentNode) => item?.type === "agentConfig" || inline(item?.content));
+  return (
+    inline(block.content) ||
+    (block.children ?? []).some((child) => nfmPromptStartsNewTurn(child as PromptContentNode))
+  );
 }
 
 interface PromptTreeEditor {

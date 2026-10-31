@@ -75,8 +75,10 @@ confirms with a toast; a failure reports its reason without changing the Page.
 Selected [Prompt](nfm-editor-prompt-block-behavior.md) Blocks record the send.
 Library image references are captured through the source Page before a chat is
 created or a message is submitted; see
-[Page image inputs](nfm-page-prompt-image-inputs.md). A Page send into a running
-chat follows the Composer's Queue or Steer default.
+[Page image inputs](nfm-page-prompt-image-inputs.md). A Page send into a chat in a
+Turn follows the Composer's Queue or Steer default, and while that chat is in a
+Turn the send control's tooltip says so on a second line: `Queues after its current
+turn` or `Steers its current turn`.
 
 ## Keyboard
 
