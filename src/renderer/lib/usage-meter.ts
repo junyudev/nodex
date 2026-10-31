@@ -79,6 +79,9 @@ export const USAGE_READING_STALE_AFTER_MS = 30 * 60_000;
 const MINUTES_PER_HOUR = 60;
 const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
 const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY;
+const MINUTES_PER_MONTH = 30 * MINUTES_PER_DAY;
+/** Calendar months run 28 to 31 days; anything shorter is counted in weeks. */
+const MINUTES_PER_MONTH_MIN = 28 * MINUTES_PER_DAY;
 const MS_PER_MINUTE = 60_000;
 const MS_PER_HOUR = 60 * MS_PER_MINUTE;
 const MS_PER_DAY = MINUTES_PER_DAY * MS_PER_MINUTE;
@@ -87,6 +90,10 @@ export function formatRateLimitWindowLabel(windowDurationMins?: number | null): 
   if (!windowDurationMins || windowDurationMins <= 0) return null;
 
   const minutes = Math.round(windowDurationMins);
+  if (minutes >= MINUTES_PER_MONTH_MIN) {
+    const months = Math.max(1, Math.round(minutes / MINUTES_PER_MONTH));
+    return months === 1 ? "Monthly" : `${months}-month`;
+  }
   if (minutes >= MINUTES_PER_WEEK) {
     const weeks = Math.max(1, Math.round(minutes / MINUTES_PER_WEEK));
     return weeks === 1 ? "Weekly" : `${weeks}-week`;

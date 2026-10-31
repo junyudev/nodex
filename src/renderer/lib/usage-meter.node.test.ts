@@ -104,6 +104,9 @@ describe("usage formatting", () => {
     expect(formatRateLimitWindowLabel(24 * 60)).toBe("Daily");
     expect(formatRateLimitWindowLabel(7 * 24 * 60)).toBe("Weekly");
     expect(formatRateLimitWindowLabel(14 * 24 * 60)).toBe("2-week");
+    expect(formatRateLimitWindowLabel(30 * 24 * 60)).toBe("Monthly");
+    expect(formatRateLimitWindowLabel(28 * 24 * 60)).toBe("Monthly");
+    expect(formatRateLimitWindowLabel(90 * 24 * 60)).toBe("3-month");
     expect(formatRateLimitWindowLabel(0)).toBe(null);
   });
 
