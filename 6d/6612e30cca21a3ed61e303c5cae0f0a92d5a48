@@ -1,0 +1,45 @@
+src/main/codex-application/CodexSidebarSectionSync.node.test.ts
+  s_039f18d9f057b1::t_90dc960b43e039 24
+crates/nodex-core/src/workspace/project_activity_summary.rs
+  s_039f18d9f057b1::t_90dc960b43e039 9-10,38
+crates/nodex-core/src/workspace/sidebar_section.rs
+  s_039f18d9f057b1::t_90dc960b43e039 28,941,952,964,966,1046,1051,1092,1094,1098-1114,1116-1118,1531-1532,1535,1538,1832-2014
+crates/nodex-core-contracts/src/workspace.rs
+  s_039f18d9f057b1::t_90dc960b43e039 19,441
+src/main/core-client/project-workspace-adapter.node.test.ts
+  s_039f18d9f057b1::t_90dc960b43e039 1-34
+packages/core-protocol/openapi.json
+  s_039f18d9f057b1::t_90dc960b43e039 7852,7873
+src/main/core-client/project-workspace-adapter.ts
+  s_039f18d9f057b1::t_90dc960b43e039 106
+src/shared/sidebar-sections.ts
+  s_039f18d9f057b1::t_90dc960b43e039 27
+src/main/app-tools/WorkspaceAppTools.node.test.ts
+  s_039f18d9f057b1::t_90dc960b43e039 385
+packages/core-protocol/src/generated.ts
+  s_039f18d9f057b1::t_90dc960b43e039 1836
+src/main/codex-application/CodexSidebarSectionSync.ts
+  s_039f18d9f057b1::t_90dc960b43e039 807
+crates/nodex-core/src/workspace/mod.rs
+  s_039f18d9f057b1::t_90dc960b43e039 28
+crates/nodex-core/src/workspace/session_activity.rs
+  s_039f18d9f057b1::t_90dc960b43e039 1-5
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_039f18d9f057b1::t_90dc960b43e039 191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6d6612e30cca21a3ed61e303c5cae0f0a92d5a48",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
