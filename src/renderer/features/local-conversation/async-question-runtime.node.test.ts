@@ -352,6 +352,35 @@ describe("asynchronous question lifecycle", () => {
     runtime.receive("thread", "ask");
     expect(runtime.read("thread").selectedId).toBe(ids[0]);
   });
+  test("a question answered elsewhere leaves the panel, while one reopened to revise stays", () => {
+    const runtime = setup();
+    expect(runtime.read("thread").selectedId).toBe(ids[0]);
+    // Another Agent answers the selected question; the panel moves on to the next open one.
+    runtime.reconcile(conversation([question, answer("Local")]));
+    expect(runtime.read("thread").openIds).toEqual([ids[1]]);
+    expect(runtime.read("thread").selectedId).toBe(ids[1]);
+    const both: CodexCanonicalItem = {
+      ...answer("Local"),
+      content: [
+        {
+          type: "text",
+          text: encodeCodexAsyncQuestionReplies([
+            { questionItemId: ids[1]!, question: "What name?", answer: "nodex" },
+          ]),
+          text_elements: [],
+        },
+      ],
+      id: "second",
+      clientId: "second",
+    } as CodexCanonicalItem;
+    runtime.reconcile(conversation([question, answer("Local"), both]));
+    expect(runtime.read("thread").openIds).toEqual([]);
+    expect(runtime.read("thread").selectedId).toBeNull();
+    // Reopening an answered question to revise it is not undone by a later answer.
+    runtime.open("thread", ids[0]!);
+    runtime.reconcile(conversation([question, answer("Global"), both]));
+    expect(runtime.read("thread").selectedId).toBe(ids[0]);
+  });
   test("removing the selected question closes the batch instead of unexpectedly switching questions", () => {
     const runtime = setup();
     const extra = { ...question, id: "later" };

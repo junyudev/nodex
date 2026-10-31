@@ -334,14 +334,21 @@ export function createAsyncQuestionRuntime(
         deadlineMs: previous?.deadlineMs ?? null,
       };
     }
-    const selectedId =
-      before.selectedId &&
-      questions[before.selectedId] &&
-      before.questions[before.selectedId]?.sourceEntityKey ===
-        questions[before.selectedId]?.sourceEntityKey
-        ? before.selectedId
-        : null;
-    const openIds = selectedId ? before.openIds.filter((id) => questions[id]) : [];
+    // A question answered elsewhere, such as by another Agent, leaves the panel as a local
+    // submission does; one the person reopened to revise was already answered and stays.
+    const answeredElsewhere = (id: string) =>
+      questions[id]?.answered === true && before.questions[id]?.answered !== true;
+    const stillOpen = before.openIds.filter((id) => questions[id] && !answeredElsewhere(id));
+    const selected = before.selectedId;
+    const selectedId = !selected
+      ? null
+      : answeredElsewhere(selected)
+        ? (stillOpen[0] ?? null)
+        : questions[selected] &&
+            before.questions[selected]?.sourceEntityKey === questions[selected]?.sourceEntityKey
+          ? selected
+          : null;
+    const openIds = selectedId ? stillOpen : [];
     const openedAutomatically = selectedId !== null && before.openedAutomatically;
     const next = {
       questions,
