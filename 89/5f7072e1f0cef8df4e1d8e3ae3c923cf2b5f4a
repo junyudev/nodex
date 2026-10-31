@@ -1,0 +1,19 @@
+packages/landing/src/replica/Chat.tsx
+  s_a6781d7ad2151c::t_b921c04529cf7a 87,102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "895f7072e1f0cef8df4e1d8e3ae3c923cf2b5f4a",
+  "prompts": {},
+  "sessions": {
+    "s_a6781d7ad2151c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1903b-3503-7b40-80fe-c97b4452918e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
