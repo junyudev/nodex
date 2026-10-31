@@ -1,0 +1,58 @@
+docs/KEYBOARD_SHORTCUTS.md
+  s_9b1cc9a64fc25d::t_fc95f64fbb51cd 7,9,198,205
+  s_9b1cc9a64fc25d::t_f5b788aef7051c 206
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.ts
+  s_9b1cc9a64fc25d::t_d36c2c409ae4d9 1-7,11,13,16,19,21-25
+src/renderer/lib/use-command-keymap-state.ts
+  s_9b1cc9a64fc25d::t_d36c2c409ae4d9 6-13,52-64
+docs/product-specs/nfm-editor-text-action-menu-behavior.md
+  s_9b1cc9a64fc25d::t_fc95f64fbb51cd 58,63,83,85,87-93
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_9b1cc9a64fc25d::t_9594578b8b986e 16-17,84,100-102
+  s_9b1cc9a64fc25d::t_df64e7910a5c4d 415-423,427
+  s_9b1cc9a64fc25d::t_19e4e00fcbce8b 7-11,103-106,192,424-426,428-433
+src/renderer/components/board/editor/nfm-side-menu-model.ts
+  s_9b1cc9a64fc25d::t_768e8fbd2c8928 67-68,286-287
+  s_9b1cc9a64fc25d::t_ecdcbd8419bd66 288
+src/renderer/components/board/editor/nfm-side-menu-model.test.ts
+  s_9b1cc9a64fc25d::t_e2a50ed3542979 32,45-46,64-65
+  s_9b1cc9a64fc25d::t_d11141eff43928 2-5
+docs/product-specs/nfm-block-side-menu-behavior.md
+  s_9b1cc9a64fc25d::t_fc95f64fbb51cd 59,62,65-66
+src/shared/command-keybindings.ts
+  s_9b1cc9a64fc25d::t_d36c2c409ae4d9 5-6,763-780,1957
+src/shared/command-keybindings.test.ts
+  s_9b1cc9a64fc25d::t_df64e7910a5c4d 45-50
+src/renderer/components/board/editor/prompt-block.tsx
+  s_9b1cc9a64fc25d::t_768e8fbd2c8928 9-10,144
+  s_9b1cc9a64fc25d::t_fe2a66f9baabf9 145-147
+docs/product-specs/nfm-editor-prompt-block-behavior.md
+  s_9b1cc9a64fc25d::t_fc95f64fbb51cd 40-43
+src/renderer/components/board/editor/nfm-side-menu.tsx
+  s_9b1cc9a64fc25d::t_768e8fbd2c8928 112,1416-1417,1505-1506,1533-1534
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_9b1cc9a64fc25d::t_768e8fbd2c8928 82,1051-1052,1119,1161
+src/renderer/components/board/editor/nfm-chat-send-shortcut-controller.test.tsx
+  s_9b1cc9a64fc25d::t_9594578b8b986e 1-128
+  s_9b1cc9a64fc25d::t_5e656dff62a682 129-180
+src/renderer/components/board/editor/nfm-chat-send-shortcut-controller.tsx
+  s_9b1cc9a64fc25d::t_d36c2c409ae4d9 3,32-33,40-41,43-44,51-52
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.test.ts
+  s_9b1cc9a64fc25d::t_9ad7b64fa590b2 2-7,20-48,50-57,60-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eadf365cdbf947c2e0b3151368c1cc1431d8c254",
+  "prompts": {},
+  "sessions": {
+    "s_9b1cc9a64fc25d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-1167-7372-999f-6df67dc7e34a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
