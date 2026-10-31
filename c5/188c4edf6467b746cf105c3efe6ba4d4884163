@@ -1,6 +1,8 @@
 docs/product-specs/agent-runtime-behavior.md
   s_2d7b784dacd638::t_8895ea343f0d8e 345-351
   s_fa2a1bb1a9bd0d::t_c0ba6fb5de56ef 91-103,107-111,752-753,758-762
+  s_b5c41a13e9511c::t_e492a8b05cb695 104-106
+  s_b5c41a13e9511c::t_0eeb99ace13159 754-757
 packages/agent-runtime/package.json
   s_aba0b408ef9828::t_f95ffbec6905a8 21-22
 packages/agent-runtime/src/nodex/Rollback.test.ts
@@ -14,6 +16,7 @@ packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.ts
 packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
   s_aba0b408ef9828::t_69945b72ed8562 1-6,10690-10698,10702
   s_fa2a1bb1a9bd0d::t_b4b8df18e5f63a 7,301-302,503,5367-5369,11547-11557,11559-11565,11582-11663,11665-11670,11673-11737,11815-11834,12028-12030,12504-12518,12590-12616,12764
+  s_b5c41a13e9511c::t_f3206de469685b 11664,11671-11672
 packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
   s_fa2a1bb1a9bd0d::t_05d501bcb62279 1-8,273-275,277-279,719,7826,7828-7836,7855-7863,8654,8883-8895,10614,11660-11671,11802-11815
   s_fa2a1bb1a9bd0d::t_2ea46818f7cda7 208-209,429-431,1390-1396,4864-4866,10407-10412
@@ -40,6 +43,7 @@ src/shared/types.ts
   s_aba0b408ef9828::t_d0188286c293fe 4544-4545
 packages/agent-runtime/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
   s_fa2a1bb1a9bd0d::t_886e84a3ab942c 9-13,20-26,1974-2178,2214-2215,2219,2223,2289-2361
+  s_b5c41a13e9511c::t_20b76ad9296019 1-8,2179-2213,2216-2218,2220-2222,2224-2288
 docs/product-specs/codex-thread-transcript-behavior.md
   s_fa2a1bb1a9bd0d::t_c57d8efb5fe735 603
 src/shared/agent-runtime-api.ts
@@ -74,6 +78,7 @@ packages/agent-runtime/src/persistence/Migrations/087_ContextRecovery.ts
   s_fa2a1bb1a9bd0d::t_ebfeeb63bef7df 1-12
 packages/agent-runtime/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
   s_fa2a1bb1a9bd0d::t_272965a95a81ec 6-7,132-133,403,423-443,444-445,4908-4909,4911-4914,4917-4920,4925-4933,4935-4938,4951-4964,4966-4972,4974-5061,5063,5085-5128,5146-5299
+  s_b5c41a13e9511c::t_c2d864937c4df4 4910,4915-4916,4921-4924,4934,4939-4950,4965,4973,5062,5064-5084,5129-5145
 src/renderer/features/local-conversation/projection/conversation-recovery-presentation.ts
   s_fa2a1bb1a9bd0d::t_78b792bbe2dda6 27-28,76
   s_1291aa7602df08::t_d1da93d607e27a 72
@@ -85,6 +90,7 @@ src/renderer/features/local-conversation/thread-stage-types.ts
   s_fa2a1bb1a9bd0d::t_5219d39cf0b633 511
 packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.ts
   s_fa2a1bb1a9bd0d::t_4845e9c1985f66 1,697-700,702-706,710-711,713-719,730
+  s_b5c41a13e9511c::t_efb03ed83466d8 701,707-709
 packages/agent-runtime/src/nodex/Service.ts
   s_fa2a1bb1a9bd0d::t_4b3aa7ec15571e 370-377
 src/renderer/features/local-conversation/agent-runtime-stage-actions.node.test.ts
@@ -104,6 +110,7 @@ packages/agent-runtime/src/orchestration-v2/DelegatedResultReceipt.ts
   s_fa2a1bb1a9bd0d::t_362ba10dabe53a 13-16,27-28
   s_fa2a1bb1a9bd0d::t_1ce654758e026e 29-34,36,40-42,45-47,56,79,91-92,98-99,121
   s_1291aa7602df08::t_1e2262a6c96163 2-12,22,35,37-38,43-44,72-78,80-90,93-97,100-120
+  s_b5c41a13e9511c::t_c6aad12f88dd42 1,17-21,23-26,39,48-55,57-71
 packages/agent-runtime/vendor/provider-core/src/server/handoffBudget.ts
   s_fa2a1bb1a9bd0d::t_b603126fb841ff 4,25-31,92-95,102,112-113,120,123-131
 packages/agent-runtime/src/persistence/Migrations.ts
@@ -117,6 +124,17 @@ src/renderer/features/local-conversation/view/shared/conversation-recovery-surfa
   s_fa2a1bb1a9bd0d::t_07c431227350de 24,106,174-184,215
 packages/agent-runtime/vendor/provider-core/src/server/failure.ts
   s_fa2a1bb1a9bd0d::t_5e2d01528330a7 13,23,35-51,173-175,178-180,188-189
+packages/agent-runtime/src/nodex/Mcp.ts
+  s_b5c41a13e9511c::t_e4eb638b3ac998 13,50,60
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_b5c41a13e9511c::t_a28dc8ff083c71 1,1182
+packages/agent-runtime/src/mcp/TaskResultDelivery.ts
+  s_b5c41a13e9511c::t_0f2769ebf975eb 73-75
+  s_b5c41a13e9511c::t_11fb00c4f1bfda 1-72,76-97
+packages/agent-runtime/src/mcp/TaskToolkit.integration.test.ts
+  s_b5c41a13e9511c::t_7eca1e3b68d920 1,705-733
+packages/agent-runtime/src/mcp/toolkits/task/handlers.ts
+  s_b5c41a13e9511c::t_6b506551697372 5,37,43,48
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -144,6 +162,14 @@ packages/agent-runtime/vendor/provider-core/src/server/failure.ts
       "agent_id": {
         "tool": "codex",
         "id": "01a1916f-ade3-7732-a737-d16b88fecf5d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b5c41a13e9511c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1919a-f51e-7522-8c2b-1ee25c262243",
         "model": "gpt-6.1-sol"
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
