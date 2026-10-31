@@ -122,6 +122,7 @@ import {
   ComposerPromptEditor,
   appendComposerDictationText,
   buildPromptDoc,
+  composerMentionLinkPattern,
   parseComposerPromptMentionLink,
   serializeComposerPromptMentionLink,
   type ComposerPromptMentionInput,
@@ -130,6 +131,11 @@ import {
   type ComposerSuggestionAction,
 } from "./composer-prompt-editor";
 import { CLAUDE_PROMPT_KEYWORDS } from "./composer-prompt-keywords";
+import { projectMessageText } from "../../../../../shared/message-agent-input";
+import { materializeWrittenImages } from "@/lib/prompt-file-images";
+import { readAuthorizedImageFile } from "@/lib/library-file-resources";
+import { useLibraryFileReadAuthority } from "@/lib/use-library-navigation";
+import { fileSource } from "../../../../../shared/file-resources";
 import {
   inactiveComposerSuggestionState,
   type ComposerSuggestionState,
@@ -385,10 +391,9 @@ function extractComposerPromptMentions(prompt: string): {
   const mentions: NonNullable<CodexPromptInput["mentions"]> = [];
   const skills: NonNullable<CodexPromptInput["skills"]> = [];
   const textParts: string[] = [];
-  const mentionPattern = /\[([^\]\n]+)\]\(([^)\n]+)\)/gu;
   let cursor = 0;
 
-  for (const match of prompt.matchAll(mentionPattern)) {
+  for (const match of prompt.matchAll(composerMentionLinkPattern())) {
     const rawLabel = match[1] ?? "";
     const rawPath = match[2] ?? "";
     const mention = parseComposerPromptMentionLink(rawLabel, rawPath);
@@ -425,18 +430,38 @@ function extractComposerPromptMentions(prompt: string): {
   };
 }
 
+/**
+ * The prompt's Markdown as an Agent receives it, its images counted after the attachment row's.
+ * Mentions are Composer atoms rather than Markdown, so they keep their exact source.
+ */
+function projectComposerPrompt(prompt: string, precedingImageCount: number) {
+  const mentions: string[] = [];
+  const guarded = prompt.replace(composerMentionLinkPattern(), (link, label, path) =>
+    parseComposerPromptMentionLink(label, path) ? `\uE000${mentions.push(link) - 1}\uE001` : link,
+  );
+  const projected = projectMessageText(guarded, { precedingImageCount });
+  return {
+    ...projected,
+    text: projected.text.replace(/\uE000(\d+)\uE001/gu, (_, index) => mentions[Number(index)]!),
+  };
+}
+
 function buildComposerPromptInput(input: {
   prompt: string;
   attachments: ComposerAttachmentState;
   executionHostId?: string | null;
 }): CodexPromptInput | undefined {
-  const parsedPrompt = extractComposerPromptMentions(input.prompt);
-  const text = parsedPrompt.text;
   const executionHostId =
     input.executionHostId === undefined ? DEFAULT_CODEX_HOST_ID : input.executionHostId;
-  const images = [
-    ...buildComposerImagePromptInputs(input.attachments.imageAttachments, executionHostId),
-  ];
+  const attachedImages = buildComposerImagePromptInputs(
+    input.attachments.imageAttachments,
+    executionHostId,
+  );
+  const written = projectComposerPrompt(input.prompt, attachedImages.length);
+  const parsedPrompt = extractComposerPromptMentions(written.text);
+  const text = parsedPrompt.text;
+  const images = [...attachedImages, ...(written.images ?? [])];
+  const agentConfigs = written.agentConfigs ?? [];
   const appshots = input.attachments.appshotContexts.map((context) => ({
     ...context,
   }));
@@ -469,7 +494,8 @@ function buildComposerPromptInput(input: {
     commentAttachments.length === 0 &&
     browserAnnotationAttachments.length === 0 &&
     responseTextAnnotations.length === 0 &&
-    selectedTextAttachments.length === 0
+    selectedTextAttachments.length === 0 &&
+    agentConfigs.length === 0
   ) {
     return undefined;
   }
@@ -490,6 +516,7 @@ function buildComposerPromptInput(input: {
     ...(browserAnnotationAttachments.length > 0 ? { browserAnnotationAttachments } : {}),
     ...(responseTextAnnotations.length > 0 ? { responseTextAnnotations } : {}),
     ...(selectedTextAttachments.length > 0 ? { selectedTextAttachments } : {}),
+    ...(agentConfigs.length > 0 ? { agentConfigs: [...agentConfigs] } : {}),
   };
 }
 
@@ -1938,9 +1965,23 @@ function HydratedThreadComposer({
     [isDraftCaptureLocked, model.isCloudNewThreadTarget, onErrorMessage, setFileAttachments],
   );
 
+  const libraryReadAuthority = useLibraryFileReadAuthority();
   const handlePasteFiles = useCallback(
     (payload: ComposerPastedFiles): boolean => {
       if (isDraftCaptureLocked()) return true;
+      if (payload.libraryImages.length > 0) {
+        if (!libraryReadAuthority) return false;
+        // An image copied from Nodex attaches as the image itself, read from its Library File.
+        void Promise.all(
+          payload.libraryImages.map(({ fileId }) =>
+            readAuthorizedImageFile(libraryReadAuthority, fileSource(fileId)),
+          ),
+        ).then(
+          (files) => imageAttachmentController.addFiles(files, "paste"),
+          () => toast.danger("Couldn’t attach the copied image", { id: "composer-library-paste" }),
+        );
+        return true;
+      }
       if (payload.imageFiles.length > 0) {
         void imageAttachmentController.addFiles(payload.imageFiles, "paste");
       }
@@ -1949,7 +1990,12 @@ function HydratedThreadComposer({
       }
       return payload.imageFiles.length > 0 || payload.otherFiles.length > 0;
     },
-    [addOrdinaryComposerFiles, imageAttachmentController, isDraftCaptureLocked],
+    [
+      addOrdinaryComposerFiles,
+      imageAttachmentController,
+      isDraftCaptureLocked,
+      libraryReadAuthority,
+    ],
   );
 
   const handleRetryPastedTextAttachment = useCallback(
@@ -2283,11 +2329,20 @@ function HydratedThreadComposer({
         );
         return false;
       }
-      const promptInput = buildComposerPromptInput({
-        prompt: nextPrompt,
-        attachments: effectiveAttachmentState,
-        executionHostId,
-      });
+      let promptInput: CodexPromptInput | undefined;
+      try {
+        promptInput = await materializeWrittenImages(
+          buildComposerPromptInput({
+            prompt: nextPrompt,
+            attachments: effectiveAttachmentState,
+            executionHostId,
+          }),
+          executionHostId,
+        );
+      } catch (error) {
+        onErrorMessage(error instanceof Error ? error.message : "An image can't be read");
+        return false;
+      }
       const hasAgentConfig =
         (
           promptInput?.agentConfigs ??
@@ -2298,7 +2353,7 @@ function HydratedThreadComposer({
       if (
         !imageInputSupported &&
         !hasAgentConfig &&
-        (effectiveImageAttachments.length > 0 || input.imageEditIntent)
+        ((promptInput?.images?.length ?? 0) > 0 || input.imageEditIntent)
       ) {
         onErrorMessage(
           imageInputUnavailableReason ?? "Remove images or switch models to send this message",
@@ -2368,11 +2423,14 @@ function HydratedThreadComposer({
         setBusyAction("send");
         onErrorMessage(null);
         try {
-          const sideChatPromptInput = buildComposerPromptInput({
-            prompt: sideChatPrompt,
-            attachments: effectiveAttachmentState,
-            executionHostId: model.hostId,
-          });
+          const sideChatPromptInput = await materializeWrittenImages(
+            buildComposerPromptInput({
+              prompt: sideChatPrompt,
+              attachments: effectiveAttachmentState,
+              executionHostId: model.hostId,
+            }),
+            model.hostId,
+          );
           await appModelContext.submit((mcpAppModelContextAttachments) =>
             openSideChat({
               prompt: sideChatPrompt,

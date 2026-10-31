@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { NODEX_STRUCTURAL_CLIPBOARD_MIME } from "../clipboard-paste";
 import { readMarkdown } from "../nodex-markdown";
 import {
+  readComposerPaste,
   readMarkdownPaste,
   readPageTextPaste,
   readPlainTextBlocks,
@@ -116,6 +117,63 @@ describe("Markdown paste", () => {
 
 const lines = (...texts: string[]) =>
   texts.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] }));
+
+describe("Composer paste", () => {
+  const nodexCopy = (plain: string, html: string) =>
+    clipboard({ "text/plain": plain, "text/html": html, "blocknote/html": html });
+
+  test("a Page image copied from Nodex joins the attachment row as its Library File", () => {
+    expect(
+      readComposerPaste(
+        nodexCopy(
+          "![Banner](nodex://files/banner)",
+          '<img src="nodex://files/banner" alt="Banner">',
+        ),
+      ),
+    ).toEqual({ text: null, images: [{ fileId: "banner", caption: "Banner" }] });
+  });
+
+  test("a copy made with local file paths still finds each image's File by its rich form", () => {
+    expect(
+      readComposerPaste(
+        nodexCopy(
+          "The banner is cut off\n\n![](/Users/me/.nodex/cache/file-exports/abc.png)\n\nSee ![icon](</Users/me/.nodex/cache/file-exports/d e.png>) here",
+          '<p>The banner is cut off</p><img src="nodex://files/banner"><p>See <img src="nodex://files/icon" alt="icon"> here</p>',
+        ),
+      ),
+    ).toEqual({
+      text: "The banner is cut off\n\nSee here",
+      images: [
+        { fileId: "banner", caption: "" },
+        { fileId: "icon", caption: "icon" },
+      ],
+    });
+  });
+
+  test("images that are not Library Files, and other apps' copies, paste as before", () => {
+    const web = nodexCopy(
+      "Logo ![logo](https://example.com/logo.png)",
+      '<p>Logo <img src="https://example.com/logo.png" alt="logo"></p>',
+    );
+    expect(readComposerPaste(web)).toEqual({ text: readMarkdownPaste(web), images: [] });
+    const other = clipboard({
+      "text/plain": "Steps",
+      "text/html": '<p><b>Steps</b><img src="nodex://files/banner"></p>',
+    });
+    expect(readComposerPaste(other)).toEqual({ text: "**Steps**", images: [] });
+  });
+
+  test("a copy whose rich form does not match its text keeps its text", () => {
+    const copy = nodexCopy(
+      "![](nodex://files/a)\n\n![](nodex://files/b)",
+      '<img src="nodex://files/a">',
+    );
+    expect(readComposerPaste(copy)).toEqual({
+      text: "![](nodex://files/a)\n\n![](nodex://files/b)",
+      images: [],
+    });
+  });
+});
 
 describe("Page text paste", () => {
   test("plain text that is not Markdown becomes a Block per line, exactly as written", () => {

@@ -48,6 +48,21 @@ describe("ordinary media locator policy", () => {
       kind: "blocked",
     });
   });
+  test("reads a relative path from the chat's working folder, on the chat's host", () => {
+    const inFolder = { ...scope, cwd: "/home/me/app" };
+    expect(resolveConversationMediaTarget("shots/before.png", inFolder)).toEqual({
+      kind: "file",
+      hostId: "remote-one",
+      path: "/home/me/app/shots/before.png",
+    });
+    expect(
+      resolveConversationMediaTarget("../demo.mp4", { ...inFolder, hostId: "local" }),
+    ).toMatchObject({
+      kind: "stream",
+      path: "/home/me/demo.mp4",
+    });
+    expect(resolveConversationMediaTarget("shots/before.png", scope)).toEqual({ kind: "blocked" });
+  });
   test.each([
     ["/x.mp4", "video"],
     ["/x.wav", "audio"],

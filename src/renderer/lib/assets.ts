@@ -8,7 +8,7 @@ import {
 } from "../../shared/managed-assets";
 import { parseAssetSource } from "../../shared/assets";
 import { buildAppFilesystemUrl, isAbsoluteAppFilesystemPath } from "../../shared/app-protocol";
-import { parseAbsoluteImagePath } from "./codex-conversation-image-assets";
+import { parseLocalImagePath } from "../../shared/image-source";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 
 export interface UploadedResourceAssetResponse {
@@ -78,23 +78,6 @@ export function resolveAssetSourceToDisplayUrl(
   const displayUrl = buildAppFilesystemUrl(localPath);
   managedAssetDisplayUrlCache.set(source, displayUrl);
   return displayUrl;
-}
-
-/**
- * The file an image source names on disk: an absolute path or a `file:` URL, whose host names a
- * network share, as `file://server/share/a.png` names `//server/share/a.png`.
- */
-export function parseLocalImagePath(source: string): string | null {
-  const absolute = parseAbsoluteImagePath(source);
-  if (absolute || !/^file:/iu.test(source.trim())) return absolute;
-  try {
-    const url = new URL(source.trim());
-    const path = decodeURIComponent(url.pathname);
-    if (url.host && url.host !== "localhost") return `//${url.host}${path}`;
-    return isAbsoluteAppFilesystemPath(path) ? path : null;
-  } catch {
-    return null;
-  }
 }
 
 /**

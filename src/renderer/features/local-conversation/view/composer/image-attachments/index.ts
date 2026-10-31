@@ -18,6 +18,7 @@ export {
   isComposerMediaOnlyHtml,
   isSupportedComposerImageFile,
   isSupportedComposerImageMetadata,
+  takeComposerLibraryImagePaste,
   type ComposerDataTransferClassification,
   type ComposerPastedFiles,
 } from "./composer-image-data-transfer";

@@ -1,7 +1,8 @@
 import { buildAppFilesystemUrl } from "../../../../shared/app-protocol";
 import { sanitizeNativeSaveFileName } from "../../../../shared/native-file-save";
 import { parseAssetSource } from "../../../../shared/assets";
-import { parseLocalImagePath, resolveAssetSourceToDisplayUrl } from "../../../lib/assets";
+import { parseLocalImagePath } from "../../../../shared/image-source";
+import { resolveAssetSourceToDisplayUrl } from "../../../lib/assets";
 import { readNativeResource } from "../../../lib/native-resource-operations";
 import { saveWorkspaceFileData } from "../../../lib/workspace-file-operations";
 import { isCodexImageAssetPointer } from "../../../lib/codex-conversation-image-assets";

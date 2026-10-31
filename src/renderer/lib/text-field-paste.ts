@@ -19,7 +19,8 @@ export function pasteMarkdownSource(
   insertTyped(event.currentTarget, text);
 }
 
-function insertTyped(field: HTMLTextAreaElement | HTMLInputElement, text: string): void {
+/** Inserts text into a field as typing would, so undo takes it back. */
+export function insertTyped(field: HTMLTextAreaElement | HTMLInputElement, text: string): void {
   field.focus();
   // The editing command keeps the field's own undo history.
   if (document.execCommand?.("insertText", false, text)) return;

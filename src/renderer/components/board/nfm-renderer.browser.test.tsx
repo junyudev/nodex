@@ -2,7 +2,13 @@ import { render } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
 
 import "../../globals.css";
-import { NfmRenderer } from "./nfm-renderer";
+import { NfmDocument } from "./nfm-renderer";
+import { readMarkdown } from "../../../shared/nodex-markdown";
+
+/** Nodex Markdown read and shown as a Page lays it out. */
+function NfmRenderer({ content }: { readonly content: string }) {
+  return <NfmDocument blocks={readMarkdown(content)} />;
+}
 
 describe("NfmRenderer quote geometry in Chromium", () => {
   test("keeps the rule and content on the same inherited color and rhythm", () => {

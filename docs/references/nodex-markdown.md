@@ -383,7 +383,9 @@ A URL with spaces, angle brackets or unbalanced parentheses is written as
 
 The URL names where the picture comes from: a Library File as `nodex://files/<id>`,
 a web or `data:` image, or a file path, absolute or a `file:` URL, read from the
-computer the content belongs to. Nodex shows an image it cannot read as unavailable.
+computer the content belongs to. A relative path reads from the folder the content
+is read in, such as a chat's working folder. Nodex shows an image it cannot read as
+unavailable.
 
 An image anywhere else is an inline image, as GitHub shows it in place: within
 text, in a list item's or quote's text, in a table cell, or inside a link, which

@@ -21,10 +21,12 @@ import {
   handleComposerFilePaste,
   isSupportedComposerImageFile,
   resolveComposerImageAttachmentSize,
+  takeComposerLibraryImagePaste,
+  type ComposerPastedFiles,
 } from "@/features/local-conversation/view/composer/image-attachments";
 import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "@/features/local-conversation/view/shared/composer-footer-controls";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
-import { pasteMarkdownSource } from "@/lib/text-field-paste";
+import { insertTyped, pasteMarkdownSource } from "@/lib/text-field-paste";
 import { COMPOSER_IMAGE_MIME_TYPES } from "../../../shared/composer-image-input";
 import { fileSource } from "../../../shared/file-resources";
 import { messageImageBlock } from "../../../shared/message-content";
@@ -122,10 +124,25 @@ export function useMessageImageInput({
     },
     /** The local preview of an image imported here, shown until its File is read. */
     previewUrl: (fileId: string) => previews.current.get(fileId) ?? null,
-    /** The Composer's paste: images become attachments, text arrives as its Markdown source. */
+    /**
+     * The Composer's paste: images become attachments, text arrives as its Markdown source. An
+     * image copied from Nodex is already a Library File, so the draft uses that File itself.
+     */
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => {
-      if (handleComposerFilePaste(event.nativeEvent, ({ imageFiles }) => add(imageFiles))) return;
-      pasteMarkdownSource(event);
+      const take = ({ imageFiles, libraryImages }: ComposerPastedFiles) => {
+        if (!access) return false;
+        if (libraryImages.length === 0) return add(imageFiles);
+        onImported(libraryImages.map(({ fileId, caption }) => ({ fileId, name: caption })));
+        return true;
+      };
+      if (handleComposerFilePaste(event.nativeEvent, take)) return;
+      const library = takeComposerLibraryImagePaste(event.nativeEvent, take);
+      if (!library) {
+        pasteMarkdownSource(event);
+        return;
+      }
+      event.preventDefault();
+      if (library.text) insertTyped(event.currentTarget, library.text);
     },
     onDragOver: (event: DragEvent<HTMLElement>) => {
       if (!access || !event.dataTransfer.types.includes("Files")) return;

@@ -243,6 +243,7 @@ describe("ComposerPromptEditor", () => {
     expect(onPasteFiles).toHaveBeenCalledWith({
       imageFiles: [image],
       otherFiles: [],
+      libraryImages: [],
       source: "paste",
     });
     expect(editorRef.current?.getText()).toBe("existing");

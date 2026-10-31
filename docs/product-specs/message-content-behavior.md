@@ -37,7 +37,9 @@ the text. Images sit in one attachment row above the text, with the same
 thumbnails in every Composer, and enter by paste, drop, or the picker.
 
 Pasting inserts the Markdown source of what was copied, with every line it
-shows. Rich text from another app becomes its Markdown: headings, emphasis,
+shows. An image copied from Nodex, such as a Page image, is a Library File, so it
+joins the attachment row as the image itself, however the copy writes its path;
+the rest of the copy pastes as text. Rich text from another app becomes its Markdown: headings, emphasis,
 lists, checklists, links, code and tables keep their meaning, and a run of
 lines, as Notes and mail write them, stays a run of lines. Markdown a source
 provides and Nodex's own copies stay as written, code copied from an editor or
@@ -58,10 +60,17 @@ One written message has exactly two projections.
 - **Into a Page.** An Inbox message becomes its Page body: the text Blocks in
   order, then one Block per attachment.
 - **Into Agent input.** Text, mentions, and images are projected to an Agent by
-  the same rules everywhere, whether the source is a Composer or a Page sent to
-  a chat. A Page's content is written as exact Nodex Markdown, mentions retain stable
-  Page and Session references, and images travel as images, each marked in the text by a
-  numbered placeholder.
+  the same rules everywhere, whether the source is a Composer, an edited
+  message, or a Page sent to a chat. A Page's content is written as exact Nodex
+  Markdown, mentions retain stable Page and Session references, and images
+  travel as images, each marked in the text by a numbered placeholder:
+  `[Image #2]`, with its caption and, for a file on disk, the path the Agent
+  can act on. Every image whose picture Nodex holds travels: a Library File,
+  read with the access of its Page, or of the Library for written text; a file
+  on disk; and an image carried in its source. A Composer's attached images
+  count first. A web image stays a link in the text, since Nodex never fetches
+  the web for an Agent. Text without images reaches the Agent exactly as
+  written.
 
 Wherever Nodex sends an image's bytes to an Agent itself, rather than handing the
 Agent a local file, the image is fitted instead of being refused or left out. One
@@ -84,9 +93,16 @@ Images are read with the access of the Page the message belongs to. Text
 written to an Agent, such as a chat message, belongs to no Page and reads its
 Library images with the Library's access, as the Agent does. A file path shows
 the file from where the message lives: this computer, or in a chat the chat's
-host, as the Agent's replies do. An image between paragraphs shows in place, no
-taller than an image in an Agent's reply, and opens in the image viewer. An
-image that cannot be read says so. An Inbox bubble shows its Page as it is now,
+host, as the Agent's replies do; a relative path reads from the chat's working
+folder. An image between paragraphs shows in place, no taller than an image in
+an Agent's reply, and opens in the image viewer. An image that cannot be read
+says so.
+
+A sent chat message shows each placeholder the Agent read as the image it
+names, small, in the text: it opens in the message's one image viewer, which
+holds the message's attached images in order, and right-clicking it offers the
+actions an Agent's images have. A placeholder that names no image the message
+carries, as when an image could not be sent, stays a plain reference. An Inbox bubble shows its Page as it is now,
 including anything later added in the Page; the stream shows a bounded part of
 a long body, and the full message stays one action away. Long messages collapse
 after the same number of lines in every bubble.

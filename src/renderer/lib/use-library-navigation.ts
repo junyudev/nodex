@@ -21,6 +21,7 @@ import {
 import { libraryContentRoute } from "../../shared/content-routing-context";
 import { applyLibraryModule, readLibraryModule, subscribeLibraryChanges } from "./api";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import type { FileReadAuthority } from "./library-file-resources";
 import { queryKeys } from "./query-keys";
 import { invalidateQueryFamilyExactly, queryFamilyProjectionCursor } from "./query-invalidation";
 import { useProjectionRegistration } from "./projection-invalidation-context";
@@ -235,6 +236,22 @@ export const useLibraryMetadata = (enabled = true) =>
     ...libraryMetadataQueryOptions(),
     enabled,
   });
+
+/**
+ * Reads any Library File directly, as text written to an Agent and copies between Composers
+ * name them; null until the Library is known.
+ */
+export function useLibraryFileReadAuthority(): FileReadAuthority | null {
+  const library = useLibraryMetadata().data;
+  return library
+    ? {
+        contentRoutingContext: libraryContentRoute,
+        libraryId: library.libraryId,
+        storeEpoch: library.storeEpoch,
+        readSource: { kind: "direct" },
+      }
+    : null;
+}
 
 export const useApplyLibraryOperation = () => {
   const queryClient = useQueryClient();

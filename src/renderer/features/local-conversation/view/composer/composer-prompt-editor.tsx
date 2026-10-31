@@ -40,6 +40,7 @@ import {
 } from "./composer-suggestion-state";
 import {
   handleComposerFilePaste,
+  takeComposerLibraryImagePaste,
   type ComposerPastedFiles,
 } from "./image-attachments/composer-image-data-transfer";
 import { resolveSubagentAvatarAsset } from "../shared/subagent-avatar";
@@ -228,6 +229,9 @@ function parseComposerSkillPromptLabel(label: string): {
     displayName: displayName || humanizeComposerSkillName(name),
   };
 }
+
+/** A mention is written as a link; an image, `![…](…)`, never is. */
+export const composerMentionLinkPattern = (): RegExp => /(?<!!)\[([^\]\n]+)\]\(([^)\n]+)\)/gu;
 
 export function parseComposerPromptMentionLink(
   rawLabel: string,
@@ -673,7 +677,16 @@ function handleComposerPaste(
   onLargeTextPaste: ((text: string) => boolean) | undefined,
 ): boolean {
   if (handleComposerFilePaste(event, onPasteFiles)) return true;
-  const text = event.clipboardData ? readPromptPasteText(event.clipboardData) : null;
+  const library = takeComposerLibraryImagePaste(event, onPasteFiles);
+  if (library && library.text === null) {
+    event.preventDefault();
+    return true;
+  }
+  const text = library
+    ? library.text
+    : event.clipboardData
+      ? readPromptPasteText(event.clipboardData)
+      : null;
   return (
     handleComposerLargeTextPaste(
       event,
@@ -837,9 +850,8 @@ export function buildPromptDoc(value: string): ProseMirrorNode {
   const mentionType = promptSchema.nodes.mention;
   const paragraphs = (lines.length > 0 ? lines : [""]).map((line) => {
     const children: ProseMirrorNode[] = [];
-    const mentionPattern = /\[([^\]\n]+)\]\(([^)\n]+)\)/gu;
     let cursor = 0;
-    for (const match of line.matchAll(mentionPattern)) {
+    for (const match of line.matchAll(composerMentionLinkPattern())) {
       const index = match.index;
       if (index > cursor) {
         children.push(promptSchema.text(line.slice(cursor, index)));

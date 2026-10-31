@@ -1,4 +1,4 @@
-import { materializePagePromptInput } from "./page-prompt-input";
+import { materializePromptFileImages } from "./prompt-file-images";
 import type { CodexPromptInput } from "@/lib/types";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { readMarkdown } from "../../shared/nodex-markdown";
@@ -15,7 +15,7 @@ import {
 } from "./block-document-surface-runtime";
 import type { DocumentSyncAdapter } from "./nodex-y-provider";
 import { unwrapOwnedBlockDocumentPreparationResult } from "./owned-block-document";
-import { buildCodexPromptInputFromMarkdownBlocks } from "./codex-prompt-input";
+import { projectMessageBlocks } from "../../shared/message-agent-input";
 import type { PagePromptContext } from "./page-chat-actions";
 
 export interface BuildPagePromptContextInput {
@@ -91,7 +91,7 @@ export function buildPagePromptContext({
 }: BuildPagePromptContextInput): PagePromptContext {
   const normalizedTitle = title.trim() || "Untitled Page";
   const normalizedPageKey = pageKey?.trim() || undefined;
-  const basePrompt = buildCodexPromptInputFromMarkdownBlocks(readMarkdown(markdown));
+  const basePrompt = projectMessageBlocks(readMarkdown(markdown));
   const promptText = [
     `Page: ${normalizedTitle}`,
     ...(normalizedPageKey ? [`Page key: ${normalizedPageKey}`] : []),
@@ -139,9 +139,9 @@ export async function loadPagePromptContext(input: {
   });
   return {
     ...context,
-    promptInput: (await materializePagePromptInput(
+    promptInput: (await materializePromptFileImages(
       { kind: "project", projectId: input.projectId },
-      input.pageId,
+      { kind: "page", page_id: input.pageId },
       context.promptInput,
     ))!,
   };

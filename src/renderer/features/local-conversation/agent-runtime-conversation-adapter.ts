@@ -120,6 +120,9 @@ import type {
   CodexTurnPresentationTicket,
 } from "../../../shared/nodex-app-tools/turn-presentation";
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
+import { projectMessageText } from "../../../shared/message-agent-input";
+import { materializeWrittenImages } from "../../lib/prompt-file-images";
+import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 
 export type AgentRuntimeProvider = AgentRuntimeOperations["providers.read"]["output"][number];
 const emptyState: AgentRuntimeConversationOwnerSnapshot = {
@@ -609,14 +612,22 @@ export function createAgentRuntimeStageActions(input: {
       const owner = input.owner();
       if (!owner) throw new Error("Open the conversation before editing this message");
       const original = await owner.readSentMessage(request.turnId);
-      const promptInput: CodexPromptInput = { text: request.message, images: original.images };
+      // The message keeps the images it was sent with; images written into the edit follow them.
+      const written = projectMessageText(request.message, {
+        precedingImageCount: original.images?.length ?? 0,
+      });
+      // Agent Runtime chats run on this computer.
+      const promptInput = (await materializeWrittenImages(
+        { ...written, images: [...(original.images ?? []), ...(written.images ?? [])] },
+        DEFAULT_CODEX_HOST_ID,
+      ))!;
       const presentationTicket = await input.capturePresentation?.({
         kind: "thread",
         threadId: request.threadId,
       });
       // Compile before rewinding: a message the Agent cannot accept must not discard any history.
       const prepared = retainAgentAppContext(
-        await input.prepare(request.message, promptInput),
+        await input.prepare(promptInput.text, promptInput),
         original.message,
       );
       await transport.rollback({ ...target, requestId: createUuidV7(), runId: request.turnId });

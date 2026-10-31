@@ -3,6 +3,7 @@ import {
   normalizeComposerImageFilenameCandidate,
 } from "../../../../../../shared/composer-image-input";
 import { parseFragment, type DefaultTreeAdapterMap } from "parse5";
+import { readComposerPaste, type CopiedLibraryImage } from "../../../../../../shared/markdown";
 
 export {
   COMPOSER_IMAGE_MIME_TYPES,
@@ -27,6 +28,8 @@ type ParsedHtmlElement = DefaultTreeAdapterMap["element"];
 export interface ComposerPastedFiles {
   readonly imageFiles: readonly File[];
   readonly otherFiles: readonly File[];
+  /** Images a copy from Nodex carries as the Library Files they show. */
+  readonly libraryImages: readonly CopiedLibraryImage[];
   readonly source: "paste";
 }
 
@@ -182,6 +185,7 @@ export function handleComposerFilePaste(
     onPasteFiles?.({
       imageFiles: classification.imageFiles,
       otherFiles: classification.otherFiles,
+      libraryImages: [],
       source: "paste",
     }) !== true
   )
@@ -189,4 +193,28 @@ export function handleComposerFilePaste(
 
   event.preventDefault();
   return true;
+}
+
+/**
+ * A paste of Nodex's own copy whose images are Library Files: the Composer takes those images into
+ * its attachment row, as it takes image files, and the paste inserts the rest of the copy as text.
+ * Returns the text still to insert, or undefined when the paste is not such a copy or the Composer
+ * takes none of it.
+ */
+export function takeComposerLibraryImagePaste(
+  event: ClipboardEvent,
+  onPasteFiles: ((payload: ComposerPastedFiles) => boolean) | undefined,
+): { readonly text: string | null } | undefined {
+  const clipboard = event.clipboardData;
+  if (event.defaultPrevented || !clipboard || !onPasteFiles) return undefined;
+  const paste = readComposerPaste({
+    types: Array.from(clipboard.types ?? []),
+    getData: (format) => clipboard.getData(format),
+  });
+  if (
+    paste.images.length === 0 ||
+    !onPasteFiles({ imageFiles: [], otherFiles: [], libraryImages: paste.images, source: "paste" })
+  )
+    return undefined;
+  return { text: paste.text };
 }

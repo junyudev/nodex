@@ -11,9 +11,9 @@ import {
 import { UserMessageCollapse } from "@/features/local-conversation/view/shared/user-message-collapse";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
-import { useLibraryMetadata } from "@/lib/use-library-navigation";
-import { libraryContentRoute } from "../../../shared/content-routing-context";
+import { useLibraryFileReadAuthority } from "@/lib/use-library-navigation";
 import { parseMessageText, splitMessageContent } from "../../../shared/message-content";
+import { readImagePlaceholders } from "../../../shared/message-agent-input";
 import type { MarkdownBlock } from "../../../shared/nodex-markdown";
 
 /**
@@ -79,22 +79,13 @@ export function MessageText({
   readonly projectWorkspacePath?: string | null;
   readonly collapsedLineCount?: number;
 }) {
-  const library = useLibraryMetadata().data;
+  const fileAuthority = useLibraryFileReadAuthority();
   return (
     <FileLinkWorkspaceProvider cwd={cwd} workspacePath={projectWorkspacePath}>
       <MessageDocument
-        blocks={parseMessageText(text)}
+        blocks={readImagePlaceholders(parseMessageText(text))}
         contentKey={text}
-        fileAuthority={
-          library
-            ? {
-                contentRoutingContext: libraryContentRoute,
-                libraryId: library.libraryId,
-                storeEpoch: library.storeEpoch,
-                readSource: { kind: "direct" },
-              }
-            : null
-        }
+        fileAuthority={fileAuthority}
         collapsedLineCount={collapsedLineCount}
       />
     </FileLinkWorkspaceProvider>

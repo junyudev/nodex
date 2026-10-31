@@ -91,7 +91,7 @@ import {
 } from "./nfm-side-menu";
 import { NfmCodeBlockController } from "./nfm-code-block-controller";
 import type { NfmMoveToDestination } from "./nfm-move-to-menu-model";
-import { buildCodexPromptInputFromBlockNoteBlocks } from "./nfm-codex-prompt-input";
+import { projectMessageBlocks } from "../../../../shared/message-agent-input";
 import { createSendToThreadToggleBlock } from "./nfm-send-to-thread-block";
 import {
   resolveNfmSendToThreadPreferredTarget,
@@ -1651,7 +1651,7 @@ function NfmEditorInstance({
         return;
       }
 
-      const promptInput = buildCodexPromptInputFromBlockNoteBlocks(selection.blocks);
+      const promptInput = projectMessageBlocks(selection.blocks);
       const hasImages = (promptInput.images?.length ?? 0) > 0;
       if (promptInput.text.length === 0 && !hasImages) {
         toast.info("Selected blocks are empty.", {

@@ -1,6 +1,7 @@
 import mimeDatabase from "mime-db/db.json";
 import { isAbsoluteAppFilesystemPath, buildAppFilesystemUrl } from "../../../shared/app-protocol";
 import { interpretConversationFilePath } from "../markdown/conversation-markdown-targets";
+import { classifyImageSource, resolveRelativeImagePath } from "../../../shared/image-source";
 
 export type ConversationMediaKind = "image" | "audio" | "video";
 // Mirror mime-types 3's mime-score without pulling node:path into the renderer.
@@ -73,6 +74,8 @@ export function classifyConversationMedia(source: string): ConversationMediaKind
 }
 
 export interface ConversationMediaSource {
+  /** The working folder relative media paths read from, as relative links do. */
+  readonly cwd?: string | null;
   readonly imageComposerTarget?: import("@/features/user-attachment-image-editor/model/types").ImageEditComposerTarget;
   readonly hostId: string;
   readonly threadId: string;
@@ -126,7 +129,11 @@ export function resolveConversationMediaTarget(
       const url = new URL(source);
       if (url.hostname && url.hostname !== "localhost") return { kind: "blocked" };
     }
-    const path = interpretConversationFilePath(source);
+    const authored = classifyImageSource(source);
+    const path =
+      authored.kind === "relative"
+        ? resolveRelativeImagePath(authored.path, scope.cwd)
+        : interpretConversationFilePath(source);
     if (
       !path ||
       !isAbsoluteAppFilesystemPath(path) ||
@@ -134,7 +141,7 @@ export function resolveConversationMediaTarget(
       path.startsWith("/@fs")
     )
       return { kind: "blocked" };
-    const kind = classifyConversationMedia(source);
+    const kind = classifyConversationMedia(authored.kind === "relative" ? path : source);
     if (kind !== "image" && scope.hostId === "local")
       return { kind: "stream", hostId: "local", path, url: buildAppFilesystemUrl(path) };
     return { kind: "file", hostId: scope.hostId, path };

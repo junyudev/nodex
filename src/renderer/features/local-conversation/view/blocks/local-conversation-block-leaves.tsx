@@ -78,13 +78,20 @@ import { ConversationRecoverySurface } from "../shared/conversation-recovery-sur
 import { useConversationRecoveryActions } from "../conversation-recovery-actions";
 import { CodexShimmerProvider, CodexShimmerText } from "../shared/codex-shimmer-text";
 import { AnsweredUserInputBlock } from "../composer/request-cards/answered-user-input-block";
-import { UserAttachmentStrip } from "../shared/user-message-attachments";
+import {
+  UserAttachmentStrip,
+  UserMessageImageGallery,
+  UserMessageImageReference,
+} from "../shared/user-message-attachments";
+import { NfmImagePlaceholderContext } from "@/components/board/nfm-renderer";
+import type { ImagePlaceholderReference } from "../../../../../shared/message-agent-input";
 import { useWorkedForLabelText } from "../shared/use-worked-for-label";
 import type { CodexWorktreeInitActivity } from "../../../../lib/codex-worktree-init-activity";
 import { semanticActivityStatusFromLifecycle } from "../../../../lib/semantic-activity-status";
 import type {
   CodexConversationChildMembership,
   CodexConversationItem,
+  CodexUserAttachment,
 } from "../../../../lib/types";
 import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
 import { resolveCodexThreadDetailLevel } from "../../../../lib/codex-thread-settings";
@@ -1079,106 +1086,122 @@ export function UserMessageBubble({
           <ThreadTextSelectionAttachments context={block.entry.textSelections} />
         </div>
       ) : null}
-      <UserAttachmentStrip
-        attachments={block.entry.userAttachments ?? []}
-        unavailableImages={block.entry.unavailableImages ?? []}
-      />
-      <div className="group flex w-full flex-col items-end justify-end gap-1">
-        <UserMessageDeliveryMarkers entry={block.entry} onOpenThread={onOpenThread} />
-        {isEditing ? (
-          <UserMessageEditForm
-            draft={editDraft}
-            onDraftChange={setEditDraft}
-            onCancel={() => setEditDraft(null)}
-            onSubmit={submitEdit}
+      <UserMessageImageGallery
+        attachments={block.entry.userAttachments ?? NO_USER_ATTACHMENTS}
+        text={content}
+      >
+        <NfmImagePlaceholderContext value={renderUserImageReference}>
+          <UserAttachmentStrip
+            attachments={block.entry.userAttachments ?? NO_USER_ATTACHMENTS}
+            unavailableImages={block.entry.unavailableImages ?? []}
           />
-        ) : compactUserMessageActions && hasMessageContent && !hideUserMessageActions ? (
-          <div className="flex w-full items-center justify-end gap-1">
-            <div
-              className={cn(
-                "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
-                alwaysShowUserMessageActions && "opacity-100",
-              )}
-            >
-              <CopyMessageActionButton text={content} feedbackMs={USER_COPY_FEEDBACK_MS} />
-            </div>
-            {messageBubble}
-          </div>
-        ) : (
-          messageBubble
-        )}
-        {shouldRenderFooter ? (
-          <div className="flex flex-row-reverse items-center gap-1">
-            {deliveryLabel ? (
-              <span className="mr-1 text-xs text-token-description-foreground" role="status">
-                {footerText(deliveryLabel)}
-              </span>
-            ) : null}
-            {!isNotSent && isGoalMessage ? <UserMessageGoalStatus /> : null}
-            {isNotSent && !isHookBlocked ? (
-              <span className="mr-1 text-xs text-danger" role="status">
-                {footerText("Not sent")}
-              </span>
-            ) : null}
-            {isHookBlocked || (!isNotSent && !isGoalMessage && isHookFeedback) ? (
-              <UserMessageHookStatus
-                blocked={isHookBlocked}
-                href={hookFeedbackSettingsHref}
-                onOpen={
-                  hookSettingsNavigation?.onOpenHooksSettings
-                    ? () => hookSettingsNavigation.onOpenHooksSettings?.(hookFeedbackSettingsTarget)
-                    : undefined
-                }
+          <div className="group flex w-full flex-col items-end justify-end gap-1">
+            <UserMessageDeliveryMarkers entry={block.entry} onOpenThread={onOpenThread} />
+            {isEditing ? (
+              <UserMessageEditForm
+                draft={editDraft}
+                onDraftChange={setEditDraft}
+                onCancel={() => setEditDraft(null)}
+                onSubmit={submitEdit}
               />
-            ) : null}
-            {isEditing ||
-            (!hasMessageContent && !canEdit) ||
-            compactUserMessageActions ||
-            hideUserMessageActions ? null : (
-              <ThreadMessageActionRow
-                align="end"
-                className={alwaysShowUserMessageActions ? "opacity-100" : undefined}
-              >
-                <MessageTimestamp sentAtMs={userActions?.sentAtMs ?? null} variant="user" />
-                <div className="flex items-center gap-0.5">
-                  {isNotSent && userActions?.hookStats ? (
-                    <HookStatsIndicator stats={userActions.hookStats} />
-                  ) : null}
-                  {hasMessageContent ? (
-                    <CopyMessageActionButton text={content} feedbackMs={USER_COPY_FEEDBACK_MS} />
-                  ) : null}
-                  {canEdit ? (
-                    <ThreadActionIconButton
-                      label={footerText("Edit message")}
-                      tooltip={footerText("Edit")}
-                      onClick={() => setEditDraft(content)}
-                    >
-                      <EditMessageIcon />
-                    </ThreadActionIconButton>
-                  ) : null}
+            ) : compactUserMessageActions && hasMessageContent && !hideUserMessageActions ? (
+              <div className="flex w-full items-center justify-end gap-1">
+                <div
+                  className={cn(
+                    "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+                    alwaysShowUserMessageActions && "opacity-100",
+                  )}
+                >
+                  <CopyMessageActionButton text={content} feedbackMs={USER_COPY_FEEDBACK_MS} />
                 </div>
-              </ThreadMessageActionRow>
-            )}
-          </div>
-        ) : null}
-        {isNotSent
-          ? userActions?.hookStats?.blockedMessages.map((message, index) => (
-              <div
-                key={`${index}:${message}`}
-                className="flex max-w-[77%] items-start gap-2 rounded-lg border border-[var(--color-text-warning)]/30 px-3 py-2 text-sm text-token-foreground"
-              >
-                <HooksIcon
-                  aria-hidden
-                  className="mt-0.5 icon-2xs shrink-0 text-[var(--color-text-warning)]"
-                />
-                <span className="min-w-0 break-words whitespace-pre-wrap">{message}</span>
+                {messageBubble}
               </div>
-            ))
-          : null}
-      </div>
+            ) : (
+              messageBubble
+            )}
+            {shouldRenderFooter ? (
+              <div className="flex flex-row-reverse items-center gap-1">
+                {deliveryLabel ? (
+                  <span className="mr-1 text-xs text-token-description-foreground" role="status">
+                    {footerText(deliveryLabel)}
+                  </span>
+                ) : null}
+                {!isNotSent && isGoalMessage ? <UserMessageGoalStatus /> : null}
+                {isNotSent && !isHookBlocked ? (
+                  <span className="mr-1 text-xs text-danger" role="status">
+                    {footerText("Not sent")}
+                  </span>
+                ) : null}
+                {isHookBlocked || (!isNotSent && !isGoalMessage && isHookFeedback) ? (
+                  <UserMessageHookStatus
+                    blocked={isHookBlocked}
+                    href={hookFeedbackSettingsHref}
+                    onOpen={
+                      hookSettingsNavigation?.onOpenHooksSettings
+                        ? () =>
+                            hookSettingsNavigation.onOpenHooksSettings?.(hookFeedbackSettingsTarget)
+                        : undefined
+                    }
+                  />
+                ) : null}
+                {isEditing ||
+                (!hasMessageContent && !canEdit) ||
+                compactUserMessageActions ||
+                hideUserMessageActions ? null : (
+                  <ThreadMessageActionRow
+                    align="end"
+                    className={alwaysShowUserMessageActions ? "opacity-100" : undefined}
+                  >
+                    <MessageTimestamp sentAtMs={userActions?.sentAtMs ?? null} variant="user" />
+                    <div className="flex items-center gap-0.5">
+                      {isNotSent && userActions?.hookStats ? (
+                        <HookStatsIndicator stats={userActions.hookStats} />
+                      ) : null}
+                      {hasMessageContent ? (
+                        <CopyMessageActionButton
+                          text={content}
+                          feedbackMs={USER_COPY_FEEDBACK_MS}
+                        />
+                      ) : null}
+                      {canEdit ? (
+                        <ThreadActionIconButton
+                          label={footerText("Edit message")}
+                          tooltip={footerText("Edit")}
+                          onClick={() => setEditDraft(content)}
+                        >
+                          <EditMessageIcon />
+                        </ThreadActionIconButton>
+                      ) : null}
+                    </div>
+                  </ThreadMessageActionRow>
+                )}
+              </div>
+            ) : null}
+            {isNotSent
+              ? userActions?.hookStats?.blockedMessages.map((message, index) => (
+                  <div
+                    key={`${index}:${message}`}
+                    className="flex max-w-[77%] items-start gap-2 rounded-lg border border-[var(--color-text-warning)]/30 px-3 py-2 text-sm text-token-foreground"
+                  >
+                    <HooksIcon
+                      aria-hidden
+                      className="mt-0.5 icon-2xs shrink-0 text-[var(--color-text-warning)]"
+                    />
+                    <span className="min-w-0 break-words whitespace-pre-wrap">{message}</span>
+                  </div>
+                ))
+              : null}
+          </div>
+        </NfmImagePlaceholderContext>
+      </UserMessageImageGallery>
     </div>
   );
 }
+
+const NO_USER_ATTACHMENTS: CodexUserAttachment[] = [];
+const renderUserImageReference = (reference: ImagePlaceholderReference) => (
+  <UserMessageImageReference reference={reference} />
+);
 
 export function ThreadUserBubbleBlock(props: ThreadLeafBlockProps) {
   return <UserMessageBubble {...props} />;

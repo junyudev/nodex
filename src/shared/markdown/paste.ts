@@ -4,8 +4,9 @@ import {
   NODEX_CLIPBOARD_FRAGMENT_ATTRIBUTE,
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
 } from "../clipboard-paste";
+import { parseFileSource } from "../file-resources";
 import type { MarkdownBlock, MarkdownInline } from "../nodex-markdown";
-import { readMarkdown, writePortableMarkdown } from "../nodex-markdown";
+import { readMarkdown, writeMarkdown, writePortableMarkdown } from "../nodex-markdown";
 import { htmlToBlocks } from "./html";
 
 /** The parts of a clipboard payload a paste reads. */
@@ -30,6 +31,48 @@ export function readMarkdownPaste(clipboard: ClipboardPayload): string | null {
   const converted = writePortableMarkdown(withoutImages(htmlToBlocks(html))).markdown;
   if (!converted.trim()) return plain || null;
   return !plain || keepsWords(plain, converted) ? converted : plain;
+}
+
+/** An image a copy from Nodex carries as the Library File it shows. */
+export interface CopiedLibraryImage {
+  readonly fileId: string;
+  readonly caption: string;
+}
+
+/**
+ * What pasting into a Composer takes: the Markdown text a paste inserts (`readMarkdownPaste`) and
+ * the Library images a copy from Nodex carries, which join the attachment row as image files do.
+ * The text keeps everything else as written; images that are not Library Files stay in it.
+ */
+export function readComposerPaste(clipboard: ClipboardPayload): {
+  readonly text: string | null;
+  readonly images: readonly CopiedLibraryImage[];
+} {
+  const html = clipboard.getData("text/html");
+  const plain = clipboard.getData("text/plain");
+  if (!html || !plain || clipboard.getData("text/markdown") || !isNodexCopy(clipboard, html))
+    return { text: readMarkdownPaste(clipboard), images: [] };
+  // The rich form names each image's File; its plain Markdown may name an exported copy instead.
+  const copied = htmlImageSources(fromHtml(html, { fragment: true }));
+  const images: CopiedLibraryImage[] = [];
+  let index = 0;
+  const text = withoutImagesWhere(readMarkdown(plain, "boundary"), (_url, caption) => {
+    const fileId = parseFileSource(copied[index++] ?? "");
+    if (fileId) images.push({ fileId, caption });
+    return fileId !== null;
+  });
+  if (index !== copied.length || images.length === 0) return { text: plain, images: [] };
+  return { text: writeMarkdown(text).trim() || null, images };
+}
+
+function htmlImageSources(node: Root | Element): string[] {
+  return node.children.flatMap((child) =>
+    child.type !== "element"
+      ? []
+      : child.tagName === "img"
+        ? [String(child.properties.src ?? "")]
+        : htmlImageSources(child),
+  );
 }
 
 /**
@@ -98,19 +141,16 @@ function isAddress(link: MarkdownInline): boolean {
   return [only.text, `http://${only.text}`, `mailto:${only.text}`].includes(link.href);
 }
 
-function withoutInlineImages(content: unknown): unknown {
-  if (!Array.isArray(content)) return content;
-  return (content as MarkdownInline[]).flatMap((item): MarkdownInline[] => {
-    if (item.type === "inlineImage") return [];
-    if (!Array.isArray(item.content)) return [item];
-    const children = withoutInlineImages(item.content) as MarkdownInline[];
-    return children.length ? [{ ...item, content: children }] : [];
-  });
-}
+type ImageFilter = (url: string, caption: string) => boolean;
 
-function withoutImages(blocks: readonly MarkdownBlock[]): MarkdownBlock[] {
+/** Blocks without the images, in reading order, that `drop` picks. */
+function withoutImagesWhere(blocks: readonly MarkdownBlock[], drop: ImageFilter): MarkdownBlock[] {
   return blocks.flatMap((block) => {
-    if (block.type === "image") return [];
+    if (
+      block.type === "image" &&
+      drop(String(block.props?.url ?? ""), String(block.props?.caption ?? ""))
+    )
+      return [];
     const content =
       block.type === "table" && block.content && typeof block.content === "object"
         ? {
@@ -120,21 +160,65 @@ function withoutImages(blocks: readonly MarkdownBlock[]): MarkdownBlock[] {
                 ...row,
                 cells: row.cells.map((cell) => ({
                   ...cell,
-                  content: withoutInlineImages(cell.content),
+                  content: withoutInlineImagesWhere(cell.content, drop),
                 })),
               }),
             ),
           }
-        : withoutInlineImages(block.content);
+        : withoutInlineImagesWhere(block.content, drop);
+    // A paragraph that only held images goes with them.
+    if (
+      block.type === "paragraph" &&
+      Array.isArray(block.content) &&
+      block.content.length > 0 &&
+      Array.isArray(content) &&
+      content.length === 0 &&
+      !block.children?.length
+    )
+      return [];
     return [
       {
         ...block,
         ...(content !== undefined ? { content } : {}),
-        children: withoutImages(block.children ?? []),
+        children: withoutImagesWhere(block.children ?? [], drop),
       },
     ];
   });
 }
+
+function withoutInlineImagesWhere(content: unknown, drop: ImageFilter): unknown {
+  if (!Array.isArray(content)) return content;
+  const kept: MarkdownInline[] = [];
+  let dropped = false;
+  for (const item of content as MarkdownInline[]) {
+    if (
+      item.type === "inlineImage" &&
+      drop(String(item.props?.url ?? ""), String(item.props?.alt ?? ""))
+    ) {
+      dropped = true;
+      continue;
+    }
+    const previous = kept.at(-1);
+    // Words that stood either side of an image keep one space between them.
+    const next =
+      dropped &&
+      item.type === "text" &&
+      previous?.type === "text" &&
+      /\s$/u.test(previous.text ?? "")
+        ? { ...item, text: (item.text ?? "").replace(/^\s+/u, "") }
+        : item;
+    dropped = false;
+    if (!Array.isArray(next.content)) {
+      kept.push(next);
+      continue;
+    }
+    const children = withoutInlineImagesWhere(next.content, drop) as MarkdownInline[];
+    if (children.length) kept.push({ ...next, content: children });
+  }
+  return kept;
+}
+
+const withoutImages = (blocks: readonly MarkdownBlock[]) => withoutImagesWhere(blocks, () => true);
 
 /** Nodex writes its own copies' plain text as Markdown already. */
 function isNodexCopy(clipboard: ClipboardPayload, html: string): boolean {

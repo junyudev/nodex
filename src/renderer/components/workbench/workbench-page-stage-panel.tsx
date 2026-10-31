@@ -1,5 +1,5 @@
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
-import { materializePagePromptInput } from "@/lib/page-prompt-input";
+import { materializePromptFileImages } from "@/lib/prompt-file-images";
 import {
   useCallback,
   useMemo,
@@ -285,9 +285,9 @@ export function PageStageSessionTab({
         clientUserMessageId: createUuidV7(),
         acceptedAt: Date.now(),
       };
-      const promptInput = await materializePagePromptInput(
+      const promptInput = await materializePromptFileImages(
         projectContentRoute(pageAccessProjectId),
-        tab.config.pageId,
+        { kind: "page", page_id: tab.config.pageId },
         input.promptInput,
       );
       const targetSessionId =
@@ -558,9 +558,9 @@ export function PageStageSessionTab({
             }) => {
               const submittedPresentation =
                 origin ?? readCodexSubmissionPresentation(workbenchOwner);
-              const materializedInput = await materializePagePromptInput(
+              const materializedInput = await materializePromptFileImages(
                 projectContentRoute(pageAccessProjectId),
-                tab.config.pageId,
+                { kind: "page", page_id: tab.config.pageId },
                 promptInput,
               );
               const targetSession = await onResolveChatSessionForThread(threadId);

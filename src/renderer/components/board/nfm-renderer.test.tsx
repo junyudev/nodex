@@ -8,7 +8,19 @@ import {
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { settleAsyncRender, textContent, waitForCodeHighlight } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
-import { NfmRenderer } from "./nfm-renderer";
+import { NfmDocument } from "./nfm-renderer";
+import { readMarkdown } from "../../../shared/nodex-markdown";
+
+/** Nodex Markdown read and shown as a Page lays it out. */
+function NfmRenderer({
+  content,
+  projectWorkspacePath,
+}: {
+  readonly content: string;
+  readonly projectWorkspacePath?: string;
+}) {
+  return <NfmDocument blocks={readMarkdown(content)} projectWorkspacePath={projectWorkspacePath} />;
+}
 
 let restoreDateMentionClockStore: (() => void) | null = null;
 

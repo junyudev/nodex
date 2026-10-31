@@ -23,10 +23,9 @@ import {
 } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
-import { canShowNativeContextMenu, showNativeContextMenu } from "../native-context-menu";
-import { toast } from "@/components/ui/toast";
 import {
   createConversationImageActions,
+  showConversationImageMenu,
   type ConversationImageAction,
 } from "./conversation-image-actions";
 import { LazyConversationVideoPlayer } from "./conversation-video-lazy";
@@ -180,23 +179,18 @@ export function ConversationMediaProvider({
             .find(({ element }) => element.parentElement?.contains(target));
           if (!entry) return;
           const actions = entry.isCurrent() ? entry.actions() : [];
-          if (actions.length === 0 || !canShowNativeContextMenu()) return;
+          const trigger = entry.element.parentElement;
+          if (
+            !showConversationImageMenu(
+              actions,
+              { x: event.clientX, y: event.clientY },
+              () => entry.isCurrent() && entry.element.isConnected,
+              () => trigger?.focus(),
+            )
+          )
+            return;
           event.preventDefault();
           event.stopPropagation();
-          const trigger = entry.element.parentElement;
-          void showNativeContextMenu(
-            actions.map(({ id, label }) => ({ id, label })),
-            { x: event.clientX, y: event.clientY },
-          )
-            .then(async (id) => {
-              if (!entry.isCurrent() || !entry.element.isConnected) return;
-              trigger?.focus();
-              await actions.find((action) => action.id === id)?.run();
-            })
-            .catch((error: unknown) => {
-              if (entry.isCurrent())
-                toast.danger(error instanceof Error ? error.message : "Image action failed");
-            });
         }}
       >
         {children}

@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
 - `⌘⇧D` in a Project's chat now opens that Project's Inbox, the same Inbox its Agents send to, instead of your main Inbox.
 - A chat in the sidebar keeps showing the status of the page it started from when more pages are linked to it, instead of showing none. The first linked page that still exists is the one it follows.
 - New page in a New tab now creates the page in its Project's database instead of Space, where it gets a key and a status and sits with the Project's other pages. A page made from a chat is also linked to that chat, so the page keeps a way back to the chat after its tab closes. Chats without a Project still put new pages in Space.
+- Images in a chat message now reach the Agent as images, not as text that names them. A Page image you copy and paste into a chat or the Inbox joins the attachment row as the image itself, whether it was copied with its Library reference or as a local path. An image written into the message, or into an edit of it, travels as an image marked where it sits and numbered after the attached ones, and a file on disk keeps its path so the Agent can work with it. A web image stays a link the Agent can open.
+- A sent message shows the images its text refers to right there, as small images that open in the message's image viewer alongside its attachments. Right-clicking one of a message's images offers the same actions as an image in the Agent's reply, including Add to chat, Copy image and Reveal.
 - Editing an Inbox message no longer asks for a new suggestion every time you pause. The suggestion stays beside the message, marked as written before it changed, and you can still confirm it or choose Suggest again. Opening, moving or renaming a message's Page leaves its suggestion as it was.
 - Inbox suggestions read each message whole: its formatting, links and lists as you wrote them, and its images as images. A screenshot with a single line of text is understood for what it shows, and a chat started from the Inbox receives the message the same way.
 - Images in a message you send to the Inbox now come first on its Page, matching how the stream shows them above the text.
@@ -26,6 +28,11 @@ All notable changes to this project will be documented in this file.
 - Opening a Page with images no longer saves an unintended edit when its images load.
 - Backspace while composing text with an input method, such as Chinese Pinyin, no longer cuts off what you're typing in a Page. The input method keeps your text, so its letters no longer end up in the Page.
 - Images in chat messages that point to a file or to a Page's image now show instead of appearing broken. A file path, such as a Page image copied as a local path, shows that file, read from the chat's host when the chat runs on another machine, and an image copied with its Library reference shows too. Pages show images written as file paths the same way.
+- Sending a Page that shows web images, such as status badges, to a chat no longer fails.
+- Relative image paths in chat messages and Agent replies now show, read from the chat's working folder.
+- An image written as `![caption](path)` in a chat message is no longer mistaken for a file mention.
+- A `file://` link that names a network share opens that share instead of a local path with the same name.
+- A queued message in a chat on another machine no longer reads its image paths from this computer.
 
 ## [0.5.0] - 2026-10-29
 

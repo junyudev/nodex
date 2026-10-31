@@ -365,6 +365,67 @@ function getUserMarkdownRoot(container: ParentNode): HTMLElement {
   return element;
 }
 
+describe("UserMessageBubble images", () => {
+  const first = "data:image/png;base64,Zmlyc3Q=";
+  const second = "data:image/png;base64,c2Vjb25k";
+  const block = (text: string): ThreadTranscriptBlockModel => {
+    const built = buildUserMessageBlock(text);
+    return {
+      ...built,
+      entry: {
+        ...built.entry,
+        userAttachments: [
+          { type: "image", id: "attached", source: first, sourceKind: "inline-image" },
+          { type: "image", id: "written", source: second, sourceKind: "inline-image" },
+        ],
+      },
+    } as ThreadTranscriptBlockModel;
+  };
+
+  test("shows an image where the Agent read it and opens it in the message's viewer", async () => {
+    const view = render(
+      <TooltipProvider>
+        <UserMessageBubble
+          block={block("Compare it with [Image #2] (caption: shot; path: /tmp/shot.png)")}
+          isLatestTurn={false}
+          isStreamingTurn={false}
+        />
+      </TooltipProvider>,
+    );
+    const reference = await view.findByRole("button", { name: "Open Image #2" });
+    expect(reference.querySelector("img")?.getAttribute("src")).toBe(second);
+    expect(view.queryByText(/caption: shot/u)).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(reference);
+      await Promise.resolve();
+    });
+    const dialog = await view.findByRole("dialog", { name: "Image preview" });
+    expect(dialog.querySelector("img")?.getAttribute("src")).toBe(second);
+    // The viewer holds every image of the message, the attached one first.
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Previous image" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(dialog.querySelector("img")?.getAttribute("src")).toBe(first));
+  });
+
+  test("a placeholder that names no image of the message stays a plain reference", async () => {
+    const view = render(
+      <TooltipProvider>
+        <UserMessageBubble
+          block={block("[Image #1] then [Image #3], which could not be sent")}
+          isLatestTurn={false}
+          isStreamingTurn={false}
+        />
+      </TooltipProvider>,
+    );
+    await view.findAllByRole("button", { name: "Open image preview" });
+    expect(view.queryByRole("button", { name: /Open Image #/u })).toBeNull();
+    expect(view.getByText("Image #3")).toBeDefined();
+  });
+});
+
 describe("UserMessageBubble collapse", () => {
   afterEach(() => {
     restoreTextCollapseMeasurement();

@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { Link2 } from "@/components/shared/icons/generic-icons";
-import { NodexLogoMarkIcon } from "@/components/shared/icons";
+import { ImageIcon, NodexLogoMarkIcon } from "@/components/shared/icons";
 import {
   InlineMarkdownCode,
   INLINE_MARKDOWN_HEADING_CLASS_NAME,
@@ -13,10 +13,10 @@ import {
 } from "@/lib/ordered-list-groups";
 import { buildPageDeepLink } from "../../../shared/nodex-deeplink";
 import type { MarkdownBlock, MarkdownInline } from "../../../shared/nodex-markdown";
+import type { ImagePlaceholderReference } from "../../../shared/message-agent-input";
 import type { RichTextColor } from "../../../shared/rich-text/colors";
 import { normalizeDateMention } from "../../../shared/rich-text/date-mention";
 import { FileLinkAnchor } from "../shared/file-link-anchor";
-import { readMarkdown } from "../../../shared/nodex-markdown";
 import { ImageViewerButton, InlineImage, inlineImageProps } from "./inline-image";
 import { useMarkdownImage, type MarkdownImage } from "./markdown-image";
 import {
@@ -39,24 +39,6 @@ import { useTheme } from "@/lib/use-theme";
 import { resolveCodeLanguage } from "../../../shared/code-languages/code-language-catalog";
 import { latexToHTMLString } from "@blocknote/math-block";
 import { resolveAgentConfigChip } from "./editor/agent-config-chip";
-
-interface NfmRendererProps {
-  content: string;
-  className?: string;
-  projectWorkspacePath?: string | null;
-}
-
-/** Read-only renderer for Nodex Markdown. */
-export function NfmRenderer({ content, className, projectWorkspacePath }: NfmRendererProps) {
-  if (!content.trim()) return null;
-  return (
-    <NfmDocument
-      blocks={readMarkdown(content)}
-      className={className}
-      projectWorkspacePath={projectWorkspacePath}
-    />
-  );
-}
 
 /**
  * How Blocks are spaced: as a Page lays them out, or as a message does, where lines of one
@@ -714,6 +696,28 @@ function InlineList({
   );
 }
 
+/**
+ * How a sent message shows an image where the Agent read its placeholder. The surface that holds
+ * the message's images supplies it; anywhere else the placeholder reads as a plain reference.
+ */
+export const NfmImagePlaceholderContext = createContext<
+  ((reference: ImagePlaceholderReference) => ReactNode) | null
+>(null);
+
+function ImagePlaceholderInline({ reference }: { reference: ImagePlaceholderReference }) {
+  const render = useContext(NfmImagePlaceholderContext);
+  if (render) return render(reference);
+  return (
+    <NodexTooltip tooltipContent={[reference.caption, reference.path].filter(Boolean).join(" · ")}>
+      <InlineReferenceVisual
+        className="max-w-[18rem] align-baseline"
+        label={`Image #${reference.number}`}
+        icon={<ImageIcon className="size-full" />}
+      />
+    </NodexTooltip>
+  );
+}
+
 function InlineItem({
   item,
   projectWorkspacePath,
@@ -734,6 +738,8 @@ function InlineItem({
     );
   if (item.type === "inlineImage")
     return <InlineImage {...inlineImageProps(props)} projectWorkspacePath={projectWorkspacePath} />;
+  if (item.type === "imagePlaceholder")
+    return <ImagePlaceholderInline reference={props as unknown as ImagePlaceholderReference} />;
   if (item.type === "attachment") {
     const name = String(props.name ?? "");
     const kind = props.kind === "file" || props.kind === "folder" ? props.kind : "text";

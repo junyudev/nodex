@@ -1,9 +1,9 @@
 # Page Prompt Image Inputs
 
 Status: Active
-Last Updated: 2026-10-28
+Last Updated: 2026-10-31
 
-This document owns send-time image input behavior for Page text selections, the Block side menu, whole-Page sends and selected Blocks.
+This document owns send-time image input behavior for Page text selections, the Block side menu, whole-Page sends and selected Blocks. The projection itself, shared with every Composer, is the one [Message Content Behavior](./message-content-behavior.md#projections) defines.
 
 This is intentionally focused on send-time prompt construction. It does not redefine Page editor image editing, image upload, clipboard image copy, or general attachment behavior.
 
@@ -37,14 +37,18 @@ Placeholder formats:
 
 - captionless image: `[Image #N]`
 - captioned image: `[Image #N] (caption: <plain caption text>)`
+- an image that is a file on disk also names its path, which the Agent can act on:
+  `[Image #N] (path: <path>)` or `[Image #N] (caption: <caption>; path: <path>)`
 
 Rules:
 
 - numbering starts at `1` for each send
 - numbering follows document order within the selected content
 - placeholders are inserted at the original image block position
-- raw image sources are intentionally omitted from model-visible prompt text
+- Library File, managed-asset and data sources stay out of model-visible prompt text
 - captions are plain text and retain their text in the placeholder
+- a web image (`http://`, `https://`) stays in the text as written: Nodex never fetches the
+  web for an Agent, and the Agent may open the address itself
 
 Example:
 
@@ -60,9 +64,9 @@ Cleaned prompt text:
 
 ```text
 Before
-[Image #1] (caption: Sidebar screenshot)
+[Image #1] (caption: Sidebar screenshot; path: /tmp/sidebar.png)
 Between
-[Image #2]
+[Image #2] (path: /tmp/dialog.png)
 After
 ```
 
@@ -92,7 +96,6 @@ captured bytes across execution and restart.
 Supported source mapping:
 
 - `nodex://files/<id>` -> authorized source-Page bytes captured as `data:image/...` before Chat submission
-- `http://...` and `https://...` -> `{ type: "image", url }`
 - `data:image/...` -> `{ type: "image", url }`
 - absolute local file paths -> `{ type: "localImage", path }`
 - `nodex://assets/...` -> resolved local asset path, then `{ type: "localImage", path }`
@@ -127,7 +130,8 @@ Image attachments:
 - do not create `[Image #N]` placeholders in Page prompt text
 - do not imply an image Block in the document
 
-Plain composer sends remain text/config plus attachment inputs because the plain composer has no Page image Block surface.
+Images written into a Composer's text follow the same projection and are numbered after the
+Composer's attachment row; an attachment itself has no placeholder.
 
 ## Implementation Contract
 
@@ -155,5 +159,5 @@ Required coverage:
 - multiple images are numbered in prompt order
 - image-only content is sendable
 - extracted image inputs retain original source and caption metadata
-- URL, data URL, absolute local path, and `nodex://assets/...` sources become the correct app-server input items
+- data URL, absolute local path, and `nodex://assets/...` sources become the correct app-server input items, and a web image stays in the text
 - running-turn sends with image inputs are normalized and sent through `turn/steer` with the same ordered image inputs as `turn/start`

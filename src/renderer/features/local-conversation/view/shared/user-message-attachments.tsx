@@ -1,6 +1,29 @@
-import { useCallback, useEffect, useState, type Ref } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { Sparkles } from "@/components/shared/icons/generic-icons";
-import { ActivitySpinnerIcon, FileIcon } from "@/components/shared/icons";
+import { ActivitySpinnerIcon, FileIcon, ImageIcon } from "@/components/shared/icons";
+import { InlineReferenceVisual } from "@/components/board/inline-reference-visual";
+import { NodexTooltip } from "@/components/ui/tooltip";
+import {
+  createConversationImageActions,
+  showConversationImageMenu,
+} from "@/lib/conversation-media/conversation-image-actions";
+import { conversationMediaFilename } from "@/lib/conversation-media/conversation-media-model";
+import { classifyImageSource } from "../../../../../shared/image-source";
+import {
+  imagePlaceholderCount,
+  type ImagePlaceholderReference,
+} from "../../../../../shared/message-agent-input";
 import type {
   CodexUnavailableImage,
   CodexUserAttachment,
@@ -8,6 +31,8 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
+  downloadImageDataUrl,
+  fetchImageSourceAsDataUrl,
   ImagePreviewDialog,
   openUserAttachmentImagePreview,
 } from "@/features/user-attachment-image-editor";
@@ -171,36 +196,126 @@ interface ResolvedUserImagePreview {
 
 type RegisterResolvedImagePreview = (preview: ResolvedUserImagePreview) => () => void;
 
-function UserImageAttachment({
-  attachment,
-  onOpenPreview,
-  registerPreview,
-}: {
-  attachment: CodexUserImageAttachment;
-  onOpenPreview: (trigger: HTMLButtonElement) => void;
-  registerPreview: RegisterResolvedImagePreview;
-}) {
+interface UserMessageImages {
+  /** The message's images in the order the Agent numbered them. */
+  readonly images: readonly CodexUserImageAttachment[];
+  /** Whether the placeholders in the message's text number exactly these images. */
+  readonly numbersImages: boolean;
+  readonly register: RegisterResolvedImagePreview;
+  readonly open: (attachmentId: string, trigger: HTMLElement) => void;
+}
+
+const UserMessageImagesContext = createContext<UserMessageImages | null>(null);
+
+/** An image's actions, as an Agent's images have them, at the pointer. */
+function useUserImageMenu(attachment: CodexUserImageAttachment, url: string | null) {
+  const { composerTarget, conversationId, hostId } = useConversationImageAssetContext();
+  const lifetime = useRef<AbortController | null>(null);
+  useEffect(() => () => lifetime.current?.abort(), []);
+  return (event: ReactMouseEvent<HTMLElement>) => {
+    if (!url) return;
+    lifetime.current?.abort();
+    const controller = new AbortController();
+    lifetime.current = controller;
+    const image = event.currentTarget.querySelector("img") ?? undefined;
+    const source = classifyImageSource(attachment.source);
+    const isCurrent = () => !controller.signal.aborted && (image?.isConnected ?? true);
+    const filename = conversationMediaFilename(attachment.source);
+    const actions = createConversationImageActions({
+      url,
+      image,
+      raw: attachment.source,
+      alt: "User attachment",
+      hostId,
+      threadId: conversationId ?? undefined,
+      path: source.kind === "path" ? source.path : null,
+      composerTarget: composerTarget ?? undefined,
+      isCurrent,
+      signal: controller.signal,
+      download: async () => {
+        const data = await fetchImageSourceAsDataUrl(url, undefined, {
+          signal: controller.signal,
+          isCurrent,
+          image,
+        });
+        if (isCurrent()) await downloadImageDataUrl(data, filename);
+      },
+    });
+    if (showConversationImageMenu(actions, { x: event.clientX, y: event.clientY }, isCurrent)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+}
+
+function UserImageAttachment({ attachment }: { attachment: CodexUserImageAttachment }) {
+  const gallery = useContext(UserMessageImagesContext)!;
   const asset = useConversationImageAsset(attachment.source);
   const { previewSrc: src, downloadSrc, isLoading, isError } = asset;
+  const showMenu = useUserImageMenu(attachment, isError ? null : src);
+  const register = gallery.register;
 
   useEffect(() => {
     if (isError || isLoading || !src) return;
-    return registerPreview({
+    return register({
       attachmentId: attachment.id,
       attachmentSource: attachment.source,
       downloadSrc: downloadSrc ?? undefined,
       src,
     });
-  }, [attachment.id, attachment.source, downloadSrc, isError, isLoading, registerPreview, src]);
+  }, [attachment.id, attachment.source, downloadSrc, isError, isLoading, register, src]);
 
   return (
-    <ConversationImageThumbnail
-      src={src}
-      isError={isError}
-      isLoading={isLoading}
-      alt="User attachment"
-      onOpenPreview={onOpenPreview}
-    />
+    <span className="contents" onContextMenu={showMenu}>
+      <ConversationImageThumbnail
+        src={src}
+        isError={isError}
+        isLoading={isLoading}
+        alt="User attachment"
+        onOpenPreview={(trigger) => gallery.open(attachment.id, trigger)}
+      />
+    </span>
+  );
+}
+
+/**
+ * Where a sent message's text names one of its images, as the Agent read it: the image, small,
+ * that opens in the message's viewer. A placeholder that names no image of the message, as when
+ * an image could not be sent, stays a plain reference.
+ */
+export function UserMessageImageReference({ reference }: { reference: ImagePlaceholderReference }) {
+  const gallery = useContext(UserMessageImagesContext);
+  const attachment = gallery?.numbersImages ? gallery.images[reference.number - 1] : undefined;
+  const asset = useConversationImageAsset(attachment?.source ?? "");
+  const url = attachment && !asset.isError ? asset.previewSrc : null;
+  const showMenu = useUserImageMenu(
+    attachment ?? { type: "image", id: "", source: "", sourceKind: "inline-image" },
+    attachment ? url : null,
+  );
+  const label = `Image #${reference.number}`;
+  const tooltip = [reference.caption, reference.path].filter(Boolean).join(" · ") || null;
+  const icon = url ? (
+    <img src={url} alt="" className="size-full rounded-[3px] object-cover" draggable={false} />
+  ) : (
+    <ImageIcon className="size-full" />
+  );
+  return (
+    <NodexTooltip tooltipContent={tooltip}>
+      {attachment && url ? (
+        <InlineReferenceVisual
+          as="button"
+          type="button"
+          className="max-w-[18rem] cursor-interaction align-baseline"
+          label={label}
+          icon={icon}
+          aria-label={`Open ${label}`}
+          onClick={(event) => gallery!.open(attachment.id, event.currentTarget)}
+          onContextMenu={showMenu}
+        />
+      ) : (
+        <InlineReferenceVisual className="max-w-[18rem] align-baseline" label={label} icon={icon} />
+      )}
+    </NodexTooltip>
   );
 }
 
@@ -222,12 +337,19 @@ function UserFileAttachmentChip({
   );
 }
 
-export function UserAttachmentStrip({
+/**
+ * One image viewer for a sent message: its attached images, and every placeholder in its text
+ * that names one, navigate together. `text` is the message's text, whose placeholders number
+ * the images it was sent with.
+ */
+export function UserMessageImageGallery({
   attachments,
-  unavailableImages = NO_UNAVAILABLE_IMAGES,
+  text,
+  children,
 }: {
-  attachments: CodexUserAttachment[];
-  unavailableImages?: readonly CodexUnavailableImage[];
+  attachments: readonly CodexUserAttachment[];
+  text: string;
+  children: ReactNode;
 }) {
   const { composerTarget, conversationId } = useConversationImageAssetContext();
   const [resolvedImages, setResolvedImages] = useState<
@@ -235,10 +357,10 @@ export function UserAttachmentStrip({
   >(() => new Map());
   const [activePreview, setActivePreview] = useState<{
     attachmentId: string;
-    trigger: HTMLButtonElement;
+    trigger: HTMLElement;
   } | null>(null);
 
-  const registerPreview = useCallback<RegisterResolvedImagePreview>((preview) => {
+  const register = useCallback<RegisterResolvedImagePreview>((preview) => {
     setResolvedImages((current) => {
       const next = new Map(current);
       next.set(preview.attachmentId, preview);
@@ -255,16 +377,24 @@ export function UserAttachmentStrip({
     };
   }, []);
 
-  if (attachments.length === 0 && unavailableImages.length === 0) return null;
-
-  const remoteOnly = attachments.every(
-    (attachment) => attachment.type === "image" && attachment.sourceKind === "remote-pointer",
+  const images = useMemo(
+    () =>
+      attachments.filter(
+        (attachment): attachment is CodexUserImageAttachment => attachment.type === "image",
+      ),
+    [attachments],
   );
-  const availableImageCount = attachments.filter(
-    (attachment) => attachment.type === "image",
-  ).length;
-  const orderedImages = attachments.flatMap((attachment) => {
-    if (attachment.type !== "image") return [];
+  const numbersImages = images.length > 0 && imagePlaceholderCount(text) === images.length;
+  const context = useMemo<UserMessageImages>(
+    () => ({
+      images,
+      numbersImages,
+      register,
+      open: (attachmentId, trigger) => setActivePreview({ attachmentId, trigger }),
+    }),
+    [images, numbersImages, register],
+  );
+  const orderedImages = images.flatMap((attachment) => {
     const image = resolvedImages.get(attachment.id);
     return image ? [image] : [];
   });
@@ -273,43 +403,15 @@ export function UserAttachmentStrip({
       ? -1
       : orderedImages.findIndex((image) => image.attachmentId === activePreview.attachmentId);
   const activeImage = activeImageIndex < 0 ? null : (orderedImages[activeImageIndex] ?? null);
-
-  const openPreview = (attachmentId: string, trigger: HTMLButtonElement) => {
-    setActivePreview({ attachmentId, trigger });
+  const showImage = (index: number) => {
+    const next = orderedImages[index];
+    if (next)
+      setActivePreview((current) => current && { ...current, attachmentId: next.attachmentId });
   };
 
   return (
-    <>
-      <div
-        className={cn(
-          remoteOnly
-            ? "flex flex-wrap gap-2 self-end"
-            : "flex flex-wrap items-end justify-end gap-2 self-end",
-        )}
-        data-user-attachment-strip="true"
-      >
-        {attachments.map((attachment) => {
-          if (attachment.type === "file") {
-            return <UserFileAttachmentChip key={attachment.id} attachment={attachment} />;
-          }
-
-          const handleOpenPreview = (trigger: HTMLButtonElement) => {
-            openPreview(attachment.id, trigger);
-          };
-
-          return (
-            <UserImageAttachment
-              key={attachment.id}
-              attachment={attachment}
-              onOpenPreview={handleOpenPreview}
-              registerPreview={registerPreview}
-            />
-          );
-        })}
-        {unavailableImages.map((image, index) => (
-          <UnavailableImageChip key={`${image.sourcePath}:${index}`} image={image} />
-        ))}
-      </div>
+    <UserMessageImagesContext value={context}>
+      {children}
       {activeImage && activePreview ? (
         <ImagePreviewDialog
           open
@@ -324,38 +426,14 @@ export function UserAttachmentStrip({
           downloadSrc={activeImage.downloadSrc}
           alt="User attachment"
           analytics={{
-            availableImageCount,
+            availableImageCount: images.length,
             entrypoint: "image_click",
             imageSource: "uploaded",
           }}
-          onPreviousImage={
-            activeImageIndex > 0
-              ? () =>
-                  setActivePreview((current) =>
-                    current === null
-                      ? null
-                      : {
-                          ...current,
-                          attachmentId:
-                            orderedImages[activeImageIndex - 1]?.attachmentId ??
-                            current.attachmentId,
-                        },
-                  )
-              : undefined
-          }
+          onPreviousImage={activeImageIndex > 0 ? () => showImage(activeImageIndex - 1) : undefined}
           onNextImage={
             activeImageIndex < orderedImages.length - 1
-              ? () =>
-                  setActivePreview((current) =>
-                    current === null
-                      ? null
-                      : {
-                          ...current,
-                          attachmentId:
-                            orderedImages[activeImageIndex + 1]?.attachmentId ??
-                            current.attachmentId,
-                        },
-                  )
+              ? () => showImage(activeImageIndex + 1)
               : undefined
           }
           onEditImage={() => {
@@ -377,6 +455,50 @@ export function UserAttachmentStrip({
           }}
         />
       ) : null}
-    </>
+    </UserMessageImagesContext>
+  );
+}
+
+/** A sent message's attachments as the Composer showed them, in the message's image viewer. */
+export function UserAttachmentStrip({
+  attachments,
+  unavailableImages = NO_UNAVAILABLE_IMAGES,
+}: {
+  attachments: CodexUserAttachment[];
+  unavailableImages?: readonly CodexUnavailableImage[];
+}) {
+  const gallery = useContext(UserMessageImagesContext);
+  if (attachments.length === 0 && unavailableImages.length === 0) return null;
+  if (!gallery)
+    return (
+      <UserMessageImageGallery attachments={attachments} text="">
+        <UserAttachmentStrip attachments={attachments} unavailableImages={unavailableImages} />
+      </UserMessageImageGallery>
+    );
+
+  const remoteOnly = attachments.every(
+    (attachment) => attachment.type === "image" && attachment.sourceKind === "remote-pointer",
+  );
+
+  return (
+    <div
+      className={cn(
+        remoteOnly
+          ? "flex flex-wrap gap-2 self-end"
+          : "flex flex-wrap items-end justify-end gap-2 self-end",
+      )}
+      data-user-attachment-strip="true"
+    >
+      {attachments.map((attachment) =>
+        attachment.type === "file" ? (
+          <UserFileAttachmentChip key={attachment.id} attachment={attachment} />
+        ) : (
+          <UserImageAttachment key={attachment.id} attachment={attachment} />
+        ),
+      )}
+      {unavailableImages.map((image, index) => (
+        <UnavailableImageChip key={`${image.sourcePath}:${index}`} image={image} />
+      ))}
+    </div>
   );
 }

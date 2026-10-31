@@ -182,6 +182,21 @@ export async function readFilePresentation(
   return result.value.value.value;
 }
 
+/** A Library image as a browser File, for an ingress that takes image files. */
+export async function readAuthorizedImageFile(
+  authority: FileReadAuthority,
+  source: string,
+): Promise<File> {
+  const [file, presentation] = await Promise.all([
+    readAuthorizedFile(authority, source),
+    readFilePresentation(authority, source),
+  ]);
+  if (!file.mimeType.startsWith("image/")) throw new Error("The File is not an image");
+  return new File([new Uint8Array(file.bytes)], presentation.default_name || "Image", {
+    type: file.mimeType,
+  });
+}
+
 export async function saveAuthorizedFile(
   authority: FileReadAuthority,
   source: string,
