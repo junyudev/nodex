@@ -1,0 +1,97 @@
+packages/agent-runtime/src/nodex/Service.ts
+  s_3915316a9c4493::t_6edfc1a2e4a8ff 1598
+  s_3915316a9c4493::t_11902152bc33af 1594-1597,1599-1601
+  s_3915316a9c4493::t_42637092a664a3 1602-1606
+src/renderer/features/page-text-rewrite/page-text-rewrite.ts
+  s_3915316a9c4493::t_b7e2ed4be1554c 1-49,52
+  s_3915316a9c4493::t_1fa1b954933304 50-51,53-73
+docs/product-specs/agent-runtime-behavior.md
+  s_3915316a9c4493::t_62d11632785b27 133-137
+src/shared/page-text-rewrite.ts
+  s_3915316a9c4493::t_f31cf77f46304a 1-44
+  s_3915316a9c4493::t_5e8214a387a577 45-65
+packages/agent-runtime/src/textGeneration/NativeUtilityExecution.test.ts
+  s_3915316a9c4493::t_99442307f1b8a6 231-234
+docs/ARCHITECTURE.md
+  s_3915316a9c4493::t_da50cca009ebf7 815-819
+src/main/page-text-rewrite/PageTextRewrite.ts
+  s_3915316a9c4493::t_e328eeb3c95381 7-15,18-22,25-40,47-50,60-108,110-118,122-125
+  s_3915316a9c4493::t_fb3790400292cb 109
+  s_3915316a9c4493::t_f31cf77f46304a 1-6,16-17,23-24,41-46,51-59,119-121,126-127
+src/renderer/features/page-text-rewrite/page-text-rewrite.test.ts
+  s_3915316a9c4493::t_338471259b246a 1-69
+  s_3915316a9c4493::t_c8297c89817cb4 70-97
+src/main/page-text-rewrite/rewrite-model.ts
+  s_3915316a9c4493::t_f31cf77f46304a 1-24,28-31
+  s_3915316a9c4493::t_6edfc1a2e4a8ff 25-27
+  s_3915316a9c4493::t_9c010717795f6e 32-48
+src/main/platform/node/AgentRuntimeProcess.ts
+  s_3915316a9c4493::t_369987eadb6d49 604-607
+  s_3915316a9c4493::t_6214b18e48a232 608-609
+tests/fixtures/agent-runtime-stdio.mjs
+  s_3915316a9c4493::t_9152e771b941b4 16-17,27-34,58-61,176-180
+src/renderer/lib/page-text-rewrite-runtime.ts
+  s_3915316a9c4493::t_b7e2ed4be1554c 1-21
+  s_3915316a9c4493::t_4bc0c77aa033f5 22-27
+src/main/page-text-rewrite/PageTextRewrite.node.test.ts
+  s_3915316a9c4493::t_12c8e3ce6615e4 1-5,7-8,13-21,56,74-75,81-88,92,103-106,138-139
+  s_3915316a9c4493::t_da50cca009ebf7 6,9-12,22-55,57-73,76-80,89-91,93-102,107-137,140-262
+  s_3915316a9c4493::t_641d446e861d18 263-265
+src/shared/page-text-rewrite.test.ts
+  s_3915316a9c4493::t_338471259b246a 1-12
+  s_3915316a9c4493::t_dac84aadf13514 13-42
+src/main/ipc/handlers/PageTextRewriteIpc.node.test.ts
+  s_3915316a9c4493::t_2e1e853a99c587 1-100
+  s_3915316a9c4493::t_cb14ed0aa2827d 101-162
+packages/agent-runtime/src/nodex/Daemon.test.ts
+  s_3915316a9c4493::t_9152e771b941b4 78,80,121-157,162,170-176,181
+  s_3915316a9c4493::t_fb4e7afd88029f 158-161,163-169,177-180,182-201
+src/main/page-text-rewrite/rewrite-prompt.ts
+  s_3915316a9c4493::t_f31cf77f46304a 1-23,29,31-34
+  s_3915316a9c4493::t_e328eeb3c95381 24-28,30
+  s_3915316a9c4493::t_639f211138d22d 35
+src/main/ipc/handlers/PageTextRewriteIpc.ts
+  s_3915316a9c4493::t_fb3790400292cb 4,7-13,22-42,44-117
+  s_3915316a9c4493::t_b7e2ed4be1554c 1-3,5-6,14-21,43
+src/main/platform/node/AgentRuntimeProcess.node.test.ts
+  s_3915316a9c4493::t_9152e771b941b4 33-48,50
+  s_3915316a9c4493::t_e891ddcd80c2bd 49,51-59
+docs/product-specs/nfm-editor-ask-for-change-behavior.md
+  s_3915316a9c4493::t_b8bd83507b6f86 1-42
+packages/agent-runtime/src/nodex/Daemon.ts
+  s_3915316a9c4493::t_369987eadb6d49 91-92,103,122,159-162,165-167
+  s_3915316a9c4493::t_5cad7909724de7 99-102,105-107,123-124,163-164,168-172
+  s_3915316a9c4493::t_d409934884930f 173-175
+docs/product-specs/index.md
+  s_3915316a9c4493::t_b621b03e741892 51
+src/main/agent-runtime/AgentRuntimeSessionTitle.ts
+  s_3915316a9c4493::t_22ff5c9cf2f1f1 2,32
+src/main/app/RendererIngressLive.ts
+  s_3915316a9c4493::t_1060600847ba89 6-7,97
+src/renderer/lib/electron-renderer-transport.ts
+  s_3915316a9c4493::t_684f58362ad49e 343-347
+src/renderer/lib/renderer-transport.ts
+  s_3915316a9c4493::t_e5ee904da17112 12-14
+src/shared/agent-runtime-utility-model.ts
+  s_3915316a9c4493::t_568108c982f5ae 1-29
+src/shared/ipc-api.ts
+  s_3915316a9c4493::t_9aa3777f18ae38 1614-1621,3064
+src/shared/ipc-endpoint-policy.ts
+  s_3915316a9c4493::t_ca4b4b8cf292a2 434,505
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b8859298248a4d088180769c535448ec16e92b2",
+  "prompts": {},
+  "sessions": {
+    "s_3915316a9c4493": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-db3f-7c12-a8e5-ed6cea9f07b5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
