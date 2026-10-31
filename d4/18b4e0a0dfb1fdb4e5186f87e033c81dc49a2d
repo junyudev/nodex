@@ -1,0 +1,19 @@
+packages/agent-runtime/src/mcp/TaskQuestions.test.ts
+  s_3c10c33b50886f::t_acbefb48a6c4ea 510-514
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d418b4e0a0dfb1fdb4e5186f87e033c81dc49a2d",
+  "prompts": {},
+  "sessions": {
+    "s_3c10c33b50886f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19288-822f-7ae1-bfb0-beeb7d666bcd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
