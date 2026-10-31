@@ -45,17 +45,22 @@ export interface SessionWaitResult {
   readonly errors: readonly Extract<Observation, { kind: "error" }>[];
 }
 
-const hasChangedCompletion = (values: readonly Observation[]) =>
+const hasChangedEnding = (values: readonly Observation[]) =>
   values.some(
     (value) =>
       value.kind === "snapshot" &&
       value.changed &&
-      !value.value.continuationPending &&
-      (value.value.disposition === "complete" ||
-        value.value.disposition === "unavailable" ||
-        ["failed", "systemError", "cancelled", "interrupted", "rolled_back", "completed"].includes(
-          value.value.status,
-        )),
+      ((value.value.disposition === "needs_attention" && value.value.activeFlags.length > 0) ||
+        (!value.value.continuationPending &&
+          (value.value.disposition !== "running" ||
+            [
+              "failed",
+              "systemError",
+              "cancelled",
+              "interrupted",
+              "rolled_back",
+              "completed",
+            ].includes(value.value.status)))),
   );
 
 export class SessionWaiter extends Context.Service<
@@ -208,12 +213,12 @@ export const makeWithSources = (
             if (input.timeoutMs === 0) return yield* deliver(values, "snapshot", provenance);
             for (;;) {
               const ready =
-                values.some((value) => value.kind === "error") || hasChangedCompletion(values);
+                values.some((value) => value.kind === "error") || hasChangedEnding(values);
               if (ready) return yield* deliver(values, "ready", provenance);
               const remaining = deadline - (yield* Clock.currentTimeMillis);
               if (remaining <= 0) {
                 const final = yield* inspect(pinned, provenance);
-                const settled = hasChangedCompletion(final);
+                const settled = hasChangedEnding(final);
                 return yield* deliver(final, settled ? "ready" : "timeout", provenance);
               }
               const ownerChanges = values.flatMap((value) =>
@@ -233,7 +238,7 @@ export const makeWithSources = (
               ]);
               if (wake === "timeout") {
                 const final = yield* inspect(pinned, provenance);
-                const settled = hasChangedCompletion(final);
+                const settled = hasChangedEnding(final);
                 return yield* deliver(final, settled ? "ready" : "timeout", provenance);
               }
               values = yield* inspect(pinned, provenance);

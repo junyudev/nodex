@@ -1,6 +1,7 @@
 import { runtimeSessionTarget } from "../../shared/nodex-app-tools/session-execution-target";
 import { historyResultBytes, HISTORY_READ_MAX_BYTES } from "@nodex/agent-runtime/history-read";
 import { createHash } from "node:crypto";
+import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -62,7 +63,7 @@ export interface SessionObservationResult {
   readonly agent: SessionAgent | null;
   readonly archived: boolean;
   readonly pinned: boolean;
-  readonly status: { readonly type: string; readonly activeFlags: readonly string[] };
+  readonly status: { readonly type: string; readonly activeFlags: readonly ThreadActiveFlag[] };
   readonly history: SessionHistory;
   readonly execution: SessionReadExecution | null;
 }
@@ -88,7 +89,7 @@ export interface SessionInspection {
   readonly backend: SessionObservationResult["backend"];
   readonly agent: SessionAgent | null;
   readonly status: string;
-  readonly activeFlags: readonly string[];
+  readonly activeFlags: readonly ThreadActiveFlag[];
   readonly disposition: "running" | "complete" | "needs_attention" | "unavailable";
   readonly cursor: string;
   readonly selectedRunId: string | null;
@@ -215,7 +216,7 @@ export const make = Effect.gen(function* () {
       readonly agent: SessionAgent | null;
       readonly threadId: string | null;
       readonly status: string;
-      readonly flags: readonly string[];
+      readonly flags: readonly ThreadActiveFlag[];
       readonly active: boolean;
       readonly pendingStart?: boolean;
       readonly revision: unknown;
@@ -240,6 +241,18 @@ export const make = Effect.gen(function* () {
             (cause) => new SessionObservationError({ reason: "history_unavailable", cause }),
           ),
         );
+      const metadata = history
+        ? yield* application
+            .sessionMetadata({
+              threadIds: [loaded.threadId],
+              runtimeId: before.session.execution_ref.runtime_id,
+            })
+            .pipe(
+              Effect.mapError(
+                (cause) => new SessionObservationError({ reason: "history_unavailable", cause }),
+              ),
+            )
+        : [];
       return {
         source: runtimeSessionHistory(application, before.session.id, undefined, execution),
         backend: backendOf(loaded.thread.providerDriver),
@@ -249,9 +262,7 @@ export const make = Effect.gen(function* () {
         },
         threadId: loaded.threadId,
         status: loaded.thread.status,
-        flags: loaded.thread.pendingRuntimeRequest
-          ? [loaded.thread.pendingRuntimeRequest.kind]
-          : [],
+        flags: metadata[0]?.activeFlags ?? [],
         active: loaded.thread.activeRunId !== null,
         revision: {
           updatedAt: loaded.thread.updatedAt,

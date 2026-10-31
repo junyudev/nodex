@@ -73,7 +73,7 @@ export interface AgentThreadExecution {
   readonly runId: string | null;
   readonly status: OrchestrationV2Run["status"] | null;
   readonly continuationPending: boolean;
-  readonly activeFlags: readonly string[];
+  readonly activeFlags: readonly import("@nodex/codex-app-server-protocol/v2").ThreadActiveFlag[];
   readonly revision: string;
 }
 

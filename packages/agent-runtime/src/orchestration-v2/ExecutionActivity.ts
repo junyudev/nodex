@@ -6,6 +6,15 @@ import {
   LIVE_PROVIDER_THREAD_PREDICATE,
   OPEN_DELIVERY_RUN_PREDICATE,
 } from "./ProjectionRecoveryQueries.ts";
+import {
+  ATTENTION_KINDS,
+  ATTENTION_KIND_SQL_LIST,
+  AWAITS_PERSON_PREDICATE,
+  LIVE_RUN_PREDICATE,
+  PENDING_ATTENTION_REQUEST_PREDICATE,
+  REQUEST_ATTENTION_KIND_SQL,
+  SECRET_CARD_ATTENTION_FACT_FROM_SQL,
+} from "./SessionAttention.ts";
 
 export const EXECUTION_ACTIVITY_PAGE_LIMIT = 200;
 export const EXECUTION_ACTIVITY_MAX_PAGE_LIMIT = 500;
@@ -48,12 +57,6 @@ export interface RootActivityPage {
 }
 
 /**
- * Same predicate as `orchestration_v2_projection_runs_active_provider_idx` (migration 063). A
- * `waiting` Run is still foreground work, for example a parent blocked on a delegated result.
- */
-const LIVE_RUN_PREDICATE = `status IN ('preparing', 'starting', 'running', 'waiting')`;
-
-/**
  * Live delegated tasks that wake their parent when they finish, whether or not the parent is
  * still running. Wait-mode tasks return through the blocking call and wake nothing.
  */
@@ -61,22 +64,12 @@ const WAKING_LIVE_TASK_PREDICATE = `status IN ('pending', 'running', 'waiting') 
       AND CASE WHEN json_valid(payload_json)
         THEN json_extract(payload_json, '$.completionWake') = 'always' ELSE 0 END`;
 
-/** A provider turn is working until it ends; a waiting Run only drains effects. */
-const WORKING_RUN_PREDICATE = `status IN ('preparing', 'starting', 'running')`;
-
-/** Message-capable questions await the user only after their own Thread stops working. */
-const ASYNC_QUESTION_PREDICATE = `kind = 'user_input' AND CASE WHEN json_valid(payload_json)
-      THEN json_extract(payload_json, '$.responseCapability.type') = 'message' ELSE 0 END`;
-
 /** Own approvals and live input always wait; asynchronous questions wait between working Runs. */
 const OWN_ATTENTION_PREDICATE = `facts.thread_id = json_extract(thread.payload_json, '$.lineage.rootThreadId')
-      AND (facts.kind <> 'question' OR NOT EXISTS (
-        SELECT 1 FROM orchestration_v2_projection_runs AS working
-        INDEXED BY orchestration_v2_projection_runs_thread_status_idx
-        WHERE working.thread_id = facts.thread_id AND ${WORKING_RUN_PREDICATE}))`;
+      AND (${AWAITS_PERSON_PREDICATE})`;
 
 /** Coordinators answer child questions; only live delegated approvals need user attention. */
-const CHILD_APPROVAL_PREDICATE = `facts.kind = 'approval'
+const CHILD_APPROVAL_PREDICATE = `facts.kind = '${ATTENTION_KINDS.approval}'
       AND json_extract(thread.payload_json, '$.lineage.relationshipToParent') = 'subagent'
       AND json_extract(thread.payload_json, '$.creationSource') IS NOT 'provider'
       AND EXISTS (SELECT 1 FROM orchestration_v2_projection_runs AS live
@@ -156,20 +149,12 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           SELECT thread_id, 'run', requested_at, 1, NULL FROM orchestration_v2_projection_runs
           WHERE ${sql.literal(LIVE_RUN_PREDICATE)}
           UNION ALL
-          SELECT thread_id,
-            CASE WHEN kind <> 'user_input' THEN 'approval'
-              WHEN ${sql.literal(ASYNC_QUESTION_PREDICATE)} THEN 'question' ELSE 'input' END,
-            created_at, 1, NULL
+          SELECT thread_id, ${sql.literal(REQUEST_ATTENTION_KIND_SQL)}, created_at, 1, NULL
           FROM orchestration_v2_projection_runtime_requests
-          WHERE status = 'pending' AND kind NOT IN ('dynamic_tool_call', 'auth_refresh')
+          WHERE ${sql.literal(PENDING_ATTENTION_REQUEST_PREDICATE)}
           UNION ALL
-          SELECT secret.thread_id, 'input', secret.updated_at, 1, NULL
-          FROM orchestration_v2_projection_turn_items AS secret
-            INDEXED BY orchestration_v2_projection_turn_items_pending_secret_idx
-          WHERE secret.type = 'secret_request' AND secret.status = 'waiting'
-            AND json_extract(secret.payload_json, '$.nodeId') IS NOT NULL
-            AND EXISTS (SELECT 1 FROM orchestration_v2_projection_runs AS live
-              WHERE live.run_id = secret.run_id AND ${sql.literal(LIVE_RUN_PREDICATE)})
+          SELECT secret.thread_id, ${sql.literal(`'${ATTENTION_KINDS.input}'`)}, secret.updated_at, 1, NULL
+          ${sql.literal(SECRET_CARD_ATTENTION_FACT_FROM_SQL)}
           UNION ALL
           SELECT thread_id, 'task', updated_at, 1, NULL FROM orchestration_v2_projection_subagents
           WHERE status IN ('pending', 'running', 'waiting')
@@ -197,12 +182,12 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           CROSS JOIN orchestration_v2_projection_threads AS thread
             ON thread.thread_id = facts.thread_id
           WHERE thread.deleted_at IS NULL
-            AND (facts.kind NOT IN ('approval', 'input', 'question')
+            AND (facts.kind NOT IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
               OR (${sql.literal(OWN_ATTENTION_PREDICATE)})
               OR (${sql.literal(CHILD_APPROVAL_PREDICATE)}))
         ), attention(root_thread_id, thread_id, at, amount) AS (
           SELECT root_thread_id, thread_id, MAX(at), SUM(amount)
-          FROM rooted WHERE kind IN ('approval', 'input', 'question')
+          FROM rooted WHERE kind IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
           GROUP BY root_thread_id, thread_id
           UNION
           SELECT (${sql.literal(SIDE_CHAT_SOURCE_ROOT)}), attention.thread_id,
@@ -212,7 +197,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           WHERE json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL
         ), activity_facts AS MATERIALIZED (
           SELECT root_thread_id, thread_id, kind, at, amount FROM rooted
-          WHERE kind NOT IN ('approval', 'input', 'question')
+          WHERE kind NOT IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
           UNION ALL
           SELECT root_thread_id, thread_id, 'request', at, amount FROM attention
         ), activity AS MATERIALIZED (
@@ -279,7 +264,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
                 (SELECT run.run_id FROM orchestration_v2_projection_runs AS run
                   INDEXED BY orchestration_v2_projection_runs_thread_status_idx
                   WHERE run.thread_id = thread.thread_id
-                    AND run.status IN ('preparing', 'starting', 'running', 'waiting')
+                    AND ${sql.literal(LIVE_RUN_PREDICATE)}
                   ORDER BY run.ordinal DESC LIMIT 1) AS active_run_id
               FROM orchestration_v2_projection_threads AS thread
               WHERE thread.thread_id IN ${sql.in(page.map((row) => row.root_thread_id))}`;

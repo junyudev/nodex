@@ -618,44 +618,152 @@ it.effect(
     }),
 );
 
-it.effect(
-  "waits through attention on active Runs and pins each child execution independently",
-  () =>
+it.effect("pins each child execution independently while its Run keeps working", () =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<void>();
+    const seen = yield* Deferred.make<void>();
+    let phase = 0;
+    const calls: Array<{ threadId: string | undefined; runId: string | null | undefined }> = [];
+    const waiter = yield* setup(
+      (sessionId, _provenance, runId, execution) =>
+        Effect.gen(function* () {
+          calls.push({ threadId: execution?.threadId, runId });
+          if (calls.length === 2) yield* Deferred.succeed(seen, undefined);
+          return {
+            ...snapshot(
+              sessionId,
+              phase === 0 ? "running" : "complete",
+              `${execution?.threadId}:${phase}`,
+            ),
+            execution,
+            status: phase === 0 ? "waiting" : "completed",
+            selectedRunId: execution!.threadId,
+            runId: execution!.threadId,
+            activeFlags: [],
+          };
+        }),
+      () => emptyProgress,
+      Stream.fromPubSub(events),
+    );
+    const parsed = sessionObservationSchemas.wait_sessions.parse({
+      targets: [
+        { sessionId: "session:a", execution: { threadId: "child:a" } },
+        { sessionId: "session:a", execution: { threadId: "child:b" } },
+      ],
+      timeoutMs: 1000,
+    });
+    let settled = false;
+    const waiting = yield* waiter.wait(parsed, provenance).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          settled = true;
+        }),
+      ),
+      Effect.forkChild,
+    );
+    yield* Deferred.await(seen);
+    yield* TestClock.adjust(1);
+    assert.isFalse(settled);
+    phase = 1;
+    yield* PubSub.publish(events, undefined);
+    const result = yield* Fiber.join(waiting);
+    assert.equal(result.reason, "ready");
+    assert.deepEqual(
+      result.targets.map((target) => target.execution?.threadId),
+      ["child:a", "child:b"],
+    );
+    assert.deepEqual(calls.slice(2), [
+      { threadId: "child:a", runId: "child:a" },
+      { threadId: "child:b", runId: "child:b" },
+    ]);
+  }),
+);
+
+it.effect.each([
+  { kind: "live question", flag: "waitingOnUserInput", continuationPending: false },
+  { kind: "approval", flag: "waitingOnApproval", continuationPending: false },
+  { kind: "secret card", flag: "waitingOnUserInput", continuationPending: false },
+  { kind: "question before restart", flag: "waitingOnUserInput", continuationPending: true },
+] as const)(
+  "ends on a new $kind and suppresses unchanged attention on re-wait",
+  ({ flag, continuationPending }) =>
     Effect.gen(function* () {
       const events = yield* PubSub.unbounded<void>();
-      const seen = yield* Deferred.make<void>();
-      let phase = 0;
-      const calls: Array<{ threadId: string | undefined; runId: string | null | undefined }> = [];
+      const inspected = yield* Deferred.make<void>();
+      let attention = false;
+      let progressReads = 0;
       const waiter = yield* setup(
-        (sessionId, _provenance, runId, execution) =>
-          Effect.gen(function* () {
-            calls.push({ threadId: execution?.threadId, runId });
-            if (calls.length === 2) yield* Deferred.succeed(seen, undefined);
-            return {
+        (sessionId) =>
+          Deferred.succeed(inspected, undefined).pipe(
+            Effect.as({
               ...snapshot(
                 sessionId,
-                phase === 0 ? "needs_attention" : "complete",
-                `${execution?.threadId}:${phase}`,
+                attention ? "needs_attention" : "running",
+                attention ? "input" : "work",
               ),
-              execution,
-              status: phase === 0 ? "waiting" : "completed",
-              selectedRunId: execution!.threadId,
-              runId: execution!.threadId,
-              activeFlags: phase === 0 ? ["approval"] : [],
-            };
-          }),
-        () => emptyProgress,
+              status: continuationPending ? "cancelled" : "running",
+              activeFlags: attention ? [flag] : [],
+              ...(continuationPending ? { continuationPending: true as const } : {}),
+            }),
+          ),
+        () => {
+          progressReads++;
+          return emptyProgress;
+        },
         Stream.fromPubSub(events),
       );
-      const parsed = sessionObservationSchemas.wait_sessions.parse({
-        targets: [
-          { sessionId: "session:a", execution: { threadId: "child:a" } },
-          { sessionId: "session:a", execution: { threadId: "child:b" } },
-        ],
-        timeoutMs: 1000,
-      });
-      let settled = false;
-      const waiting = yield* waiter.wait(parsed, provenance).pipe(
+      const waiting = yield* waiter
+        .wait({ targets: [{ sessionId: "session:a" }], timeoutMs: 1000 }, provenance)
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(inspected);
+      attention = true;
+      yield* PubSub.publish(events, undefined);
+      const result = yield* Fiber.join(waiting);
+      assert.equal(result.reason, "ready");
+      assert.equal(result.targets[0]?.disposition, "needs_attention");
+      assert.deepEqual(result.targets[0]?.activeFlags, [flag]);
+      assert.equal(progressReads, 1);
+      const repeated = yield* waiter
+        .wait(
+          {
+            targets: [{ sessionId: "session:a", afterCursor: result.targets[0]!.cursor }],
+            timeoutMs: 1000,
+          },
+          provenance,
+        )
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(1000);
+      const unchanged = yield* Fiber.join(repeated);
+      assert.equal(unchanged.reason, "timeout");
+      assert.isFalse(unchanged.targets[0]!.changed);
+      assert.equal(progressReads, 1);
+    }),
+);
+
+it.effect("keeps waiting through an async question until its Thread stops working", () =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<void>();
+    const baseline = yield* Deferred.make<void>();
+    const questionSeen = yield* Deferred.make<void>();
+    let phase = 0;
+    let settled = false;
+    const waiter = yield* setup(
+      (sessionId) =>
+        Effect.gen(function* () {
+          if (phase === 0) yield* Deferred.succeed(baseline, undefined);
+          if (phase === 1) yield* Deferred.succeed(questionSeen, undefined);
+          return {
+            ...snapshot(sessionId, phase === 2 ? "needs_attention" : "running", `phase:${phase}`),
+            status: phase === 2 ? "waiting" : "running",
+            activeFlags: phase === 2 ? ["waitingOnUserInput" as const] : [],
+          };
+        }),
+      () => emptyProgress,
+      Stream.fromPubSub(events),
+    );
+    const waiting = yield* waiter
+      .wait({ targets: [{ sessionId: "session:a" }], timeoutMs: 1000 }, provenance)
+      .pipe(
         Effect.tap(() =>
           Effect.sync(() => {
             settled = true;
@@ -663,21 +771,35 @@ it.effect(
         ),
         Effect.forkChild,
       );
-      yield* Deferred.await(seen);
-      yield* TestClock.adjust(1);
-      assert.isFalse(settled);
-      phase = 1;
-      yield* PubSub.publish(events, undefined);
-      const result = yield* Fiber.join(waiting);
-      assert.equal(result.reason, "ready");
-      assert.deepEqual(
-        result.targets.map((target) => target.execution?.threadId),
-        ["child:a", "child:b"],
+    yield* Deferred.await(baseline);
+    phase = 1;
+    yield* PubSub.publish(events, undefined);
+    yield* Deferred.await(questionSeen);
+    yield* TestClock.adjust(1);
+    assert.isFalse(settled);
+    phase = 2;
+    yield* PubSub.publish(events, undefined);
+    const result = yield* Fiber.join(waiting);
+    assert.equal(result.reason, "ready");
+    assert.equal(result.targets[0]?.disposition, "needs_attention");
+  }),
+);
+
+it.effect.each(["failed", "systemError", "cancelled", "interrupted", "rolled_back", "completed"])(
+  "still ends on the terminal status %s",
+  (status) =>
+    Effect.gen(function* () {
+      const waiter = yield* setup(
+        (sessionId) =>
+          Effect.succeed({ ...snapshot(sessionId, "needs_attention", status), status }),
+        () => emptyProgress,
       );
-      assert.deepEqual(calls.slice(2), [
-        { threadId: "child:a", runId: "child:a" },
-        { threadId: "child:b", runId: "child:b" },
-      ]);
+      const result = yield* waiter.wait(
+        { targets: [{ sessionId: "session:a" }], timeoutMs: 1000 },
+        provenance,
+      );
+      assert.equal(result.reason, "ready");
+      assert.equal(result.targets[0]?.status, status);
     }),
 );
 

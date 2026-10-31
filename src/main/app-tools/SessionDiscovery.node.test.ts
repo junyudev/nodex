@@ -231,6 +231,47 @@ it.effect(
     }),
 );
 
+it.effect.each([false, true])(
+  "preserves both backends' attention flags in archived=%s listings",
+  (archived) =>
+    Effect.gen(function* () {
+      const flags = ["waitingOnApproval", "waitingOnUserInput"] as const;
+      const nativeItem = native("native:attention", 5);
+      const runtimeBinding = bound("runtime:attention", "thread:attention");
+      const f = fixture({
+        native: [
+          {
+            ...nativeItem,
+            task: {
+              ...nativeItem.task,
+              session: { ...nativeItem.task.session, archived },
+              thread: {
+                ...nativeItem.task.thread!,
+                status: { status_type: "active", active_flags: [...flags] },
+              },
+            },
+          },
+        ],
+        runtime: [{ ...runtime("thread:attention", 6), activeFlags: flags }],
+        bindings: [
+          {
+            ...runtimeBinding,
+            task: {
+              ...runtimeBinding.task,
+              session: { ...runtimeBinding.task.session, archived },
+            },
+          },
+        ],
+      });
+      const page = yield* f.list({ archived, limit: 10 });
+      assert.equal(page.sessions.length, 2);
+      for (const session of page.sessions) {
+        assert.deepEqual(session.status.active_flags, flags);
+        assert.equal(session.archived, archived);
+      }
+    }),
+);
+
 it.effect("keeps available source results and explicitly reports the failed source", () =>
   Effect.gen(function* () {
     const nativeOnly = fixture({ native: [native("native", 5)], unavailable: "runtime" });

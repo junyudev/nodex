@@ -446,6 +446,14 @@ Unavailable native execution fields remain null rather than being inferred from 
 Runtime message activity advances recency; renaming, opening and archiving do not.
 Drafts without conversation activity use creation time for ordering.
 
+Session listings, archived listings, search, reads and waits share the same attention flags
+across backends: `waitingOnUserInput` for information questions and live secret cards, and
+`waitingOnApproval` for command, file, permission and MCP permission requests. Multiple
+pending kinds can set both flags. Asynchronous questions set `waitingOnUserInput` only after
+their own Thread stops preparing, starting or running. Secret cards count only while their
+owning Run is live. Internal tool calls and authentication refreshes do not set attention
+flags. Pending-request counts and typed history retain their richer detail independently.
+
 Foreground Session navigation records durable recent-use evidence. Reopening within ten minutes
 counts once; earlier opens decay with a fourteen-day half-life. Search uses this evidence within
 match quality, without changing conversation recency or unread state. Restoring a window,
@@ -503,8 +511,13 @@ and changed selected content or bindings return `cursor_stale`, requiring a fres
 
 `wait_sessions` observes up to eight unique Session/execution targets in the current Profile.
 A zero timeout returns a snapshot; otherwise the first changed terminal state, unavailable
-execution, or per-target error ends the wait. Approval, plan and other attention requests on an
-active Run remain observable without ending its wait. Each target pins the latest Run at the start of the call, or accepts
+execution, or state needing attention ends the wait, as does a per-target error. A live question,
+secret card or approval needs attention immediately. An asynchronous question needs attention
+only after its Thread stops working; it does not end a wait while a Run is preparing, starting
+or running. Attention ends a wait even when an automatic restart is pending; terminal
+completion still waits for that restart to settle. Questions can be answered with
+`session_question`; approvals require the user.
+Each target pins the latest Run at the start of the call, or accepts
 `runId` to select a particular Run. Automatic restart continuations remain part of that
 execution; unrelated queued or newer Runs never replace it. Results return the original
 `selectedRunId` and the current continuation's `runId`. Empty Sessions stay empty for that call.
@@ -512,7 +525,7 @@ One target defaults to ten minutes and accepts up to one hour; waits with multip
 retain a two-minute default and maximum. Native MCP call deadlines include time for the
 final observation and reply; ordinary tool calls retain their existing bounded lifetime.
 Each target returns an opaque cursor;
-passing it as `afterCursor` suppresses unchanged completion and progress. Timeouts return compact
+passing it as `afterCursor` suppresses unchanged completion, attention and progress. Timeouts return compact
 status and running progress, and cancellation releases event subscriptions. The captured caller
 Run and attempt also own background application MCP calls: stopping or replacing that execution
 interrupts its in-flight host request even when code execution has already yielded. Ordinary

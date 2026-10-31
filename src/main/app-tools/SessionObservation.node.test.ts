@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { assert, it } from "@effect/vitest";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
+import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
 import * as Effect from "effect/Effect";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
@@ -64,6 +65,7 @@ const fixture = (kind: Kind = "runtime") => {
     activeRunId: null as string | null,
     latestRunId: "run:a",
     pending: null as { kind: string } | null,
+    activeFlags: [] as ThreadActiveFlag[],
     canonicalStatus: "idle" as "idle" | "active",
     turnStatus: "completed" as "completed" | "inProgress",
     turnId: "turn:a",
@@ -205,7 +207,7 @@ const fixture = (kind: Kind = "runtime") => {
             runId: selectedRunId,
             status: selectedRunId === null ? null : state.activeRunId ? "running" : "completed",
             continuationPending: false,
-            activeFlags: state.pending ? [state.pending.kind] : [],
+            activeFlags: state.activeFlags,
             revision: JSON.stringify([selectedRunId, state.activeRunId, state.pending]),
           };
         }),
@@ -266,7 +268,7 @@ const fixture = (kind: Kind = "runtime") => {
             },
           };
         }),
-      sessionMetadata: () => Effect.succeed([]),
+      sessionMetadata: () => Effect.succeed([{ activeFlags: state.activeFlags }]),
       readDetails: () =>
         Effect.succeed({ runCount: 0, pendingRequestCount: 0, recentRuns: [], nextOrdinal: null }),
       sessionCatalog: () => Effect.die("Discovery has its own bounded query tests"),
@@ -282,7 +284,11 @@ const fixture = (kind: Kind = "runtime") => {
           return {
             hostId,
             manager: { generation: 1, assertCurrent: () => {} },
-            thread: { id: threadId, status: { type: "idle" }, updatedAt: 1 },
+            thread: {
+              id: threadId,
+              status: { type: state.canonicalStatus, activeFlags: state.activeFlags },
+              updatedAt: 1,
+            },
           };
         }),
     } as never),
@@ -338,7 +344,7 @@ const fixture = (kind: Kind = "runtime") => {
           assert.deepEqual(request, { threadId: "native:a", fidelity: "durable" });
           return {
             canonical: {
-              threadRuntimeStatus: { type: state.canonicalStatus, activeFlags: [] },
+              threadRuntimeStatus: { type: state.canonicalStatus, activeFlags: state.activeFlags },
               turns: state.nativeHasTurn
                 ? [{ turnId: state.turnId, status: state.turnStatus }]
                 : [],
@@ -480,9 +486,35 @@ it.effect(
       assert.equal(running.disposition, "running");
       assert.notEqual(running.cursor, first.cursor);
       f.state.pending = { kind: "user_input" };
+      f.state.activeFlags = ["waitingOnUserInput"];
       const attention = yield* owner.inspect(input.sessionId, provenance);
       assert.equal(attention.disposition, "needs_attention");
       assert.notEqual(attention.cursor, running.cursor);
+    }),
+);
+
+it.effect.each(["runtime", "native"] as const)(
+  "preserves the same native attention vocabulary in %s reads and waits",
+  (kind) =>
+    Effect.gen(function* () {
+      const f = fixture(kind);
+      f.state.canonicalStatus = "active";
+      f.state.turnStatus = "inProgress";
+      f.state.activeRunId = "run:a";
+      f.state.status = "running";
+      const owner = yield* f.owner;
+      for (const flags of [
+        ["waitingOnUserInput"],
+        ["waitingOnApproval"],
+        ["waitingOnApproval", "waitingOnUserInput"],
+      ] satisfies ThreadActiveFlag[][]) {
+        f.state.activeFlags = flags;
+        const read = yield* owner.read(input, provenance);
+        const inspected = yield* owner.inspect(input.sessionId, provenance);
+        assert.deepEqual(read.status.activeFlags, flags);
+        assert.deepEqual(inspected.activeFlags, flags);
+        assert.equal(inspected.disposition, "needs_attention");
+      }
     }),
 );
 

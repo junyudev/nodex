@@ -10,6 +10,7 @@ import { readOnly } from "@t3tools/shared/nodeSqliteClient";
 import { EffectOutboxV2 } from "../orchestration-v2/EffectOutbox.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import type { AgentThreadExecution } from "./Interface.ts";
+import { readSessionAttention } from "../orchestration-v2/SessionAttention.ts";
 
 export class ExecutionReadError extends Schema.TaggedError<ExecutionReadError>()(
   "ExecutionReadError",
@@ -98,13 +99,9 @@ export const readExecution = Effect.fn("Runtime.readExecution")(function* (input
       SELECT status FROM orchestration_v2_effect_outbox
       WHERE effect_id = ${`effect:restart-continuation:${run.run_id}`} AND status IN ('pending','running') LIMIT 1`
         : [];
-      const requests = yield* sql<{ kind: string; id: string }>`
-      SELECT request.kind, request.runtime_request_id AS id
-      FROM orchestration_v2_projection_runtime_requests request
-      JOIN orchestration_v2_projection_nodes node ON node.node_id = request.node_id
-      WHERE request.thread_id = ${input.threadId} AND node.run_id = ${run.run_id}
-        AND request.status = 'pending' AND request.kind NOT IN ('dynamic_tool_call','auth_refresh')
-        ORDER BY request.created_at DESC LIMIT 1`;
+      const attention = (yield* readSessionAttention([input.threadId], run.run_id)).get(
+        input.threadId,
+      );
       const items = yield* sql<{
         turn_item_id: string;
         type: string;
@@ -114,11 +111,7 @@ export const readExecution = Effect.fn("Runtime.readExecution")(function* (input
       SELECT turn_item_id,type,status,updated_at FROM orchestration_v2_projection_turn_items
       WHERE thread_id = ${input.threadId} AND run_id = ${run.run_id}
       ORDER BY ordinal DESC LIMIT 1`;
-      const secrets = yield* sql<{ turn_item_id: string }>`
-      SELECT turn_item_id FROM orchestration_v2_projection_turn_items
-      WHERE thread_id = ${input.threadId} AND run_id = ${run.run_id}
-        AND type = 'secret_request' AND status = 'waiting' LIMIT 1`;
-      const activeFlags = requests[0] ? [requests[0].kind] : secrets[0] ? ["user_input"] : [];
+      const activeFlags = attention?.activeFlags ?? [];
       return {
         selectedRunId,
         runId: run.run_id,
@@ -126,7 +119,7 @@ export const readExecution = Effect.fn("Runtime.readExecution")(function* (input
         continuationPending: pending.length > 0,
         activeFlags,
         revision: createHash("sha256")
-          .update(JSON.stringify({ run, pending, requests, items, secrets }))
+          .update(JSON.stringify({ run, pending, attention, items }))
           .digest("base64url"),
       } satisfies AgentThreadExecution;
     }),

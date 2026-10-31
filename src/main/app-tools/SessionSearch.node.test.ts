@@ -61,6 +61,7 @@ const fact = (id: string, changes: Partial<Fact> = {}): Fact => ({
 const meta = (id: string) =>
   ({
     threadId: id,
+    activeFlags: ["waitingOnUserInput"],
     createdAt: at,
     preview: "Prompt",
     recencyAt: at,
@@ -254,6 +255,7 @@ it.effect(
         assert.equal(first.matches[0]?.itemId, "item:old");
         assert.equal(first.matches[0]?.sourceThreadId, "old");
         assert.equal(first.matches[0]?.session.binding?.kind, "runtime");
+        assert.deepEqual(first.matches[0]?.session.status.active_flags, ["waitingOnUserInput"]);
         assert.equal(first.matches[0]?.source, "assistant");
         assert.equal(first.nextCursor, null);
         const replay = yield* f.search({ ...input, limit: 1, cursor: first.entryCursors[0] });

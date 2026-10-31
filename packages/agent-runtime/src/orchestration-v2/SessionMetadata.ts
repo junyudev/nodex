@@ -1,6 +1,8 @@
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import type { ProjectionStoreV2Error } from "./ProjectionStore.ts";
 import { isSnoozed } from "./threadSnoozePolicy.ts";
+import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
+import { readSessionAttention } from "./SessionAttention.ts";
 import type {
   OrchestrationV2ThreadShell,
   OrchestrationV2AppThread,
@@ -25,6 +27,7 @@ export const SessionPullRequest = Schema.Struct({
 export type SessionPullRequest = typeof SessionPullRequest.Type;
 export interface SessionExecutionMetadata {
   readonly threadId: string;
+  readonly activeFlags: readonly ThreadActiveFlag[];
   readonly createdBy: OrchestrationV2AppThread["createdBy"] | null;
   readonly creationSource: OrchestrationV2AppThread["creationSource"] | null;
   readonly runtimeMode: OrchestrationV2AppThread["runtimeMode"];
@@ -144,6 +147,7 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
         AND NOT (r.status='queued' AND json_extract(r.payload_json,'$.queueHeld') IS 1)
       ORDER BY r.ordinal DESC,r.run_id DESC LIMIT 1)
     WHERE t.thread_id IN (SELECT value FROM json_each(${encodeIds(threadIds.slice(0, 100))})) AND t.deleted_at IS NULL`;
+  const attention = yield* readSessionAttention(rows.map((row) => row.thread_id));
   return yield* Effect.forEach(rows, (row) =>
     Effect.gen(function* () {
       const shell = options.shell ? yield* options.shell(row.thread_id) : null;
@@ -165,6 +169,7 @@ export const readSessionMetadata = Effect.fn("SessionMetadata.read")(function* (
       const effectiveSnoozed = shell ? isSnoozed(shell, now) : snoozed;
       return {
         threadId: row.thread_id,
+        activeFlags: attention.get(row.thread_id)?.activeFlags ?? [],
         createdBy: row.created_by,
         creationSource: row.creation_source,
         runtimeMode: row.runtime_mode,

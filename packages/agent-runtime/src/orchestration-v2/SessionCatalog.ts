@@ -27,7 +27,6 @@ export interface SessionCatalogItem extends SessionExecutionMetadata {
   readonly recencyAt: string | null;
   readonly createdAt: string;
   readonly status: "active" | "idle" | "systemError";
-  readonly activeFlags: readonly ("waitingOnUserInput" | "waitingOnApproval")[];
   /** Resume strictly after this entry, including when a caller returns a smaller page. */
   readonly cursor: string;
 }
@@ -82,17 +81,12 @@ export const readSessionCatalog = Effect.fn("SessionCatalog.read")(function* (
     readonly recency_at: string | null;
     readonly created_at: string;
     readonly sort_at: string;
-    readonly pending_kind: string | null;
   }>`
     SELECT thread.thread_id, thread.title, thread.conversation_preview AS preview,
       COALESCE(thread.provider_instance_id, '') AS provider_instance_id,
       COALESCE(json_extract(thread.payload_json, '$.modelSelection.model'), '') AS model,
       thread.conversation_recency_at AS recency_at, thread.created_at,
-      COALESCE(thread.conversation_recency_at, thread.created_at) AS sort_at,
-      (SELECT request.kind FROM orchestration_v2_projection_runtime_requests request
-        WHERE request.thread_id = thread.thread_id AND request.status = 'pending'
-          AND request.kind NOT IN ('dynamic_tool_call', 'auth_refresh')
-        ORDER BY request.created_at DESC LIMIT 1) AS pending_kind
+      COALESCE(thread.conversation_recency_at, thread.created_at) AS sort_at
     FROM orchestration_v2_projection_threads thread INDEXED BY orchestration_v2_conversation_discovery_idx
     WHERE thread.deleted_at IS NULL AND json_extract(thread.payload_json, '$.sideChat') IS NULL
       AND (${input.includeSubagents ? 1 : 0} OR COALESCE(json_extract(thread.payload_json, '$.lineage.relationshipToParent'),'') <> 'subagent')
@@ -128,10 +122,6 @@ export const readSessionCatalog = Effect.fn("SessionCatalog.read")(function* (
           ? "active"
           : "idle";
     })(),
-    activeFlags:
-      row.pending_kind === null
-        ? []
-        : [row.pending_kind === "user_input" ? "waitingOnUserInput" : "waitingOnApproval"],
     cursor: encodeCursor({
       version: 1,
       query,

@@ -71,6 +71,7 @@ export const metadata = (
   overrides: Partial<ChatRuntimeMetadata> = {},
 ): ChatRuntimeMetadata => ({
   threadId: id,
+  activeFlags: [],
   createdAt: at,
   preview: "Opening prompt",
   recencyAt: at,

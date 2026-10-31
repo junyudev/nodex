@@ -2,6 +2,7 @@ import { resolveSessionScope } from "../../shared/nodex-app-tools/session-scope"
 import type { components } from "@nodex/core-protocol";
 import { createHash } from "node:crypto";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { CoreModules } from "../core-runtime/CoreModules";
@@ -49,7 +50,10 @@ export interface SessionListingSummary {
   readonly title: string;
   readonly preview: string;
   readonly backend: "codex" | "acp" | "claude" | "opencode" | null;
-  readonly status: { readonly status_type: string; readonly active_flags: readonly string[] };
+  readonly status: {
+    readonly status_type: string;
+    readonly active_flags: readonly ThreadActiveFlag[];
+  };
   readonly archived: boolean;
   readonly pinned: boolean;
   readonly recencyAt: number | null;
@@ -250,7 +254,7 @@ export const withSessionMetadata = (
         ? details.providerDriver
         : "acp",
   recencyAt: details.recencyAt === null ? null : Date.parse(details.recencyAt),
-  status: { status_type: statusOf(details), active_flags: [] },
+  status: { status_type: statusOf(details), active_flags: details.activeFlags },
   createdBy: details.createdBy,
   creationSource: details.creationSource,
   createdAt: details.createdAt,

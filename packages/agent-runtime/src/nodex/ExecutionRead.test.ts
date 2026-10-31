@@ -3,13 +3,19 @@ import {
   CommandId,
   EventId,
   MessageId,
+  NodeId,
   ProjectId,
   ProviderInstanceId,
+  ProviderSessionId,
   RunId,
+  RuntimeRequestId,
   ThreadId,
+  TurnItemId,
   type OrchestrationV2Run,
   type OrchestrationV2AppThread,
+  type OrchestrationV2RuntimeRequest,
 } from "@t3tools/contracts";
+import type { ThreadActiveFlag } from "@nodex/codex-app-server-protocol/v2";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -24,6 +30,8 @@ import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as Outbox from "../orchestration-v2/EffectOutbox.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import { readExecution, readExecutionItemIds, waitExecution } from "./ExecutionRead.ts";
+import { readSessionMetadata } from "../orchestration-v2/SessionMetadata.ts";
+import { readSessionCatalog } from "../orchestration-v2/SessionCatalog.ts";
 
 const database = Sqlite.layerMemory;
 const layer = Layer.mergeAll(
@@ -306,7 +314,7 @@ it.effect("keeps attention and compact progress scoped to the selected Run", () 
         VALUES(${`request:${kind}`},${threadId},'node:0',${kind},'pending','2027-01-01','{}')`;
     }
     const selected = yield* readExecution({ threadId, runId: "run:first" });
-    assert.deepEqual(selected.activeFlags, ["user_input"]);
+    assert.deepEqual(selected.activeFlags, ["waitingOnUserInput"]);
     const ids = yield* readExecutionItemIds(threadId, RunId.make("run:first"));
     assert.equal(ids.replyId, "item:0:assistant_message");
     assert.equal(ids.activity?.turn_item_id, "item:0:command");
@@ -315,4 +323,152 @@ it.effect("keeps attention and compact progress scoped to the selected Run", () 
     assert.deepEqual(resolved.activeFlags, []);
     assert.notEqual(resolved.revision, selected.revision);
   }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "shares attention flags across Runtime catalog, metadata and exact-Run observations",
+  () =>
+    Effect.gen(function* () {
+      const { put } = yield* setup;
+      const run = yield* put("run:attention", 1, "running");
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const nodeId = NodeId.make("node:attention");
+      yield* store.apply({
+        id: EventId.make("event:attention-node"),
+        type: "node.updated",
+        threadId,
+        runId: run.id,
+        nodeId,
+        occurredAt: now,
+        payload: {
+          id: nodeId,
+          threadId,
+          runId: run.id,
+          rootNodeId: nodeId,
+          parentNodeId: null,
+          kind: "tool_call",
+          status: "waiting",
+          countsForRun: true,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          runtimeRequestId: null,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: null,
+        },
+      });
+      let event = 0;
+      const request = (
+        kind: OrchestrationV2RuntimeRequest["kind"],
+        status: "pending" | "resolved" = "pending",
+        responseCapability: OrchestrationV2RuntimeRequest["responseCapability"] = {
+          type: "live",
+          providerSessionId: ProviderSessionId.make("provider:attention"),
+        },
+      ) =>
+        store.apply({
+          id: EventId.make(`event:attention:${event++}`),
+          type: "runtime-request.updated",
+          threadId,
+          occurredAt: now,
+          payload: {
+            id: RuntimeRequestId.make(`request:${kind}`),
+            nodeId,
+            kind,
+            status,
+            providerTurnId: null,
+            nativeRequestRef: null,
+            responseCapability,
+            createdAt: now,
+            resolvedAt: status === "resolved" ? now : null,
+          },
+        });
+      const assertFlags = Effect.fnUntraced(function* (expected: readonly ThreadActiveFlag[]) {
+        const execution = yield* readExecution({ threadId, runId: run.id });
+        const metadata = yield* readSessionMetadata([threadId]);
+        const catalog = yield* readSessionCatalog({});
+        assert.deepEqual(execution.activeFlags, expected);
+        assert.deepEqual(metadata[0]?.activeFlags, expected);
+        assert.deepEqual(catalog.items[0]?.activeFlags, expected);
+        return execution;
+      });
+      for (const kind of [
+        "command",
+        "file-read",
+        "file-change",
+        "mcp-elicitation",
+        "permission",
+        "user_input",
+        "dynamic_tool_call",
+        "auth_refresh",
+      ] as const) {
+        yield* request(kind);
+        yield* assertFlags(
+          kind === "user_input"
+            ? ["waitingOnUserInput"]
+            : kind === "dynamic_tool_call" || kind === "auth_refresh"
+              ? []
+              : ["waitingOnApproval"],
+        );
+        yield* request(kind, "resolved");
+        yield* assertFlags([]);
+      }
+      const secret = (status: "waiting" | "completed") =>
+        store.apply({
+          id: EventId.make(`event:secret:${event++}`),
+          type: "turn-item.updated",
+          threadId,
+          occurredAt: now,
+          payload: {
+            id: TurnItemId.make("secret:attention"),
+            threadId,
+            runId: run.id,
+            nodeId,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 1,
+            type: "secret_request",
+            status,
+            title: "API key",
+            label: "API key",
+            reason: "Connect the service",
+            secretStatus: status === "waiting" ? "pending" : "saved",
+            startedAt: now,
+            completedAt: status === "completed" ? now : null,
+            updatedAt: now,
+          },
+        });
+      yield* request("user_input", "pending", { type: "message" });
+      const working = yield* assertFlags([]);
+      yield* put("run:attention", 1, "waiting");
+      const awaiting = yield* assertFlags(["waitingOnUserInput"]);
+      assert.notEqual(awaiting.revision, working.revision);
+      yield* request("permission");
+      yield* assertFlags(["waitingOnApproval", "waitingOnUserInput"]);
+      yield* request("permission", "resolved");
+      yield* request("user_input", "resolved", { type: "message" });
+      yield* secret("waiting");
+      yield* assertFlags(["waitingOnUserInput"]);
+      yield* secret("completed");
+      yield* assertFlags([]);
+      yield* secret("waiting");
+      yield* assertFlags(["waitingOnUserInput"]);
+      yield* put("run:attention", 1, "completed");
+      // A retained secret on a terminal Run does not need the person's attention.
+      yield* assertFlags([]);
+      yield* request("user_input", "pending", { type: "message" });
+      yield* assertFlags(["waitingOnUserInput"]);
+      // A newer working Run on the same Thread suppresses its older asynchronous question.
+      yield* put("run:newer", 2, "running");
+      const resumed = yield* assertFlags([]);
+      yield* put("run:newer", 2, "waiting");
+      const stopped = yield* assertFlags(["waitingOnUserInput"]);
+      assert.notEqual(stopped.revision, resumed.revision);
+      yield* request("user_input", "resolved", { type: "message" });
+      yield* assertFlags([]);
+    }).pipe(Effect.provide(layer)),
 );
