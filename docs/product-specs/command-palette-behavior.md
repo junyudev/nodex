@@ -271,7 +271,7 @@ A trailing status row reports `Searching chat history…` while message history 
 ## Command Search Model
 
 - Commands are matched in All and Actions.
-- Command ranking remains lightweight and heuristic rather than MiniSearch-based.
+- Command ranking remains lightweight and heuristic.
 - Ranking considers exact/prefix/substring and fuzzy subsequence matches across title, subtitle, and keyword text, plus explicit command priority and active-state bonus.
 - Matching command-title characters are highlighted inline; a failed fuzzy attempt leaves the original title untouched.
 - Result limits remain separate from Page limits.
