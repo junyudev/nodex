@@ -1,0 +1,29 @@
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_b5c41a13e9511c::t_ab741ff7ef375b 272,276,7827
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_b5c41a13e9511c::t_500423ca1c5f7c 2185
+packages/agent-runtime/vendor/shared/src/orchestrationV2Rewind.test.ts
+  s_b5c41a13e9511c::t_78dc09d601a0a4 20
+packages/agent-runtime/vendor/shared/src/orchestrationV2Rewind.ts
+  s_b5c41a13e9511c::t_2c94995882ad38 16,58
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_b5c41a13e9511c::t_a6d549ae02e99f 3128,3177-3285
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_b5c41a13e9511c::t_88b5fb294ab8d9 1256,1258-1261,1272-1275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c4c2e5a293bf75088c1c891071c14966e7cd4b6",
+  "prompts": {},
+  "sessions": {
+    "s_b5c41a13e9511c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1919a-f51e-7522-8c2b-1ee25c262243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
