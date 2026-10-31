@@ -15,6 +15,7 @@ import {
   agentConfigInlineContentConfig,
   attachmentInlineContentConfig,
   calloutBlockConfig,
+  promptBlockConfig,
   canvasBlockConfig,
   pageBlockConfig,
   pageRefBlockConfig,
@@ -49,11 +50,16 @@ const createHeadlessInlineContentSpec = <const TConfig extends CustomInlineConte
     render: failHeadlessRender,
   });
 
+const renderPromptContent = () => {
+  const dom = document.createElement("p");
+  return { dom, contentDOM: dom };
+};
+
 /**
  * The canonical Block Document schema for Node-side Yjs conversion and
- * validation. Its implementations are intentionally non-rendering: callers
- * may use the ProseMirror schema, `blocksToYDoc`, and
- * `yXmlFragmentToBlocks`, but DOM export belongs to a renderer adapter.
+ * validation. Callers may use the ProseMirror schema, `blocksToYDoc`, and
+ * `yXmlFragmentToBlocks` without DOM globals. Prompt also provides a static
+ * content-only export; other custom rendering belongs to a renderer adapter.
  */
 const headlessBlockDocumentBlockSpecs = {
   paragraph: defaultBlockSpecs.paragraph,
@@ -68,6 +74,10 @@ const headlessBlockDocumentBlockSpecs = {
   divider: defaultBlockSpecs.divider,
   image: defaultBlockSpecs.image,
   callout: createHeadlessBlockSpec(calloutBlockConfig),
+  prompt: createBlockSpec(promptBlockConfig, {
+    render: renderPromptContent,
+    toExternalHTML: renderPromptContent,
+  })(),
   page: createHeadlessBlockSpec(pageBlockConfig),
   database: createHeadlessBlockSpec(databaseBlockConfig),
   canvas: createHeadlessBlockSpec(canvasBlockConfig),

@@ -4,6 +4,7 @@ import { readMarkdown } from "./nodex-markdown";
 import {
   projectMessageBlocks,
   projectMessageText,
+  projectPromptBlockForSend,
   readImagePlaceholders,
 } from "./message-agent-input";
 
@@ -99,6 +100,67 @@ describe("a message as an Agent receives it", () => {
     ]);
     expect(result.text).toBe("[Image #1]");
     expect(result.images).toEqual([{ source: "nodex://assets/photo.png" }]);
+  });
+});
+
+describe("a Prompt as a chat receives it", () => {
+  const prompt = {
+    id: "prompt-root",
+    type: "prompt",
+    props: { sentSessionId: "deleted-session", sentAt: "2026-10-31T08:30:00.000Z" },
+    content: [
+      { type: "text", text: "Review ", styles: {} },
+      { type: "text", text: "this change", styles: { bold: true } },
+      { type: "inlineImage", props: { url: "nodex://files/first", alt: "First" } },
+      { type: "agentConfig", props: { mode: "plan", model: "test-model" } },
+    ],
+    children: [
+      {
+        id: "nested",
+        type: "prompt",
+        content: [{ type: "text", text: "Boundary cases", styles: {} }],
+        children: [{ type: "image", props: { url: "nodex://files/second", caption: "Second" } }],
+      },
+    ],
+  };
+
+  test("projects rich first lines and nested children without mutating the source", () => {
+    const source = structuredClone(prompt);
+    expect(projectPromptBlockForSend(prompt)).toEqual([
+      { type: "paragraph", content: prompt.content },
+      { type: "paragraph", content: prompt.children[0].content },
+      { type: "image", props: { url: "nodex://files/second", caption: "Second" }, children: [] },
+    ]);
+    expect(prompt).toEqual(source);
+  });
+
+  test("sends Prompt content with images and Agent settings in reading order", () => {
+    const result = projectMessageBlocks([
+      {
+        type: "callout",
+        content: [{ type: "text", text: "Context", styles: {} }],
+        children: [prompt],
+      },
+    ]);
+    expect(result).toEqual({
+      text: "> [!TIP]\n> Context\n>\n> Review **this change**[Image #1] (caption: First)\n>\n> Boundary cases\n>\n> [Image #2] (caption: Second)",
+      images: [
+        { source: "nodex://files/first", caption: "First" },
+        { source: "nodex://files/second", caption: "Second" },
+      ],
+      agentConfigs: [{ mode: "plan", model: "test-model" }],
+    });
+  });
+
+  test("keeps children sendable when the first line is empty", () => {
+    expect(
+      projectMessageBlocks([
+        {
+          type: "prompt",
+          children: [{ type: "paragraph", content: [{ type: "text", text: "Body", styles: {} }] }],
+        },
+      ]).text,
+    ).toBe("<br>\n\nBody");
   });
 });
 

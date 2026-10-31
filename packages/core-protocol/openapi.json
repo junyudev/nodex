@@ -26377,6 +26377,20 @@
               "kind": {
                 "type": "string",
                 "enum": [
+                  "prompt"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
                   "code"
                 ]
               }

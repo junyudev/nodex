@@ -12,7 +12,7 @@ use crate::error::{CliError, CliErrorCode};
 pub const AGENT_API_MIN_REVISION: u32 = 1;
 pub const AGENT_API_MAX_REVISION: u32 = 1;
 const MACHINE_HELP_SCHEMA_VERSION: u32 = 4;
-const MARKDOWN_REVISION: u32 = 5;
+const MARKDOWN_REVISION: u32 = 6;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]

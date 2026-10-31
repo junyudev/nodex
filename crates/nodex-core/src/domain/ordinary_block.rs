@@ -33,6 +33,13 @@ pub fn canonical_ordinary_block_shape(
             props.insert("icon".to_owned(), Value::String("💡".to_owned()));
             ("callout", props)
         }
+        LibraryStructuralTurnIntoTarget::Prompt => (
+            "prompt",
+            BTreeMap::from([
+                ("sentSessionId".to_owned(), Value::String(String::new())),
+                ("sentAt".to_owned(), Value::String(String::new())),
+            ]),
+        ),
         LibraryStructuralTurnIntoTarget::Code => {
             let mut props = default_props();
             props.insert("language".to_owned(), Value::String("text".to_owned()));

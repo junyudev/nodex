@@ -6337,6 +6337,9 @@ export interface components {
             readonly kind: "callout";
         } | {
             /** @enum {string} */
+            readonly kind: "prompt";
+        } | {
+            /** @enum {string} */
             readonly kind: "code";
         } | {
             /** @enum {string} */

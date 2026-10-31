@@ -14,7 +14,7 @@ use crate::database::{
 use crate::document::{ContentRoutingContext, DocumentHeadRevision};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 56;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 57;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -706,6 +706,7 @@ pub enum LibraryStructuralTurnIntoTarget {
     ToggleList,
     Quote,
     Callout,
+    Prompt,
     Code,
     Equation,
 }

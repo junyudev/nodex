@@ -644,6 +644,7 @@ export type LibraryStructuralTurnIntoTarget =
   | { readonly kind: "toggle_list" }
   | { readonly kind: "quote" }
   | { readonly kind: "callout" }
+  | { readonly kind: "prompt" }
   | { readonly kind: "code" }
   | { readonly kind: "equation" };
 

@@ -30,6 +30,34 @@ const readResult = (value: unknown) => ({
 });
 
 describe("Library Module transport", () => {
+  test("accepts Prompt as a typed structural target without arbitrary props", () => {
+    const operation = {
+      kind: "apply_structural_edit",
+      command: {
+        kind: "turn_selection_into",
+        selection: {
+          sourceDocumentId: "document:source",
+          rootBlockIds: ["page:one"],
+          sourceHead: { documentId: "document:source", generation: 1, expectedHeadSeq: 7 },
+        },
+        target: { kind: "prompt" },
+      },
+    };
+    expect(
+      bindLibraryModuleApply({ operationId: uuidV7(1), storeEpoch: "epoch-1", operation }),
+    ).toMatchObject({ operation });
+    expect(() =>
+      bindLibraryModuleApply({
+        operationId: uuidV7(1),
+        storeEpoch: "epoch-1",
+        operation: {
+          ...operation,
+          command: { ...operation.command, target: { kind: "prompt", sentSessionId: "chat" } },
+        },
+      }),
+    ).toThrow();
+  });
+
   test("history reconciliation is bounded and accepts only exact lifecycle capabilities", () => {
     const tokens = Array.from({ length: 200 }, (_, index) => ({
       recipeOperationId: uuidV7(index),

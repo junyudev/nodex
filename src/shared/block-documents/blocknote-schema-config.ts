@@ -24,6 +24,15 @@ export const calloutBlockConfig = {
   content: "inline",
 } as const satisfies CustomBlockConfig;
 
+export const promptBlockConfig = {
+  type: "prompt",
+  propSchema: {
+    sentSessionId: { default: "" },
+    sentAt: { default: "" },
+  },
+  content: "inline",
+} as const satisfies CustomBlockConfig;
+
 export const pageRefBlockConfig = {
   type: "pageRef",
   propSchema: {
@@ -135,6 +144,7 @@ export const pageMentionInlineContentConfig = {
 
 export const blockDocumentCustomBlockConfigs = {
   callout: calloutBlockConfig,
+  prompt: promptBlockConfig,
   page: pageBlockConfig,
   database: databaseBlockConfig,
   canvas: canvasBlockConfig,

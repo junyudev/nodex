@@ -140,6 +140,59 @@
       "children": []
     },
     {
+      "id": "matrix-prompt",
+      "type": "prompt",
+      "props": {
+        "sentSessionId": "deleted-session",
+        "sentAt": "2026-10-31T08:30:00.000Z"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Review this change",
+          "styles": {
+            "bold": true
+          }
+        }
+      ],
+      "children": [
+        {
+          "id": "matrix-prompt-child",
+          "type": "prompt",
+          "props": {
+            "sentSessionId": "",
+            "sentAt": ""
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Focus on correctness",
+              "styles": {}
+            }
+          ],
+          "children": [
+            {
+              "id": "matrix-prompt-detail",
+              "type": "paragraph",
+              "props": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Check boundaries",
+                  "styles": {}
+                }
+              ],
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "matrix-heading",
       "type": "heading",
       "props": {
@@ -399,9 +452,9 @@
       "children": []
     }
   ],
-  "markdown": "**bold**:span[*&#x20;italic*:span[~~&#x20;strike~~]]:span[ underline]{underline}` code`[**&#x20;link**](https://nodex.local/matrix)\n\n:::callout[:span[**Before&#x20;**]:attachment{kind=\"file\" source=\"nodex://assets/example.txt\" name=\"example.txt\" mime=\"text/plain\" bytes=\"12\" origin=\"paste\"}:agent-config{mode=\"agent\" provider=\"openai\" model=\"gpt-5\" reasoning=\"high\" speed=\"fast\" future=\"value\"}:date{start=\"2026-07-18T09:00:00+08:00\" end=\"2026-07-18T10:00:00+08:00\" tz=\"Asia/Shanghai\" format=\"relative\" time-format=\"24h\" reminder=\"minute:10\"}[![Icon|16](https://example.com/icon.svg)](https://example.com)<nodex://sessions/session-matrix>*&#x20;after 😀 中文 é*]{icon=\"📌\"}\n:::\n\n## Heading\n\n- Bullet\n1. Numbered\n- [x] Checked\n\n:::toggle[Toggle]\n  Nested\n:::\n\n```typescript\nconst core = 'rust';\n```\n\n> Quote\n\n---\n\n![Matrix](nodex://assets/matrix.png)\n\n:::table{header=\"none\" widths=\"160,auto\"}\n  | **Key** | Value |\n  | --- | --- |\n:::\n\n::page{id=\"matrix-page\"}\n\n::database{id=\"matrix-database\"}\n\n::page-ref{page=\"page-target\"}\n\n::database-view-ref{view=\"view-1\" hint=\"Planning\"}\n\n::synced-block-ref{source=\"synced-source-1\"}\n\n::template-ref{source=\"template-source-1\" hint=\"Review\"}",
-  "plainText": "bold italic strike underline code link Before example.txt agent gpt-5 high @Jul 18, 2026 09:00 → Jul 18, 2026 10:00 Icon nodex://sessions/session-matrix after 😀 中文 é Heading Bullet Numbered Checked Toggle Nested const core = 'rust'; Quote Matrix Key Value nodex://pages/page-target Planning synced-source-1 template-source-1",
-  "preview": "bold italic strike underline code link Before example.txt agent gpt-5 high @Jul 18, 2026 09:00 → Jul 18, 2026 10:00 Icon nodex://sessions/session-matrix after 😀 中文 é Heading Bullet Numbered Checked Toggle Nested const core = 'rust'; Quote...",
+  "markdown": "**bold**:span[*&#x20;italic*:span[~~&#x20;strike~~]]:span[ underline]{underline}` code`[**&#x20;link**](https://nodex.local/matrix)\n\n:::callout[:span[**Before&#x20;**]:attachment{kind=\"file\" source=\"nodex://assets/example.txt\" name=\"example.txt\" mime=\"text/plain\" bytes=\"12\" origin=\"paste\"}:agent-config{mode=\"agent\" provider=\"openai\" model=\"gpt-5\" reasoning=\"high\" speed=\"fast\" future=\"value\"}:date{start=\"2026-07-18T09:00:00+08:00\" end=\"2026-07-18T10:00:00+08:00\" tz=\"Asia/Shanghai\" format=\"relative\" time-format=\"24h\" reminder=\"minute:10\"}[![Icon|16](https://example.com/icon.svg)](https://example.com)<nodex://sessions/session-matrix>*&#x20;after 😀 中文 é*]{icon=\"📌\"}\n:::\n\n:::prompt[**Review this change**]{sent=\"nodex://sessions/deleted-session\" sent-at=\"2026-10-31T08:30:00.000Z\"}\n  :::prompt[Focus on correctness]\n    Check boundaries\n  :::\n:::\n\n## Heading\n\n- Bullet\n1. Numbered\n- [x] Checked\n\n:::toggle[Toggle]\n  Nested\n:::\n\n```typescript\nconst core = 'rust';\n```\n\n> Quote\n\n---\n\n![Matrix](nodex://assets/matrix.png)\n\n:::table{header=\"none\" widths=\"160,auto\"}\n  | **Key** | Value |\n  | --- | --- |\n:::\n\n::page{id=\"matrix-page\"}\n\n::database{id=\"matrix-database\"}\n\n::page-ref{page=\"page-target\"}\n\n::database-view-ref{view=\"view-1\" hint=\"Planning\"}\n\n::synced-block-ref{source=\"synced-source-1\"}\n\n::template-ref{source=\"template-source-1\" hint=\"Review\"}",
+  "plainText": "bold italic strike underline code link Before example.txt agent gpt-5 high @Jul 18, 2026 09:00 → Jul 18, 2026 10:00 Icon nodex://sessions/session-matrix after 😀 中文 é Review this change Focus on correctness Check boundaries Heading Bullet Numbered Checked Toggle Nested const core = 'rust'; Quote Matrix Key Value nodex://pages/page-target Planning synced-source-1 template-source-1",
+  "preview": "bold italic strike underline code link Before example.txt agent gpt-5 high @Jul 18, 2026 09:00 → Jul 18, 2026 10:00 Icon nodex://sessions/session-matrix after 😀 中文 é Review this change Focus on correctness Check boundaries Heading Bullet...",
   "references": [
     {
       "kind": "session",
@@ -504,121 +557,142 @@
       "text": "Before Icon after 😀 中文 é"
     },
     {
-      "blockId": "matrix-heading",
+      "blockId": "matrix-prompt",
       "parentBlockId": null,
       "ordinal": 2,
+      "blockType": "prompt",
+      "text": "Review this change"
+    },
+    {
+      "blockId": "matrix-prompt-child",
+      "parentBlockId": "matrix-prompt",
+      "ordinal": 3,
+      "blockType": "prompt",
+      "text": "Focus on correctness"
+    },
+    {
+      "blockId": "matrix-prompt-detail",
+      "parentBlockId": "matrix-prompt-child",
+      "ordinal": 4,
+      "blockType": "paragraph",
+      "text": "Check boundaries"
+    },
+    {
+      "blockId": "matrix-heading",
+      "parentBlockId": null,
+      "ordinal": 5,
       "blockType": "heading",
       "text": "Heading"
     },
     {
       "blockId": "matrix-bullet",
       "parentBlockId": null,
-      "ordinal": 3,
+      "ordinal": 6,
       "blockType": "bulletListItem",
       "text": "Bullet"
     },
     {
       "blockId": "matrix-numbered",
       "parentBlockId": null,
-      "ordinal": 4,
+      "ordinal": 7,
       "blockType": "numberedListItem",
       "text": "Numbered"
     },
     {
       "blockId": "matrix-check",
       "parentBlockId": null,
-      "ordinal": 5,
+      "ordinal": 8,
       "blockType": "checkListItem",
       "text": "Checked"
     },
     {
       "blockId": "matrix-toggle",
       "parentBlockId": null,
-      "ordinal": 6,
+      "ordinal": 9,
       "blockType": "toggleListItem",
       "text": "Toggle"
     },
     {
       "blockId": "matrix-toggle-child",
       "parentBlockId": "matrix-toggle",
-      "ordinal": 7,
+      "ordinal": 10,
       "blockType": "paragraph",
       "text": "Nested"
     },
     {
       "blockId": "matrix-code",
       "parentBlockId": null,
-      "ordinal": 8,
+      "ordinal": 11,
       "blockType": "codeBlock",
       "text": "const core = 'rust';"
     },
     {
       "blockId": "matrix-quote",
       "parentBlockId": null,
-      "ordinal": 9,
+      "ordinal": 12,
       "blockType": "quote",
       "text": "Quote"
     },
     {
       "blockId": "matrix-divider",
       "parentBlockId": null,
-      "ordinal": 10,
+      "ordinal": 13,
       "blockType": "divider",
       "text": ""
     },
     {
       "blockId": "matrix-image",
       "parentBlockId": null,
-      "ordinal": 11,
+      "ordinal": 14,
       "blockType": "image",
       "text": "Matrix"
     },
     {
       "blockId": "matrix-table",
       "parentBlockId": null,
-      "ordinal": 12,
+      "ordinal": 15,
       "blockType": "table",
       "text": "KeyValue"
     },
     {
       "blockId": "matrix-page",
       "parentBlockId": null,
-      "ordinal": 13,
+      "ordinal": 16,
       "blockType": "page",
       "text": ""
     },
     {
       "blockId": "matrix-database",
       "parentBlockId": null,
-      "ordinal": 14,
+      "ordinal": 17,
       "blockType": "database",
       "text": ""
     },
     {
       "blockId": "matrix-page-ref",
       "parentBlockId": null,
-      "ordinal": 15,
+      "ordinal": 18,
       "blockType": "pageRef",
       "text": ""
     },
     {
       "blockId": "matrix-database-view-ref",
       "parentBlockId": null,
-      "ordinal": 16,
+      "ordinal": 19,
       "blockType": "databaseViewRef",
       "text": ""
     },
     {
       "blockId": "matrix-synced-ref",
       "parentBlockId": null,
-      "ordinal": 17,
+      "ordinal": 20,
       "blockType": "syncedBlockRef",
       "text": ""
     },
     {
       "blockId": "matrix-template-ref",
       "parentBlockId": null,
-      "ordinal": 18,
+      "ordinal": 21,
       "blockType": "templateRef",
       "text": ""
     }

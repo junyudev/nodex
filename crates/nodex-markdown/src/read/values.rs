@@ -291,3 +291,29 @@ pub(super) fn one_of(d: &Directive, name: &str, choices: &[&str]) -> Result<(), 
     }
     Ok(())
 }
+
+/// A Prompt's send history is not a document reference and needs no live chat.
+pub(super) fn prompt_send(
+    d: &Directive,
+) -> Result<Option<crate::model::PromptSendRecord>, ReadError> {
+    let sent = value(&d.attrs, "sent");
+    let at = value(&d.attrs, "sent-at");
+    if sent.is_none() && at.is_none() {
+        return Ok(None);
+    }
+    let session = sent
+        .and_then(crate::links::parse_session_link)
+        .ok_or_else(|| {
+            error(
+                d.line,
+                "prompt `sent` must be a valid nodex://sessions/ID link",
+            )
+        })?;
+    let at = at.filter(|value| !value.is_empty()).ok_or_else(|| {
+        error(
+            d.line,
+            "prompt send history needs both `sent` and `sent-at`",
+        )
+    })?;
+    crate::model::PromptSendRecord::new(&session, at).map_err(|message| error(d.line, message))
+}

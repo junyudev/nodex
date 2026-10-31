@@ -123,6 +123,34 @@ Two things vary with where text comes from:
 - An empty list item, heading or quote is its marker alone: `-`, `- [ ]`, `1.`,
   `#`, `>`.
 
+### Prompt blocks
+
+A Prompt is an inline rich-text first line with enclosed child Blocks:
+
+```markdown
+:::prompt[Review **this change**]{sent="nodex://sessions/SESSION_ID" sent-at="2026-10-31T08:30:00.000Z"}
+  Focus on correctness.
+
+  - Check boundary cases
+:::
+```
+
+`prompt` has only `sentSessionId` and `sentAt` string props, both empty by
+default. It accepts child Blocks, has no color props, and may have an empty
+first line (`:::prompt` or `:::prompt[]`). Unsent Prompts omit both attributes.
+Send history requires both a valid Session link and an RFC 3339 timestamp;
+writing normalizes the timestamp to UTC with milliseconds and orders `sent`
+before `sent-at`.
+
+The record describes the last successful send; writing the directive never
+sends anything. Agents may create Prompts but must not fabricate send records.
+History is syntax-checked metadata, not a validated document reference: it
+remains copyable and editable after the chat is deleted. Sending projects the
+first line to a paragraph followed by its children, recursively, without the
+Prompt directive or send record. Images and Agent settings retain their normal
+prompt-input behavior. Portable Markdown uses the same content layout, drops
+send history and is non-exact. Plain text includes the first line and children.
+
 ### Escapes
 
 Exact text has the fewest escapes that keep it exact. To write a Block's text,
@@ -260,6 +288,7 @@ A reply streaming in reads at each moment as the start of what it will be.
 | `toggleListItem`        | `:::toggle[Text]{color background}` … `:::`                              | a toggle                          |
 | `quote`                 | `> Text`                                                                 | a quote                           |
 | `callout`               | `> [!TIP]` and the other alerts, or `:::callout[Text]{icon}` …           | the default callout is a tip      |
+| `prompt`                | `:::prompt[Text]{sent sent-at}` … `:::`                                    | a prompt keeps rich first-line content and nested children |
 | `codeBlock`             | a backtick fence with the language                                       | a code Block                      |
 | `mathBlock`             | `$$` fences                                                              | an equation                       |
 | `table`                 | a pipe table, inside `:::table{…}` when it needs attributes              | a table                           |

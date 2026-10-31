@@ -197,10 +197,20 @@ export function projectMessageBlocks(
       };
     });
   return {
-    text: writeMarkdown(visit(blocks)).trim(),
+    text: writeMarkdown(visit(blocks.flatMap(projectPromptBlockForSend))).trim(),
     ...(images.length ? { images } : {}),
     ...(agentConfigs.length ? { agentConfigs } : {}),
   };
+}
+
+/** A Prompt reaches a chat as its content: its first line and children, never its send record. */
+export function projectPromptBlockForSend(block: MarkdownBlock): MarkdownBlock[] {
+  const children = (block.children ?? []).flatMap(projectPromptBlockForSend);
+  if (block.type !== "prompt") return [{ ...block, children }];
+  return [
+    { type: "paragraph", ...(block.content !== undefined ? { content: block.content } : {}) },
+    ...children,
+  ];
 }
 
 /**

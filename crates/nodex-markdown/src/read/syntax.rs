@@ -667,7 +667,10 @@ pub(super) fn is_leaf(name: &str) -> bool {
     )
 }
 fn is_container(name: &str) -> bool {
-    matches!(name, "paragraph" | "toggle" | "callout" | "table")
+    matches!(
+        name,
+        "paragraph" | "toggle" | "callout" | "prompt" | "table"
+    )
 }
 fn is_inline(name: &str) -> bool {
     matches!(name, "span" | "date" | "attachment" | "agent-config")

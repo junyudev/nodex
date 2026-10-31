@@ -39,6 +39,7 @@ describe("block children contract", () => {
       "divider",
       "image",
       "callout",
+      "prompt",
       "page",
       "database",
       "canvas",
@@ -101,6 +102,7 @@ describe("block children contract", () => {
   test("preserves valid object identity and is idempotent", () => {
     const source = [
       block("callout", "callout", [block("paragraph", "paragraph")]),
+      block("prompt", "prompt", [block("prompt-child", "paragraph")]),
       block("divider", "divider"),
     ];
 

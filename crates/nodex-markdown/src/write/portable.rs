@@ -109,6 +109,15 @@ impl State<'_, '_> {
                     };
                 }
             }
+            BlockKind::Prompt { text, .. } => {
+                self.lossy = true;
+                let mut result = self.flow(&[Block::new(BlockKind::Paragraph {
+                    text: text.clone(),
+                    colors: Colors::default(),
+                })]);
+                result.extend(projected.children);
+                return result;
+            }
             BlockKind::Image { width, .. } => {
                 self.lossy |= width.is_some();
                 *width = None;

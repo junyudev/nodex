@@ -411,6 +411,7 @@ impl<'s> Reader<'s> {
             "paragraph" => &["color", "background"],
             "toggle" => &["heading", "color", "background"],
             "callout" => &["icon", "color", "background"],
+            "prompt" => &["sent", "sent-at"],
             _ => &["header", "widths", "color"],
         };
         values::allowed(d, names)?;
@@ -461,6 +462,10 @@ impl<'s> Reader<'s> {
         )?;
         let kind = match d.name.as_str() {
             "paragraph" => BlockKind::Paragraph { text, colors },
+            "prompt" => BlockKind::Prompt {
+                text,
+                sent: values::prompt_send(d)?,
+            },
             "callout" => BlockKind::Callout {
                 icon: values::value(&d.attrs, "icon")
                     .unwrap_or(crate::model::DEFAULT_CALLOUT_ICON)

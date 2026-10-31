@@ -184,6 +184,7 @@ fn replace_images(blocks: &mut [Block], marker: &mut impl FnMut(&str, &str) -> O
             | BlockKind::Check { text, .. }
             | BlockKind::Toggle { text, .. }
             | BlockKind::Quote { text, .. }
+            | BlockKind::Prompt { text, .. }
             | BlockKind::Callout { text, .. } => replace_inline_images(text, marker),
             BlockKind::Table(table) => {
                 for cell in table.rows.iter_mut().flatten() {
@@ -199,6 +200,23 @@ fn replace_images(blocks: &mut [Block], marker: &mut impl FnMut(&str, &str) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn inbox_content_keeps_images_in_prompt_first_lines_and_children() {
+        let workspace = super::super::test_support::seeded_workspace();
+        for id in ["prompt-first", "prompt-child"] {
+            super::super::test_support::create_library_image(&workspace, id);
+        }
+        workspace.kernel.readers().read_default(|connection| {
+            let markdown = ":::prompt[Review ![First](nodex://files/prompt-first)]\n  ![Child](nodex://files/prompt-child)\n:::";
+            let content = content_from_markdown(connection, markdown.into())?;
+            assert_eq!(content.images.iter().map(|image| image.file_id.as_str()).collect::<Vec<_>>(), vec!["prompt-first", "prompt-child"]);
+            let numbers = content.images.iter().enumerate().map(|(index, image)| (image.source.clone(), index + 1)).collect();
+            let rendered = agent_markdown(&content, &numbers, 20)?;
+            assert_eq!(rendered, ":::prompt[Review [Image 1: First]]\n  [Image 2: Child]\n:::");
+            Ok(())
+        }).unwrap();
+    }
+
     #[test]
     fn inbox_content_collects_inline_table_and_nested_images_in_reading_order() {
         let workspace = super::super::test_support::seeded_workspace();

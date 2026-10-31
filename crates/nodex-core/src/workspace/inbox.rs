@@ -380,6 +380,7 @@ fn block_inline(block: &Block) -> Vec<&Inline> {
         | BlockKind::Check { text, .. }
         | BlockKind::Toggle { text, .. }
         | BlockKind::Quote { text, .. }
+        | BlockKind::Prompt { text, .. }
         | BlockKind::Callout { text, .. } => text.iter().collect(),
         BlockKind::Table(table) => table
             .rows

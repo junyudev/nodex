@@ -65,6 +65,21 @@ fn registered_schema_matrix_survives_checkpoint_and_history_reconstruction() {
         .expect("matrix checkpoint decodes")
         .block_tree;
 
+    let prompt = expected_block_tree
+        .blocks
+        .iter()
+        .find(|block| block.content.name == "prompt")
+        .expect("schema matrix covers Prompt");
+    assert_eq!(
+        prompt.content.attributes.get("sentSessionId"),
+        Some(&PortableValue::String("deleted-session".into()))
+    );
+    assert_eq!(
+        prompt.content.attributes.get("sentAt"),
+        Some(&PortableValue::String("2026-10-31T08:30:00.000Z".into()))
+    );
+    assert_eq!(prompt.children[0].content.name, "prompt");
+
     let after = std::fs::read(fixture("matrix-after.bin")).expect("matrix delta exists");
     let mut transaction = document.transact_mut();
     transaction

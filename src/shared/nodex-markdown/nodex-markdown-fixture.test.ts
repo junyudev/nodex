@@ -7,7 +7,13 @@ import {
   HEADLESS_BLOCK_DOCUMENT_BLOCK_TYPES,
   headlessBlockDocumentSchema,
 } from "../block-documents/headless-blocknote-schema";
-import { readMarkdown, writeMarkdown, MarkdownRefusal } from "./index";
+import {
+  readMarkdown,
+  writeMarkdown,
+  writePortableMarkdown,
+  markdownPlainText,
+  MarkdownRefusal,
+} from "./index";
 
 /** The committed WebAssembly module and stored schema share the Rust language fixture. */
 
@@ -219,6 +225,21 @@ function inlineItems(block: JsonObject): JsonObject[] {
 }
 
 describe("Nodex Markdown round-trip fixture", () => {
+  test("projects a sent Prompt to portable content without losing its first line or children", () => {
+    const prompt = cases.find(
+      (item) => item.name === "a prompt keeps rich first-line content and nested children",
+    );
+    expect(prompt).toBeDefined();
+    const blocks = readMarkdown(prompt!.markdown, "exact");
+    expect(writePortableMarkdown(blocks)).toEqual({
+      markdown: "Review **this change**\n\nFocus on correctness.\n- Check boundary cases",
+      exact: false,
+    });
+    expect(markdownPlainText(blocks)).toBe(
+      "Review this change Focus on correctness. Check boundary cases",
+    );
+  });
+
   test("names every case once", () => {
     const names = [...cases, ...boundaryReads].map((item) => item.name);
     expect(new Set(names).size).toBe(names.length);

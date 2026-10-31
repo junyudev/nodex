@@ -1,5 +1,5 @@
 {
-  "input": "**bold**:span[*&#x20;italic*:span[~~&#x20;strike~~]]:span[ underline]{underline}` code`[**&#x20;link**](https://nodex.local/matrix)\n\n:::callout[:span[**Before&#x20;**]:attachment{kind=\"file\" source=\"nodex://assets/example.txt\" name=\"example.txt\" mime=\"text/plain\" bytes=\"12\" origin=\"paste\"}:agent-config{mode=\"agent\" provider=\"openai\" model=\"gpt-5\" reasoning=\"high\" speed=\"fast\" future=\"value\"}:date{start=\"2026-07-18T09:00:00+08:00\" end=\"2026-07-18T10:00:00+08:00\" tz=\"Asia/Shanghai\" format=\"relative\" time-format=\"24h\" reminder=\"minute:10\"}[![Icon|16](https://example.com/icon.svg)](https://example.com)<nodex://sessions/session-matrix>*&#x20;after 😀 中文 é*]{icon=\"📌\"}\n:::\n\n## Heading\n\n- Bullet\n1. Numbered\n- [x] Checked\n\n:::toggle[Toggle]\n  Nested\n:::\n\n```typescript\nconst core = 'rust';\n```\n\n> Quote\n\n---\n\n![Matrix](nodex://assets/matrix.png)\n\n:::table{header=\"none\" widths=\"160,auto\"}\n  | **Key** | Value |\n  | --- | --- |\n:::\n\n::page{id=\"matrix-page\"}\n\n::database{id=\"matrix-database\"}\n\n::page-ref{page=\"page-target\"}\n\n::database-view-ref{view=\"view-1\" hint=\"Planning\"}\n\n::synced-block-ref{source=\"synced-source-1\"}\n\n::template-ref{source=\"template-source-1\" hint=\"Review\"}",
+  "input": "**bold**:span[*&#x20;italic*:span[~~&#x20;strike~~]]:span[ underline]{underline}` code`[**&#x20;link**](https://nodex.local/matrix)\n\n:::callout[:span[**Before&#x20;**]:attachment{kind=\"file\" source=\"nodex://assets/example.txt\" name=\"example.txt\" mime=\"text/plain\" bytes=\"12\" origin=\"paste\"}:agent-config{mode=\"agent\" provider=\"openai\" model=\"gpt-5\" reasoning=\"high\" speed=\"fast\" future=\"value\"}:date{start=\"2026-07-18T09:00:00+08:00\" end=\"2026-07-18T10:00:00+08:00\" tz=\"Asia/Shanghai\" format=\"relative\" time-format=\"24h\" reminder=\"minute:10\"}[![Icon|16](https://example.com/icon.svg)](https://example.com)<nodex://sessions/session-matrix>*&#x20;after 😀 中文 é*]{icon=\"📌\"}\n:::\n\n:::prompt[**Review this change**]{sent=\"nodex://sessions/deleted-session\" sent-at=\"2026-10-31T08:30:00.000Z\"}\n  :::prompt[Focus on correctness]\n    Check boundaries\n  :::\n:::\n\n## Heading\n\n- Bullet\n1. Numbered\n- [x] Checked\n\n:::toggle[Toggle]\n  Nested\n:::\n\n```typescript\nconst core = 'rust';\n```\n\n> Quote\n\n---\n\n![Matrix](nodex://assets/matrix.png)\n\n:::table{header=\"none\" widths=\"160,auto\"}\n  | **Key** | Value |\n  | --- | --- |\n:::\n\n::page{id=\"matrix-page\"}\n\n::database{id=\"matrix-database\"}\n\n::page-ref{page=\"page-target\"}\n\n::database-view-ref{view=\"view-1\" hint=\"Planning\"}\n\n::synced-block-ref{source=\"synced-source-1\"}\n\n::template-ref{source=\"template-source-1\" hint=\"Review\"}",
   "blockTree": [
     {
       "id": "oracle-markdown-1",
@@ -140,6 +140,59 @@
     },
     {
       "id": "oracle-markdown-3",
+      "type": "prompt",
+      "props": {
+        "sentSessionId": "deleted-session",
+        "sentAt": "2026-10-31T08:30:00.000Z"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Review this change",
+          "styles": {
+            "bold": true
+          }
+        }
+      ],
+      "children": [
+        {
+          "id": "oracle-markdown-4",
+          "type": "prompt",
+          "props": {
+            "sentSessionId": "",
+            "sentAt": ""
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Focus on correctness",
+              "styles": {}
+            }
+          ],
+          "children": [
+            {
+              "id": "oracle-markdown-5",
+              "type": "paragraph",
+              "props": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Check boundaries",
+                  "styles": {}
+                }
+              ],
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "oracle-markdown-6",
       "type": "heading",
       "props": {
         "backgroundColor": "default",
@@ -158,7 +211,7 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-4",
+      "id": "oracle-markdown-7",
       "type": "bulletListItem",
       "props": {
         "backgroundColor": "default",
@@ -175,7 +228,7 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-5",
+      "id": "oracle-markdown-8",
       "type": "numberedListItem",
       "props": {
         "backgroundColor": "default",
@@ -192,7 +245,7 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-6",
+      "id": "oracle-markdown-9",
       "type": "checkListItem",
       "props": {
         "backgroundColor": "default",
@@ -210,7 +263,7 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-7",
+      "id": "oracle-markdown-10",
       "type": "toggleListItem",
       "props": {
         "backgroundColor": "default",
@@ -226,7 +279,7 @@
       ],
       "children": [
         {
-          "id": "oracle-markdown-8",
+          "id": "oracle-markdown-11",
           "type": "paragraph",
           "props": {
             "backgroundColor": "default",
@@ -245,7 +298,7 @@
       ]
     },
     {
-      "id": "oracle-markdown-9",
+      "id": "oracle-markdown-12",
       "type": "codeBlock",
       "props": {
         "language": "typescript"
@@ -260,7 +313,7 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-10",
+      "id": "oracle-markdown-13",
       "type": "quote",
       "props": {
         "backgroundColor": "default",
@@ -276,13 +329,13 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-11",
+      "id": "oracle-markdown-14",
       "type": "divider",
       "props": {},
       "children": []
     },
     {
-      "id": "oracle-markdown-12",
+      "id": "oracle-markdown-15",
       "type": "image",
       "props": {
         "textAlignment": "left",
@@ -295,7 +348,7 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-13",
+      "id": "oracle-markdown-16",
       "type": "table",
       "props": {
         "textColor": "default"
@@ -364,7 +417,7 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-14",
+      "id": "oracle-markdown-17",
       "type": "pageRef",
       "props": {
         "targetBlockId": "page-target"
@@ -372,7 +425,7 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-15",
+      "id": "oracle-markdown-18",
       "type": "databaseViewRef",
       "props": {
         "databaseViewId": "view-1",
@@ -381,7 +434,7 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-16",
+      "id": "oracle-markdown-19",
       "type": "syncedBlockRef",
       "props": {
         "sourceBlockId": "synced-source-1"
@@ -389,7 +442,7 @@
       "children": []
     },
     {
-      "id": "oracle-markdown-17",
+      "id": "oracle-markdown-20",
       "type": "templateRef",
       "props": {
         "sourceBlockId": "template-source-1",
@@ -398,5 +451,5 @@
       "children": []
     }
   ],
-  "markdown": "**bold**:span[*&#x20;italic*:span[~~&#x20;strike~~]]:span[ underline]{underline}` code`[**&#x20;link**](https://nodex.local/matrix)\n\n:::callout[:span[**Before&#x20;**]:attachment{kind=\"file\" source=\"nodex://assets/example.txt\" name=\"example.txt\" mime=\"text/plain\" bytes=\"12\" origin=\"paste\"}:agent-config{mode=\"agent\" provider=\"openai\" model=\"gpt-5\" reasoning=\"high\" speed=\"fast\" future=\"value\"}:date{start=\"2026-07-18T09:00:00+08:00\" end=\"2026-07-18T10:00:00+08:00\" tz=\"Asia/Shanghai\" format=\"relative\" time-format=\"24h\" reminder=\"minute:10\"}[![Icon|16](https://example.com/icon.svg)](https://example.com)<nodex://sessions/session-matrix>*&#x20;after 😀 中文 é*]{icon=\"📌\"}\n:::\n\n## Heading\n\n- Bullet\n1. Numbered\n- [x] Checked\n\n:::toggle[Toggle]\n  Nested\n:::\n\n```typescript\nconst core = 'rust';\n```\n\n> Quote\n\n---\n\n![Matrix](nodex://assets/matrix.png)\n\n:::table{header=\"none\" widths=\"160,auto\"}\n  | **Key** | Value |\n  | --- | --- |\n:::\n\n::page{id=\"matrix-page\"}\n\n::database{id=\"matrix-database\"}\n\n::page-ref{page=\"page-target\"}\n\n::database-view-ref{view=\"view-1\" hint=\"Planning\"}\n\n::synced-block-ref{source=\"synced-source-1\"}\n\n::template-ref{source=\"template-source-1\" hint=\"Review\"}"
+  "markdown": "**bold**:span[*&#x20;italic*:span[~~&#x20;strike~~]]:span[ underline]{underline}` code`[**&#x20;link**](https://nodex.local/matrix)\n\n:::callout[:span[**Before&#x20;**]:attachment{kind=\"file\" source=\"nodex://assets/example.txt\" name=\"example.txt\" mime=\"text/plain\" bytes=\"12\" origin=\"paste\"}:agent-config{mode=\"agent\" provider=\"openai\" model=\"gpt-5\" reasoning=\"high\" speed=\"fast\" future=\"value\"}:date{start=\"2026-07-18T09:00:00+08:00\" end=\"2026-07-18T10:00:00+08:00\" tz=\"Asia/Shanghai\" format=\"relative\" time-format=\"24h\" reminder=\"minute:10\"}[![Icon|16](https://example.com/icon.svg)](https://example.com)<nodex://sessions/session-matrix>*&#x20;after 😀 中文 é*]{icon=\"📌\"}\n:::\n\n:::prompt[**Review this change**]{sent=\"nodex://sessions/deleted-session\" sent-at=\"2026-10-31T08:30:00.000Z\"}\n  :::prompt[Focus on correctness]\n    Check boundaries\n  :::\n:::\n\n## Heading\n\n- Bullet\n1. Numbered\n- [x] Checked\n\n:::toggle[Toggle]\n  Nested\n:::\n\n```typescript\nconst core = 'rust';\n```\n\n> Quote\n\n---\n\n![Matrix](nodex://assets/matrix.png)\n\n:::table{header=\"none\" widths=\"160,auto\"}\n  | **Key** | Value |\n  | --- | --- |\n:::\n\n::page{id=\"matrix-page\"}\n\n::database{id=\"matrix-database\"}\n\n::page-ref{page=\"page-target\"}\n\n::database-view-ref{view=\"view-1\" hint=\"Planning\"}\n\n::synced-block-ref{source=\"synced-source-1\"}\n\n::template-ref{source=\"template-source-1\" hint=\"Review\"}"
 }

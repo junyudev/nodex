@@ -206,6 +206,15 @@ fn render(block: &Block, number: u64, mode: Mode) -> Rendered {
                 return container(block, "callout", text, attrs, &block.children, mode);
             }
         },
+        BlockKind::Prompt { text, sent } => {
+            let attrs = sent.as_ref().map_or_else(Vec::new, |sent| {
+                vec![
+                    Attribute::value("sent", &crate::links::session_link(&sent.session)),
+                    Attribute::value("sent-at", &sent.at),
+                ]
+            });
+            return container(block, "prompt", text, attrs, &block.children, mode);
+        }
         BlockKind::Code { language, code } => {
             let fence = "`".repeat(3.max(inline::longest_run(code, '`') + 1));
             let language = crate::code_languages::language_id(language);

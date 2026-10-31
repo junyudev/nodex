@@ -45,6 +45,7 @@ import { createReadonlyDateMentionInlineContentSpec } from "./date-mention-inlin
 import { createReadonlyPageMentionInlineContentSpec } from "./page-mention-inline-content";
 import { resolveThreadMentionDisplay } from "@/lib/editor-model/thread-mention-display";
 import { createCalloutBlock } from "./callout-block";
+import { createPromptBlockSpec } from "./prompt-block";
 import { editorCodeBlockOptions } from "./code-block-options";
 import { createNfmCodeBlockSpec } from "./nfm-code-block-spec";
 import { imageBlockSpec } from "./image-block";
@@ -272,6 +273,7 @@ export const readonlyMarkdownBlockNotePreviewSchema = BlockNoteSchema.create({
     divider: defaultBlockSpecs.divider,
     image: imageBlockSpec(),
     callout: createCalloutBlock(),
+    prompt: createPromptBlockSpec(),
     page: createReadonlyPageBlockSpec(),
     database: createReadonlyDatabaseBlockSpec(),
     canvas: createReadonlyCanvasBlockSpec(),

@@ -41,6 +41,14 @@ const configSignature = (input: unknown): string => {
 };
 
 describe("Block Document schema parity", () => {
+  test("keeps Prompt inline and its send history separate from presentation props", () => {
+    expect(nfmSchema.blockSchema.prompt).toEqual({
+      type: "prompt",
+      content: "inline",
+      propSchema: { sentSessionId: { default: "" }, sentAt: { default: "" } },
+    });
+  });
+
   test("shares every writable custom config with the renderer schema", () => {
     expect(sortedKeys(headlessBlockDocumentSchema.inlineContentSchema)).toBe(
       sortedKeys(nfmSchema.inlineContentSchema),

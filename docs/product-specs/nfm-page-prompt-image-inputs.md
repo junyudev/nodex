@@ -137,6 +137,7 @@ Composer's attachment row; an attachment itself has no placeholder.
 
 Page prompt construction should:
 
+- project each `prompt` Block to a first-line paragraph followed by its children, recursively; omit the Prompt wrapper and its send-history props
 - walk the selected BlockNote tree in document order, including table cells
 - collect image inputs from image Blocks and inline images
 - replace image Blocks with placeholder paragraphs and inline images with placeholder text
@@ -157,6 +158,7 @@ Required coverage:
 - a captioned image block becomes `[Image #1] (caption: ...)`
 - a captionless image block becomes `[Image #1]`
 - multiple images are numbered in prompt order
+- Prompt first-line and child images keep their reading order and Agent config sidecars while the send record is omitted
 - image-only content is sendable
 - extracted image inputs retain original source and caption metadata
 - data URL, absolute local path, and `nodex://assets/...` sources become the correct app-server input items, and a web image stays in the text

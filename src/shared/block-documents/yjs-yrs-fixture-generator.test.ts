@@ -122,6 +122,20 @@ const schemaMatrixContent = [
     ],
   },
   {
+    id: "matrix-prompt",
+    type: "prompt",
+    props: { sentSessionId: "deleted-session", sentAt: "2026-10-31T08:30:00.000Z" },
+    content: [{ type: "text", text: "Review this change", styles: { bold: true } }],
+    children: [
+      {
+        id: "matrix-prompt-child",
+        type: "prompt",
+        content: "Focus on correctness",
+        children: [{ id: "matrix-prompt-detail", type: "paragraph", content: "Check boundaries" }],
+      },
+    ],
+  },
+  {
     id: "matrix-heading",
     type: "heading",
     props: { level: 2 },

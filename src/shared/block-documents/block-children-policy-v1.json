@@ -18,6 +18,7 @@
     "divider": { "acceptance": "never", "layout": "atomic" },
     "image": { "acceptance": "never", "layout": "atomic" },
     "callout": { "acceptance": "always", "layout": "enclosed" },
+    "prompt": { "acceptance": "always", "layout": "enclosed" },
     "page": { "acceptance": "never", "layout": "resource" },
     "database": { "acceptance": "never", "layout": "resource" },
     "canvas": { "acceptance": "never", "layout": "resource" },

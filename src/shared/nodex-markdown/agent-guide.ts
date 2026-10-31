@@ -7,6 +7,7 @@ export const NODEX_MARKDOWN_AGENT_RULES = [
   NODEX_MARKDOWN_COMPACT_HINT,
   "Write headings, space-indented lists, tasks, quotes, fenced code, pipe tables, images and GitHub alerts normally. A single newline is a line break; a blank line separates Blocks. Use <br> for an intentional empty paragraph, including an insertion fragment. An empty body is the empty Document.",
   'A toggle is :::toggle[Title], its body indented two spaces, and a closing :::. Use heading="2" on its attribute list for a toggle heading. A paragraph with children is :::paragraph[Text] with the same body layout. Callouts are > [!TIP], > [!NOTE], > [!IMPORTANT], > [!WARNING] or > [!CAUTION], or :::callout[Text]{icon="📌"}.',
+  'A Prompt is :::prompt[Rich first line] with a body indented two spaces and a closing :::. Its optional paired sent="nodex://sessions/SESSION_ID" and sent-at="2026-10-31T08:30:00.000Z" attributes record the last successful send. Writing a Prompt never sends anything. Agents may create prompts but must not fabricate send records; preserve existing records even if their chat was deleted.',
   'Block colors end text as {color="red" background="yellow"}. Inline underline and colors use :span[text]{underline color="red" background="yellow"}. Supported colors: gray, brown, red, orange, yellow, green, blue, purple and pink. Tables needing header, widths or color use :::table{header="none" widths="120,auto" color="blue"} around a pipe table. A cell takes {background="yellow"}.',
   "An image is ![plain caption](url), resized as ![caption|480](url). Within text it is an inline image; [![alt](image)](link) makes it linked. Images have no colors. Inline math uses $$source$$; math Blocks use $$ fences.",
   'Page and chat mentions are <nodex://pages/ID> and <nodex://sessions/ID>; chat mentions always identify a Session. [Title](nodex://pages/ID) is a link with its own text. Dates use :date{start="2026-10-28"} with optional end, tz, format, time-format and reminder.',
@@ -18,7 +19,7 @@ export const NODEX_MARKDOWN_AGENT_RULES = [
 
 export const NODEX_MARKDOWN_AGENT_GUIDE = {
   format: "markdown" as const,
-  specificationVersion: "5",
+  specificationVersion: "6",
   instructions: NODEX_MARKDOWN_AGENT_RULES.join(" "),
   examples: [
     "# Launch plan\n\nContext paragraph\n\n- [ ] Confirm scope\n- [x] Record decision",

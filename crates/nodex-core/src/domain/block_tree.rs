@@ -32,6 +32,7 @@ pub const REGISTERED_BLOCK_TYPES: &[&str] = &[
     "divider",
     "image",
     "callout",
+    "prompt",
     "canvas",
     "page",
     "database",
@@ -838,9 +839,19 @@ mod tests {
         let tree = decode_block_tree(&body, &transaction).expect("valid BlockTree");
         let blocks = scan_block_tree(&tree);
 
-        assert_eq!(blocks.len(), 19);
+        assert_eq!(blocks.len(), 22);
         assert_eq!(blocks[0].block_type, "paragraph");
-        assert_eq!(blocks[7].parent_block_id.as_deref(), Some("matrix-toggle"));
+        for (id, parent) in [
+            ("matrix-toggle-child", "matrix-toggle"),
+            ("matrix-prompt-child", "matrix-prompt"),
+            ("matrix-prompt-detail", "matrix-prompt-child"),
+        ] {
+            let block = blocks
+                .iter()
+                .find(|block| block.id == id)
+                .expect("nested Block");
+            assert_eq!(block.parent_block_id.as_deref(), Some(parent));
+        }
         assert_eq!(
             blocks.last().map(|block| block.block_type.as_str()),
             Some("templateRef")

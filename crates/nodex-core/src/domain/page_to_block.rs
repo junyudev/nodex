@@ -125,6 +125,7 @@ mod tests {
                 ),
                 (LibraryStructuralTurnIntoTarget::Quote, "quote"),
                 (LibraryStructuralTurnIntoTarget::Callout, "callout"),
+                (LibraryStructuralTurnIntoTarget::Prompt, "prompt"),
                 (LibraryStructuralTurnIntoTarget::Code, "codeBlock"),
                 (LibraryStructuralTurnIntoTarget::Equation, "mathBlock"),
             ])
@@ -150,7 +151,7 @@ mod tests {
             },
         ];
         let targets = all_targets();
-        assert_eq!(targets.len(), 15);
+        assert_eq!(targets.len(), 16);
         for (target, expected_type) in targets {
             let plan = plan_page_to_block_transformation("page-a", &title, &body, &target)
                 .expect("valid transformation");

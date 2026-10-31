@@ -430,6 +430,7 @@ const parseStructuralTurnIntoTarget = (value: unknown, label: string) => {
     target.kind === "toggle_list" ||
     target.kind === "quote" ||
     target.kind === "callout" ||
+    target.kind === "prompt" ||
     target.kind === "code" ||
     target.kind === "equation"
   ) {

@@ -6,7 +6,8 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { Awareness, applyAwarenessUpdate } from "y-protocols/awareness";
 import * as Y from "yjs";
-import { materializePageDocument } from "./block-document-codec";
+import { materializeBlockDocumentBody, materializePageDocument } from "./block-document-codec";
+import { PAGE_DOCUMENT_SCHEMA_VERSION } from "./page-document";
 import { assertValidBlockDocument } from "./block-structure";
 
 interface BridgeSummary {
@@ -472,6 +473,17 @@ describe("Yjs/Yrs compatibility", () => {
     for (const blockType of manifest.matrix.blockTypes) {
       expect(nodeNames, blockType).toContain(blockType);
     }
+
+    const prompt = materializeBlockDocumentBody({
+      body: yjsDocument.getXmlFragment("body"),
+      schemaVersion: PAGE_DOCUMENT_SCHEMA_VERSION,
+      schemaLabel: "Page",
+    }).blockTree.find((block) => block.id === "matrix-prompt");
+    expect(prompt).toMatchObject({
+      type: "prompt",
+      props: { sentSessionId: "deleted-session", sentAt: "2026-10-31T08:30:00.000Z" },
+      children: [{ type: "prompt", props: { sentSessionId: "", sentAt: "" } }],
+    });
 
     const beforeThird = Y.encodeStateVector(yjsDocument);
     yjsDocument.transact(() => {

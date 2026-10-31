@@ -24,6 +24,7 @@ const WRAPPED_TYPES: &[&str] = &[
     "divider",
     "image",
     "callout",
+    "prompt",
     "database",
     "pageRef",
     "databaseViewRef",
@@ -293,6 +294,45 @@ mod tests {
         };
         assert_eq!(placeholder_block_id.as_deref(), Some("empty-body"));
         assert_eq!(body_roots, vec![empty_paragraph("empty-body")]);
+    }
+
+    #[test]
+    fn prompt_to_page_preserves_send_history_and_the_complete_subtree() {
+        let root = MaterializedBlockNode {
+            id: "prompt-root".into(),
+            block_type: "prompt".into(),
+            props: BTreeMap::from([
+                ("sentSessionId".into(), serde_json::json!("deleted-session")),
+                (
+                    "sentAt".into(),
+                    serde_json::json!("2026-10-31T08:30:00.000Z"),
+                ),
+            ]),
+            content: Some(
+                serde_json::json!([{"type":"text","text":"Review","styles":{"bold":true}}]),
+            ),
+            children: vec![MaterializedBlockNode {
+                id: "child".into(),
+                block_type: "paragraph".into(),
+                props: BTreeMap::new(),
+                content: Some(
+                    serde_json::json!([{"type":"text","text":"Check boundaries","styles":{}}]),
+                ),
+                children: Vec::new(),
+            }],
+        };
+        let planned =
+            plan_block_to_page_transformation(&root, "prompt-root", "page", "empty").unwrap();
+        let BlockToPageTransformation::Wrap {
+            wrapped_root,
+            reason,
+            ..
+        } = planned
+        else {
+            panic!("Prompt needs a Page wrapper");
+        };
+        assert_eq!(wrapped_root, root);
+        assert_eq!(reason, PageWrapperReason::TypeRequiresWrapper);
     }
 
     #[test]

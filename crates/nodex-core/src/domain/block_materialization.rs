@@ -20,6 +20,7 @@ const INLINE_BLOCK_TYPES: &[&str] = &[
     "mathBlock",
     "quote",
     "callout",
+    "prompt",
 ];
 const NONE_BLOCK_TYPES: &[&str] = &[
     "divider",

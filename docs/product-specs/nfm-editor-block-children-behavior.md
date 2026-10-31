@@ -17,10 +17,16 @@ must declare a rule before it can enter a current document.
 | `paragraph`, `bulletListItem`, `numberedListItem`, `checkListItem` | Yes                                | Indented child group                             |
 | `toggleListItem`                                                   | Yes                                | Disclosure child group                           |
 | `heading`                                                          | Only when `isToggleable` is `true` | Disclosure child group when enabled              |
-| `quote`, `callout`                                                 | Yes                                | Children remain inside the same visual container |
+| `quote`, `callout`, `prompt`                                       | Yes                                | Children remain inside the same visual container |
 | `codeBlock`, `table`, `divider`, `image`                           | No                                 | Atomic leaf                                      |
 | `page`, `database`, `canvas`                                       | No                                 | Independently owned resource shell               |
 | `pageRef`, `databaseViewRef`, `syncedBlockRef`, `templateRef`      | No                                 | Reference leaf                                   |
+
+A `prompt` Block always accepts enclosed children, with inline rich text on its
+first line. Its only props are the paired `sentSessionId` and `sentAt` strings,
+empty until a successful send. They retain history without becoming a live
+Session reference; deleting a chat does not invalidate the Block. Exact text
+and portable projection follow [Nodex Markdown](../references/nodex-markdown.md#prompt-blocks).
 
 Normal headings are never changed into toggle headings merely to retain an
 illegal child edge.

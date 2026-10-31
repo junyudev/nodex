@@ -420,6 +420,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn prompt_send_history_does_not_create_a_session_reference() {
+        let records = super::derive_block_document_records(&[super::MaterializedBlockNode {
+            id: "prompt".into(),
+            block_type: "prompt".into(),
+            props: std::collections::BTreeMap::from([
+                ("sentSessionId".into(), serde_json::json!("deleted-session")),
+                (
+                    "sentAt".into(),
+                    serde_json::json!("2026-10-31T08:30:00.000Z"),
+                ),
+            ]),
+            content: Some(serde_json::json!([{"type":"text","text":"Review","styles":{}}])),
+            children: Vec::new(),
+        }])
+        .expect("send history needs no existing chat");
+        assert!(records.references.is_empty());
+    }
+
+    #[test]
     fn inline_images_are_assets_and_caption_markup_is_plain_text() {
         let blocks: Vec<MaterializedBlockNode> = serde_json::from_value(serde_json::json!([
             {"id":"text","type":"paragraph","props":{},"content":[{"type":"inlineImage","props":{"url":"nodex://files/inline","alt":"Searchable badge","width":32,"href":"nodex://pages/linked"}},{"type":"threadMention","props":{"uuid":"session"}}],"children":[]},

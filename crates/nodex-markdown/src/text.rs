@@ -64,6 +64,7 @@ fn collect_blocks(blocks: &[Block], parts: &mut Vec<String>) {
             | BlockKind::Check { text, .. }
             | BlockKind::Toggle { text, .. }
             | BlockKind::Quote { text, .. }
+            | BlockKind::Prompt { text, .. }
             | BlockKind::Callout { text, .. } => collect_inline(text, parts),
             BlockKind::Image { caption, .. } => parts.push(caption.clone()),
             BlockKind::Code { code, .. } => parts.push(code.clone()),
@@ -100,6 +101,7 @@ fn collect_lines(blocks: &[Block], lines: &mut Vec<String>) {
             | BlockKind::Check { text, .. }
             | BlockKind::Toggle { text, .. }
             | BlockKind::Quote { text, .. }
+            | BlockKind::Prompt { text, .. }
             | BlockKind::Callout { text, .. } => lines.push(inline_text(text)),
             BlockKind::Code { code, .. } => lines.extend(code.lines().map(str::to_owned)),
             _ => {

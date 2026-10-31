@@ -101,7 +101,8 @@ The center of a collapsed Toggle list or toggle Heading is an append-to-children
 ## Turn into
 
 `Turn into` supports Text, Heading 1/2/3, Toggle heading 1/2/3, Bulleted list,
-Numbered list, To-do list, Toggle list, Quote, Callout, and Code. An
+Numbered list, To-do list, Toggle list, Quote, Callout, Prompt, Code, and Block
+equation. A Prompt target starts with empty send-history props. An
 ordinary-only selection is reclassified in one local collaborative
 transaction. When the selected host forest contains a Page, Core performs one
 typed structural transaction for the complete forest. Canvas and Database do

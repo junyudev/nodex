@@ -2,6 +2,143 @@
   "about": "Round-trip contract of Nodex Markdown, docs/references/nodex-markdown.md. Each case's `markdown` is the one exact text of its `blocks`: writing the Blocks gives the text, and reading the text in exact mode gives the Blocks. Blocks are spelled as Nodex stores them, without identities except an owning shell's, props at their defaults, or empty content and children. `gfm` marks text that uses no Nodex extension and that GitHub Flavored Markdown, read as Nodex's Markdown reader reads it today, reads as the same Blocks; `reads` are other GitHub Flavored Markdown spellings that read as them too, checked against today's reader; `nodexReads` are spellings only Nodex Markdown reads as them, such as unindented container bodies, ```math fences, \\(…\\) math and HTML style tags. `rejects` are texts an exact write refuses rather than reading as something else; `boundaryReads` say how such text reads everywhere else, where a container without its closing line still reads as a container so a reply reads while it streams.",
   "cases": [
     {
+      "name": "a prompt keeps rich first-line content and nested children",
+      "markdown": ":::prompt[Review **this change**]{sent=\"nodex://sessions/deleted-session\" sent-at=\"2026-10-31T08:30:00.000Z\"}\n  Focus on correctness.\n\n  - Check boundary cases\n:::",
+      "nodexReads": [
+        ":::prompt[Review **this change**]{sent=\"nodex://sessions/deleted-session\" sent-at=\"2026-10-31T16:30:00+08:00\"}\n  Focus on correctness.\n\n  - Check boundary cases\n:::"
+      ],
+      "blocks": [
+        {
+          "type": "prompt",
+          "props": {
+            "sentSessionId": "deleted-session",
+            "sentAt": "2026-10-31T08:30:00.000Z"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Review "
+            },
+            {
+              "type": "text",
+              "text": "this change",
+              "styles": {
+                "bold": true
+              }
+            }
+          ],
+          "children": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Focus on correctness."
+                }
+              ]
+            },
+            {
+              "type": "bulletListItem",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Check boundary cases"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an unsent prompt has no send attributes",
+      "markdown": ":::prompt[Draft]\n:::",
+      "blocks": [
+        {
+          "type": "prompt",
+          "content": [
+            {
+              "type": "text",
+              "text": "Draft"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a prompt can have an empty first line",
+      "markdown": ":::prompt\n  Body\n:::",
+      "nodexReads": [
+        ":::prompt[]\n  Body\n:::"
+      ],
+      "blocks": [
+        {
+          "type": "prompt",
+          "children": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Body"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prompts nest inside prompts",
+      "markdown": ":::prompt[Outer]\n  :::prompt[Inner]\n    Detail\n  :::\n:::",
+      "blocks": [
+        {
+          "type": "prompt",
+          "content": [
+            {
+              "type": "text",
+              "text": "Outer"
+            }
+          ],
+          "children": [
+            {
+              "type": "prompt",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inner"
+                }
+              ],
+              "children": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Detail"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a prompt send Session link percent-encodes its identity",
+      "markdown": ":::prompt{sent=\"nodex://sessions/chat%20one%2F%E4%BA%8C\" sent-at=\"2026-10-31T08:30:00.123Z\"}\n:::",
+      "blocks": [
+        {
+          "type": "prompt",
+          "props": {
+            "sentSessionId": "chat one/二",
+            "sentAt": "2026-10-31T08:30:00.123Z"
+          }
+        }
+      ]
+    },
+    {
       "name": "an empty Document is empty text",
       "markdown": "",
       "gfm": true,
@@ -2033,6 +2170,14 @@
     }
   ],
   "rejects": [
+    {"name": "prompt send history needs a timestamp", "markdown": ":::prompt[Draft]{sent=\"nodex://sessions/s\"}\n:::"},
+    {"name": "prompt send history needs a Session", "markdown": ":::prompt[Draft]{sent-at=\"2026-10-31T08:30:00Z\"}\n:::"},
+    {"name": "prompt send history refuses a Page link", "markdown": ":::prompt[Draft]{sent=\"nodex://pages/p\" sent-at=\"2026-10-31T08:30:00Z\"}\n:::"},
+    {"name": "prompt send history refuses malformed Session links", "markdown": ":::prompt[Draft]{sent=\"nodex://sessions/%ZZ\" sent-at=\"2026-10-31T08:30:00Z\"}\n:::"},
+    {"name": "prompt send history refuses invalid dates", "markdown": ":::prompt[Draft]{sent=\"nodex://sessions/s\" sent-at=\"2026-02-30T08:30:00Z\"}\n:::"},
+    {"name": "prompt send history refuses dates without times", "markdown": ":::prompt[Draft]{sent=\"nodex://sessions/s\" sent-at=\"2026-10-31\"}\n:::"},
+    {"name": "prompt send history refuses empty attribute values", "markdown": ":::prompt[Draft]{sent=\"\" sent-at=\"\"}\n:::"},
+    {"name": "prompts have no color props", "markdown": ":::prompt[Draft]{color=\"red\"}\n:::"},
     {
       "name": "an unclosed container",
       "markdown": ":::toggle[Open]\nNever closed",

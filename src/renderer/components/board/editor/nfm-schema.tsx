@@ -11,6 +11,7 @@ import { createAgentConfigInlineContentSpec } from "./agent-config-chip";
 import { inlineImageInlineContentSpec } from "./inline-image-inline-content";
 import { createAttachmentInlineContentSpec } from "./attachment-chip";
 import { createCalloutBlock } from "./callout-block";
+import { createPromptBlockSpec } from "./prompt-block";
 import { createCanvasBlockSpec } from "./canvas-block";
 import { createPageBlockSpec, createPageRefBlockSpec } from "./page-outliner-block";
 import { createDateMentionInlineContentSpec } from "./date-mention-inline-content-spec";
@@ -42,6 +43,7 @@ export const nfmSchema = BlockNoteSchema.create({
     divider: defaultBlockSpecs.divider,
     image: imageBlockSpec(),
     callout: createCalloutBlock(),
+    prompt: createPromptBlockSpec(),
     page: createPageBlockSpec(),
     database: createDatabaseBlockSpec(),
     canvas: createCanvasBlockSpec(),

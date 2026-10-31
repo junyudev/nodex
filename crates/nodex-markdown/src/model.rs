@@ -283,6 +283,11 @@ pub enum BlockKind {
         text: Vec<Inline>,
         colors: Colors,
     },
+    /// Send history is metadata, never a live Session reference.
+    Prompt {
+        text: Vec<Inline>,
+        sent: Option<PromptSendRecord>,
+    },
     /// `language` is a code language catalog id; plain text is `text`.
     Code {
         language: String,
@@ -315,6 +320,38 @@ pub enum BlockKind {
         source: String,
         hint: String,
     },
+}
+
+/// The last successful send, retained even after its chat is deleted.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PromptSendRecord {
+    pub session: String,
+    pub at: String,
+}
+
+impl PromptSendRecord {
+    /// Validate syntax only; this record never resolves or retains a Session.
+    pub fn new(session: &str, at: &str) -> Result<Option<Self>, String> {
+        if session.is_empty() && at.is_empty() {
+            return Ok(None);
+        }
+        if session.is_empty() || at.is_empty() {
+            return Err("prompt send history needs both a Session and sent-at timestamp".into());
+        }
+        if crate::links::parse_session_link(&crate::links::session_link(session)).as_deref()
+            != Some(session)
+        {
+            return Err("prompt send history needs a valid Session id".into());
+        }
+        let at = chrono::DateTime::parse_from_rfc3339(at)
+            .map_err(|_| "prompt sent-at must be an RFC 3339 timestamp".to_owned())?
+            .with_timezone(&chrono::Utc)
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        Ok(Some(Self {
+            session: session.into(),
+            at,
+        }))
+    }
 }
 
 /// A Block and the Blocks under it. Only an owning Page, Database or Canvas carries its
@@ -360,6 +397,7 @@ impl Block {
             | BlockKind::Check { text, .. }
             | BlockKind::Toggle { text, .. }
             | BlockKind::Quote { text, .. }
+            | BlockKind::Prompt { text, .. }
             | BlockKind::Callout { text, .. } => Some(text),
             _ => None,
         }
@@ -374,7 +412,8 @@ impl Block {
             | BlockKind::Check { .. }
             | BlockKind::Toggle { .. }
             | BlockKind::Quote { .. }
-            | BlockKind::Callout { .. } => true,
+            | BlockKind::Callout { .. }
+            | BlockKind::Prompt { .. } => true,
             BlockKind::Heading { toggleable, .. } => *toggleable,
             _ => false,
         }
@@ -492,6 +531,24 @@ fn block_from_json(value: &Value, path: &str) -> Result<Block, ModelError> {
             text: text()?,
             colors,
         },
+        "prompt" => {
+            for name in ["sentSessionId", "sentAt"] {
+                if props.get(name).is_some_and(|value| !value.is_string()) {
+                    return Err(model_error(
+                        path,
+                        format!("prompt `{name}` must be a string"),
+                    ));
+                }
+            }
+            BlockKind::Prompt {
+                text: text()?,
+                sent: PromptSendRecord::new(
+                    string_prop(props, "sentSessionId").unwrap_or(""),
+                    string_prop(props, "sentAt").unwrap_or(""),
+                )
+                .map_err(|message| model_error(path, message))?,
+            }
+        }
         // A stored alias or label, such as `ts`, names its catalog language.
         "codeBlock" => BlockKind::Code {
             language: crate::code_languages::language_id(
@@ -852,6 +909,7 @@ pub fn normalize_blocks(blocks: &mut [Block]) {
             | BlockKind::Check { text, .. }
             | BlockKind::Toggle { text, .. }
             | BlockKind::Quote { text, .. }
+            | BlockKind::Prompt { text, .. }
             | BlockKind::Callout { text, .. } => normalize_inline(text),
             BlockKind::Table(table) => normalize_table(table),
             _ => {}
@@ -1152,6 +1210,13 @@ fn block_to_json(block: &Block) -> Value {
             }
             put_colors(&mut props, colors);
             ("callout", inline_to_json(text))
+        }
+        BlockKind::Prompt { text, sent } => {
+            if let Some(sent) = sent {
+                props.insert("sentSessionId".into(), json!(sent.session));
+                props.insert("sentAt".into(), json!(sent.at));
+            }
+            ("prompt", inline_to_json(text))
         }
         BlockKind::Code { language, code } => {
             if language != PLAIN_CODE_LANGUAGE {
