@@ -1,0 +1,28 @@
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_039f18d9f057b1::t_ef351df33defc0 32-33,84,89-95,143-171
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.test.tsx
+  s_039f18d9f057b1::t_6c2029bc490908 465-490
+src/renderer/features/local-conversation/view/shared/conversation-attribution.tsx
+  s_039f18d9f057b1::t_416be17d589dd1 1-29
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_039f18d9f057b1::t_6c2029bc490908 482-506
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_039f18d9f057b1::t_07f922803d3098 82,921-924,933,935-946,948,950,952,956,1534,1536
+  s_039f18d9f057b1::t_ef351df33defc0 959-960
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "34be75bc2930d6a9ba857e4a51e23d7e1fb15663",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
