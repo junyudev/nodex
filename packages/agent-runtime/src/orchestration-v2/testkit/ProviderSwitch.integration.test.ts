@@ -3,6 +3,8 @@ import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudge
 import { assert, describe, it } from "@effect/vitest";
 import {
   CommandId,
+  ContextHandoffId,
+  type OrchestrationV2ContextHandoff,
   type ChatAttachment,
   EventId,
   MessageId,
@@ -127,6 +129,8 @@ function makeTestAdapter(input: {
   readonly tokenUsageByRunOrdinal?: Readonly<
     Record<number, Omit<OrchestrationV2ProviderTurnTokenUsage, "updatedAt">>
   >;
+  readonly compactBoundary?: boolean;
+  readonly failureClass?: import("@t3tools/contracts").OrchestrationV2ProviderFailureClass;
   readonly failedRunOrdinals?: ReadonlySet<number>;
   readonly interruptedRunOrdinals?: ReadonlySet<number>;
   readonly holdRunOrdinal?: number;
@@ -396,7 +400,7 @@ function makeTestAdapter(input: {
                         failure: makeProviderFailure({
                           message: "Simulated provider failure.",
                           code: "simulated_failure",
-                          class: "provider_error",
+                          class: input.failureClass ?? "provider_error",
                         }),
                       }
                     : { status: terminalStatus, failure: null }),
@@ -416,6 +420,29 @@ function makeTestAdapter(input: {
                   },
                 });
               }
+              if (input.compactBoundary && turnInput.message.text === "/compact")
+                yield* PubSub.publish(events, {
+                  type: "turn_item.updated",
+                  driver: input.driver,
+                  turnItem: {
+                    id: TurnItemId.make(`compact:${turnInput.runId}`),
+                    threadId: turnInput.threadId,
+                    runId: turnInput.runId,
+                    nodeId: turnInput.rootNodeId,
+                    providerThreadId: turnInput.providerThread.id,
+                    providerTurnId,
+                    nativeItemRef: null,
+                    parentItemId: null,
+                    ordinal: turnInput.runOrdinal * 100,
+                    status: "completed",
+                    title: "Context compacted",
+                    type: "compaction",
+                    driver: input.driver,
+                    startedAt: eventTime,
+                    completedAt: eventTime,
+                    updatedAt: eventTime,
+                  },
+                });
               for (const event of providerEvents) {
                 yield* PubSub.publish(events, event);
               }
@@ -4878,3 +4905,395 @@ describe("orchestration v2 context clearing", () => {
     ),
   );
 });
+
+describe("context recovery in the same native conversation", () => {
+  it.live.each(["success", "codex", "restart", "failed", "no-boundary", "no-usage"] as const)(
+    "compacts before one retained retry (%s)",
+    (outcome) =>
+      Effect.gen(function* () {
+        const cwd = yield* checkpointWorkspace(`context-recovery-${outcome}`);
+        const codex = outcome === "codex" || outcome === "restart";
+        const selection = codex ? CODEX_MODEL_SELECTION : CLAUDE_MODEL_SELECTION;
+        const capturedTurns = yield* Ref.make<readonly CapturedTurn[]>([]);
+        const compactEntered = yield* Deferred.make<void>();
+        const releaseCompact = yield* Deferred.make<void>();
+        const adapter = makeTestAdapter({
+          instanceId: selection.instanceId,
+          driver: codex ? CODEX_DRIVER : CLAUDE_DRIVER,
+          capabilities: codex ? CodexProviderCapabilitiesV2 : ClaudeProviderCapabilitiesV2,
+          modelSelection: selection,
+          responseByRunOrdinal: {},
+          capturedTurns,
+          getModelContextWindow: () => 1_000_000,
+          tokenUsageByRunOrdinal: {
+            1: { usedTokens: 984_000, maxTokens: 1_000_000 },
+            ...(outcome === "no-usage" ? {} : { 3: { usedTokens: 4_000, maxTokens: 1_000_000 } }),
+          },
+          failureClass: "transport_error",
+          compactBoundary: outcome !== "no-boundary",
+          failedRunOrdinals: new Set(outcome === "failed" || outcome === "restart" ? [1, 3] : [1]),
+          holdRunOrdinal: 3,
+          holdFirstTurn: compactEntered,
+          releaseFirstTurn: releaseCompact,
+        });
+        const runtime = () =>
+          ProviderReplayHarness.layerWithRegistry(
+            { name: `context-recovery-${outcome}`, runtimePolicyOverride: { cwd } },
+            ProviderAdapterRegistry.layerFromAdapters([adapter]),
+            {
+              databaseLayer: SqlitePersistence.layerFromPath(`${cwd}/runtime.sqlite`).pipe(
+                Layer.provide(NodeServices.layer),
+              ),
+              checkpointStoreLayer: CheckpointStore.layerWithoutWorkspaceState,
+              recoverOnStartup: true,
+            },
+          );
+        yield* Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+          const sink = yield* EventSink.EventSinkV2;
+          const waitRun = (ordinal: number, status: string) =>
+            sink.stream({ afterSequence: 0, eventType: "run.updated" }).pipe(
+              Stream.filter(
+                ({ event }) =>
+                  event.type === "run.updated" &&
+                  event.threadId === threadId &&
+                  event.payload.ordinal === ordinal &&
+                  event.payload.status === status,
+              ),
+              Stream.runHead,
+              Effect.timeout("5 seconds"),
+            );
+          yield* orchestrator.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make("create:recovery"),
+            threadId,
+            projectId,
+            title: "Context recovery",
+            modelSelection: selection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdBy: "user",
+            creationSource: "web",
+          });
+          const send = (key: string, text: string) =>
+            orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make(`send:${key}`),
+              threadId,
+              messageId: MessageId.make(`message:${key}`),
+              text,
+              attachments: [],
+              dispatchMode: { type: "start_immediately" },
+              createdBy: "user",
+              creationSource: "web",
+            });
+          yield* send("first", "Work on the change");
+          yield* worker.drain();
+          yield* waitRun(1, "failed");
+          const first = yield* orchestrator.getThreadProjection(threadId);
+          const native = first.providerThreads.find(
+            (row) => row.id === first.runs[0]!.providerThreadId,
+          )!;
+          const now = yield* DateTime.now;
+          const handoff: OrchestrationV2ContextHandoff = {
+            id: ContextHandoffId.make("unseen-result"),
+            threadId,
+            targetRunId: first.runs[0]!.id,
+            fromProviderThreadIds: [],
+            toProviderThreadId: native.id,
+            coveredRunOrdinals: { from: 1, to: 1 },
+            strategy: "manual_context",
+            status: "ready",
+            summaryMessageId: null,
+            summaryText: "UNSEEN_RESULT",
+            createdByProviderInstanceId: null,
+            createdAt: now,
+            updatedAt: now,
+          };
+          yield* sink.write({
+            events: [
+              {
+                id: EventId.make("unseen"),
+                type: "context-handoff.updated",
+                threadId,
+                occurredAt: now,
+                payload: handoff,
+              },
+            ],
+          });
+          const request = "Apply the retained request exactly once 界";
+          yield* send("blocked", request);
+          yield* worker.drain();
+          yield* waitRun(2, "failed");
+          const blocked = yield* orchestrator.getThreadProjection(threadId);
+          const failed = blocked.runs[1]!;
+          const error = blocked.turnItems.find(
+            (item) => item.runId === failed.id && item.type === "error",
+          );
+          assert.equal(
+            error?.type === "error" ? error.failure.code : null,
+            "context_budget_exhausted",
+          );
+          if (error?.type === "error")
+            assert.deepInclude(error.failure.contextBudget, {
+              occupancy: 984_000,
+              capacity: 1_000_000,
+              allowance: 0,
+            });
+          assert.lengthOf(yield* Ref.get(capturedTurns), 1);
+          const recovery = {
+            type: "run.context-recover" as const,
+            threadId,
+            failedRunId: failed.id,
+            commandId: CommandId.make("recover:compact"),
+          };
+          const admitted = yield* orchestrator.dispatch(recovery);
+          const repeated = yield* orchestrator.dispatch(recovery);
+          assert.equal(repeated.sequence, admitted.sequence);
+          yield* Deferred.await(compactEntered);
+          assert.deepEqual(
+            (yield* Ref.get(capturedTurns)).map((turn) => turn.text),
+            ["Work on the change", "/compact"],
+          );
+          yield* Deferred.succeed(releaseCompact, undefined);
+          yield* waitRun(3, outcome === "failed" || outcome === "restart" ? "failed" : "completed");
+          yield* worker.drain();
+          if (outcome === "restart") {
+            const compact = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
+            const now = yield* DateTime.now;
+            // Model a persisted maintenance completion whose retry listener did not run before exit.
+            yield* sink.write({
+              commandId: CommandId.make("command:runtime-reconcile:completed-compact"),
+              events: [
+                {
+                  id: EventId.make("recovered-compact"),
+                  type: "run.updated",
+                  threadId,
+                  runId: compact.id,
+                  occurredAt: now,
+                  payload: { ...compact, status: "completed" },
+                },
+              ],
+            });
+            assert.lengthOf(yield* Ref.get(capturedTurns), 2);
+            return;
+          }
+          if (outcome === "success" || outcome === "codex") {
+            yield* waitRun(4, "completed");
+            const recovered = yield* orchestrator.getThreadProjection(threadId);
+            assert.lengthOf(recovered.runs, 4);
+            assert.equal(recovered.runs[1]!.status, "failed");
+            assert.equal(recovered.runs[3]!.contextRecovery?.failedRunId, failed.id);
+            assert.equal(
+              recovered.contextHandoffs.find((row) => row.id === handoff.id)?.delivery?.status,
+              "inline",
+            );
+            const turns = yield* Ref.get(capturedTurns);
+            assert.lengthOf(turns, 3);
+            assert.equal(turns[2]!.text.split(request).length - 1, 1);
+            assert.include(turns[2]!.text, "UNSEEN_RESULT");
+            assert.deepEqual(
+              [...new Set(turns.map((turn) => turn.nativeThreadId))],
+              [native.nativeThreadRef!.nativeId],
+            );
+            assert.isEmpty(
+              recovered.contextTransfers.filter((transfer) => transfer.type === "provider_handoff"),
+            );
+            yield* orchestrator.dispatch(recovery);
+            yield* worker.drain();
+            assert.lengthOf(yield* Ref.get(capturedTurns), 3);
+            assert.equal(
+              (yield* orchestrator
+                .dispatch({ ...recovery, commandId: CommandId.make("stale:recover") })
+                .pipe(Effect.result))._tag,
+              "Failure",
+            );
+          } else {
+            assert.lengthOf(yield* Ref.get(capturedTurns), 2);
+            const latest = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
+            assert.equal(
+              (yield* orchestrator
+                .dispatch({
+                  ...recovery,
+                  commandId: CommandId.make("unsafe:retry"),
+                  compactRunId: latest.id,
+                })
+                .pipe(Effect.result))._tag,
+              "Failure",
+            );
+            assert.lengthOf(yield* Ref.get(capturedTurns), 2);
+          }
+        }).pipe(Effect.provide(runtime()));
+        if (outcome !== "restart") return;
+        yield* Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+          yield* worker.drain();
+          const projection = yield* waitForIdle(threadId);
+          assert.lengthOf(projection.runs, 4);
+          assert.equal(projection.runs[3]!.status, "completed");
+          assert.equal(projection.runs[2]!.contextRecovery?.phase, "complete");
+          const turns = yield* Ref.get(capturedTurns);
+          assert.lengthOf(turns, 3);
+          assert.include(turns[2]!.text, "Apply the retained request exactly once 界");
+          assert.equal(turns[2]!.nativeThreadId, turns[0]!.nativeThreadId);
+          yield* worker.drain();
+          assert.lengthOf(yield* Ref.get(capturedTurns), 3);
+        }).pipe(Effect.provide(runtime()));
+      }),
+  );
+});
+
+it.live.each(["idle-unload", "process-restart"] as const)(
+  "continues at 804,183 / 1M without redelivering five accepted results after %s",
+  (mode) =>
+    Effect.gen(function* () {
+      const cwd = yield* checkpointWorkspace(`context-incident-${mode}`);
+      const capturedTurns = yield* Ref.make<readonly CapturedTurn[]>([]);
+      const nativeHistories = new Map<string, string[]>();
+      const registry = ProviderAdapterRegistry.layerFromAdapters([
+        makeTestAdapter({
+          instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+          driver: CLAUDE_DRIVER,
+          capabilities: ClaudeProviderCapabilitiesV2,
+          modelSelection: CLAUDE_MODEL_SELECTION,
+          responseByRunOrdinal: {},
+          capturedTurns,
+          nativeHistories,
+          getModelContextWindow: () => 1_000_000,
+          failedRunOrdinals: new Set([1]),
+          failureClass: "transport_error",
+          tokenUsageByRunOrdinal: { 1: { usedTokens: 804_183, maxTokens: 1_000_000 } },
+        }),
+      ]);
+      const runtime = () =>
+        ProviderReplayHarness.layerWithRegistry(
+          { name: `context-incident-${mode}`, runtimePolicyOverride: { cwd } },
+          registry,
+          {
+            databaseLayer: SqlitePersistence.layerFromPath(`${cwd}/runtime.sqlite`).pipe(
+              Layer.provide(NodeServices.layer),
+            ),
+            checkpointStoreLayer: CheckpointStore.layerWithoutWorkspaceState,
+            recoverOnStartup: true,
+          },
+        );
+      const send = (key: string) =>
+        Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+          const sink = yield* EventSink.EventSinkV2;
+          const ordinal = key === "first" ? 1 : 2;
+          yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            threadId,
+            commandId: CommandId.make(`incident:${key}`),
+            messageId: MessageId.make(`incident:${key}`),
+            text: key === "first" ? "Original work" : "Continue from where you left off.",
+            attachments: [],
+            dispatchMode: { type: "start_immediately" },
+            createdBy: "user",
+            creationSource: "web",
+          });
+          yield* worker.drain();
+          yield* sink.stream({ afterSequence: 0, eventType: "run.updated" }).pipe(
+            Stream.filter(
+              ({ event }) =>
+                event.threadId === threadId &&
+                event.type === "run.updated" &&
+                event.payload.ordinal === ordinal &&
+                event.payload.status === (ordinal === 1 ? "failed" : "completed"),
+            ),
+            Stream.runHead,
+          );
+        });
+      let originalNative: string | null | undefined;
+      const continueAndAssert = Effect.gen(function* () {
+        yield* send("continue");
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const projection = yield* orchestrator.getThreadProjection(threadId);
+        const turns = yield* Ref.get(capturedTurns);
+        assert.deepEqual(
+          turns.map((turn) => turn.text),
+          ["Original work", "Continue from where you left off."],
+        );
+        assert.equal(turns[1]!.nativeThreadId, originalNative);
+        assert.isTrue(turns[1]!.nativeThreadHasTurns);
+        assert.isEmpty(projection.contextTransfers);
+        assert.lengthOf(projection.contextHandoffs, 5);
+        assert.equal(projection.runs[0]!.status, "failed");
+        assert.equal(projection.runs[1]!.contextHandoffId, null);
+        assert.equal(
+          projection.providerThreads.find((row) => row.nativeThreadRef?.nativeId === originalNative)
+            ?.contextUsage?.usedTokens,
+          804_183,
+        );
+      });
+      yield* Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const sink = yield* EventSink.EventSinkV2;
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          threadId,
+          projectId,
+          commandId: CommandId.make("incident:create"),
+          title: "Continue after transport failure",
+          modelSelection: CLAUDE_MODEL_SELECTION,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdBy: "user",
+          creationSource: "web",
+        });
+        yield* send("first");
+        const projection = yield* orchestrator.getThreadProjection(threadId);
+        const first = projection.runs[0]!;
+        const native = projection.providerThreads.find((row) => row.id === first.providerThreadId)!;
+        originalNative = native.nativeThreadRef!.nativeId;
+        const now = yield* DateTime.now;
+        yield* sink.write({
+          events: Array.from({ length: 5 }, (_, index) => ({
+            id: EventId.make(`incident:result:${index}`),
+            type: "context-handoff.updated" as const,
+            threadId,
+            runId: first.id,
+            occurredAt: now,
+            payload: {
+              id: ContextHandoffId.make(`incident:result:${index}`),
+              threadId,
+              targetRunId: first.id,
+              fromProviderThreadIds: [],
+              toProviderThreadId: native.id,
+              coveredRunOrdinals: { from: 1, to: 1 },
+              strategy: "manual_context" as const,
+              status: "ready" as const,
+              summaryMessageId: null,
+              summaryText: `Accepted result ${index}`,
+              delivery: {
+                nativeThreadId: originalNative!,
+                status: "observed" as const,
+                itemIds: [],
+                acceptedByRunId: first.id,
+              },
+              createdByProviderInstanceId: null,
+              createdAt: now,
+              updatedAt: now,
+            },
+          })),
+        });
+        if (mode === "idle-unload") {
+          const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
+          yield* sessions.release({
+            providerSessionId: native.providerSessionId!,
+            reason: "idle_timeout",
+          });
+          yield* continueAndAssert;
+        }
+      }).pipe(Effect.provide(runtime()));
+      if (mode === "process-restart") yield* continueAndAssert.pipe(Effect.provide(runtime()));
+    }),
+);

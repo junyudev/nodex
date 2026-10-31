@@ -11,7 +11,7 @@ import type { ThreadStageActions } from "../thread-stage-types";
 
 type RecoveryCommands = Pick<
   ThreadStageActions,
-  "onContinueAfterFailure" | "onManageFailedProvider"
+  "onContinueAfterFailure" | "onCompactAndRetry" | "onManageFailedProvider"
 >;
 
 interface ContinuationState {
@@ -27,18 +27,20 @@ const ConversationRecoveryActionsContext = createContext<RecoveryActions>({});
 /** Continuation feedback survives transcript folding and optimistic Turn replacement. */
 export function ConversationRecoveryActionsProvider({
   onContinueAfterFailure,
+  onCompactAndRetry,
   onManageFailedProvider,
   children,
 }: RecoveryCommands & { children: ReactNode }) {
   const [continuationState, setContinuationState] = useState<ContinuationState | null>(null);
   const inFlight = useRef<Promise<void> | null>(null);
   const continueAfterFailure = useCallback(
-    async (turnId: string) => {
-      if (!onContinueAfterFailure) return;
+    async (turnId: string, compact = false) => {
+      const action = compact ? onCompactAndRetry : onContinueAfterFailure;
+      if (!action) return;
       if (inFlight.current) return inFlight.current;
       setContinuationState({ turnId, pending: true, error: null });
       const operation = Promise.resolve()
-        .then(() => onContinueAfterFailure(turnId))
+        .then(() => action(turnId))
         .then(
           () => setContinuationState(null),
           (cause: unknown) =>
@@ -54,15 +56,24 @@ export function ConversationRecoveryActionsProvider({
       inFlight.current = operation;
       return operation;
     },
-    [onContinueAfterFailure],
+    [onContinueAfterFailure, onCompactAndRetry],
   );
   const value = useMemo(
     () => ({
       onContinueAfterFailure: onContinueAfterFailure ? continueAfterFailure : undefined,
+      onCompactAndRetry: onCompactAndRetry
+        ? (turnId: string) => continueAfterFailure(turnId, true)
+        : undefined,
       onManageFailedProvider,
       continuationState,
     }),
-    [onContinueAfterFailure, continueAfterFailure, onManageFailedProvider, continuationState],
+    [
+      onContinueAfterFailure,
+      onCompactAndRetry,
+      continueAfterFailure,
+      onManageFailedProvider,
+      continuationState,
+    ],
   );
   return (
     <ConversationRecoveryActionsContext value={value}>

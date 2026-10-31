@@ -4,6 +4,7 @@ import {
   MESSAGE_EDIT_UNAVAILABLE,
   resolveConversationRewindTargets,
 } from "@t3tools/shared/orchestrationV2Rewind";
+import { delegatedResultReceipts } from "./DelegatedResultReceipt.ts";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "../nodex/SideChat.ts";
 import {
   selectAsyncQuestionReplyBatch,
@@ -297,6 +298,8 @@ export interface OrchestratorV2Shape {
   readonly resumeQueuedRuns: Effect.Effect<number, OrchestratorV2Error>;
   /** Startup pass that settles delegated-task results and deliveries runs left behind. */
   readonly recoverDelegatedTasks: Effect.Effect<void>;
+  /** Resume successful maintenance boundaries whose retained retry was not admitted before shutdown. */
+  readonly recoverContextRequests: Effect.Effect<void>;
   /** Settles a delegated child whose restart continuation of `sourceRunId` declined or failed. */
   readonly recoverDelegatedTask: (threadId: ThreadId, sourceRunId: RunId) => Effect.Effect<void>;
   /**
@@ -497,6 +500,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "provider-session.detach":
     case "message.dispatch":
     case "message.delivery.update":
+    case "run.context-recover":
     case "notification.delivery.accept":
     case "prepared-run.release":
     case "prepared-run.progress":
@@ -5360,9 +5364,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         delegatedCompletion === undefined
           ? command.text
           : delegatedCompletionWakeDetail(delegatedCompletion.taskIds);
-      const delivery = projection.messages.find(
-        (message) => message.id === command.messageId,
-      )?.delivery;
+      const delivery =
+        projection.messages.find((message) => message.id === command.messageId)?.delivery ??
+        (delegatedCompletion === undefined ? undefined : "pending");
       // Command projections leave plans out, so read the source plan directly.
       const sourcePlanArtifact =
         command.sourcePlanRef === undefined
@@ -11540,7 +11544,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           },
         ];
       });
+      const receipts =
+        deliveryMessage?.delivery !== "accepted"
+          ? []
+          : yield* delegatedResultReceipts({
+              store: projectionStore,
+              threadId,
+              observedByRunId: deliveryRun.id,
+              taskIds: delivery.taskIds,
+              messageId: deliveryRun.userMessageId,
+              messageText: deliveryMessage.text,
+            });
       yield* writeSystemEvents([
+        ...receipts.map((handoff) => ({
+          type: "context-handoff.updated" as const,
+          threadId,
+          runId: deliveryRun.id,
+          occurredAt: now,
+          payload: handoff,
+        })),
         ...taskEvents,
         {
           type: "run.updated",
@@ -11556,6 +11578,162 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* offerDelegatedCompletionDelivery(threadId, parentRun.id);
       }
     });
+
+  /** Admission and the retained retry share the Thread command lock and durable receipts. */
+  const dispatchContextRecovery = Effect.fn("orchestrationV2.contextRecovery")(function* (
+    command: Extract<OrchestrationV2Command, { type: "run.context-recover" }>,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+  ) {
+    const reject = (cause: string) =>
+      new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause,
+      });
+    const records = yield* projectionStore
+      .getThreadRecords(command.threadId, ["runs", "runtimeRequests"], {
+        runOrder: "desc",
+        runLimit: 1,
+      })
+      .pipe(mapDispatchError(command));
+    const latest = records.runs[0];
+    const retry = command.compactRunId !== undefined;
+    const expected = command.compactRunId ?? command.failedRunId;
+    if (
+      latest?.id !== expected ||
+      records.thread.archivedAt !== null ||
+      records.thread.deletedAt !== null ||
+      records.runtimeRequests.some((request) => request.status === "pending")
+    )
+      return yield* reject("This failed request can no longer be recovered.");
+    const source = yield* projectionStore
+      .getThreadRecords(command.threadId, ["runs", "messages", "turnItems"], {
+        runIds: [command.failedRunId],
+        messageRunIds: [command.failedRunId],
+        turnItemRunIds: [command.failedRunId],
+        turnItemTypes: ["error"],
+      })
+      .pipe(mapDispatchError(command));
+    const failed = source.runs[0];
+    const original = source.messages.find((message) => message.id === failed?.userMessageId);
+    if (
+      failed?.status !== "failed" ||
+      original === undefined ||
+      !source.turnItems.some(
+        (item) => item.type === "error" && item.failure.code === "context_budget_exhausted",
+      )
+    )
+      return yield* reject("This Run does not have a recoverable context budget failure.");
+    if (failed.activeAttemptId === null || failed.providerThreadId === null)
+      return yield* reject("The failed request has no native conversation.");
+    const native = yield* projectionStore
+      .getThreadRecords(command.threadId, ["attempts", "providerThreads"], {
+        attemptIds: [failed.activeAttemptId],
+        providerThreadIds: [failed.providerThreadId],
+      })
+      .pipe(mapDispatchError(command));
+    const nativeThreadId = native.attempts[0]?.nativeThreadId;
+    const providerThread = native.providerThreads[0];
+    if (
+      nativeThreadId === undefined ||
+      providerThread?.nativeThreadRef?.nativeId !== nativeThreadId ||
+      providerThread.status === "closed" ||
+      records.thread.activeProviderThreadId !== providerThread.id
+    )
+      return yield* reject("The failed request's native conversation changed.");
+    if (retry) {
+      if (
+        latest.status !== "completed" ||
+        latest.contextRecovery?.phase !== "compact" ||
+        latest.contextRecovery.failedRunId !== failed.id ||
+        latest.contextRecovery.nativeThreadId !== nativeThreadId ||
+        latest.activeAttemptId === null ||
+        latest.providerThreadId !== providerThread.id
+      )
+        return yield* reject("Compaction did not complete for this failed request.");
+      const boundary = yield* projectionStore
+        .getThreadRecords(command.threadId, ["turnItems", "providerTurns", "attempts"], {
+          turnItemRunIds: [latest.id],
+          turnItemTypes: ["compaction"],
+          attemptIds: [latest.activeAttemptId],
+          providerTurnAttemptIds: [latest.activeAttemptId],
+        })
+        .pipe(mapDispatchError(command));
+      const compact = boundary.turnItems.find(
+        (item) => item.type === "compaction" && item.status === "completed",
+      );
+      if (
+        boundary.attempts[0]?.nativeThreadId !== nativeThreadId ||
+        compact === undefined ||
+        !boundary.providerTurns.some(
+          (turn) =>
+            turn.id === compact.providerTurnId &&
+            turn.providerThreadId === providerThread.id &&
+            turn.tokenUsage !== undefined &&
+            Date.parse(turn.tokenUsage.updatedAt) >= DateTime.toEpochMillis(compact.updatedAt),
+        )
+      )
+        return yield* reject(
+          "Compaction has not reported a successful boundary and refreshed context usage.",
+        );
+    }
+    if (retry && latest.contextRecovery !== undefined)
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "run.updated",
+        threadId: command.threadId,
+        runId: latest.id,
+        occurredAt: yield* DateTime.now,
+        payload: { ...latest, contextRecovery: { ...latest.contextRecovery, phase: "complete" } },
+      });
+    const messageId = MessageId.make(
+      `context-recovery:${failed.id}:${retry ? "retry" : "compact"}`,
+    );
+    yield* dispatchMessage(
+      {
+        type: "message.dispatch",
+        commandId: command.commandId,
+        threadId: command.threadId,
+        messageId,
+        text: retry ? original.text : "/compact",
+        attachments: retry ? original.attachments : [],
+        ...(retry && failed.sourcePlanRef !== undefined
+          ? { sourcePlanRef: failed.sourcePlanRef }
+          : {}),
+        ...(retry && original.context !== undefined ? { context: original.context } : {}),
+        modelSelection: failed.modelSelection,
+        ...(failed.interactionMode === undefined
+          ? {}
+          : { interactionMode: failed.interactionMode }),
+        dispatchMode: { type: "start_immediately" },
+        createdBy: "user",
+        creationSource: "web",
+      },
+      events,
+      effects,
+    );
+    yield* Ref.update(events, (pending) =>
+      pending.map((event) =>
+        event.type === "run.created" && event.payload.userMessageId === messageId
+          ? {
+              ...event,
+              payload: {
+                ...event.payload,
+                contextRecovery: {
+                  failedRunId: failed.id,
+                  nativeThreadId,
+                  providerThreadId: providerThread.id,
+                  phase: retry ? ("retry" as const) : ("compact" as const),
+                },
+              },
+            }
+          : event,
+      ),
+    );
+  });
 
   const dispatchNotificationAccepted = Effect.fn("orchestrationV2.notificationAccepted")(function* (
     command: Extract<OrchestrationV2Command, { type: "notification.delivery.accept" }>,
@@ -11634,6 +11812,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ),
             taskIds: pendingTaskIds,
           };
+    const acceptedRunId = accepted.messages[0]?.runId;
+    const receipts =
+      acceptedRunId == null
+        ? []
+        : yield* delegatedResultReceipts({
+            store: projectionStore,
+            threadId: command.threadId,
+            observedByRunId: acceptedRunId,
+            taskIds: delivery.taskIds,
+            messageId: command.messageId,
+            messageText: accepted.messages[0]!.text,
+          }).pipe(mapDispatchError(command));
+    for (const handoff of receipts)
+      yield* emitEvent({
+        type: "context-handoff.updated",
+        threadId: command.threadId,
+        runId: handoff.targetRunId,
+        occurredAt: now,
+        payload: handoff,
+      });
     const acceptedIds = new Set(delivery.taskIds);
     const pendingIds = new Set(pendingTaskIds);
     for (const task of projection.subagents) {
@@ -11827,6 +12025,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* recordSubagentFollowup(command, events).pipe(mapDispatchError(command));
         break;
       }
+      case "run.context-recover":
+        yield* dispatchContextRecovery(command, events, effects);
+        break;
       case "notification.delivery.accept":
         yield* dispatchNotificationAccepted(command, events);
         break;
@@ -12300,6 +12501,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const handleTerminalRun = (stored: OrchestrationV2StoredEvent) =>
     Effect.gen(function* () {
       const threadId = stored.event.threadId;
+      if (
+        stored.event.type === "run.updated" &&
+        stored.event.payload.status === "completed" &&
+        stored.event.payload.contextRecovery?.phase === "compact"
+      ) {
+        yield* dispatchWithReceipt({
+          type: "run.context-recover",
+          commandId: CommandId.make(
+            `context-recovery:${stored.event.payload.contextRecovery.failedRunId}:retry`,
+          ),
+          threadId,
+          failedRunId: stored.event.payload.contextRecovery.failedRunId,
+          compactRunId: stored.event.payload.id,
+        });
+      }
       // finalize writes the parent thread and startNextQueuedRun writes this
       // thread, so each takes its own thread's lock, sequentially and never
       // nested: dispatchDelegatedTaskRequest already writes child events
@@ -12370,6 +12586,33 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       Stream.runForEach(handleTerminalRun),
       Effect.forkDetach,
     );
+
+  // Resume durable maintenance only after restart reconciliation, before the effect worker.
+  const recoverContextRequests = Effect.gen(function* () {
+    for (const threadId of yield* projectionStore.getRecoveryThreadIds("context-recoveries")) {
+      const records = yield* projectionStore.getThreadRecords(threadId, ["runs"], {
+        runOrder: "desc",
+        runLimit: 1,
+      });
+      const run = records.runs[0];
+      if (run?.status !== "completed" || run.contextRecovery?.phase !== "compact") continue;
+      yield* dispatchWithReceipt({
+        type: "run.context-recover",
+        threadId,
+        failedRunId: run.contextRecovery.failedRunId,
+        compactRunId: run.id,
+        commandId: CommandId.make(`context-recovery:${run.contextRecovery.failedRunId}:retry`),
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Could not recover compacted request", { threadId, cause }),
+        ),
+      );
+    }
+  }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.logWarning("Could not inspect pending context recovery", { cause }),
+    ),
+  );
 
   // Settles child results and completion deliveries whose runs ended without
   // the listener above: before this boot, or in runtime reconciliation, which
@@ -12518,6 +12761,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ),
     resumeQueuedRuns,
     recoverDelegatedTasks,
+    recoverContextRequests,
     recoverDelegatedTask,
     delegatedTaskResultPending,
     dispatch: dispatchWithReceipt,

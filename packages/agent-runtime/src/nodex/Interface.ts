@@ -538,7 +538,11 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     } | null;
   };
   readonly "thread.compact": {
-    readonly input: { readonly threadId: string; readonly requestId: string };
+    readonly input: {
+      readonly threadId: string;
+      readonly requestId: string;
+      readonly failedRunId?: string;
+    };
     readonly output: {
       readonly commandId: string;
       readonly messageId: string;

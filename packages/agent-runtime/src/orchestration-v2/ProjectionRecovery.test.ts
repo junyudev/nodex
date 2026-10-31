@@ -663,6 +663,7 @@ it.effect(
         "runtime",
         "subagent-results",
         "delegated-completions",
+        "context-recoveries",
       ] as const) {
         const [text, params] = recoveryCandidateThreadIds(sql, kind).compile();
         const plan = yield* sql.unsafe<{ readonly detail: string }>(
@@ -679,5 +680,6 @@ it.effect(
       assert.deepEqual(yield* projections.getRecoveryThreadIds("queued-runs"), []);
       assert.deepEqual(yield* projections.getRecoveryThreadIds("subagent-results"), []);
       assert.deepEqual(yield* projections.getRecoveryThreadIds("delegated-completions"), []);
+      assert.deepEqual(yield* projections.getRecoveryThreadIds("context-recoveries"), []);
     }).pipe(Effect.provide(layerTest)),
 );

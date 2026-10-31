@@ -233,6 +233,36 @@ describe("Agent Runtime stage commands", () => {
     },
   );
 
+  it("compacts and retries the exact failure without resubmitting or rewinding in the renderer", async () => {
+    const f = fixture();
+    f.clearRequests();
+    f.setRuns([{ id: "failed", ordinal: 4, status: "failed" }]);
+    let finish: (value: { sequence: number; runId: string }) => void = () => {};
+    f.compact.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const first = f.actions.onCompactAndRetry!("failed");
+    const duplicate = f.actions.onCompactAndRetry!("failed");
+    finish({ sequence: 10, runId: "compact-run" });
+    await Promise.all([first, duplicate]);
+    expect(f.compact).toHaveBeenCalledExactlyOnceWith({
+      ...f.target,
+      failedRunId: "failed",
+      requestId: "context-recovery:failed",
+    });
+    expect(f.message).not.toHaveBeenCalled();
+    expect(f.prepare).not.toHaveBeenCalled();
+    expect(f.rollback).not.toHaveBeenCalled();
+    f.setRuns([{ id: "newer", ordinal: 5, status: "completed" }]);
+    await expect(f.actions.onCompactAndRetry!("failed")).rejects.toThrow(
+      "can no longer be continued",
+    );
+    expect(f.compact).toHaveBeenCalledTimes(1);
+  });
+
   it("continues the latest failed Run as a new message with its existing conversation", async () => {
     const f = fixture();
     f.clearRequests();

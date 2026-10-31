@@ -21,6 +21,7 @@ export interface ConversationRecoverySurfaceProps {
   entry: CodexTranscriptEntry;
   isLatestTurn: boolean;
   isStreamingTurn: boolean;
+  onCompactAndRetry?: () => void | Promise<void>;
   onContinue?: () => void | Promise<void>;
   onManageProvider?: () => void | Promise<void>;
   continuationState?: { readonly pending: boolean; readonly error: string | null };
@@ -102,6 +103,7 @@ export function ConversationRecoverySurface({
   isLatestTurn,
   isStreamingTurn,
   onContinue,
+  onCompactAndRetry,
   onManageProvider,
   continuationState,
 }: ConversationRecoverySurfaceProps) {
@@ -169,8 +171,18 @@ export function ConversationRecoverySurface({
   const summary = recoveryDiagnosticSummary(entry) || details;
   const action = recoveryAction(recovery, true, false);
   const eligible = recoveryAction(recovery, isLatestTurn, isStreamingTurn) !== null;
-  const actionCallback = action === "manage-provider" ? onManageProvider : onContinue;
-  const actionLabel = action === "manage-provider" ? "Agent settings" : "Continue";
+  const actionCallback =
+    action === "manage-provider"
+      ? onManageProvider
+      : action === "compact-and-retry"
+        ? onCompactAndRetry
+        : onContinue;
+  const actionLabel =
+    action === "manage-provider"
+      ? "Agent settings"
+      : action === "compact-and-retry"
+        ? "Compact and retry"
+        : "Continue";
 
   return (
     <ThreadActivityShell
@@ -200,7 +212,7 @@ export function ConversationRecoverySurface({
             <RecoveryActionButton
               key={`${identity}:${action}`}
               eligible={eligible}
-              actionState={action === "continue" ? continuationState : undefined}
+              actionState={action !== "manage-provider" ? continuationState : undefined}
               label={actionLabel}
               onAction={actionCallback}
             />

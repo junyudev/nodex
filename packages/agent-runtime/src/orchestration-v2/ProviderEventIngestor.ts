@@ -1,3 +1,4 @@
+import { delegatedResultReceipts, observedTaskResults } from "./DelegatedResultReceipt.ts";
 import {
   NodeId,
   CommandId,
@@ -693,8 +694,29 @@ export const layer: Layer.Layer<
                 nodeId: input.event.message.nodeId,
               }),
             ];
-          case "turn_item.updated":
+          case "turn_item.updated": {
+            const item = input.event.turnItem;
+            const results = observedTaskResults(item);
+            const receipts =
+              item.runId === null || results === undefined
+                ? []
+                : yield* delegatedResultReceipts({
+                    store: projections,
+                    threadId: input.threadId,
+                    observedByRunId: item.runId,
+                    taskIds: results.results.map((result) => result.taskId),
+                    transferIds: results.results.map((result) => result.transferId),
+                    observation: results,
+                    providerTurnId: item.providerTurnId,
+                  });
             return [
+              ...(yield* Effect.forEach(receipts, (handoff) =>
+                makeDomainEvent(input, {
+                  type: "context-handoff.updated",
+                  payload: handoff,
+                  runId: item.runId,
+                }),
+              )),
               yield* makeDomainEvent(input, {
                 type: "turn-item.updated",
                 threadId: input.event.turnItem.threadId,
@@ -705,6 +727,7 @@ export const layer: Layer.Layer<
                 nodeId: input.event.turnItem.nodeId,
               }),
             ];
+          }
           case "runtime_request.updated":
             return [
               yield* makeDomainEvent(input, {

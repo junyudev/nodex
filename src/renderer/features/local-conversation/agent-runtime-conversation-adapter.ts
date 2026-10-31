@@ -403,7 +403,7 @@ export function createAgentRuntimeStageActions(input: {
     await owner?.whenObserved?.(accepted.sequence);
     if (accepted.sideChatTitle !== undefined) input.onSideChatTitle?.(accepted.sideChatTitle);
   };
-  const continueAfterFailure = async (turnId: string): Promise<void> => {
+  const continueAfterFailure = async (turnId: string, compact = false): Promise<void> => {
     const target = { ...requireTarget() };
     const owner = input.owner();
     const source = owner?.contentSource?.();
@@ -434,6 +434,15 @@ export function createAgentRuntimeStageActions(input: {
           throw new Error("This turn can no longer be continued");
       };
       assertCurrent();
+      if (compact) {
+        const accepted = await transport.compact({
+          ...target,
+          failedRunId: turnId,
+          requestId: `context-recovery:${turnId}`,
+        });
+        await owner.whenObserved?.(accepted.sequence);
+        return;
+      }
       await dispatch(
         "Continue from where you left off.",
         undefined,
@@ -606,6 +615,7 @@ export function createAgentRuntimeStageActions(input: {
           : undefined,
       ),
     onContinueAfterFailure: continueAfterFailure,
+    onCompactAndRetry: (turnId) => continueAfterFailure(turnId, true),
     onManageFailedProvider: manageFailedProvider,
     onEditUserTurn: async (request) => {
       const target = exactTarget(request.threadId);

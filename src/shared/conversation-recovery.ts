@@ -2,6 +2,7 @@ import type { CodexErrorInfo } from "@nodex/codex-app-server-protocol/v2";
 
 export type ConversationRecoveryState = "retrying" | "recovered" | "failed" | "stopped";
 export type ConversationRecoveryReason =
+  | "context_budget"
   | "connection"
   | "overloaded"
   | "rate_limit"
@@ -24,6 +25,7 @@ export interface ConversationRecovery {
 
 export function conversationRecoveryReason(code: string | null): ConversationRecoveryReason {
   if (code === null) return "unknown";
+  if (code === "context_budget_exhausted") return "context_budget";
   if (code === "api_error_529" || code === "overloaded" || code === "serverOverloaded")
     return "overloaded";
   if (code === "api_error_429" || code === "rate_limit" || code === "rateLimitExceeded")

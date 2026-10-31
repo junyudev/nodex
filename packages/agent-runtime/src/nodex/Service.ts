@@ -367,7 +367,14 @@ const AgentRequest = Schema.Union([
     }),
   ),
   request("command.receipt", Schema.Struct({ commandId: CommandId, threadId: ThreadId })),
-  request("thread.compact", Schema.Struct({ threadId: ThreadId, requestId: CommandId })),
+  request(
+    "thread.compact",
+    Schema.Struct({
+      threadId: ThreadId,
+      requestId: CommandId,
+      failedRunId: Schema.optional(RunId),
+    }),
+  ),
   request(
     "thread.rollback",
     Schema.Struct({ threadId: ThreadId, requestId: CommandId, runId: RunId }),

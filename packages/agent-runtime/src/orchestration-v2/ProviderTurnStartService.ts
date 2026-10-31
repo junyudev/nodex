@@ -32,7 +32,9 @@ import * as ContextHandoffService from "./ContextHandoffService.ts";
 import {
   DEFAULT_HANDOFF_TOKEN_CAP,
   handoffTokenCapConfig,
+  contextHandoffDeliveredTo,
   handoffBudget,
+  handoffBudgetEvidence,
   contextUsageForHandoff,
   latestNativeContextUsage,
 } from "@t3tools/provider-core/server/handoffBudget";
@@ -285,12 +287,22 @@ export const layer: Layer.Layer<
         (candidate) => candidate.id === run.providerThreadId,
       );
       const message = projection.messages.find((candidate) => candidate.id === run.userMessageId);
+      if (
+        run.contextRecovery !== undefined &&
+        (providerThread?.id !== run.contextRecovery.providerThreadId ||
+          providerThread.nativeThreadRef?.nativeId !== run.contextRecovery.nativeThreadId)
+      )
+        return yield* new ProviderTurnStartError({
+          runId,
+          cause: "The recovery native conversation changed.",
+        });
       const checkpointScope = projection.checkpointScopes.find(
         (candidate) => candidate.id === rootNode?.checkpointScopeId,
       );
       const handoffs = projection.contextHandoffs.filter(
         (handoff) =>
           handoff.status === "ready" &&
+          (providerThread === undefined || !contextHandoffDeliveredTo(handoff, providerThread)) &&
           (handoff.targetRunId === run.id ||
             (handoff.toProviderThreadId === run.providerThreadId &&
               projection.runs.some(
@@ -970,7 +982,7 @@ export const layer: Layer.Layer<
         if (resumed._tag === "Success") {
           return resumed.success;
         }
-        if (session.nativeResumeFailurePolicy === "fail") {
+        if (session.nativeResumeFailurePolicy === "fail" || run.contextRecovery !== undefined) {
           if (input.willRetry === true && !permanentNativeRecoveryFailure(resumed.failure))
             return yield* resumed.failure;
           yield* settleStartFailure({
@@ -1236,7 +1248,15 @@ export const layer: Layer.Layer<
         ...runningProviderThread,
         contextUsage: handoffUsage,
       };
+      const retainedRequestItems =
+        run.contextRecovery?.phase !== "retry"
+          ? []
+          : (yield* projectionStore.getThreadRecords(input.threadId, ["turnItems"], {
+              turnItemRunIds: [run.contextRecovery.failedRunId],
+              turnItemTypes: ["user_message", "error"],
+            })).turnItems.map((item) => item.id);
       const retryHistoryInput = {
+        excludeItemIds: retainedRequestItems,
         scope: "local" as const,
         threadId: input.threadId,
         runOrdinalTo: run.ordinal - 1,
@@ -1319,7 +1339,7 @@ export const layer: Layer.Layer<
             deferInline: compact,
             providerThread: runningProviderThread,
             budget: Effect.gen(function* () {
-              return handoffBudget({
+              return handoffBudgetEvidence({
                 tokenCap,
                 modelContextWindow,
                 // The note is sent with the user text, so it spends the same allowance.
@@ -1334,7 +1354,8 @@ export const layer: Layer.Layer<
             }),
             alreadyDeliveredItemIds: deliveredItemIds,
             omittedHandoffCount: projection.omittedHandoffCount,
-            ...(session.injectHistory === undefined
+            ...(session.injectHistory === undefined ||
+            (compact && run.contextRecovery?.phase === "compact")
               ? {}
               : {
                   inject: (history: ProviderAdapter.ProviderAdapterV2HistoricalContext) =>

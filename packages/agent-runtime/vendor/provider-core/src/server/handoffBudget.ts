@@ -1,6 +1,7 @@
 import type {
   ChatAttachment,
   ThreadTokenUsageSnapshot,
+  OrchestrationV2ContextBudget,
   OrchestrationV2ContextHandoff,
   OrchestrationV2HistoricalMessage,
   OrchestrationV2ProviderThread,
@@ -20,6 +21,13 @@ export const HISTORY_IMAGE_CONTEXT = {
   unavailablePrefix: "[Image unavailable: ",
   unavailableSuffix: "; original source file is missing.]",
 } as const;
+
+/** A receipt belongs to one destination row and native conversation incarnation. */
+export function contextHandoffDeliveredTo(handoff: OrchestrationV2ContextHandoff, target: OrchestrationV2ProviderThread): boolean {
+  const nativeId = target.nativeThreadRef?.nativeId;
+  return nativeId != null && handoff.toProviderThreadId === target.id &&
+    handoff.delivery?.nativeThreadId === nativeId && handoff.delivery.status !== "pending";
+}
 
 /** One machine-readable description shared by bounded handoffs and full history reads. */
 export function imageAvailabilityText(item: OrchestrationV2TurnItem): readonly string[] {
@@ -81,16 +89,17 @@ export function attachmentTokenAllowance(attachments: ReadonlyArray<ChatAttachme
 
 // One UTF-8 byte per token is deliberately pessimistic for byte-based tokenizers,
 // including multilingual text. It is not a tokenizer or a guarantee for arbitrary
-// custom models. Unknown windows use a 128k allowance, reserving a quarter for
-// tools, instructions and subsequent work. Current input is never truncated.
-export function handoffBudget(input: {
+// custom models. Unknown windows use a 128k allowance. Bounded delivery keeps
+// 16k headroom; the future-work target must not prevent recovery near capacity.
+// Current input is never truncated.
+export function handoffBudgetEvidence(input: {
   readonly tokenCap: number;
   readonly userText: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly providerThread: OrchestrationV2ProviderThread;
   readonly nativeContextEstimate: number;
   readonly modelContextWindow?: number | undefined;
-}): number {
+}): OrchestrationV2ContextBudget {
   const usage = input.providerThread.contextUsage;
   const window = Math.min(
     input.modelContextWindow ?? usage?.maxTokens ?? 128_000,
@@ -100,16 +109,26 @@ export function handoffBudget(input: {
   const native = usage?.usedTokens ?? input.nativeContextEstimate;
   const current =
     Buffer.byteLength(JSON.stringify(input.userText)) + attachmentTokenAllowance(input.attachments);
-  return Math.max(
+  const reservedTokens = 16_000;
+  const allowance = Math.max(
     0,
     Math.min(
       input.tokenCap,
       // Cap only imported history. Attachment transport limits belong to adapters;
       // they may send binary/base64 data separately from the history request.
       HANDOFF_BYTE_CAP,
-      window - native - current - Math.max(16_000, Math.ceil(window / 4)),
+      window - native - current - reservedTokens,
     ),
   );
+  return {
+    capacity: window, occupancy: native, currentInput: current, reservedTokens,
+    futureWorkReserve: Math.max(reservedTokens, Math.ceil(window / 4)),
+    allowance, requiredTokens: 0, recoveryOperations: ["compact_and_retry", "choose_model"],
+  };
+}
+
+export function handoffBudget(input: Parameters<typeof handoffBudgetEvidence>[0]): number {
+  return handoffBudgetEvidence(input).allowance;
 }
 
 export function historicalMessage(

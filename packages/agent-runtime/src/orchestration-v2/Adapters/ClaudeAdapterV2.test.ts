@@ -2160,6 +2160,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly freshQueueOnReopen?: boolean;
     // What Claude Code reports it runs with after a change.
     readonly appliedSettings?: ClaudeAppliedSettings;
+    readonly contextUsage?: { readonly usedTokens: number; readonly maxTokens: number };
     readonly refuseLiveSelectionOnce?: boolean;
     readonly refuseSourceRootsOnce?: boolean;
     readonly startupFrames?: ReadonlyArray<SDKMessage>;
@@ -2224,6 +2225,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               }),
             );
           }),
+        ...(options?.contextUsage === undefined
+          ? {}
+          : { readContextUsage: Effect.succeed(options.contextUsage) }),
         readAppliedSettings: Effect.succeed(options?.appliedSettings ?? null),
       };
       const permissionModeChanges: Array<string> = [];
@@ -3930,6 +3934,67 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       Effect.scoped,
       Effect.provide(
         Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
+  );
+
+  it.effect("resumes the same native identity for compaction after a query transport exit", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarnessWithOptions({
+        freshQueueOnReopen: true,
+        contextUsage: { usedTokens: 4_000, maxTokens: 1_000_000 },
+      });
+      const turn = (ordinal: number, text: string) =>
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: DateTime.makeUnsafe("2026-10-31T00:00:00Z"),
+          attemptId: RunAttemptId.make(`transport-resume:${ordinal}`),
+          text,
+          attachments: [],
+          providerTurnOrdinal: ordinal,
+          ...(ordinal > 1 ? { nativeThreadHasTurns: true } : {}),
+        });
+      yield* harness.runtime.startTurn(turn(1, "Original work"));
+      yield* Queue.shutdown(harness.sdkMessages);
+      const failed = yield* Queue.take(harness.terminalReceipts);
+      assert.equal(failed.status, "failed");
+      assert.equal(failed.failure?.class, "transport_error");
+      assert.equal(harness.providerThread.nativeThreadRef?.nativeId, WAKE_NATIVE_SESSION);
+      yield* harness.runtime.compactThread!(turn(2, "/compact"));
+      assert.equal(harness.getOpenedOptions()?.resume, WAKE_NATIVE_SESSION);
+      assert.equal(harness.getOpenedOptions()?.sessionId, undefined);
+      yield* Queue.offer(
+        harness.processQueues[1]!,
+        claudeSdkFrame({
+          type: "system",
+          subtype: "compact_boundary",
+          compact_metadata: { trigger: "manual", pre_tokens: 804_183 },
+          uuid: "00000000-0000-4000-8000-000000000701",
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+      );
+      yield* Queue.offer(
+        harness.processQueues[1]!,
+        makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000702", result: "Compacted." }),
+      );
+      assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "completed");
+      const compactUsage = harness.events.flatMap((event) =>
+        event.type === "provider_turn.updated" && event.providerTurn.tokenUsage
+          ? [event.providerTurn.tokenUsage.usedTokens]
+          : [],
+      );
+      assert.include(compactUsage, 4_000);
+      yield* harness.runtime.startTurn(turn(3, "Retained request"));
+      assert.deepEqual(
+        harness.offeredMessages.map((message) => message.message.content),
+        ["Original work", "/compact", "Retained request"],
+      );
+      assert.lengthOf(harness.processQueues, 2);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
       ),
     ),
   );

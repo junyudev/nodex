@@ -276,6 +276,7 @@ export const acquireExecution = Effect.gen(function* () {
   yield* discardSideChats;
   yield* recovery.recover;
   yield* orchestrator.recoverDelegatedTasks;
+  yield* orchestrator.recoverContextRequests;
   const worker = yield* EffectWorker.runDaemon.pipe(Effect.forkScoped);
   yield* Deferred.succeed(yield* ExecutionActivation, undefined);
   yield* Effect.addFinalizer(() =>

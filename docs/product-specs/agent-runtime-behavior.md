@@ -88,7 +88,27 @@ or queued work and no pending information request. These conditions are checked
 again after message preparation, before submission. A changed Session, Thread or
 content source rejects the stale action. Repeated activation shares the pending
 submission until its acceptance is observed, including across view reconstruction;
-a preparation failure releases it for another attempt.
+a preparation failure releases it for another attempt. Transport failures offer Retry and
+preserve the native conversation identity, including after unloading or restarting the
+provider process; a transport exit alone does not replace native history.
+
+A context allowance refusal has the typed cause `context_budget_exhausted`, with
+native occupancy, capacity, input cost, required allowance, reserved headroom and
+supported recovery operations. Bounded history delivery reserves 16,000 tokens of
+headroom independently of the larger future-work target. The target cannot deny a
+small recovery envelope merely because a conversation exceeds 75% occupancy; the
+current request is never truncated.
+
+Compact and retry addresses the exact failed Run in its Session. One durable command
+admits native compaction in that same conversation before delivering pending inline
+history. Only successful compaction with a completed boundary and refreshed context
+usage from the same maintenance attempt and native conversation can admit one retry
+containing the retained request, attachments and context.
+Failed or unconfirmed compaction never sends that request. Duplicate invocations reuse
+the admission receipt, and a newer Run or changed native conversation fences stale
+recovery. A completed maintenance boundary can resume its pending retry after Runtime
+restart. Recovery retains prior Runs and transcript history; editing and branching
+remain separate operations.
 
 ## Profile access and execution identity
 
@@ -728,6 +748,17 @@ provider fields and outputs without turning those fields into Task routing param
 Reading complete admitted coverage of a terminal child's current result acknowledges delivery;
 missing fragments and omitted items do not acknowledge unseen results. Task authorization remains
 with the delegation owner, independently of source identities retained in canonical history.
+
+A delegated result's handoff has one durable native delivery receipt, scoped to its
+destination provider Thread and native conversation incarnation. A completed native
+task result response, including synchronous delegation, status, wait and complete
+history reads, or a verified completion notification containing that complete result,
+settles the receipt. Tool responses carry verified delivery evidence in MCP metadata,
+separate from the public task view, fenced to the admitting attempt and native conversation. A notice that only announces
+completion does not prove that the result reached native history. Acknowledgment before a tool response returns is not native acceptance.
+Already accepted results do not become pending context when their parent Run later
+fails, unloads or restarts. Unseen results remain eligible until accepted; a receipt
+from an earlier native incarnation cannot suppress delivery to a replacement.
 
 Delegation attaches to the native call's exact source Run, including a completed
 foreground Run that still has live native background work. A Session-only caller

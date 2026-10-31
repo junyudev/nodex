@@ -1,3 +1,4 @@
+import { TASK_RESULT_DELIVERY_META } from "./TaskResultDelivery.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
@@ -701,6 +702,35 @@ describe("task tools", () => {
           expect(started.taskId.length).toBeLessThanOrEqual(32);
           expect(started.taskId).not.toContain("%");
 
+          for (const name of ["task_wait", "task_status", "delegate_task", "task_read"]) {
+            const response = yield* invoke(
+              name,
+              name === "delegate_task"
+                ? { ...delegateArgs, idempotencyKey: "delegate-with-result", mode: "wait" }
+                : {
+                    taskId: started.taskId,
+                    ...(name === "task_wait" ? { timeoutMs: 30_000 } : {}),
+                  },
+            );
+            expect(response.isError, `${name}: ${JSON.stringify(response.content)}`).not.toBe(true);
+            expect(response._meta?.[TASK_RESULT_DELIVERY_META], name).toMatchObject({
+              threadId: parentThreadId,
+              runId: parentRun.id,
+              attemptId: parentRun.activeAttemptId,
+              providerThreadId: parent.providerThreads[0]!.id,
+              nativeThreadId: parent.providerThreads[0]!.nativeThreadRef!.nativeId,
+              results: [
+                {
+                  taskId:
+                    name === "delegate_task"
+                      ? (response.structuredContent as typeof TaskView.Type).taskId
+                      : started.taskId,
+                  transferId: expect.any(String),
+                },
+              ],
+            });
+            expect(response.structuredContent).not.toHaveProperty("resultContextTransferId");
+          }
           const waited = yield* decodeTaskView(
             yield* call("task_wait", { taskId: started.taskId, timeoutMs: 30_000 }),
           ).pipe(Effect.orDie);

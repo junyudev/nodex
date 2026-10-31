@@ -2,6 +2,7 @@ import type { OrchestratorMcpDelegateTaskResult } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { recordTaskResult } from "../../TaskResultDelivery.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 import { TaskToolkit, type TaskView } from "./tools.ts";
@@ -33,18 +34,18 @@ const handlers = {
   ),
   delegate_task: McpToolAccess.actsAsCaller((input) =>
     Effect.flatMap(service, ({ scope, tasks }) =>
-      tasks.delegateTask(scope, input).pipe(Effect.map(taskView)),
+      tasks.delegateTask(scope, input).pipe(Effect.tap(recordTaskResult), Effect.map(taskView)),
     ),
   ),
   // Reading a settled result acknowledges its automatic delivery, so status is a write.
   task_status: McpToolAccess.writes(({ taskId }) =>
     Effect.flatMap(service, ({ scope, tasks }) =>
-      tasks.taskStatus(scope, taskId).pipe(Effect.map(taskView)),
+      tasks.taskStatus(scope, taskId).pipe(Effect.tap(recordTaskResult), Effect.map(taskView)),
     ),
   ),
   task_wait: McpToolAccess.writes((input) =>
     Effect.flatMap(service, ({ scope, tasks }) =>
-      tasks.waitTask(scope, input).pipe(Effect.map(taskView)),
+      tasks.waitTask(scope, input).pipe(Effect.tap(recordTaskResult), Effect.map(taskView)),
     ),
   ),
   task_send: McpToolAccess.writes(({ taskId, ...message }) =>

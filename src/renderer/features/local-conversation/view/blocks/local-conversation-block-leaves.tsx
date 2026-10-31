@@ -1638,7 +1638,7 @@ export function ThreadRecoveryBlock({
   isLatestTurn,
   isStreamingTurn,
 }: ThreadLeafBlockProps) {
-  const { onContinueAfterFailure, onManageFailedProvider, continuationState } =
+  const { onContinueAfterFailure, onCompactAndRetry, onManageFailedProvider, continuationState } =
     useConversationRecoveryActions();
   const turnId = block.turnId;
   return (
@@ -1653,6 +1653,7 @@ export function ThreadRecoveryBlock({
       onContinue={
         onContinueAfterFailure && turnId ? () => onContinueAfterFailure(turnId) : undefined
       }
+      onCompactAndRetry={onCompactAndRetry && turnId ? () => onCompactAndRetry(turnId) : undefined}
     />
   );
 }

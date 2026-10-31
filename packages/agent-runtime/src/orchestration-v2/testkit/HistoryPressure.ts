@@ -58,6 +58,7 @@ export const seedUndecodableHistory = Effect.fn("HistoryPressure.seed")(function
 
 /** Partial indexes whose predicates admit only live or unresolved control rows. */
 const LIVE_STATE_INDEXES = [
+  "orchestration_v2_context_recovery_idx",
   "orchestration_v2_runs_open_delivery_idx",
   "orchestration_v2_subagents_unresolved_child_idx",
   "orchestration_v2_provider_threads_live_idx",

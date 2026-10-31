@@ -1,5 +1,6 @@
 import type {
   OrchestrationV2ContextHandoff,
+  OrchestrationV2ContextBudget,
   OrchestrationV2ProviderThread,
 } from "@t3tools/contracts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -7,6 +8,7 @@ import { ContextHandoffBudgetError } from "@t3tools/provider-core/server/failure
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
+  contextHandoffDeliveredTo,
   historyCost,
   renderHistory,
   selectHistory,
@@ -24,7 +26,7 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
     /** Earlier durable markers excluded by the database read budget remain retrievable. */
     readonly omittedHandoffCount?: number;
     readonly providerThread: OrchestrationV2ProviderThread;
-    readonly budget: number | Effect.Effect<number, BudgetError>;
+    readonly budget: number | Effect.Effect<number | OrchestrationV2ContextBudget, BudgetError>;
     readonly deferInline?: boolean;
     readonly alreadyDeliveredItemIds: ReadonlySet<string>;
     readonly inject?: (
@@ -34,10 +36,7 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
   }) {
     const nativeThreadId = input.providerThread.nativeThreadRef?.nativeId ?? undefined;
     const pending = input.handoffs.filter(
-      (handoff) =>
-        nativeThreadId === undefined ||
-        handoff.delivery?.nativeThreadId !== nativeThreadId ||
-        handoff.delivery.status === "pending",
+      (handoff) => !contextHandoffDeliveredTo(handoff, input.providerThread),
     );
     const omittedHandoffCount = input.omittedHandoffCount ?? 0;
     if (
@@ -45,7 +44,8 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
       (input.deferInline && input.inject === undefined)
     )
       return { context: "", delivered: Effect.void, unsent: Effect.void };
-    const budget = typeof input.budget === "number" ? input.budget : yield* input.budget;
+    const evidence = typeof input.budget === "number" ? input.budget : yield* input.budget;
+    const budget = typeof evidence === "number" ? evidence : evidence.allowance;
     let coverage = pending
       .map(
         (handoff) =>
@@ -90,7 +90,16 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
     });
     if (historyCost(selected.messages, selected.context) > budget) {
       if (input.deferInline) return { context: "", delivered: Effect.void, unsent: Effect.void };
-      return yield* new ContextHandoffBudgetError();
+      return yield* new ContextHandoffBudgetError({
+        ...(typeof evidence === "number"
+          ? {}
+          : {
+              budget: {
+                ...evidence,
+                requiredTokens: historyCost(selected.messages, selected.context),
+              },
+            }),
+      });
     }
     const omittedItemIds = new Set(selected.omittedItemIds);
     const persist = (status: "pending" | "injected" | "inline") =>

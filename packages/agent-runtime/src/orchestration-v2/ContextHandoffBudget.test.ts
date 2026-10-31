@@ -1,3 +1,7 @@
+import {
+  ContextHandoffBudgetError,
+  makeProviderFailure,
+} from "@t3tools/provider-core/server/failure";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -19,6 +23,7 @@ import * as Schema from "effect/Schema";
 import {
   contextUsageForHandoff,
   handoffBudget,
+  handoffBudgetEvidence,
   historyCost,
   historyResponseItems,
   selectHistory,
@@ -208,6 +213,45 @@ describe("handoff budget", () => {
     }
   });
 
+  it("keeps bounded recovery headroom separate from future work at 804,183 / 1M", () => {
+    const input = {
+      tokenCap: 16_000,
+      userText: "Continue from where you left off.",
+      attachments: [],
+      providerThread: {
+        ...providerThread,
+        contextUsage: { usedTokens: 804_183, maxTokens: 1_000_000 },
+      },
+      nativeContextEstimate: 0,
+      modelContextWindow: 1_000_000,
+    };
+    assert.deepEqual(handoffBudgetEvidence(input), {
+      capacity: 1_000_000,
+      occupancy: 804_183,
+      currentInput: 35,
+      reservedTokens: 16_000,
+      futureWorkReserve: 250_000,
+      allowance: 16_000,
+      requiredTokens: 0,
+      recoveryOperations: ["compact_and_retry", "choose_model"],
+    });
+    for (const [occupancy, expected] of [
+      [983_964, 1],
+      [983_965, 0],
+      [983_966, 0],
+    ] as const)
+      assert.equal(
+        handoffBudget({
+          ...input,
+          providerThread: {
+            ...input.providerThread,
+            contextUsage: { usedTokens: occupancy, maxTokens: 1_000_000 },
+          },
+        }),
+        expected,
+      );
+  });
+
   it("subtracts native usage, input, attachments, instructions and space for work", () => {
     const base = {
       tokenCap: 16_000,
@@ -378,8 +422,8 @@ describe("handoff budget", () => {
       assert.isAtLeast(budget, 0);
       assert.isAtMost(budget, previousBudget);
       previousBudget = budget;
-      if (count <= 8) assert.equal(budget, 16_000);
-      if (count === 10) {
+      if (count <= 10) assert.equal(budget, 16_000);
+      if (count === 12) {
         assert.isAbove(budget, 0);
         assert.isBelow(budget, 16_000);
       }
@@ -676,7 +720,18 @@ describe("handoff delivery", () => {
       const result = yield* deliverContextHandoffs({
         handoffs: [handoff],
         providerThread,
-        budget: 0,
+        budget: Effect.succeed(
+          handoffBudgetEvidence({
+            tokenCap: 16_000,
+            userText: "Continue",
+            attachments: [],
+            providerThread: {
+              ...providerThread,
+              contextUsage: { usedTokens: 999_000, maxTokens: 1_000_000 },
+            },
+            nativeContextEstimate: 0,
+          }),
+        ),
         alreadyDeliveredItemIds: new Set(),
         inject: () =>
           Effect.sync(() => {
@@ -687,6 +742,21 @@ describe("handoff delivery", () => {
       }).pipe(Effect.result);
       assert.equal(result._tag, "Failure");
       assert.equal(calls, 0);
+      if (result._tag === "Failure") {
+        assert.isTrue(result.failure instanceof ContextHandoffBudgetError);
+        const failure = makeProviderFailure({
+          cause: { _tag: "ProviderAdapterTurnStartError", cause: result.failure },
+          class: "provider_error",
+        });
+        assert.equal(failure.code, "context_budget_exhausted");
+        assert.equal(failure.retryable, false);
+        assert.deepInclude(failure.contextBudget, {
+          capacity: 1_000_000,
+          occupancy: 999_000,
+          allowance: 0,
+        });
+        assert.isAbove(failure.contextBudget!.requiredTokens, 0);
+      }
     }),
   );
 });

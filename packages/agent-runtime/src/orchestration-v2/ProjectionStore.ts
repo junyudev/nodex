@@ -205,7 +205,8 @@ export type ProjectionRecoveryKind =
   | "queued-runs"
   | "runtime"
   | "subagent-results"
-  | "delegated-completions";
+  | "delegated-completions"
+  | "context-recoveries";
 
 /** Persisted state needed for limit recovery, without transcript or fork history. */
 export type ProjectionLimitRecoveryCandidate = Pick<
@@ -425,6 +426,9 @@ export interface ProjectionRecordFilter {
   /** Tasks spawned by these Runs, through the thread/run task index. */
   readonly subagentRunIds?: ReadonlyArray<RunId>;
   readonly providerThreadIds?: ReadonlyArray<ProviderThreadId>;
+  readonly contextHandoffTransferIds?: ReadonlyArray<
+    OrchestrationV2ThreadProjection["contextTransfers"][number]["id"]
+  >;
   readonly attemptIds?: ReadonlyArray<RunAttemptId>;
   readonly providerTurnAttemptIds?: ReadonlyArray<RunAttemptId>;
   readonly contextTransferThreadIds?: ReadonlyArray<ThreadId>;
@@ -1381,6 +1385,13 @@ function needsRecovery(
         projection.runs.some((run) => run.status === "queued") &&
         !projection.runs.some((run) =>
           ["preparing", "starting", "running", "waiting"].includes(run.status),
+        )
+      );
+    case "context-recoveries":
+      return (
+        projection.thread.archivedAt === null &&
+        projection.runs.some(
+          (run) => run.status === "completed" && run.contextRecovery?.phase === "compact",
         )
       );
     case "delegated-completions":
@@ -4850,7 +4861,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             : window === undefined
               ? sql<PayloadRow>`
                 SELECT payload_json FROM orchestration_v2_projection_context_handoffs
-                WHERE thread_id = ${threadId} ORDER BY rowid ASC
+                WHERE thread_id = ${threadId}
+                  ${filter?.contextHandoffTransferIds === undefined ? sql`` : sql`AND json_extract(payload_json, '$.transferId') IN ${sql.in(filter.contextHandoffTransferIds)}`}
+                ORDER BY rowid ASC
               `
               : sql<PayloadRow>`
                 SELECT json_set(json_remove(payload_json, '$.history', '$.delivery'), '$.summaryText', '') AS payload_json
@@ -10390,6 +10403,12 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 filter?.providerTurnAttemptIds === undefined ||
                 (row.runAttemptId !== null &&
                   filter.providerTurnAttemptIds.includes(row.runAttemptId)),
+            ),
+            contextHandoffs: projection.contextHandoffs.filter(
+              (row) =>
+                filter?.contextHandoffTransferIds === undefined ||
+                (row.transferId != null &&
+                  filter.contextHandoffTransferIds.includes(row.transferId)),
             ),
             contextTransfers: projection.contextTransfers
               .filter(

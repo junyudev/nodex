@@ -10,6 +10,7 @@ import * as OrchestratorService from "../mcp/OrchestratorMcpService.ts";
 import * as Handlers from "../mcp/toolkits/task/handlers.ts";
 import { TaskToolkit } from "../mcp/toolkits/task/tools.ts";
 import * as Ingress from "./Ingress.ts";
+import * as TaskResultDelivery from "../mcp/TaskResultDelivery.ts";
 
 type Authenticate = (
   effect: Effect.Effect<
@@ -46,7 +47,7 @@ const makeAuthentication = Effect.gen(function* () {
 const layerAuthentication = HttpRouter.middleware<{
   provides: Invocation.McpInvocationContext;
 }>()(makeAuthentication).layer;
-const registration = McpServer.toolkit(TaskToolkit);
+const registration = Layer.effectDiscard(McpServer.registerToolkit(TaskToolkit));
 // The scoped credential middleware installs the caller for each request, never at registration.
 const layerRegistration = registration as Layer.Layer<
   never,
@@ -56,6 +57,7 @@ const layerRegistration = registration as Layer.Layer<
 
 /** Task tools register beside the host's Session and content tools on one server. */
 export const layerToolkit = layerRegistration.pipe(
+  Layer.provide(Layer.effect(McpServer.McpServer, TaskResultDelivery.registration)),
   Layer.provide(Access.HandlersLayer.layer(Handlers.layer)),
   Layer.provide(OrchestratorService.layer),
 );

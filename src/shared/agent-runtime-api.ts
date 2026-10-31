@@ -141,7 +141,10 @@ export type AgentRuntimeModeInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;
   readonly interactionMode?: CreateThread["interactionMode"];
 };
-export type AgentRuntimeCompactInput = AgentRuntimeSessionTarget & { readonly requestId: string };
+export type AgentRuntimeCompactInput = AgentRuntimeSessionTarget & {
+  readonly requestId: string;
+  readonly failedRunId?: string;
+};
 /** Ends the chat's context; its next message starts every Agent's conversation fresh. */
 export type AgentRuntimeClearContextInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;

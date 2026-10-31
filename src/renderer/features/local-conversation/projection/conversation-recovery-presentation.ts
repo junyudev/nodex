@@ -24,6 +24,8 @@ export function recoveryStatusLabel(recovery: ConversationRecovery): string {
   if (recovery.state === "stopped") return "Stopped";
   if (recovery.state === "failed") {
     switch (recovery.reason) {
+      case "context_budget":
+        return "Conversation needs compaction";
       case "authentication":
         return "Sign-in required";
       case "usage_limit":
@@ -67,10 +69,11 @@ export function recoveryAction(
   recovery: ConversationRecovery | undefined,
   isLatestTurn: boolean,
   isStreamingTurn: boolean,
-): "continue" | "manage-provider" | null {
+): "continue" | "compact-and-retry" | "manage-provider" | null {
   if (!recovery || recovery.state !== "failed" || !isLatestTurn || isStreamingTurn) return null;
   // Continuing would ask the provider to reopen the same conversation again.
   if (recovery.reason === "unrecoverable") return null;
+  if (recovery.reason === "context_budget") return "compact-and-retry";
   if (recovery.reason === "authentication" || recovery.reason === "usage_limit")
     return "manage-provider";
   return "continue";

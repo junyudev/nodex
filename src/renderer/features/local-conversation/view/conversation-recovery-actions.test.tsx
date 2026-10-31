@@ -39,9 +39,13 @@ function recoveryBlock(reason: ConversationRecoveryReason): ThreadTranscriptBloc
 function surface({
   onManageFailedProvider,
   onContinueAfterFailure,
+  onCompactAndRetry,
   reason = "authentication",
   showRow = true,
-}: Pick<ThreadStageActions, "onManageFailedProvider" | "onContinueAfterFailure"> & {
+}: Pick<
+  ThreadStageActions,
+  "onManageFailedProvider" | "onContinueAfterFailure" | "onCompactAndRetry"
+> & {
   reason?: ConversationRecoveryReason;
   showRow?: boolean;
 }) {
@@ -50,6 +54,7 @@ function surface({
       <ConversationRecoveryActionsProvider
         onManageFailedProvider={onManageFailedProvider}
         onContinueAfterFailure={onContinueAfterFailure}
+        onCompactAndRetry={onCompactAndRetry}
       >
         {showRow ? (
           <ThreadRecoveryBlock block={recoveryBlock(reason)} isLatestTurn isStreamingTurn={false} />
@@ -73,6 +78,40 @@ describe("Conversation recovery actions", () => {
       expect(view.queryByRole("button", { name: "Continue" })).toBeNull();
     },
   );
+
+  test("context exhaustion compacts once while pending and transport failure retries", async () => {
+    let finish: () => void = () => {};
+    const onCompactAndRetry = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const onContinueAfterFailure = vi.fn(async () => {});
+    const view = render(
+      surface({ reason: "context_budget", onCompactAndRetry, onContinueAfterFailure }),
+    );
+    const compact = view.getByRole("button", { name: "Compact and retry" });
+    await act(async () => {
+      fireEvent.click(compact);
+      fireEvent.click(compact);
+      await Promise.resolve();
+    });
+    expect(onCompactAndRetry).toHaveBeenCalledExactlyOnceWith("failed-turn");
+    expect(onContinueAfterFailure).not.toHaveBeenCalled();
+    expect(compact.hasAttribute("disabled")).toBe(true);
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+    });
+    view.rerender(surface({ reason: "connection", onContinueAfterFailure, onCompactAndRetry }));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Continue" }));
+      await Promise.resolve();
+    });
+    expect(onContinueAfterFailure).toHaveBeenCalledExactlyOnceWith("failed-turn");
+    expect(view.queryByRole("button", { name: "Compact and retry" })).toBeNull();
+  });
 
   test("omits settings navigation when the conversation supplies no settings action", () => {
     const view = render(surface({}));

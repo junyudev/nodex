@@ -155,6 +155,7 @@ describe("Runtime request recovery", () => {
   });
 
   test.each([
+    [{ ...failure, code: "context_budget_exhausted" }, "context_budget"],
     [{ ...failure, code: "api_error_529" }, "overloaded"],
     [{ ...failure, code: "api_error_429" }, "rate_limit"],
     [{ ...failure, code: "authentication_failed" }, "authentication"],

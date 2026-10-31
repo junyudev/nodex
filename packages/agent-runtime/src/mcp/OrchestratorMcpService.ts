@@ -1,3 +1,4 @@
+import { recordTaskResult } from "./TaskResultDelivery.ts";
 import {
   delegatedTaskExecutionState,
   delegatedTaskRun,
@@ -1178,7 +1179,7 @@ export const make = Effect.gen(function* () {
           true,
           "thread-read-acknowledge",
           callerRun.id,
-        );
+        ).pipe(Effect.tap(recordTaskResult));
         acknowledged++;
       }
     }

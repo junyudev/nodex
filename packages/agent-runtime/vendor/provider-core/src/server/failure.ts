@@ -10,6 +10,7 @@ import type {
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
+import { OrchestrationV2ContextBudget } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Cause from "effect/Cause";
 
@@ -19,7 +20,7 @@ import * as Schema from "effect/Schema";
 /** Raised when portable history does not fit the target provider's context window. */
 export class ContextHandoffBudgetError extends Schema.TaggedError<ContextHandoffBudgetError>()(
   "ContextHandoffBudgetError",
-  {},
+  { budget: Schema.optional(OrchestrationV2ContextBudget) },
 ) {
   override get message() {
     return "Insufficient context allowance for the provider handoff. Compact the target conversation or use a larger-context model; the current request has not been truncated.";
@@ -30,6 +31,23 @@ export const MAX_PROVIDER_FAILURE_MESSAGE_LENGTH = 4_096;
 export const MAX_PROVIDER_FAILURE_CODE_LENGTH = 128;
 
 const DEFAULT_PROVIDER_FAILURE_MESSAGE = "Provider turn failed.";
+
+/** A context-budget refusal can arrive wrapped in Causes or nested errors; foreign accessors may throw. */
+function findContextBudgetError(cause: unknown): ContextHandoffBudgetError | undefined {
+  const seen = new Set<unknown>();
+  let current = cause;
+  try {
+    while (typeof current === "object" && current !== null && !seen.has(current)) {
+      seen.add(current);
+      if (Cause.isCause(current)) current = Cause.squash(current);
+      else if (Schema.is(ContextHandoffBudgetError)(current)) return current;
+      else current = (current as { cause?: unknown }).cause;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
 
 /** Translate known categories without exposing arbitrary provider defect text. */
 function causeMessage(cause: unknown): string | undefined {
@@ -152,9 +170,14 @@ export function makeProviderFailure(input: {
   readonly retryable?: boolean | null;
   readonly resetAt?: string | null;
 }): OrchestrationV2ProviderFailure {
+  const budgetError = findContextBudgetError(input.cause);
+  const budgetExhausted = budgetError !== undefined;
+  const contextBudget = budgetError?.budget;
   const rawMessage = input.message ?? causeMessage(input.cause) ?? DEFAULT_PROVIDER_FAILURE_MESSAGE;
   const message = boundedText(rawMessage, MAX_PROVIDER_FAILURE_MESSAGE_LENGTH);
-  const rawCode = input.code ?? stringField(input.cause, "code") ?? null;
+  const rawCode = budgetExhausted
+    ? "context_budget_exhausted"
+    : (input.code ?? stringField(input.cause, "code") ?? null);
   const code =
     rawCode === null ? null : boundedText(rawCode, MAX_PROVIDER_FAILURE_CODE_LENGTH) || null;
 
@@ -162,7 +185,8 @@ export function makeProviderFailure(input: {
     class: input.class ?? "unknown",
     message: message || DEFAULT_PROVIDER_FAILURE_MESSAGE,
     code,
-    retryable: input.retryable ?? null,
+    retryable: budgetExhausted ? false : (input.retryable ?? null),
+    ...(contextBudget === undefined ? {} : { contextBudget }),
     ...(input.class === "usage_limit" &&
     input.resetAt != null &&
     Number.isFinite(Date.parse(input.resetAt))

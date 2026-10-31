@@ -403,6 +403,11 @@ export interface ClaudeAgentSdkQuerySession {
     ClaudeAppliedSettings | null,
     ClaudeAgentSdkQueryRunnerError
   >;
+  /** Native occupancy after maintenance when a compact boundary omits post_tokens. */
+  readonly readContextUsage?: Effect.Effect<
+    { readonly usedTokens: number; readonly maxTokens: number },
+    ClaudeAgentSdkQueryRunnerError
+  >;
   readonly setPermissionMode: (
     mode: PermissionMode,
   ) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
@@ -988,6 +993,15 @@ export const layerQueryRunner: Layer.Layer<
               ),
             );
           },
+          readContextUsage: Effect.tryPromise({
+            try: () => queryRuntime.getContextUsage({ detail: "full" }),
+            catch: (cause) => queryRunnerError(cause, "getContextUsage"),
+          }).pipe(
+            Effect.map((usage) => ({
+              usedTokens: usage.totalTokens,
+              maxTokens: usage.maxTokens,
+            })),
+          ),
           readAppliedSettings: Effect.tryPromise({
             try: () => queryClaudeAppliedSettings(queryRuntime),
             catch: (cause) => queryRunnerError(cause, "getSettings"),
@@ -7231,10 +7245,29 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const now = yield* DateTime.now;
             const nativeItemId = message.uuid;
             const postTokens = message.compact_metadata.post_tokens;
-            const afterTokenCount =
+            const reportedPostTokens =
               typeof postTokens === "number" && Number.isFinite(postTokens) && postTokens > 0
                 ? Math.round(postTokens)
                 : undefined;
+            const measured =
+              reportedPostTokens !== undefined || input.query.readContextUsage === undefined
+                ? undefined
+                : yield* input.query.readContextUsage.pipe(
+                    Effect.timeoutOption("30 seconds"),
+                    Effect.map(Option.getOrUndefined),
+                    Effect.catchCause(() =>
+                      Effect.logWarning("Could not refresh native context after compaction", {
+                        threadId: context.input.threadId,
+                      }).pipe(Effect.as(undefined)),
+                    ),
+                  );
+            const afterTokenCount =
+              reportedPostTokens ??
+              (measured !== undefined &&
+              Number.isFinite(measured.usedTokens) &&
+              measured.usedTokens >= 0
+                ? Math.ceil(measured.usedTokens)
+                : undefined);
             if (afterTokenCount !== undefined) {
               yield* emitProviderEvent({
                 type: "provider_turn.updated",
@@ -7256,7 +7289,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   completedAt: null,
                   tokenUsage: {
                     usedTokens: afterTokenCount,
-                    maxTokens: claudeContextWindow(context.input.modelSelection),
+                    maxTokens:
+                      measured !== undefined &&
+                      Number.isFinite(measured.maxTokens) &&
+                      measured.maxTokens > 0
+                        ? Math.floor(measured.maxTokens)
+                        : claudeContextWindow(context.input.modelSelection),
                     updatedAt: DateTime.formatIso(now),
                   },
                 },

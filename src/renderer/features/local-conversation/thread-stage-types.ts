@@ -508,6 +508,7 @@ export interface ThreadStageActions {
   onInterruptTurn: (turnId?: string) => Promise<void>;
   onResumeInterruptedTurn?: () => Promise<void>;
   /** Continues only the exact latest failed Turn, without replaying its original request. */
+  onCompactAndRetry?: (turnId: string) => Promise<void>;
   onContinueAfterFailure?: (turnId: string) => Promise<void>;
   /** Opens settings for the Agent that owns the exact latest failed Turn. */
   onManageFailedProvider?: (turnId: string) => void;

@@ -3835,6 +3835,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           return yield* connection.request("thread.compact", {
             threadId: loaded.threadId,
             requestId: input.requestId,
+            ...(input.failedRunId === undefined ? {} : { failedRunId: input.failedRunId }),
           });
         }),
       ),

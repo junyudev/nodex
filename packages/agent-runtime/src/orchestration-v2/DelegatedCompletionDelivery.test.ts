@@ -1,9 +1,29 @@
+import { McpSchema } from "effect/ai";
+import { McpTurnAdmission } from "@t3tools/provider-core/server/ExecutionHost";
+import {
+  TASK_RESULT_DELIVERY_META,
+  recordTaskResult,
+  withTaskResultDelivery,
+} from "../mcp/TaskResultDelivery.ts";
+import { taskView } from "../mcp/toolkits/task/handlers.ts";
+import { delegatedResultReceipts } from "./DelegatedResultReceipt.ts";
+import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
+import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import { deliverContextHandoffs } from "./ContextHandoffDelivery.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  ContextHandoffId,
+  ContextTransferId,
+  RunAttemptId,
+  ProviderTurnId,
+  ProviderSessionId,
+  type OrchestrationV2DomainEvent,
+  type OrchestrationV2ContextHandoff,
   EventId,
   MessageId,
   type ModelSelection,
@@ -1949,5 +1969,393 @@ it.layer(layerPressure)("delegated completion delivery at history scale", (it) =
         [],
       );
     }),
+  );
+});
+
+const layerReceipts = Layer.mergeAll(
+  layerPressure,
+  ProviderEventIngestor.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        RuntimeLayer.layerEventSink,
+        ProjectionStore.layer,
+        IdAllocator.layer,
+        ThreadCommandExecutor.layer,
+      ),
+    ),
+  ),
+).pipe(Layer.provideMerge(SqlitePersistence.layerMemory));
+
+it.layer(layerReceipts)("native delegated result receipts", (it) => {
+  it.effect(
+    "retains five accepted results after parent failure and delivers only the unseen result once",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const store = yield* ProjectionStore.ProjectionStoreV2;
+        const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+        const sink = yield* EventSink.EventSinkV2;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make("receipt-parent");
+        const runId = RunId.make("receipt-run");
+        const taskIds = Array.from({ length: 6 }, (_, index) =>
+          NodeId.make(`receipt-task:${index}`),
+        );
+        yield* seedParentWithTerminalTask({
+          threadId,
+          runId,
+          projectId: ProjectId.make("receipt-project"),
+          rootNodeId: NodeId.make("receipt-root"),
+          taskId: taskIds[0]!,
+          deliveryState: "acknowledged",
+          deliveryTaskIds: taskIds.slice(3, 5),
+          now,
+        });
+        const initial = yield* orchestrator.getThreadProjection(threadId);
+        const run = initial.runs[0]!;
+        const provider = initial.providerThreads[0]!;
+        const task = initial.subagents[0]!;
+        const attemptId = RunAttemptId.make("receipt-attempt");
+        const providerTurnId = ProviderTurnId.make("receipt-turn");
+        const messageId = MessageId.make(`message:delegated-delivery:${threadId}`);
+        const event = (
+          key: string,
+          value: Omit<OrchestrationV2DomainEvent, "id" | "occurredAt">,
+        ): OrchestrationV2DomainEvent =>
+          ({ ...value, id: EventId.make(key), occurredAt: now }) as OrchestrationV2DomainEvent;
+        const handoffs: OrchestrationV2ContextHandoff[] = taskIds.map((id, index) => ({
+          id: ContextHandoffId.make(`result:${id}`),
+          transferId: ContextTransferId.make(`transfer:${id}`),
+          threadId,
+          targetRunId: runId,
+          fromProviderThreadIds: [],
+          toProviderThreadId: provider.id,
+          coveredRunOrdinals: { from: 1, to: 1 },
+          strategy: "manual_context",
+          status: "ready",
+          summaryMessageId: null,
+          summaryText: `Result ${index}`,
+          createdByProviderInstanceId: null,
+          createdAt: now,
+          updatedAt: now,
+        }));
+        yield* sink.write({
+          events: [
+            event("receipt:run", {
+              type: "run.updated",
+              threadId,
+              runId,
+              payload: { ...run, activeAttemptId: attemptId },
+            }),
+            event("receipt:attempt", {
+              type: "run-attempt.updated",
+              threadId,
+              runId,
+              payload: {
+                id: attemptId,
+                runId,
+                rootNodeId: run.rootNodeId!,
+                providerInstanceId: run.providerInstanceId,
+                providerThreadId: provider.id,
+                providerTurnId,
+                attemptOrdinal: 1,
+                nativeThreadId: provider.nativeThreadRef!.nativeId!,
+                reason: "initial",
+                status: "running",
+                startedAt: now,
+                completedAt: null,
+              },
+            }),
+            event("receipt:turn", {
+              type: "provider-turn.updated",
+              threadId,
+              runId,
+              payload: {
+                id: providerTurnId,
+                providerThreadId: provider.id,
+                nodeId: run.rootNodeId!,
+                runAttemptId: attemptId,
+                nativeTurnRef: null,
+                ordinal: 1,
+                status: "running",
+                startedAt: now,
+                completedAt: null,
+              },
+            }),
+            event("receipt:message", {
+              type: "message.updated",
+              threadId,
+              runId,
+              payload: {
+                id: messageId,
+                threadId,
+                runId,
+                nodeId: run.rootNodeId,
+                role: "user",
+                text: "Result 3\nResult 4",
+                attachments: [],
+                streaming: false,
+                createdBy: "agent",
+                creationSource: "server",
+                createdAt: now,
+                updatedAt: now,
+                delegatedCompletion: {
+                  parentRunId: runId,
+                  generation: 1,
+                  taskIds: taskIds.slice(3, 5),
+                },
+              },
+            }),
+            ...taskIds.flatMap((id, index) => {
+              const child = ThreadId.make(`child:${id}`);
+              return [
+                event(`task:${id}`, {
+                  type: "subagent.updated",
+                  threadId,
+                  runId,
+                  payload: {
+                    ...task,
+                    id,
+                    childThreadId: child,
+                    result: `Result ${index}`,
+                    completionDelivery: {
+                      state: index < 3 ? "acknowledged" : "claimed",
+                      observedByRunId: index < 3 ? runId : null,
+                    },
+                  },
+                }),
+                event(`transfer:${id}`, {
+                  type: "context-transfer.updated",
+                  threadId,
+                  runId,
+                  payload: {
+                    id: handoffs[index]!.transferId!,
+                    type: "subagent_result",
+                    sourceThreadId: child,
+                    targetThreadId: threadId,
+                    sourcePoint: { threadId: child, runId: RunId.make(`child-run:${id}`) },
+                    basePoint: null,
+                    sourceProviderInstanceId: run.providerInstanceId,
+                    targetProviderInstanceId: run.providerInstanceId,
+                    targetRunId: runId,
+                    status: "consumed",
+                    resolution: {
+                      strategy: "portable_context",
+                      contextHandoffId: handoffs[index]!.id,
+                    },
+                    createdBy: "system",
+                    error: null,
+                    createdAt: now,
+                    updatedAt: now,
+                    consumedAt: now,
+                  },
+                }),
+                event(`handoff:${id}`, {
+                  type: "context-handoff.updated",
+                  threadId,
+                  runId,
+                  payload: handoffs[index]!,
+                }),
+              ];
+            }),
+          ],
+        });
+        assert.isTrue(
+          (yield* store.getThreadRecords(threadId, ["contextHandoffs"])).contextHandoffs.every(
+            (row) => row.delivery === undefined,
+          ),
+          "acknowledgment is not native acceptance",
+        );
+        assert.isEmpty(
+          yield* delegatedResultReceipts({
+            store,
+            threadId,
+            observedByRunId: runId,
+            taskIds: taskIds.slice(3, 5),
+            messageId,
+            messageText: "Tasks finished; read their results.",
+          }),
+        );
+        for (const index of [0, 1, 2]) {
+          const taskResult = {
+            taskId: taskIds[index]!,
+            childThreadId: ThreadId.make(`child:${taskIds[index]}`),
+            childRunId: RunId.make(`child-run:${taskIds[index]}`),
+            childNodeId: taskIds[index]!,
+            status: "completed",
+            workState: "result_available",
+            providerInstanceId: task.providerInstanceId,
+            model: task.model,
+            summary: `Result ${index}`,
+            hasPendingChildRuns: false,
+            resultContextTransferId: handoffs[index]!.transferId!,
+            latestTerminalRunId: RunId.make(`child-run:${taskIds[index]}`),
+            latestTerminalStatus: "completed",
+            latestTerminalSummary: `Result ${index}`,
+            latestTerminalResultContextTransferId: handoffs[index]!.transferId!,
+            waitTimedOut: false,
+          } satisfies import("@t3tools/contracts").OrchestratorMcpDelegateTaskResult;
+          const publicResult = taskView(taskResult);
+          assert.notProperty(publicResult, "resultContextTransferId");
+          const output = yield* withTaskResultDelivery(
+            Effect.gen(function* () {
+              yield* recordTaskResult(taskResult);
+              return new McpSchema.CallToolResult({
+                content: [{ type: "text", text: JSON.stringify(publicResult) }],
+                structuredContent: publicResult,
+              });
+            }),
+          ).pipe(
+            Effect.provideService(McpTurnAdmission, {
+              actor: {
+                runtimeId: "receipt-runtime",
+                runtimeGeneration: "receipt-generation",
+                projectId: ProjectId.make("receipt-project"),
+                threadId,
+                runId,
+                attemptId,
+                providerInstanceId: run.providerInstanceId,
+                providerSessionId: ProviderSessionId.make("receipt-session"),
+                providerThreadId: provider.id,
+                nativeGeneration: 1,
+                nativeThreadRef: provider.nativeThreadRef,
+                cwd: null,
+              },
+              requestId: index,
+              assertCurrent: () => Effect.void,
+            }),
+          );
+          const ingest = (
+            response: McpSchema.CallToolResult,
+            status: "running" | "completed" = "completed",
+          ) =>
+            ingestor.ingestNormalized({
+              providerSessionId: ProviderSessionId.make("receipt-session"),
+              providerInstanceId: run.providerInstanceId,
+              threadId,
+              runId,
+              event: {
+                type: "turn_item.updated",
+                driver,
+                turnItem: {
+                  id: TurnItemId.make(`native:tool-result:${index}`),
+                  threadId,
+                  runId,
+                  nodeId: run.rootNodeId,
+                  providerThreadId: provider.id,
+                  providerTurnId,
+                  nativeItemRef: null,
+                  parentItemId: null,
+                  ordinal: index + 1,
+                  type: "dynamic_tool",
+                  toolName: ["nodex_app.task_wait", "mcp__nodex_app__task_status", "delegate_task"][
+                    index
+                  ]!,
+                  input: { taskId: taskIds[index] },
+                  output: response,
+                  status,
+                  title: null,
+                  startedAt: now,
+                  completedAt: now,
+                  updatedAt: now,
+                },
+              },
+            });
+          for (const replacement of [
+            { attemptId: RunAttemptId.make("retired-attempt") },
+            { nativeThreadId: "retired-native" },
+          ]) {
+            yield* ingest(
+              new McpSchema.CallToolResult({
+                ...output,
+                _meta: {
+                  ...output._meta,
+                  [TASK_RESULT_DELIVERY_META]: {
+                    ...(output._meta![TASK_RESULT_DELIVERY_META] as object),
+                    ...replacement,
+                  },
+                },
+              }),
+            );
+          }
+          yield* ingest(output, "running");
+          assert.isUndefined(
+            (yield* store.getThreadRecords(threadId, ["contextHandoffs"], {
+              contextHandoffTransferIds: [handoffs[index]!.transferId!],
+            })).contextHandoffs[0]!.delivery,
+          );
+          yield* ingest(output);
+        }
+        yield* orchestrator.dispatch({
+          type: "notification.delivery.accept",
+          threadId,
+          messageId,
+          commandId: CommandId.make("receipt:notification"),
+        });
+        yield* sink.write({
+          events: [
+            event("receipt:failed", {
+              type: "run.updated",
+              threadId,
+              runId,
+              payload: { ...run, activeAttemptId: attemptId, status: "failed", completedAt: now },
+            }),
+          ],
+        });
+        const pending = yield* store.getTurnStartContext(threadId, runId);
+        assert.deepEqual(
+          pending.contextHandoffs.map((row) => row.id),
+          [handoffs[5]!.id],
+        );
+        let deliveries = 0;
+        const persist = (handoff: OrchestrationV2ContextHandoff) =>
+          sink
+            .write({
+              events: [
+                event(`persist:${++deliveries}`, {
+                  type: "context-handoff.updated",
+                  threadId,
+                  runId,
+                  payload: handoff,
+                }),
+              ],
+            })
+            .pipe(Effect.asVoid);
+        const delivery = yield* deliverContextHandoffs({
+          handoffs: pending.contextHandoffs,
+          providerThread: provider,
+          budget: 16_000,
+          alreadyDeliveredItemIds: new Set(),
+          persist,
+        });
+        assert.include(delivery.context, "Result 5");
+        yield* delivery.delivered;
+        assert.isEmpty((yield* store.getTurnStartContext(threadId, runId)).contextHandoffs);
+        const all = (yield* store.getThreadRecords(threadId, ["contextHandoffs"])).contextHandoffs;
+        let budgetReads = 0;
+        yield* deliverContextHandoffs({
+          handoffs: all,
+          providerThread: provider,
+          budget: Effect.sync(() => {
+            budgetReads++;
+            return 0;
+          }),
+          alreadyDeliveredItemIds: new Set(),
+          persist,
+        });
+        assert.equal(budgetReads, 0);
+        const incarnation = {
+          ...provider,
+          nativeThreadRef: { ...provider.nativeThreadRef!, nativeId: "replacement-native" },
+        };
+        const replaced = yield* deliverContextHandoffs({
+          handoffs: all,
+          providerThread: incarnation,
+          budget: 16_000,
+          alreadyDeliveredItemIds: new Set(),
+          persist: () => Effect.void,
+        });
+        for (const index of [0, 1, 2, 3, 4, 5]) assert.include(replaced.context, `Result ${index}`);
+      }),
   );
 });

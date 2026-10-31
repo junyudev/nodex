@@ -6,6 +6,8 @@ import type { ProjectionRecoveryKind } from "./ProjectionStore.ts";
  * Exact partial-index predicates (migration 076). Queries repeat them verbatim so SQLite reads
  * only matching index entries instead of decoding or JSON-parsing every historical row.
  */
+export const CONTEXT_RECOVERY_RUN_PREDICATE = `status = 'completed' AND CASE WHEN json_valid(payload_json)
+      THEN json_extract(payload_json, '$.contextRecovery.phase') = 'compact' ELSE 0 END`;
 export const OPEN_DELIVERY_RUN_PREDICATE = `CASE WHEN json_valid(payload_json)
       THEN json_type(payload_json, '$.delegatedCompletion.delivery') = 'object' ELSE 0 END`;
 const UNRESOLVED_CHILD_TASK_PREDICATE = `origin = 'app_owned' AND child_thread_id IS NOT NULL
@@ -33,6 +35,8 @@ export const recoveryCandidateThreadIds = (
                 AND active.status IN ('preparing', 'starting', 'running', 'waiting')
             )
         `;
+    case "context-recoveries":
+      return sql`SELECT thread_id FROM orchestration_v2_projection_runs WHERE ${sql.literal(CONTEXT_RECOVERY_RUN_PREDICATE)}`;
     case "delegated-completions":
       return sql`
           SELECT thread_id FROM orchestration_v2_projection_runs

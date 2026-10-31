@@ -248,6 +248,7 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
             >
               <ConversationRecoveryActionsProvider
                 onContinueAfterFailure={props.actions.onContinueAfterFailure}
+                onCompactAndRetry={props.actions.onCompactAndRetry}
                 onManageFailedProvider={props.actions.onManageFailedProvider}
               >
                 <EnsureLocalConversationThreadScrollController>

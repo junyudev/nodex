@@ -636,6 +636,13 @@ export const OrchestrationV2NativeInput = Schema.Struct({
   nativeTurnId: Schema.String,
 });
 export const OrchestrationV2Run = Schema.Struct({
+  /** Maintenance and retry remain bound to the failed request and native conversation. */
+  contextRecovery: Schema.optional(Schema.Struct({
+    failedRunId: RunId,
+    providerThreadId: ProviderThreadId,
+    nativeThreadId: Schema.String,
+    phase: Schema.Literals(["compact", "retry", "complete"]),
+  })),
   /** Observed native work is adopted; it is never sent to the provider twice. */
   nativeInput: Schema.optional(OrchestrationV2NativeInput),
   id: RunId,
@@ -1144,7 +1151,9 @@ export const OrchestrationV2ContextHandoff = Schema.Struct({
   delivery: Schema.optional(
     Schema.Struct({
       nativeThreadId: Schema.String,
-      status: Schema.Literals(["pending", "injected", "inline"]),
+      status: Schema.Literals(["pending", "injected", "inline", "observed"]),
+      acceptedByRunId: Schema.optional(RunId),
+      acceptedMessageId: Schema.optional(MessageId),
       itemIds: Schema.Array(TurnItemId),
       // Covered by recovery instructions, but not present in native model history.
       omittedItemIds: Schema.optional(Schema.Array(TurnItemId)),
@@ -1503,7 +1512,20 @@ const OrchestrationV2ProviderFailureCode = TrimmedNonEmptyString.check(Schema.is
  * Producers must redact credentials before constructing this value. The
  * schema bounds every provider-controlled string as a second line of defense.
  */
+export const OrchestrationV2ContextBudget = Schema.Struct({
+  capacity: NonNegativeInt,
+  occupancy: NonNegativeInt,
+  currentInput: NonNegativeInt,
+  reservedTokens: NonNegativeInt,
+  futureWorkReserve: NonNegativeInt,
+  allowance: NonNegativeInt,
+  requiredTokens: NonNegativeInt,
+  recoveryOperations: Schema.Array(Schema.Literals(["compact_and_retry", "choose_model"])),
+});
+export type OrchestrationV2ContextBudget = typeof OrchestrationV2ContextBudget.Type;
+
 export const OrchestrationV2ProviderFailure = Schema.Struct({
+  contextBudget: Schema.optional(OrchestrationV2ContextBudget),
   class: OrchestrationV2ProviderFailureClass,
   message: OrchestrationV2ProviderFailureMessage,
   code: Schema.NullOr(OrchestrationV2ProviderFailureCode),
@@ -3323,6 +3345,14 @@ export const OrchestrationV2Command = Schema.Union([
       Schema.Struct({ type: Schema.Literal("queue_after_active") }),
       Schema.Struct({ type: Schema.Literal("start_immediately") }),
     ]),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("run.context-recover"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    failedRunId: RunId,
+    /** Only the runtime supplies the successful maintenance Run. */
+    compactRunId: Schema.optional(RunId),
   }),
   Schema.Struct({
     type: Schema.Literal("prepared-run.release"),
