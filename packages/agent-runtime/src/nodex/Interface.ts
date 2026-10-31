@@ -600,6 +600,22 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     readonly input: { readonly projectId: string; readonly cursor?: string };
     readonly output: { readonly threadIds: readonly string[]; readonly nextCursor: string | null };
   };
+  readonly "session-control.receipt": {
+    readonly input: import("./SessionControlReceipts.ts").SessionControlReceiptInput;
+    readonly output: import("./SessionControlReceipts.ts").SessionControlReceipt;
+  };
+  readonly "thread.stop": {
+    readonly input: {
+      readonly threadId: string;
+      readonly commandId: string;
+      readonly reason?: string;
+    };
+    readonly output: { readonly stopped: boolean };
+  };
+  readonly "thread.queue-control": {
+    readonly input: AgentWire<import("./SessionQueue.ts").SessionQueueInput>;
+    readonly output: import("./SessionQueue.ts").SessionQueueResult;
+  };
   readonly "thread.queue": {
     readonly input: { readonly threadId: string; readonly cursor?: string };
     readonly output: import("../orchestration-v2/ProjectionStore.ts").ProjectionQueuedRunPage;

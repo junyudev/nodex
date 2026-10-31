@@ -19,6 +19,7 @@ export const CODEX_PEER_METHOD_VERSIONS: Readonly<Record<string, number>> = {
   "thread-follower-set-queued-follow-ups-state": 1,
   "thread-follower-remove-queued-message": 1,
   "thread-follower-clear-queued-messages": 1,
+  "thread-follower-session-queue": 1,
   "thread-queued-followups-changed": 2,
 };
 

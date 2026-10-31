@@ -1,3 +1,5 @@
+import { sessionControlSchemas } from "../../shared/nodex-app-tools/session-control-schemas";
+import { makeWithCapture as makeSessionControls } from "../app-tools/SessionControlAppTools";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { AgentHostTool } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
@@ -81,6 +83,7 @@ export const make = Effect.gen(function* () {
     Effect.provideService(SessionWaiter, waiter),
   );
   const commands = yield* makeSessionCommands;
+  const sessionControls = yield* makeSessionControls(captureHostedAppToolAuthority);
   const handoff = yield* makeHandoff(captureHostedAppToolAuthority);
   const handoffStatus = yield* makeHandoffStatus(captureHostedAppToolAuthority);
   return Effect.fn("AgentRuntimeHostTools.execute")(function* (
@@ -96,6 +99,7 @@ export const make = Effect.gen(function* () {
     if (queries.has(name)) return yield* query(invocation);
     if (name === "read_session_terminal") return yield* terminal(invocation);
     if (name === "uninstall_plugin") return yield* plugin(invocation);
+    if (Object.hasOwn(sessionControlSchemas, name)) return yield* sessionControls(invocation);
     if (Object.hasOwn(accountSchemas, name)) return yield* account(invocation);
     if (Object.hasOwn(sidebarSchemas, name) || Object.hasOwn(sessionSchemas, name))
       return yield* workspaceTools(invocation);

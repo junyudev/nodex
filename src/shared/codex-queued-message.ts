@@ -159,6 +159,24 @@ export function parseCodexQueuedMessageState(value: unknown): CodexQueuedMessage
   }
   return result;
 }
+/** Text edits retain captured attachments, attribution and untrusted app-message semantics. */
+export function replaceCodexQueuedMessageText(
+  message: CodexQueuedMessage,
+  text: string,
+): CodexQueuedMessage {
+  const untrusted = message.context.untrustedAppMessage;
+  return {
+    ...message,
+    context: {
+      ...message.context,
+      prompt: text,
+      ...(untrusted == null
+        ? {}
+        : { untrustedAppMessage: { ...parseUntrustedAppMessage(untrusted), text } }),
+    },
+  };
+}
+
 export function queuedMessagePromptInput(message: CodexQueuedMessage): CodexPromptInput {
   const {
     prompt,

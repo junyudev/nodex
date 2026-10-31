@@ -1,3 +1,4 @@
+import { sessionControlSchemas } from "./session-control-schemas";
 import { sessionQuestionSchema } from "./session-question-schema";
 import { z } from "zod";
 import { NODEX_AGENT_V6_TOOL_CONTRACTS } from "../nodex-agent-tools/v6-contracts";
@@ -30,6 +31,7 @@ export const appToolArgumentSchemas: Readonly<Record<string, z.ZodType>> = {
     ]),
   ),
   ...accountSchemas,
+  ...sessionControlSchemas,
   ...sessionObservationSchemas,
   ...sessionPresentationSchemas,
   ...sessionSchemas,

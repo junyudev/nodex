@@ -159,6 +159,17 @@ const fixture = (
               native = native.filter((item) => item.id !== params.queuedSubmissionId);
               return { deleted: native.length !== previous };
             }
+            if (method === "thread/queue/update") {
+              const selected = native.find((item) => item.id === params.queuedSubmissionId);
+              if (!selected) throw new Error("The queued message started");
+              selected.input = params.input as QueuedSubmission["input"];
+              return { queuedSubmission: selected };
+            }
+            if (method === "thread/queue/reorder") {
+              const order = params.queuedSubmissionIds as string[];
+              native = order.map((id) => native.find((item) => item.id === id)!);
+              return {};
+            }
             assert.strictEqual(method, "thread/queue/list");
             const start = params.cursor == null ? 0 : Number(params.cursor);
             const end = start + (options.pageSize ?? 100);
@@ -959,5 +970,103 @@ it.effect("send locks exclude concurrent windows and suppress already sent messa
   ).pipe(Effect.provide(callbackLayer)),
 );
 
-for (const permissionMode of ["auto", "guardian-approvals", "full-access", "custom"] as const) {
-}
+it.effect("Session queue controls retain captured attachments and enforce pending entries", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const original = {
+        ...message("one"),
+        context: {
+          ...message("one").context,
+          prompt: "original",
+          imageAttachments: [{ source: "/image.png" }],
+        },
+      };
+      const f = yield* fixture(
+        { thread: [original, message("two")] },
+        { hostId: "remote", threadQueue: false },
+      );
+      const control = (
+        input: import("../../shared/nodex-app-tools/session-control-schemas").SessionQueueInput,
+      ) => f.service.controlAsOwner("remote", "thread", input, () => Effect.void);
+      yield* control({
+        sessionId: "session",
+        action: "edit",
+        queuedId: "one",
+        text: "replacement",
+      });
+      assert.deepEqual(f.state().thread?.[0], {
+        ...original,
+        context: { ...original.context, prompt: "replacement" },
+      });
+      yield* control({ sessionId: "session", action: "reorder", queuedId: "one", beforeId: null });
+      assert.deepEqual(
+        f.state().thread?.map((item) => item.id),
+        ["two", "one"],
+      );
+      yield* control({ sessionId: "session", action: "remove", queuedId: "one" });
+      const late = yield* control({
+        sessionId: "session",
+        action: "edit",
+        queuedId: "one",
+        text: "late",
+      }).pipe(Effect.result);
+      assert.equal(late._tag, "Failure");
+      if (late._tag === "Failure")
+        assert.equal((late.failure as { reason: string }).reason, "not_queued");
+    }),
+  ).pipe(Effect.provide(callbackLayer)),
+);
+
+it.effect(
+  "Session queue native reads and edits retain input attachments and separate delivery owners",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const native = {
+          ...nativeSubmission("native"),
+          input: [
+            ...nativeSubmission("native").input,
+            { type: "localImage" as const, path: "/retained.png" },
+          ],
+        };
+        const f = yield* fixture(
+          { thread: [message("local")] },
+          { hostId: "remote", native: [native] },
+        );
+        const control = (
+          input: import("../../shared/nodex-app-tools/session-control-schemas").SessionQueueInput,
+        ) => f.service.controlAsOwner("remote", "thread", input, () => Effect.void);
+        const listed = yield* control({ sessionId: "session", action: "list", limit: 1 });
+        if (!("items" in listed)) throw new Error("Expected page");
+        assert.equal(listed.items[0]?.queuedId, "native");
+        assert.isNotNull(listed.nextCursor);
+        const next = yield* control({
+          sessionId: "session",
+          action: "list",
+          limit: 1,
+          cursor: listed.nextCursor!,
+        });
+        if (!("items" in next)) throw new Error("Expected page");
+        assert.equal(next.items[0]?.queuedId, "local");
+        yield* control({
+          sessionId: "session",
+          action: "edit",
+          queuedId: "native",
+          text: "replacement",
+        });
+        assert.deepEqual(f.native()[0]?.input, [
+          { type: "text", text: "replacement", text_elements: [] },
+          { type: "localImage", path: "/retained.png" },
+        ]);
+        assert.isTrue(
+          yield* control({
+            sessionId: "session",
+            action: "reorder",
+            queuedId: "local",
+            beforeId: "native",
+          }).pipe(Effect.isFailure),
+        );
+        assert.isTrue(f.nativeRequests.every((request) => request.hostId === "remote"));
+      }),
+    ).pipe(Effect.provide(callbackLayer)),
+);

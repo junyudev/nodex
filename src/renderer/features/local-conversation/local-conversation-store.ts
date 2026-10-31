@@ -2,6 +2,18 @@ import {
   isCodexUserInputResponseRetry,
   type CodexQuestionResponseMetadata,
 } from "../../../shared/codex-question-response";
+import { replaceCodexQueuedMessageText } from "../../../shared/codex-queued-message";
+import {
+  sessionQueueSchema,
+  type SessionQueueInput,
+} from "../../../shared/nodex-app-tools/session-control-schemas";
+import {
+  readSessionQueue,
+  reorderedQueueIds,
+  requireQueuedEntry,
+  SessionQueueError,
+  type SessionQueueResult,
+} from "../../../shared/nodex-app-tools/session-queue";
 import { assertCodexFailedTurnContinuation } from "../../../shared/codex-conversation-state/codex-failed-turn-continuation";
 import type { CodexAsyncQuestionResponseInput } from "../../../shared/codex-async-user-input";
 import { questionDraftStore } from "./question-draft-store";
@@ -3124,6 +3136,22 @@ export class CodexAppServerManager {
       );
       const result = await this.executeNativeSteerAsOwner(prepared);
       return { method: request.method, result: { result } };
+    }
+    if (request.method === "thread-follower-session-queue") {
+      const params = request.params as ConversationFollowerParams["thread-follower-session-queue"];
+      try {
+        const value = await this.controlSessionQueueAsOwner(
+          params.conversationId,
+          sessionQueueSchema.parse(params.input),
+        );
+        return { method: request.method, result: { value } };
+      } catch (cause) {
+        if (!(cause instanceof SessionQueueError)) throw cause;
+        return {
+          method: request.method,
+          result: { error: { reason: cause.reason, message: cause.message } },
+        };
+      }
     }
     if (request.method === "thread-follower-interrupt-turn") {
       const params = request.params as ConversationFollowerParams["thread-follower-interrupt-turn"];
@@ -6761,6 +6789,141 @@ export class CodexAppServerManager {
     );
   }
   private removeQueuedFollowUpAsOwner = this.removeQueuedFollowUp.bind(this);
+
+  private async controlSessionQueueAsOwner(
+    threadId: string,
+    input: SessionQueueInput,
+  ): Promise<SessionQueueResult> {
+    using lifetime = this.observeOwnerActionLifetime(threadId, "Session queue control", true);
+    await this.loadQueuedMessages(threadId);
+    lifetime.assertCurrent();
+    const messages =
+      readMixedCodexQueuedMessages({
+        local: this.queuedMessages.readMessages(threadId),
+        server: this.serverQueuedMessages.read(threadId),
+        serverEnabled: this.isServerQueueEnabled(threadId),
+        findServerByClientId: (id) => this.serverQueuedMessages.findByClientMessageId(threadId, id),
+        readServerClientId: (id) => this.serverQueuedMessages.readClientMessageId(threadId, id),
+      }) ?? [];
+    const entries = messages.map(({ message }) => ({
+      queuedId: message.id,
+      text: message.context.prompt,
+      truncated: false,
+      kind: "message" as const,
+      held: Boolean(message.pausedReason),
+    }));
+    if (input.action === "list" || input.action === "read")
+      return readSessionQueue(threadId, entries, input);
+    const captured = requireQueuedEntry(
+      messages.map((item) => ({ ...item, queuedId: item.message.id })),
+      input.queuedId,
+    );
+    if (readCodexQueuedMessageDeliveryReceipt(captured.message))
+      throw new SessionQueueError("not_queued", "The message has already been submitted");
+    const writeLocal = async (
+      recipe: (messages: readonly CodexQueuedMessage[]) => readonly CodexQueuedMessage[],
+    ) => {
+      await this.queuedMessages.updateAsOwner(threadId, (current) => {
+        lifetime.assertCurrent();
+        if (!current.some((message) => equalCodexQueueValue(message, captured.message)))
+          throw new SessionQueueError("not_queued", "The queued message changed or started");
+        return recipe(current);
+      });
+      lifetime.assertCurrent();
+    };
+    if (input.action === "edit") {
+      if (captured.owner === "local") {
+        await writeLocal((current) =>
+          current.map((message) =>
+            message.id === input.queuedId
+              ? replaceCodexQueuedMessageText(message, input.text)
+              : message,
+          ),
+        );
+        return { sequence: 0 };
+      }
+      const retained = queuedMessagePromptInput(captured.message);
+      const changed = await this.replaceQueuedFollowUp(threadId, input.queuedId, 0, input.text, {
+        promptInput: { ...retained, text: input.text },
+      });
+      if (!changed) throw new SessionQueueError("not_queued", "The message is no longer queued");
+      return { sequence: 0 };
+    }
+    if (input.action === "remove") {
+      if (captured.owner === "local") {
+        await writeLocal((current) => current.filter((message) => message.id !== input.queuedId));
+        return { sequence: 0 };
+      }
+      if (!(await this.serverQueuedMessages.remove(threadId, input.queuedId)))
+        throw new SessionQueueError("not_queued", "The message is no longer queued");
+      return { sequence: 0 };
+    }
+    if (input.action === "reorder") {
+      const ids = reorderedQueueIds(
+        entries.map((entry) => entry.queuedId),
+        input.queuedId,
+        input.beforeId,
+      );
+      const owners = new Map(messages.map((item) => [item.message.id, item.owner]));
+      if (
+        ids.some(
+          (id, index) =>
+            owners.get(id) === "server" &&
+            ids.slice(0, index).some((previous) => owners.get(previous) === "local"),
+        )
+      )
+        throw new SessionQueueError("unsupported", "Messages cannot cross native queue owners");
+      if (captured.owner === "server") {
+        await this.serverQueuedMessages.reorder(
+          threadId,
+          ids.filter((id) => owners.get(id) === "server"),
+        );
+        return { sequence: 0 };
+      }
+      await writeLocal((current) => {
+        const order = reorderedQueueIds(
+          current.map((message) => message.id),
+          input.queuedId,
+          input.beforeId,
+        );
+        const byId = new Map(current.map((message) => [message.id, message]));
+        return order.map((id) => byId.get(id)!);
+      });
+      return { sequence: 0 };
+    }
+    if (!this.queuedActiveTurn(threadId))
+      throw new SessionQueueError("unsupported", "There is no active turn to steer");
+    const identity = {
+      conversationId: threadId,
+      messageId: captured.message.id,
+      lockId: crypto.randomUUID(),
+    };
+    if (!(await runConversationOperation("codex:queued-messages:acquire-send", identity)))
+      throw new SessionQueueError("not_queued", "The message is already being delivered");
+    let sent = false;
+    try {
+      const prepared = await this.prepareQueuedSubmission(
+        threadId,
+        captured.message,
+        "steer",
+        "view",
+        captured.clientUserMessageId,
+      );
+      lifetime.assertCurrent();
+      if (prepared.status !== "ready" || prepared.submission.requiresIdle)
+        throw new SessionQueueError("unsupported", "This message cannot steer the active turn");
+      await this.steerPreparedQueuedMessage(threadId, prepared.submission.steer);
+      sent = true;
+      await this.removeQueuedFollowUp(threadId, input.queuedId);
+      return { sequence: 0 };
+    } finally {
+      await runConversationOperation(
+        "codex:turn:native-steer:release",
+        captured.clientUserMessageId,
+      );
+      await runConversationOperation("codex:queued-messages:release-send", { ...identity, sent });
+    }
+  }
 
   async replaceQueuedFollowUp(
     threadId: string,

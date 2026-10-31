@@ -1,3 +1,11 @@
+import type { SessionQueueInput } from "../../shared/nodex-app-tools/session-control-schemas";
+import {
+  readSessionQueue,
+  reorderedQueueIds,
+  requireQueuedEntry,
+  SessionQueueError,
+  type SessionQueueResult,
+} from "../../shared/nodex-app-tools/session-queue";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
@@ -28,6 +36,7 @@ import {
 } from "../../shared/codex-queued-message-locks";
 import { QueuedMessageCoordinator } from "../../shared/codex-queued-message-coordinator";
 import {
+  replaceCodexQueuedMessageText,
   parseCodexQueuedMessageState,
   type CodexQueuedMessage,
   type CodexQueuedMessageState,
@@ -95,6 +104,15 @@ export interface CodexQueuedFollowUpEnqueueInput {
 export class CodexQueuedFollowUps extends Context.Service<
   CodexQueuedFollowUps,
   {
+    readonly controlAsOwner: (
+      hostId: string,
+      threadId: string,
+      input: SessionQueueInput,
+      steer: (
+        message: CodexQueuedMessage,
+        native?: QueuedSubmission,
+      ) => Effect.Effect<void, unknown>,
+    ) => Effect.Effect<SessionQueueResult, unknown>;
     readonly readHead: (threadId: string) => CodexQueuedMessage | null | undefined;
     readonly acquireSendLock: (input: QueuedMessageLockIdentity) => boolean;
     readonly releaseSendLock: (input: QueuedMessageLockIdentity & { sent: boolean }) => void;
@@ -594,7 +612,183 @@ export const make = Effect.gen(function* () {
     }),
   );
   const sendLocks = new QueuedMessageLocks();
+  const controlAsOwner = Effect.fn("CodexQueuedFollowUps.controlAsOwner")(function* (
+    hostId: string,
+    threadId: string,
+    input: SessionQueueInput,
+    steer: (message: CodexQueuedMessage, native?: QueuedSubmission) => Effect.Effect<void, unknown>,
+  ) {
+    const manager = yield* managers.get(hostId);
+    const owner = { ...captureOwner(hostId, threadId, manager), hostId, threadId, manager };
+    const execute = Effect.gen(function* () {
+      yield* Effect.try(owner.assertOwner);
+      const coordinator = yield* getCoordinator(threadId, { hostId, manager });
+      yield* Effect.tryPromise(() => coordinator.loadMessages(threadId));
+      const local = coordinator.readMessages(threadId) ?? [];
+      const native = yield* nativeQueueFor(owner);
+      const server = native ? yield* native.read() : [];
+      yield* Effect.try(owner.assertOwner);
+      const fromServer = (item: QueuedSubmission): CodexQueuedMessage => ({
+        id: item.id,
+        cwd: owner.entity?.readCanonicalState()?.cwd ?? null,
+        context: {
+          prompt: item.input
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join("\n"),
+          fileAttachments: [],
+          addedFiles: [],
+          commentAttachments: [],
+          imageAttachments: [],
+        },
+      });
+      const records = [
+        ...server
+          .filter(
+            (item) =>
+              !local.some(
+                (message) => message.id === item.id || message.id === item.clientUserMessageId,
+              ),
+          )
+          .map((item) => ({ message: fromServer(item), native: item })),
+        ...local.map((message) => ({ message, native: undefined })),
+      ];
+      const entries = records.map(({ message }) => ({
+        queuedId: message.id,
+        text: message.context.prompt,
+        truncated: false,
+        kind: "message" as const,
+        held: Boolean(message.pausedReason),
+      }));
+      if (input.action === "list" || input.action === "read")
+        return yield* Effect.try(() => readSessionQueue(threadId, entries, input));
+      const captured = yield* Effect.try(() =>
+        requireQueuedEntry(
+          records.map((record) => ({ ...record, queuedId: record.message.id })),
+          input.queuedId,
+        ),
+      );
+      const assertQueued = (messages = coordinator.readMessages(threadId) ?? []) => {
+        owner.assertOwner();
+        if (!captured.native && !messages.some((item) => isDeepStrictEqual(item, captured.message)))
+          throw new SessionQueueError("not_queued", "The message is no longer queued");
+      };
+      if (input.action === "steer") {
+        yield* Effect.try(assertQueued);
+        const identity = {
+          conversationId: threadId,
+          messageId: captured.message.id,
+          lockId: randomUUID(),
+        };
+        if (!sendLocks.tryAcquire(identity))
+          return yield* Effect.fail(
+            new SessionQueueError("not_queued", "The message is already being delivered"),
+          );
+        let sent = false;
+        return yield* Effect.gen(function* () {
+          yield* steer(captured.message, captured.native);
+          sent = true;
+          yield* ownerControl(hostId, threadId, captured.message.id);
+          return { sequence: 0 };
+        }).pipe(Effect.ensuring(Effect.sync(() => sendLocks.release({ ...identity, sent }))));
+      }
+      if (input.action === "remove") {
+        const removed = yield* applyOwnerControl({ ...owner, messageId: input.queuedId });
+        if (!removed)
+          return yield* Effect.fail(
+            new SessionQueueError("not_queued", "The message is no longer queued"),
+          );
+        return { sequence: 0 };
+      }
+      if (input.action === "reorder") {
+        const order = yield* Effect.try(() =>
+          reorderedQueueIds(
+            entries.map((entry) => entry.queuedId),
+            input.queuedId,
+            input.beforeId,
+          ),
+        );
+        const serverIds = new Set(server.map((item) => item.id));
+        const localIds = new Set(local.map((item) => item.id));
+        // Native and captured queues have separate delivery ownership; their boundary cannot move.
+        const desired = order.map((id) =>
+          serverIds.has(id) && !localIds.has(id) ? "server" : "local",
+        );
+        if (
+          desired.some(
+            (kind, index) => kind === "server" && desired.slice(0, index).includes("local"),
+          )
+        )
+          return yield* Effect.fail(
+            new SessionQueueError("unsupported", "Messages cannot cross native queue owners"),
+          );
+        if (captured.native) {
+          yield* gateway.requestOnHost(
+            hostId,
+            "thread/queue/reorder",
+            { threadId, queuedSubmissionIds: order.filter((id) => serverIds.has(id)) },
+            { expectedHostId: hostId, expectedGeneration: owner.generation },
+          );
+          return { sequence: 0 };
+        }
+        yield* Effect.tryPromise(() =>
+          coordinator.updateAsOwner(threadId, (messages) => {
+            assertQueued(messages);
+            const currentOrder = reorderedQueueIds(
+              messages.map((message) => message.id),
+              input.queuedId,
+              input.beforeId,
+            );
+            const byId = new Map(messages.map((message) => [message.id, message]));
+            return currentOrder.map((id) => byId.get(id)!);
+          }),
+        );
+        return { sequence: 0 };
+      }
+      if (captured.native) {
+        const response = yield* gateway.requestOnHost(
+          hostId,
+          "thread/queue/update",
+          {
+            threadId,
+            queuedSubmissionId: input.queuedId,
+            input: [
+              { type: "text", text: input.text, text_elements: [] },
+              ...captured.native.input.filter((part) => part.type !== "text"),
+            ],
+          },
+          { expectedHostId: hostId, expectedGeneration: owner.generation },
+        );
+        if (!response)
+          return yield* Effect.fail(
+            new SessionQueueError("not_queued", "The message is no longer queued"),
+          );
+        return { sequence: 0 };
+      }
+      yield* Effect.tryPromise(() =>
+        coordinator.updateAsOwner(threadId, (messages) => {
+          assertQueued(messages);
+          return messages.map((message) =>
+            message.id === input.queuedId
+              ? replaceCodexQueuedMessageText(message, input.text)
+              : message,
+          );
+        }),
+      );
+      return { sequence: 0 };
+    });
+    const operation =
+      input.action === "steer" || input.action === "list" || input.action === "read"
+        ? execute
+        : entities.runCommand(threadId, execute);
+    return yield* operation.pipe(
+      Effect.mapError((cause) =>
+        cause instanceof Error && cause.cause instanceof SessionQueueError ? cause.cause : cause,
+      ),
+    );
+  });
   return CodexQueuedFollowUps.of({
+    controlAsOwner,
     readHead: (threadId) => {
       for (const [manager, coordinator] of coordinators)
         if (manager.stream.getRole(threadId))

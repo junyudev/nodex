@@ -33,6 +33,9 @@ export interface ConversationFollowerTurnStart {
 type Conversation = { conversationId: string };
 type Request = Conversation & { requestId: RequestId };
 export interface ConversationFollowerParams extends CodexQueuedMessageFollowerParams {
+  "thread-follower-session-queue": Conversation & {
+    input: import("./nodex-app-tools/session-control-schemas").SessionQueueInput;
+  };
   "thread-follower-set-queued-follow-ups-state": Conversation & {
     state: Record<string, readonly unknown[]>;
   };

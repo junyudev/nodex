@@ -3,10 +3,9 @@ import { isDeepStrictEqual } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { stableStringifyBlockPropertyJson } from "../../shared/block-property-mutations";
 import { SessionMessageIntakeError } from "./SessionMessageIntakeError";
-import type { CodexCanonicalPermissionContext, CodexPromptInput } from "../../shared/types";
+import type { CodexPromptInput } from "../../shared/types";
 import type { SessionExecutionTarget } from "../../shared/nodex-app-tools/session-execution-target";
-import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
-import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
+import { make as makeNativeExecution } from "./NativeSessionPermissionFacts";
 import { CodexMainConversationResume } from "../codex-application/CodexMainConversationResume";
 import { CodexDelegatedMessages } from "../codex-application/CodexDelegatedMessages";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
@@ -15,12 +14,6 @@ import { CodexAttachments } from "../codex-application/CodexAttachments";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { RuntimeSessionMessageInput } from "./RuntimeSessionMessageIntake";
 import type { SessionMessageFacts } from "./session-message-policy";
-
-interface NativeFacts extends SessionMessageFacts {
-  readonly threadId: string;
-  readonly executionHostId: string;
-  readonly permissions: CodexCanonicalPermissionContext;
-}
 
 type Receipt = AgentRuntimeOperations["native-message.reserve"]["output"];
 export interface NativeMessageAdmission extends Receipt {
@@ -42,93 +35,11 @@ const fingerprintOf = (identity: MessageIdentity) =>
 /** Remote Native messages stay with their retained execution owner. */
 export const make = Effect.gen(function* () {
   const gateway = yield* CodexGateway;
-  const workspace = yield* ProjectWorkspace;
-  const directory = yield* CodexThreadDirectory;
   const resume = yield* CodexMainConversationResume;
   const messages = yield* CodexDelegatedMessages;
   const application = yield* AgentRuntimeApplication;
   const attachments = yield* CodexAttachments;
-  const resolve = Effect.fn("NativeSessionMessageIntake.resolve")(function* (
-    target: SessionExecutionTarget,
-  ) {
-    const session = yield* workspace.getProjectSession(target.sessionId);
-    if (
-      !session ||
-      session.archived ||
-      session.executionRef ||
-      session.thread?.backendBinding.kind !== "codex"
-    )
-      return yield* new SessionMessageIntakeError({ message: "Native Session is unavailable" });
-    const threadId = session.thread.threadId;
-    if (target.execution)
-      return yield* new SessionMessageIntakeError({
-        message: "Native execution is outside this Session",
-      });
-    return { session, thread: session.thread, threadId };
-  });
-  const inspect = Effect.fn("NativeSessionMessageIntake.inspect")(function* (
-    target: SessionExecutionTarget,
-  ): Effect.fn.Return<NativeFacts, unknown> {
-    const { session, thread, threadId } = yield* resolve(target);
-    const entry = yield* directory.resolve({
-      threadId,
-      fidelity: "durable",
-      expectedHostId: thread.executionHostId,
-    });
-    const state = entry?.canonical;
-    const permissions = state?.currentPermissions;
-    const settings = state?.latestThreadSettings ?? state?.hydrationContext?.latestThreadSettings;
-    if (
-      !state ||
-      state.hostId !== thread.executionHostId ||
-      !permissions ||
-      !settings?.model ||
-      !settings.collaborationMode ||
-      !settings.approvalPolicy ||
-      !settings.sandboxPolicy
-    )
-      return yield* Effect.fail(
-        new SessionMessageIntakeError({
-          message: "Native execution permission facts are unavailable",
-        }),
-      );
-    const runtimeMode =
-      permissions.sandboxPolicy.type === "dangerFullAccess"
-        ? ("full-access" as const)
-        : permissions.sandboxPolicy.type === "workspaceWrite"
-          ? permissions.approvalPolicy === "never"
-            ? ("auto-accept-edits" as const)
-            : ("approval-required" as const)
-          : permissions.sandboxPolicy.type === "readOnly"
-            ? ("approval-required" as const)
-            : null;
-    if (runtimeMode === null)
-      return yield* Effect.fail(
-        new SessionMessageIntakeError({
-          message: "Native execution permissions cannot be compared",
-        }),
-      );
-    return {
-      sessionId: session.id,
-      threadId,
-      executionHostId: thread.executionHostId,
-      permissions,
-      runtimeMode,
-      nativeSandbox: permissions.sandboxPolicy.type as
-        | "readOnly"
-        | "workspaceWrite"
-        | "dangerFullAccess",
-      nativePermissions: permissions,
-      interactionMode: settings.collaborationMode.mode === "plan" ? "plan" : "default",
-      modelSelection: {
-        instanceId: "codex",
-        model: settings.model,
-        options: state.latestReasoningEffort
-          ? [{ id: "reasoningEffort", value: state.latestReasoningEffort }]
-          : [],
-      },
-    };
-  });
+  const { resolve, inspect } = yield* makeNativeExecution;
   const phases = new WeakMap<
     NativeMessageAdmission,
     "fresh" | "dispatching" | "settled" | "releasing" | "released"

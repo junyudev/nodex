@@ -33,6 +33,7 @@ const buildRuntime = Effect.fn("CodexThreadReadStateTest.buildRuntime")(function
   workspace: ProjectWorkspaceService,
   initiallyUnread = false,
   endpoint?: string,
+  hostId = "local",
 ) {
   const scope = yield* Scope.make();
   const conversationsContext = yield* Layer.buildWithScope(conversationRuntimeMapLive, scope);
@@ -81,7 +82,7 @@ const buildRuntime = Effect.fn("CodexThreadReadStateTest.buildRuntime")(function
       localHostId: "local",
       events: Stream.never,
     } as unknown as CodexGateway["Service"]),
-    Effect.provideService(CodexThreadHostResolver, { resolve: () => Effect.succeed("local") }),
+    Effect.provideService(CodexThreadHostResolver, { resolve: () => Effect.succeed(hostId) }),
     Effect.provideService(ApplicationSettings, {
       snapshot: () => Effect.succeed({ executionHosts: { sshHosts: [] } }),
     } as unknown as ApplicationSettings["Service"]),
@@ -205,4 +206,24 @@ it.effect("publishes context-bearing read-state changes over the production Main
       },
     });
   }).pipe(Effect.scoped),
+);
+
+it.effect("read-state writes fail when the selected execution identity is unavailable", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const runtime = yield* buildRuntime(
+        {} as ProjectWorkspaceService,
+        false,
+        undefined,
+        "missing-host",
+      );
+      yield* Effect.addFinalizer(() => Scope.close(runtime.scope, Exit.void));
+      assert.isTrue(
+        yield* runtime.readState
+          .set({ threadId: "thread-a", hasUnreadTurn: true })
+          .pipe(Effect.isFailure),
+      );
+      assert.isEmpty(runtime.persistedWrites);
+    }),
+  ),
 );

@@ -1,3 +1,4 @@
+import { sessionControlSchemas } from "../../shared/nodex-app-tools/session-control-schemas";
 import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { isContentTool } from "../../shared/nodex-app-tools/content-catalog";
 import { sidebarSchemas } from "../../shared/nodex-app-tools/sidebar-schemas";
@@ -20,6 +21,7 @@ const commonNames = new Set([
 export const nativeAppToolCatalog = appToolCatalog.filter(
   (tool) =>
     commonNames.has(tool.name) ||
+    Object.hasOwn(sessionControlSchemas, tool.name) ||
     isContentTool(tool.name) ||
     Object.hasOwn(sidebarSchemas, tool.name) ||
     Object.hasOwn(sessionSchemas, tool.name) ||

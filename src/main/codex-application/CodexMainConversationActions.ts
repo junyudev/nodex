@@ -1,3 +1,5 @@
+import { SessionQueueError } from "../../shared/nodex-app-tools/session-queue";
+import { makeQueueOwner, queueOwnerRequestSchema } from "./CodexSessionControls";
 import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
 import { parseCodexQueuedMessageState } from "../../shared/codex-queued-message";
 import { parseCodexQueuedMessageFollowerRequest } from "../../shared/codex-queued-message-follower-request";
@@ -43,6 +45,7 @@ const record = (value: unknown): Record<string, unknown> | null =>
 /** Installs authorized application actions on the ordinary Main peer after command construction. */
 export const install = Effect.gen(function* () {
   const managers = yield* CodexMainConversationManagers;
+  const controlQueue = yield* makeQueueOwner;
   const turns = yield* CodexTurnCommands;
   const queued = yield* CodexQueuedFollowUps;
   const entities = yield* ConversationEntityMap;
@@ -75,6 +78,17 @@ export const install = Effect.gen(function* () {
               }),
             );
       switch (request.method) {
+        case "thread-follower-session-queue": {
+          const queue = yield* Effect.try(() => queueOwnerRequestSchema.parse(params));
+          return yield* controlQueue(hostId, threadId, queue.input).pipe(
+            Effect.map((value) => ({ value })),
+            Effect.catch((cause) =>
+              cause instanceof SessionQueueError
+                ? Effect.succeed({ error: { reason: cause.reason, message: cause.message } })
+                : Effect.fail(new MainConversationManagerError({ hostId, cause })),
+            ),
+          );
+        }
         case "thread-follower-edit-last-user-turn": {
           const options = yield* Schema.decodeUnknownEffect(
             Schema.Struct({

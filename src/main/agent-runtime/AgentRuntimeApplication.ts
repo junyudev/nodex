@@ -44,7 +44,11 @@ import { generateSessionTitle } from "./AgentRuntimeSessionTitle";
 import { SIDE_CHAT_DEFAULT_TITLE, sideChatRequestTitle } from "../../shared/side-chat-title";
 import { make as makeMessageResources } from "./AgentRuntimeMessageResources";
 import { splitCodexPromptAgentConfigLines } from "../../shared/codex-prompt-preparation";
-import { appendAgentAppContext, hasAgentAppContext } from "../../shared/agent-prompt";
+import {
+  appendAgentAppContext,
+  hasAgentAppContext,
+  retainAgentAppContext,
+} from "../../shared/agent-prompt";
 import type {
   ProjectSessionArchiveCommandInput,
   ProjectSessionDeleteCommandInput,
@@ -3258,6 +3262,71 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     launch: (input: AgentRuntimeLaunch) => ownedWrite("launch", launch(input).pipe(Effect.scoped)),
+    sessionControlReceipt: (input: AgentRuntimeOperations["session-control.receipt"]["input"]) =>
+      ownedWrite(
+        "session-control-receipt",
+        Effect.gen(function* () {
+          yield* authorizeSession(input.sessionId);
+          const connection = yield* options.connect;
+          return yield* connection.request("session-control.receipt", input);
+        }),
+      ),
+    controlSessionQueue: (
+      input: AgentRuntimeSessionTarget &
+        Omit<AgentRuntimeOperations["thread.queue-control"]["input"], "threadId" | "commandId"> & {
+          readonly requestId: string;
+        },
+    ) =>
+      ownedWrite(
+        "session-queue",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(
+            connection,
+            input,
+            input.action !== "list" && input.action !== "read",
+          );
+          const original =
+            input.action === "edit" && input.queuedId
+              ? yield* connection.request("thread.run-message", {
+                  threadId: loaded.threadId,
+                  runId: input.queuedId,
+                })
+              : null;
+          const text =
+            original && input.text !== undefined
+              ? retainAgentAppContext({ text: input.text }, original, false).text
+              : input.text;
+          return yield* connection.request("thread.queue-control", {
+            ...input,
+            ...(text === undefined ? {} : { text }),
+            threadId: loaded.threadId,
+            commandId: commandId("session-queue", {
+              requestId: input.requestId,
+              threadId: loaded.threadId,
+            }),
+          });
+        }),
+      ),
+    stopSession: (
+      input: AgentRuntimeSessionTarget & { readonly requestId: string; readonly reason: string },
+    ) =>
+      ownedWrite(
+        "stop-session",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input, true);
+          const result = yield* connection.request("thread.stop", {
+            threadId: loaded.threadId,
+            commandId: commandId("session-stop", {
+              requestId: input.requestId,
+              threadId: loaded.threadId,
+            }),
+            reason: input.reason,
+          });
+          return { ...result, threadId: loaded.threadId };
+        }),
+      ),
     nativeMessageReceipt: (input: AgentRuntimeOperations["native-message.receipt"]["input"]) =>
       owned(
         "native-message-receipt",

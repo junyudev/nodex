@@ -1,4 +1,5 @@
 import { sessionQuestionTool } from "./session-question-schema";
+import { sessionControlToolCatalog } from "./session-control-schemas";
 import { sessionHandoffTools } from "./session-handoff-schemas";
 import { contentToolCatalog } from "./content-catalog";
 import { readSessionTerminalTool } from "./terminal-schema";
@@ -41,6 +42,7 @@ export const appToolCatalog: readonly Tool[] = [
   automationTool,
   ...sidebarToolCatalog,
   ...sessionToolCatalog,
+  ...sessionControlToolCatalog,
   ...sessionObservationToolCatalog,
   ...workbenchObservationToolCatalog,
   ...workbenchControlToolCatalog,

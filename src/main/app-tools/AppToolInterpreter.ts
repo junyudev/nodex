@@ -1,3 +1,5 @@
+import { sessionControlSchemas } from "../../shared/nodex-app-tools/session-control-schemas";
+import { make as makeSessionControls } from "./SessionControlAppTools";
 import { make as makeHandoffStatusTools } from "./HandoffStatusAppTools";
 import { make as makeSessionHandoffTools } from "./SessionHandoffAppTools";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -51,6 +53,7 @@ export const make = Effect.gen(function* () {
   const dependencyTools = yield* makeDependencyTools;
   const pluginTools = yield* makePluginTools;
   const workspaceTools = yield* makeWorkspaceTools;
+  const sessionControls = yield* makeSessionControls;
   const sessionTools = yield* makeSessionTools;
   const inboxTools = yield* makeInboxTools;
   const sessionCommands = yield* makeSessionCommands;
@@ -83,6 +86,7 @@ export const make = Effect.gen(function* () {
       !Object.hasOwn(accountSchemas, input.name) &&
       !isWorkspaceTool &&
       !isSessionObservation &&
+      !Object.hasOwn(sessionControlSchemas, input.name) &&
       !isWorkbenchTool &&
       input.name !== "create_session" &&
       input.name !== "send_message_to_session" &&
@@ -111,6 +115,7 @@ export const make = Effect.gen(function* () {
     if (input.name === "read_session_terminal") return yield* terminalTools(input);
     if (Object.hasOwn(accountSchemas, input.name)) return yield* accountTools(input);
     if (input.name === "uninstall_plugin") return yield* pluginTools(input);
+    if (Object.hasOwn(sessionControlSchemas, input.name)) return yield* sessionControls(input);
     if (isWorkspaceTool) return yield* workspaceTools(input);
     if (isSessionObservation) return yield* sessionTools(input);
     if (isWorkbenchTool) return yield* workbenchTools(input);

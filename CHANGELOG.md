@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Agents can answer the questions other chats ask. `session_question` reads and answers a pending question in another chat, and the Agent that delegated a task answers its questions with `task_question`, woken by the question or returned from its wait. Each answer shows which conversation gave it, and approvals still come to you.
+- Agents can stop another chat, mark chats read or unread, and manage the messages queued behind a chat's current turn, within the same permissions as that chat.
 - New page in the command palette creates a page where you are and opens it beside you: in your Project's database in a Project or one of its chats, and in Space otherwise.
 - Choose which Claude, Codex and Nodex credit meters appear in the rail from General settings. Hidden meters stop checking usage while account and model access stay available.
 - Sign in with your Nodex Account to choose GPT-6.1 Sol, GPT-6 Luna, Claude Opus 5.5 or Claude Sonnet 5.5 using prepaid credit. Buy credit in Account settings through Stripe Checkout; the rail's credit meter shows what is left, and models follow live availability.

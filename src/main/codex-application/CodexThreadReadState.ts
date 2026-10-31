@@ -198,15 +198,28 @@ export const make: Effect.Effect<
     Effect.gen(function* () {
       const hostId = yield* hostResolver.resolve(input.threadId);
       const binding = yield* bindingForHost(hostId);
-      if (!binding || !(yield* binding.captured.isCurrent)) return false;
+      if (!binding || !(yield* binding.captured.isCurrent))
+        return yield* new IdentityReadStateError({
+          operation: "set",
+          cause: new Error("Read-state identity is unavailable"),
+        });
       const stored = yield* workspace.readIdentityThreadReadState(
         threadReadStateIdentityKey(binding.captured.context.identity),
       );
       const before =
         stored[binding.captured.context.executionHostKey]?.includes(input.threadId) ?? false;
-      if (!(yield* binding.captured.isCurrent)) return false;
+      if (!(yield* binding.captured.isCurrent))
+        return yield* new IdentityReadStateError({
+          operation: "set",
+          cause: new Error("Read-state identity changed"),
+        });
       const result = yield* binding.session.set({ hostId, ...input });
-      return result.status === "ok" && before !== input.hasUnreadTurn;
+      if (result.status !== "ok")
+        return yield* new IdentityReadStateError({
+          operation: "set",
+          cause: new Error("Read-state identity is unavailable"),
+        });
+      return before !== input.hasUnreadTurn;
     }).pipe(
       Effect.mapError((cause) => new CodexThreadReadStateError({ operation: "persist", cause })),
     );

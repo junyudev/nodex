@@ -452,6 +452,52 @@ through Core, including the mutually exclusive custom Section placement. Both ac
 Session or default to the caller. A failed backend synchronization after a Session commit returns
 `session_reconciliation_failed`, `committed: true`, and the operation identity to reuse for retry.
 
+`stop_session` stops another unarchived Session through its conversation owner. It accepts
+`sessionId`, optional Runtime `execution: {threadId}`, an optional reason (up to 2,000 characters),
+and optional `idempotencyKey`. Runtime Stop ends the active turn, holds queued messages and stops delegated
+tasks. Native Codex Stop uses the current local or remote execution peer's user Stop path.
+An idle or threadless Session returns `idle`; work requested to stop returns `stop_requested`.
+The result includes `operationId`, `sessionId`, and the nullable execution `threadId`.
+The calling Session cannot stop itself, including through its own child execution selector.
+Runtime stop reasons begin with “Stopped by another agent”, followed by the supplied reason.
+The target retains the ordinary stopped transcript state.
+
+`set_session_unread` accepts `unread`, optional `sessionId` (the caller by default), and
+optional `idempotencyKey`. It uses Core Session unread state for Runtime Sessions and threadless drafts,
+and the authenticated Codex identity read-state owner for native Codex Threads. The result
+includes `operationId`, `sessionId`, the accepted `unread` value and the owner's `receipt`.
+It never starts or replaces a Session's execution.
+
+`session_queue` addresses an unarchived `sessionId`, with optional Runtime `execution: {threadId}`.
+Its actions mirror the conversation queue:
+
+- `list` accepts an optional opaque `cursor` and `limit` (1–20, default 20). It returns `items`
+  in send order and `nextCursor`. Each item has a stable `queuedId`, `text` (up to 250 Unicode
+  characters), `truncated`, `kind` (`message`, `delegated_completion`, or `notification`), and `held`.
+- `read` requires `queuedId` and returns the same entry shape with up to 6,000 Unicode characters.
+- `edit` requires `queuedId` and nonblank `text` (up to 100,000 characters). It replaces the text
+  while retaining attachments and captured execution settings.
+- `remove` requires `queuedId` and cancels that queued entry.
+- `reorder` requires `queuedId` and `beforeId`; explicit `null` moves the entry to the end.
+- `steer` requires `queuedId` and delivers that entry into the current active turn.
+
+Mutations accept optional `idempotencyKey`; results include operation and Session identity. Automatic
+completion and notification entries can be read or removed, but cannot be edited, reordered
+or steered. Ordinary messages cannot move ahead of automatic completion delivery. Writes fail
+when the entry is no longer queued. Runtime roots and children support every action. Attached
+remote native Codex Sessions use their current queue owner; native and captured queues retain
+separate delivery order, so a reorder cannot move an entry across that boundary. Local native
+Sessions and drafts return typed `unsupported` queue errors. No queue operation adopts a native
+Session into Runtime.
+
+Stop and queue access reuse message authorization: Core validates the calling execution and
+unarchived target Profile-wide, and the target must fit the caller's runtime and Plan ceilings.
+Unread changes use the same captured execution authority as Session organization. Mutations
+reserve a durable operation receipt before dispatch. Reusing an idempotencyKey with the same
+arguments returns its recorded result, and changed arguments fail. If dispatch's outcome is
+uncertain, `session_operation_unconfirmed` retains the original identity and never sends the
+control again, so a retry cannot stop a later turn or repeat queue delivery.
+
 `list_sessions` and `list_archived_sessions` discover bounded Session metadata in the calling
 Project by default; a projectless caller sees its projectless lane. `scope: "profile"` explicitly
 includes every Project, while `projectId` selects a Project. Combining Profile scope with a

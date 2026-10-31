@@ -1,4 +1,5 @@
 import { pendingUserQuestionIds } from "./PendingUserQuestions.ts";
+import * as SessionStop from "./SessionStop.ts";
 import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
 import {
   ImportChatAttachmentsInput,
@@ -74,6 +75,8 @@ import * as Authority from "./Authority.ts";
 import * as NativeInteraction from "./NativeInteraction.ts";
 import * as ExecutionLocation from "./ExecutionLocation.ts";
 import * as NativeImport from "./NativeImport.ts";
+import * as SessionQueue from "./SessionQueue.ts";
+import * as SessionControlReceipts from "./SessionControlReceipts.ts";
 import * as NativeMessageReceipts from "./NativeMessageReceipts.ts";
 import * as RuntimeMessageReceipts from "./RuntimeMessageReceipts.ts";
 import * as NativeRuntimePolicy from "../orchestration-v2/RuntimePolicy.ts";
@@ -149,6 +152,16 @@ const AgentRequest = Schema.Union([
   ...AcpManagement.Request.members,
   request("thread.import-native", NativeImport.NativeImportInput),
   request("native-imports.find", NativeImport.NativeImportsFindInput),
+  request("thread.queue-control", SessionQueue.SessionQueueInput),
+  request("session-control.receipt", SessionControlReceipts.SessionControlReceiptInput),
+  request(
+    "thread.stop",
+    Schema.Struct({
+      threadId: ThreadId,
+      commandId: CommandId,
+      reason: Schema.optional(Schema.String),
+    }),
+  ),
   request("native-message.receipt", NativeMessageReceipts.NativeMessageLookup),
   request("native-message.reserve", NativeMessageReceipts.NativeMessageReserve),
   request("native-message.settle", NativeMessageReceipts.NativeMessageSettle),
@@ -744,6 +757,9 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const executionLocation = yield* ExecutionLocation.make;
   const importNative = yield* NativeImport.make;
   const findNativeImports = yield* NativeImport.makeFind;
+  const sessionStop = yield* SessionStop.make;
+  const sessionQueue = yield* SessionQueue.make;
+  const sessionControlReceipt = yield* SessionControlReceipts.make;
   const nativeMessageReceipts = yield* NativeMessageReceipts.make;
   const runtimeMessageReceipts = yield* RuntimeMessageReceipts.make;
   const taskReads = yield* OrchestratorMcp.make;
@@ -810,6 +826,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* importNative(input.input);
       case "native-imports.find":
         return yield* findNativeImports(input.input);
+      case "thread.queue-control":
+        return yield* sessionQueue(input.input);
+      case "session-control.receipt":
+        return yield* sessionControlReceipt(input.input);
+      case "thread.stop":
+        return yield* sessionStop(input.input);
       case "native-message.receipt":
         return yield* nativeMessageReceipts.lookup(input.input);
       case "native-message.reserve":

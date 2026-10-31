@@ -2803,3 +2803,57 @@ test("resume preserves owner preferences and fixes full access despite historica
     personality: "pragmatic",
   });
 });
+
+test("Session queue peer controls edit, reorder, steer and remove only queued messages", async () => {
+  const { owner, follower, threadId, turnId } = await connectedManagers([], "remote");
+  await act(async () => {
+    await owner.enqueueQueuedFollowUp(threadId, "First");
+    await owner.enqueueQueuedFollowUp(threadId, "Second");
+  });
+  await waitFor(() => expect(fixture.queueState[threadId]).toHaveLength(2));
+  const [one, two] = fixture.queueState[threadId]!;
+  const request = async (
+    input: import("../../../shared/nodex-app-tools/session-control-schemas").SessionQueueInput,
+  ) => {
+    let result: unknown;
+    await act(async () => {
+      result = (
+        await owner.handleThreadFollowerRequest(
+          conversationFollowerRequest("thread-follower-session-queue", {
+            conversationId: threadId,
+            input,
+          }),
+        )
+      ).result;
+    });
+    return result;
+  };
+  expect(await request({ action: "list", sessionId: "session", limit: 20 })).toMatchObject({
+    value: {
+      items: [
+        { queuedId: one!.id, text: "First" },
+        { queuedId: two!.id, text: "Second" },
+      ],
+    },
+  });
+  await request({ action: "edit", sessionId: "session", queuedId: one!.id, text: "Revised" });
+  expect(fixture.queueState[threadId]?.[0]?.context.prompt).toBe("Revised");
+  await request({ action: "reorder", sessionId: "session", queuedId: one!.id, beforeId: null });
+  expect(fixture.queueState[threadId]?.map((message) => message.id)).toEqual([two!.id, one!.id]);
+  expect(await request({ action: "read", sessionId: "session", queuedId: one!.id })).toMatchObject({
+    value: { queuedId: one!.id, text: "Revised" },
+  });
+  await request({ action: "steer", sessionId: "session", queuedId: one!.id });
+  expect(fixture.calls.find((call) => call.method === "turn/steer")?.params).toMatchObject({
+    threadId,
+    expectedTurnId: turnId,
+    input: [{ type: "text", text: "Revised" }],
+  });
+  await request({ action: "remove", sessionId: "session", queuedId: two!.id });
+  await waitFor(() =>
+    expect(follower.readConversation(threadId)?.queuedFollowUps.entries).toEqual([]),
+  );
+  expect(
+    await request({ action: "edit", sessionId: "session", queuedId: one!.id, text: "late" }),
+  ).toMatchObject({ error: { reason: "not_queued" } });
+});
