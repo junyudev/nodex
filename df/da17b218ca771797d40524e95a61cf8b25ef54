@@ -1,0 +1,41 @@
+CHANGELOG.md
+  s_e711b050289d29::t_7c4e0704b71d62 36
+docs/product-specs/agent-runtime-behavior.md
+  s_e711b050289d29::t_253500f21fa260 805-822
+docs/product-specs/desktop-notification-behavior.md
+  s_e711b050289d29::t_64c75d93ed039c 23,288-295
+packages/agent-runtime/src/nodex/Interface.ts
+  s_e711b050289d29::t_98445e1b3e7fa0 219-220,222-224,765-769
+packages/agent-runtime/src/nodex/Service.ts
+  s_e711b050289d29::t_962608179741fb 87,691-693,696-698,700-701,1453,1485-1486,1495-1500
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.test.ts
+  s_e711b050289d29::t_637d625c561baf 30,54-58,86,160,170,213-238,263,412-415,417-457,459-513,515-537,539-544,546-567,569-592,671,677-683,688,695,706-708,716
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.ts
+  s_e711b050289d29::t_61a671dfe6a649 30,33-34,64-67,71-85,87-117,155,160-161,166-173,200-217,221,225,273,278,293-295
+packages/agent-runtime/src/orchestration-v2/testkit/HistoryPressure.ts
+  s_e711b050289d29::t_5b73ab0076cf82 73
+src/main/agent-runtime/AgentRuntimeSessionActivity.ts
+  s_e711b050289d29::t_5ee9b95745a34f 94,116-118
+src/main/agent-runtime/AgentRuntimeSessionNotifications.node.test.ts
+  s_e711b050289d29::t_d70d449f3e0077 207-322
+src/main/agent-runtime/AgentRuntimeSessionNotifications.ts
+  s_e711b050289d29::t_4f1a3e161a333a 39-40,46-47,90,92-94,108,137
+src/shared/agent-runtime-api.ts
+  s_e711b050289d29::t_bd081f29a032d0 272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dfda17b218ca771797d40524e95a61cf8b25ef54",
+  "prompts": {},
+  "sessions": {
+    "s_e711b050289d29": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191e3-47cd-7100-aa5c-74830433ef87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
