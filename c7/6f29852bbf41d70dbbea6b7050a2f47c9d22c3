@@ -1,0 +1,55 @@
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.ts
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 1-7,11,13,16,19,21-25
+src/renderer/components/board/editor/prompt-block.tsx
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 9-10,152-155
+docs/product-specs/nfm-editor-text-action-menu-behavior.md
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 58,63,85,87,89-95
+docs/product-specs/nfm-editor-prompt-block-behavior.md
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 40-43
+src/renderer/components/board/editor/nfm-chat-send-shortcut-controller.tsx
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 3,32-33,40-41,43-44,51-52
+src/renderer/lib/use-command-keymap-state.ts
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 6-13,52-64
+src/shared/command-keybindings.test.ts
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 45-50
+src/renderer/components/board/editor/nfm-side-menu-model.ts
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 67-68,286-288
+src/renderer/components/board/editor/nfm-side-menu.tsx
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 112,777,779-782,1420-1421,1509-1510,1537-1538
+docs/product-specs/nfm-block-side-menu-behavior.md
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 59,62,65-66
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.test.ts
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 2-7,20-48,50-57,60-70
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 15-18,23-25,140,156-162,247-248,586-602
+docs/KEYBOARD_SHORTCUTS.md
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 7,9,198,205
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 82,1052-1053,1120,1165
+src/renderer/components/board/editor/nfm-chat-send-shortcut-controller.test.tsx
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 1-183
+src/renderer/components/board/editor/nfm-side-menu-model.test.ts
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 3-5,32,45-46,64-65
+CHANGELOG.md
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 18
+src/shared/command-keybindings.ts
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 5-6,763-780,1957
+src/renderer/components/board/editor/nfm-side-menu.test.tsx
+  s_e2f9f3a29b34ef::t_4255d2b3980cdd 583-584
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c76f29852bbf41d70dbbea6b7050a2f47c9d22c3",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
