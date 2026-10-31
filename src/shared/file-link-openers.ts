@@ -112,7 +112,9 @@ function decodeFileUrlPath(value: string): string | null {
   try {
     const url = new URL(value);
     if (url.protocol !== "file:") return null;
-    return decodeURIComponent(url.pathname);
+    const path = decodeURIComponent(url.pathname);
+    if (url.host && url.host !== "localhost") return `//${url.host}${path}`;
+    return path;
   } catch {
     return null;
   }

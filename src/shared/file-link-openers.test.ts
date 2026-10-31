@@ -51,6 +51,33 @@ describe("file link openers", () => {
     );
   });
 
+  test.each([
+    ["file://server/share/doc.md", "//server/share/doc.md"],
+    ["file://server/share/my%20doc.md", "//server/share/my doc.md"],
+  ])("preserves the network host in %s", (href, path) => {
+    expect(parseLocalFileLinkHref(`${href}#L55C3-L57C8`)).toEqual({
+      path,
+      line: 55,
+      column: 3,
+      endLine: 57,
+      endColumn: 8,
+    });
+  });
+
+  test.each([
+    ["file:///workspace/my%20doc.md", "/workspace/my doc.md"],
+    ["file://localhost/workspace/my%20doc.md", "/workspace/my doc.md"],
+    ["file://LOCALHOST/workspace/my%20doc.md", "/workspace/my doc.md"],
+    ["file:///C:/workspace/my%20doc.md", "/C:/workspace/my doc.md"],
+    ["file://localhost/C:/workspace/my%20doc.md", "/C:/workspace/my doc.md"],
+  ])("keeps %s local", (href, path) => {
+    expect(parseLocalFileLinkHref(href)).toEqual({ path });
+  });
+
+  test("rejects a network file URL with invalid path encoding", () => {
+    expect(parseLocalFileLinkHref("file://server/share/%ZZ.md")).toBeNull();
+  });
+
   test("parses ranged line and column fragments", () => {
     expect(parseLocalFileLinkHref(`${EXAMPLE_PARSER_PATH}#L71C3-L76C8`)).toEqual({
       path: EXAMPLE_PARSER_PATH,
