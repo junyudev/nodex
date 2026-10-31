@@ -1,0 +1,137 @@
+src/renderer/components/board/editor/nfm-turn-into-block-icon.tsx
+  s_e2f9f3a29b34ef::t_0bd2591909d999 60
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 13,58-59
+docs/product-specs/codex-workspace-behavior.md
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 23,64
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 100-101,105-107,109-110,239-240,261-262,363,371,384-385,739-743,1175-1177,1187,1204,1459-1475,1688-1689,1691-1694,1697-1729,1731-1736,1742-1744,1746-1749,1751-1760,1762-1763,1765-1769,1771-1775,1777-1792,1794-1809,1811-1815,1817-1844,1848-1860,1863-1865,2049-2054,2056,2074-2079,2081,2104,2106-2117,2119,2122-2123,2125,2604-2676
+src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 132,693,744
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 319-358
+src/renderer/lib/use-workbench-session-commands.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 104,612-642,1558
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 32,41,43,72,74-78,82-85,144-152,157,202,246,570,937-938,993-1004,1006-1009,1011-1012,1014-1021,1023-1032,1036-1037,1039-1041,1045-1046,1048-1052,1054-1058,1060-1062,1065,1070-1073,1075-1084,1087-1095,1097-1110,1112-1166,1184,1289-1298,1484-1504,1529
+src/renderer/components/workbench/workbench-library-resource-surface.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 10-13,34,49-50,71
+src/shared/initial-project-welcome.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 60-62
+src/renderer/components/workbench/use-page-chat-send-port.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1-214
+src/renderer/components/board/editor/nfm-prompt-collapse-store.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1,3-8,10-11,14,16,18,22,24-25,27,29-30,32-44
+CONTEXT.md
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 508-509,523-530
+  s_e2f9f3a29b34ef::t_3ed2c4534431a1 531
+src/renderer/components/board/editor/nfm-prompt-block-model.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1-58
+src/renderer/components/workbench/workbench-library-page-surface.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 31-53,68,81-82,84-88,225-234
+src/renderer/components/board/editor/nfm-slash-menu.tsx
+  s_e2f9f3a29b34ef::t_b014477008dfeb 263
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 724-734,878
+docs/product-specs/composer-page-references-behavior.md
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 10-11
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1-27
+src/renderer/components/workbench/database-view-page-context-menu.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 210
+src/renderer/components/board/editor/nfm-side-menu.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 56,78-82,179-180,197,204,260,598,766,1225,1272-1273,1500-1501,1526-1527,1682-1703,1825,1845-1856,2005,2158,2179,2204
+src/renderer/components/board/nfm-renderer.tsx
+  s_e2f9f3a29b34ef::t_a36c1e735642ae 420-429
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 2,411-419
+docs/product-specs/nfm-editor-text-action-menu-behavior.md
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 4,44-50,53-86
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.test.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 2,4-11,13-24,27-38
+src/renderer/components/shared/icons/generic-icons.tsx
+  s_e2f9f3a29b34ef::t_51a3b5ebf0a275 178
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 20,175-177
+src/renderer/components/board/editor/nfm-chat-send-shortcut-controller.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1-115
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 19,68,113-118,167-196,242,360-369
+src/renderer/components/workbench/database-view-page-context-menu-host.test.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 15-16
+src/renderer/lib/page-editor-selection.test.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 66-81
+docs/product-specs/nfm-editor-prompt-block-behavior.md
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1-73
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 46-47,89-110,195,203,205,245-246,249,280-286,292-294,298-300,302,304
+src/renderer/components/board/editor/nfm-chat-send-feedback.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1-10
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 6,21,76-80,90,94-107,147,169,173,294,296-303,305-315,317-318,326-332,334-335,337-340,344,347-353,356,363-367,369-372,378-389,393,396-397,399-400,403-408,670,714
+src/renderer/lib/page-editor-selection.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 33-38,50-54
+src/renderer/components/board/editor/nfm-side-menu-model.test.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 12,27-83,268,273
+tests/e2e/nfm-send-to-chat.spec.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 22-23,26-29,33-56,168-205,217,220-221,226,274-307
+src/renderer/components/board/editor/nfm-side-menu-model.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1-5,7,20,24,42-43,69-71,87-145,175,198,281-282,284,289-292,341
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 597-600
+src/renderer/components/board/editor/nfm-prompt-runtime.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1-31
+src/renderer/components/board/editor/nfm-side-menu.test.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 532-533,539,545-546
+src/renderer/components/board/page-stage.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 85,93,134,142,266,274,429,437
+src/renderer/components/board/editor/nfm-text-action-menu-runtime.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 7-15,19-23,26
+CHANGELOG.md
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 12-13,17,29-31
+  s_e2f9f3a29b34ef::t_66544a1224ae59 32
+src/shared/initial-project-welcome.node.test.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 28
+src/renderer/components/workbench/workbench-page-stage-panel.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1,38,141,181-182,254-262,464
+docs/product-specs/nfm-block-side-menu-behavior.md
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 4,8,35,47-50,52-53,57-63
+src/renderer/components/board/editor/prompt-block.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 1-8,10-178,181-222
+src/renderer/components/board/editor/nfm-side-menu-runtime.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 18-19,22-23
+src/renderer/components/board/editor/nfm-slash-menu.test.tsx
+  s_e2f9f3a29b34ef::t_b014477008dfeb 423
+docs/product-specs/index.md
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 57-58,67-68
+src/renderer/components/board/page-stage/types.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 95-96,130-131
+src/renderer/components/board/editor/nfm-send-to-thread-menu.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 12-13,22,43-44,51-54,56-57,66,190,201-212,219,231,250-257,273,289,294,304,309,316,370,378,494,501,527
+src/renderer/globals.css
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 566-594
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 124,273,720,786
+docs/product-specs/nfm-page-prompt-image-inputs.md
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 107-110,112-113
+src/renderer/components/board/editor/nfm-editor-placeholders.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 2,8
+src/renderer/components/board/editor/nfm-text-action-menu-model.test.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 2
+src/renderer/components/board/editor/nfm-editor-source.ts
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 99,103,110
+docs/KEYBOARD_SHORTCUTS.md
+  s_e2f9f3a29b34ef::t_a051eb9912cc2b 190-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d0f34f64756abddf214e78932fea1b859347bf2",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
