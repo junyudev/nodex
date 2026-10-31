@@ -481,20 +481,20 @@ it.effect("a dispatched chat receives the messages' Library images with their te
     assert.deepEqual(calls[0]?.message.images, [
       {
         source: `data:image/png;base64,${Buffer.from(png).toString("base64")}`,
-        caption: "[Image 1]",
+        caption: "[Image #1]",
       },
       {
         source: `data:image/jpeg;base64,${Buffer.from(FITTED_JPEG).toString("base64")}`,
-        caption: "[Image 4]",
+        caption: "[Image #4]",
       },
       {
         source: `data:image/jpeg;base64,${Buffer.from(png).toString("base64")}`,
-        caption: "[Image 5]",
+        caption: "[Image #5]",
       },
     ]);
     assert.strictEqual(
       calls[0]?.message.text,
-      `${confirmed.final_text}\n\n[Image 2], [Image 3] could not be attached.`,
+      `${confirmed.final_text}\n\n[Image #2], [Image #3] could not be attached.`,
     );
   }),
 );
@@ -529,7 +529,7 @@ it.effect("hands busy follow-ups to the Runtime queue and does not starve a nint
     );
     assert.strictEqual(
       sendMessage.mock.calls[0]?.[0].message.text,
-      `${items[0]!.final_text}\n\n[Image 1] could not be attached.`,
+      `${items[0]!.final_text}\n\n[Image #1] could not be attached.`,
     );
     assert.strictEqual(
       sendMessage.mock.calls[0]?.[0].messageFingerprint,
@@ -702,7 +702,7 @@ it.effect("persists remote uncertainty before submitting and never automatically
         prompt: "Follow up",
       }),
       thread_id: "thread:remote",
-      final_text: "Read [Image 1] and [Image 2]",
+      final_text: "Read [Image #1] and [Image #2]",
       images: [suggestionImage("missing", FITTED_JPEG), suggestionImage("present", FITTED_JPEG)],
     };
     const start = vi.fn(() =>
@@ -733,7 +733,7 @@ it.effect("persists remote uncertainty before submitting and never automatically
     yield* drain;
     assert.deepEqual(calls, ["persist-unknown", "start"]);
     assert.strictEqual(start.mock.calls.length, 1);
-    const delivered = `${confirmed.final_text}\n\n[Image 1] could not be attached.`;
+    const delivered = `${confirmed.final_text}\n\n[Image #1] could not be attached.`;
     assert.deepEqual(start.mock.calls[0], [
       "thread:remote",
       delivered,
@@ -745,7 +745,7 @@ it.effect("persists remote uncertainty before submitting and never automatically
           images: [
             {
               source: `data:image/jpeg;base64,${Buffer.from(FITTED_JPEG).toString("base64")}`,
-              caption: "[Image 2]",
+              caption: "[Image #2]",
             },
           ],
         },
@@ -986,13 +986,13 @@ it.effect(
       const entries = [
         {
           ...context().entries[0]!,
-          body: "## Before\n\n**Compare** [Image 1: Before]\n\n[Image 2]",
+          body: "## Before\n\n**Compare** [Image #1] (caption: Before)\n\n[Image #2]",
           images: [suggestionImage("before", before), suggestionImage("missing", before)],
         },
         {
           ...context().entries[0]!,
           page_id: "page:two",
-          body: "[Image 3: Changed]\n\n- [ ] Inspect [Image 4: After]",
+          body: "[Image #3] (caption: Changed)\n\n- [ ] Inspect [Image #4] (caption: After)",
           images: [suggestionImage("changed", before), suggestionImage("after", after)],
         },
       ];
@@ -1016,10 +1016,10 @@ it.effect(
         data.messages.map((message: { body: string }) => message.body),
         entries.map((entry) => entry.body),
       );
-      assert.deepEqual(data.messages[0].attached_images, ["[Image 1]"]);
-      assert.deepEqual(data.messages[0].unavailable_images, ["[Image 2]"]);
-      assert.deepEqual(data.messages[1].attached_images, ["[Image 4]"]);
-      assert.deepEqual(data.messages[1].unavailable_images, ["[Image 3]"]);
+      assert.deepEqual(data.messages[0].attached_images, ["[Image #1]"]);
+      assert.deepEqual(data.messages[0].unavailable_images, ["[Image #2]"]);
+      assert.deepEqual(data.messages[1].attached_images, ["[Image #4]"]);
+      assert.deepEqual(data.messages[1].unavailable_images, ["[Image #3]"]);
       assert.strictEqual(settlements[0]?.error, null);
     }),
 );
@@ -1031,7 +1031,7 @@ it.effect("a fitting failure still suggests with every image marked unavailable"
       entries: [
         {
           ...context().entries[0]!,
-          body: "Read [Image 1] and [Image 2]",
+          body: "Read [Image #1] and [Image #2]",
           images: [suggestionImage("before", bytes), suggestionImage("after", bytes)],
         },
       ],
@@ -1055,7 +1055,7 @@ it.effect("a fitting failure still suggests with every image marked unavailable"
     assert.deepEqual(request.images, []);
     const data = JSON.parse(request.prompt.split("JSON data:\n")[1]!);
     assert.deepEqual(data.messages[0].attached_images, []);
-    assert.deepEqual(data.messages[0].unavailable_images, ["[Image 1]", "[Image 2]"]);
+    assert.deepEqual(data.messages[0].unavailable_images, ["[Image #1]", "[Image #2]"]);
     assert.strictEqual(settlements[0]?.error, null);
   }),
 );
@@ -1072,7 +1072,7 @@ it.effect(
       };
       const confirmed: CoreInboxDispatchWork = {
         ...work(),
-        final_text: "Read [Image 1], [Image 2] and [Image 3]",
+        final_text: "Read [Image #1], [Image #2] and [Image #3]",
         images: [
           suggestionImage("missing", original),
           suggestionImage("present", original),
@@ -1119,12 +1119,12 @@ it.effect(
       assert.strictEqual(calls[0]?.messageFingerprint, inboxDispatchFingerprint(confirmed));
       assert.strictEqual(
         calls[0]?.message.text,
-        `${confirmed.final_text}\n\n[Image 1], [Image 3] could not be attached.`,
+        `${confirmed.final_text}\n\n[Image #1], [Image #3] could not be attached.`,
       );
       assert.deepEqual(calls[0]?.message.images, [
         {
           source: `data:image/png;base64,${Buffer.from(original).toString("base64")}`,
-          caption: "[Image 2]",
+          caption: "[Image #2]",
         },
       ]);
       assert.isAtLeast(complete.mock.calls.length, 1);

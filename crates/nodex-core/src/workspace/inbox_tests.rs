@@ -2359,8 +2359,8 @@ fn a_dispatched_chat_receives_the_messages_images_with_their_text() {
     let text = work.final_text.unwrap();
     assert!(text.contains("> The banner is cut off"));
     assert!(text.contains("> - **Fix** the crop\n> - Keep the logo"));
-    assert!(text.contains("> [Image 1]\n> \n> [Image 2]"));
-    assert_eq!(text.matches("[Image 1]").count(), 2);
+    assert!(text.contains("> [Image #1]\n> \n> [Image #2]"));
+    assert_eq!(text.matches("[Image #1]").count(), 2);
     assert!(!text.contains("nodex://files/"));
 }
 
@@ -6491,11 +6491,11 @@ fn inbox_suggestions_freeze_markdown_and_number_images_across_members() {
     let request = requests(module).remove(0);
     assert_eq!(
         request.context.entries[0].body,
-        "[Image 1: Overview]\n\n[Image 2]\n\n- **First** finding\n- Second finding"
+        "[Image #1] (caption: Overview)\n\n[Image #2]\n\n- **First** finding\n- Second finding"
     );
     assert_eq!(
         request.context.entries[1].body,
-        "Check [this link](https://example.com).\n\n[Image 3: Detail]"
+        "Check [this link](https://example.com).\n\n[Image #3] (caption: Detail)"
     );
     let images = request
         .context
@@ -6678,7 +6678,7 @@ fn inbox_over_budget_suggestions_fail_readably_and_preserve_the_proposal() {
         handoff
             .final_text
             .unwrap()
-            .contains("[Image 21; stays on the Page]")
+            .contains("[Image #21] (stays on the Page)")
     );
 }
 
@@ -6799,10 +6799,10 @@ fn inbox_migration_recovers_historical_markdown_with_proven_image_hashes() {
             assert_eq!(state, "pending");
             let frozen: Vec<super::inbox_read::FrozenSuggestionInput> = serde_json::from_str(&inputs_json).unwrap();
             assert_eq!(frozen[0].content.markdown, "- **First** finding\n- Second finding\n\n![Original](nodex://files/old)");
-            assert_eq!(frozen[0].input.body, "- **First** finding\n- Second finding\n\n[Image 1: Original]");
+            assert_eq!(frozen[0].input.body, "- **First** finding\n- Second finding\n\n[Image #1] (caption: Original)");
             assert_eq!(frozen[0].input.images[0].file_id, "old");
             assert_eq!(frozen[0].input.images[0].content_hash, crate::document::sha256(b"image bytes for old"));
-            assert_eq!(frozen[1].input.body, "[Image 2]\n\nReview this too.");
+            assert_eq!(frozen[1].input.body, "[Image #2]\n\nReview this too.");
             assert_eq!(basis, frozen.iter().map(|input| input.input.basis.clone()).collect::<Vec<_>>());
             assert_eq!(basis[0].content_hash, frozen[0].content.fingerprint());
             Ok(())
@@ -6904,7 +6904,7 @@ fn inbox_confirmed_handoff_freezes_reviewed_image_hashes_across_file_replacement
             .final_text
             .as_ref()
             .unwrap()
-            .contains("[Image 1: Screenshot]")
+            .contains("[Image #1] (caption: Screenshot)")
     );
     replace_inbox_test_image(&workspace, "reviewed", "replacement");
     assert_ne!(

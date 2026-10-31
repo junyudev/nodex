@@ -311,6 +311,12 @@ fails with that reason, and a selection with more is refused. It also receives
 eligible routing candidates, including relevant chat previews. Its prompt asks
 only for a structured proposal.
 
+Image markers use `[Image #N]`, followed by ` (caption: <alt text>)` when the
+occurrence has alt text. Within a message, repeated occurrences of a Library
+image reuse its number. Suggestion numbering spans the messages in a request;
+confirmed chat handoffs deduplicate images across all included messages.
+Availability notes follow the marker rather than changing its format.
+
 While suggestions choose models, it also receives every Agent that can take a
 chat now, with each model's effort and speed choices, the note Nodex's model
 guide keeps for it, and the Agent's usage windows. Each window gives the share

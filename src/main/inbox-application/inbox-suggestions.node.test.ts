@@ -338,7 +338,7 @@ describe("describeInboxRuntimeFailure", () => {
 describe("inbox suggestion prompts", () => {
   it("carries whole Markdown bodies and stable image markers without message titles", () => {
     const first = {
-      ...entry("1", "## Compare these\n\n**Before** [Image 1: Before]\n\n[Image 2]"),
+      ...entry("1", "## Compare these\n\n**Before** [Image #1] (caption: Before)\n\n[Image #2]"),
       images: ["before", "missing"].map((id) => ({
         source: `nodex://files/${id}`,
         file_id: id,
@@ -347,7 +347,7 @@ describe("inbox suggestion prompts", () => {
       title: "A display title must not become message content",
     };
     const second = {
-      ...entry("2", "- [ ] Inspect [Image 3: After]"),
+      ...entry("2", "- [ ] Inspect [Image #3] (caption: After)"),
       images: [{ source: "nodex://files/after", file_id: "after", content_hash: "b".repeat(64) }],
     };
     const prompt = buildInboxSuggestionPrompt({
@@ -362,9 +362,9 @@ describe("inbox suggestion prompts", () => {
       first.body,
       second.body,
     ]);
-    expect(data.messages[0].attached_images).toEqual(["[Image 1]"]);
-    expect(data.messages[0].unavailable_images).toEqual(["[Image 2]"]);
-    expect(data.messages[1].attached_images).toEqual(["[Image 3]"]);
+    expect(data.messages[0].attached_images).toEqual(["[Image #1]"]);
+    expect(data.messages[0].unavailable_images).toEqual(["[Image #2]"]);
+    expect(data.messages[1].attached_images).toEqual(["[Image #3]"]);
     expect(data.messages[1].unavailable_images).toEqual([]);
     expect(data.messages[0]).not.toHaveProperty("title");
     expect(data.messages[0]).not.toHaveProperty("images");

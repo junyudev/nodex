@@ -60,7 +60,7 @@ describe("inbox/suggestion-spend scenario", () => {
         inbox.dispatchContext([context.manifest.pageIdsByKey.pictured!]),
       );
       expect(input.entries[0]).toMatchObject({
-        body: "[Image 1]\n\nCan you look at this?",
+        body: "[Image #1]\n\nCan you look at this?",
         images: [{ source, file_id: context.manifest.entityIdsByKey?.screenshotFile }],
       });
       expect(input.entries[0]?.images[0]?.content_hash).toMatch(/^[a-f0-9]{64}$/u);

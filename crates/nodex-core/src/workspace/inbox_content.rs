@@ -125,14 +125,14 @@ pub(super) fn agent_markdown(
     let mut marker = |url: &str, alt: &str| -> Option<String> {
         let number = *numbers.get(url)?;
         let label = if alt.is_empty() {
-            format!("Image {number}")
+            format!("[Image #{number}]")
         } else {
-            format!("Image {number}: {alt}")
+            format!("[Image #{number}] (caption: {alt})")
         };
         let label = if number > image_limit {
-            format!("[{label}; stays on the Page]")
+            format!("{label} (stays on the Page)")
         } else {
-            format!("[{label}]")
+            label
         };
         let token = format!("{prefix}{}\u{e001}", replacements.len());
         replacements.push((token.clone(), label));
@@ -211,10 +211,10 @@ mod tests {
             assert_eq!(content.images.iter().map(|image| image.file_id.as_str()).collect::<Vec<_>>(), vec!["nested", "table", "last"]);
             let numbers = content.images.iter().enumerate().map(|(index, image)| (image.source.clone(), index + 1)).collect();
             let rendered = agent_markdown(&content, &numbers, 20)?;
-            assert!(rendered.contains("nested [Image 1: Nested]"));
-            assert!(rendered.contains("| [Image 2: Cell] |"));
-            assert!(rendered.contains("[Image 3]"));
-            assert!(rendered.contains("Again [Image 1: Same] and ![External](https://example.com/image.png)"));
+            assert!(rendered.contains("nested [Image #1] (caption: Nested)"));
+            assert!(rendered.contains("| [Image #2] (caption: Cell) |"));
+            assert!(rendered.contains("[Image #3]"));
+            assert!(rendered.contains("Again [Image #1] (caption: Same) and ![External](https://example.com/image.png)"));
             Ok(())
         }).unwrap();
     }

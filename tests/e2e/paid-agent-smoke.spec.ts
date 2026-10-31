@@ -876,7 +876,11 @@ test("reads the image in an explicit Inbox suggestion @paid-agent-inbox-image", 
       false,
       /Billing|Payments/i.test(String(request.prompt)),
     );
-    claim("The model receives an image marker", true, String(request.prompt).includes("[Image 1]"));
+    claim(
+      "The model receives an image marker",
+      true,
+      String(request.prompt).includes("[Image #1]"),
+    );
     const executions = wire.filter((record) => record.type === "codex.exec");
     claim("One production codex exec process ran", 1, executions.length);
     const execution = requireRecord(executions[0], "Codex exec evidence");

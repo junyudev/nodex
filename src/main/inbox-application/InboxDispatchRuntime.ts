@@ -83,14 +83,14 @@ export const make = Effect.gen(function* () {
         attachedImageCount: loaded.images.length,
       });
     // Stable marker order and fixed wording keep the availability note deterministic on replay.
-    const note = unavailable.map((marker) => `[Image ${marker}]`).join(", ");
+    const note = unavailable.map((marker) => `[Image #${marker}]`).join(", ");
     return {
       messageId: work.message_id,
       text: note ? `${text}\n\n${note} could not be attached.` : text,
       agentConfigs: [],
       images: loaded.images.map((image, index): CodexPromptImageInput => ({
         source: `data:${image.mediaType};base64,${image.data}`,
-        caption: `[Image ${loaded.attachedMarkers[index]}]`,
+        caption: `[Image #${loaded.attachedMarkers[index]}]`,
       })),
     };
   });
