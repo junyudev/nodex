@@ -1,0 +1,19 @@
+src/renderer/features/inbox/inbox-planning-summary.tsx
+  s_3500ddfb1933ec::t_8d899c2197aebf 88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60f07d177098469c9e36aaa03892494e41e5aace",
+  "prompts": {},
+  "sessions": {
+    "s_3500ddfb1933ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2805826-88de-4be0-aea1-fc13723372c5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
