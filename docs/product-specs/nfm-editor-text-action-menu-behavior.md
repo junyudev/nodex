@@ -1,7 +1,7 @@
 # Page Editor Text Action Menu Behavior
 
 Status: Active
-Last updated: 2026-10-01
+Last updated: 2026-10-31
 
 ## Purpose
 
@@ -41,11 +41,46 @@ within an `8px` window inset. They try the opposite side before shifting along
 both axes. A tall multi-line selection may leave neither side enough room;
 the menu then overlaps the selection as needed to keep its actions visible.
 
+## Layout
+
+From top to bottom the menu holds the chat actions, the block type picker, and
+two rows of formatting controls ending in `More`, which opens the
+[Block side menu](nfm-block-side-menu-behavior.md) for the same selection,
+including `Move to`. The menu contains only working actions.
+
 ## Chat submission
 
-`Send to chat` shares its destination picker, modes, retained Block targets, and
-Page image capture with the [Block side menu](nfm-block-side-menu-behavior.md).
-In a chat's Scene the picker lists that chat first, labeled `This chat`: its live
-Thread, or a first Turn in it while it has none and may start one there.
-Library image references are captured through the source Page before a Chat is
-created or a message is submitted; see [Page image inputs](nfm-page-prompt-image-inputs.md).
+When the Page can reach a chat, the menu opens with its chat actions:
+
+- `Send to chat`, on the Composer's send glyph. Beside a chat — the Page is shown
+  in that chat's Scene, whether it is a Project Page or a Library Page beside a
+  Project chat — activating it sends the selection there at once. Its tooltip names
+  that chat and the `⌘⇧↵` shortcut, and a `Send to another chat` chevron beside it
+  opens the destination picker. Without a chat beside the Page, `Send to chat`
+  opens the picker itself.
+- `Add to composer`, only beside a chat: the selection's content joins the end of
+  that chat's draft as its own paragraphs, its images become draft attachments,
+  and the Composer takes focus. Its tooltip shows `⌥⌘↵`.
+
+The picker lists the chat beside the Page first as `This chat`: its live Thread,
+or a first Turn in it while it has none and may start one there. The Page's
+Linked chats follow, marked `Linked`, then recent chats with the Page's Project
+first, and `New chat` at the bottom. Typing searches every chat by title and
+history. There is one kind of send: the content goes to the chat and the Page
+stays as it is.
+
+Both actions use the Blocks covered by the selection, including their
+descendants. A completed send collapses the selection, so the menu closes, and
+confirms with a toast; a failure reports its reason without changing the Page.
+Selected [Prompt](nfm-editor-prompt-block-behavior.md) Blocks record the send.
+Library image references are captured through the source Page before a chat is
+created or a message is submitted; see
+[Page image inputs](nfm-page-prompt-image-inputs.md). A Page send into a running
+chat follows the Composer's Queue or Steer default.
+
+## Keyboard
+
+`⌘⇧↵` sends the selection, or with a bare caret the Prompt holding it, to the
+chat beside the Page. Without a chat beside the Page it opens the Block side menu
+on `Send to chat` with the picker shown. `⌥⌘↵` adds the selection to the beside
+chat's composer.

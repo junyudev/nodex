@@ -316,10 +316,48 @@ describe("markdown send-to-thread menu model", () => {
     expect(rows[2]?.kind).toBe("new-thread");
   });
 
-  test("wraps only into chats with a Session, naming the editor's own Session for its chat", () => {
+  test("lists the Page's linked chats after this chat until a search widens the list", () => {
+    const linked = makeThread({ threadId: "linked", title: "Linked work", sessionId: "s-linked" });
+    const threads = [
+      makeThread({ threadId: "recent", title: "Recent", updatedAt: 9 }),
+      makeThread({ threadId: "preferred", title: "Here", updatedAt: 5 }),
+      linked,
+    ];
+    const preferredTarget = {
+      kind: "thread" as const,
+      thread: makePreferredThread({ threadId: "preferred" }),
+      sessionId: "session-preferred",
+      meta: "This chat",
+    };
+
     const rows = buildNfmSendToThreadRows({
       query: "",
-      requireSession: true,
+      threads,
+      linkedThreads: [linked],
+      preferredTarget,
+    });
+    expect(rows.map((row) => [row.id, row.meta])).toEqual([
+      ["thread:preferred", "This chat"],
+      ["thread:linked", "Linked"],
+      ["thread:recent", "Launch project"],
+      ["new-thread", "This project"],
+    ]);
+    expect(rows[1]?.isPreferredTarget).toBe(false);
+
+    const searched = buildNfmSendToThreadRows({
+      query: "work",
+      threads: [linked],
+      linkedThreads: [linked],
+    });
+    expect(searched.map((row) => [row.id, row.meta])).toEqual([
+      ["thread:linked", "Launch project"],
+      ["new-thread", "This project"],
+    ]);
+  });
+
+  test("names the editor's own Session for its chat when the chat list has not caught up", () => {
+    const rows = buildNfmSendToThreadRows({
+      query: "",
       preferredTarget: {
         kind: "thread",
         thread: makePreferredThread({ threadId: "preferred", updatedAt: 1 }),
@@ -328,7 +366,6 @@ describe("markdown send-to-thread menu model", () => {
       },
       threads: [
         makeThread({ threadId: "preferred", sessionId: null, updatedAt: 5 }),
-        makeThread({ threadId: "codex-only", sessionId: null, updatedAt: 4 }),
         makeThread({ threadId: "bound", sessionId: "session-bound", updatedAt: 3 }),
       ],
     });

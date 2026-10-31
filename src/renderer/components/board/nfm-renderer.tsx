@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import { Link2 } from "@/components/shared/icons/generic-icons";
+import { CornerDownRight, Link2 } from "@/components/shared/icons/generic-icons";
 import { ImageIcon, NodexLogoMarkIcon } from "@/components/shared/icons";
 import {
   InlineMarkdownCode,
@@ -398,6 +398,25 @@ function BlockComponent({
           {String(block.props?.icon ?? "💡") && (
             <span className="text-[1.2em] select-none">{String(block.props?.icon ?? "💡")}</span>
           )}
+          <div className="min-w-0 flex-1">
+            <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
+            <ChildBlocks
+              children={block.children ?? []}
+              projectWorkspacePath={projectWorkspacePath}
+            />
+          </div>
+        </div>
+      );
+
+    case "prompt":
+      return (
+        <div className="nfm-prompt my-1.5 flex gap-1.5 rounded-[10px] px-1.5 py-1 shadow-[inset_0_0_0_0.5px_var(--color-token-border)]">
+          <span
+            aria-hidden="true"
+            className="flex h-[1.5em] w-5 shrink-0 select-none items-center justify-center text-token-description-foreground"
+          >
+            <CornerDownRight className="size-4" />
+          </span>
           <div className="min-w-0 flex-1">
             <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
             <ChildBlocks

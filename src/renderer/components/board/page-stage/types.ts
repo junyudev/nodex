@@ -92,6 +92,8 @@ export interface PageStageProps {
   canStartThreadInSession?: boolean;
   /** The chat's title, naming it where the Page is offered to it. */
   sessionTitle?: string | null;
+  /** The Project of the chat this Page is shown beside; a Library Page sends through it. */
+  chatProjectId?: string | null;
   relatedChats?: readonly PageStageRelatedChat[];
   relatedChatsLoading?: boolean;
   relatedChatsError?: string | null;
@@ -125,6 +127,8 @@ export interface PageStageProps {
     promptInput?: CodexPromptInput;
     submittedPresentation?: WorkbenchSubmitPresentation;
   }) => Promise<void>;
+  /** Present when the Page is shown beside a chat: appends Page content to that chat's draft. */
+  onAddPromptToChatComposer?: (promptInput: CodexPromptInput) => Promise<void>;
   historyPanelActive?: boolean;
   /**
    * The prepared owned Document, or null while it is still being prepared. Page Detail

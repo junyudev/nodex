@@ -96,12 +96,18 @@ import {
 import { NfmCodeBlockController } from "./nfm-code-block-controller";
 import type { NfmMoveToDestination } from "./nfm-move-to-menu-model";
 import { projectMessageBlocks } from "../../../../shared/message-agent-input";
-import { createSendToThreadToggleBlock } from "./nfm-send-to-thread-block";
 import {
+  describeNfmSendToThreadPreferredTarget,
+  resolveNfmSendToThreadPreferredDestination,
   resolveNfmSendToThreadPreferredTarget,
   type NfmSendToThreadRequest,
 } from "./nfm-send-to-thread-menu-model";
+import { NfmPromptRuntimeProvider, type NfmPromptRuntimeValue } from "./nfm-prompt-runtime";
+import { findNfmPromptBlockAtCaret } from "./nfm-prompt-block-model";
+import { writeNfmPromptCollapsed } from "./nfm-prompt-collapse-store";
 import { NfmSideMenuRuntimeProvider } from "./nfm-side-menu-runtime";
+import { NfmChatSendShortcutController } from "./nfm-chat-send-shortcut-controller";
+import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
 import { resolveSendBlockSelection } from "./send-block-selection";
 import { PasteResourceDialog } from "./paste-resource-dialog";
 import {
@@ -230,6 +236,8 @@ interface NfmEditorCommonProps {
   sessionThread?: CodexThreadSummary | null;
   canStartThreadInSession?: boolean;
   sessionTitle?: string | null;
+  /** The Project of the chat this Page is shown beside; a Library Page sends through it. */
+  chatProjectId?: string | null;
   onOpenCodexThread?: (threadId: string) => Promise<void>;
   onOpenSession?: (sessionId: string) => void | Promise<void>;
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
@@ -250,6 +258,8 @@ interface NfmEditorCommonProps {
     promptInput?: CodexPromptInput;
     submittedPresentation?: WorkbenchSubmitPresentation;
   }) => Promise<void>;
+  /** Present when the Page is shown beside a chat: appends Page content to that chat's draft. */
+  onAddPromptToChatComposer?: (promptInput: CodexPromptInput) => Promise<void>;
   isActivePanelTab?: boolean;
   headingRail?: {
     portalElement: HTMLElement | null;
@@ -350,6 +360,7 @@ function NfmEditorInstance({
   sessionThread = null,
   canStartThreadInSession = false,
   sessionTitle = null,
+  chatProjectId = null,
   onOpenCodexThread,
   onOpenSession,
   onOpenPage,
@@ -357,6 +368,7 @@ function NfmEditorInstance({
   onOpenCanvas,
   onStartNewSessionThreadFromEditor,
   onSendPagePrompt,
+  onAddPromptToChatComposer,
   isActivePanelTab = true,
   headingRail,
   className,
@@ -369,6 +381,8 @@ function NfmEditorInstance({
 }: NfmEditorInstanceProps) {
   const queryClient = useQueryClient();
   const executionProjectId = projectIdFromContentRoutingContext(contentRoutingContext);
+  // Sends go through the beside chat's Project, which a Library Page does not have of its own.
+  const chatSendProjectId = chatProjectId ?? executionProjectId;
   const parentBlockReferenceRuntime = useBlockReferenceHostRuntime();
   const { resolved: themeMode } = useTheme();
   const { spellcheck } = useSpellcheck();
@@ -722,6 +736,11 @@ function NfmEditorInstance({
     return writeMarkdown(editor.document);
   }, [editor]);
 
+  // Keyboard handlers subscribe once; they read the current Prompt runtime through this ref.
+  const promptRuntimeRef = useRef<NfmPromptRuntimeValue>({
+    destination: null,
+    send: async () => undefined,
+  });
   const restoreEditorFocus = useCallback(() => {
     requestAnimationFrame(() => {
       editor?.focus();
@@ -1153,6 +1172,9 @@ function NfmEditorInstance({
   }, [editor, syncSearchStats]);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const selectionObservationRef = useRef<ReturnType<
+    typeof createPageEditorSelectionObservation
+  > | null>(null);
   const pendingObservationInputRef = useRef(false);
   pendingObservationInputRef.current = pasteResourceDialog != null;
   useLayoutEffect(() => {
@@ -1162,6 +1184,7 @@ function NfmEditorInstance({
       read: () => readPageEditorSelectedBlockIds(editor),
       focused: () => editor.prosemirrorView?.hasFocus() === true,
     });
+    selectionObservationRef.current = selection;
     const unsubscribeSelection = editor.onSelectionChange(selection.update);
     const unregister = registerPageEditorObservationParticipant(editorSession.key, {
       readSelection: selection.readSelection,
@@ -1178,6 +1201,7 @@ function NfmEditorInstance({
       },
     });
     return () => {
+      if (selectionObservationRef.current === selection) selectionObservationRef.current = null;
       unsubscribeSelection();
       unregister();
     };
@@ -1432,6 +1456,23 @@ function NfmEditorInstance({
 
       if (!modifier) return;
 
+      if (key === "enter" && !targetIsTextField && !event.altKey && !event.shiftKey) {
+        // Activating a Prompt sends it, as activating a to-do checks it.
+        const promptBlockId = promptRuntimeRef.current.destination
+          ? findNfmPromptBlockAtCaret(
+              editor as unknown as Parameters<typeof findNfmPromptBlockAtCaret>[0],
+            )
+          : null;
+        if (promptBlockId) {
+          event.preventDefault();
+          event.stopPropagation();
+          void promptRuntimeRef.current
+            .send(promptBlockId)
+            .catch((error: unknown) => reportNfmChatSendFailure("send", error));
+          return;
+        }
+      }
+
       if (key === "enter" && !targetIsTextField) {
         const handled =
           !event.altKey &&
@@ -1644,105 +1685,185 @@ function NfmEditorInstance({
     ],
   );
 
+  /** Sends a compiled Page prompt to one chat; resolves to the Session that received it. */
+  const sendPromptInputToChat = useCallback(
+    async (
+      target: NfmSendToThreadRequest["target"],
+      promptInput: CodexPromptInput,
+    ): Promise<string | null> => {
+      if (chatSendProjectId === null) {
+        throw new Error("Sending Blocks to a chat requires a Project.");
+      }
+      const submittedPresentation = readCodexSubmissionPresentation(workbenchOwner);
+      await surfaceMutationBarrier?.flushAndFence();
+      if (target.kind === "thread") {
+        if (!onSendPagePrompt) throw new Error("Chat sending is not available.");
+        await onSendPagePrompt({
+          projectId: chatSendProjectId,
+          threadId: target.threadId,
+          prompt: promptInput.text,
+          promptInput,
+          submittedPresentation,
+        });
+        return target.sessionId;
+      }
+      if (!onStartNewSessionThreadFromEditor) {
+        throw new Error("New chat creation is not available.");
+      }
+      const started = await onStartNewSessionThreadFromEditor({
+        projectId: chatSendProjectId,
+        targetSessionId: target.sessionId,
+        prompt: promptInput.text,
+        promptInput,
+        submittedPresentation,
+      });
+      return started.sessionId ?? target.sessionId ?? null;
+    },
+    [
+      chatSendProjectId,
+      onSendPagePrompt,
+      onStartNewSessionThreadFromEditor,
+      surfaceMutationBarrier,
+      workbenchOwner,
+    ],
+  );
+
+  /** Compiles the retained or selected Blocks, or reports that there is nothing to hand over. */
+  const compileSendBlocksPrompt = useCallback(
+    (fallbackBlockId: string, retainedBlockIds?: readonly string[]) => {
+      if (!sourcePageContext) {
+        throw new Error("No blocks selected.");
+      }
+      const selection = resolveSendBlocksSelection(fallbackBlockId, retainedBlockIds);
+      if (!selection) {
+        throw new Error("No blocks selected.");
+      }
+      const promptInput = projectMessageBlocks(selection.blocks);
+      if (promptInput.text.length === 0 && (promptInput.images?.length ?? 0) === 0) {
+        toast.info("Selected blocks are empty.", { id: "nfm-send-to-thread" });
+        return null;
+      }
+      return { selection, promptInput };
+    },
+    [resolveSendBlocksSelection, sourcePageContext],
+  );
+
+  /**
+   * A finished handoff releases its selection, so the menus it came from close with it. A send
+   * keeps writing in the Page; content added to a composer leaves focus with that composer.
+   */
+  const settleHandedOffSelection = useCallback(
+    (blockIds: readonly string[], focus: "page" | "composer") => {
+      const lastBlockId = blockIds.at(-1);
+      try {
+        if (lastBlockId && editor.getBlock(lastBlockId)) {
+          editor.setTextCursorPosition(lastBlockId, "end");
+        }
+      } catch {
+        // A Block without inline content keeps its selection.
+      }
+      selectionObservationRef.current?.release();
+      if (focus === "page") restoreEditorFocus();
+    },
+    [editor, restoreEditorFocus],
+  );
+
+  const blockActionCapabilities = resolveNfmEditorBlockActionCapabilities(
+    sourcePageContext !== undefined,
+    executionProjectId,
+    chatSendProjectId,
+  );
+
+  /** A Prompt keeps where and when it last went; a folded Prompt leaves room for the next. */
+  const recordPromptSends = useCallback(
+    (
+      blocks: readonly { id: string; type: string; children?: readonly unknown[] }[],
+      sessionId: string | null,
+    ) => {
+      if (!sessionId) return;
+      const sentAt = new Date().toISOString();
+      for (const block of blocks) {
+        if (block.type !== "prompt" || !editor.getBlock(block.id)) continue;
+        editor.updateBlock(block.id, { props: { sentSessionId: sessionId, sentAt } });
+        if ((block.children?.length ?? 0) > 0) writeNfmPromptCollapsed(block.id, true);
+      }
+    },
+    [editor],
+  );
+
+  /** The beside chat when there is one; otherwise a Prompt starts a new chat in this Project. */
+  const promptDestinationTarget = useMemo((): NfmSendToThreadRequest["target"] | null => {
+    if (!blockActionCapabilities.canSendBlocksToThread) return null;
+    if (sessionSendToThreadPreferredTarget)
+      return resolveNfmSendToThreadPreferredDestination(sessionSendToThreadPreferredTarget);
+    return { kind: "new-thread" };
+  }, [blockActionCapabilities.canSendBlocksToThread, sessionSendToThreadPreferredTarget]);
+
+  const sendPromptBlock = useCallback(
+    async (promptBlockId: string) => {
+      const block = editor.getBlock(promptBlockId);
+      if (!block || block.type !== "prompt" || !promptDestinationTarget) return;
+      const promptInput = projectMessageBlocks([block]);
+      if (promptInput.text.length === 0 && (promptInput.images?.length ?? 0) === 0) {
+        toast.info("This prompt is empty.", { id: "nfm-send-to-thread" });
+        return;
+      }
+      const sessionId = await sendPromptInputToChat(promptDestinationTarget, promptInput);
+      recordPromptSends([block], sessionId);
+    },
+    [editor, promptDestinationTarget, recordPromptSends, sendPromptInputToChat],
+  );
+
+  const promptRuntimeValue = useMemo<NfmPromptRuntimeValue>(
+    () => ({
+      destination: !promptDestinationTarget
+        ? null
+        : sessionSendToThreadPreferredTarget
+          ? {
+              kind: "beside",
+              title: describeNfmSendToThreadPreferredTarget(sessionSendToThreadPreferredTarget),
+            }
+          : { kind: "new-chat" },
+      send: sendPromptBlock,
+    }),
+    [promptDestinationTarget, sendPromptBlock, sessionSendToThreadPreferredTarget],
+  );
+  useLayoutEffect(() => {
+    promptRuntimeRef.current = promptRuntimeValue;
+  }, [promptRuntimeValue]);
+
   const sendBlocksToThread = useCallback(
     async (
       request: NfmSendToThreadRequest,
       fallbackBlockId: string,
       retainedBlockIds?: readonly string[],
     ) => {
-      if (!sourcePageContext) {
-        throw new Error("No blocks selected.");
-      }
-      if (executionProjectId === null) {
-        throw new Error("Sending Blocks to a chat requires a Project.");
-      }
-
-      const selection = resolveSendBlocksSelection(fallbackBlockId, retainedBlockIds);
-      if (!selection) {
-        throw new Error("No blocks selected.");
-      }
-      if (request.mode === "wrap-toggle" && hasTypedOwnerBlock(selection.blocks)) {
-        toast.info("Page, Canvas, and Database blocks cannot be wrapped into a thread toggle.");
-        return;
-      }
-
-      const promptInput = projectMessageBlocks(selection.blocks);
-      const hasImages = (promptInput.images?.length ?? 0) > 0;
-      if (promptInput.text.length === 0 && !hasImages) {
-        toast.info("Selected blocks are empty.", {
-          id: "nfm-send-to-thread",
-        });
-        return;
-      }
-
-      const submittedPresentation = readCodexSubmissionPresentation(workbenchOwner);
-      await surfaceMutationBarrier?.flushAndFence();
-      let threadId: string;
-      let targetSessionId: string | null;
-      if (request.target.kind === "thread") {
-        threadId = request.target.threadId;
-        targetSessionId = request.target.sessionId;
-      } else {
-        if (!onStartNewSessionThreadFromEditor) {
-          throw new Error("New chat creation is not available.");
-        }
-        const started = await onStartNewSessionThreadFromEditor({
-          projectId: executionProjectId,
-          targetSessionId: request.target.sessionId,
-          prompt: promptInput.text,
-          promptInput,
-          submittedPresentation,
-        });
-        threadId = started.threadId;
-        targetSessionId = started.sessionId ?? request.target.sessionId ?? null;
-      }
-
-      if (request.target.kind === "thread") {
-        if (!onSendPagePrompt) throw new Error("Chat sending is not available.");
-        await onSendPagePrompt({
-          projectId: executionProjectId,
-          threadId,
-          prompt: promptInput.text,
-          promptInput,
-          submittedPresentation,
-        });
-      }
-
-      if (request.mode === "wrap-toggle") {
-        const dropEditor = editor as unknown as EditorForExternalBlockDrop;
-        if (!targetSessionId) throw new Error("The chat has no Session.");
-        const toggleBlock = createSendToThreadToggleBlock({
-          sessionId: targetSessionId,
-          children: selection.blocks,
-        });
-
-        const toggleStorageKey = `toggle-${toggleBlock.id}`;
-        localStorage.setItem(toggleStorageKey, "false");
-        try {
-          runInEditorTransaction(dropEditor, () => {
-            dropEditor.replaceBlocks(selection.blockIds, [toggleBlock]);
-          });
-        } catch (error) {
-          localStorage.removeItem(toggleStorageKey);
-          throw error;
-        }
-      }
-
+      const compiled = compileSendBlocksPrompt(fallbackBlockId, retainedBlockIds);
+      if (!compiled) return;
+      const sessionId = await sendPromptInputToChat(request.target, compiled.promptInput);
+      recordPromptSends(compiled.selection.blocks, sessionId);
       toast.success(request.target.kind === "thread" ? "Sent to chat" : "Sent to new chat", {
         id: "nfm-send-to-thread",
       });
-      restoreEditorFocus();
+      settleHandedOffSelection(compiled.selection.blockIds, "page");
+    },
+    [compileSendBlocksPrompt, recordPromptSends, sendPromptInputToChat, settleHandedOffSelection],
+  );
+
+  const addBlocksToComposer = useCallback(
+    async (fallbackBlockId: string, retainedBlockIds?: readonly string[]) => {
+      if (!onAddPromptToChatComposer) return;
+      const compiled = compileSendBlocksPrompt(fallbackBlockId, retainedBlockIds);
+      if (!compiled) return;
+      await surfaceMutationBarrier?.flushAndFence();
+      await onAddPromptToChatComposer(compiled.promptInput);
+      settleHandedOffSelection(compiled.selection.blockIds, "composer");
     },
     [
-      onSendPagePrompt,
-      workbenchOwner,
+      compileSendBlocksPrompt,
+      onAddPromptToChatComposer,
+      settleHandedOffSelection,
       surfaceMutationBarrier,
-      editor,
-      executionProjectId,
-      onStartNewSessionThreadFromEditor,
-      resolveSendBlocksSelection,
-      restoreEditorFocus,
-      sourcePageContext,
     ],
   );
 
@@ -1836,10 +1957,6 @@ function NfmEditorInstance({
   // frequency, an unstable side-menu identity remounts the grip mid-gesture and
   // aborts native block drag-and-drop. Route volatile values through a ref so
   // the callback identity below never changes.
-  const blockActionCapabilities = resolveNfmEditorBlockActionCapabilities(
-    sourcePageContext !== undefined,
-    executionProjectId,
-  );
   const handleBlockDragStart = useCallback(
     ({ dataTransfer, blockIds }: { dataTransfer: DataTransfer; blockIds: readonly string[] }) => {
       const roots = resolveTopLevelDraggedBlocks(editor, [...blockIds]);
@@ -1929,7 +2046,14 @@ function NfmEditorInstance({
     sendToThreadPreferredTarget: sessionSendToThreadPreferredTarget,
     onSendBlocksToThread: (request: NfmSendToThreadRequest, blockIds: readonly string[]) =>
       sendBlocksToThread(request, blockIds[0] ?? "", blockIds),
+    ...(onAddPromptToChatComposer
+      ? {
+          onAddBlocksToComposer: (blockIds: readonly string[]) =>
+            addBlocksToComposer(blockIds[0] ?? "", blockIds),
+        }
+      : {}),
     sourceProjectId: sourcePageContext ? executionProjectId : null,
+    sendToThreadProjectId: sourcePageContext ? chatSendProjectId : null,
     sourcePageId: sourcePageContext?.pageId ?? null,
     onMoveBlocksToDestination: moveBlocksToDestination,
     onBlockDragStart: handleBlockDragStart,
@@ -1947,7 +2071,14 @@ function NfmEditorInstance({
     sendToThreadPreferredTarget: sessionSendToThreadPreferredTarget,
     onSendBlocksToThread: (request: NfmSendToThreadRequest, blockIds: readonly string[]) =>
       sendBlocksToThread(request, blockIds[0] ?? "", blockIds),
+    ...(onAddPromptToChatComposer
+      ? {
+          onAddBlocksToComposer: (blockIds: readonly string[]) =>
+            addBlocksToComposer(blockIds[0] ?? "", blockIds),
+        }
+      : {}),
     sourceProjectId: sourcePageContext ? executionProjectId : null,
+    sendToThreadProjectId: sourcePageContext ? chatSendProjectId : null,
     sourcePageId: sourcePageContext?.pageId ?? null,
     onMoveBlocksToDestination: moveBlocksToDestination,
     onBlockDragStart: handleBlockDragStart,
@@ -1970,29 +2101,28 @@ function NfmEditorInstance({
 
   const textActionMenuRuntimeValue = useMemo(
     () => ({
-      canSendBlocks: blockActionCapabilities.canSendBlocksToThread,
-      sourceProjectId: sourcePageContext ? executionProjectId : null,
-      sourcePageId: sourcePageContext?.pageId ?? null,
-      sendToThreadProjectNameById,
-      sendToThreadPreferredTarget: sessionSendToThreadPreferredTarget,
-      ...(blockActionCapabilities.canMoveBlocks
+      chat: blockActionCapabilities.canSendBlocksToThread
         ? {
-            onMoveBlocksToDestination: (
-              destination: NfmMoveToDestination,
-              selectedBlockIds: readonly string[],
-            ) => moveBlocksToDestination(destination, selectedBlockIds[0] ?? "", selectedBlockIds),
+            projectId: sourcePageContext ? chatSendProjectId : null,
+            sourcePageId: sourcePageContext?.pageId ?? null,
+            projectNameById: sendToThreadProjectNameById,
+            contextualTarget: sessionSendToThreadPreferredTarget,
+            send: (request: NfmSendToThreadRequest, selectedBlockIds: readonly string[]) =>
+              sendBlocksToThread(request, selectedBlockIds[0] ?? "", selectedBlockIds),
+            ...(onAddPromptToChatComposer
+              ? {
+                  addToComposer: (selectedBlockIds: readonly string[]) =>
+                    addBlocksToComposer(selectedBlockIds[0] ?? "", selectedBlockIds),
+                }
+              : {}),
           }
-        : {}),
-      onSendBlocksToThread: (
-        request: NfmSendToThreadRequest,
-        selectedBlockIds: readonly string[],
-      ) => sendBlocksToThread(request, selectedBlockIds[0] ?? "", selectedBlockIds),
+        : null,
     }),
     [
-      blockActionCapabilities.canMoveBlocks,
+      addBlocksToComposer,
+      onAddPromptToChatComposer,
       blockActionCapabilities.canSendBlocksToThread,
-      moveBlocksToDestination,
-      executionProjectId,
+      chatSendProjectId,
       sendToThreadProjectNameById,
       sendBlocksToThread,
       sessionSendToThreadPreferredTarget,
@@ -2471,71 +2601,79 @@ function NfmEditorInstance({
         <BlockReferenceRuntimeProvider value={blockReferenceRuntimeValue}>
           <AgentConfigRuntimeProvider value={agentConfigRuntimeValue}>
             <ThreadMentionRuntimeProvider value={threadMentionRuntimeValue}>
-              <NfmEditorContextMenu
-                editor={editor}
-                onPreparePaste={() => {
-                  const target = captureNfmPasteTarget(editor.prosemirrorView);
-                  const releaseStructural =
-                    structuralEditingController.current?.prepareNextStructuralPaste();
-                  return {
-                    restore: target.restore,
-                    release: () => {
-                      target.release();
-                      releaseStructural?.();
-                    },
-                  };
-                }}
-              >
-                <NfmTextActionMenuRuntimeProvider value={textActionMenuRuntimeValue}>
-                  <NfmSideMenuRuntimeProvider value={sideMenuRuntimeValue}>
-                    <BlockNoteView
-                      editor={editor}
-                      onEditorViewMount={(editorRoot) => {
-                        editorSession?.restoreSelection(editor);
-                        onEditorViewMount?.(editorRoot);
-                      }}
-                      onEditorViewUnmount={() => {
-                        onEditorViewUnmount?.();
-                        editorSession?.captureSelection(editor);
-                      }}
-                      editable
-                      onChange={handleChange}
-                      theme={themeMode}
-                      attributionTooltip={false}
-                      formattingToolbar={false}
-                      emojiPicker={false}
-                      linkToolbar={false}
-                      slashMenu={false}
-                      sideMenu={false}
-                      tableHandles={false}
-                      data-theming-css-variables-demo
-                    >
-                      <NfmSideMenuOpenProvider>
-                        <NfmCodeBlockController />
-                        <NfmSideMenuShortcutController />
-                        <SideMenuController
-                          sideMenu={customSideMenu}
-                          floatingUIOptions={sideMenuFloatingOptions}
-                        />
-                        <NfmFormattingToolbarController formattingToolbar={NfmFormattingToolbar} />
-                        <NfmLinkToolbarController
-                          linkToolbar={renderLinkToolbar}
-                          floatingUIOptions={{
-                            useTransitionStylesProps: {
-                              duration: 0,
-                            },
-                            useTransitionStatusProps: {
-                              duration: 0,
-                            },
-                          }}
-                        />
-                        <NfmSlashMenu executionProjectId={executionProjectId} allowPageReferences />
-                        <NfmTableHandlesController />
-                      </NfmSideMenuOpenProvider>
-                    </BlockNoteView>
-                  </NfmSideMenuRuntimeProvider>
-                </NfmTextActionMenuRuntimeProvider>
-              </NfmEditorContextMenu>
+              <NfmPromptRuntimeProvider value={promptRuntimeValue}>
+                <NfmEditorContextMenu
+                  editor={editor}
+                  onPreparePaste={() => {
+                    const target = captureNfmPasteTarget(editor.prosemirrorView);
+                    const releaseStructural =
+                      structuralEditingController.current?.prepareNextStructuralPaste();
+                    return {
+                      restore: target.restore,
+                      release: () => {
+                        target.release();
+                        releaseStructural?.();
+                      },
+                    };
+                  }}
+                >
+                  <NfmTextActionMenuRuntimeProvider value={textActionMenuRuntimeValue}>
+                    <NfmSideMenuRuntimeProvider value={sideMenuRuntimeValue}>
+                      <BlockNoteView
+                        editor={editor}
+                        onEditorViewMount={(editorRoot) => {
+                          editorSession?.restoreSelection(editor);
+                          onEditorViewMount?.(editorRoot);
+                        }}
+                        onEditorViewUnmount={() => {
+                          onEditorViewUnmount?.();
+                          editorSession?.captureSelection(editor);
+                        }}
+                        editable
+                        onChange={handleChange}
+                        theme={themeMode}
+                        attributionTooltip={false}
+                        formattingToolbar={false}
+                        emojiPicker={false}
+                        linkToolbar={false}
+                        slashMenu={false}
+                        sideMenu={false}
+                        tableHandles={false}
+                        data-theming-css-variables-demo
+                      >
+                        <NfmSideMenuOpenProvider>
+                          <NfmCodeBlockController />
+                          <NfmSideMenuShortcutController />
+                          <NfmChatSendShortcutController />
+                          <SideMenuController
+                            sideMenu={customSideMenu}
+                            floatingUIOptions={sideMenuFloatingOptions}
+                          />
+                          <NfmFormattingToolbarController
+                            formattingToolbar={NfmFormattingToolbar}
+                          />
+                          <NfmLinkToolbarController
+                            linkToolbar={renderLinkToolbar}
+                            floatingUIOptions={{
+                              useTransitionStylesProps: {
+                                duration: 0,
+                              },
+                              useTransitionStatusProps: {
+                                duration: 0,
+                              },
+                            }}
+                          />
+                          <NfmSlashMenu
+                            executionProjectId={executionProjectId}
+                            allowPageReferences
+                          />
+                          <NfmTableHandlesController />
+                        </NfmSideMenuOpenProvider>
+                      </BlockNoteView>
+                    </NfmSideMenuRuntimeProvider>
+                  </NfmTextActionMenuRuntimeProvider>
+                </NfmEditorContextMenu>
+              </NfmPromptRuntimeProvider>
             </ThreadMentionRuntimeProvider>
           </AgentConfigRuntimeProvider>
         </BlockReferenceRuntimeProvider>

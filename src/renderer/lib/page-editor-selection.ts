@@ -30,6 +30,12 @@ export function createPageEditorSelectionObservation(input: {
 }) {
   let snapshot: readonly string[] = [...input.read()];
   const listeners = new Set<() => void>();
+  const publish = (next: readonly string[]) => {
+    if (next.length === snapshot.length && next.every((id, index) => id === snapshot[index]))
+      return;
+    snapshot = [...next];
+    for (const listener of listeners) listener();
+  };
   return {
     readSelection: () => snapshot,
     subscribeSelection(listener: () => void) {
@@ -41,10 +47,11 @@ export function createPageEditorSelectionObservation(input: {
     update() {
       const next = input.read();
       if (next.length === 0 && !input.focused()) return;
-      if (next.length === snapshot.length && next.every((id, index) => id === snapshot[index]))
-        return;
-      snapshot = [...next];
-      for (const listener of listeners) listener();
+      publish(next);
+    },
+    /** Content handed to a chat leaves the Page's selection behind, wherever focus went. */
+    release() {
+      publish([]);
     },
   };
 }

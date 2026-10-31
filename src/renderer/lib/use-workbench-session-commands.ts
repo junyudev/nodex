@@ -101,6 +101,7 @@ import type {
   CodexCollaborationModeKind,
   CodexComposerIntent,
   CodexEvent,
+  CodexPromptInput,
   PanelId,
   Project,
   ProjectSession as ProjectSessionDomain,
@@ -606,6 +607,37 @@ export function useWorkbenchSessionCommands({
       setNewThreadComposerIntentsBySessionId,
       setSettingsPath,
     ],
+  );
+
+  /** Appends Page content to one chat's draft and focuses it, whether or not it has started. */
+  const addToChatComposer = useCallback(
+    (input: {
+      readonly sessionId: string;
+      readonly threadId: string | null;
+      readonly promptInput: CodexPromptInput;
+    }) => {
+      // Page content arrives as its own paragraphs after any draft, with the caret on a new line
+      // below it for the instruction that goes with it.
+      const text = input.promptInput.text.trim();
+      const intent: CodexComposerIntent = {
+        prompt: "",
+        attachmentMode: "append",
+        focusNonce: Date.now(),
+        promptInput: {
+          ...input.promptInput,
+          documentItems: text ? [{ type: "text", text: `${text}\n\n` }] : [],
+        },
+      };
+      if (input.threadId) {
+        setLocalConversationComposerIntent(input.threadId, intent);
+        return;
+      }
+      setNewThreadComposerIntentsBySessionId((current) => ({
+        ...current,
+        [input.sessionId]: intent,
+      }));
+    },
+    [setNewThreadComposerIntentsBySessionId],
   );
 
   const startNewChatWithPrompt = useCallback(
@@ -1523,6 +1555,7 @@ export function useWorkbenchSessionCommands({
     sendPageToChat,
     startNewChatInProject,
     startNewChatWithPrompt,
+    addToChatComposer,
     openSidebarCommandPalette,
     openCommandPalette,
     requestContentSearchOpen,

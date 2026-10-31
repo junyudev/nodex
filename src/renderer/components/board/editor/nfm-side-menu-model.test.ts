@@ -9,7 +9,7 @@ import {
   resolveNfmSideMenuScopeTitle,
 } from "./nfm-side-menu-model";
 
-function buildDefaultSections(showMockActions = false) {
+function buildDefaultSections() {
   return buildNfmSideMenuSections({
     currentBlockId: "block-1",
     currentBlockType: "paragraph",
@@ -20,19 +20,73 @@ function buildDefaultSections(showMockActions = false) {
     canSendBlocks: true,
     isTableBlock: false,
     canUseTableHeaders: false,
-    showMockActions,
   });
 }
 
 describe("markdown side menu model", () => {
-  test("hides reference mock actions from the production action order", () => {
+  test("sends to the chat beside the Page from the row and offers others on hover", () => {
+    const rows = flattenNfmSideMenuRows(
+      buildNfmSideMenuSections({
+        currentBlockId: "block-1",
+        currentBlockType: "paragraph",
+        selectionTitle: "Text",
+        selectedTopLevelBlockCount: 1,
+        isEditable: true,
+        canUseColor: true,
+        canSendBlocks: true,
+        canSendToThread: true,
+        hasContextualSendTarget: true,
+        canAddToComposer: true,
+        isTableBlock: false,
+        canUseTableHeaders: false,
+      }),
+    ).map(({ row }) => row);
+
+    expect(rows.map((row) => row.label)).toEqual([
+      "Turn into",
+      "Color",
+      "Duplicate",
+      "Send to chat",
+      "Add to composer",
+      "Move to",
+      "Delete",
+    ]);
+    const send = rows.find((row) => row.key === "send-to-thread");
+    expect(send?.submenu).toBe("send-to-thread");
+    expect(send?.submenuIsSecondary).toBe(true);
+    expect(send?.shortcut).toBe("⌘⇧↵");
+    expect(rows.find((row) => row.key === "add-to-composer")?.shortcut).toBe("⌥⌘↵");
+  });
+
+  test("Send to chat is a plain picker without a chat beside the Page", () => {
+    const rows = flattenNfmSideMenuRows(
+      buildNfmSideMenuSections({
+        currentBlockId: "block-1",
+        currentBlockType: "paragraph",
+        selectionTitle: "Text",
+        selectedTopLevelBlockCount: 1,
+        isEditable: true,
+        canUseColor: true,
+        canSendBlocks: true,
+        canSendToThread: true,
+        isTableBlock: false,
+        canUseTableHeaders: false,
+      }),
+    ).map(({ row }) => row);
+
+    const send = rows.find((row) => row.key === "send-to-thread");
+    expect(send?.submenuIsSecondary).toBeUndefined();
+    expect(send?.shortcut).toBeUndefined();
+    expect(rows.some((row) => row.key === "add-to-composer")).toBe(false);
+  });
+
+  test("lists only real actions in the production order", () => {
     const sections = buildDefaultSections();
     const rows = flattenNfmSideMenuRows(sections);
 
     expect(rows.map(({ row }) => row.label).join(",")).toBe(
       "Turn into,Color,Duplicate,Move to,Delete",
     );
-    expect(rows.some(({ row }) => row.mockReason !== undefined)).toBe(false);
     expect(rows[3]?.sectionKey).toBe("selection");
     expect(rows[3]?.row.kind).toBe("submenu");
     expect(rows[3]?.row.submenu).toBe("move-to");
@@ -49,7 +103,6 @@ describe("markdown side menu model", () => {
       canSendBlocks: true,
       isTableBlock: false,
       canUseTableHeaders: false,
-      showMockActions: false,
       codeBlock: {
         wrapped: true,
         canFormat: true,
@@ -79,7 +132,6 @@ describe("markdown side menu model", () => {
         canSendBlocks: true,
         isTableBlock: false,
         canUseTableHeaders: false,
-        showMockActions: false,
         codeBlock: {
           wrapped: false,
           canFormat: false,
@@ -104,7 +156,6 @@ describe("markdown side menu model", () => {
         canSendBlocks: true,
         isTableBlock: false,
         canUseTableHeaders: false,
-        showMockActions: false,
         codeBlock: {
           wrapped: false,
           canFormat: false,
@@ -131,45 +182,6 @@ describe("markdown side menu model", () => {
     expect(separatorKeys.join(",")).toBe("duplicate");
   });
 
-  test("renames disabled copy-link reference mocks for multi-block selections", () => {
-    const sections = buildNfmSideMenuSections({
-      currentBlockId: "block-1",
-      currentBlockType: "paragraph",
-      selectionTitle: "3 blocks",
-      selectedTopLevelBlockCount: 3,
-      isEditable: true,
-      canUseColor: true,
-      canSendBlocks: true,
-      isTableBlock: false,
-      canUseTableHeaders: false,
-      showMockActions: true,
-    });
-    const copyLink = flattenNfmSideMenuRows(sections).find(
-      ({ row }) => row.key === "copy-link-to-block",
-    )?.row;
-
-    expect(copyLink?.label).toBe("Copy links to all");
-    expect(copyLink?.enabled).toBe(false);
-    expect(Boolean(copyLink?.mockReason)).toBe(true);
-  });
-
-  test("keeps reference mock actions disabled and marked in dev contexts", () => {
-    const rows = flattenNfmSideMenuRows(buildDefaultSections(true));
-    const copyLink = rows.find(({ row }) => row.key === "copy-link-to-block")?.row;
-    const present = rows.find(({ row }) => row.key === "present-from-here")?.row;
-    const duplicate = rows.find(({ row }) => row.key === "duplicate")?.row;
-    const moveTo = rows.find(({ row }) => row.key === "move-to")?.row;
-
-    expect(copyLink?.enabled).toBe(false);
-    expect(Boolean(copyLink?.mockReason)).toBe(true);
-    expect(present?.badge).toBe("Beta");
-    expect(Boolean(present?.mockReason)).toBe(true);
-    expect(duplicate?.enabled).toBe(true);
-    expect(duplicate?.mockReason === undefined).toBe(true);
-    expect(moveTo?.enabled).toBe(true);
-    expect(moveTo?.mockReason === undefined).toBe(true);
-  });
-
   test("keeps Move to visible as a real disabled row when block moves are unavailable", () => {
     const sections = buildNfmSideMenuSections({
       currentBlockId: "block-1",
@@ -181,14 +193,12 @@ describe("markdown side menu model", () => {
       canSendBlocks: false,
       isTableBlock: false,
       canUseTableHeaders: false,
-      showMockActions: false,
     });
     const rows = flattenNfmSideMenuRows(sections);
     const moveTo = rows.find(({ row }) => row.key === "move-to")?.row;
 
     expect(moveTo?.key).toBe("move-to");
     expect(moveTo?.enabled).toBe(false);
-    expect(moveTo?.mockReason === undefined).toBe(true);
   });
 
   test("adds table actions for a single table", () => {
@@ -202,7 +212,6 @@ describe("markdown side menu model", () => {
       canSendBlocks: false,
       isTableBlock: true,
       canUseTableHeaders: true,
-      showMockActions: false,
     });
     const rows = flattenNfmSideMenuRows(sections);
 
@@ -222,35 +231,11 @@ describe("markdown side menu model", () => {
       canSendBlocks: false,
       isTableBlock: true,
       canUseTableHeaders: true,
-      showMockActions: false,
     });
     const rows = flattenNfmSideMenuRows(sections);
 
     expect(rows.some(({ row }) => row.key === "table-header-row")).toBe(false);
     expect(rows.some(({ row }) => row.key === "table-header-column")).toBe(false);
-  });
-
-  test("adds disabled table parity mock rows in mock mode", () => {
-    const sections = buildNfmSideMenuSections({
-      currentBlockId: "table-1",
-      currentBlockType: "table",
-      selectionTitle: "Table",
-      selectedTopLevelBlockCount: 1,
-      isEditable: true,
-      canUseColor: true,
-      canSendBlocks: true,
-      isTableBlock: true,
-      canUseTableHeaders: true,
-      showMockActions: true,
-    });
-    const rows = flattenNfmSideMenuRows(sections);
-    const fitWidth = rows.find(({ row }) => row.key === "table-fit-width")?.row;
-    const createPages = rows.find(({ row }) => row.key === "table-create-cards-from-rows")?.row;
-
-    expect(fitWidth?.enabled).toBe(false);
-    expect(typeof fitWidth?.mockReason).toBe("string");
-    expect(createPages?.badge).toBe("Nodex");
-    expect(createPages?.enabled).toBe(false);
   });
 
   test("resolves section titles from top-level selected block descriptors", () => {
@@ -279,19 +264,13 @@ describe("markdown side menu model", () => {
 
   test("filters by label, shortcut, and keywords", () => {
     const sections = buildDefaultSections();
-    const devSections = buildDefaultSections(true);
     const duplicateRows = flattenNfmSideMenuRows(filterNfmSideMenuSections(sections, "⌘D"));
-    const productionAiRows = flattenNfmSideMenuRows(
-      filterNfmSideMenuSections(sections, "assistant"),
-    );
-    const devAiRows = flattenNfmSideMenuRows(filterNfmSideMenuSections(devSections, "assistant"));
+    const relocateRows = flattenNfmSideMenuRows(filterNfmSideMenuSections(sections, "relocate"));
     const noneRows = flattenNfmSideMenuRows(filterNfmSideMenuSections(sections, "zzzz"));
 
     expect(duplicateRows.length).toBe(1);
     expect(duplicateRows[0]?.row.key).toBe("duplicate");
-    expect(productionAiRows.length).toBe(0);
-    expect(devAiRows.length).toBe(1);
-    expect(devAiRows[0]?.row.key).toBe("ask-ai");
+    expect(relocateRows.map(({ row }) => row.key)).toEqual(["move-to"]);
     expect(noneRows.length).toBe(0);
   });
 

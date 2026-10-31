@@ -505,8 +505,8 @@ transcript, and does not assert that a Turn is editing the Page.
 The edge targets Project Session rather than Codex Thread because a Chat may be
 threadless and Thread attachment may change independently. It also never
 targets a Window Session, Scene, or surface. Open in new chat can create a
-Session and its initial Page edges atomically; explicit Send to chat and Page
-Run Section actions may add the same idempotent edge, and New page in a
+Session and its initial Page edges atomically; explicit Send to chat and Prompt
+sends may add the same idempotent edge, and New page in a
 Session's Scene creates its Page and edge in one transaction. Confirming an Inbox chat
 dispatch links its message Pages to the receiving chat in the same transaction.
 Page navigation, Scenes, mentions, references, links, and prompt text do not
@@ -519,6 +519,15 @@ Workspace owns the relation and derives bounded Page Chat activity from it,
 Project Sessions, and optional Threads. Execution and unread are orthogonal
 signals. Database Page rows do not store or project Chat state; renderer
 surfaces join the independent bounded projections for presentation.
+
+### Prompt
+
+A Prompt is a Page Block whose content is meant for a chat. It is ordinary
+Document content: sending projects its first line and children into chat input,
+never the wrapper. Its only send state is the last accepted send record, the
+receiving Project Session and time, which is history rather than a Linked chat
+edge or a scheduled action. See
+[Prompt block behavior](docs/product-specs/nfm-editor-prompt-block-behavior.md).
 
 ### Inbox
 

@@ -15,8 +15,12 @@ export interface NfmSideMenuRuntimeSnapshot {
     request: NfmSendToThreadRequest,
     blockIds: readonly string[],
   ) => Promise<void> | void;
+  /** Present when the Page is shown beside a chat whose composer can take the Blocks. */
+  onAddBlocksToComposer?: (blockIds: readonly string[]) => Promise<void> | void;
   canSendBlocks: boolean;
   sourceProjectId: string | null;
+  /** The Project whose chats Send to chat lists; a Library Page uses its beside chat's. */
+  sendToThreadProjectId?: string | null;
   sourcePageId: string | null;
   onMoveBlocksToDestination: (
     destination: NfmMoveToDestination,

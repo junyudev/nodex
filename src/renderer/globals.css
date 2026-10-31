@@ -563,6 +563,35 @@
   margin-left: 28px;
 }
 
+/* A Prompt is a discrete object to send: a hairline boundary, quiet until it is worked on. */
+.nfm-editor .bn-block[data-content-type="prompt"] {
+  margin-block: 4px;
+  padding: 4px 6px 4px 4px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 0.5px var(--color-token-border);
+  transition: box-shadow 150ms ease-out;
+}
+
+.nfm-editor .bn-block[data-content-type="prompt"]:hover,
+.nfm-editor .bn-block[data-content-type="prompt"]:focus-within {
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--color-token-foreground) 22%, transparent);
+}
+
+.nfm-editor .bn-block[data-content-type="prompt"] .bn-block-content[data-content-type="prompt"] {
+  padding: 0;
+}
+
+.nfm-editor .bn-block[data-content-type="prompt"] > .bn-block-group {
+  margin-left: 26px;
+}
+
+.nfm-editor .bn-block:has(> .bn-block-content > [data-prompt-collapsed="true"]) > .bn-block-group,
+.nfm-editor
+  .bn-block:has(> .react-renderer > .bn-block-content > [data-prompt-collapsed="true"])
+  > .bn-block-group {
+  display: none;
+}
+
 .nfm-editor .bn-block[data-content-type="quote"] {
   --nfm-quote-outer-inset: 8px;
   --nfm-quote-rule-width: 3px;

@@ -25,6 +25,7 @@ describe("initial Project welcome Page", () => {
     expect(text).toContain("A quick tour");
     expect(text).toContain("Explore next");
     expect(text).toContain("Send to chat");
+    expect(blocks.some((block) => block.type === "prompt")).toBe(true);
     expect(text).toContain("Projectless chats");
     expect(text).toContain("DB Views");
   });

@@ -19,13 +19,41 @@ import { collectRecords } from "./support/agent-smoke-harness";
 import { writeTestClipboardImage } from "./clipboard";
 import { openBoardPageFromCard } from "./support/open-board-page";
 
-test("sends text and Library images through text and Block menus to new and existing chats", async ({}, testInfo) => {
-  test.setTimeout(180_000);
+test("sends text, Library images, and Prompts to new and existing chats", async ({}, testInfo) => {
+  test.setTimeout(240_000);
   const prompt = "Explain this selected paragraph";
   const reply = "Selected paragraph received";
+  const promptBlockText = "Summarize the release plan in one line";
+  const promptBlockReply = "Prompt block received";
+  const besideDraft = "Draft written beside the chat";
+  const besideReply = "Beside draft received";
   await withScriptedModelServer(
     {
       exchanges: [
+        {
+          name: "beside draft",
+          expectedCalls: 1,
+          maximumCalls: 1,
+          match: (request) => request.hasInputText(besideDraft),
+          respond: () =>
+            responses.stream([
+              responses.created("beside_draft_response"),
+              responses.assistantMessage("beside_draft_message", besideReply, "final_answer"),
+              responses.completed("beside_draft_response", true),
+            ]),
+        },
+        {
+          name: "prompt block",
+          expectedCalls: 1,
+          maximumCalls: 1,
+          match: (request) => request.hasInputText(promptBlockText),
+          respond: () =>
+            responses.stream([
+              responses.created("prompt_block_response"),
+              responses.assistantMessage("prompt_block_message", promptBlockReply, "final_answer"),
+              responses.completed("prompt_block_response", true),
+            ]),
+        },
         {
           name: "page blocks",
           expectedCalls: 3,
@@ -137,6 +165,44 @@ respect_system_proxy = false
         await expect(page.getByText(`${reply} 0`, { exact: true }).last()).toBeVisible({
           timeout: 30_000,
         });
+        await test.step("sends a draft from a Page beside the chat in one step", async () => {
+          const scene = page.locator('[data-workbench-scene-owner^="session:"]:visible');
+          await page.getByRole("button", { name: "New tab", exact: true }).first().click();
+          await scene
+            .locator("[data-new-tab-scroll-root]")
+            .getByRole("button", { name: "New page", exact: true })
+            .click();
+          const title = scene.getByRole("textbox", { name: "Page title", exact: true });
+          await expect(title).toBeFocused();
+          await page.keyboard.type("Draft");
+          const body = scene.locator(
+            '[data-page-stage-page-id]:visible .ProseMirror[contenteditable="true"]',
+          );
+          await body.click();
+          await page.keyboard.type(besideDraft);
+          const draft = body.getByText(besideDraft, { exact: true });
+          await draft.click({ clickCount: 3 });
+          // Beside a chat there is nothing to choose: Send goes to that chat.
+          await page.getByRole("button", { name: "Send to chat", exact: true }).click();
+          await expect(page.getByText("Sent to chat", { exact: true })).toBeVisible();
+          await expect(
+            page.locator("[data-user-message-bubble='true']").filter({ hasText: besideDraft }),
+          ).toHaveCount(1);
+          await expect(page.getByText(besideReply, { exact: true }).last()).toBeVisible({
+            timeout: 30_000,
+          });
+          await page.screenshot({ path: testInfo.outputPath("send-to-chat-beside.png") });
+
+          await draft.click({ clickCount: 3 });
+          await page.getByRole("button", { name: "Add to composer", exact: true }).click();
+          const composer = page.locator(
+            '[data-codex-composer="true"][aria-label="Ask for follow-up changes"]:visible',
+          );
+          await expect(composer).toContainText(besideDraft);
+          await expect(composer).toBeFocused();
+          await page.keyboard.press("Meta+A");
+          await page.keyboard.press("Backspace");
+        });
         await page.getByRole("button", { name: "Open Send Blocks", exact: true }).click();
         await openProjectBoard(page);
         await openBoardPageFromCard({
@@ -148,21 +214,16 @@ respect_system_proxy = false
         await paragraphs.first().hover();
         await page.locator('.bn-side-menu button[draggable="true"]').click();
         const sideMenu = page.getByRole("dialog", { name: "Block actions", exact: true });
+        // Outside a chat's Scene there is no chat beside the Page, so Send to chat is a picker.
         await sideMenu.getByRole("option", { name: "Send to chat", exact: true }).click();
         const destination = page.getByRole("dialog", { name: "Send to chat", exact: true });
-        await expect(destination.getByRole("button", { name: "Send", exact: true })).toBeVisible();
-        await destination.getByRole("button", { name: "Send & wrap" }).click();
+        await expect(destination.getByRole("combobox", { name: "Search chats" })).toBeVisible();
+        await expect(destination.getByRole("button", { name: "Send & wrap" })).toHaveCount(0);
         await page.screenshot({ path: testInfo.outputPath("send-to-chat-side-menu.png") });
         await destination.locator('[data-nfm-send-to-thread-row-kind="thread"]').click();
         await expect(page.getByText("Sent to chat", { exact: true })).toBeVisible();
         await expect(sideMenu).toHaveCount(0);
-        // The wrapped mention names the chat by its live title, which the Agent may rename.
-        const sentMention = editor
-          .locator('[data-content-type="toggleListItem"]')
-          .first()
-          .locator('button[data-thread-mention-inline-chip="true"]');
-        await expect(sentMention).toBeVisible({ timeout: 30_000 });
-        await sentMention.click();
+        await page.locator("[data-app-action-sidebar-thread-id]").first().click();
         await expect(
           page.locator("[data-user-message-bubble='true']").filter({ hasText: prompt }),
         ).toHaveCount(2);
@@ -210,6 +271,40 @@ respect_system_proxy = false
             .locator("[data-user-message-bubble='true']")
             .filter({ hasText: "Page: Send source" }),
         ).toHaveCount(1);
+        await reopened.getByRole("button", { name: "Open Send Blocks", exact: true }).click();
+        await openProjectBoard(reopened);
+        await openBoardPageFromCard({
+          page: reopened,
+          card: reopened.locator(`[data-board-uuid-v7="${source.pageId}"]`),
+          tabName: "Send source",
+        });
+        const reopenedEditor = reopened.locator(
+          `[data-page-stage-page-id="${source.pageId}"]:visible .ProseMirror[contenteditable="true"]`,
+        );
+        await reopenedEditor
+          .locator('[data-content-type="paragraph"] .bn-inline-content')
+          .last()
+          .click();
+        await reopened.keyboard.press("End");
+        await reopened.keyboard.press("Enter");
+        await reopened.keyboard.type("/prompt");
+        await reopened
+          .getByRole("option", { name: /^Prompt/ })
+          .first()
+          .click();
+        await reopened.keyboard.type(promptBlockText);
+        const promptBlock = reopenedEditor.locator('[data-content-type="prompt"]').last();
+        await expect(promptBlock).toContainText(promptBlockText);
+        // Activating a Prompt sends it, as activating a to-do checks it.
+        await reopened.keyboard.press("Meta+Enter");
+        await expect(promptBlock.locator("[data-nfm-prompt-status]")).toBeVisible({
+          timeout: 30_000,
+        });
+        await reopened.screenshot({ path: testInfo.outputPath("send-to-chat-prompt-block.png") });
+        await promptBlock.locator("[data-nfm-prompt-status]").click();
+        await expect(reopened.getByText(promptBlockReply, { exact: true }).last()).toBeVisible({
+          timeout: 30_000,
+        });
       } catch (error) {
         await testInfo.attach("runtime-logs", {
           body: await readBoundedElectronRuntimeLogs(harness.profile),

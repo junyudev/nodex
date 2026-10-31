@@ -104,12 +104,13 @@ Unsupported sources fail during main-process prompt preparation. They must not s
 
 ## Page Prompt Sends
 
-Selected text, selected Blocks, the Block side menu, whole-Page Send to chat, and
-Send & wrap share this image capture boundary. Nested image Blocks in the selected
-content retain document order. Image-only content is a valid send: its prompt is
-`[Image #1]` plus the corresponding image input.
+Selected text, selected Blocks, the Block side menu, whole-Page Send to chat,
+Prompt sends, and Add to composer share this image capture boundary. Nested image
+Blocks in the selected content retain document order. Image-only content is a
+valid send: its prompt is `[Image #1]` plus the corresponding image input.
 
-An idle chat receives `turn/start`. A running chat uses the same normalized
+An idle chat receives `turn/start`. A running chat is queued or steered as the
+Composer's Queue or Steer default directs, through the same normalized
 `UserInput[]` preparation path as active-turn steering. Main resolves supported
 image sources before `turn/steer`; boundary validation rejects unsupported sources.
 Queued sends retain the captured bytes and occurrence ordering until submission.

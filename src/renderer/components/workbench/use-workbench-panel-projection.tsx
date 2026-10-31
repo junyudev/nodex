@@ -121,6 +121,7 @@ type SessionCommands = Pick<
   | "openSubagentsPanelTab"
   | "openTurnDiffFileInSidePanel"
   | "startNewChatWithPrompt"
+  | "addToChatComposer"
 >;
 type PanelCommands = Pick<
   ReturnType<typeof useWorkbenchPanelCommandRouter>,
@@ -269,6 +270,7 @@ export function useWorkbenchPanelProjection({
     openSubagentsPanelTab,
     openTurnDiffFileInSidePanel,
     startNewChatWithPrompt,
+    addToChatComposer,
   } = sessionCommands;
   const { createBrowserTabToRight, reloadBrowserTab } = panelCommands;
   const {
@@ -715,6 +717,7 @@ export function useWorkbenchPanelProjection({
                 onLinkPageToChat={linkPageToChat}
                 onResolveChatSessionForThread={resolveChatSessionForThread}
                 onSendPageToChat={sendPageToChat}
+                onAddToChatComposer={addToChatComposer}
                 onOpenFileTab={openWorkspaceFileTab}
                 onEnsureDefaultDraftSessionForProject={ensureDefaultDraftSessionForProject}
                 onRefreshSessions={onRefreshSessions}
@@ -780,6 +783,7 @@ export function useWorkbenchPanelProjection({
     },
     [
       activateReviewTab,
+      addToChatComposer,
       browserTabSnapshotByKey,
       presentedPageIds,
       browserBoundsSyncTriggerByPanel,

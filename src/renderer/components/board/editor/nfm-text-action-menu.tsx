@@ -29,20 +29,18 @@ import {
   NfmSideMenuQuoteBlockIcon,
   NfmSideMenuTextBlockIcon,
   NfmSideMenuToggleListBlockIcon,
+  ActivitySpinnerIcon,
   TextActionBoldIcon,
   TextActionClearFormatIcon,
-  TextActionCommentIcon,
-  TextActionCommentPencilIcon,
   TextActionEllipsisIcon,
   TextActionEquationIcon,
   TextActionItalicIcon,
   TextActionLinkIcon,
-  TextActionPencilSmallIcon,
-  TextActionReactionIcon,
-  TextActionSlidersIcon,
   TextActionStrikeIcon,
   TextActionUnderlineIcon,
+  UpArrowIcon,
 } from "@/components/shared/icons";
+import { CornerDownRight, MessageCirclePlusIcon } from "@/components/shared/icons/generic-icons";
 import {
   NodexDropdownContent,
   NodexDropdownItem,
@@ -71,26 +69,28 @@ import {
 } from "./nfm-text-action-menu-actions";
 import { NfmCreateLinkButton, type NfmCreateLinkTriggerProps } from "./nfm-link-toolbar";
 import { NfmEditorPopoverContent } from "./nfm-editor-popover-content";
-import { NfmMoveToMenu } from "./nfm-move-to-menu";
-import type { NfmMoveToDestination, NfmMoveToResultScope } from "./nfm-move-to-menu-model";
+import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
 import { NfmSendToThreadMenu } from "./nfm-send-to-thread-menu";
-import type {
-  NfmSendToThreadPreferredTarget,
-  NfmSendToThreadRequest,
+import {
+  describeNfmSendToThreadPreferredTarget,
+  resolveNfmSendToThreadPreferredDestination,
+  type NfmSendToThreadPreferredTarget,
+  type NfmSendToThreadRequest,
 } from "./nfm-send-to-thread-menu-model";
 import { useNfmSideMenuOpenController } from "./nfm-side-menu";
 import type { NfmSideMenuRect } from "./nfm-side-menu-anchor";
 import {
+  NFM_ADD_TO_COMPOSER_SHORTCUT_LABEL,
+  NFM_SEND_TO_CHAT_SHORTCUT_LABEL,
+} from "./nfm-chat-send-shortcuts";
+import {
   isBlockLevelSelection,
-  resolveNodexTextActionRows,
   shouldUseTextActionMenu,
   TEXT_ACTION_BASIC_STYLES,
   TEXT_ACTION_NOTION_COLOR_ORDER,
   TEXT_ACTION_COLOR_VALUES,
-  TEXT_ACTION_REFERENCE_SKILLS,
   type TextActionBasicStyle,
   type TextActionColorValue,
-  type TextActionNodexRow,
 } from "./nfm-text-action-menu-model";
 import { useNfmTextActionMenuRuntime } from "./nfm-text-action-menu-runtime";
 import {
@@ -122,8 +122,6 @@ interface TextActionMenuSnapshot {
   canConvertToEquation: boolean;
 }
 
-type TextActionActionPopoverKey = "send-to-thread" | "move-to";
-
 const noopTextAction = () => undefined;
 type TextActionSelectionPresentationOwner =
   | "toolbar-focus"
@@ -143,18 +141,20 @@ const TEXT_ACTION_SELECTION_PRESENTATION_BY_OWNER = {
 
 const NFM_TEXT_ACTION_MENU_SELECTION_KEY = "nfmTextActionMenuActionPopover";
 
-interface TextActionMoveToMenuRenderProps {
-  sourceProjectId: string | null;
-  sourcePageId: string | null;
-  onAccept: (destination: NfmMoveToDestination) => Promise<void> | void;
-  onClose: () => void;
-  resultScope?: NfmMoveToResultScope;
-  ariaLabel?: string;
-  placeholder?: string;
+/** Chat actions for the selection: send it, or add it to the beside chat's composer. */
+export interface TextActionChat {
+  readonly projectId: string | null;
+  readonly sourcePageId?: string | null;
+  readonly projectNameById?: Readonly<Record<string, string>>;
+  /** The chat this Page is shown beside. Send goes there without a picker. */
+  readonly contextualTarget: NfmSendToThreadPreferredTarget | null;
+  readonly onSend: (request: NfmSendToThreadRequest) => Promise<void> | void;
+  readonly onAddToComposer?: () => Promise<void> | void;
 }
 
 interface TextActionSendToThreadMenuRenderProps {
   projectId: string | null;
+  sourcePageId?: string | null;
   projectNameById?: Readonly<Record<string, string>>;
   preferredTarget?: NfmSendToThreadPreferredTarget | null;
   onAccept: (request: NfmSendToThreadRequest) => Promise<void> | void;
@@ -199,12 +199,7 @@ export interface NfmTextActionMenuSurfaceProps {
   canClearFormat: boolean;
   canConvertToEquation?: boolean;
   linkControl?: ReactNode;
-  nodexRows: TextActionNodexRow[];
-  showReferenceMocks?: boolean;
-  sourceProjectId?: string | null;
-  sourcePageId?: string | null;
-  sendToThreadProjectNameById?: Readonly<Record<string, string>>;
-  sendToThreadPreferredTarget?: NfmSendToThreadPreferredTarget | null;
+  chat?: TextActionChat | null;
   onSelectBlockType: (item: TextActionBlockTypeItem) => void;
   onToggleStyle: (style: TextActionBasicStyle) => void;
   onSetTextColor: (color: TextActionColorValue) => void;
@@ -212,10 +207,7 @@ export interface NfmTextActionMenuSurfaceProps {
   onClearFormat: () => void;
   onConvertToEquation?: () => void;
   onOpenBlockActions: (fallbackAnchorRect?: NfmSideMenuRect) => void;
-  onMoveBlocksToDestination?: (destination: NfmMoveToDestination) => Promise<void> | void;
-  onSendBlocksToThread?: (request: NfmSendToThreadRequest) => Promise<void> | void;
   onSelectionPresentationChange?: (presentation: NfmRetainedSelectionPresentation) => void;
-  renderMoveToMenu?: (props: TextActionMoveToMenuRenderProps) => ReactNode;
   renderSendToThreadMenu?: (props: TextActionSendToThreadMenuRenderProps) => ReactNode;
 }
 
@@ -251,6 +243,7 @@ const TEXT_ACTION_BLOCK_TYPE_DEFINITIONS = [
   { key: "todo-list", label: "To-do List", type: "checkListItem" },
   { key: "toggle-list", label: "Toggle List", type: "toggleListItem" },
   { key: "code", label: "Code", type: "codeBlock" },
+  { key: "prompt", label: "Prompt", type: "prompt" },
 ] as const;
 
 const TEXT_ACTION_STYLE_LABELS = {
@@ -529,11 +522,6 @@ function TextActionButtonTooltip({ children, label }: { children: ReactNode; lab
   );
 }
 
-function isTextActionLabelOverflowing(element: HTMLElement | null): boolean {
-  if (!element) return false;
-  return element.scrollWidth - element.clientWidth > 1;
-}
-
 function TextActionMenuContent({
   children,
   className,
@@ -579,6 +567,7 @@ function BlockTypeIcon({ item }: { item: TextActionBlockTypeItem | null }) {
   if (item.key === "todo-list") return <NfmSideMenuCheckListBlockIcon />;
   if (item.key === "toggle-list") return <NfmSideMenuToggleListBlockIcon />;
   if (item.key === "code") return <CodeIcon />;
+  if (item.key === "prompt") return <CornerDownRight className="size-5" />;
 
   return <NfmSideMenuTextBlockIcon />;
 }
@@ -939,33 +928,16 @@ function TextActionDisabledButton({
   children,
   label,
   className,
-  mock = false,
 }: {
   children: ReactNode;
   label: string;
   className?: string;
-  mock?: boolean;
 }) {
-  const tooltipContent = mock
-    ? `${label} is mock UI only. Not available in Nodex yet.`
-    : `${label} is not supported in Nodex yet.`;
-  const ariaLabel = mock ? `${label} Mock` : label;
-
   return (
-    <NodexTooltip tooltipContent={tooltipContent} side="top" delay={0}>
-      <TextActionButton label={ariaLabel} disabled className={className}>
+    <NodexTooltip tooltipContent={`${label} is not supported in Nodex yet.`} side="top" delay={0}>
+      <TextActionButton label={label} disabled className={className}>
         {children}
       </TextActionButton>
-    </NodexTooltip>
-  );
-}
-
-function TextActionMockBadge({ reason }: { reason?: string }) {
-  return (
-    <NodexTooltip tooltipContent={reason}>
-      <span className="shrink-0 rounded-[4px] bg-token-foreground/5 px-1 text-[10px] font-medium uppercase leading-4 text-token-description-foreground">
-        Mock
-      </span>
     </NodexTooltip>
   );
 }
@@ -1018,475 +990,182 @@ function TextActionMoreButton({
   );
 }
 
-type TextActionSkillRowProps = Omit<
-  ComponentPropsWithoutRef<"div">,
-  "children" | "className" | "onClick" | "onMouseDown"
-> & {
+function TextActionChatRow({
+  icon,
+  label,
+  shortcut,
+  tooltip = label,
+  pending = false,
+  hasPopup,
+  expanded,
+  trailing,
+  onActivate,
+}: {
+  icon: ReactNode;
   label: string;
-  disabled?: boolean;
-  mockReason?: string;
-  rightSlot?: ReactNode;
-  hasPopup?: "dialog" | "menu";
+  shortcut?: string;
+  tooltip?: ReactNode;
+  pending?: boolean;
+  hasPopup?: "dialog";
   expanded?: boolean;
-  onClick?: () => void;
-};
-
-const TextActionSkillRow = forwardRef<HTMLDivElement, TextActionSkillRowProps>(
-  function TextActionSkillRow(
-    {
-      label,
-      disabled = true,
-      mockReason,
-      rightSlot,
-      hasPopup,
-      expanded,
-      onClick,
-      onPointerEnter,
-      onPointerLeave,
-      onFocus,
-      onBlur,
-      onKeyDown,
-      ...props
-    },
-    forwardedRef,
-  ) {
-    const labelRef = useRef<HTMLSpanElement>(null);
-    const [tooltipOpen, setTooltipOpen] = useState(false);
-    const [labelOverflowing, setLabelOverflowing] = useState(false);
-
-    const openTooltipIfOverflowing = () => {
-      const nextLabelOverflowing = isTextActionLabelOverflowing(labelRef.current);
-      setLabelOverflowing(nextLabelOverflowing);
-      setTooltipOpen(nextLabelOverflowing);
-    };
-
-    const closeTooltip = () => {
-      setTooltipOpen(false);
-    };
-
-    const row = (
-      <div
-        {...props}
-        ref={forwardedRef}
-        role="button"
-        tabIndex={props.tabIndex ?? 0}
-        aria-disabled={disabled || undefined}
-        aria-haspopup={hasPopup}
-        aria-expanded={hasPopup ? Boolean(expanded) : undefined}
-        contentEditable={false}
-        className={cn(
-          "group flex h-7 select-none items-center justify-start gap-1.5 rounded-[6px] px-2 whitespace-nowrap outline-hidden",
-          disabled
-            ? "cursor-default text-token-text-secondary opacity-55"
-            : "cursor-interaction text-token-foreground hover:bg-token-list-hover-background focus:bg-token-list-hover-background",
-        )}
-        onPointerEnter={(event) => {
-          onPointerEnter?.(event);
-          openTooltipIfOverflowing();
-        }}
-        onPointerLeave={(event) => {
-          onPointerLeave?.(event);
-          closeTooltip();
-        }}
-        onFocus={(event) => {
-          onFocus?.(event);
-          openTooltipIfOverflowing();
-        }}
-        onBlur={(event) => {
-          onBlur?.(event);
-          closeTooltip();
-        }}
-        onMouseDown={keepEditorSelection}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (disabled) return;
-          onClick?.();
-        }}
-        onKeyDown={(event) => {
-          onKeyDown?.(event);
-          if (event.defaultPrevented) return;
-          if (disabled || !onClick) return;
-          activateOnKeyboard(event, onClick);
-        }}
-      >
-        <span ref={labelRef} className="min-w-0 flex-1 truncate">
-          {label}
-        </span>
-        {mockReason ? <TextActionMockBadge reason={mockReason} /> : null}
-        {rightSlot ??
-          (disabled ? (
-            <span
-              role="button"
-              tabIndex={-1}
-              aria-label="Edit skill"
-              aria-disabled="true"
-              className="ml-auto shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-40 group-focus:opacity-40"
-            >
-              <TextActionPencilSmallIcon className="size-4 text-token-text-secondary" />
-            </span>
-          ) : null)}
-      </div>
-    );
-
-    return (
-      <NodexTooltip
-        tooltipContent={label}
-        side="top"
-        delay={0}
-        open={tooltipOpen && labelOverflowing}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            closeTooltip();
-            return;
-          }
-
-          openTooltipIfOverflowing();
-        }}
-      >
-        {row}
-      </NodexTooltip>
-    );
-  },
-);
-
-function TextActionMoveToRow({
-  row,
-  sourceProjectId,
-  sourcePageId,
-  onMoveBlocksToDestination,
-  renderMoveToMenu,
-  open,
-  onOpenChange,
-}: {
-  row: TextActionNodexRow;
-  sourceProjectId: string | null;
-  sourcePageId: string | null;
-  onMoveBlocksToDestination?: (destination: NfmMoveToDestination) => Promise<void> | void;
-  renderMoveToMenu?: (props: TextActionMoveToMenuRenderProps) => ReactNode;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  trailing?: ReactNode;
+  onActivate: () => void;
 }) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  const enabled = row.enabled && Boolean(onMoveBlocksToDestination);
-
-  const closeAndRestoreFocus = () => {
-    onOpenChange(false);
-    requestAnimationFrame(() => {
-      rowRef.current?.focus();
-    });
-  };
-
-  const menuProps: TextActionMoveToMenuRenderProps = {
-    sourceProjectId,
-    sourcePageId,
-    onAccept: async (destination) => {
-      if (!onMoveBlocksToDestination) return;
-      await onMoveBlocksToDestination(destination);
-      onOpenChange(false);
-    },
-    onClose: closeAndRestoreFocus,
-  };
-
-  return (
-    <NodexPopover
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen && !enabled) return;
-        onOpenChange(nextOpen);
-      }}
+  const row = (
+    <TextActionButton
+      label={label}
+      hasPopup={hasPopup}
+      expanded={expanded}
+      aria-busy={pending || undefined}
+      className="w-auto min-w-0 flex-1 justify-start gap-2 px-1.5"
+      onActivate={onActivate}
     >
-      <NodexPopoverAnchor>
-        <TextActionSkillRow
-          ref={rowRef}
-          label={row.label}
-          disabled={!enabled}
-          hasPopup="dialog"
-          expanded={open}
-          rightSlot={
-            enabled ? (
-              <ChevronRightIcon className="size-4 shrink-0 text-token-text-secondary" />
-            ) : undefined
-          }
-          onClick={() => {
-            if (enabled) onOpenChange(true);
-          }}
-        />
-      </NodexPopoverAnchor>
-      <NfmEditorPopoverContent
-        side="right"
-        align="start"
-        sideOffset={6}
-        alignOffset={-4}
-        aria-label="Move to"
-        className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl"
-        style={{ width: 330 }}
-      >
-        {renderMoveToMenu?.(menuProps) ?? <NfmMoveToMenu {...menuProps} />}
-      </NfmEditorPopoverContent>
-    </NodexPopover>
+      <span className="flex size-5 shrink-0 items-center justify-center">{icon}</span>
+      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      {trailing}
+    </TextActionButton>
+  );
+  // The toolbar is too narrow for shortcut hints beside labels, so tooltips carry them.
+  return (
+    <NodexTooltip tooltipContent={tooltip} shortcutLabel={shortcut} side="top" delay={0}>
+      {row}
+    </NodexTooltip>
   );
 }
 
-function TextActionSendToThreadRow({
-  row,
-  projectId,
-  projectNameById,
-  preferredTarget,
-  onSendBlocksToThread,
+/** The send glyph shared with the chat composer: an up arrow on the composer's primary fill. */
+function TextActionSendGlyph({ pending }: { pending: boolean }) {
+  return (
+    <span className="flex size-[18px] items-center justify-center rounded-full bg-composer-primary text-composer-primary">
+      {pending ? <ActivitySpinnerIcon className="size-3" /> : <UpArrowIcon className="size-3" />}
+    </span>
+  );
+}
+
+function TextActionChatSection({
+  chat,
   renderSendToThreadMenu,
-  open,
-  onOpenChange,
+  onPickerOpenChange,
 }: {
-  row: TextActionNodexRow;
-  projectId: string | null;
-  projectNameById?: Readonly<Record<string, string>>;
-  preferredTarget?: NfmSendToThreadPreferredTarget | null;
-  onSendBlocksToThread?: (request: NfmSendToThreadRequest) => Promise<void> | void;
+  chat: TextActionChat;
   renderSendToThreadMenu?: (props: TextActionSendToThreadMenuRenderProps) => ReactNode;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onPickerOpenChange: (open: boolean) => void;
 }) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  const enabled = row.enabled && Boolean(projectId) && Boolean(onSendBlocksToThread);
-
-  const closeAndRestoreFocus = () => {
-    onOpenChange(false);
-    requestAnimationFrame(() => {
-      rowRef.current?.focus();
-    });
-  };
-
-  const menuProps: TextActionSendToThreadMenuRenderProps = {
-    projectId,
-    projectNameById,
-    preferredTarget,
-    onAccept: async (request) => {
-      if (!onSendBlocksToThread) return;
-      await onSendBlocksToThread(request);
-      onOpenChange(false);
-    },
-    onClose: closeAndRestoreFocus,
-  };
-
-  return (
-    <NodexPopover
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen && !enabled) return;
-        onOpenChange(nextOpen);
-      }}
-    >
-      <NodexPopoverAnchor>
-        <TextActionSkillRow
-          ref={rowRef}
-          label={row.label}
-          disabled={!enabled}
-          hasPopup="dialog"
-          expanded={open}
-          rightSlot={
-            enabled ? (
-              <ChevronRightIcon className="size-4 shrink-0 text-token-text-secondary" />
-            ) : undefined
-          }
-          onClick={() => {
-            if (enabled) onOpenChange(true);
-          }}
-        />
-      </NodexPopoverAnchor>
-      <NfmEditorPopoverContent
-        side="right"
-        align="start"
-        sideOffset={6}
-        alignOffset={-4}
-        aria-label="Send to chat"
-        className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl"
-        style={{ width: 330 }}
-      >
-        {renderSendToThreadMenu?.(menuProps) ?? <NfmSendToThreadMenu {...menuProps} />}
-      </NfmEditorPopoverContent>
-    </NodexPopover>
-  );
-}
-
-function TextActionAiPane({
-  nodexRows,
-  showReferenceMocks = false,
-  sourceProjectId,
-  sourcePageId,
-  sendToThreadProjectNameById,
-  sendToThreadPreferredTarget,
-  onMoveBlocksToDestination,
-  onSendBlocksToThread,
-  onActionPopoverOpenChange,
-  renderMoveToMenu,
-  renderSendToThreadMenu,
-}: Pick<
-  NfmTextActionMenuSurfaceProps,
-  | "nodexRows"
-  | "showReferenceMocks"
-  | "sourceProjectId"
-  | "sourcePageId"
-  | "sendToThreadProjectNameById"
-  | "sendToThreadPreferredTarget"
-  | "onMoveBlocksToDestination"
-  | "onSendBlocksToThread"
-  | "renderMoveToMenu"
-  | "renderSendToThreadMenu"
-> & {
-  onActionPopoverOpenChange?: (open: boolean) => void;
-}) {
-  const [activePopover, setActivePopover] = useState<TextActionActionPopoverKey | null>(null);
-  const activePopoverRef = useRef<TextActionActionPopoverKey | null>(null);
-  const onActionPopoverOpenChangeRef = useRef(onActionPopoverOpenChange);
-  const scrollViewportRef = useRef<HTMLDivElement>(null);
-  const [hasContentBelow, setHasContentBelow] = useState(false);
-
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const contextualTarget = chat.contextualTarget;
+  const onPickerOpenChangeRef = useRef(onPickerOpenChange);
   useLayoutEffect(() => {
-    onActionPopoverOpenChangeRef.current = onActionPopoverOpenChange;
-  }, [onActionPopoverOpenChange]);
-
-  const syncContentBelow = useCallback(() => {
-    const viewport = scrollViewportRef.current;
-    if (!viewport) return;
-
-    const remainingScroll = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
-    setHasContentBelow(remainingScroll > 1);
-  }, []);
-
-  useLayoutEffect(() => {
-    const viewport = scrollViewportRef.current;
-    if (!viewport) return undefined;
-
-    syncContentBelow();
-
-    if (typeof ResizeObserver === "undefined") return undefined;
-
-    const resizeObserver = new ResizeObserver(syncContentBelow);
-    resizeObserver.observe(viewport);
-    Array.from(viewport.children).forEach((child) => resizeObserver.observe(child));
-    return () => resizeObserver.disconnect();
-  }, [nodexRows, showReferenceMocks, syncContentBelow]);
-
-  // Selection presentation updates rerender the parent and may replace its
-  // callback. Only the pane's actual unmount closes its active popover.
+    onPickerOpenChangeRef.current = onPickerOpenChange;
+  }, [onPickerOpenChange]);
+  // Only the section's own unmount closes its picker; parent rerenders replace the callback.
   useEffect(
     () => () => {
-      onActionPopoverOpenChangeRef.current?.(false);
+      onPickerOpenChangeRef.current(false);
     },
     [],
   );
 
-  const setActionPopoverOpen = (popover: TextActionActionPopoverKey, nextOpen: boolean) => {
-    const currentPopover = activePopoverRef.current;
-    const nextPopover = nextOpen ? popover : currentPopover === popover ? null : currentPopover;
-    if (nextPopover === currentPopover) return;
+  const setPicker = (open: boolean) => {
+    setPickerOpen(open);
+    onPickerOpenChange(open);
+  };
 
-    activePopoverRef.current = nextPopover;
-    onActionPopoverOpenChange?.(nextPopover !== null);
-    setActivePopover(nextPopover);
+  const run = async (kind: "send" | "add-to-composer", action: () => Promise<void> | void) => {
+    if (pending) return;
+    setPending(true);
+    try {
+      await action();
+    } catch (error) {
+      reportNfmChatSendFailure(kind, error);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const sendToContextualChat = () => {
+    if (!contextualTarget) {
+      setPicker(true);
+      return;
+    }
+    void run("send", () =>
+      chat.onSend({ target: resolveNfmSendToThreadPreferredDestination(contextualTarget) }),
+    );
+  };
+
+  const menuProps: TextActionSendToThreadMenuRenderProps = {
+    projectId: chat.projectId,
+    sourcePageId: chat.sourcePageId ?? null,
+    projectNameById: chat.projectNameById,
+    preferredTarget: contextualTarget,
+    onAccept: async (request) => {
+      await chat.onSend(request);
+      setPicker(false);
+    },
+    onClose: () => {
+      setPicker(false);
+      requestAnimationFrame(() => anchorRef.current?.focus());
+    },
   };
 
   return (
-    <div className="relative">
-      <div
-        ref={scrollViewportRef}
-        className="max-h-[134px] overflow-y-auto py-1"
-        data-testid="nfm-text-action-ai-scroll"
-        onScroll={syncContentBelow}
-      >
-        {nodexRows.length > 0 ? (
-          <>
-            <div className="flex h-7 items-center px-2 text-xs text-token-text-secondary">
-              Actions
-            </div>
-            {nodexRows.map((row) => {
-              if (row.key === "send-to-thread") {
-                return (
-                  <TextActionSendToThreadRow
-                    key={row.key}
-                    row={row}
-                    projectId={sourceProjectId ?? null}
-                    projectNameById={sendToThreadProjectNameById}
-                    preferredTarget={sendToThreadPreferredTarget ?? null}
-                    onSendBlocksToThread={onSendBlocksToThread}
-                    renderSendToThreadMenu={renderSendToThreadMenu}
-                    open={activePopover === "send-to-thread"}
-                    onOpenChange={(nextOpen) => setActionPopoverOpen("send-to-thread", nextOpen)}
-                  />
-                );
+    <div className="flex flex-col gap-px">
+      <NodexPopover open={pickerOpen} onOpenChange={setPicker}>
+        <NodexPopoverAnchor>
+          <div ref={anchorRef} className="flex items-center gap-0.5" data-nfm-text-action-send>
+            <TextActionChatRow
+              icon={<TextActionSendGlyph pending={pending} />}
+              label="Send to chat"
+              shortcut={NFM_SEND_TO_CHAT_SHORTCUT_LABEL}
+              pending={pending}
+              tooltip={
+                contextualTarget
+                  ? `Send to ${describeNfmSendToThreadPreferredTarget(contextualTarget)}`
+                  : undefined
               }
-
-              if (row.key === "move-to") {
-                return (
-                  <TextActionMoveToRow
-                    key={row.key}
-                    row={row}
-                    sourceProjectId={sourceProjectId ?? null}
-                    sourcePageId={sourcePageId ?? null}
-                    onMoveBlocksToDestination={onMoveBlocksToDestination}
-                    renderMoveToMenu={renderMoveToMenu}
-                    open={activePopover === "move-to"}
-                    onOpenChange={(nextOpen) => setActionPopoverOpen("move-to", nextOpen)}
-                  />
-                );
-              }
-
-              return null;
-            })}
-          </>
-        ) : null}
-        {showReferenceMocks ? (
-          <>
-            <div className="flex h-7 items-center px-2 text-xs text-token-text-secondary">
-              <span className="min-w-0 flex-1 truncate">Skills</span>
-              <TextActionDisabledButton
-                label="Skills"
-                className="size-7 text-token-text-secondary"
-                mock
-              >
-                <TextActionSlidersIcon />
-              </TextActionDisabledButton>
-            </div>
-            {TEXT_ACTION_REFERENCE_SKILLS.map((skill) => (
-              <TextActionSkillRow
-                key={skill.key}
-                label={skill.label}
-                disabled
-                mockReason="Mock UI only. Not available in Nodex yet."
-              />
-            ))}
-          </>
-        ) : null}
-      </div>
-      {hasContentBelow ? (
-        <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-b from-transparent to-token-dropdown-background"
-          data-testid="nfm-text-action-ai-scroll-mask"
+              hasPopup={contextualTarget ? undefined : "dialog"}
+              expanded={contextualTarget ? undefined : pickerOpen}
+              onActivate={sendToContextualChat}
+            />
+            {contextualTarget ? (
+              <TextActionButtonTooltip label="Send to another chat">
+                <TextActionButton
+                  label="Send to another chat"
+                  hasPopup="dialog"
+                  expanded={pickerOpen}
+                  className="w-6 px-0.5 text-token-text-secondary"
+                  onActivate={() => setPicker(!pickerOpen)}
+                >
+                  <ChevronRightIcon className="size-4 shrink-0" />
+                </TextActionButton>
+              </TextActionButtonTooltip>
+            ) : null}
+          </div>
+        </NodexPopoverAnchor>
+        <NfmEditorPopoverContent
+          side="right"
+          align="start"
+          sideOffset={6}
+          alignOffset={-4}
+          aria-label="Send to chat"
+          className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl"
+          style={{ width: 330 }}
+        >
+          {renderSendToThreadMenu?.(menuProps) ?? <NfmSendToThreadMenu {...menuProps} />}
+        </NfmEditorPopoverContent>
+      </NodexPopover>
+      {chat.onAddToComposer ? (
+        <TextActionChatRow
+          icon={<MessageCirclePlusIcon className="size-4 text-token-text-secondary" />}
+          label="Add to composer"
+          shortcut={NFM_ADD_TO_COMPOSER_SHORTCUT_LABEL}
+          onActivate={() => {
+            const addToComposer = chat.onAddToComposer;
+            if (addToComposer) void run("add-to-composer", addToComposer);
+          }}
         />
       ) : null}
-    </div>
-  );
-}
-
-function TextActionAiFooter() {
-  return (
-    <div
-      className="flex min-h-8 items-center gap-1.5 rounded-[6px] border border-token-border px-2 py-1.5 text-sm leading-[1.4] text-token-text-secondary"
-      contentEditable={false}
-    >
-      <div
-        role="textbox"
-        aria-multiline="true"
-        aria-disabled="true"
-        contentEditable={false}
-        spellCheck={true}
-        data-content-editable-leaf="true"
-        className="min-h-[1em] min-w-0 flex-1 truncate text-token-description-foreground"
-      >
-        Edit with AI
-      </div>
-      <TextActionMockBadge reason="Mock UI only. Not available in Nodex yet." />
-      <span className="shrink-0 text-xs leading-4 text-token-description-foreground">⌘⌃E</span>
     </div>
   );
 }
@@ -1502,12 +1181,7 @@ export function NfmTextActionMenuSurface({
   canClearFormat,
   canConvertToEquation = false,
   linkControl,
-  nodexRows,
-  showReferenceMocks = false,
-  sourceProjectId = null,
-  sourcePageId = null,
-  sendToThreadProjectNameById,
-  sendToThreadPreferredTarget = null,
+  chat = null,
   onSelectBlockType,
   onToggleStyle,
   onSetTextColor,
@@ -1515,13 +1189,9 @@ export function NfmTextActionMenuSurface({
   onClearFormat,
   onConvertToEquation = noopTextAction,
   onOpenBlockActions,
-  onMoveBlocksToDestination,
-  onSendBlocksToThread,
   onSelectionPresentationChange,
-  renderMoveToMenu,
   renderSendToThreadMenu,
 }: NfmTextActionMenuSurfaceProps) {
-  const showAiPane = showReferenceMocks || nodexRows.length > 0;
   const selectionPresentationOwnersRef = useRef(new Set<TextActionSelectionPresentationOwner>());
   const nodexActionCloseLeaseRef = useRef(0);
   const surfaceMountedRef = useRef(true);
@@ -1616,6 +1286,16 @@ export function NfmTextActionMenuSurface({
         onFocusCapture={handleToolbarFocusCapture}
         onBlurCapture={handleToolbarBlurCapture}
       >
+        {chat ? (
+          <>
+            <TextActionChatSection
+              chat={chat}
+              renderSendToThreadMenu={renderSendToThreadMenu}
+              onPickerOpenChange={handleNodexActionPopoverOpenChange}
+            />
+            <TextActionDivider />
+          </>
+        ) : null}
         <TextActionBlockTypeMenu
           currentBlockTypeLabel={currentBlockTypeLabel}
           blockTypeItems={blockTypeItems}
@@ -1709,49 +1389,6 @@ export function NfmTextActionMenuSurface({
             <TextActionMoreButton onOpenBlockActions={onOpenBlockActions} />
           </div>
         </div>
-
-        {showReferenceMocks ? (
-          <>
-            <TextActionDivider />
-            <div className="flex items-center">
-              <TextActionDisabledButton
-                label="Write a comment"
-                className="min-w-0 flex-1 justify-start gap-2 px-1.5"
-                mock
-              >
-                <TextActionCommentIcon />
-                <span className="truncate">Comment</span>
-                <TextActionMockBadge reason="Mock UI only. Not available in Nodex yet." />
-              </TextActionDisabledButton>
-              <TextActionDisabledButton label="Reaction" mock>
-                <TextActionReactionIcon />
-              </TextActionDisabledButton>
-              <TextActionDisabledButton label="Comment pencil" mock>
-                <TextActionCommentPencilIcon />
-              </TextActionDisabledButton>
-            </div>
-            <TextActionDivider compact />
-          </>
-        ) : showAiPane ? (
-          <TextActionDivider />
-        ) : null}
-
-        {showAiPane ? (
-          <TextActionAiPane
-            nodexRows={nodexRows}
-            showReferenceMocks={showReferenceMocks}
-            sourceProjectId={sourceProjectId}
-            sourcePageId={sourcePageId}
-            sendToThreadProjectNameById={sendToThreadProjectNameById}
-            sendToThreadPreferredTarget={sendToThreadPreferredTarget}
-            onMoveBlocksToDestination={onMoveBlocksToDestination}
-            onSendBlocksToThread={onSendBlocksToThread}
-            onActionPopoverOpenChange={handleNodexActionPopoverOpenChange}
-            renderMoveToMenu={renderMoveToMenu}
-            renderSendToThreadMenu={renderSendToThreadMenu}
-          />
-        ) : null}
-        {showReferenceMocks ? <TextActionAiFooter /> : null}
       </div>
     </div>
   );
@@ -1782,21 +1419,6 @@ export function NfmTextActionMenu() {
     snapshot.eligible ? selectionPresentation : "none",
     NFM_TEXT_ACTION_MENU_SELECTION_KEY,
     commandBlockIds,
-  );
-
-  const nodexRows = useMemo(
-    () =>
-      resolveNodexTextActionRows({
-        currentBlockId: snapshot.currentBlockId,
-        canSendBlocks: runtime.canSendBlocks && Boolean(runtime.onMoveBlocksToDestination),
-        canSendToThread: runtime.canSendBlocks && Boolean(runtime.onSendBlocksToThread),
-      }),
-    [
-      runtime.canSendBlocks,
-      runtime.onMoveBlocksToDestination,
-      runtime.onSendBlocksToThread,
-      snapshot.currentBlockId,
-    ],
   );
 
   if (!snapshot.eligible) {
@@ -1859,15 +1481,27 @@ export function NfmTextActionMenu() {
     formattingToolbar.store.setState(false);
   };
 
-  const handleMoveBlocksToDestination = async (destination: NfmMoveToDestination) => {
-    if (commandBlockIds.length === 0) return;
-    await runtime.onMoveBlocksToDestination?.(destination, commandBlockIds);
-  };
-
-  const handleSendBlocksToThread = async (request: NfmSendToThreadRequest) => {
-    if (commandBlockIds.length === 0) return;
-    await runtime.onSendBlocksToThread?.(request, commandBlockIds);
-  };
+  const runtimeChat = snapshot.currentBlockId ? runtime.chat : null;
+  const chat: TextActionChat | null = runtimeChat
+    ? {
+        projectId: runtimeChat.projectId,
+        sourcePageId: runtimeChat.sourcePageId ?? null,
+        projectNameById: runtimeChat.projectNameById,
+        contextualTarget: runtimeChat.contextualTarget,
+        onSend: async (request) => {
+          if (commandBlockIds.length === 0) return;
+          await runtimeChat.send(request, commandBlockIds);
+        },
+        ...(runtimeChat.addToComposer
+          ? {
+              onAddToComposer: async () => {
+                if (commandBlockIds.length === 0) return;
+                await runtimeChat.addToComposer?.(commandBlockIds);
+              },
+            }
+          : {}),
+      }
+    : null;
 
   const handleSelectionPresentationChange = (presentation: NfmRetainedSelectionPresentation) => {
     setSelectionPresentationState((current) => {
@@ -1892,12 +1526,7 @@ export function NfmTextActionMenu() {
       canClearFormat={snapshot.canClearFormat}
       canConvertToEquation={snapshot.canConvertToEquation}
       linkControl={<NfmCreateLinkButton renderTrigger={renderCreateLinkTrigger} />}
-      nodexRows={nodexRows}
-      showReferenceMocks={import.meta.env.DEV}
-      sourceProjectId={runtime.sourceProjectId ?? null}
-      sourcePageId={runtime.sourcePageId ?? null}
-      sendToThreadProjectNameById={runtime.sendToThreadProjectNameById}
-      sendToThreadPreferredTarget={runtime.sendToThreadPreferredTarget ?? null}
+      chat={chat}
       onSelectBlockType={selectBlockType}
       onToggleStyle={toggleStyle}
       onSetTextColor={setTextColor}
@@ -1905,8 +1534,6 @@ export function NfmTextActionMenu() {
       onClearFormat={clearFormat}
       onConvertToEquation={convertToEquation}
       onOpenBlockActions={openBlockActions}
-      onMoveBlocksToDestination={handleMoveBlocksToDestination}
-      onSendBlocksToThread={handleSendBlocksToThread}
       onSelectionPresentationChange={handleSelectionPresentationChange}
     />
   );

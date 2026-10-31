@@ -28,6 +28,29 @@ import {
 import { libraryPageDetailQueryOptions } from "../../lib/library-page-detail-query";
 import { useApplicationPending } from "@/bootstrap/application-surface";
 import { usePageLinkedChats, type PageChatCommands } from "@/lib/use-page-linked-chats";
+import type { CodexThreadSummary } from "@/lib/types";
+import { usePageChatSendPort, type PageChatSendPortInput } from "./use-page-chat-send-port";
+
+/** The chat a Session Scene shows a Library Page beside, with the commands that reach it. */
+export interface WorkbenchBesideChat {
+  readonly sessionId: string;
+  readonly projectId: string;
+  readonly sessionThread: CodexThreadSummary | null;
+  readonly canStartThreadInSession: boolean;
+  readonly sessionTitle: string | null;
+  readonly commands: Omit<PageChatSendPortInput, "routingContext" | "pageId">;
+}
+
+const UNAVAILABLE_CHAT_COMMANDS: WorkbenchBesideChat["commands"] = {
+  onEnsureDefaultDraftSessionForProject: async () => {
+    throw new Error("This Page is not shown beside a chat.");
+  },
+  onRefreshSessions: async () => undefined,
+  onResolveChatSessionForThread: async () => {
+    throw new Error("This Page is not shown beside a chat.");
+  },
+  onLinkPageToChat: async () => undefined,
+};
 
 const ignoreLibraryPageClose = (): void => undefined;
 
@@ -42,6 +65,7 @@ export function WorkbenchLibraryPageSurface({
   onOpenCanvas,
   pageChats,
   currentSessionId = null,
+  besideChat = null,
 }: {
   readonly pageId: string;
   readonly surfaceId?: string;
@@ -54,7 +78,14 @@ export function WorkbenchLibraryPageSurface({
   readonly pageChats?: PageChatCommands;
   /** The chat whose Scene shows this Page, if any. */
   readonly currentSessionId?: string | null;
+  /** Present in a chat's Scene that can take this Page's content. */
+  readonly besideChat?: WorkbenchBesideChat | null;
 }) {
+  const chatSendPort = usePageChatSendPort({
+    routingContext: libraryContentRoute,
+    pageId,
+    ...(besideChat?.commands ?? UNAVAILABLE_CHAT_COMMANDS),
+  });
   const queryClient = useQueryClient();
   const linkedChats = usePageLinkedChats(pageId, { enabled: pageChats !== undefined });
   // A Page created a moment ago opens ready to be named; reopening one never moves focus.
@@ -191,6 +222,16 @@ export function WorkbenchLibraryPageSurface({
       }
       onClose={onClose}
       isActivePanelTab={isActivePanelTab}
+      {...(besideChat
+        ? {
+            sessionId: besideChat.sessionId,
+            sessionThread: besideChat.sessionThread,
+            canStartThreadInSession: besideChat.canStartThreadInSession,
+            sessionTitle: besideChat.sessionTitle,
+            chatProjectId: besideChat.projectId,
+            ...chatSendPort,
+          }
+        : {})}
       {...(pageChats
         ? {
             ...linkedChats,

@@ -1,29 +1,29 @@
 import { createContext, useContext, type ReactNode } from "react";
-import type { NfmMoveToDestination } from "./nfm-move-to-menu-model";
 import type {
   NfmSendToThreadPreferredTarget,
   NfmSendToThreadRequest,
 } from "./nfm-send-to-thread-menu-model";
 
-export interface NfmTextActionMenuRuntimeValue {
-  canSendBlocks: boolean;
-  sourceProjectId?: string | null;
-  sourcePageId?: string | null;
-  sendToThreadProjectNameById?: Readonly<Record<string, string>>;
-  sendToThreadPreferredTarget?: NfmSendToThreadPreferredTarget | null;
-  onMoveBlocksToDestination?: (
-    destination: NfmMoveToDestination,
-    selectedBlockIds: readonly string[],
-  ) => Promise<void> | void;
-  onSendBlocksToThread?: (
+/** Chat actions the editor offers for a text selection's Blocks. */
+export interface NfmTextActionMenuChatRuntime {
+  readonly projectId: string | null;
+  /** The Page the selection belongs to, whose Linked chats lead the picker. */
+  readonly sourcePageId?: string | null;
+  readonly projectNameById?: Readonly<Record<string, string>>;
+  /** The chat this Page is shown beside; sends go there without a picker. */
+  readonly contextualTarget: NfmSendToThreadPreferredTarget | null;
+  readonly send: (
     request: NfmSendToThreadRequest,
     selectedBlockIds: readonly string[],
   ) => Promise<void> | void;
+  readonly addToComposer?: (selectedBlockIds: readonly string[]) => Promise<void> | void;
 }
 
-const DEFAULT_TEXT_ACTION_MENU_RUNTIME: NfmTextActionMenuRuntimeValue = {
-  canSendBlocks: false,
-};
+export interface NfmTextActionMenuRuntimeValue {
+  readonly chat?: NfmTextActionMenuChatRuntime | null;
+}
+
+const DEFAULT_TEXT_ACTION_MENU_RUNTIME: NfmTextActionMenuRuntimeValue = {};
 
 const NfmTextActionMenuRuntimeContext = createContext<NfmTextActionMenuRuntimeValue>(
   DEFAULT_TEXT_ACTION_MENU_RUNTIME,

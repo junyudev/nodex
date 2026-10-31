@@ -16,7 +16,7 @@ import {
   projectWorkspaceRootOrNull,
   resolveSessionTerminalCwd,
 } from "@/lib/workbench-workspace-context";
-import type { PanelId, Project, WorkbenchTabProjection } from "@/lib/types";
+import type { CodexPromptInput, PanelId, Project, WorkbenchTabProjection } from "@/lib/types";
 import type { OpenCanvasStageHandler } from "@/lib/use-workbench-panel-openers";
 import type { OpenPageInNewChatInput, SendPageToChatInput } from "@/lib/page-chat-actions";
 import type { WorkbenchSurfaceUpdatePatch } from "@/lib/workbench-scene-presentation";
@@ -65,6 +65,7 @@ export function WorkbenchTabProjectionPanel({
   onLinkPageToChat,
   onResolveChatSessionForThread,
   onSendPageToChat,
+  onAddToChatComposer,
   onOpenCanvasStage,
   onOpenLibraryTarget,
   onOpenFileTab,
@@ -109,6 +110,12 @@ export function WorkbenchTabProjectionPanel({
     threadId: string,
   ) => Promise<{ readonly id: string; readonly projectId: string | null }>;
   onSendPageToChat?: (input: SendPageToChatInput) => Promise<void> | void;
+  /** Appends Page content to a chat's draft; the chat shown beside the Page receives it. */
+  onAddToChatComposer: (input: {
+    readonly sessionId: string;
+    readonly threadId: string | null;
+    readonly promptInput: CodexPromptInput;
+  }) => void;
   onOpenCanvasStage: OpenCanvasStageHandler;
   onOpenLibraryTarget: (
     target: LibraryRouteTarget,
@@ -157,6 +164,36 @@ export function WorkbenchTabProjectionPanel({
       projectId,
       activeSession.thread ? projectSessionThreadLinkToSummary(activeSession.thread) : null,
     );
+  // A Library Page has no Project of its own; beside a Project chat it sends through that chat.
+  const besideLibraryChatTarget = activeSession.projectId
+    ? sessionSendTarget(activeSession.projectId)
+    : null;
+  const besideLibraryChat =
+    activeSession.projectId && besideLibraryChatTarget && besideLibraryChatTarget.kind !== "none"
+      ? {
+          sessionId: activeSession.id,
+          projectId: activeSession.projectId,
+          sessionThread:
+            besideLibraryChatTarget.kind === "thread" ? besideLibraryChatTarget.thread : null,
+          canStartThreadInSession: besideLibraryChatTarget.kind === "launch",
+          sessionTitle: presentChatTitle(activeSession),
+          commands: {
+            onEnsureDefaultDraftSessionForProject,
+            onRefreshSessions,
+            onResolveChatSessionForThread,
+            onLinkPageToChat,
+            onAddToChatComposer: (promptInput: CodexPromptInput) =>
+              onAddToChatComposer({
+                sessionId: activeSession.id,
+                threadId:
+                  besideLibraryChatTarget.kind === "thread"
+                    ? besideLibraryChatTarget.thread.threadId
+                    : null,
+                promptInput,
+              }),
+          },
+        }
+      : null;
   const canonicalSurface = readWorkbenchAgentContext(workbenchOwner.read(), sceneOwner)?.tabs.find(
     (item) => item.tabId === tab.id,
   )?.surface;
@@ -202,6 +239,7 @@ export function WorkbenchTabProjectionPanel({
               },
             }
           : {})}
+        besideChat={besideLibraryChat}
       />
     );
   }
@@ -319,6 +357,16 @@ export function WorkbenchTabProjectionPanel({
         sessionId={activeSession.id}
         sessionThread={sendTarget.kind === "thread" ? sendTarget.thread : null}
         canStartThreadInSession={sendTarget.kind === "launch"}
+        {...(sendTarget.kind !== "none"
+          ? {
+              onAddToChatComposer: (promptInput: CodexPromptInput) =>
+                onAddToChatComposer({
+                  sessionId: activeSession.id,
+                  threadId: sendTarget.kind === "thread" ? sendTarget.thread.threadId : null,
+                  promptInput,
+                }),
+            }
+          : {})}
         sessionTitle={presentChatTitle(activeSession)}
         onLeavePage={onLeavePageStage}
         onClose={() => void onCloseTab(tab.id)}

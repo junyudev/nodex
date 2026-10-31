@@ -12,12 +12,8 @@ vi.mock("@/components/board/editor/nfm-send-to-thread-menu", () => ({
   NfmSendToThreadMenu: ({
     onAccept,
   }: {
-    readonly onAccept: (request: { target: { kind: "new-thread" }; mode: "send" }) => Promise<void>;
-  }) => (
-    <button onClick={() => onAccept({ target: { kind: "new-thread" }, mode: "send" })}>
-      Choose chat
-    </button>
-  ),
+    readonly onAccept: (request: { target: { kind: "new-thread" } }) => Promise<void>;
+  }) => <button onClick={() => onAccept({ target: { kind: "new-thread" } })}>Choose chat</button>,
 }));
 
 const session = (pageId: string): DatabaseViewPageMenuSession => ({

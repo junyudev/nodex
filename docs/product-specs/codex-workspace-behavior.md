@@ -20,7 +20,7 @@ Nodex through an explicit import or attachment.
 
 A Workspace-owned **Linked chat** edge may associate a Page with a durable
 Project Session. It records an explicit user action only: Open in new chat,
-Send to chat, Page Run Section, or New page in that Session's Scene, which
+Send to chat, a Prompt send, or New page in that Session's Scene, which
 creates the Page and its edge together. It is many-to-many, survives Window Scene
 and optional Thread lifecycle changes, without changing content access. Ordinary Page navigation, Scenes, mentions, references, links,
 prompt text, and recent-Page state never infer an edge. Explicit removal is
@@ -61,7 +61,7 @@ initial Page relationships in one Core transaction before Scene presentation.
 If any Page is missing, belongs to another Library or fails lifecycle validation,
 no Session or relationship is created. A
 later Scene failure keeps the valid durable Chat and relation. Send to chat and
-Page Run Section first resolve a durable Session, then idempotently establish
+Prompt sends first resolve a durable Session, then idempotently establish
 the relationship, and only then start the Thread or Turn; a Codex send failure
 does not compensate the already established user relationship.
 The default-draft role does not reserve a visual slot: the Session participates

@@ -17,6 +17,7 @@ import {
   ClipboardListIcon as LucideClipboardListIcon,
   ContactRound as LucideContactRound,
   CornerDownLeft as LucideCornerDownLeft,
+  CornerDownRight as LucideCornerDownRight,
   Filter as LucideFilter,
   GitBranchPlus as LucideGitBranchPlus,
   GitMerge as LucideGitMerge,
@@ -170,6 +171,10 @@ export const ContactRound: LucideIconType = /* @__PURE__ */ createGenericIcon(
 export const CornerDownLeft: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideCornerDownLeft,
   "CornerDownLeft",
+);
+export const CornerDownRight: LucideIconType = /* @__PURE__ */ createGenericIcon(
+  LucideCornerDownRight,
+  "CornerDownRight",
 );
 export const Filter: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideFilter, "Filter");
 export const GitBranchPlus: LucideIconType = /* @__PURE__ */ createGenericIcon(

@@ -207,6 +207,7 @@ function ChatPicker({
       >
         <NfmSendToThreadMenu
           projectId={projectId}
+          sourcePageId={page.pageId}
           preferredTarget={actionPort.currentChat ?? null}
           onAccept={async ({ target }) => {
             await actionPort.sendToChat?.({
@@ -219,7 +220,6 @@ function ChatPicker({
             onClose();
           }}
           onClose={onClose}
-          showModeSelector={false}
         />
       </NodexPopoverContent>
     </NodexPopover>

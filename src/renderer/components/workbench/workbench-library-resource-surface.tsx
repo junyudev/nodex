@@ -7,7 +7,10 @@ import { makeWorkbenchSceneKey } from "../../../shared/workbench-scene";
 import { workbenchPageEditorKey } from "@/lib/workbench-page-editor-key";
 import type { WorkbenchWindowOwner } from "@/lib/workbench-window-owner";
 import type { PageChatCommands } from "@/lib/use-page-linked-chats";
-import { WorkbenchLibraryPageSurface } from "./workbench-library-page-surface";
+import {
+  WorkbenchLibraryPageSurface,
+  type WorkbenchBesideChat,
+} from "./workbench-library-page-surface";
 import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
 
@@ -28,6 +31,7 @@ export function WorkbenchLibraryResourceSurface({
   onTitleChange,
   onOpenTarget,
   pageChats,
+  besideChat = null,
 }: {
   readonly surface: ResourceSurface;
   readonly owner: WorkbenchWindowOwner;
@@ -42,6 +46,8 @@ export function WorkbenchLibraryResourceSurface({
     options?: { readonly titleSnapshot?: string; readonly mode?: "durable" | "preview" },
   ) => void;
   readonly pageChats?: PageChatCommands;
+  /** The chat a Session Scene shows its Pages beside. */
+  readonly besideChat?: WorkbenchBesideChat | null;
 }) {
   if (surface.config.routingContext.kind !== "library")
     throw new Error("Library resource body requires Library routing context");
@@ -62,6 +68,7 @@ export function WorkbenchLibraryResourceSurface({
         }
         {...(pageChats ? { pageChats } : {})}
         currentSessionId={sceneOwner.kind === "session" ? sceneOwner.sessionId : null}
+        besideChat={besideChat}
       />
     );
   if (surface.kind === "canvas_stage")

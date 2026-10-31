@@ -9,14 +9,8 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import {
-  ActivitySpinnerIcon,
-  InfoIcon,
-  PlusIcon,
-  SearchIcon,
-  ThreadIcon,
-} from "@/components/shared/icons";
-import { NodexTooltip } from "@/components/ui/tooltip";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { ActivitySpinnerIcon, PlusIcon, SearchIcon, ThreadIcon } from "@/components/shared/icons";
 import {
   selectCommandPaletteChatResults,
   type CommandPaletteThreadSearchBatch,
@@ -25,6 +19,7 @@ import {
 } from "@/lib/command-palette-chat-search";
 import type { CommandPaletteThread } from "@/lib/command-palette";
 import type { CommandPaletteHighlightSegment } from "@/lib/command-palette-highlight";
+import { pageChatWindowQueryOptions } from "@/lib/query-options";
 import { normalizeSearchText as normalizeCommandPaletteSearchText } from "@/lib/search-text";
 import {
   areQueryFresh,
@@ -35,14 +30,9 @@ import {
 import { useCommandPaletteThreadSearchIndex } from "@/lib/use-command-palette-thread-search-index";
 import { cn } from "@/lib/utils";
 import {
-  readNfmSendToThreadMode,
-  writeNfmSendToThreadMode,
-} from "./nfm-send-to-thread-mode-settings";
-import {
   buildNfmSendToThreadRows,
   moveNfmSendToThreadFocusedRowId,
   resolveNfmSendToThreadFocusedRowId,
-  type NfmSendToThreadMode,
   type NfmSendToThreadPreferredTarget,
   type NfmSendToThreadRequest,
   type NfmSendToThreadRow,
@@ -50,15 +40,21 @@ import {
 
 interface NfmSendToThreadMenuProps {
   projectId: string | null;
+  /** The Page being sent, whose Linked chats lead the list. */
+  sourcePageId?: string | null;
   projectNameById?: Readonly<Record<string, string>>;
   preferredTarget?: NfmSendToThreadPreferredTarget | null;
   onAccept: (request: NfmSendToThreadRequest) => Promise<void> | void;
   onClose: () => void;
-  showModeSelector?: boolean;
 }
 
-export interface NfmSendToThreadMenuSurfaceProps extends NfmSendToThreadMenuProps {
+export interface NfmSendToThreadMenuSurfaceProps extends Omit<
+  NfmSendToThreadMenuProps,
+  "sourcePageId"
+> {
   threadItems: readonly CommandPaletteThread[];
+  /** Sessions linked to the source Page, in Linked chats order. */
+  linkedSessionIds?: readonly string[];
   initialQuery?: string;
   threadItemsLoading?: boolean;
   threadSearchBatch?: CommandPaletteThreadSearchBatch;
@@ -66,9 +62,8 @@ export interface NfmSendToThreadMenuSurfaceProps extends NfmSendToThreadMenuProp
 }
 
 const SEND_TO_THREAD_ERROR = "Could not send";
-const SEND_TO_THREAD_WRAP_TOOLTIP =
-  "Sends the blocks, then replaces them with a collapsed toggle linking to the thread.";
 const SEND_TO_THREAD_RESULT_LIMIT = 24;
+const LINKED_CHAT_LIMIT = 20;
 
 function getSendToThreadRowDomId(listboxId: string, index: number) {
   return `${listboxId}-option-${index}`;
@@ -103,65 +98,6 @@ function renderSendToThreadPreviewSegments(
       {segment.text}
     </span>
   ));
-}
-
-function SendToThreadModeSelector({
-  mode,
-  disabled,
-  onModeChange,
-}: {
-  mode: NfmSendToThreadMode;
-  disabled: boolean;
-  onModeChange: (mode: NfmSendToThreadMode) => void;
-}) {
-  const modeItems = [
-    { value: "send", label: "Send", hasInfo: false },
-    { value: "wrap-toggle", label: "Send & wrap", hasInfo: true },
-  ] as const;
-
-  return (
-    <div className="mx-2 mb-1 grid h-7 shrink-0 grid-cols-2 rounded-lg bg-token-foreground/5 p-0.5">
-      {modeItems.map(({ value, label, hasInfo }) => {
-        return (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={mode === value}
-            disabled={disabled}
-            className={cn(
-              "flex min-w-0 items-center justify-center gap-1 rounded-[7px] px-2 text-xs leading-6 text-token-description-foreground",
-              "disabled:cursor-default disabled:opacity-50",
-              mode === value && "bg-token-dropdown-background text-token-foreground shadow-sm",
-            )}
-            onPointerDown={keepEditorSelection}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onModeChange(value);
-            }}
-          >
-            <span className="min-w-0 truncate">{label}</span>
-            {hasInfo ? (
-              <NodexTooltip
-                tooltipContent={SEND_TO_THREAD_WRAP_TOOLTIP}
-                side="top"
-                sideOffset={4}
-                tooltipBodyClassName="max-w-[220px] text-xs leading-4"
-              >
-                <span
-                  data-testid="send-to-thread-wrap-mode-info"
-                  className="inline-flex size-3.5 shrink-0 items-center justify-center text-token-description-foreground"
-                  aria-hidden="true"
-                >
-                  <InfoIcon className="size-3 shrink-0" aria-hidden="true" />
-                </span>
-              </NodexTooltip>
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 function SendToThreadRow({
@@ -251,28 +187,40 @@ function SendToThreadRow({
 
 export function NfmSendToThreadMenu({
   projectId,
+  sourcePageId = null,
   projectNameById,
   preferredTarget = null,
   onAccept,
   onClose,
-  showModeSelector = true,
 }: NfmSendToThreadMenuProps) {
   const { threads, loading } = useCommandPaletteThreadItems({
     enabled: Boolean(projectId),
     activeProjectId: projectId ?? "",
     refreshKey: 0,
   });
+  const linkedChats = useInfiniteQuery({
+    ...pageChatWindowQueryOptions({
+      pageId: sourcePageId ?? "",
+      includeArchived: false,
+      first: LINKED_CHAT_LIMIT,
+    }),
+    enabled: Boolean(projectId && sourcePageId),
+  });
+  const linkedSessionIds = useMemo(
+    () => linkedChats.data?.pages.flatMap((window) => window.items.map((chat) => chat.sessionId)),
+    [linkedChats.data],
+  );
 
   return (
     <NfmSendToThreadMenuSurface
       projectId={projectId}
       threadItems={threads}
       threadItemsLoading={loading}
+      linkedSessionIds={linkedSessionIds}
       projectNameById={projectNameById}
       preferredTarget={preferredTarget}
       onAccept={onAccept}
       onClose={onClose}
-      showModeSelector={showModeSelector}
     />
   );
 }
@@ -280,13 +228,13 @@ export function NfmSendToThreadMenu({
 export function NfmSendToThreadMenuSurface({
   projectId,
   threadItems,
+  linkedSessionIds,
   threadItemsLoading = false,
   projectNameById,
   preferredTarget = null,
   initialQuery = "",
   onAccept,
   onClose,
-  showModeSelector = true,
   threadSearchBatch: injectedThreadSearchBatch,
   enableThreadSearch = true,
 }: NfmSendToThreadMenuSurfaceProps) {
@@ -294,12 +242,19 @@ export function NfmSendToThreadMenuSurface({
   const comboboxId = useId();
   const [query, setQuery] = useState(initialQuery);
   const deferredQuery = useDeferredValue(query);
-  const [mode, setMode] = useState<NfmSendToThreadMode>(() => readNfmSendToThreadMode());
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const [pendingAcceptQuery, setPendingAcceptQuery] = useState<string | null>(null);
   const normalizedThreadItems = useMemo(() => [...threadItems], [threadItems]);
+  const linkedThreads = useMemo(
+    () =>
+      (linkedSessionIds ?? []).flatMap((sessionId) => {
+        const thread = normalizedThreadItems.find((item) => item.sessionId === sessionId);
+        return thread ? [thread] : [];
+      }),
+    [linkedSessionIds, normalizedThreadItems],
+  );
   const threadSearchIndex = useCommandPaletteThreadSearchIndex(normalizedThreadItems);
   const fetchedThreadSearchBatch = useCommandPaletteThreadSearch({
     enabled: enableThreadSearch && Boolean(projectId),
@@ -315,6 +270,7 @@ export function NfmSendToThreadMenuSurface({
         threadSearchIndex,
         threadSearchBatch,
         threadLimit: SEND_TO_THREAD_RESULT_LIMIT,
+        preferActiveProject: true,
         activeProjectId: projectId ?? "",
       }),
     [deferredQuery, normalizedThreadItems, projectId, threadSearchBatch, threadSearchIndex],
@@ -330,12 +286,12 @@ export function NfmSendToThreadMenuSurface({
     if (!projectId) return [];
     return buildNfmSendToThreadRows({
       threads: visibleThreads,
+      linkedThreads,
       query: deferredQuery,
       preferredTarget,
       projectNameById,
-      requireSession: mode === "wrap-toggle",
     });
-  }, [deferredQuery, mode, preferredTarget, projectId, projectNameById, visibleThreads]);
+  }, [deferredQuery, linkedThreads, preferredTarget, projectId, projectNameById, visibleThreads]);
   const buildRowsForQuery = useCallback(
     (nextQuery: string): readonly NfmSendToThreadRow[] => {
       if (!projectId) return [];
@@ -345,18 +301,19 @@ export function NfmSendToThreadMenuSurface({
         threadSearchIndex,
         threadSearchBatch,
         threadLimit: SEND_TO_THREAD_RESULT_LIMIT,
+        preferActiveProject: true,
         activeProjectId: projectId,
       });
       return buildNfmSendToThreadRows({
         threads,
+        linkedThreads,
         query: nextQuery,
         preferredTarget,
         projectNameById,
-        requireSession: mode === "wrap-toggle",
       });
     },
     [
-      mode,
+      linkedThreads,
       normalizedThreadItems,
       preferredTarget,
       projectId,
@@ -405,19 +362,12 @@ export function NfmSendToThreadMenuSurface({
   );
   const visibleMainRowCount = mainRowEntries.length;
 
-  const handleModeChange = useCallback((nextMode: NfmSendToThreadMode) => {
-    setMode(writeNfmSendToThreadMode(nextMode));
-  }, []);
-
   const acceptRow = useCallback(
     async (row: NfmSendToThreadRow) => {
       setAcceptError(null);
       setAcceptingRowId(row.id);
       try {
-        await onAccept({
-          target: row.target,
-          mode: showModeSelector ? mode : "send",
-        });
+        await onAccept({ target: row.target });
         setAcceptingRowId(null);
       } catch (error) {
         const message = error instanceof Error ? error.message.trim() : "";
@@ -425,7 +375,7 @@ export function NfmSendToThreadMenuSurface({
         setAcceptingRowId(null);
       }
     },
-    [mode, onAccept, showModeSelector],
+    [onAccept],
   );
 
   const activateRow = useCallback(
@@ -541,14 +491,14 @@ export function NfmSendToThreadMenuSurface({
         <input
           id={comboboxId}
           role="combobox"
-          aria-label="Search threads"
+          aria-label="Search chats"
           aria-autocomplete="list"
           aria-controls={listboxId}
           aria-expanded="true"
           aria-haspopup="listbox"
           aria-activedescendant={activeDescendantId}
           value={query}
-          placeholder="Search threads..."
+          placeholder="Search chats…"
           className="h-7 min-w-0 flex-1 rounded-[7px] bg-transparent px-1.5 py-[3px] text-sm text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/5"
           onChange={(event) => {
             setAcceptError(null);
@@ -559,9 +509,6 @@ export function NfmSendToThreadMenuSurface({
           onKeyDown={handleInputKeyDown}
         />
       </div>
-      {showModeSelector ? (
-        <SendToThreadModeSelector mode={mode} disabled={disabled} onModeChange={handleModeChange} />
-      ) : null}
       <div
         id={listboxId}
         role="listbox"
@@ -577,7 +524,7 @@ export function NfmSendToThreadMenuSurface({
         <div className="notion-scroller vertical min-h-0 flex-1 overflow-y-auto pb-1">
           <div className="pb-1">
             <div className="flex h-7 items-end px-[14px] pb-1 pt-3 text-xs leading-4 font-medium text-token-description-foreground">
-              <span className="min-w-0 flex-1 truncate">Destination</span>
+              <span className="min-w-0 flex-1 truncate">Send to</span>
             </div>
             <div className="flex flex-col gap-px px-1">
               {mainRowEntries.map(({ row, index }) => (

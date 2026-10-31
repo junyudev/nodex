@@ -1,13 +1,4 @@
-import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
-import { materializePromptFileImages } from "@/lib/prompt-file-images";
-import {
-  useCallback,
-  useMemo,
-  useState,
-  type MutableRefObject,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useMemo, useState, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { OwnedBlockDocumentBoundary } from "@/components/block-documents/owned-block-document-boundary";
 import { PageStageLoadingFrame } from "@/components/board/page-stage/frame";
@@ -16,17 +7,6 @@ import type {
   PageStageSessionSnapshot,
 } from "@/components/board/page-stage/types";
 import { NodexButton } from "@/components/ui/button";
-import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
-import {
-  captureCodexTurnPresentation,
-  readCodexSubmissionPresentation,
-} from "@/lib/codex-turn-presentation";
-import { useAgentRuntimeSessionLaunch } from "@/lib/use-agent-runtime-session-launch";
-import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
-import { agentRuntimePromptImages } from "@/lib/agent-runtime-prompt";
-import { prepareAgentMessage } from "../../../shared/agent-prompt";
-import { readPastedTextAttachment } from "@/lib/api";
-import { sessionFirstSubmissionOwner } from "@/features/conversation-launch/session-first-submission-owner";
 import { usePageOwnershipPathReadModel } from "@/lib/block-reference-queries";
 import {
   commitPageDetailMetadataPatch,
@@ -55,6 +35,7 @@ import type { OpenCanvasStageHandler } from "@/lib/use-workbench-panel-openers";
 import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
 import type { WorkbenchProjectionPageStageTabConfig } from "../../../shared/types";
 import { PageStage } from "./workbench-page-stage";
+import { usePageChatSendPort } from "./use-page-chat-send-port";
 import { usePageLinkedChats } from "@/lib/use-page-linked-chats";
 import { useApplicationPending } from "@/bootstrap/application-surface";
 
@@ -157,6 +138,7 @@ export function PageStageSessionTab({
   historyPanelActive,
   onToggleHistoryPanel,
   isActivePanelTab,
+  onAddToChatComposer,
 }: {
   tab: WorkbenchTabProjection & {
     config: WorkbenchProjectionPageStageTabConfig;
@@ -196,14 +178,14 @@ export function PageStageSessionTab({
   historyPanelActive: boolean;
   onToggleHistoryPanel: (context: PageStageHistoryModalContext) => void;
   isActivePanelTab: boolean;
+  /** Present when this Page is shown beside a chat that can take Page content as a draft. */
+  onAddToChatComposer?: (promptInput: CodexPromptInput) => void;
 }) {
   if (tab.config.routingContext.kind !== "project")
     throw new Error("Project Page Stage requires a Project route");
   const pageAccessProjectId = tab.config.routingContext.projectId;
   // A Page created a moment ago opens ready to be named; reopening one never moves focus.
   const [focusTitle] = useState(() => consumePageTitleFocus(tab.config.pageId));
-  const workbenchOwner = useWorkbenchWindowOwner();
-  const launchAgentRuntimeSession = useAgentRuntimeSessionLaunch();
   const linkedChats = usePageLinkedChats(tab.config.pageId, { enabled: project !== null });
   const editorSessionKey = makeEditorSurfaceKey(sessionId, tab.id);
 
@@ -269,85 +251,15 @@ export function PageStageSessionTab({
           },
         }
       : undefined;
-  const handleStartNewSessionThreadFromEditor = useCallback(
-    async (input: {
-      projectId: string;
-      targetSessionId?: string;
-      prompt: string;
-      promptInput?: CodexPromptInput;
-      threadName?: string;
-      submittedPresentation?: WorkbenchSubmitPresentation;
-    }) => {
-      const submittedPresentation =
-        input.submittedPresentation ?? readCodexSubmissionPresentation(workbenchOwner);
-      const identity = {
-        launchId: createUuidV7(),
-        clientUserMessageId: createUuidV7(),
-        acceptedAt: Date.now(),
-      };
-      const promptInput = await materializePromptFileImages(
-        projectContentRoute(pageAccessProjectId),
-        { kind: "page", page_id: tab.config.pageId },
-        input.promptInput,
-      );
-      const targetSessionId =
-        input.targetSessionId?.trim() ||
-        (await onEnsureDefaultDraftSessionForProject(input.projectId, { select: false })).id;
-      const presentationTicket = await captureCodexTurnPresentation(
-        workbenchOwner,
-        { kind: "session", sessionId: targetSessionId, launchId: identity.launchId },
-        submittedPresentation,
-      );
-      // Launch links the Page in its binding transaction, so a rejected launch leaves no link.
-      const submission = sessionFirstSubmissionOwner.begin({
-        backend: "codex",
-        originProjectId: input.projectId,
-        originSessionId: targetSessionId,
-        prompt: input.prompt,
-        promptInput,
-        identity,
-      });
-      sessionFirstSubmissionOwner.update(submission.launchId, { phase: "startingThread" });
-      try {
-        const result = await launchAgentRuntimeSession({
-          projectId: input.projectId,
-          sessionId: targetSessionId,
-          prompt: input.prompt,
-          promptInput,
-          title: input.threadName,
-          initialPageIds: [tab.config.pageId],
-          onSelectionResolved: (backend) =>
-            sessionFirstSubmissionOwner.update(submission.launchId, { backend }),
-          presentationTicket,
-          launchIdentity: {
-            launchId: submission.launchId,
-            messageId: submission.clientUserMessageId,
-            acceptedAt: submission.acceptedAt,
-          },
-        });
-        sessionFirstSubmissionOwner.update(submission.launchId, {
-          threadId: result.threadId,
-          phase: "startingTurn",
-        });
-        await onRefreshSessions(input.projectId);
-        return { threadId: result.threadId, sessionId: result.sessionId };
-      } catch (cause) {
-        sessionFirstSubmissionOwner.fail(submission.launchId, {
-          stage: "startingThread",
-          message: cause instanceof Error ? cause.message : String(cause),
-        });
-        throw cause;
-      }
-    },
-    [
-      workbenchOwner,
-      launchAgentRuntimeSession,
-      onEnsureDefaultDraftSessionForProject,
-      onRefreshSessions,
-      tab.config.pageId,
-      pageAccessProjectId,
-    ],
-  );
+  const chatSendPort = usePageChatSendPort({
+    routingContext: projectContentRoute(pageAccessProjectId),
+    pageId: tab.config.pageId,
+    onEnsureDefaultDraftSessionForProject,
+    onRefreshSessions,
+    onResolveChatSessionForThread,
+    onLinkPageToChat,
+    onAddToChatComposer,
+  });
 
   if (!project) {
     return (
@@ -549,54 +461,7 @@ export function PageStageSessionTab({
                 placement: { kind: "same-group", sourceSurfaceId: tab.id },
               });
             }}
-            onStartNewSessionThreadFromEditor={handleStartNewSessionThreadFromEditor}
-            onSendPagePrompt={async ({
-              threadId,
-              prompt,
-              promptInput,
-              submittedPresentation: origin,
-            }) => {
-              const submittedPresentation =
-                origin ?? readCodexSubmissionPresentation(workbenchOwner);
-              const materializedInput = await materializePromptFileImages(
-                projectContentRoute(pageAccessProjectId),
-                { kind: "page", page_id: tab.config.pageId },
-                promptInput,
-              );
-              const targetSession = await onResolveChatSessionForThread(threadId);
-              if (!targetSession.executionRef)
-                throw new Error(
-                  "This imported conversation has no execution owner. Open a new chat to send.",
-                );
-              const target = { sessionId: targetSession.id, threadId };
-              await agentRuntimeRuntime.inspect(target);
-              const presentationTicket = await captureCodexTurnPresentation(
-                workbenchOwner,
-                { kind: "thread", threadId },
-                submittedPresentation,
-              );
-              await onLinkPageToChat({
-                pageId: tab.config.pageId,
-                sessionId: targetSession.id,
-              });
-              await agentRuntimeRuntime.message({
-                ...target,
-                presentationTicket,
-                message: {
-                  messageId: createUuidV7(),
-                  ...(await prepareAgentMessage(
-                    prompt,
-                    materializedInput,
-                    (file) => readPastedTextAttachment({ file }),
-                    { images: true, agentConfigs: true },
-                  )),
-                  images: agentRuntimePromptImages(materializedInput),
-                  ...(materializedInput?.agentConfigs !== undefined
-                    ? { agentConfigs: materializedInput.agentConfigs }
-                    : {}),
-                },
-              });
-            }}
+            {...chatSendPort}
           />
         );
       }}

@@ -129,22 +129,14 @@ function BlockActionSelectionHarness() {
       canUseBackgroundColor
       canClearFormat
       linkControl={<button type="button">Link</button>}
-      nodexRows={[
-        { key: "send-to-thread", label: "Send to chat", enabled: true },
-        { key: "move-to", label: "Move to", enabled: true },
-      ]}
-      sourceProjectId="project"
-      sourcePageId="page"
+      chat={{ projectId: "project", contextualTarget: null, onSend: () => undefined }}
       onSelectBlockType={() => undefined}
       onToggleStyle={() => undefined}
       onSetTextColor={() => undefined}
       onSetBackgroundColor={() => undefined}
       onClearFormat={() => undefined}
       onOpenBlockActions={() => undefined}
-      onMoveBlocksToDestination={() => undefined}
-      onSendBlocksToThread={() => undefined}
       onSelectionPresentationChange={setPresentation}
-      renderMoveToMenu={() => <div>Move destination picker</div>}
       renderSendToThreadMenu={() => <div>Chat picker</div>}
     />
   );
@@ -698,7 +690,7 @@ describe("selected Block presentation in Chromium", () => {
     }
   });
 
-  test.each(["Send to chat", "Move to"] as const)(
+  test.each(["Send to chat"] as const)(
     "keeps the %s target presented as Blocks across the menu rerender",
     async (actionLabel) => {
       const editor = BlockNoteEditor.create({
@@ -749,9 +741,7 @@ describe("selected Block presentation in Chromium", () => {
           await userEvent.click(action);
           await settleEditor();
         });
-        await view.findByText(
-          actionLabel === "Send to chat" ? "Chat picker" : "Move destination picker",
-        );
+        await view.findByText("Chat picker");
         await act(settleEditor);
 
         const firstOuter = view.container.querySelector<HTMLElement>(

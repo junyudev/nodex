@@ -260,6 +260,7 @@ const NFM_SLASH_MENU_ITEM_PRESENTATIONS = [
   { key: "mention_page", group: "Pages", label: "Mention a page" },
   { key: "embed_page", group: "Pages", label: "Embed page" },
   { key: "canvas", group: "Pages", label: "Canvas" },
+  { key: "prompt", group: "Agent", turnIntoKey: "prompt" },
   { key: "agent_config", group: "Agent", label: "Agent Config" },
 ] as const satisfies readonly NfmSlashMenuItemPresentation[];
 
@@ -720,6 +721,17 @@ export function getNfmSlashMenuCustomItems(
     },
   } satisfies NfmSuggestionItem;
 
+  const promptItem = {
+    key: "prompt",
+    title: "Prompt",
+    subtext: "Write something to send to a chat",
+    aliases: ["prompt", "ask", "send", "chat", "agent", "task"],
+    hint: null,
+    onItemClick: () => {
+      insertBlock(editor, { type: "prompt" });
+    },
+  } satisfies NfmSuggestionItem;
+
   const codeItem = {
     key: "code_block",
     title: "Code",
@@ -863,6 +875,7 @@ export function getNfmSlashMenuCustomItems(
         ]
       : []),
     calloutItem,
+    promptItem,
     codeItem,
     mermaidCodeItem,
     ...(mathBlockItem

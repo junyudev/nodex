@@ -32,7 +32,6 @@ vi.mock("@/components/board/editor/nfm-send-to-thread-menu", () => ({
   }: {
     readonly onAccept: (request: {
       readonly target: { readonly kind: "thread"; readonly threadId: string };
-      readonly mode: "send";
     }) => Promise<void> | void;
     readonly preferredTarget?: { readonly sessionId: string } | null;
   }) => (
@@ -42,7 +41,6 @@ vi.mock("@/components/board/editor/nfm-send-to-thread-menu", () => ({
       onClick={() =>
         onAccept({
           target: { kind: "thread", threadId: "thread-1" },
-          mode: "send",
         })
       }
     >

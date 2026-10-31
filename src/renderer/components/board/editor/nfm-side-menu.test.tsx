@@ -140,7 +140,6 @@ const MOVE_TO_BOARD_MAP = new Map<string, BoardSummary>([
 function renderSideMenuSurface({
   initialQuery = "",
   initialFocusedIndex = -1,
-  showMockActions = true,
   selectionTitle = "Text",
   selectedTopLevelBlockCount = 1,
   footerPrimary = "Last edited locally",
@@ -148,7 +147,6 @@ function renderSideMenuSurface({
 }: {
   initialQuery?: string;
   initialFocusedIndex?: number;
-  showMockActions?: boolean;
   selectionTitle?: string;
   selectedTopLevelBlockCount?: number;
   footerPrimary?: string | null;
@@ -173,7 +171,6 @@ function renderSideMenuSurface({
     canSendBlocks: true,
     isTableBlock: false,
     canUseTableHeaders: false,
-    showMockActions,
   });
 
   const renderSurface = () => {
@@ -272,7 +269,6 @@ function StatefulSideMenuSurface({
         canSendBlocks: true,
         isTableBlock: false,
         canUseTableHeaders: false,
-        showMockActions: true,
       }),
     [],
   );
@@ -533,31 +529,26 @@ describe("markdown side menu surface", () => {
     ).toBe(false);
   });
 
-  test("renders dialog, combobox, listbox, and disabled reference mocks in dev contexts", () => {
-    const { calls, view } = renderSideMenuSurface();
+  test("renders dialog, combobox, and listbox with only real actions", () => {
+    const { view } = renderSideMenuSurface();
 
     expect(view.getByRole("dialog", { name: "Block actions" })).not.toBeNull();
     expect(view.getByRole("combobox")).not.toBeNull();
     expect(view.getByRole("listbox")).not.toBeNull();
     expect(view.container.querySelectorAll("[data-nfm-side-menu-separator='group']").length).toBe(
-      4,
+      1,
     );
     expect(view.container.querySelectorAll("[data-nfm-side-menu-separator='footer']").length).toBe(
       1,
     );
 
-    const askAi = view.getByRole("option", { name: /Ask AI/ });
-    expect(askAi.getAttribute("aria-disabled")).toBe("true");
-    expect(askAi.textContent?.includes("Mock")).toBe(true);
-
-    fireEvent.click(askAi);
-    expect(calls.rows.length).toBe(0);
+    expect(view.queryByText("Mock")).toBe(null);
+    expect(view.queryByRole("option", { name: /Ask AI/ })).toBe(null);
   });
 
   test("renders the dynamic section title while hiding block-link rows in production", () => {
     const { view } = renderSideMenuSurface({
       selectionTitle: "Code",
-      showMockActions: false,
     });
 
     expect(view.getByText("Code")).not.toBeNull();
@@ -568,7 +559,6 @@ describe("markdown side menu surface", () => {
     const { view } = renderSideMenuSurface({
       selectionTitle: "3 blocks",
       selectedTopLevelBlockCount: 3,
-      showMockActions: false,
     });
 
     expect(view.getByText("3 blocks")).not.toBeNull();
@@ -584,15 +574,6 @@ describe("markdown side menu surface", () => {
     expect(view.container.querySelectorAll("[data-nfm-side-menu-separator='footer']").length).toBe(
       0,
     );
-  });
-
-  test("hides reference mock rows in production contexts", () => {
-    const { view } = renderSideMenuSurface({ showMockActions: false });
-
-    expect(view.queryByRole("option", { name: /Copy link to block/ }) === null).toBe(true);
-    expect(view.queryByRole("option", { name: /Ask AI/ }) === null).toBe(true);
-    expect(view.queryByText("Mock") === null).toBe(true);
-    expect(view.getByRole("option", { name: /Duplicate/ })).not.toBeNull();
   });
 
   test("filters from the search query", () => {

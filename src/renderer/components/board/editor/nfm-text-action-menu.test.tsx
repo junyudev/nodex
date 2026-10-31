@@ -3,17 +3,13 @@ import { fireEvent, waitFor } from "@testing-library/react";
 import { act, useState } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { CommandPaletteThread } from "@/lib/command-palette";
-import type { BoardSummary, DatabasePageSummary, CodexThreadSummary, Project } from "@/lib/types";
-import { plainTextToPortableRichText } from "../../../../shared/block-documents/portable-rich-text";
+import type { CodexThreadSummary } from "@/lib/types";
 import {
   TEXT_ACTION_RECENT_COLOR_STORAGE_KEY,
   writeTextActionRecentColors,
 } from "@/lib/text-action-color-recents";
 import { render, settleAsyncRender } from "@/test/dom";
 import { TestQueryProvider } from "@/test/query";
-import { NfmMoveToMenuSurface } from "./nfm-move-to-menu";
-import type { NfmMoveToDestination } from "./nfm-move-to-menu-model";
-import { NFM_SEND_TO_THREAD_MODE_STORAGE_KEY } from "./nfm-send-to-thread-mode-settings";
 import {
   NfmSendToThreadMenuSurface,
   type NfmSendToThreadMenuSurfaceProps,
@@ -22,90 +18,8 @@ import type { NfmSendToThreadRequest } from "./nfm-send-to-thread-menu-model";
 import {
   NfmTextActionMenuSurface,
   type NfmTextActionMenuSurfaceProps,
+  type TextActionChat,
 } from "./nfm-text-action-menu";
-
-const TEST_DATE = new Date("2026-01-01T00:00:00.000Z");
-
-function makeProject(id: string, name: string, icon?: string): Project {
-  return {
-    id,
-    libraryId: "library:test",
-    databaseId: "database:test:primary",
-    defaultDatabaseViewId: "view:test:primary",
-    lifecycle: "active",
-    bindingRevision: 1,
-    name,
-    description: "",
-    appearance: icon
-      ? { color: "black", marker: { kind: "emoji", emoji: icon } }
-      : { color: "black", marker: { kind: "icon", icon: "folder" } },
-    sources: [],
-    primaryWorkspaceRoot: null,
-    pinned: false,
-    pinnedOrder: null,
-    created: TEST_DATE,
-    updated: TEST_DATE,
-  };
-}
-
-function makeCard(
-  id: string,
-  title: string,
-  status: DatabasePageSummary["status"],
-  order: number,
-  pageKey: string | null = null,
-): DatabasePageSummary {
-  return {
-    id,
-    pageKey,
-    status,
-    archived: false,
-    title,
-    richTitle: plainTextToPortableRichText(title),
-    tags: [],
-    created: TEST_DATE,
-    order,
-    revision: 1,
-    descriptionPreview: "",
-    descriptionLength: 0,
-    hasDescription: false,
-  };
-}
-
-const MOVE_TO_PROJECTS = [
-  makeProject("default", "Default", "🔥"),
-  makeProject("renderer", "Renderer parity", "🧭"),
-];
-
-const MOVE_TO_BOARD_MAP = new Map<string, BoardSummary>([
-  [
-    "default",
-    {
-      columns: [
-        {
-          id: "triage",
-          name: "Triage",
-          cards: [
-            makeCard("source-card", "Source card", "triage", 0),
-            makeCard("target-card", "Target card", "triage", 1, "LAB-13"),
-          ],
-        },
-      ],
-    },
-  ],
-  [
-    "renderer",
-    {
-      columns: [
-        {
-          id: "plan",
-          name: "Plan",
-          cards: [makeCard("runtime", "Runtime polish", "plan", 0)],
-        },
-      ],
-    },
-  ],
-]);
 
 function makeSendToThreadItem(overrides: Partial<CommandPaletteThread> = {}): CommandPaletteThread {
   const threadId = overrides.threadId ?? "thread-existing";
@@ -159,7 +73,11 @@ const SEND_TO_THREAD_THREADS = [
   makeSendToThreadItem(),
 ] satisfies NfmSendToThreadMenuSurfaceProps["threadItems"];
 
-function renderTextActionMenu(props?: Partial<NfmTextActionMenuSurfaceProps>) {
+function renderTextActionMenu(
+  props?: Partial<Omit<NfmTextActionMenuSurfaceProps, "chat">> & {
+    readonly chat?: Partial<TextActionChat> | null;
+  },
+) {
   const actions = {
     blockTypes: [] as string[],
     styles: [] as string[],
@@ -168,10 +86,24 @@ function renderTextActionMenu(props?: Partial<NfmTextActionMenuSurfaceProps>) {
     clearFormat: 0,
     equations: 0,
     blockActions: 0,
-    moveDestinations: [] as NfmMoveToDestination[],
     sendRequests: [] as NfmSendToThreadRequest[],
+    composerAdds: 0,
     selectionPresentations: [] as string[],
   };
+
+  const { chat: chatOverrides, ...surfaceProps } = props ?? {};
+  const chat: TextActionChat | null =
+    chatOverrides === null
+      ? null
+      : {
+          projectId: "default",
+          projectNameById: { default: "Default" },
+          contextualTarget: null,
+          onSend: (request) => {
+            actions.sendRequests.push(request);
+          },
+          ...chatOverrides,
+        };
 
   function StatefulTextActionMenuSurface() {
     const [, setRenderedSelectionPresentation] = useState("none");
@@ -212,22 +144,7 @@ function renderTextActionMenu(props?: Partial<NfmTextActionMenuSurfaceProps>) {
             Link
           </button>
         }
-        nodexRows={[
-          {
-            key: "send-to-thread",
-            label: "Send to chat",
-            enabled: true,
-          },
-          {
-            key: "move-to",
-            label: "Move to",
-            enabled: true,
-          },
-        ]}
-        showReferenceMocks={true}
-        sourceProjectId="default"
-        sourcePageId="source-card"
-        sendToThreadProjectNameById={{ default: "Default" }}
+        chat={chat}
         onSelectBlockType={(item) => {
           actions.blockTypes.push(item.key);
         }}
@@ -249,17 +166,11 @@ function renderTextActionMenu(props?: Partial<NfmTextActionMenuSurfaceProps>) {
         onOpenBlockActions={() => {
           actions.blockActions += 1;
         }}
-        onMoveBlocksToDestination={(destination) => {
-          actions.moveDestinations.push(destination);
-        }}
-        onSendBlocksToThread={(request) => {
-          actions.sendRequests.push(request);
-        }}
-        {...props}
+        {...surfaceProps}
         onSelectionPresentationChange={(presentation) => {
           actions.selectionPresentations.push(presentation);
           setRenderedSelectionPresentation(presentation);
-          props?.onSelectionPresentationChange?.(presentation);
+          surfaceProps.onSelectionPresentationChange?.(presentation);
         }}
       />
     );
@@ -279,7 +190,6 @@ function renderTextActionMenu(props?: Partial<NfmTextActionMenuSurfaceProps>) {
 describe("markdown text action menu surface", () => {
   beforeEach(() => {
     localStorage.removeItem(TEXT_ACTION_RECENT_COLOR_STORAGE_KEY);
-    localStorage.removeItem(NFM_SEND_TO_THREAD_MODE_STORAGE_KEY);
   });
 
   async function openColorMenu(view: ReturnType<typeof renderTextActionMenu>["view"]) {
@@ -381,102 +291,66 @@ describe("markdown text action menu surface", () => {
     expect(actions.equations).toBe(1);
   });
 
-  test("opens the send-to-chat picker and submits thread and new-thread targets", async () => {
+  function preferredChat() {
     const existingThread = SEND_TO_THREAD_THREADS[0];
-    if (!existingThread) {
-      throw new Error("missing send-to-thread fixture");
-    }
+    if (!existingThread) throw new Error("missing send-to-thread fixture");
+    return {
+      kind: "thread" as const,
+      thread: makePreferredThreadFromItem(existingThread),
+      sessionId: "session-preferred",
+      meta: "This chat",
+    };
+  }
 
+  const renderPicker: NonNullable<NfmTextActionMenuSurfaceProps["renderSendToThreadMenu"]> = (
+    props,
+  ) => (
+    <NfmSendToThreadMenuSurface
+      {...props}
+      threadItems={SEND_TO_THREAD_THREADS}
+      enableThreadSearch={false}
+    />
+  );
+
+  test("sends the selection to the chat beside the Page in one step", async () => {
     const { actions, view } = renderTextActionMenu({
-      sendToThreadPreferredTarget: {
-        kind: "thread",
-        thread: makePreferredThreadFromItem(existingThread),
-        sessionId: "session-preferred",
-        meta: "This chat",
-      },
-      renderSendToThreadMenu: (props) => (
-        <NfmSendToThreadMenuSurface
-          {...props}
-          threadItems={SEND_TO_THREAD_THREADS}
-          enableThreadSearch={false}
-        />
-      ),
+      chat: { contextualTarget: preferredChat() },
+      renderSendToThreadMenu: renderPicker,
     });
 
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Send to chat" }));
-      await settleAsyncRender();
-    });
-
-    expect(Boolean(view.getByRole("dialog", { name: "Send to chat" }))).toBe(true);
-    expect(Boolean(view.getByRole("combobox", { name: "Search threads" }))).toBe(true);
-    expect(view.getByRole("button", { name: "Send" }).getAttribute("aria-pressed")).toBe("true");
-    expect(view.getByRole("button", { name: "Send & wrap" }).getAttribute("aria-pressed")).toBe(
-      "false",
-    );
-    const initialOptions = view.getAllByRole("option");
-    expect(initialOptions[0]?.textContent?.includes("Existing implementation") ?? false).toBe(true);
-    expect(initialOptions[0]?.textContent?.includes("This chat") ?? false).toBe(true);
-    expect(
-      initialOptions[initialOptions.length - 1]?.textContent?.includes("New chat") ?? false,
-    ).toBe(true);
-
-    await act(async () => {
-      fireEvent.pointerMove(view.getByRole("button", { name: "Send & wrap" }));
-      await settleAsyncRender();
-    });
-    expect(
-      view.queryAllByText(
-        "Sends the blocks, then replaces them with a collapsed toggle linking to the thread.",
-      ).length,
-    ).toBe(0);
-
-    await act(async () => {
-      const info = view.getByTestId("send-to-thread-wrap-mode-info");
-      fireEvent.pointerEnter(info, { pointerType: "mouse" });
-      fireEvent.mouseEnter(info);
-      await settleAsyncRender();
-    });
-    expect(
-      view.getAllByText(
-        "Sends the blocks, then replaces them with a collapsed toggle linking to the thread.",
-      ).length > 0,
-    ).toBe(true);
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Send & wrap" }));
-      await settleAsyncRender();
-    });
-    expect(localStorage.getItem(NFM_SEND_TO_THREAD_MODE_STORAGE_KEY)).toBe("wrap-toggle");
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("option", { name: /Existing implementation/ }));
       await settleAsyncRender();
     });
 
     await waitFor(() => {
       expect(actions.sendRequests.length).toBe(1);
     });
-    expect(actions.sendRequests[0]?.mode).toBe("wrap-toggle");
-    expect(actions.sendRequests[0]?.target.kind).toBe("thread");
-    if (actions.sendRequests[0]?.target.kind !== "thread") {
-      throw new Error("expected thread target");
-    }
-    expect(actions.sendRequests[0].target.threadId).toBe("thread-existing");
+    expect(actions.sendRequests[0]?.target).toEqual({
+      kind: "thread",
+      threadId: "thread-existing",
+      sessionId: "session-preferred",
+    });
+    expect(view.queryByRole("dialog", { name: "Send to chat" })).toBe(null);
+  });
+
+  test("chooses another chat from the picker beside Send", async () => {
+    const { actions, view } = renderTextActionMenu({
+      chat: { contextualTarget: preferredChat() },
+      renderSendToThreadMenu: renderPicker,
+    });
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Send to chat" }));
+      fireEvent.click(view.getByRole("button", { name: "Send to another chat" }));
       await settleAsyncRender();
     });
 
-    expect(view.getByRole("button", { name: "Send & wrap" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Send" }));
-      await settleAsyncRender();
-    });
-    expect(localStorage.getItem(NFM_SEND_TO_THREAD_MODE_STORAGE_KEY)).toBe("send");
+    expect(Boolean(view.getByRole("dialog", { name: "Send to chat" }))).toBe(true);
+    expect(Boolean(view.getByRole("combobox", { name: "Search chats" }))).toBe(true);
+    expect(view.queryByRole("button", { name: "Send & wrap" })).toBe(null);
+    const options = view.getAllByRole("option");
+    expect(options[0]?.textContent?.includes("This chat") ?? false).toBe(true);
+    expect(options.at(-1)?.textContent?.includes("New chat") ?? false).toBe(true);
 
     await act(async () => {
       fireEvent.click(view.getByRole("option", { name: /New chat/ }));
@@ -484,12 +358,54 @@ describe("markdown text action menu surface", () => {
     });
 
     await waitFor(() => {
-      expect(actions.sendRequests.length).toBe(2);
+      expect(actions.sendRequests.length).toBe(1);
     });
-    expect(actions.sendRequests[1]?.mode).toBe("send");
-    expect(actions.sendRequests[1]?.target.kind).toBe("new-thread");
+    expect(actions.sendRequests[0]?.target.kind).toBe("new-thread");
+    await waitFor(() => {
+      expect(view.queryByRole("dialog", { name: "Send to chat" })).toBe(null);
+    });
   });
 
+  test("opens the picker from Send when no chat is beside the Page", async () => {
+    const { actions, view } = renderTextActionMenu({ renderSendToThreadMenu: renderPicker });
+
+    expect(view.queryByRole("button", { name: "Send to another chat" })).toBe(null);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Send to chat" }));
+      await settleAsyncRender();
+    });
+
+    expect(Boolean(view.getByRole("dialog", { name: "Send to chat" }))).toBe(true);
+    expect(actions.sendRequests.length).toBe(0);
+  });
+
+  test("adds the selection to the beside chat's composer only when it has one", async () => {
+    const withComposer = renderTextActionMenu({
+      chat: {
+        contextualTarget: preferredChat(),
+        onAddToComposer: () => {
+          withComposer.actions.composerAdds += 1;
+        },
+      },
+    });
+
+    await act(async () => {
+      fireEvent.click(withComposer.view.getByRole("button", { name: "Add to composer" }));
+      await settleAsyncRender();
+    });
+    expect(withComposer.actions.composerAdds).toBe(1);
+    withComposer.view.unmount();
+
+    const withoutComposer = renderTextActionMenu();
+    expect(withoutComposer.view.queryByRole("button", { name: "Add to composer" })).toBe(null);
+  });
+
+  test("offers no chat actions when the Page cannot send", () => {
+    const { view } = renderTextActionMenu({ chat: null });
+
+    expect(view.queryByRole("button", { name: "Send to chat" })).toBe(null);
+    expect(Boolean(view.getByRole("button", { name: "Normal Text" }))).toBe(true);
+  });
   test("selected-block picker displays the current session hint and keeps New chat at the bottom", async () => {
     const existingThread = SEND_TO_THREAD_THREADS[0];
     if (!existingThread) {
@@ -668,7 +584,6 @@ describe("markdown text action menu surface", () => {
             sessionId: "session-current",
             meta: "This chat",
           }}
-          showModeSelector={false}
           onAccept={() => undefined}
           onClose={() => undefined}
         />
@@ -704,28 +619,6 @@ describe("markdown text action menu surface", () => {
     expect(options[0]?.textContent?.includes("New chat") ?? false).toBe(true);
   });
 
-  test("initializes the send-to-chat picker mode from persisted app preference", async () => {
-    localStorage.setItem(NFM_SEND_TO_THREAD_MODE_STORAGE_KEY, "wrap-toggle");
-
-    const view = render(
-      <NodexTooltipProvider>
-        <NfmSendToThreadMenuSurface
-          projectId="default"
-          threadItems={SEND_TO_THREAD_THREADS}
-          enableThreadSearch={false}
-          onAccept={() => undefined}
-          onClose={() => undefined}
-        />
-      </NodexTooltipProvider>,
-    );
-    await settleAsyncRender();
-
-    expect(view.getByRole("button", { name: "Send" }).getAttribute("aria-pressed")).toBe("false");
-    expect(view.getByRole("button", { name: "Send & wrap" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
-  });
-
   test("hands More off to block actions without opening the legacy dropdown", async () => {
     const { actions, view } = renderTextActionMenu();
 
@@ -737,82 +630,6 @@ describe("markdown text action menu surface", () => {
     expect(actions.blockActions).toBe(1);
     expect(view.queryByRole("menuitem", { name: "Block actions" }) === null).toBe(true);
     expect(view.queryByRole("menuitem", { name: "Duplicate" }) === null).toBe(true);
-  });
-
-  test("opens the shared move-to popover and submits DB and Page destinations", async () => {
-    const { actions, view } = renderTextActionMenu({
-      renderMoveToMenu: (props) => (
-        <NfmMoveToMenuSurface
-          {...props}
-          projects={MOVE_TO_PROJECTS}
-          pageBoardMap={MOVE_TO_BOARD_MAP}
-          loading={false}
-          loadError={null}
-        />
-      ),
-    });
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Move to" }));
-      await settleAsyncRender();
-    });
-
-    expect(Boolean(view.getByRole("combobox", { name: "Move blocks to" }))).toBe(true);
-    expect(Boolean(view.getByText("DB"))).toBe(true);
-    expect(Boolean(view.getByText("Page"))).toBe(true);
-    expect(view.queryByText("Move to card") === null).toBe(true);
-    expect(view.queryByText("Turn into cards") === null).toBe(true);
-    expect(view.queryByText("Source card") === null).toBe(true);
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("option", { name: "Renderer parity" }));
-      await settleAsyncRender();
-    });
-
-    await act(async () => {
-      const planRow = view
-        .getAllByRole("option", { name: "Plan" })
-        .find((row) => row.getAttribute("data-nfm-move-to-project-id") === "renderer");
-      if (!planRow) throw new Error("Renderer Plan row not found.");
-      expect(planRow.textContent).toBe("Plan");
-      fireEvent.click(planRow);
-      await settleAsyncRender();
-    });
-
-    await waitFor(() => {
-      expect(actions.moveDestinations.length).toBe(1);
-    });
-    expect(actions.moveDestinations[0]).toEqual({
-      kind: "db-column",
-      projectId: "renderer",
-      columnId: "plan",
-    });
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Move to" }));
-      await settleAsyncRender();
-    });
-
-    const targetPageRow = view.getByRole("option", { name: /Target card\s*Default/ });
-    expect(targetPageRow.textContent).toBe("Target cardDefault");
-    expect(targetPageRow.querySelector("svg")).not.toBeNull();
-    expect(targetPageRow.querySelector("[title]")).toBeNull();
-
-    await act(async () => {
-      fireEvent.click(targetPageRow);
-      await settleAsyncRender();
-    });
-
-    await waitFor(() => {
-      expect(actions.moveDestinations.length).toBe(2);
-    });
-    const cardDestination = actions.moveDestinations[1];
-    expect(cardDestination?.kind).toBe("page");
-    if (cardDestination?.kind !== "page") {
-      throw new Error("expected card destination");
-    }
-    expect(cardDestination.projectId).toBe("default");
-    expect(cardDestination.pageId).toBe("target-card");
   });
 
   test("opens the send-to-chat picker only after activation", async () => {
@@ -850,53 +667,13 @@ describe("markdown text action menu surface", () => {
         await settleAsyncRender();
       });
 
-      const searchInput = view.getByRole("combobox", { name: "Search threads" });
+      const searchInput = view.getByRole("combobox", { name: "Search chats" });
       expect(Boolean(view.getByRole("dialog", { name: "Send to chat" }))).toBe(true);
       expect(document.activeElement === sendToChatRow).toBe(true);
       expect(document.activeElement === searchInput).toBe(false);
     } finally {
       focusProbe.remove();
     }
-  });
-
-  test("opens the move-to picker only after activation", async () => {
-    const { view } = renderTextActionMenu({
-      renderMoveToMenu: (props) => (
-        <NfmMoveToMenuSurface
-          {...props}
-          projects={MOVE_TO_PROJECTS}
-          pageBoardMap={MOVE_TO_BOARD_MAP}
-          loading={false}
-          loadError={null}
-        />
-      ),
-    });
-    const moveRow = view.getByRole("button", { name: "Move to" });
-
-    await act(async () => {
-      fireEvent.pointerEnter(moveRow);
-      await settleAsyncRender();
-    });
-
-    expect(view.queryByRole("dialog", { name: "Move to" }) === null).toBe(true);
-
-    await act(async () => {
-      moveRow.focus();
-      fireEvent.focus(moveRow);
-      await settleAsyncRender();
-    });
-
-    expect(view.queryByRole("dialog", { name: "Move to" }) === null).toBe(true);
-
-    await act(async () => {
-      fireEvent.click(moveRow);
-      await settleAsyncRender();
-    });
-
-    const searchInput = view.getByRole("combobox", { name: "Move blocks to" });
-    expect(Boolean(view.getByRole("dialog", { name: "Move to" }))).toBe(true);
-    expect(document.activeElement === moveRow).toBe(true);
-    expect(document.activeElement === searchInput).toBe(false);
   });
 
   test("reports Block presentation while a Block action picker is active", async () => {
@@ -934,7 +711,7 @@ describe("markdown text action menu surface", () => {
         "blocks",
       );
 
-      const searchInput = view.getByRole("combobox", { name: "Search threads" });
+      const searchInput = view.getByRole("combobox", { name: "Search chats" });
       await act(async () => {
         searchInput.focus();
         fireEvent.focus(searchInput);
@@ -966,48 +743,6 @@ describe("markdown text action menu surface", () => {
     }
   });
 
-  test("keeps only one Nodex action popover open", async () => {
-    const { actions, view } = renderTextActionMenu({
-      renderSendToThreadMenu: (props) => (
-        <NfmSendToThreadMenuSurface
-          {...props}
-          threadItems={SEND_TO_THREAD_THREADS}
-          enableThreadSearch={false}
-        />
-      ),
-      renderMoveToMenu: (props) => (
-        <NfmMoveToMenuSurface
-          {...props}
-          projects={MOVE_TO_PROJECTS}
-          pageBoardMap={MOVE_TO_BOARD_MAP}
-          loading={false}
-          loadError={null}
-        />
-      ),
-    });
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Send to chat" }));
-      await settleAsyncRender();
-    });
-    expect(Boolean(view.getByRole("dialog", { name: "Send to chat" }))).toBe(true);
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Move to" }));
-      await settleAsyncRender();
-    });
-
-    expect(view.queryByRole("dialog", { name: "Send to chat" }) === null).toBe(true);
-    expect(Boolean(view.getByRole("dialog", { name: "Move to" }))).toBe(true);
-
-    const firstActiveIndex = actions.selectionPresentations.indexOf("blocks");
-    const inactiveAfterFirstActive = actions.selectionPresentations
-      .slice(firstActiveIndex + 1)
-      .some((presentation) => presentation === "none");
-    expect(firstActiveIndex >= 0).toBe(true);
-    expect(inactiveAfterFirstActive).toBe(false);
-  });
-
   test("shows hover tooltips for icon-only formatting buttons", async () => {
     const { view } = renderTextActionMenu();
 
@@ -1019,80 +754,6 @@ describe("markdown text action menu surface", () => {
     });
 
     expect(view.getAllByText("Italic").length > 0).toBe(true);
-  });
-
-  test("does not show action or skill row tooltips when labels are fully visible", async () => {
-    const { view } = renderTextActionMenu();
-    const actionRow = view.getByRole("button", { name: "Send to chat" });
-    const skillRow = view.getByRole("button", { name: /Improve writing\s*Mock/ });
-
-    await act(async () => {
-      fireEvent.pointerEnter(actionRow);
-      fireEvent.pointerEnter(skillRow);
-      await settleAsyncRender();
-    });
-
-    expect(view.getAllByText("Send to chat").length).toBe(1);
-    expect(view.getAllByText("Improve writing").length).toBe(1);
-  });
-
-  test("shows the action pane fade only while content remains below the viewport", async () => {
-    const { view } = renderTextActionMenu({ showReferenceMocks: false });
-    const viewport = view.getByTestId("nfm-text-action-ai-scroll");
-
-    expect(view.queryByTestId("nfm-text-action-ai-scroll-mask")).toBe(null);
-
-    Object.defineProperties(viewport, {
-      clientHeight: { configurable: true, value: 134 },
-      scrollHeight: { configurable: true, value: 220 },
-      scrollTop: { configurable: true, writable: true, value: 0 },
-    });
-
-    await act(async () => {
-      fireEvent.scroll(viewport);
-      await settleAsyncRender();
-    });
-
-    expect(view.getByTestId("nfm-text-action-ai-scroll-mask")).not.toBe(null);
-
-    viewport.scrollTop = 86;
-    await act(async () => {
-      fireEvent.scroll(viewport);
-      await settleAsyncRender();
-    });
-
-    expect(view.queryByTestId("nfm-text-action-ai-scroll-mask")).toBe(null);
-  });
-
-  test("shows action row tooltips only when labels overflow", async () => {
-    const longLabel = "Move selected blocks into another card";
-    const { view } = renderTextActionMenu({
-      nodexRows: [
-        {
-          key: "move-to",
-          label: longLabel,
-          enabled: true,
-        },
-      ],
-    });
-    const label = view.getByText(longLabel);
-    const actionRow = view.getByRole("button", { name: longLabel });
-
-    Object.defineProperty(label, "clientWidth", {
-      configurable: true,
-      value: 80,
-    });
-    Object.defineProperty(label, "scrollWidth", {
-      configurable: true,
-      value: 240,
-    });
-
-    await act(async () => {
-      fireEvent.pointerEnter(actionRow);
-      await settleAsyncRender();
-    });
-
-    expect(view.getAllByText(longLabel).length > 1).toBe(true);
   });
 
   test("renders the color trigger as a DOM A over the selected background", () => {

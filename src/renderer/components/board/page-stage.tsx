@@ -82,6 +82,7 @@ interface PageStageDescriptionEditorProps {
   readonly sessionThread: PageStageProps["sessionThread"];
   readonly canStartThreadInSession: PageStageProps["canStartThreadInSession"];
   readonly sessionTitle?: PageStageProps["sessionTitle"];
+  readonly chatProjectId?: PageStageProps["chatProjectId"];
   readonly onOpenCodexThread: PageStageProps["onOpenCodexThread"];
   readonly onOpenSession: PageStageProps["onOpenRelatedChat"];
   readonly onOpenPage: PageStageProps["onOpenPage"];
@@ -89,6 +90,7 @@ interface PageStageDescriptionEditorProps {
   readonly onOpenCanvas: PageStageProps["onOpenCanvas"];
   readonly onStartNewSessionThreadFromEditor: PageStageProps["onStartNewSessionThreadFromEditor"];
   readonly onSendPagePrompt: PageStageProps["onSendPagePrompt"];
+  readonly onAddPromptToChatComposer: PageStageProps["onAddPromptToChatComposer"];
   readonly isActivePanelTab: boolean;
   readonly headingRailPortalElement: HTMLElement | null;
   readonly scrollContainerRef: RefObject<HTMLDivElement | null>;
@@ -129,6 +131,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   sessionThread,
   canStartThreadInSession,
   sessionTitle,
+  chatProjectId,
   onOpenCodexThread,
   onOpenSession,
   onOpenPage,
@@ -136,6 +139,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   onOpenCanvas,
   onStartNewSessionThreadFromEditor,
   onSendPagePrompt,
+  onAddPromptToChatComposer,
   isActivePanelTab,
   headingRailPortalElement,
   scrollContainerRef,
@@ -259,6 +263,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
       sessionThread={sessionThread}
       canStartThreadInSession={canStartThreadInSession}
       sessionTitle={sessionTitle}
+      chatProjectId={chatProjectId}
       onOpenCodexThread={onOpenCodexThread}
       onOpenSession={onOpenSession}
       onOpenPage={onOpenPage}
@@ -266,6 +271,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
       onOpenCanvas={onOpenCanvas}
       onStartNewSessionThreadFromEditor={onStartNewSessionThreadFromEditor}
       onSendPagePrompt={onSendPagePrompt}
+      onAddPromptToChatComposer={onAddPromptToChatComposer}
       isActivePanelTab={isActivePanelTab}
       headingRail={{
         portalElement: headingRailPortalElement,
@@ -420,6 +426,7 @@ export function PageStage(props: PageStageProps) {
           sessionThread={props.sessionThread}
           canStartThreadInSession={props.canStartThreadInSession}
           sessionTitle={props.sessionTitle}
+          chatProjectId={props.chatProjectId}
           onOpenCodexThread={props.onOpenCodexThread}
           onOpenSession={props.onOpenRelatedChat}
           onOpenPage={props.onOpenPage}
@@ -427,6 +434,7 @@ export function PageStage(props: PageStageProps) {
           onOpenCanvas={props.onOpenCanvas}
           onStartNewSessionThreadFromEditor={props.onStartNewSessionThreadFromEditor}
           onSendPagePrompt={props.onSendPagePrompt}
+          onAddPromptToChatComposer={props.onAddPromptToChatComposer}
           isActivePanelTab={props.isActivePanelTab ?? true}
           headingRailPortalElement={headingRailPortalElement}
           scrollContainerRef={scrollContainerRef}

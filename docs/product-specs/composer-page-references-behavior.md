@@ -7,7 +7,8 @@ their selected Block identities are combined without duplicates.
 
 A reference shows the live Page title and the number of selected Blocks. Only a non-empty editor
 selection contributes Block identities; a caret contributes none. Focusing the Composer preserves
-the Page's logical selection. Removing a reference excludes that Page for this draft, including
+the Page's logical selection until Send to chat or Add to composer hands those Blocks to a chat,
+which releases it. Removing a reference excludes that Page for this draft, including
 later title, selection and visibility changes. The exclusion survives Composer remount and failed
 send attempts and resets after successful submission.
 

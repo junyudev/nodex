@@ -63,3 +63,19 @@ test("focus leaving the Page retains selection; a focused caret explicitly clear
   expect(notify).toHaveBeenCalledTimes(1);
   release();
 });
+
+test("a selection handed to a chat is released even after focus leaves the Page", () => {
+  let ids: readonly string[] = ["a"];
+  const source = createPageEditorSelectionObservation({ read: () => ids, focused: () => false });
+  const notify = vi.fn();
+  const unsubscribe = source.subscribeSelection(notify);
+  // The Composer took focus, so the collapsed caret alone would keep the old selection.
+  ids = [];
+  source.update();
+  expect(source.readSelection()).toEqual(["a"]);
+  source.release();
+  expect(source.readSelection()).toEqual([]);
+  source.release();
+  expect(notify).toHaveBeenCalledTimes(1);
+  unsubscribe();
+});

@@ -96,15 +96,17 @@ export function getNfmEditorInstanceKey(input: {
   ].join(":");
 }
 
+/** Moves stay inside the Page's Project; sends go through the beside chat's Project when set. */
 export function resolveNfmEditorBlockActionCapabilities(
   hasSourcePageContext: boolean,
   executionProjectId: string | null,
+  chatSendProjectId: string | null = executionProjectId,
 ): {
   readonly canMoveBlocks: boolean;
   readonly canSendBlocksToThread: boolean;
 } {
   return {
     canMoveBlocks: hasSourcePageContext && executionProjectId !== null,
-    canSendBlocksToThread: hasSourcePageContext && executionProjectId !== null,
+    canSendBlocksToThread: hasSourcePageContext && chatSendProjectId !== null,
   };
 }

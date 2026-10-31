@@ -1,13 +1,10 @@
+import {
+  NFM_ADD_TO_COMPOSER_SHORTCUT_LABEL,
+  NFM_SEND_TO_CHAT_SHORTCUT_LABEL,
+} from "./nfm-chat-send-shortcuts";
+
 export type NfmSideMenuActionKind = "action" | "submenu";
-export type NfmSideMenuVisualGroup =
-  | "code"
-  | "block-shape"
-  | "block-move"
-  | "collaboration"
-  | "presentation"
-  | "ai"
-  | "nodex"
-  | "table";
+export type NfmSideMenuVisualGroup = "code" | "block-shape" | "block-move" | "table";
 
 export type NfmSideMenuActionKey =
   | "copy-code"
@@ -18,21 +15,13 @@ export type NfmSideMenuActionKey =
   | "download-diagram"
   | "turn-into"
   | "color"
-  | "copy-link-to-block"
   | "duplicate"
   | "send-to-thread"
+  | "add-to-composer"
   | "move-to"
   | "delete"
-  | "comment"
-  | "suggest-edits"
-  | "present-from-here"
-  | "ask-ai"
   | "table-header-row"
-  | "table-header-column"
-  | "table-fit-width"
-  | "table-row-color"
-  | "table-column-color"
-  | "table-create-cards-from-rows";
+  | "table-header-column";
 
 export type NfmSideMenuSubmenuKey =
   | "language"
@@ -48,10 +37,10 @@ export interface NfmSideMenuAction {
   section: "selection" | "nodex" | "table";
   visualGroup: NfmSideMenuVisualGroup;
   enabled: boolean;
-  mockReason?: string;
   shortcut?: string;
-  badge?: string;
   submenu?: NfmSideMenuSubmenuKey;
+  /** Activating the row runs its own action; its submenu offers the alternatives on hover. */
+  submenuIsSecondary?: boolean;
   checked?: boolean;
   keywords?: readonly string[];
 }
@@ -77,9 +66,11 @@ export interface NfmSideMenuModelInput {
   canUseColor: boolean;
   canSendBlocks: boolean;
   canSendToThread?: boolean;
+  /** The Page is shown beside a chat, so Send needs no picker. */
+  hasContextualSendTarget?: boolean;
+  canAddToComposer?: boolean;
   isTableBlock: boolean;
   canUseTableHeaders: boolean;
-  showMockActions: boolean;
   codeBlock?: {
     wrapped: boolean;
     canFormat: boolean;
@@ -93,108 +84,65 @@ export interface NfmSideMenuFlatRow {
   row: NfmSideMenuAction;
 }
 
-const SIDE_MENU_MOCK_REASON = "Mock UI only. Not available in Nodex yet.";
-const REFERENCE_MOCK_ACTION_KEYS = new Set<NfmSideMenuActionKey>([
-  "copy-link-to-block",
-  "comment",
-  "suggest-edits",
-  "present-from-here",
-  "ask-ai",
-]);
-
-const REFERENCE_ACTIONS: readonly Omit<NfmSideMenuAction, "section" | "enabled" | "mockReason">[] =
-  [
-    {
-      key: "turn-into",
-      label: "Turn into",
-      kind: "submenu",
-      visualGroup: "block-shape",
-      submenu: "turn-into",
-      keywords: ["convert", "type", "block"],
-    },
-    {
-      key: "color",
-      label: "Color",
-      kind: "submenu",
-      visualGroup: "block-shape",
-      submenu: "color",
-      keywords: ["colour", "background", "text"],
-    },
-    {
-      key: "copy-link-to-block",
-      label: "Copy link to block",
-      kind: "action",
-      visualGroup: "block-move",
-      shortcut: "⌘⌃L",
-      keywords: ["url", "anchor"],
-    },
-    {
-      key: "duplicate",
-      label: "Duplicate",
-      kind: "action",
-      visualGroup: "block-move",
-      shortcut: "⌘D",
-      keywords: ["copy"],
-    },
-    {
-      key: "send-to-thread",
-      label: "Send to chat",
-      kind: "submenu",
-      submenu: "send-to-thread",
-      visualGroup: "block-move",
-      keywords: ["send", "chat", "thread", "agent"],
-    },
-    {
-      key: "move-to",
-      label: "Move to",
-      kind: "submenu",
-      visualGroup: "block-move",
-      submenu: "move-to",
-      shortcut: "⌘⇧P",
-      keywords: ["relocate", "page", "page", "database", "db", "nodex"],
-    },
-    {
-      key: "delete",
-      label: "Delete",
-      kind: "action",
-      visualGroup: "block-move",
-      shortcut: "Del",
-      keywords: ["remove", "trash"],
-    },
-    {
-      key: "comment",
-      label: "Comment",
-      kind: "action",
-      visualGroup: "collaboration",
-      shortcut: "⌘⇧M",
-      keywords: ["note"],
-    },
-    {
-      key: "suggest-edits",
-      label: "Suggest edits",
-      kind: "action",
-      visualGroup: "collaboration",
-      shortcut: "⌘⇧⌥X",
-      keywords: ["review", "proposal"],
-    },
-    {
-      key: "present-from-here",
-      label: "Present from here",
-      kind: "action",
-      visualGroup: "presentation",
-      shortcut: "⌘⌥P",
-      badge: "Beta",
-      keywords: ["presentation", "play"],
-    },
-    {
-      key: "ask-ai",
-      label: "Ask AI",
-      kind: "action",
-      visualGroup: "ai",
-      shortcut: "⌘J",
-      keywords: ["assistant", "codex"],
-    },
-  ] as const;
+const REFERENCE_ACTIONS: readonly Omit<NfmSideMenuAction, "section" | "enabled">[] = [
+  {
+    key: "turn-into",
+    label: "Turn into",
+    kind: "submenu",
+    visualGroup: "block-shape",
+    submenu: "turn-into",
+    keywords: ["convert", "type", "block"],
+  },
+  {
+    key: "color",
+    label: "Color",
+    kind: "submenu",
+    visualGroup: "block-shape",
+    submenu: "color",
+    keywords: ["colour", "background", "text"],
+  },
+  {
+    key: "duplicate",
+    label: "Duplicate",
+    kind: "action",
+    visualGroup: "block-move",
+    shortcut: "⌘D",
+    keywords: ["copy"],
+  },
+  {
+    key: "send-to-thread",
+    label: "Send to chat",
+    kind: "submenu",
+    submenu: "send-to-thread",
+    visualGroup: "block-move",
+    keywords: ["send", "chat", "thread", "agent"],
+  },
+  {
+    key: "add-to-composer",
+    label: "Add to composer",
+    kind: "action",
+    visualGroup: "block-move",
+    shortcut: NFM_ADD_TO_COMPOSER_SHORTCUT_LABEL,
+    keywords: ["chat", "draft", "prompt", "quote", "insert"],
+  },
+  {
+    key: "move-to",
+    label: "Move to",
+    kind: "submenu",
+    visualGroup: "block-move",
+    submenu: "move-to",
+    shortcut: "⌘⇧P",
+    keywords: ["relocate", "page", "page", "database", "db", "nodex"],
+  },
+  {
+    key: "delete",
+    label: "Delete",
+    kind: "action",
+    visualGroup: "block-move",
+    shortcut: "Del",
+    keywords: ["remove", "trash"],
+  },
+] as const;
 
 function toNumberProp(props: Record<string, unknown> | undefined, key: string) {
   const value = props?.[key];
@@ -224,6 +172,7 @@ function resolveSingleBlockScopeTitle(block: NfmSideMenuTargetBlockDescriptor) {
   if (block.type === "divider") return "Divider";
   if (block.type === "image") return "Image";
   if (block.type === "callout") return "Callout";
+  if (block.type === "prompt") return "Prompt";
   if (block.type === "table") return "Table";
   if (block.type === "pageRef") return "Page reference";
   return "Block";
@@ -246,6 +195,7 @@ function enabledForReferenceAction(
   if (action.key === "color") return input.canUseColor;
   if (action.key === "duplicate") return true;
   if (action.key === "send-to-thread") return Boolean(input.canSendToThread);
+  if (action.key === "add-to-composer") return Boolean(input.canAddToComposer);
   if (action.key === "move-to") return input.canSendBlocks;
   if (action.key === "delete") return true;
 
@@ -328,21 +278,18 @@ export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideM
   const referenceRows = REFERENCE_ACTIONS.flatMap((action) => {
     if (action.key === "send-to-thread" && (!input.currentBlockId || !input.canSendToThread))
       return [];
-    const isMockAction = REFERENCE_MOCK_ACTION_KEYS.has(action.key);
-    if (isMockAction && !input.showMockActions) return [];
+    if (action.key === "add-to-composer" && (!input.currentBlockId || !input.canAddToComposer))
+      return [];
 
-    const enabled = enabledForReferenceAction(action, input);
-    const label =
-      action.key === "copy-link-to-block" && input.selectedTopLevelBlockCount > 1
-        ? "Copy links to all"
-        : action.label;
+    const contextualSend = action.key === "send-to-thread" && input.hasContextualSendTarget;
     return [
       {
         ...action,
-        label,
         section: "selection" as const,
-        enabled: isMockAction ? false : enabled,
-        mockReason: isMockAction ? SIDE_MENU_MOCK_REASON : undefined,
+        enabled: enabledForReferenceAction(action, input),
+        ...(contextualSend
+          ? { shortcut: NFM_SEND_TO_CHAT_SHORTCUT_LABEL, submenuIsSecondary: true }
+          : {}),
       },
     ];
   });
@@ -371,51 +318,6 @@ export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideM
             enabled: input.isEditable,
             keywords: ["table"],
           },
-          ...(input.showMockActions
-            ? ([
-                {
-                  key: "table-fit-width",
-                  label: "Fit table width",
-                  kind: "action",
-                  section: "table",
-                  visualGroup: "table",
-                  enabled: false,
-                  mockReason: SIDE_MENU_MOCK_REASON,
-                  keywords: ["resize", "fit", "page"],
-                },
-                {
-                  key: "table-row-color",
-                  label: "Row color",
-                  kind: "action",
-                  section: "table",
-                  visualGroup: "table",
-                  enabled: false,
-                  mockReason: SIDE_MENU_MOCK_REASON,
-                  keywords: ["table", "row", "background"],
-                },
-                {
-                  key: "table-column-color",
-                  label: "Column color",
-                  kind: "action",
-                  section: "table",
-                  visualGroup: "table",
-                  enabled: false,
-                  mockReason: SIDE_MENU_MOCK_REASON,
-                  keywords: ["table", "column", "background"],
-                },
-                {
-                  key: "table-create-cards-from-rows",
-                  label: "Create cards from rows",
-                  kind: "action",
-                  section: "table",
-                  visualGroup: "nodex",
-                  enabled: false,
-                  mockReason: SIDE_MENU_MOCK_REASON,
-                  badge: "Nodex",
-                  keywords: ["table", "cards", "rows", "nodex"],
-                },
-              ] satisfies NfmSideMenuAction[])
-            : []),
         ]
       : [];
 
@@ -436,7 +338,7 @@ function rowMatchesQuery(row: NfmSideMenuAction, query: string) {
   if (!normalizedQuery) return true;
 
   const haystack = normalizeQueryPart(
-    [row.label, row.shortcut ?? "", row.badge ?? "", ...(row.keywords ?? [])].join(" "),
+    [row.label, row.shortcut ?? "", ...(row.keywords ?? [])].join(" "),
   );
 
   return haystack.includes(normalizedQuery);

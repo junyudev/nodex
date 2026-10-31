@@ -594,8 +594,10 @@ function mergePersistedMentionPrompt(prompt: string, mentionPrompt: string): str
 function appendPersistedPromptDocument(prompt: string, documentPrompt: string): string {
   if (!documentPrompt) return prompt;
   if (!prompt) return documentPrompt;
-  const separator = /\s$/u.test(prompt) || /^\s/u.test(documentPrompt) ? "" : " ";
-  return `${prompt}${separator}${documentPrompt}`;
+  if (/^\s/u.test(documentPrompt)) return `${prompt}${documentPrompt}`;
+  // Multi-line content is a block of its own; inline mentions continue the sentence.
+  if (documentPrompt.includes("\n")) return `${prompt.trimEnd()}\n\n${documentPrompt}`;
+  return /\s$/u.test(prompt) ? `${prompt}${documentPrompt}` : `${prompt} ${documentPrompt}`;
 }
 
 function removePersistedMentionPrompt(prompt: string): string {

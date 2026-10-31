@@ -420,6 +420,7 @@ describe("NfmSlashMenu", () => {
       "Mention a page",
       "Embed page",
       "Canvas",
+      "Prompt",
       "Agent Config",
     ]);
     expect(

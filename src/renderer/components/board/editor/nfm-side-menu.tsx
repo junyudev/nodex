@@ -41,26 +41,21 @@ import {
   DownloadIcon,
   DragHandleDotsIcon,
   ExpandPanelIcon,
-  AskAiIcon,
   NfmSideMenuChevronRightIcon,
   NfmSideMenuColorIcon,
   NfmSideMenuCommentIcon,
-  NfmSideMenuCopyLinkIcon,
   NfmSideMenuDeleteIcon,
   NfmSideMenuDuplicateIcon,
   MoveToIcon,
   NfmSideMenuPageInIcon,
-  NfmSideMenuPlayIcon,
-  NfmSideMenuSuggestEditsIcon,
   NfmSideMenuTableHeaderIcon,
   NfmSideMenuTurnIntoIcon,
   PlusIcon,
   EnableWordWrapIcon,
 } from "@/components/shared/icons";
-import { WandSparkles } from "@/components/shared/icons/generic-icons";
+import { MessageCirclePlusIcon, WandSparkles } from "@/components/shared/icons/generic-icons";
 import { NodexPopover, NodexPopoverAnchor } from "@/components/ui/popover";
 import { toast } from "@/components/ui/toast";
-import { NodexTooltip } from "@/components/ui/tooltip";
 import { claimEditorSelectionSurface } from "@/lib/editor-selection-presentation";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { canFormatCodeLanguage, getCodeBlockPlainText } from "@/lib/editor-model/code-block-model";
@@ -80,9 +75,11 @@ import { NfmStructuredClipboardExtension, type NfmClipboardCommand } from "./nfm
 import { NfmFloatingPopover, type NfmPopoverReference } from "./nfm-floating-popover";
 import { createNfmEditorFloatingMiddleware } from "./nfm-blocknote-floating-ui";
 import { NfmSendToThreadMenu } from "./nfm-send-to-thread-menu";
-import type {
-  NfmSendToThreadPreferredTarget,
-  NfmSendToThreadRequest,
+import { reportNfmChatSendFailure } from "./nfm-chat-send-feedback";
+import {
+  resolveNfmSendToThreadPreferredDestination,
+  type NfmSendToThreadPreferredTarget,
+  type NfmSendToThreadRequest,
 } from "./nfm-send-to-thread-menu-model";
 import { NfmMoveToMenu } from "./nfm-move-to-menu";
 import { NfmTurnIntoBlockIcon, type NfmTurnIntoBlockKey } from "./nfm-turn-into-block-icon";
@@ -179,6 +176,8 @@ interface NfmSideMenuOpenState {
   returnFocusElement: HTMLElement | null;
   outsidePressIgnoreElement: HTMLElement | null;
   selectionIntent: SideMenuSelectionIntent;
+  /** A submenu to show as the menu opens, for shortcuts that land on one action. */
+  initialSubmenu?: NfmSideMenuSubmenuKey;
 }
 
 export type NfmSideMenuCloseReason =
@@ -195,12 +194,14 @@ interface NfmSideMenuOpenBlockInput {
   outsidePressIgnoreElement?: HTMLElement | null;
   selectionIntent?: SideMenuSelectionIntent | null;
   freezeSideMenu?: boolean;
+  initialSubmenu?: NfmSideMenuSubmenuKey;
 }
 
 interface NfmSideMenuOpenSelectionInput {
   anchorRect?: NfmSideMenuRect | null;
   returnFocusElement?: HTMLElement | null;
   outsidePressIgnoreElement?: HTMLElement | null;
+  initialSubmenu?: NfmSideMenuSubmenuKey;
 }
 
 interface NfmSideMenuOpenController {
@@ -256,6 +257,7 @@ interface NfmSideMenuSurfaceProps {
   canUseBackgroundColor: boolean;
   canSendBlocks: boolean;
   sendToThreadProjectNameById?: Record<string, string>;
+  sendToThreadProjectId?: string | null;
   sendToThreadPreferredTarget?: NfmSendToThreadPreferredTarget | null;
   onSendBlocksToThread?: (request: NfmSendToThreadRequest) => Promise<void> | void;
   sourceProjectId: string | null;
@@ -591,15 +593,11 @@ function getActionIcon(key: NfmSideMenuActionKey) {
   if (key === "format-code") return <WandSparkles className="size-4" />;
   if (key === "turn-into") return <NfmSideMenuTurnIntoIcon />;
   if (key === "color") return <NfmSideMenuColorIcon />;
-  if (key === "copy-link-to-block") return <NfmSideMenuCopyLinkIcon />;
   if (key === "duplicate") return <NfmSideMenuDuplicateIcon />;
   if (key === "send-to-thread") return <NfmSideMenuCommentIcon />;
+  if (key === "add-to-composer") return <MessageCirclePlusIcon className="size-4" />;
   if (key === "move-to") return <MoveToIcon />;
   if (key === "delete") return <NfmSideMenuDeleteIcon />;
-  if (key === "comment") return <NfmSideMenuCommentIcon />;
-  if (key === "suggest-edits") return <NfmSideMenuSuggestEditsIcon />;
-  if (key === "present-from-here") return <NfmSideMenuPlayIcon />;
-  if (key === "ask-ai") return <AskAiIcon className="size-5 shrink-0" />;
   return <NfmSideMenuTableHeaderIcon />;
 }
 
@@ -765,7 +763,7 @@ function NfmSideMenuRow({
       onClick={(event) => {
         event.stopPropagation();
         if (!row.enabled) return;
-        if (row.kind === "submenu" && row.submenu) {
+        if (row.kind === "submenu" && row.submenu && !row.submenuIsSecondary) {
           onSubmenuChange(row.submenu);
         }
         onAction(row);
@@ -775,18 +773,6 @@ function NfmSideMenuRow({
         {getActionIcon(row.key)}
       </span>
       <span className="min-w-0 flex-1 truncate text-left">{row.label}</span>
-      {row.mockReason ? (
-        <NodexTooltip tooltipContent={row.mockReason}>
-          <span className="shrink-0 rounded-[4px] bg-token-foreground/5 px-1 text-[10px] font-medium uppercase leading-4 text-token-description-foreground">
-            Mock
-          </span>
-        </NodexTooltip>
-      ) : null}
-      {row.badge ? (
-        <span className="shrink-0 rounded-[4px] bg-token-foreground/5 px-1 text-[11px] leading-4 text-token-description-foreground">
-          {row.badge}
-        </span>
-      ) : null}
       {row.shortcut ? (
         <span className="shrink-0 text-xs leading-4 text-token-description-foreground">
           {row.shortcut}
@@ -1236,6 +1222,7 @@ export function NfmSideMenuSurface({
   onMoveBlocksToDestination,
   renderMoveToMenu,
   sendToThreadProjectNameById,
+  sendToThreadProjectId,
   sendToThreadPreferredTarget,
   onSendBlocksToThread,
 }: NfmSideMenuSurfaceProps) {
@@ -1282,7 +1269,8 @@ export function NfmSideMenuSurface({
       if (!onSendBlocksToThread) return null;
       return (
         <NfmSendToThreadMenu
-          projectId={sourceProjectId}
+          projectId={sendToThreadProjectId ?? sourceProjectId}
+          sourcePageId={sourcePageId}
           projectNameById={sendToThreadProjectNameById}
           preferredTarget={sendToThreadPreferredTarget}
           onAccept={onSendBlocksToThread}
@@ -1509,9 +1497,10 @@ function NfmSideMenuPopup({
         canUseColor: colorSupport.text || colorSupport.background,
         canSendBlocks: runtimeSnapshot.canSendBlocks,
         canSendToThread: runtimeSnapshot.canSendToThread,
+        hasContextualSendTarget: Boolean(runtimeSnapshot.sendToThreadPreferredTarget),
+        canAddToComposer: Boolean(runtimeSnapshot.onAddBlocksToComposer),
         isTableBlock: selectedTopLevelBlock?.type === "table",
         canUseTableHeaders: editor.settings?.tables?.headers === true,
-        showMockActions: import.meta.env.DEV,
         codeBlock: isSingleCodeBlock
           ? {
               wrapped: codeWrapped,
@@ -1534,6 +1523,8 @@ function NfmSideMenuPopup({
       isSingleCodeBlock,
       runtimeSnapshot.canSendBlocks,
       runtimeSnapshot.canSendToThread,
+      runtimeSnapshot.sendToThreadPreferredTarget,
+      runtimeSnapshot.onAddBlocksToComposer,
       selectionTitle,
       topLevelSelectedBlocks.length,
     ],
@@ -1688,6 +1679,28 @@ function NfmSideMenuPopup({
         return;
       }
 
+      if (key === "send-to-thread" || key === "add-to-composer") {
+        const blockIds = selectedBlocks.flatMap((candidate) =>
+          typeof candidate.id === "string" ? [candidate.id] : [],
+        );
+        const preferredTarget = runtimeSnapshot.sendToThreadPreferredTarget;
+        const run =
+          key === "add-to-composer"
+            ? runtimeSnapshot.onAddBlocksToComposer?.(blockIds)
+            : preferredTarget
+              ? runtimeSnapshot.onSendBlocksToThread?.(
+                  { target: resolveNfmSendToThreadPreferredDestination(preferredTarget) },
+                  blockIds,
+                )
+              : undefined;
+        if (!run) return;
+        close("action");
+        void Promise.resolve(run).catch((error: unknown) =>
+          reportNfmChatSendFailure(key === "add-to-composer" ? "add-to-composer" : "send", error),
+        );
+        return;
+      }
+
       if (key === "copy-code") {
         void writeTextToClipboard(getCodeBlockPlainText(selectedTopLevelBlock ?? block)).then(
           (copied) => {
@@ -1809,7 +1822,7 @@ function NfmSideMenuPopup({
   const activateRow = useCallback(
     (row: NfmSideMenuAction) => {
       if (!row.enabled) return;
-      if (row.kind === "submenu" && row.submenu) {
+      if (row.kind === "submenu" && row.submenu && !row.submenuIsSecondary) {
         setActiveSubmenu(row.submenu);
         return;
       }
@@ -1828,6 +1841,18 @@ function NfmSideMenuPopup({
     setFocusedIndex(getInitialNfmSideMenuFocusIndex(query, flatRows));
     setActiveSubmenu(null);
   }, [flatRows, query]);
+
+  // An opening that names a submenu shows it once; later row or query changes own it again.
+  const appliedInitialSubmenuRef = useRef<NfmSideMenuOpenState | null>(null);
+  useEffect(() => {
+    const initialSubmenu = openState?.initialSubmenu;
+    if (!openState || !initialSubmenu || appliedInitialSubmenuRef.current === openState) return;
+    const index = flatRows.findIndex(({ row }) => row.submenu === initialSubmenu && row.enabled);
+    if (index < 0) return;
+    appliedInitialSubmenuRef.current = openState;
+    setFocusedIndex(index);
+    setActiveSubmenu(initialSubmenu);
+  }, [flatRows, openState]);
 
   useEffect(() => {
     if (!openState || !visible) return;
@@ -1977,6 +2002,7 @@ function NfmSideMenuPopup({
         canUseBackgroundColor={colorSupport.background}
         canSendBlocks={runtimeSnapshot.canSendBlocks}
         sendToThreadProjectNameById={runtimeSnapshot.sendToThreadProjectNameById}
+        sendToThreadProjectId={runtimeSnapshot.sendToThreadProjectId ?? null}
         sendToThreadPreferredTarget={runtimeSnapshot.sendToThreadPreferredTarget}
         onSendBlocksToThread={async (request) => {
           const blockIds = getSideMenuActionBlocks(openState, block)
@@ -2129,6 +2155,7 @@ export function NfmSideMenuOpenProvider({ children }: { children: ReactNode }) {
       outsidePressIgnoreElement = null,
       selectionIntent,
       freezeSideMenu = false,
+      initialSubmenu,
     }: NfmSideMenuOpenBlockInput) => {
       const resolvedSelectionIntent =
         selectionIntent ?? createSideMenuSelectionIntent(editor, block);
@@ -2149,6 +2176,7 @@ export function NfmSideMenuOpenProvider({ children }: { children: ReactNode }) {
         returnFocusElement,
         outsidePressIgnoreElement,
         selectionIntent: resolvedSelectionIntent,
+        ...(initialSubmenu ? { initialSubmenu } : {}),
       });
       return true;
     },
@@ -2173,6 +2201,7 @@ export function NfmSideMenuOpenProvider({ children }: { children: ReactNode }) {
         reference,
         returnFocusElement: input.returnFocusElement ?? editorRoot,
         outsidePressIgnoreElement: input.outsidePressIgnoreElement ?? null,
+        ...(input.initialSubmenu ? { initialSubmenu: input.initialSubmenu } : {}),
       });
     },
     [editor, openForBlock],

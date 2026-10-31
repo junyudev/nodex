@@ -1,13 +1,11 @@
 # Page Editor Block Side Menu Behavior
 
 Status: Active
-Last updated: 2026-10-01
+Last updated: 2026-10-31
 
 ## Purpose
 
-The Page editor block side menu is the block-scoped action surface for Card Stage descriptions. It opens from the editor side handle and keyboard block-action path, advertises the current block scope, and runs only actions that are real in production.
-
-Development builds may show disabled reference rows for future block links, collaboration, presentation, and AI actions. Production must not show unavailable actions.
+The Page editor block side menu is the block-scoped action surface for Card Stage descriptions. It opens from the editor side handle and keyboard block-action path, advertises the current block scope, and runs only working actions in every build.
 
 ## Scope Title
 
@@ -34,6 +32,7 @@ Single-block labels:
 | `divider`                           | `Divider`              |
 | `image`                             | `Image`                |
 | `callout`                           | `Callout`              |
+| `prompt`                            | `Prompt`               |
 | `table`                             | `Table`                |
 | `pageRef`                           | `Page reference`       |
 | unknown or unsupported              | `Block`                |
@@ -45,23 +44,23 @@ Production row order for a normal editable block is:
 1. `Turn into`
 2. `Color`
 3. `Duplicate`
-4. `Send to chat`, when the Page has an execution Project
-5. `Move to`
-6. `Delete`
+4. `Send to chat`, when the Page can reach a chat
+5. `Add to composer`, when the Page is shown beside a chat
+6. `Move to`
+7. `Delete`
 
-`Send to chat` belongs to the same action group as `Duplicate`, `Move to`, and
-`Delete`, immediately above `Move to`; it does not create a separate section.
-
-`Copy link to block` and `Copy links to all` are reference-only rows in development builds. Production hides these unavailable actions.
+The chat actions belong to the same action group as `Duplicate`, `Move to`, and
+`Delete`; they do not create a separate section.
 
 `Duplicate`, `Move to`, and `Delete` operate on top-level selected roots. `Turn into` and `Color` operate on the expanded selection, including descendants. `Color` is enabled only when every selected target supports at least one color prop; text and background color submenu groups are hidden independently when unsupported.
 
-`Send to chat` opens the same destination picker and `Send` / `Send & wrap`
-modes as the text selection menu. It submits the retained top-level Block roots,
-including their descendants, even after focus moves into the picker. New and
-existing Chat targets establish the source Page relationship before submission.
-Wrapping happens only after successful submission and preserves the selected
-Blocks under an ordinary toggle containing a chat mention. Image capture follows
+`Send to chat` follows the [text selection menu](nfm-editor-text-action-menu-behavior.md#chat-submission).
+Beside a chat, activating the row sends the retained top-level Block roots,
+including their descendants, to that chat; the row shows `⌘⇧↵`, and its submenu
+opens the destination picker on hover for any other chat. Without a chat beside the
+Page, the row opens the picker. New and existing chat targets establish the source
+Page relationship before submission. `Add to composer` (`⌥⌘↵`) appends the same
+content to the beside chat's draft. Image capture follows
 [Page Prompt Image Inputs](nfm-page-prompt-image-inputs.md).
 
 Table header row/column actions appear only for one selected `table` root when table headers are supported.

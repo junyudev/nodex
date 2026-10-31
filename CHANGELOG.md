@@ -6,13 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Chats can reference Pages beside the Composer, including highlighted Blocks, or mention any Library Page with `@`. Sent references reopen their Page without creating a Linked chat relationship.
 - New page in the command palette creates a page where you are and opens it beside you: in your Project's database in a Project or one of its chats, and in Space otherwise.
 - Choose which Claude, Codex and Nodex credit meters appear in the rail from General settings. Hidden meters stop checking usage while account and model access stay available.
 - Sign in with your Nodex Account to choose GPT-6.1 Sol, GPT-6 Luna, Claude Opus 5.5 or Claude Sonnet 5.5 using prepaid credit. Buy credit in Account settings through Stripe Checkout; the rail's credit meter shows what is left, and models follow live availability.
+- Pages can hold Prompts: write a prompt with `/prompt`, then press `⌘↵` or its send button to send it to the chat beside the Page, or to a new chat in the Page's Project. The Prompt stays in the Page and shows how that chat is doing, so a Page can keep a series of prompts or one you reuse.
+- Chats can reference Pages beside the Composer, including highlighted Blocks, or mention any Library Page with `@`. Sent references reopen their Page without creating a Linked chat relationship.
 
 ### Changed
 
+- Send to chat sends a Page selection to the chat beside the Page in one click or with `⌘⇧↵`, without choosing a chat or a mode; its chevron still opens the chat picker, which lists the Page's linked chats first. Add to composer (`⌥⌘↵`) puts the selection into that chat's draft so you can add a few words before sending.
 - `C` now captures a thought to the Inbox where you are instead of opening the new-page form. You just write; Nodex names the message, or you can name it yourself with Add title. It lands in your Project's Inbox when you are in a Project or one of its chats, and in your main Inbox otherwise, without taking you anywhere. The full-window `V` form is gone; a board's own New page still opens the page form.
 - `⌘⇧D` in a Project's chat now opens that Project's Inbox, the same Inbox its Agents send to, instead of your main Inbox.
 - A chat in the sidebar keeps showing the status of the page it started from when more pages are linked to it, instead of showing none. The first linked page that still exists is the one it follows.
@@ -23,6 +25,10 @@ All notable changes to this project will be documented in this file.
 - Inbox suggestions read each message whole: its formatting, links and lists as you wrote them, and its images as images. A screenshot with a single line of text is understood for what it shows, and a chat started from the Inbox receives the message the same way.
 - Images in a message you send to the Inbox now come first on its Page, matching how the stream shows them above the text.
 - You choose when Inbox suggestions run: automatically for each message you send, only when you ask, or never, from the Inbox's settings gear or Settings → Inbox. Automatic suggestions pause when the suggestion Agent's usage is about to run out and say so above the composer; Suggest still works on any message.
+
+### Removed
+
+- Send & wrap is gone from Send to chat. Sending leaves the Page as it is; use a Prompt when you want the Page to keep what you asked and where it went.
 
 ### Fixed
 

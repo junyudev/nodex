@@ -6,13 +6,10 @@ import { normalizeSearchText } from "@/lib/search-text";
 import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
 import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
 
-export type NfmSendToThreadMode = "send" | "wrap-toggle";
-
 export type NfmSendToThreadTarget = ChatDestinationTarget;
 
 export interface NfmSendToThreadRequest {
   target: NfmSendToThreadTarget;
-  mode: NfmSendToThreadMode;
 }
 
 export type NfmSendToThreadPreferredTarget =
@@ -46,11 +43,11 @@ export type NfmSendToThreadRow = NfmSendToThreadNewRow | NfmSendToThreadExisting
 
 export interface NfmSendToThreadRowsInput {
   threads: readonly CommandPaletteThread[];
+  /** Chats linked to the source Page, listed after the preferred chat while not searching. */
+  linkedThreads?: readonly CommandPaletteThread[];
   query: string;
   preferredTarget?: NfmSendToThreadPreferredTarget | null;
   projectNameById?: Readonly<Record<string, string>>;
-  /** Wrapping leaves a mention of the chat, which only a chat with a Session can have. */
-  requireSession?: boolean;
 }
 
 /**
@@ -87,6 +84,28 @@ export function resolveNfmSendToThreadPreferredTarget({
         ...(sessionTitle?.trim() ? { label: sessionTitle.trim() } : {}),
       }
     : null;
+}
+
+/** Where a contextual send goes: the chat's live Thread, or a first Turn in its Session. */
+export function resolveNfmSendToThreadPreferredDestination(
+  preferredTarget: NfmSendToThreadPreferredTarget,
+): NfmSendToThreadTarget {
+  return preferredTarget.kind === "thread"
+    ? {
+        kind: "thread",
+        threadId: preferredTarget.thread.threadId,
+        sessionId: preferredTarget.sessionId,
+      }
+    : { kind: "new-thread", sessionId: preferredTarget.sessionId };
+}
+
+/** The contextual chat's own title, for tooltips and confirmations. */
+export function describeNfmSendToThreadPreferredTarget(
+  preferredTarget: NfmSendToThreadPreferredTarget,
+): string {
+  return preferredTarget.kind === "thread"
+    ? resolveNfmSendToThreadTitle(preferredTarget.thread)
+    : (preferredTarget.label ?? "New chat");
 }
 
 export function resolveNfmSendToThreadTitle(thread: CodexThreadSummary): string {
@@ -173,7 +192,7 @@ function resolveThreadProjectLabel(thread: CommandPaletteThread): string {
 
 function createThreadRow(
   thread: CommandPaletteThread,
-  preferredMeta: string | null,
+  placement: { readonly meta: string; readonly preferred: boolean } | null,
 ): NfmSendToThreadExistingRow {
   const statusLabel = resolveThreadStatusLabel(thread);
   return {
@@ -181,9 +200,9 @@ function createThreadRow(
     id: `thread:${thread.threadId}`,
     threadId: thread.threadId,
     label: thread.title || "New chat",
-    meta: preferredMeta ?? resolveThreadProjectLabel(thread),
+    meta: placement?.meta ?? resolveThreadProjectLabel(thread),
     statusLabel,
-    isPreferredTarget: preferredMeta !== null,
+    isPreferredTarget: placement?.preferred ?? false,
     searchPreview: thread.searchPreview,
     thread,
     target: {
@@ -223,12 +242,14 @@ function createProjectNewThreadRow(): NfmSendToThreadNewRow {
   };
 }
 
+export const LINKED_CHAT_LABEL = "Linked";
+
 export function buildNfmSendToThreadRows({
   threads,
+  linkedThreads = [],
   query,
   preferredTarget = null,
   projectNameById = {},
-  requireSession = false,
 }: NfmSendToThreadRowsInput): NfmSendToThreadRow[] {
   const preferredExistingThreadId =
     preferredTarget?.kind === "thread" ? preferredTarget.thread.threadId : null;
@@ -256,19 +277,31 @@ export function buildNfmSendToThreadRows({
     preferredNewThreadRow && newThreadMatchesQuery(preferredNewThreadRow, query)
       ? preferredNewThreadRow
       : null;
+  const visibleLinkedThreads = normalizeSearchText(query)
+    ? []
+    : linkedThreads.filter((thread) => thread.threadId !== visiblePreferredThread?.threadId);
+  const listedThreadIds = new Set([
+    ...(visiblePreferredThread ? [visiblePreferredThread.threadId] : []),
+    ...visibleLinkedThreads.map((thread) => thread.threadId),
+  ]);
   const threadRows = [
     ...(visiblePreferredThread
       ? [
           createThreadRow(
             visiblePreferredThread,
-            preferredTarget?.kind === "thread" ? preferredTarget.meta : null,
+            preferredTarget?.kind === "thread"
+              ? { meta: preferredTarget.meta, preferred: true }
+              : null,
           ),
         ]
       : []),
+    ...visibleLinkedThreads.map((thread) =>
+      createThreadRow(thread, { meta: LINKED_CHAT_LABEL, preferred: false }),
+    ),
     ...threads
-      .filter((thread) => thread.threadId !== visiblePreferredThread?.threadId)
+      .filter((thread) => !listedThreadIds.has(thread.threadId))
       .map((thread) => createThreadRow(thread, null)),
-  ].filter((row) => !requireSession || row.target.sessionId !== null);
+  ];
 
   if (visiblePreferredNewThreadRow) {
     return [visiblePreferredNewThreadRow, ...threadRows];

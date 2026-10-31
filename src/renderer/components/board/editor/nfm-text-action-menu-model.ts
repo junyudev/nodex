@@ -15,13 +15,6 @@ export const TEXT_ACTION_BASIC_STYLES = [
   "code",
 ] as const satisfies readonly TextActionBasicStyle[];
 
-export const TEXT_ACTION_REFERENCE_SKILLS = [
-  { key: "improve-writing", label: "Improve writing" },
-  { key: "proofread", label: "Proofread" },
-  { key: "explain", label: "Explain" },
-  { key: "reformat", label: "Reformat" },
-] as const;
-
 export interface TextActionMenuEligibilityInput {
   isEditable: boolean;
   isTableCellSelection: boolean;
@@ -30,18 +23,6 @@ export interface TextActionMenuEligibilityInput {
   selectedTextLength: number;
   selectionFrom: number;
   selectionTo: number;
-}
-
-export interface TextActionMenuRuntimeInput {
-  currentBlockId: string | null;
-  canSendBlocks: boolean;
-  canSendToThread: boolean;
-}
-
-export interface TextActionNodexRow {
-  key: "send-to-thread" | "move-to";
-  label: string;
-  enabled: boolean;
 }
 
 export function shouldUseTextActionMenu(input: TextActionMenuEligibilityInput): boolean {
@@ -62,30 +43,4 @@ export function isBlockLevelSelection(selection: unknown): boolean {
   };
 
   return maybeBlockSelection.node !== undefined || Array.isArray(maybeBlockSelection.nodes);
-}
-
-export function resolveNodexTextActionRows(
-  input: TextActionMenuRuntimeInput,
-): TextActionNodexRow[] {
-  if (!input.currentBlockId) return [];
-
-  const rows: TextActionNodexRow[] = [];
-
-  if (input.canSendToThread) {
-    rows.push({
-      key: "send-to-thread",
-      label: "Send to chat",
-      enabled: true,
-    });
-  }
-
-  if (input.canSendBlocks) {
-    rows.push({
-      key: "move-to",
-      label: "Move to",
-      enabled: true,
-    });
-  }
-
-  return rows;
 }
