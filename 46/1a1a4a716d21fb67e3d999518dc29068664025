@@ -1,0 +1,83 @@
+src/renderer/components/workbench/workbench-page-stage-panel.tsx
+  s_6836a64be4dd26::t_8e4649ca509c5e 599-603
+  s_6836a64be4dd26::t_5a1e7ae5896768 26
+  s_6836a64be4dd26::t_ea8e2eca6dc718 161,201-202,557-569
+src/renderer/components/board/page-stage/types.ts
+  s_6836a64be4dd26::t_d740da57057de3 128-129
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_6836a64be4dd26::t_d588a28d5d16b4 19
+  s_6836a64be4dd26::t_7c7d127d34ccec 68,329-338
+  s_6836a64be4dd26::t_ea8e2eca6dc718 113-118
+src/renderer/components/board/editor/nfm-side-menu-runtime.tsx
+  s_6836a64be4dd26::t_f48de05b67b0b8 18-19
+src/renderer/components/board/page-stage.tsx
+  s_6836a64be4dd26::t_d740da57057de3 92,140,271,433
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
+  s_6836a64be4dd26::t_369c7c27219208 319
+src/renderer/components/board/editor/nfm-side-menu.tsx
+  s_6836a64be4dd26::t_d875663fd01f9b 83,1718-1720
+  s_6836a64be4dd26::t_f48de05b67b0b8 84-87,603,775,1519-1520,1546-1547,1702-1716,1845
+  s_6836a64be4dd26::t_515af2b08c5db8 60
+  s_6836a64be4dd26::t_c3c62c61e2189d 1865-1866,1868-1869,1872,1875
+  s_6836a64be4dd26::t_3138cd99c43d52 202,1867,1870-1871,1873-1874,2177,2198,2223
+  s_6836a64be4dd26::t_8dbf447a2a2a37 184-185,209
+  s_6836a64be4dd26::t_d8df7acff775a1 1717,1721-1723,1876
+src/renderer/components/board/editor/nfm-chat-send-feedback.ts
+  s_6836a64be4dd26::t_7fb35d67ed9e76 1-13
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_6836a64be4dd26::t_d740da57057de3 249-250,358
+  s_6836a64be4dd26::t_299a59bcb6c96c 1978,1980-1984,1992
+  s_6836a64be4dd26::t_669b57967a4c9f 100,1635-1636,1638-1640,1646,1650,1655-1658,1660-1676,1678-1696,1698-1704,1706-1707,1709-1712,1714-1722,1726,1728-1739,1925-1930,1949-1954,1985-1990,1995-1996,2519
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_6836a64be4dd26::t_93716344aabd5a 90
+  s_6836a64be4dd26::t_9f170234726ea6 32,1387,1493-1502,1618
+  s_6836a64be4dd26::t_7f462e1789eb54 1149-1158,1160-1168,1170-1190,1192-1193,1195-1201,1205-1206,1208,1210,1212,1214-1228,1230-1234,1236-1239,1242-1251,1253-1254,1258-1260,1262-1267,1272-1323,1327-1328,1332,1334-1339,1341-1346,1348
+  s_6836a64be4dd26::t_183d96d28c5bac 1714-1733,1758
+  s_6836a64be4dd26::t_232c24fd1e06ad 46,48,79-83,87-89,150-157,206
+  s_6836a64be4dd26::t_d875663fd01f9b 77,1235,1240-1241,1252,1324
+src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx
+  s_6836a64be4dd26::t_6abc1b2dc97be1 132,693,744
+src/renderer/lib/use-workbench-session-commands.ts
+  s_6836a64be4dd26::t_03544dd088a46d 104,619-643,1559
+src/renderer/components/board/editor/nfm-text-action-menu-runtime.tsx
+  s_6836a64be4dd26::t_183d96d28c5bac 7-13,17-21,24
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.test.ts
+  s_6836a64be4dd26::t_3d19f58b34a6cb 1-40
+src/renderer/components/board/editor/nfm-chat-send-shortcuts.ts
+  s_6836a64be4dd26::t_93716344aabd5a 1-27
+src/renderer/components/board/editor/nfm-send-to-thread-menu.tsx
+  s_6836a64be4dd26::t_24ac7725401bff 12,259,332,340,456,463
+  s_6836a64be4dd26::t_70da1a851fc590 489
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.ts
+  s_6836a64be4dd26::t_c36f0200ab4a7f 287
+  s_6836a64be4dd26::t_fda7b2e01fd1f2 87-108
+src/renderer/components/board/editor/nfm-side-menu-model.test.ts
+  s_6836a64be4dd26::t_3d19f58b34a6cb 28-85
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_6836a64be4dd26::t_c7bf05c0bfd491 6,21,76-80,90,94-107,147,170,174,295,297-314,316,318-319,327-328,330-336,338-341,345,348-354,357,364-371,373,379-390,394,397-398,400-401,404-409,671,715
+src/renderer/components/board/editor/nfm-chat-send-shortcut-controller.tsx
+  s_6836a64be4dd26::t_e0e76606412dab 1-91
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_6836a64be4dd26::t_7c7d127d34ccec 126,275,722,788
+src/renderer/components/workbench/database-view-page-context-menu-host.test.tsx
+  s_6836a64be4dd26::t_25b147a73dab98 15,17
+src/renderer/components/board/editor/nfm-side-menu-model.ts
+  s_6836a64be4dd26::t_93716344aabd5a 4
+  s_6836a64be4dd26::t_56302e1c34623e 1-3,5,29,61-62,88-90,158-165,268,351-352,361,369-371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "461a1a4a716d21fb67e3d999518dc29068664025",
+  "prompts": {},
+  "sessions": {
+    "s_6836a64be4dd26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e93c001d-fc6b-488c-b1a0-4a8c9a712e11",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
