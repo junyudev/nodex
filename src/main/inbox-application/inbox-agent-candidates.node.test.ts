@@ -123,6 +123,87 @@ describe("what a suggestion may run chats on", () => {
     ]);
   });
 
+  it.each([-1, 0])("leaves out a window that reset %s milliseconds from now", (offset) => {
+    const [candidate] = inboxAgentCandidates(
+      [
+        {
+          ...codex,
+          usageLimits: {
+            ...codex.usageLimits!,
+            windows: [
+              {
+                id: "primary",
+                kind: "session",
+                label: "Session",
+                usedPercent: 100,
+                resetsAt: new Date(NOW + offset).toISOString(),
+                windowDurationMins: 300,
+              },
+              ...codex.usageLimits!.windows,
+            ],
+          },
+        },
+      ],
+      { now: NOW, useModelGuide: false },
+    );
+    expect(candidate?.budget).toEqual([
+      { label: "Weekly", kind: "weekly", left_percent: 80, resets_in_hours: 120, pace: "steady" },
+    ]);
+  });
+
+  it("keeps windows whose reset is unknown or still in the future", () => {
+    const [candidate] = inboxAgentCandidates(
+      [
+        {
+          ...codex,
+          usageLimits: {
+            ...codex.usageLimits!,
+            windows: [
+              { ...codex.usageLimits!.windows[0]!, resetsAt: undefined },
+              {
+                id: "primary",
+                kind: "session",
+                label: "Session",
+                usedPercent: 100,
+                resetsAt: new Date(NOW + 1).toISOString(),
+                windowDurationMins: 300,
+              },
+            ],
+          },
+        },
+      ],
+      { now: NOW, useModelGuide: false },
+    );
+    expect(candidate?.budget).toEqual([
+      { label: "Weekly", kind: "weekly", left_percent: 80, resets_in_hours: null, pace: "ample" },
+      { label: "Session", kind: "session", left_percent: 0, resets_in_hours: 0, pace: "spent" },
+    ]);
+  });
+
+  it.each([
+    { name: "unread", usageLimits: undefined },
+    {
+      name: "empty",
+      usageLimits: { ...codex.usageLimits!, windows: [] },
+    },
+    {
+      name: "all reset",
+      usageLimits: {
+        ...codex.usageLimits!,
+        windows: [-1, 0].map((hours) => ({
+          ...codex.usageLimits!.windows[0]!,
+          resetsAt: hoursFromNow(hours),
+        })),
+      },
+    },
+  ])("reports an unknown budget when no current window remains: $name", ({ usageLimits }) => {
+    const [candidate] = inboxAgentCandidates([{ ...codex, usageLimits }], {
+      now: NOW,
+      useModelGuide: false,
+    });
+    expect(candidate?.budget).toBe("unknown");
+  });
+
   it("leaves the guide out when the user turns it off", () => {
     const [openai] = inboxAgentCandidates([codex], { now: NOW, useModelGuide: false });
     expect(openai?.models.every((model) => model.guide === undefined)).toBe(true);

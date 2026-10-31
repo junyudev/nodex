@@ -52,17 +52,22 @@ const budgetOf = (provider: Provider, now: number): InboxAgentCandidate["budget"
   if (!limits || limits.windows.length === 0) return "unknown";
   const readAt = Date.parse(limits.checkedAt);
   const age = Number.isFinite(readAt) ? (now - readAt) / HOUR_MS : null;
-  return limits.windows.map((window) => {
+  const windows = limits.windows.flatMap((window) => {
     const reading = inboxUsageReading(window, now);
-    return {
-      label: window.label,
-      kind: window.kind,
-      left_percent: Math.round(reading.leftPercent),
-      resets_in_hours: reading.resetsInHours === null ? null : round(reading.resetsInHours),
-      pace: reading.pace,
-      ...(age !== null && age >= 1 ? { read_hours_ago: round(age) } : {}),
-    };
+    // Once a window resets, its old share left no longer describes the account.
+    if (reading.resetsInHours === 0) return [];
+    return [
+      {
+        label: window.label,
+        kind: window.kind,
+        left_percent: Math.round(reading.leftPercent),
+        resets_in_hours: reading.resetsInHours === null ? null : round(reading.resetsInHours),
+        pace: reading.pace,
+        ...(age !== null && age >= 1 ? { read_hours_ago: round(age) } : {}),
+      },
+    ];
   });
+  return windows.length > 0 ? windows : "unknown";
 };
 
 const candidateModel = (model: ProviderModel, useModelGuide: boolean): InboxCandidateModel => {

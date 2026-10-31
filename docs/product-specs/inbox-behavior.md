@@ -319,13 +319,15 @@ Availability notes follow the marker rather than changing its format.
 
 While suggestions choose models, it also receives every Agent that can take a
 chat now, with each model's effort and speed choices, the note Nodex's model
-guide keeps for it, and the Agent's usage windows. Each window gives the share
-left, the hours until it resets, how old the reading is when it is old, and a
-pace that compares the share left with the time left: ample, steady, tight or
-spent. It also receives what a chat runs on when it leaves the choice to the
-Inbox. How it weighs strengths and budgets is guidance in its prompt rather
-than a rule Nodex enforces: a nearly spent weekly window is something to avoid
-unless the work needs that model or the window resets soon, not a hard cut-off.
+guide keeps for it, and the Agent's usage windows. A window that has reset since
+it was read is left out; with none remaining, the budget is unknown. Each window
+gives the share left, the hours until it resets, how old the reading is when it
+is old, and a pace that compares the share left with the time left: ample,
+steady, tight or spent. It also receives what a chat runs on when it leaves the
+choice to the Inbox. How it weighs strengths and budgets is guidance in its
+prompt rather than a rule Nodex enforces: a nearly spent weekly window is
+something to avoid unless the work needs that model or the window resets soon,
+not a hard cut-off.
 
 The user's routing preferences are its standing instructions, not data. They
 outrank Nodex's model guide and every guideline in its prompt, including how
