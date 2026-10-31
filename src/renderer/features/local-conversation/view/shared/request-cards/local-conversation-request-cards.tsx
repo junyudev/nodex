@@ -29,6 +29,8 @@ import {
 import { resolveFormErrorMessage } from "../../../../../lib/forms";
 import { cn } from "../../../../../lib/utils";
 import type { CodexTranscriptEntry } from "../../../../../lib/types";
+import type { ThreadStageActions } from "../../../thread-stage-types";
+import { ConversationAttribution } from "../conversation-attribution";
 import { buildCodexCanonicalRequestIdentityKey } from "../../../../../../shared/codex-conversation-state/codex-conversation-state";
 import { resolvePromptTextareaSize } from "../prompt-textarea-size";
 import { CODEX_THREAD_ACCORDION_TRANSITION } from "../thread-motion";
@@ -79,12 +81,18 @@ export type {
 
 type UserInputTranscriptItem = Pick<
   CodexTranscriptEntry,
-  "userInputQuestions" | "userInputAnswers"
+  "userInputQuestions" | "userInputAnswers" | "respondedBy"
 > & {
   status?: CodexTranscriptEntry["status"];
 };
 
-export function UserInputTranscriptView({ item }: { item: UserInputTranscriptItem }) {
+export function UserInputTranscriptView({
+  item,
+  onOpenThread,
+}: {
+  item: UserInputTranscriptItem;
+  onOpenThread?: ThreadStageActions["onOpenThread"];
+}) {
   const questions = item.userInputQuestions ?? [];
   const answersByQuestion = item.userInputAnswers ?? {};
   const completed = item.status !== "inProgress";
@@ -132,20 +140,35 @@ export function UserInputTranscriptView({ item }: { item: UserInputTranscriptIte
   return (
     <div className="min-w-0 text-size-chat relative overflow-visible py-0">
       <div className="flex flex-col">
-        {canExpand ? (
-          <button
-            type="button"
-            className="text-left"
-            aria-expanded={expanded}
-            onClick={() => {
-              setExpanded((current) => !current);
-            }}
-          >
-            {summary}
-          </button>
-        ) : (
-          summary
-        )}
+        <div className="flex min-w-0 items-center gap-2">
+          {canExpand ? (
+            <button
+              type="button"
+              className="min-w-0 text-left"
+              aria-expanded={expanded}
+              onClick={() => {
+                setExpanded((current) => !current);
+              }}
+            >
+              {summary}
+            </button>
+          ) : (
+            summary
+          )}
+          {item.respondedBy ? (
+            <span
+              className="shrink-0 text-xs text-token-text-tertiary"
+              data-user-input-responded-by="agent"
+            >
+              <ConversationAttribution
+                label="Answered by another agent"
+                openLabel="Open answering conversation"
+                threadId={item.respondedBy.senderThreadId}
+                onOpenThread={onOpenThread}
+              />
+            </span>
+          ) : null}
+        </div>
         <motion.div
           initial={false}
           animate={{

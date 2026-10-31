@@ -462,6 +462,32 @@ describe("local-conversation request cards", () => {
     expect(Boolean(textContent(container).includes("2 (Recommended)"))).toBe(true);
   });
 
+  test("names another Agent that answered and opens its conversation without expanding", async () => {
+    const { UserInputTranscriptView } = await import("./local-conversation-request-cards");
+    const opened: string[] = [];
+    const { getByRole } = render(
+      <UserInputTranscriptView
+        item={{
+          userInputQuestions: optionRequest.questions,
+          userInputAnswers: { q_1: ["2 (Recommended)"] },
+          status: "completed",
+          respondedBy: { kind: "agent", senderThreadId: "coordinator-thread" },
+        }}
+        onOpenThread={(threadId) => {
+          opened.push(threadId);
+        }}
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Open answering conversation" }));
+      await settleAsyncRender();
+    });
+    expect(opened).toEqual(["coordinator-thread"]);
+    expect(getByRole("button", { name: /Asked\s*1 question/i }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+  });
+
   test("renders completed Runtime question history through the canonical projection and conceals private answers", async () => {
     const { projectAgentRuntimeItem } =
       await import("../../../agent-runtime-transcript-projection");

@@ -79,6 +79,7 @@ import { ConversationRecoverySurface } from "../shared/conversation-recovery-sur
 import { useConversationRecoveryActions } from "../conversation-recovery-actions";
 import { CodexShimmerProvider, CodexShimmerText } from "../shared/codex-shimmer-text";
 import { AnsweredUserInputBlock } from "../composer/request-cards/answered-user-input-block";
+import { ConversationAttribution } from "../shared/conversation-attribution";
 import {
   UserAttachmentStrip,
   UserMessageImageGallery,
@@ -917,7 +918,10 @@ function UserMessageEditForm({
   );
 }
 
-/** Attribute messages sent by another source and input delivered from the queue. */
+/**
+ * Attribute messages sent by another source, question replies another Agent gave, and input
+ * delivered from the queue.
+ */
 function UserMessageDeliveryMarkers({
   entry,
   onOpenThread,
@@ -926,36 +930,34 @@ function UserMessageDeliveryMarkers({
   onOpenThread?: ThreadLeafBlockProps["onOpenThread"];
 }) {
   const origin = entry.userMessageOrigin;
+  const answeredBy = entry.questionReplies ? entry.respondedBy : undefined;
   const queued = entry.userInputIntent === "queued";
-  if (!origin && !queued) return null;
-  const senderThreadId = origin?.kind === "agent" ? origin.senderThreadId : null;
-  const originLabel =
-    origin?.kind === "agent"
-      ? "Sent by another agent"
+  const attribution = answeredBy
+    ? {
+        label: "Answered by another agent",
+        openLabel: "Open answering conversation",
+        threadId: answeredBy.senderThreadId,
+      }
+    : origin?.kind === "agent"
+      ? {
+          label: "Sent by another agent",
+          openLabel: "Open sending conversation",
+          threadId: origin.senderThreadId ?? null,
+        }
       : origin?.kind === "automation"
-        ? "Sent by automation"
+        ? { label: "Sent by automation", openLabel: "", threadId: null }
         : origin?.kind === "nodex"
-          ? "Sent by Nodex"
+          ? { label: "Sent by Nodex", openLabel: "", threadId: null }
           : null;
+  if (!attribution && !queued) return null;
   return (
     <div
       className="me-1 flex items-center justify-end gap-2 text-xs text-token-text-tertiary"
-      data-user-message-origin={origin?.kind}
+      data-user-message-origin={answeredBy ? "answering-agent" : origin?.kind}
       data-user-message-intent={entry.userInputIntent}
     >
-      {originLabel ? (
-        senderThreadId && onOpenThread ? (
-          <button
-            type="button"
-            aria-label="Open sending conversation"
-            className="cursor-interaction rounded-sm hover:text-token-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
-            onClick={() => void onOpenThread(senderThreadId)}
-          >
-            {originLabel}
-          </button>
-        ) : (
-          <span>{originLabel}</span>
-        )
+      {attribution ? (
+        <ConversationAttribution {...attribution} onOpenThread={onOpenThread} />
       ) : null}
       {queued ? (
         <NodexTooltip tooltipContent="Queued behind the active turn">
@@ -1529,9 +1531,9 @@ export function ThreadAssistantActionsBlock({
   );
 }
 
-export function ThreadUserInputResponseCard({ block }: ThreadLeafBlockProps) {
+export function ThreadUserInputResponseCard({ block, onOpenThread }: ThreadLeafBlockProps) {
   if (block.type !== "userInputResponse") return null;
-  return <AnsweredUserInputBlock item={block.entry} />;
+  return <AnsweredUserInputBlock item={block.entry} onOpenThread={onOpenThread} />;
 }
 
 export function ThreadImageViewBlock({ block }: ThreadLeafBlockProps) {

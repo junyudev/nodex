@@ -479,6 +479,31 @@ describe("UserMessageBubble collapse", () => {
     expect(onOpenThread).toHaveBeenCalledWith("parent-thread");
   });
 
+  test("names the Agent that answered a question reply instead of claiming it sent a message", async () => {
+    const block = buildUserMessageBlock("Local");
+    block.entry.questionReplies = [
+      { questionItemId: "ask:0", question: "Which scope?", answer: "Local" },
+    ];
+    block.entry.respondedBy = { kind: "agent", senderThreadId: "coordinator-thread" };
+    const onOpenThread = vi.fn();
+    const { getByRole, queryByText } = render(
+      <TooltipProvider>
+        <UserMessageBubble
+          block={block}
+          isLatestTurn
+          isStreamingTurn={false}
+          onOpenThread={onOpenThread}
+        />
+      </TooltipProvider>,
+    );
+    expect(queryByText("Sent by another agent")).toBeNull();
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Open answering conversation" }));
+      await Promise.resolve();
+    });
+    expect(onOpenThread).toHaveBeenCalledWith("coordinator-thread");
+  });
+
   test.each(["pending", "unknown"] as const)(
     "shows %s delivery without claiming a send failure",
     (delivery) => {
