@@ -1,0 +1,22 @@
+packages/agent-runtime/src/nodex/NodexModelPolicy.ts
+  s_a511629060f414::t_0a7074eaa26b5d 32-34
+  s_a511629060f414::t_b56dd4b7960cec 46-49
+packages/agent-runtime/src/nodex/NodexModelPolicy.test.ts
+  s_a511629060f414::t_366d226d8107a1 68-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c52263cb5e534619989fc356659c4cc7ee54a8c",
+  "prompts": {},
+  "sessions": {
+    "s_a511629060f414": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8c3b5423-b1a8-4408-9e0b-0c21625f459b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
