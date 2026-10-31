@@ -1,0 +1,207 @@
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.ts
+  s_039f18d9f057b1::t_4095fed7287462 68-70,86
+  s_039f18d9f057b1::t_793289dbe04c9a 159,162
+  s_e711b050289d29::t_61a671dfe6a649 30,33-34,64-67,71-85,87-117,155,160-161,166-173,200-217,221,225,273,278,293-295
+packages/agent-runtime/src/nodex/Interface.ts
+  s_039f18d9f057b1::t_f5e4a97fea4eca 764,770
+  s_039f18d9f057b1::t_824a7fcbb98418 221,225
+  s_e711b050289d29::t_98445e1b3e7fa0 219-220,222-224,765-769
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.test.ts
+  s_039f18d9f057b1::t_9b615d739a7ba5 155-159,161,172
+  s_039f18d9f057b1::t_420a29f0fc661f 9,14
+  s_039f18d9f057b1::t_a0a447a8ce417c 416,458,514,538,545,568,593-595
+  s_e711b050289d29::t_637d625c561baf 30,54-58,86,160,170,213-238,263,412-415,417-457,459-513,515-537,539-544,546-567,569-592,671,677-683,688,695,706-708,716
+src/renderer/components/shared/chat-waiting-icon.tsx
+  s_039f18d9f057b1::t_01dc52047ac8f1 1-10
+  s_039f18d9f057b1::t_6483d75e3fce22 9
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_039f18d9f057b1::t_fd290900fa99cd 86,1557,1565-1566,2089
+  s_039f18d9f057b1::t_33f09cfb54aa86 87
+  s_039f18d9f057b1::t_a279e8db9520c6 843-844,851
+src/renderer/lib/sidebar-thread-row-live-view.ts
+  s_039f18d9f057b1::t_6adb2cb6c825cf 4-8,31,44-45
+  s_039f18d9f057b1::t_1e45ae53dded6c 32-33
+src/renderer/components/workbench/project-agent-dock-target-selector.test.tsx
+  s_039f18d9f057b1::t_6277be3bd49491 241
+src/renderer/lib/use-session-execution.test.tsx
+  s_039f18d9f057b1::t_9f9db3f097f1a5 93-97
+src/renderer/lib/project-agent-dock-model.ts
+  s_039f18d9f057b1::t_9628ed5a133a81 6,14-15,108-109,118,130,224
+src/renderer/lib/sidebar-status.ts
+  s_039f18d9f057b1::t_a279e8db9520c6 12-18
+  s_039f18d9f057b1::t_d0dcacc34d9ad6 1-2,51-53
+  s_039f18d9f057b1::t_c78847361eb39a 4-5,9-10,36-39,41-42,45-46,49-50,54-57
+  s_039f18d9f057b1::t_5a1ddefec392ed 11,58
+src/renderer/lib/use-session-execution.ts
+  s_039f18d9f057b1::t_6adb2cb6c825cf 12-16,100-102
+src/renderer/components/workbench/sidebar-custom-sections.tsx
+  s_039f18d9f057b1::t_33f09cfb54aa86 100,110,116
+  s_039f18d9f057b1::t_3a18eaf56f6e45 77
+  s_09d0010c59e717::t_8bb2c892062f01 105
+src/renderer/components/workbench/sidebar-status-indicator.tsx
+  s_039f18d9f057b1::t_1ead00a6b35887 1,8,14,41-49,55
+src/renderer/lib/session-execution.ts
+  s_039f18d9f057b1::t_1ead00a6b35887 251
+src/renderer/lib/sidebar-status.test.ts
+  s_039f18d9f057b1::t_6277be3bd49491 2-6,25-26,28-31,36-43
+  s_039f18d9f057b1::t_b8b7ddb15ed850 44-45
+src/renderer/lib/project-agent-dock-model.node.test.ts
+  s_039f18d9f057b1::t_6277be3bd49491 144,250
+src/renderer/lib/sidebar-thread-row-live-view.test.ts
+  s_039f18d9f057b1::t_166e3ccc63025b 41-51
+src/renderer/components/workbench/codex-sidebar.test.tsx
+  s_039f18d9f057b1::t_6277be3bd49491 312
+src/renderer/components/workbench/project-agent-dock-target-selector.tsx
+  s_039f18d9f057b1::t_a28ce2f6ecda5d 8-9,43-44,89-92,97
+src/renderer/components/shared/page-chat-activity-glyph.tsx
+  s_039f18d9f057b1::t_25412b81967fec 1-3,23-24,36
+src/renderer/components/workbench/session-chat-tab-icon.tsx
+  s_039f18d9f057b1::t_932fdaee1c9c1e 1,16-17,35-38
+  s_039f18d9f057b1::t_2650844c71dc00 39-41
+docs/product-specs/agent-runtime-behavior.md
+  s_e711b050289d29::t_253500f21fa260 825-842
+docs/product-specs/desktop-notification-behavior.md
+  s_e711b050289d29::t_64c75d93ed039c 23,288-295
+packages/agent-runtime/src/nodex/Service.ts
+  s_e711b050289d29::t_962608179741fb 87,691-693,696-698,700-701,1453,1485-1486,1495-1500
+packages/agent-runtime/src/orchestration-v2/testkit/HistoryPressure.ts
+  s_e711b050289d29::t_5b73ab0076cf82 73
+src/main/agent-runtime/AgentRuntimeSessionActivity.ts
+  s_e711b050289d29::t_5ee9b95745a34f 94,116-118
+src/main/agent-runtime/AgentRuntimeSessionNotifications.node.test.ts
+  s_e711b050289d29::t_d70d449f3e0077 207-322
+src/main/agent-runtime/AgentRuntimeSessionNotifications.ts
+  s_e711b050289d29::t_4f1a3e161a333a 39-40,46-47,90,92-94,108,137
+src/shared/agent-runtime-api.ts
+  s_e711b050289d29::t_bd081f29a032d0 272
+docs/product-specs/workbench-shell.md
+  s_039f18d9f057b1::t_77063f8ea7acd8 20
+  s_039f18d9f057b1::t_66d4aeae332ea8 14
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_039f18d9f057b1::t_977b0a49ef2ff0 89,380-389
+src/renderer/components/workbench/side-chat-tab-icon.tsx
+  s_039f18d9f057b1::t_977b0a49ef2ff0 16
+  s_039f18d9f057b1::t_585cce8d370cd5 1-15,17-18
+src/main/codex-application/CodexSidebarSectionSync.node.test.ts
+  s_039f18d9f057b1::t_90dc960b43e039 24
+crates/nodex-core/src/workspace/project_activity_summary.rs
+  s_039f18d9f057b1::t_90dc960b43e039 9-10,38
+crates/nodex-core/src/workspace/sidebar_section.rs
+  s_039f18d9f057b1::t_90dc960b43e039 29,995,1006,1018,1020,1100,1105,1146,1148,1152-1168,1170-1172,1585-1586,1589,1592,2068-2250
+crates/nodex-core-contracts/src/workspace.rs
+  s_039f18d9f057b1::t_90dc960b43e039 449
+src/main/core-client/project-workspace-adapter.node.test.ts
+  s_039f18d9f057b1::t_90dc960b43e039 1-2,7-37
+packages/core-protocol/openapi.json
+  s_039f18d9f057b1::t_90dc960b43e039 7852,7873
+src/main/core-client/project-workspace-adapter.ts
+  s_039f18d9f057b1::t_90dc960b43e039 119
+src/shared/sidebar-sections.ts
+  s_039f18d9f057b1::t_90dc960b43e039 27
+src/main/app-tools/WorkspaceAppTools.node.test.ts
+  s_039f18d9f057b1::t_90dc960b43e039 385
+packages/core-protocol/src/generated.ts
+  s_039f18d9f057b1::t_90dc960b43e039 1836
+src/main/codex-application/CodexSidebarSectionSync.ts
+  s_039f18d9f057b1::t_90dc960b43e039 807
+crates/nodex-core/src/workspace/mod.rs
+  s_039f18d9f057b1::t_90dc960b43e039 28
+crates/nodex-core/src/workspace/session_activity.rs
+  s_039f18d9f057b1::t_90dc960b43e039 1-5
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_039f18d9f057b1::t_90dc960b43e039 191
+scripts/scenarios/registry.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 17,40
+scripts/scenarios/contracts.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 189
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 463-468
+scripts/scenarios/scenarios/sidebar-chat-status.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 1-11,13-19,21-23,34-38,40-43,45-48,50-53,54-58,60-63,65-68,69-73,74-78,80-83,85-89,90-153,154-157,169-170,173-205,207-209,224-261
+docs/development.md
+  s_7b92b23925bc6e::t_d0bf4d948105e8 363-366,369-370,372-373
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 577-580
+src/main/core-client/sidebar-chat-status-scenario.node.test.ts
+  s_7b92b23925bc6e::t_2129bde7bf4998 1-9,11-12,14-15,27-28,30-46,48-54,55-57,59-72,74-77,79-90,92-112
+scripts/scenarios/scenarios/database-context-menu-performance.test.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 140-143
+scripts/scenarios/scenarios/board-dense.test.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 305-308
+src/renderer/components/board/editor/prompt-block.tsx
+  s_039f18d9f057b1::t_6483d75e3fce22 104
+src/renderer/styles/theme-token-bridge.css
+  s_039f18d9f057b1::t_6483d75e3fce22 65-66
+  s_f5d73c6ecdef66::t_bed6f5643d6496 41-43,45,47-48,59,62-63,69,77,80-81
+  s_f5d73c6ecdef66::t_9dfe0f2a51bcef 50
+  s_f5d73c6ecdef66::t_55e64b7fde9d49 1
+  s_f5d73c6ecdef66::t_ee89ec1adb13d5 51-53,82-84
+scripts/ci/verify-token-color-utilities.ts
+  s_f5d73c6ecdef66::t_55e64b7fde9d49 1-38
+  s_f5d73c6ecdef66::t_1f1378862196b2 39-57
+scripts/ci/verify-static.ts
+  s_f5d73c6ecdef66::t_55e64b7fde9d49 33-37
+  s_f5d73c6ecdef66::t_baa1cc3c2c5174 32
+scripts/ci/verify-static.test.ts
+  s_f5d73c6ecdef66::t_bed6f5643d6496 26-34
+  s_f5d73c6ecdef66::t_7da7be1fc97774 35-37
+scripts/ci/token-color-utilities.test.ts
+  s_f5d73c6ecdef66::t_bed6f5643d6496 1-5,11-12,15-17,26-27,30-31,36-39,76-79,85-96,109-114,125-141,164-175,187-188
+  s_f5d73c6ecdef66::t_be7bd8e96d9f64 6-10,13-14,18-25,28-29,32-35,40-75,80-84,97-108,115-124,142-163,176-186
+  s_f5d73c6ecdef66::t_bb7b6aa5e421df 189-190
+scripts/ci/token-color-utilities.ts
+  s_f5d73c6ecdef66::t_9dfe0f2a51bcef 161-167,172-189,191-193,197-199,220-224,229-238,241-252
+  s_f5d73c6ecdef66::t_55e64b7fde9d49 1-29,31-124,131-160,190,194-196,200-204,207-219,225-228,239-240,253-258
+  s_f5d73c6ecdef66::t_be7bd8e96d9f64 30,125-130,168-171
+  s_f5d73c6ecdef66::t_90ead0d370c200 205-206
+package.json
+  s_f5d73c6ecdef66::t_55e64b7fde9d49 162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b10aab42559111717e530a75324d075489391bf9",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_09d0010c59e717": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191e2-e63f-75c0-9db1-5e7360d5b9fd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7b92b23925bc6e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191f1-1028-7201-b17a-dc8cffb3674d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e711b050289d29": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191e3-47cd-7100-aa5c-74830433ef87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f5d73c6ecdef66": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19204-615a-7120-a060-b641eebee2db",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
