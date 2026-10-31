@@ -156,10 +156,11 @@ respect_system_proxy = false
         await destination.locator('[data-nfm-send-to-thread-row-kind="thread"]').click();
         await expect(page.getByText("Sent to chat", { exact: true })).toBeVisible();
         await expect(sideMenu).toHaveCount(0);
+        // The wrapped mention names the chat by its live title, which the Agent may rename.
         const sentMention = editor
           .locator('[data-content-type="toggleListItem"]')
           .first()
-          .getByRole("button", { name: new RegExp(`^${prompt}`) });
+          .locator('button[data-thread-mention-inline-chip="true"]');
         await expect(sentMention).toBeVisible({ timeout: 30_000 });
         await sentMention.click();
         await expect(
