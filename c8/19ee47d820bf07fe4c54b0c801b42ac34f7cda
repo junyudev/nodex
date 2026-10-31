@@ -1,0 +1,26 @@
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_e2f9f3a29b34ef::t_677e56318b2978 116,1864-1870
+src/renderer/components/board/editor/nfm-prompt-runtime.tsx
+  s_e2f9f3a29b34ef::t_677e56318b2978 10-14,22
+src/renderer/components/board/editor/readonly-nfm-blocknote-preview.test.tsx
+  s_e2f9f3a29b34ef::t_09592ef1f65046 1-3
+  s_e2f9f3a29b34ef::t_4e243ef99bfde0 116-137
+src/renderer/components/board/editor/prompt-block.tsx
+  s_e2f9f3a29b34ef::t_677e56318b2978 159,161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c819ee47d820bf07fe4c54b0c801b42ac34f7cda",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
