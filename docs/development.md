@@ -332,6 +332,27 @@ same seed is a no-op and prints its provenance. A different seed, or a seed for
 a home already initialized without one, fails. Later manual edits belong to the
 environment and are not reset or compared with the original recipe.
 
+Every development seed materializes an independent Git repository under
+`<home>/workspace/<seed-slug>` before creating Projects or scheduled tasks.
+Their source folders and working directories point there, never at the Nodex
+checkout or another live repository. Each repository owns its `.git`, starts on
+`main` with committed fixture content, and has no remotes. This Git boundary also
+holds when the development home is nested inside a checkout: Git cannot discover
+the developer's branch above the source folder. Agents can edit and commit in
+the disposable repository freely; deleting the home removes it too.
+
+Both `landing/*` seeds use `<home>/workspace/tinyboard`, copied from the committed
+Tinyboard fixture with a working task list and its source tree. Other seeds get a
+small repository named after the seed id, with `/` replaced by `-`. All Projects in
+the same recipe share that source. Reopening preserves manual edits. Seeded homes created before source
+isolation, or whose source repository was removed or redirected, are refused;
+create a fresh home instead.
+
+Scenario recipes accept a source folder from their harness. Tests may explicitly
+provide an isolated temporary repository (or a non-Git directory when that is the
+contract under test); they must never supply a developer checkout. Development
+seeding derives the source from the home and does not accept a source override.
+
 A home keeps the Store it was created with. A branch may still be changing its own
 unreleased Store revision, so a home created by an earlier build of the branch can
 hold a Store this build cannot open. Before launching, the launcher asks
@@ -350,10 +371,10 @@ home for each take, and `--build` for optimized Core and renderer execution:
 vp run dev --home "$HOME/repo/nodex/runs.local/shared-pages-take-01" --seed landing/shared-pages --build
 ```
 
-Neither recipe implements a task-list repository or claims verification results.
-Perform real implementation and verification before asking an Agent to document
-them. Built renderers do not imply that every unfinished product control is hidden;
-inspect the intended composition before recording.
+The fixture leaves the brief's ‘Hide completed’ feature unimplemented and claims
+no verification results. Perform real implementation and verification before asking
+an Agent to document them. Built renderers do not imply that every unfinished product
+control is hidden; inspect the intended composition before recording.
 
 The catalog is shared by Core integration and Electron E2E tests. Deterministic
 UI behavior belongs in a dedicated Playwright spec such as

@@ -31,6 +31,7 @@ test("C captures a message to the Project's Inbox from one of its chats without 
     {
       label: "inbox-capture",
       scenarioId: landingSharedPagesScenario.id,
+      seedThrough: "core",
       onFailure: async ({ page, readRuntimeLogs }) => {
         await testInfo.attach("inbox-capture-runtime-logs", {
           body: Buffer.from(await readRuntimeLogs()),

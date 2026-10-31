@@ -611,7 +611,6 @@ export const withElectronScenario = async <Value>(
         environment: input.environment,
         scenarioId: input.scenarioId,
         nodexHome: harness.profile.nodexHome,
-        workspace: harness.profile.initialProjectsDirectory,
       });
     }
     page = await harness.launch();

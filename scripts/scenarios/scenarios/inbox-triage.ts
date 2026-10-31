@@ -206,7 +206,7 @@ const materializeInboxTriage = async (
 ): Promise<ScenarioManifest> => {
   const project = await port.createProject({ name: "Nodex", sources: [workspace] });
   if (!project.defaultDatabaseViewId) throw new Error("inbox/triage Project has no default View");
-  const website = await port.createProject({ name: "Website", sources: [] });
+  const website = await port.createProject({ name: "Website", sources: [workspace] });
   const workingThreadId = createUuidV7();
   const working = await port.createRelatedChat({
     projectId: project.id,

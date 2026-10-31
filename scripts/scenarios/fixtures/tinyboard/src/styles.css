@@ -1,0 +1,37 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #262626;
+  background: #faf9f6;
+}
+
+main {
+  max-width: 36rem;
+  margin: 5rem auto;
+  padding: 0 1.5rem;
+}
+
+h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #e7e5e0;
+}
+
+label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+label:has(:checked) {
+  color: #777;
+  text-decoration: line-through;
+}

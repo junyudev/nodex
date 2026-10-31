@@ -236,6 +236,7 @@ export interface ScenarioFacts {
 export interface ScenarioDomainRecipe {
   readonly id: string;
   readonly revision: number;
+  /** Harness-owned disposable source, never a developer checkout. Non-Git tests supply their own. */
   materialize(port: ScenarioSeedPort, workspace: string): Promise<ScenarioManifest>;
   inspect(port: ScenarioSeedPort, manifest: ScenarioManifest): Promise<ScenarioFacts>;
   parseFacts(value: unknown): ScenarioFacts;

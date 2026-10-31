@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   initializeStandaloneDataAuthority,
   type RustDataAuthorityRuntime,
@@ -6,17 +7,21 @@ import { CoreClientSeedAdapter } from "../adapters/core-client-seed-adapter";
 import type { ScenarioManifest } from "../contracts";
 import { waitForCoreRuntimeRemoval } from "../profile/isolated-profile";
 import { materializeScenario } from "../seed/scenario-seed";
+import { materializeSeededSourceFolder } from "../seed/source-folder";
 
 export const materializeDevelopmentSeed = async (input: {
   readonly environment?: NodeJS.ProcessEnv;
   readonly scenarioId: string;
   readonly nodexHome: string;
-  readonly workspace: string;
 }): Promise<ScenarioManifest> => {
   let runtime: RustDataAuthorityRuntime | null = null;
   let manifest: ScenarioManifest | null = null;
   let operationError: unknown;
   try {
+    const workspace = await materializeSeededSourceFolder(
+      path.dirname(input.nodexHome),
+      input.scenarioId,
+    );
     runtime = await initializeStandaloneDataAuthority({
       buildId: `dev-seed:${input.scenarioId}`,
       environment: input.environment,
@@ -26,7 +31,7 @@ export const materializeDevelopmentSeed = async (input: {
     manifest = await materializeScenario(
       input.scenarioId,
       new CoreClientSeedAdapter(runtime),
-      input.workspace,
+      workspace,
     );
   } catch (error) {
     operationError = error;

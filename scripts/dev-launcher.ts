@@ -40,6 +40,7 @@ import { superviseIsolatedRun, type SupervisedCommandPlan } from "./isolated-run
 import type { IsolatedRunFailure } from "./isolated-run/IsolatedRun";
 import { getScenario } from "./scenarios/registry";
 import { materializeDevelopmentSeed } from "./scenarios/harness/development-seed";
+import { assertSeededSourceFolder } from "./scenarios/seed/source-folder";
 import { isolatedElectronArguments } from "./isolated-run/electron-arguments";
 import {
   rustDevCargoOutputDirectory,
@@ -742,6 +743,9 @@ const prepareEnvironment = async (input: {
   readonly seedRevision?: number;
 }): Promise<void> => {
   const current = await refreshDevelopmentEnvironmentHome(input.home);
+  if (current.manifest.seed) {
+    await assertSeededSourceFolder(current.root, current.manifest.seed.id);
+  }
   if (input.arguments.fromProfile) {
     if (!current.manifest.profileSnapshot) {
       throw new Error("Development Profile snapshot was not materialized");
@@ -781,7 +785,6 @@ const prepareEnvironment = async (input: {
     environment: input.environment,
     scenarioId: seedInitialization.seed.id,
     nodexHome: current.nodexHome,
-    workspace: current.workspace,
   });
   if (manifest.scenarioRevision !== seedInitialization.seed.revision) {
     throw new Error(
