@@ -1,0 +1,19 @@
+src/main/app-tools/SessionControlAppTools.node.test.ts
+  s_3c10c33b50886f::t_af31e65cb198ba 50-68,77-78,252-254,301,310,334,400,412,422,444,478
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eccce6e0d39d0e106da9f5a1ad2328cc9f771692",
+  "prompts": {},
+  "sessions": {
+    "s_3c10c33b50886f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19288-822f-7ae1-bfb0-beeb7d666bcd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
