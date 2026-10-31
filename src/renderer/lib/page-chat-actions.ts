@@ -1,6 +1,9 @@
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type { CodexPromptInput } from "@/lib/types";
 
+/** How a chat picker marks the chat whose Scene it opened in, which it lists first. */
+export const CURRENT_CHAT_LABEL = "This chat";
+
 /** An existing chat names its Session when it has one, so mentions of it can name that Session. */
 export type ChatDestinationTarget =
   | { readonly kind: "thread"; readonly threadId: string; readonly sessionId: string | null }

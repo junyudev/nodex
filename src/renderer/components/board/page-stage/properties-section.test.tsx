@@ -311,6 +311,64 @@ describe("PageStagePropertiesSection", () => {
     expect(onLinkRelatedChat).toHaveBeenCalledWith("session-candidate");
   });
 
+  test("offers the Chat whose Scene shows the Page first when linking", async () => {
+    const view = renderProperties(
+      <PageStagePropertiesSection
+        controller={buildController({
+          hasRelatedChatsRow: true,
+          relatedChats: [
+            {
+              sessionId: "session-linked",
+              projectId: "project-1",
+              projectName: "Nodex",
+              displayTitle: "Research follow-up",
+              threadId: null,
+              executionRef: null,
+              threadPreview: "",
+              threadStatus: null,
+              threadArchived: false,
+              unread: false,
+              sessionArchived: false,
+              conversationRecencyAt: null,
+              linkedAt: "2026-08-24T00:00:00Z",
+            },
+          ],
+          relatedChatsLoading: false,
+          relatedChatsError: null,
+          relatedChatsHasMore: false,
+          relatedChatsLoadingMore: false,
+          relatedChatCandidates: [
+            { sessionId: "session-recent", displayTitle: "Release notes", projectName: "Nodex" },
+            { sessionId: "session-current", displayTitle: "Fix login", projectName: "Nodex" },
+          ],
+          onLinkRelatedChat: vi.fn(async () => undefined),
+          currentSessionId: "session-current",
+          saving: false,
+        })}
+      />,
+    );
+
+    const trigger = await view.findByRole("button", { name: "Add chat" });
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+      fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
+      fireEvent.click(trigger);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Link to chat…" }));
+      await Promise.resolve();
+    });
+    await view.findByRole("button", { name: /Release notes/ });
+    const rows = view
+      .getAllByRole("button")
+      .filter((button) => /Fix login|Release notes/.test(button.textContent ?? ""));
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "Fix loginThis chat",
+      "Release notesNodex",
+    ]);
+  });
+
   test("shows an unplaced File without requiring disclosure", async () => {
     api.readLibraryModule.mockResolvedValue(
       manifestResponse({

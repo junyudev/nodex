@@ -80,7 +80,7 @@ ordinary Project Session and its Linked chat edge before Window Scene
 presentation; a presentation failure preserves that durable Chat and relation.
 `Send to chat…` hands off to a Window-owned chooser after the context menu
 closes. The chooser retains the selected Page and remains usable if its source
-View unmounts. Page image inputs follow the verified exact-version byte-snapshot contract
+View unmounts. In a chat's Scene it lists that chat first, labeled `This chat`. Page image inputs follow the verified exact-version byte-snapshot contract
 in [Page prompt image inputs](./nfm-page-prompt-image-inputs.md).
 
 Each Board or List surface owns one short-lived Page menu session. Right-click

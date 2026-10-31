@@ -28,14 +28,17 @@ vi.mock("@/lib/page-prompt-context", () => ({
 vi.mock("@/components/board/editor/nfm-send-to-thread-menu", () => ({
   NfmSendToThreadMenu: ({
     onAccept,
+    preferredTarget,
   }: {
     readonly onAccept: (request: {
       readonly target: { readonly kind: "thread"; readonly threadId: string };
       readonly mode: "send";
     }) => Promise<void> | void;
+    readonly preferredTarget?: { readonly sessionId: string } | null;
   }) => (
     <button
       type="button"
+      data-preferred-session-id={preferredTarget?.sessionId}
       onClick={() =>
         onAccept({
           target: { kind: "thread", threadId: "thread-1" },
@@ -233,6 +236,27 @@ describe("DatabaseViewPageContextMenu", () => {
         target: { kind: "thread", threadId: "thread-1" },
       }),
     );
+  });
+
+  test("offers the chat whose Scene shows the View first in Send to chat", async () => {
+    const screen = renderMenu({
+      sendToChat: vi.fn(async () => undefined),
+      currentChat: { kind: "new-thread", sessionId: "session-current", meta: "This chat" },
+    });
+
+    await openMenu(screen);
+    await openSubmenu(screen, "Open in");
+    const sendToChatItem = await screen.findByRole("menuitem", { name: "Send to chat…" });
+    await act(async () => {
+      fireEvent.click(sendToChatItem);
+      await Promise.resolve();
+    });
+
+    expect(
+      (await screen.findByRole("button", { name: "Choose chat" })).getAttribute(
+        "data-preferred-session-id",
+      ),
+    ).toBe("session-current");
   });
 
   test("reports failure when opening a Page in a new chat fails", async () => {

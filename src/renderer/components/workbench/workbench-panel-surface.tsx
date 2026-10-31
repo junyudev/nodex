@@ -32,6 +32,8 @@ import { TerminalPanel } from "./workbench-terminal-panel";
 import { WorkbenchBrowserSidebarPanel } from "./workbench-new-tab-page";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
 import { hasSessionConversation, resolveSessionPageSendTarget } from "@/lib/session-execution";
+import { resolveNfmSendToThreadPreferredTarget } from "@/components/board/editor/nfm-send-to-thread-menu-model";
+import { presentChatTitle } from "@/lib/page-stage-related-chat-candidates";
 import { resolveWorkbenchPanelCapabilities } from "@/lib/workbench-panel-capabilities";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
@@ -148,6 +150,13 @@ export function WorkbenchTabProjectionPanel({
 }) {
   const workbenchOwner = useWorkbenchWindowOwner();
   const sceneOwner = { kind: "session" as const, sessionId: activeSession.id };
+  // A bound Runtime Session is an existing chat; only an unstarted Session can launch here.
+  const sessionSendTarget = (projectId: string) =>
+    resolveSessionPageSendTarget(
+      activeSession,
+      projectId,
+      activeSession.thread ? projectSessionThreadLinkToSummary(activeSession.thread) : null,
+    );
   const canonicalSurface = readWorkbenchAgentContext(workbenchOwner.read(), sceneOwner)?.tabs.find(
     (item) => item.tabId === tab.id,
   )?.surface;
@@ -225,6 +234,7 @@ export function WorkbenchTabProjectionPanel({
         ? tab.config.target.databaseViewId
         : projects.find((project) => project.id === projectId)?.defaultDatabaseViewId;
     if (!databaseViewId) return <div role="status">Database View is unavailable</div>;
+    const sendTarget = sessionSendTarget(projectId);
     return (
       <DbViewSessionTab
         isActivePanelTab={isActivePanelTab}
@@ -245,6 +255,12 @@ export function WorkbenchTabProjectionPanel({
         onOpenPageInNewChat={onOpenPageInNewChat}
         onOpenRelatedChat={onOpenRelatedChat}
         onSendPageToChat={onSendPageToChat}
+        currentChat={resolveNfmSendToThreadPreferredTarget({
+          sessionId: activeSession.id,
+          sessionThread: sendTarget.kind === "thread" ? sendTarget.thread : null,
+          canStartThreadInSession: sendTarget.kind === "launch",
+          sessionTitle: presentChatTitle(activeSession),
+        })}
         onOpenCanvasStage={onOpenCanvasStage}
         onSelectDatabaseView={(databaseViewId, title) => {
           onUpdateTab(tab.id, {
@@ -292,12 +308,7 @@ export function WorkbenchTabProjectionPanel({
     if (tab.config.routingContext.kind !== "project") return null;
     const pageAccessProjectId = tab.config.routingContext.projectId;
     const pageTab = tab;
-    // A bound Runtime Session is an existing chat; only an unstarted Session can launch here.
-    const sendTarget = resolveSessionPageSendTarget(
-      activeSession,
-      pageAccessProjectId,
-      activeSession.thread ? projectSessionThreadLinkToSummary(activeSession.thread) : null,
-    );
+    const sendTarget = sessionSendTarget(pageAccessProjectId);
     return (
       <PageStageSessionTab
         tab={pageTab}
@@ -308,6 +319,7 @@ export function WorkbenchTabProjectionPanel({
         sessionId={activeSession.id}
         sessionThread={sendTarget.kind === "thread" ? sendTarget.thread : null}
         canStartThreadInSession={sendTarget.kind === "launch"}
+        sessionTitle={presentChatTitle(activeSession)}
         onLeavePage={onLeavePageStage}
         onClose={() => void onCloseTab(tab.id)}
         onOpenTerminal={async () => {

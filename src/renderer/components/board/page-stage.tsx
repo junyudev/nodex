@@ -81,6 +81,7 @@ interface PageStageDescriptionEditorProps {
   readonly sessionId?: string | null;
   readonly sessionThread: PageStageProps["sessionThread"];
   readonly canStartThreadInSession: PageStageProps["canStartThreadInSession"];
+  readonly sessionTitle?: PageStageProps["sessionTitle"];
   readonly onOpenCodexThread: PageStageProps["onOpenCodexThread"];
   readonly onOpenSession: PageStageProps["onOpenRelatedChat"];
   readonly onOpenPage: PageStageProps["onOpenPage"];
@@ -127,6 +128,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   sessionId,
   sessionThread,
   canStartThreadInSession,
+  sessionTitle,
   onOpenCodexThread,
   onOpenSession,
   onOpenPage,
@@ -256,6 +258,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
       sessionId={sessionId}
       sessionThread={sessionThread}
       canStartThreadInSession={canStartThreadInSession}
+      sessionTitle={sessionTitle}
       onOpenCodexThread={onOpenCodexThread}
       onOpenSession={onOpenSession}
       onOpenPage={onOpenPage}
@@ -416,6 +419,7 @@ export function PageStage(props: PageStageProps) {
           sessionId={props.sessionId}
           sessionThread={props.sessionThread}
           canStartThreadInSession={props.canStartThreadInSession}
+          sessionTitle={props.sessionTitle}
           onOpenCodexThread={props.onOpenCodexThread}
           onOpenSession={props.onOpenRelatedChat}
           onOpenPage={props.onOpenPage}

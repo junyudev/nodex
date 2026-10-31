@@ -11,6 +11,7 @@ import {
   moveNfmSendToThreadFocusedRowId,
   resolveNfmSendToThreadTitle,
   resolveNfmSendToThreadFocusedRowId,
+  resolveNfmSendToThreadPreferredTarget,
 } from "./nfm-send-to-thread-menu-model";
 
 function makeThread(overrides: Partial<CommandPaletteThread> = {}): CommandPaletteThread {
@@ -241,6 +242,49 @@ describe("markdown send-to-thread menu model", () => {
     expect(rows[1].meta).toBe("Chats");
   });
 
+  test("prefers the current chat's live Thread, else a first Turn it may start", () => {
+    const thread = makePreferredThread({ threadId: "live" });
+    expect(
+      resolveNfmSendToThreadPreferredTarget({
+        sessionId: " session-1 ",
+        sessionThread: thread,
+        canStartThreadInSession: true,
+      }),
+    ).toEqual({ kind: "thread", thread, sessionId: "session-1", meta: "This chat" });
+    expect(
+      resolveNfmSendToThreadPreferredTarget({
+        sessionId: "session-1",
+        sessionThread: makePreferredThread({ threadId: "gone", archived: true }),
+        canStartThreadInSession: true,
+      }),
+    ).toEqual({ kind: "new-thread", sessionId: "session-1", meta: "This chat" });
+    // A chat without a Thread is named by its own title rather than as a new chat.
+    expect(
+      resolveNfmSendToThreadPreferredTarget({
+        sessionId: "session-1",
+        sessionThread: null,
+        canStartThreadInSession: true,
+        sessionTitle: " Fix login ",
+      }),
+    ).toEqual({
+      kind: "new-thread",
+      sessionId: "session-1",
+      meta: "This chat",
+      label: "Fix login",
+    });
+    for (const input of [
+      { sessionId: "session-1", sessionThread: null, canStartThreadInSession: false },
+      { sessionId: " ", sessionThread: thread, canStartThreadInSession: true },
+      {
+        sessionId: "session-1",
+        sessionThread: makePreferredThread({ threadId: "temp", ephemeral: true }),
+        canStartThreadInSession: false,
+      },
+    ]) {
+      expect(resolveNfmSendToThreadPreferredTarget(input)).toBe(null);
+    }
+  });
+
   test("pins and labels the preferred thread with caller meta", () => {
     const rows = buildNfmSendToThreadRows({
       query: "",
@@ -252,7 +296,7 @@ describe("markdown send-to-thread menu model", () => {
           updatedAt: 1,
         }),
         sessionId: "session-preferred",
-        meta: "This session",
+        meta: "This chat",
       },
       threads: [
         makeThread({ threadId: "newer", title: "Newer", updatedAt: 3 }),
@@ -266,7 +310,7 @@ describe("markdown send-to-thread menu model", () => {
       throw new Error("expected preferred thread row");
     }
     expect(rows[0].label).toBe("Fresh title");
-    expect(rows[0].meta).toBe("This session");
+    expect(rows[0].meta).toBe("This chat");
     expect(rows[0].isPreferredTarget).toBe(true);
     expect(rows[1]?.id).toBe("thread:newer");
     expect(rows[2]?.kind).toBe("new-thread");
@@ -280,7 +324,7 @@ describe("markdown send-to-thread menu model", () => {
         kind: "thread",
         thread: makePreferredThread({ threadId: "preferred", updatedAt: 1 }),
         sessionId: "session-current",
-        meta: "This session",
+        meta: "This chat",
       },
       threads: [
         makeThread({ threadId: "preferred", sessionId: null, updatedAt: 5 }),
@@ -304,7 +348,7 @@ describe("markdown send-to-thread menu model", () => {
       preferredTarget: {
         kind: "new-thread",
         sessionId: "session-current",
-        meta: "This session",
+        meta: "This chat",
       },
       threads: [
         makeThread({ threadId: "newer", title: "Newer", updatedAt: 3 }),
@@ -318,7 +362,7 @@ describe("markdown send-to-thread menu model", () => {
       throw new Error("expected preferred new chat row");
     }
     expect(rows[0].label).toBe("New chat");
-    expect(rows[0].meta).toBe("This session");
+    expect(rows[0].meta).toBe("This chat");
     expect(rows[0].isPreferredTarget).toBe(true);
     expect(rows[0].isFooterAction).toBe(false);
     expect(rows[0].target.sessionId).toBe("session-current");
@@ -332,7 +376,7 @@ describe("markdown send-to-thread menu model", () => {
       preferredTarget: {
         kind: "new-thread",
         sessionId: "session-current",
-        meta: "This session",
+        meta: "This chat",
       },
       threads: [],
     });

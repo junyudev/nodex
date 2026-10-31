@@ -34,6 +34,8 @@ import {
   type PageStagePropertyDisclosureState,
   type PageStagePropertyRow as PageStagePropertyRowModel,
 } from "@/lib/page-stage-property-layout";
+import { CURRENT_CHAT_LABEL } from "@/lib/page-chat-actions";
+import { selectLinkableChatCandidates } from "@/lib/page-stage-related-chat-candidates";
 import { usePageFiles } from "@/lib/use-page-files";
 import { cn } from "@/lib/utils";
 import { PageStageDataSourcePropertyControl } from "./data-source-property-control";
@@ -111,8 +113,14 @@ function RelatedChatAddControl({
   controller,
   empty,
 }: PageStagePropertiesSectionProps & { readonly empty: boolean }) {
-  const { relatedChats, relatedChatCandidates, onCreateRelatedChat, onLinkRelatedChat, saving } =
-    controller;
+  const {
+    relatedChats,
+    relatedChatCandidates,
+    currentSessionId,
+    onCreateRelatedChat,
+    onLinkRelatedChat,
+    saving,
+  } = controller;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [linkingSessionId, setLinkingSessionId] = useState<string | null>(null);
@@ -120,18 +128,15 @@ function RelatedChatAddControl({
     () => new Set(relatedChats.map((chat) => chat.sessionId)),
     [relatedChats],
   );
-  const availableCandidates = useMemo(
-    () => relatedChatCandidates.filter((chat) => !linkedSessionIds.has(chat.sessionId)),
-    [linkedSessionIds, relatedChatCandidates],
+  const hasLinkableChats = relatedChatCandidates.some(
+    (chat) => !linkedSessionIds.has(chat.sessionId),
   );
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredCandidates = normalizedQuery
-    ? availableCandidates.filter((candidate) =>
-        [candidate.displayTitle, candidate.projectName]
-          .filter(Boolean)
-          .some((value) => value?.toLocaleLowerCase().includes(normalizedQuery)),
-      )
-    : availableCandidates;
+  const filteredCandidates = selectLinkableChatCandidates(relatedChatCandidates, {
+    linkedSessionIds,
+    currentSessionId,
+    query,
+  });
+  const normalizedQuery = query.trim();
   if (!onCreateRelatedChat && !onLinkRelatedChat) return null;
 
   const triggerButton = empty ? (
@@ -186,7 +191,7 @@ function RelatedChatAddControl({
         <NodexDropdown.FlyoutSubmenuItem
           label="Link to chat…"
           leftSlot={<ThreadIcon className="icon-xs shrink-0" />}
-          disabled={availableCandidates.length === 0}
+          disabled={!hasLinkableChats}
           contentClassName="w-[280px] p-1"
         >
           <NodexDropdown.SearchInput
@@ -218,9 +223,12 @@ function RelatedChatAddControl({
                   <span className="min-w-0 flex-1 truncate text-left">
                     {candidate.displayTitle}
                   </span>
-                  {candidate.projectName ? (
+                  {/* The Scene's own Chat needs no Project to tell it apart. */}
+                  {candidate.sessionId === currentSessionId || candidate.projectName ? (
                     <span className="max-w-24 shrink truncate text-xs text-token-description-foreground">
-                      {candidate.projectName}
+                      {candidate.sessionId === currentSessionId
+                        ? CURRENT_CHAT_LABEL
+                        : candidate.projectName}
                     </span>
                   ) : null}
                   {linkingSessionId === candidate.sessionId ? (

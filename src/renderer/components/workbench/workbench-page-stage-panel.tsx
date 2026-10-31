@@ -140,6 +140,7 @@ export function PageStageSessionTab({
   sessionId,
   sessionThread,
   canStartThreadInSession,
+  sessionTitle = null,
   onLeavePage,
   onClose,
   onOpenTerminal,
@@ -168,6 +169,7 @@ export function PageStageSessionTab({
   sessionId: string;
   sessionThread: CodexThreadSummary | null;
   canStartThreadInSession: boolean;
+  sessionTitle?: string | null;
   onLeavePage: (snapshot: PageStageSessionSnapshot) => void;
   onClose: () => void;
   onOpenTerminal: () => Promise<void>;
@@ -506,6 +508,7 @@ export function PageStageSessionTab({
             sessionId={sessionId}
             sessionThread={sessionThread}
             canStartThreadInSession={canStartThreadInSession}
+            sessionTitle={sessionTitle}
             {...linkedChats}
             relatedChatCandidates={relatedChatCandidates}
             onOpenRelatedChat={onOpenRelatedChat}

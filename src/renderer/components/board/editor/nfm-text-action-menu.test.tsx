@@ -392,7 +392,7 @@ describe("markdown text action menu surface", () => {
         kind: "thread",
         thread: makePreferredThreadFromItem(existingThread),
         sessionId: "session-preferred",
-        meta: "This session",
+        meta: "This chat",
       },
       renderSendToThreadMenu: (props) => (
         <NfmSendToThreadMenuSurface
@@ -416,7 +416,7 @@ describe("markdown text action menu surface", () => {
     );
     const initialOptions = view.getAllByRole("option");
     expect(initialOptions[0]?.textContent?.includes("Existing implementation") ?? false).toBe(true);
-    expect(initialOptions[0]?.textContent?.includes("This session") ?? false).toBe(true);
+    expect(initialOptions[0]?.textContent?.includes("This chat") ?? false).toBe(true);
     expect(
       initialOptions[initialOptions.length - 1]?.textContent?.includes("New chat") ?? false,
     ).toBe(true);
@@ -519,7 +519,7 @@ describe("markdown text action menu surface", () => {
             kind: "thread",
             thread: makePreferredThreadFromItem(existingThread, { updatedAt: 1 }),
             sessionId: "session-preferred",
-            meta: "This session",
+            meta: "This chat",
           }}
           onAccept={() => undefined}
           onClose={() => undefined}
@@ -531,7 +531,7 @@ describe("markdown text action menu surface", () => {
     const options = view.getAllByRole("option");
     expect(options.length).toBe(3);
     expect(options[0]?.textContent?.includes("Existing implementation") ?? false).toBe(true);
-    expect(options[0]?.textContent?.includes("This session") ?? false).toBe(true);
+    expect(options[0]?.textContent?.includes("This chat") ?? false).toBe(true);
     expect(options[1]?.textContent?.includes("Recently updated") ?? false).toBe(true);
     expect(options[1]?.textContent?.includes("Default") ?? false).toBe(true);
     expect(options[2]?.textContent?.includes("New chat") ?? false).toBe(true);
@@ -618,7 +618,7 @@ describe("markdown text action menu surface", () => {
           preferredTarget={{
             kind: "new-thread",
             sessionId: "session-current",
-            meta: "This session",
+            meta: "This chat",
           }}
           onAccept={(request) => {
             acceptedRequests.push(JSON.stringify(request.target));
@@ -632,7 +632,7 @@ describe("markdown text action menu surface", () => {
     const options = view.getAllByRole("option");
     expect(options.length).toBe(2);
     expect(options[0]?.textContent?.includes("New chat") ?? false).toBe(true);
-    expect(options[0]?.textContent?.includes("This session") ?? false).toBe(true);
+    expect(options[0]?.textContent?.includes("This chat") ?? false).toBe(true);
     expect(options[1]?.textContent?.includes("Recently updated") ?? false).toBe(true);
 
     await act(async () => {
@@ -666,7 +666,7 @@ describe("markdown text action menu surface", () => {
           preferredTarget={{
             kind: "new-thread",
             sessionId: "session-current",
-            meta: "This session",
+            meta: "This chat",
           }}
           showModeSelector={false}
           onAccept={() => undefined}
@@ -679,7 +679,7 @@ describe("markdown text action menu surface", () => {
     const options = view.getAllByRole("option");
     expect(options.length).toBe(2);
     expect(options[0]?.textContent?.includes("New chat") ?? false).toBe(true);
-    expect(options[0]?.textContent?.includes("This session") ?? false).toBe(true);
+    expect(options[0]?.textContent?.includes("This chat") ?? false).toBe(true);
     expect(options[1]?.textContent?.includes("Other session") ?? false).toBe(true);
   });
 

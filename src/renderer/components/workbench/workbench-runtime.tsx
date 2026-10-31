@@ -1508,9 +1508,14 @@ export function WorkbenchRuntime({
     () => [...Object.values(sessionsByProject).flat(), ...projectlessSessions],
     [projectlessSessions, sessionsByProject],
   );
+  // The open chat can be older than the loaded catalog, yet it is the first one a Page joins.
   const pageStageRelatedChatCandidates = useMemo(
-    () => presentPageStageRelatedChatCandidates(knownSessions, projects),
-    [knownSessions, projects],
+    () =>
+      presentPageStageRelatedChatCandidates(
+        activeSession ? [...knownSessions, activeSession] : knownSessions,
+        projects,
+      ),
+    [activeSession, knownSessions, projects],
   );
   const processManagerThreads = useMemo<CodexBackgroundTerminalProcessThreadRef[]>(() => {
     const seen = new Set<string>();

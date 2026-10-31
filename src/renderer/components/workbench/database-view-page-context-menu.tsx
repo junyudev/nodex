@@ -207,6 +207,7 @@ function ChatPicker({
       >
         <NfmSendToThreadMenu
           projectId={projectId}
+          preferredTarget={actionPort.currentChat ?? null}
           onAccept={async ({ target }) => {
             await actionPort.sendToChat?.({
               projectId,

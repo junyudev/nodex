@@ -93,9 +93,9 @@ import { NfmCodeBlockController } from "./nfm-code-block-controller";
 import type { NfmMoveToDestination } from "./nfm-move-to-menu-model";
 import { buildCodexPromptInputFromBlockNoteBlocks } from "./nfm-codex-prompt-input";
 import { createSendToThreadToggleBlock } from "./nfm-send-to-thread-block";
-import type {
-  NfmSendToThreadPreferredTarget,
-  NfmSendToThreadRequest,
+import {
+  resolveNfmSendToThreadPreferredTarget,
+  type NfmSendToThreadRequest,
 } from "./nfm-send-to-thread-menu-model";
 import { NfmSideMenuRuntimeProvider } from "./nfm-side-menu-runtime";
 import { resolveSendBlockSelection } from "./send-block-selection";
@@ -225,6 +225,7 @@ interface NfmEditorCommonProps {
   sessionId?: string | null;
   sessionThread?: CodexThreadSummary | null;
   canStartThreadInSession?: boolean;
+  sessionTitle?: string | null;
   onOpenCodexThread?: (threadId: string) => Promise<void>;
   onOpenSession?: (sessionId: string) => void | Promise<void>;
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
@@ -292,40 +293,6 @@ interface SendBlocksSelection {
   blocks: DragSessionBlock[];
 }
 
-function isAvailableNfmSendToThreadPreferredTargetThread(
-  thread: CodexThreadSummary | null | undefined,
-): thread is CodexThreadSummary {
-  return Boolean(
-    thread &&
-    !thread.archived &&
-    thread.ephemeral !== true &&
-    thread.source?.sideConversation !== true,
-  );
-}
-
-function createNfmSendToThreadPreferredTargetFromThread(
-  thread: CodexThreadSummary | null | undefined,
-  sessionId: string | null,
-  meta: string,
-): NfmSendToThreadPreferredTarget | null {
-  if (!sessionId || !isAvailableNfmSendToThreadPreferredTargetThread(thread)) return null;
-  return { kind: "thread", thread, sessionId, meta };
-}
-
-function createNfmSendToThreadPreferredSessionTarget(
-  sessionId: string | null | undefined,
-  canStartThreadInSession: boolean,
-): NfmSendToThreadPreferredTarget | null {
-  if (!canStartThreadInSession) return null;
-  const normalizedSessionId = sessionId?.trim();
-  if (!normalizedSessionId) return null;
-  return {
-    kind: "new-thread",
-    sessionId: normalizedSessionId,
-    meta: "This session",
-  };
-}
-
 function resolveImagePreview(input: { readonly source: string; readonly alt: string }): {
   readonly source: string;
   readonly alt: string;
@@ -378,6 +345,7 @@ function NfmEditorInstance({
   sessionId = null,
   sessionThread = null,
   canStartThreadInSession = false,
+  sessionTitle = null,
   onOpenCodexThread,
   onOpenSession,
   onOpenPage,
@@ -448,9 +416,13 @@ function NfmEditorInstance({
 
   const sessionSendToThreadPreferredTarget = useMemo(
     () =>
-      createNfmSendToThreadPreferredTargetFromThread(sessionThread, sessionId, "This session") ??
-      createNfmSendToThreadPreferredSessionTarget(sessionId, canStartThreadInSession),
-    [canStartThreadInSession, sessionId, sessionThread],
+      resolveNfmSendToThreadPreferredTarget({
+        sessionId,
+        sessionThread,
+        canStartThreadInSession,
+        sessionTitle,
+      }),
+    [canStartThreadInSession, sessionId, sessionThread, sessionTitle],
   );
   const sendToThreadProjectNameById = useMemo(() => {
     if (executionProjectId === null) return {};

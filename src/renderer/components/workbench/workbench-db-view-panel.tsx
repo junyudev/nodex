@@ -59,6 +59,7 @@ import { primaryCanvasBlockId } from "../../../shared/block-documents";
 import type { OpenCanvasStageHandler } from "@/lib/use-workbench-panel-openers";
 import { supportedDatabaseIntrinsicFields } from "@/lib/database-intrinsic-field-registry";
 import type { Project } from "@/lib/types";
+import type { NfmSendToThreadPreferredTarget } from "@/components/board/editor/nfm-send-to-thread-menu-model";
 import type { OpenPageInNewChatInput, SendPageToChatInput } from "@/lib/page-chat-actions";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { materializePageCreateTarget } from "@/lib/page-create-target";
@@ -333,6 +334,7 @@ export function DbViewSessionTab({
   onOpenPageInNewChat,
   onOpenRelatedChat,
   onSendPageToChat,
+  currentChat = null,
   onOpenCanvasStage,
   onSelectDatabaseView,
   targetLeafId,
@@ -352,6 +354,8 @@ export function DbViewSessionTab({
   readonly onOpenPageInNewChat?: (input: OpenPageInNewChatInput) => Promise<void> | void;
   readonly onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   readonly onSendPageToChat?: (input: SendPageToChatInput) => Promise<void> | void;
+  /** The chat whose Scene shows this View; its Page menus list it first. */
+  readonly currentChat?: NfmSendToThreadPreferredTarget | null;
   readonly onOpenCanvasStage: OpenCanvasStageHandler;
   readonly onSelectDatabaseView?: (viewId: string, title: string) => void;
   readonly targetLeafId: string;
@@ -1007,6 +1011,7 @@ export function DbViewSessionTab({
     ...(onOpenPageInNewChat ? { openInNewChat: onOpenPageInNewChat } : {}),
     ...(onOpenRelatedChat ? { openRelatedChat: onOpenRelatedChat } : {}),
     ...(onSendPageToChat ? { sendToChat: onSendPageToChat } : {}),
+    currentChat,
     deletePage: async ({ pageId }) => {
       const deleted = await runtime.deletePage(undefined, pageId);
       if (!deleted) throw new Error(`Page ${pageId} delete did not commit`);

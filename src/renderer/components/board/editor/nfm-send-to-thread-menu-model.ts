@@ -1,6 +1,6 @@
 import type { CodexThreadSummary } from "@/lib/types";
 import type { CommandPaletteThread } from "@/lib/command-palette";
-import type { ChatDestinationTarget } from "@/lib/page-chat-actions";
+import { CURRENT_CHAT_LABEL, type ChatDestinationTarget } from "@/lib/page-chat-actions";
 import { createCommandPaletteThreadSearchIndex } from "@/lib/command-palette-thread-search";
 import { normalizeSearchText } from "@/lib/search-text";
 import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
@@ -17,12 +17,12 @@ export interface NfmSendToThreadRequest {
 
 export type NfmSendToThreadPreferredTarget =
   | { kind: "thread"; thread: CodexThreadSummary; sessionId: string; meta: string }
-  | { kind: "new-thread"; sessionId: string; meta: "This session"; label?: "New chat" };
+  | { kind: "new-thread"; sessionId: string; meta: typeof CURRENT_CHAT_LABEL; label?: string };
 
 export interface NfmSendToThreadNewRow {
   kind: "new-thread";
   id: string;
-  label: "New chat";
+  label: string;
   meta: string;
   isFooterAction: boolean;
   isPreferredTarget: boolean;
@@ -51,6 +51,42 @@ export interface NfmSendToThreadRowsInput {
   projectNameById?: Readonly<Record<string, string>>;
   /** Wrapping leaves a mention of the chat, which only a chat with a Session can have. */
   requireSession?: boolean;
+}
+
+/**
+ * The chat whose Scene a picker opened in, listed first: its live Thread, or a first Turn in
+ * it when it has none yet and may start one here.
+ */
+export function resolveNfmSendToThreadPreferredTarget({
+  sessionId,
+  sessionThread,
+  canStartThreadInSession,
+  sessionTitle,
+}: {
+  readonly sessionId: string | null | undefined;
+  readonly sessionThread: CodexThreadSummary | null | undefined;
+  readonly canStartThreadInSession: boolean;
+  /** Names a chat without a Thread, which has no Thread title to show. */
+  readonly sessionTitle?: string | null;
+}): NfmSendToThreadPreferredTarget | null {
+  const normalizedSessionId = sessionId?.trim();
+  if (!normalizedSessionId) return null;
+  if (isAvailablePreferredThread(sessionThread)) {
+    return {
+      kind: "thread",
+      thread: sessionThread,
+      sessionId: normalizedSessionId,
+      meta: CURRENT_CHAT_LABEL,
+    };
+  }
+  return canStartThreadInSession
+    ? {
+        kind: "new-thread",
+        sessionId: normalizedSessionId,
+        meta: CURRENT_CHAT_LABEL,
+        ...(sessionTitle?.trim() ? { label: sessionTitle.trim() } : {}),
+      }
+    : null;
 }
 
 export function resolveNfmSendToThreadTitle(thread: CodexThreadSummary): string {
@@ -89,8 +125,15 @@ function newThreadMatchesQuery(
   return haystack.includes(normalizedQuery);
 }
 
-function isAvailablePreferredThread(thread: CodexThreadSummary): boolean {
-  return !thread.archived && thread.ephemeral !== true && thread.source?.sideConversation !== true;
+function isAvailablePreferredThread(
+  thread: CodexThreadSummary | null | undefined,
+): thread is CodexThreadSummary {
+  return Boolean(
+    thread &&
+    !thread.archived &&
+    thread.ephemeral !== true &&
+    thread.source?.sideConversation !== true,
+  );
 }
 
 function createPreferredThreadItem(

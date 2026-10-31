@@ -90,6 +90,8 @@ export interface PageStageProps {
   sessionId?: string | null;
   sessionThread?: CodexThreadSummary | null;
   canStartThreadInSession?: boolean;
+  /** The chat's title, naming it where the Page is offered to it. */
+  sessionTitle?: string | null;
   relatedChats?: readonly PageStageRelatedChat[];
   relatedChatsLoading?: boolean;
   relatedChatsError?: string | null;

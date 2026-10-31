@@ -45,5 +45,7 @@ the menu then overlaps the selection as needed to keep its actions visible.
 
 `Send to chat` shares its destination picker, modes, retained Block targets, and
 Page image capture with the [Block side menu](nfm-block-side-menu-behavior.md).
+In a chat's Scene the picker lists that chat first, labeled `This chat`: its live
+Thread, or a first Turn in it while it has none and may start one there.
 Library image references are captured through the source Page before a Chat is
 created or a message is submitted; see [Page image inputs](nfm-page-prompt-image-inputs.md).

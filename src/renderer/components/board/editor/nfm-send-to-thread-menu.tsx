@@ -217,7 +217,8 @@ function SendToThreadRow({
           hasPreview && "mt-0.5",
         )}
       >
-        {row.kind === "new-thread" ? (
+        {/* The current chat is a chat even before its first Turn; only a new chat is new. */}
+        {row.kind === "new-thread" && !row.isPreferredTarget ? (
           <PlusIcon className="size-4" aria-hidden="true" />
         ) : (
           <ThreadIcon className="size-4" aria-hidden="true" />
