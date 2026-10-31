@@ -1,0 +1,346 @@
+src/main/app-tools/SessionMessageIntake.node.test.ts
+  s_03d9ba21390430::t_529ddc5491668b 240-241
+src/main/app-tools/ContentQueryAppTools.node.test.ts
+  s_9705075d2442c9::t_3da8b6bfe02668 110-112
+src/shared/nodex-app-tools/argument-schemas.ts
+  s_2d7b784dacd638::t_385d0c7a711b5e 1-53
+src/main/core-client/testing/fake-core-client.ts
+  s_2d7b784dacd638::t_5cb3f8e8c82e3d 317-322
+packages/agent-runtime/src/mcp/ToolOperation.test.ts
+  s_b5c41a13e9511c::t_fb2c587c2a896d 59-80
+  s_2d7b784dacd638::t_ebe67c4a09a1bc 1-58,81-101
+src/shared/nodex-app-tools/schema-honesty.test.ts
+  s_2d7b784dacd638::t_0c18545cd7aba2 1-174
+crates/nodex-core/src/workspace/mutation.rs
+  s_cf85cf70b2613b::t_affcb013964a89 241,244,246
+src/main/app-tools/SessionHandoffAppTools.ts
+  s_2d7b784dacd638::t_3f01a0a662d8ea 17,19,23,30-31,36-44
+src/main/app-tools/ContentQueryAppTools.ts
+  s_2d7b784dacd638::t_fcf07be1d3196f 14,31-32,35-36
+src/main/app-tools/TerminalAppTools.ts
+  s_2d7b784dacd638::t_4c2ffa20e2dbd7 9,17-18
+src/shared/nodex-app-tools/sidebar-schemas.ts
+  s_2d7b784dacd638::t_7e41885a9c06e5 3,5,11,51,56,79,83,87,104-107
+crates/nodex-core/src/automation/mutation.rs
+  s_3915316a9c4493::t_d1001bfe6b8fa1 224
+src/main/app-tools/SessionPresentationAppTools.node.test.ts
+  s_bbfca6b9cc3ecc::t_2cfe5fa3bde1e5 1-2,72,258,274
+src/shared/nodex-app-tools/workbench-control-schemas.ts
+  s_e2f9f3a29b34ef::t_6016cd4ad10d63 1-2,8,21-30,52-53,102-103
+src/main/app-tools/PluginAppTools.ts
+  s_2d7b784dacd638::t_5e394df915a336 9,17-18
+crates/nodex-core/schema/migrations/v194_to_v195.sql
+  s_2d7b784dacd638::t_32d2777b6cfed2 1-11
+src/main/core-runtime/CoreModules.ts
+  s_2d7b784dacd638::t_fe0862481dad79 17-18,90-92,215-219
+crates/nodex-core-contracts/src/workspace.rs
+  s_cf85cf70b2613b::t_79a69831de2dc7 21-36
+src/main/app-tools/HandoffStatusAppTools.ts
+  s_2d7b784dacd638::t_401ad493ea774b 13,22-23
+src/main/core-client/app-tool-operation-admission.node.test.ts
+  s_e2f9f3a29b34ef::t_99722ee4d1cc14 1-72
+src/main/app-tools/SessionMessageIntake.ts
+  s_2d7b784dacd638::t_831ea200c115e1 25-26,169,221,253-257,276,292
+src/shared/nodex-app-tools/inbox-schema.ts
+  s_2d7b784dacd638::t_e0dd04842a4d67 3-4,6-27,32-33
+src/shared/nodex-agent-tools/v3-base-schemas.ts
+  s_2d7b784dacd638::t_306ab2f418cf50 1,85-86,88-109
+src/main/codex-application/CodexThreadDurableProjection.node.test.ts
+  s_2d7b784dacd638::t_ee6b832e230ab3 150,219,364,444
+docs/product-specs/agent-runtime-behavior.md
+  s_fa2a1bb1a9bd0d::t_f7cc29dd64dbdb 741-746,749
+  s_b5c41a13e9511c::t_b7661a10b03e02 747-748
+src/main/app-tools/WorkbenchControl.node.test.ts
+  s_e2f9f3a29b34ef::t_a336eb8bbc92f5 1-2,79,101,148,170-174
+packages/agent-runtime/src/nodex/Instructions.ts
+  s_2d7b784dacd638::t_def55605a57e93 13
+packages/core-protocol/src/compatibility.generated.ts
+  s_fa2a1bb1a9bd0d::t_3399b0c8984ebc 42-43
+src/shared/nodex-app-tools/session-observation-schemas.ts
+  s_aba0b408ef9828::t_6712448f1c2b26 12-14,16-18,20-31,63-69,71-73,75-77,89-93,95-106,111,123-131,155-172,174-176,178-182,184-191,193-196,251-263
+src/main/app-tools/AccountAppTools.node.test.ts
+  s_2d7b784dacd638::t_84976d62b6d6d3 1-3,41-42,77-79,83,89,96
+src/main/app-tools/SessionReadDetails.node.test.ts
+  s_e2f9f3a29b34ef::t_4148685a6571dd 10,82-88
+packages/agent-runtime/vendor/contracts/src/orchestratorMcp.ts
+  s_cf85cf70b2613b::t_b0518ca475cb17 47-49,189,225,248,430,464,531,603,605,621,657
+src/main/app-tools/AutomationAppTools.node.test.ts
+  s_2d7b784dacd638::t_0fd7ae00ee01dd 1-2,108,199-204,240,242,247,260,269,272-273,286,292,295,484,566
+packages/core-protocol/src/generated.ts
+  s_fa2a1bb1a9bd0d::t_2fe704abc4c6a2 375-390,709-722,13287-13323
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_2d7b784dacd638::t_d20b5d9749f855 41-42,133,388-393,404,421,504,793,984,1263-1266,1412-1415,1539,1550-1558,1609
+packages/agent-runtime/src/persistence/Migrations/088_McpToolOperations.ts
+  s_2d7b784dacd638::t_4195db712a42f0 1-13
+src/shared/nodex-app-tools/session-fork-schema.ts
+  s_2d7b784dacd638::t_3ae96da88760e5 3,6-11,15,20-21
+crates/nodex-core-server/src/lib.rs
+  s_cf85cf70b2613b::t_0033ff07f42338 539-542,1496-1515,3130-3133
+src/main/app-tools/NativeSessionMessageIntake.ts
+  s_2d7b784dacd638::t_8f1305d6b97fcf 33,199
+crates/nodex-core-protocol/src/lib.rs
+  s_2d7b784dacd638::t_b0688b6b05f8c6 30-32,1032-1044,1243,1306-1307,1402
+src/main/app-tools/InboxAppTools.ts
+  s_2d7b784dacd638::t_a73305cceb745b 9,12,28,33-34,39-47,59-63
+src/shared/nodex-agent-tools/write-schemas.ts
+  s_2d7b784dacd638::t_15bfc1e131054c 101-102,111-116
+src/shared/nodex-app-tools/automation-schema.ts
+  s_2d7b784dacd638::t_de4d91e46fd6d9 3,8,11,15,42,45,47-50,101-169,180-184
+src/main/app-tools/app-tool-result.node.test.ts
+  s_2d7b784dacd638::t_0aa0f19103534f 1-59
+crates/nodex-store-format/src/lib.rs
+  s_bbfca6b9cc3ecc::t_729a9cefebcc86 249-252
+crates/nodex-core/src/workspace/mod.rs
+  s_cf85cf70b2613b::t_92b64aca0665c2 5,106-117
+src/main/codex-application/CodexConversationContext.node.test.ts
+  s_2d7b784dacd638::t_6398b29afc4894 72,155
+src/main/app-tools/RuntimeSessionCommands.node.test.ts
+  s_2d7b784dacd638::t_78ab6fd8afebb7 1,82-83,86-109,111,117,137-138,150-171,188,190,254,269,405,538,581-638
+CHANGELOG.md
+  s_fa2a1bb1a9bd0d::t_f9331f5c50d1c8 17
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_1291aa7602df08::t_e96604aaf09f15 104,206
+src/shared/nodex-app-tools/session-execution-target.ts
+  s_2d7b784dacd638::t_356fae291cac12 5
+src/shared/nodex-app-tools/automation-schema.test.ts
+  s_2d7b784dacd638::t_1ceff5aa1e0c24 93-94,101,107,109-110,134
+src/main/app-tools/NativeSessionMessageIntake.node.test.ts
+  s_03d9ba21390430::t_a47f1c78de915b 190
+src/shared/nodex-app-tools/session-handoff-schemas.ts
+  s_e2f9f3a29b34ef::t_12408e35b8f9b8 3,5-11,14-26,38-39,46
+src/main/codex-application/CodexThreadTitlePersistence.node.test.ts
+  s_2d7b784dacd638::t_c0343d0a2390c2 124
+src/main/app-tools/ContentAppTools.ts
+  s_2d7b784dacd638::t_f11a95adae7e23 14,27-28
+src/main/app-tools/AppToolOperation.node.test.ts
+  s_2d7b784dacd638::t_144ce14ae6dcb1 1-96
+crates/nodex-core/src/workspace/app_tool_operation.rs
+  s_cb4392fad23838::t_7e360d3cfc4e6c 1-324
+src/shared/nodex-agent-tools/base-schemas.ts
+  s_e2f9f3a29b34ef::t_0e958b63431fb5 17-22,41,72,78,82-86,90-102,105-110,217-228
+src/main/app-tools/InboxAppTools.node.test.ts
+  s_2d7b784dacd638::t_745c182225fd6d 1,48,108
+src/main/app-tools/AccountAppTools.ts
+  s_2d7b784dacd638::t_80d17facf7249f 1-2,9,14-15,19-20,23,35-52,55-62
+packages/agent-runtime/README.md
+  s_fa2a1bb1a9bd0d::t_68783870e1e295 76
+src/main/app-tools/WorkbenchAppTools.ts
+  s_2d7b784dacd638::t_a7002f7cbfbef4 23,53-54,115-119,137-139,145-154,192-196,295-296
+src/main/app-tools/SessionPresentationAppTools.ts
+  s_2d7b784dacd638::t_6db8da5d747e41 7,13,16,28-29,61-68
+src/main/app-tools/session-dispatch-identity.ts
+  s_2d7b784dacd638::t_4cea022f341cdf 4-9,11
+src/shared/nodex-app-tools/session-message-schema.ts
+  s_e2f9f3a29b34ef::t_35f20c2b8b9f8f 5,10-16,21,23-29,32,38-49,56,58,65-77,79,81,91-92
+packages/agent-runtime/src/mcp/McpInvocationContext.ts
+  s_2d7b784dacd638::t_1d005e96c33fb0 48
+src/shared/nodex-app-tools/account-schemas.ts
+  s_2d7b784dacd638::t_f25da2bc0d814f 3,7,13,19
+packages/agent-runtime/vendor/contracts/src/threadMetadataMcp.ts
+  s_2d7b784dacd638::t_f799caebfbac03 1,65
+src/main/app-tools/AppToolOperation.ts
+  s_2d7b784dacd638::t_ce6adf2e0f03e1 1-66
+src/shared/nodex-app-tools/session-merge-schema.ts
+  s_2d7b784dacd638::t_50e19818e1b68d 3,6-7,12-13
+packages/agent-runtime/src/mcp/toolkits/task/tools.ts
+  s_bbfca6b9cc3ecc::t_1ff85b68300b5b 8,80,94,219,226,268,298
+src/shared/nodex-agent-tools/v3-read-schemas.ts
+  s_2d7b784dacd638::t_113ca0e1490d0d 191,194,206-212
+src/shared/nodex-app-tools/terminal-schema.ts
+  s_e2f9f3a29b34ef::t_85d6e221a2fb6f 5-10,23
+crates/nodex-core/src/infrastructure/migration.rs
+  s_bbfca6b9cc3ecc::t_7c16cab3d5e987 388-392,2559-2573,8455,8460,8469
+src/shared/nodex-app-tools/empty-arguments.ts
+  s_cf85cf70b2613b::t_4fb9476920fef1 1-3
+src/shared/nodex-agent-tools/v3-write-schemas.ts
+  s_e2f9f3a29b34ef::t_d29cec7de47c7d 1,20-22,28-37,88-100,103-111,117-125,135,138-140,174-178,238-239
+packages/agent-runtime/vendor/contracts/src/orchestratorMcp.test.ts
+  s_2d7b784dacd638::t_fa6c7ec030292d 34,113,149
+docs/ARCHITECTURE.md
+  s_fa2a1bb1a9bd0d::t_dba763b049aa87 594-599
+src/main/app-tools/app-tool-operation.test-fixtures.ts
+  s_2d7b784dacd638::t_fef7a0226999f3 1-51
+src/main/codex-application/CodexTurnAuthority.node.test.ts
+  s_2d7b784dacd638::t_b48a7b8148cb90 24
+docs/product-specs/agent-interface-behavior.md
+  s_fa2a1bb1a9bd0d::t_16e644968049c3 120-136,147,263,329,367
+crates/nodex-core/schema/current.sql
+  s_2d7b784dacd638::t_90363c6e9baa9a 4518,4948-4959
+src/main/codex-application/CodexThreadSettingsRuntime.node.test.ts
+  s_bbfca6b9cc3ecc::t_1c25102241ba9c 178,337
+src/main/app-tools/WorkspaceAppTools.node.test.ts
+  s_e2f9f3a29b34ef::t_801a55b28d135f 1-2,50,76-83,458,480-484,488
+src/main/app-tools/AppToolInterpreter.node.test.ts
+  s_e2f9f3a29b34ef::t_d2b4f12e996d35 122-127
+src/main/app-tools/WorkspaceAppTools.ts
+  s_2d7b784dacd638::t_db831117d601fb 18,26,41,109-110,115,128-129,134,152-153,163-168,175,178,181-185,214-217,237-238,243-248,259-264,275-280,291-295,297,303-307,309,315-320,344-352,354-357,368
+src/main/app-tools/app-tool-result.ts
+  s_2d7b784dacd638::t_d4de55baa080c1 1,40-65
+src/main/app-tools/WorkspaceDependencyAppTools.ts
+  s_cf85cf70b2613b::t_d0739e5be787bf 6-7,14-15
+src/shared/nodex-app-tools/session-schemas.ts
+  s_2d7b784dacd638::t_1f8a3522d726f4 3,6-12,17,25,27,29,36
+src/main/app-tools/AutomationAppTools.ts
+  s_c2dadd59d28fba::t_356051b3433cde 22,25,44,52,58,264-265,272-279
+packages/agent-runtime/vendor/contracts/src/threadMetadataMcp.test.ts
+  s_2d7b784dacd638::t_611cbc191e678d 60-64
+src/main/automation-application/AutomationApplication.node.test.ts
+  s_2d7b784dacd638::t_f166c8837b26e9 187
+src/main/app-tools/SessionHandoffAppTools.node.test.ts
+  s_2d7b784dacd638::t_7b18e69a32a95e 1,31-35,70,132,239,305
+src/main/codex-application/CodexConversationRelationships.node.test.ts
+  s_2d7b784dacd638::t_ec95a3d9a41fe7 130
+src/shared/schema-constraints.ts
+  s_2d7b784dacd638::t_16790cf748febd 1-3
+src/main/core-client/types.ts
+  s_2d7b784dacd638::t_e42e3420f755f5 28-29,262-265
+src/main/app-tools/WorkbenchControl.ts
+  s_2d7b784dacd638::t_5d9c063111cc3f 5,12,23,33-34,36-38
+src/main/app-tools/RuntimeSessionCommands.ts
+  s_2d7b784dacd638::t_c52059c630ac43 12,22,26,55-56,58-60,63-64,79-80,82-84,91,93,99-100,104-106,114-115,122-124,128-129,151,155
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_2d7b784dacd638::t_07de41f43c9134 441
+packages/core-protocol/openapi.json
+  s_fa2a1bb1a9bd0d::t_b8aa8bf444f304 1829-1909,2494-2538
+src/shared/nodex-app-tools/content-catalog.ts
+  s_2d7b784dacd638::t_9f7a75a32ec71b 12-15
+src/shared/nodex-app-tools/workbench-observation-schemas.ts
+  s_e2f9f3a29b34ef::t_d152f9c2749beb 9-14,26-31,79
+src/main/app-tools/AppToolInterpreter.ts
+  s_2d7b784dacd638::t_37d6e570e134d1 15-20,98-101
+src/shared/nodex-app-tools/idempotency-key.ts
+  s_2d7b784dacd638::t_1fe945073408d9 1-10
+src/shared/nodex-app-tools/session-presentation-schemas.ts
+  s_2d7b784dacd638::t_06c04dc38b2e63 1,12,15,69-70
+src/shared/nodex-app-tools/plugin-schema.ts
+  s_2d7b784dacd638::t_24b38e272814e2 4-6,11
+crates/nodex-core/src/document/integrity.rs
+  s_fa2a1bb1a9bd0d::t_9a41bf67bc32ff 67
+src/shared/nodex-app-tools/session-launch-schema.ts
+  s_2d7b784dacd638::t_bd3c8f0f13404b 3,6-12,16,26-30,40-45,48-53,57,63-64
+src/main/app-tools/SessionAppTools.ts
+  s_2d7b784dacd638::t_1f9e3eac0f6f4e 3-6,16-21,69-74,76,84-89,92-93,125-130,133-134,167-169,171,177
+packages/agent-runtime/src/mcp/toolkits/task/handlers.ts
+  s_e2f9f3a29b34ef::t_2b7b96acaffd50 55-59
+src/main/core-client/core-client.ts
+  s_2d7b784dacd638::t_a192ed2a9dd4ca 47-48,224-236
+docs/CLI.md
+  s_fa2a1bb1a9bd0d::t_cb1d91ab2072f4 290-295
+packages/agent-runtime/src/mcp/ToolOperation.ts
+  s_b5c41a13e9511c::t_045cd7f9ada4a1 51-53,56-62
+  s_2d7b784dacd638::t_b9794ea19019b8 1-50,54-55,63-84
+packages/agent-runtime/src/mcp/TaskToolkit.integration.test.ts
+  s_e2f9f3a29b34ef::t_ed96c7b79db3e6 573,686,702-708,841,850,854-864,888,903,917,957,1044,1135,1369,1385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c8b5751c3213990b40083601d800aaedceb503ba",
+  "prompts": {},
+  "sessions": {
+    "s_03d9ba21390430": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19154-03f8-7c03-922f-31e2c81efe43",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_1291aa7602df08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "37db4cd4-622c-478e-b114-45dddfc61e3a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_2d7b784dacd638": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1914f-6e55-7af3-9446-f9507906e41f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3915316a9c4493": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-db3f-7c12-a8e5-ed6cea9f07b5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9705075d2442c9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19168-61a9-70a1-a205-3b752c0c38f4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_aba0b408ef9828": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1916f-ade3-7732-a737-d16b88fecf5d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b5c41a13e9511c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1919a-f51e-7522-8c2b-1ee25c262243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_bbfca6b9cc3ecc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-3c8c-78a3-90b4-74e14f6a0ec0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c2dadd59d28fba": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19171-2390-7ce1-a461-a43bc3fdecb2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cb4392fad23838": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19165-57df-7da3-a976-fd0a38de9966",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cf85cf70b2613b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19152-c6af-77d2-a12d-c09a0cb00a3b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fa2a1bb1a9bd0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19159-a559-7f33-a1c4-1abdaf6954c2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
