@@ -1,0 +1,110 @@
+tests/fixtures/page-file-html/electron-main.ts
+  s_f7fa97ab093d49::t_b780f0a79edb20 1-112
+  s_f7fa97ab093d49::t_690d525a384992 113-120
+src/main/guests/isolated-guest-policy.ts
+  s_f7fa97ab093d49::t_53c02b057a8cbc 1-121
+  s_1a0c6130ab27a5::t_d00c8b9e584a95 122-129
+src/main/ipc/handlers/PageFileHtmlIpc.ts
+  s_f7fa97ab093d49::t_fcac2f284d7a7c 1-31
+  s_f7fa97ab093d49::t_feab35042696d8 32-54
+src/main/page-files/page-file-html-resolver.test.ts
+  s_f7fa97ab093d49::t_01d8cd1a2b9382 1-51
+  s_f7fa97ab093d49::t_a34c8ce654c9dd 52-137
+src/main/page-files/page-file-html-policy.test.ts
+  s_f7fa97ab093d49::t_572832047ba8eb 1-27
+  s_f7fa97ab093d49::t_f46be3d30b728d 28-69
+src/main/page-files/page-file-html-resolver.ts
+  s_f7fa97ab093d49::t_e002adf56c6ccf 1-49
+  s_f7fa97ab093d49::t_726e39c6d1448b 50-95
+src/main/host-runtime/PageFileHtmlRuntime.ts
+  s_f7fa97ab093d49::t_fcac2f284d7a7c 1-19
+  s_f7fa97ab093d49::t_4b79f87f1c5940 20-24
+src/main/ipc/handlers/PageFileHtmlIpc.node.test.ts
+  s_f7fa97ab093d49::t_d5bdd79034876a 1-46
+  s_f7fa97ab093d49::t_1dacace7942108 47-90
+src/main/page-files/page-file-html-host.test.ts
+  s_f7fa97ab093d49::t_cbc0b0bdf4e55f 1-68
+  s_f7fa97ab093d49::t_c9f9ad94fc1154 69-181
+src/shared/page-file-html.ts
+  s_f7fa97ab093d49::t_53c02b057a8cbc 1-22
+src/renderer/features/page-files/page-file-html-view.test.tsx
+  s_f7fa97ab093d49::t_572832047ba8eb 1-58
+  s_f7fa97ab093d49::t_b51b41a395b970 59-97
+src/main/page-files/page-file-html-policy.ts
+  s_f7fa97ab093d49::t_e002adf56c6ccf 1-67
+  s_df8eaebacb15fb::t_43b7c4f26e0501 68-93
+src/renderer/features/page-files/page-file-html-view.tsx
+  s_f7fa97ab093d49::t_fcac2f284d7a7c 1-64
+  s_df8eaebacb15fb::t_5195bd463bd8e2 65-119
+src/main/page-files/page-file-html-host.integration.ts
+  s_f7fa97ab093d49::t_c6cdc8916837b0 1-174
+  s_df8eaebacb15fb::t_371a0c6387938d 175-449
+src/main/page-files/page-file-html-host.ts
+  s_f7fa97ab093d49::t_0f00e26642171e 1-198
+  s_df8eaebacb15fb::t_3891d5f3c5823b 199-380
+src/renderer/features/page-files/page-file-html-adapter.ts
+  s_f7fa97ab093d49::t_fcac2f284d7a7c 1-8
+  s_f7fa97ab093d49::t_c3729b01f701f0 9-13
+docs/ARCHITECTURE.md
+  s_f7fa97ab093d49::t_4922d2cefe2237 269,1292
+docs/SECURITY.md
+  s_f7fa97ab093d49::t_7ee1a2fa815f0f 79-81,85-122
+src/main/app/RendererIngressLive.ts
+  s_f7fa97ab093d49::t_a043525032e52a 62,143
+src/main/app/WindowApplicationLive.ts
+  s_f7fa97ab093d49::t_002b00b4b5c312 113-116,214,224,239,311
+src/main/mcp-app/mcp-app-sandbox-host.integration.ts
+  s_f7fa97ab093d49::t_3c977aa8cc667c 141,162
+src/main/mcp-app/mcp-app-sandbox-host.ts
+  s_f7fa97ab093d49::t_05d2b504d4829e 34-40,63,438,614-619,674,689,732,757,763-767,797
+src/main/privileged-schemes.test.ts
+  s_f7fa97ab093d49::t_1f19873ba1e1f3 4,24-27,29
+src/main/privileged-schemes.ts
+  s_f7fa97ab093d49::t_003145d667ff20 5-6,15-18
+src/main/window-runtime/ApplicationWindowRuntime.ts
+  s_f7fa97ab093d49::t_a72bef99443ef2 27,52,97,112-115,189
+src/shared/app-renderer-policy.test.ts
+  s_f7fa97ab093d49::t_61c7066fb449ef 25,29-42
+src/shared/app-renderer-policy.ts
+  s_f7fa97ab093d49::t_0b1062c6e4341f 78-79
+src/shared/external-navigation-url.node.test.ts
+  s_f7fa97ab093d49::t_416462698dc460 2-5,24-42
+src/shared/external-navigation-url.ts
+  s_f7fa97ab093d49::t_fd7aaf668da089 10-19
+src/shared/ipc-api.ts
+  s_f7fa97ab093d49::t_719a1327e6c83f 876-883
+src/shared/ipc-endpoint-policy.ts
+  s_f7fa97ab093d49::t_bccd7311987855 318-319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fdb0f22894628ef6360670295a8a5eba9f7d3d7a",
+  "prompts": {},
+  "sessions": {
+    "s_1a0c6130ab27a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19301-59ff-7f00-9923-bb5334841ebc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_df8eaebacb15fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19300-7fcc-7ef3-919e-a73afb162bbf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f7fa97ab093d49": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192e1-5ad5-7c50-8c8d-54f57563ed5e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
