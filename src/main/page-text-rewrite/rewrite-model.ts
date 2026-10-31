@@ -1,0 +1,48 @@
+import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
+import {
+  inboxDefaultSuggestionModel,
+  isInboxProviderUsable,
+  supportsInboxStructuredGeneration,
+  type InboxSettings,
+} from "../../shared/inbox";
+import { lightUtilityModelSelection } from "../../shared/agent-runtime-utility-model";
+
+type Providers = AgentRuntimeOperations["providers.read"]["output"];
+type Preference = Pick<InboxSettings, "suggestionAgent" | "suggestionModel">;
+
+/** Reuse the utility Agent preference, with an economical model and the lightest offered effort. */
+export const selectPageTextRewriteModel = (
+  providers: Providers,
+  preference: Preference,
+): AgentRuntimeLaunch["modelSelection"] | null => {
+  const usable = providers.filter(
+    (provider) =>
+      isInboxProviderUsable(provider) &&
+      provider.installed &&
+      provider.auth.status !== "unauthenticated" &&
+      supportsInboxStructuredGeneration(provider) &&
+      provider.supportsTextGeneration !== false &&
+      provider.models.length > 0,
+  );
+  const preferred = usable.find(
+    (provider) => provider.instanceId === preference.suggestionAgent.instanceId,
+  );
+  const provider = preferred ?? usable[0];
+  if (!provider) return null;
+  const configured =
+    preferred && preference.suggestionModel
+      ? provider.models.find((model) => model.slug === preference.suggestionModel)
+      : undefined;
+  const economical =
+    provider.driver === "codex"
+      ? provider.models.find((model) => model.slug === "gpt-6-luna")
+      : (provider.models.find((model) => /haiku/i.test(model.slug)) ??
+        provider.models.find((model) => /sonnet/i.test(model.slug)));
+  const model = configured ?? economical ?? inboxDefaultSuggestionModel(provider);
+  if (!model) return null;
+  return lightUtilityModelSelection(
+    { instanceId: provider.instanceId, model: model.slug },
+    providers,
+  );
+};

@@ -601,6 +601,12 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
             }),
       ),
       Effect.map((output) => output as AgentRuntimeOperations[M]["output"]),
+      // Only ephemeral utilities are withdrawable; durable commands retain their receipt semantics.
+      Effect.onInterrupt(() =>
+        method === "text.generate-structured"
+          ? send({ type: "request.cancel", id }).pipe(Effect.catchCause(() => Effect.void))
+          : Effect.void,
+      ),
       Effect.ensuring(
         Ref.update(state, (current) => {
           const next = new Map(current.pending);

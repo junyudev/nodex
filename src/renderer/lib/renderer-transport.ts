@@ -9,6 +9,9 @@ import type { ProjectionScope, ProjectionStreamMessage } from "../../shared/proj
 import type { ContentRoutingIdentity } from "../../shared/content-routing-context";
 
 export interface RendererTransport {
+  subscribePageTextRewriteEvents?: (
+    callback: (event: import("../../shared/page-text-rewrite").PageTextRewriteEvent) => void,
+  ) => () => void;
   subscribeAgentRuntimeSessionEvents?: (
     callback: (event: import("../../shared/agent-runtime-api").AgentRuntimeSessionEvent) => void,
   ) => () => void;

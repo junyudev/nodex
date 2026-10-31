@@ -13,6 +13,8 @@ const success = (id, output) => send({ id, success: true, output });
 const pendingHosts = new Map();
 let executionSubscription;
 const blocked = [];
+const utilityTimers = new Map();
+let cancelledUtilities = 0;
 const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
 const first = await lines.next();
 const bootstrap = first.done ? null : JSON.parse(first.value);
@@ -22,6 +24,14 @@ send({ type: "ready", identity });
 
 for await (const line of { [Symbol.asyncIterator]: () => lines }) {
   const request = JSON.parse(line);
+  if (request.type === "request.cancel") {
+    if (utilityTimers.has(request.id)) {
+      clearTimeout(utilityTimers.get(request.id));
+      utilityTimers.delete(request.id);
+      cancelledUtilities++;
+    }
+    continue;
+  }
   if (request.type === "host.result") {
     const id = pendingHosts.get(request.id);
     if (id) success(id, request.output);
@@ -45,6 +55,10 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     continue;
   }
   if (request.method === "project.read") {
+    if (request.input.projectId === "cancelled-utilities") {
+      success(request.id, { cancelledUtilities, activeUtilities: utilityTimers.size });
+      continue;
+    }
     if (request.input.projectId.startsWith("host-wait:")) {
       send({ type: "host.request", id: request.id, operation: "tool.call",
         tool: "wait_sessions", input: { targets: [{sessionId: request.input.projectId}], timeoutMs: 3600000 },
@@ -159,7 +173,11 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
   }
   if (request.method === "text.generate-structured") {
     // Model work answers well after the transport default but inside its own budget.
-    setTimeout(() => success(request.id, { title: "Generated" }), request.input.timeoutMs - 200);
+    const timer = setTimeout(() => {
+      utilityTimers.delete(request.id);
+      success(request.id, { title: "Generated" });
+    }, request.input.timeoutMs - 200);
+    utilityTimers.set(request.id, timer);
     continue;
   }
   if (request.method === "runtime.identity") success(request.id, identity);

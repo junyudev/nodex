@@ -340,6 +340,11 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
+    subscribePageTextRewriteEvents(callback) {
+      return bridge.on("page-text-rewrite:event", (event) => {
+        callback(event as import("../../shared/page-text-rewrite").PageTextRewriteEvent);
+      });
+    },
     subscribeInboxChanges(callback) {
       return bridge.on("inbox-changed", (...args: unknown[]) => {
         const payload = args[0] as import("../../shared/inbox").InboxChangedEvent | undefined;

@@ -4,6 +4,8 @@ import * as McpAppDataIpc from "../ipc/handlers/McpAppDataIpc";
 import * as AcpAgentsIpc from "../ipc/handlers/AcpAgentsIpc";
 import * as AcpAgents from "../acp-agents/AcpAgents";
 import * as CodexFilesystemAssetRuntime from "../host-runtime/CodexFilesystemAssetRuntime";
+import * as PageTextRewriteIpc from "../ipc/handlers/PageTextRewriteIpc";
+import { PageTextRewrite } from "../page-text-rewrite/PageTextRewrite";
 import * as FileSearchIpc from "../ipc/handlers/FileSearchIpc";
 import * as WorkspaceTextSearchIpc from "../ipc/handlers/WorkspaceTextSearchIpc";
 import * as WorkspaceTextSearch from "../codex-application/WorkspaceTextSearch";
@@ -93,6 +95,7 @@ export const live = Layer.mergeAll(
   ApplicationSyncIpc.live,
   WorkspaceFileIpc.live().pipe(Layer.provide(WorkspaceFileQueries.live)),
   FileSearchIpc.live,
+  PageTextRewriteIpc.live.pipe(Layer.provide(PageTextRewrite.live)),
   WorkspaceTextSearchIpc.live.pipe(
     Layer.provide(WorkspaceTextSearch.live.pipe(Layer.provide(WorkspaceTextSearchPlatform.live))),
   ),

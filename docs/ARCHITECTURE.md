@@ -821,6 +821,11 @@ with its native owner. Authentication location never substitutes for history ide
 
 ### Agent Runtime conversation ownership
 
+Ephemeral text generation uses configured Runtime provider utilities without creating product
+Sessions. Main owns the renderer request lifetime; the Runtime owns execution and native utility
+resources, which follow request interruption and process shutdown. [Page selection rewrites](product-specs/nfm-editor-ask-for-change-behavior.md)
+use this boundary and leave Document mutation with the editor.
+
 The Agent Runtime owns each bound Session's execution root, Runs, provider sessions,
 history, delegated descendants and durable result delivery. It also owns admission receipts
 for remote Native messages; the Native execution owner performs producer writes and resolves

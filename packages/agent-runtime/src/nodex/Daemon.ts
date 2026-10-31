@@ -88,14 +88,23 @@ export async function runAgentRuntimeProcess(): Promise<void> {
     });
     const active = new Set<Promise<void>>();
     const waiting: unknown[] = [];
+    // AbortSignals belong at this Node ingress; the Runtime owns scoped interruption below it.
+    const utilityRequests = new Map<string, AbortController>();
     try {
       const service = await runtime.runPromise(AgentRuntime);
       const bridge = await runtime.runPromise(HostBridge);
       await write({ type: "ready", identity: service.identity });
       const execute = async (request: unknown) => {
         const envelope = request as { readonly id?: string; readonly method?: string };
+        const abort =
+          envelope?.method === "text.generate-structured" && typeof envelope.id === "string"
+            ? new AbortController()
+            : undefined;
+        if (abort) utilityRequests.set(envelope.id!, abort);
         try {
-          const output = await runtime.runPromise(service.handle(request));
+          const output = await runtime.runPromise(service.handle(request), {
+            signal: abort?.signal,
+          });
           await write({ id: envelope?.id ?? "", success: true, output });
           if (envelope?.method === "shutdown") await dispose();
         } catch (error) {
@@ -110,6 +119,9 @@ export async function runAgentRuntimeProcess(): Promise<void> {
               ...identity,
             },
           });
+        } finally {
+          if (abort && utilityRequests.get(envelope.id!) === abort)
+            utilityRequests.delete(envelope.id!);
         }
       };
       const launch = (request: unknown) => {
@@ -141,6 +153,23 @@ export async function runAgentRuntimeProcess(): Promise<void> {
             process.stderr.write(
               `Invalid host reply: ${error instanceof Error ? error.message : String(error)}\n`,
             );
+          }
+          continue;
+        }
+        // Cancellation bypasses the queue, including when every active slot is occupied.
+        if (request?.type === "request.cancel" && typeof request.id === "string") {
+          utilityRequests.get(request.id)?.abort();
+          const index = waiting.findIndex((value) => {
+            const queued = value as { readonly id?: string; readonly method?: string } | null;
+            return queued?.id === request.id && queued?.method === "text.generate-structured";
+          });
+          if (index >= 0) {
+            waiting.splice(index, 1);
+            await write({
+              id: request.id,
+              success: false,
+              error: { message: "Text generation cancelled" },
+            });
           }
           continue;
         }

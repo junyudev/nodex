@@ -75,9 +75,9 @@ async function startProcess(
     waiting.clear();
   });
   let nextId = 0;
-  const request = (method: string, input: unknown = {}) =>
+  const request = (method: string, input: unknown = {}, requestId?: string) =>
     new Promise<AgentRuntimeResponse>((resolve, reject) => {
-      const id = String(nextId++);
+      const id = requestId ?? String(nextId++);
       waiting.set(id, { resolve, reject });
       child.stdin.write(`${JSON.stringify({ id, method, input })}\n`);
     });
@@ -117,6 +117,87 @@ async function startProcess(
     },
   };
 }
+
+it("cancels a utility request through stdin while keeping the Runtime and other requests alive", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-rewrite-cancel-"));
+  const binary = path.join(home, "codex-fixture.mjs");
+  const marker = path.join(home, "started.json");
+  await fs.writeFile(
+    binary,
+    `#!${process.execPath}
+import fs from 'node:fs';
+if (process.argv[2] !== 'exec') process.exit(0);
+for await (const _chunk of process.stdin) {}
+fs.writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ pid: process.pid }));
+setInterval(() => {}, 1000);
+`,
+    { mode: 0o700 },
+  );
+  const runtime = await startProcess(home, {
+    type: "bootstrap",
+    providers: {
+      codex: {
+        driver: "codex",
+        config: {
+          enabled: true,
+          binaryPath: binary,
+          homePath: path.join(home, "codex-home"),
+          setupMode: "existing",
+        },
+      },
+    },
+    hostTools: [],
+  });
+  let pid: number | undefined;
+  try {
+    const reply = runtime.request(
+      "text.generate-structured",
+      {
+        cwd: home,
+        prompt: "Rewrite selected text",
+        modelSelection: { instanceId: "codex", model: "gpt-6-luna" },
+        outputSchema: {
+          type: "object",
+          properties: { markdown: { type: "string" } },
+          required: ["markdown"],
+          additionalProperties: false,
+        },
+        timeoutMs: 60_000,
+      },
+      "rewrite",
+    );
+    await expect
+      .poll(async () => fs.readFile(marker, "utf8").catch(() => ""), { timeout: 15_000 })
+      .not.toBe("");
+    pid = (JSON.parse(await fs.readFile(marker, "utf8")) as { pid: number }).pid;
+    runtime.child.stdin.write(`${JSON.stringify({ type: "request.cancel", id: "rewrite" })}\n`);
+    expect((await reply).success).toBe(false);
+    await expect
+      .poll(
+        () => {
+          try {
+            process.kill(pid!, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 5_000 },
+      )
+      .toBe(false);
+    expect((await runtime.request("runtime.identity")).success).toBe(true);
+    expect(await runtime.close()).toBe(0);
+  } finally {
+    runtime.child.kill("SIGKILL");
+    await runtime.exit;
+    if (pid) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {}
+    }
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
 
 it("preserves actionable search cursor failures through real stdio", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-search-cursor-process-"));

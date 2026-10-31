@@ -150,6 +150,11 @@ full-access, automatic-approval native execution policy. Their task prompts and 
 remain specific to their purpose; investigation instructions request observations without
 installing a tool allowlist, denylist or separate permission boundary.
 
+Ephemeral structured generations follow the requesting client's lifetime. Cancelling a pending
+request interrupts its native utility process and releases temporary resources without stopping
+the Runtime or other requests. Durable commands keep their receipt and recovery semantics when
+their caller disconnects.
+
 Native event intake bounds retained messages and UTF-8 bytes before decoding or
 normalizing provider payloads. Overflow fails the affected physical source and
 retires its credentials while other providers continue. Outgoing image-capable

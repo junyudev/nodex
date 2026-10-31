@@ -228,6 +228,10 @@ fs.writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify
           const running = yield* Effect.forkChild(execution);
           yield* Deferred.await(peerReady).pipe(Effect.timeout("5 seconds"));
           yield* Fiber.interrupt(running);
+          const proof = decodeImageProof(yield* fs.readFileString(proofPath));
+          // Cleanup must finish on request cancellation, before the whole Runtime is closed.
+          for (const { path: file } of proof.images)
+            assert.isFalse(yield* fs.exists(path.dirname(file)));
           return;
         }
         if (behavior !== "success") {

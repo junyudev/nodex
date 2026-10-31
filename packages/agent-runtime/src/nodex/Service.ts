@@ -1605,8 +1605,19 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   });
   return {
     identity,
-    handle: (value: unknown) =>
-      handle(value).pipe(Effect.forkIn(processScope), Effect.flatMap(Fiber.join)),
+    handle: Effect.fn("AgentRuntime.request")(function* (value: unknown) {
+      const task = yield* handle(value).pipe(Effect.forkIn(processScope));
+      const result = Fiber.join(task);
+      // Utilities follow both request and process lifetimes; durable commands survive client loss.
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        "method" in value &&
+        value.method === "text.generate-structured"
+      )
+        return yield* result.pipe(Effect.onInterrupt(() => Fiber.interrupt(task)));
+      return yield* result;
+    }),
   };
 });
 

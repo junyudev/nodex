@@ -432,6 +432,7 @@ type ControlEndpointPolicy =
   | "terminal-write"
   | "workspace-text-search:start"
   | "workspace-text-search:stop"
+  | "page-text-rewrite:cancel"
   | "file-search:start"
   | "file-search:update"
   | "file-search:stop"
@@ -502,6 +503,7 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "page-text-rewrite:start"
   | "mcp-app:data:clear"
   | "codex:plugins:app-disconnect"
   | "codex:plugins:app-enabled"

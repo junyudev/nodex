@@ -1608,6 +1608,14 @@ export interface IpcApi
     args: [input: { requestId: string }];
     result: void;
   };
+  "page-text-rewrite:start": {
+    args: [input: import("./page-text-rewrite").PageTextRewriteStart];
+    result: import("./page-text-rewrite").PageTextRewriteStartResult;
+  };
+  "page-text-rewrite:cancel": {
+    args: [requestId: string];
+    result: void;
+  };
   "file-search:start": {
     args: [input: FileSearchStartInput];
     result: void;
@@ -3051,6 +3059,7 @@ export interface IpcEvents {
   "terminal-exit": TerminalExitEvent;
   "terminal-view-lease-revoked": TerminalViewLeaseRevokedEvent;
   "file-search:event": FileSearchEvent;
+  "page-text-rewrite:event": import("./page-text-rewrite").PageTextRewriteEvent;
   "workspace-text-search:event": import("./workspace-text-search").WorkspaceTextSearchEvent;
   "codex:event": CodexEvent;
   "codex:host-message": CodexHostMessage;

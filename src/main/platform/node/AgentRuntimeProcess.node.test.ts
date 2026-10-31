@@ -30,6 +30,33 @@ const acquire = (
     host,
   });
 
+it.live("withdraws an interrupted utility over the existing Runtime connection", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire();
+    const task = yield* Effect.forkChild(
+      connection.request("text.generate-structured", {
+        cwd: "/tmp",
+        prompt: "Rewrite",
+        modelSelection: { instanceId: "codex", model: "gpt-6-luna" },
+        outputSchema: {},
+        timeoutMs: 60_000,
+      }),
+    );
+    yield* connection.request("project.read", { projectId: "cancelled-utilities" }).pipe(
+      Effect.repeat({
+        times: 100,
+        until: (value) => (value as unknown as { activeUtilities: number }).activeUtilities === 1,
+      }),
+    );
+    yield* Fiber.interrupt(task);
+    assert.deepEqual(
+      (yield* connection.request("project.read", { projectId: "cancelled-utilities" })) as unknown,
+      { cancelledUtilities: 1, activeUtilities: 0 },
+    );
+    assert.equal((yield* connection.request("runtime.identity", {})).runtimeId, "fixture-runtime");
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.live("withdraws only the cancelled host wait and rejects stale-generation cancellation", () =>
   Effect.gen(function* () {
     const started = { a: yield* Deferred.make<void>(), b: yield* Deferred.make<void>() };
