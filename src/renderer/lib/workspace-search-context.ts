@@ -12,9 +12,7 @@ export function resolveWorkspaceSearchContext(input: {
   readonly executionCwd: string | null;
   readonly workspaceBrowserRoot: string | null;
   readonly isWorktree: boolean;
-  readonly isCloud: boolean;
-}): WorkspaceSearchContext | null {
-  if (input.isCloud) return null;
+}): WorkspaceSearchContext {
   const projectRoots = [...new Set(input.projectRoots.map((root) => root.trim()).filter(Boolean))];
   const cwd = input.executionCwd?.trim() || null;
   const roots =

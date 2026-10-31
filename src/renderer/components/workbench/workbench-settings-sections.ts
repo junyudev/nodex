@@ -60,7 +60,6 @@ export interface SettingsSectionDefinition {
   searchTerms?: (context: SettingsSearchContext) => readonly string[];
   disabled?: boolean;
   externalUrl?: string;
-  placeholderKind?: "unavailable" | "external";
   visibleWhen?: () => boolean;
 }
 

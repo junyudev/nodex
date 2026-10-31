@@ -193,9 +193,7 @@ export function buildCommandPaletteSectionsModel({
             {
               title: "Quick actions",
               items: ["newThread", "openFolder"].flatMap((id) => {
-                const item = results.commands.find(
-                  (candidate) => candidate.id === id && !candidate.mockReason,
-                );
+                const item = results.commands.find((candidate) => candidate.id === id);
                 return item ? [item] : [];
               }),
             },

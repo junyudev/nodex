@@ -16,7 +16,6 @@ import type { SettingsOpenThread } from "./workbench-settings-page-registry";
 import { SETTINGS_PAGE_COMPONENTS } from "./workbench-settings-section-pages";
 import {
   CODEX_SETTINGS_SHELL_STYLE,
-  NodexSettingsSection as SectionBlock,
   NodexSettingsPageSurface as SettingsPageSurface,
 } from "../ui/settings";
 import { SettingsSidebar } from "./workbench-settings-sidebar";
@@ -60,16 +59,6 @@ export interface SettingsRouteShellProps {
   onWorktreeAutoBranchPrefixChange: (value: string) => void;
   taskShorthandPagePromotionEnabled: boolean;
   onTaskShorthandPagePromotionEnabledChange: (value: boolean) => void;
-}
-
-function SettingsPlaceholderPage({ label, message }: { label: string; message: string }) {
-  return (
-    <SettingsPageSurface title={label} subtitle={message}>
-      <SectionBlock title={label}>
-        <div className="text-token-text-secondary p-3 text-sm">{message}</div>
-      </SectionBlock>
-    </SettingsPageSurface>
-  );
 }
 
 /** Anchor effects commit with the selected page, after its lazy module resolves. */
@@ -232,10 +221,6 @@ export function SettingsRouteShell({
   const ActiveSectionComponent = activeSection
     ? SETTINGS_PAGE_COMPONENTS[activeSection.pageKey]
     : null;
-  const shouldRenderPlaceholder =
-    !ActiveSectionComponent ||
-    activeSection?.placeholderKind === "unavailable" ||
-    activeSection?.placeholderKind === "external";
 
   return (
     <div
@@ -310,16 +295,7 @@ export function SettingsRouteShell({
                     });
                   }}
                 />
-              ) : shouldRenderPlaceholder ? (
-                <SettingsPlaceholderPage
-                  label={activeSection?.label ?? "Settings"}
-                  message={
-                    activeSection?.placeholderKind === "external"
-                      ? "This settings page opens outside the app."
-                      : "This settings page is not available yet."
-                  }
-                />
-              ) : (
+              ) : ActiveSectionComponent ? (
                 <ActiveSectionComponent
                   open={true}
                   path={path}
@@ -359,7 +335,7 @@ export function SettingsRouteShell({
                     onTaskShorthandPagePromotionEnabledChange
                   }
                 />
-              )}
+              ) : null}
             </SettingsPageContent>
           </ApplicationSurface>
         </div>

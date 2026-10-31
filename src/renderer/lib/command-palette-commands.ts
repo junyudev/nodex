@@ -65,7 +65,6 @@ export interface CommandPaletteShellCommandContext {
   canStartNewChatInProject: boolean;
   /** Whether the current place has somewhere for a new Page to live. */
   canCreatePage: boolean;
-  showMockCommands: boolean;
   hasActiveSession: boolean;
   activeSessionPinned: boolean;
   hasAttachedThread: boolean;
@@ -134,7 +133,7 @@ export function buildCommandPaletteCommands(
   const sessionCommandDisabled = !context.hasActiveSession;
   const panelCommandDisabled = !context.hasActiveSession;
   const command = (
-    id: string,
+    id: CommandPaletteShellCommandId | "searchFiles" | "searchText" | "searchChats" | "searchPages",
     group: CommandPaletteCommandGroup,
     title: string,
     subtitle: string,
@@ -145,7 +144,6 @@ export function buildCommandPaletteCommands(
       active?: boolean;
       disabled?: boolean;
       disabledReason?: string;
-      mockReason?: string;
     } = {},
   ): CommandPaletteCommand => ({
     kind: "command",
@@ -159,34 +157,7 @@ export function buildCommandPaletteCommands(
     active: options.active,
     disabled: options.disabled,
     disabledReason: options.disabledReason,
-    mockReason: options.mockReason,
   });
-  const mockCommand = (
-    id: string,
-    group: CommandPaletteCommandGroup,
-    title: string,
-    subtitle: string,
-    keywords: string[],
-    priority: number,
-    shortcut?: string,
-  ): CommandPaletteCommand =>
-    command(id, group, title, subtitle, keywords, priority, {
-      shortcut,
-      disabled: true,
-      mockReason: "Mock UI only. Not available in Nodex yet.",
-    });
-  const maybeMockCommand = (
-    id: string,
-    group: CommandPaletteCommandGroup,
-    title: string,
-    subtitle: string,
-    keywords: string[],
-    priority: number,
-    shortcut?: string,
-  ): CommandPaletteCommand[] =>
-    context.showMockCommands
-      ? [mockCommand(id, group, title, subtitle, keywords, priority, shortcut)]
-      : [];
 
   return [
     command(
@@ -274,15 +245,6 @@ export function buildCommandPaletteCommands(
         disabled: !context.canStartNewChat,
       },
     ),
-    ...maybeMockCommand(
-      "quickChat",
-      "Chat",
-      "New quick chat",
-      "Start a quick chat",
-      ["new", "quick", "chat"],
-      1110,
-      shortcutLabel("quickChat", "CmdOrCtrl+Alt+N"),
-    ),
     command(
       "openThreadInNewWindow",
       "Chat",
@@ -357,22 +319,6 @@ export function buildCommandPaletteCommands(
         disabled: !context.panelActionAvailability.side_chat,
       },
     ),
-    ...maybeMockCommand(
-      "previousThread",
-      "Navigation",
-      "Previous chat",
-      "Move to the previous chat",
-      ["previous", "chat", "navigation"],
-      1040,
-    ),
-    ...maybeMockCommand(
-      "nextThread",
-      "Navigation",
-      "Next chat",
-      "Move to the next chat",
-      ["next", "chat", "navigation"],
-      1030,
-    ),
     command(
       NAVIGATE_BACK_COMMAND_ID,
       "Navigation",
@@ -408,31 +354,6 @@ export function buildCommandPaletteCommands(
         shortcut: shortcutLabel("findInThread", "CmdOrCtrl+F"),
         disabled: !context.hasActiveSession,
       },
-    ),
-    ...maybeMockCommand(
-      "focusBrowserAddressBar",
-      "Navigation",
-      "Focus browser address bar",
-      "Focus the active Browser tab address bar",
-      ["browser", "address", "url"],
-      990,
-      shortcutLabel("focusBrowserAddressBar", "CmdOrCtrl+L"),
-    ),
-    ...maybeMockCommand(
-      "switchMode1",
-      "Navigation",
-      "Switch mode 1",
-      "Switch to the first reference app mode",
-      ["switch", "mode"],
-      980,
-    ),
-    ...maybeMockCommand(
-      "switchMode2",
-      "Navigation",
-      "Switch mode 2",
-      "Switch to the second reference app mode",
-      ["switch", "mode"],
-      970,
     ),
     command(
       TOGGLE_SIDEBAR_COMMAND_ID,
@@ -561,14 +482,6 @@ export function buildCommandPaletteCommands(
         disabled: !context.canStartNewChatInProject,
       },
     ),
-    ...maybeMockCommand(
-      "switchProject",
-      "Project",
-      "Switch project",
-      "Switch to another project",
-      ["switch", "project", "workspace"],
-      820,
-    ),
     command(
       "openFolder",
       "Project",
@@ -577,42 +490,6 @@ export function buildCommandPaletteCommands(
       ["open", "folder", "project"],
       810,
       { shortcut: shortcutLabel("openFolder", "CmdOrCtrl+O") },
-    ),
-    ...(context.showMockCommands
-      ? Array.from({ length: 9 }, (_, index) =>
-          mockCommand(
-            `environmentAction${index + 1}`,
-            "Project",
-            `Environment action ${index + 1}`,
-            "Run a configured project environment action",
-            ["environment", "action", "project"],
-            800 - index,
-          ),
-        )
-      : []),
-    ...maybeMockCommand(
-      "git.commit",
-      "Project",
-      "Git commit",
-      "Commit project changes",
-      ["git", "commit", "changes"],
-      780,
-    ),
-    ...maybeMockCommand(
-      "git.push",
-      "Project",
-      "Git push",
-      "Push project changes",
-      ["git", "push", "changes"],
-      770,
-    ),
-    ...maybeMockCommand(
-      "git.createPullRequest",
-      "Project",
-      "Create pull request",
-      "Create a pull request for project changes",
-      ["git", "pull", "request", "pr"],
-      760,
     ),
     command(
       "settings",
@@ -625,22 +502,6 @@ export function buildCommandPaletteCommands(
         shortcut: shortcutLabel("settings", "CmdOrCtrl+,"),
       },
     ),
-    ...maybeMockCommand(
-      "mcpSettings",
-      "Configure",
-      "MCP settings",
-      "Open MCP server settings",
-      ["mcp", "settings", "tools"],
-      730,
-    ),
-    ...maybeMockCommand(
-      "personalitySettings",
-      "Configure",
-      "Personality settings",
-      "Open assistant personality settings",
-      ["personality", "settings"],
-      720,
-    ),
     command(
       "showKeyboardShortcuts",
       "Configure",
@@ -651,38 +512,6 @@ export function buildCommandPaletteCommands(
       {
         shortcut: shortcutLabel("showKeyboardShortcuts", "CmdOrCtrl+Shift+/"),
       },
-    ),
-    ...maybeMockCommand(
-      "installPrimaryRuntime",
-      "Configure",
-      "Install Nodex Agent Runtime",
-      "Install the primary Nodex agent runtime",
-      ["install", "workspace", "runtime"],
-      700,
-    ),
-    ...maybeMockCommand(
-      "switchTheme",
-      "Configure",
-      "Switch theme",
-      "Switch between light and dark theme",
-      ["theme", "appearance", "light", "dark"],
-      690,
-    ),
-    ...maybeMockCommand(
-      "themePreset",
-      "Configure",
-      "Theme presets",
-      "Choose a theme preset",
-      ["theme", "preset", "appearance"],
-      680,
-    ),
-    ...maybeMockCommand(
-      "openSkills",
-      "Skills",
-      "Go to skills",
-      "Open the skills surface",
-      ["skills", "plugins"],
-      660,
     ),
     ...(context.canReloadSkills === true
       ? [
@@ -723,46 +552,6 @@ export function buildCommandPaletteCommands(
       {
         shortcut: shortcutLabel("openProcessManager", "Ctrl+Alt+M"),
       },
-    ),
-    ...maybeMockCommand(
-      "openControlWindow",
-      "App",
-      "Open control window",
-      "Open the control window",
-      ["control", "window"],
-      610,
-    ),
-    ...maybeMockCommand(
-      "logOut",
-      "App",
-      "Log out",
-      "Log out of your account",
-      ["logout", "account"],
-      600,
-    ),
-    ...maybeMockCommand(
-      "feedback",
-      "App",
-      "Feedback",
-      "Send feedback",
-      ["feedback", "support"],
-      590,
-    ),
-    ...maybeMockCommand(
-      "openAvatarOverlay",
-      "App",
-      "Wake Pet",
-      "Wake the Nodex pet",
-      ["pet", "avatar"],
-      580,
-    ),
-    ...maybeMockCommand(
-      "tuckAwayPetOverlay",
-      "App",
-      "Tuck Away Pet",
-      "Hide the Nodex pet",
-      ["pet", "avatar"],
-      570,
     ),
   ];
 }

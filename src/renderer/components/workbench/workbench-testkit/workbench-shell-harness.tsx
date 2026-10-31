@@ -2037,7 +2037,7 @@ export type MockCommandPaletteProps = {
   open: boolean;
   initialMode?: string;
   initialQuery?: string;
-  commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMockCommands">;
+  commandContext: Omit<CommandPaletteShellCommandContext, "isMac">;
   commandHandlers: CommandPaletteShellCommandHandlers;
   onOpenChange: (open: boolean) => void;
 };
@@ -2052,7 +2052,6 @@ vi.mock(".././command-palette", () => ({
       ? buildCommandPaletteCommands({
           ...props.commandContext,
           isMac: true,
-          showMockCommands: false,
         })
           .filter((command) => {
             if (commandQuery.length === 0) return true;

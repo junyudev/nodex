@@ -196,7 +196,7 @@ export interface NfmTextActionMenuSurfaceProps {
   canUseBackgroundColor: boolean;
   canClearFormat: boolean;
   canConvertToEquation?: boolean;
-  linkControl?: ReactNode;
+  linkControl: ReactNode;
   chat?: TextActionChat | null;
   onSelectBlockType: (item: TextActionBlockTypeItem) => void;
   onToggleStyle: (style: TextActionBasicStyle) => void;
@@ -922,24 +922,6 @@ function TextActionBlockTypeMenu({
   );
 }
 
-function TextActionDisabledButton({
-  children,
-  label,
-  className,
-}: {
-  children: ReactNode;
-  label: string;
-  className?: string;
-}) {
-  return (
-    <NodexTooltip tooltipContent={`${label} is not supported in Nodex yet.`} side="top" delay={0}>
-      <TextActionButton label={label} disabled className={className}>
-        {children}
-      </TextActionButton>
-    </NodexTooltip>
-  );
-}
-
 function renderCreateLinkTrigger(props: NfmCreateLinkTriggerProps) {
   return (
     <TextActionButton
@@ -1357,11 +1339,7 @@ export function NfmTextActionMenuSurface({
             </TextActionButtonTooltip>
           </div>
           <div className="flex items-center gap-1">
-            {linkControl ?? (
-              <TextActionDisabledButton label="Link">
-                <TextActionLinkIcon />
-              </TextActionDisabledButton>
-            )}
+            {linkControl}
             <TextActionButtonTooltip label={TEXT_ACTION_STYLE_LABELS.strike}>
               <TextActionButton
                 label={TEXT_ACTION_STYLE_LABELS.strike}

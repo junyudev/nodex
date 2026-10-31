@@ -285,17 +285,6 @@ describe("command palette discovery sections", () => {
       ...NO_CHATS,
     });
     expect(model.flatItems.map((item) => item.id)).toEqual(["newThread", "openFolder"]);
-    const mock = buildCommandPaletteSectionsModel({
-      mode: "root",
-      query: "",
-      commands: [{ ...makeCommand({ id: "openFolder" }), mockReason: "Unavailable" }],
-      pages: [],
-      projects: [],
-      activeProjectId: null,
-      recentPageIds: [],
-      ...NO_CHATS,
-    });
-    expect(mock.flatItems).toEqual([]);
   });
 });
 

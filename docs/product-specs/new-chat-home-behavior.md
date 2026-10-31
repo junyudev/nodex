@@ -21,6 +21,12 @@ The New Chat home is one focused composition: a decorative Nodex mark, a Project
 
 The heading uses normal tracking and asks what to build in the selected Project. The entire trailing `Project?` text is the selector trigger with a dotted underline. Its searchable picker reuses the shared semantic dropdown surface, selected-row check, Project creation action, and conditional projectless action.
 
+## Execution context
+
+New Chat offers the local Project workspace or a new worktree. Both choices use
+the ordinary Composer, file attachments, workspace search, and first-send
+workflow. Only executable targets belong in the selector and Composer model.
+
 ## First-send transition
 
 - Enter and the Send button share one submission lifecycle. After a successful start, both clear the current Composer draft and show the same first user message; a failed start preserves the draft.

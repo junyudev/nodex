@@ -349,7 +349,6 @@ function buildModel(overrides?: {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: overrides?.threadStartProgress ?? null,
     });
 
@@ -893,7 +892,6 @@ describe("LocalConversationThreadBody", () => {
         parentTurns: [],
         isNewThreadTab: false,
         newThreadTarget: null,
-        isCloudNewThreadTarget: false,
         threadStartProgress: null,
       }),
     });
@@ -1387,7 +1385,9 @@ describe("LocalConversationThreadBody", () => {
 
     expect(Boolean(container.querySelector('nav[aria-label="User messages"]'))).toBe(false);
     await flushIdleCallbacks();
-    await settleAsyncRender();
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     await settleAsyncRender();
 
     await waitFor(() => {

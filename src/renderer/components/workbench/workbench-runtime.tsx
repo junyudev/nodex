@@ -2777,7 +2777,6 @@ export function WorkbenchRuntime({
     openSidebarCommandPalette,
     openCommandPalette,
     requestContentSearchOpen,
-    showUnavailableProduct,
     activateReviewTab,
     openSubagentsPanelTab,
     openAttachedThreadSession,

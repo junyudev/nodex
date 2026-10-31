@@ -447,9 +447,6 @@ function ConnectedThreadStageBody({
         parentTurns,
         isNewThreadTab: input.isNewThreadTab,
         newThreadTarget: input.newThreadTarget,
-        isCloudNewThreadTarget: Boolean(
-          input.isNewThreadTab && input.newThreadTarget?.runInTarget === "cloud",
-        ),
         threadStartProgress: input.threadStartProgress,
         firstSubmissionActive,
         readOnly,
@@ -642,7 +639,6 @@ export function ConnectedThreadStageFooter({
         isWorktree:
           Boolean(summaryFields.managedWorktreePath) ||
           input.newThreadTarget?.runInTarget === "newWorktree",
-        isCloud: input.newThreadTarget?.runInTarget === "cloud",
       }),
     [
       hostId,
@@ -805,9 +801,6 @@ export function ConnectedThreadStageFooter({
         parentTurns: [],
         isNewThreadTab: input.isNewThreadTab,
         newThreadTarget: input.newThreadTarget,
-        isCloudNewThreadTarget: Boolean(
-          input.isNewThreadTab && input.newThreadTarget?.runInTarget === "cloud",
-        ),
         threadStartProgress: input.threadStartProgress,
       }),
     [
@@ -878,9 +871,6 @@ export function ConnectedThreadStageFooter({
       activeTurn,
       isThreadRunning: Boolean(activeTurn || statusType === "active"),
       isNewThreadTab: input.isNewThreadTab,
-      isCloudNewThreadTarget: Boolean(
-        input.isNewThreadTab && input.newThreadTarget?.runInTarget === "cloud",
-      ),
       newThreadTarget: input.newThreadTarget,
       newThreadProjectSelector: input.newThreadProjectSelector ?? null,
       newThreadStartInSelector: input.newThreadStartInSelector ?? null,

@@ -105,7 +105,7 @@ const commandHandlers: CommandPaletteShellCommandHandlers = {
   settings: ignore,
   showKeyboardShortcuts: ignore,
 };
-const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMockCommands"> = {
+const commandContext: Omit<CommandPaletteShellCommandContext, "isMac"> = {
   canGoBack: true,
   canGoForward: true,
   canStartNewChat: true,

@@ -284,6 +284,7 @@ Claude forks and native subagent history lookups use the selected Agent instance
 history directory. Restored Profile history takes precedence when present, and
 standalone history operations never change the process-wide account environment.
 
+Slash command catalogs contain only actions with working handlers or content panels.
 Slash commands expose supported Nodex actions across Agents rather than filtering
 them by Agent name. Fork, Merge back, Clear context, Side, Compact, Project and other shared actions
 appear when their owning callbacks and conversation state permit them. Agent-native

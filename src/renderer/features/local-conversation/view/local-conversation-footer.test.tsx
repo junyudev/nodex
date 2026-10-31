@@ -7,6 +7,7 @@ import {
 import { NodexTooltipProvider as TooltipProvider } from "../../../components/ui/tooltip";
 import { renderWithMaitai } from "../../../test/thread-maitai";
 import { settleAsyncRender } from "../../../test/dom";
+import { LocalConversationFooter } from "./local-conversation-footer";
 import { TestQueryProvider } from "../../../test/query";
 import type { ThreadFooterModel, ThreadStageActions } from "../thread-stage-types";
 import type { CodexConversationItem, CodexConversationTurn } from "../../../lib/types";
@@ -85,7 +86,6 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
     activeTurn: null,
     isThreadRunning: false,
     isNewThreadTab: false,
-    isCloudNewThreadTarget: false,
     newThreadTarget: null,
     availableModels: [],
     collaborationModes: [],
@@ -241,7 +241,6 @@ function buildModelWithRenderableLatestTurn(): ThreadFooterModel {
 
 describe("LocalConversationFooter", () => {
   test("resumes an interrupted turn once without creating a tooltip action", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const base = buildModel();
     const model = buildModel({
       conversation: base.conversation
@@ -299,7 +298,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("keeps a pending worktree draft visible but prevents a second start", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const blockedReason = "Worktree setup is already in progress";
     const model = buildModel({
       threadId: null,
@@ -337,7 +335,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("updates composer mode chrome when the selected collaboration mode changes", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const baseModel = buildModel({
       collaborationModes: [
         { mode: "default", name: "Default", model: null },
@@ -409,7 +406,6 @@ describe("LocalConversationFooter", () => {
 
   test("renders the catch-up button inside the footer owner", async () => {
     const restoreMotionPreference = installMotionPreferenceForTest(true);
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const { container, getByLabelText } = render(
       <TooltipProvider>
         <div className="h-96">
@@ -508,7 +504,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("overlay mode renders portals and composer in fixture order and expands into the latest turn", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
 
@@ -596,7 +591,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("hosts a connected Project Dock target in the floating header's one context rail", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
 
@@ -652,7 +646,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("keeps the Project Dock target when the latest turn has no renderable blocks", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
 
@@ -697,7 +690,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("unifies a Project-scoped new task without repeating its fixed Project", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
     const baseModel = buildModel();
@@ -777,7 +769,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("collapses the floating conversation atomically when the composer target changes", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
     const model = buildModelWithRenderableLatestTurn();
@@ -826,7 +817,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("floating multiline drafts retain the attachment tray layout", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
 
@@ -875,7 +865,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("promotes a visually wrapped one-line overlay draft to the normal composer layout", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
     const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
@@ -949,7 +938,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("keeps queued follow-ups in the queue portal outside the fixed pill", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const baseModel = buildModel();
     const model = buildModel({
       isQueueingEnabled: true,
@@ -993,7 +981,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("outside pointerdown collapses the floating conversation without globally dismissing tooltips", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
     let tooltipDismissEvents = 0;
@@ -1053,7 +1040,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("announces an unread completed response beside the compact composer until it is read", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
     const base = buildModelWithRenderableLatestTurn();
@@ -1110,7 +1096,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("resuming active threads keep overlay composer ownership disabled", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
 
@@ -1140,7 +1125,6 @@ describe("LocalConversationFooter", () => {
   });
 
   test("controlled Docks retain target chrome in the overlay while a Thread resumes", async () => {
-    const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
 

@@ -136,7 +136,6 @@ describe("buildThreadBodyModel", () => {
         parentTurns: [],
         isNewThreadTab: false,
         newThreadTarget: null,
-        isCloudNewThreadTarget: false,
         threadStartProgress: null,
       });
       expect(model.emptyState).toEqual({ type: "none" });
@@ -179,7 +178,6 @@ describe("buildThreadBodyModel", () => {
         parentTurns: [],
         isNewThreadTab: false,
         newThreadTarget: null,
-        isCloudNewThreadTarget: false,
         threadStartProgress: null,
       }),
     ).toMatchObject({ turnCount: 0, emptyState: { type: "none" } });
@@ -203,7 +201,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
     expect(body).toMatchObject({
@@ -237,7 +234,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     };
     expect(buildThreadBodyModel(input)).toMatchObject({
@@ -306,7 +302,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     };
     expect(buildThreadBodyModel(input).emptyState.type).toBe("resumingThread");
@@ -348,7 +343,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
     expect(model.emptyState.type).toBe("none");
@@ -389,7 +383,6 @@ describe("buildThreadBodyModel", () => {
         parentTurns: [],
         isNewThreadTab: false,
         newThreadTarget: null,
-        isCloudNewThreadTarget: false,
         threadStartProgress: null,
       });
       expect(model).toMatchObject({
@@ -437,7 +430,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     };
     expect(buildThreadBodyModel(input)).toMatchObject({
@@ -475,7 +467,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -493,7 +484,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -515,7 +505,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -537,7 +526,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -552,7 +540,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -569,7 +556,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -609,7 +595,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -657,7 +642,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -713,7 +697,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -731,7 +714,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -749,7 +731,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
       emptyHistory: { title: "Imported from Qoder", description: "Send a message to continue." },
     } as const;
@@ -774,7 +755,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: {
         runInTarget: "localProject",
         threadId: "thread_1",
@@ -796,7 +776,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: {
         runInTarget: "localProject",
         threadId: "thread_1",
@@ -824,7 +803,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: {
         runInTarget: "localProject",
         threadId: "thread_1",
@@ -849,7 +827,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: {
         runInTarget: "newWorktree",
         threadId: "thread_1",
@@ -873,7 +850,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: {
         runInTarget: "localProject",
         threadId: "thread_1",
@@ -927,7 +903,6 @@ describe("buildThreadBodyModel", () => {
       parentTurns: [],
       isNewThreadTab: false,
       newThreadTarget: null,
-      isCloudNewThreadTarget: false,
       threadStartProgress: null,
     });
 
@@ -946,7 +921,6 @@ test("renders an attached read-only transcript without resuming its execution", 
     parentTurns: [],
     isNewThreadTab: false,
     newThreadTarget: null,
-    isCloudNewThreadTarget: false,
     threadStartProgress: null,
   };
   expect(buildThreadBodyModel({ ...input, readOnly: true })).toMatchObject({

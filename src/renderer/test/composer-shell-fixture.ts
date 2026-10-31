@@ -872,7 +872,6 @@ export function buildComposerShellFixture(
     parentTurns: [],
     isNewThreadTab: false,
     newThreadTarget: null,
-    isCloudNewThreadTarget: false,
     threadStartProgress: null,
   });
   const primaryRequest = selectPrimaryConversationRequest(conversation);
@@ -912,7 +911,6 @@ export function buildComposerShellFixture(
     activeTurn,
     isThreadRunning: Boolean(activeTurn || statusType === "active"),
     isNewThreadTab: false,
-    isCloudNewThreadTarget: false,
     newThreadTarget: null,
     composerShell,
     body,

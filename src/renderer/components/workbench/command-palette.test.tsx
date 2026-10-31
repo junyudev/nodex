@@ -96,7 +96,6 @@ function makeCommandContext(
     canStartNewChat: true,
     canStartNewChatInProject: true,
     canCreatePage: true,
-    showMockCommands: false,
     hasActiveSession: true,
     activeSessionPinned: false,
     hasAttachedThread: true,
@@ -182,7 +181,6 @@ describe("buildCommandPaletteCommands", () => {
 
     expect(findCommand?.title).toBe("Find");
     expect(Boolean(findCommand?.disabled)).toBe(false);
-    expect(Boolean(findCommand?.mockReason)).toBe(false);
   });
 
   test("includes Manage automations as a real shell command", () => {
@@ -191,7 +189,6 @@ describe("buildCommandPaletteCommands", () => {
 
     expect(manageTasksCommand?.title).toBe("Manage automations");
     expect(Boolean(manageTasksCommand?.disabled)).toBe(false);
-    expect(Boolean(manageTasksCommand?.mockReason)).toBe(false);
   });
 
   test("includes Process Manager as a real shell command", () => {
@@ -201,7 +198,6 @@ describe("buildCommandPaletteCommands", () => {
     expect(processManagerCommand?.title).toBe("Process Manager");
     expect(processManagerCommand?.shortcut).toBe("⌃⌥M");
     expect(Boolean(processManagerCommand?.disabled)).toBe(false);
-    expect(Boolean(processManagerCommand?.mockReason)).toBe(false);
   });
 
   test("omits legacy stage and DB view-switch commands", () => {
@@ -219,39 +215,6 @@ describe("buildCommandPaletteCommands", () => {
     expect(ids.includes("view-calendar")).toBe(false);
     expect(ids.includes("open-project-picker")).toBe(false);
     expect(ids.includes("search-current-project")).toBe(false);
-  });
-
-  test("omits dev-only mock commands and removed redundant commands in production contexts", () => {
-    const commands = buildCommandPaletteCommands(
-      makeCommandContext({
-        showMockCommands: false,
-      }),
-    );
-    const ids = commands.map((command) => command.id).join(",");
-
-    expect(commands.some((command) => command.mockReason !== undefined)).toBe(false);
-    expect(commands.find((command) => command.id === "searchFiles")?.disabled).toBe(false);
-    expect(ids.includes("git.commit")).toBe(false);
-    expect(ids.includes("toggleBrowserPanel")).toBe(false);
-    expect(ids.includes("openPageStage")).toBe(false);
-  });
-
-  test("keeps unsupported parity commands as disabled mock rows in dev contexts", () => {
-    const commands = buildCommandPaletteCommands(
-      makeCommandContext({
-        showMockCommands: true,
-      }),
-    );
-    const libraryFiles = commands.find((command) => command.id === "openLibraryFiles");
-    const gitCommit = commands.find((command) => command.id === "git.commit");
-    const ids = commands.map((command) => command.id).join(",");
-
-    expect(libraryFiles?.disabled).not.toBe(true);
-    expect(libraryFiles?.mockReason).toBeUndefined();
-    expect(gitCommit?.disabled).toBe(true);
-    expect(Boolean(gitCommit?.mockReason)).toBe(true);
-    expect(ids.includes("toggleBrowserPanel")).toBe(false);
-    expect(ids.includes("openPageStage")).toBe(false);
   });
 
   test("uses custom command-keymap labels for shell commands", () => {
@@ -491,7 +454,6 @@ function makePaletteCommand(overrides: Partial<CommandPaletteCommand> = {}): Com
     active: overrides.active,
     disabled: overrides.disabled,
     disabledReason: overrides.disabledReason,
-    mockReason: overrides.mockReason,
     priority: overrides.priority ?? 100,
   };
 }
@@ -1651,65 +1613,6 @@ describe("CommandPaletteSurface", () => {
     expect(input.getAttribute("aria-activedescendant")).toBe(
       view.getByRole("option", { name: "Suggested action" }).id,
     );
-  });
-
-  test("marks mock commands with a visible badge and keeps them inert", async () => {
-    const { CommandPaletteSurface } = await import("./command-palette-surface");
-    const executedItems: CommandPaletteCommand[] = [];
-    const closeCalls: number[] = [];
-    const { container } = render(
-      <CommandPaletteSurface
-        open
-        openTriggerTick={5}
-        mode="actions"
-        initialQuery=""
-        commands={[
-          makePaletteCommand({
-            id: "searchFiles",
-            group: "Suggested",
-            title: "Search files",
-            subtitle: "Search workspace files",
-            keywords: ["files"],
-            disabled: true,
-            mockReason: "Mock UI only. Not available in Nodex yet.",
-            priority: 300,
-          }),
-          makePaletteCommand({
-            id: "settings",
-            title: "Settings",
-            subtitle: "Can run",
-            keywords: ["settings"],
-            priority: 100,
-          }),
-        ]}
-        pages={[]}
-        onChangeMode={() => undefined}
-        onRequestClose={() => {
-          closeCalls.push(1);
-        }}
-        onExecute={(item) => {
-          if (item.kind === "command") executedItems.push(item);
-        }}
-      />,
-    );
-
-    await settleAsyncRender();
-
-    const mockButton = Array.from(container.querySelectorAll("button[cmdk-item]")).find((button) =>
-      button.textContent?.includes("Search files"),
-    );
-
-    expect(textContent(container).includes("Mock")).toBe(true);
-    expect(mockButton !== undefined).toBe(true);
-    expect(mockButton?.getAttribute("aria-disabled")).toBe("true");
-    if (mockButton) {
-      await act(async () => {
-        fireEvent.click(mockButton);
-        await Promise.resolve();
-      });
-    }
-    expect(closeCalls.length).toBe(0);
-    expect(executedItems.length).toBe(0);
   });
 
   test("renders the filter button on the search-input row", async () => {

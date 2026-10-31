@@ -679,12 +679,6 @@ export function useWorkbenchSessionCommands({
     [setCommandContentSearchOpenRequest],
   );
 
-  const showUnavailableProduct = useCallback((label: string) => {
-    toast.info(`${label} is not available in Nodex yet.`, {
-      id: `${label.toLowerCase()}-unavailable`,
-    });
-  }, []);
-
   useEffect(() => {
     const isMacPlatformForShortcut =
       typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
@@ -1559,7 +1553,6 @@ export function useWorkbenchSessionCommands({
     openSidebarCommandPalette,
     openCommandPalette,
     requestContentSearchOpen,
-    showUnavailableProduct,
     createManualTab,
     activateReviewTab,
     openSubagentsPanelTab,

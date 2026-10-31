@@ -28,7 +28,6 @@ export interface CommandPaletteCommand {
   active?: boolean;
   disabled?: boolean;
   disabledReason?: string;
-  mockReason?: string;
   priority: number;
   themePreview?: { surface: string; ink: string; accent: string };
   themeAction?: "open" | "light" | "dark" | CodexAccentPreset;

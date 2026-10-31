@@ -207,7 +207,6 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
     activeTurn: null,
     isThreadRunning: false,
     isNewThreadTab: false,
-    isCloudNewThreadTarget: false,
     newThreadTarget: null,
     availableModels: [],
     collaborationModes: [],

@@ -80,7 +80,6 @@ function ThreadComposerStatusStripContent({
     model.isNewThreadTab &&
     model.conversation === null &&
     model.newThreadTarget?.sessionId &&
-    !model.isCloudNewThreadTarget &&
     model.newThreadProjectSelector &&
     !model.newThreadProjectSelector.disabled,
   );
@@ -88,7 +87,6 @@ function ThreadComposerStatusStripContent({
     model.isNewThreadTab &&
     model.conversation === null &&
     model.newThreadTarget?.sessionId &&
-    !model.isCloudNewThreadTarget &&
     model.newThreadStartInSelector,
   );
   const worktreeAvailable = Boolean(

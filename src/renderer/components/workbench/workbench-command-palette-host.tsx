@@ -170,7 +170,7 @@ export function WorkbenchCommandPaletteHost({
   }, []);
   const panelCapabilities = panelCommands.resolveActivePanelCapabilities("right");
   const activeLineBlame = useWorkspaceFileActiveLineBlame();
-  const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMockCommands"> = {
+  const commandContext: Omit<CommandPaletteShellCommandContext, "isMac"> = {
     canReloadSkills: skillsReloadControl !== null,
     canSearchFiles: true,
     canSearchText: true,

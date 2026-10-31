@@ -369,7 +369,7 @@ export interface ThreadStageRouteInput {
     sessionId: string;
     projectDraftId?: string;
     threadTitle?: string;
-    runInTarget?: PageRunInTarget;
+    runInTarget?: NewChatStartInTarget["runInTarget"];
     runInEnvironmentPath?: string | null;
     worktreeStartingState?: import("../../../shared/codex-pending-worktree").CodexPendingWorktreeStartingState;
   } | null;
@@ -1309,7 +1309,6 @@ export interface ThreadFooterModel {
   activeTurn: CodexConversationTurn | null;
   isThreadRunning: boolean;
   isNewThreadTab: boolean;
-  isCloudNewThreadTarget: boolean;
   newThreadTarget: ThreadStageRouteInput["newThreadTarget"];
   newThreadProjectSelector?: ThreadStageRouteInput["newThreadProjectSelector"];
   newThreadStartInSelector?: ThreadStageRouteInput["newThreadStartInSelector"];

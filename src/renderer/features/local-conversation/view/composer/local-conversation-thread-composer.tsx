@@ -703,7 +703,6 @@ function canStartNewThreadTarget(model: ThreadFooterModel): boolean {
   return Boolean(
     model.isNewThreadTab &&
     model.newThreadTarget !== null &&
-    !model.isCloudNewThreadTarget &&
     !model.newThreadStartBlockedReason &&
     Boolean(model.newThreadTarget.sessionId),
   );
@@ -1229,7 +1228,7 @@ function ControlledThreadComposer(
       if (intent.queuedFollowUpEdit) setQueuedFollowUpEdit(intent.queuedFollowUpEdit);
       const restored = buildComposerAttachmentStateFromPromptInput(
         intent.promptInput,
-        model.isCloudNewThreadTarget ? null : model.hostId,
+        model.hostId,
       );
       const mentionPrompt = buildPersistedMentionPrompt(intent.promptInput);
       const documentPrompt = buildPersistedPromptDocument(intent.promptInput);
@@ -1348,7 +1347,6 @@ function ControlledThreadComposer(
     initialized,
     intent,
     model.hostId,
-    model.isCloudNewThreadTarget,
     model.newThreadTarget?.sessionId,
     onErrorMessage,
     promptDraft,
@@ -1582,7 +1580,6 @@ function HydratedThreadComposer({
     threadId: model.conversation?.threadId ?? null,
     enabled: Boolean(
       model.conversation &&
-      !model.isCloudNewThreadTarget &&
       (model.provider === null || model.provider === undefined || model.provider.kind === "codex"),
     ),
   });
@@ -1925,10 +1922,6 @@ function HydratedThreadComposer({
   const addOrdinaryComposerFiles = useCallback(
     async (files: readonly File[], source: "paste" | "drop"): Promise<void> => {
       if (files.length === 0 || isDraftCaptureLocked()) return;
-      if (model.isCloudNewThreadTarget) {
-        onErrorMessage("Only images can be added to this composer");
-        return;
-      }
 
       ordinaryFileUploadsRef.current.pending += 1;
       const results = await Promise.allSettled(
@@ -1982,7 +1975,7 @@ function HydratedThreadComposer({
         );
       }
     },
-    [isDraftCaptureLocked, model.isCloudNewThreadTarget, onErrorMessage, setFileAttachments],
+    [isDraftCaptureLocked, onErrorMessage, setFileAttachments],
   );
 
   const libraryReadAuthority = useLibraryFileReadAuthority();
@@ -2158,7 +2151,7 @@ function HydratedThreadComposer({
         });
         return false;
       }
-      const goalHostId = model.isCloudNewThreadTarget ? "durable" : model.hostId;
+      const goalHostId = model.hostId;
 
       if (!model.conversation) {
         const target = model.newThreadTarget;
@@ -2281,7 +2274,6 @@ function HydratedThreadComposer({
       isDraftCaptureLocked,
       model.conversation,
       model.hostId,
-      model.isCloudNewThreadTarget,
       onErrorMessage,
       model.newThreadTarget,
       recordSuccessfulPromptSubmit,
@@ -2317,7 +2309,7 @@ function HydratedThreadComposer({
     ): Promise<boolean> => {
       if (isDraftCaptureLocked()) return false;
       if (hasPendingPastedTextAttachments) return false;
-      const executionHostId = model.isCloudNewThreadTarget ? null : model.hostId;
+      const executionHostId = model.hostId;
       const intentImageAttachments = input.imageEditIntent
         ? buildComposerImageEditAttachments({
             currentAttachments: imageAttachments,
@@ -2728,7 +2720,6 @@ function HydratedThreadComposer({
       model.composerShell,
       model.conversation,
       model.hostId,
-      model.isCloudNewThreadTarget,
       model.isThreadRunning,
       model.newThreadTarget,
       model.selectedCollaborationMode,
@@ -2759,7 +2750,6 @@ function HydratedThreadComposer({
   );
   const realtimeVoice = useComposerRealtimeVoice(
     model.conversation &&
-      !model.isCloudNewThreadTarget &&
       (model.provider === null || model.provider === undefined || model.provider.kind === "codex")
       ? { hostId: model.hostId, threadId: model.conversation.threadId }
       : null,
@@ -2838,14 +2828,13 @@ function HydratedThreadComposer({
   }, [actions.onClearThreadGoal, model.conversation?.threadGoal, setGoalModeActive]);
 
   const handlePickComposerFiles = useCallback(async () => {
-    const imagesOnly = model.isCloudNewThreadTarget;
     attachmentGenerationRef.current += 1;
     const generation = attachmentGenerationRef.current;
 
     try {
       const pickedFiles = await pickComposerFiles({
-        imagesOnly,
-        title: imagesOnly ? "Select photos" : "Select files",
+        imagesOnly: false,
+        title: "Select files",
       });
       if (attachmentGenerationRef.current !== generation || pickedFiles.length === 0) {
         return;
@@ -2856,16 +2845,14 @@ function HydratedThreadComposer({
 
       for (const pickedFile of pickedFiles) {
         if (!isComposerImageFile(pickedFile)) {
-          if (!imagesOnly) {
-            nextFileAttachments.push({
-              uiId: createComposerAttachmentId("file"),
-              attachment: {
-                label: getComposerPickedFileName(pickedFile),
-                path: pickedFile.path,
-                fsPath: pickedFile.path,
-              },
-            });
-          }
+          nextFileAttachments.push({
+            uiId: createComposerAttachmentId("file"),
+            attachment: {
+              label: getComposerPickedFileName(pickedFile),
+              path: pickedFile.path,
+              fsPath: pickedFile.path,
+            },
+          });
           continue;
         }
 
@@ -2888,7 +2875,7 @@ function HydratedThreadComposer({
     } catch (error) {
       onErrorMessage(error instanceof Error ? error.message : "Could not add files");
     }
-  }, [imageAttachmentController, model.isCloudNewThreadTarget, onErrorMessage, setFileAttachments]);
+  }, [imageAttachmentController, onErrorMessage, setFileAttachments]);
 
   const handleCaptureAppshot = useCallback(
     async (target: CodexComposerAppshotTarget): Promise<void> => {
@@ -3836,7 +3823,7 @@ function HydratedThreadComposer({
           !buildComposerImageEditAttachments({
             currentAttachments: imageAttachments,
             intent: request.intent,
-            executionHostId: model.isCloudNewThreadTarget ? null : model.hostId,
+            executionHostId: model.hostId,
             generation: attachmentGenerationRef.current,
           })
         ) {
@@ -3876,7 +3863,6 @@ function HydratedThreadComposer({
     imageInputSupported,
     model.conversation,
     model.hostId,
-    model.isCloudNewThreadTarget,
     model.isThreadRunning,
     prompt,
     submitPrompt,
@@ -3924,9 +3910,7 @@ function HydratedThreadComposer({
     [busyAction, composerActionState.primarySubmitAction, prompt, submitPrompt],
   );
   const newThreadPromptPlaceholder = model.newThreadTarget
-    ? model.isCloudNewThreadTarget
-      ? "Cloud run target is currently mock-only"
-      : "Do anything"
+    ? "Do anything"
     : "Select a card or session before starting a new thread";
   const promptPlaceholder = model.newThreadStartBlockedReason
     ? model.newThreadStartBlockedReason
@@ -4112,7 +4096,6 @@ function HydratedThreadComposer({
   const addContextControl = (
     <ComposerAddContextTrigger
       open={contextSuggestionOpen}
-      imagesOnly={model.isCloudNewThreadTarget}
       disabled={isPromptEditorDisabled}
       onToggle={() => {
         promptEditorRef.current?.toggleContextSuggestions();
@@ -4460,7 +4443,6 @@ function HydratedThreadComposer({
           activeConversationId={composerThreadId}
           backgroundAgentRows={backgroundAgentRows}
           isHomeMenu={model.isNewThreadTab}
-          imagesOnly={model.isCloudNewThreadTarget}
           plugins={model.composerPlugins ?? []}
           pluginsLoading={model.composerPluginsLoading}
           skills={model.composerSkills ?? []}

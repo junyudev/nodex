@@ -46,7 +46,8 @@ responsive adjustments resume when returning to that surface.
 
 One canonical catalog owns each top-level section's stable route id, page key,
 group, label, search catalog, and app-owned icon. Page component registration is
-keyed by page key rather than by route slug.
+keyed by page key rather than by route slug. Every catalog entry has a working page;
+unimplemented destinations are absent from navigation and search.
 
 The desktop groups are:
 

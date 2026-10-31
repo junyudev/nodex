@@ -7,7 +7,6 @@ const input = {
   executionCwd: "/worktree",
   workspaceBrowserRoot: null,
   isWorktree: true,
-  isCloud: false,
 };
 test("a worktree replaces only the primary checkout while retaining secondary roots", () => {
   expect(resolveWorkspaceSearchContext(input)).toEqual({
@@ -25,7 +24,7 @@ test("file search collapses nested roots while skill config retains the executio
     skillRoots: ["/repo/src", "/repo", "/docs"],
   });
 });
-test("projectless search uses its browser root and cloud has no local search scope", () => {
+test("projectless search uses its browser root", () => {
   expect(
     resolveWorkspaceSearchContext({
       ...input,
@@ -34,5 +33,4 @@ test("projectless search uses its browser root and cloud has no local search sco
       workspaceBrowserRoot: "/outputs",
     })?.roots,
   ).toEqual(["/outputs"]);
-  expect(resolveWorkspaceSearchContext({ ...input, isCloud: true })).toBeNull();
 });

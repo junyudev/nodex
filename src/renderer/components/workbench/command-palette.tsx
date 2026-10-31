@@ -53,7 +53,7 @@ interface CommandPaletteProps {
   projects: readonly Project[];
   activeProjectId: string | null;
   recentPageSessions: readonly RecentPageSession[];
-  commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMockCommands">;
+  commandContext: Omit<CommandPaletteShellCommandContext, "isMac">;
   commandHandlers: CommandPaletteShellCommandHandlers;
   onOpenChange: (open: boolean) => void;
   onOpenPage: (projectId: string, pageId: string, titleSnapshot?: string) => void;
@@ -151,7 +151,6 @@ export function CommandPalette({
       ...buildCommandPaletteCommands({
         ...commandContext,
         isMac,
-        showMockCommands: false,
       }),
       ...(onOpenSettingsSection
         ? resolveVisibleSettingsSections()

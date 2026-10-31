@@ -47,7 +47,7 @@ The palette is a transient overlay and does not become part of durable navigatio
 
 All is the initial scope for `Cmd/Ctrl+K` and `Cmd/Ctrl+Shift+P`.
 
-- An empty query shows the supported `New chat` and `Open folder` actions under Quick actions, followed initially by up to five recent chats and five Page suggestions. Development-only mock actions are excluded from Quick actions.
+- An empty query shows the supported `New chat` and `Open folder` actions under Quick actions, followed initially by up to five recent chats and five Page suggestions.
 - A one-character query searches actions, available workspace filenames, and file contents. Files and Text remain absent from an empty All query.
 - All searches the current Project context and ignores a temporary folder selection. Switching back to Files or Text within the same opening restores that selection.
 - At `2` Unicode characters, matching chat and Page metadata appears in trailing Chats and Pages sections while matching actions remain visible. Workspace filename and text searches continue independently of those thresholds.
@@ -66,7 +66,7 @@ All uses the same catalog for non-empty queries.
 - Disabled commands remain visible with their reason, but keyboard selection skips them and they cannot be executed.
 - Commands use customized command-keymap shortcut labels where a matching command id exists.
 - Command rows omit explanatory subtitles unless needed to explain an unavailable action.
-- The application catalog contains real capabilities; mock entries are excluded in development and production. Supported Nodex actions use their normal command handlers.
+- The application catalog contains only working capabilities in development and production. Every action uses its owning command handler; unavailable context may temporarily disable a supported action.
 - Visible, enabled Settings sections are directly searchable in the Settings group and navigate through the Settings route owner, opening the group or Agent card the query names, as Settings search does.
 - Theme opens a nested page with a search field, a Back row, light/dark switching, and the existing per-appearance accent presets. Previews and the current-preset check reflect the same persisted appearance owner as Settings. Entering or leaving this page clears its query; scope tabs are hidden while it is open. Escape or an outside dismissal returns one level before closing the root menu.
 - `Toggle browser panel` and `Open Page Stage` are intentionally not part of the command catalog.

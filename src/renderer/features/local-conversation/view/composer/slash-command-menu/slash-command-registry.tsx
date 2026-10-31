@@ -4,8 +4,6 @@ import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import {
   ClipboardListIcon,
   GitMergeIcon,
-  MessageCirclePlusIcon,
-  MessagesSquareIcon,
   SendIcon,
   SplitIcon,
 } from "@/components/shared/icons/generic-icons";
@@ -15,7 +13,6 @@ import {
   FastModeIcon,
   GoalTargetIcon,
   SettingsWorktreeIcon,
-  SlashCodeReviewIcon,
   SlashFeedbackIcon,
   SlashMcpIcon,
   SlashMemoriesIcon,
@@ -57,7 +54,6 @@ function canStartNewThreadGoalDraft(
 ): boolean {
   if (!model.isNewThreadTab) return false;
   if (!model.newThreadTarget) return false;
-  if (model.isCloudNewThreadTarget) return false;
 
   return Boolean(model.newThreadTarget.sessionId && actions.onStartThreadForSession);
 }
@@ -385,42 +381,6 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
           description: input.model.conversation?.statusType ?? "idle",
         });
       },
-    },
-    {
-      id: "chat",
-      title: "Chat",
-      description: "Start a projectless chat",
-      group: "Commands",
-      icon: <MessagesSquareIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: false,
-    },
-    {
-      id: "hotkey-window-new",
-      title: "New hotkey window",
-      description: "Open a new hotkey window",
-      group: "Commands",
-      icon: <MessageCirclePlusIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: false,
-    },
-    {
-      id: "hotkey-window-resume",
-      title: "Resume hotkey window",
-      description: "Resume a previous hotkey window",
-      group: "Commands",
-      icon: <MessagesSquareIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: false,
-    },
-    {
-      id: "review-mode",
-      title: "Auto review",
-      description: "Review pending changes",
-      group: "Commands",
-      icon: <SlashCodeReviewIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: false,
     },
     {
       id: "expanded-slash-command-dialog",

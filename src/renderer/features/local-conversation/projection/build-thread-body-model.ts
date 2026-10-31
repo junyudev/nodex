@@ -4,7 +4,7 @@ import type {
   CodexConversationTurn,
   PageRunInTarget,
 } from "../../../lib/types";
-import type { ThreadBodyModel } from "../thread-stage-types";
+import type { ThreadBodyModel, ThreadStageRouteInput } from "../thread-stage-types";
 import type { LocalConversationAttachmentState } from "../conversation-attachment-state";
 import {
   hasRecoverableCanonicalTurnItems,
@@ -19,14 +19,7 @@ export interface ThreadBodyModelInput {
   activeThreadArchived: boolean;
   parentTurns: readonly CodexConversationTurn[];
   isNewThreadTab: boolean;
-  newThreadTarget: {
-    projectId: string | null;
-    projectName: string;
-    sessionId: string;
-    threadTitle?: string;
-    runInTarget?: "localProject" | "newWorktree" | "cloud";
-  } | null;
-  isCloudNewThreadTarget: boolean;
+  newThreadTarget: ThreadStageRouteInput["newThreadTarget"];
   threadStartProgress: {
     runInTarget: PageRunInTarget;
     threadId?: string | null;
@@ -212,9 +205,7 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
           type: "newThread",
           title: "Start a new thread",
           description: input.newThreadTarget
-            ? input.isCloudNewThreadTarget
-              ? "Cloud run target is mock-only right now. Change the start target to Local project or New worktree."
-              : "Write the first prompt and send to create a new session thread."
+            ? "Write the first prompt and send to create a new session thread."
             : "Select a project session to start a new thread.",
         },
       };

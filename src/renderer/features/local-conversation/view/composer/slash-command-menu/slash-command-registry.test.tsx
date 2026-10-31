@@ -12,7 +12,6 @@ function buildModel(): ThreadFooterModel {
   return {
     threadId: "thread_1",
     isNewThreadTab: false,
-    isCloudNewThreadTarget: false,
     newThreadTarget: null,
     conversation: {
       threadId: "thread_1",
@@ -37,7 +36,6 @@ function buildNewThreadModel(overrides: Partial<ThreadFooterModel> = {}): Thread
     ...buildModel(),
     threadId: null,
     isNewThreadTab: true,
-    isCloudNewThreadTarget: false,
     newThreadTarget: {
       projectId: "project_1",
       projectName: "Nodex",
@@ -536,27 +534,6 @@ describe("buildComposerSlashCommands", () => {
     await goalCommand.onSelect({ source: "dialog" });
 
     expect(goalModeActivations).toBe(1);
-  });
-
-  test("hides Goal in new-chat when the start target cannot carry a goal draft", () => {
-    const commands = buildComposerSlashCommands({
-      model: buildNewThreadModel({ isCloudNewThreadTarget: true }),
-      actions: {
-        onStartThreadForSession: async () => undefined,
-        onCollaborationModeChange: () => undefined,
-      } as unknown as ThreadStageActions,
-      serviceTier: null,
-      setServiceTier: () => undefined,
-      openExpandedDialog: () => undefined,
-      onPetToggle: () => undefined,
-      activateGoalMode: () => undefined,
-    });
-    const goalCommand = commands.find((command) => command.id === "goal");
-    if (!goalCommand) {
-      throw new Error("Expected Goal slash command.");
-    }
-
-    expect(goalCommand.isVisible).toBe(false);
   });
 
   test("a Runtime conversation hides Goal and changes its own speed for Fast", async () => {

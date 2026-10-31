@@ -205,7 +205,7 @@ function getCommandGlyph(id: string) {
     return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
   if (id === NAVIGATE_FORWARD_COMMAND_ID)
     return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
-  if (id === "newThread" || id === "newThreadInProject" || id === "quickChat")
+  if (id === "newThread" || id === "newThreadInProject")
     return (props: { className?: string }) => (
       <CommandMenuReferenceIcon name="compose" {...props} />
     );
@@ -224,9 +224,9 @@ function getCommandGlyph(id: string) {
     return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
   if (id === "toggleFileTreePanel" || id === "openFolder" || id === "searchFiles")
     return (props: { className?: string }) => <CommandMenuReferenceIcon name="folder" {...props} />;
-  if (id === "openBrowserTab" || id === "focusBrowserAddressBar")
+  if (id === "openBrowserTab")
     return (props: { className?: string }) => <CommandMenuReferenceIcon name="globe" {...props} />;
-  if (id === "toggleTerminal" || id === "installPrimaryRuntime")
+  if (id === "toggleTerminal")
     return (props: { className?: string }) => (
       <CommandMenuReferenceIcon name="terminal" {...props} />
     );
@@ -243,15 +243,12 @@ function getCommandGlyph(id: string) {
     return (props: { className?: string }) => (
       <CommandMenuReferenceIcon name="settings" {...props} />
     );
-  if (id === "openAvatarOverlay" || id === "tuckAwayPetOverlay" || id === "personalitySettings")
-    return (props: { className?: string }) => <CommandMenuReferenceIcon name="avatar" {...props} />;
   return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
 }
 
 function CommandRow({ item, selected }: { item: CommandPaletteCommand; selected: boolean }) {
   const Glyph = getCommandGlyph(item.id);
-  const subtitle = item.disabledReason ?? item.mockReason ?? item.subtitle;
-  const isMock = Boolean(item.mockReason);
+  const subtitle = item.disabledReason ?? item.subtitle;
   const displaySubtitle = Boolean(item.disabledReason);
 
   return (
@@ -270,13 +267,6 @@ function CommandRow({ item, selected }: { item: CommandPaletteCommand; selected:
               ? renderSegments(item.searchTitleSegments, `${item.id}:title`)
               : item.title}
           </div>
-          {isMock ? (
-            <NodexTooltip tooltipContent={item.mockReason}>
-              <span className="inline-flex h-4 shrink-0 items-center rounded-sm bg-token-foreground/5 px-1 text-[10px] font-medium uppercase leading-none text-token-description-foreground">
-                Mock
-              </span>
-            </NodexTooltip>
-          ) : null}
         </div>
         {displaySubtitle ? (
           <div className="mt-0.5 truncate text-xs text-token-description-foreground">

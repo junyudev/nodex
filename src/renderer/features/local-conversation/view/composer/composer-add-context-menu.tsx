@@ -108,7 +108,6 @@ interface ComposerAddContextMenuProps {
   readonly activeConversationId?: string | null;
   readonly backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   readonly isHomeMenu?: boolean;
-  readonly imagesOnly: boolean;
   readonly plugins: readonly CodexComposerPlugin[];
   readonly pluginsLoading?: boolean;
   readonly skills: readonly CodexComposerSkill[];
@@ -769,7 +768,6 @@ const ComposerAddContextRootMenuContent = forwardRef<
     activeConversationId = null,
     backgroundAgentRows = EMPTY_BACKGROUND_AGENTS,
     isHomeMenu = false,
-    imagesOnly,
     plugins,
     pluginsLoading = false,
     skills,
@@ -919,7 +917,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
         candidate: {
           id: "picker",
           section: "Add",
-          label: imagesOnly ? "Photos" : "Files and folders",
+          label: "Files and folders",
           description: null,
           searchTerms: ["attach", "upload", "photo", "folder"],
           value: { kind: "action", run: onPickFiles },
@@ -1131,7 +1129,6 @@ const ComposerAddContextRootMenuContent = forwardRef<
     fileSearchQuery,
     query,
     goalAvailable,
-    imagesOnly,
     appshotTarget,
     onActivateGoal,
     onCaptureAppshot,
@@ -1233,7 +1230,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
     <ComposerSuggestionSurface
       kind="add-context"
       isHomeMenu={isHomeMenu}
-      ariaLabel={imagesOnly ? "Add photos and more" : "Add files and more"}
+      ariaLabel="Add files and more"
     >
       <div className="vertical-scroll-fade-mask flex w-full flex-1 flex-col overflow-y-auto">
         {sections.map((section, sectionIndex) => (
@@ -1481,16 +1478,14 @@ const ComposerSkillMentionMenuContent = forwardRef<
 
 export function ComposerAddContextTrigger({
   open,
-  imagesOnly,
   disabled,
   onToggle,
 }: {
   readonly open: boolean;
-  readonly imagesOnly: boolean;
   readonly disabled?: boolean;
   readonly onToggle: () => void;
 }) {
-  const label = imagesOnly ? "Add photos and more" : "Add files and more";
+  const label = "Add files and more";
 
   return (
     <NodexTooltip tooltipContent={label}>
