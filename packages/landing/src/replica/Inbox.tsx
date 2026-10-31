@@ -201,6 +201,7 @@ function Decision({
     >
       <span
         data-cursor-target={cursorTarget}
+        data-cursor-pressed={pressed || undefined}
         className={cx(
           "flex h-6 min-w-0 items-center gap-1.5 bg-app-primary px-2 text-[12px] leading-4 text-app-on-primary",
           dispatch.kind === "new_chat" ? "rounded-s-[10px]" : "rounded-[10px]",

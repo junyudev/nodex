@@ -1,16 +1,17 @@
 import { motion } from "motion/react";
 import { useLayoutEffect, useRef, useState } from "react";
+import { cursorTargetPoint, type Point } from "./cursor-target";
 
-export interface Point {
-  readonly x: number;
-  readonly y: number;
-}
+export type { Point } from "./cursor-target";
 
 /**
- * Finds where a `data-cursor-target` element sits inside the demo's window, in the window's own
- * unscaled pixels, and keeps following it while it is the target.
+ * Resolves a target in window-local pixels. A stable lane edge can anticipate its landing row
+ * while the element is still moving.
  */
-export function useCursorTarget(target: string | null): {
+export function useCursorTarget(
+  target: string | null,
+  bottomAnchor?: string,
+): {
   readonly ref: React.RefObject<HTMLDivElement | null>;
   readonly point: Point | null;
 } {
@@ -22,8 +23,7 @@ export function useCursorTarget(target: string | null): {
     const root = anchor?.closest<HTMLElement>("[data-app-window]");
     if (!target || !root) return;
     let frame = 0;
-    // Follow the target every frame until it changes: the element it names can still be
-    // settling from a layout animation, such as a card sliding into the place of one that left.
+    // Track size and scale changes; an anchored row stays at its destination throughout reflow.
     const measure = () => {
       const element = root.querySelector<HTMLElement>(`[data-cursor-target="${target}"]`);
       // A target this layout doesn't draw (such as the sidebar on a phone) hides the pointer
@@ -33,10 +33,12 @@ export function useCursorTarget(target: string | null): {
         const box = root.getBoundingClientRect();
         const scale = box.width / root.offsetWidth || 1;
         const rect = element.getBoundingClientRect();
-        const next = {
-          x: (rect.left - box.left + rect.width * 0.42) / scale,
-          y: (rect.top - box.top + rect.height * 0.55) / scale,
-        };
+        const bottom = bottomAnchor
+          ? root
+              .querySelector<HTMLElement>(`[data-cursor-anchor="${bottomAnchor}"]`)
+              ?.getBoundingClientRect().bottom
+          : undefined;
+        const next = cursorTargetPoint({ x: box.left, y: box.top }, rect, scale, bottom);
         setPoint((current) =>
           current && Math.abs(current.x - next.x) < 0.5 && Math.abs(current.y - next.y) < 0.5
             ? current
@@ -47,7 +49,7 @@ export function useCursorTarget(target: string | null): {
     };
     measure();
     return () => cancelAnimationFrame(frame);
-  }, [target]);
+  }, [target, bottomAnchor]);
 
   return { ref, point };
 }
@@ -56,17 +58,26 @@ export function useCursorTarget(target: string | null): {
 export function Cursor({
   target,
   pressed,
+  hold = false,
+  bottomAnchor,
   rest,
 }: {
-  /** The `data-cursor-target` to point at; null hides the pointer. */
+  /** The `data-cursor-target` to point at; null hides it unless held. */
   readonly target: string | null;
   readonly pressed: boolean;
-  /** Where the pointer enters from and leaves to. */
+  /** Keep the last position visible between actions. */
+  readonly hold?: boolean;
+  /** Predict the target's resting row from this stable `data-cursor-anchor` bottom edge. */
+  readonly bottomAnchor?: string;
+  /** Where the pointer first enters from. Hidden pointers keep their last measured position. */
   readonly rest: Point;
 }) {
-  const { ref, point } = useCursorTarget(target);
-  const visible = target !== null && point !== null;
-  const at = visible ? point : rest;
+  const { ref, point } = useCursorTarget(target, bottomAnchor);
+  const movement = bottomAnchor
+    ? ({ duration: 0.3, ease: [0.16, 1, 0.3, 1] } as const)
+    : ({ type: "spring", stiffness: 170, damping: 24 } as const);
+  const visible = (target !== null || hold) && point !== null;
+  const at = point ?? rest;
   return (
     <div ref={ref} className="pointer-events-none absolute inset-0 z-20">
       <motion.svg
@@ -75,8 +86,8 @@ export function Cursor({
         initial={false}
         animate={{ x: at.x, y: at.y, opacity: visible ? 1 : 0, scale: pressed ? 0.85 : 1 }}
         transition={{
-          x: { type: "spring", stiffness: 170, damping: 24 },
-          y: { type: "spring", stiffness: 170, damping: 24 },
+          x: movement,
+          y: movement,
           opacity: { duration: 0.25 },
           scale: { duration: 0.1 },
         }}

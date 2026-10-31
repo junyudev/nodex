@@ -31,6 +31,7 @@ import {
 } from "../replica/icons";
 import { ColdStartFindings } from "./ColdStartFindings";
 import { Cursor } from "./Cursor";
+import { buildInboxDecisionTimeline, INBOX_CARD_EXIT_MS } from "./inbox-decision-timeline";
 import {
   AGENTS,
   COLD_START_FILES,
@@ -107,19 +108,12 @@ function buildSchedule(): Schedule {
     { id: "press:pick", at: pick - 130 },
     { id: "pick", at: pick },
   );
-  // Each decision is aimed at only once the card before it has folded away, so the pointer
-  // lands where the next button settles rather than where it was.
-  let press = pick + 700;
-  for (const message of [...MESSAGES].reverse()) {
-    cues.push(
-      { id: `aim:${message.id}`, at: press - 560 },
-      { id: `press:${message.id}`, at: press },
-      { id: `decided:${message.id}`, at: press + 170 },
-      { id: `folded:${message.id}`, at: press + 700 },
-    );
-    press += 1100;
-  }
-  const clear = press - 250;
+  const decisions = buildInboxDecisionTimeline(
+    [...MESSAGES].reverse().map((message) => message.id),
+    pick + 180,
+  );
+  cues.push(...decisions.cues);
+  const clear = decisions.clearAt;
 
   // The cleared Inbox shows how it planned; then every agent: the passkey chat, whose Claude lead
   // the reader points at before opening one of its GPT-6.1 Sol subagents to watch it work in
@@ -488,6 +482,8 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
                 <Cursor
                   target={cursorTarget}
                   pressed={pressing !== undefined || pressingMenu}
+                  hold={scene === "inbox" && reached("pick") && !reached("clear")}
+                  bottomAnchor={aiming ? "inbox-actions" : undefined}
                   rest={{ x: compact ? 620 : 1220, y: 760 }}
                 />
               }
@@ -567,7 +563,10 @@ function InboxStream({
         }
       />
       <div className="relative flex min-h-0 flex-1 flex-col items-center px-6 pb-5">
-        <div className="relative flex min-h-0 w-full max-w-[640px] flex-1 flex-col justify-end overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_72px)]">
+        <div
+          data-cursor-anchor="inbox-actions"
+          className="relative flex min-h-0 w-full max-w-[640px] flex-1 flex-col justify-end overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_72px)]"
+        >
           <AnimatePresence initial={false}>
             {visible.map((message) => (
               <motion.div
@@ -575,7 +574,12 @@ function InboxStream({
                 layout="position"
                 initial={{ opacity: 0, y: 14, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, height: 0, marginTop: 0, transition: { duration: 0.32 } }}
+                exit={{
+                  opacity: 0,
+                  height: 0,
+                  marginTop: 0,
+                  transition: { duration: INBOX_CARD_EXIT_MS / 1000 },
+                }}
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
                 className="mt-4 shrink-0"
               >
