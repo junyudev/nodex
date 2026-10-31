@@ -1,0 +1,19 @@
+src/renderer/components/workbench/sidebar-custom-sections.tsx
+  s_09d0010c59e717::t_8bb2c892062f01 99,102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b347c27e06c1239eaad787a848088bd74f96ea4",
+  "prompts": {},
+  "sessions": {
+    "s_09d0010c59e717": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191e2-e63f-75c0-9db1-5e7360d5b9fd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
