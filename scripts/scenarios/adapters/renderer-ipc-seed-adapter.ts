@@ -574,6 +574,20 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     return { sessionId: session.id, threadId: input.thread.threadId };
   }
 
+  async readSession(sessionId: string) {
+    return await this.#invoke("project-sessions:get", sessionId);
+  }
+
+  async setSessionUnread(sessionId: string, unread: boolean): Promise<void> {
+    unwrapCoreResult(
+      await this.#invoke("project-sessions:mark-unread", {
+        operationId: createBoundedOperationId("scenario.session.mark-unread"),
+        payload: { sessionId, unread },
+      }),
+      "Session unread state",
+    );
+  }
+
   async readPageChatActivity(pageIds: readonly string[]): Promise<PageChatActivitySummaryResult> {
     return await this.#invoke("page-chats:activity-summaries", {
       pageIds: [...pageIds],

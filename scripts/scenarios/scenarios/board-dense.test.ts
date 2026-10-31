@@ -302,6 +302,14 @@ class RecordingSeedPort implements ScenarioSeedPort {
     throw new Error("Sidebar section inspection is not part of this scenario");
   }
 
+  async readSession(): Promise<never> {
+    throw new Error("Session inspection is not part of this scenario");
+  }
+
+  async setSessionUnread(): Promise<never> {
+    throw new Error("Session unread state is not part of this scenario");
+  }
+
   async listSidebarSectionItems(): Promise<never> {
     throw new Error("Sidebar item inspection is not part of this scenario");
   }

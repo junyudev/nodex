@@ -460,6 +460,21 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
+  async readSession(sessionId: string) {
+    return await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.getProjectSession(sessionId),
+    );
+  }
+
+  async setSessionUnread(sessionId: string, unread: boolean): Promise<void> {
+    await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.markProjectSessionUnread({
+        operationId: createBoundedOperationId("scenario.session.mark-unread"),
+        payload: { sessionId, unread },
+      }),
+    );
+  }
+
   async sendInboxMessage(
     body: string,
     scope: InboxScope = LIBRARY_INBOX,

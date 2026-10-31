@@ -381,6 +381,17 @@ UI behavior belongs in a dedicated Playwright spec such as
 `tests/e2e/board-dense.spec.ts`; `vp run dev --seed ...` never starts
 Playwright, focuses a Page, or performs assertions.
 
+`sidebar/chat-status` creates waiting, running, unread, and quiet chats in
+Status Project, two Projects for comparing collapsed status priority, and a
+Review Section with waiting and unread chats. Expand Status Project and leave
+Collapsed Waiting and Collapsed Unread collapsed for review; Project disclosure
+state is local to the renderer and is not seeded. Unread examples use threadless
+Sessions so they remain unread without Agent authentication. No Agent is started:
+
+```bash
+vp run dev --home "$HOME/repo/nodex/runs.local/chat-status" --seed sidebar/chat-status
+```
+
 `scheduled/ask-in-inbox` creates five scheduled tasks, a Dependency policy runbook,
 and Inbox messages for waiting, skipped, and failed runs. The dependency task has
 fallen due three times while waiting; a projectless reading list waits in the
