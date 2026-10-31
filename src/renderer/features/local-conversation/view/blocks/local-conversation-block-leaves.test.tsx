@@ -10,7 +10,7 @@ import {
   installMeasuredResizeObserver,
   installWindowApi,
 } from "../../../../test/browser-globals";
-import { renderWithMaitai as render } from "../../../../test/thread-maitai";
+import { renderWithMaitai } from "../../../../test/thread-maitai";
 import { settleAsyncRender, textContent } from "../../../../test/dom";
 import { TestQueryProvider } from "../../../../test/query";
 import { THREAD_SETTINGS_STORAGE_KEY } from "../../../../lib/codex-thread-settings";
@@ -43,6 +43,10 @@ import type {
   ThreadOpenThreadContext,
   ThreadTranscriptBlockModel,
 } from "../../thread-stage-types";
+
+// Thread leaves read Library and host images through the app's query client.
+const render: typeof renderWithMaitai = (ui, options) =>
+  renderWithMaitai(ui, { wrapper: TestQueryProvider, ...options });
 
 const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,

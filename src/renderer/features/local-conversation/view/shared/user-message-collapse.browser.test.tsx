@@ -1,9 +1,13 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
-import { renderWithAppMaitai as render } from "@/test/app-maitai";
+import type { ReactElement } from "react";
+import { renderWithAppMaitai } from "@/test/app-maitai";
+import { TestQueryProvider } from "@/test/query";
 import { describe, expect, test } from "vite-plus/test";
 import "../../../../globals.css";
 import { waitForCodeHighlight } from "../../../../test/dom";
 import { MessageText } from "@/components/message/message-document";
+
+const render = (ui: ReactElement) => renderWithAppMaitai(ui, { wrapper: TestQueryProvider });
 
 describe("MessageText browser collapse", () => {
   test("measures real layout and removes clipped links from keyboard navigation", async () => {

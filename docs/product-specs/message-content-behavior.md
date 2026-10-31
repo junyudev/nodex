@@ -80,8 +80,13 @@ run of plain images at its start, show as thumbnails above the text, as in the
 Composer, and open in the image viewer. A message that ends with such a run
 instead, as messages did before images came first, shows it below the text,
 where the Page keeps it.
-Images are read with the access of the Page the message belongs to, and one
-that cannot be read says so. An Inbox bubble shows its Page as it is now,
+Images are read with the access of the Page the message belongs to. Text
+written to an Agent, such as a chat message, belongs to no Page and reads its
+Library images with the Library's access, as the Agent does. A file path shows
+the file from where the message lives: this computer, or in a chat the chat's
+host, as the Agent's replies do. An image between paragraphs shows in place, no
+taller than an image in an Agent's reply, and opens in the image viewer. An
+image that cannot be read says so. An Inbox bubble shows its Page as it is now,
 including anything later added in the Page; the stream shows a bounded part of
 a long body, and the full message stays one action away. Long messages collapse
 after the same number of lines in every bubble.

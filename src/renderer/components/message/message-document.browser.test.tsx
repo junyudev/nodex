@@ -1,8 +1,12 @@
-import { render } from "@testing-library/react";
+import { render as renderElement } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, test } from "vite-plus/test";
 
 import "../../globals.css";
+import { TestQueryProvider } from "@/test/query";
 import { MessageText } from "./message-document";
+
+const render = (ui: ReactElement) => renderElement(ui, { wrapper: TestQueryProvider });
 
 /** Where the first character of `text` is drawn. */
 function leftOf(container: HTMLElement, text: string): number {
@@ -44,5 +48,26 @@ describe("message indentation in Chromium", () => {
     expect(leftOf(view.container, "continued")).toBe(leftOf(view.container, "item"));
     expect(leftOf(view.container, "nested")).toBeGreaterThan(leftOf(view.container, "item"));
     expect(leftOf(view.container, "next")).toBe(leftOf(view.container, "item"));
+  });
+});
+
+describe("message images in Chromium", () => {
+  test("an image between paragraphs is no taller than an image in an Agent's reply", async () => {
+    const tall = `data:image/svg+xml;base64,${btoa(
+      "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='1000'/>",
+    )}`;
+    const view = render(
+      <div style={{ width: 420 }}>
+        <MessageText text={`Before\n\n![](${tall})\n\nAfter`} />
+      </div>,
+    );
+    const image = view.getByRole("img");
+    await expect.poll(() => image.getBoundingClientRect().height).toBeGreaterThan(0);
+    const { height, width, top, bottom } = image.getBoundingClientRect();
+    // `max-h-50`, as an Agent's reply shows an image, keeping the picture's shape.
+    expect(height).toBeCloseTo(200, 0);
+    expect(width).toBeLessThan(height / 5);
+    expect(top).toBeGreaterThan(view.getByText("Before").getBoundingClientRect().bottom);
+    expect(bottom).toBeLessThan(view.getByText("After").getBoundingClientRect().top);
   });
 });

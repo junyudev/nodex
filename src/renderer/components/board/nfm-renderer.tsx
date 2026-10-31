@@ -17,8 +17,12 @@ import type { RichTextColor } from "../../../shared/rich-text/colors";
 import { normalizeDateMention } from "../../../shared/rich-text/date-mention";
 import { FileLinkAnchor } from "../shared/file-link-anchor";
 import { readMarkdown } from "../../../shared/nodex-markdown";
-import { InlineImage, inlineImageProps } from "./inline-image";
-import { useMarkdownImage } from "./markdown-image";
+import { ImageViewerButton, InlineImage, inlineImageProps } from "./inline-image";
+import { useMarkdownImage, type MarkdownImage } from "./markdown-image";
+import {
+  ImageErrorTile,
+  ImageLoadingTile,
+} from "@/features/local-conversation/view/shared/user-message-attachments";
 import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
 import { formatDateMentionPlainText } from "../../../shared/rich-text/date-mention";
 import { cn } from "@/lib/utils";
@@ -483,23 +487,28 @@ function BlockComponent({
 }
 
 function ImageFigure({ block, className }: { block: MarkdownBlock; className?: string }) {
-  const { url: sourceUrl } = useMarkdownImage(String(block.props?.url ?? ""));
+  const density = useContext(NfmDensityContext);
+  const image = useMarkdownImage(String(block.props?.url ?? ""));
+  const alt = markdownImageAlt(block);
   const widthStyle =
     numberProp(block, "previewWidth") !== undefined
       ? { width: `${numberProp(block, "previewWidth")}px`, maxWidth: "100%" }
       : undefined;
 
   return (
-    <figure className={cn("my-3", className)}>
-      {sourceUrl ? (
+    <figure className={cn(density === "message" ? "my-[0.5em] first:mt-0" : "my-3", className)}>
+      {density === "message" ? (
+        <MessageFigureImage image={image} alt={alt} />
+      ) : image.url ? (
         <img
-          src={sourceUrl}
-          alt={markdownImageAlt(block)}
+          src={image.url}
+          alt={alt}
           className="max-w-full rounded-md border border-(--border)"
           style={widthStyle}
           width={numberProp(block, "sourceWidth")}
           height={numberProp(block, "sourceHeight")}
           loading="lazy"
+          onError={image.onError}
         />
       ) : null}
       {Boolean(block.props?.caption) && (
@@ -508,6 +517,26 @@ function ImageFigure({ block, className }: { block: MarkdownBlock; className?: s
         </figcaption>
       )}
     </figure>
+  );
+}
+
+/**
+ * An image between a message's paragraphs, shown at most as tall as an Agent's reply shows one,
+ * that opens full size. One that cannot be read says so, as an attached image does.
+ */
+function MessageFigureImage({ image, alt }: { image: MarkdownImage; alt: string }) {
+  if (image.failed) return <ImageErrorTile />;
+  if (!image.url) return <ImageLoadingTile label="Loading image" />;
+  return (
+    <ImageViewerButton src={image.url} label={alt} className="flex max-w-full rounded-md">
+      <img
+        src={image.url}
+        alt={alt}
+        draggable={false}
+        onError={image.onError}
+        className="h-auto max-h-50 w-auto max-w-full rounded-md border border-token-border object-contain"
+      />
+    </ImageViewerButton>
   );
 }
 

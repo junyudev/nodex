@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import { clearManagedAssetDisplayUrlCache, resolveAssetSourceToDisplayUrl } from "./assets";
+import {
+  clearManagedAssetDisplayUrlCache,
+  resolveAssetSourceToDisplayUrl,
+  resolveLocalImageDisplayUrl,
+} from "./assets";
 import { getAssetSource } from "../../shared/assets";
 
 describe("assets helpers", () => {
@@ -46,5 +50,29 @@ describe("assets helpers", () => {
     expect(
       resolveAssetSourceToDisplayUrl(getAssetSource("relative.png"), () => "relative.png"),
     ).toBe(null);
+  });
+
+  test("shows a file path an image names on this computer through app://fs", () => {
+    expect(resolveLocalImageDisplayUrl("/Users/me/cache/shot #1.png")).toBe(
+      "app://fs/@fs/Users/me/cache/shot%20%231.png",
+    );
+    expect(resolveLocalImageDisplayUrl("file:///Users/me/a%20b.png")).toBe(
+      "app://fs/@fs/Users/me/a%20b.png",
+    );
+    expect(resolveLocalImageDisplayUrl("C:\\Users\\me\\shot.png")).toBe(
+      "app://fs/@fs/C:/Users/me/shot.png",
+    );
+    expect(resolveLocalImageDisplayUrl("https://example.com/shot.png")).toBe(
+      "https://example.com/shot.png",
+    );
+  });
+
+  test("keeps a file URL's host, which names a network share", () => {
+    expect(resolveLocalImageDisplayUrl("file://server/share/chart.png")).toBe(
+      "app://fs/@fs//server/share/chart.png",
+    );
+    expect(resolveLocalImageDisplayUrl("file://localhost/tmp/chart.png")).toBe(
+      "app://fs/@fs/tmp/chart.png",
+    );
   });
 });

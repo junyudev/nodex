@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ImageIcon } from "@/components/shared/icons";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -37,10 +37,8 @@ export function InlineImage({
   projectWorkspacePath,
 }: InlineImageProps & { readonly projectWorkspacePath?: string | null }) {
   const source = useMarkdownImage(url);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const label = alt.trim() || "Image";
-  const shown = source.url !== null && !source.failed && !loadFailed ? source.url : null;
+  const shown = source.url;
 
   const visual = shown ? (
     <NodexTooltip tooltipContent={alt.trim() || null}>
@@ -48,7 +46,7 @@ export function InlineImage({
         src={shown}
         alt={alt}
         draggable={false}
-        onError={() => setLoadFailed(true)}
+        onError={source.onError}
         className="inline-block h-[1.25em] w-auto rounded-[2px] object-contain align-[-0.25em]"
         style={{ maxWidth: width ? `${width}px` : "16em" }}
       />
@@ -70,22 +68,41 @@ export function InlineImage({
   }
   if (!shown) return visual;
   return (
+    <ImageViewerButton src={shown} label={label} className="inline rounded-[2px] align-baseline">
+      {visual}
+    </ImageViewerButton>
+  );
+}
+
+/** An image that opens full size in the image viewer. */
+export function ImageViewerButton({
+  src,
+  label,
+  className,
+  children,
+}: {
+  readonly src: string;
+  readonly label: string;
+  readonly className?: string;
+  readonly children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
     <>
       <button
         type="button"
         contentEditable={false}
         aria-label={`Open ${label}`}
-        onClick={() => setPreviewOpen(true)}
+        onClick={() => setOpen(true)}
         className={cn(
-          "inline cursor-zoom-in rounded-[2px] border-0 bg-transparent p-0 align-baseline",
+          "cursor-zoom-in border-0 bg-transparent p-0",
           "focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:outline-none",
+          className,
         )}
       >
-        {visual}
+        {children}
       </button>
-      {previewOpen ? (
-        <ImagePreviewDialog open onOpenChange={setPreviewOpen} src={shown} alt={label} />
-      ) : null}
+      {open ? <ImagePreviewDialog open onOpenChange={setOpen} src={src} alt={label} /> : null}
     </>
   );
 }

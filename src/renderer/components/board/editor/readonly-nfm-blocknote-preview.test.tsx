@@ -6,6 +6,7 @@ import {
 } from "@/lib/editor-model/date-mention-clock";
 import { renderWithMaitai as render } from "../../../test/thread-maitai";
 import { settleAsyncRender, textContent } from "../../../test/dom";
+import { TestQueryProvider } from "../../../test/query";
 import { ReadonlyMarkdownBlockNotePreview } from "./readonly-nfm-blocknote-preview";
 
 let restoreDateMentionClockStore: (() => void) | null = null;
@@ -44,14 +45,16 @@ function installDateMentionClock(start: string) {
 describe("readonly NFM BlockNote preview", () => {
   test("shows an image within text in place and keeps an image alone on its line a Block", async () => {
     const view = render(
-      <ReadonlyMarkdownBlockNotePreview
-        content={
-          "Logo ![mark|20](https://example.com/mark.svg) here\n\n![Photo](https://example.com/photo.png)"
-        }
-        projectId="alpha"
-        pageId="card-images"
-        historyId={0}
-      />,
+      <TestQueryProvider>
+        <ReadonlyMarkdownBlockNotePreview
+          content={
+            "Logo ![mark|20](https://example.com/mark.svg) here\n\n![Photo](https://example.com/photo.png)"
+          }
+          projectId="alpha"
+          pageId="card-images"
+          historyId={0}
+        />
+      </TestQueryProvider>,
     );
 
     const mark = await view.findByAltText("mark");

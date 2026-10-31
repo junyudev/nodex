@@ -152,7 +152,7 @@ import { readPlainTextBlocks } from "../../../../shared/markdown";
 import { writeMarkdown, readMarkdown } from "../../../../shared/nodex-markdown";
 import type { CodexThreadSummary } from "@/lib/types";
 
-import { resolveAssetSourceToDisplayUrl } from "@/lib/assets";
+import { resolveLocalImageDisplayUrl } from "@/lib/assets";
 import { readImageFileSourceDimensions } from "@/lib/image-source-dimensions";
 import { parseFileSource } from "../../../../shared/file-resources";
 import { useSpellcheck } from "@/lib/use-spellcheck";
@@ -330,7 +330,7 @@ function resolveImagePreview(input: { readonly source: string; readonly alt: str
   readonly source: string;
   readonly alt: string;
 } | null {
-  const source = resolveAssetSourceToDisplayUrl(input.source);
+  const source = resolveLocalImageDisplayUrl(input.source);
   return source ? { source, alt: input.alt } : null;
 }
 
@@ -551,7 +551,7 @@ function NfmEditorInstance({
         if (!fileRuntime) throw new Error("File authority is unavailable");
         return fileRuntime.readImageDataUrl(fileSource);
       }
-      const displayUrl = resolveAssetSourceToDisplayUrl(fileSource);
+      const displayUrl = resolveLocalImageDisplayUrl(fileSource);
       if (!displayUrl) throw new Error("Managed image path is unavailable");
       return displayUrl;
     },

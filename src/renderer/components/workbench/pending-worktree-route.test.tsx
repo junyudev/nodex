@@ -9,6 +9,7 @@ import type {
 } from "../../../shared/codex-pending-worktree";
 import { renderWithMaitai } from "../../test/thread-maitai";
 import { settleAsyncRender } from "../../test/dom";
+import { TestQueryProvider } from "../../test/query";
 import {
   PendingWorktreeRoute,
   PendingWorktreeRouteView,
@@ -18,7 +19,9 @@ import {
 const CLIENT_THREAD_ID = "client-new-thread:11111111-1111-4111-8111-111111111111";
 
 function render(element: ReactElement) {
-  return renderWithMaitai(<NodexTooltipProvider>{element}</NodexTooltipProvider>);
+  return renderWithMaitai(<NodexTooltipProvider>{element}</NodexTooltipProvider>, {
+    wrapper: TestQueryProvider,
+  });
 }
 
 function deferred<T>(): {

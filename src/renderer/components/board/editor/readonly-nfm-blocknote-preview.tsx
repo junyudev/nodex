@@ -33,7 +33,7 @@ import {
   inlineTintedChipVariants,
 } from "@/components/ui/inline-tinted-chip";
 import { readMarkdown } from "../../../../shared/nodex-markdown";
-import { resolveAssetSourceToDisplayUrl } from "@/lib/assets";
+import { resolveLocalImageDisplayUrl } from "@/lib/assets";
 import { resolveAgentConfigChip, type AgentConfigProps } from "./agent-config-chip";
 import type { FileReadAuthority, FilePreviewAuthority } from "@/lib/library-file-resources";
 import { parseFileSource } from "../../../../shared/file-resources";
@@ -341,7 +341,7 @@ function ReadonlyNfmPreviewContent({
           if (!fileRuntime) throw new Error("File preview authority is unavailable");
           return fileRuntime.readImageDataUrl(source);
         }
-        const displayUrl = resolveAssetSourceToDisplayUrl(source);
+        const displayUrl = resolveLocalImageDisplayUrl(source);
         if (!displayUrl) throw new Error("Managed image path is unavailable");
         return displayUrl;
       },

@@ -381,6 +381,10 @@ A URL with spaces, angle brackets or unbalanced parentheses is written as
 `<url>`; a link's URL is written the same way. A pending image has no URL:
 `![Uploading]()`. An image takes no color.
 
+The URL names where the picture comes from: a Library File as `nodex://files/<id>`,
+a web or `data:` image, or a file path, absolute or a `file:` URL, read from the
+computer the content belongs to. Nodex shows an image it cannot read as unavailable.
+
 An image anywhere else is an inline image, as GitHub shows it in place: within
 text, in a list item's or quote's text, in a table cell, or inside a link, which
 makes the image open the link, as a badge does in `[![build](badge.svg)](ci)`.

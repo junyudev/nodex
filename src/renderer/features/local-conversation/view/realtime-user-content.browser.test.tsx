@@ -8,6 +8,7 @@ import { createLocalConversationSearchSource } from "./local-conversation-search
 import { revealContentSearchUnit } from "../../content-search/content-search-reveal-owner";
 import { waitForLocalConversationSearchLayout } from "./local-conversation-search-scroll";
 import { applyLocalConversationSearchHighlights } from "./local-conversation-thread-search-dom-marks";
+import { TestQueryProvider } from "../../../test/query";
 import "../../../globals.css";
 
 describe("native voice user disclosure geometry", () => {
@@ -46,6 +47,7 @@ describe("native voice user disclosure geometry", () => {
           <LocalConversationRealtimeItem entry={entry} conversationId="thread" cwd={null} />
         </CodexTranscriptReadOwnerContext.Provider>
       </div>,
+      { wrapper: TestQueryProvider },
     );
     try {
       await view.findByRole("button", { name: "Show more" });

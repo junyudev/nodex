@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 
 - Opening a Page with images no longer saves an unintended edit when its images load.
 - Backspace while composing text with an input method, such as Chinese Pinyin, no longer cuts off what you're typing in a Page. The input method keeps your text, so its letters no longer end up in the Page.
+- Images in chat messages that point to a file or to a Page's image now show instead of appearing broken. A file path, such as a Page image copied as a local path, shows that file, read from the chat's host when the chat runs on another machine, and an image copied with its Library reference shows too. Pages show images written as file paths the same way.
 
 ## [0.5.0] - 2026-10-29
 

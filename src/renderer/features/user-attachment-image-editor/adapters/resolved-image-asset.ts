@@ -1,14 +1,10 @@
 import { buildAppFilesystemUrl } from "../../../../shared/app-protocol";
 import { sanitizeNativeSaveFileName } from "../../../../shared/native-file-save";
-import { parseLocalFileLinkHref } from "../../../../shared/file-link-openers";
 import { parseAssetSource } from "../../../../shared/assets";
-import { resolveAssetSourceToDisplayUrl } from "../../../lib/assets";
+import { parseLocalImagePath, resolveAssetSourceToDisplayUrl } from "../../../lib/assets";
 import { readNativeResource } from "../../../lib/native-resource-operations";
 import { saveWorkspaceFileData } from "../../../lib/workspace-file-operations";
-import {
-  isCodexImageAssetPointer,
-  parseAbsoluteImagePath,
-} from "../../../lib/codex-conversation-image-assets";
+import { isCodexImageAssetPointer } from "../../../lib/codex-conversation-image-assets";
 
 export type ImageAssetSourceKind =
   | "data"
@@ -44,10 +40,6 @@ export class ImageAssetResolutionError extends Error {
 
 export function buildImageDataUrl(dataBase64: string, mimeType: string | null | undefined): string {
   return `data:${mimeType?.trim() || "application/octet-stream"};base64,${dataBase64}`;
-}
-
-function parseLocalImagePath(source: string): string | null {
-  return parseAbsoluteImagePath(source) ?? parseLocalFileLinkHref(source)?.path ?? null;
 }
 
 export function classifyImageAssetSource(rawSource: string): ClassifiedImageAssetSource {

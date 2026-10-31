@@ -1,6 +1,7 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { render } from "@/test/dom";
+import { TestQueryProvider } from "@/test/query";
 import { MessageText } from "@/components/message/message-document";
 
 vi.mock("@/lib/use-theme", () => ({ useTheme: () => ({ resolved: "dark" }) }));
@@ -19,7 +20,11 @@ describe("MessageText", () => {
     });
     const text = "A long submitted prompt: " + "bounded text ".repeat(3_000) + " END OF PROMPT";
     try {
-      const view = render(<MessageText text={text} />);
+      const view = render(
+        <TestQueryProvider>
+          <MessageText text={text} />
+        </TestQueryProvider>,
+      );
       const disclosure = await view.findByRole("button", { name: "Show more" });
       const occurrence = view.container.querySelector(".codex-markdown-user");
       expect(occurrence?.textContent).toBe(text);
