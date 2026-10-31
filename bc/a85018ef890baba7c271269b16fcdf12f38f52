@@ -1,0 +1,159 @@
+crates/nodex-markdown/src/model.rs
+  s_1f106d27429efa::t_0385732e9dfc9d 330,335-336,347-349,1229
+  s_1f106d27429efa::t_b4a672e554cc7d 350-352,360,543,556,1227-1228
+src/renderer/features/local-conversation/chat-message-navigation.ts
+  s_1f106d27429efa::t_af9d35f64b2c2e 1-55
+  s_1f106d27429efa::t_11fa3861a6f526 56-72
+src/renderer/features/local-conversation/view/highlight-chat-message.ts
+  s_1f106d27429efa::t_af9d35f64b2c2e 1-10
+  s_1f106d27429efa::t_91a2a619770127 11-16
+crates/nodex-markdown/src/write/blocks.rs
+  s_1f106d27429efa::t_0385732e9dfc9d 211,214-218
+src/renderer/features/local-conversation/chat-message-navigation.test.ts
+  s_1f106d27429efa::t_0285b412ef34d7 1-30
+  s_1f106d27429efa::t_9c8b02b8b8a62f 31-46
+crates/nodex-markdown/tests/prompt.rs
+  s_1f106d27429efa::t_4ac66e5d06b819 10,60-63
+src/shared/prompt-turn.test.ts
+  s_1f106d27429efa::t_7875a7b203ab91 1-20
+  s_1f106d27429efa::t_af87703023c80d 21-35
+src/main/agent-runtime/AgentRuntimePromptTurns.ts
+  s_1f106d27429efa::t_19565035221942 1-29
+  s_1f106d27429efa::t_d3fc82599710a8 30-44
+src/shared/block-documents/blocknote-schema-config.ts
+  s_1f106d27429efa::t_0385732e9dfc9d 32
+src/renderer/lib/page-chat-send.ts
+  s_1f106d27429efa::t_57480a5b30f981 1-6
+src/renderer/components/workbench/use-page-chat-send-port.test.tsx
+  s_1f106d27429efa::t_0285b412ef34d7 1-56
+  s_1f106d27429efa::t_f7626162be3d62 57-115
+crates/nodex-core/src/domain/ordinary_block.rs
+  s_1f106d27429efa::t_0385732e9dfc9d 41
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_1f106d27429efa::t_b4d532b59f25d5 1-2,3926
+  s_1f106d27429efa::t_2f51f177ef2a5a 3927-3942
+src/shared/prompt-turn.ts
+  s_1f106d27429efa::t_19565035221942 1-70
+src/renderer/features/local-conversation/view/use-chat-message-reveal.ts
+  s_1f106d27429efa::t_af9d35f64b2c2e 1-47
+  s_1f106d27429efa::t_999e1fdef36aa7 48-76
+crates/nodex-markdown/src/read/values.rs
+  s_1f106d27429efa::t_0385732e9dfc9d 301-302,319-323
+src/renderer/lib/prompt-turn.ts
+  s_1f106d27429efa::t_aec687bf15c2da 2-148,150-152,155-156
+  s_1f106d27429efa::t_b4d532b59f25d5 1,149,153-154
+  s_1f106d27429efa::t_b86d3b0618f926 157-195
+src/renderer/components/workbench/use-page-chat-send-port.ts
+  s_1f106d27429efa::t_57480a5b30f981 20,68,121-125,156,180
+  s_1f106d27429efa::t_53d186748b14c3 185,198
+src/renderer/lib/prompt-turn.test.tsx
+  s_1f106d27429efa::t_7875a7b203ab91 1-17
+  s_1f106d27429efa::t_5ad39f4e23f6c3 18-25
+src/renderer/features/local-conversation/view/use-chat-message-reveal.test.tsx
+  s_1f106d27429efa::t_14e976668d348f 1-27
+  s_1f106d27429efa::t_171d16a5ee5ee9 28-54
+crates/nodex-markdown/src/read/blocks.rs
+  s_1f106d27429efa::t_0385732e9dfc9d 414
+src/renderer/lib/prompt-turn.node.test.ts
+  s_1f106d27429efa::t_7875a7b203ab91 1-58
+  s_1f106d27429efa::t_4fa532e7aa8012 59-99
+src/main/agent-runtime/AgentRuntimePromptTurns.node.test.ts
+  s_1f106d27429efa::t_cf01b156e4f8f7 1-24
+  s_1f106d27429efa::t_e29cc4af02a6b4 25-61
+agent-skills/nodex/references/markdown.md
+  s_1f106d27429efa::t_fb9118db924598 11
+crates/nodex-core/src/domain/block_to_page.rs
+  s_1f106d27429efa::t_f6d03d4fb24e68 306
+crates/nodex-core/src/domain/derived_records.rs
+  s_1f106d27429efa::t_0a6c064761b288 429
+crates/nodex-core/tests/fixtures/yjs-yrs/manifest.json
+  s_1f106d27429efa::t_cd0bf0e97dbc02 14
+crates/nodex-core/tests/fixtures/yjs-yrs/markdown-parser-oracle.json
+  s_1f106d27429efa::t_a77393e8674012 2,146-147,164-165,456
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-materialization.json
+  s_1f106d27429efa::t_989304c765a114 147-148,165-166,457
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-state-vector.bin
+  s_1f106d27429efa::t_00a009e5792d0c 1
+crates/nodex-core/tests/yjs_yrs_conformance.rs
+  s_1f106d27429efa::t_a0e5ac513d2030 81-84
+crates/nodex-markdown/tests/fixtures/cases.json
+  s_1f106d27429efa::t_415f9ca1f75270 4-8,2178-2180
+docs/product-specs/nfm-editor-prompt-block-behavior.md
+  s_1f106d27429efa::t_61d024781a83e3 56,63-94
+docs/references/nodex-markdown.md
+  s_1f106d27429efa::t_9b9623a5879b81 131,138-140,143-146,294
+packages/agent-runtime/src/nodex/Interface.ts
+  s_1f106d27429efa::t_fa25e364a40897 367-373
+packages/agent-runtime/src/nodex/Service.ts
+  s_1f106d27429efa::t_be1de7a6113367 395,869-873,1569
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_1f106d27429efa::t_a4ebc6b6d38d10 3997-4000
+packages/agent-runtime/src/orchestration-v2/ProjectionControlReads.test.ts
+  s_1f106d27429efa::t_53a596076c78ce 600,652,1248-1304
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_1f106d27429efa::t_3440a12ec62514 1056-1060,9674,9713-9732,9735,9845,11399-11413,11441-11442
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_1f106d27429efa::t_1d0ccc5541ffaa 216
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_1f106d27429efa::t_9430e52ed280c7 1724-1725,2550-2551
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_1f106d27429efa::t_8b680ce0c3a92d 204-206
+src/renderer/components/board/editor/block-document-schema-parity.test.ts
+  s_1f106d27429efa::t_846918aec70d4e 48-52
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_1f106d27429efa::t_1b988836469ea8 1,254,261,1689,1694,1702,1713,1776,1780,1785-1787,1811-1812,1843-1844
+src/renderer/components/board/editor/prompt-block-export.jsdom.test.ts
+  s_1f106d27429efa::t_4af78168f18eb7 11-15
+src/renderer/components/board/page-stage/types.ts
+  s_1f106d27429efa::t_8e43fdf70469f5 1,123,130
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_1f106d27429efa::t_abf01734253545 217,221-222
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_1f106d27429efa::t_ae063c92b335ef 2532-2570
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_1f106d27429efa::t_1e47a2bccc77e4 539-556
+src/renderer/features/local-conversation/conversation-runtime.ts
+  s_1f106d27429efa::t_fdbf3e37533ec6 24-25,54-58
+src/renderer/features/local-conversation/projection/thread-user-message-navigation-items.ts
+  s_1f106d27429efa::t_c9e6d14b2321ad 337,339
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_1f106d27429efa::t_fdccc7065f0454 1141
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_1f106d27429efa::t_a99ca55db6c6b4 1,1237-1242
+src/renderer/features/local-conversation/view/thread-user-message-navigation-rail.tsx
+  s_1f106d27429efa::t_968d04e14c2818 1,187
+src/renderer/lib/agent-runtime-runtime.ts
+  s_1f106d27429efa::t_45e032de4faf52 298-300,352
+src/renderer/lib/nfm-turn-into-targets.ts
+  s_1f106d27429efa::t_4b1f5fa00d7138 85
+src/shared/agent-runtime-api.ts
+  s_1f106d27429efa::t_3c26ec8c0c8319 434-437
+src/shared/block-documents/yjs-yrs-conformance.test.ts
+  s_1f106d27429efa::t_668987705bb0cb 484-488
+src/shared/block-documents/yjs-yrs-fixture-generator.test.ts
+  s_1f106d27429efa::t_c446d059dda13c 127-131
+src/shared/ipc-endpoint-policy.ts
+  s_1f106d27429efa::t_e8dfacb0a62d04 114
+src/shared/message-agent-input.test.ts
+  s_1f106d27429efa::t_c3e1d3dd36ceab 110-114
+src/shared/nodex-markdown/agent-guide.ts
+  s_1f106d27429efa::t_3083798f8f1448 10
+src/shared/schemas/agent-runtime-api.ts
+  s_1f106d27429efa::t_8b0ff0a3c78259 1,15-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bca85018ef890baba7c271269b16fcdf12f38f52",
+  "prompts": {},
+  "sessions": {
+    "s_1f106d27429efa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19153-9dcc-74f1-8dde-9f675dc31816",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
