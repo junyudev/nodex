@@ -1,0 +1,27 @@
+packages/landing/src/demos/inbox-decision-timeline.ts
+  s_a6781d7ad2151c::t_aa9d2418391e29 1-28
+packages/landing/src/demos/inbox-decision-timeline.test.ts
+  s_a6781d7ad2151c::t_aa9d2418391e29 1-13,15-16,18-22
+  s_a6781d7ad2151c::t_afafbefcc37b35 14,17
+packages/landing/src/demos/HeroDemo.tsx
+  s_a6781d7ad2151c::t_aa9d2418391e29 34,111-116,485,573-578
+packages/landing/src/demos/Cursor.tsx
+  s_a6781d7ad2151c::t_aa9d2418391e29 59,65-67,71-72
+  s_a6781d7ad2151c::t_19481247bcbc6a 62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d6d1c3f31b62821b5a4894164e1fb461ad5d5e3a",
+  "prompts": {},
+  "sessions": {
+    "s_a6781d7ad2151c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1903b-3503-7b40-80fe-c97b4452918e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
