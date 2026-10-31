@@ -713,8 +713,10 @@ creates a second message, and does not count against the Agent budget again.
   - what chats the Inbox starts run on otherwise, chosen with the composer's
     model menu: the Agent, its model, and the model's effort and speed;
   - whether suggestions read Nodex's model guide, which is on by default and can
-    be read in full there. The guide changes with Nodex; the user's own view of
-    each model belongs in the routing preferences.
+    be read in full there. It covers GPT-6.1, Claude Opus 5.5 and the models
+    OpenCode offers free, which it marks free so suggestions can spend no budget
+    on routine work. The guide changes with Nodex; the user's own view of each
+    model belongs in the routing preferences.
 
   Choices read the Runtime's existing provider and model catalog without forcing
   discovery on open. Cached choices remain visible during background refresh;
