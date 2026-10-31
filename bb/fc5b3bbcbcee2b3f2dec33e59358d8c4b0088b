@@ -1,0 +1,51 @@
+src/main/core-client/project-workspace-adapter.ts
+  s_16b01e99d47008::t_1f1b5b0ecb5540 106
+crates/nodex-core-contracts/src/workspace.rs
+  s_16b01e99d47008::t_1f1b5b0ecb5540 19,441
+src/shared/sidebar-sections.ts
+  s_16b01e99d47008::t_1f1b5b0ecb5540 27
+src/main/core-client/project-workspace-adapter.node.test.ts
+  s_16b01e99d47008::t_b88dea3703a77d 1-34
+src/main/codex-application/CodexSidebarSectionSync.node.test.ts
+  s_16b01e99d47008::t_1f1b5b0ecb5540 24
+crates/nodex-core/src/workspace/mod.rs
+  s_16b01e99d47008::t_1f1b5b0ecb5540 28
+crates/nodex-core/src/workspace/sidebar_section.rs
+  s_16b01e99d47008::t_b88dea3703a77d 1832-2001,2003,2005,2007-2009,2011,2014-2015
+  s_16b01e99d47008::t_1f1b5b0ecb5540 28,941,952,964,966,1046,1051,1092,1094,1098-1114,1116-1117
+  s_16b01e99d47008::t_8938ced6f11dc2 1118,1531-1532,1535,1538,2002,2004,2006,2010,2012-2013
+src/main/app-tools/WorkspaceAppTools.node.test.ts
+  s_16b01e99d47008::t_1f1b5b0ecb5540 385
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_16b01e99d47008::t_1f1b5b0ecb5540 191
+crates/nodex-core/src/workspace/project_activity_summary.rs
+  s_16b01e99d47008::t_1f1b5b0ecb5540 9-10,38
+src/main/codex-application/CodexSidebarSectionSync.ts
+  s_16b01e99d47008::t_1f1b5b0ecb5540 807
+crates/nodex-core/src/workspace/session_activity.rs
+  s_16b01e99d47008::t_1f1b5b0ecb5540 1-5
+docs/product-specs/workbench-shell.md
+  s_16b01e99d47008::t_8ce60d6d68d706 20
+packages/core-protocol/openapi.json
+  s_16b01e99d47008::t_9cf51f0171cf30 7852,7873-7875
+packages/core-protocol/src/compatibility.generated.ts
+  s_16b01e99d47008::t_f23d0fea158f1c 24
+packages/core-protocol/src/generated.ts
+  s_16b01e99d47008::t_6d0692974e4eec 1836
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bbfc5b3bbcbcee2b3f2dec33e59358d8c4b0088b",
+  "prompts": {},
+  "sessions": {
+    "s_16b01e99d47008": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191ed-4c05-7a63-95c2-b88f2afbf607",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
