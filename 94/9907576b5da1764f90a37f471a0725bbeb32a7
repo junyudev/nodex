@@ -1,0 +1,125 @@
+src/main/app-tools/RuntimeSessionCommands.node.test.ts
+  s_3c10c33b50886f::t_b1a2359a1b6b1c 722-750
+  s_3c10c33b50886f::t_6c217a279c39cc 278-279,681-703
+  s_3c10c33b50886f::t_8d00ad300acd05 80-87,131-138,150-188,191,704-721,751-764
+CHANGELOG.md
+  s_3c10c33b50886f::t_9db43159b6d743 9
+docs/product-specs/agent-interface-behavior.md
+  s_7aa8ab5f4cb606::t_d4274672542494 300-301
+  s_3c10c33b50886f::t_78fd8fb46f1478 280-299
+src/main/app-tools/SessionQuestionIntake.ts
+  s_3c10c33b50886f::t_433a648975d4ea 5
+  s_3c10c33b50886f::t_87adac3ec46a3f 1-4,6-94
+docs/product-specs/agent-runtime-behavior.md
+  s_3c10c33b50886f::t_c7395533c769bc 652-655,766-775
+packages/agent-runtime/package.json
+  s_3c10c33b50886f::t_8284018210e591 19
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_3c10c33b50886f::t_2358560dd2e7a3 2,1509,1512-1514,1530-1531
+packages/agent-runtime/src/mcp/TaskQuestions.test.ts
+  s_3c10c33b50886f::t_0403d365089f45 405,409-412,752-765
+packages/agent-runtime/src/nodex/Application.test.ts
+  s_3c10c33b50886f::t_987e6374fca1ec 706-792
+packages/agent-runtime/src/nodex/Interface.ts
+  s_3c10c33b50886f::t_6912bf2d9001b5 635-638
+packages/agent-runtime/src/nodex/PendingUserQuestions.ts
+  s_3c10c33b50886f::t_99f7e8cc4c2f01 1-42
+packages/agent-runtime/src/nodex/Service.ts
+  s_3c10c33b50886f::t_a351caf1408b24 1,301,1195-1200,1591
+packages/agent-runtime/src/orchestration-v2/EffectWorker.ts
+  s_3c10c33b50886f::t_24b90b6a9d47d9 387-389
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_3c10c33b50886f::t_d7f8b4c8b53ee7 164-166,1803-1805,4353,4506,4527,5441,5645,6025,6050,6726,6749,7942,7946-7949,7953,7958,7967,7975,8015-8024,8054-8058,8060,8065-8068,8131,8217-8224,8429-8431,12347-12362
+packages/agent-runtime/src/orchestration-v2/RuntimeQuestionResponses.test.ts
+  s_3c10c33b50886f::t_3a05e300fd3892 588-637
+packages/agent-runtime/src/orchestration-v2/SteeringCompletion.integration.test.ts
+  s_3c10c33b50886f::t_bd32a257a7e08a 720,732-736,745-748,791-801
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_3c10c33b50886f::t_03cfd78bac127a 65,1251-1253,1341,1743,2597,3323,3479-3482
+packages/agent-runtime/vendor/contracts/src/providerPolicy.ts
+  s_3c10c33b50886f::t_5511df7195a8f6 8,73-79,82
+packages/nodex-app-tools-mcp/desktop-mcp.json
+  s_3c10c33b50886f::t_a77f6e846c4d6a 13
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_3c10c33b50886f::t_d6878913c582d1 234,633-639,958-959,2189-2190,3214-3225,3233-3257
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_3c10c33b50886f::t_2156838ef1e6b4 198-200,225-245,2752-2760,2763-2773,3494-3502,3510,3514,3870-3871
+src/main/agent-runtime/AgentRuntimeHostTools.ts
+  s_3c10c33b50886f::t_f06f1b14c12762 117-118
+src/main/app-tools/AppToolInterpreter.node.test.ts
+  s_3c10c33b50886f::t_9a483c57e3e4da 225
+src/main/app-tools/AppToolInterpreter.ts
+  s_3c10c33b50886f::t_f9088da4e4d032 89,125-126
+src/main/app-tools/HostedAppToolCatalog.ts
+  s_3c10c33b50886f::t_860b7cc6ad5245 14
+src/main/app-tools/RuntimeSessionCommands.ts
+  s_3c10c33b50886f::t_0f4a5adf47f23a 1-3,35,58-84,201-209
+src/main/app-tools/RuntimeSessionQuestions.node.test.ts
+  s_3c10c33b50886f::t_c7e5ff6e825ff2 1-227
+src/main/app-tools/RuntimeSessionQuestions.ts
+  s_3c10c33b50886f::t_8180f0c6e4ab8b 1-98
+src/main/app-tools/SessionQuestions.ts
+  s_3c10c33b50886f::t_5a726020833883 1-55
+src/main/app-tools/session-dispatch-identity.ts
+  s_3c10c33b50886f::t_21a9e629c1315a 2,14-18
+src/main/codex/app-tools-launch-config.node.test.ts
+  s_3c10c33b50886f::t_93be88452f3cfb 61
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_3c10c33b50886f::t_c354d4a91b1bd3 620-624,1074-1078,1599-1603
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_3c10c33b50886f::t_87a8692a5b2fb1 1,1194-1227,1258-1305
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_3c10c33b50886f::t_df05ba84c4d006 18,545-568,581-588,599,841-843
+src/shared/agent-runtime-api.ts
+  s_3c10c33b50886f::t_b34b19bdc6210b 72-76,139-148,152
+src/shared/codex-canonical-item-projector.ts
+  s_3c10c33b50886f::t_828419616b6b88 1213,1336
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_3c10c33b50886f::t_0adfa13b056c0b 307-313,323,507
+src/shared/codex-transcript-entry-projection.ts
+  s_3c10c33b50886f::t_b1b7c830d555aa 82
+src/shared/nodex-app-tools/argument-schemas.ts
+  s_3c10c33b50886f::t_e7ad2ea0c9735c 1,50
+src/shared/nodex-app-tools/catalog.ts
+  s_3c10c33b50886f::t_5db14f00b30b7d 1,37
+src/shared/nodex-app-tools/session-question-schema.test.ts
+  s_3c10c33b50886f::t_5ed474a3207591 1-72
+src/shared/nodex-app-tools/session-question-schema.ts
+  s_3c10c33b50886f::t_98ded6073facae 1-39
+src/shared/types.ts
+  s_3c10c33b50886f::t_e06819696899d1 3398,3463
+src/main/app-tools/UnsupportedSessionQuestions.ts
+  s_039f18d9f057b1::t_e47584101d03fe 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "949907576b5da1764f90a37f471a0725bbeb32a7",
+  "prompts": {},
+  "sessions": {
+    "s_039f18d9f057b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22d16c9f-cb3c-4036-8365-8dc2739f0598",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3c10c33b50886f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19288-822f-7ae1-bfb0-beeb7d666bcd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7aa8ab5f4cb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17a9d-4961-7e90-bed7-5a3180ade70c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
