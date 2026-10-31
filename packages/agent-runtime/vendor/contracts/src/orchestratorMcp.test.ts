@@ -31,7 +31,7 @@ describe("orchestrator MCP contracts", () => {
       },
       mode: "wait",
       timeoutMs: 5_000,
-      clientRequestId: "delegate-1",
+      idempotencyKey: "delegate-1",
       runtimeMode: "inherit",
       interactionMode: "inherit",
     });
@@ -110,7 +110,7 @@ describe("orchestrator MCP contracts", () => {
 
   it("decodes mixed prompted and empty thread batches", () => {
     const request = decodeCreateThreadsInput({
-      clientRequestId: "threads-1",
+      idempotencyKey: "threads-1",
       threads: [
         { title: "Inherited empty thread" },
         {
@@ -146,7 +146,7 @@ describe("orchestrator MCP contracts", () => {
         threadId: "thread-loop-1",
         message: "Continue with the next iteration.",
         mode: "steer",
-        clientRequestId: "send-loop-2",
+        idempotencyKey: "send-loop-2",
       }).mode,
     ).toBe("steer");
     expect(

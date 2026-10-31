@@ -117,6 +117,23 @@ without a workspace. Project discovery supplies execution and presentation coord
 execution identity, Profile SQL reads, live Workbench observations and resource lifecycle
 and cloud capabilities.
 
+Mutation tools that expose a retry identity use optional `idempotencyKey`: any opaque
+string of 1–128 characters chosen by the Agent, including a UUID or slug. It is never
+needed on a first attempt. Reuse the same key with identical arguments only after a call's
+outcome was not observed. Within its seven-day window, the same calling Session or root
+conversation and tool retain one host-issued operation identity, including across Turns,
+provider reconnections and application restarts. Concurrent duplicates share admission;
+changed arguments fail with `idempotency_key_reused` before execution. Omitting the key
+retains the invocation's stable per-call identity. The host supplies admission time and
+expiry; tool arguments never supply either.
+
+A returned `operationId` is a server-issued receipt or progress handle. Echo the handle
+unchanged where requested, such as `get_handoff_status`; Agents never construct one.
+Malformed arguments return `invalid_arguments` with `error.details.issues`, an array of
+`{ path, message }` entries. Paths identify the fields or array items to correct, and the
+text result includes the same issues. Published input schemas expose structural constraints;
+semantic cross-field checks retain explicit issue paths and reasons.
+
 `automation_update` lists, searches, reads, creates, replaces and deletes scheduled
 Codex and Claude tasks. The definition retains an explicit backend/Profile binding.
 An omitted cron binding selects the caller's native backend; an omitted Heartbeat
@@ -127,7 +144,7 @@ caller’s Session. Notification preferences are separate from the task prompt.
 Read the definition before editing or deleting and retain its `definitionRevision`
 as `expectedRevision`. An update carries the complete replacement definition,
 including values that should be preserved. The response returns the committed
-definition and operation ID. Retry an uncertain write with the same operation ID,
+definition and operation ID. Retry an uncertain write with the same `idempotencyKey`,
 revision and arguments; the same caller Thread can reconcile it across Turns and
 restarts without creating or updating twice. The captured execution identity and
 target lifecycle are checked again on every retry. See
@@ -243,7 +260,7 @@ Unspecified execution settings resolve through the destination's normal launch d
 The response identifies the Session, operation and accepted execution binding. Attachment
 alone does not prove that the first Run completed. Use `wait_sessions` to observe completion. Failed launches retain their
 Session and receipt so retries cannot silently create a second task.
-The same caller Thread can reuse an operation ID and unchanged launch arguments in a later
+The same calling Session can reuse an `idempotencyKey` and unchanged launch arguments in a later
 Turn, including after restart. Every retry validates its captured execution identity;
 cancelled or retired credentials cannot replay a write receipt.
 
@@ -309,7 +326,7 @@ as message text, becomes the body of an Inbox Page, and an optional title names 
 and Project from its verified execution source. A proven Run can send at most five
 messages. A native source without causal Run evidence keeps its Run null and uses an
 independent five-message budget for that native connection. A retry with the same
-operation ID returns the original receipt without another message or quota charge.
+`idempotencyKey` returns the original receipt without another message or quota charge.
 The tool starts no work; Inbox triage and confirmation remain separate workflows.
 The backing Page retains full Profile content access, including for planning, child
 and background Agents. See [Inbox Behavior](./inbox-behavior.md).
@@ -347,7 +364,7 @@ location. Runtime handoff supports the local host. An explicit remote native Cod
 continues through its own supported local or cross-host coordinator.
 
 Core checks the captured caller and exact Session binding. The calling Session cannot move
-itself, including through a delegated child. Reusing the stable operation ID reads or resumes
+itself, including through a delegated child. Reusing the same `idempotencyKey` reads or resumes
 the same journal operation across retries and restarts. Recovery retains the hold while native
 retirement, location or Git restoration is uncertain. A Runtime follow-up uses a stable message
 identity after verified completion, so retrying delivery cannot start duplicate work.

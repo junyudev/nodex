@@ -119,9 +119,12 @@ it.effect("rejects substituted hosts, extra identity arguments, and withdrawn ca
     const execute = yield* interpreter({ hostId: "remote" });
     assert.strictEqual((yield* execute(input)).isError, true);
     const local = yield* interpreter();
-    assert.deepStrictEqual(
-      (yield* local({ ...input, arguments: { threadId: "other" } })).structuredContent,
-      { error: { code: "invalid_arguments" } },
+    const malformed = yield* local({ ...input, arguments: { threadId: "other" } });
+    assert.nestedPropertyVal(malformed.structuredContent, "error.code", "invalid_arguments");
+    assert.nestedPropertyVal(
+      malformed.structuredContent,
+      "error.details.issues.0.path.0",
+      "threadId",
     );
     let active = true;
     const revoked = yield* interpreter({

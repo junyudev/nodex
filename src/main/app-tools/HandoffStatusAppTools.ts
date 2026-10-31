@@ -10,7 +10,7 @@ import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 
 export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
   Effect.gen(function* () {
@@ -19,8 +19,8 @@ export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
     const handoffs = yield* CodexThreadHandoffRuntime;
     const application = yield* Effect.serviceOption(AgentRuntimeApplication);
     return Effect.fn("HandoffStatusAppTools.execute")(function* (input: AppToolInvocation) {
-      const parsed = handoffStatusSchema.safeParse(input.arguments);
-      if (!parsed.success) return toolFailure("invalid_arguments");
+      const parsed = parseAppToolArguments(handoffStatusSchema, input.arguments);
+      if (!parsed.success) return parsed.result;
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       const authority = yield* captureCaller(input.caller);
       if (!authority) return toolFailure("authority_unavailable");

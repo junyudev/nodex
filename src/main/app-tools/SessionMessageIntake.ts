@@ -22,6 +22,8 @@ export interface SessionMessageIntakeInput {
   readonly request: z.infer<typeof sessionMessageSchema>;
   readonly caller: SessionExecutionTarget;
   readonly operationId: string;
+  readonly acceptedAtMs: number;
+  readonly expiresAtMs: number;
   readonly sourceThreadId: string;
   readonly sourceRunId?: string | null;
 }
@@ -164,7 +166,7 @@ export const make = Effect.gen(function* () {
       const adopted = yield* application.adoptNativeSession({
         sessionId: target.session.id,
         requestId: input.operationId,
-        acceptedAt: Number(input.operationId.split(":")[2]),
+        acceptedAt: input.acceptedAtMs,
         expectedNativeThreadId: currentTargetFacts.threadId,
         expectedNativeHostId: native.localHostId,
         interactionMode: currentTargetFacts.interactionMode,
@@ -216,7 +218,7 @@ export const make = Effect.gen(function* () {
     }
     const launched = yield* application.launch({
       launchId: input.operationId,
-      acceptedAt: Number(input.operationId.split(":")[2]),
+      acceptedAt: input.acceptedAtMs,
       sessionId: target.session.id,
       projectId: target.session.project_id ?? null,
       title: target.session.display_title,
@@ -248,7 +250,11 @@ export const make = Effect.gen(function* () {
     send: Effect.fn("SessionMessageIntake.send")(function* (input: SessionMessageIntakeInput) {
       const caller = yield* authorize(input.caller.sessionId);
       const target = yield* authorize(input.request.sessionId);
-      const messageId = deriveSessionDispatchIdentity(input.operationId, "message");
+      const messageId = deriveSessionDispatchIdentity(
+        input.operationId,
+        "message",
+        input.acceptedAtMs,
+      );
       const commandIdentity = {
         request: {
           sessionId: input.request.sessionId,
@@ -259,7 +265,6 @@ export const make = Effect.gen(function* () {
           model: input.request.model ?? null,
           providerInstanceId: input.request.providerInstanceId ?? null,
         },
-        sourceThreadId: input.sourceThreadId,
       };
       const fingerprint = createHash("sha256")
         .update(stableStringifyBlockPropertyJson(commandIdentity))
@@ -268,6 +273,7 @@ export const make = Effect.gen(function* () {
       const acceptedNative = yield* native.lookup({
         target: input.request,
         operationId: input.operationId,
+        expiresAtMs: input.expiresAtMs,
         messageId,
         commandIdentity,
       });
@@ -283,6 +289,7 @@ export const make = Effect.gen(function* () {
           ? yield* native.admit({
               target: input.request,
               operationId: input.operationId,
+              expiresAtMs: input.expiresAtMs,
               messageId,
               commandIdentity,
             })

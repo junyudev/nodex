@@ -98,8 +98,8 @@ export interface NewBlockDraftInput {
 
 export const NewBlockDraftSchema: z.ZodType<NewBlockDraftInput> = z.lazy(() =>
   z.strictObject({
-    localId: z.string().trim().min(1).max(256),
-    type: z.string().trim().min(1).max(256),
+    localId: z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(256),
+    type: z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(256),
     props: z.record(z.string(), JsonValueSchema).optional(),
     content: JsonValueSchema.optional(),
     children: z.array(NewBlockDraftSchema).max(512).optional(),
@@ -108,7 +108,12 @@ export const NewBlockDraftSchema: z.ZodType<NewBlockDraftInput> = z.lazy(() =>
 
 export const BlockUpdatePatchSchema = z
   .strictObject({
-    type: z.string().trim().min(1).max(256).optional(),
+    type: z
+      .string()
+      .regex(/\S/, "Must contain a non-whitespace character")
+      .min(1)
+      .max(256)
+      .optional(),
     props: z.record(z.string(), JsonValueSchema).optional(),
     content: JsonValueSchema.optional(),
     unsetContent: z.literal(true).optional(),

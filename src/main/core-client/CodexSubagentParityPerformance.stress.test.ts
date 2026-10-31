@@ -438,6 +438,7 @@ const makeDirectoryHarness = Effect.fn("SubagentScale.makeDirectoryHarness")(fun
     })) as CodexGateway["Service"]["requestOnHost"];
 
   const workspace: CoreModuleClients["workspace"] = {
+    admitToolOperation: () => Effect.die("Unexpected application tool admission"),
     read: (read, options) =>
       Effect.promise(async () => {
         const startedAt = performance.now();

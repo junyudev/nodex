@@ -1,9 +1,11 @@
+import { uniqueScalarValues } from "../schema-constraints";
+import { idempotencyKeySchema } from "./idempotency-key";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 const identity = z.string().min(1).max(512);
 const panelId = z.enum(["right", "bottom"]);
-const base = { observationId: z.string().uuid(), operationId: identity.optional() };
+const base = { observationId: z.string().uuid(), idempotencyKey: idempotencyKeySchema.optional() };
 const group = { panelId, groupId: identity };
 const side = z.enum(["left", "right", "up", "down"]);
 const openTarget = z.discriminatedUnion("kind", [
@@ -16,9 +18,17 @@ const openTarget = z.discriminatedUnion("kind", [
       .string()
       .max(16_384)
       .url()
-      .refine((value) => ["http:", "https:"].includes(new URL(value).protocol)),
+      .regex(/^https?:\/\//i, "Use an HTTP or HTTPS URL"),
   }),
-  z.strictObject({ kind: z.literal("files"), path: z.string().min(1).max(4_096).optional() }),
+  z.strictObject({
+    kind: z.literal("files"),
+    path: z
+      .string()
+
+      .min(1)
+      .max(4_096)
+      .optional(),
+  }),
   z.strictObject({ kind: z.literal("review") }),
   z.strictObject({ kind: z.literal("terminal") }),
 ]);
@@ -39,7 +49,8 @@ export const workbenchControlSchemas = {
     tabIds: z
       .array(identity)
       .max(2_048)
-      .refine((items) => new Set(items).size === items.length, "Tab handles must be unique"),
+      .refine(uniqueScalarValues, "Tab handles must be unique")
+      .meta({ uniqueItems: true }),
   }),
   split_tab_group: z.strictObject({ ...base, ...group, side, tabId: identity.optional() }),
   merge_tab_group: z.strictObject({ ...base, ...group }),
@@ -88,7 +99,7 @@ export const workbenchControlToolCatalog: readonly Tool[] = Object.entries(
   workbenchControlSchemas,
 ).map(([name, schema]) => ({
   name,
-  description: `${descriptions[name as keyof typeof descriptions]} Use observation-scoped handles. Commands check the observed revision atomically; refresh context after a successful change. Reuse operationId only for an exact retry.`,
-  inputSchema: z.toJSONSchema(schema) as Tool["inputSchema"],
+  description: `${descriptions[name as keyof typeof descriptions]} Use observation-scoped handles. Commands check the observed revision atomically; refresh context after a successful change. Reuse idempotencyKey only for an exact retry.`,
+  inputSchema: z.toJSONSchema(schema, { io: "input" }) as Tool["inputSchema"],
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
 }));

@@ -187,6 +187,7 @@ const sendInput = Effect.sync(() => ({
   mode: "auto" as const,
   attachments: [],
   operationId: createBoundedOperationId("native-explicit"),
+  expiresAtMs: Date.now() + 7 * 24 * 60 * 60 * 1_000,
   commandIdentity: { prompt: "Continue", mode: "auto" },
   expectedFacts: {
     sessionId: "target",

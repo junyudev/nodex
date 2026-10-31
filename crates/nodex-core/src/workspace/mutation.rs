@@ -238,19 +238,12 @@ pub(super) fn apply(
                 &context,
                 &request.intent,
             )?;
-            // A dispatch retry belongs to its caller Thread across Turns. Admission above
+            // An Agent command retry belongs to its caller root across Turns. Admission above
             // still checks the current Turn's persisted authority before receipt replay.
             let fingerprint_intent = match &request.intent {
-                ProjectWorkspaceIntent::AgentCommand { provenance, intent }
-                    if matches!(
-                        intent.as_ref(),
-                        ProjectWorkspaceIntent::CreateAgentRuntimeSession { .. }
-                            | ProjectWorkspaceIntent::AdoptNativeSessionExecution { .. }
-                            | ProjectWorkspaceIntent::AdmitSessionHandoff { .. }
-                    ) =>
-                {
+                ProjectWorkspaceIntent::AgentCommand { provenance, intent } => {
                     MutationFingerprintIntent::SessionDispatch {
-                        caller_thread_id: &provenance.authority.thread_id,
+                        caller_thread_id: &provenance.authority.root_thread_id,
                         intent,
                     }
                 }

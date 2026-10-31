@@ -44,9 +44,9 @@ const OrchestratorMcpPrompt = TrimmedNonEmptyString.check(Schema.isMaxLength(120
 const OrchestratorMcpTitle = TrimmedNonEmptyString.check(Schema.isMaxLength(512)).annotate({
   description: "Optional concise display title.",
 });
-const OrchestratorMcpClientRequestId = TrimmedNonEmptyString.check(
-  Schema.isMaxLength(256),
-).annotate({ description: "Stable idempotency key to reuse when retrying this mutation." });
+export const OrchestratorMcpIdempotencyKey = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)).annotate({
+  description: "Optional: any string you choose, from 1 to 128 characters. Reuse it with identical arguments only to retry a call whose outcome you did not see. Never needed on a first attempt.",
+});
 
 /**
  * OpenCode 1.15 has been observed serializing nested MCP union objects as JSON
@@ -186,7 +186,7 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
     description:
       "Wait budget for mode=wait only. Default 10 minutes. Elapsing it returns waitTimedOut=true on that call and does not cancel the child.",
   }),
-  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+  idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey),
   interactionMode: Schema.optional(OrchestratorMcpInteractionMode),
 });
 export type OrchestratorMcpDelegateTaskInput = typeof OrchestratorMcpDelegateTaskInput.Type;
@@ -222,7 +222,7 @@ export type OrchestratorMcpTaskStatusInput = typeof OrchestratorMcpTaskStatusInp
 export const OrchestratorMcpTaskCancelInput = Schema.Struct({
   taskId: NodeId,
   reason: Schema.optional(Schema.String.check(Schema.isMaxLength(2_000))),
-  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+  idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey),
 });
 export type OrchestratorMcpTaskCancelInput = typeof OrchestratorMcpTaskCancelInput.Type;
 
@@ -245,7 +245,7 @@ export const OrchestratorMcpCreateThreadsInput = Schema.Struct({
     Schema.isMinLength(1),
     Schema.isMaxLength(20),
   ),
-  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+  idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey),
 });
 export type OrchestratorMcpCreateThreadsInput = typeof OrchestratorMcpCreateThreadsInput.Type;
 
@@ -427,7 +427,7 @@ export const OrchestratorMcpThreadSendInput = Schema.Struct({
   threadId: ThreadId,
   message: OrchestratorMcpPrompt,
   mode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart"])),
-  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+  idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey),
 });
 export type OrchestratorMcpThreadSendInput = typeof OrchestratorMcpThreadSendInput.Type;
 
@@ -461,7 +461,7 @@ export const OrchestratorMcpThreadInterruptInput = Schema.Struct({
   threadId: ThreadId,
   runId: Schema.optional(RunId),
   reason: Schema.optional(Schema.String.check(Schema.isMaxLength(2_000))),
-  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+  idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey),
 });
 export type OrchestratorMcpThreadInterruptInput = typeof OrchestratorMcpThreadInterruptInput.Type;
 
@@ -528,7 +528,7 @@ export const OrchestratorMcpScheduleTaskInput = Schema.Struct({
         "True (default) posts each run into this thread; false creates a fresh top-level thread per run.",
     }),
   ),
-  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+  idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey),
 });
 export type OrchestratorMcpScheduleTaskInput = typeof OrchestratorMcpScheduleTaskInput.Type;
 
@@ -600,9 +600,9 @@ export const OrchestratorMcpRequestSecretInput = Schema.Struct({
   timeoutMs: Schema.optional(
     Schema.Int.check(Schema.isBetween({ minimum: 1_000, maximum: 60 * 60 * 1_000 })),
   ).annotate({ description: "How long to wait for the user. Default 10 minutes." }),
-  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId).annotate({
+  idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey).annotate({
     description:
-      "Reuse when retrying a call that lost its result, so the user sees one card and its answer is returned again. Use a new id to ask again after timed_out or cancelled.",
+      "Optional: any string you choose, from 1 to 128 characters. Reuse it with identical arguments only to retry a call whose outcome you did not see; never needed on a first attempt. Use a new key to ask again after timed_out or cancelled.",
   }),
 });
 export type OrchestratorMcpRequestSecretInput = typeof OrchestratorMcpRequestSecretInput.Type;
@@ -618,7 +618,7 @@ export const OrchestratorMcpRequestSecretResult = Schema.Union([
   Schema.Struct({
     status: Schema.Literals(["declined", "cancelled", "timed_out"]).annotate({
       description:
-        "declined: the user chose not to. cancelled: the request ended with the run. timed_out: the user did not answer in time; the card is closed, so ask again with a new clientRequestId if still needed.",
+        "declined: the user chose not to. cancelled: the request ended with the run. timed_out: the user did not answer in time; the card is closed, so ask again with a new idempotencyKey if still needed.",
     }),
   }),
 ]);
@@ -654,6 +654,7 @@ export class OrchestratorMcpFailure extends Schema.TaggedError<OrchestratorMcpFa
       "thread_not_sendable",
       "thread_not_interruptible",
       "invalid_request",
+      "idempotency_key_reused",
       "invalid_cursor",
       "cursor_stale",
       "history_unavailable",

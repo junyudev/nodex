@@ -6,7 +6,7 @@ import { PluginNativeOperations } from "../codex-application/PluginNativeOperati
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 
 export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
@@ -14,8 +14,8 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
     const plugins = yield* PluginNativeOperations;
     const workspace = yield* ProjectWorkspace;
     return Effect.fn("PluginAppTools.uninstall")(function* (input: AppToolInvocation) {
-      const parsed = uninstallPluginSchema.safeParse(input.arguments);
-      if (!parsed.success) return toolFailure("invalid_arguments");
+      const parsed = parseAppToolArguments(uninstallPluginSchema, input.arguments);
+      if (!parsed.success) return parsed.result;
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       const recapture = capture(input.caller);
       const authority = yield* recapture;

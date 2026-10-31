@@ -38,6 +38,8 @@ import {
 } from "@t3tools/contracts";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as Clock from "effect/Clock";
+import * as SqlClient from "effect/sql/SqlClient";
+import { make as makeToolOperation } from "./ToolOperation.ts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -128,6 +130,7 @@ export interface OrchestratorMcpServiceShape {
   readonly sendToThread: (
     scope: McpInvocationScope,
     input: OrchestratorMcpThreadSendInput,
+    idempotencyArguments?: Record<string, unknown>,
   ) => Effect.Effect<OrchestratorMcpThreadSendResult, OrchestratorMcpFailure>;
   /** Stops a running native workflow in the caller's own conversation. */
   readonly stopWorkflow: (
@@ -382,6 +385,12 @@ function stablePart(value: string): string {
   return encodeURIComponent(value);
 }
 
+/** Admitted explicit keys outlive provider credentials; omitted calls retain their native namespace. */
+const operationNamespace = (scope: McpInvocationScope, key: string): string =>
+  key.startsWith("nodexop:v1:") && scope.thread
+    ? `thread:${scope.thread.threadId}`
+    : scope.requestNamespace;
+
 function stableCommandId(input: {
   readonly scope: McpInvocationScope;
   readonly requestKey: string;
@@ -392,7 +401,7 @@ function stableCommandId(input: {
     [
       "command",
       "mcp",
-      stablePart(input.scope.requestNamespace),
+      stablePart(operationNamespace(input.scope, input.requestKey)),
       stablePart(input.operation),
       stablePart(input.requestKey),
       ...(input.index === undefined ? [] : [String(input.index)]),
@@ -409,7 +418,7 @@ function stableOperationMessageId(input: {
     [
       "message",
       "mcp",
-      stablePart(input.scope.requestNamespace),
+      stablePart(operationNamespace(input.scope, input.requestKey)),
       stablePart(input.operation),
       stablePart(input.requestKey),
     ].join(":"),
@@ -492,6 +501,7 @@ function threadDetail(
 }
 
 export const make = Effect.gen(function* () {
+  const admitToolOperation = yield* makeToolOperation;
   const coverRead = makeHistoryReadCoverage();
   const crypto = yield* Crypto.Crypto;
   const threadManagement = yield* ThreadManagementService.ThreadManagementService;
@@ -780,9 +790,8 @@ export const make = Effect.gen(function* () {
       };
     });
 
-  const requestKey = (clientRequestId: string | undefined): Effect.Effect<string> =>
+  const requestKey = (): Effect.Effect<string> =>
     Effect.gen(function* () {
-      if (clientRequestId !== undefined) return clientRequestId;
       const admission = yield* ExecutionHost.McpTurnAdmission;
       if (admission?.actor?.nativeCallKey !== undefined)
         return `native:${admission.actor.nativeCallKey}:${admission.requestId ?? "call"}`;
@@ -972,7 +981,7 @@ export const make = Effect.gen(function* () {
         const observingRunId =
           observedByRunId ??
           (admission?.actor?.threadId === parentId ? admission.actor.runId : null);
-        const acknowledgementRequestKey = yield* requestKey(undefined);
+        const acknowledgementRequestKey = yield* requestKey();
         yield* threadManagement
           .dispatch({
             type: "delegated_task.completion-delivery.acknowledge",
@@ -1251,7 +1260,10 @@ export const make = Effect.gen(function* () {
         // accepted delegation can be recognized: dispatching under the same
         // command id only replays the recorded result, so candidate
         // selection must not refuse it over the project's current settings.
-        const key = yield* requestKey(input.clientRequestId);
+        const key =
+          input.idempotencyKey === undefined
+            ? yield* requestKey()
+            : yield* admitToolOperation(scope, "delegate_task", input.idempotencyKey, input);
         const commandId = stableCommandId({
           scope,
           requestKey: key,
@@ -1397,7 +1409,10 @@ export const make = Effect.gen(function* () {
     cancelTask: (scope, input) =>
       Effect.gen(function* () {
         yield* readTask(scope, input.taskId);
-        const key = yield* requestKey(input.clientRequestId);
+        const key =
+          input.idempotencyKey === undefined
+            ? yield* requestKey()
+            : yield* admitToolOperation(scope, "task_cancel", input.idempotencyKey, input);
         const threadId = yield* taskOwner(input.taskId);
         return yield* threadManagement
           .cancelDelegatedTask({
@@ -1521,7 +1536,7 @@ export const make = Effect.gen(function* () {
             ),
           );
       }),
-    sendToThread: (scope, input) =>
+    sendToThread: (scope, input, idempotencyArguments) =>
       Effect.gen(function* () {
         const { parent, target } = yield* loadScopedThread(scope, input.threadId);
 
@@ -1532,7 +1547,15 @@ export const make = Effect.gen(function* () {
             : null;
 
         const mode = input.mode ?? "auto";
-        const key = yield* requestKey(input.clientRequestId);
+        const key =
+          input.idempotencyKey === undefined
+            ? yield* requestKey()
+            : yield* admitToolOperation(
+                scope,
+                "task_send",
+                input.idempotencyKey,
+                idempotencyArguments ?? input,
+              );
         const messageId = stableOperationMessageId({
           scope,
           requestKey: key,
@@ -1583,6 +1606,7 @@ export const layer: Layer.Layer<
   OrchestratorMcpService,
   never,
   | Crypto.Crypto
+  | SqlClient.SqlClient
   | ThreadManagementService.ThreadManagementService
   | ProviderRegistry.ProviderRegistry
   | ProviderAdapterRegistry.ProviderAdapterRegistryV2

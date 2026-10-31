@@ -1,3 +1,4 @@
+import type { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 export const toolFailure = (
@@ -36,3 +37,29 @@ export const toolResultBytes = (value: Record<string, unknown>): number =>
     }),
     "utf8",
   );
+
+/** Parse once at the tool boundary and retain field paths and reasons in the MCP error. */
+export const parseAppToolArguments = <T extends z.ZodType>(
+  schema: T,
+  input: unknown,
+):
+  | { readonly success: true; readonly data: z.output<T> }
+  | { readonly success: false; readonly result: CallToolResult } => {
+  const parsed = schema.safeParse(input);
+  if (parsed.success) return { success: true, data: parsed.data as z.output<T> };
+  const issues = parsed.error.issues.flatMap((issue) => {
+    const path = issue.path.map((part) => (typeof part === "symbol" ? String(part) : part));
+    if (issue.code === "unrecognized_keys")
+      return issue.keys.map((key) => ({
+        path: [...path, key],
+        message: `Unknown argument "${key}". Remove it or use a supported field.`,
+      }));
+    return [{ path, message: issue.message }];
+  });
+  return {
+    success: false,
+    result: toolFailure("invalid_arguments", "Correct the listed argument fields and try again.", {
+      issues,
+    }),
+  };
+};

@@ -385,6 +385,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 194,
         apply: migrate_v193_to_v194,
     },
+    MigrationStep {
+        from_revision: 194,
+        to_revision: 195,
+        apply: migrate_v194_to_v195,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2546,6 +2551,21 @@ fn migrate_v189_to_v190(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"session_search_usage":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v194_to_v195(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v194_to_v195.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"app_tool_operations":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -8432,12 +8452,12 @@ mod tests {
         validate_schema_identity(&connection, 193).unwrap();
         let prepared = prepare_profile_store(&mut connection, profile.path()).unwrap();
         assert_eq!(prepared.migrated_from_version, Some(193));
-        validate_schema_identity(&connection, 194).unwrap();
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).unwrap();
         assert_eq!(
             connection
                 .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
                 .unwrap(),
-            194
+            CURRENT_STORE_REVISION
         );
         let steps = connection
             .prepare("SELECT source_revision,target_revision FROM core_store_migration_history WHERE source_revision>=193 ORDER BY source_revision")
@@ -8446,7 +8466,7 @@ mod tests {
             .unwrap()
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
-        assert_eq!(steps, vec![(193, 194)]);
+        assert_eq!(steps, vec![(193, 194), (194, 195)]);
         let states = connection
             .prepare("SELECT page_id,suggestion_state FROM inbox_entries ORDER BY page_id")
             .unwrap()

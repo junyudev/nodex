@@ -1,3 +1,5 @@
+import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
+import { CoreModules } from "../core-runtime/CoreModules";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
@@ -67,6 +69,7 @@ const fixture = (
 ) => {
   const requests: Array<{ window: WorkbenchWindowReference; body: WorkbenchAgentRequestBody }> = [];
   const build = make.pipe(
+    Effect.provideService(CoreModules, createAppToolAdmissionFixture().core),
     Effect.provideService(ProjectWorkspace, {
       getThread: (id: string) =>
         Effect.succeed({
@@ -252,7 +255,7 @@ it.effect(
       const result = yield* execute(
         context(
           "navigate_to_session",
-          { sessionId: "target", window: windowB, operationId: "navigation" },
+          { sessionId: "target", window: windowB, idempotencyKey: "navigation" },
           {
             authority: {
               ...authority,
@@ -268,7 +271,7 @@ it.effect(
         body: {
           kind: "command",
           envelope: {
-            operationId: "navigation",
+            operationId: String(result.structuredContent?.operationId),
             sceneOwner: { kind: "session", sessionId: "target" },
             expectedPresentationRevision: 17,
             command: { kind: "navigate_session", projectId: null },

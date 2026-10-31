@@ -570,6 +570,7 @@ describe("task tools", () => {
           Layer.provideMerge(OrchestratorMcp.layer),
           Layer.provideMerge(McpServer.McpServer.layer),
           Layer.provideMerge(layerOrchestration),
+          Layer.provide(SqlitePersistence.layerMemory),
           Layer.provide(layerRegistry),
           Layer.provide(layerProviderRegistry),
           Layer.provide(ServerSettings.layerTest()),
@@ -682,7 +683,7 @@ describe("task tools", () => {
           const delegateArgs = {
             task: delegatedPrompt,
             target: { providerInstanceId: claudeInstanceId, model: claudeModel },
-            clientRequestId: "delegate-boundary",
+            idempotencyKey: "delegate-boundary",
           };
           const started = yield* decodeTaskView(yield* call("delegate_task", delegateArgs)).pipe(
             Effect.orDie,
@@ -698,6 +699,13 @@ describe("task tools", () => {
             Effect.orDie,
           );
           expect(retried.taskId).toBe(started.taskId);
+          const malformedRetry = yield* invoke("delegate_task", {
+            ...delegateArgs,
+            idempotencyKey: "x".repeat(129),
+          }).pipe(Effect.flip);
+          expect(malformedRetry._tag).toBe("InvalidParams");
+          expect(malformedRetry.message).toContain("idempotencyKey");
+
           // Agents copy the task id into every task tool call; it stays short and unescaped.
           expect(started.taskId.length).toBeLessThanOrEqual(32);
           expect(started.taskId).not.toContain("%");
@@ -830,7 +838,7 @@ describe("task tools", () => {
             yield* call("task_send", {
               taskId: started.taskId,
               message: followUpPrompt,
-              clientRequestId: "follow-up-boundary",
+              idempotencyKey: "follow-up-boundary",
             }),
           ).pipe(Effect.orDie);
           expect(followUp.taskId).not.toBe(started.taskId);
@@ -839,10 +847,21 @@ describe("task tools", () => {
             yield* call("task_send", {
               taskId: started.taskId,
               message: followUpPrompt,
-              clientRequestId: "follow-up-boundary",
+              idempotencyKey: "follow-up-boundary",
             }),
           ).pipe(Effect.orDie);
           expect(followUpRetry.taskId).toBe(followUp.taskId);
+          // Both handles address the same conversation, but are different public arguments.
+          expect(
+            declaredFailure(
+              yield* invoke("task_send", {
+                taskId: followUp.taskId,
+                message: followUpPrompt,
+                idempotencyKey: "follow-up-boundary",
+              }),
+            ),
+          ).toMatchObject({ code: "idempotency_key_reused" });
+
           const followUpDone = yield* decodeTaskView(
             yield* call("task_wait", { taskId: followUp.taskId }),
           ).pipe(Effect.orDie);
@@ -866,7 +885,7 @@ describe("task tools", () => {
               target: { providerInstanceId: claudeInstanceId },
               mode: "wait",
               timeoutMs: 50,
-              clientRequestId: "delegate-blocking",
+              idempotencyKey: "delegate-blocking",
             }),
           ).pipe(Effect.orDie);
           expect(blocking).toMatchObject({ waitTimedOut: true, workState: "working" });
@@ -881,7 +900,7 @@ describe("task tools", () => {
           const cancelled = yield* decodeTaskCancel(
             yield* call("task_cancel", {
               taskId: blocking.taskId,
-              clientRequestId: "cancel-blocking",
+              idempotencyKey: "cancel-blocking",
             }),
           ).pipe(Effect.orDie);
           expect(cancelled).toEqual({ taskId: blocking.taskId, status: "cancel_requested" });
@@ -895,7 +914,7 @@ describe("task tools", () => {
               task: cancellationPrompt,
               target: { providerInstanceId: claudeInstanceId },
               mode: "async",
-              clientRequestId: "delegate-restart-cut",
+              idempotencyKey: "delegate-restart-cut",
             }),
           ).pipe(Effect.orDie);
           const cutChildId = yield* childThreadOf(orchestrator, restartCut.taskId);
@@ -935,7 +954,7 @@ describe("task tools", () => {
             yield* decodeTaskCancel(
               yield* call("task_cancel", {
                 taskId: restartCut.taskId,
-                clientRequestId: "cancel-restart-cut",
+                idempotencyKey: "cancel-restart-cut",
               }),
             ),
           ).toEqual({ taskId: restartCut.taskId, status: "cancel_requested" });
@@ -1022,6 +1041,7 @@ describe("task tools", () => {
           Layer.provideMerge(OrchestratorMcp.layer),
           Layer.provideMerge(McpServer.McpServer.layer),
           Layer.provideMerge(layerOrchestration),
+          Layer.provide(SqlitePersistence.layerMemory),
           Layer.provide(
             CodexOrchestratorReplayHarness.makeProviderAdapterRegistryLayer(transcript).pipe(
               Layer.provide(McpProviderSessions.layer),
@@ -1112,7 +1132,7 @@ describe("task tools", () => {
               task: delegatedPrompt,
               target: { providerInstanceId: codexInstanceId, model: codexModel },
               mode: "async",
-              clientRequestId: "delegate-codex-replay-1",
+              idempotencyKey: "delegate-codex-replay-1",
             })).structuredContent,
           ).pipe(Effect.orDie);
           const childThreadId = yield* childThreadOf(orchestrator, delegated.taskId);
@@ -1346,7 +1366,7 @@ describe("task tools", () => {
             (yield* invoke("task_send", {
               taskId: delegated.taskId,
               message: cancellationPrompt,
-              clientRequestId: "delegated-child-replay-running-1",
+              idempotencyKey: "delegated-child-replay-running-1",
             })).structuredContent,
           ).pipe(Effect.orDie);
           yield* awaitEvent(
@@ -1362,7 +1382,7 @@ describe("task tools", () => {
               taskId: delegated.taskId,
               message: queuedFollowupPrompt,
               mode: "queue",
-              clientRequestId: "delegated-child-replay-queued-1",
+              idempotencyKey: "delegated-child-replay-queued-1",
             })).structuredContent,
           ).pipe(Effect.orDie);
           expect(queued).toMatchObject({ status: "queued", delivery: "queued" });

@@ -188,13 +188,10 @@ const SearchScopeV3Schema = z.discriminatedUnion("kind", [
 
 const SearchQueryV3Schema = z
   .string()
-  .trim()
+  .regex(/\S/, "Must contain a non-whitespace character")
   .min(1)
   .max(512)
-  .refine(
-    (query) => new TextEncoder().encode(query).byteLength <= 512,
-    "Search query must be at most 512 UTF-8 bytes",
-  );
+  .describe("Nonblank search text, at most 512 UTF-8 bytes");
 
 export const SearchV3InputSchema = z
   .strictObject({
@@ -206,6 +203,13 @@ export const SearchV3InputSchema = z
     page: createPageInputSchema(100).optional(),
   })
   .superRefine((input, context) => {
+    if (new TextEncoder().encode(input.query).byteLength > 512)
+      context.addIssue({
+        code: "custom",
+        path: ["query"],
+        message: "Search query must be at most 512 UTF-8 bytes",
+      });
+
     if (input.blockTypes !== undefined && input.target !== "blocks") {
       context.addIssue({
         code: "custom",

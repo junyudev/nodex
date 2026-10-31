@@ -57,18 +57,11 @@ describe("ThreadMetadataMcpUpdateInput", () => {
     assert.throws(() => decodeUpdate({ action: "move_workspace" }));
   });
 
-  it("rejects malformed client request ids without normalizing valid keys", () => {
-    const validKey = "metadata-\ud83d\ude80-1";
-    assert.equal(
-      decodeUpdate({ action: "regenerate_title", clientRequestId: validKey }).clientRequestId,
-      validKey,
-    );
-    assert.throws(() =>
-      decodeUpdate({ action: "regenerate_title", clientRequestId: "metadata-\ud800" }),
-    );
-    assert.throws(() =>
-      decodeUpdate({ action: "regenerate_title", clientRequestId: "metadata-\udc00" }),
-    );
+  it("accepts opaque idempotency keys without normalization and enforces their public bounds", () => {
+    for (const idempotencyKey of ["metadata-🚀-1", " arbitrary / key ", " "])
+      assert.equal(decodeUpdate({ action: "regenerate_title", idempotencyKey }).idempotencyKey, idempotencyKey);
+    for (const idempotencyKey of ["", "x".repeat(129)])
+      assert.throws(() => decodeUpdate({ action: "regenerate_title", idempotencyKey }));
   });
 
   it("accepts HTTP(S) pull request URLs and rejects other or malformed URLs", () => {

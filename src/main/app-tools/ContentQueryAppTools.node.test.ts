@@ -107,10 +107,9 @@ it.effect("withdrawn query calls cannot enter Core or return a stale result", ()
         },
       } as never),
     );
-    assert.deepEqual(
-      (yield* execute(invocation("query_content", { scope: {} }))).structuredContent,
-      { error: { code: "invalid_arguments" } },
-    );
+    const malformed = yield* execute(invocation("query_content", { scope: {} }));
+    assert.nestedPropertyVal(malformed.structuredContent, "error.code", "invalid_arguments");
+    assert.nestedPropertyVal(malformed.structuredContent, "error.details.issues.0.path.0", "sql");
     assert.equal(reads, 0);
     const input = invocation(
       "query_content",

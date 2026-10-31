@@ -26,7 +26,6 @@ export function resolveNativeSessionHandoffScope(
   const result = admission.safeParse(payload.result.structuredContent);
   if (!request.success || !result.success || result.data.sessionId !== request.data.sessionId)
     return null;
-  if (request.data.operationId && request.data.operationId !== result.data.operationId) return null;
   return {
     operationId: result.data.operationId,
     requestThreadId,

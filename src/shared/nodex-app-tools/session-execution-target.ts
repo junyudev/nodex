@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /** A child execution stays inside its Core product Session's bound root. */
 export const sessionExecutionSchema = z.strictObject({
-  threadId: z.string().trim().min(1).max(512),
+  threadId: z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(512),
 });
 export interface SessionExecutionTarget {
   readonly sessionId: string;

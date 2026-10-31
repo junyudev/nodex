@@ -25,6 +25,8 @@ export type CoreModuleEventPayload = CoreAuthorizedDeliveryAtom["payload"];
 export type CoreEventReplayRequired = components["schemas"]["EventReplayRequired"];
 export type CoreStreamCheckpoint = components["schemas"]["StreamCheckpoint"];
 export type CoreModuleError = components["schemas"]["CoreError"];
+export type AppToolOperationRequest = components["schemas"]["AppToolOperationRequest"];
+export type AppToolOperationIdentity = components["schemas"]["AppToolOperationIdentity"];
 export type CoreLocalMutationResolveRequest = components["schemas"]["LocalMutationResolveRequest"];
 export type CoreLocalMutationResolveResponse =
   components["schemas"]["LocalMutationResolveResponse"];
@@ -257,6 +259,10 @@ export interface CoreClientPort {
     input: { readonly threadId: string; readonly contentHash: string },
     options?: CoreRequestOptions,
   ): Promise<ManagedBlobBytes>;
+  admitAppToolOperation(
+    input: AppToolOperationRequest,
+    options?: CoreRequestOptions,
+  ): Promise<AppToolOperationIdentity>;
   resolveLocalMutation(
     input: CoreLocalMutationResolveRequest,
   ): Promise<CoreLocalMutationResolveResponse>;

@@ -20,7 +20,7 @@ import {
   readWorkbenchObservationPage,
   workbenchObservationHandle,
 } from "./workbench-observation-page";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 import { make as makeControl } from "./WorkbenchControl";
 import { WorkbenchContentRouting } from "./WorkbenchContentRouting";
 import { make as makeContentRead } from "./WorkbenchContentRead";
@@ -50,7 +50,8 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
       };
       if (!Object.hasOwn(schemas, input.name)) return toolFailure("unknown_tool");
       const inputSchema = schemas[input.name as keyof typeof schemas];
-      if (!inputSchema.safeParse(input.arguments).success) return toolFailure("invalid_arguments");
+      const validated = parseAppToolArguments(inputSchema, input.arguments);
+      if (!validated.success) return validated.result;
       const authority = yield* capture(input.caller);
       if (!authority) return toolFailure("authority_unavailable");
       const fingerprint = nodexAgentAuthorityFingerprint(authority);
@@ -111,8 +112,11 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
       const run = Effect.gen(function* () {
         if (input.name === "read_tab_content" || input.name === "query_displayed_view") {
           const queryView = input.name === "query_displayed_view";
-          const parsed = workbenchObservationSchemas[input.name].safeParse(input.arguments);
-          if (!parsed.success) return toolFailure("invalid_arguments");
+          const parsed = parseAppToolArguments(
+            workbenchObservationSchemas[input.name],
+            input.arguments,
+          );
+          if (!parsed.success) return parsed.result;
           const record = yield* observations.resolve(principal, parsed.data.observationId);
           const tab = record.observation.tabs.find(
             (candidate) =>
@@ -130,13 +134,24 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
             return toolFailure("unsupported_surface");
           if (queryView && surface.kind !== "db_view") return toolFailure("unsupported_surface");
           if (surface.kind !== "db_view" && "view" in parsed.data && parsed.data.view !== undefined)
-            return toolFailure("invalid_arguments");
+            return toolFailure("invalid_arguments", "View options require a Database View.", {
+              issues: [{ path: ["view"], message: "The observed surface is not a Database View." }],
+            });
           if (
             surface.kind === "db_view" &&
             (("format" in parsed.data && parsed.data.format !== undefined) ||
               ("page" in parsed.data && parsed.data.page !== undefined))
           )
-            return toolFailure("invalid_arguments");
+            return toolFailure("invalid_arguments", "Page options require Page content.", {
+              issues: [
+                {
+                  path: [
+                    "page" in parsed.data && parsed.data.page !== undefined ? "page" : "format",
+                  ],
+                  message: "The observed surface is a Database View.",
+                },
+              ],
+            });
           const description = yield* contentAccess.describe({
             authority,
             callId: input.caller.callId,
@@ -174,8 +189,11 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           });
         }
         if (input.name === "get_session_context") {
-          const parsed = workbenchObservationSchemas.get_session_context.safeParse(input.arguments);
-          if (!parsed.success) return toolFailure("invalid_arguments");
+          const parsed = parseAppToolArguments(
+            workbenchObservationSchemas.get_session_context,
+            input.arguments,
+          );
+          if (!parsed.success) return parsed.result;
           const calling = yield* resolveAppToolCallingSession(input.caller, workspace);
           if (!calling) return toolFailure("session_unavailable");
           const anchor =
@@ -274,8 +292,8 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           input.name === "list_session_tabs"
             ? workbenchObservationSchemas.list_session_tabs
             : workbenchObservationSchemas.list_tab_groups;
-        const parsed = schema.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(schema, input.arguments);
+        if (!parsed.success) return parsed.result;
         const record = yield* observations.resolve(principal, parsed.data.observationId);
         const handle = (kind: "tab" | "group", id: string) =>
           workbenchObservationHandle(record.observationId, kind, id);

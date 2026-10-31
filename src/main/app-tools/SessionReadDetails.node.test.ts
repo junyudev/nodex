@@ -7,6 +7,7 @@ import {
 } from "./SessionReadDetails";
 import {
   sessionObservationSchemas,
+  normalizeSessionObservationArguments,
   sessionObservationToolCatalog,
 } from "../../shared/nodex-app-tools/session-observation-schemas";
 
@@ -78,11 +79,13 @@ it.effect(
 );
 
 it("normalizes positive read budgets while rejecting empty requests", () => {
-  const parsed = sessionObservationSchemas.read_session.parse({
-    limit: 1000,
-    runLimit: 1000,
-    maxCharsPerItem: 100000,
-  });
+  const parsed = normalizeSessionObservationArguments(
+    sessionObservationSchemas.read_session.parse({
+      limit: 1000,
+      runLimit: 1000,
+      maxCharsPerItem: 100000,
+    }),
+  );
   assert.equal(parsed.limit, 50);
   assert.equal(parsed.runLimit, 50);
   assert.equal(parsed.maxCharsPerItem, 8000);

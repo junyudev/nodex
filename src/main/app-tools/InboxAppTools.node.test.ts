@@ -1,3 +1,4 @@
+import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
@@ -44,6 +45,7 @@ const setup = (options: { rejectWith?: string } = {}) => {
       } as never),
       Effect.provideService(CoreModules, {
         workspace: {
+          admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
           apply: (command: ProjectWorkspaceApplyInput) =>
             Effect.gen(function* () {
               applied.push(command);
@@ -103,6 +105,7 @@ it.effect("withdraws a call cancelled while its source is captured", () =>
       Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
       Effect.provideService(CoreModules, {
         workspace: {
+          admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
           apply: () =>
             Effect.sync(() => {
               writes++;

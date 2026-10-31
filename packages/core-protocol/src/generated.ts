@@ -372,6 +372,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/modules/workspace/tool-operations/admit": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["admit_app_tool_operation"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/core/v1/requests/cancel": {
         readonly parameters: {
             readonly query?: never;
@@ -689,6 +705,20 @@ export interface components {
             };
             /** @enum {string} */
             readonly status: "no_op";
+        };
+        readonly AppToolOperationIdentity: {
+            /** Format: int64 */
+            readonly accepted_at_ms: number;
+            /** Format: int64 */
+            readonly expires_at_ms: number;
+            readonly operation_id: string;
+        };
+        /** @description Host-only admission: the model chooses an opaque key, never a clock or operation envelope. */
+        readonly AppToolOperationRequest: {
+            readonly idempotency_key: string;
+            readonly provenance: components["schemas"]["AgentTurnProvenance"];
+            readonly request_hash: string;
+            readonly tool_name: string;
         };
         readonly AuthorizedDeliveryAtom: {
             readonly descriptor: components["schemas"]["DeliveryAtomDescriptor"];
@@ -13241,6 +13271,43 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ProjectWorkspaceReadResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly admit_app_tool_operation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly "x-nodex-request-class"?: components["schemas"]["CoreRequestClass"] | null;
+                readonly "x-nodex-request-deadline-ms"?: number | null;
+                readonly "x-nodex-request-id"?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AppToolOperationRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Host-issued retry identity */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AppToolOperationIdentity"];
                 };
             };
             /** @description Core HTTP rejection; invalid_input identifies request validation failures */

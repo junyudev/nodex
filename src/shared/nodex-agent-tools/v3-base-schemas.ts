@@ -1,3 +1,4 @@
+import { uniqueScalarValues } from "../schema-constraints";
 import { z } from "zod";
 import { MAX_PAGE_WRITE_BODY_BYTES } from "../page-limits";
 import { MAX_PORTABLE_RICH_TEXT_BYTES } from "../block-documents/portable-rich-text";
@@ -81,5 +82,28 @@ export function uniqueSelectorList<T extends readonly [string, ...string[]]>(
   return z
     .array(z.enum(selectors))
     .max(maximum)
-    .refine((values) => new Set(values).size === values.length, "Return selectors must be unique");
+    .refine(uniqueScalarValues, "Return selectors must be unique")
+    .meta({ uniqueItems: true });
 }
+
+/** Structural text contracts publish their bounds; enclosing commands validate the Markdown grammar. */
+export const InlineMarkdownTitleInputSchema = z
+  .string()
+  .max(MAX_PORTABLE_RICH_TEXT_BYTES)
+  .describe("Single-line title using Nodex Markdown's title-safe inline subset");
+export const MarkdownInputSchema = z
+  .string()
+  .max(MAX_PAGE_WRITE_BODY_BYTES)
+  .describe(`Nodex Markdown, at most ${MAX_PAGE_WRITE_BODY_BYTES} UTF-8 bytes`);
+export const checkContentText = (
+  schema: z.ZodType<string>,
+  value: string | undefined,
+  context: z.RefinementCtx,
+  path: (string | number)[],
+): void => {
+  if (value === undefined) return;
+  const parsed = schema.safeParse(value);
+  if (parsed.success) return;
+  for (const issue of parsed.error.issues)
+    context.addIssue({ code: "custom", path: [...path, ...issue.path], message: issue.message });
+};

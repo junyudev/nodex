@@ -1,14 +1,14 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { isBoundedOperationId } from "../operation-identity";
+import { idempotencyKeySchema } from "./idempotency-key";
 
-const id = z.string().trim().min(1).max(512);
+const id = z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(512);
 const windowFields = {
   after: z.string().max(4096).nullable().optional(),
   first: z.number().int().min(1).max(100).default(20),
 };
 const operationFields = {
-  operationId: z.string().max(512).refine(isBoundedOperationId).optional(),
+  idempotencyKey: idempotencyKeySchema.optional(),
 };
 const revisionFields = { sectionId: id, expectedRevision: z.number().int().positive() };
 export const sidebarSchemas = {
@@ -48,12 +48,12 @@ export const sidebarSchemas = {
   ]),
   create_sidebar_section: z.strictObject({
     ...operationFields,
-    name: z.string().trim().min(1).max(256),
+    name: z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(256),
   }),
   rename_sidebar_section: z.strictObject({
     ...operationFields,
     ...revisionFields,
-    name: z.string().trim().min(1).max(256),
+    name: z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(256),
   }),
   delete_sidebar_section: z.strictObject({ ...operationFields, ...revisionFields }),
   move_project_to_sidebar_section: z.strictObject({
@@ -76,15 +76,15 @@ const descriptions: Record<keyof typeof sidebarSchemas, string> = {
   list_sidebar_order:
     "Read one complete built-in Sidebar order lane using a canonical Section ID. Projects accepts itemKind project; Pinned accepts project or session. Pinned Sessions include drafts and ACP Sessions. Follow every page and retain the orderRevision before reordering. Membership or ordering changes invalidate continuations.",
   reorder_sidebar_projects:
-    "Move the listed Projects to the front of the built-in Projects or Pinned Section in the supplied order; unlisted Projects retain their relative order. Supply unique current projectIds and the orderRevision from list_sidebar_order. An empty list leaves the order unchanged. Concurrent membership or order changes reject the whole command. Reuse operationId and identical arguments to reconcile retries.",
+    "Move the listed Projects to the front of the built-in Projects or Pinned Section in the supplied order; unlisted Projects retain their relative order. Supply unique current projectIds and the orderRevision from list_sidebar_order. An empty list leaves the order unchanged. Concurrent membership or order changes reject the whole command. Reuse idempotencyKey and identical arguments to reconcile retries.",
   list_sidebar_section_items:
     "List a custom Sidebar Section's direct Project and Session placements in mixed order, including archived items. Follow every page before reordering. Returns placementId, revision and rankKey for each item; Project-inherited Sessions are not separate placements.",
   reorder_section:
-    "Atomically reorder every direct Project and Session placement in a custom Sidebar Section. Read all list_sidebar_section_items pages first, then supply every placementId exactly once in desired order with its observed revision as expectedRevision and rankKey as expectedRankKey. Concurrent placement changes reject the whole command; reread before trying a new order. Reuse operationId and identical arguments to reconcile an uncertain result. For the built-in Pinned Section, use sessionIds and expectedOrderRevision instead of items after reading all list_sidebar_order pages for itemKind session. Include every pinned Session, including drafts and ACP Sessions, exactly once. Pages and Chats have no manual item order.",
+    "Atomically reorder every direct Project and Session placement in a custom Sidebar Section. Read all list_sidebar_section_items pages first, then supply every placementId exactly once in desired order with its observed revision as expectedRevision and rankKey as expectedRankKey. Concurrent placement changes reject the whole command; reread before trying a new order. Reuse idempotencyKey and identical arguments to reconcile an uncertain result. For the built-in Pinned Section, use sessionIds and expectedOrderRevision instead of items after reading all list_sidebar_order pages for itemKind session. Include every pinned Session, including drafts and ACP Sessions, exactly once. Pages and Chats have no manual item order.",
   list_sidebar_sections:
     "List active Sidebar Sections with canonical IDs, kinds, revisions and a pagination cursor. Use these IDs for organization commands.",
   create_sidebar_section:
-    "Create a custom Sidebar Section. Returns the section and operation receipt. Reuse a returned operationId to reconcile a retry.",
+    "Create a custom Sidebar Section. Returns the section and operation receipt. Reuse a idempotencyKey with identical arguments to retry.",
   rename_sidebar_section:
     "Rename a custom Sidebar Section at its observed revision. Use list_sidebar_sections to obtain its current revision.",
   delete_sidebar_section:
@@ -101,7 +101,10 @@ export const sidebarToolCatalog: readonly Tool[] = Object.entries(sidebarSchemas
   ([name, schema]) => ({
     name,
     description: descriptions[name as keyof typeof descriptions],
-    inputSchema: { ...z.toJSONSchema(schema), type: "object" } as Tool["inputSchema"],
+    inputSchema: {
+      ...z.toJSONSchema(schema, { io: "input" }),
+      type: "object",
+    } as Tool["inputSchema"],
     annotations: {
       readOnlyHint:
         name === "list_sidebar_sections" ||

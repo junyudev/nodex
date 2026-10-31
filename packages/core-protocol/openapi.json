@@ -1826,6 +1826,87 @@
         }
       }
     },
+    "/core/v1/modules/workspace/tool-operations/admit": {
+      "post": {
+        "tags": [
+          "api"
+        ],
+        "operationId": "admit_app_tool_operation",
+        "parameters": [
+          {
+            "name": "x-nodex-request-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-nodex-request-class",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/CoreRequestClass"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "x-nodex-request-deadline-ms",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppToolOperationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Host-issued retry identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppToolOperationIdentity"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/core/v1/requests/cancel": {
       "post": {
         "tags": [
@@ -2406,6 +2487,51 @@
             "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthority"
           },
           "profile_id": {
+            "type": "string"
+          }
+        }
+      },
+      "AppToolOperationIdentity": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "accepted_at_ms",
+          "expires_at_ms"
+        ],
+        "properties": {
+          "accepted_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expires_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "operation_id": {
+            "type": "string"
+          }
+        }
+      },
+      "AppToolOperationRequest": {
+        "type": "object",
+        "description": "Host-only admission: the model chooses an opaque key, never a clock or operation envelope.",
+        "required": [
+          "provenance",
+          "tool_name",
+          "idempotency_key",
+          "request_hash"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/AgentTurnProvenance"
+          },
+          "request_hash": {
+            "type": "string"
+          },
+          "tool_name": {
             "type": "string"
           }
         }

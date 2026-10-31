@@ -14,7 +14,12 @@ export {
 } from "./identity";
 
 const boundedIdentity = (description: string) =>
-  z.string().trim().min(1).max(512).describe(description);
+  z
+    .string()
+    .regex(/\S/, "Must contain a non-whitespace character")
+    .min(1)
+    .max(512)
+    .describe(description);
 
 export const ProjectIdSchema = boundedIdentity(
   "Stable Nodex Project identity",
@@ -33,6 +38,7 @@ export const PropertyIdSchema = boundedIdentity(
 ).brand<"PropertyId">();
 export const CursorSchema = z
   .string()
+
   .min(1)
   .max(16_384)
   .describe("Opaque cursor bound to the captured Project snapshot")
@@ -63,26 +69,45 @@ const PortableRichTextItemSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("link"),
     text: z.string(),
-    href: z.string().trim().min(1).max(4_096),
+    href: z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(4_096),
     styles: PortableRichTextStylesSchema,
   }),
   z.strictObject({ type: z.literal("linebreak") }),
   z.strictObject({
     type: z.literal("threadMention"),
-    uuid: z.string().trim().min(1).max(1_024),
+    uuid: z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(1_024),
   }),
   z.strictObject({
     type: z.literal("pageMention"),
-    targetPageId: z.string().trim().min(1).max(1_024),
+    targetPageId: z
+      .string()
+      .regex(/\S/, "Must contain a non-whitespace character")
+      .min(1)
+      .max(1_024),
   }),
   z.strictObject({
     type: z.literal("dateMention"),
-    start: z.string().trim().min(1).max(1_024),
-    end: z.string().trim().min(1).max(1_024).optional(),
-    tz: z.string().trim().min(1).max(1_024).optional(),
+    start: z.string().regex(/\S/, "Must contain a non-whitespace character").min(1).max(1_024),
+    end: z
+      .string()
+      .regex(/\S/, "Must contain a non-whitespace character")
+      .min(1)
+      .max(1_024)
+      .optional(),
+    tz: z
+      .string()
+      .regex(/\S/, "Must contain a non-whitespace character")
+      .min(1)
+      .max(1_024)
+      .optional(),
     format: z.enum(DATE_MENTION_DATE_FORMATS).optional(),
     timeFormat: z.enum(DATE_MENTION_TIME_FORMATS).optional(),
-    reminder: z.string().trim().min(1).max(1_024).optional(),
+    reminder: z
+      .string()
+      .regex(/\S/, "Must contain a non-whitespace character")
+      .min(1)
+      .max(1_024)
+      .optional(),
   }),
 ]);
 
@@ -189,8 +214,18 @@ export const ToolFailureSchema = z.strictObject({
     recovery: RecoveryActionSchema,
     details: z
       .strictObject({
-        resourceId: z.string().min(1).max(512).optional(),
-        domainCode: z.string().min(1).max(256).optional(),
+        resourceId: z
+          .string()
+
+          .min(1)
+          .max(512)
+          .optional(),
+        domainCode: z
+          .string()
+
+          .min(1)
+          .max(256)
+          .optional(),
       })
       .optional(),
   }),

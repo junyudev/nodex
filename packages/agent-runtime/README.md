@@ -73,7 +73,7 @@ by those source identities.
 
 Task tools resolve a taskId to its conversation through the indexed task owner, then reuse the
 conversation read, send and acknowledgement logic. Mutations keep stable command identities
-derived from `clientRequestId` or the native call, so retries replay durable receipts.
+admitted from an optional opaque `idempotencyKey` (1–128 characters) or derived from the native call. Explicit keys retain one host-issued identity for seven days across Turns, provider reconnections and restarts; identical retries replay durable receipts, while changed arguments fail before execution.
 Session and Task history share typed activity, stable page and content cursors, forward tails,
 version checks and complete-response admission; Task result acknowledgement remains delegation-owned.
 `src/nodex/Instructions.ts` is the guidance every provider receives for these tools.

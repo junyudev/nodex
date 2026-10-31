@@ -536,6 +536,10 @@ fn route_observability(path: &str) -> (&'static str, &'static str) {
         "/core/v1/modules/library/apply" => ("/core/v1/modules/library/apply", "library"),
         "/core/v1/modules/database/read" => ("/core/v1/modules/database/read", "database"),
         "/core/v1/modules/database/apply" => ("/core/v1/modules/database/apply", "database"),
+        "/core/v1/modules/workspace/tool-operations/admit" => (
+            "/core/v1/modules/workspace/tool-operations/admit",
+            "workspace",
+        ),
         "/core/v1/modules/workspace/read" => {
             ("/core/v1/modules/workspace/read", "project_workspace")
         }
@@ -1487,6 +1491,26 @@ async fn database_apply(
         wake_view_order_maintenance(&state, error);
     }
     Json(DatabaseApplyResponse(response_envelope(response)))
+}
+
+async fn admit_app_tool_operation(
+    State(state): State<Arc<ServerState>>,
+    Extension(bound): Extension<BoundConnection>,
+    headers: HeaderMap,
+    Json(request): Json<nodex_core_contracts::workspace::AppToolOperationRequest>,
+) -> Result<Json<nodex_core_contracts::workspace::AppToolOperationIdentity>, ApiError> {
+    let context = module_context(&state, &headers, &bound).map_err(api_core_error)?;
+    let request_state = Arc::clone(&state);
+    let identity = state
+        .request_executor
+        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
+            request_state
+                .workspace
+                .admit_app_tool_operation(&context, request)
+        })
+        .await
+        .map_err(api_core_error)?;
+    Ok(Json(identity))
 }
 
 async fn workspace_read(
@@ -3103,6 +3127,10 @@ fn router(state: Arc<ServerState>) -> Router {
         .route("/core/v1/modules/database/read", post(database_read))
         .route("/core/v1/modules/query/read", post(query_read))
         .route("/core/v1/modules/database/apply", post(database_apply))
+        .route(
+            "/core/v1/modules/workspace/tool-operations/admit",
+            post(admit_app_tool_operation),
+        )
         .route("/core/v1/modules/workspace/read", post(workspace_read))
         .route("/core/v1/modules/workspace/apply", post(workspace_apply))
         .route("/core/v1/modules/automation/read", post(automation_read))

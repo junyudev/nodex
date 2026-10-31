@@ -1,3 +1,4 @@
+import { uniqueScalarValues } from "../schema-constraints";
 import { z } from "zod";
 import {
   BlockIdSchema,
@@ -16,16 +17,24 @@ import {
   InlineMarkdownTitleSchema,
   MarkdownFragmentSchema,
   MarkdownSchema,
+  InlineMarkdownTitleInputSchema,
+  MarkdownInputSchema,
+  checkContentText,
   uniqueSelectorList,
 } from "./v3-base-schemas";
 
 const BlockIdMapV3Schema = z.record(BlockIdSchema, BlockIdSchema);
 
-const CreatePageDraftV3Schema = z.strictObject({
-  title: InlineMarkdownTitleSchema,
-  markdown: MarkdownSchema.optional(),
-  values: z.array(DatabaseValueDraftV3Schema).max(512).optional(),
-});
+const CreatePageDraftV3Schema = z
+  .strictObject({
+    title: InlineMarkdownTitleInputSchema,
+    markdown: MarkdownInputSchema.optional(),
+    values: z.array(DatabaseValueDraftV3Schema).max(512).optional(),
+  })
+  .superRefine((page, context) => {
+    checkContentText(InlineMarkdownTitleSchema, page.title, context, ["title"]);
+    checkContentText(MarkdownSchema, page.markdown, context, ["markdown"]);
+  });
 
 export const CreatePagesV3InputSchema = z
   .strictObject({
@@ -76,31 +85,44 @@ export const CreatePagesV3DataSchema = z.strictObject({
 
 export const CreatePagesV3OutputSchema = createToolSuccessSchema(CreatePagesV3DataSchema);
 
-const ExactMarkdownPatchV3Schema = z.strictObject({
-  oldMarkdown: z
-    .string()
-    .min(1)
-    .max(2 * 1024 * 1024),
-  newMarkdown: MarkdownSchema,
-  expectedMatches: z.number().int().min(1).max(100).optional(),
-});
+const ExactMarkdownPatchV3Schema = z
+  .strictObject({
+    oldMarkdown: z
+      .string()
+
+      .min(1)
+      .max(2 * 1024 * 1024),
+    newMarkdown: MarkdownInputSchema,
+    expectedMatches: z.number().int().min(1).max(100).optional(),
+  })
+  .superRefine((patch, context) =>
+    checkContentText(MarkdownSchema, patch.newMarkdown, context, ["newMarkdown"]),
+  );
 
 export const PageBodyUpdateV3Schema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("insert"),
-    at: DocumentAnchorSchema,
-    markdown: MarkdownFragmentSchema,
-  }),
+  z
+    .strictObject({
+      kind: z.literal("insert"),
+      at: DocumentAnchorSchema,
+      markdown: MarkdownInputSchema,
+    })
+    .superRefine((input, context) =>
+      checkContentText(MarkdownFragmentSchema, input.markdown, context, ["markdown"]),
+    ),
   z.strictObject({
     kind: z.literal("patch"),
     patches: z.array(ExactMarkdownPatchV3Schema).min(1).max(100),
     ifMatch: ETagSchema.optional(),
   }),
-  z.strictObject({
-    kind: z.literal("replace"),
-    markdown: MarkdownSchema,
-    ifMatch: ETagSchema,
-  }),
+  z
+    .strictObject({
+      kind: z.literal("replace"),
+      markdown: MarkdownInputSchema,
+      ifMatch: ETagSchema,
+    })
+    .superRefine((input, context) =>
+      checkContentText(MarkdownSchema, input.markdown, context, ["markdown"]),
+    ),
 ]);
 
 const PageUpdateReturnV3Schema = uniqueSelectorList(["markdown", "block_ids", "etags"]);
@@ -110,9 +132,12 @@ export const UpdatePageV3InputSchema = z
     pageId: BlockIdSchema,
     title: z
       .strictObject({
-        markdown: InlineMarkdownTitleSchema,
+        markdown: InlineMarkdownTitleInputSchema,
         ifMatch: ETagSchema,
       })
+      .superRefine((input, context) =>
+        checkContentText(InlineMarkdownTitleSchema, input.markdown, context, ["markdown"]),
+      )
       .optional(),
     body: PageBodyUpdateV3Schema.optional(),
     return: PageUpdateReturnV3Schema.optional(),
@@ -146,7 +171,11 @@ export const PageUpdateV3DataSchema = z.strictObject({
     .strictObject({
       format: z.literal("markdown"),
       markdown: z.string(),
-      contentHash: z.string().min(1).max(512),
+      contentHash: z
+        .string()
+
+        .min(1)
+        .max(512),
     })
     .optional(),
   etags: PageMutationEtagsV3Schema.optional(),
@@ -206,7 +235,8 @@ export const MovePagesV3InputSchema = z.strictObject({
     .array(BlockIdSchema)
     .min(1)
     .max(16)
-    .refine((ids) => new Set(ids).size === ids.length, "pageIds must be unique"),
+    .refine(uniqueScalarValues, "pageIds must be unique")
+    .meta({ uniqueItems: true }),
   destination: MovePagesDestinationV3Schema,
 });
 

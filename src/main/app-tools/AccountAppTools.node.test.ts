@@ -1,3 +1,6 @@
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
+import { CoreModules } from "../core-runtime/CoreModules";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
@@ -35,6 +38,8 @@ it.effect(
       let uncertain = false;
       const calls: string[] = [];
       const execute = yield* make.pipe(
+        Effect.provideService(CoreModules, createAppToolAdmissionFixture().core),
+        Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
         Effect.provideService(CodexTurnAuthority, {
           capture: () => Effect.succeed(authority),
         } as unknown as CodexTurnAuthority["Service"]),
@@ -69,23 +74,25 @@ it.effect(
           rateLimitResetCredits: null,
         },
       );
-      assert.deepStrictEqual((yield* execute(call)).structuredContent, {
+      const first = yield* execute(call);
+      const operationId = first.structuredContent?.operationId;
+      assert.deepStrictEqual(first.structuredContent, {
         outcome: "noCredit",
         rateLimits: null,
         rateLimitResetCredits: null,
-        idempotencyKey: "exact-retry-key",
+        operationId,
       });
       uncertain = true;
       assert.deepStrictEqual((yield* execute(call)).structuredContent, {
         error: {
           code: "reset_outcome_unavailable",
-          details: { idempotencyKey: "exact-retry-key" },
+          details: { operationId },
         },
       });
       active = false;
       assert.deepStrictEqual((yield* execute(call)).structuredContent, {
         error: { code: "call_withdrawn" },
       });
-      assert.deepStrictEqual(calls, ["exact-retry-key", "exact-retry-key"]);
+      assert.deepStrictEqual(calls, [operationId, operationId]);
     }),
 );

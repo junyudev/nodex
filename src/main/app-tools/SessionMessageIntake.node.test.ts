@@ -237,6 +237,8 @@ const input = (attachments = false) => ({
   }),
   caller: { sessionId: "caller" },
   operationId: createStableOperationId("app.send_message_to_session", 123, ["fixture"]),
+  acceptedAtMs: 123,
+  expiresAtMs: 123 + 7 * 24 * 60 * 60 * 1_000,
   sourceThreadId: "caller-thread",
   sourceRunId: "caller-run",
 });

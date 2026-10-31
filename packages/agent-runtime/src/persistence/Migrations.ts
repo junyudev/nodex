@@ -101,6 +101,7 @@ import Migration0084 from "./Migrations/084_NativeMessageReceipts.ts";
 import Migration0085 from "./Migrations/085_RuntimeMessageAdmissions.ts";
 import Migration0086 from "./Migrations/086_SideChatContext.ts";
 import Migration0087 from "./Migrations/087_ContextRecovery.ts";
+import Migration0088 from "./Migrations/088_McpToolOperations.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -202,6 +203,7 @@ export const migrationEntries = [
   [85, "RuntimeMessageAdmissions", Migration0085],
   [86, "SideChatContext", Migration0086],
   [87, "ContextRecovery", Migration0087],
+  [88, "McpToolOperations", Migration0088],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

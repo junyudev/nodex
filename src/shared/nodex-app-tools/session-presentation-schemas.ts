@@ -1,3 +1,4 @@
+import { idempotencyKeySchema } from "./idempotency-key";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { WorkbenchWindowReferenceSchema } from "./workbench";
@@ -8,10 +9,10 @@ const webUrl = z
   .string()
   .max(16_384)
   .url()
-  .refine((value) => ["http:", "https:"].includes(new URL(value).protocol));
+  .regex(/^https?:\/\//i, "Use an HTTP or HTTPS URL");
 const common = {
   window: WorkbenchWindowReferenceSchema.optional(),
-  operationId: identity.optional(),
+  idempotencyKey: idempotencyKeySchema.optional(),
 };
 export const sessionPresentationSchemas = {
   navigate_to_session: z.strictObject({ ...common, sessionId: identity }),
@@ -65,7 +66,7 @@ export const sessionPresentationToolCatalog: readonly Tool[] = Object.entries(
   sessionPresentationSchemas,
 ).map(([name, schema]) => ({
   name,
-  description: `${descriptions[name as keyof typeof descriptions]} Without a submission window, supply an explicit returned window reference. Reuse operationId only for an exact retry.`,
-  inputSchema: z.toJSONSchema(schema) as Tool["inputSchema"],
+  description: `${descriptions[name as keyof typeof descriptions]} Without a submission window, supply an explicit returned window reference. Reuse idempotencyKey only for an exact retry.`,
+  inputSchema: z.toJSONSchema(schema, { io: "input" }) as Tool["inputSchema"],
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
 }));

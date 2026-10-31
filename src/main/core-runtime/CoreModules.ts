@@ -14,6 +14,8 @@ import type {
   DocumentSyncResponse,
 } from "../../shared/block-documents/document-sync";
 import type {
+  AppToolOperationRequest,
+  AppToolOperationIdentity,
   AutomationApplyInput,
   AutomationApplyResult,
   AutomationRead,
@@ -85,6 +87,9 @@ export interface CoreModuleClients {
     ) => CoreEffect<DatabaseApplyResult>;
   };
   readonly workspace: {
+    readonly admitToolOperation: (
+      input: AppToolOperationRequest,
+    ) => CoreEffect<AppToolOperationIdentity>;
     readonly read: (
       read: ProjectWorkspaceRead,
       options?: CoreRequestOptions,
@@ -207,6 +212,11 @@ export const live: Layer.Layer<CoreModules, never, CoreSessionAccess> = Layer.ef
         ),
       },
       workspace: {
+        admitToolOperation: Effect.fn("CoreModules.workspace.admitToolOperation")((input) =>
+          access.use("workspace.admitToolOperation", (client, signal) =>
+            client.admitAppToolOperation(input, { signal }),
+          ),
+        ),
         read: Effect.fn("CoreModules.workspace.read")((read, options, projectId) =>
           access.use(
             "workspace.read",

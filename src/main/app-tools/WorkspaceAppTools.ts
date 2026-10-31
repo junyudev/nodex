@@ -15,7 +15,7 @@ import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-a
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
-import { createStableOperationId } from "../core-runtime/operation-identity";
+import { make as makeAppToolOperation } from "./AppToolOperation";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { ProjectWorkspace, ProjectWorkspaceError } from "../project-application/ProjectWorkspace";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
@@ -23,7 +23,7 @@ import {
   ProjectSessionCommands,
   ProjectSessionCommandsError,
 } from "../project-application/ProjectSessionCommands";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 
 const builtinLane = (
@@ -38,6 +38,7 @@ const builtinLane = (
 
 export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
   Effect.gen(function* () {
+    const admitOperation = yield* makeAppToolOperation;
     const workspace = yield* ProjectWorkspace;
     const sessions = yield* ProjectSessionCommands;
     const identity = yield* CoreAuthority;
@@ -105,13 +106,13 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
       defaultOperationId: string,
     ): Effect.fn.Return<CallToolResult, ProjectWorkspaceError | ProjectSessionCommandsError> {
       if (input.name === "set_session_title") {
-        const parsed = sessionSchemas.set_session_title.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(sessionSchemas.set_session_title, input.arguments);
+        if (!parsed.success) return parsed.result;
         const sessionId =
           parsed.data.sessionId ??
           (yield* resolveAppToolCallingSession(input.caller, workspace))?.sessionId;
         if (!sessionId) return toolFailure("session_unavailable");
-        const operationId = parsed.data.operationId ?? defaultOperationId;
+        const operationId = defaultOperationId;
         const result = yield* sessions.rename({
           operationId,
           payload: { sessionId, input: { title: parsed.data.title } },
@@ -124,13 +125,13 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         });
       }
       if (input.name === "set_session_archived" || input.name === "set_session_pinned") {
-        const parsed = sessionSchemas[input.name].safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(sessionSchemas[input.name], input.arguments);
+        if (!parsed.success) return parsed.result;
         const sessionId =
           parsed.data.sessionId ??
           (yield* resolveAppToolCallingSession(input.caller, workspace))?.sessionId;
         if (!sessionId) return toolFailure("session_unavailable");
-        const operationId = parsed.data.operationId ?? defaultOperationId;
+        const operationId = defaultOperationId;
         const command = { operationId, payload: { sessionId } };
         const result =
           "archived" in parsed.data
@@ -148,8 +149,8 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         });
       }
       if (input.name === "list_sidebar_order") {
-        const parsed = sidebarSchemas.list_sidebar_order.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(sidebarSchemas.list_sidebar_order, input.arguments);
+        if (!parsed.success) return parsed.result;
         const { sectionId, itemKind, ...windowInput } = parsed.data;
         const section = yield* findSection(sectionId);
         if (!section) return toolFailure("section_unavailable");
@@ -159,28 +160,29 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         return toolSuccess({ sectionId, itemKind, ...window });
       }
       if (input.name === "reorder_sidebar_projects") {
-        const parsed = sidebarSchemas.reorder_sidebar_projects.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
-        const {
-          operationId = defaultOperationId,
-          sectionId,
-          projectIds,
-          expectedOrderRevision,
-        } = parsed.data;
+        const parsed = parseAppToolArguments(
+          sidebarSchemas.reorder_sidebar_projects,
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
+        const { idempotencyKey: _key, sectionId, projectIds, expectedOrderRevision } = parsed.data;
         const section = yield* findSection(sectionId);
         if (!section) return toolFailure("section_unavailable");
         const lane = builtinLane(section, "project");
         if (!lane || lane === "pinned_sessions") return toolFailure("invalid_section_target");
         if (!input.caller.isActive()) return toolFailure("call_withdrawn");
         const result = yield* workspace.prioritizeBuiltinSidebarProjects({
-          operationId,
+          operationId: defaultOperationId,
           payload: { lane, projectIds, expectedOrderRevision },
         });
-        return toolSuccess({ operationId, receipt: result.apply });
+        return toolSuccess({ operationId: defaultOperationId, receipt: result.apply });
       }
       if (input.name === "list_sidebar_section_items") {
-        const parsed = sidebarSchemas.list_sidebar_section_items.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(
+          sidebarSchemas.list_sidebar_section_items,
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
         const { sectionId, ...windowInput } = parsed.data;
         const window = yield* workspace.listSidebarSectionItems(sectionId, {
           ...windowInput,
@@ -209,9 +211,10 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         });
       }
       if (input.name === "reorder_section") {
-        const parsed = sidebarSchemas.reorder_section.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
-        const { operationId = defaultOperationId, ...payload } = parsed.data;
+        const parsed = parseAppToolArguments(sidebarSchemas.reorder_section, input.arguments);
+        if (!parsed.success) return parsed.result;
+        const { idempotencyKey: _key, ...payload } = parsed.data;
+        const operationId = defaultOperationId;
         if ("sessionIds" in payload) {
           const section = yield* findSection(payload.sectionId);
           if (!section) return toolFailure("section_unavailable");
@@ -231,15 +234,18 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         return toolSuccess({ operationId, receipt: result.apply });
       }
       if (input.name === "list_sidebar_sections") {
-        const parsed = sidebarSchemas.list_sidebar_sections.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(sidebarSchemas.list_sidebar_sections, input.arguments);
+        if (!parsed.success) return parsed.result;
         const window = yield* workspace.listSidebarSections(parsed.data);
         return toolSuccess({ ...window });
       }
       if (input.name === "create_sidebar_section") {
-        const parsed = sidebarSchemas.create_sidebar_section.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
-        const operationId = parsed.data.operationId ?? defaultOperationId;
+        const parsed = parseAppToolArguments(
+          sidebarSchemas.create_sidebar_section,
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
+        const operationId = defaultOperationId;
         const result = yield* workspace.createSidebarSection({
           operationId,
           payload: {
@@ -250,9 +256,12 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         return toolSuccess({ operationId, section: result.value, receipt: result.apply });
       }
       if (input.name === "rename_sidebar_section") {
-        const parsed = sidebarSchemas.rename_sidebar_section.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
-        const operationId = parsed.data.operationId ?? defaultOperationId;
+        const parsed = parseAppToolArguments(
+          sidebarSchemas.rename_sidebar_section,
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
+        const operationId = defaultOperationId;
         const result = yield* workspace.renameSidebarSection({
           operationId,
           payload: {
@@ -263,9 +272,12 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         return toolSuccess({ operationId, section: result.value, receipt: result.apply });
       }
       if (input.name === "delete_sidebar_section") {
-        const parsed = sidebarSchemas.delete_sidebar_section.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
-        const operationId = parsed.data.operationId ?? defaultOperationId;
+        const parsed = parseAppToolArguments(
+          sidebarSchemas.delete_sidebar_section,
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
+        const operationId = defaultOperationId;
         const result = yield* workspace.deleteSidebarSection({
           operationId,
           payload: {
@@ -276,27 +288,36 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         return toolSuccess({ operationId, deleted: true, receipt: result.apply });
       }
       if (input.name === "move_project_to_sidebar_section") {
-        const parsed = sidebarSchemas.move_project_to_sidebar_section.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(
+          sidebarSchemas.move_project_to_sidebar_section,
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
         return yield* move(
-          parsed.data.operationId ?? defaultOperationId,
+          defaultOperationId,
           { kind: "project", projectId: parsed.data.projectId },
           parsed.data.sectionId,
         );
       }
       if (input.name === "move_session_to_sidebar_section") {
-        const parsed = sidebarSchemas.move_session_to_sidebar_section.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(
+          sidebarSchemas.move_session_to_sidebar_section,
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
         return yield* move(
-          parsed.data.operationId ?? defaultOperationId,
+          defaultOperationId,
           { kind: "session", sessionId: parsed.data.sessionId },
           parsed.data.sectionId,
         );
       }
       if (input.name === "reorder_sidebar_sections") {
-        const parsed = sidebarSchemas.reorder_sidebar_sections.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
-        const operationId = parsed.data.operationId ?? defaultOperationId;
+        const parsed = parseAppToolArguments(
+          sidebarSchemas.reorder_sidebar_sections,
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
+        const operationId = defaultOperationId;
         const result = yield* workspace.reorderSidebarSections({
           operationId,
           payload: { sectionIds: parsed.data.sectionIds },
@@ -320,12 +341,20 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
       if (!authority) return toolFailure("authority_unavailable");
 
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-      const operationId = createStableOperationId(`app.${input.name}`, authority.admittedAtMs, [
+      const schema = { ...sidebarSchemas, ...sessionSchemas }[
+        input.name as keyof (typeof sidebarSchemas & typeof sessionSchemas)
+      ];
+      if (!schema) return toolFailure("unknown_tool");
+      const parsed = parseAppToolArguments(schema, input.arguments);
+      if (!parsed.success) return parsed.result;
+      const operation = yield* admitOperation(
+        input,
+        authority,
         identity.identity.profileId,
-        input.caller.threadId,
-        input.caller.turnId,
-        input.caller.callId,
-      ]);
+        parsed.data,
+      );
+      if (!operation.success) return operation.result;
+      const { operationId } = operation;
       return yield* dispatch(input, operationId).pipe(
         Effect.provideService(
           CoreApplicationAgent,
@@ -336,7 +365,7 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
             return Effect.succeed(
               toolFailure(
                 "session_reconciliation_failed",
-                "The Session change committed, but backend synchronization failed. Retry with the same operationId.",
+                "The Session change committed, but backend synchronization failed. Retry with the same idempotencyKey and identical arguments.",
                 { operationId: error.committedOperationId, committed: true },
               ),
             );

@@ -2,6 +2,7 @@ mod agent_command;
 mod agent_runtime_authority;
 mod agent_runtime_binding;
 mod agent_runtime_cleanup;
+mod app_tool_operation;
 mod child_thread_window;
 mod codex_thread_navigation;
 mod execution;
@@ -100,6 +101,18 @@ impl ProjectWorkspaceModule {
             writer: Some(writer),
             assets_root: Some(assets_root),
         })
+    }
+
+    pub fn admit_app_tool_operation(
+        &self,
+        context: &BoundModuleContext,
+        request: nodex_core_contracts::workspace::AppToolOperationRequest,
+    ) -> Result<nodex_core_contracts::workspace::AppToolOperationIdentity, CoreError> {
+        self.validate_context(context)?;
+        let Some(writer) = &self.writer else {
+            return Err(unavailable("Project Workspace Module has no durable store"));
+        };
+        app_tool_operation::admit(writer, &self.library_id, context, request).map_err(core_error)
     }
 
     pub fn read(

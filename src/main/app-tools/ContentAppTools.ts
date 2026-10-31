@@ -11,7 +11,7 @@ import { NodexAgentApplication } from "../nodex-agent-application/NodexAgentAppl
 import { NodexAgentDynamicToolFailure } from "../nodex-agent-application/NodexAgentDynamicExecutionContext";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { NodexAppToolAuthority } from "./NodexAppToolAuthority";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 import type { AppToolCaller } from "./AppToolCaller";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 
@@ -24,8 +24,8 @@ export const makeWithCapture = (
     return Effect.fn("ContentAppTools.execute")(function* (input: AppToolInvocation) {
       if (!isContentTool(input.name)) return toolFailure("unknown_tool");
       const contract = NODEX_AGENT_V6_TOOL_CONTRACTS[input.name];
-      const parsed = contract.inputSchema.safeParse(input.arguments);
-      if (!parsed.success) return toolFailure("invalid_arguments");
+      const parsed = parseAppToolArguments(contract.inputSchema, input.arguments);
+      if (!parsed.success) return parsed.result;
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       const capture = captureCaller(input.caller);
       const authority = yield* capture;

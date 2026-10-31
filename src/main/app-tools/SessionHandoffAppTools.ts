@@ -14,33 +14,34 @@ import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-a
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
-import { createStableOperationId } from "../core-runtime/operation-identity";
+import { make as makeAppToolOperation } from "./AppToolOperation";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 
 export const makeWithCapture = (captureCaller: AppToolAuthorityCapture) =>
   Effect.gen(function* () {
+    const admitOperation = yield* makeAppToolOperation;
     const identity = yield* CoreAuthority;
     const core = yield* CoreModules;
     const handoffs = yield* CodexThreadHandoffRuntime;
     const application = yield* Effect.serviceOption(AgentRuntimeApplication);
 
     return Effect.fn("SessionHandoffAppTools.execute")(function* (input: AppToolInvocation) {
-      const parsed = sessionHandoffSchema.safeParse(input.arguments);
-      if (!parsed.success) return toolFailure("invalid_arguments");
+      const parsed = parseAppToolArguments(sessionHandoffSchema, input.arguments);
+      if (!parsed.success) return parsed.result;
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       const authority = yield* captureCaller(input.caller);
       if (!authority) return toolFailure("authority_unavailable");
 
-      const { operationId: suppliedOperationId, ...request } = parsed.data;
-      const operationId =
-        suppliedOperationId ??
-        createStableOperationId("app.handoff_session", authority.admittedAtMs, [
-          identity.identity.profileId,
-          input.caller.threadId,
-          input.caller.turnId,
-          input.caller.callId,
-        ]);
+      const admitted = yield* admitOperation(
+        input,
+        authority,
+        identity.identity.profileId,
+        parsed.data,
+      );
+      if (!admitted.success) return admitted.result;
+      const { operationId } = admitted;
+      const { idempotencyKey: _key, ...request } = parsed.data;
       const provenance = toCoreAgentTurnProvenance(identity.identity.profileId, authority);
       const observed = yield* core.workspace
         .read(

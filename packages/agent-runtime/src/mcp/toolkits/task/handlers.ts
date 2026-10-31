@@ -52,7 +52,11 @@ const handlers = {
     Effect.flatMap(service, ({ scope, tasks }) =>
       Effect.gen(function* () {
         const threadId = yield* tasks.taskThread(scope, taskId);
-        const sent = yield* tasks.sendToThread(scope, { threadId, ...message });
+        const sent = yield* tasks.sendToThread(
+          scope,
+          { threadId, ...message },
+          { taskId, ...message },
+        );
         return { taskId: sent.taskId ?? taskId, status: sent.status, delivery: sent.delivery };
       }),
     ),

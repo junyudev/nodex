@@ -11,7 +11,7 @@ import type { QueryRead } from "../core-client/types";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 import type { AppToolCaller } from "./AppToolCaller";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 
@@ -28,12 +28,12 @@ export const makeWithCapture = (
       const provenance = toCoreAgentTurnProvenance(identity.identity.profileId, authority);
       let read: QueryRead;
       if (input.name === "query_content") {
-        const parsed = sqlQuerySchema.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(sqlQuerySchema, input.arguments);
+        if (!parsed.success) return parsed.result;
         read = { kind: "agent_query", provenance, query: parsed.data };
       } else {
-        const parsed = describeContentSchemaInput.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(describeContentSchemaInput, input.arguments);
+        if (!parsed.success) return parsed.result;
         read = {
           kind: "agent_schema",
           provenance,

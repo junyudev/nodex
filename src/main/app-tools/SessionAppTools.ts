@@ -1,6 +1,9 @@
 import { captureAppToolAuthority, type AppToolAuthorityCapture } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
-import { sessionObservationSchemas } from "../../shared/nodex-app-tools/session-observation-schemas";
+import {
+  normalizeSessionObservationArguments,
+  sessionObservationSchemas,
+} from "../../shared/nodex-app-tools/session-observation-schemas";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
@@ -10,7 +13,12 @@ import { resolveSessionScope } from "../../shared/nodex-app-tools/session-scope"
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { SessionWaiter, type SessionWaitResult } from "./SessionWaiter";
 import { SessionObservation } from "./SessionObservation";
-import { toolFailure, toolSuccess, toolResultBytes } from "./app-tool-result";
+import {
+  parseAppToolArguments,
+  toolFailure,
+  toolSuccess,
+  toolResultBytes,
+} from "./app-tool-result";
 import { SESSION_READ_MAX_BYTES } from "./SessionHistoryRead";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 
@@ -58,10 +66,14 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
       if (!authority) return toolFailure("authority_unavailable");
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       if (input.name === "wait_sessions") {
-        const parsed = sessionObservationSchemas.wait_sessions.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(
+          sessionObservationSchemas.wait_sessions,
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
+        const request = normalizeSessionObservationArguments(parsed.data);
         const result = yield* waiter.wait(
-          parsed.data,
+          request,
           toCoreAgentTurnProvenance(core.identity.profileId, authority),
         );
         return input.caller.isActive()
@@ -69,12 +81,16 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           : toolFailure("call_withdrawn");
       }
       if (input.name === "search_sessions") {
-        const parsed = sessionObservationSchemas.search_sessions.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(
+          sessionObservationSchemas.search_sessions,
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
+        const request = normalizeSessionObservationArguments(parsed.data);
         return yield* observations
           .search({
-            ...parsed.data,
-            ...resolveSessionScope(parsed.data, authority.actorProjectId ?? null),
+            ...request,
+            ...resolveSessionScope(request, authority.actorProjectId ?? null),
           })
           .pipe(
             Effect.provideService(
@@ -106,12 +122,16 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           );
       }
       if (input.name === "list_sessions" || input.name === "list_archived_sessions") {
-        const parsed = sessionObservationSchemas[input.name].safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(
+          sessionObservationSchemas[input.name],
+          input.arguments,
+        );
+        if (!parsed.success) return parsed.result;
+        const request = normalizeSessionObservationArguments(parsed.data);
         return yield* observations
           .list({
-            ...parsed.data,
-            ...resolveSessionScope(parsed.data, authority.actorProjectId ?? null),
+            ...request,
+            ...resolveSessionScope(request, authority.actorProjectId ?? null),
             archived: input.name === "list_archived_sessions",
           })
           .pipe(
@@ -144,16 +164,17 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           );
       }
       if (input.name !== "read_session") return toolFailure("unknown_tool");
-      const parsed = sessionObservationSchemas.read_session.safeParse(input.arguments);
-      if (!parsed.success) return toolFailure("invalid_arguments");
+      const parsed = parseAppToolArguments(sessionObservationSchemas.read_session, input.arguments);
+      if (!parsed.success) return parsed.result;
+      const request = normalizeSessionObservationArguments(parsed.data);
       const sessionId =
-        parsed.data.sessionId ??
+        request.sessionId ??
         (yield* resolveAppToolCallingSession(input.caller, workspace))?.sessionId;
       if (!sessionId) return toolFailure("session_unavailable");
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       return yield* observations
         .read(
-          { ...parsed.data, sessionId },
+          { ...request, sessionId },
           toCoreAgentTurnProvenance(core.identity.profileId, authority),
         )
         .pipe(

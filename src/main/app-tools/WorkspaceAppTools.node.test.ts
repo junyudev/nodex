@@ -1,6 +1,7 @@
+import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
+import { CoreModules } from "../core-runtime/CoreModules";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { createBoundedOperationId } from "../../shared/operation-identity";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
@@ -46,6 +47,7 @@ const setup = (
   sessions: Partial<ProjectSessionCommands["Service"]> = {},
 ) =>
   make.pipe(
+    Effect.provideService(CoreModules, createAppToolAdmissionFixture().core),
     Effect.provideService(ProjectWorkspace, workspace as ProjectWorkspaceService),
     Effect.provideService(ProjectSessionCommands, sessions as ProjectSessionCommands["Service"]),
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile:a" } } as never),
@@ -71,10 +73,14 @@ it.effect(
         (yield* execute(input("create_sidebar_section", { name: "Research" }))).structuredContent,
         { section: { sectionId: "created", name: "Research" } },
       );
-      assert.deepStrictEqual(
-        (yield* execute(input("create_sidebar_section", { name: "Research", projectId: "other" })))
-          .structuredContent,
-        { error: { code: "invalid_arguments" } },
+      const invalid = yield* execute(
+        input("create_sidebar_section", { name: "Research", projectId: "other" }),
+      );
+      assert.nestedPropertyVal(invalid.structuredContent, "error.code", "invalid_arguments");
+      assert.nestedPropertyVal(
+        invalid.structuredContent,
+        "error.details.issues.0.path.0",
+        "projectId",
       );
       assert.deepStrictEqual(
         (yield* execute(input("create_sidebar_section", { name: "Withdrawn" }, () => false)))
@@ -449,7 +455,7 @@ it.effect(
             return { value: undefined, apply: {} as never };
           }),
       });
-      const operationId = createBoundedOperationId("sidebar.order");
+      const idempotencyKey = "sidebar-order";
       for (const [name, args, lane, itemIds] of [
         [
           "reorder_section",
@@ -471,11 +477,15 @@ it.effect(
         ],
       ] as const) {
         const result = yield* execute(
-          input(name, { ...args, expectedOrderRevision: "observed:1", operationId }),
+          input(name, {
+            ...args,
+            expectedOrderRevision: "observed:1",
+            idempotencyKey: `${idempotencyKey}:${args.sectionId}`,
+          }),
         );
         assert.strictEqual(result.isError, undefined);
         assert.deepStrictEqual(commands.at(-1), {
-          operationId,
+          operationId: result.structuredContent?.operationId,
           payload: {
             lane,
             ...(name === "reorder_section" ? { itemIds } : { projectIds: itemIds }),

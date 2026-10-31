@@ -30,6 +30,7 @@ export interface NativeMessageAdmission extends Receipt {
 interface MessageIdentity {
   readonly target: SessionExecutionTarget;
   readonly operationId: string;
+  readonly expiresAtMs: number;
   readonly messageId: string;
   readonly commandIdentity: unknown;
 }
@@ -195,7 +196,7 @@ export const make = Effect.gen(function* () {
         messageId: identity.messageId,
         fingerprint: fingerprintOf(identity),
         attemptId: randomUUID(),
-        expiresAt: Number(identity.operationId.split(":")[3]),
+        expiresAt: identity.expiresAtMs,
       });
       return admission(receipt, identity);
     }),

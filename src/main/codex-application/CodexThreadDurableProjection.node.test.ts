@@ -147,6 +147,7 @@ it.effect(
       let applyCount = 0;
       let sidebarCount = 0;
       const workspace: CoreModuleClients["workspace"] = {
+        admitToolOperation: () => Effect.die("Unexpected application tool admission"),
         read: (input) =>
           input.kind === "thread"
             ? Effect.fail(missingThread(input.thread_id) as never)
@@ -215,6 +216,7 @@ it.effect("serially commits archive and delete observations before scheduling si
     const sidebar: string[] = [];
     const events: unknown[] = [];
     const workspace: CoreModuleClients["workspace"] = {
+      admitToolOperation: () => Effect.die("Unexpected application tool admission"),
       read: () =>
         Effect.suspend(() =>
           stored
@@ -359,6 +361,7 @@ it.effect("invalidates the durable root after deleting a nested Subagent", () =>
     ]);
     const events: unknown[] = [];
     const workspace: CoreModuleClients["workspace"] = {
+      admitToolOperation: () => Effect.die("Unexpected application tool admission"),
       read: (input) =>
         Effect.sync(() => {
           if (input.kind !== "thread") throw new Error(`Unexpected read ${input.kind}`);
@@ -438,6 +441,7 @@ it.effect("never treats thread/started as a history transport", () =>
       Parameters<CodexAutoThreadTitle["Service"]["scheduleAddedThread"]>[0]
     > = [];
     const workspace: CoreModuleClients["workspace"] = {
+      admitToolOperation: () => Effect.die("Unexpected application tool admission"),
       read: () => Effect.succeed({ value: { kind: "thread", thread: stored } } as never),
       apply: () => Effect.succeed({} as never),
     };

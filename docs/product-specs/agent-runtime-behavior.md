@@ -738,6 +738,15 @@ the caller's own conversation. Ordinary Session creation goes through the Host's
 transaction before execution. Background tools retain their captured execution identity while
 their native process remains live.
 
+`delegate_task`, `task_send` and `task_cancel` accept optional `idempotencyKey`, an opaque
+1–128-character string. Omit it for a first attempt; reuse it with identical arguments only
+when the previous outcome was not observed. The execution store atomically binds the calling
+conversation, tool and key to one host-issued operation for seven days. Provider credentials,
+Runs and process restarts do not replace that identity. Changed arguments fail with
+`idempotency_key_reused`; exact retries reuse execution receipts without another child or
+message. After seven days, reusing the key admits a new operation independently of expired
+receipt cleanup. Omitted keys retain native-call derivation.
+
 `task_read` shares Session history semantics: text messages or complete activity JSON,
 newest-first or oldest-first order, independent page and content cursors, a reusable forward
 tail, content-version and owner-binding fences, and 24 KiB complete MCP envelope admission.

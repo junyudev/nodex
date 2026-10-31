@@ -9,7 +9,10 @@ export const contentToolCatalog: readonly Tool[] = NODEX_APP_TOOLS.map((name) =>
   return {
     name,
     description: contract.description,
-    inputSchema: { ...z.toJSONSchema(contract.inputSchema), type: "object" } as Tool["inputSchema"],
+    inputSchema: {
+      ...z.toJSONSchema(contract.inputSchema, { io: "input" }),
+      type: "object",
+    } as Tool["inputSchema"],
   };
 });
 

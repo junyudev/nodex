@@ -1,3 +1,4 @@
+import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
 import { CodexNativeThreadLookup } from "../codex-application/CodexNativeThreadLookup";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { assert, it } from "@effect/vitest";
@@ -78,35 +79,42 @@ const authority: NodexAgentTurnContext = {
 };
 const fixture = () => {
   const frozen = authority;
+  const deliveries = new Map<string, Record<string, unknown>>();
+  const createdSessions = new Set<string>();
   let active = true;
   const calls: Array<{ name: string; input: unknown; agent: unknown }> = [];
-  const method = (name: string, result: unknown) => (input: unknown) =>
-    Effect.gen(function* () {
-      calls.push({ name, input, agent: yield* CoreApplicationAgent });
-      return result;
+  const method =
+    <T>(name: string, result: T) =>
+    (input: unknown) =>
+      Effect.gen(function* () {
+        calls.push({ name, input, agent: yield* CoreApplicationAgent });
+        return result;
+      });
+  const makeCaller = (turnId = frozen.turnId, callId = "call") =>
+    createHostedAppToolCaller({
+      backend: "claude",
+      authority: { ...frozen, turnId },
+      callId,
+      generation: 1,
+      isActive: () => active,
+      capture: Effect.succeed({ ...frozen, turnId }),
+      sessionContext: {
+        sessionId: "session:root",
+        projectId: "project",
+        runtimeId: "engine",
+        rootThreadId: "root",
+        threadId: "child",
+        runId: turnId,
+        cwd: "/worktree",
+      },
     });
-  const caller = createHostedAppToolCaller({
-    backend: "claude",
-    authority: frozen,
-    callId: "call",
-    generation: 1,
-    isActive: () => active,
-    capture: Effect.succeed(frozen),
-    sessionContext: {
-      sessionId: "session:root",
-      projectId: "project",
-      runtimeId: "engine",
-      rootThreadId: "root",
-      threadId: "child",
-      runId: "run",
-      cwd: "/worktree",
-    },
-  });
+  const caller = makeCaller();
   const execute = make.pipe(
     Effect.provide(intakeServices),
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
     Effect.provideService(CoreModules, {
       workspace: {
+        admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
         read: (request: { session_id: string }) =>
           Effect.succeed({
             value: {
@@ -126,7 +134,8 @@ const fixture = () => {
     Effect.provideService(CodexTurnAuthority, {} as never),
     Effect.provideService(AgentRuntimeApplication, {
       nativeMessageReceipt: () => Effect.succeed(null),
-      replayMessage: () => Effect.succeed(null),
+      replayMessage: (input: { messageId: string }) =>
+        Effect.succeed(deliveries.get(input.messageId) ?? null),
       resumeMessageLaunch: () => Effect.succeed(null),
       inspect: method("inspect", {
         sessionId: "session:root",
@@ -138,15 +147,28 @@ const fixture = () => {
           runtimeMode: "full-access",
         },
       }),
-      launch: method("launch", { sessionId: "new", projectId: "project", threadId: "new-root" }),
-      sendMessage: method("sendMessage", {
-        sessionId: "other",
-        threadId: "target",
-        messageId: "message:delivered",
-        runId: "run:accepted",
-        status: "queued",
-        delivery: "queued",
-      }),
+      launch: (input: { sessionId: string }) =>
+        Effect.gen(function* () {
+          createdSessions.add(input.sessionId);
+          return yield* method("launch", {
+            sessionId: "new",
+            projectId: "project",
+            threadId: "new-root",
+          })(input);
+        }),
+      sendMessage: (input: { message: { messageId: string } }) =>
+        Effect.gen(function* () {
+          const outcome = yield* method("sendMessage", {
+            sessionId: "other",
+            threadId: "target",
+            messageId: "message:delivered",
+            runId: "run:accepted",
+            status: "queued",
+            delivery: "queued",
+          })(input);
+          deliveries.set(input.message.messageId, outcome);
+          return outcome;
+        }),
       execution: method("execution", {
         selectedRunId: "run:accepted",
         runId: "run:accepted",
@@ -163,7 +185,9 @@ const fixture = () => {
   );
   return {
     caller,
+    makeCaller,
     calls,
+    createdSessions,
     execute,
     withdraw: () => {
       active = false;
@@ -227,7 +251,7 @@ it.effect(
       assert.isNotNull(f.calls.find((call) => call.name === "sendMessage")!.agent);
       // A model override travels with its message and keeps the Session's own Agent.
       yield* execute({
-        caller: f.caller,
+        caller: f.makeCaller(undefined, "review"),
         name: "send_message_to_session",
         arguments: { sessionId: "other", prompt: "Review", model: "opus" },
       });
@@ -242,7 +266,7 @@ it.effect(
       );
       // Another Agent continues the Session from its model's own defaults.
       yield* execute({
-        caller: f.caller,
+        caller: f.makeCaller(undefined, "switch-agent"),
         name: "send_message_to_session",
         arguments: {
           sessionId: "other",
@@ -378,6 +402,7 @@ it.effect(
         } as unknown as CodexTurnAuthority["Service"]),
         Effect.provideService(CoreModules, {
           workspace: {
+            admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
             read: (input: Parameters<CoreModules["Service"]["workspace"]["read"]>[0]) =>
               attached
                 ? Effect.sync(() => {
@@ -510,7 +535,7 @@ it.effect(
       const execute = yield* f.execute;
       for (const mode of ["auto", "queue", "steer", "restart"] as const) {
         const invocation = {
-          caller: f.caller,
+          caller: f.makeCaller(undefined, `mode:${mode}`),
           name: "send_message_to_session",
           arguments: { sessionId: "other", prompt: "Continue", mode },
         };
@@ -552,4 +577,62 @@ it.effect(
       assert.equal((sent.input as { threadId: string }).threadId, "child");
       assert.isFalse(f.calls.some((call) => call.name === "launch"));
     }),
+);
+
+it.effect("UUID retries in a later Turn reuse one message and reject changed arguments", () =>
+  Effect.gen(function* () {
+    const f = fixture();
+    const execute = yield* f.execute;
+    const args = {
+      sessionId: "other",
+      prompt: "Continue",
+      idempotencyKey: "06d6709c-45e7-4b37-8c26-74e9d64c5aa1",
+    };
+    const first = yield* execute({
+      caller: f.caller,
+      name: "send_message_to_session",
+      arguments: args,
+    });
+    assert.isFalse(first.isError ?? false);
+    const second = yield* execute({
+      caller: f.makeCaller("later", "retry"),
+      name: "send_message_to_session",
+      arguments: args,
+    });
+    assert.deepStrictEqual(second, first);
+    assert.equal(f.calls.filter((call) => call.name === "sendMessage").length, 1);
+    const collision = yield* execute({
+      caller: f.makeCaller("later", "changed"),
+      name: "send_message_to_session",
+      arguments: { ...args, prompt: "Different" },
+    });
+    assert.deepStrictEqual(collision.structuredContent, {
+      error: { code: "idempotency_key_reused" },
+    });
+    assert.equal(f.calls.filter((call) => call.name === "sendMessage").length, 1);
+  }),
+);
+
+it.effect("Session retries preserve the first host admission time and Session identity", () =>
+  Effect.gen(function* () {
+    const f = fixture();
+    const execute = yield* f.execute;
+    const args = {
+      prompt: "Inspect the task",
+      target: { type: "projectless", directoryName: "retry" },
+      idempotencyKey: "create-session",
+    };
+    const first = yield* execute({ caller: f.caller, name: "create_session", arguments: args });
+    const second = yield* execute({
+      caller: f.makeCaller("later", "retry"),
+      name: "create_session",
+      arguments: args,
+    });
+    assert.isFalse(first.isError ?? false);
+    assert.deepStrictEqual(second, first);
+    assert.equal(f.createdSessions.size, 1);
+    const launches = f.calls.filter((call) => call.name === "launch");
+    assert.deepStrictEqual(launches[0]?.input, launches[1]?.input);
+    assert.equal((launches[0]?.input as { acceptedAt: number }).acceptedAt, 1_000);
+  }),
 );

@@ -1,3 +1,4 @@
+import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
@@ -27,7 +28,11 @@ const authority: NodexAgentTurnContext = {
 };
 const input: AppToolInvocation = {
   name: "handoff_session",
-  arguments: { sessionId: "target", followUpPrompt: "Continue the work" },
+  arguments: {
+    idempotencyKey: "handoff-retry",
+    sessionId: "target",
+    followUpPrompt: "Continue the work",
+  },
   caller: {
     threadId: "caller",
     turnId: "turn",
@@ -62,6 +67,7 @@ const setup = (
       } as never),
       Effect.provideService(CoreModules, {
         workspace: {
+          admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
           read: () =>
             Effect.succeed({
               value: {
@@ -123,7 +129,7 @@ it.effect("reserves one dispatch and never repeats a repeated operation", () =>
     assert.deepNestedInclude(first.structuredContent, { "operation.status": "running" });
     const replay = yield* execute({
       ...input,
-      arguments: { ...input.arguments, operationId: first.structuredContent?.operationId },
+      arguments: { ...input.arguments, idempotencyKey: "handoff-retry" },
       caller: { ...input.caller, callId: "retry" },
     });
     assert.deepInclude(replay.structuredContent, { replay: true, deliveryState: "started" });
@@ -230,6 +236,7 @@ const runtimeFixture = (
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
     Effect.provideService(CoreModules, {
       workspace: {
+        admitToolOperation: createAppToolAdmissionFixture().admitToolOperation,
         read: () =>
           Effect.succeed({
             value: {
@@ -295,7 +302,7 @@ it.effect("routes hosted handoffs through the bound Runtime root and journal rep
       caller: f.caller,
       arguments: {
         ...input.arguments,
-        operationId: first.structuredContent?.operationId,
+        idempotencyKey: "handoff-retry",
       },
     });
     assert.deepInclude(replay.structuredContent, { replay: true, deliveryState: "started" });

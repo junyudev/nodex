@@ -21,6 +21,7 @@ const harness = () => {
   const writes: Array<{ intent: Admit; projectId: string | null | undefined }> = [];
   const identity = { profileId: "profile", libraryId: "library", storeEpoch: "epoch" };
   const workspace: CoreModules["Service"]["workspace"] = {
+    admitToolOperation: () => Effect.die("Unexpected application tool admission"),
     read: (read, _options, projectId) =>
       Effect.sync(() => {
         if (read.kind !== "turn_authority")

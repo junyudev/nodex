@@ -69,6 +69,7 @@ const makeContextHarness = (
     const services = yield* Layer.build(conversationEntityMapLive);
     const conversations = Context.get(services, ConversationEntityMap);
     const workspace: CoreModuleClients["workspace"] = {
+      admitToolOperation: () => Effect.die("Unexpected application tool admission"),
       read: (query) => {
         if (query.kind !== "thread") return Effect.fail(notFound(query.kind));
         return beforeRead(query.thread_id).pipe(
@@ -151,6 +152,7 @@ it.effect(
               : null,
       } as unknown as ConversationEntityMap["Service"]);
       const workspace: CoreModuleClients["workspace"] = {
+        admitToolOperation: () => Effect.die("Unexpected application tool admission"),
         read: (read) => {
           if (read.kind === "thread" && read.thread_id === "parent-thread") {
             return Effect.succeed({

@@ -287,6 +287,12 @@ resource and guard kind; they are not capabilities. An exact retry returns the
 first immutable result, including a body patch whose original text is no longer present. Core resolves the receipt before checking current patch matches. A stale or mismatched guard fails before mutation and
 requires a fresh read.
 
+Native application MCP tools use the parameter `idempotencyKey` for their optional retry
+key: an opaque string of 1–128 characters, omitted on first attempts and reused with identical
+arguments after an unseen outcome. Their host-issued `operationId` values are returned
+receipt or progress handles. CLI content mutations continue to expose their existing
+`--idempotency-key` flag and draft apply identities.
+
 ## Library Files and Page relations
 
 `nodex file` manages Library Files in the current authenticated Profile.

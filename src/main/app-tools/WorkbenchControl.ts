@@ -2,14 +2,14 @@ import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { workbenchControlSchemas as schemas } from "../../shared/nodex-app-tools/workbench-control-schemas";
 import type { WorkbenchCommand } from "../../shared/nodex-app-tools/workbench-commands";
-import { createStableOperationId } from "../core-runtime/operation-identity";
+import { make as makeAppToolOperation } from "./AppToolOperation";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import { WorkbenchObservation, type WorkbenchObservationPrincipal } from "./WorkbenchObservation";
 import { make as makeDescription } from "./WorkbenchTabDescription";
 import { make as makeOpenTarget } from "./WorkbenchOpenTarget";
 import { workbenchObservationHandle } from "./workbench-observation-page";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 
 export interface WorkbenchAppToolContext {
   readonly invocation: AppToolInvocation;
@@ -20,6 +20,7 @@ export interface WorkbenchAppToolContext {
 }
 
 export const make = Effect.gen(function* () {
+  const admitOperation = yield* makeAppToolOperation;
   const observations = yield* WorkbenchObservation;
   const bridge = yield* WorkbenchAgentBridge;
   const describe = yield* makeDescription;
@@ -29,17 +30,12 @@ export const make = Effect.gen(function* () {
 
     const schema = schemas[input.name as keyof typeof schemas];
     if (!schema) return toolFailure("unknown_tool");
-    const parsed = schema.safeParse(input.arguments);
-    if (!parsed.success) return toolFailure("invalid_arguments");
+    const parsed = parseAppToolArguments(schema, input.arguments);
+    if (!parsed.success) return parsed.result;
     const record = yield* observations.forCommand(principal, parsed.data.observationId);
-    const operationId =
-      parsed.data.operationId ??
-      createStableOperationId(`app.${input.name}`, authority.admittedAtMs, [
-        principal.profileId,
-        input.caller.threadId,
-        input.caller.turnId,
-        input.caller.callId,
-      ]);
+    const operation = yield* admitOperation(input, authority, principal.profileId, parsed.data);
+    if (!operation.success) return operation.result;
+    const { operationId } = operation;
     const tabFor = (handle: string) =>
       record.observation.tabs.find(
         (tab) => workbenchObservationHandle(record.observationId, "tab", tab.tabId) === handle,

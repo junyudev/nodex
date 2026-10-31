@@ -18,6 +18,22 @@ use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
 pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 52;
 
+/// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct AppToolOperationRequest {
+    pub provenance: crate::agent::AgentTurnProvenance,
+    pub tool_name: String,
+    pub idempotency_key: String,
+    pub request_hash: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct AppToolOperationIdentity {
+    pub operation_id: String,
+    pub accepted_at_ms: i64,
+    pub expires_at_ms: i64,
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectWorkspaceSessionOrder {

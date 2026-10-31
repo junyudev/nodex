@@ -1,3 +1,5 @@
+import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
+import { CoreModules } from "../core-runtime/CoreModules";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
@@ -103,6 +105,7 @@ const setup = (
   } = {},
 ) =>
   make.pipe(
+    Effect.provideService(CoreModules, createAppToolAdmissionFixture().core),
     Effect.provideService(AutomationApplication, {
       definitions: { get: () => Effect.succeed(item), ...definitions },
     } as never),
@@ -193,7 +196,12 @@ it.effect("reads definition windows with execution provenance and rejects forged
     const forged = yield* execute(
       input({ ...cron, mode: "create", authority: { scope: "library" } }),
     );
-    assert.deepStrictEqual(forged.structuredContent, { error: { code: "invalid_arguments" } });
+    assert.nestedPropertyVal(forged.structuredContent, "error.code", "invalid_arguments");
+    assert.nestedPropertyVal(
+      forged.structuredContent,
+      "error.details.issues.0.path.0",
+      "authority",
+    );
     assert.strictEqual(yield* CoreApplicationAgent, null);
   }),
 );
@@ -229,18 +237,14 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
         }),
     });
     const call = input({ ...cron, mode: "create" });
-    const operationId = createStableOperationId("app.automation_update", authority.admittedAtMs, [
-      "profile:a",
-      "thread:a",
-      "turn:a",
-      "call:a",
-    ]);
+    call.arguments.idempotencyKey = "06d6709c-45e7-4b37-8c26-74e9d64c5aa1";
     const first = yield* execute(call);
+    const operationId = first.structuredContent?.operationId;
     assert.deepStrictEqual(first.structuredContent, { operationId, item });
     assert.deepStrictEqual(yield* execute(call), first);
     const retry = yield* execute({
       ...call,
-      arguments: { ...call.arguments, operationId },
+      arguments: { ...call.arguments },
       caller: { ...call.caller, callId: "retry:a" },
     });
     assert.deepStrictEqual(retry, first);
@@ -253,7 +257,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
       provenance,
     });
 
-    const updateId = createStableOperationId("automation-test", 1_000, "update");
+    const updateKey = "update";
     const updated = yield* execute(
       input({
         ...cron,
@@ -262,10 +266,11 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
         status: "PAUSED",
         notificationPolicy: null,
         expectedRevision: 1,
-        operationId: updateId,
+        idempotencyKey: updateKey,
       }),
     );
-    assert.strictEqual(updated.structuredContent?.operationId, updateId);
+    const updateId = updated.structuredContent?.operationId;
+    assert.isString(updateId);
     assert.deepStrictEqual(calls[3], {
       mode: "update",
       definition: {
@@ -278,15 +283,16 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
       command: { operationId: updateId, expectedRevision: 1 },
       provenance,
     });
-    const deleteId = createStableOperationId("automation-test", 1_000, "delete");
+    const deleteKey = "delete";
     const deleted = yield* execute(
       input({
         mode: "delete",
         id: item.id,
         expectedRevision: 2,
-        operationId: deleteId,
+        idempotencyKey: deleteKey,
       }),
     );
+    const deleteId = deleted.structuredContent?.operationId;
     assert.deepStrictEqual(deleted.structuredContent, {
       operationId: deleteId,
       item: null,
@@ -475,6 +481,7 @@ it.effect(
         },
       });
       const execute = yield* makeWithCapture(captureHostedAppToolAuthority).pipe(
+        Effect.provideService(CoreModules, createAppToolAdmissionFixture().core),
         Effect.provideService(CoreAuthority, { identity: { profileId: "profile:a" } } as never),
         Effect.provideService(ProjectWorkspace, {
           getThread: () => Effect.die("Runtime callers must not read old Thread coordinates"),
@@ -556,6 +563,7 @@ it.effect(
         },
       });
       const execute = yield* makeWithCapture(captureHostedAppToolAuthority).pipe(
+        Effect.provideService(CoreModules, createAppToolAdmissionFixture().core),
         Effect.provideService(CoreAuthority, { identity: { profileId: "profile:a" } } as never),
         Effect.provideService(ProjectWorkspace, {
           getThread: () => Effect.die("ACP must use the hosted Session"),

@@ -175,6 +175,7 @@ const harness = (input: {
   const workspace =
     input.workspace ??
     ({
+      admitToolOperation: () => Effect.die("Unexpected application tool admission"),
       read: () => Effect.die("Unexpected Core read"),
       apply: () => Effect.die("Unexpected Core apply"),
     } as CoreModuleClients["workspace"]);
@@ -333,6 +334,7 @@ it.effect("persists a validated same-thread profile before canonical and remote 
     const order: string[] = [];
     let stored = coreThread();
     const workspace: CoreModuleClients["workspace"] = {
+      admitToolOperation: () => Effect.die("Unexpected application tool admission"),
       read: () => Effect.succeed({ value: { kind: "thread", thread: stored } } as never),
       apply: (operation) =>
         Effect.sync(() => {

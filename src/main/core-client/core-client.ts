@@ -44,6 +44,8 @@ import { MAX_DOCUMENT_HTTP_METADATA_BYTES } from "../../shared/block-documents/h
 import { readCoreRuntimeConnection } from "./runtime-descriptor";
 import { decodeBoundedJson } from "./codec";
 import type {
+  AppToolOperationRequest,
+  AppToolOperationIdentity,
   CoreClientPort,
   CoreEventEnvelope,
   CoreEventReplayRequired,
@@ -217,6 +219,19 @@ export class CoreClient implements CoreClientPort {
 
   health(): Promise<HealthResponse> {
     return this.#transport.requestJson("GET", "/core/v1/health");
+  }
+
+  async admitAppToolOperation(
+    input: AppToolOperationRequest,
+    options: CoreRequestOptions = {},
+  ): Promise<AppToolOperationIdentity> {
+    return await this.#transport.requestJson<AppToolOperationIdentity>(
+      "POST",
+      "/core/v1/modules/workspace/tool-operations/admit",
+      input,
+      this.#moduleHeaders(),
+      options,
+    );
   }
 
   async resolveLocalMutation(

@@ -4515,7 +4515,7 @@ BEGIN
   WHERE page_id=OLD.id AND waiting_in_inbox=1;
 END;
 
-PRAGMA user_version = 194;
+PRAGMA user_version = 195;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -4945,3 +4945,15 @@ CREATE UNIQUE INDEX idx_core_automation_firings_waiting ON core_automation_firin
 CREATE UNIQUE INDEX idx_core_automation_firings_page ON core_automation_firings(page_id);
 CREATE INDEX idx_core_automation_firings_due ON core_automation_firings(due_at_ms) WHERE status='admitted';
 CREATE INDEX idx_core_automation_runs_dispatch ON core_automation_runs(dispatch_id,created_at,run_id);
+
+CREATE TABLE app_tool_operations (
+  caller_identity TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  accepted_at_ms INTEGER NOT NULL,
+  expires_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (caller_identity, tool_name, idempotency_key)
+) STRICT;
+CREATE INDEX idx_app_tool_operations_expiry ON app_tool_operations(expires_at_ms);

@@ -1,6 +1,5 @@
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vite-plus/test";
-import { encodeBoundedOperationId } from "../operation-identity";
 import { automationSchema, automationTool } from "./automation-schema";
 
 const heartbeat = {
@@ -91,24 +90,24 @@ describe("automation tool input", () => {
     }
   });
 
-  it("preserves runtime-advertised model tuples and bounded exact retry identities", () => {
-    const operationId = encodeBoundedOperationId("automation-update", 1_000, "retry-1");
+  it("accepts opaque retry keys and preserves runtime-advertised model tuples", () => {
+    const idempotencyKey = "06d6709c-45e7-4b37-8c26-74e9d64c5aa1";
     expect(
       automationSchema.parse({
         ...cron,
         model: "next-model",
         reasoningEffort: "ultra",
         serviceTier: "priority",
-        operationId,
+        idempotencyKey,
       }),
     ).toMatchObject({
       model: "next-model",
       reasoningEffort: "ultra",
       serviceTier: "priority",
-      operationId,
+      idempotencyKey,
     });
-    for (const operationId of ["retry-1", "", "x".repeat(513)]) {
-      expect(automationSchema.safeParse({ ...heartbeat, operationId }).success).toBe(false);
+    for (const idempotencyKey of ["", "x".repeat(129)]) {
+      expect(automationSchema.safeParse({ ...heartbeat, idempotencyKey }).success).toBe(false);
     }
   });
 
@@ -132,7 +131,7 @@ describe("automation tool input", () => {
     expect(automationSchema.parse({ mode: "list" })).toEqual({ mode: "list", limit: 20 });
     expect(
       automationSchema.parse({ mode: "list", query: " build ", cursor: "opaque", limit: 100 }),
-    ).toEqual({ mode: "list", query: "build", cursor: "opaque", limit: 100 });
+    ).toEqual({ mode: "list", query: " build ", cursor: "opaque", limit: 100 });
     for (const input of [
       { mode: "list", limit: 101 },
       { mode: "list", limit: 0 },

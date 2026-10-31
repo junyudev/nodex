@@ -593,6 +593,12 @@ root. The shared content contract validator remains a pure helper; production ex
 discovers authority through a module setter or import-time active-service slot. Historical dynamic
 results remain presentation data and cannot reactivate retired local execution entrypoints.
 
+Workspace owns durable admission of application-tool retry keys. The execution runtime owns
+admission for its delegated-task tools alongside their command receipts. Each authority binds
+the verified calling root, tool and opaque key to host-issued time and immutable arguments in
+one writer transaction; Main and provider connections hold no parallel durable key map.
+The public contract belongs to [Agent Interface Behavior](product-specs/agent-interface-behavior.md).
+
 Promise, callback, EventEmitter, AbortSignal, and synchronous IPC shapes are allowed only at explicit external Adapter seams. Application Modules expose Effect values, typed state, and Stream/PubSub observation; renderer, preload, shared contracts, and generated wire protocols remain Effect-free. Synchronous preload contracts use a separate scoped pure adapter because Electron requires a result before an Effect fiber can run. [ADR 0048](adr/0048-effect-main-application-kernel.md) defines the completed Main application-kernel topology and frontier; the [external frontier ledger](effect-external-frontiers.md) records the permitted adapter categories and their constraints.
 
 Codex Electron and app-server ingress convert external callback, Promise, and cancellation shapes

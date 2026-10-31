@@ -314,6 +314,12 @@ export class FakeCoreClient implements CoreClientPort {
     this.#localMutationResolveResults.push(result);
   }
 
+  async admitAppToolOperation(
+    _input: import("../types").AppToolOperationRequest,
+  ): Promise<import("../types").AppToolOperationIdentity> {
+    throw new Error("Fake Core client has no tool operation admission");
+  }
+
   async resolveLocalMutation(
     input: CoreLocalMutationResolveRequest,
   ): Promise<CoreLocalMutationResolveResponse> {

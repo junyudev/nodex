@@ -6,7 +6,7 @@ import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 
 export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
@@ -14,8 +14,8 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
     const workspace = yield* ProjectWorkspace;
     const terminals = yield* TerminalSessions;
     return Effect.fn("TerminalAppTools.read")(function* (input: AppToolInvocation) {
-      const parsed = readSessionTerminalSchema.safeParse(input.arguments);
-      if (!parsed.success) return toolFailure("invalid_arguments");
+      const parsed = parseAppToolArguments(readSessionTerminalSchema, input.arguments);
+      if (!parsed.success) return parsed.result;
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       const recapture = capture(input.caller);
       const authority = yield* recapture;

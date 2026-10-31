@@ -6,7 +6,12 @@ import { PropertyIdSchema } from "../nodex-agent-tools/base-schemas";
 
 const pageFields = {
   observationId: z.string().uuid(),
-  cursor: z.string().min(1).max(4096).optional(),
+  cursor: z
+    .string()
+
+    .min(1)
+    .max(4096)
+    .optional(),
   limit: z.number().int().min(1).max(100).default(50),
   panelId: z.enum(["right", "bottom"]).optional(),
 };
@@ -18,7 +23,12 @@ export const workbenchObservationSchemas = {
   }),
   list_session_tabs: z.strictObject({
     ...pageFields,
-    groupId: z.string().min(1).max(512).optional(),
+    groupId: z
+      .string()
+
+      .min(1)
+      .max(512)
+      .optional(),
   }),
   list_tab_groups: z.strictObject(pageFields),
   read_tab_content: z
@@ -66,6 +76,6 @@ export const workbenchObservationToolCatalog: readonly Tool[] = Object.entries(
 ).map(([name, schema]) => ({
   name,
   description: descriptions[name as keyof typeof descriptions],
-  inputSchema: z.toJSONSchema(schema) as Tool["inputSchema"],
+  inputSchema: z.toJSONSchema(schema, { io: "input" }) as Tool["inputSchema"],
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 }));

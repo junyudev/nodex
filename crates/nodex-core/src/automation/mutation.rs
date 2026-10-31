@@ -221,7 +221,7 @@ pub(super) fn apply(
                         &profile_id,
                         &library_id,
                         &context.project_id,
-                        &provenance.authority.thread_id,
+                        &provenance.authority.root_thread_id,
                         request.contract_version,
                         &request.store_epoch,
                         intent,

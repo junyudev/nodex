@@ -1,19 +1,18 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { isBoundedOperationId } from "../operation-identity";
+import { idempotencyKeySchema } from "./idempotency-key";
 
-const utf8 = new TextEncoder();
 const boundedText = (maxBytes: number) =>
   z
     .string()
-    .trim()
+    .regex(/\S/, "Must contain a non-whitespace character")
     .min(1)
     .max(maxBytes)
-    .refine((value) => utf8.encode(value).length <= maxBytes, "Text exceeds its UTF-8 byte bound");
+    .describe(`Nonblank text, at most ${maxBytes} UTF-8 bytes`);
 const id = boundedText(512);
 const expectedRevision = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const operationFields = {
-  operationId: z.string().max(512).refine(isBoundedOperationId).optional(),
+  idempotencyKey: idempotencyKeySchema.optional(),
 };
 const definitionFields = {
   launch: z
@@ -40,14 +39,16 @@ const definitionFields = {
     ),
   name: z
     .string()
-    .trim()
+    .regex(/\S/, "Must contain a non-whitespace character")
     .min(1)
     .max(512)
-    .refine((value) => Array.from(value).length <= 256, "Name must not exceed 256 characters"),
+    .meta({ maxLength: 256 }),
   prompt: boundedText(1024 * 1024).describe(
-    "Self-contained task instructions. Keep scheduling, execution settings, and notification preferences in their separate fields.",
+    "Self-contained task instructions, at most 1048576 UTF-8 bytes. Keep scheduling, execution settings, and notification preferences in their separate fields.",
   ),
-  rrule: boundedText(16 * 1024).describe("RRULE schedule interpreted by the local scheduler."),
+  rrule: boundedText(16 * 1024).describe(
+    "RRULE schedule interpreted by the local scheduler, at most 16384 UTF-8 bytes.",
+  ),
   notificationPolicy: z
     .literal("failed_runs_only")
     .nullable()
@@ -97,32 +98,75 @@ const updateFields = {
   status: z.enum(["ACTIVE", "PAUSED"]),
 };
 
-export const automationSchema = z.discriminatedUnion("mode", [
-  z.strictObject({
-    mode: z.literal("list"),
-    query: boundedText(512).optional(),
-    cursor: z.string().min(1).max(2048).optional(),
-    limit: z.number().int().min(1).max(100).default(20),
-  }),
-  z.strictObject({ mode: z.literal("view"), id }),
-  z.discriminatedUnion("kind", [
-    z.strictObject({ mode: z.literal("create"), ...cronFields }),
-    z.strictObject({ mode: z.literal("create"), ...heartbeatFields }),
-  ]),
-  z.discriminatedUnion("kind", [
-    z.strictObject({ mode: z.literal("update"), ...cronFields, ...updateFields }),
-    z.strictObject({ mode: z.literal("update"), ...heartbeatFields, ...updateFields }),
-  ]),
-  z.discriminatedUnion("kind", [
-    z.strictObject({ mode: z.literal("suggested_create"), ...cronFields }),
-    z.strictObject({ mode: z.literal("suggested_create"), ...heartbeatFields }),
-  ]),
-  z.discriminatedUnion("kind", [
-    z.strictObject({ mode: z.literal("suggested_update"), ...cronFields, ...updateFields }),
-    z.strictObject({ mode: z.literal("suggested_update"), ...heartbeatFields, ...updateFields }),
-  ]),
-  z.strictObject({ mode: z.literal("delete"), id, expectedRevision, ...operationFields }),
-]);
+export const automationSchema = z
+  .discriminatedUnion("mode", [
+    z.strictObject({
+      mode: z.literal("list"),
+      query: boundedText(512).optional(),
+      cursor: z
+        .string()
+
+        .min(1)
+        .max(2048)
+        .optional(),
+      limit: z.number().int().min(1).max(100).default(20),
+    }),
+    z.strictObject({ mode: z.literal("view"), id }),
+    z.discriminatedUnion("kind", [
+      z.strictObject({ mode: z.literal("create"), ...cronFields }),
+      z.strictObject({ mode: z.literal("create"), ...heartbeatFields }),
+    ]),
+    z.discriminatedUnion("kind", [
+      z.strictObject({ mode: z.literal("update"), ...cronFields, ...updateFields }),
+      z.strictObject({ mode: z.literal("update"), ...heartbeatFields, ...updateFields }),
+    ]),
+    z.discriminatedUnion("kind", [
+      z.strictObject({ mode: z.literal("suggested_create"), ...cronFields }),
+      z.strictObject({ mode: z.literal("suggested_create"), ...heartbeatFields }),
+    ]),
+    z.discriminatedUnion("kind", [
+      z.strictObject({ mode: z.literal("suggested_update"), ...cronFields, ...updateFields }),
+      z.strictObject({ mode: z.literal("suggested_update"), ...heartbeatFields, ...updateFields }),
+    ]),
+    z.strictObject({ mode: z.literal("delete"), id, expectedRevision, ...operationFields }),
+  ])
+  .superRefine((input, context) => {
+    const bytes = new TextEncoder();
+    const byteBounds: Readonly<Record<string, number>> = {
+      query: 512,
+      id: 512,
+      runbookPageId: 512,
+      targetSessionId: 512,
+      projectId: 512,
+      model: 512,
+      reasoningEffort: 64,
+      serviceTier: 64,
+      prompt: 1024 * 1024,
+      rrule: 16 * 1024,
+      localEnvironmentConfigPath: 16 * 1024,
+    };
+    const check = (value: unknown, maximum: number, path: (string | number)[]) => {
+      if (typeof value === "string" && bytes.encode(value).length > maximum)
+        context.addIssue({
+          code: "custom",
+          path,
+          message: `Text must not exceed ${maximum} UTF-8 bytes`,
+        });
+    };
+    for (const [field, maximum] of Object.entries(byteBounds))
+      check(Reflect.get(input, field), maximum, [field]);
+    if ("name" in input && Array.from(input.name).length > 256)
+      context.addIssue({
+        code: "custom",
+        path: ["name"],
+        message: "Name must not exceed 256 characters",
+      });
+    if ("cwds" in input)
+      input.cwds?.forEach((cwd, index) => check(cwd, 16 * 1024, ["cwds", index]));
+    if ("backendBinding" in input && input.backendBinding)
+      for (const [field, value] of Object.entries(input.backendBinding))
+        check(value, 512, ["backendBinding", field]);
+  });
 
 export type AutomationToolInput = z.infer<typeof automationSchema>;
 export type AutomationProposal = Extract<
@@ -133,7 +177,10 @@ export type AutomationProposal = Extract<
 export const automationTool: Tool = {
   name: "automation_update",
   description:
-    "List, view, propose, create, replace, or delete a scheduled Agent task. suggested_create and suggested_update return review proposals without saving or scheduling; the user reviews and explicitly saves them. Use heartbeat for follow-ups in a Session; its omitted targetSessionId defaults to the calling Session. Use cron for standalone runs in an explicit Project or with projectId null; Project runs require cwds from that Project, and projectless runs require local execution with no folders or Environment. Creation starts ACTIVE. Use list with an optional name/prompt/ID query and follow nextCursor to find existing tasks. View before update or delete and supply the returned definitionRevision as expectedRevision. Update replaces the complete definition: preserve existing values explicitly; omitted optional fields reset to defaults except backendBinding, notificationPolicy and launch, which keep their current values when omitted; pass notificationPolicy null to restore normal notifications. Reuse operationId and identical arguments to reconcile an uncertain mutation. Agents may create tasks that ask first or switch a task to ask. Making a task run automatically requires suggested_create or suggested_update for the user to apply. An ask task waits for confirmation in the Inbox before each run. Once launched, scheduled turns do not wait for interactive approval.",
-  inputSchema: { ...z.toJSONSchema(automationSchema), type: "object" } as Tool["inputSchema"],
+    "List, view, propose, create, replace, or delete a scheduled Agent task. suggested_create and suggested_update return review proposals without saving or scheduling; the user reviews and explicitly saves them. Use heartbeat for follow-ups in a Session; its omitted targetSessionId defaults to the calling Session. Use cron for standalone runs in an explicit Project or with projectId null; Project runs require cwds from that Project, and projectless runs require local execution with no folders or Environment. Creation starts ACTIVE. Use list with an optional name/prompt/ID query and follow nextCursor to find existing tasks. View before update or delete and supply the returned definitionRevision as expectedRevision. Update replaces the complete definition: preserve existing values explicitly; omitted optional fields reset to defaults except backendBinding, notificationPolicy and launch, which keep their current values when omitted; pass notificationPolicy null to restore normal notifications. Reuse idempotencyKey and identical arguments to reconcile an uncertain mutation. Agents may create tasks that ask first or switch a task to ask. Making a task run automatically requires suggested_create or suggested_update for the user to apply. An ask task waits for confirmation in the Inbox before each run. Once launched, scheduled turns do not wait for interactive approval.",
+  inputSchema: {
+    ...z.toJSONSchema(automationSchema, { io: "input" }),
+    type: "object",
+  } as Tool["inputSchema"],
   annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
 };

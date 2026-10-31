@@ -45,7 +45,7 @@ export interface McpInvocationScope {
   readonly environmentId: EnvironmentId;
   readonly capabilities: ReadonlySet<McpCapability>;
   readonly issuedAt: number;
-  /** Namespaces idempotency keys so two callers reusing a clientRequestId cannot collide. */
+  /** Connection namespace for implicit tool-call identities. */
   readonly requestNamespace: string;
   readonly thread: McpThreadCaller | undefined;
   readonly client: McpClientCaller | undefined;

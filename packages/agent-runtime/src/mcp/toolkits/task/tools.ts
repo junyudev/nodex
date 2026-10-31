@@ -5,6 +5,7 @@ import {
   OrchestratorMcpCapabilitiesResult,
   OrchestratorMcpDelegatedTaskStatus,
   OrchestratorMcpDelegateTaskInput,
+  OrchestratorMcpIdempotencyKey,
   OrchestratorMcpFailure,
   OrchestratorMcpTerminalDelegatedTaskStatus,
   PositiveInt,
@@ -35,9 +36,6 @@ const dependencies = [
 ];
 
 const TaskIdentity = NodeId.annotate({ description: "taskId returned by delegate_task." });
-const ClientRequestId = TrimmedNonEmptyString.check(Schema.isMaxLength(256)).annotate({
-  description: "Stable idempotency key to reuse when retrying this mutation.",
-});
 
 const TaskResult = Schema.Struct({
   status: OrchestratorMcpTerminalDelegatedTaskStatus,
@@ -79,7 +77,7 @@ const TaskWaitInput = Schema.Struct({
 const TaskCancelInput = Schema.Struct({
   taskId: TaskIdentity,
   reason: Schema.optional(Schema.String.check(Schema.isMaxLength(2_000))),
-  clientRequestId: Schema.optional(ClientRequestId),
+  idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey),
 });
 export const TaskCancelResult = Schema.Struct({
   taskId: NodeId,
@@ -93,7 +91,7 @@ const TaskSendInput = Schema.Struct({
     description:
       "auto starts an idle task conversation, steers a steerable turn, or queues otherwise. queue adds a separate turn, steer updates the running turn, restart interrupts and restarts it.",
   }),
-  clientRequestId: Schema.optional(ClientRequestId),
+  idempotencyKey: Schema.optional(OrchestratorMcpIdempotencyKey),
 });
 export const TaskSendResult = Schema.Struct({
   taskId: NodeId.annotate({
@@ -218,13 +216,14 @@ const ListAgentModelsTool = Tool.make("list_agent_models", {
 
 const DelegateTaskTool = Tool.make("delegate_task", {
   description:
-    "Start a delegated child task that runs only the supplied prompt, without the parent conversation. Use it for cross-provider work or models your native subagents cannot run; choose models from list_agent_models. Provider, model and options inherit unless target overrides them. Use a distinct clientRequestId per task, stable across retries. Prefer mode='async': the task's completion wakes you, so end your turn instead of polling. mode='wait' blocks up to timeoutMs and never cancels the task.",
+    "Start a delegated child task that runs only the supplied prompt, without the parent conversation. Use it for cross-provider work or models your native subagents cannot run; choose models from list_agent_models. Provider, model and options inherit unless target overrides them. Prefer mode='async': the task's completion wakes you, so end your turn instead of polling. mode='wait' blocks up to timeoutMs and never cancels the task.",
   parameters: OrchestratorMcpDelegateTaskInput,
   success: TaskView,
   failure: OrchestratorMcpFailure,
   failureMode: "return",
   dependencies,
 })
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Title, "Delegate a task")
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
@@ -266,6 +265,7 @@ const TaskSendTool = Tool.make("task_send", {
   failureMode: "return",
   dependencies,
 })
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Title, "Send to a task")
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
@@ -295,6 +295,7 @@ const TaskCancelTool = Tool.make("task_cancel", {
   failureMode: "return",
   dependencies,
 })
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Title, "Cancel a task")
   .annotate(Tool.Destructive, true);
 

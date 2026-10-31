@@ -12,7 +12,12 @@ import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AppToolInvocationInbox, type AppToolInvocation } from "./AppToolInvocationInbox";
 
-import { toolFailure as failure, toolSuccess as success } from "./app-tool-result";
+import { emptyAppToolArguments } from "../../shared/nodex-app-tools/empty-arguments";
+import {
+  parseAppToolArguments,
+  toolFailure as failure,
+  toolSuccess as success,
+} from "./app-tool-result";
 import { make as makeContentQueries } from "./ContentQueryAppTools";
 import { make as makeContentTools } from "./ContentAppTools";
 import { isContentTool } from "../../shared/nodex-app-tools/content-catalog";
@@ -90,8 +95,10 @@ export const make = Effect.gen(function* () {
       input.name !== "read_session_terminal" &&
       input.name !== "uninstall_plugin" &&
       Object.keys(input.arguments).length !== 0
-    )
-      return failure("invalid_arguments");
+    ) {
+      const parsed = parseAppToolArguments(emptyAppToolArguments, input.arguments);
+      if (!parsed.success) return parsed.result;
+    }
     const thread = yield* workspace
       .getThread(input.caller.threadId)
       .pipe(Effect.catch(() => Effect.succeed(null)));

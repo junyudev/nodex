@@ -184,7 +184,7 @@ const routingIndex = () => {
 
 const coreModules = (
   automation: CoreModuleClients["automation"],
-  workspace?: CoreModuleClients["workspace"],
+  workspace?: Pick<CoreModuleClients["workspace"], "read" | "apply">,
 ): CoreModules["Service"] =>
   CoreModules.of({ automation, workspace } as unknown as CoreModuleClients);
 

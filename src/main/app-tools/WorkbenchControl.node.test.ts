@@ -1,3 +1,5 @@
+import { createAppToolAdmissionFixture } from "./app-tool-operation.test-fixtures";
+import { CoreModules } from "../core-runtime/CoreModules";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
@@ -74,7 +76,7 @@ const context = {
     arguments: {
       observationId,
       tabId: workbenchObservationHandle(observationId, "tab", "raw-page-id"),
-      operationId: "retry",
+      idempotencyKey: "retry",
     },
     caller: {
       threadId: "thread",
@@ -96,6 +98,7 @@ const context = {
 };
 const setup = (requests: WorkbenchCommandEnvelope[], snapshot = record) =>
   make.pipe(
+    Effect.provideService(CoreModules, createAppToolAdmissionFixture().core),
     Effect.provideService(WorkbenchObservation, {
       forCommand: () => Effect.succeed(snapshot),
     } as never),
@@ -142,7 +145,7 @@ it.effect(
       const first = yield* execute(context);
       const second = yield* execute(context);
       assert.deepStrictEqual(requests[0], {
-        operationId: "retry",
+        operationId: String(first.structuredContent?.operationId),
         sceneOwner: { kind: "library" },
         expectedPresentationRevision: 7,
         command: { kind: "close_tab", tabId: "raw-page-id" },
@@ -164,7 +167,11 @@ it.effect(
         ...context,
         invocation: {
           ...context.invocation,
-          arguments: { ...context.invocation.arguments, tabId: "raw-page-id" },
+          arguments: {
+            ...context.invocation.arguments,
+            idempotencyKey: "invalid-handle",
+            tabId: "raw-page-id",
+          },
         },
       });
       assert.strictEqual(invalid.isError, true);

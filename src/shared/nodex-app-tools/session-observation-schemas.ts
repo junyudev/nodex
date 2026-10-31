@@ -9,16 +9,26 @@ import { sessionScopeSchema } from "./session-scope";
 const listSchema = z
   .strictObject({
     scope: sessionScopeSchema,
-    cursor: z.string().min(1).max(4096).optional(),
-    limit: z
-      .number()
-      .int()
+    cursor: z
+      .string()
+
       .min(1)
-      .transform((value) => Math.min(value, 50))
-      .default(20),
+      .max(4096)
+      .optional(),
+    limit: z.number().int().min(1).default(20),
     includeSubagents: z.boolean().default(true),
-    projectId: z.string().trim().min(1).max(512).optional(),
-    query: z.string().trim().min(1).max(200).optional(),
+    projectId: z
+      .string()
+      .regex(/\S/, "Must contain a non-whitespace character")
+      .min(1)
+      .max(512)
+      .optional(),
+    query: z
+      .string()
+      .regex(/\S/, "Must contain a non-whitespace character")
+      .min(1)
+      .max(200)
+      .optional(),
     statuses: z
       .array(
         z.enum([
@@ -50,16 +60,21 @@ const listSchema = z
 const searchSchema = z
   .strictObject({
     scope: sessionScopeSchema,
-    query: z.string().trim().min(2).max(200),
-    projectId: z.string().trim().min(1).max(512).optional(),
-    archived: z.boolean().default(false),
-    cursor: z.string().min(1).max(4096).optional(),
-    limit: z
-      .number()
-      .int()
+    query: z.string().regex(/\S/, "Must contain a non-whitespace character").min(2).max(200),
+    projectId: z
+      .string()
+      .regex(/\S/, "Must contain a non-whitespace character")
       .min(1)
-      .transform((value) => Math.min(value, 50))
-      .default(20),
+      .max(512)
+      .optional(),
+    archived: z.boolean().default(false),
+    cursor: z
+      .string()
+
+      .min(1)
+      .max(4096)
+      .optional(),
+    limit: z.number().int().min(1).default(20),
   })
   .refine((input) => input.scope !== "profile" || input.projectId === undefined, {
     message: "Choose a Project or Profile scope, not both",
@@ -71,23 +86,29 @@ const waitSchema = z
     targets: z
       .array(
         z.strictObject({
-          sessionId: z.string().trim().min(1).max(512),
+          sessionId: z
+            .string()
+            .regex(/\S/, "Must contain a non-whitespace character")
+            .min(1)
+            .max(512),
           execution: sessionExecutionSchema.optional(),
-          runId: z.string().trim().min(1).max(512).optional(),
-          afterCursor: z.string().min(1).max(4096).optional(),
+          runId: z
+            .string()
+            .regex(/\S/, "Must contain a non-whitespace character")
+            .min(1)
+            .max(512)
+            .optional(),
+          afterCursor: z
+            .string()
+
+            .min(1)
+            .max(4096)
+            .optional(),
         }),
       )
       .min(1)
       .max(8)
-      .refine(
-        (targets) =>
-          new Set(
-            targets.map((target) =>
-              JSON.stringify([target.sessionId, target.execution?.threadId ?? null]),
-            ),
-          ).size === targets.length,
-        "Session targets must be unique",
-      ),
+      .describe("Each Session and execution.threadId pair must be unique"),
     timeoutMs: z
       .number()
       .int()
@@ -99,6 +120,15 @@ const waitSchema = z
       .optional(),
   })
   .superRefine((input, context) => {
+    const identities = input.targets.map((target) =>
+      JSON.stringify([target.sessionId, target.execution?.threadId ?? null]),
+    );
+    if (new Set(identities).size !== identities.length)
+      context.addIssue({
+        code: "custom",
+        path: ["targets"],
+        message: "Session targets must be unique",
+      });
     if (
       input.timeoutMs !== undefined &&
       input.timeoutMs > sessionWaitLimits(input.targets.length).maximumMs
@@ -122,33 +152,48 @@ export const sessionObservationSchemas = {
   read_session: z
     .strictObject({
       execution: sessionExecutionSchema.optional(),
-      runId: z.string().trim().min(1).max(512).optional(),
-      itemId: z.string().trim().min(1).max(4096).optional(),
-      sourceThreadId: z.string().trim().min(1).max(4096).optional(),
+      runId: z
+        .string()
+        .regex(/\S/, "Must contain a non-whitespace character")
+        .min(1)
+        .max(512)
+        .optional(),
+      itemId: z
+        .string()
+        .regex(/\S/, "Must contain a non-whitespace character")
+        .min(1)
+        .max(4096)
+        .optional(),
+      sourceThreadId: z
+        .string()
+        .regex(/\S/, "Must contain a non-whitespace character")
+        .min(1)
+        .max(4096)
+        .optional(),
       textOffset: z.number().int().min(0).optional(),
-      sessionId: z.string().trim().min(1).max(512).optional(),
-      cursor: z.string().min(1).max(SESSION_HISTORY_CURSOR_MAX_CHARS).optional(),
+      sessionId: z
+        .string()
+        .regex(/\S/, "Must contain a non-whitespace character")
+        .min(1)
+        .max(512)
+        .optional(),
+      cursor: z
+        .string()
+
+        .min(1)
+        .max(SESSION_HISTORY_CURSOR_MAX_CHARS)
+        .optional(),
       view: z.enum(["messages", "activity"]).optional(),
       order: z.enum(["newest_first", "oldest_first"]).optional(),
-      runLimit: z
-        .number()
-        .int()
+      runLimit: z.number().int().min(1).default(10),
+      runCursor: z
+        .string()
+
         .min(1)
-        .transform((value) => Math.min(value, 50))
-        .default(10),
-      runCursor: z.string().min(1).max(4096).optional(),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .transform((value) => Math.min(value, 50))
-        .default(20),
-      maxCharsPerItem: z
-        .number()
-        .int()
-        .min(1)
-        .transform((value) => Math.min(value, 8000))
-        .default(2000),
+        .max(4096)
+        .optional(),
+      limit: z.number().int().min(1).default(20),
+      maxCharsPerItem: z.number().int().min(1).default(2000),
     })
     .superRefine((input, context) => {
       if (
@@ -203,3 +248,16 @@ export const sessionObservationToolCatalog: readonly Tool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
 ];
+
+/** Quantity budgets normalize after shape validation; they never add hidden input constraints. */
+export const normalizeSessionObservationArguments = <T extends Record<string, unknown>>(
+  input: T,
+): T => ({
+  ...input,
+  ...Object.fromEntries(
+    Object.entries({ limit: 50, runLimit: 50, maxCharsPerItem: 8000 }).flatMap(
+      ([field, maximum]) =>
+        typeof input[field] === "number" ? [[field, Math.min(input[field], maximum)]] : [],
+    ),
+  ),
+});

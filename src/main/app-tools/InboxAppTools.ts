@@ -6,10 +6,10 @@ import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-a
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
-import { createStableOperationId } from "../core-runtime/operation-identity";
+import { make as makeAppToolOperation } from "./AppToolOperation";
 import { captureAppToolAuthority, type AppToolCaller } from "./AppToolCaller";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 import { deriveSessionDispatchIdentity } from "./session-dispatch-identity";
 
 const sendFailure = (error: { readonly cause?: unknown }): string => {
@@ -25,25 +25,26 @@ export const makeWithCapture = (
   captureCaller: (caller: AppToolCaller) => Effect.Effect<NodexAgentTurnContext | null>,
 ) =>
   Effect.gen(function* () {
+    const admitOperation = yield* makeAppToolOperation;
     const identity = yield* CoreAuthority;
     const core = yield* CoreModules;
 
     return Effect.fn("InboxAppTools.execute")(function* (input: AppToolInvocation) {
-      const parsed = sendToInboxSchema.safeParse(input.arguments);
-      if (!parsed.success) return toolFailure("invalid_arguments");
+      const parsed = parseAppToolArguments(sendToInboxSchema, input.arguments);
+      if (!parsed.success) return parsed.result;
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       const authority = yield* captureCaller(input.caller);
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       if (!authority) return toolFailure("authority_unavailable");
-      const operationId =
-        parsed.data.operationId ??
-        createStableOperationId("app.send_to_inbox", authority.admittedAtMs, [
-          identity.identity.profileId,
-          input.caller.threadId,
-          input.caller.turnId,
-          input.caller.callId,
-        ]);
-      const pageId = deriveSessionDispatchIdentity(operationId, "inbox-page");
+      const operation = yield* admitOperation(
+        input,
+        authority,
+        identity.identity.profileId,
+        parsed.data,
+      );
+      if (!operation.success) return operation.result;
+      const { operationId, acceptedAtMs } = operation;
+      const pageId = deriveSessionDispatchIdentity(operationId, "inbox-page", acceptedAtMs);
       const provenance = toCoreAgentTurnProvenance(identity.identity.profileId, authority);
       const sent = yield* core.workspace
         .apply(
@@ -55,7 +56,11 @@ export const makeWithCapture = (
               intent: {
                 kind: "send_inbox_message",
                 page_id: pageId,
-                document_id: deriveSessionDispatchIdentity(operationId, "inbox-document"),
+                document_id: deriveSessionDispatchIdentity(
+                  operationId,
+                  "inbox-document",
+                  acceptedAtMs,
+                ),
                 body: parsed.data.body,
                 ...(parsed.data.title ? { title: parsed.data.title } : {}),
               },

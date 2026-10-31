@@ -27,8 +27,9 @@ use nodex_core_contracts::{
         PreparedBlobReceipt,
     },
     workspace::{
-        ProjectWorkspaceCommitValue, ProjectWorkspaceIntent, ProjectWorkspaceRead,
-        ProjectWorkspaceReadValue, ProjectWorkspaceReceipt,
+        AppToolOperationIdentity, AppToolOperationRequest, ProjectWorkspaceCommitValue,
+        ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
+        ProjectWorkspaceReceipt,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -1030,6 +1031,19 @@ mod api {
 
     #[utoipa::path(
         post,
+        path = "/core/v1/modules/workspace/tool-operations/admit",
+        params(
+            ("x-nodex-request-id" = Option<String>, Header),
+            ("x-nodex-request-class" = Option<CoreRequestClass>, Header),
+            ("x-nodex-request-deadline-ms" = Option<u64>, Header)
+        ),
+        request_body = AppToolOperationRequest,
+        responses((status = 200, description = "Host-issued retry identity", body = AppToolOperationIdentity))
+    )]
+    pub(super) fn admit_app_tool_operation() {}
+
+    #[utoipa::path(
+        post,
         path = "/core/v1/requests/cancel",
         request_body = CoreRequestCancelRequest,
         responses((status = 200, description = "Request cancellation acknowledged", body = CoreRequestCancelResponse))
@@ -1226,6 +1240,7 @@ mod api {
         api::handshake,
         api::events,
         api::resolve_local_mutation,
+        api::admit_app_tool_operation,
         api::cancel_request,
         api::shutdown,
         api::prepare_blob,
@@ -1288,6 +1303,8 @@ mod api {
         EventReplayRequired,
         StreamCheckpoint,
         OwnedDocumentEvent,
+        AppToolOperationRequest,
+        AppToolOperationIdentity,
         LocalMutationResolveRequest,
         LocalMutationResolveResponse,
         LibraryReadRequest,
@@ -1382,6 +1399,7 @@ mod tests {
             "/core/v1/handshake",
             "/core/v1/health",
             "/core/v1/local-mutations/resolve",
+            "/core/v1/modules/workspace/tool-operations/admit",
             "/core/v1/requests/cancel",
             "/core/v1/modules/administration/apply",
             "/core/v1/modules/administration/read",

@@ -19,10 +19,10 @@ import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { createStableOperationId } from "../core-runtime/operation-identity";
+import { make as makeAppToolOperation } from "./AppToolOperation";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
@@ -41,7 +41,7 @@ const definitionInput = (request: Extract<AutomationToolInput, { kind: "cron" | 
   if (request.mode === "update" || request.mode === "suggested_update") {
     const {
       mode: _mode,
-      operationId: _operationId,
+      idempotencyKey: _idempotencyKey,
       id: _id,
       status: _status,
       expectedRevision: _revision,
@@ -49,12 +49,13 @@ const definitionInput = (request: Extract<AutomationToolInput, { kind: "cron" | 
     } = request;
     return definition;
   }
-  const { mode: _mode, operationId: _operationId, ...definition } = request;
+  const { mode: _mode, idempotencyKey: _idempotencyKey, ...definition } = request;
   return definition;
 };
 
 export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
   Effect.gen(function* () {
+    const admitOperation = yield* makeAppToolOperation;
     const application = yield* AutomationApplication;
     const workspace = yield* ProjectWorkspace;
     const identity = yield* CoreAuthority;
@@ -260,24 +261,22 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
     });
 
     return Effect.fn("AutomationAppTools.execute")(function* (input: AppToolInvocation) {
-      const parsed = automationSchema.safeParse(input.arguments);
-      if (!parsed.success) return toolFailure("invalid_arguments");
+      const parsed = parseAppToolArguments(automationSchema, input.arguments);
+      if (!parsed.success) return parsed.result;
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
       const authority = yield* capture(input.caller);
       if (!authority) return toolFailure("authority_unavailable");
       const request = parsed.data;
-      const writes =
-        request.mode === "create" || request.mode === "update" || request.mode === "delete";
 
       if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-      const operationId =
-        ("operationId" in request ? request.operationId : undefined) ??
-        createStableOperationId("app.automation_update", authority.admittedAtMs, [
-          identity.identity.profileId,
-          input.caller.threadId,
-          input.caller.turnId,
-          input.caller.callId,
-        ]);
+      const operation = yield* admitOperation(
+        input,
+        authority,
+        identity.identity.profileId,
+        request,
+      );
+      if (!operation.success) return operation.result;
+      const { operationId } = operation;
       return yield* dispatch(input, request, operationId).pipe(
         Effect.provideService(
           CoreApplicationAgent,

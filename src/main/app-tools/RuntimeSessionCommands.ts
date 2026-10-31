@@ -9,7 +9,7 @@ import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { readCodexLinkedRootSession } from "../codex-application/CodexLinkedRootSession";
-import { createStableOperationId } from "../core-runtime/operation-identity";
+import { make as makeAppToolOperation } from "./AppToolOperation";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { createSessionSchema } from "../../shared/nodex-app-tools/session-launch-schema";
 import { sessionForkSchema } from "../../shared/nodex-app-tools/session-fork-schema";
@@ -19,10 +19,11 @@ import { captureAppToolAuthority, readHostedAppToolSessionContext } from "./AppT
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { deriveSessionDispatchIdentity } from "./session-dispatch-identity";
 import { make as makeSessionMessageIntake } from "./SessionMessageIntake";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 
 /** Product Session commands use the canonical execution writer and stable command identities. */
 export const make = Effect.gen(function* () {
+  const admitOperation = yield* makeAppToolOperation;
   const application = yield* AgentRuntimeApplication;
   const core = yield* CoreAuthority;
   const modules = yield* CoreModules;
@@ -49,22 +50,18 @@ export const make = Effect.gen(function* () {
     };
 
     const provenance = toCoreAgentTurnProvenance(core.identity.profileId, authority);
-    const stableOperation = (supplied: string | undefined) =>
-      supplied ??
-      createStableOperationId(`app.${input.name}`, authority.admittedAtMs, [
-        core.identity.profileId,
-        input.caller.threadId,
-        input.caller.turnId,
-        input.caller.callId,
-      ]);
     const execute = Effect.gen(function* () {
       if (input.name === "send_message_to_session") {
-        const parsed = sessionMessageSchema.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(sessionMessageSchema, input.arguments);
+        if (!parsed.success) return parsed.result;
         const request = parsed.data;
-        const operationId = stableOperation(request.operationId);
+        const operation = yield* admitOperation(input, authority, core.identity.profileId, request);
+        if (!operation.success) return operation.result;
+        const { operationId, acceptedAtMs } = operation;
         const outcome = yield* intake.send({
           request,
+          acceptedAtMs,
+          expiresAtMs: operation.expiresAtMs,
           caller: callerTarget,
           operationId,
           sourceThreadId: hosted?.threadId ?? input.caller.threadId,
@@ -79,30 +76,34 @@ export const make = Effect.gen(function* () {
         });
       }
       if (input.name === "fork_session") {
-        const parsed = sessionForkSchema.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(sessionForkSchema, input.arguments);
+        if (!parsed.success) return parsed.result;
         const request = parsed.data;
-        const operationId = stableOperation(request.operationId);
+        const operation = yield* admitOperation(input, authority, core.identity.profileId, request);
+        if (!operation.success) return operation.result;
+        const { operationId, acceptedAtMs } = operation;
         const sourceSessionId = request.sessionId ?? sessionId;
         const result = yield* application.fork({
           source: {
             sessionId: sourceSessionId,
             ...(hosted && sourceSessionId === sessionId ? { threadId: hosted.threadId } : {}),
           },
-          sessionId: deriveSessionDispatchIdentity(operationId, "session"),
+          sessionId: deriveSessionDispatchIdentity(operationId, "session", acceptedAtMs),
           requestId: operationId,
-          acceptedAt: Number(operationId.split(":")[2]),
+          acceptedAt: acceptedAtMs,
           environment: request.environment.type,
         });
         return toolSuccess({ ...result, operationId, forkState: "attached" });
       }
       if (input.name === "merge_session_back") {
-        const parsed = sessionMergeSchema.safeParse(input.arguments);
-        if (!parsed.success) return toolFailure("invalid_arguments");
+        const parsed = parseAppToolArguments(sessionMergeSchema, input.arguments);
+        if (!parsed.success) return parsed.result;
         const request = parsed.data;
         // A fork's own running reply cannot be merged; its finished work is merged from elsewhere.
         if (request.sessionId === sessionId) return toolFailure("cannot_merge_calling_session");
-        const operationId = stableOperation(request.operationId);
+        const operation = yield* admitOperation(input, authority, core.identity.profileId, request);
+        if (!operation.success) return operation.result;
+        const { operationId } = operation;
         const merged = yield* application.mergeBack({
           sessionId: request.sessionId,
           requestId: operationId,
@@ -110,20 +111,22 @@ export const make = Effect.gen(function* () {
         return toolSuccess({ ...merged, operationId, mergeState: "pending_next_message" });
       }
       if (input.name !== "create_session") return toolFailure("unknown_tool");
-      const parsed = createSessionSchema.safeParse(input.arguments);
-      if (!parsed.success) return toolFailure("invalid_arguments");
+      const parsed = parseAppToolArguments(createSessionSchema, input.arguments);
+      if (!parsed.success) return parsed.result;
       const request = parsed.data;
       const projectId = request.target.type === "project" ? request.target.projectId : null;
       const callerFacts = yield* intake.inspect(callerTarget);
       if (callerFacts.runtimeMode !== "full-access")
         return toolFailure("runtime_mode_escalation_denied");
       const selection = callerFacts.modelSelection;
-      const operationId = stableOperation(request.operationId);
+      const operation = yield* admitOperation(input, authority, core.identity.profileId, request);
+      if (!operation.success) return operation.result;
+      const { operationId, acceptedAtMs } = operation;
       const environment = request.target.type === "project" ? request.target.environment : null;
       const result = yield* application.launch({
         launchId: operationId,
-        acceptedAt: Number(operationId.split(":")[2]),
-        sessionId: deriveSessionDispatchIdentity(operationId, "session"),
+        acceptedAt: acceptedAtMs,
+        sessionId: deriveSessionDispatchIdentity(operationId, "session", acceptedAtMs),
         projectId,
         title: request.title ?? "New chat",
         modelSelection: {
@@ -145,11 +148,11 @@ export const make = Effect.gen(function* () {
           ? { worktreeStartingState: environment.startingState }
           : {}),
         message: {
-          messageId: deriveSessionDispatchIdentity(operationId, "message"),
+          messageId: deriveSessionDispatchIdentity(operationId, "message", acceptedAtMs),
           text: request.prompt,
         },
       });
-      const messageId = deriveSessionDispatchIdentity(operationId, "message");
+      const messageId = deriveSessionDispatchIdentity(operationId, "message", acceptedAtMs);
       const outcome = yield* application.execution({ sessionId: result.sessionId, messageId });
       return toolSuccess({
         ...result,

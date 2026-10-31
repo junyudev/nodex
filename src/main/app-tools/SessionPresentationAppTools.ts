@@ -4,15 +4,16 @@ import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 import { sessionPresentationSchemas as schemas } from "../../shared/nodex-app-tools/session-presentation-schemas";
 import type { WorkbenchCommand } from "../../shared/nodex-app-tools/workbench-commands";
 import { makeWorkbenchSceneKey } from "../../shared/workbench-scene";
-import { createStableOperationId } from "../core-runtime/operation-identity";
+import { make as makeAppToolOperation } from "./AppToolOperation";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import type { WorkbenchAppToolContext } from "./WorkbenchControl";
 import { make as makeTarget } from "./SessionPresentationTarget";
-import { toolFailure, toolSuccess } from "./app-tool-result";
+import { parseAppToolArguments, toolFailure, toolSuccess } from "./app-tool-result";
 
 export const make = Effect.gen(function* () {
+  const admitOperation = yield* makeAppToolOperation;
   const workspace = yield* ProjectWorkspace;
   const presentation = yield* Effect.serviceOption(CodexTurnPresentation);
   const bridge = yield* WorkbenchAgentBridge;
@@ -24,8 +25,8 @@ export const make = Effect.gen(function* () {
 
     const schema = schemas[input.name as keyof typeof schemas];
     if (!schema) return toolFailure("unknown_tool");
-    const parsed = schema.safeParse(input.arguments);
-    if (!parsed.success) return toolFailure("invalid_arguments");
+    const parsed = parseAppToolArguments(schema, input.arguments);
+    if (!parsed.success) return parsed.result;
     const caller = yield* resolveAppToolCallingSession(input.caller, workspace);
     const sessionId = parsed.data.sessionId ?? caller?.sessionId;
     if (!sessionId) return toolFailure("session_unavailable");
@@ -57,14 +58,14 @@ export const make = Effect.gen(function* () {
     const revision = observed.observation?.presentationRevision ?? discovery!.presentationRevision;
     const selected =
       observed.observation?.selectedSceneOwner ?? discovery?.selectedSceneOwner ?? null;
-    const operationId =
-      parsed.data.operationId ??
-      createStableOperationId(`app.${input.name}`, authority.admittedAtMs, [
-        context.principal.profileId,
-        input.caller.threadId,
-        input.caller.turnId,
-        input.caller.callId,
-      ]);
+    const operation = yield* admitOperation(
+      input,
+      authority,
+      context.principal.profileId,
+      parsed.data,
+    );
+    if (!operation.success) return operation.result;
+    const { operationId } = operation;
     let command: WorkbenchCommand;
     if (input.name === "navigate_to_session") {
       command = { kind: "navigate_session", projectId: session.projectId };
