@@ -92,8 +92,14 @@ export function InboxComposer({
           }
         />
       </div>
+      {/* Controls are 28px tall and the text's line box 34px, so each sits 3px up to share
+          the centre of the line beside it. */}
       <div className="flex items-end gap-1">
-        {images ? <MessageImagePicker onFiles={input.add} disabled={readOnly} /> : null}
+        {images ? (
+          <div className="mb-[3px] flex shrink-0">
+            <MessageImagePicker onFiles={input.add} disabled={readOnly} />
+          </div>
+        ) : null}
         <textarea
           ref={textareaRef}
           aria-label="Message your Inbox"
@@ -118,7 +124,7 @@ export function InboxComposer({
             aria-label="Send to Inbox"
             disabled={!canSend}
             className={cn(
-              "cursor-interaction flex h-token-button-composer aspect-square shrink-0 items-center justify-center rounded-full bg-background-composer-primary p-0.5 text-text-composer-primary",
+              "cursor-interaction mb-[3px] flex h-token-button-composer aspect-square shrink-0 items-center justify-center rounded-full bg-background-composer-primary p-0.5 text-text-composer-primary",
               !canSend && "opacity-50",
             )}
           >
