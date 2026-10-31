@@ -879,6 +879,15 @@ after changing Yjs or its bindings. Persisted Yjs/Yrs document encoding must rem
 compatible. The maintained BlockNote contracts and package test commands are in
 [`third_party/blocknote/ORIGIN.md`](../third_party/blocknote/ORIGIN.md).
 
+The ProseMirror view patch backports upstream's unreleased `dispatchKey` fix:
+ProseMirror must not run synthetic Enter or Backspace key handlers during IME
+composition, or more than once for one key press. Since 1.42.7, ProseMirror
+reports a deletion inside marked text as Backspace, and any key handler that
+dispatches then redraws the composing text and cuts off the input method. Drop
+the patch only for a release that contains the fix, and only after
+`vp test run --config vitest.browser.config.ts src/renderer/components/board/editor/nfm-ime-composition.browser.test.ts`
+passes against that release.
+
 ### Block drag-and-drop smoke
 
 The Electron test named `moves a Block into a Board with native DnD
