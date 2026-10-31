@@ -1,0 +1,93 @@
+src/main/codex-application/CodexSessionControls.ts
+  s_c6667ad51c16de::t_7b1d8982392d22 1-138
+  s_c6667ad51c16de::t_d5d006cf1ddb95 139-158
+packages/agent-runtime/src/nodex/SessionStop.ts
+  s_c6667ad51c16de::t_6bc98dbfdde30c 1-21
+  s_c6667ad51c16de::t_c149396ed2e2ec 22-23
+CHANGELOG.md
+  s_c6667ad51c16de::t_41f36e43d78ae5 9-10
+docs/product-specs/agent-interface-behavior.md
+  s_c6667ad51c16de::t_93f6047e44529d 413-458
+packages/agent-runtime/src/nodex/Interface.ts
+  s_c6667ad51c16de::t_c4b10d3fae304f 592-607
+packages/agent-runtime/src/nodex/Service.ts
+  s_c6667ad51c16de::t_463b141597dcae 1,77-78,154-163,750-752,819-824
+packages/agent-runtime/src/nodex/SessionControlReceipts.test.ts
+  s_c6667ad51c16de::t_08182178d3207a 1-33
+packages/agent-runtime/src/nodex/SessionControlReceipts.ts
+  s_c6667ad51c16de::t_66b24a3319fc3e 1-58
+packages/agent-runtime/src/nodex/SessionQueue.test.ts
+  s_c6667ad51c16de::t_759745c7dcd46a 1-270
+packages/agent-runtime/src/nodex/SessionQueue.ts
+  s_c6667ad51c16de::t_f0327341f60611 1-180
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_c6667ad51c16de::t_9012412ac74d4e 102,204
+packages/agent-runtime/src/persistence/Migrations/087_SessionControlReceipts.ts
+  s_c6667ad51c16de::t_b51d577e0d258c 1-11
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_c6667ad51c16de::t_9991521e64f920 45-49,3230-3294
+src/main/agent-runtime/AgentRuntimeHostTools.ts
+  s_c6667ad51c16de::t_be671960342efc 1-2,86,102
+src/main/app-tools/AppToolInterpreter.node.test.ts
+  s_c6667ad51c16de::t_dff4c52af7600e 1-5,63-67
+src/main/app-tools/AppToolInterpreter.ts
+  s_c6667ad51c16de::t_0f186dc657de4d 1-2,51,84,110
+src/main/app-tools/HostedAppToolCatalog.ts
+  s_c6667ad51c16de::t_daeb4c6a57f60b 1,23
+src/main/app-tools/NativeSessionMessageIntake.ts
+  s_c6667ad51c16de::t_ddf660f08efb83 6,8,41
+src/main/app-tools/NativeSessionPermissionFacts.ts
+  s_c6667ad51c16de::t_a5a92a6e020e1f 1-95
+src/main/app-tools/SessionControlAppTools.node.test.ts
+  s_c6667ad51c16de::t_5f34168f53d38b 1-480
+src/main/app-tools/SessionControlAppTools.ts
+  s_c6667ad51c16de::t_b3d98074ab3c66 1-229
+src/main/app-tools/SessionControlAuthority.ts
+  s_c6667ad51c16de::t_3514473ace55c0 1-63
+src/main/codex-application/CodexMainConversationActions.ts
+  s_c6667ad51c16de::t_c945b9d2a46495 1-2,48,81-91
+src/main/codex-application/CodexQueuedFollowUps.node.test.ts
+  s_c6667ad51c16de::t_1693c3c5e568c9 162-172,973-1072
+src/main/codex-application/CodexQueuedFollowUps.ts
+  s_c6667ad51c16de::t_3f3ad4941ecd6a 1-8,39,107-115,615-789,791
+src/main/codex-application/CodexSessionControls.node.test.ts
+  s_c6667ad51c16de::t_3e8c22dcf68621 1-129
+src/main/codex-application/CodexThreadReadState.node.test.ts
+  s_c6667ad51c16de::t_8fd31edeee3893 36,85,210-229
+src/main/codex-application/CodexThreadReadState.ts
+  s_c6667ad51c16de::t_7a1f858ae991d3 201-205,211-215,217-222
+src/renderer/features/local-conversation/local-conversation-native-stream.jsdom.test.ts
+  s_c6667ad51c16de::t_93b5c333481c46 2806-2859
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_c6667ad51c16de::t_c6971a8f3deb8e 1-12,3138-3153,6813-6947
+src/shared/codex-peer-protocol.ts
+  s_c6667ad51c16de::t_02fe695be00c94 22
+src/shared/codex-queued-message.ts
+  s_c6667ad51c16de::t_0a7766141054ae 162-179
+src/shared/codex-thread-follower-request.ts
+  s_c6667ad51c16de::t_6bf67850049eb0 34-36
+src/shared/nodex-app-tools/catalog.ts
+  s_c6667ad51c16de::t_e6787f8784bd2d 1,43
+src/shared/nodex-app-tools/session-control-schemas.test.ts
+  s_c6667ad51c16de::t_4aa36618f18b0f 1-83
+src/shared/nodex-app-tools/session-control-schemas.ts
+  s_c6667ad51c16de::t_2df0e1aa88434a 1-84
+src/shared/nodex-app-tools/session-queue.ts
+  s_c6667ad51c16de::t_8a7bcd0af5e237 1-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1dfb6a8991988f5dac0a7a6b8a31adec177eedec",
+  "prompts": {},
+  "sessions": {
+    "s_c6667ad51c16de": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19253-86de-7c01-80d1-3fece2efe1ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
