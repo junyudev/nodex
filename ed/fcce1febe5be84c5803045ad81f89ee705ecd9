@@ -1,0 +1,23 @@
+src/shared/inbox-model-guide.node.test.ts
+  s_3500ddfb1933ec::t_8ec0d5be607710 1-28
+src/main/inbox-application/inbox-suggestions.ts
+  s_3500ddfb1933ec::t_e3e6993124f500 14
+src/shared/inbox-model-guide.ts
+  s_3500ddfb1933ec::t_7a20d78f772c93 12,14-17,25,31-38,42-49,54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "edfcce1febe5be84c5803045ad81f89ee705ecd9",
+  "prompts": {},
+  "sessions": {
+    "s_3500ddfb1933ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2805826-88de-4be0-aea1-fc13723372c5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
