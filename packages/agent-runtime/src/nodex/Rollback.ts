@@ -1,4 +1,8 @@
-import { CommandId, RunId, ThreadId } from "@t3tools/contracts";
+import { CheckpointId, CheckpointScopeId, CommandId, RunId, ThreadId } from "@t3tools/contracts";
+import {
+  MESSAGE_EDIT_UNAVAILABLE,
+  resolveConversationRewindTargets,
+} from "@t3tools/shared/orchestrationV2Rewind";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -7,7 +11,7 @@ import { ThreadManagementService } from "../orchestration-v2/ThreadManagementSer
 /**
  * Rewind the conversation to just before a user message's Run through durable provider
  * rollback, leaving files intact. That Run and every later Run leave the conversation. The
- * rewind point is the newest earlier Run's ordinal anchor, never a workspace snapshot.
+ * rewind point is the immediately preceding visible Run's anchor, never an older one.
  */
 export const rollbackThread = Effect.fn("AgentRuntime.rollbackThread")(function* (input: {
   readonly threadId: ThreadId;
@@ -39,31 +43,18 @@ export const rollbackThread = Effect.fn("AgentRuntime.rollbackThread")(function*
   const rootScope = context.checkpointScopes.find((scope) => scope.kind === "root_run");
   if (rootScope === undefined)
     return yield* Effect.fail(new Error("This conversation has not started a Run to rewind."));
-  const discardedRunIds = new Set(
-    context.runs
-      .filter((previous) => previous.status === "rolled_back")
-      .map((previous) => previous.id),
-  );
-  // Each finished Run records a conversation anchor at its ordinal. Files are never restored, so
-  // an anchor's workspace status is irrelevant; the thread start is the anchor before any Run.
-  const anchor = context.checkpoints
-    .filter(
-      (candidate) =>
-        (candidate.status === "ready" || candidate.status === "missing") &&
-        candidate.scopeId === rootScope.id &&
-        (candidate.appRunOrdinal !== null || candidate.ordinalWithinScope === 0) &&
-        (candidate.appRunOrdinal ?? 0) < run.ordinal &&
-        (candidate.runId === null || !discardedRunIds.has(candidate.runId)),
-    )
-    .sort((left, right) => (right.appRunOrdinal ?? 0) - (left.appRunOrdinal ?? 0))[0];
+  const target = resolveConversationRewindTargets(context).get(run.id);
+  if (target === undefined) return yield* Effect.fail(new Error(MESSAGE_EDIT_UNAVAILABLE));
   const checkpointId =
-    anchor?.id ?? (yield* ids.allocate.checkpoint({ checkpointScopeId: rootScope.id, name: "0" }));
+    target.checkpointId === null
+      ? yield* ids.allocate.checkpoint({ checkpointScopeId: rootScope.id, name: "0" })
+      : CheckpointId.make(target.checkpointId);
   const receipt = yield* threads.dispatch({
     type: "checkpoint.rollback",
     commandId,
     threadId: input.threadId,
     beforeRunId: input.runId,
-    scopeId: rootScope.id,
+    scopeId: CheckpointScopeId.make(target.scopeId),
     checkpointId,
     restoreFiles: false,
   });

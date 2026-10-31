@@ -1,4 +1,11 @@
-import { OrchestrationV2SideChatCapture } from "@t3tools/contracts";
+import {
+  boundConversationRewindContext,
+  conversationRewindContext,
+} from "@t3tools/shared/orchestrationV2Rewind";
+import {
+  OrchestrationV2ConversationRewindContext,
+  OrchestrationV2SideChatCapture,
+} from "@t3tools/contracts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { providerThreadActivatesThread } from "@t3tools/provider-core/contextUsage";
 import {
@@ -261,7 +268,14 @@ export type ProjectionSettlementCandidate = Pick<
 
 const ProjectionCheckpointContext = Schema.Struct({
   runs: Schema.Array(
-    OrchestrationV2RunJsonSchema.mapFields(({ id, ordinal, status }) => ({ id, ordinal, status })),
+    OrchestrationV2RunJsonSchema.mapFields(({ id, ordinal, status, activeAttemptId }) => ({
+      id,
+      ordinal,
+      status,
+      activeAttemptId,
+      started: Schema.Boolean,
+      hasProviderTurn: Schema.Boolean,
+    })),
   ),
   checkpointScopes: Schema.Array(
     OrchestrationV2CheckpointScopeJsonSchema.mapFields(({ id, runId, kind, cwd }) => ({
@@ -698,7 +712,7 @@ const decodeSubagentOverviewCursor = (
 };
 export type ProjectionRecordField = Exclude<
   keyof OrchestrationV2ThreadProjection,
-  "thread" | "updatedAt" | "visibleTurnItems"
+  "thread" | "updatedAt" | "visibleTurnItems" | "rewindContext"
 >;
 export type ProjectionRecords<K extends ProjectionRecordField> = Pick<
   OrchestrationV2ThreadProjection,
@@ -7796,9 +7810,17 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             // metadata columns so large run/checkpoint JSON payloads stay in SQLite.
             const [runs, checkpointScopes, checkpoints] = yield* Effect.all([
               sql`
-              SELECT run_id AS id, ordinal, status
-              FROM orchestration_v2_projection_runs
-              WHERE thread_id = ${threadId}
+              SELECT r.run_id AS id, r.ordinal, r.status,
+                json_extract(r.payload_json, '$.activeAttemptId') AS "activeAttemptId",
+                json_extract(r.payload_json, '$.startedAt') IS NOT NULL AS started,
+                (EXISTS (SELECT 1 FROM orchestration_v2_projection_provider_turns t
+                  WHERE t.thread_id = r.thread_id AND t.run_attempt_id = json_extract(r.payload_json, '$.activeAttemptId'))
+                  OR EXISTS (SELECT 1 FROM orchestration_v2_projection_provider_turns t
+                    WHERE t.provider_turn_id = (SELECT json_extract(a.payload_json, '$.providerTurnId')
+                      FROM orchestration_v2_projection_run_attempts a
+                      WHERE a.attempt_id = json_extract(r.payload_json, '$.activeAttemptId')))) AS "hasProviderTurn"
+              FROM orchestration_v2_projection_runs r
+              WHERE r.thread_id = ${threadId}
               ORDER BY ordinal ASC
             `,
               sql`
@@ -7817,7 +7839,15 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ORDER BY scope_id ASC, ordinal_within_scope ASC
             `,
             ]);
-            return yield* decodeCheckpointContext({ runs, checkpointScopes, checkpoints });
+            return yield* decodeCheckpointContext({
+              runs: runs.map((run) => ({
+                ...run,
+                started: Boolean(run.started),
+                hasProviderTurn: Boolean(run.hasProviderTurn),
+              })),
+              checkpointScopes,
+              checkpoints,
+            });
           }),
         )
         .pipe(
@@ -8608,6 +8638,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 : bounded.items,
               nextCursor: bounded.nextCursor,
               hasMoreHistory: bounded.hasMoreHistory,
+              rewindContext: snapshot.projection.rewindContext,
             };
           }),
         )
@@ -8836,7 +8867,19 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 : {}),
               ...(historyAnchor === undefined ? {} : { historyAnchor }),
             });
-            const projection = read.projection;
+            const projection = options.controlOnly
+              ? read.projection
+              : {
+                  ...read.projection,
+                  rewindContext: yield* Schema.decodeUnknownEffect(
+                    OrchestrationV2ConversationRewindContext,
+                  )(
+                    boundConversationRewindContext(
+                      yield* getCheckpointContext(threadId),
+                      new Set(read.projection.runs.map((run) => run.id)),
+                    ),
+                  ),
+                };
             const latest = yield* sql<{ readonly ordinal: number | null }>`
               SELECT MAX(ordinal) AS ordinal FROM orchestration_v2_projection_turn_items WHERE thread_id = ${threadId}
             `;
@@ -10549,7 +10592,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             return yield* new ProjectionStoreThreadNotFoundError({ threadId });
           }
           return {
-            runs: projection.runs.map(({ id, ordinal, status }) => ({ id, ordinal, status })),
+            runs: conversationRewindContext(projection).runs,
             checkpointScopes: projection.checkpointScopes.map(({ id, runId, kind, cwd }) => ({
               id,
               runId,
@@ -11595,6 +11638,18 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                   });
                   return {
                     ...page,
+                    rewindContext: Schema.decodeUnknownSync(
+                      OrchestrationV2ConversationRewindContext,
+                    )(
+                      boundConversationRewindContext(
+                        conversationRewindContext(projection),
+                        new Set(
+                          page.items
+                            .filter((row) => row.visibility === "local")
+                            .flatMap((row) => (row.item.runId === null ? [] : [row.item.runId])),
+                        ),
+                      ),
+                    ),
                     snapshotSequence,
                     items: conversationOnly
                       ? page.items.filter((row) => isConversationHistoryItem(row.item))
@@ -11725,7 +11780,20 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             const visibleTurnItems = candidates.slice(start);
             return {
               ...snapshot,
-              projection: { ...snapshot.projection, visibleTurnItems },
+              projection: {
+                ...snapshot.projection,
+                visibleTurnItems,
+                rewindContext: Schema.decodeUnknownSync(OrchestrationV2ConversationRewindContext)(
+                  boundConversationRewindContext(
+                    conversationRewindContext(snapshot.projection),
+                    new Set(
+                      visibleTurnItems
+                        .filter((row) => row.visibility === "local")
+                        .flatMap((row) => (row.item.runId === null ? [] : [row.item.runId])),
+                    ),
+                  ),
+                ),
+              },
             };
           }),
         );

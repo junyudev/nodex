@@ -1931,6 +1931,41 @@ describe("LocalConversationThreadBody", () => {
     expect(queryAllByRole("button", { name: "Edit message" })).toHaveLength(0);
   });
 
+  test("offers Edit only on Runtime messages with an exact recorded predecessor", async () => {
+    const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
+    const conversation = buildConversation({
+      turns: [buildIndexedTurn(1), buildIndexedTurn(2), buildIndexedTurn(3)],
+    });
+    conversation.capabilityFlags.editableUserTurnIds = ["turn_1", "turn_2"];
+    const edited: string[] = [];
+    const screen = render(
+      <TooltipProvider>
+        <LocalConversationThreadBody
+          model={buildModel({ conversation })}
+          actions={buildActions({
+            onEditUserTurn: async (input) => {
+              edited.push(input.turnId);
+            },
+          })}
+          onErrorMessage={() => {}}
+        />
+      </TooltipProvider>,
+    );
+    await settleAsyncRender();
+    expect(screen.getAllByRole("button", { name: "Edit message" })).toHaveLength(2);
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit message" })[1]!);
+      await Promise.resolve();
+    });
+    expect(screen.getByDisplayValue("Message 2")).toBeTruthy();
+    expect(screen.queryByDisplayValue("Message 3")).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(edited).toEqual(["turn_2"]));
+  });
+
   test("renders a worked-for toggle for the latest completed turn when a persisted collapse state exists", async () => {
     const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
     const conversation = buildConversation({

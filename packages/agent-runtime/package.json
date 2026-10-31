@@ -19,7 +19,8 @@
     "./history-read": "./src/nodex/HistoryRead.ts",
     "./history-contracts": "./src/nodex/history-contracts.ts",
     "./image-mime": "./src/imageMime.ts",
-    "./native-attachment-resource": "./src/nodex/NativeAttachmentResource.ts"
+    "./native-attachment-resource": "./src/nodex/NativeAttachmentResource.ts",
+    "./rewind": "./vendor/shared/src/orchestrationV2Rewind.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit",

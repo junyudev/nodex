@@ -1,3 +1,9 @@
+import {
+  conversationRewindContext,
+  isExactConversationRewindTarget,
+  MESSAGE_EDIT_UNAVAILABLE,
+  resolveConversationRewindTargets,
+} from "@t3tools/shared/orchestrationV2Rewind";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "../nodex/SideChat.ts";
 import {
   selectAsyncQuestionReplyBatch,
@@ -10677,12 +10683,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
 
       const targetOrdinal = targetCheckpoint.appRunOrdinal ?? 0;
-      const removedRun = projection.runs.find((run) => run.id === command.beforeRunId);
-      if (removedRun !== undefined && targetOrdinal >= removedRun.ordinal)
+      if (
+        command.beforeRunId !== undefined &&
+        !isExactConversationRewindTarget(
+          resolveConversationRewindTargets(conversationRewindContext(projection)).get(
+            command.beforeRunId,
+          ),
+          targetCheckpoint,
+        )
+      )
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
-          cause: "The rollback checkpoint must precede the edited Run.",
+          cause: MESSAGE_EDIT_UNAVAILABLE,
         });
       if (targetOrdinal > 0) {
         const targetRun = projection.runs.find((run) => run.ordinal === targetOrdinal);

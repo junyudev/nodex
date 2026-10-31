@@ -76,7 +76,8 @@
     "./mcpResponsePayloads": "./src/mcpResponsePayloads.ts",
     "./PtyAdapter": "./src/PtyAdapter.ts",
     "./BoundedQueue": "./src/BoundedQueue.ts",
-    "./paletteSearch": "./src/paletteSearch.ts"
+    "./paletteSearch": "./src/paletteSearch.ts",
+    "./orchestrationV2Rewind": "./src/orchestrationV2Rewind.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit"

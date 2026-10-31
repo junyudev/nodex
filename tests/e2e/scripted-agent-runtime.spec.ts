@@ -547,6 +547,177 @@ test("edits an earlier message and continues from it without the later Turns", a
   );
 });
 
+test("keeps message editing at the exact rewind point across a failed Run", async () => {
+  test.setTimeout(150_000);
+  const token = randomUUID();
+  const first = `Remember the first note ${token}`;
+  const firstReply = `First note saved ${token}`;
+  const second = `Reject the second note ${token}`;
+  const third = `Add a third note ${token}`;
+  const thirdReply = `Third note saved ${token}`;
+  const rewritten = `Replace the second note ${token}`;
+  const rewrittenReply = `Rewritten note answered ${token}`;
+  const turn = (
+    name: string,
+    words: string,
+    text: string,
+    check?: (request: ScriptedModelRequest) => void,
+  ) => ({
+    name,
+    match: (request: ScriptedModelRequest) =>
+      request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+      latestUserText(request).includes(words),
+    respond: (request: ScriptedModelRequest) => {
+      check?.(request);
+      return responses.stream([
+        responses.created(`response_${name}_${token}`),
+        responses.assistantMessage(`message_${name}_${token}`, text, "final_answer"),
+        responses.completed(`response_${name}_${token}`, true),
+      ]);
+    },
+  });
+  const captureEvidence = async (page: Page, name: string) => {
+    const directory = process.env.NODEX_E2E_EVIDENCE_DIR;
+    if (!directory) return;
+    const conversation = page.getByRole("region", { name: "Conversation", exact: true });
+    await expect(conversation).toBeVisible();
+    const clip = await conversation.boundingBox();
+    if (!clip) throw new Error("The conversation has no screenshot bounds");
+    fs.mkdirSync(directory, { recursive: true });
+    await page.screenshot({ path: path.join(directory, name), clip, animations: "disabled" });
+  };
+
+  await withScriptedModelServer(
+    {
+      exchanges: [
+        turn("first", first, firstReply),
+        {
+          name: "second message fails without retrying",
+          match: (request) =>
+            request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+            latestUserText(request).includes(second),
+          // Codex uses WebSocket here; closing it with an HTTP-only fixture would trigger retries.
+          respond: responses.stream([
+            {
+              type: "error",
+              status: 400,
+              error: {
+                message: "The scripted second message is invalid.",
+                type: "invalid_request_error",
+                param: null,
+                code: "invalid_request_error",
+              },
+            },
+          ]),
+        },
+        turn("third", third, thirdReply),
+        turn("rewritten", rewritten, rewrittenReply, (request) => {
+          expect(request.hasInputText(first)).toBe(true);
+          expect(request.hasInputText(firstReply)).toBe(true);
+          expect(request.hasInputText(second)).toBe(false);
+          expect(request.hasInputText(third)).toBe(false);
+          expect(request.hasInputText(thirdReply)).toBe(false);
+        }),
+        ...standardCodexBackgroundExchanges(),
+      ],
+    },
+    async (modelServer) => {
+      const harness = await ElectronScenarioHarness.create({
+        label: "scripted-agent-edit-eligibility",
+        cwd: repositoryRoot,
+        prepareAgentRuntime: false,
+        retention: process.env.NODEX_KEEP_SCENARIO_PROFILES === "1" ? "keep" : "dispose",
+        environment: {
+          ...modelServer.loopbackEnvironment(),
+          NODEX_LOG_CONSOLE: "0",
+          NODEX_LOG_FILE: "1",
+          OPENAI_API_KEY: "nodex-scripted-model-test-key",
+        },
+      });
+      fs.writeFileSync(
+        path.join(harness.profile.codexHome, "config.toml"),
+        scriptedCodexConfig(modelServer.baseUrl),
+        { encoding: "utf8", mode: 0o600 },
+      );
+      try {
+        const page = await harness.launch();
+        await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
+        const draft = await createAgentSmokeDraft(
+          page,
+          harness.profile.initialProjectsDirectory,
+          "Scripted Agent edit eligibility",
+        );
+        const threadId = await sendAgentPrompt(page, draft.projectSessionId, first);
+        const target = { sessionId: draft.projectSessionId, threadId };
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, firstReply);
+
+        await sendAgentFollowUp(page, second);
+        await modelServer.waitForRequest((request) => latestUserText(request).includes(second));
+        await expect
+          .poll(
+            async () =>
+              (await readRuntimeConversation(page, target)).snapshot.projection.runs.at(-1)?.status,
+          )
+          .toBe("failed");
+        await expect(page.getByRole("status").filter({ hasText: "Request failed" })).toBeVisible();
+
+        await sendAgentFollowUp(page, third);
+        await waitForFinalMarker(page, thirdReply);
+        await waitForRuntimeCompletedAgentTurn(page, target);
+
+        const bubbles = page.locator("[data-user-message-bubble='true']");
+        await expect(bubbles).toHaveText([first, second, third]);
+        await expect(page.getByRole("button", { name: "Edit message", exact: true })).toHaveCount(
+          2,
+        );
+        const [firstTurn, secondTurn, thirdTurn] = [first, second, third].map((words) =>
+          page.locator("[data-thread-turn-id]", { has: bubbles.filter({ hasText: words }) }),
+        );
+        await firstTurn.locator("[data-user-message-bubble='true']").hover();
+        await expect(
+          firstTurn.getByRole("button", { name: "Edit message", exact: true }),
+        ).toBeVisible();
+        await secondTurn.locator("[data-user-message-bubble='true']").hover();
+        await expect(
+          secondTurn.getByRole("button", { name: "Edit message", exact: true }),
+        ).toBeVisible();
+        await captureEvidence(page, "edit-eligibility-hover-message-2.png");
+        await thirdTurn.locator("[data-user-message-bubble='true']").hover();
+        await expect(
+          thirdTurn.getByRole("button", { name: "Edit message", exact: true }),
+        ).toHaveCount(0);
+        await captureEvidence(page, "edit-eligibility-hover-message-3.png");
+
+        await secondTurn.locator("[data-user-message-bubble='true']").hover();
+        await secondTurn.getByRole("button", { name: "Edit message", exact: true }).click();
+        const editor = page.getByRole("textbox", { name: "Edit message", exact: true });
+        await expect(editor).toBeFocused();
+        await expect(editor).toHaveValue(second);
+        await editor.fill(rewritten);
+        await editor.press("Enter");
+        await expect(editor).toHaveCount(0);
+
+        await modelServer.waitForRequest((request) => latestUserText(request).includes(rewritten));
+        await waitForFinalMarker(page, rewrittenReply);
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await expect(bubbles).toHaveText([first, rewritten]);
+        await expect(page.getByText(thirdReply, { exact: true })).toHaveCount(0);
+        await bubbles.first().scrollIntoViewIfNeeded();
+        await captureEvidence(page, "edit-after-rewrite.png");
+      } catch (error) {
+        const logs = await readBoundedElectronRuntimeLogs(harness.profile);
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}\n\nElectron runtime logs:\n${logs}`,
+          { cause: error },
+        );
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+});
+
 test("keeps a pasted image visible when steering a running Turn and after restart", async ({}, testInfo) => {
   test.setTimeout(150_000);
   const token = randomUUID();

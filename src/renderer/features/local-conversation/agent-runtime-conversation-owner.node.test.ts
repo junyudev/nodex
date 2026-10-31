@@ -3108,3 +3108,181 @@ test("an older optional question becomes answerable when its source page is load
     owner.dispose();
   }
 });
+
+test("keeps exact edit eligibility across failed Runs and bounded history", async () => {
+  const fixture = conversation([]);
+  const run = fixture.snapshot.projection.runs[0]!;
+  const runs: AgentSnapshot["projection"]["runs"] = [1, 2, 3, 4, 5, 6].map((ordinal) => ({
+    ...run,
+    id: `run-${ordinal}`,
+    ordinal,
+    status: ordinal <= 2 ? "completed" : ordinal === 4 ? "cancelled" : "failed",
+    startedAt: ordinal === 4 ? null : at,
+  }));
+  const rewindContext: NonNullable<AgentSnapshot["projection"]["rewindContext"]> = {
+    runs: runs.map((entry) => ({
+      id: entry.id,
+      ordinal: entry.ordinal,
+      status: entry.status,
+      started: entry.startedAt !== null,
+      activeAttemptId: entry.activeAttemptId,
+      hasProviderTurn: entry.ordinal <= 3,
+    })),
+    checkpointScopes: [{ id: "root", kind: "root_run" }],
+    checkpoints: [0, 1, 2].map((ordinal) => ({
+      id: `checkpoint-${ordinal}`,
+      scopeId: "root",
+      runId: ordinal ? `run-${ordinal}` : null,
+      ordinalWithinScope: ordinal,
+      appRunOrdinal: ordinal || null,
+      status: "missing",
+    })),
+  };
+  const initial: AgentRuntimeConversation = {
+    ...fixture,
+    snapshot: {
+      ...fixture.snapshot,
+      projection: { ...fixture.snapshot.projection, runs, rewindContext },
+    },
+  };
+  const { owner, wire, release } = await open(initial);
+  try {
+    owner.setCapabilities({ supportsUserTurnEdits: true });
+    expect(owner.getSnapshot().view?.capabilityFlags.editableUserTurnIds).toEqual([
+      "run-1",
+      "run-2",
+      "run-3",
+    ]);
+    expect(owner.getSnapshot().conversation?.snapshot.projection.checkpoints).toEqual([]);
+    const previous = initial.snapshot.projection.runs[1]!;
+    wire.emit({
+      sequence: 2,
+      commandId: null,
+      event: {
+        id: "withdraw",
+        threadId: target.threadId,
+        occurredAt: at,
+        type: "run.updated",
+        payload: { ...previous, status: "rolled_back" },
+      },
+    });
+    expect(owner.getSnapshot().view?.capabilityFlags.editableUserTurnIds).toEqual([
+      "run-1",
+      "run-3",
+    ]);
+  } finally {
+    release();
+  }
+});
+
+test("preserves paged Provider Turn evidence across historical metadata updates until the attempt changes", async () => {
+  const fixture = conversation([], "older");
+  const previous = {
+    ...fixture.snapshot.projection.runs[0]!,
+    id: "historical-a",
+    ordinal: 1,
+    status: "completed" as const,
+    completedAt: at,
+    activeAttemptId: "attempt-a",
+  };
+  const next = { ...previous, id: "historical-b", ordinal: 2, activeAttemptId: "attempt-b" };
+  const rewindContext = {
+    runs: [previous, next].map((run, index) => ({
+      id: run.id,
+      ordinal: run.ordinal,
+      status: run.status,
+      started: true,
+      activeAttemptId: run.activeAttemptId,
+      hasProviderTurn: true,
+      previousRunId: index === 0 ? null : previous.id,
+    })),
+    checkpointScopes: [{ id: "root", kind: "root_run" }],
+    checkpoints: [
+      {
+        id: "checkpoint-a",
+        scopeId: "root",
+        runId: previous.id,
+        ordinalWithinScope: 1,
+        appRunOrdinal: 1,
+        status: "ready" as const,
+      },
+    ],
+  };
+  const page: AgentHistoryPage = {
+    snapshotSequence: 1,
+    items: [previous, next].map((run) =>
+      row({
+        ...base(`user:${run.id}`, run.ordinal),
+        runId: run.id,
+        type: "user_message",
+        createdBy: "user",
+        creationSource: "web",
+        inputIntent: "turn_start",
+        messageId: `message:${run.id}`,
+        text: "Work",
+        attachments: [],
+      }),
+    ),
+    rewindContext,
+    nextCursor: null,
+    hasMoreHistory: false,
+  };
+  const { owner, wire, release } = await open(fixture, [page]);
+  try {
+    owner.setCapabilities({ supportsUserTurnEdits: true });
+    await owner.loadHistoryBoundary(historyBoundary(owner));
+    const editable = () => owner.getSnapshot().view!.capabilityFlags.editableUserTurnIds;
+    expect(
+      owner.getSnapshot().conversation!.snapshot.projection.runs.map((run) => run.id),
+    ).not.toContain(previous.id);
+    expect(owner.getSnapshot().conversation!.snapshot.projection.providerTurns).toEqual([]);
+    expect(editable()).toContain(next.id);
+    const update = (sequence: number, activeAttemptId = previous.activeAttemptId) =>
+      wire.emit({
+        sequence,
+        commandId: null,
+        event: {
+          id: `historical-update:${sequence}`,
+          threadId: target.threadId,
+          occurredAt: at,
+          type: "run.updated",
+          payload: { ...previous, activeAttemptId },
+        },
+      });
+    update(2);
+    expect(editable()).toContain(next.id);
+    update(3);
+    expect(editable()).toContain(next.id);
+    update(4, "replacement-attempt");
+    expect(editable()).not.toContain(next.id);
+    const turn = (sequence: number, runAttemptId: string) =>
+      wire.emit({
+        sequence,
+        commandId: null,
+        event: {
+          id: `historical-turn:${sequence}`,
+          threadId: target.threadId,
+          occurredAt: at,
+          type: "provider-turn.updated",
+          payload: {
+            id: `turn:${runAttemptId}`,
+            providerThreadId: "provider",
+            nodeId: "root",
+            runAttemptId,
+            nativeTurnRef: null,
+            ordinal: 1,
+            status: "completed",
+            startedAt: at,
+            completedAt: at,
+          },
+        },
+      });
+    turn(5, previous.activeAttemptId);
+    expect(editable()).not.toContain(next.id);
+    turn(6, "replacement-attempt");
+    expect(editable()).toContain(next.id);
+  } finally {
+    release();
+    owner.dispose();
+  }
+});

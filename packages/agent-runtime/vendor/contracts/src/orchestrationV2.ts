@@ -2152,7 +2152,34 @@ export const OrchestrationV2DomainEvent = Schema.Union([
 ]);
 export type OrchestrationV2DomainEvent = typeof OrchestrationV2DomainEvent.Type;
 
+/** Bounded, body-free evidence for exact sent-message editing. Never persisted as Run history. */
+export const OrchestrationV2ConversationRewindContext = Schema.Struct({
+  runs: Schema.Array(
+    Schema.Struct({
+      id: RunId,
+      ordinal: PositiveInt,
+      status: OrchestrationV2RunStatus,
+      started: Schema.Boolean,
+      activeAttemptId: Schema.NullOr(RunAttemptId),
+      hasProviderTurn: Schema.Boolean,
+      previousRunId: Schema.optional(Schema.NullOr(RunId)),
+    }),
+  ),
+  checkpointScopes: Schema.Array(Schema.Struct({ id: CheckpointScopeId, kind: Schema.String })),
+  checkpoints: Schema.Array(
+    Schema.Struct({
+      id: CheckpointId,
+      scopeId: CheckpointScopeId,
+      runId: Schema.NullOr(RunId),
+      ordinalWithinScope: NonNegativeInt,
+      appRunOrdinal: Schema.NullOr(PositiveInt),
+      status: Schema.Literals(["ready", "missing", "error", "stale"]),
+    }),
+  ),
+});
+
 export const OrchestrationV2ThreadProjection = Schema.Struct({
+  rewindContext: Schema.optional(OrchestrationV2ConversationRewindContext),
   thread: OrchestrationV2AppThread,
   runs: Schema.Array(OrchestrationV2Run),
   attempts: Schema.Array(OrchestrationV2RunAttempt),
@@ -3787,6 +3814,7 @@ export type OrchestrationV2ThreadBoundedSnapshot = typeof OrchestrationV2ThreadB
 
 /** Older timeline page for progressive history. Rows are chronological. */
 export const OrchestrationV2ThreadHistoryPage = Schema.Struct({
+  rewindContext: Schema.optional(OrchestrationV2ConversationRewindContext),
   snapshotSequence: NonNegativeInt,
   items: projectedTurnItemArray(
     OrchestrationV2ProjectedTurnItem,

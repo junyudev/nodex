@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Searching chats from the command palette now finds every chat by its title, including chats beyond your most recent hundred, Claude, OpenCode and Agent Runtime chats, and any part of a Chinese or Japanese title. A typo or a branch, Project or pull request name finds a chat too. The same search powers chat mentions, Send to chat and adding a chat to the composer. Message history is searched once you pause typing; a slow or unavailable history no longer hides title matches, and the palette says when some history couldn't be searched.
+- Editing a sent message in an Agent chat now replaces only that message and what came after it, never earlier messages. Messages that can't be edited that way no longer show Edit.
 - Sending from a Page to a chat that the sidebar has not loaded yet no longer fails with "This chat is no longer available".
 - Add to chat in the Files tree now puts the file into the chat's composer every time, instead of sometimes appearing to do nothing until the chat redrew.
 - Opening a Page with images no longer saves an unintended edit when its images load.

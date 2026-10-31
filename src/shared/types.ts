@@ -4508,6 +4508,8 @@ export interface CodexConversationChildMembership {
 }
 
 export interface CodexConversationCapabilityFlags {
+  /** Runtime exact rewind eligibility. Native Codex Turns use their native turn boundary. */
+  editableUserTurnIds?: readonly string[];
   canEditUserTurns: boolean;
   canForkFromTurn: boolean;
   canSearch: boolean;

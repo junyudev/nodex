@@ -384,8 +384,17 @@ it.effect.each([
   },
   // Editing an earlier message rewinds its Run and every later Run.
   { restoreFiles: false, shared: "none", beforeRunId: "run-1" },
-  { restoreFiles: false, shared: "none", beforeRunId: "run-2", serialize: true },
+  { restoreFiles: false, shared: "none", beforeRunId: "run-2", targetOrdinal: 1, serialize: true },
   { restoreFiles: false, shared: "none", beforeRunId: "run-3" },
+  { restoreFiles: false, shared: "none", beforeRunId: "run-2", invalidEdit: true },
+  {
+    restoreFiles: false,
+    shared: "none",
+    beforeRunId: "run-2",
+    targetOrdinal: 1,
+    invalidEdit: true,
+    missingPredecessorTurn: true,
+  },
 ])(
   "rewinds safely with %s",
   ({
@@ -399,6 +408,8 @@ it.effect.each([
     unacknowledgedTurn = false,
     injectedHandoff = false,
     handoffDelivery = "injected",
+    invalidEdit = false,
+    missingPredecessorTurn = false,
   }) => {
     const threadId = ThreadId.make("rewind-files");
     const providerThreadId = ProviderThreadId.make("rewind-provider");
@@ -445,7 +456,12 @@ it.effect.each([
       ],
       providerSessions: [],
       // Turn 3 remains in the audit history after an earlier rollback.
-      providerTurns: (unacknowledgedTurn ? [1, 3] : [1, 2, 3]).map((ordinal) => ({
+      providerTurns: (missingPredecessorTurn
+        ? [2, 3]
+        : unacknowledgedTurn
+          ? [1, 3]
+          : [1, 2, 3]
+      ).map((ordinal) => ({
         id: `turn-${ordinal}`,
         providerThreadId,
         runAttemptId: `attempt-${ordinal}`,
@@ -479,10 +495,12 @@ it.effect.each([
           id: checkpointId,
           scopeId,
           status: checkpointStatus,
+          runId: targetOrdinal ? `run-${targetOrdinal}` : null,
+          ordinalWithinScope: targetOrdinal,
           appRunOrdinal: targetOrdinal || null,
         },
       ],
-      checkpointScopes: [{ id: scopeId, cwd: process.cwd() }],
+      checkpointScopes: [{ id: scopeId, kind: "root_run", cwd: process.cwd() }],
       runs: [1, 2, 3].map((ordinal) => ({
         id: `run-${ordinal}`,
         ordinal,
@@ -558,7 +576,11 @@ it.effect.each([
           }),
           IdAllocator.layer,
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
-            getThreadRecords: () => Effect.succeed(projection),
+            getThreadRecords: () =>
+              Effect.flatMap(lockedThreads, (locked) => {
+                assert.include(locked, threadId);
+                return Effect.succeed(projection);
+              }),
             getThreadProviderContext: () => Effect.succeed({ providerSessions: [] } as never),
             getCheckpointContext: () =>
               Effect.succeed({
@@ -611,7 +633,7 @@ it.effect.each([
         restoreFiles,
         ...(beforeRunId === undefined ? {} : { beforeRunId: RunId.make(beforeRunId) }),
       };
-      if (beforeRunId === "run-3") {
+      if (beforeRunId === "run-3" || invalidEdit) {
         // A Run that already left the conversation cannot be edited again.
         const error = yield* service.execute(input).pipe(Effect.flip);
         assert.equal(error.reason, "rollback-target-invalid");

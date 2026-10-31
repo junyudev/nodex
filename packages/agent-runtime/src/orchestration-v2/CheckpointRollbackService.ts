@@ -1,4 +1,9 @@
 import {
+  conversationRewindContext,
+  isExactConversationRewindTarget,
+  resolveConversationRewindTargets,
+} from "@t3tools/shared/orchestrationV2Rewind";
+import {
   CheckpointId,
   type CommandId,
   CheckpointScopeId,
@@ -173,6 +178,21 @@ export const layer: Layer.Layer<
           checkpointId: input.checkpointId,
         });
       }
+      if (
+        input.beforeRunId !== undefined &&
+        !isExactConversationRewindTarget(
+          resolveConversationRewindTargets(conversationRewindContext(projection)).get(
+            input.beforeRunId,
+          ),
+          checkpoint,
+        )
+      )
+        return yield* new CheckpointRollbackExecutionError({
+          reason: "rollback-target-invalid",
+          threadId: input.threadId,
+          providerThreadId: input.providerThreadId,
+          checkpointId: input.checkpointId,
+        });
       if (
         providerThread.id !== projection.thread.activeProviderThreadId ||
         providerThread.providerInstanceId !== projection.thread.modelSelection.instanceId

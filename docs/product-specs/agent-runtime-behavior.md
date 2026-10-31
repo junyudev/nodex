@@ -322,8 +322,13 @@ in-memory databases and unavailable readers use the writer path. Reader failure 
 silently move an in-progress transaction to a replacement connection.
 
 Compaction admits one durable maintenance Run per request; compaction items recorded in
-that Run are manual, and every other compaction is automatic. Editing any sent user
-message first admits a conversation rewind to just before that message's Run and waits
+that Run are manual, and every other compaction is automatic. Editing is offered only
+on sent user messages whose immediately preceding visible conversation Run has a recorded
+root checkpoint and a Provider Turn; the first local Run targets the conversation start.
+Cancelled queue or delivery records that never entered the conversation do not count as
+predecessors. Failed Runs do not record checkpoints, so the message immediately after a
+failed Run cannot be edited. A rewind never reaches further back to an older recorded
+point. Editing a sent user message first admits a conversation rewind to just before that message's Run and waits
 for that exact Run to become rolled back before submitting replacement content; every
 later Run leaves the conversation with it. The replacement keeps the original message's
 images and app context, and is compiled before the rewind so a message the Agent cannot

@@ -679,6 +679,13 @@ export function LocalConversationThreadBodyOwner({
     [canonicalRequests, requests, resumeState, threadId, turns],
   );
 
+  const exactEditableTurnIds = useMemo(
+    () =>
+      capabilityFlags.editableUserTurnIds === undefined
+        ? null
+        : new Set(capabilityFlags.editableUserTurnIds),
+    [capabilityFlags.editableUserTurnIds],
+  );
   const editableTurnIds = useMemo(
     () =>
       capabilityFlags.canEditUserTurns
@@ -687,17 +694,24 @@ export function LocalConversationThreadBodyOwner({
               ? (transcriptStructure?.turns ?? []).map((row) => ({
                   turnId: row.value.details.turnId,
                   status: row.value.details.status,
-                  hasUserMessage: row.hasUserMessage && !row.isStartupPrewarm,
+                  hasUserMessage:
+                    row.hasUserMessage &&
+                    !row.isStartupPrewarm &&
+                    (exactEditableTurnIds === null ||
+                      exactEditableTurnIds.has(row.value.details.turnId ?? "")),
                 }))
               : turns.map((turn) => ({
                   turnId: turn.turnId,
                   status: turn.status,
-                  hasUserMessage: codexConversationTurnHasUserMessage(turn),
+                  hasUserMessage:
+                    codexConversationTurnHasUserMessage(turn) &&
+                    (exactEditableTurnIds === null || exactEditableTurnIds.has(turn.turnId ?? "")),
                 })),
           )
         : NO_EDITABLE_USER_TURNS,
     [
       capabilityFlags.canEditUserTurns,
+      exactEditableTurnIds,
       parentTurns.length,
       transcriptOwner,
       transcriptStructure,

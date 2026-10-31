@@ -80,7 +80,7 @@ export function agentRuntimeSnapshotFixture(
 }
 
 type RowKey = {
-  [K in keyof Projection]: Projection[K] extends readonly unknown[] ? K : never;
+  [K in keyof Projection]-?: Projection[K] extends readonly unknown[] ? K : never;
 }[keyof Projection];
 type Row<K extends RowKey> = Projection[K][number];
 

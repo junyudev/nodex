@@ -1,3 +1,7 @@
+import {
+  isConversationRewindRun,
+  resolveConversationRewindTargets,
+} from "@nodex/agent-runtime/rewind";
 import { providerThreadActivatesThread } from "@nodex/agent-runtime/context-usage";
 import {
   agentRuntimeContextReport,
@@ -1201,7 +1205,94 @@ export class AgentRuntimeConversationOwner {
     const runs = this.#hookRuns.get(entityKey);
     return runs ? [...runs.values()] : undefined;
   }
+  #mergeRewindContext(incoming: AgentSnapshot["projection"]["rewindContext"]): void {
+    const conversation = this.#state.conversation;
+    if (!conversation || !incoming) return;
+    const projection = conversation.snapshot.projection;
+    const previous = projection.rewindContext;
+    const merge = <T extends { readonly id: string }>(
+      old: readonly T[],
+      next: readonly T[],
+    ): T[] => [...new Map([...old, ...next].map((value) => [value.id, value])).values()];
+    this.#state = {
+      ...this.#state,
+      conversation: {
+        ...conversation,
+        snapshot: {
+          ...conversation.snapshot,
+          projection: {
+            ...projection,
+            rewindContext: {
+              runs: merge(previous?.runs ?? [], incoming.runs),
+              checkpoints: merge(previous?.checkpoints ?? [], incoming.checkpoints),
+              checkpointScopes: merge(previous?.checkpointScopes ?? [], incoming.checkpointScopes),
+            },
+          },
+        },
+      },
+    };
+  }
+  #updateRewindContext(event: AgentEvent["event"]): void {
+    if (!this.#transcriptActive) return;
+    const projection = this.#state.conversation?.snapshot.projection;
+    if (!projection) return;
+    const context = projection.rewindContext ?? { runs: [], checkpoints: [], checkpointScopes: [] };
+    if (event.type === "run.created" || event.type === "run.updated") {
+      const run = event.payload;
+      const existing = context.runs.find((candidate) => candidate.id === run.id);
+      const previous = context.runs
+        .filter(
+          (candidate) => candidate.ordinal < run.ordinal && isConversationRewindRun(candidate),
+        )
+        .toSorted((a, b) => b.ordinal - a.ordinal)[0];
+      this.#mergeRewindContext({
+        ...context,
+        runs: [
+          {
+            id: run.id,
+            ordinal: run.ordinal,
+            status: run.status,
+            started: run.startedAt !== null,
+            activeAttemptId: run.activeAttemptId,
+            hasProviderTurn:
+              (existing?.activeAttemptId === run.activeAttemptId && existing.hasProviderTurn) ||
+              projection.providerTurns.some(
+                (turn) => run.activeAttemptId !== null && turn.runAttemptId === run.activeAttemptId,
+              ),
+            previousRunId:
+              existing?.previousRunId !== undefined && existing.status !== "queued"
+                ? existing.previousRunId
+                : (previous?.id ?? null),
+          },
+        ],
+      });
+      return;
+    }
+    if (event.type === "provider-turn.updated") {
+      const metadata = context.runs.find(
+        (candidate) =>
+          event.payload.runAttemptId !== null &&
+          candidate.activeAttemptId === event.payload.runAttemptId,
+      );
+      if (metadata && !metadata.hasProviderTurn)
+        this.#mergeRewindContext({ ...context, runs: [{ ...metadata, hasProviderTurn: true }] });
+      return;
+    }
+    if (event.type === "checkpoint.captured") {
+      const { id, scopeId, runId, ordinalWithinScope, appRunOrdinal, status } = event.payload;
+      this.#mergeRewindContext({
+        ...context,
+        checkpoints: [{ id, scopeId, runId, ordinalWithinScope, appRunOrdinal, status }],
+      });
+      return;
+    }
+    if (event.type === "checkpoint-scope.created") {
+      const { id, kind } = event.payload;
+      this.#mergeRewindContext({ ...context, checkpointScopes: [{ id, kind }] });
+    }
+  }
   #prepend(page: AgentHistoryPage): void {
+    this.#mergeRewindContext(page.rewindContext);
     this.#cursor = page.nextCursor;
     const sources = page.items.filter(
       (row) =>
@@ -1536,8 +1627,13 @@ export class AgentRuntimeConversationOwner {
       }
       return;
     }
+    this.#updateRewindContext(event);
     const conversation = this.#state.conversation;
     if (!conversation) return;
+    if (event.type === "checkpoint.captured" || event.type === "checkpoint-scope.created") {
+      this.#publishView();
+      return;
+    }
     if (event.type === "node.updated") {
       this.#captureNode(event.payload);
       return;
@@ -1963,6 +2059,17 @@ export class AgentRuntimeConversationOwner {
       answers: entries,
     }));
   }
+  #lastRewindContext: AgentSnapshot["projection"]["rewindContext"];
+  #editableUserTurnIds: readonly string[] = [];
+  #editEligibility(): readonly string[] {
+    const context = this.#state.conversation?.snapshot.projection.rewindContext;
+    if (context === this.#lastRewindContext) return this.#editableUserTurnIds;
+    this.#lastRewindContext = context;
+    this.#editableUserTurnIds = context
+      ? [...resolveConversationRewindTargets(context).keys()]
+      : [];
+    return this.#editableUserTurnIds;
+  }
   #publishView(): void {
     const conversation = this.#state.conversation;
     if (!conversation) return;
@@ -2023,6 +2130,7 @@ export class AgentRuntimeConversationOwner {
         itemsView: "full",
       },
       capabilityFlags: {
+        editableUserTurnIds: this.#editEligibility(),
         // A rewind races any pending or executing Run, queued messages included.
         canEditUserTurns:
           this.#supportsUserTurnEdits &&
