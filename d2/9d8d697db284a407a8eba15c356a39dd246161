@@ -1,0 +1,26 @@
+src/renderer/lib/usage-meter.ts
+  s_3500ddfb1933ec::t_5ea81406161d78 394-396
+src/renderer/lib/usage-meter.node.test.ts
+  s_3500ddfb1933ec::t_5ea81406161d78 341-342,369
+src/shared/inbox.ts
+  s_3500ddfb1933ec::t_05dee2cdaf857c 5,504-523
+  s_3500ddfb1933ec::t_c31fd95f0e6c70 524
+src/main/inbox-application/inbox-agent-candidates.ts
+  s_3500ddfb1933ec::t_05dee2cdaf857c 4,103-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d29d8d697db284a407a8eba15c356a39dd246161",
+  "prompts": {},
+  "sessions": {
+    "s_3500ddfb1933ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2805826-88de-4be0-aea1-fc13723372c5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
