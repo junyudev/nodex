@@ -1,0 +1,31 @@
+src/main/codex-application/CodexQueuedFollowUps.node.test.ts
+  s_43aa7cbfb833ed::t_0bada2593122a5 97,192-195,211,790-809
+  s_43aa7cbfb833ed::t_115bab247ac02f 810
+docs/product-specs/composer-image-attachments-behavior.md
+  s_43aa7cbfb833ed::t_ddf9902883222f 40
+src/main/codex-application/CodexInputAssets.ts
+  s_43aa7cbfb833ed::t_ddf9902883222f 31,63,146,249,278,359-361,363-364,391,396
+  s_43aa7cbfb833ed::t_fabbdb58d9391e 147
+  s_43aa7cbfb833ed::t_1e0accdd2ed153 237
+src/main/codex-application/CodexInputAssets.node.test.ts
+  s_43aa7cbfb833ed::t_fabbdb58d9391e 200-204
+  s_43aa7cbfb833ed::t_0bada2593122a5 4,15,85-94,184-199,205-214,222-230
+src/main/codex-application/CodexQueuedFollowUps.ts
+  s_43aa7cbfb833ed::t_ddf9902883222f 37,514
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "74ec35fd4c8731803757cb443f224aa9b98510c2",
+  "prompts": {},
+  "sessions": {
+    "s_43aa7cbfb833ed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19034-bca6-7c90-82c1-62a60e70968b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
