@@ -1,0 +1,19 @@
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_e2f9f3a29b34ef::t_be6d707b91d367 201,1357
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9503cf15e7ffa9b6de12ff1a2967f6e93c882dd8",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
