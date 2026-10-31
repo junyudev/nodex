@@ -1,0 +1,45 @@
+scripts/scenarios/registry.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 17,40
+src/main/core-client/sidebar-chat-status-scenario.node.test.ts
+  s_7b92b23925bc6e::t_380d2c6c3266e6 10,16-25
+  s_7b92b23925bc6e::t_2129bde7bf4998 1-9,11-12,14-15,27-28,30-46,48-57,59-72,74-77,79-90,92-112
+  s_7b92b23925bc6e::t_1a34e4f9ca0788 13,26
+  s_7b92b23925bc6e::t_64d068a95e2cb9 29,47,58,73,78,91
+scripts/scenarios/contracts.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 189
+  s_7b92b23925bc6e::t_64d068a95e2cb9 190-191
+scripts/scenarios/scenarios/sidebar-chat-status.ts
+  s_7b92b23925bc6e::t_64d068a95e2cb9 12,20,24-33,39,44,49,59,64,79,84,158-168,171-172,206,209-222
+  s_7b92b23925bc6e::t_d0bf4d948105e8 1-11,13-19,21-23,34-38,40-43,45-48,50-58,60-63,65-78,80-83,85-157,169-170,173-205,207-208,223-261
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_7b92b23925bc6e::t_64d068a95e2cb9 581-590
+  s_7b92b23925bc6e::t_d0bf4d948105e8 577-580
+docs/development.md
+  s_7b92b23925bc6e::t_64d068a95e2cb9 367-368,371
+  s_7b92b23925bc6e::t_d0bf4d948105e8 363-366,369-370,372-373
+scripts/scenarios/scenarios/board-dense.test.ts
+  s_7b92b23925bc6e::t_64d068a95e2cb9 309-312
+  s_7b92b23925bc6e::t_d0bf4d948105e8 305-308
+scripts/scenarios/scenarios/database-context-menu-performance.test.ts
+  s_7b92b23925bc6e::t_64d068a95e2cb9 144-147
+  s_7b92b23925bc6e::t_d0bf4d948105e8 140-143
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_7b92b23925bc6e::t_d0bf4d948105e8 463-468
+  s_7b92b23925bc6e::t_64d068a95e2cb9 469-477
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "158163c45728d3856ebcf3074e6eb97eb1492858",
+  "prompts": {},
+  "sessions": {
+    "s_7b92b23925bc6e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a191f1-1028-7201-b17a-dc8cffb3674d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
