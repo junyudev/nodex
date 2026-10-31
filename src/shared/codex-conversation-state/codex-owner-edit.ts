@@ -1,4 +1,11 @@
 import type { ThreadRevertResponse, TurnStartParams } from "@nodex/codex-app-server-protocol/v2";
+import { projectMessageText } from "../message-agent-input";
+import {
+  prepareCodexPrompt,
+  type PrepareCodexPromptOptions,
+  type PreparedCodexPrompt,
+} from "../codex-prompt-preparation";
+import type { CodexPromptImageInput } from "../types";
 import {
   mergeCodexCanonicalTurnStates,
   type CodexCanonicalConversationState,
@@ -9,6 +16,8 @@ import { residentConversationTurns } from "./codex-turn-mutation";
 export interface CanonicalEditOptions {
   readonly turnId: string;
   readonly message: string;
+  /** Written images in occurrence order, with Library Files materialized before owner dispatch. */
+  readonly writtenImages?: readonly CodexPromptImageInput[];
 
   readonly serviceTier?: TurnStartParams["serviceTier"];
   readonly additionalContext?: TurnStartParams["additionalContext"];
@@ -18,13 +27,18 @@ export interface CanonicalEditClient {
   readonly getConversation: (id: string) => CodexCanonicalConversationState | undefined;
   readonly awaitSettings: (id: string) => Promise<void>;
   readonly supportsRevert: () => boolean;
+  readonly resolveImageInput: PrepareCodexPromptOptions["resolveImageInput"];
   readonly revert: (id: string, beforeTurnId: string) => Promise<ThreadRevertResponse>;
   readonly applyRevert: (
     id: string,
     response: ThreadRevertResponse,
     turns: readonly CodexCanonicalTurnState[],
   ) => void;
-  readonly start: (request: TurnStartParams, original: CodexCanonicalTurnState) => Promise<unknown>;
+  readonly start: (
+    request: TurnStartParams,
+    original: CodexCanonicalTurnState,
+    preparedPrompt: PreparedCodexPrompt,
+  ) => Promise<unknown>;
 }
 
 export function replaceCanonicalEditedPrompt(original: string, message: string): string {
@@ -37,7 +51,7 @@ export function replaceCanonicalEditedPrompt(original: string, message: string):
 /**
  * Rewrites any settled user Turn: the conversation reverts to just before it, so that Turn and
  * every later Turn leave history, then the rewritten message starts a new Turn. Runs on the owner
- * after follower dispatch and preserves the original message's non-text inputs.
+ * after follower dispatch, preserving original non-text inputs before newly written images.
  */
 export async function editCanonicalUserTurn(
   client: CanonicalEditClient,
@@ -54,22 +68,6 @@ export async function editCanonicalUserTurn(
   await client.awaitSettings(id);
   const state = client.getConversation(id);
   if (!state) throw new Error("Conversation state not found.");
-  const textIndex = original.params.input.findIndex((item) => item.type === "text");
-  const input =
-    textIndex < 0
-      ? [
-          { type: "text" as const, text: options.message, text_elements: [] },
-          ...original.params.input,
-        ]
-      : original.params.input.map((item, index) =>
-          item.type === "text" && index === textIndex
-            ? {
-                ...item,
-                text: replaceCanonicalEditedPrompt(item.text, options.message),
-                text_elements: [],
-              }
-            : item,
-        );
   if (state.ephemeral || state.historyMode !== "paginated" || !client.supportsRevert())
     throw new Error("Editing messages requires a host with paginated history and message revert.");
   const turns = mergeCodexCanonicalTurnStates(residentConversationTurns(state), state.turns);
@@ -78,6 +76,33 @@ export async function editCanonicalUserTurn(
   const removed = turns.slice(index);
   if (removed.some((turn) => turn.status === "inProgress"))
     throw new Error("Cannot edit a message while a turn is in progress.");
+  const written = projectMessageText(options.message, {
+    precedingImageCount: original.params.input.filter(
+      (item) => item.type === "image" || item.type === "localImage",
+    ).length,
+  });
+  // Prepare before reverting: an unavailable written image must leave history intact.
+  const prepared = await prepareCodexPrompt(
+    written.text,
+    { ...written, images: options.writtenImages ? [...options.writtenImages] : written.images },
+    { resolveImageInput: client.resolveImageInput, allowEmptyTextPlaceholder: true },
+  );
+  const textIndex = original.params.input.findIndex((item) => item.type === "text");
+  const input =
+    textIndex < 0
+      ? [{ type: "text" as const, text: written.text, text_elements: [] }, ...original.params.input]
+      : original.params.input.map((item, index) =>
+          item.type === "text" && index === textIndex
+            ? {
+                ...item,
+                text: replaceCanonicalEditedPrompt(item.text, written.text),
+                text_elements: [],
+              }
+            : item,
+        );
+  input.push(
+    ...prepared.inputItems.filter((item) => item.type === "image" || item.type === "localImage"),
+  );
   const response = await client.revert(id, original.turnId);
   const { thread } = response;
   client.applyRevert(id, response, removed);
@@ -92,5 +117,6 @@ export async function editCanonicalUserTurn(
       additionalContext: options.additionalContext,
     },
     original,
+    { ...prepared, inputItems: input, pendingInputItems: input },
   );
 }

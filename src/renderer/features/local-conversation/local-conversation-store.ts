@@ -140,6 +140,9 @@ import {
   type CanonicalEditOptions,
 } from "../../../shared/codex-conversation-state/codex-owner-edit";
 import { canEditCodexConversationUserTurns } from "../../../shared/codex-user-turn-edit";
+import { projectMessageText } from "../../../shared/message-agent-input";
+import { parseLocalImagePath } from "../../../shared/image-source";
+import { materializeWrittenImages } from "../../lib/prompt-file-images";
 
 import { mutateCodexCanonicalRevert } from "../../../shared/codex-conversation-state/codex-revert-state";
 import {
@@ -1224,10 +1227,6 @@ function parseOwnerTurnErrorMessage(value: unknown): string | undefined {
   return message ?? undefined;
 }
 
-function isLikelyLocalImageSource(source: string): boolean {
-  return source.startsWith("/") || source.startsWith("file://") || /^[A-Za-z]:[\\/]/u.test(source);
-}
-
 async function resolveOwnerPromptImageInput(source: string): Promise<UserInput> {
   const normalizedSource = source.trim();
   if (
@@ -1246,10 +1245,11 @@ async function resolveOwnerPromptImageInput(source: string): Promise<UserInput> 
     return { type: "localImage", path: resolvedPath };
   }
 
-  if (isLikelyLocalImageSource(normalizedSource)) {
+  const imagePath = parseLocalImagePath(normalizedSource);
+  if (imagePath) {
     return {
       type: "localImage",
-      path: normalizedSource.replace(/^file:\/\//u, ""),
+      path: imagePath,
     };
   }
 
@@ -6944,6 +6944,13 @@ export class CodexAppServerManager {
     opts?: { serviceTier?: CodexServiceTier },
     presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<CodexThreadActionResult> {
+    const written = await materializeWrittenImages(projectMessageText(message), this.getHostId());
+    const editOptions: CanonicalEditOptions = {
+      turnId,
+      message,
+      serviceTier: opts?.serviceTier,
+      ...(written?.images ? { writtenImages: written.images } : {}),
+    };
     if (!this.streamState.getRole(threadId)) await this.requestThreadStreamResume(threadId);
     const role = this.streamState.getRole(threadId);
     if (role?.role === "follower") {
@@ -6954,9 +6961,7 @@ export class CodexAppServerManager {
         targetClientId: role.ownerClientId,
         request: conversationFollowerRequest("thread-follower-edit-last-user-turn", {
           conversationId: threadId,
-          turnId,
-          message,
-          serviceTier: opts?.serviceTier,
+          ...editOptions,
         }),
       });
       if (response.resultType !== "success")
@@ -6964,11 +6969,7 @@ export class CodexAppServerManager {
           response.resultType === "error" ? response.error : "Edit owner unavailable",
         );
     } else {
-      await this.executeNativeEditAsOwner(
-        threadId,
-        { turnId, message, serviceTier: opts?.serviceTier },
-        presentationTicket,
-      );
+      await this.executeNativeEditAsOwner(threadId, editOptions, presentationTicket);
     }
     return { threadId, streamRevision: this.streamState.getRevision(threadId) ?? 0 };
   }
@@ -6990,6 +6991,7 @@ export class CodexAppServerManager {
           await this.settingsUpdates.get(id);
         },
         supportsRevert: () => this.nativeHostContext?.supportsThreadRevert === true,
+        resolveImageInput: resolveOwnerPromptImageInput,
         revert: async (_id, beforeTurnId) => {
           const response = await this.nativeAppServer.request("thread/revert", {
             threadId: id,
@@ -7008,12 +7010,8 @@ export class CodexAppServerManager {
           );
           this.acceptPendingArtifactHistory(id);
         },
-        start: async (request, original) => {
+        start: async (request, original, preparedPrompt) => {
           const clientUserMessageId = createOwnerClientUserMessageId();
-          const prompt = await prepareCodexPrompt(options.message, undefined, {
-            resolveImageInput: resolveOwnerPromptImageInput,
-          });
-          const preparedPrompt = { ...prompt, inputItems: request.input };
           const turnStart = await runConversationOperation("codex:turn:native:prepare", {
             threadId: id,
             prompt: options.message,

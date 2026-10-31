@@ -35,7 +35,7 @@ import { CodexServerRequestResponses } from "./CodexServerRequestResponses";
 import type { ConversationFollowerRequest } from "../../shared/codex-client-coordination";
 import { install } from "./CodexMainConversationActions";
 
-it.effect("decodes follower question answers and validates queue controls", () =>
+it.effect("decodes follower question answers, prepared edit images and queue controls", () =>
   Effect.gen(function* () {
     let handler:
       | ((
@@ -45,6 +45,7 @@ it.effect("decodes follower question answers and validates queue controls", () =
       | undefined;
     const decisions: unknown[] = [];
     const queueControls: unknown[] = [];
+    const edits: unknown[] = [];
     yield* install.pipe(
       Effect.provideService(CodexQueuedFollowUps, {
         removeAsOwner: (hostId: string, threadId: string, messageId: string) =>
@@ -58,7 +59,12 @@ it.effect("decodes follower question answers and validates queue controls", () =
             return true;
           }),
       } as unknown as CodexQueuedFollowUps["Service"]),
-      Effect.provideService(CodexMainConversationEdit, { edit: () => Effect.die("unused") }),
+      Effect.provideService(CodexMainConversationEdit, {
+        edit: (hostId, conversationId, options) =>
+          Effect.sync(() => {
+            edits.push({ hostId, conversationId, options });
+          }),
+      }),
       Effect.provide(callbackLayer),
       Effect.provideService(CodexApplicationEventHub, {} as CodexApplicationEventHub["Service"]),
       Effect.provideService(ConversationEntityMap, {} as ConversationEntityMap["Service"]),
@@ -96,6 +102,31 @@ it.effect("decodes follower question answers and validates queue controls", () =
       } as unknown as CodexServerRequestResponses["Service"]),
     );
     if (!handler) throw new Error("Peer actions missing");
+    const editOptions = {
+      turnId: "turn",
+      message: "![shot](nodex://files/shot)",
+      writtenImages: [{ source: "data:image/png;base64,AQID", caption: "shot" }],
+    };
+    assert.deepEqual(
+      yield* handler("remote", {
+        method: "thread-follower-edit-last-user-turn",
+        params: { conversationId: "thread", ...editOptions },
+      }),
+      { ok: true },
+    );
+    assert.deepEqual(edits, [
+      {
+        hostId: "remote",
+        conversationId: "thread",
+        options: { ...editOptions, additionalContext: undefined },
+      },
+    ]);
+    const invalidEdit = yield* handler("remote", {
+      method: "thread-follower-edit-last-user-turn",
+      params: { conversationId: "thread", ...editOptions, writtenImages: [{ source: 123 }] },
+    }).pipe(Effect.result);
+    assert.strictEqual(invalidEdit._tag, "Failure");
+    assert.strictEqual(edits.length, 1);
     const accepted = yield* handler("local", {
       method: "thread-follower-submit-user-input",
       params: {

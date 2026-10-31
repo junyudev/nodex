@@ -72,6 +72,11 @@ One written message has exactly two projections.
   the web for an Agent. Text without images reaches the Agent exactly as
   written.
 
+Editing a sent message keeps its original image inputs first. Images written into
+the edited text follow them in occurrence order, and their placeholders continue
+the original image numbering. Library File images are read before dispatch; a
+file path names a file on the conversation's execution host.
+
 Wherever Nodex sends an image's bytes to an Agent itself, rather than handing the
 Agent a local file, the image is fitted instead of being refused or left out. One
 message carries at most 20 images; each may use 5 MB or an equal share of 20 MB,

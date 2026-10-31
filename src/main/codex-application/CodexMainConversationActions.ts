@@ -80,6 +80,14 @@ export const install = Effect.gen(function* () {
             Schema.Struct({
               turnId: Schema.String,
               message: Schema.String,
+              writtenImages: Schema.optionalKey(
+                Schema.Array(
+                  Schema.Struct({
+                    source: Schema.String,
+                    caption: Schema.optionalKey(Schema.String),
+                  }),
+                ),
+              ),
 
               serviceTier: Schema.optionalKey(Schema.NullOr(Schema.String)),
               additionalContext: Schema.optionalKey(Schema.Unknown),
@@ -89,7 +97,9 @@ export const install = Effect.gen(function* () {
           const validated = yield* Schema.decodeUnknownEffect(CLIENT_REQUEST_PARAMS["turn/start"])({
             threadId,
             input: [],
-            additionalContext: options.additionalContext,
+            ...(options.additionalContext === undefined
+              ? {}
+              : { additionalContext: options.additionalContext }),
           });
           yield* edits.edit(hostId, threadId, {
             ...options,

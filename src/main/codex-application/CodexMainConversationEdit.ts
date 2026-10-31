@@ -11,6 +11,10 @@ import {
 import { CodexMainConversationSettings } from "./CodexMainConversationSettings";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { CodexTurnCommands } from "./CodexTurnCommands";
+import { imageInput } from "./CodexTurnPreparation";
+import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
+import { parseAssetSource } from "../../shared/assets";
+import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import {
   editCanonicalUserTurn,
   type CanonicalEditOptions,
@@ -37,6 +41,7 @@ export const make = Effect.gen(function* () {
   const capabilities = yield* CodexAppServerCapabilities;
   const callbacks = yield* ScopedCallbackRuntime;
   const turns = yield* CodexTurnCommands;
+  const assets = yield* TemporaryAssets;
   return CodexMainConversationEdit.of({
     edit: (hostId, id, options) =>
       Effect.gen(function* () {
@@ -59,6 +64,12 @@ export const make = Effect.gen(function* () {
                 },
                 awaitSettings: () => callbacks.runPromise(settings.awaitCurrent(hostId, id)),
                 supportsRevert: () => capability.flags.threadRevert,
+                // A managed asset is a path in this computer's Profile; another host gets bytes.
+                resolveImageInput: (source) => {
+                  if (hostId !== CODEX_APP_LOCAL_HOST_ID && parseAssetSource(source))
+                    throw new Error("A managed image reaches another host only as its bytes");
+                  return imageInput(source, assets.resolveAssetPath);
+                },
                 revert: (_id, beforeTurnId) =>
                   callbacks
                     .runPromise(
@@ -87,13 +98,13 @@ export const make = Effect.gen(function* () {
                       Date.now(),
                     );
                 },
-                start: (request, original) =>
+                start: (request, original, preparedPrompt) =>
                   callbacks.runPromise(
                     Effect.gen(function* () {
                       const prepared = yield* turns.prepareNativeStart(
                         id,
                         options.message,
-                        undefined,
+                        { preparedPrompt },
                         request,
                         {
                           attachments: original.params.attachments,

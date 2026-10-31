@@ -8,7 +8,6 @@ import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { MainConfig } from "../app/MainConfig";
 import { buildNodexCliBootstrap } from "../platform/node/NodexCliBootstrap";
 import { randomUUID } from "node:crypto";
-import * as path from "node:path";
 import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2";
 import type { CanonicalOwnerSteerInput } from "../../shared/codex-conversation-state/codex-owner-steer";
 import * as Clock from "effect/Clock";
@@ -16,6 +15,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { parseAssetSource } from "../../shared/assets";
+import { parseLocalImagePath } from "../../shared/image-source";
 import {
   dedupeCodexLiveFileAttachments,
   isCodexLiveFileAttachment,
@@ -180,7 +180,7 @@ const normalizeText = (value: unknown): string | null => {
   return normalized.length > 0 ? normalized : null;
 };
 
-const imageInput = (
+export const imageInput = (
   source: string,
   resolveAssetPath: (fileName: string) => string,
 ): TurnStartParams["input"][number] => {
@@ -194,7 +194,8 @@ const imageInput = (
   }
   const asset = parseAssetSource(normalized);
   if (asset) return { type: "localImage", path: resolveAssetPath(asset.fileName) };
-  if (path.isAbsolute(normalized)) return { type: "localImage", path: normalized };
+  const imagePath = parseLocalImagePath(normalized);
+  if (imagePath) return { type: "localImage", path: imagePath };
   throw new Error(`Unsupported image source: ${normalized}`);
 };
 

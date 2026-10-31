@@ -6,6 +6,7 @@ import type { QueuedSubmission } from "@nodex/codex-app-server-protocol/v2/Queue
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import type { CodexVisualizationPassiveContext } from "./codex-visualization-passive-context";
 import type { CodexQueuedMessageFollowerParams } from "./codex-queued-message-follower-request";
+import type { CanonicalEditOptions } from "./codex-conversation-state/codex-owner-edit";
 
 /** Transport carries a prepared native request; owners must not reconstruct it from composer text. */
 export interface ConversationFollowerTurnStart {
@@ -38,14 +39,10 @@ export interface ConversationFollowerParams extends CodexQueuedMessageFollowerPa
   };
   "thread-follower-submit-user-input": Request & { response: ToolRequestUserInputResponse };
   "thread-follower-compact-thread": Conversation;
-  "thread-follower-edit-last-user-turn": Conversation & {
-    turnId: string;
-    message: string;
-
-    serviceTier?: TurnStartParams["serviceTier"];
-    additionalContext?: unknown;
-    writingBlockContextPrepared?: boolean;
-  };
+  "thread-follower-edit-last-user-turn": Conversation &
+    Omit<CanonicalEditOptions, "additionalContext"> & {
+      additionalContext?: unknown;
+    };
   "thread-follower-interrupt-turn": Conversation & {
     mode: "user-stop" | "system" | "descendant-cleanup";
     expectedTurnId?: string;

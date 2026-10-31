@@ -61,6 +61,8 @@ import { projectCodexConversationDocument } from "../../../shared/codex-conversa
 import { type CodexCanonicalLiveTurnParams } from "../../../shared/codex-conversation-state/codex-conversation-state";
 import { getCodexFileChangeList, getCodexFileChangePaths } from "../../../shared/codex-file-change";
 import { render, settleAsyncRender, textContent } from "../../test/dom";
+import * as filesApi from "../../lib/api";
+import * as assets from "../../lib/assets";
 
 let invokeCalls: string[] = [];
 let nativePassiveContext: CodexVisualizationPassiveContext | undefined;
@@ -21518,6 +21520,115 @@ describe("local-conversation-store", () => {
       manager.destroy();
     }
   });
+
+  test.each(["owner", "follower"] as const)(
+    "%s edit materializes written Library images before owner dispatch",
+    async (role) => {
+      invokeCalls = [];
+      invokeRecords = [];
+      hostMessageListener = null;
+      threadListByProject = {};
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      const readFile = vi.spyOn(filesApi, "readFileBytes").mockResolvedValue({
+        bytes: new Uint8Array([1, 2, 3]),
+        mimeType: "image/png",
+        etag: "shot-version",
+      });
+      const dataUrl = vi
+        .spyOn(assets, "readBlobAsDataUrl")
+        .mockResolvedValue("data:image/png;base64,AQID");
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      try {
+        const user = {
+          ...buildUserMessage("thread-1", "turn-latest", "user-latest", "original"),
+          rawItem: {
+            id: "user-latest",
+            type: "userMessage",
+            clientId: null,
+            content: [
+              { type: "text", text: "original", text_elements: [] },
+              { type: "localImage", path: "/execution-host/original.png" },
+            ],
+          },
+        };
+        const conversation = withPaginatedCanonicalState({
+          ...buildConversation("thread-1", "project-1"),
+          turns: [
+            {
+              threadId: "thread-1",
+              turnId: "turn-latest",
+              status: "completed",
+              itemIds: ["user-latest"],
+              items: [user],
+            },
+          ],
+        });
+        resumeThreadResult = conversation;
+        ownerEditRevertResult = buildRevertResponseFromConversation({ ...conversation, turns: [] });
+        if (role === "follower") {
+          const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+          dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
+            hostId: "local",
+            conversationId: "thread-1",
+            version: 1,
+            change: { type: "snapshot", revision: 1, conversationState: conversation },
+            sourceClientId: "main",
+          });
+        } else {
+          await manager.requestThreadStreamResume("thread-1");
+        }
+        await flushAsyncWork();
+        invokeRecords = [];
+        await manager.editUserTurn("thread-1", "turn-latest", "![shot](nodex://files/shot)");
+
+        expect(readFile).toHaveBeenCalledExactlyOnceWith(
+          { kind: "library" },
+          { fileId: "shot", source: { kind: "direct" } },
+        );
+        expect(dataUrl).toHaveBeenCalledTimes(1);
+        if (role === "follower") {
+          expect(
+            invokeRecords.find((record) => record.channel === "peer:requestThreadFollower")
+              ?.args[0],
+          ).toMatchObject({
+            targetClientId: "main",
+            request: {
+              method: "thread-follower-edit-last-user-turn",
+              params: {
+                message: "![shot](nodex://files/shot)",
+                writtenImages: [{ source: "data:image/png;base64,AQID", caption: "shot" }],
+              },
+            },
+          });
+          return;
+        }
+        expect(
+          recordedNativeRequests().find(
+            (record) =>
+              (record.args[0] as { request?: { method: string } }).request?.method === "turn/start",
+          )?.args[0],
+        ).toMatchObject({
+          request: {
+            params: {
+              input: [
+                { type: "text", text: "[Image #2] (caption: shot)", text_elements: [] },
+                { type: "localImage", path: "/execution-host/original.png" },
+                { type: "image", url: "data:image/png;base64,AQID" },
+              ],
+            },
+          },
+        });
+      } finally {
+        readFile.mockRestore();
+        dataUrl.mockRestore();
+        resumeThreadResult = null;
+        ownerEditRevertResult = null;
+        manager.destroy();
+      }
+    },
+  );
 
   test("local edit without a stream role resumes owner before using the owner app-server facade", async () => {
     invokeCalls = [];

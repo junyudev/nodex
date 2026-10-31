@@ -1,4 +1,5 @@
-import { expect, test } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
+import { parseLocalImagePath } from "../image-source";
 import { produce } from "immer";
 import {
   createCodexCanonicalHydratedConversationState,
@@ -26,6 +27,7 @@ function harness(
     ephemeral?: boolean;
     supportsRevert?: boolean;
     input?: TurnStartParams["input"];
+    resolveImageInput?: CanonicalEditClient["resolveImageInput"];
     /** Later Turns after the edited message; by default one automatic Turn without user input. */
     later?: ReadonlyArray<{
       readonly id: string;
@@ -89,6 +91,14 @@ function harness(
       calls.push("settings");
     },
     supportsRevert: () => options.supportsRevert ?? true,
+    resolveImageInput:
+      options.resolveImageInput ??
+      ((source) => {
+        const path = parseLocalImagePath(source);
+        if (path) return { type: "localImage", path };
+        if (source.startsWith("data:image/")) return { type: "image", url: source };
+        throw new Error(`Unsupported image source: ${source}`);
+      }),
 
     revert: async (_id, before) => {
       calls.push(`revert:${before}`);
@@ -99,7 +109,9 @@ function harness(
         mutateCodexCanonicalRevert(draft, result, new Set(turns.map((turn) => turn.turnId))),
       );
     },
-    start: async (request) => {
+    start: async (request, _original, preparedPrompt) => {
+      expect(preparedPrompt.inputItems).toEqual(request.input);
+      expect(preparedPrompt.pendingInputItems).toEqual(request.input);
       starts.push(request);
     },
   };
@@ -126,6 +138,91 @@ test("editing the latest message also reverts trailing automatic turns and keeps
   });
   expect(f.read().paginatedHistory).toEqual({ itemsBackwardsCursor: "items" });
 });
+
+test("editing projects written images after the original image inputs", async () => {
+  const f = harness();
+  await editCanonicalUserTurn(f.client, "id", {
+    turnId: "message",
+    message: "![shot](/tmp/x.png)",
+  });
+  expect(f.starts[0]?.input).toEqual([
+    {
+      type: "text",
+      text: "# Files\n## My request:\n[Image #2] (caption: shot; path: /tmp/x.png)\n",
+      text_elements: [],
+    },
+    { type: "localImage", path: "/image.png" },
+    { type: "localImage", path: "/tmp/x.png" },
+  ]);
+});
+
+test("editing keeps hosted images and appends written data, file URL and materialized Library images in order", async () => {
+  const f = harness({ input: [{ type: "image", fileId: "file_123", detail: "high" }] });
+  await editCanonicalUserTurn(f.client, "id", {
+    turnId: "message",
+    message:
+      "![inline](data:image/png;base64,AQID)\n\n![disk](file:///tmp/my%20shot.png)\n\n![library](nodex://files/shot)\n\n![web](https://example.com/web.png)",
+    writtenImages: [
+      { source: "data:image/png;base64,AQID" },
+      { source: "file:///tmp/my%20shot.png" },
+      { source: "data:image/png;base64,BAUG" },
+    ],
+  });
+  expect(f.starts[0]?.input).toEqual([
+    {
+      type: "text",
+      text: "[Image #2] (caption: inline)\n\n[Image #3] (caption: disk; path: /tmp/my shot.png)\n\n[Image #4] (caption: library)\n\n![web](https://example.com/web.png)",
+      text_elements: [],
+    },
+    { type: "image", fileId: "file_123", detail: "high" },
+    { type: "image", url: "data:image/png;base64,AQID" },
+    { type: "localImage", path: "/tmp/my shot.png" },
+    { type: "image", url: "data:image/png;base64,BAUG" },
+  ]);
+});
+
+test("an unavailable written image leaves the original history intact", async () => {
+  const resolveImageInput = vi.fn(() => {
+    throw new Error("Image unavailable");
+  });
+  const f = harness({ resolveImageInput });
+  await expect(
+    editCanonicalUserTurn(f.client, "id", {
+      turnId: "message",
+      message: "![shot](nodex://assets/shot.png)",
+    }),
+  ).rejects.toThrow("Image unavailable");
+  expect(resolveImageInput).toHaveBeenCalledExactlyOnceWith("nodex://assets/shot.png");
+  expect(f.calls).toEqual(["settings"]);
+  expect(f.starts).toEqual([]);
+  expect(residentConversationTurns(f.read()).map((turn) => turn.turnId)).toEqual([
+    "message",
+    "automatic",
+  ]);
+});
+
+test.each(["  rewritten\n\ntext  ", "", "![web](https://example.com/web.png)"])(
+  "editing without written images preserves exact text and other inputs (%j)",
+  async (message) => {
+    const original: TurnStartParams["input"] = [
+      { type: "image", fileId: "file_123" },
+      {
+        type: "text",
+        text: "old",
+        text_elements: [{ byteRange: { start: 0, end: 3 }, placeholder: "old" }],
+      },
+      { type: "text", text: "retained context", text_elements: [] },
+      { type: "mention", name: "notes", path: "/notes.md" },
+    ];
+    const f = harness({ input: original });
+    await editCanonicalUserTurn(f.client, "id", { turnId: "message", message });
+    expect(f.starts[0]?.input).toEqual([
+      original[0],
+      { type: "text", text: message, text_elements: [] },
+      ...original.slice(2),
+    ]);
+  },
+);
 
 test("editing an earlier message reverts it with every later user Turn", async () => {
   const f = harness({
