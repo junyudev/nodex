@@ -25,7 +25,7 @@ The palette is a transient overlay and does not become part of durable navigatio
 - The sidebar `Search` row opens Pages and shows the `Cmd/Ctrl+P` shortcut.
 - A leading `>` is plain query text and no longer switches modes.
 - The palette searches the complete authorized Page corpus of every available Project context, not only Pages already loaded by a Board or the active Project.
-- The palette combines the current non-archived local chat catalog with eligible root chats returned by app-server search. A server-only result is materialized locally only when opened.
+- The palette finds every non-archived root chat in the Profile: project-backed and projectless chats from every Provider, not only chats already loaded by the sidebar.
 - `Search files` and `Search text in files` are always discoverable. When the current context has no workspace, their folder control opens a host-aware chooser. Search roots are transient and never change Project sources. File and directory results open through the same host-qualified file navigation owner as file links; Text results also pass their exact one-based line and UTF-16 column. Remote paths never fall through to local filesystem opening.
 - `Force reload skills` is available when the selected chat supports skill discovery. It refreshes that chat's provider and scope, including its Claude Profile and Project or Codex execution host and skill roots. Unsupported providers do not expose the command. A pending refresh cannot replace another chat's inventory after selection changes.
 - The palette closes after executing a result.
@@ -50,8 +50,8 @@ All is the initial scope for `Cmd/Ctrl+K` and `Cmd/Ctrl+Shift+P`.
 - An empty query shows the supported `New chat` and `Open folder` actions under Quick actions, followed initially by up to five recent chats and five Page suggestions. Development-only mock actions are excluded from Quick actions.
 - A one-character query searches actions, available workspace filenames, and file contents. Files and Text remain absent from an empty All query.
 - All searches the current Project context and ignores a temporary folder selection. Switching back to Files or Text within the same opening restores that selection.
-- At `2` Unicode characters, matching local chat and Page metadata appears in trailing Chats and Pages sections while matching actions remain visible. Workspace filename and text searches continue independently of those thresholds.
-- At `2` Unicode characters, All synchronously searches the warm, Core-authorized Page metadata projection and starts bounded Core body enrichment. At `3` characters, Chats additionally merges bounded app-server chat-history results.
+- At `2` Unicode characters, matching chat and Page metadata appears in trailing Chats and Pages sections while matching actions remain visible. Workspace filename and text searches continue independently of those thresholds.
+- At `2` Unicode characters, All synchronously searches the warm, Core-authorized Page metadata projection and starts bounded Core body enrichment. Once the query has a word of `3` characters, or `2` CJK characters, Chats also lists chats matched only by their message history.
 - Results remain grouped as actions, Chats, Pages, Files, then Text; scores from different result types are never interleaved.
 - Chats, Pages, Files, and Text each initially show up to five results. Text can expand to its 100 matching-line backend limit. Each section exposes `Show more` when additional results are available; activating it appends up to five results in that section without closing the palette. Focus stays in the input and selection stays at the insertion point, allowing keyboard navigation to continue through the newly revealed results. Actions and search-status rows do not consume another section's limit, and Page results appear independently of pending chat-history search.
 - Changing scope resets section expansion to its initial five-result counts. Page discovery ignores persisted Pages filters because those controls are not visible in All.
@@ -77,9 +77,9 @@ Chats is opened by `Cmd/Ctrl+G`, the Chats scope control, or `Search chats`.
 
 - Chats shows chat rows only.
 - Commands and Pages are hidden entirely in Chats.
-- Empty query shows recent and pinned sidebar chats when available.
+- Empty query lists pinned chats first, then the most recent chats.
 - User-facing row text uses `chat`; internal data structures may still use `thread`.
-- Chat metadata search is local and immediate. Transcript discovery and snippets come only from the bounded app-server search path described below.
+- Chat metadata matches answer each keystroke; message-history matches follow once typing pauses, as described in [Chat Search Model](#chat-search-model).
 
 ### Pages Scope
 
@@ -228,62 +228,45 @@ In All, Page rows stay compact: metadata badges are omitted and a body excerpt i
 
 ## Chat Search Model
 
-Chat search indexes the local chat catalog in the renderer and treats app-server `thread/search` as a bounded supplement and discovery source.
+Main owns chat search for every chat picker: the command palette, composer context, Page chat mentions, and Send to chat. It ranks a warm catalog of every eligible chat with the matcher the Agent `search_sessions` tool uses, so a chat one surface finds is found by all of them. Pickers receive bounded, ranked results and never hold the catalog.
 
-### Indexed fields
+### Catalog
 
-Chat metadata search indexes:
+The catalog covers project-backed and projectless chats from every Provider, including chats that have not started a Thread. Archived chats, chats in archived Projects, side chats, parent-linked subagents, and internal helper threads are excluded. Pickers that target a Thread, such as mentions and Send to chat, list only started chats.
 
-- title
-- preview
-- git branch
-- project name
-- cwd
-- chat id
+Main rebuilds the catalog after Session, sidebar, or Agent activity changes, and at least every 15 seconds while it is searched. A search during a rebuild answers from the previous catalog rather than waiting.
 
-The local index includes non-archived project-backed, projectless, and sessionless chats. The app-server supplement may add eligible root chats that are not local yet. Archived chats, side chats, ephemeral conversations, parent-linked subagents, and internal helper threads are excluded at the main-process boundary.
+### Metadata matching
 
-### Ranking
+Chat metadata matching covers the title, Project name, branch, and pull request numbers, titles, and links, plus an exact chat id or link:
 
-Chat metadata search uses an in-memory MiniSearch index. It is intentionally not persisted in IndexedDB because chat metadata is small and already fetched on palette open.
+- matching ignores case, accents, and character width
+- every query word must match, and words may match different fields
+- words match at word starts; every CJK character starts a word, so a CJK title matches any of its substrings
+- longer words tolerate one typo, tried only when no word-start match exists
+- titles count fully, pull request titles and branches less, and Project names least
+- recency and opens from search reorder matches of the same quality, never across quality classes
 
-Field boosts are:
+A chat whose metadata does not match may still match its opening prompt once the query has a searchable word. Prompt matches follow all metadata matches.
 
-- title: `8`
-- preview: `4`
-- git branch: `2.5`
-- project name: `3`
-- cwd: `2`
-- chat id: `1`
+An empty query lists pinned chats in their pinned order, then chats by conversation recency. Pickers may place active-Project results first without changing the shared match order.
 
-Query semantics match Page metadata search:
+### Message history
 
-- multiple terms combine with `AND`
-- prefix matching is enabled for terms with length `>= 2`
-- fuzzy matching uses the shared term-length-sensitive thresholds
+Once typing pauses for `250` ms and the query has a searchable word, pickers also search message history for chats that metadata and prompts did not match:
 
-For empty queries, chat results preserve sidebar ordering: pinned rows first, then the sidebar's recency ordering.
-For non-empty queries, the best matched field orders results first (`title`, `preview`, `branch`, `project/cwd`, then id), followed by relevance and recency. Pickers may place active-Project results first without changing this shared match order.
+- Agent Runtime history, for every Provider it runs, through the Runtime message index
+- native Codex history, through Codex app-server `thread/search` on the local host
 
-### App-server search
-
-The renderer requests bounded chat search through `codex:threads:palette:search`, with a 200 ms debounce:
-
-- the request limit is capped at `60`
-- Chats searches for every non-empty query; All starts at `3` characters
-- main calls paginated app-server `thread/search`, ordered by `updated_at` descending, until it reaches the result limit or exhausts the cursor
-- main drops archived, ephemeral, parent/subagent, and internal-source rows, guards repeated cursors, and enriches hits from local thread/session/Project state when available
-- a normalized query/limit cache lasts 30 seconds and identical in-flight requests are deduplicated
-- renderer results are accepted only for the current normalized query; a stale response cannot replace newer rows
-- expanding the same query retains confirmed content matches while the larger request loads or fails; changing the query or closing the palette clears them
-- app-server errors show a compact fallback status while local metadata matches remain interactive
-- Nodex stores no transcript copy, FTS table, retry state, or backfill queue for this feature
+Each source has its own deadline and reports whether it completed, was unavailable, or timed out. A slow or failing source never hides catalog matches or the other source's matches. Native Codex searches scan history on disk, so at most one runs at a time; a newer query replaces one that is still waiting. Message matches list after catalog matches, best first and one per chat, each with a highlighted excerpt. Complete answers are reused for `30` seconds. Nodex Core stores no transcript copy or FTS table for chat search.
 
 ### Chat Result Presentation
 
-Each chat result renders a chat icon and title. Empty-query recent rows keep a compact single-line layout with the Project name at the trailing edge when available. Non-empty queries add project, cwd basename, branch, and updated date metadata plus any matching preview or snippet.
+Each chat result renders a chat icon and title. Empty-query recent rows keep a compact single-line layout with the Project name at the trailing edge when available. Non-empty queries add Project, cwd basename, branch, and conversation date metadata.
 
-Metadata matches highlight title, project/Chats context, cwd, branch, and preview characters inline without badge-like match chips. App-server snippets are normalized and highlighted against the current query in the renderer. CJK, emoji, and combining marks use one code-point coordinate system so highlighting never corrupts visible text.
+Matching title characters are highlighted inline without badge-like match chips. A Project or branch match is highlighted in the metadata line. A matching message, opening prompt, or pull request appears on a third line; messages are labeled `You` or `Agent` when their author is known. Highlights use Main's match ranges in UTF-16 coordinates of the displayed text, so CJK, emoji, and combining marks never split.
+
+A trailing status row reports `Searching chat history…` while message history loads, `Some chat history couldn’t be searched` when a source was unavailable or timed out, and `Chats couldn’t be searched` when the catalog itself failed. Catalog matches stay interactive in every state.
 
 ## Command Search Model
 
@@ -312,7 +295,7 @@ Metadata matches highlight title, project/Chats context, cwd, branch, and previe
 - All with a non-empty query shows up to `100` matching command rows and, once the relevant search threshold is met, initially up to `5` chats, `5` Pages, and `5` native file/directory matches.
 - Each All content section expands independently in increments of `5` through `Show more`. Chat request budgets grow with expansion, up to `60`; Page expansion reveals the already bounded `60`-result search, and native Files retains its `50`-match bound. Expansion stops at the available results or that category's bound. Status rows do not displace another category.
 - Actions shows up to `100` matching command rows.
-- Chats shows up to `25` chat rows, with pending history-search status below the current results.
+- Chats shows up to `25` chat rows, with message-history status below the current results.
 - Pages shows up to `60` Page rows, with pending enrichment status below the current results.
 - Files displays up to `50` native file and directory matches after path exclusions.
 
@@ -344,8 +327,8 @@ Executing a command result:
 Executing a chat result:
 
 - closes the palette
-- opens the attached project session for that chat
-- shows the existing unattached-chat toast only if the result is stale and its session link disappeared after search
+- opens that chat's Session
+- reports that the chat couldn’t be opened if it was removed after it was listed
 
 Supported actions currently include:
 

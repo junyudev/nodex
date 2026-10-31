@@ -1,3 +1,4 @@
+import { live as chatSearchLive } from "../chat-search/ChatSearch";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -121,7 +122,7 @@ const executionGraph = AgentRuntimeApplicationLive.runtime.pipe(
   Layer.provideMerge(NodexAccountLive.live.pipe(Layer.provideMerge(conversationGraph))),
 );
 const interactionsGraph = ConversationApplicationLive.interactions.pipe(
-  Layer.provideMerge(executionGraph),
+  Layer.provideMerge(chatSearchLive.pipe(Layer.provideMerge(executionGraph))),
 );
 const protocolGraph = ConversationApplicationLive.protocol.pipe(
   Layer.provideMerge(interactionsGraph),

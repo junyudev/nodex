@@ -1,5 +1,4 @@
-import type { ThreadSourceKind } from "@nodex/codex-app-server-protocol/v2/ThreadSourceKind";
-import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
+import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -20,39 +19,27 @@ import type {
   CodexThreadSummary,
   CodexThreadSummaryWindow,
   CodexThreadSummaryWindowInput,
-  CommandPaletteThreadListInput,
-  CommandPaletteThreadSearchInput,
-  CommandPaletteThreadSearchResult,
-  CommandPaletteThreadSummary,
   ProjectSession,
 } from "../../shared/types";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { applyResultCursor } from "../core-client/types";
-import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
+import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
-import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { projectCoreWorkspaceThread } from "./CodexThreadDirectoryProjection";
 import {
   buildCoreWorkspaceTaskThreadSummary,
   hasSidebarThreadSummaryChanged,
-  isNonSidebarThreadWithoutParent,
-  parseThreadStatus,
   projectCoreWorkspaceProject,
-  resolveSidebarProjectIdForCwd,
-  resolveThreadSearchResultTitle,
 } from "./CodexThreadCatalogProjection";
 
 export class CodexThreadCatalogError extends Data.TaggedError("CodexThreadCatalogError")<{
   readonly operation:
     | "list-pinned"
     | "list-project"
-    | "list-palette"
-    | "search-palette"
     | "set-pinned"
     | "reorder-pinned"
     | "move"
@@ -62,10 +49,6 @@ export class CodexThreadCatalogError extends Data.TaggedError("CodexThreadCatalo
   readonly cause: unknown;
 }> {}
 
-export interface CodexThreadCatalogOptions {
-  readonly foldPathCase?: boolean;
-}
-
 export class CodexThreadCatalog extends Context.Service<
   CodexThreadCatalog,
   {
@@ -74,12 +57,6 @@ export class CodexThreadCatalog extends Context.Service<
       projectId: string,
       input?: CodexThreadSummaryWindowInput,
     ) => Effect.Effect<CodexThreadSummaryWindow, CodexThreadCatalogError>;
-    readonly listPalette: (
-      input: CommandPaletteThreadListInput,
-    ) => Effect.Effect<readonly CommandPaletteThreadSummary[], CodexThreadCatalogError>;
-    readonly searchPalette: (
-      input: CommandPaletteThreadSearchInput,
-    ) => Effect.Effect<readonly CommandPaletteThreadSearchResult[], CodexThreadCatalogError>;
     readonly resolve: (
       threadId: string,
     ) => Effect.Effect<CodexThreadSummary | null, CodexThreadCatalogError>;
@@ -100,53 +77,30 @@ export class CodexThreadCatalog extends Context.Service<
   }
 >()("nodex/main/codex-application/CodexThreadCatalog") {}
 
-const CODEX_SIDEBAR_THREAD_SOURCE_KINDS = [] as const satisfies readonly ThreadSourceKind[];
-const COMMAND_PALETTE_THREAD_SEARCH_DEFAULT_LIMIT = 50;
-const COMMAND_PALETTE_THREAD_SEARCH_MAX_LIMIT = 60;
 export const CODEX_PINNED_THREAD_LIST_PAGE_SIZE = 200;
 export const CODEX_PINNED_THREAD_LIST_MAX_PAGES = 5;
 export const CODEX_PINNED_THREAD_LIST_MAX_RESULTS = 1_000;
 export const CODEX_PINNED_THREAD_LIST_MAX_PAGE_BYTES = 2 * 1024 * 1024;
 export const CODEX_PINNED_THREAD_LIST_MAX_RESULT_BYTES = 256 * 1024;
 export const CODEX_PINNED_THREAD_LIST_PAGE_DEADLINE = "3 seconds";
-export const CODEX_THREAD_PALETTE_SEARCH_MAX_PAGES = 5;
-export const CODEX_THREAD_PALETTE_SEARCH_MAX_PAGE_BYTES = 2 * 1024 * 1024;
-export const CODEX_THREAD_PALETTE_SEARCH_MAX_RESULT_BYTES = 256 * 1024;
-export const CODEX_THREAD_PALETTE_SEARCH_PAGE_DEADLINE = "3 seconds";
 type CoreTaskWindow = Extract<
   import("../core-client/types").ProjectWorkspaceReadSnapshot["value"],
   { readonly kind: "task_window" }
 >["tasks"];
-
-const normalizeSearchLimit = (limit: number | undefined): number => {
-  if (!Number.isFinite(limit)) return COMMAND_PALETTE_THREAD_SEARCH_DEFAULT_LIMIT;
-  return Math.min(
-    COMMAND_PALETTE_THREAD_SEARCH_MAX_LIMIT,
-    Math.max(1, Math.floor(limit ?? COMMAND_PALETTE_THREAD_SEARCH_DEFAULT_LIMIT)),
-  );
-};
 
 const isCoreNotFound = (cause: unknown): boolean =>
   cause instanceof CoreRuntimeError &&
   cause.cause instanceof CoreModuleResponseError &&
   cause.cause.coreError.code === "not_found";
 
-export const make = (
-  options: CodexThreadCatalogOptions = {},
-): Effect.Effect<
+export const make = (): Effect.Effect<
   CodexThreadCatalog["Service"],
   never,
-  | CodexGateway
-  | CodexInternalThreadRegistry
-  | CodexSidebarSyncRuntime
-  | CodexThreadDirectory
-  | CoreModules
-  | Scope.Scope
+  CodexGateway | CodexSidebarSyncRuntime | CodexThreadDirectory | CoreModules | Scope.Scope
 > =>
   Effect.gen(function* () {
     const ownerScope = yield* Scope.Scope;
     const gateway = yield* CodexGateway;
-    const internalThreads = yield* CodexInternalThreadRegistry;
     const sidebar = yield* CodexSidebarSyncRuntime;
     const directory = yield* CodexThreadDirectory;
     const core = yield* CoreModules;
@@ -167,21 +121,24 @@ export const make = (
       runOwned(mutations.withPermit(operation));
 
     const readProjects = Effect.fn("CodexThreadCatalog.readProjects")(function* () {
-      const response = yield* core.workspace.read({
-        kind: "project_window",
-        include_archived: false,
-        window: { after: null, first: 200 },
-      });
-      if (response.value.kind !== "project_window") {
-        return yield* error("list-palette", new Error("Core returned the wrong Project read"));
-      }
-      if (response.value.projects.next_cursor) {
-        return yield* error(
-          "list-palette",
-          new Error("Available Project collection exceeded its Core bound"),
-        );
-      }
-      return response.value.projects.items.map(projectCoreWorkspaceProject);
+      const projects = [];
+      let after: string | null = null;
+      const cursors = new Set<string>();
+      do {
+        const response: ProjectWorkspaceReadSnapshot = yield* core.workspace.read({
+          kind: "project_window",
+          include_archived: false,
+          window: { after, first: 200 },
+        });
+        if (response.value.kind !== "project_window")
+          return yield* error("move", new Error("Core returned the wrong Project read"));
+        projects.push(...response.value.projects.items.map(projectCoreWorkspaceProject));
+        after = response.value.projects.next_cursor ?? null;
+        if (after && cursors.has(after))
+          return yield* error("move", new Error("Project cursor did not advance"));
+        if (after) cursors.add(after);
+      } while (after !== null);
+      return projects;
     });
 
     const readTaskWindow = Effect.fn("CodexThreadCatalog.readTaskWindow")(function* (input: {
@@ -254,84 +211,6 @@ export const make = (
         Effect.map((result) => result.snapshot),
         Effect.mapError((cause) => error("publish", cause)),
       );
-
-    const listPalette = Effect.fn("CodexThreadCatalog.listPalette")(function* (
-      input: CommandPaletteThreadListInput,
-    ) {
-      if (input.scope !== "sidebar") return [];
-      const projects = yield* readProjects();
-      const projectNames = new Map(projects.map((project) => [project.id, project.name] as const));
-      const summaries: CommandPaletteThreadSummary[] = [];
-      const seen = new Set<string>();
-      const add = (tasks: CoreTaskWindow): void => {
-        for (const task of tasks.items) {
-          if (summaries.length >= 100 || task.session.archived) continue;
-          // Runtime-bound Sessions are chats too; their status and location live in execution.
-          const runtimeRoot = task.thread ? null : task.session.execution_ref?.thread_id;
-          if (runtimeRoot) {
-            if (seen.has(runtimeRoot)) continue;
-            seen.add(runtimeRoot);
-            summaries.push({
-              threadId: runtimeRoot,
-              sessionId: task.session.id,
-              projectId: task.session.project_id ?? null,
-              projectName: task.session.project_id
-                ? (projectNames.get(task.session.project_id) ?? null)
-                : null,
-              title: task.session.display_title,
-              preview: "",
-              cwd: null,
-              gitBranch: null,
-              projectless: task.session.project_id == null,
-              pinned: task.session.pinned,
-              pinnedOrder: task.session.pinned_order ?? null,
-              statusType: "notLoaded",
-              statusActiveFlags: [],
-              createdAt: Date.parse(task.session.created_at) || 0,
-              updatedAt: Date.parse(task.session.updated_at) || 0,
-            });
-            continue;
-          }
-          if (!task.thread || task.thread.parent_thread_id) continue;
-          if (task.thread.backend_binding.kind !== "codex") continue;
-          if (task.thread.archived || seen.has(task.thread.thread_id)) continue;
-          seen.add(task.thread.thread_id);
-          summaries.push({
-            threadId: task.thread.thread_id,
-            sessionId: task.session.id,
-            projectId: task.session.project_id ?? null,
-            projectName: task.session.project_id
-              ? (projectNames.get(task.session.project_id) ?? null)
-              : null,
-            title: task.session.display_title,
-            preview: task.thread.thread_preview,
-            cwd: task.thread.cwd ?? null,
-            gitBranch: null,
-            projectless: task.session.project_id == null,
-            pinned: task.session.pinned,
-            pinnedOrder: task.session.pinned_order ?? null,
-            statusType: task.thread.status.status_type,
-            statusActiveFlags: [...task.thread.status.active_flags],
-            createdAt: task.thread.created_at,
-            updatedAt: task.thread.recency_at,
-          });
-        }
-      };
-      add(yield* readTaskWindow({ projectId: null, pinned: true, first: 100 }));
-      if (summaries.length < 100) {
-        add(yield* readTaskWindow({ projectId: null, first: 100 - summaries.length }));
-      }
-      for (const project of projects) {
-        if (summaries.length >= 100) break;
-        add(
-          yield* readTaskWindow({
-            projectId: project.id,
-            first: 100 - summaries.length,
-          }),
-        );
-      }
-      return summaries.sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 100);
-    });
 
     /** An Agent chat is named by its execution root Thread and opened through its Session. */
     const resolveAgentChat = Effect.fn("CodexThreadCatalog.resolveAgentChat")(function* (
@@ -596,171 +475,6 @@ export const make = (
             })),
             Effect.mapError((cause) => error("list-project", cause)),
           ),
-        );
-      },
-      listPalette: (input) =>
-        runOwned(listPalette(input).pipe(Effect.mapError((cause) => error("list-palette", cause)))),
-      searchPalette: (input) => {
-        const query = input.query.trim();
-        if (!query) return Effect.succeed([]);
-        return runOwned(
-          Effect.gen(function* () {
-            const [local, projects] = yield* Effect.all(
-              [listPalette({ scope: "sidebar" }), readProjects()] as const,
-              { concurrency: "unbounded" },
-            );
-            const localById = new Map(local.map((thread) => [thread.threadId, thread] as const));
-            const projectNames = new Map(
-              projects.map((project) => [project.id, project.name] as const),
-            );
-            const results: CommandPaletteThreadSearchResult[] = [];
-            const seen = new Set<string>();
-            const seenCursors = new Set<string>();
-            let cursor: string | null = null;
-            let retainedBytes = 0;
-            const limit = normalizeSearchLimit(input.limit);
-            yield* gateway.awaitReady(gateway.localHostId);
-            const connection = yield* gateway.connection(gateway.localHostId);
-            if (connection.kind !== "ready") {
-              return yield* error(
-                "search-palette",
-                new Error("Codex app-server is unavailable for Thread search"),
-              );
-            }
-            const generationFence = codexGatewayGenerationFence(connection);
-            for (let page = 0; page < CODEX_THREAD_PALETTE_SEARCH_MAX_PAGES; page += 1) {
-              if (cursor) {
-                if (seenCursors.has(cursor)) {
-                  return yield* error(
-                    "search-palette",
-                    new Error("Thread search cursor did not advance"),
-                  );
-                }
-                seenCursors.add(cursor);
-              }
-              const requestedLimit = limit - results.length;
-              const loaded = yield* gateway
-                .requestLocal(
-                  "thread/search",
-                  {
-                    cursor,
-                    limit: requestedLimit,
-                    sortKey: "updated_at",
-                    sortDirection: "desc",
-                    sourceKinds: [...CODEX_SIDEBAR_THREAD_SOURCE_KINDS],
-                    archived: false,
-                    searchTerm: query,
-                  },
-                  {
-                    ...generationFence,
-                    priority: "interactive",
-                    source: "thread_catalog",
-                    timeoutMs: 3_000,
-                  },
-                )
-                .pipe(Effect.timeoutOption(CODEX_THREAD_PALETTE_SEARCH_PAGE_DEADLINE));
-              if (Option.isNone(loaded)) {
-                return yield* error(
-                  "search-palette",
-                  new Error("Thread search page exceeded its bounded deadline"),
-                );
-              }
-              const response: ClientRequestResponsesByMethod["thread/search"] = loaded.value;
-              if (
-                response.data.length > requestedLimit ||
-                cappedApproximateValueBytes(
-                  response.data,
-                  CODEX_THREAD_PALETTE_SEARCH_MAX_PAGE_BYTES,
-                ) > CODEX_THREAD_PALETTE_SEARCH_MAX_PAGE_BYTES
-              ) {
-                return yield* error(
-                  "search-palette",
-                  new Error("Thread search page exceeded its bounded admission budget"),
-                );
-              }
-              for (const item of response.data) {
-                const thread = item.thread;
-                const persisted = localById.get(thread.id);
-                const sourceExcluded =
-                  isNonSidebarThreadWithoutParent(thread as unknown as Record<string, unknown>) ||
-                  internalThreads.shouldSuppress(thread.id);
-                const linked =
-                  sourceExcluded &&
-                  persisted?.sessionId &&
-                  !thread.ephemeral &&
-                  !thread.parentThreadId &&
-                  thread.threadSource !== "system" &&
-                  internalThreads.classification(thread.id) !== "structured-title"
-                    ? yield* readCodexLinkedRootSession(core, {
-                        hostId: gateway.localHostId,
-                        threadId: thread.id,
-                      }).pipe(Effect.catch(() => Effect.succeed(null)))
-                    : null;
-                if (
-                  thread.ephemeral ||
-                  thread.parentThreadId ||
-                  (sourceExcluded && !linked) ||
-                  seen.has(thread.id)
-                ) {
-                  continue;
-                }
-                seen.add(thread.id);
-                const inferred = resolveSidebarProjectIdForCwd(
-                  thread.cwd,
-                  projects,
-                  options.foldPathCase === true,
-                );
-                const projectId = linked ? linked.projectId : (persisted?.projectId ?? inferred);
-                const status = parseThreadStatus(thread.status);
-                const result: CommandPaletteThreadSearchResult = {
-                  thread: {
-                    threadId: thread.id,
-                    sessionId: linked?.id ?? persisted?.sessionId ?? null,
-                    projectId,
-                    projectName: projectId
-                      ? (projectNames.get(projectId) ?? persisted?.projectName ?? null)
-                      : null,
-                    title: resolveThreadSearchResultTitle({
-                      threadName: thread.name,
-                      threadPreview: thread.preview,
-                      cwd: thread.cwd,
-                      threadId: thread.id,
-                    }),
-                    preview: thread.preview,
-                    cwd: thread.cwd,
-                    gitBranch: thread.gitInfo?.branch ?? null,
-                    projectless: projectId === null,
-                    pinned: persisted?.pinned ?? false,
-                    pinnedOrder: persisted?.pinnedOrder ?? null,
-                    statusType: persisted?.statusType ?? status.statusType,
-                    statusActiveFlags: persisted?.statusActiveFlags ?? status.statusActiveFlags,
-                    createdAt: Number(thread.createdAt) * 1_000,
-                    updatedAt: Number(thread.recencyAt ?? thread.updatedAt) * 1_000,
-                  },
-                  snippet: item.snippet,
-                };
-                const resultBytes = cappedApproximateValueBytes(
-                  result,
-                  CODEX_THREAD_PALETTE_SEARCH_MAX_RESULT_BYTES - retainedBytes,
-                );
-                if (resultBytes > CODEX_THREAD_PALETTE_SEARCH_MAX_RESULT_BYTES - retainedBytes) {
-                  return yield* error(
-                    "search-palette",
-                    new Error("Thread search results exceeded their bounded retention budget"),
-                  );
-                }
-                results.push(result);
-                retainedBytes += resultBytes;
-                if (results.length >= limit) break;
-              }
-              cursor = response.nextCursor ?? null;
-              if (cursor === null || results.length >= limit) return results;
-            }
-            return yield* error(
-              "search-palette",
-              new Error("Thread search exceeded its bounded page budget"),
-            );
-          }).pipe(Effect.mapError((cause) => error("search-palette", cause))),
         );
       },
       resolve: (threadId) => {

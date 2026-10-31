@@ -18,7 +18,12 @@ import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { makeTemporarySqlite } from "../platform/node/TemporarySqlite";
 import { AgentRuntimeApplicationError } from "../agent-runtime/AgentRuntimeApplication";
 import { NativeSessionSearchStale } from "./NativeSessionSearch";
-import { summaryOf, SessionDiscoveryError, type SessionListingSummary } from "./SessionDiscovery";
+import {
+  summaryOf,
+  withSessionMetadata,
+  SessionDiscoveryError,
+  type SessionListingSummary,
+} from "./SessionDiscovery";
 import type { NativeSessionSearch, NativeSearchFact } from "./NativeSessionSearch";
 
 type Operations = AgentRuntimeOperations;
@@ -110,55 +115,6 @@ const decode = (cursor: string) =>
     },
     catch: (cause) => fail("invalid_cursor", cause),
   });
-const statusOf = (details: Metadata): "active" | "idle" | "systemError" => {
-  const status = details.activityRunStatus ?? details.runStatus;
-  if (status === "failed") return "systemError";
-  return ["preparing", "starting", "running", "waiting"].includes(status ?? "") ? "active" : "idle";
-};
-const withMetadata = (
-  session: SessionListingSummary,
-  details: Metadata,
-): SessionListingSummary => ({
-  ...session,
-  threadId: details.threadId,
-  preview: details.preview,
-  backend:
-    details.providerDriver === "claudeAgent"
-      ? "claude"
-      : details.providerDriver === "codex" || details.providerDriver === "opencode"
-        ? details.providerDriver
-        : "acp",
-  recencyAt: details.recencyAt === null ? null : Date.parse(details.recencyAt),
-  status: { status_type: statusOf(details), active_flags: [] },
-  createdBy: details.createdBy,
-  creationSource: details.creationSource,
-  createdAt: details.createdAt,
-  latestUserAuthoredMessageAt: details.latestUserAuthoredMessageAt,
-  updatedAt: details.updatedAt,
-  activeRunId: details.activeRunId,
-  worktreePath: details.worktreePath,
-  titleRegeneration: details.titleRegeneration,
-  latestRunId: details.latestRunId,
-  runStatus: details.runStatus,
-  activityRunStatus: details.activityRunStatus,
-  runtimeMode: details.runtimeMode,
-  interactionMode: details.interactionMode,
-  parentThreadId: details.parentThreadId,
-  relationshipToParent: details.relationshipToParent,
-  branch: details.branch,
-  settled: details.settled,
-  settledAt: details.settledAt,
-  snoozed: details.snoozed,
-  snoozedUntil: details.snoozedUntil,
-  pullRequests: details.pullRequests,
-  itemCount: details.itemCount,
-  itemCountCoverage: details.itemCountCoverage,
-  agent:
-    details.providerInstanceId === null || details.model === null
-      ? null
-      : { providerInstanceId: details.providerInstanceId, model: details.model },
-  metadataCoverage: "complete",
-});
 type Body =
   | {
       readonly kind: "runtime";
@@ -362,7 +318,7 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                       [runtimeId, metadata.threadId],
                     );
                     for (const row of rows) {
-                      const session = withMetadata(
+                      const session = withSessionMetadata(
                         JSON.parse(row.summary) as SessionListingSummary,
                         metadata,
                       );
@@ -721,7 +677,7 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                         "cursor_stale",
                         "Selected execution metadata is no longer visible",
                       );
-                    session = withMetadata(session, metadata);
+                    session = withSessionMetadata(session, metadata);
                   }
                   const currentMatch = rankSessionMetadata(
                     sessionSearchSubject(session),

@@ -25,7 +25,6 @@ import { CommandPaletteWorkspaceToolbar } from "./command-palette-workspace-tool
 import { useCommandPaletteTheme, CommandPaletteThemeRow } from "./command-palette-theme";
 import {
   useCallback,
-  useDeferredValue,
   useEffect,
   forwardRef,
   Fragment,
@@ -63,7 +62,7 @@ import {
   type CommandPalettePage,
   type CommandPalettePageFilters,
   type CommandPaletteCommand,
-  type CommandPaletteThread,
+  type CommandPaletteChat,
   type CommandPaletteFile,
   type CommandPaletteText,
   writeCommandPalettePageFilters,
@@ -72,12 +71,12 @@ import {
   buildCommandPaletteCharacterHighlightSegments,
   type CommandPaletteHighlightSegment,
 } from "../../lib/command-palette-highlight";
-import type { CommandPaletteThreadSearchIndex } from "../../lib/command-palette-thread-search";
 import {
-  getCommandPaletteThreadSearchPlan,
-  type CommandPaletteThreadSearchBatch,
-  useCommandPaletteThreadSearch,
-} from "../../lib/command-palette-chat-search";
+  chatFieldHighlightSegments,
+  chatHighlightSegments,
+  useChatMessageSearch,
+  useChatSearch,
+} from "../../lib/chat-search";
 import {
   buildCommandPalettePageSearchScopeKey,
   getCommandPalettePageSearchPlan,
@@ -111,8 +110,9 @@ import type { Project } from "@/lib/types";
 import {
   buildCommandPaletteSectionsModel,
   DEFAULT_DISCOVERY_LIMITS,
-  MAX_DISCOVERY_RESULTS,
+  getCommandPaletteChatLimit,
   getDiscoveryResultLimit,
+  type CommandPaletteChatStatus,
   type DiscoveryLimits,
   type ExecutablePaletteItem,
   type PaletteItem,
@@ -133,13 +133,7 @@ interface CommandPaletteSurfaceProps {
   projects?: readonly Project[];
   activeProjectId?: string | null;
   recentPageIds?: readonly string[];
-  threads?: readonly CommandPaletteThread[];
-  threadSearchIndex?: CommandPaletteThreadSearchIndex | null;
   pageSearchBatch?: CommandPalettePageSearchBatch;
-  loading: boolean;
-  pagesLoading: boolean;
-  chatsLoading: boolean;
-  threadSearchBatch?: CommandPaletteThreadSearchBatch;
   onChangeMode: (mode: CommandMenuMode) => void;
   onRequestClose: () => void;
   /** Runs a chosen result with the query that found it. */
@@ -155,7 +149,6 @@ export interface CommandPaletteSurfaceHandle {
 const EMPTY_PALETTE_PAGES: readonly CommandPalettePage[] = [];
 const EMPTY_PALETTE_PROJECTS: readonly Project[] = [];
 const EMPTY_RECENT_PAGE_IDS: readonly string[] = [];
-const EMPTY_PALETTE_THREADS: readonly CommandPaletteThread[] = [];
 
 function getPaletteItemDomId(listId: string, index: number): string {
   return `${listId}-item-${index}`;
@@ -174,15 +167,11 @@ function getModePlaceholder(mode: CommandMenuMode): string {
   return "Search Nodex";
 }
 
-function getEmptyMessage(mode: CommandMenuMode, query: string, loading: boolean): string {
-  if (loading) {
-    if (mode === "chats") return "Loading chats...";
-    if (mode === "pages") return "Loading pages...";
-    if (mode === "files") return "Loading files...";
-    return "Loading commands...";
+function getEmptyMessage(mode: CommandMenuMode, query: string, chatsPending: boolean): string {
+  if (mode === "chats") {
+    if (chatsPending) return "Loading chats...";
+    return query.length > 0 ? "No matching chats." : "No chats.";
   }
-
-  if (mode === "chats") return query.length > 0 ? "No matching chats." : "No chats.";
   if (mode === "pages") return query.length > 0 ? "No matching pages." : "No pages.";
   if (mode === "files") return query ? "No matching files" : "Type to search files";
   return "No matching results.";
@@ -432,71 +421,79 @@ function PageRow({
   );
 }
 
-function ThreadRow({
+function ChatRow({
   item,
   selected,
   compact,
 }: {
-  item: CommandPaletteThread;
+  item: CommandPaletteChat;
   selected: boolean;
   compact: boolean;
 }) {
-  const hasPreview = Boolean(item.searchPreview);
-  const decorations = item.searchDecorations;
-  const cwdLabel = getCwdLabel(item.cwd);
-  const updatedLabel = formatThreadDate(item.updatedAt);
-  const projectLabel = item.projectName ?? "Chats";
+  const { chat, hint, excerpt } = item;
+  const title = chat.title || "New chat";
+  const titleSegments = chatHighlightSegments(title, item.titleRanges);
+  const projectLabel = chat.projectName ?? "Chats";
+  const projectSegments = chatFieldHighlightSegments(chat.projectName, hint, "Project");
+  const branchSegments = chatFieldHighlightSegments(chat.branch, hint, "Branch");
+  const cwdLabel = getCwdLabel(chat.cwd);
+  const dateLabel = formatThreadDate(chat.recencyAt);
+  // A pull request or reference explains the match on the excerpt line.
+  const detail = excerpt
+    ? {
+        label: excerpt.role === "assistant" ? "Agent" : excerpt.role === "user" ? "You" : null,
+        text: excerpt.text,
+        ranges: excerpt.ranges,
+      }
+    : hint && hint.label !== "Branch" && hint.label !== "Project" && hint.ranges.length > 0
+      ? { label: hint.label, text: hint.text, ranges: hint.ranges }
+      : null;
 
   return (
-    <div className={cn("flex w-full gap-2", hasPreview ? "items-start" : "items-center")}>
+    <div className={cn("flex w-full gap-2", detail ? "items-start" : "items-center")}>
       <div
         className={cn(
           "flex size-4 shrink-0 items-center justify-center text-token-description-foreground",
           selected && "text-token-foreground",
-          hasPreview && "mt-0.5",
+          detail && "mt-0.5",
         )}
       >
         <ThreadsIcon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-token-foreground">
-          {decorations?.titleSegments
-            ? renderSegments(decorations.titleSegments, `${item.id}:title`)
-            : item.title || "New chat"}
+          {titleSegments ? renderSegments(titleSegments, `${item.id}:title`) : title}
         </div>
         {!compact ? (
           <div className="truncate text-xs text-token-description-foreground">
-            {decorations?.projectNameSegments
-              ? renderSegments(decorations.projectNameSegments, `${item.id}:project`)
-              : projectLabel}
-            {cwdLabel ? (
+            {projectSegments ? renderSegments(projectSegments, `${item.id}:project`) : projectLabel}
+            {cwdLabel ? ` / ${cwdLabel}` : null}
+            {chat.branch ? (
               <>
                 {" / "}
-                {decorations?.cwdSegments
-                  ? renderSegments(decorations.cwdSegments, `${item.id}:cwd`)
-                  : cwdLabel}
+                {branchSegments ? renderSegments(branchSegments, `${item.id}:branch`) : chat.branch}
               </>
             ) : null}
-            {item.gitBranch ? (
-              <>
-                {" / "}
-                {decorations?.gitBranchSegments
-                  ? renderSegments(decorations.gitBranchSegments, `${item.id}:branch`)
-                  : item.gitBranch}
-              </>
-            ) : null}
-            {updatedLabel ? ` / ${updatedLabel}` : ""}
+            {dateLabel ? ` / ${dateLabel}` : ""}
           </div>
         ) : null}
-        {item.searchPreview ? (
+        {detail ? (
           <div className="mt-1 line-clamp-2 text-xs/relaxed wrap-break-word text-token-description-foreground/90">
-            {renderSegments(item.searchPreview.segments, `${item.id}:preview`)}
+            {detail.label ? (
+              <span className="text-token-description-foreground">{detail.label}: </span>
+            ) : null}
+            {renderSegments(
+              chatHighlightSegments(detail.text, detail.ranges) ?? [
+                { text: detail.text, highlight: false },
+              ],
+              `${item.id}:detail`,
+            )}
           </div>
         ) : null}
       </div>
-      {compact && item.projectName ? (
+      {compact && chat.projectName ? (
         <span className="max-w-[30%] truncate text-sm text-token-description-foreground">
-          {item.projectName}
+          {chat.projectName}
         </span>
       ) : null}
     </div>
@@ -624,8 +621,8 @@ function PaletteSection({
               disabled={isPaletteItemDisabled(item)}
               className={cn(
                 "flex min-h-[calc(var(--spacing)*6)] w-full cursor-interaction rounded-lg px-[calc(var(--padding-row-x)+var(--spacing)*0.5)] py-[calc(var(--padding-row-y)+var(--spacing)*0.5)] text-left text-base text-token-foreground opacity-75 outline-none",
-                (item.kind === "page" || item.kind === "thread") &&
-                  item.searchPreview &&
+                ((item.kind === "page" && item.searchPreview) ||
+                  (item.kind === "chat" && item.excerpt)) &&
                   "py-[calc(var(--padding-row-y)+2px)]",
                 isPaletteItemDisabled(item)
                   ? "cursor-not-allowed opacity-40 hover:bg-transparent hover:opacity-40"
@@ -659,7 +656,7 @@ function PaletteSection({
               ) : item.kind === "file" ? (
                 <FileRow item={item} query={query} />
               ) : (
-                <ThreadRow item={item} selected={selected} compact={!showSubtitle} />
+                <ChatRow item={item} selected={selected} compact={!showSubtitle} />
               )}
             </button>
           );
@@ -668,6 +665,12 @@ function PaletteSection({
     </section>
   );
 }
+
+const CHAT_STATUS_LABELS = {
+  searching: "Searching chat history…",
+  incomplete: "Some chat history couldn’t be searched",
+  failed: "Chats couldn’t be searched",
+} satisfies Record<CommandPaletteChatStatus, string>;
 
 function SearchStatusRow({ children }: { children: string }) {
   return (
@@ -699,13 +702,7 @@ export const CommandPaletteSurface = forwardRef<
     projects = EMPTY_PALETTE_PROJECTS,
     activeProjectId = null,
     recentPageIds = EMPTY_RECENT_PAGE_IDS,
-    threads = EMPTY_PALETTE_THREADS,
-    threadSearchIndex,
     pageSearchBatch: injectedPageSearchBatch,
-    loading,
-    pagesLoading,
-    chatsLoading,
-    threadSearchBatch: injectedThreadSearchBatch,
     onChangeMode,
     onRequestClose,
     onExecute,
@@ -800,7 +797,6 @@ export const CommandPaletteSurface = forwardRef<
     readCommandPalettePageFilters(),
   );
   const [filterOpen, setFilterOpen] = useState(false);
-  const deferredQuery = useDeferredValue(query);
 
   useImperativeHandle(
     forwardedRef,
@@ -817,19 +813,18 @@ export const CommandPaletteSurface = forwardRef<
     [pageStack],
   );
 
-  const threadSearchPlan = getCommandPaletteThreadSearchPlan(currentMode, deferredQuery);
-  const fetchedThreadSearchBatch = useCommandPaletteThreadSearch({
-    enabled: open && threadSearchPlan?.includeContentResults === true,
-    query: deferredQuery,
-    limit:
-      mode === "root"
-        ? Math.min(
-            MAX_DISCOVERY_RESULTS,
-            Math.max(threadSearchPlan?.maxResults ?? 9, discoveryLimits.chats + 1),
-          )
-        : (threadSearchPlan?.maxResults ?? 25),
+  const chatLimit = getCommandPaletteChatLimit(currentMode, query, discoveryLimits);
+  const chatSearch = useChatSearch({
+    enabled: open && chatLimit !== null,
+    query,
+    limit: chatLimit ?? 1,
+    refreshKey: openTriggerTick,
   });
-  const threadSearchBatch = injectedThreadSearchBatch ?? fetchedThreadSearchBatch;
+  const chatMessageSearch = useChatMessageSearch({
+    enabled: open && chatLimit !== null,
+    query,
+    limit: chatLimit ?? 1,
+  });
   const availableProjects = useMemo(
     () =>
       projects.length > 0
@@ -935,15 +930,14 @@ export const CommandPaletteSurface = forwardRef<
         activeProjectId,
         recentPageIds,
         pages,
-        threads,
-        threadSearchIndex,
+        chatSearch,
+        chatMessageSearch,
         files,
         textMatches,
         textQueries: history.queries,
         discoveryLimits,
         pageSearchBatch: pageSearchBatch,
         pageSearchScopeKey,
-        threadSearchBatch,
       }),
     [
       pageSearchScopeKey,
@@ -955,9 +949,8 @@ export const CommandPaletteSurface = forwardRef<
       pageSearchBatch,
       projects,
       recentPageIds,
-      threadSearchBatch,
-      threadSearchIndex,
-      threads,
+      chatSearch,
+      chatMessageSearch,
       files,
       textMatches,
       history.queries,
@@ -1063,11 +1056,10 @@ export const CommandPaletteSurface = forwardRef<
         activeProjectId,
         recentPageIds,
         pages,
-        threads,
-        threadSearchIndex,
+        chatSearch,
+        chatMessageSearch,
         pageSearchBatch: pageSearchBatch,
         pageSearchScopeKey,
-        threadSearchBatch,
       }).flatItems,
     [
       pageSearchScopeKey,
@@ -1078,9 +1070,8 @@ export const CommandPaletteSurface = forwardRef<
       pageSearchBatch,
       projects,
       recentPageIds,
-      threadSearchBatch,
-      threadSearchIndex,
-      threads,
+      chatSearch,
+      chatMessageSearch,
       query,
       files,
       textMatches,
@@ -1090,12 +1081,12 @@ export const CommandPaletteSurface = forwardRef<
   );
   const visibleRowsLoading =
     mode === "pages"
-      ? pagesLoading || visibleModel.pageSearchPending
+      ? visibleModel.pageSearchPending
       : mode === "chats"
-        ? chatsLoading || visibleModel.threadSearchPending
+        ? visibleModel.chatsPending || visibleModel.chatStatus === "searching"
         : mode === "root"
-          ? loading ||
-            visibleModel.threadSearchPending ||
+          ? visibleModel.chatsPending ||
+            visibleModel.chatStatus === "searching" ||
             visibleModel.pageSearchPending ||
             fileSearch.loading ||
             textSearch.loading
@@ -1339,13 +1330,12 @@ export const CommandPaletteSurface = forwardRef<
     selectedIndex >= 0 && selectedIndex < flatItems.length
       ? getPaletteItemDomId(listId, selectedIndex)
       : undefined;
-  const showThreadSearchStatus = visibleModel.showThreadSearchStatus;
   const showPageSearchStatus = visibleModel.showPageSearchStatus;
   const showFileSearchStatus =
     (mode === "files" || mode === "root") &&
     (fileSearch.loading || (fileSearch.error !== null && !fileSearch.retry));
   const hasVisibleSearchStatus =
-    showThreadSearchStatus ||
+    visibleModel.chatStatus !== null ||
     showPageSearchStatus ||
     showFileSearchStatus ||
     ((mode === "root" || mode === "text") &&
@@ -1359,7 +1349,8 @@ export const CommandPaletteSurface = forwardRef<
         (fileSearch.loading ||
           textSearch.loading ||
           visibleModel.pageSearchPending ||
-          visibleModel.threadSearchPending)));
+          visibleModel.chatsPending ||
+          visibleModel.chatStatus === "searching")));
 
   return (
     <NodexTabsRoot
@@ -1637,13 +1628,8 @@ export const CommandPaletteSurface = forwardRef<
           !sections.some((section) => section.title === "Text") ? (
             <CommandPaletteTextError result={textSearch} mode={mode} />
           ) : null}
-          {showThreadSearchStatus && visibleModel.threadSearchPending ? (
-            <SearchStatusRow>Loading chats…</SearchStatusRow>
-          ) : null}
-          {showThreadSearchStatus && visibleModel.threadSearchError ? (
-            <SearchStatusRow>
-              Chat content search is unavailable. Local matches are still shown.
-            </SearchStatusRow>
+          {visibleModel.chatStatus ? (
+            <SearchStatusRow>{CHAT_STATUS_LABELS[visibleModel.chatStatus]}</SearchStatusRow>
           ) : null}
           {showPageSearchStatus && visibleModel.pageSearchPending ? (
             <SearchStatusRow>Loading more Pages…</SearchStatusRow>
@@ -1685,11 +1671,7 @@ export const CommandPaletteSurface = forwardRef<
             >
               {mode === "files" && !hasFileScope
                 ? "Choose a folder to search files"
-                : getEmptyMessage(
-                    mode,
-                    visibleModel.query,
-                    mode === "chats" ? chatsLoading : mode === "pages" ? pagesLoading : loading,
-                  )}
+                : getEmptyMessage(mode, visibleModel.query, visibleModel.chatsPending)}
             </div>
           ) : null}
         </div>

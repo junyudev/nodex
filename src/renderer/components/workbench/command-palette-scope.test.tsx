@@ -14,9 +14,6 @@ import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import { CommandPalette } from "./command-palette";
 
 const chosenScope = vi.hoisted(() => ({ hostId: "remote:chosen", roots: ["/chosen/folder"] }));
-vi.mock("@/lib/command-palette-chat-search", () => ({
-  useCommandPaletteThreadItems: () => ({ threads: [], loading: false }),
-}));
 vi.mock("@/lib/interactive-page-search", () => ({
   configureInteractivePageSearch: () => () => undefined,
 }));
@@ -137,7 +134,7 @@ test.each([
         commandHandlers={commandHandlers}
         onOpenChange={ignore}
         onOpenPage={ignore}
-        onOpenThread={ignore}
+        onOpenChat={ignore}
       />
     );
     const view = render(content(true, "text", 1));

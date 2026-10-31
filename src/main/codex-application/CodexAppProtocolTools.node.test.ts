@@ -1,3 +1,4 @@
+import { ChatSearch } from "../chat-search/ChatSearch";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CodexWaitThreads } from "./CodexWaitThreads";
@@ -25,6 +26,9 @@ import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 import { CodexDelegatedMessages } from "./CodexDelegatedMessages";
 import { ConversationCommands } from "./ConversationCommands";
 import { make } from "./CodexAppProtocolTools";
+import { row } from "../chat-search/ChatSearch.test-support";
+import { projectChat } from "../chat-search/ChatCatalogProjection";
+import { chatWireEntry } from "../chat-search/ChatSearchRanking";
 
 interface Calls {
   nativeCommands: AppToolInvocation[];
@@ -61,45 +65,51 @@ const buildTools = (
   calls: Calls,
   missing = false,
   hostId = "ssh:builder",
+  listing: {
+    readonly read?: CoreModules["Service"]["workspace"]["read"];
+    readonly search?: ChatSearch["Service"]["search"];
+  } = {},
 ) =>
   make.pipe(
     Effect.provideService(
       CoreModules,
       CoreModules.of({
         workspace: {
-          read: () =>
-            missing
-              ? Effect.fail(
-                  coreRuntimeError({
-                    operation: "workspace.read",
-                    reason: "operation",
-                    retryable: false,
-                    cause: new CoreModuleResponseError({
-                      code: "not_found",
-                      message: "Thread not found",
+          read:
+            listing.read ??
+            (() =>
+              missing
+                ? Effect.fail(
+                    coreRuntimeError({
+                      operation: "workspace.read",
+                      reason: "operation",
                       retryable: false,
-                      recovery: { kind: "none" },
+                      cause: new CoreModuleResponseError({
+                        code: "not_found",
+                        message: "Thread not found",
+                        retryable: false,
+                        recovery: { kind: "none" },
+                      }),
                     }),
-                  }),
-                )
-              : Effect.sync(() => {
-                  calls.coreReads += 1;
-                  return {
-                    value: {
-                      kind: "thread",
-                      thread: {
-                        backend_binding:
-                          backend === "codex"
-                            ? { kind: "codex" }
-                            : {
-                                kind: "acp",
-                                agent_definition_id: "claude-agent-acp",
-                                instance_config_id: "claude:default",
-                              },
+                  )
+                : Effect.sync(() => {
+                    calls.coreReads += 1;
+                    return {
+                      value: {
+                        kind: "thread",
+                        thread: {
+                          backend_binding:
+                            backend === "codex"
+                              ? { kind: "codex" }
+                              : {
+                                  kind: "acp",
+                                  agent_definition_id: "claude-agent-acp",
+                                  instance_config_id: "claude:default",
+                                },
+                        },
                       },
-                    },
-                  } as never;
-                }),
+                    } as never;
+                  })),
         },
       } as never),
     ),
@@ -204,6 +214,10 @@ const buildTools = (
     } as unknown as CodexMainConversationManagers["Service"]),
     Effect.provideService(CodexSidebarSectionSync, {} as CodexSidebarSectionSync["Service"]),
     Effect.provideService(CodexThreadCatalog, {} as CodexThreadCatalog["Service"]),
+    Effect.provideService(ChatSearch, {
+      search: listing.search ?? (() => Effect.succeed({ matches: [], complete: true })),
+      searchMessages: () => Effect.succeed({ matches: [], sources: [] }),
+    }),
     Effect.provideService(CodexWaitThreads, { execute: () => Effect.die("unused wait tool") }),
     Effect.provideService(TerminalSessions, {} as TerminalSessions["Service"]),
   );
@@ -348,4 +362,73 @@ it.effect(
       assert.isFalse((yield* tools.execute(source as never, context)).success);
       assert.equal(calls.nativeCommands.length, 4);
     }),
+);
+
+it.effect("lists bounded ranked chats while preserving native previews in the tool response", () =>
+  Effect.gen(function* () {
+    const native = row("native", "Searchable chat", "native");
+    const entry = chatWireEntry(projectChat(native)!);
+    const queries: unknown[] = [];
+    const reads: unknown[] = [];
+    const tools = yield* buildTools("codex", makeCalls(), false, "local", {
+      search: (input) =>
+        Effect.sync(() => {
+          queries.push(input);
+          return {
+            matches: [
+              { chat: { ...entry, projectId: null }, titleRanges: [], hint: null, excerpt: null },
+            ],
+            complete: true,
+          };
+        }),
+      read: (input) =>
+        Effect.sync(() => {
+          reads.push(input);
+          if (input.kind === "session_window")
+            return {
+              value: { kind: "session_window", sessions: { items: [native], next_cursor: null } },
+            } as never;
+          if (input.kind === "project_window")
+            return {
+              value: { kind: "project_window", projects: { items: [], next_cursor: null } },
+            } as never;
+          if (input.kind === "sidebar_section_window")
+            return {
+              value: {
+                kind: "sidebar_section_window",
+                sections: {
+                  items: [{ section_id: "sidebar:chats", kind: "chats", name: null }],
+                  next_cursor: null,
+                },
+              },
+            } as never;
+          return undefined as never;
+        }),
+    });
+    const response = yield* tools.execute(
+      call("list_threads", { query: "Searchable", limit: 1 }) as never,
+    );
+    assert.isTrue(response.success);
+    assert.deepEqual(queries, [{ query: "searchable", limit: 1, startedOnly: true }]);
+    assert.deepInclude(reads, {
+      kind: "session_window",
+      archived: false,
+      session_ids: ["native"],
+      window: { first: 100, after: null },
+    });
+    const content = response.contentItems.find((item) => item.type === "inputText");
+    assert.ok(content?.type === "inputText");
+    const result = JSON.parse(content.text) as {
+      schemaVersion: number;
+      sections: { items: unknown[] }[];
+    };
+    assert.equal(result.schemaVersion, 4);
+    assert.deepInclude(result.sections[0]!.items[0], {
+      threadId: "native",
+      sessionId: "native",
+      title: "Searchable chat",
+      preview: "Opening prompt",
+      summary: "Opening prompt",
+    });
+  }),
 );

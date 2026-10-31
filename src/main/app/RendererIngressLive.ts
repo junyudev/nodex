@@ -1,3 +1,4 @@
+import * as ChatSearchIpc from "../ipc/handlers/ChatSearchIpc";
 import * as PluginManagerIpc from "../ipc/handlers/PluginManagerIpc";
 import * as McpAppDataIpc from "../ipc/handlers/McpAppDataIpc";
 import * as AcpAgentsIpc from "../ipc/handlers/AcpAgentsIpc";
@@ -123,6 +124,7 @@ export const live = Layer.mergeAll(
   CodexPendingWorktreeIpc.live,
   CodexThreadHandoffIpc.live,
   CodexWorkspaceIpc.live,
+  ChatSearchIpc.live,
   CoreDocumentIpc.live,
   CoreMutationIpc.live,
   DocumentRecoveryIpc.live,

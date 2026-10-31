@@ -1,3 +1,4 @@
+import type { ChatSearchInput, ChatSearchResult, ChatMessageSearchResult } from "./chat-search";
 import type { PluginManagementIpcApi, PluginManagementChanged } from "./codex-plugin-management";
 import type { WorkspaceFileSaveDataInput } from "./native-file-save";
 import type { NativeResourceData, NativeResourceReadInput } from "./native-resource";
@@ -399,10 +400,6 @@ import type {
   PageSearchFacets,
   PageSearchInput,
   PageSearchMetadataSnapshot,
-  CommandPaletteThreadSearchInput,
-  CommandPaletteThreadSearchResult,
-  CommandPaletteThreadListInput,
-  CommandPaletteThreadSummary,
   BackupJobStatus,
   BackupStartResult,
   CreateBackupCommandInput,
@@ -2298,14 +2295,15 @@ export interface IpcApi
     args: [input: import("./codex-child-thread-summary").CodexCreatedThreadResolveInput];
     result: import("./codex-child-thread-summary").CodexCreatedThreadResolution | null;
   };
-  "codex:threads:palette:list": {
-    args: [input: CommandPaletteThreadListInput];
-    result: CommandPaletteThreadSummary[];
+  "chats:search": {
+    args: [input: ChatSearchInput];
+    result: ChatSearchResult;
   };
-  "codex:threads:palette:search": {
-    args: [input: CommandPaletteThreadSearchInput];
-    result: CommandPaletteThreadSearchResult[];
+  "chats:search-messages": {
+    args: [input: Pick<ChatSearchInput, "query" | "limit">];
+    result: ChatMessageSearchResult;
   };
+
   "codex:thread:summary:get": {
     args: [threadId: string];
     result: CodexThreadSummary | null;

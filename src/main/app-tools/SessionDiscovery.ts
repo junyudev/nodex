@@ -229,6 +229,58 @@ export const summaryOf = (item: ListingItem, runtime?: CatalogItem): SessionList
   placement: placementOf(item),
 });
 
+const statusOf = (
+  details: AgentRuntimeOperations["sessions.metadata"]["output"][number],
+): "active" | "idle" | "systemError" => {
+  const status = details.activityRunStatus ?? details.runStatus;
+  if (status === "failed") return "systemError";
+  return ["preparing", "starting", "running", "waiting"].includes(status ?? "") ? "active" : "idle";
+};
+export const withSessionMetadata = (
+  session: SessionListingSummary,
+  details: AgentRuntimeOperations["sessions.metadata"]["output"][number],
+): SessionListingSummary => ({
+  ...session,
+  threadId: details.threadId,
+  preview: details.preview,
+  backend:
+    details.providerDriver === "claudeAgent"
+      ? "claude"
+      : details.providerDriver === "codex" || details.providerDriver === "opencode"
+        ? details.providerDriver
+        : "acp",
+  recencyAt: details.recencyAt === null ? null : Date.parse(details.recencyAt),
+  status: { status_type: statusOf(details), active_flags: [] },
+  createdBy: details.createdBy,
+  creationSource: details.creationSource,
+  createdAt: details.createdAt,
+  latestUserAuthoredMessageAt: details.latestUserAuthoredMessageAt,
+  updatedAt: details.updatedAt,
+  activeRunId: details.activeRunId,
+  worktreePath: details.worktreePath,
+  titleRegeneration: details.titleRegeneration,
+  latestRunId: details.latestRunId,
+  runStatus: details.runStatus,
+  activityRunStatus: details.activityRunStatus,
+  runtimeMode: details.runtimeMode,
+  interactionMode: details.interactionMode,
+  parentThreadId: details.parentThreadId,
+  relationshipToParent: details.relationshipToParent,
+  branch: details.branch,
+  settled: details.settled,
+  settledAt: details.settledAt,
+  snoozed: details.snoozed,
+  snoozedUntil: details.snoozedUntil,
+  pullRequests: details.pullRequests,
+  itemCount: details.itemCount,
+  itemCountCoverage: details.itemCountCoverage,
+  agent:
+    details.providerInstanceId === null || details.model === null
+      ? null
+      : { providerInstanceId: details.providerInstanceId, model: details.model },
+  metadataCoverage: "complete",
+});
+
 const matches = (session: SessionListingSummary, input: SessionDiscoveryInput) => {
   if (input.projectlessOnly && session.projectId !== null) return false;
   if (

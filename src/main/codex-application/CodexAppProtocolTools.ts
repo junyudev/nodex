@@ -1,3 +1,5 @@
+import { ChatSearch } from "../chat-search/ChatSearch";
+import { summaryOf } from "../app-tools/SessionDiscovery";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CodexWaitThreads } from "./CodexWaitThreads";
@@ -151,6 +153,7 @@ export const make: Effect.Effect<
   | CodexApplicationRequestInbox
   | CodexSidebarSectionSync
   | CodexThreadCatalog
+  | ChatSearch
   | CodexThreadDescriptionPersistence
   | CodexThreadDirectory
   | CodexThreadHandoffRuntime
@@ -170,6 +173,7 @@ export const make: Effect.Effect<
   const requestInbox = yield* CodexApplicationRequestInbox;
   const sectionSync = yield* CodexSidebarSectionSync;
   const catalog = yield* CodexThreadCatalog;
+  const chatSearch = yield* ChatSearch;
   const descriptions = yield* CodexThreadDescriptionPersistence;
   const directory = yield* CodexThreadDirectory;
   const handoffs = yield* CodexThreadHandoffRuntime;
@@ -414,9 +418,40 @@ export const make: Effect.Effect<
       if (params.tool === "list_threads") {
         const limit = intArg(args.limit, 10, 1, 50);
         const query = (stringArg(args.query) ?? "").toLowerCase();
-        const listed = query
-          ? (yield* catalog.searchPalette({ query, limit })).map(({ thread }) => thread)
-          : yield* catalog.listPalette({ scope: "sidebar" });
+        const found = yield* chatSearch.search({
+          query,
+          limit,
+          startedOnly: true,
+        });
+        const selected = found.matches.length
+          ? yield* core.workspace.read({
+              kind: "session_window",
+              archived: false,
+              session_ids: found.matches.map(({ chat }) => chat.sessionId),
+              window: { first: 100, after: null },
+            })
+          : null;
+        if (selected && selected.value.kind !== "session_window")
+          return yield* toolError("Core returned a non-Session window");
+        const previews = new Map(
+          selected?.value.kind === "session_window"
+            ? selected.value.sessions.items.map((item) => {
+                const session = summaryOf(item);
+                return [session.sessionId, session.preview] as const;
+              })
+            : [],
+        );
+        const listed = found.matches.flatMap(({ chat, excerpt }) =>
+          chat.threadId
+            ? [
+                {
+                  ...chat,
+                  threadId: chat.threadId,
+                  preview: previews.get(chat.sessionId) || excerpt?.text || "",
+                },
+              ]
+            : [],
+        );
         const descriptionByThreadId = new Map(
           yield* Effect.forEach(listed, (thread) =>
             descriptions.get(thread.threadId).pipe(
@@ -433,22 +468,7 @@ export const make: Effect.Effect<
             ? preview.slice(0, CODEX_THREAD_SUMMARY_MAX_CHARS)
             : null;
         };
-        const threads = listed
-          .filter((thread) =>
-            query
-              ? [
-                  thread.threadId,
-                  thread.title,
-                  thread.preview,
-                  summaryFor(thread),
-                  thread.projectName,
-                ]
-                  .join(" ")
-                  .toLowerCase()
-                  .includes(query)
-              : true,
-          )
-          .slice(0, limit);
+        const threads = listed;
         const threadById = new Map(threads.map((thread) => [thread.threadId, thread]));
         const threadBySessionId = new Map(
           threads.flatMap((thread) =>
@@ -502,14 +522,19 @@ export const make: Effect.Effect<
           summary: summaryFor(thread),
           hostId: CODEX_APP_LOCAL_HOST_ID,
           status: {
-            type: thread.statusType,
-            ...(thread.statusActiveFlags.length > 0
-              ? { activeFlags: thread.statusActiveFlags }
+            type:
+              thread.activity === "error"
+                ? "systemError"
+                : thread.activity === "idle"
+                  ? "idle"
+                  : "active",
+            ...(["waitingOnApproval", "waitingOnUserInput"].includes(thread.activity)
+              ? { activeFlags: [thread.activity] }
               : {}),
           },
           cwd: thread.cwd,
           createdAt: thread.createdAt,
-          updatedAt: thread.updatedAt,
+          updatedAt: thread.recencyAt,
         });
         const projectItem = (projectId: string) => {
           const project = projectById.get(projectId);

@@ -1,8 +1,7 @@
-import type { CodexThreadSummary } from "@/lib/types";
-import type { CommandPaletteThread } from "@/lib/command-palette";
+import type { CodexThreadSummary, PageChatItem } from "@/lib/types";
 import { CURRENT_CHAT_LABEL, type ChatDestinationTarget } from "@/lib/page-chat-actions";
-import { createCommandPaletteThreadSearchIndex } from "@/lib/command-palette-thread-search";
 import { normalizeSearchText } from "@/lib/search-text";
+import type { ChatActivity, ChatSearchMatch } from "../../../../shared/chat-search";
 import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
 import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
 
@@ -32,19 +31,18 @@ export interface NfmSendToThreadExistingRow {
   threadId: string;
   label: string;
   meta: string;
-  statusLabel: string;
   isPreferredTarget: boolean;
-  searchPreview?: CommandPaletteThread["searchPreview"] | null;
-  thread: CommandPaletteThread;
+  match: ChatSearchMatch;
   target: Extract<NfmSendToThreadTarget, { kind: "thread" }>;
 }
 
 export type NfmSendToThreadRow = NfmSendToThreadNewRow | NfmSendToThreadExistingRow;
 
 export interface NfmSendToThreadRowsInput {
-  threads: readonly CommandPaletteThread[];
+  /** Started chats matching `query`, best first. */
+  matches: readonly ChatSearchMatch[];
   /** Chats linked to the source Page, listed after the preferred chat while not searching. */
-  linkedThreads?: readonly CommandPaletteThread[];
+  linkedChats?: readonly ChatSearchMatch[];
   query: string;
   preferredTarget?: NfmSendToThreadPreferredTarget | null;
   projectNameById?: Readonly<Record<string, string>>;
@@ -116,23 +114,6 @@ export function resolveNfmSendToThreadTitle(thread: CodexThreadSummary): string 
   });
 }
 
-function resolveThreadStatusLabel(
-  thread: Pick<CommandPaletteThread, "statusType" | "statusActiveFlags">,
-): string {
-  if (thread.statusType === "systemError") return "Error";
-  if (thread.statusActiveFlags.includes("waitingOnApproval")) return "Approval";
-  if (thread.statusActiveFlags.includes("waitingOnUserInput")) return "Waiting";
-  if (thread.statusType === "active") return "Running";
-  return "Ready";
-}
-
-function preferredThreadMatchesQuery(thread: CommandPaletteThread, query: string): boolean {
-  const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery) return true;
-
-  return createCommandPaletteThreadSearchIndex([thread]).search(normalizedQuery).length > 0;
-}
-
 function newThreadMatchesQuery(
   row: Pick<NfmSendToThreadNewRow, "label" | "meta" | "target">,
   query: string,
@@ -155,60 +136,86 @@ function isAvailablePreferredThread(
   );
 }
 
-function createPreferredThreadItem(
+function threadActivity(
+  statusType: CodexThreadSummary["statusType"],
+  activeFlags: readonly string[],
+): ChatActivity {
+  if (statusType === "systemError") return "error";
+  if (activeFlags.includes("waitingOnApproval")) return "waitingOnApproval";
+  if (activeFlags.includes("waitingOnUserInput")) return "waitingOnUserInput";
+  return statusType === "active" ? "running" : "idle";
+}
+
+function plainMatch(chat: ChatSearchMatch["chat"]): ChatSearchMatch {
+  return { chat, titleRanges: [], hint: null, excerpt: null };
+}
+
+/** A started chat linked to the source Page, which may be older than any chat search lists. */
+export function createLinkedChatMatch(item: PageChatItem): ChatSearchMatch | null {
+  if (!item.threadId || item.sessionArchived || item.threadArchived) return null;
+  const recencyAt = item.conversationRecencyAt ?? Date.parse(item.linkedAt);
+  return plainMatch({
+    sessionId: item.sessionId,
+    threadId: item.threadId,
+    title: item.displayTitle,
+    projectId: item.projectId,
+    projectName: item.projectName,
+    cwd: null,
+    branch: null,
+    pullRequests: [],
+    pinned: false,
+    pinnedOrder: null,
+    activity: item.threadStatus
+      ? threadActivity(item.threadStatus.statusType, item.threadStatus.activeFlags)
+      : "idle",
+    createdAt: recencyAt,
+    recencyAt,
+  });
+}
+
+/** The editor's own chat, named by its Session before chat search lists it. */
+function createPreferredThreadMatch(
   thread: CodexThreadSummary,
   sessionId: string,
   projectNameById: Readonly<Record<string, string>>,
-): CommandPaletteThread | null {
+): ChatSearchMatch | null {
   if (!isAvailablePreferredThread(thread)) return null;
 
   const projectId = thread.projectId?.trim() || null;
-  const projectName = projectId ? projectNameById[projectId]?.trim() || projectId : null;
-  return {
-    kind: "thread",
-    id: `thread:${thread.threadId}`,
-    threadId: thread.threadId,
+  return plainMatch({
     sessionId,
-    projectId,
-    projectName,
+    threadId: thread.threadId,
     title: resolveNfmSendToThreadTitle(thread),
-    preview: thread.threadPreview,
+    projectId,
+    projectName: projectId ? projectNameById[projectId]?.trim() || projectId : null,
     cwd: thread.cwd,
-    gitBranch: null,
-    projectless: projectId === null,
+    branch: null,
+    pullRequests: [],
     pinned: false,
     pinnedOrder: null,
-    statusType: thread.statusType,
-    statusActiveFlags: thread.statusActiveFlags,
+    activity: threadActivity(thread.statusType, thread.statusActiveFlags),
     createdAt: thread.createdAt,
-    updatedAt: thread.updatedAt,
-    inActiveProject: false,
-  };
-}
-
-function resolveThreadProjectLabel(thread: CommandPaletteThread): string {
-  return thread.projectName?.trim() || "Chats";
+    recencyAt: thread.updatedAt,
+  });
 }
 
 function createThreadRow(
-  thread: CommandPaletteThread,
+  match: ChatSearchMatch,
+  threadId: string,
   placement: { readonly meta: string; readonly preferred: boolean } | null,
 ): NfmSendToThreadExistingRow {
-  const statusLabel = resolveThreadStatusLabel(thread);
   return {
     kind: "thread",
-    id: `thread:${thread.threadId}`,
-    threadId: thread.threadId,
-    label: thread.title || "New chat",
-    meta: placement?.meta ?? resolveThreadProjectLabel(thread),
-    statusLabel,
+    id: `thread:${threadId}`,
+    threadId,
+    label: match.chat.title || "New chat",
+    meta: placement?.meta ?? (match.chat.projectName?.trim() || "Chats"),
     isPreferredTarget: placement?.preferred ?? false,
-    searchPreview: thread.searchPreview,
-    thread,
+    match,
     target: {
       kind: "thread",
-      threadId: thread.threadId,
-      sessionId: thread.sessionId,
+      threadId,
+      sessionId: match.chat.sessionId,
     },
   };
 }
@@ -245,62 +252,56 @@ function createProjectNewThreadRow(): NfmSendToThreadNewRow {
 export const LINKED_CHAT_LABEL = "Linked";
 
 export function buildNfmSendToThreadRows({
-  threads,
-  linkedThreads = [],
+  matches,
+  linkedChats = [],
   query,
   preferredTarget = null,
   projectNameById = {},
 }: NfmSendToThreadRowsInput): NfmSendToThreadRow[] {
-  const preferredExistingThreadId =
+  const searching = normalizeSearchText(query).length > 0;
+  const preferredThreadId =
     preferredTarget?.kind === "thread" ? preferredTarget.thread.threadId : null;
-  const preferredThreadFromResults = preferredExistingThreadId
-    ? (threads.find((thread) => thread.threadId === preferredExistingThreadId) ?? null)
-    : null;
-  const preferredThreadFallback =
+  // The editor's chat leads the list; while searching, only when chat search matched it.
+  const preferredMatch =
     preferredTarget?.kind === "thread"
-      ? createPreferredThreadItem(
-          preferredTarget.thread,
-          preferredTarget.sessionId,
-          projectNameById,
-        )
+      ? (matches.find((match) => match.chat.threadId === preferredThreadId) ??
+        (searching
+          ? null
+          : createPreferredThreadMatch(
+              preferredTarget.thread,
+              preferredTarget.sessionId,
+              projectNameById,
+            )))
       : null;
-  // The editor's own Session names its chat even when the chat list has not caught up.
-  const preferredThread =
-    preferredThreadFromResults && preferredTarget?.kind === "thread"
-      ? { ...preferredThreadFromResults, sessionId: preferredTarget.sessionId }
-      : preferredThreadFallback;
-  const visiblePreferredThread =
-    preferredThread && preferredThreadMatchesQuery(preferredThread, query) ? preferredThread : null;
   const preferredNewThreadRow =
     preferredTarget?.kind === "new-thread" ? createPreferredNewThreadRow(preferredTarget) : null;
   const visiblePreferredNewThreadRow =
     preferredNewThreadRow && newThreadMatchesQuery(preferredNewThreadRow, query)
       ? preferredNewThreadRow
       : null;
-  const visibleLinkedThreads = normalizeSearchText(query)
-    ? []
-    : linkedThreads.filter((thread) => thread.threadId !== visiblePreferredThread?.threadId);
-  const listedThreadIds = new Set([
-    ...(visiblePreferredThread ? [visiblePreferredThread.threadId] : []),
-    ...visibleLinkedThreads.map((thread) => thread.threadId),
-  ]);
+  const visibleLinkedChats = searching ? [] : linkedChats;
+  const listedThreadIds = new Set<string | null>([preferredThreadId]);
+  const rowsOnce = (
+    candidates: readonly ChatSearchMatch[],
+    placement: { readonly meta: string; readonly preferred: boolean } | null,
+  ) =>
+    candidates.flatMap((match) => {
+      const threadId = match.chat.threadId;
+      if (!threadId || listedThreadIds.has(threadId)) return [];
+      listedThreadIds.add(threadId);
+      return [createThreadRow(match, threadId, placement)];
+    });
   const threadRows = [
-    ...(visiblePreferredThread
+    ...(preferredMatch && preferredThreadId && preferredTarget?.kind === "thread"
       ? [
-          createThreadRow(
-            visiblePreferredThread,
-            preferredTarget?.kind === "thread"
-              ? { meta: preferredTarget.meta, preferred: true }
-              : null,
-          ),
+          createThreadRow(preferredMatch, preferredThreadId, {
+            meta: preferredTarget.meta,
+            preferred: true,
+          }),
         ]
       : []),
-    ...visibleLinkedThreads.map((thread) =>
-      createThreadRow(thread, { meta: LINKED_CHAT_LABEL, preferred: false }),
-    ),
-    ...threads
-      .filter((thread) => !listedThreadIds.has(thread.threadId))
-      .map((thread) => createThreadRow(thread, null)),
+    ...rowsOnce(visibleLinkedChats, { meta: LINKED_CHAT_LABEL, preferred: false }),
+    ...rowsOnce(matches, null),
   ];
 
   if (visiblePreferredNewThreadRow) {

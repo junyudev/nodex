@@ -12,12 +12,11 @@ import {
   type CommandPaletteFocusSnapshot,
 } from "@/lib/command-palette-focus";
 import type { WorkspaceTextSearchMatch } from "../../../shared/workspace-text-search";
-import { useCommandPaletteThreadItems } from "@/lib/command-palette-chat-search";
 import {
   type CommandMenuMode,
   type CommandPaletteCommand,
   type CommandPalettePage,
-  type CommandPaletteThread,
+  type CommandPaletteChat,
   type CommandPaletteFile,
   type CommandPaletteText,
 } from "@/lib/command-palette";
@@ -28,7 +27,6 @@ import {
   type CommandPaletteShellCommandContext,
   type CommandPaletteShellCommandHandlers,
 } from "@/lib/command-palette-commands";
-import { useCommandPaletteThreadSearchIndex } from "@/lib/use-command-palette-thread-search-index";
 import { configureInteractivePageSearch } from "@/lib/interactive-page-search";
 import type { Project } from "@/lib/types";
 import type { RecentPageSession } from "@/lib/use-workbench-profile-preferences";
@@ -59,14 +57,13 @@ interface CommandPaletteProps {
   commandHandlers: CommandPaletteShellCommandHandlers;
   onOpenChange: (open: boolean) => void;
   onOpenPage: (projectId: string, pageId: string, titleSnapshot?: string) => void;
-  /** Runtime chats carry their Session; their root Thread is not a native Thread. */
-  onOpenThread: (threadId: string, sessionId: string | null) => void;
+  onOpenChat: (sessionId: string) => void;
 }
 
 type PaletteItem =
   | CommandPaletteCommand
   | CommandPalettePage
-  | CommandPaletteThread
+  | CommandPaletteChat
   | CommandPaletteFile
   | CommandPaletteText;
 
@@ -86,7 +83,7 @@ export function CommandPalette({
   commandHandlers,
   onOpenChange,
   onOpenPage,
-  onOpenThread,
+  onOpenChat,
   fileSearchScope = null,
   onOpenFile,
   onOpenTextMatch,
@@ -95,11 +92,6 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const isMac = isMacPlatform();
   const theme = useCommandPaletteTheme();
-  const { threads, loading: threadsLoading } = useCommandPaletteThreadItems({
-    enabled: open,
-    activeProjectId,
-    refreshKey: openTriggerTick,
-  });
   const [mode, setMode] = useState<CommandMenuMode>(initialMode);
   const contextScopeKey = JSON.stringify([fileSearchScope?.hostId, fileSearchScope?.roots]);
   const [workspaceSelection, setWorkspaceSelection] = useState<{
@@ -144,7 +136,6 @@ export function CommandPalette({
     flushSync(() => onOpenChange(false));
     snapshot?.restore();
   };
-  const threadSearchIndex = useCommandPaletteThreadSearchIndex(threads);
   const recentPageIds = useMemo(
     () => recentPageSessions.map((session) => session.pageId),
     [recentPageSessions],
@@ -200,8 +191,8 @@ export function CommandPalette({
       onOpenPage(item.projectId, item.page.id, item.page.title);
       return;
     }
-    if (item.kind === "thread") {
-      onOpenThread(item.threadId, item.sessionId);
+    if (item.kind === "chat") {
+      onOpenChat(item.chat.sessionId);
       return;
     }
     if (item.disabled) return;
@@ -264,11 +255,6 @@ export function CommandPalette({
           projects={projects}
           activeProjectId={activeProjectId}
           recentPageIds={recentPageIds}
-          threads={threads}
-          threadSearchIndex={threadSearchIndex}
-          loading={threadsLoading}
-          pagesLoading={false}
-          chatsLoading={threadsLoading}
           onChangeMode={handleChangeMode}
           onRequestClose={close}
           onExecute={handleExecute}

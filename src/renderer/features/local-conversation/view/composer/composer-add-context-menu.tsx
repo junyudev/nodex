@@ -41,11 +41,11 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { ProjectMarker } from "@/components/workbench/project-marker";
 import {
-  useCommandPaletteThreadItems,
-  useCommandPaletteThreadSearch,
-  useSelectedCommandPaletteChatResults,
-} from "@/lib/command-palette-chat-search";
-import { useCommandPaletteThreadSearchIndex } from "@/lib/use-command-palette-thread-search-index";
+  mergeChatSearchMatches,
+  preferChatProject,
+  useChatMessageSearch,
+  useChatSearch,
+} from "@/lib/chat-search";
 import { filterNewChatProjectSelectorOptions } from "@/lib/new-chat-project-selector";
 import type {
   CodexComposerAppshotTarget,
@@ -148,6 +148,7 @@ interface ComposerAddContextMenuProps {
 const EMPTY_COMPOSER_SITES: readonly CodexComposerSite[] = [];
 const EMPTY_CHATGPT_CONVERSATIONS: readonly CodexComposerChatGptConversation[] = [];
 const EMPTY_BACKGROUND_AGENTS: readonly ThreadComposerShellBackgroundAgentRowModel[] = [];
+const CHAT_SUGGESTION_LIMIT = 24;
 
 /** Mentions target interactive direct children, including children from earlier turns. */
 export function buildComposerSubagentMentionCandidates(
@@ -822,27 +823,26 @@ const ComposerAddContextRootMenuContent = forwardRef<
     recentConversations: chatGptConversations,
     recentLoading: chatGptConversationsLoading,
   });
-  const threadItems = useCommandPaletteThreadItems({
-    enabled: open && normalizedQuery.length > 0,
-    activeProjectId: projectId,
-    refreshKey: 0,
-  });
-  const threadSearch = useCommandPaletteThreadSearch({
+  // A chat is referenced through its Thread, so only started chats can be added.
+  const chatSearch = useChatSearch({
     enabled: open && normalizedQuery.length > 0,
     query,
-    limit: 24,
-    minQueryLength: 1,
+    limit: CHAT_SUGGESTION_LIMIT,
+    startedOnly: true,
   });
-  const threadSearchIndex = useCommandPaletteThreadSearchIndex(threadItems.threads);
-  const selectedThreads = useSelectedCommandPaletteChatResults({
-    threadSearchIndex,
+  const chatMessageSearch = useChatMessageSearch({
+    enabled: open && normalizedQuery.length > 0,
     query,
-    threads: threadItems.threads,
-    threadSearchBatch: threadSearch,
-    threadLimit: 24,
-    preferActiveProject: true,
-    activeProjectId: projectId ?? undefined,
+    limit: CHAT_SUGGESTION_LIMIT,
   });
+  const chatMatches = preferChatProject(
+    mergeChatSearchMatches(
+      chatSearch.matches,
+      chatMessageSearch.matches.filter((match) => match.chat.threadId !== null),
+      CHAT_SUGGESTION_LIMIT,
+    ),
+    projectId,
+  );
   const pluginHostId = fileSearchScope?.hostId ?? DEFAULT_CODEX_HOST_ID;
   const activatePlugin = useCallback(
     async (plugin: CodexComposerPlugin): Promise<boolean> => {
@@ -1055,33 +1055,34 @@ const ComposerAddContextRootMenuContent = forwardRef<
       active: false,
     }));
     const threadSuggestions = normalizedQuery
-      ? selectedThreads.map((thread): ComposerContextItemView => ({
-          candidate: {
-            id: `thread:${thread.threadId}`,
-            section: "Chats",
-            label: thread.title,
-            description: thread.preview || thread.projectName || null,
-            searchTerms: [
-              thread.threadId,
-              thread.preview,
-              thread.projectName ?? "",
-              thread.cwd ?? "",
-            ],
-            sourceRanked: true,
-            value: {
-              kind: "mention",
-              mention: {
-                kind: "agent",
-                name: thread.title,
-                displayName: thread.title,
-                path: `thread://${thread.threadId}`,
-                description: thread.preview,
+      ? chatMatches.flatMap(({ chat, excerpt }): ComposerContextItemView[] => {
+          if (chat.threadId === null) return [];
+          const title = chat.title || "New chat";
+          return [
+            {
+              candidate: {
+                id: `thread:${chat.threadId}`,
+                section: "Chats",
+                label: title,
+                description: excerpt?.text || chat.projectName || null,
+                searchTerms: [chat.threadId, chat.projectName ?? "", chat.cwd ?? ""],
+                sourceRanked: true,
+                value: {
+                  kind: "mention",
+                  mention: {
+                    kind: "agent",
+                    name: title,
+                    displayName: title,
+                    path: `thread://${chat.threadId}`,
+                    description: excerpt?.text ?? "",
+                  },
+                },
               },
+              icon: <MessageSquare className="size-4 shrink-0" />,
+              active: false,
             },
-          },
-          icon: <MessageSquare className="size-4 shrink-0" />,
-          active: false,
-        }))
+          ];
+        })
       : [];
     const fileSuggestions = (fileSearchQuery === query ? fileSearch.matches : []).map((file) =>
       buildComposerFileItem(file),
@@ -1145,7 +1146,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
     projectId,
     projectSelector,
     normalizedQuery,
-    selectedThreads,
+    chatMatches,
   ]);
   const sections = useMemo(
     () =>
@@ -1205,8 +1206,8 @@ const ComposerAddContextRootMenuContent = forwardRef<
     (pages.loading ||
       fileSearch.loading ||
       fileSearchQuery !== query ||
-      threadItems.loading ||
-      threadSearch.loading ||
+      !chatSearch.settled ||
+      chatMessageSearch.pending ||
       pluginsLoading ||
       skillsLoading ||
       appsLoading ||

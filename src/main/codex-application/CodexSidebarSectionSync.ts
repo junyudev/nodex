@@ -414,39 +414,55 @@ export const make: Effect.Effect<
         }
       }
     }
-    const palette = yield* catalog.listPalette({ scope: "sidebar" });
-    const tasks = (yield* Effect.forEach(
-      palette.filter((task) => task.sessionId !== null),
-      (task) =>
-        directory.resolve({ threadId: task.threadId, fidelity: "durable" }).pipe(
-          Effect.map((entry): HostedTask | null =>
-            entry?.durable.executionHostId === hostId &&
-            entry.durable.backendBinding.kind === "codex" &&
-            task.sessionId
-              ? {
-                  threadId: task.threadId,
-                  sessionId: task.sessionId,
-                  projectId: task.projectId,
-                  pinned: task.pinned,
-                }
-              : null,
-          ),
-        ),
-      { concurrency: 8 },
-    )).filter((task): task is HostedTask => task !== null);
-    const projectSnapshot = yield* core.workspace.read({
-      kind: "project_window",
-      include_archived: false,
-      window: { after: null, first: 200 },
-    });
-    if (projectSnapshot.value.kind !== "project_window") {
-      return yield* Effect.die(new Error("Core returned a non-Project window"));
-    }
-    const pinnedProjects = new Set(
-      projectSnapshot.value.projects.items
-        .filter((project) => project.pinned)
-        .map((project) => project.id),
-    );
+    const tasks: HostedTask[] = [];
+    let after: string | null = null;
+    const cursors = new Set<string>();
+    do {
+      const response: ProjectWorkspaceReadSnapshot = yield* core.workspace.read({
+        kind: "session_window",
+        archived: false,
+        native_only: true,
+        order: "identity",
+        window: { first: 100, after },
+      });
+      if (response.value.kind !== "session_window")
+        return yield* Effect.die(new Error("Core returned a non-Session window"));
+      for (const { task } of response.value.sessions.items) {
+        if (
+          task.thread?.execution_host_id !== hostId ||
+          task.thread.backend_binding.kind !== "codex"
+        )
+          continue;
+        tasks.push({
+          threadId: task.thread.thread_id,
+          sessionId: task.session.id,
+          projectId: task.session.project_id ?? null,
+          pinned: task.session.pinned,
+        });
+      }
+      after = response.value.sessions.next_cursor ?? null;
+      if (after && cursors.has(after))
+        return yield* Effect.die(new Error("Session cursor did not advance"));
+      if (after) cursors.add(after);
+    } while (after !== null);
+    const pinnedProjects = new Set<string>();
+    after = null;
+    cursors.clear();
+    do {
+      const response: ProjectWorkspaceReadSnapshot = yield* core.workspace.read({
+        kind: "project_window",
+        include_archived: false,
+        window: { first: 200, after },
+      });
+      if (response.value.kind !== "project_window")
+        return yield* Effect.die(new Error("Core returned a non-Project window"));
+      for (const project of response.value.projects.items)
+        if (project.pinned) pinnedProjects.add(project.id);
+      after = response.value.projects.next_cursor ?? null;
+      if (after && cursors.has(after))
+        return yield* Effect.die(new Error("Project cursor did not advance"));
+      if (after) cursors.add(after);
+    } while (after !== null);
     const desiredLogicalSectionByThread = new Map<string, string | "pinned" | null>();
     for (const task of tasks) {
       desiredLogicalSectionByThread.set(

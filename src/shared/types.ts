@@ -513,39 +513,6 @@ export interface PageSearchMetadataSnapshot {
   documents: PageSearchMetadataDocument[];
 }
 
-export interface CommandPaletteThreadSummary {
-  /** The native Thread, or the Runtime root Thread of a Runtime-bound Session. */
-  threadId: string;
-  sessionId: string | null;
-  projectId: string | null;
-  projectName: string | null;
-  title: string;
-  preview: string;
-  cwd: string | null;
-  gitBranch: string | null;
-  projectless: boolean;
-  pinned: boolean;
-  pinnedOrder: number | null;
-  statusType: CodexThreadStatusType;
-  statusActiveFlags: CodexThreadActiveFlag[];
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface CommandPaletteThreadListInput {
-  scope: "sidebar";
-}
-
-export interface CommandPaletteThreadSearchInput {
-  query: string;
-  limit?: number;
-}
-
-export interface CommandPaletteThreadSearchResult {
-  thread: CommandPaletteThreadSummary;
-  snippet: string;
-}
-
 export type PageCreatePlacement = "top" | "bottom" | { readonly beforePageId: string };
 
 export interface MovePageInput {

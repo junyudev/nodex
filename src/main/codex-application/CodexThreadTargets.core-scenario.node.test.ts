@@ -340,11 +340,7 @@ it.effect(
           Effect.provideService(CodexInternalThreadRegistry, registry),
           Effect.provideService(CodexSidebarSyncRuntime, sidebar),
         );
-        expect(
-          (yield* catalog.searchPalette({ query: "Created" })).map(
-            (result) => result.thread.sessionId,
-          ),
-        ).toContain(session!.id);
+        expect((yield* catalog.resolve(target.threadId))?.threadId).toBe(target.threadId);
         yield* Scope.close(sidebarScope, Exit.void);
         const afterSweep = applies;
         expect(

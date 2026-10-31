@@ -3,10 +3,7 @@ import type { FileSearchMatch } from "../../shared/file-search";
 import { matchesSearchTokens, tokenizeSearchQuery } from "./page-search";
 import { buildCommandPaletteCharacterHighlightSegments } from "./command-palette-highlight";
 import { normalizeSearchText } from "./search-text";
-import {
-  createCommandPaletteThreadSearchIndex,
-  type CommandPaletteThreadSearchIndex,
-} from "./command-palette-thread-search";
+import type { ChatSearchMatch } from "../../shared/chat-search";
 import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_ORDER } from "../../shared/workflow-status";
 import type { WorkflowStatus } from "../../shared/workflow-status";
 import {
@@ -17,12 +14,7 @@ import {
 } from "./toggle-list/types";
 import { isPriority } from "../../shared/priority";
 import { upgradeLegacyPriority } from "../../shared/priority-cutover";
-import type {
-  DatabasePageSummary,
-  CodexThreadActiveFlag,
-  CodexThreadStatusType,
-  Priority,
-} from "./types";
+import type { DatabasePageSummary, Priority } from "./types";
 import type { ProjectAppearance } from "../../shared/project-appearance";
 
 export interface CommandPaletteCommand {
@@ -143,40 +135,11 @@ export interface CommandPalettePageSearchDecorations {
   badges: CommandPalettePageSearchBadge[];
 }
 
-export interface CommandPaletteThreadSearchPreview {
-  excerpt: string;
-  segments: CommandPalettePageSearchPreviewSegment[];
-  source: "metadata" | "content";
-}
-
-export interface CommandPaletteThreadSearchDecorations {
-  titleSegments?: CommandPalettePageSearchPreviewSegment[] | null;
-  projectNameSegments?: CommandPalettePageSearchPreviewSegment[] | null;
-  cwdSegments?: CommandPalettePageSearchPreviewSegment[] | null;
-  gitBranchSegments?: CommandPalettePageSearchPreviewSegment[] | null;
-}
-
-export interface CommandPaletteThread {
-  kind: "thread";
-  id: string;
-  threadId: string;
-  sessionId: string | null;
-  projectId: string | null;
-  projectName: string | null;
-  title: string;
-  preview: string;
-  cwd: string | null;
-  gitBranch: string | null;
-  projectless: boolean;
-  pinned: boolean;
-  pinnedOrder: number | null;
-  statusType: CodexThreadStatusType;
-  statusActiveFlags: CodexThreadActiveFlag[];
-  createdAt: number;
-  updatedAt: number;
-  inActiveProject: boolean;
-  searchPreview?: CommandPaletteThreadSearchPreview | null;
-  searchDecorations?: CommandPaletteThreadSearchDecorations | null;
+/** A chat result: a Main-ranked chat search match. */
+export interface CommandPaletteChat extends ChatSearchMatch {
+  readonly kind: "chat";
+  readonly id: string;
+  readonly inActiveProject: boolean;
 }
 
 export interface CommandPaletteResults {
@@ -184,7 +147,6 @@ export interface CommandPaletteResults {
   query: string;
   commands: CommandPaletteCommand[];
   pages: CommandPalettePage[];
-  threads: CommandPaletteThread[];
 }
 
 interface ScoredCommand {
@@ -193,11 +155,6 @@ interface ScoredCommand {
 }
 
 const normalizeCommandPaletteSearchText = normalizeSearchText;
-
-interface ScoredThread {
-  item: CommandPaletteThread;
-  score: number;
-}
 
 export interface CommandPalettePageFilters {
   statuses: DatabasePageSummary["status"][];
@@ -209,7 +166,6 @@ export interface CommandPalettePageFilters {
   projectIds: string[];
 }
 
-const DEFAULT_THREAD_LIMIT = 8;
 export const COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY = "nodex-command-palette-page-filters-v2";
 export const LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY =
   "nodex-command-palette-page-filters-v1";
@@ -594,77 +550,15 @@ function compareScoredCommands(left: ScoredCommand, right: ScoredCommand): numbe
   return left.item.title.localeCompare(right.item.title);
 }
 
-function compareActiveProjectItems(
-  left: { inActiveProject: boolean },
-  right: { inActiveProject: boolean },
-): number {
-  if (left.inActiveProject === right.inActiveProject) return 0;
-  return left.inActiveProject ? -1 : 1;
-}
-
-export function prioritizeActiveProjectItems<T extends { inActiveProject: boolean }>(
-  items: readonly T[],
-): T[] {
-  const activeItems: T[] = [];
-  const otherItems: T[] = [];
-  items.forEach((item) => {
-    if (item.inActiveProject) {
-      activeItems.push(item);
-      return;
-    }
-
-    otherItems.push(item);
-  });
-
-  return [...activeItems, ...otherItems];
-}
-
-function compareDefaultThreads(left: CommandPaletteThread, right: CommandPaletteThread): number {
-  if (left.pinned !== right.pinned) {
-    return left.pinned ? -1 : 1;
-  }
-
-  if (left.pinned && right.pinned) {
-    const leftPinnedOrder = left.pinnedOrder ?? Number.MAX_SAFE_INTEGER;
-    const rightPinnedOrder = right.pinnedOrder ?? Number.MAX_SAFE_INTEGER;
-    if (leftPinnedOrder !== rightPinnedOrder) {
-      return leftPinnedOrder - rightPinnedOrder;
-    }
-  }
-
-  if (right.updatedAt !== left.updatedAt) {
-    return right.updatedAt - left.updatedAt;
-  }
-
-  return left.title.localeCompare(right.title);
-}
-
-function compareScoredThreads(left: ScoredThread, right: ScoredThread): number {
-  if (right.score !== left.score) return right.score - left.score;
-  return compareDefaultThreads(left.item, right.item);
-}
-
-function compareScoredThreadsWithActiveProjectPriority(
-  left: ScoredThread,
-  right: ScoredThread,
-): number {
-  return compareActiveProjectItems(left.item, right.item) || compareScoredThreads(left, right);
-}
-
 export function filterCommandPaletteItems(input: {
   query: string;
   mode: CommandMenuMode;
   commands: readonly CommandPaletteCommand[];
   pages: readonly CommandPalettePage[];
-  threads?: readonly CommandPaletteThread[];
-  threadSearchIndex?: CommandPaletteThreadSearchIndex | null;
   commandLimit?: number;
-  threadLimit?: number;
-  preferActiveProject?: boolean;
 }): CommandPaletteResults {
   const query = normalizeCommandPaletteSearchText(input.query.trimStart());
   const tokens = tokenizeSearchQuery(query);
-  const preferActiveProject = input.preferActiveProject ?? false;
 
   if (input.mode === "root" || input.mode === "actions") {
     const commands = input.commands
@@ -679,45 +573,6 @@ export function filterCommandPaletteItems(input: {
       query,
       commands,
       pages: [],
-      threads: [],
-    };
-  }
-
-  if (input.mode === "chats") {
-    const threadItems = input.threads ?? [];
-    const threads = query
-      ? (input.threadSearchIndex === undefined
-          ? createCommandPaletteThreadSearchIndex(threadItems).search(query)
-          : (input.threadSearchIndex?.search(query) ?? [])
-        )
-          .sort(
-            preferActiveProject
-              ? compareScoredThreadsWithActiveProjectPriority
-              : compareScoredThreads,
-          )
-          .slice(0, input.threadLimit ?? DEFAULT_THREAD_LIMIT)
-          .map(({ item }) => item)
-      : (preferActiveProject
-          ? prioritizeActiveProjectItems(threadItems)
-          : threadItems.slice()
-        ).slice(0, input.threadLimit ?? DEFAULT_THREAD_LIMIT);
-
-    return {
-      mode: input.mode,
-      query,
-      commands: [],
-      pages: [],
-      threads,
-    };
-  }
-
-  if (input.mode === "files") {
-    return {
-      mode: input.mode,
-      query,
-      commands: [],
-      pages: [],
-      threads: [],
     };
   }
 
@@ -726,7 +581,6 @@ export function filterCommandPaletteItems(input: {
     query,
     commands: [],
     pages: [],
-    threads: [],
   };
 }
 

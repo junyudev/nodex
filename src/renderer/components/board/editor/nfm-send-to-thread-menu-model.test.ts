@@ -1,42 +1,41 @@
 import { describe, expect, test } from "vite-plus/test";
-import type { CommandPaletteThread } from "@/lib/command-palette";
-import {
-  type CommandPaletteThreadSearchBatch,
-  selectCommandPaletteChatResults,
-} from "@/lib/command-palette-chat-search";
-import { createCommandPaletteThreadSearchIndex } from "@/lib/command-palette-thread-search";
-import type { CodexThreadSummary } from "@/lib/types";
+import type { ChatCatalogEntry, ChatSearchMatch } from "../../../../shared/chat-search";
+import type { CodexThreadSummary, PageChatItem } from "@/lib/types";
 import {
   buildNfmSendToThreadRows,
+  createLinkedChatMatch,
+  LINKED_CHAT_LABEL,
   moveNfmSendToThreadFocusedRowId,
   resolveNfmSendToThreadTitle,
   resolveNfmSendToThreadFocusedRowId,
   resolveNfmSendToThreadPreferredTarget,
 } from "./nfm-send-to-thread-menu-model";
 
-function makeThread(overrides: Partial<CommandPaletteThread> = {}): CommandPaletteThread {
-  const threadId = overrides.threadId ?? "thread-existing";
+function makeMatch(
+  chat: Partial<ChatCatalogEntry> = {},
+  match: Partial<Omit<ChatSearchMatch, "chat">> = {},
+): ChatSearchMatch {
   return {
-    kind: "thread",
-    id: overrides.id ?? `thread:${threadId}`,
-    threadId,
-    sessionId: overrides.sessionId === undefined ? "session-existing" : overrides.sessionId,
-    projectId: overrides.projectId === undefined ? "project-1" : overrides.projectId,
-    projectName: overrides.projectName === undefined ? "Launch project" : overrides.projectName,
-    title: overrides.title ?? "Existing implementation",
-    preview: overrides.preview ?? "Continue from selected notes",
-    cwd: overrides.cwd ?? "/repo",
-    gitBranch: overrides.gitBranch ?? null,
-    projectless: overrides.projectless ?? false,
-    pinned: overrides.pinned ?? false,
-    pinnedOrder: overrides.pinnedOrder ?? null,
-    statusType: overrides.statusType ?? "idle",
-    statusActiveFlags: overrides.statusActiveFlags ?? [],
-    createdAt: overrides.createdAt ?? 0,
-    updatedAt: overrides.updatedAt ?? 0,
-    inActiveProject: overrides.inActiveProject ?? true,
-    searchPreview: overrides.searchPreview,
-    searchDecorations: overrides.searchDecorations,
+    chat: {
+      sessionId: "session-existing",
+      threadId: "thread-existing",
+      projectId: "project-1",
+      projectName: "Launch project",
+      title: "Existing implementation",
+      cwd: "/repo",
+      branch: null,
+      pullRequests: [],
+      pinned: false,
+      pinnedOrder: null,
+      activity: "idle",
+      createdAt: 0,
+      recencyAt: 0,
+      ...chat,
+    },
+    titleRanges: [],
+    hint: null,
+    excerpt: null,
+    ...match,
   };
 }
 
@@ -61,26 +60,23 @@ function makePreferredThread(
   };
 }
 
-function makeThreadContentBatch(
-  query: string,
-  results: CommandPaletteThreadSearchBatch["results"],
-): CommandPaletteThreadSearchBatch {
+function makeLinkedChat(overrides: Partial<PageChatItem> = {}): PageChatItem {
   return {
-    query,
-    results,
-    loading: false,
-    error: null,
+    sessionId: "session-linked",
+    projectId: "project-1",
+    projectName: "Launch project",
+    displayTitle: "Linked work",
+    threadId: "linked",
+    executionRef: null,
+    threadPreview: "",
+    threadStatus: null,
+    threadArchived: false,
+    unread: false,
+    sessionArchived: false,
+    conversationRecencyAt: 1,
+    linkedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
   };
-}
-
-function searchThreads(query: string, threads: CommandPaletteThread[]): CommandPaletteThread[] {
-  return selectCommandPaletteChatResults({
-    query,
-    threads,
-    threadSearchIndex: createCommandPaletteThreadSearchIndex(threads),
-    threadSearchBatch: makeThreadContentBatch(query, []),
-    threadLimit: 24,
-  });
 }
 
 describe("markdown send-to-thread menu model", () => {
@@ -95,139 +91,62 @@ describe("markdown send-to-thread menu model", () => {
     ).toBe("Review changes");
   });
 
-  test("keeps New chat last and preserves command-palette thread ordering", () => {
+  test("keeps New chat last and preserves Main match ordering", () => {
     const rows = buildNfmSendToThreadRows({
       query: "",
-      threads: [
-        makeThread({ threadId: "newer", title: "Newer", updatedAt: 3 }),
-        makeThread({ threadId: "older", title: "Older", updatedAt: 1 }),
+      matches: [
+        makeMatch({ threadId: "older", title: "Older", recencyAt: 1 }),
+        makeMatch({ threadId: "newer", title: "Newer", recencyAt: 3 }),
       ],
     });
 
-    expect(rows.map((row) => row.id).join(",")).toBe("thread:newer,thread:older,new-thread");
+    expect(rows.map((row) => row.id)).toEqual(["thread:older", "thread:newer", "new-thread"]);
   });
 
-  test("uses command-palette fuzzy and prefix search results", () => {
-    const threads = [
-      makeThread({
-        threadId: "target",
-        title: "Command palette thread search",
-        preview: "Search previous assistant messages.",
-      }),
-      makeThread({
-        threadId: "miss",
-        title: "Terminal layout polish",
-        preview: "No matching words.",
-      }),
-    ];
-    const rows = buildNfmSendToThreadRows({
-      query: "commnd pal",
-      threads: searchThreads("commnd pal", threads),
-    });
-
-    expect(rows.length).toBe(2);
-    expect(rows[0]?.id).toBe("thread:target");
-    expect(rows[1]?.kind).toBe("new-thread");
-  });
-
-  test("keeps content-only command-palette hits with snippets", () => {
-    const threads = [
-      makeThread({
-        threadId: "content-hit",
-        title: "General investigation",
-        preview: "",
-      }),
-    ];
-    const visibleThreads = selectCommandPaletteChatResults({
-      query: "needle",
-      threads,
-      threadSearchIndex: createCommandPaletteThreadSearchIndex(threads),
-      threadSearchBatch: makeThreadContentBatch("needle", [
-        {
-          thread: {
-            threadId: "content-hit",
-            sessionId: "session-existing",
-            projectId: "project-1",
-            projectName: "Launch project",
-            title: "General investigation",
-            preview: "",
-            cwd: "/repo",
-            gitBranch: null,
-            projectless: false,
-            pinned: false,
-            pinnedOrder: null,
-            statusType: "idle",
-            statusActiveFlags: [],
-            createdAt: 0,
-            updatedAt: 0,
-          },
-          snippet: "backend needle snippet",
+  test("carries content-only matches and their highlighted excerpts without reranking", () => {
+    const match = makeMatch(
+      { threadId: "content-hit", title: "General investigation" },
+      {
+        excerpt: {
+          text: "backend needle snippet",
+          ranges: [{ start: 8, end: 14 }],
+          role: "assistant",
         },
-      ]),
-      threadLimit: 24,
-    });
-    const rows = buildNfmSendToThreadRows({
-      query: "needle",
-      threads: visibleThreads,
-    });
+      },
+    );
+    const rows = buildNfmSendToThreadRows({ query: "needle", matches: [match] });
 
-    expect(rows[0]?.id).toBe("thread:content-hit");
-    if (rows[0]?.kind !== "thread") {
-      throw new Error("expected thread row");
-    }
-    expect(rows[0].searchPreview?.source).toBe("content");
-    expect(rows[0].searchPreview?.segments.some((segment) => segment.highlight)).toBe(true);
-  });
-
-  test("offers an app-server-only task as a send target", () => {
-    const visibleThreads = selectCommandPaletteChatResults({
-      query: "handoff",
-      threads: [],
-      threadSearchBatch: makeThreadContentBatch("handoff", [
-        {
-          thread: {
-            threadId: "server-only-target",
-            sessionId: null,
-            projectId: "project-1",
-            projectName: "Launch project",
-            title: "Historical handoff",
-            preview: "Not loaded in the sidebar",
-            cwd: "/repo/archive",
-            gitBranch: "archive/handoff",
-            projectless: false,
-            pinned: false,
-            pinnedOrder: null,
-            statusType: "notLoaded",
-            statusActiveFlags: [],
-            createdAt: 1,
-            updatedAt: 2,
-          },
-          snippet: "The handoff target exists only in app-server history.",
-        },
-      ]),
-      activeProjectId: "project-1",
-    });
-
-    const rows = buildNfmSendToThreadRows({ query: "handoff", threads: visibleThreads });
-
+    expect(rows.map((row) => row.id)).toEqual(["thread:content-hit", "new-thread"]);
     expect(rows[0]).toMatchObject({
-      id: "thread:server-only-target",
-      kind: "thread",
-      threadId: "server-only-target",
+      match,
+      target: { kind: "thread", threadId: "content-hit", sessionId: "session-existing" },
+    });
+  });
+
+  test("skips chats that have not started a Thread", () => {
+    const rows = buildNfmSendToThreadRows({
+      query: "",
+      matches: [
+        makeMatch({ threadId: null, sessionId: "session-unstarted" }),
+        makeMatch({ threadId: "started", sessionId: "session-started" }),
+      ],
+    });
+
+    expect(rows.map((row) => row.id)).toEqual(["thread:started", "new-thread"]);
+    expect(rows[0]).toMatchObject({
+      target: { kind: "thread", threadId: "started", sessionId: "session-started" },
     });
   });
 
   test("uses project labels and projectless chat metadata", () => {
     const rows = buildNfmSendToThreadRows({
       query: "",
-      threads: [
-        makeThread({ threadId: "project", projectName: "Launch project" }),
-        makeThread({
+      matches: [
+        makeMatch({ threadId: "project", projectName: "Launch project" }),
+        makeMatch({
           threadId: "projectless",
-          sessionId: null,
           projectId: null,
           projectName: null,
-          projectless: true,
           title: "Projectless chat",
         }),
       ],
@@ -285,7 +204,7 @@ describe("markdown send-to-thread menu model", () => {
     }
   });
 
-  test("pins and labels the preferred thread with caller meta", () => {
+  test("pins the matched preferred thread once with its catalog title and Session", () => {
     const rows = buildNfmSendToThreadRows({
       query: "",
       preferredTarget: {
@@ -298,9 +217,15 @@ describe("markdown send-to-thread menu model", () => {
         sessionId: "session-preferred",
         meta: "This chat",
       },
-      threads: [
-        makeThread({ threadId: "newer", title: "Newer", updatedAt: 3 }),
-        makeThread({ threadId: "preferred", title: "Fresh title", updatedAt: 5 }),
+      matches: [
+        makeMatch({ threadId: "newer", title: "Newer", recencyAt: 3 }),
+        makeMatch({
+          threadId: "preferred",
+          sessionId: "session-catalog",
+          title: "Fresh title",
+          recencyAt: 5,
+        }),
+        makeMatch({ threadId: "preferred", title: "Duplicate preferred match" }),
       ],
     });
 
@@ -312,71 +237,143 @@ describe("markdown send-to-thread menu model", () => {
     expect(rows[0].label).toBe("Fresh title");
     expect(rows[0].meta).toBe("This chat");
     expect(rows[0].isPreferredTarget).toBe(true);
+    expect(rows[0].target.sessionId).toBe("session-catalog");
     expect(rows[1]?.id).toBe("thread:newer");
     expect(rows[2]?.kind).toBe("new-thread");
   });
 
-  test("lists the Page's linked chats after this chat until a search widens the list", () => {
-    const linked = makeThread({ threadId: "linked", title: "Linked work", sessionId: "s-linked" });
-    const threads = [
-      makeThread({ threadId: "recent", title: "Recent", updatedAt: 9 }),
-      makeThread({ threadId: "preferred", title: "Here", updatedAt: 5 }),
-      linked,
-    ];
+  test("lists older Linked chats after this chat even outside the catalog result window", () => {
+    const linked = makeMatch({ threadId: "linked", sessionId: "session-linked", recencyAt: 1 });
+    const current = makeMatch({ threadId: "preferred", recencyAt: 5 });
+    const recent = makeMatch({ threadId: "recent", recencyAt: 9 });
     const preferredTarget = {
       kind: "thread" as const,
       thread: makePreferredThread({ threadId: "preferred" }),
       sessionId: "session-preferred",
       meta: "This chat",
     };
-
     const rows = buildNfmSendToThreadRows({
       query: "",
-      threads,
-      linkedThreads: [linked],
+      matches: [recent, current],
+      linkedChats: [current, linked, linked],
       preferredTarget,
     });
     expect(rows.map((row) => [row.id, row.meta])).toEqual([
       ["thread:preferred", "This chat"],
-      ["thread:linked", "Linked"],
+      ["thread:linked", LINKED_CHAT_LABEL],
       ["thread:recent", "Launch project"],
       ["new-thread", "This project"],
     ]);
     expect(rows[1]?.isPreferredTarget).toBe(false);
 
-    const searched = buildNfmSendToThreadRows({
-      query: "work",
-      threads: [linked],
-      linkedThreads: [linked],
-    });
-    expect(searched.map((row) => [row.id, row.meta])).toEqual([
+    expect(
+      buildNfmSendToThreadRows({
+        query: "recent",
+        matches: [recent],
+        linkedChats: [linked],
+        preferredTarget,
+      }).map((row) => row.id),
+    ).toEqual(["thread:recent", "new-thread"]);
+    // A Linked chat that search matches keeps its normal Project label.
+    expect(
+      buildNfmSendToThreadRows({
+        query: "work",
+        matches: [linked],
+        linkedChats: [linked],
+      }).map((row) => [row.id, row.meta]),
+    ).toEqual([
       ["thread:linked", "Launch project"],
       ["new-thread", "This project"],
     ]);
+    expect(
+      buildNfmSendToThreadRows({
+        query: "",
+        matches: [recent, linked],
+        linkedChats: [linked],
+      }).map((row) => row.id),
+    ).toEqual(["thread:linked", "thread:recent", "new-thread"]);
   });
 
-  test("names the editor's own Session for its chat when the chat list has not caught up", () => {
-    const rows = buildNfmSendToThreadRows({
-      query: "",
+  test("converts a started Linked chat with its title, Project, activity and recency", () => {
+    expect(
+      createLinkedChatMatch(
+        makeLinkedChat({
+          threadStatus: { statusType: "active", activeFlags: ["waitingOnApproval"] },
+        }),
+      ),
+    ).toEqual(
+      makeMatch({
+        threadId: "linked",
+        sessionId: "session-linked",
+        title: "Linked work",
+        cwd: null,
+        activity: "waitingOnApproval",
+        createdAt: 1,
+        recencyAt: 1,
+      }),
+    );
+    const linkedAt = "2026-02-01T00:00:00.000Z";
+    expect(
+      createLinkedChatMatch(makeLinkedChat({ conversationRecencyAt: null, linkedAt })),
+    ).toMatchObject({ chat: { createdAt: Date.parse(linkedAt), recencyAt: Date.parse(linkedAt) } });
+  });
+
+  test.each([{ threadId: null }, { sessionArchived: true }, { threadArchived: true }])(
+    "skips archived or threadless Linked chats (%j)",
+    (overrides) => {
+      expect(createLinkedChatMatch(makeLinkedChat(overrides))).toBeNull();
+    },
+  );
+
+  test.each(["", "   "])(
+    "synthesizes the missing preferred thread only for an empty query (%j)",
+    (query) => {
+      const rows = buildNfmSendToThreadRows({
+        query,
+        preferredTarget: {
+          kind: "thread",
+          thread: makePreferredThread({ threadId: "preferred", threadName: "Current work" }),
+          sessionId: "session-current",
+          meta: "This chat",
+        },
+        projectNameById: { "project-1": "Launch project" },
+        matches: [makeMatch({ threadId: "other" })],
+      });
+
+      expect(rows.map((row) => row.id)).toEqual(["thread:preferred", "thread:other", "new-thread"]);
+      expect(rows[0]).toMatchObject({
+        label: "Current work",
+        meta: "This chat",
+        isPreferredTarget: true,
+        match: { chat: { projectName: "Launch project" }, excerpt: null },
+        target: { kind: "thread", threadId: "preferred", sessionId: "session-current" },
+      });
+    },
+  );
+
+  test("hides the preferred thread during search unless Main matched it", () => {
+    const input = {
+      query: "needle",
       preferredTarget: {
-        kind: "thread",
-        thread: makePreferredThread({ threadId: "preferred", updatedAt: 1 }),
+        kind: "thread" as const,
+        thread: makePreferredThread({ threadId: "preferred", threadName: "needle" }),
         sessionId: "session-current",
         meta: "This chat",
       },
-      threads: [
-        makeThread({ threadId: "preferred", sessionId: null, updatedAt: 5 }),
-        makeThread({ threadId: "bound", sessionId: "session-bound", updatedAt: 3 }),
-      ],
-    });
-
+    };
+    const otherMatch = makeMatch({ threadId: "other" });
     expect(
-      rows.map((row) => (row.kind === "thread" ? [row.id, row.target.sessionId] : [row.id])),
-    ).toEqual([
-      ["thread:preferred", "session-current"],
-      ["thread:bound", "session-bound"],
-      ["new-thread"],
-    ]);
+      buildNfmSendToThreadRows({ ...input, matches: [otherMatch] }).map((row) => row.id),
+    ).toEqual(["thread:other", "new-thread"]);
+
+    const preferredMatch = makeMatch({ threadId: "preferred", title: "Content-only hit" });
+    const rows = buildNfmSendToThreadRows({ ...input, matches: [otherMatch, preferredMatch] });
+    expect(rows.map((row) => row.id)).toEqual(["thread:preferred", "thread:other", "new-thread"]);
+    expect(rows[0]).toMatchObject({
+      label: "Content-only hit",
+      meta: "This chat",
+      match: preferredMatch,
+    });
   });
 
   test("pins the current session new-chat target without duplicating the footer action", () => {
@@ -387,9 +384,9 @@ describe("markdown send-to-thread menu model", () => {
         sessionId: "session-current",
         meta: "This chat",
       },
-      threads: [
-        makeThread({ threadId: "newer", title: "Newer", updatedAt: 3 }),
-        makeThread({ threadId: "older", title: "Older", updatedAt: 1 }),
+      matches: [
+        makeMatch({ threadId: "newer", title: "Newer", recencyAt: 3 }),
+        makeMatch({ threadId: "older", title: "Older", recencyAt: 1 }),
       ],
     });
 
@@ -415,7 +412,7 @@ describe("markdown send-to-thread menu model", () => {
         sessionId: "session-current",
         meta: "This chat",
       },
-      threads: [],
+      matches: [],
     });
 
     expect(rows.length).toBe(1);
@@ -448,7 +445,7 @@ describe("markdown send-to-thread menu model", () => {
           sessionId: "session-preferred",
           meta: "Current section",
         },
-        threads: [makeThread({ threadId: "other", title: "Other", updatedAt: 1 })],
+        matches: [makeMatch({ threadId: "other", title: "Other", recencyAt: 1 })],
       });
 
       expect(rows.map((row) => row.id).join(",")).toBe("thread:other,new-thread");
@@ -458,7 +455,7 @@ describe("markdown send-to-thread menu model", () => {
   test("focus starts on a matching existing thread for search and wraps during keyboard movement", () => {
     const rows = buildNfmSendToThreadRows({
       query: "build",
-      threads: [makeThread({ threadId: "build-thread", title: "Build flow", updatedAt: 1 })],
+      matches: [makeMatch({ threadId: "build-thread", title: "Build flow", recencyAt: 1 })],
     });
 
     const initial = resolveNfmSendToThreadFocusedRowId(null, "build", rows);

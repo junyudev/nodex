@@ -34,14 +34,15 @@ import {
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexFloatingLayerProvider } from "@/components/ui/floating-layer";
 import { cn } from "@/lib/utils";
-import type { CommandPaletteThread } from "@/lib/command-palette";
 import {
-  listCommandPaletteThreadItems,
-  searchCommandPaletteThreads,
-  selectCommandPaletteChatResults,
-  type CommandPaletteThreadSearchBatch,
-} from "@/lib/command-palette-chat-search";
-import { createCommandPaletteThreadSearchIndex } from "@/lib/command-palette-thread-search";
+  chatHighlightSegments,
+  mergeChatSearchMatches,
+  preferChatProject,
+  searchChatMessages,
+  searchChats,
+  searchesChatMessages,
+} from "@/lib/chat-search";
+import type { ChatCatalogEntry, ChatSearchMatch } from "../../../../shared/chat-search";
 import {
   NFM_SUGGESTION_MENU_FLOATING_OPTIONS,
   NFM_SUGGESTION_MENU_PORTAL_ELEMENT,
@@ -88,11 +89,7 @@ import {
   type MentionSuggestionRank,
 } from "@/lib/editor-model/mention-suggestion-model";
 import type { Project } from "@/lib/types";
-import {
-  buildCommandPaletteCharacterHighlightSegments,
-  buildCommandPaletteQueryHighlightPreview,
-  type CommandPaletteHighlightSegment,
-} from "@/lib/command-palette-highlight";
+import type { CommandPaletteHighlightSegment } from "@/lib/command-palette-highlight";
 import { StatusIcon } from "@/lib/status-presentation";
 import { WORKFLOW_STATUS_LABELS } from "../../../../shared/workflow-status";
 import { contentRoutingContextKey } from "../../../../shared/content-routing-context";
@@ -550,9 +547,9 @@ export function NfmSuggestionMenuSurface({
 
   const renderedItems = useMemo(() => {
     let currentGroup: string | undefined;
+    const nodes: ReactNode[] = [];
 
-    return items.flatMap((item, index) => {
-      const nodes = [];
+    for (const [index, item] of items.entries()) {
       const group = item.group?.trim();
 
       if (group && group !== currentGroup) {
@@ -642,9 +639,8 @@ export function NfmSuggestionMenuSurface({
           {row}
         </NodexTooltip>,
       );
-
-      return nodes;
-    });
+    }
+    return nodes;
   }, [items, onItemClick, selectedIndex]);
 
   return (
@@ -1006,8 +1002,6 @@ export function NfmSlashMenu({
 function SubpageMenu() {
   const editor = useBlockNoteEditor();
   const hostRuntime = useBlockReferenceHostRuntime();
-  const hostRuntimeRef = useRef(hostRuntime);
-  hostRuntimeRef.current = hostRuntime;
   const getItems = useCallback(
     async (query: string): Promise<NfmSuggestionItem[]> => {
       const title = query.trim() || "Untitled";
@@ -1046,25 +1040,18 @@ function SubpageMenu() {
 }
 
 // ---------------------------------------------------------------------------
-// @ mention for pages and Codex threads
+// @ mention for pages and chats
 // ---------------------------------------------------------------------------
 
 const PAGE_MENTION_GROUP = "Pages";
+const CHAT_MENTION_LIMIT = 24;
 
 type ThreadMentionSubtextInput = Pick<
-  CommandPaletteThread,
-  "threadId" | "projectId" | "statusType" | "statusActiveFlags"
-> &
-  Partial<Pick<CommandPaletteThread, "projectName">> & {
-    archived?: boolean;
-  };
+  ChatCatalogEntry,
+  "threadId" | "projectId" | "projectName" | "activity"
+>;
 
-function resolveMentionSearchPreviewExcerpt(
-  searchPreview: CommandPaletteThread["searchPreview"] | undefined,
-): string | null {
-  const excerpt = searchPreview?.excerpt?.replace(/\s+/g, " ").trim();
-  return excerpt || null;
-}
+type ThreadMentionMatch = ChatSearchMatch & { readonly inActiveProject: boolean };
 
 function buildMentionTooltipContent(
   title: string,
@@ -1089,57 +1076,52 @@ function buildMentionTooltipContent(
   );
 }
 
-function resolveThreadMentionTitle(thread: CommandPaletteThread): string {
-  const title = thread.title.trim();
-  if (title) return title;
-
-  const firstPreviewLine = thread.preview
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-  return firstPreviewLine || formatThreadMentionShortUuid(thread.threadId);
+function resolveThreadMentionTitle(chat: ChatCatalogEntry): string {
+  if (chat.title.trim()) return chat.title;
+  return formatThreadMentionShortUuid(chat.threadId ?? chat.sessionId);
 }
 
-function resolveThreadMentionStateLabel(
-  thread: Pick<ThreadMentionSubtextInput, "archived" | "statusType" | "statusActiveFlags">,
-): string {
-  if (thread.archived) return "Archived";
-  if (thread.statusType === "systemError") return "Error";
-  if (thread.statusActiveFlags.includes("waitingOnApproval")) return "Needs approval";
-  if (thread.statusActiveFlags.includes("waitingOnUserInput")) return "Waiting";
-  if (thread.statusType === "active") return "Running";
-  return "";
+function resolveThreadMentionStateLabel(chat: Pick<ChatCatalogEntry, "activity">): string {
+  switch (chat.activity) {
+    case "error":
+      return "Error";
+    case "waitingOnApproval":
+      return "Needs approval";
+    case "waitingOnUserInput":
+      return "Waiting";
+    case "running":
+      return "Running";
+    case "idle":
+      return "";
+  }
 }
 
 export function resolveThreadMentionSubtext(
-  thread: ThreadMentionSubtextInput,
+  chat: ThreadMentionSubtextInput,
   project: Pick<Project, "id" | "name"> | null,
 ): string {
   const projectLabel =
-    project?.name?.trim() ||
-    project?.id ||
-    thread.projectName?.trim() ||
-    thread.projectId ||
-    "Chats";
-  const stateLabel = resolveThreadMentionStateLabel(thread);
-  return [projectLabel, stateLabel, formatThreadMentionShortUuid(thread.threadId)]
+    project?.name?.trim() || project?.id || chat.projectName?.trim() || chat.projectId || "Chats";
+  const stateLabel = resolveThreadMentionStateLabel(chat);
+  return [projectLabel, stateLabel, chat.threadId && formatThreadMentionShortUuid(chat.threadId)]
     .filter(Boolean)
     .join(" / ");
 }
 
-function resolveThreadMentionContext(item: CommandPaletteThread): string {
-  const projectLabel =
-    item.projectName?.trim() || (item.projectless ? "Projectless chat" : "Chats");
-  const stateLabel = resolveThreadMentionStateLabel(item);
+function resolveThreadMentionContext(chat: ChatCatalogEntry): string {
+  const projectLabel = chat.projectName?.trim() || (chat.projectId ? "Chats" : "Projectless chat");
+  const stateLabel = resolveThreadMentionStateLabel(chat);
   return [projectLabel, stateLabel].filter(Boolean).join(" / ");
 }
 
-export function buildNfmThreadMentionInlineContent(item: CommandPaletteThread): unknown[] {
-  if (!item.sessionId) return [];
+export function buildNfmThreadMentionInlineContent(
+  chat: Pick<ChatCatalogEntry, "threadId" | "sessionId">,
+): unknown[] {
+  if (chat.threadId === null) return [];
   return [
     {
       type: "threadMention",
-      props: { uuid: item.sessionId },
+      props: { uuid: chat.sessionId },
     },
     " ",
   ];
@@ -1299,9 +1281,11 @@ function usePageReferenceGetItems(intent: PageReferenceIntent, beforeSelect?: ()
         ...hostRuntime.ancestorPageIds,
       ])
     : "no-page-context";
-  editorRef.current = editor;
-  hostRuntimeRef.current = hostRuntime;
-  beforeSelectRef.current = beforeSelect;
+  useLayoutEffect(() => {
+    editorRef.current = editor;
+    hostRuntimeRef.current = hostRuntime;
+    beforeSelectRef.current = beforeSelect;
+  }, [beforeSelect, editor, hostRuntime]);
   const getItems = useCallback(
     async (query: string) => {
       const currentHostRuntime = hostRuntimeRef.current;
@@ -1355,77 +1339,56 @@ function usePageReferenceGetItems(intent: PageReferenceIntent, beforeSelect?: ()
 }
 
 function classifyThreadMentionMatch(
-  item: CommandPaletteThread,
+  match: ChatSearchMatch,
   query: string,
 ): MentionSuggestionRank["match"] {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  if (!normalizedQuery) return "recent";
-  const title = resolveThreadMentionTitle(item).toLocaleLowerCase();
-  if (title === normalizedQuery) return "exact_title";
-  if (title.startsWith(normalizedQuery)) return "prefix_title";
-  if (title.includes(normalizedQuery)) return "title";
-  return "content";
+  if (match.excerpt) return "content";
+  if (!query.trim()) return "recent";
+  // Main ranks title and metadata matches together, ahead of message excerpts.
+  // Keep that order instead of trying to match the query again in the renderer.
+  return "title";
 }
 
 export function buildNfmThreadMentionSuggestionItems(
   editor: unknown,
-  items: readonly CommandPaletteThread[],
+  matches: readonly ThreadMentionMatch[],
   query: string,
 ): NfmSuggestionItem[] {
+  const startedMatches = matches.filter(({ chat }) => chat.threadId !== null);
   const titleCounts = new Map<string, number>();
-  for (const item of items) {
-    const title = resolveThreadMentionTitle(item).trim().toLocaleLowerCase();
+  for (const { chat } of startedMatches) {
+    const title = resolveThreadMentionTitle(chat).trim().toLocaleLowerCase();
     titleCounts.set(title, (titleCounts.get(title) ?? 0) + 1);
   }
 
-  return items
-    .filter((item) => item.sessionId !== null)
-    .map((item, sourceOrder) => {
-      const title = resolveThreadMentionTitle(item);
-      const match = classifyThreadMentionMatch(item, query);
-      const excerpt = resolveMentionSearchPreviewExcerpt(item.searchPreview);
-      const preview =
-        match === "content" && excerpt
-          ? buildCommandPaletteQueryHighlightPreview(excerpt, query, {
-              maxCharacters: 88,
-              leadingContextCharacters: 18,
-            })
-          : null;
-      const fallbackTitleSegments = query.trim()
-        ? buildCommandPaletteCharacterHighlightSegments(title, query)
-        : null;
-      const titleSegments =
-        item.searchDecorations?.titleSegments ??
-        (fallbackTitleSegments?.some(({ highlight }) => highlight) ? fallbackTitleSegments : null);
-      const duplicateTitle = (titleCounts.get(title.trim().toLocaleLowerCase()) ?? 0) > 1;
-      const detail = preview
-        ? preview.excerpt
-        : duplicateTitle
-          ? resolveThreadMentionContext(item)
-          : null;
-      const context = resolveThreadMentionContext(item);
-      return {
-        title,
-        subtext: detail ?? undefined,
-        detail,
-        titleSegments,
-        detailSegments: preview?.segments ?? null,
-        aliases: [],
-        group: "Mention a chat",
-        hint: null,
-        tooltipContent: buildMentionTooltipContent(title, [context, excerpt]),
-        mentionRank: {
-          family: "chat",
-          match,
-          activeContext: item.inActiveProject,
-          sourceOrder,
-        },
-        icon: <ThreadIcon className="size-4" />,
-        onItemClick: () => {
-          insertInlineContent(editor, buildNfmThreadMentionInlineContent(item));
-        },
-      } satisfies NfmSuggestionItem;
-    });
+  return startedMatches.map((match, sourceOrder) => {
+    const { chat, excerpt, titleRanges, inActiveProject } = match;
+    const title = resolveThreadMentionTitle(chat);
+    const duplicateTitle = (titleCounts.get(title.trim().toLocaleLowerCase()) ?? 0) > 1;
+    const context = resolveThreadMentionContext(chat);
+    const detail = excerpt ? excerpt.text : duplicateTitle ? context : null;
+    return {
+      title,
+      subtext: detail ?? undefined,
+      detail,
+      titleSegments: chatHighlightSegments(title, titleRanges),
+      detailSegments: excerpt ? chatHighlightSegments(excerpt.text, excerpt.ranges) : null,
+      aliases: [],
+      group: "Mention a chat",
+      hint: null,
+      tooltipContent: buildMentionTooltipContent(title, [context, excerpt?.text]),
+      mentionRank: {
+        family: "chat",
+        match: classifyThreadMentionMatch(match, query),
+        activeContext: inActiveProject,
+        sourceOrder,
+      },
+      icon: <ThreadIcon className="size-4" />,
+      onItemClick: () => {
+        insertInlineContent(editor, buildNfmThreadMentionInlineContent(chat));
+      },
+    } satisfies NfmSuggestionItem;
+  });
 }
 
 export function selectNfmMentionSuggestionItems(
@@ -1504,10 +1467,8 @@ export function resolveNfmPageMentionCompletion(
 }
 
 export interface NfmMentionGetItemsLoaders {
-  listThreadItems: typeof listCommandPaletteThreadItems;
-  searchThreads: typeof searchCommandPaletteThreads;
-  selectChatResults: typeof selectCommandPaletteChatResults;
-  createThreadSearchIndex: typeof createCommandPaletteThreadSearchIndex;
+  searchChats: typeof searchChats;
+  searchChatMessages: typeof searchChatMessages;
 }
 
 interface NfmMentionGetItemsInput {
@@ -1517,27 +1478,13 @@ interface NfmMentionGetItemsInput {
 }
 
 const DEFAULT_NFM_MENTION_GET_ITEMS_LOADERS: NfmMentionGetItemsLoaders = {
-  listThreadItems: listCommandPaletteThreadItems,
-  searchThreads: searchCommandPaletteThreads,
-  selectChatResults: selectCommandPaletteChatResults,
-  createThreadSearchIndex: createCommandPaletteThreadSearchIndex,
+  searchChats,
+  searchChatMessages,
 };
 
-type NfmThreadSearchResults = Awaited<ReturnType<NfmMentionGetItemsLoaders["searchThreads"]>>;
-
-interface NfmMentionAsyncSearchResults {
-  key: string;
-  threadSearchResults?: NfmThreadSearchResults;
-}
-
-function buildNfmMentionAsyncSearchKey({
-  activeProjectId,
-  query,
-}: {
-  activeProjectId: string | null;
-  query: string;
-}) {
-  return JSON.stringify([activeProjectId, query]);
+interface NfmMentionChatSearchRequest {
+  readonly key: string;
+  readonly catalog: Promise<readonly ChatSearchMatch[]>;
 }
 
 export function useNfmMentionGetItems({
@@ -1545,207 +1492,82 @@ export function useNfmMentionGetItems({
   activeProjectId,
   loaders = DEFAULT_NFM_MENTION_GET_ITEMS_LOADERS,
 }: NfmMentionGetItemsInput): (query: string) => Promise<NfmSuggestionItem[]> {
-  const [asyncRefreshKey, setAsyncRefreshKey] = useState(0);
-  const threadItemsRef = useRef<{
-    activeProjectId: string | null;
-    items: CommandPaletteThread[];
+  const [asyncResults, setAsyncResults] = useState<{
+    readonly request: NfmMentionChatSearchRequest;
+    readonly matches: readonly ChatSearchMatch[];
   } | null>(null);
-  const threadLoadPromiseRef = useRef<{
-    activeProjectId: string | null;
-    promise: Promise<CommandPaletteThread[]>;
-  } | null>(null);
-  const threadSearchIndexRef = useRef<{
-    activeProjectId: string | null;
-    items: CommandPaletteThread[];
-    index: ReturnType<typeof createCommandPaletteThreadSearchIndex>;
-  } | null>(null);
-  const asyncSearchResultsRef = useRef<NfmMentionAsyncSearchResults | null>(null);
-  const latestAsyncSearchKeyRef = useRef<string | null>(null);
-  const threadSearchRequestRef = useRef<{
-    key: string;
-    id: number;
-  } | null>(null);
-  const asyncRequestIdRef = useRef(0);
+  const requestRef = useRef<NfmMentionChatSearchRequest | null>(null);
   const activeProjectIdRef = useRef(activeProjectId);
   const loadersRef = useRef(loaders);
   const editorRef = useRef(editor);
 
-  activeProjectIdRef.current = activeProjectId;
-  loadersRef.current = loaders;
-  editorRef.current = editor;
+  useLayoutEffect(() => {
+    activeProjectIdRef.current = activeProjectId;
+    loadersRef.current = loaders;
+    editorRef.current = editor;
+  }, [activeProjectId, editor, loaders]);
 
-  const bumpAsyncRefresh = useCallback(() => {
-    startTransition(() => {
-      setAsyncRefreshKey((current) => current + 1);
-    });
-  }, []);
-
-  const loadThreadItems = useCallback(() => {
-    const activeProjectId = activeProjectIdRef.current;
-    const cachedThreads = threadItemsRef.current;
-    if (cachedThreads?.activeProjectId === activeProjectId) {
-      return Promise.resolve(cachedThreads.items);
-    }
-
-    const inFlight = threadLoadPromiseRef.current;
-    if (inFlight?.activeProjectId === activeProjectId) {
-      return inFlight.promise;
-    }
-
-    const promise = loadersRef.current
-      .listThreadItems({ activeProjectId })
-      .catch(() => [])
-      .then((items) => {
-        if (activeProjectIdRef.current !== activeProjectId) {
-          return items;
-        }
-
-        threadItemsRef.current = { activeProjectId, items };
-        bumpAsyncRefresh();
-        return items;
-      })
-      .finally(() => {
-        const current = threadLoadPromiseRef.current;
-        if (current?.activeProjectId !== activeProjectId) return;
-        threadLoadPromiseRef.current = null;
-      });
-    threadLoadPromiseRef.current = { activeProjectId, promise };
-    return promise;
-  }, [bumpAsyncRefresh]);
-
-  const getThreadSearchIndex = useCallback((threadItems: CommandPaletteThread[]) => {
-    const activeProjectId = activeProjectIdRef.current;
-    const cachedIndex = threadSearchIndexRef.current;
-    if (cachedIndex?.activeProjectId === activeProjectId && cachedIndex.items === threadItems) {
-      return cachedIndex.index;
-    }
-
-    const index = loadersRef.current.createThreadSearchIndex(threadItems);
-    threadSearchIndexRef.current = {
-      activeProjectId,
-      items: threadItems,
-      index,
-    };
-    return index;
-  }, []);
-
-  const ensureAsyncSearch = useCallback(
-    ({ query, requestKey }: { query: string; requestKey: string }) => {
-      const queryText = query.trimStart().trim();
-      if (queryText.length === 0) {
-        return;
-      }
-
-      if (asyncSearchResultsRef.current?.key !== requestKey) {
-        asyncSearchResultsRef.current = { key: requestKey };
-      }
-
-      const currentResults = asyncSearchResultsRef.current;
-      if (!currentResults) {
-        return;
-      }
-
-      const currentLoaders = loadersRef.current;
-
-      if (
-        currentResults.threadSearchResults === undefined &&
-        threadSearchRequestRef.current?.key !== requestKey
-      ) {
-        const requestId = asyncRequestIdRef.current + 1;
-        asyncRequestIdRef.current = requestId;
-        threadSearchRequestRef.current = {
-          key: requestKey,
-          id: requestId,
-        };
-
-        void currentLoaders
-          .searchThreads({ query })
-          .then((results) => {
-            if (
-              latestAsyncSearchKeyRef.current !== requestKey ||
-              threadSearchRequestRef.current?.id !== requestId
-            ) {
-              return;
-            }
-
-            asyncSearchResultsRef.current = {
-              ...(asyncSearchResultsRef.current?.key === requestKey
-                ? asyncSearchResultsRef.current
-                : { key: requestKey }),
-              key: requestKey,
-              threadSearchResults: results,
-            };
-            bumpAsyncRefresh();
-          })
-          .catch(() => {
-            if (
-              latestAsyncSearchKeyRef.current !== requestKey ||
-              threadSearchRequestRef.current?.id !== requestId
-            ) {
-              return;
-            }
-
-            asyncSearchResultsRef.current = {
-              ...(asyncSearchResultsRef.current?.key === requestKey
-                ? asyncSearchResultsRef.current
-                : { key: requestKey }),
-              key: requestKey,
-              threadSearchResults: [],
-            };
-            bumpAsyncRefresh();
-          });
-      }
+  useLayoutEffect(
+    () => () => {
+      requestRef.current = null;
     },
-    [bumpAsyncRefresh],
+    [],
+  );
+
+  const searchMessages = useCallback(
+    (request: NfmMentionChatSearchRequest, query: string, activeProjectId: string | null) => {
+      if (!searchesChatMessages(query)) return;
+      void loadersRef.current
+        .searchChatMessages({ query, limit: CHAT_MENTION_LIMIT })
+        .then(({ matches }) => matches.filter(({ chat }) => chat.threadId !== null))
+        .catch(() => [])
+        .then((matches) => {
+          if (requestRef.current !== request || activeProjectIdRef.current !== activeProjectId) {
+            return;
+          }
+          startTransition(() => setAsyncResults({ request, matches }));
+        });
+    },
+    [],
   );
 
   return useCallback(
     async (query: string) => {
-      void asyncRefreshKey;
-      const currentLoaders = loadersRef.current;
+      const queryText = query.trim();
       const activeProjectId = activeProjectIdRef.current;
-      const requestKey = buildNfmMentionAsyncSearchKey({
+      const requestKey = JSON.stringify([activeProjectId, queryText]);
+      let request = requestRef.current;
+      if (request?.key !== requestKey) {
+        const currentLoaders = loadersRef.current;
+        request = {
+          key: requestKey,
+          catalog: currentLoaders
+            .searchChats({ query: queryText, limit: CHAT_MENTION_LIMIT, startedOnly: true })
+            .then(({ matches }) => matches)
+            .catch(() => []),
+        };
+        requestRef.current = request;
+        searchMessages(request, queryText, activeProjectId);
+      }
+
+      const catalog = await request.catalog;
+      if (requestRef.current !== request || activeProjectIdRef.current !== activeProjectId) {
+        return [];
+      }
+      const messages = asyncResults?.request === request ? asyncResults.matches : [];
+      const matches = preferChatProject(
+        mergeChatSearchMatches(catalog, messages, CHAT_MENTION_LIMIT),
         activeProjectId,
-        query,
-      });
-      latestAsyncSearchKeyRef.current = requestKey;
-
-      void loadThreadItems();
-      ensureAsyncSearch({ query, requestKey });
-
-      const asyncResults =
-        asyncSearchResultsRef.current?.key === requestKey
-          ? asyncSearchResultsRef.current
-          : undefined;
-      const cachedThreads =
-        threadItemsRef.current?.activeProjectId === activeProjectId
-          ? threadItemsRef.current.items
-          : [];
-      const threadSearchBatch: CommandPaletteThreadSearchBatch | undefined =
-        asyncResults?.threadSearchResults
-          ? {
-              query,
-              results: asyncResults.threadSearchResults,
-              loading: false,
-              error: null,
-            }
-          : undefined;
-      const threadResults = currentLoaders.selectChatResults({
-        query,
-        threads: cachedThreads,
-        threadSearchIndex: getThreadSearchIndex(cachedThreads),
-        threadSearchBatch,
-        threadLimit: 24,
-        preferActiveProject: true,
-        activeProjectId,
-      });
-
+      ).map((match) => ({
+        ...match,
+        inActiveProject: match.chat.projectId === activeProjectId,
+      }));
       return [
-        ...buildNfmThreadMentionSuggestionItems(editorRef.current, threadResults, query),
-        ...buildDateMentionSuggestionItems(editorRef.current, query),
+        ...buildNfmThreadMentionSuggestionItems(editorRef.current, matches, queryText),
+        ...buildDateMentionSuggestionItems(editorRef.current, queryText),
       ];
     },
-    [asyncRefreshKey, ensureAsyncSearch, getThreadSearchIndex, loadThreadItems],
+    [asyncResults, searchMessages],
   );
 }
 

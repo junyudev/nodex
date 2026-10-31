@@ -159,6 +159,34 @@ const harness = (
             },
           } as never;
         }
+        if (request.kind === "session_window")
+          return {
+            value: {
+              kind: "session_window",
+              sessions: {
+                items:
+                  mode === "supported"
+                    ? [
+                        {
+                          task: {
+                            session: {
+                              id: task.sessionId,
+                              project_id: task.projectId,
+                              pinned: task.pinned,
+                            },
+                            thread: {
+                              thread_id: task.threadId,
+                              execution_host_id: "local",
+                              backend_binding: { kind: backendKind },
+                            },
+                          },
+                        },
+                      ]
+                    : [],
+                next_cursor: null,
+              },
+            },
+          } as never;
         if (request.kind === "project_window") return projectWindow() as never;
         throw new Error(`Unexpected Core read: ${request.kind}`);
       }),
@@ -312,7 +340,6 @@ const harness = (
       } as never),
   } as unknown as CodexThreadDirectory["Service"]);
   const catalog = CodexThreadCatalog.of({
-    listPalette: () => Effect.succeed(mode === "supported" ? [task] : []),
     ensureSession: () => Effect.succeed(null),
   } as unknown as CodexThreadCatalog["Service"]);
   const hosts = ExecutionHostRuntime.of({

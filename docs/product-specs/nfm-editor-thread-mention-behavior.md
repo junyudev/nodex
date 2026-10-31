@@ -52,10 +52,10 @@ it from the unavailable-state popover.
 
 - The Page editor `@` suggestion menu includes thread mention rows alongside Page mentions.
 - Page connection semantics are defined separately in [Page Connections](nfm-editor-page-reference-behavior.md).
-- Thread rows use the same sidebar-wide chat search model as the command palette: non-archived sidebar chats from the current project, other projects, projectless chats, are eligible when they have a Session.
+- Thread rows use the command palette's [chat search](command-palette-behavior.md#chat-search-model): every non-archived started chat in the Profile is eligible, from the current Project, other Projects, and projectless chats.
 - The picker treats the editor's own `projectId` as the active project. Matching current-project chats and Pages are rendered first in one `Current project` group, with chats before Pages and each type preserving its selector order. Other chats, including projectless chats, follow in `Chats`; other Pages follow in `Pages`.
 - Archived, ephemeral, and side-conversation chats do not appear in the picker.
-- Metadata search covers title, preview, branch, project, cwd, and short/id fields with command-palette fuzzy and prefix ranking. Transcript matches use bounded app-server `thread/search` through `codex:threads:palette:search`; server-only chats are excluded until imported and may add a compact highlighted snippet to the item tooltip.
+- Metadata and opening-prompt matches arrive with each keystroke; message-history matches join once typing pauses and carry a compact highlighted excerpt.
 - Mention rows render only the item title in the picker row and do not show right-side `@thread` or `@` syntax hints. Slash-menu rows show a right-side hint only when it teaches compact, meaningful syntax or a keyboard shortcut; Table, Canvas, Page Mention, Embed Page, Subpage, and Agent Config keep their aliases searchable without echoing those wordy slash queries in the row.
 - Mention tooltips show only compact context, such as project, column, actionable state, and an optional search snippet. They do not concatenate raw thread ids, Page ids, cwd paths, or long mixed metadata strings.
 - Idle and unknown-state threads do not show `Ready` or `Thread` as row state labels.

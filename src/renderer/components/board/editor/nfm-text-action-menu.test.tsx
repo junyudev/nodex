@@ -1,19 +1,25 @@
-import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { fireEvent, waitFor, within } from "@testing-library/react";
 import { act, useState } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import type { CommandPaletteThread } from "@/lib/command-palette";
-import type { CodexThreadSummary } from "@/lib/types";
+import { clearChatSearchCacheForTests } from "@/lib/chat-search";
+import type {
+  ChatCatalogEntry,
+  ChatMessageSearchResult,
+  ChatSearchInput,
+  ChatSearchMatch,
+  ChatSearchResult,
+} from "../../../../shared/chat-search";
+import type { CodexThreadSummary, PageChatItem } from "@/lib/types";
 import {
   TEXT_ACTION_RECENT_COLOR_STORAGE_KEY,
   writeTextActionRecentColors,
 } from "@/lib/text-action-color-recents";
 import { render, settleAsyncRender } from "@/test/dom";
 import { TestQueryProvider } from "@/test/query";
-import {
-  NfmSendToThreadMenuSurface,
-  type NfmSendToThreadMenuSurfaceProps,
-} from "./nfm-send-to-thread-menu";
+import { NfmSendToThreadMenu } from "./nfm-send-to-thread-menu";
+import { NfmChatSendShortcutController } from "./nfm-chat-send-shortcut-controller";
+import { NfmTextActionMenuRuntimeProvider } from "./nfm-text-action-menu-runtime";
 import type { NfmSendToThreadRequest } from "./nfm-send-to-thread-menu-model";
 import {
   NfmTextActionMenuSurface,
@@ -21,57 +27,115 @@ import {
   type TextActionChat,
 } from "./nfm-text-action-menu";
 
-function makeSendToThreadItem(overrides: Partial<CommandPaletteThread> = {}): CommandPaletteThread {
-  const threadId = overrides.threadId ?? "thread-existing";
+const shortcutEditorMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@blocknote/react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@blocknote/react")>()),
+  useBlockNoteEditor: () => shortcutEditorMock(),
+}));
+
+const chatQueryMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>());
+
+vi.mock("@/lib/renderer-command", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/renderer-command")>()),
+  invokeRendererQuery: (...args: unknown[]) => chatQueryMock(...args),
+}));
+
+function makeSendToThreadItem(overrides: Partial<ChatCatalogEntry> = {}): ChatCatalogEntry {
   return {
-    kind: "thread",
-    id: overrides.id ?? `thread:${threadId}`,
-    threadId,
-    sessionId: overrides.sessionId === undefined ? "session-existing" : overrides.sessionId,
-    projectId: overrides.projectId === undefined ? "default" : overrides.projectId,
-    projectName: overrides.projectName === undefined ? "Default" : overrides.projectName,
-    title: overrides.title ?? "Existing implementation",
-    preview: overrides.preview ?? "Continue from selected notes",
-    cwd: overrides.cwd ?? "/repo",
-    gitBranch: overrides.gitBranch ?? null,
-    projectless: overrides.projectless ?? false,
-    pinned: overrides.pinned ?? false,
-    pinnedOrder: overrides.pinnedOrder ?? null,
-    statusType: overrides.statusType ?? "idle",
-    statusActiveFlags: overrides.statusActiveFlags ?? [],
-    createdAt: overrides.createdAt ?? 1,
-    updatedAt: overrides.updatedAt ?? 2,
-    inActiveProject: overrides.inActiveProject ?? true,
-    searchPreview: overrides.searchPreview,
-    searchDecorations: overrides.searchDecorations,
+    threadId: "thread-existing",
+    sessionId: "session-existing",
+    projectId: "default",
+    projectName: "Default",
+    title: "Existing implementation",
+    cwd: "/repo",
+    branch: null,
+    pullRequests: [],
+    pinned: false,
+    pinnedOrder: null,
+    activity: "idle",
+    createdAt: 1,
+    recencyAt: 2,
+    ...overrides,
   };
+}
+
+function chatMatch(
+  chat: ChatCatalogEntry,
+  overrides: Partial<Omit<ChatSearchMatch, "chat">> = {},
+): ChatSearchMatch {
+  return { chat, titleRanges: [], hint: null, excerpt: null, ...overrides };
 }
 
 function makePreferredThreadFromItem(
-  item: CommandPaletteThread,
+  item: ChatCatalogEntry,
   overrides: Partial<CodexThreadSummary> = {},
 ): CodexThreadSummary {
+  if (!item.threadId) throw new Error("Preferred chat must have a Thread.");
   return {
-    threadId: overrides.threadId ?? item.threadId,
-    projectId: overrides.projectId ?? item.projectId,
-    source: overrides.source ?? null,
-    threadName: overrides.threadName ?? item.title,
-    threadPreview: overrides.threadPreview ?? item.preview,
+    threadId: item.threadId,
+    projectId: item.projectId,
+    source: null,
+    threadName: item.title,
+    threadPreview: "",
     modelProvider: "openai",
-    cwd: overrides.cwd ?? item.cwd,
-    statusType: overrides.statusType ?? "idle",
-    statusActiveFlags: overrides.statusActiveFlags ?? [],
-    archived: overrides.archived ?? false,
-    createdAt: overrides.createdAt ?? item.createdAt,
-    updatedAt: overrides.updatedAt ?? item.updatedAt,
-    linkedAt: overrides.linkedAt ?? new Date(item.updatedAt).toISOString(),
-    ...(overrides.ephemeral !== undefined ? { ephemeral: overrides.ephemeral } : {}),
+    cwd: item.cwd,
+    statusType: "idle",
+    statusActiveFlags: [],
+    archived: false,
+    createdAt: item.createdAt,
+    updatedAt: item.recencyAt,
+    linkedAt: new Date(item.recencyAt).toISOString(),
+    ...overrides,
   };
 }
 
-const SEND_TO_THREAD_THREADS = [
-  makeSendToThreadItem(),
-] satisfies NfmSendToThreadMenuSurfaceProps["threadItems"];
+const SEND_TO_THREAD_CHATS = [makeSendToThreadItem()];
+
+/** A deterministic Main catalog stand-in; individual tests can hold either search open. */
+function mockChatQueries({
+  chats = SEND_TO_THREAD_CHATS,
+  linkedChats = [],
+  search = ({ query, limit, startedOnly }) => ({
+    matches: chats
+      .filter(
+        (chat) =>
+          (!startedOnly || chat.threadId !== null) &&
+          chat.title.toLowerCase().includes(query.trim().toLowerCase()),
+      )
+      .slice(0, limit)
+      .map((chat) => chatMatch(chat)),
+    complete: true,
+  }),
+  messages = () => ({ matches: [], sources: [] }),
+}: {
+  chats?: readonly ChatCatalogEntry[];
+  linkedChats?: PageChatItem[];
+  search?: (input: ChatSearchInput) => ChatSearchResult | Promise<ChatSearchResult>;
+  messages?: (input: {
+    query: string;
+    limit: number;
+  }) => ChatMessageSearchResult | Promise<ChatMessageSearchResult>;
+} = {}): void {
+  chatQueryMock.mockImplementation(async (channel, input) => {
+    if (channel === "chats:search") return search(input as ChatSearchInput);
+    if (channel === "chats:search-messages") {
+      return messages(input as { query: string; limit: number });
+    }
+    if (channel === "page-chats:list") {
+      return { items: linkedChats, nextCursor: null, hasMore: false, projectionRevision: 1 };
+    }
+    throw new Error(`Unexpected query: ${String(channel)}`);
+  });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 function renderTextActionMenu(
   props?: Partial<Omit<NfmTextActionMenuSurfaceProps, "chat">> & {
@@ -190,6 +254,10 @@ function renderTextActionMenu(
 describe("markdown text action menu surface", () => {
   beforeEach(() => {
     localStorage.removeItem(TEXT_ACTION_RECENT_COLOR_STORAGE_KEY);
+    clearChatSearchCacheForTests();
+    chatQueryMock.mockReset();
+    shortcutEditorMock.mockReset();
+    mockChatQueries();
   });
 
   async function openColorMenu(view: ReturnType<typeof renderTextActionMenu>["view"]) {
@@ -292,7 +360,7 @@ describe("markdown text action menu surface", () => {
   });
 
   function preferredChat() {
-    const existingThread = SEND_TO_THREAD_THREADS[0];
+    const existingThread = SEND_TO_THREAD_CHATS[0];
     if (!existingThread) throw new Error("missing send-to-thread fixture");
     return {
       kind: "thread" as const,
@@ -304,13 +372,7 @@ describe("markdown text action menu surface", () => {
 
   const renderPicker: NonNullable<NfmTextActionMenuSurfaceProps["renderSendToThreadMenu"]> = (
     props,
-  ) => (
-    <NfmSendToThreadMenuSurface
-      {...props}
-      threadItems={SEND_TO_THREAD_THREADS}
-      enableThreadSearch={false}
-    />
-  );
+  ) => <NfmSendToThreadMenu {...props} />;
 
   test("sends the selection to the chat beside the Page in one step", async () => {
     const { actions, view } = renderTextActionMenu({
@@ -326,11 +388,15 @@ describe("markdown text action menu surface", () => {
     await waitFor(() => {
       expect(actions.sendRequests.length).toBe(1);
     });
-    expect(actions.sendRequests[0]?.target).toEqual({
-      kind: "thread",
-      threadId: "thread-existing",
-      sessionId: "session-preferred",
-    });
+    expect(actions.sendRequests).toEqual([
+      {
+        target: {
+          kind: "thread",
+          threadId: "thread-existing",
+          sessionId: "session-preferred",
+        },
+      },
+    ]);
     expect(view.queryByRole("dialog", { name: "Send to chat" })).toBe(null);
   });
 
@@ -346,11 +412,15 @@ describe("markdown text action menu surface", () => {
     });
 
     expect(Boolean(view.getByRole("dialog", { name: "Send to chat" }))).toBe(true);
-    expect(Boolean(view.getByRole("combobox", { name: "Search chats" }))).toBe(true);
+    expect(view.getByRole("combobox", { name: "Search chats" }).getAttribute("placeholder")).toBe(
+      "Search chats…",
+    );
+    expect(view.getByText("Send to", { exact: true })).toBeTruthy();
     expect(view.queryByRole("button", { name: "Send & wrap" })).toBe(null);
-    const options = view.getAllByRole("option");
-    expect(options[0]?.textContent?.includes("This chat") ?? false).toBe(true);
-    expect(options.at(-1)?.textContent?.includes("New chat") ?? false).toBe(true);
+    expect(view.getAllByRole("option")).toEqual([
+      view.getByRole("option", { name: /^Existing implementation\s*This chat$/ }),
+      view.getByRole("option", { name: /^New chat\s*This project$/ }),
+    ]);
 
     await act(async () => {
       fireEvent.click(view.getByRole("option", { name: /New chat/ }));
@@ -360,10 +430,173 @@ describe("markdown text action menu surface", () => {
     await waitFor(() => {
       expect(actions.sendRequests.length).toBe(1);
     });
-    expect(actions.sendRequests[0]?.target.kind).toBe("new-thread");
+    expect(actions.sendRequests).toEqual([{ target: { kind: "new-thread" } }]);
     await waitFor(() => {
       expect(view.queryByRole("dialog", { name: "Send to chat" })).toBe(null);
     });
+  });
+
+  test("sends to another existing chat using the picker result's Session", async () => {
+    mockChatQueries({
+      chats: [
+        ...SEND_TO_THREAD_CHATS,
+        makeSendToThreadItem({
+          threadId: "thread-other",
+          sessionId: "session-other",
+          title: "Other work",
+        }),
+      ],
+    });
+    const { actions, view } = renderTextActionMenu({
+      chat: { contextualTarget: preferredChat() },
+      renderSendToThreadMenu: renderPicker,
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Send to another chat" }));
+      await Promise.resolve();
+    });
+    const destination = await view.findByRole("option", { name: /^Other work\s*Default$/ });
+    await act(async () => {
+      fireEvent.click(destination);
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(actions.sendRequests).toEqual([
+        {
+          target: { kind: "thread", threadId: "thread-other", sessionId: "session-other" },
+        },
+      ]),
+    );
+    await waitFor(() => expect(view.queryByRole("dialog", { name: "Send to chat" })).toBeNull());
+  });
+
+  test("loads the source Page's older Linked chats after this chat and hides them during search", async () => {
+    const existing = SEND_TO_THREAD_CHATS[0];
+    if (!existing) throw new Error("missing chat fixture");
+    const recent = makeSendToThreadItem({
+      threadId: "thread-recent",
+      sessionId: "session-recent",
+      title: "Recent work",
+      recencyAt: 50,
+    });
+    const linked: PageChatItem = {
+      sessionId: "session-linked",
+      projectId: "default",
+      projectName: "Default",
+      displayTitle: "Old linked work",
+      threadId: "thread-linked",
+      executionRef: null,
+      threadPreview: "",
+      threadStatus: null,
+      threadArchived: false,
+      sessionArchived: false,
+      unread: false,
+      conversationRecencyAt: 0,
+      linkedAt: "2026-01-01T00:00:00.000Z",
+    };
+    mockChatQueries({ chats: [recent, existing], linkedChats: [linked] });
+    const { actions, view } = renderTextActionMenu({
+      chat: { sourcePageId: "source-page", contextualTarget: preferredChat() },
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Send to another chat" }));
+      await Promise.resolve();
+    });
+    const linkedRow = await view.findByRole("option", { name: /^Old linked work\s*Linked$/ });
+    expect(chatQueryMock).toHaveBeenCalledWith("page-chats:list", {
+      pageId: "source-page",
+      includeArchived: false,
+      after: null,
+      first: 20,
+    });
+    expect(view.getAllByRole("option")).toEqual([
+      view.getByRole("option", { name: /^Existing implementation\s*This chat$/ }),
+      linkedRow,
+      view.getByRole("option", { name: /^Recent work\s*Default$/ }),
+      view.getByRole("option", { name: /^New chat\s*This project$/ }),
+    ]);
+    const input = view.getByRole("combobox", { name: "Search chats" });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "Re" } });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(view.queryByRole("option", { name: /^Old linked work\s*Linked$/ })).toBeNull(),
+    );
+    expect(view.getAllByRole("option")).toEqual([
+      view.getByRole("option", { name: /^Recent work\s*Default$/ }),
+      view.getByRole("option", { name: /^New chat\s*This project$/ }),
+    ]);
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "" } });
+      await Promise.resolve();
+    });
+    const restoredLink = await view.findByRole("option", { name: /^Old linked work\s*Linked$/ });
+    await act(async () => {
+      fireEvent.click(restoredLink);
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(actions.sendRequests).toEqual([
+        {
+          target: { kind: "thread", threadId: "thread-linked", sessionId: "session-linked" },
+        },
+      ]),
+    );
+    await waitFor(() => expect(view.queryByRole("dialog", { name: "Send to chat" })).toBeNull());
+  });
+
+  test("Cmd+Shift+Enter sends selected Blocks to the beside chat and Cmd+Alt+Enter adds to its composer", async () => {
+    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const editorRoot = document.createElement("div");
+    document.body.appendChild(editorRoot);
+    const send = vi.fn();
+    const addToComposer = vi.fn();
+    shortcutEditorMock.mockReturnValue({
+      domElement: editorRoot,
+      getSelection: () => ({ blocks: [{ id: "selected-1" }, { id: "selected-2" }] }),
+    });
+    const view = render(
+      <NfmTextActionMenuRuntimeProvider
+        value={{
+          chat: {
+            projectId: "default",
+            contextualTarget: preferredChat(),
+            send,
+            addToComposer,
+          },
+        }}
+      >
+        <NfmChatSendShortcutController />
+      </NfmTextActionMenuRuntimeProvider>,
+    );
+    try {
+      await act(async () => {
+        expect(fireEvent.keyDown(editorRoot, { key: "Enter", metaKey: true, shiftKey: true })).toBe(
+          false,
+        );
+        await Promise.resolve();
+      });
+      expect(send).toHaveBeenCalledExactlyOnceWith(
+        {
+          target: { kind: "thread", threadId: "thread-existing", sessionId: "session-preferred" },
+        },
+        ["selected-1", "selected-2"],
+      );
+      expect(addToComposer).not.toHaveBeenCalled();
+      await act(async () => {
+        expect(fireEvent.keyDown(editorRoot, { key: "Enter", metaKey: true, altKey: true })).toBe(
+          false,
+        );
+        await Promise.resolve();
+      });
+      expect(addToComposer).toHaveBeenCalledExactlyOnceWith(["selected-1", "selected-2"]);
+      expect(send).toHaveBeenCalledTimes(1);
+    } finally {
+      view.unmount();
+      editorRoot.remove();
+      platform.mockRestore();
+    }
   });
 
   test("opens the picker from Send when no chat is beside the Page", async () => {
@@ -406,217 +639,420 @@ describe("markdown text action menu surface", () => {
     expect(view.queryByRole("button", { name: "Send to chat" })).toBe(null);
     expect(Boolean(view.getByRole("button", { name: "Normal Text" }))).toBe(true);
   });
-  test("selected-block picker displays the current session hint and keeps New chat at the bottom", async () => {
-    const existingThread = SEND_TO_THREAD_THREADS[0];
+  test("selected-block picker puts this chat first, then the active Project, and New chat last", async () => {
+    const existingThread = SEND_TO_THREAD_CHATS[0];
     if (!existingThread) {
       throw new Error("missing send-to-thread fixture");
     }
 
+    mockChatQueries({
+      chats: [
+        makeSendToThreadItem({
+          threadId: "thread-other-project",
+          sessionId: "session-other-project",
+          projectId: "other",
+          projectName: "Other project",
+          title: "Other project chat",
+          recencyAt: 10,
+        }),
+        { ...existingThread, recencyAt: 1 },
+        makeSendToThreadItem({
+          threadId: "thread-newer",
+          sessionId: "session-newer",
+          title: "Recently updated",
+          recencyAt: 5,
+        }),
+      ],
+    });
+
     const view = render(
-      <NodexTooltipProvider>
-        <NfmSendToThreadMenuSurface
-          projectId="default"
-          threadItems={[
-            {
-              ...existingThread,
-              updatedAt: 1,
-            },
-            {
-              ...existingThread,
-              threadId: "thread-newer",
-              id: "thread:thread-newer",
-              title: "Recently updated",
-              updatedAt: 5,
-            },
-          ]}
-          enableThreadSearch={false}
-          projectNameById={{ default: "Default" }}
-          preferredTarget={{
-            kind: "thread",
-            thread: makePreferredThreadFromItem(existingThread, { updatedAt: 1 }),
-            sessionId: "session-preferred",
-            meta: "This chat",
-          }}
-          onAccept={() => undefined}
-          onClose={() => undefined}
-        />
-      </NodexTooltipProvider>,
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <NfmSendToThreadMenu
+            projectId="default"
+            projectNameById={{ default: "Default" }}
+            preferredTarget={{
+              kind: "thread",
+              thread: makePreferredThreadFromItem(existingThread, { updatedAt: 1 }),
+              sessionId: "session-preferred",
+              meta: "This chat",
+            }}
+            onAccept={() => undefined}
+            onClose={() => undefined}
+          />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
     );
     await settleAsyncRender();
 
+    await view.findByRole("option", { name: /^Recently updated\s*Default$/ });
     const options = view.getAllByRole("option");
-    expect(options.length).toBe(3);
-    expect(options[0]?.textContent?.includes("Existing implementation") ?? false).toBe(true);
-    expect(options[0]?.textContent?.includes("This chat") ?? false).toBe(true);
-    expect(options[1]?.textContent?.includes("Recently updated") ?? false).toBe(true);
-    expect(options[1]?.textContent?.includes("Default") ?? false).toBe(true);
-    expect(options[2]?.textContent?.includes("New chat") ?? false).toBe(true);
+    expect(options).toEqual([
+      view.getByRole("option", { name: /^Existing implementation\s*This chat$/ }),
+      view.getByRole("option", { name: /^Recently updated\s*Default$/ }),
+      view.getByRole("option", { name: /^Other project chat\s*Other project$/ }),
+      view.getByRole("option", { name: /^New chat\s*This project$/ }),
+    ]);
   });
 
-  test("selected-block picker shows a compact snippet for content-only chat matches", async () => {
-    const existingThread = SEND_TO_THREAD_THREADS[0];
-    if (!existingThread) {
-      throw new Error("missing send-to-thread fixture");
-    }
-
+  test("selected-block picker shows the highlighted excerpt of a message-only chat match", async () => {
+    const chat = makeSendToThreadItem();
+    mockChatQueries({
+      messages: () => ({
+        matches: [
+          chatMatch(chat, {
+            excerpt: {
+              text: "Review handoff notes before sending.",
+              ranges: [{ start: 7, end: 14 }],
+              role: "assistant",
+            },
+          }),
+        ],
+        sources: [{ source: "runtime", state: "complete" }],
+      }),
+    });
     const view = render(
-      <NodexTooltipProvider>
-        <NfmSendToThreadMenuSurface
-          projectId="default"
-          threadItems={SEND_TO_THREAD_THREADS}
-          enableThreadSearch={false}
-          initialQuery="handoff"
-          threadSearchBatch={{
-            query: "handoff",
-            loading: false,
-            error: null,
-            results: [
-              {
-                thread: {
-                  threadId: existingThread.threadId,
-                  sessionId: existingThread.sessionId,
-                  projectId: existingThread.projectId,
-                  projectName: existingThread.projectName,
-                  title: existingThread.title,
-                  preview: existingThread.preview,
-                  cwd: existingThread.cwd,
-                  gitBranch: existingThread.gitBranch,
-                  projectless: existingThread.projectless,
-                  pinned: existingThread.pinned,
-                  pinnedOrder: existingThread.pinnedOrder,
-                  statusType: existingThread.statusType,
-                  statusActiveFlags: existingThread.statusActiveFlags,
-                  createdAt: existingThread.createdAt,
-                  updatedAt: existingThread.updatedAt,
-                },
-                snippet: "Review handoff notes before sending.",
-              },
-            ],
-          }}
-          onAccept={() => undefined}
-          onClose={() => undefined}
-        />
-      </NodexTooltipProvider>,
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <NfmSendToThreadMenu
+            projectId="default"
+            initialQuery="handoff"
+            onAccept={() => undefined}
+            onClose={() => undefined}
+          />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
     );
-    await settleAsyncRender();
 
-    const options = view.getAllByRole("option");
-    expect(options.length).toBe(2);
-    expect(options[0]?.textContent?.includes("Existing implementation") ?? false).toBe(true);
-    expect(options[0]?.textContent?.includes("Review handoff notes before sending.") ?? false).toBe(
-      true,
+    const match = await view.findByRole("option", {
+      name: /Existing implementation/,
+    });
+    expect(within(match).getByText("handoff").parentElement?.textContent).toBe(
+      "Review handoff notes before sending.",
     );
-    expect(options[1]?.textContent?.includes("New chat") ?? false).toBe(true);
+    expect(view.getAllByRole("option")).toEqual([
+      match,
+      view.getByRole("option", { name: /^New chat\s*This project$/ }),
+    ]);
+    expect(chatQueryMock).toHaveBeenCalledWith("chats:search", {
+      query: "handoff",
+      limit: 24,
+      startedOnly: true,
+    });
+    expect(chatQueryMock).toHaveBeenCalledWith("chats:search-messages", {
+      query: "handoff",
+      limit: 24,
+    });
   });
 
   test("selected-block picker displays current session new chat first when the session has no thread", async () => {
-    const existingThread = SEND_TO_THREAD_THREADS[0];
-    if (!existingThread) {
-      throw new Error("missing send-to-thread fixture");
-    }
-    const acceptedRequests: string[] = [];
+    const acceptedRequests: NfmSendToThreadRequest[] = [];
+    mockChatQueries({
+      chats: [
+        makeSendToThreadItem({
+          threadId: "thread-newer",
+          sessionId: "session-newer",
+          title: "Recently updated",
+          recencyAt: 5,
+        }),
+      ],
+    });
 
     const view = render(
-      <NodexTooltipProvider>
-        <NfmSendToThreadMenuSurface
-          projectId="default"
-          threadItems={[
-            {
-              ...existingThread,
-              threadId: "thread-newer",
-              id: "thread:thread-newer",
-              title: "Recently updated",
-              updatedAt: 5,
-            },
-          ]}
-          enableThreadSearch={false}
-          projectNameById={{ default: "Default" }}
-          preferredTarget={{
-            kind: "new-thread",
-            sessionId: "session-current",
-            meta: "This chat",
-          }}
-          onAccept={(request) => {
-            acceptedRequests.push(JSON.stringify(request.target));
-          }}
-          onClose={() => undefined}
-        />
-      </NodexTooltipProvider>,
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <NfmSendToThreadMenu
+            projectId="default"
+            projectNameById={{ default: "Default" }}
+            preferredTarget={{
+              kind: "new-thread",
+              sessionId: "session-current",
+              meta: "This chat",
+            }}
+            onAccept={(request) => {
+              acceptedRequests.push(request);
+            }}
+            onClose={() => undefined}
+          />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
     );
     await settleAsyncRender();
 
     const options = view.getAllByRole("option");
-    expect(options.length).toBe(2);
-    expect(options[0]?.textContent?.includes("New chat") ?? false).toBe(true);
-    expect(options[0]?.textContent?.includes("This chat") ?? false).toBe(true);
-    expect(options[1]?.textContent?.includes("Recently updated") ?? false).toBe(true);
+    expect(options).toEqual([
+      view.getByRole("option", { name: /^New chat\s*This chat$/ }),
+      view.getByRole("option", { name: /^Recently updated\s*Default$/ }),
+    ]);
 
     await act(async () => {
       fireEvent.click(options[0] as HTMLElement);
       await settleAsyncRender();
     });
-    expect(acceptedRequests.join(",")).toBe('{"kind":"new-thread","sessionId":"session-current"}');
+    expect(acceptedRequests).toEqual([
+      {
+        target: { kind: "new-thread", sessionId: "session-current" },
+      },
+    ]);
   });
 
   test("Send to chat can use the current Session new chat target", async () => {
-    const existingThread = SEND_TO_THREAD_THREADS[0];
-    if (!existingThread) {
-      throw new Error("missing send-to-thread fixture");
-    }
+    mockChatQueries({
+      chats: [
+        makeSendToThreadItem({
+          threadId: "thread-session-other",
+          sessionId: "session-other",
+          title: "Other session",
+          recencyAt: 10,
+        }),
+      ],
+    });
 
     const view = render(
-      <NodexTooltipProvider>
-        <NfmSendToThreadMenuSurface
-          projectId="default"
-          threadItems={[
-            {
-              ...existingThread,
-              threadId: "thread-session-other",
-              id: "thread:thread-session-other",
-              title: "Other session",
-              updatedAt: 10,
-            },
-          ]}
-          enableThreadSearch={false}
-          projectNameById={{ default: "Default" }}
-          preferredTarget={{
-            kind: "new-thread",
-            sessionId: "session-current",
-            meta: "This chat",
-          }}
-          onAccept={() => undefined}
-          onClose={() => undefined}
-        />
-      </NodexTooltipProvider>,
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <NfmSendToThreadMenu
+            projectId="default"
+            projectNameById={{ default: "Default" }}
+            preferredTarget={{
+              kind: "new-thread",
+              sessionId: "session-current",
+              meta: "This chat",
+            }}
+            onAccept={() => undefined}
+            onClose={() => undefined}
+          />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
     );
     await settleAsyncRender();
 
     const options = view.getAllByRole("option");
-    expect(options.length).toBe(2);
-    expect(options[0]?.textContent?.includes("New chat") ?? false).toBe(true);
-    expect(options[0]?.textContent?.includes("This chat") ?? false).toBe(true);
-    expect(options[1]?.textContent?.includes("Other session") ?? false).toBe(true);
+    expect(options).toEqual([
+      view.getByRole("option", { name: /^New chat\s*This chat$/ }),
+      view.getByRole("option", { name: /^Other session\s*Default$/ }),
+    ]);
   });
 
   test("keeps New chat available at the bottom for empty search results", async () => {
     const view = render(
-      <NodexTooltipProvider>
-        <NfmSendToThreadMenuSurface
-          projectId="default"
-          threadItems={SEND_TO_THREAD_THREADS}
-          enableThreadSearch={false}
-          initialQuery="nothing matches"
-          onAccept={() => undefined}
-          onClose={() => undefined}
-        />
-      </NodexTooltipProvider>,
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <NfmSendToThreadMenu
+            projectId="default"
+            initialQuery="nothing matches"
+            onAccept={() => undefined}
+            onClose={() => undefined}
+          />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
     );
     await settleAsyncRender();
 
-    expect(Boolean(view.getByText("No matching chats"))).toBe(true);
+    expect(await view.findByText("No matching chats")).toBeTruthy();
     const options = view.getAllByRole("option");
-    expect(options.length).toBe(1);
-    expect(options[0]?.textContent?.includes("New chat") ?? false).toBe(true);
+    expect(options).toEqual([view.getByRole("option", { name: /^New chat\s*This project$/ })]);
+  });
+
+  test("consumes stale navigation and queues Enter until the live catalog answer arrives", async () => {
+    const nextAnswer = deferred<ChatSearchResult>();
+    const oldChat = makeSendToThreadItem({ title: "Previous destination" });
+    const nextChat = makeSendToThreadItem({
+      threadId: "thread-build",
+      sessionId: "session-build",
+      title: "Build flow",
+    });
+    mockChatQueries({
+      search: ({ query }) =>
+        query ? nextAnswer.promise : { matches: [chatMatch(oldChat)], complete: true },
+    });
+    const onAccept = vi.fn();
+    const view = render(
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <NfmSendToThreadMenu projectId="default" onAccept={onAccept} onClose={() => undefined} />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
+    );
+    const oldRow = await view.findByRole("option", { name: /^Previous destination\s*Default$/ });
+    const input = view.getByRole("combobox", { name: "Search chats" });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      await Promise.resolve();
+    });
+    expect(oldRow.getAttribute("aria-selected")).toBe("true");
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "Build" } });
+      await Promise.resolve();
+    });
+    expect(view.getByRole("option", { name: /^Previous destination\s*Default$/ })).toBe(oldRow);
+    expect(view.queryByRole("option", { selected: true })).toBeNull();
+    await act(async () => {
+      expect(fireEvent.keyDown(input, { key: "ArrowDown" })).toBe(false);
+      expect(fireEvent.keyDown(input, { key: "ArrowUp" })).toBe(false);
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(view.queryByRole("option", { selected: true })).toBeNull();
+    expect(view.getByRole("listbox").getAttribute("aria-busy")).toBe("true");
+    expect(onAccept).not.toHaveBeenCalled();
+
+    await act(async () => {
+      nextAnswer.resolve({ matches: [chatMatch(nextChat)], complete: true });
+      await Promise.resolve();
+    });
+    await view.findByRole("option", { name: /^Build flow\s*Default$/ });
+    await waitFor(() =>
+      expect(onAccept).toHaveBeenCalledExactlyOnceWith({
+        target: { kind: "thread", threadId: "thread-build", sessionId: "session-build" },
+      }),
+    );
+    expect(view.queryByRole("option", { name: /^Previous destination\s*Default$/ })).toBeNull();
+  });
+
+  test("cancels queued acceptance when the query changes and ignores a late catalog answer", async () => {
+    const obsolete = deferred<ChatSearchResult>();
+    const current = deferred<ChatSearchResult>();
+    mockChatQueries({
+      search: ({ query }) => {
+        if (query === "build") return obsolete.promise;
+        if (query === "release") return current.promise;
+        return { matches: [], complete: true };
+      },
+    });
+    const onAccept = vi.fn();
+    const view = render(
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <NfmSendToThreadMenu projectId="default" onAccept={onAccept} onClose={() => undefined} />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
+    );
+    await view.findByText("No chats yet");
+    const input = view.getByRole("combobox", { name: "Search chats" });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "build" } });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "release" } });
+      await Promise.resolve();
+    });
+    const releaseChat = makeSendToThreadItem({
+      threadId: "thread-release",
+      sessionId: "session-release",
+      title: "Release plan",
+    });
+    await act(async () => {
+      current.resolve({ matches: [chatMatch(releaseChat)], complete: true });
+      await Promise.resolve();
+    });
+    await view.findByRole("option", { name: /^Release plan\s*Default$/ });
+    expect(onAccept).not.toHaveBeenCalled();
+    await act(async () => {
+      obsolete.resolve({
+        matches: [chatMatch(makeSendToThreadItem({ title: "Build plan" }))],
+        complete: true,
+      });
+      await Promise.resolve();
+    });
+    expect(view.queryByRole("option", { name: /^Build plan\s*Default$/ })).toBeNull();
+    expect(view.getByRole("option", { name: /^Release plan\s*Default$/ })).toBeTruthy();
+    expect(onAccept).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(onAccept).toHaveBeenCalledExactlyOnceWith({
+        target: { kind: "thread", threadId: "thread-release", sessionId: "session-release" },
+      }),
+    );
+  });
+
+  test("accepts New chat once the live catalog settles without waiting for message history", async () => {
+    const catalog = deferred<ChatSearchResult>();
+    const history = deferred<ChatMessageSearchResult>();
+    mockChatQueries({
+      search: ({ query }) => (query ? catalog.promise : { matches: [], complete: true }),
+      messages: () => history.promise,
+    });
+    const onAccept = vi.fn();
+    const view = render(
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <NfmSendToThreadMenu projectId="default" onAccept={onAccept} onClose={() => undefined} />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
+    );
+    await view.findByText("No chats yet");
+    const input = view.getByRole("combobox", { name: "Search chats" });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "unmatched" } });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    await view.findByText("Searching chat history…");
+    await waitFor(() =>
+      expect(chatQueryMock).toHaveBeenCalledWith("chats:search-messages", {
+        query: "unmatched",
+        limit: 24,
+      }),
+    );
+    expect(onAccept).not.toHaveBeenCalled();
+    await act(async () => {
+      catalog.resolve({ matches: [], complete: true });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(onAccept).toHaveBeenCalledExactlyOnceWith({
+        target: { kind: "new-thread" },
+      }),
+    );
+    expect(view.getByText("Searching chat history…")).toBeTruthy();
+    await act(async () => {
+      history.resolve({ matches: [], sources: [{ source: "runtime", state: "complete" }] });
+      await Promise.resolve();
+    });
+    await view.findByText("No matching chats");
+    expect(onAccept).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ["", "No chats yet"],
+    ["xy", "No matching chats"],
+  ])("shows catalog loading before the first answer for query %j", async (query, emptyState) => {
+    const catalog = deferred<ChatSearchResult>();
+    mockChatQueries({ search: () => catalog.promise });
+    const view = render(
+      <TestQueryProvider>
+        <NodexTooltipProvider>
+          <NfmSendToThreadMenu
+            projectId="default"
+            initialQuery={query}
+            onAccept={() => undefined}
+            onClose={() => undefined}
+          />
+        </NodexTooltipProvider>
+      </TestQueryProvider>,
+    );
+    expect(view.getByText("Loading chats...")).toBeTruthy();
+    expect(view.queryByText(emptyState)).toBeNull();
+    await act(async () => {
+      catalog.resolve({ matches: [], complete: true });
+      await Promise.resolve();
+    });
+    await view.findByText(emptyState);
+    expect(view.queryByText("Loading chats...")).toBeNull();
+    expect(view.getByRole("option", { name: /^New chat\s*This project$/ })).toBeTruthy();
   });
 
   test("hands More off to block actions without opening the legacy dropdown", async () => {
@@ -636,13 +1072,7 @@ describe("markdown text action menu surface", () => {
     const focusProbe = installFocusProbe();
     try {
       const { view } = renderTextActionMenu({
-        renderSendToThreadMenu: (props) => (
-          <NfmSendToThreadMenuSurface
-            {...props}
-            threadItems={SEND_TO_THREAD_THREADS}
-            enableThreadSearch={false}
-          />
-        ),
+        renderSendToThreadMenu: (props) => <NfmSendToThreadMenu {...props} />,
       });
 
       await act(async () => {
@@ -680,13 +1110,7 @@ describe("markdown text action menu surface", () => {
     const focusProbe = installFocusProbe();
     try {
       const { actions, view } = renderTextActionMenu({
-        renderSendToThreadMenu: (props) => (
-          <NfmSendToThreadMenuSurface
-            {...props}
-            threadItems={SEND_TO_THREAD_THREADS}
-            enableThreadSearch={false}
-          />
-        ),
+        renderSendToThreadMenu: (props) => <NfmSendToThreadMenu {...props} />,
       });
 
       const sendToChatRow = view.getByRole("button", { name: "Send to chat" });

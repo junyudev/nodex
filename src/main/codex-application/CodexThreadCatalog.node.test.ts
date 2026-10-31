@@ -5,11 +5,7 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
-import {
-  CODEX_PINNED_THREAD_LIST_MAX_PAGES,
-  CODEX_THREAD_PALETTE_SEARCH_MAX_PAGES,
-  make,
-} from "./CodexThreadCatalog";
+import { CODEX_PINNED_THREAD_LIST_MAX_PAGES, make } from "./CodexThreadCatalog";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 
 const coreProject = (id: string, root: string) => ({
@@ -347,10 +343,9 @@ it.effect("keeps every Codex-only catalog list free of durable ACP Threads", () 
         },
       });
 
-      const [pinned, project, palette] = yield* Effect.all([
+      const [pinned, project] = yield* Effect.all([
         service.listPinned,
         service.listProject("project-a"),
-        service.listPalette({ scope: "sidebar" }),
       ] as const);
 
       assert.deepEqual(pinned, ["thread-codex"]);
@@ -358,82 +353,8 @@ it.effect("keeps every Codex-only catalog list free of durable ACP Threads", () 
         project.items.map((thread) => thread.threadId),
         ["thread-codex"],
       );
-      // Runtime-bound Sessions are listed by their root Thread with their product Session.
-      assert.deepEqual(
-        palette.map((thread) => ({ threadId: thread.threadId, sessionId: thread.sessionId })),
-        [
-          { threadId: "root-session-runtime", sessionId: "session-runtime" },
-          { threadId: "thread-codex", sessionId: "session-thread-codex" },
-        ],
-      );
     }),
   ),
-);
-
-it.effect("stops a unique-cursor empty Thread search at its page budget", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      let searches = 0;
-      const scheduling: unknown[] = [];
-      const service = yield* catalog({
-        read: ({ kind }) => Effect.succeed(emptyCoreWindow(kind as never)),
-        requestLocal: (method, _params, options) => {
-          if (method !== "thread/search")
-            return Effect.die(`Unexpected gateway request: ${method}`);
-          return Effect.sync(() => {
-            searches += 1;
-            scheduling.push(options);
-            return { data: [], nextCursor: `cursor-${searches}` };
-          });
-        },
-      });
-      const error = yield* service.searchPalette({ query: "needle", limit: 1 }).pipe(Effect.flip);
-
-      assert.strictEqual(error.operation, "search-palette");
-      assert.strictEqual(searches, CODEX_THREAD_PALETTE_SEARCH_MAX_PAGES);
-      assert.deepEqual(
-        scheduling,
-        Array.from({ length: CODEX_THREAD_PALETTE_SEARCH_MAX_PAGES }, () => ({
-          expectedHostId: "local",
-          expectedGeneration: 1,
-          priority: "interactive",
-          source: "thread_catalog",
-          timeoutMs: 3_000,
-        })),
-      );
-    }),
-  ),
-);
-
-it.effect(
-  "explicit native history search acquires a cold endpoint before generation-fenced reads",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const steps: string[] = [];
-        const service = yield* catalog({
-          read: ({ kind }) => Effect.succeed(emptyCoreWindow(kind as never)),
-          awaitReady: Effect.sync(() => {
-            steps.push("ready");
-          }),
-          requestLocal: (method, _params, options) =>
-            Effect.sync(() => {
-              assert.equal(method, "thread/search");
-              assert.deepEqual(options, {
-                expectedHostId: "local",
-                expectedGeneration: 1,
-                priority: "interactive",
-                source: "thread_catalog",
-                timeoutMs: 3000,
-              });
-              steps.push("search");
-              return { data: [], nextCursor: null };
-            }),
-        });
-        assert.deepEqual(yield* service.searchPalette({ query: "needle", limit: 1 }), []);
-        assert.deepEqual(steps, ["ready", "search"]);
-      }),
-    ),
 );
 
 it.effect("resolves a mentioned Agent chat to its Session without the native directory", () =>

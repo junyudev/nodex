@@ -534,15 +534,9 @@ const conversationArchive = Layer.effect(
 const commands = conversationCommandsLive.pipe(Layer.provideMerge(conversationArchive));
 const threadExecution = codexThreadExecutionLive.pipe(Layer.provideMerge(commands));
 
-const threadCatalog = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    return Layer.effect(
-      CodexThreadCatalog,
-      makeCodexThreadCatalog({ foldPathCase: config.platform === "win32" }),
-    );
-  }),
-).pipe(Layer.provideMerge(Layer.merge(threadExecution, threadTargets)));
+const threadCatalog = Layer.effect(CodexThreadCatalog, makeCodexThreadCatalog()).pipe(
+  Layer.provideMerge(Layer.merge(threadExecution, threadTargets)),
+);
 const sidebarSectionSync = Layer.effect(CodexSidebarSectionSync, makeCodexSidebarSectionSync).pipe(
   Layer.provideMerge(threadCatalog),
 );

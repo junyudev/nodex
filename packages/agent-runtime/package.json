@@ -14,6 +14,7 @@
     "./codex-conventions": "./src/nodex/CodexConventions.ts",
     "./opencode-catalog": "./src/nodex/OpenCodeCatalog.ts",
     "./orchestration/*": "./src/orchestration-v2/*.ts",
+    "./palette-search": "./vendor/shared/src/paletteSearch.ts",
     "./context-usage": "./vendor/provider-core/src/contextUsage.ts",
     "./history-read": "./src/nodex/HistoryRead.ts",
     "./history-contracts": "./src/nodex/history-contracts.ts",

@@ -694,24 +694,6 @@ export const live = Layer.effectDiscard(
       registerCodexThreadTargetEndpoints(mappedIpc, threadTargets, createdThreadResolution),
     );
 
-    registerEffectQuery("codex:threads:palette:list", (_, input) =>
-      threadCatalog.listPalette(input).pipe(
-        Effect.map((threads) => [...threads]),
-        Effect.mapError(
-          (cause) => new CodexIpcError({ operation: "codex:threads:palette:list", cause }),
-        ),
-      ),
-    );
-
-    registerEffectQuery("codex:threads:palette:search", (_, input) =>
-      threadCatalog.searchPalette(input).pipe(
-        Effect.map((results) => [...results]),
-        Effect.mapError(
-          (cause) => new CodexIpcError({ operation: "codex:threads:palette:search", cause }),
-        ),
-      ),
-    );
-
     registerEffectQuery("codex:thread:summary:get", (_, threadId: string) =>
       threadCatalog
         .resolve(threadId)

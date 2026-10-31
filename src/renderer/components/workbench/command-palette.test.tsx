@@ -1,6 +1,6 @@
 import { createFileSearchFixture } from "../../test/file-search-fixture";
 import { installWindowApi } from "../../test/browser-globals";
-import { describe, expect, vi, test } from "vite-plus/test";
+import { afterEach, describe, expect, vi, test } from "vite-plus/test";
 import { createElement, createRef, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, waitFor } from "@testing-library/react";
@@ -8,7 +8,7 @@ import { NodexModalHost } from "@/lib/modal-registry";
 import type {
   CommandPalettePage,
   CommandPaletteCommand,
-  CommandPaletteThread,
+  CommandPaletteChat,
   CommandMenuMode,
 } from "@/lib/command-palette";
 import { getDefaultCommandPalettePageFilters } from "@/lib/command-palette";
@@ -20,7 +20,13 @@ import {
 import type { DatabasePageSummary, PageSearchResult } from "@/lib/types";
 import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
 import type { CommandPalettePageSearchBatch } from "../../lib/command-palette-page-results";
-import { createCommandPaletteThreadSearchIndex } from "../../lib/command-palette-thread-search";
+import type {
+  ChatCatalogEntry,
+  ChatMessageSearchResult,
+  ChatSearchInput,
+  ChatSearchMatch,
+  ChatSearchResult,
+} from "../../../shared/chat-search";
 import { openNodexMenu, settleAsyncRender, textContent } from "../../test/dom";
 import { renderWithAppMaitai as render } from "../../test/app-maitai";
 import { createCommandKeymapState } from "../../../shared/command-keybindings";
@@ -45,11 +51,24 @@ vi.mock("./toggle-list-icon", () => ({
     createElement("span", { className }, "L"),
 }));
 
+// Main answers chat searches with these empty shapes unless a test mocks them.
+async function invokeQueryDefault(channel: unknown): Promise<unknown> {
+  if (channel === "chats:search") return { matches: [], complete: true } satisfies ChatSearchResult;
+  if (channel === "chats:search-messages") {
+    return { matches: [], sources: [] } satisfies ChatMessageSearchResult;
+  }
+  return [];
+}
+
 const apiMock: {
   invokeImplementation: (...args: unknown[]) => Promise<unknown>;
   searchPages: ReturnType<typeof vi.fn<typeof import("../../lib/api").searchPages>>;
 } = vi.hoisted(() => ({
-  invokeImplementation: async () => [],
+  invokeImplementation: async (channel: unknown) => {
+    if (channel === "chats:search") return { matches: [], complete: true };
+    if (channel === "chats:search-messages") return { matches: [], sources: [] };
+    return [];
+  },
   searchPages: vi.fn<typeof import("../../lib/api").searchPages>(async () => ({
     libraryId: "palette-test-library",
     storeEpoch: "palette-test-epoch",
@@ -403,29 +422,61 @@ function makePalettePage(overrides: Partial<CommandPalettePage> = {}): CommandPa
   };
 }
 
-function makePaletteThread(overrides: Partial<CommandPaletteThread> = {}): CommandPaletteThread {
+function makeChat(overrides: Partial<ChatCatalogEntry> = {}): ChatCatalogEntry {
   return {
-    kind: "thread",
-    id: overrides.id ?? "thread:thr-palette",
-    threadId: overrides.threadId ?? "thr-palette",
-    sessionId: overrides.sessionId === undefined ? "session-palette" : overrides.sessionId,
-    projectId: overrides.projectId === undefined ? "default" : overrides.projectId,
-    projectName: overrides.projectName === undefined ? "Default" : overrides.projectName,
-    title: overrides.title ?? "Thread transcript search",
-    preview: overrides.preview ?? "Search previous assistant messages from the command palette.",
-    cwd: overrides.cwd ?? "/tmp/default",
-    gitBranch: overrides.gitBranch ?? null,
-    projectless: overrides.projectless ?? false,
-    pinned: overrides.pinned ?? false,
-    pinnedOrder: overrides.pinnedOrder ?? null,
-    statusType: overrides.statusType ?? "notLoaded",
-    statusActiveFlags: overrides.statusActiveFlags ?? [],
-    createdAt: overrides.createdAt ?? 1_781_990_400,
-    updatedAt: overrides.updatedAt ?? 1_781_990_400,
-    inActiveProject: overrides.inActiveProject ?? true,
-    searchPreview: overrides.searchPreview,
-    searchDecorations: overrides.searchDecorations,
+    sessionId: "session-palette",
+    threadId: "thr-palette",
+    title: "Thread transcript search",
+    projectId: "default",
+    projectName: "Default",
+    cwd: "/tmp/default",
+    branch: null,
+    pullRequests: [],
+    pinned: false,
+    pinnedOrder: null,
+    activity: "idle",
+    createdAt: 1_781_990_400_000,
+    recencyAt: 1_781_990_400_000,
+    ...overrides,
   };
+}
+
+function chatMatch(
+  chat: ChatCatalogEntry,
+  overrides: Partial<Omit<ChatSearchMatch, "chat">> = {},
+): ChatSearchMatch {
+  return { chat, titleRanges: [], hint: null, excerpt: null, ...overrides };
+}
+
+afterEach(() => {
+  apiMock.invokeImplementation = invokeQueryDefault;
+});
+
+/** Routes Main chat queries to the given answers; other queries keep their defaults. */
+function mockChatQueries({
+  search = () => ({ matches: [], complete: true }),
+  messages = () => ({ matches: [], sources: [] }),
+}: {
+  search?: (input: ChatSearchInput) => ChatSearchResult | Promise<ChatSearchResult>;
+  messages?: (input: {
+    query: string;
+    limit: number;
+  }) => ChatMessageSearchResult | Promise<ChatMessageSearchResult>;
+}): void {
+  apiMock.invokeImplementation = async (channel: unknown, input: unknown) => {
+    if (channel === "chats:search") return search(input as ChatSearchInput);
+    if (channel === "chats:search-messages") {
+      return messages(input as { query: string; limit: number });
+    }
+    return invokeQueryDefault(channel);
+  };
+}
+
+/** Main returns at most `limit` of these catalog matches for every query. */
+function mockChatCatalog(matches: readonly ChatSearchMatch[]): void {
+  mockChatQueries({
+    search: (input) => ({ matches: matches.slice(0, input.limit), complete: true }),
+  });
 }
 
 function makePaletteCommand(overrides: Partial<CommandPaletteCommand> = {}): CommandPaletteCommand {
@@ -499,9 +550,6 @@ describe("CommandPaletteSurface", () => {
         mode="actions"
         initialQuery="settings"
         commands={[]}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={close}
         onExecute={() => undefined}
@@ -528,9 +576,6 @@ describe("CommandPaletteSurface", () => {
           mode={mode}
           initialQuery="settings"
           commands={[makePaletteCommand()]}
-          loading={false}
-          pagesLoading={false}
-          chatsLoading={false}
           onChangeMode={setMode}
           onRequestClose={() => undefined}
           onExecute={() => undefined}
@@ -613,9 +658,6 @@ describe("CommandPaletteSurface", () => {
         openTriggerTick={1}
         mode="actions"
         commands={[makePaletteCommand(), makePaletteCommand({ id: "other", title: "Other" })]}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={changeMode}
         onRequestClose={close}
         onExecute={execute}
@@ -662,12 +704,10 @@ describe("CommandPaletteSurface", () => {
         page: makePage({ id: `recent-page-${index}`, title: `Recent page ${index}` }),
       }),
     );
-    const threads = Array.from({ length: 8 }, (_, index) =>
-      makePaletteThread({
-        id: `thread:recent-${index}`,
-        threadId: `recent-${index}`,
-        title: `Recent chat ${index}`,
-      }),
+    mockChatCatalog(
+      Array.from({ length: 8 }, (_, index) =>
+        chatMatch(makeChat({ sessionId: `recent-${index}`, title: `Recent chat ${index}` })),
+      ),
     );
     function Harness() {
       const [mode, setMode] = useState<CommandMenuMode>("root");
@@ -682,14 +722,10 @@ describe("CommandPaletteSurface", () => {
             makePaletteCommand(),
           ]}
           pages={pages}
-          threads={threads}
           pageSearchBatch={makePageSearchBatch({
             query: "",
             results: pages.map((page) => makePageSearchResult(page)),
           })}
-          loading={false}
-          pagesLoading={false}
-          chatsLoading={false}
           onChangeMode={setMode}
           onRequestClose={() => undefined}
           onExecute={() => undefined}
@@ -736,10 +772,6 @@ describe("CommandPaletteSurface", () => {
           pageSearchBatch={makePageSearchBatch({
             results: pages.map((page) => makePageSearchResult(page)),
           })}
-          threadSearchBatch={{ query: "page", results: [], loading: false, error: null }}
-          loading={false}
-          pagesLoading={false}
-          chatsLoading={false}
           onChangeMode={setMode}
           onRequestClose={close}
           onExecute={execute}
@@ -837,9 +869,6 @@ describe("CommandPaletteSurface", () => {
             }),
           ],
         })}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => {
           closeCalls.push(1);
@@ -893,9 +922,6 @@ describe("CommandPaletteSurface", () => {
             }),
           }),
         ]}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -930,9 +956,6 @@ describe("CommandPaletteSurface", () => {
             keywords: ["settings", "Fast mode"],
           }),
         ]}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={execute}
@@ -975,9 +998,6 @@ describe("CommandPaletteSurface", () => {
         pageSearchBatch={makePageSearchBatch({
           query: "previous query",
         })}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -1014,9 +1034,6 @@ describe("CommandPaletteSurface", () => {
           status: "error",
           error: "projection unavailable",
         })}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -1052,9 +1069,6 @@ describe("CommandPaletteSurface", () => {
         pageSearchBatch={makePageSearchBatch({
           query: "vector clocks",
         })}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -1088,15 +1102,9 @@ describe("CommandPaletteSurface", () => {
         initialQuery="page"
         commands={[]}
         pages={pages}
-        threads={[]}
-        threadSearchIndex={createCommandPaletteThreadSearchIndex([])}
         pageSearchBatch={makePageSearchBatch({
           results: pages.map((page) => makePageSearchResult(page)),
         })}
-        threadSearchBatch={{ query: "page", results: [], loading: false, error: null }}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -1131,8 +1139,6 @@ describe("CommandPaletteSurface", () => {
         initialQuery="vector clocks"
         commands={[]}
         pages={pages}
-        threads={[]}
-        threadSearchIndex={createCommandPaletteThreadSearchIndex([])}
         pageSearchBatch={makePageSearchBatch({
           query: "vector clocks",
           results: [
@@ -1170,10 +1176,6 @@ describe("CommandPaletteSurface", () => {
             },
           ],
         })}
-        threadSearchBatch={{ query: "vector clocks", results: [], loading: false, error: null }}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -1199,12 +1201,10 @@ describe("CommandPaletteSurface", () => {
         }),
       }),
     );
-    const threads = Array.from({ length: 2 }, (_, index) =>
-      makePaletteThread({
-        id: `thread:page-chat-${index}`,
-        threadId: `page-chat-${index}`,
-        title: `Page chat ${index}`,
-      }),
+    mockChatCatalog(
+      Array.from({ length: 2 }, (_, index) =>
+        chatMatch(makeChat({ sessionId: `page-chat-${index}`, title: `Page chat ${index}` })),
+      ),
     );
     const commands = Array.from({ length: 2 }, (_, index) =>
       makePaletteCommand({
@@ -1221,15 +1221,9 @@ describe("CommandPaletteSurface", () => {
         initialQuery="page"
         commands={commands}
         pages={pages}
-        threads={threads}
-        threadSearchIndex={createCommandPaletteThreadSearchIndex(threads)}
         pageSearchBatch={makePageSearchBatch({
           results: pages.map((page) => makePageSearchResult(page)),
         })}
-        threadSearchBatch={{ query: "page", results: [], loading: false, error: null }}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -1245,62 +1239,64 @@ describe("CommandPaletteSurface", () => {
     expect(pageButtons).toHaveLength(5);
   });
 
-  test("renders and executes chat results from chats mode", async () => {
+  test("opens a chat found by a title substring through its Session", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
-    const executedItems: CommandPaletteThread[] = [];
+    const executedItems: CommandPaletteChat[] = [];
     const closeCalls: number[] = [];
-    const threads = [
-      makePaletteThread({
-        threadId: "thr-thread-search",
-        id: "thread:thr-thread-search",
-        sessionId: null,
-        projectId: null,
-        projectName: null,
-        projectless: true,
-        title: "Thread transcript search",
-        preview: "Search previous assistant messages from the command palette.",
-      }),
-    ];
+    const searched: ChatSearchInput[] = [];
+    mockChatQueries({
+      search: (input) => {
+        searched.push(input);
+        return {
+          matches: [
+            chatMatch(
+              makeChat({
+                sessionId: "session-server",
+                threadId: null,
+                projectId: null,
+                projectName: null,
+                title: "帮我把我的服务器配置一下",
+              }),
+              { titleRanges: [{ start: 5, end: 8 }] },
+            ),
+          ],
+          complete: true,
+        };
+      },
+    });
     const { container } = render(
       <CommandPaletteSurface
         open
         openTriggerTick={5}
         mode="chats"
-        initialQuery="thread transcript"
+        initialQuery="服务器"
         commands={[]}
         pages={[]}
-        threads={threads}
-        threadSearchIndex={createCommandPaletteThreadSearchIndex(threads)}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => {
           closeCalls.push(1);
         }}
         onExecute={(item) => {
-          if (item.kind === "thread") executedItems.push(item);
+          if (item.kind === "chat") executedItems.push(item);
         }}
       />,
     );
 
     await settleAsyncRender();
 
+    expect(searched.at(-1)).toMatchObject({ query: "服务器", limit: 25 });
     const topResult = container.querySelector('button[cmdk-item][data-selected="true"]');
-    expect(textContent(container).includes("Chats")).toBe(true);
-    expect(textContent(container).includes("Thread transcript search")).toBe(true);
-    expect(topResult).not.toBeNull();
+    expect(textContent(topResult as HTMLElement)).toContain("帮我把我的服务器配置一下");
     await act(async () => {
       fireEvent.click(topResult as HTMLElement);
       await Promise.resolve();
     });
 
-    expect(closeCalls.length).toBe(1);
-    expect(executedItems.length).toBe(1);
-    expect(executedItems[0]?.threadId).toBe("thr-thread-search");
+    expect(closeCalls).toHaveLength(1);
+    expect(executedItems.map((item) => item.chat.sessionId)).toEqual(["session-server"]);
   });
 
-  test("pages mode does not render chat results", async () => {
+  test("pages mode does not search or render chats", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = [
       makePalettePage({
@@ -1311,14 +1307,16 @@ describe("CommandPaletteSurface", () => {
         }),
       }),
     ];
-    const threads = [
-      makePaletteThread({
-        threadId: "thr-thread-search",
-        id: "thread:thr-thread-search",
-        title: "Thread transcript session",
-        preview: "Search previous assistant messages from the command palette.",
-      }),
-    ];
+    const channels: unknown[] = [];
+    mockChatQueries({
+      search: () => {
+        channels.push("chats:search");
+        return {
+          matches: [chatMatch(makeChat({ title: "Thread transcript session" }))],
+          complete: true,
+        };
+      },
+    });
     const { container } = render(
       <CommandPaletteSurface
         open
@@ -1327,15 +1325,10 @@ describe("CommandPaletteSurface", () => {
         initialQuery="thread transcript"
         commands={[]}
         pages={pages}
-        threads={threads}
-        threadSearchIndex={createCommandPaletteThreadSearchIndex(threads)}
         pageSearchBatch={makePageSearchBatch({
           query: "thread transcript",
           results: pages.map((page) => makePageSearchResult(page)),
         })}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -1344,86 +1337,60 @@ describe("CommandPaletteSurface", () => {
 
     await settleAsyncRender();
 
-    const resultButtons = Array.from(container.querySelectorAll("button[cmdk-item]"));
-    expect(resultButtons.length).toBe(1);
-    expect(textContent(container).includes("Thread transcript session")).toBe(false);
-    expect(textContent(container).includes("Thread transcript page")).toBe(true);
+    expect(container.querySelectorAll("button[cmdk-item]")).toHaveLength(1);
+    expect(textContent(container)).not.toContain("Thread transcript session");
+    expect(channels).toEqual([]);
   });
 
-  test("renders and highlights an app-server chat content snippet", async () => {
+  test("lists chats matched only by message history after catalog matches", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
-    const threads = [
-      makePaletteThread({
-        threadId: "thr-content-hit",
-        id: "thread:thr-content-hit",
-        title: "Content hit",
-        preview: "",
+    mockChatQueries({
+      search: () => ({
+        matches: [chatMatch(makeChat({ sessionId: "title-hit", title: "Snippet notes" }))],
+        complete: true,
       }),
-    ];
-    apiMock.invokeImplementation = async (channel: unknown) => {
-      if (channel === "codex:threads:palette:search") {
-        return [
-          {
-            thread: {
-              threadId: "thr-content-hit",
-              sessionId: null,
-              projectId: "default",
-              projectName: "Default",
-              title: "Content hit",
-              preview: "",
-              cwd: "/tmp/default",
-              gitBranch: null,
-              projectless: false,
-              pinned: false,
-              pinnedOrder: null,
-              statusType: "notLoaded",
-              statusActiveFlags: [],
-              createdAt: 1,
-              updatedAt: 1,
+      messages: () => ({
+        matches: [
+          chatMatch(makeChat({ sessionId: "message-hit", title: "Content hit" }), {
+            excerpt: {
+              text: "the backend snippet arrives here",
+              ranges: [{ start: 12, end: 19 }],
+              role: "assistant",
             },
-            snippet: "backend snippet",
-          },
-        ];
-      }
-      return [];
-    };
+          }),
+        ],
+        sources: [
+          { source: "runtime", state: "complete" },
+          { source: "codex", state: "complete" },
+        ],
+      }),
+    });
 
-    let container!: HTMLElement;
-    vi.useFakeTimers();
-    try {
-      ({ container } = render(
-        <CommandPaletteSurface
-          open
-          openTriggerTick={7}
-          mode="chats"
-          initialQuery="snippet"
-          commands={[]}
-          pages={[]}
-          threads={threads}
-          threadSearchIndex={createCommandPaletteThreadSearchIndex(threads)}
-          loading={false}
-          pagesLoading={false}
-          chatsLoading={false}
-          onChangeMode={() => undefined}
-          onRequestClose={() => undefined}
-          onExecute={() => undefined}
-        />,
-      ));
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(240);
-      });
-    } finally {
-      vi.useRealTimers();
-    }
-    await settleAsyncRender();
+    const view = render(
+      <CommandPaletteSurface
+        open
+        openTriggerTick={7}
+        mode="chats"
+        initialQuery="snippet"
+        commands={[]}
+        pages={[]}
+        onChangeMode={() => undefined}
+        onRequestClose={() => undefined}
+        onExecute={() => undefined}
+      />,
+    );
 
-    expect(textContent(container).includes("backend snippet")).toBe(true);
-    apiMock.invokeImplementation = async () => [];
+    await waitFor(() => expect(view.getAllByRole("option")).toHaveLength(2));
+    const [titleHit, messageHit] = view.getAllByRole("option");
+    expect(textContent(titleHit!)).toContain("Snippet notes");
+    expect(textContent(messageHit!)).toContain("Content hit");
+    expect(textContent(messageHit!)).toContain("Agent: the backend snippet arrives here");
+    expect(view.queryByRole("status")).toBeNull();
   });
 
-  test("keeps commands and metadata chats together in root mode", async () => {
+  test("keeps commands and catalog chats together in root mode", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
-    const threads = [makePaletteThread({ title: "Open historical chat" })];
+    mockChatCatalog([chatMatch(makeChat({ title: "Open historical chat" }))]);
     const { container } = render(
       <CommandPaletteSurface
         open
@@ -1432,12 +1399,6 @@ describe("CommandPaletteSurface", () => {
         initialQuery="open"
         commands={[makePaletteCommand({ title: "Open settings", keywords: ["open"] })]}
         pages={[]}
-        threads={threads}
-        threadSearchIndex={createCommandPaletteThreadSearchIndex(threads)}
-        threadSearchBatch={{ query: "open", results: [], loading: false, error: null }}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -1451,16 +1412,18 @@ describe("CommandPaletteSurface", () => {
     expect(textContent(container)).toContain("Chats");
   });
 
-  test("keeps five root metadata chats interactive while content search is pending", async () => {
+  test("keeps five root catalog chats interactive while message history is searched", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
-    const threads = Array.from({ length: 9 }, (_, index) =>
-      makePaletteThread({
-        id: `thread:common-${index}`,
-        threadId: `common-${index}`,
-        title: `Common chat ${index}`,
+    mockChatQueries({
+      search: (input) => ({
+        matches: Array.from({ length: 9 }, (_, index) =>
+          chatMatch(makeChat({ sessionId: `common-${index}`, title: `Common chat ${index}` })),
+        ).slice(0, input.limit),
+        complete: true,
       }),
-    );
-    const { container } = render(
+      messages: () => new Promise(() => undefined),
+    });
+    const view = render(
       <CommandPaletteSurface
         open
         openTriggerTick={72}
@@ -1468,28 +1431,34 @@ describe("CommandPaletteSurface", () => {
         initialQuery="common"
         commands={[]}
         pages={[]}
-        threads={threads}
-        threadSearchIndex={createCommandPaletteThreadSearchIndex(threads)}
-        threadSearchBatch={{ query: "common", results: [], loading: true, error: null }}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
       />,
     );
 
-    await settleAsyncRender();
-
-    expect(container.querySelectorAll("button[cmdk-item]")).toHaveLength(6);
-    expect(textContent(container)).toContain("Loading chats…");
+    await waitFor(() => expect(view.getAllByRole("option")).toHaveLength(6));
+    expect(view.getAllByRole("option", { name: /Common chat/u })).toHaveLength(5);
+    expect(view.getByRole("option", { name: "Show more" })).toBeTruthy();
+    expect(view.getByRole("status").textContent).toBe("Searching chat history…");
   });
 
-  test("keeps local chat matches visible when app-server search fails", async () => {
+  test("keeps catalog chats when some message history cannot be searched", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
-    const threads = [makePaletteThread({ title: "Fallback metadata chat" })];
-    const { container } = render(
+    mockChatQueries({
+      search: () => ({
+        matches: [chatMatch(makeChat({ title: "Fallback metadata chat" }))],
+        complete: true,
+      }),
+      messages: () => ({
+        matches: [],
+        sources: [
+          { source: "runtime", state: "complete" },
+          { source: "codex", state: "timed_out" },
+        ],
+      }),
+    });
+    const view = render(
       <CommandPaletteSurface
         open
         openTriggerTick={73}
@@ -1497,49 +1466,16 @@ describe("CommandPaletteSurface", () => {
         initialQuery="fallback"
         commands={[]}
         pages={[]}
-        threads={threads}
-        threadSearchIndex={createCommandPaletteThreadSearchIndex(threads)}
-        threadSearchBatch={{ query: "fallback", results: [], loading: false, error: "offline" }}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
       />,
     );
 
-    await settleAsyncRender();
-
-    expect(textContent(container)).toContain("Fallback metadata chat");
-    expect(textContent(container)).toContain("Local matches are still shown");
-  });
-
-  test("deduplicates concurrent app-server searches and reuses the short-lived cache", async () => {
-    const { clearCommandPaletteThreadSearchCacheForTests, searchCommandPaletteThreads } =
-      await import("../../lib/command-palette-chat-search");
-    const searchedQueries: string[] = [];
-    apiMock.invokeImplementation = async (channel: unknown, input: unknown) => {
-      if (channel === "codex:threads:palette:search") {
-        const query =
-          typeof input === "object" && input !== null && "query" in input
-            ? String((input as { query?: unknown }).query ?? "")
-            : "";
-        searchedQueries.push(query);
-        return [];
-      }
-      return [];
-    };
-    clearCommandPaletteThreadSearchCacheForTests();
-
-    await Promise.all([
-      searchCommandPaletteThreads({ query: "refresh" }),
-      searchCommandPaletteThreads({ query: "refresh" }),
-    ]);
-    await searchCommandPaletteThreads({ query: "refresh" });
-
-    expect(searchedQueries).toEqual(["refresh"]);
-    apiMock.invokeImplementation = async () => [];
+    await waitFor(() =>
+      expect(view.getByRole("status").textContent).toBe("Some chat history couldn’t be searched"),
+    );
+    expect(view.getByRole("option", { name: /Fallback metadata chat/u })).toBeTruthy();
   });
 
   test("deduplicates only concurrent Page requests and keeps no renderer result cache", async () => {
@@ -1600,9 +1536,6 @@ describe("CommandPaletteSurface", () => {
           }),
         ]}
         pages={[]}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={(item) => {
@@ -1685,9 +1618,6 @@ describe("CommandPaletteSurface", () => {
             disabled: true,
           }),
         ]}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -1753,9 +1683,6 @@ describe("CommandPaletteSurface", () => {
           }),
         ]}
         pages={[]}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => {
           closeCalls.push(1);
@@ -1823,9 +1750,6 @@ describe("CommandPaletteSurface", () => {
           scopeKey: "design\nops",
           results: pages.map((page) => makePageSearchResult(page)),
         })}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -1944,9 +1868,6 @@ test.each(["needle", "/workspace/result.ts"])(
         mode="files"
         initialQuery={query}
         commands={[]}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={close}
         onExecute={execute}
@@ -1998,9 +1919,6 @@ test("Files keeps empty and pending states out of keyboard selection and opens t
       mode="files"
       commands={[]}
       fileSearchScope={{ hostId: "remote:files-states", roots: ["/files-states"] }}
-      loading={false}
-      pagesLoading={false}
-      chatsLoading={false}
       onChangeMode={() => undefined}
       onRequestClose={close}
       onExecute={execute}
@@ -2091,9 +2009,6 @@ test("choosing the current Project folder remains an explicit boundary until con
         fileSearchScope={{ hostId: "local", roots: ["/project"] }}
         workspaceSelection={selection}
         onWorkspaceSelectionChange={setSelection}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -2179,9 +2094,6 @@ test("All shows progress while only current Text search remains pending and remo
       initialQuery="needle"
       commands={[]}
       fileSearchScope={{ hostId: "local", roots: ["/pending"] }}
-      loading={false}
-      pagesLoading={false}
-      chatsLoading={false}
       onChangeMode={() => undefined}
       onRequestClose={() => undefined}
       onExecute={() => undefined}
@@ -2251,9 +2163,6 @@ test("file search opens directories on the selected host and releases its sessio
       initialQuery="sr"
       commands={[]}
       fileSearchScope={{ hostId: "local", roots: ["/workspace"] }}
-      loading={false}
-      pagesLoading={false}
-      chatsLoading={false}
       onChangeMode={changeMode}
       onRequestClose={close}
       onExecute={execute}
@@ -2324,9 +2233,6 @@ test("Text streams host-scoped matches, filters file types, and fences stale acc
       initialQuery="needle"
       commands={[]}
       fileSearchScope={{ hostId: "remote:test", roots: ["/workspace"] }}
-      loading={false}
-      pagesLoading={false}
-      chatsLoading={false}
       onChangeMode={() => undefined}
       onRequestClose={close}
       onExecute={execute}
@@ -2460,9 +2366,6 @@ test("Text keeps Project query and mask history when choosing a different search
         }}
         workspaceSelection={workspaceSelection}
         onWorkspaceSelectionChange={setWorkspaceSelection}
-        loading={false}
-        pagesLoading={false}
-        chatsLoading={false}
         onChangeMode={setMode}
         onRequestClose={() => undefined}
         onExecute={() => undefined}
@@ -2595,9 +2498,6 @@ test("Text recovers after a terminal error without accepting stale results", asy
       initialQuery="needle"
       commands={[]}
       fileSearchScope={{ hostId: "local", roots: ["/workspace-error"] }}
-      loading={false}
-      pagesLoading={false}
-      chatsLoading={false}
       onChangeMode={() => undefined}
       onRequestClose={close}
       onExecute={execute}

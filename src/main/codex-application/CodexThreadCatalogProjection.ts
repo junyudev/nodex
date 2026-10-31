@@ -84,17 +84,6 @@ export const resolveSidebarThreadTitle = (thread: {
     fallback: "New thread",
   });
 
-export const resolveThreadSearchResultTitle = (thread: {
-  readonly threadName?: string | null;
-  readonly threadPreview?: string | null;
-  readonly cwd?: string | null;
-  readonly threadId: string;
-}): string =>
-  projectCodexMarkdownLabel(thread.threadName) ||
-  thread.threadPreview?.trim() ||
-  thread.cwd?.trim() ||
-  thread.threadId;
-
 /** Catalog entries keep their source fallback if compact Markdown has no visible text. */
 export const projectCodexCatalogDisplayTitle = (displayTitle: string): string =>
   projectCodexMarkdownToPlainText(displayTitle) || displayTitle;

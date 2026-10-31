@@ -34,9 +34,11 @@ details are historical; ADR 0046 owns the current Store acceptance policy.
   final TypeScript Store and published the first Rust-owned Store only after a
   durable backup. This established the exact-inventory, fail-closed migration
   rule; the accepted revisions and retained artifacts are now governed by ADR 0046.
-- Task-history search delegates only to Codex app-server `thread/search`.
-  Nodex stores Workspace metadata used to enrich results but owns no Thread
-  transcript units, FTS tables, backfill queue, or search index.
+- Native Codex task-history search delegates to Codex app-server
+  `thread/search`; Agent Runtime history is searched by the Runtime's own
+  message index. Core stores the chat metadata that ranks and enriches results
+  but owns no Thread transcript units, FTS tables, backfill queue, or search
+  index.
 - Automation definitions, revisions, scheduling policy, due leases, runs,
   inbox/read/archive state, occurrences, and reminders are Core-owned.
   Electron submits semantic reschedule policies with an expected definition

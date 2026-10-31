@@ -11,12 +11,12 @@ import {
   summarizeCommandPalettePageFilters,
   type CommandPalettePage,
   type CommandPaletteCommand,
-  type CommandPaletteThread,
   type CommandMenuMode,
   writeCommandPalettePageFilters,
 } from "./command-palette";
 import { buildCommandPaletteSectionsModel } from "./command-palette-sections";
-import { createCommandPaletteThreadSearchIndex } from "./command-palette-thread-search";
+import type { ChatMessageSearchState, ChatSearchState } from "./chat-search";
+import type { ChatSearchMatch } from "../../shared/chat-search";
 import type { DatabasePageSummary } from "./types";
 import { plainTextToPortableRichText } from "../../shared/block-documents/portable-rich-text";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../shared/project-appearance";
@@ -89,28 +89,43 @@ function makePalettePage(overrides: Partial<CommandPalettePage> = {}): CommandPa
   };
 }
 
-function makePaletteThread(overrides: Partial<CommandPaletteThread> = {}): CommandPaletteThread {
+function makeChatMatch(sessionId: string, title = `Chat ${sessionId}`): ChatSearchMatch {
   return {
-    kind: "thread",
-    id: overrides.id ?? "thread:thr-1",
-    threadId: overrides.threadId ?? "thr-1",
-    sessionId: overrides.sessionId === undefined ? "session-1" : overrides.sessionId,
-    projectId: overrides.projectId === undefined ? "default" : overrides.projectId,
-    projectName: overrides.projectName === undefined ? "Default" : overrides.projectName,
-    title: overrides.title ?? "Command palette thread search",
-    preview: overrides.preview ?? "Add thread search to the launcher.",
-    cwd: overrides.cwd ?? "/tmp/default",
-    gitBranch: overrides.gitBranch ?? null,
-    projectless: overrides.projectless ?? false,
-    pinned: overrides.pinned ?? false,
-    pinnedOrder: overrides.pinnedOrder ?? null,
-    statusType: overrides.statusType ?? "notLoaded",
-    statusActiveFlags: overrides.statusActiveFlags ?? [],
-    createdAt: overrides.createdAt ?? 1_781_990_400,
-    updatedAt: overrides.updatedAt ?? 1_781_990_400,
-    inActiveProject: overrides.inActiveProject ?? true,
+    chat: {
+      sessionId,
+      threadId: `thread-${sessionId}`,
+      title,
+      projectId: "default",
+      projectName: "Default",
+      cwd: null,
+      branch: null,
+      pullRequests: [],
+      pinned: false,
+      pinnedOrder: null,
+      activity: "idle",
+      createdAt: 1,
+      recencyAt: 1,
+    },
+    titleRanges: [],
+    hint: null,
+    excerpt: null,
   };
 }
+
+function chatSearchState(
+  matches: readonly ChatSearchMatch[] = [],
+  overrides: Partial<ChatSearchState> = {},
+): ChatSearchState {
+  return { query: "", matches, answered: true, settled: true, failed: false, ...overrides };
+}
+
+function messageSearchState(
+  overrides: Partial<ChatMessageSearchState> = {},
+): ChatMessageSearchState {
+  return { query: "", matches: [], pending: false, incomplete: false, ...overrides };
+}
+
+const NO_CHATS = { chatSearch: chatSearchState(), chatMessageSearch: messageSearchState() };
 
 const storageMap = new Map<string, string>();
 let failCurrentStorageWrite = false;
@@ -174,9 +189,7 @@ describe("command palette scopes", () => {
 
 describe("command palette discovery sections", () => {
   test("stops offering expansion at sixty even when more candidates exist", () => {
-    const threads = Array.from({ length: 65 }, (_, index) =>
-      makePaletteThread({ id: `thread:${index}`, threadId: `${index}`, title: `Chat ${index}` }),
-    );
+    const matches = Array.from({ length: 65 }, (_, index) => makeChatMatch(`${index}`));
     const sections = (limit: number) =>
       buildCommandPaletteSectionsModel({
         mode: "root",
@@ -186,14 +199,73 @@ describe("command palette discovery sections", () => {
         projects: [],
         activeProjectId: null,
         recentPageIds: [],
-        threads,
+        chatSearch: chatSearchState(matches),
+        chatMessageSearch: messageSearchState(),
         discoveryLimits: { chats: limit, pages: 5, files: 5, text: 5 },
       });
     const expandable = sections(55).flatItems;
-    expect(expandable.filter((item) => item.kind === "thread")).toHaveLength(55);
+    expect(expandable.filter((item) => item.kind === "chat")).toHaveLength(55);
     expect(expandable.at(-1)).toMatchObject({ kind: "more", scope: "chats" });
     const bounded = sections(60).flatItems;
-    expect(bounded).toEqual(threads.slice(0, 60));
+    expect(bounded.map((item) => item.id)).toEqual(
+      matches.slice(0, 60).map((match) => `chat:${match.chat.sessionId}`),
+    );
+  });
+
+  test("lists catalog chats before chats matched only by messages, once each", () => {
+    const model = buildCommandPaletteSectionsModel({
+      mode: "chats",
+      query: "deploy",
+      commands: [],
+      pages: [],
+      projects: [],
+      activeProjectId: "default",
+      recentPageIds: [],
+      chatSearch: chatSearchState([makeChatMatch("title"), makeChatMatch("both")]),
+      chatMessageSearch: messageSearchState({
+        query: "deploy",
+        matches: [makeChatMatch("both"), makeChatMatch("message")],
+      }),
+    });
+    expect(model.flatItems.map((item) => item.id)).toEqual([
+      "chat:title",
+      "chat:both",
+      "chat:message",
+    ]);
+    expect(model.flatItems.every((item) => item.kind === "chat" && item.inActiveProject)).toBe(
+      true,
+    );
+    expect(model.chatStatus).toBeNull();
+  });
+
+  test("reports chat history status only where chats are listed", () => {
+    const status = (
+      mode: CommandMenuMode,
+      query: string,
+      chatSearch: ChatSearchState,
+      chatMessageSearch: ChatMessageSearchState,
+    ) =>
+      buildCommandPaletteSectionsModel({
+        mode,
+        query,
+        commands: [],
+        pages: [],
+        projects: [],
+        activeProjectId: null,
+        recentPageIds: [],
+        chatSearch,
+        chatMessageSearch,
+      }).chatStatus;
+    const searching = messageSearchState({ pending: true });
+    const incomplete = messageSearchState({ incomplete: true });
+    expect(status("chats", "deploy", chatSearchState(), searching)).toBe("searching");
+    expect(status("root", "deploy", chatSearchState(), incomplete)).toBe("incomplete");
+    expect(status("root", "deploy", chatSearchState([], { failed: true }), searching)).toBe(
+      "failed",
+    );
+    // All lists chats from two characters, and never in Pages.
+    expect(status("root", "d", chatSearchState(), searching)).toBeNull();
+    expect(status("pages", "deploy", chatSearchState(), searching)).toBeNull();
   });
 
   test("orders quick actions by task and excludes mock capabilities", () => {
@@ -210,7 +282,7 @@ describe("command palette discovery sections", () => {
       projects: [],
       activeProjectId: null,
       recentPageIds: [],
-      threads: [],
+      ...NO_CHATS,
     });
     expect(model.flatItems.map((item) => item.id)).toEqual(["newThread", "openFolder"]);
     const mock = buildCommandPaletteSectionsModel({
@@ -221,7 +293,7 @@ describe("command palette discovery sections", () => {
       projects: [],
       activeProjectId: null,
       recentPageIds: [],
-      threads: [],
+      ...NO_CHATS,
     });
     expect(mock.flatItems).toEqual([]);
   });
@@ -234,13 +306,11 @@ describe("filterCommandPaletteItems", () => {
       mode: "actions",
       commands: [makeCommand(), makeCommand({ id: "back", title: "Go back", keywords: [] })],
       pages: [makePalettePage({ page: makePage({ title: "Settings guide" }) })],
-      threads: [makePaletteThread({ title: "Settings discussion" })],
     });
 
     expect(result.mode).toBe("actions");
     expect(result.commands.map((command) => command.id)).toEqual(["open-settings"]);
     expect(result.pages).toEqual([]);
-    expect(result.threads).toEqual([]);
   });
 
   test("supports command-only root mode without a > prefix", () => {
@@ -257,14 +327,12 @@ describe("filterCommandPaletteItems", () => {
         }),
       ],
       pages: [makePalettePage()],
-      threads: [makePaletteThread()],
     });
 
     expect(result.mode).toBe("root");
     expect(result.commands.length).toBe(1);
     expect(result.commands[0]?.id).toBe("open-settings");
     expect(result.pages.length).toBe(0);
-    expect(result.threads.length).toBe(0);
   });
 
   test("matches and decorates a bounded fuzzy command subsequence", () => {
@@ -283,37 +351,6 @@ describe("filterCommandPaletteItems", () => {
         .join("")
         .toLocaleLowerCase(),
     ).toBe("opnset");
-  });
-
-  test("returns chat metadata matches in chats mode", () => {
-    const targetThread = makePaletteThread({
-      threadId: "thr-search",
-      id: "thread:thr-search",
-      title: "Search thread transcripts",
-      preview: "Find historical thread content.",
-    });
-    const otherThread = makePaletteThread({
-      threadId: "thr-other",
-      id: "thread:thr-other",
-      title: "Terminal polish",
-      preview: "Adjust panel layout.",
-    });
-
-    const result = filterCommandPaletteItems({
-      query: "thread transcript",
-      mode: "chats",
-      commands: [],
-      pages: [],
-      threads: [otherThread, targetThread],
-      threadSearchIndex: createCommandPaletteThreadSearchIndex([otherThread, targetThread]),
-    });
-
-    expect(result.pages.length).toBe(0);
-    expect(result.threads.length).toBe(1);
-    expect(result.threads[0]?.threadId).toBe("thr-search");
-    expect(
-      result.threads[0]?.searchDecorations?.titleSegments?.some((segment) => segment.highlight),
-    ).toBe(true);
   });
 
   test("summarizes active palette filters in the same compact language as the view toolbar", () => {
@@ -479,7 +516,7 @@ test("Text discovery expands independently to 100 lines without changing backend
       projects: [],
       activeProjectId: null,
       recentPageIds: [],
-      threads: [],
+      ...NO_CHATS,
       textMatches,
       discoveryLimits: { chats: 5, pages: 5, files: 5, text: limit },
     }).flatItems;

@@ -9,7 +9,11 @@ import type {
   WorkspaceTextSearchEvent,
   WorkspaceTextSearchRequest,
 } from "../../../shared/workspace-text-search";
-import type { CommandPaletteThread } from "@/lib/command-palette";
+import type {
+  ChatCatalogEntry,
+  ChatSearchInput,
+  ChatSearchResult,
+} from "../../../shared/chat-search";
 import type {
   CommandPaletteShellCommandContext,
   CommandPaletteShellCommandHandlers,
@@ -27,38 +31,42 @@ import "@/globals.css";
 // Keep the real dialog, command catalog, search projection, and keyboard owner.
 // The desktop chat transport supplies deterministic content for this browser boundary.
 const fixture = vi.hoisted(() => ({
-  threads: Array.from({ length: 30 }, (_, index): CommandPaletteThread => ({
-    kind: "thread",
-    id: `thread-${index}`,
+  chats: Array.from({ length: 30 }, (_, index): ChatCatalogEntry => ({
+    sessionId: `session-${index}`,
     threadId: `thread-${index}`,
-    sessionId: null,
+    title: `Review command search ${index}`,
     projectId: null,
     projectName: null,
-    title: `Review command search ${index}`,
-    preview: "",
     cwd: null,
-    gitBranch: null,
-    projectless: true,
+    branch: null,
+    pullRequests: [],
     pinned: false,
     pinnedOrder: null,
-    statusType: "idle",
-    statusActiveFlags: [],
+    activity: "idle",
     createdAt: 1,
-    updatedAt: index + 1,
-    inActiveProject: false,
+    recencyAt: 30 - index,
   })),
 }));
 
-vi.mock("@/lib/command-palette-chat-search", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/command-palette-chat-search")>()),
-  useCommandPaletteThreadItems: () => ({ threads: fixture.threads, loading: false }),
-  useCommandPaletteThreadSearch: ({ query }: { query: string }) => ({
-    query,
-    results: [],
-    loading: false,
-    error: null,
-  }),
-}));
+vi.mock("@/lib/renderer-command", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/renderer-command")>();
+  const invoke = original.invokeRendererQuery as (...args: unknown[]) => Promise<unknown>;
+  return {
+    ...original,
+    invokeRendererQuery: async (channel: string, ...args: unknown[]) => {
+      if (channel === "chats:search") {
+        const { query, limit } = args[0] as ChatSearchInput;
+        const matches = fixture.chats
+          .filter((chat) => chat.title.toLowerCase().includes(query.trim().toLowerCase()))
+          .slice(0, limit)
+          .map((chat) => ({ chat, titleRanges: [], hint: null, excerpt: null }));
+        return { matches, complete: true } satisfies ChatSearchResult;
+      }
+      if (channel === "chats:search-messages") return { matches: [], sources: [] };
+      return invoke(channel, ...args);
+    },
+  };
+});
 
 installRendererThemeFixture();
 afterEach(async () => page.viewport(1280, 800));
@@ -154,7 +162,7 @@ function PaletteFixture({ fileSearchScope }: { readonly fileSearchScope?: FileSe
         fileSearchScope={fileSearchScope}
         onOpenChange={setOpen}
         onOpenPage={ignore}
-        onOpenThread={ignore}
+        onOpenChat={ignore}
       />
     </>
   );

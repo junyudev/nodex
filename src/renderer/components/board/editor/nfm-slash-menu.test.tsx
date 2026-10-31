@@ -39,8 +39,8 @@ import {
   type DefaultReactSuggestionItem,
   type SuggestionMenuProps,
 } from "@blocknote/react";
-import type { CommandPaletteThread } from "@/lib/command-palette";
-import type { CodexThreadSummary, Project } from "@/lib/types";
+import type { ChatCatalogEntry, ChatSearchMatch } from "../../../../shared/chat-search";
+import type { Project } from "@/lib/types";
 import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../../../shared/project-appearance";
 
@@ -284,25 +284,6 @@ function defineClientHeight(element: HTMLElement, value: number) {
   });
 }
 
-function createMentionThread(overrides: Partial<CodexThreadSummary> = {}): CodexThreadSummary {
-  return {
-    threadId: "019-thread",
-    projectId: "project-1",
-    source: null,
-    threadName: "Thread title",
-    threadPreview: "",
-    modelProvider: "openai",
-    cwd: "/tmp/project",
-    statusType: "idle",
-    statusActiveFlags: [],
-    archived: false,
-    createdAt: 1,
-    updatedAt: 2,
-    linkedAt: "2026-06-20T00:00:00.000Z",
-    ...overrides,
-  };
-}
-
 function createMentionProject(): Project {
   return {
     id: "project-1",
@@ -323,28 +304,36 @@ function createMentionProject(): Project {
   };
 }
 
-function makePaletteThread(overrides: Partial<CommandPaletteThread> = {}): CommandPaletteThread {
+function makeChat(overrides: Partial<ChatCatalogEntry> = {}): ChatCatalogEntry {
   return {
-    kind: "thread",
-    id: overrides.id ?? "thread:thr-mention",
-    threadId: overrides.threadId ?? "thr-mention",
-    sessionId: overrides.sessionId === undefined ? "session-1" : overrides.sessionId,
-    projectId: overrides.projectId === undefined ? "project-1" : overrides.projectId,
-    projectName: overrides.projectName === undefined ? "Alpha" : overrides.projectName,
-    title: overrides.title ?? "Mention search thread",
-    preview: overrides.preview ?? "Shared picker search.",
-    cwd: overrides.cwd ?? "/tmp/project",
-    gitBranch: overrides.gitBranch ?? null,
-    projectless: overrides.projectless ?? false,
-    pinned: overrides.pinned ?? false,
-    pinnedOrder: overrides.pinnedOrder ?? null,
-    statusType: overrides.statusType ?? "notLoaded",
-    statusActiveFlags: overrides.statusActiveFlags ?? [],
-    createdAt: overrides.createdAt ?? 1,
-    updatedAt: overrides.updatedAt ?? 2,
-    inActiveProject: overrides.inActiveProject ?? true,
-    searchPreview: overrides.searchPreview,
-    searchDecorations: overrides.searchDecorations,
+    sessionId: "session-1",
+    threadId: "thr-mention",
+    projectId: "project-1",
+    projectName: "Alpha",
+    title: "Mention search thread",
+    cwd: "/tmp/project",
+    branch: null,
+    pullRequests: [],
+    pinned: false,
+    pinnedOrder: null,
+    activity: "idle",
+    createdAt: 1,
+    recencyAt: 2,
+    ...overrides,
+  };
+}
+
+function makeChatMatch(
+  chat: Partial<ChatCatalogEntry> = {},
+  match: Partial<ChatSearchMatch & { inActiveProject: boolean }> = {},
+): ChatSearchMatch & { inActiveProject: boolean } {
+  return {
+    chat: makeChat(chat),
+    titleRanges: [],
+    hint: null,
+    excerpt: null,
+    inActiveProject: true,
+    ...match,
   };
 }
 
@@ -609,13 +598,12 @@ describe("NfmSlashMenu", () => {
   test("thread mention subtext suppresses default idle labels but keeps actionable states", () => {
     const project = createMentionProject();
 
-    expect(resolveThreadMentionSubtext(createMentionThread(), project)).toBe("Alpha / 019-thread");
+    expect(resolveThreadMentionSubtext(makeChat({ threadId: "019-thread" }), project)).toBe(
+      "Alpha / 019-thread",
+    );
     expect(
       resolveThreadMentionSubtext(
-        createMentionThread({
-          statusType: "active",
-          statusActiveFlags: ["waitingOnUserInput"],
-        }),
+        makeChat({ threadId: "019-thread", activity: "waitingOnUserInput" }),
         project,
       ),
     ).toBe("Alpha / Waiting / 019-thread");
@@ -736,9 +724,7 @@ describe("NfmSlashMenu", () => {
 
   test("mention payload helpers preserve thread and date inline storage shapes", () => {
     const threadContent = buildNfmThreadMentionInlineContent(
-      makePaletteThread({
-        threadId: "thr-payload",
-      }),
+      makeChat({ threadId: "thr-payload" }),
     ) as Array<{ type?: string; props?: { uuid?: string } } | string>;
     const firstThreadContent = threadContent[0];
     expect(typeof firstThreadContent === "string").toBe(false);
@@ -749,47 +735,106 @@ describe("NfmSlashMenu", () => {
   });
 
   test("thread rows disclose only duplicate-title context or content excerpts", () => {
+    const insertInlineContent = vi.fn();
     const items = buildNfmThreadMentionSuggestionItems(
-      {},
+      { insertInlineContent },
       [
-        makePaletteThread({
-          threadId: "other-thread",
-          id: "thread:other-thread",
-          title: "Weekly planning",
-          projectId: "project-2",
-          projectName: "Beta",
-          inActiveProject: false,
-        }),
-        makePaletteThread({
-          threadId: "active-thread",
-          id: "thread:active-thread",
-          title: "Weekly planning",
-          inActiveProject: true,
-        }),
-        makePaletteThread({
-          threadId: "content-thread",
-          id: "thread:content-thread",
-          title: "Architecture review",
-          searchPreview: {
-            source: "content",
-            excerpt: "Only transcript content matched vector clocks.",
-            segments: [],
+        makeChatMatch(
+          {
+            threadId: "other-thread",
+            title: "Weekly planning",
+            projectId: "project-2",
+            projectName: "Beta",
           },
-        }),
+          { inActiveProject: false },
+        ),
+        makeChatMatch({ threadId: "active-thread", title: "Weekly planning" }),
+        makeChatMatch(
+          {
+            threadId: "content-thread",
+            sessionId: "content-session",
+            title: "Architecture review",
+          },
+          {
+            excerpt: {
+              text: "Only transcript content matched vector clocks.",
+              ranges: [{ start: 32, end: 38 }],
+              role: "assistant",
+            },
+          },
+        ),
       ],
       "vector",
     );
 
     expect(items[0]?.detail).toBe("Beta");
     expect(items[1]?.detail).toBe("Alpha");
-    expect(items[2]?.detail).toBe("…content matched vector clocks.");
+    expect(items[2]?.detail).toBe("Only transcript content matched vector clocks.");
+    expect(items[2]?.detailSegments).toEqual([
+      { text: "Only transcript content matched ", highlight: false },
+      { text: "vector", highlight: true },
+      { text: " clocks.", highlight: false },
+    ]);
+    expect(items[0]?.mentionRank?.activeContext).toBe(false);
+    expect(items[1]?.mentionRank?.activeContext).toBe(true);
+    expect(items[2]?.mentionRank?.match).toBe("content");
     expect(items.every((item) => item.tooltipContent !== null)).toBe(true);
+    items[2]?.onItemClick();
+    expect(insertInlineContent).toHaveBeenCalledWith(
+      [{ type: "threadMention", props: { uuid: "content-session" } }, " "],
+      { updateSelection: true },
+    );
   });
 
-  test("excludes chats without a Session from mention suggestions", () => {
-    const item = makePaletteThread({ threadId: "server-only", sessionId: null });
-    expect(buildNfmThreadMentionSuggestionItems({}, [item], "")).toEqual([]);
-    expect(buildNfmThreadMentionInlineContent(item)).toEqual([]);
+  test("uses Main title ranges and keeps metadata ahead of content without re-matching", () => {
+    const items = buildNfmThreadMentionSuggestionItems(
+      {},
+      [
+        makeChatMatch({ title: "Searchable thread" }, { titleRanges: [{ start: 0, end: 6 }] }),
+        makeChatMatch(
+          { title: "Branch review" },
+          { hint: { label: "Branch", text: "serch", ranges: [{ start: 0, end: 5 }] } },
+        ),
+        makeChatMatch(
+          { title: "Opening prompt" },
+          { excerpt: { text: "serch", ranges: [{ start: 0, end: 5 }], role: "user" } },
+        ),
+      ],
+      "serch",
+    );
+
+    expect(items[0]?.titleSegments).toEqual([
+      { text: "Search", highlight: true },
+      { text: "able thread", highlight: false },
+    ]);
+    expect(items[1]?.titleSegments).toBeNull();
+    expect(items[1]?.detail).toBeNull();
+    expect(items.map((item) => item.mentionRank?.match)).toEqual(["title", "title", "content"]);
+    expect(selectNfmMentionSuggestionItems("serch", items).map((item) => item.title)).toEqual([
+      "Searchable thread",
+      "Branch review",
+      "Opening prompt",
+    ]);
+
+    const [unhighlighted] = buildNfmThreadMentionSuggestionItems(
+      {},
+      [makeChatMatch({ title: "serch title without ranges" })],
+      "serch",
+    );
+    expect(unhighlighted?.titleSegments).toBeNull();
+  });
+
+  test("excludes chats without a Thread and falls back to a short Thread id for empty titles", () => {
+    const chat = makeChat({ threadId: null });
+    expect(buildNfmThreadMentionSuggestionItems({}, [makeChatMatch(chat)], "")).toEqual([]);
+    expect(buildNfmThreadMentionInlineContent(chat)).toEqual([]);
+    const [item] = buildNfmThreadMentionSuggestionItems(
+      {},
+      [makeChatMatch({ title: "", threadId: "019-thread" })],
+      "",
+    );
+    expect(item?.title).toBe("019-thread");
+    expect(item?.mentionRank?.match).toBe("recent");
   });
 
   test("date mention suggestions are first for date-like queries and insert inline content", () => {
@@ -800,7 +845,7 @@ describe("NfmSlashMenu", () => {
     const items = selectNfmMentionSuggestionItems("today", [
       ...buildNfmThreadMentionSuggestionItems(
         {},
-        [makePaletteThread({ title: "Today planning" })],
+        [makeChatMatch({ title: "Today planning" })],
         "today",
       ),
       ...buildDateMentionSuggestionItems({}, "today"),
@@ -1117,19 +1162,22 @@ describe("NfmSlashMenu", () => {
     expect(tooltipLayer?.style.zIndex).toBe(String(NFM_SUGGESTION_MENU_TOOLTIP_Z_INDEX));
   });
 
-  test("mention details highlight the match and retain useful full tooltips", async () => {
-    const fullExcerpt = `${"Earlier context ".repeat(10)}Compact transcript snippet. ${"Later context ".repeat(10)}`;
+  test("mention details render Main excerpts and highlighting in rows and tooltips", async () => {
+    const excerpt = "…Earlier context Compact transcript snippet. Later context…";
+    const start = excerpt.indexOf("Compact");
     const items = buildNfmThreadMentionSuggestionItems(
       {},
       [
-        makePaletteThread({
-          title: "Searchable thread",
-          searchPreview: {
-            source: "content",
-            excerpt: fullExcerpt,
-            segments: [{ text: fullExcerpt, highlight: true }],
+        makeChatMatch(
+          { title: "Searchable thread" },
+          {
+            excerpt: {
+              text: excerpt,
+              ranges: [{ start, end: start + "Compact".length }],
+              role: "assistant",
+            },
           },
-        }),
+        ),
       ],
       "compact",
     );
@@ -1140,13 +1188,9 @@ describe("NfmSlashMenu", () => {
       onItemClick: () => undefined,
     });
 
-    const row = view.container.querySelector("#bn-suggestion-menu-item-0") as HTMLElement | null;
-    expect(row).not.toBeNull();
-    if (!row) return;
-    expect(row.textContent?.includes("…")).toBe(true);
-    expect(row.textContent?.includes("Compact transcript snippet.")).toBe(true);
-    const highlighted = row.querySelector(".font-medium");
-    expect(highlighted?.textContent).toBe("Compact");
+    const row = view.getByRole("option");
+    const highlighted = view.getByText("Compact");
+    expect(highlighted.parentElement?.textContent).toBe(excerpt);
 
     await act(async () => {
       fireEvent.focus(row);
@@ -1155,8 +1199,7 @@ describe("NfmSlashMenu", () => {
 
     const tooltip = view.container.ownerDocument.body.querySelector('[role="tooltip"]');
     expect(tooltip).not.toBeNull();
-    expect(tooltip?.textContent?.includes("Searchable thread")).toBe(true);
-    expect(tooltip?.textContent?.includes(fullExcerpt.trim())).toBe(true);
+    expect(tooltip?.textContent).toBe(`Searchable threadAlpha${excerpt}`);
   });
 
   test("lets pointer and keyboard selection expand a section without selecting a mention", () => {
@@ -1165,8 +1208,8 @@ describe("NfmSlashMenu", () => {
       ...buildNfmThreadMentionSuggestionItems(
         {},
         [
-          makePaletteThread({
-            id: `thread:${index}`,
+          makeChatMatch({
+            sessionId: `session-${index}`,
             threadId: `thread-${index}`,
             title: `Weekly ${index}`,
           }),

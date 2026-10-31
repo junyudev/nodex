@@ -45,10 +45,7 @@ import { useWorkspaceFileActiveLineBlame } from "@/features/workspace-files/work
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SessionCommands = Pick<
   ReturnType<typeof useWorkbenchSessionCommands>,
-  | "openAttachedThreadSession"
-  | "openProjectSessionById"
-  | "requestContentSearchOpen"
-  | "startNewChatInProject"
+  "openProjectSessionById" | "requestContentSearchOpen" | "startNewChatInProject"
 >;
 type PanelCommands = Pick<
   ReturnType<typeof useWorkbenchPanelCommandRouter>,
@@ -348,14 +345,12 @@ export function WorkbenchCommandPaletteHost({
       onOpenPage={(projectId, pageId, titleSnapshot) => {
         void panelOpeners.openPageTab(projectId, pageId, titleSnapshot);
       }}
-      onOpenThread={(threadId, sessionId) => {
-        void Promise.resolve(
-          sessionId
-            ? sessionCommands.openProjectSessionById(sessionId)
-            : sessionCommands.openAttachedThreadSession(threadId),
-        ).catch((cause: unknown) => {
-          toast.danger(cause instanceof Error ? cause.message : "Couldn’t open chat");
-        });
+      onOpenChat={(sessionId) => {
+        void Promise.resolve(sessionCommands.openProjectSessionById(sessionId)).catch(
+          (cause: unknown) => {
+            toast.danger(cause instanceof Error ? cause.message : "Couldn’t open chat");
+          },
+        );
       }}
     />
   );

@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useDeferredValue,
   useEffect,
   useId,
   useMemo,
@@ -12,12 +11,12 @@ import {
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { ActivitySpinnerIcon, PlusIcon, SearchIcon, ThreadIcon } from "@/components/shared/icons";
 import {
-  selectCommandPaletteChatResults,
-  type CommandPaletteThreadSearchBatch,
-  useCommandPaletteThreadSearch,
-  useCommandPaletteThreadItems,
-} from "@/lib/command-palette-chat-search";
-import type { CommandPaletteThread } from "@/lib/command-palette";
+  chatHighlightSegments,
+  mergeChatSearchMatches,
+  preferChatProject,
+  useChatMessageSearch,
+  useChatSearch,
+} from "@/lib/chat-search";
 import type { CommandPaletteHighlightSegment } from "@/lib/command-palette-highlight";
 import { pageChatWindowQueryOptions } from "@/lib/query-options";
 import { normalizeSearchText as normalizeCommandPaletteSearchText } from "@/lib/search-text";
@@ -27,10 +26,10 @@ import {
   resolveQueryFreshAccept,
   shouldConsumeStalePickerNavigation,
 } from "@/lib/query-fresh-picker";
-import { useCommandPaletteThreadSearchIndex } from "@/lib/use-command-palette-thread-search-index";
 import { cn } from "@/lib/utils";
 import {
   buildNfmSendToThreadRows,
+  createLinkedChatMatch,
   moveNfmSendToThreadFocusedRowId,
   resolveNfmSendToThreadFocusedRowId,
   type NfmSendToThreadPreferredTarget,
@@ -38,27 +37,15 @@ import {
   type NfmSendToThreadRow,
 } from "./nfm-send-to-thread-menu-model";
 
-interface NfmSendToThreadMenuProps {
+export interface NfmSendToThreadMenuProps {
   projectId: string | null;
   /** The Page being sent, whose Linked chats lead the list. */
   sourcePageId?: string | null;
   projectNameById?: Readonly<Record<string, string>>;
   preferredTarget?: NfmSendToThreadPreferredTarget | null;
+  initialQuery?: string;
   onAccept: (request: NfmSendToThreadRequest) => Promise<void> | void;
   onClose: () => void;
-}
-
-export interface NfmSendToThreadMenuSurfaceProps extends Omit<
-  NfmSendToThreadMenuProps,
-  "sourcePageId"
-> {
-  threadItems: readonly CommandPaletteThread[];
-  /** Sessions linked to the source Page, in Linked chats order. */
-  linkedSessionIds?: readonly string[];
-  initialQuery?: string;
-  threadItemsLoading?: boolean;
-  threadSearchBatch?: CommandPaletteThreadSearchBatch;
-  enableThreadSearch?: boolean;
 }
 
 const SEND_TO_THREAD_ERROR = "Could not send";
@@ -119,8 +106,8 @@ function SendToThreadRow({
   onAccept: (row: NfmSendToThreadRow) => void;
   onFocusRowChange: (rowId: string) => void;
 }) {
-  const preview = row.kind === "thread" ? row.searchPreview : null;
-  const hasPreview = Boolean(preview);
+  const excerpt = row.kind === "thread" ? row.match.excerpt : null;
+  const hasPreview = Boolean(excerpt);
   return (
     <button
       id={getSendToThreadRowDomId(listboxId, index)}
@@ -167,9 +154,14 @@ function SendToThreadRow({
             {row.meta}
           </span>
         </span>
-        {preview ? (
+        {excerpt ? (
           <span className="line-clamp-1 text-xs leading-4 wrap-break-word text-token-description-foreground/90">
-            {renderSendToThreadPreviewSegments(preview.segments, `${row.id}:preview`)}
+            {renderSendToThreadPreviewSegments(
+              chatHighlightSegments(excerpt.text, excerpt.ranges) ?? [
+                { text: excerpt.text, highlight: false },
+              ],
+              `${row.id}:preview`,
+            )}
           </span>
         ) : null}
       </span>
@@ -190,15 +182,30 @@ export function NfmSendToThreadMenu({
   sourcePageId = null,
   projectNameById,
   preferredTarget = null,
+  initialQuery = "",
   onAccept,
   onClose,
 }: NfmSendToThreadMenuProps) {
-  const { threads, loading } = useCommandPaletteThreadItems({
+  const listboxId = useId();
+  const comboboxId = useId();
+  const [query, setQuery] = useState(initialQuery);
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+  const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [pendingAcceptQuery, setPendingAcceptQuery] = useState<string | null>(null);
+  // Sending targets a Thread, so only started chats are destinations.
+  const chatSearch = useChatSearch({
     enabled: Boolean(projectId),
-    activeProjectId: projectId ?? "",
-    refreshKey: 0,
+    query,
+    limit: SEND_TO_THREAD_RESULT_LIMIT,
+    startedOnly: true,
   });
-  const linkedChats = useInfiniteQuery({
+  const chatMessageSearch = useChatMessageSearch({
+    enabled: Boolean(projectId),
+    query,
+    limit: SEND_TO_THREAD_RESULT_LIMIT,
+  });
+  const linkedChatWindows = useInfiniteQuery({
     ...pageChatWindowQueryOptions({
       pageId: sourcePageId ?? "",
       includeArchived: false,
@@ -206,145 +213,66 @@ export function NfmSendToThreadMenu({
     }),
     enabled: Boolean(projectId && sourcePageId),
   });
-  const linkedSessionIds = useMemo(
-    () => linkedChats.data?.pages.flatMap((window) => window.items.map((chat) => chat.sessionId)),
-    [linkedChats.data],
-  );
-
-  return (
-    <NfmSendToThreadMenuSurface
-      projectId={projectId}
-      threadItems={threads}
-      threadItemsLoading={loading}
-      linkedSessionIds={linkedSessionIds}
-      projectNameById={projectNameById}
-      preferredTarget={preferredTarget}
-      onAccept={onAccept}
-      onClose={onClose}
-    />
-  );
-}
-
-export function NfmSendToThreadMenuSurface({
-  projectId,
-  threadItems,
-  linkedSessionIds,
-  threadItemsLoading = false,
-  projectNameById,
-  preferredTarget = null,
-  initialQuery = "",
-  onAccept,
-  onClose,
-  threadSearchBatch: injectedThreadSearchBatch,
-  enableThreadSearch = true,
-}: NfmSendToThreadMenuSurfaceProps) {
-  const listboxId = useId();
-  const comboboxId = useId();
-  const [query, setQuery] = useState(initialQuery);
-  const deferredQuery = useDeferredValue(query);
-  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
-  const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
-  const [acceptError, setAcceptError] = useState<string | null>(null);
-  const [pendingAcceptQuery, setPendingAcceptQuery] = useState<string | null>(null);
-  const normalizedThreadItems = useMemo(() => [...threadItems], [threadItems]);
-  const linkedThreads = useMemo(
+  const linkedChats = useMemo(
     () =>
-      (linkedSessionIds ?? []).flatMap((sessionId) => {
-        const thread = normalizedThreadItems.find((item) => item.sessionId === sessionId);
-        return thread ? [thread] : [];
-      }),
-    [linkedSessionIds, normalizedThreadItems],
+      linkedChatWindows.data?.pages.flatMap((window) =>
+        window.items.flatMap((item) => createLinkedChatMatch(item) ?? []),
+      ),
+    [linkedChatWindows.data],
   );
-  const threadSearchIndex = useCommandPaletteThreadSearchIndex(normalizedThreadItems);
-  const fetchedThreadSearchBatch = useCommandPaletteThreadSearch({
-    enabled: enableThreadSearch && Boolean(projectId),
-    query: deferredQuery,
-    limit: SEND_TO_THREAD_RESULT_LIMIT,
-  });
-  const threadSearchBatch = injectedThreadSearchBatch ?? fetchedThreadSearchBatch;
-  const visibleThreads = useMemo(
-    () =>
-      selectCommandPaletteChatResults({
-        query: deferredQuery,
-        threads: normalizedThreadItems,
-        threadSearchIndex,
-        threadSearchBatch,
-        threadLimit: SEND_TO_THREAD_RESULT_LIMIT,
-        preferActiveProject: true,
-        activeProjectId: projectId ?? "",
-      }),
-    [deferredQuery, normalizedThreadItems, projectId, threadSearchBatch, threadSearchIndex],
-  );
-
+  // Rows answer the query chat search last answered; keys and Enter wait for the live one.
+  const rowsQuery = chatSearch.query;
   useEffect(() => {
     setQuery(initialQuery);
     setFocusedRowId(null);
     setPendingAcceptQuery(null);
   }, [initialQuery]);
 
-  const rows = useMemo(() => {
-    if (!projectId) return [];
-    return buildNfmSendToThreadRows({
-      threads: visibleThreads,
-      linkedThreads,
-      query: deferredQuery,
-      preferredTarget,
-      projectNameById,
-    });
-  }, [deferredQuery, linkedThreads, preferredTarget, projectId, projectNameById, visibleThreads]);
-  const buildRowsForQuery = useCallback(
-    (nextQuery: string): readonly NfmSendToThreadRow[] => {
-      if (!projectId) return [];
-      const threads = selectCommandPaletteChatResults({
-        query: nextQuery,
-        threads: normalizedThreadItems,
-        threadSearchIndex,
-        threadSearchBatch,
-        threadLimit: SEND_TO_THREAD_RESULT_LIMIT,
-        preferActiveProject: true,
-        activeProjectId: projectId,
-      });
-      return buildNfmSendToThreadRows({
-        threads,
-        linkedThreads,
-        query: nextQuery,
-        preferredTarget,
-        projectNameById,
-      });
-    },
+  const messageMatches = chatMessageSearch.query === rowsQuery ? chatMessageSearch.matches : null;
+  const rows = useMemo(
+    () =>
+      projectId
+        ? buildNfmSendToThreadRows({
+            matches: preferChatProject(
+              mergeChatSearchMatches(
+                chatSearch.matches,
+                messageMatches ?? [],
+                SEND_TO_THREAD_RESULT_LIMIT,
+              ),
+              projectId,
+            ),
+            linkedChats,
+            query: rowsQuery,
+            preferredTarget,
+            projectNameById,
+          })
+        : [],
     [
-      linkedThreads,
-      normalizedThreadItems,
+      chatSearch.matches,
+      linkedChats,
+      messageMatches,
       preferredTarget,
       projectId,
       projectNameById,
-      threadSearchBatch,
-      threadSearchIndex,
+      rowsQuery,
     ],
   );
   const rowsStale = shouldConsumeStalePickerNavigation({
     liveQuery: query,
-    rowsQuery: deferredQuery,
+    rowsQuery,
     normalizeQuery: normalizeCommandPaletteSearchText,
   });
-  const normalizedLiveQuery = normalizeCommandPaletteSearchText(query);
-  const shouldWaitForThreadSearch =
-    enableThreadSearch &&
-    normalizedLiveQuery.length > 0 &&
-    (threadSearchBatch.loading ||
-      normalizeCommandPaletteSearchText(threadSearchBatch.query) !== normalizedLiveQuery);
+  // A new chat is accepted only once chat search has answered whether an existing one matches.
+  const waitingForChats =
+    Boolean(projectId) &&
+    normalizeCommandPaletteSearchText(query).length > 0 &&
+    !chatSearch.settled;
   const resolveAcceptableRows = useCallback(
     (candidateRows: readonly NfmSendToThreadRow[]) =>
-      shouldWaitForThreadSearch
-        ? candidateRows.filter((row) => row.kind === "thread")
-        : candidateRows,
-    [shouldWaitForThreadSearch],
+      waitingForChats ? candidateRows.filter((row) => row.kind === "thread") : candidateRows,
+    [waitingForChats],
   );
-  const resolvedFocusedRowId = resolveNfmSendToThreadFocusedRowId(
-    focusedRowId,
-    deferredQuery,
-    rows,
-  );
+  const resolvedFocusedRowId = resolveNfmSendToThreadFocusedRowId(focusedRowId, rowsQuery, rows);
   const focusedIndex = resolvedFocusedRowId
     ? rows.findIndex((row) => row.id === resolvedFocusedRowId)
     : -1;
@@ -392,7 +320,7 @@ export function NfmSendToThreadMenuSurface({
     const result = resolvePendingQueryFreshAccept({
       pendingQuery: pendingAcceptQuery,
       liveQuery: query,
-      rowsQuery: deferredQuery,
+      rowsQuery,
       rows: resolveAcceptableRows(rows),
       getRowId: (row) => row.id,
       normalizeQuery: normalizeCommandPaletteSearchText,
@@ -405,25 +333,24 @@ export function NfmSendToThreadMenuSurface({
     if (
       !areQueryFresh({
         liveQuery: query,
-        rowsQuery: deferredQuery,
+        rowsQuery,
         normalizeQuery: normalizeCommandPaletteSearchText,
       })
     ) {
       return;
     }
 
-    if (!threadItemsLoading && !shouldWaitForThreadSearch) {
+    if (!waitingForChats) {
       setPendingAcceptQuery(null);
     }
   }, [
     activateRow,
-    deferredQuery,
     pendingAcceptQuery,
     query,
     resolveAcceptableRows,
     rows,
-    shouldWaitForThreadSearch,
-    threadItemsLoading,
+    rowsQuery,
+    waitingForChats,
   ]);
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -432,7 +359,7 @@ export function NfmSendToThreadMenuSurface({
       if (rowsStale) return;
       setFocusedRowId((currentRowId) =>
         moveNfmSendToThreadFocusedRowId(
-          resolveNfmSendToThreadFocusedRowId(currentRowId, deferredQuery, rows),
+          resolveNfmSendToThreadFocusedRowId(currentRowId, rowsQuery, rows),
           1,
           rows,
         ),
@@ -444,7 +371,7 @@ export function NfmSendToThreadMenuSurface({
       if (rowsStale) return;
       setFocusedRowId((currentRowId) =>
         moveNfmSendToThreadFocusedRowId(
-          resolveNfmSendToThreadFocusedRowId(currentRowId, deferredQuery, rows),
+          resolveNfmSendToThreadFocusedRowId(currentRowId, rowsQuery, rows),
           -1,
           rows,
         ),
@@ -455,10 +382,9 @@ export function NfmSendToThreadMenuSurface({
       event.preventDefault();
       const result = resolveQueryFreshAccept({
         liveQuery: query,
-        rowsQuery: deferredQuery,
+        rowsQuery,
         rows,
         focusedIndex,
-        buildFreshRows: (nextQuery) => resolveAcceptableRows(buildRowsForQuery(nextQuery)),
         canWaitForFreshRows: true,
         getRowId: (row) => row.id,
         normalizeQuery: normalizeCommandPaletteSearchText,
@@ -515,8 +441,8 @@ export function NfmSendToThreadMenuSurface({
         aria-labelledby={comboboxId}
         aria-busy={
           rowsStale ||
-          threadItemsLoading ||
-          shouldWaitForThreadSearch ||
+          !chatSearch.settled ||
+          chatMessageSearch.pending ||
           pendingAcceptQuery !== null
         }
         className="flex h-[340px] min-h-0 flex-col"
@@ -549,12 +475,15 @@ export function NfmSendToThreadMenuSurface({
             </div>
           </div>
           {!projectId ? <SendToThreadStatusRow>No project selected</SendToThreadStatusRow> : null}
-          {projectId && threadItemsLoading && visibleMainRowCount === 0 ? (
-            <SendToThreadStatusRow>Loading chats...</SendToThreadStatusRow>
-          ) : null}
-          {projectId && !threadItemsLoading && visibleMainRowCount === 0 ? (
+          {projectId && visibleMainRowCount === 0 ? (
             <SendToThreadStatusRow>
-              {deferredQuery.trim() ? "No matching chats" : "No chats yet"}
+              {!chatSearch.answered
+                ? "Loading chats..."
+                : chatMessageSearch.pending
+                  ? "Searching chat history…"
+                  : rowsQuery
+                    ? "No matching chats"
+                    : "No chats yet"}
             </SendToThreadStatusRow>
           ) : null}
           {acceptError ? <SendToThreadStatusRow>{acceptError}</SendToThreadStatusRow> : null}

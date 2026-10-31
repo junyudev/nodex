@@ -213,6 +213,8 @@ authority in Main or a window.
 
 Page discovery is one Core-owned capability across Page references, Command Palette search, Agent search, and transport clients. Core maintains the durable projection, applies lifecycle, explicit query scope and typed filters before the result bound, and returns complete ordering plus typed match evidence. Interactive renderers may hold only a commit-fenced, Core-authored metadata projection and query it synchronously with the same Rust search kernel compiled to WASM; Store-epoch and resource-lifecycle changes invalidate that projection. Body evidence and historical-key resolution remain asynchronous Core enrichment. Adapters translate contracts mechanically, and renderers do not define a second normalization, fuzzy, ranking, or highlighting policy. User-visible policy belongs to [Command Palette Behavior](product-specs/command-palette-behavior.md) and [Page Connections](product-specs/nfm-editor-page-reference-behavior.md).
 
+Chat discovery is one Main-owned capability across every chat picker. Main ranks a catalog of Core-placed Sessions from every Provider with the palette search kernel that Agent session search also uses, and returns bounded matches with display ranges. Message history is a separate best-effort phase over the Agent Runtime index and native Codex `thread/search`; each source reports its own availability and never gates catalog matches. Renderers neither hold the catalog nor re-rank or re-highlight results. User-visible policy belongs to [Command Palette Behavior](product-specs/command-palette-behavior.md#chat-search-model).
+
 ## Runtime boundaries
 
 ### Native Core
