@@ -1,0 +1,23 @@
+tests/e2e/nfm-send-to-chat.spec.ts
+  s_e2f9f3a29b34ef::t_47248d0bd3c18c 304-306,308-310,313-319
+src/renderer/components/board/editor/nfm-side-menu.tsx
+  s_e2f9f3a29b34ef::t_8a6076234b5566 777,779-782
+src/renderer/components/board/editor/nfm-side-menu.test.tsx
+  s_e2f9f3a29b34ef::t_219f3b1e12656a 583-584
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b113bb749d115293ec9b12e35edce56656a8d720",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
