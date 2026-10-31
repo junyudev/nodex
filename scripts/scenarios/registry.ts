@@ -3,6 +3,7 @@ import {
   structuralInteractionsPressureScenario,
 } from "./scenarios/structural-interactions";
 import { agentCliWorkflowScenario } from "./scenarios/agent-cli-workflow";
+import { agentCrossProviderDelegationScenario } from "./scenarios/agent-cross-provider-delegation";
 import { landingSharedPagesScenario, landingShowcaseScenario } from "./scenarios/landing-showcase";
 import { documentSyncRecoveryScenario } from "./scenarios/document-sync-recovery";
 import type { ScenarioDomainRecipe } from "./contracts";
@@ -28,6 +29,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [landingShowcaseScenario.id, landingShowcaseScenario],
   [landingSharedPagesScenario.id, landingSharedPagesScenario],
   [agentCliWorkflowScenario.id, agentCliWorkflowScenario],
+  [agentCrossProviderDelegationScenario.id, agentCrossProviderDelegationScenario],
   [documentSyncRecoveryScenario.id, documentSyncRecoveryScenario],
   [boardDenseScenario.id, boardDenseScenario],
   [databaseContextMenuPerformanceScenario.id, databaseContextMenuPerformanceScenario],

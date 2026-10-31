@@ -15,7 +15,7 @@ test("refocusing the open chat clears its unread dot without changing chats", as
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-thread-read-state-"));
   const codex = path.join(fixture, "codex");
   const body = fs
-    .readFileSync(path.resolve("tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs"), "utf8")
+    .readFileSync(path.resolve("scripts/scenarios/runtime/cross-provider-peer.mjs"), "utf8")
     .replace(/^#![^\n]*\n/u, "");
   fs.writeFileSync(codex, `#!${process.execPath}\n${body}`, { mode: 0o755 });
   fs.writeFileSync(path.join(fixture, "plan.json"), "{}");

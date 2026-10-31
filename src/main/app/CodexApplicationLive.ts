@@ -102,6 +102,7 @@ import { make as makeAppToolSession } from "../app-tools/CodexAppToolSession";
 import { appToolsEntrypoint } from "../codex/app-tools-launch-config";
 import type { CodexAppServerSessionOptions } from "../codex-runtime/CodexAppServerSession";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
+import { scenarioAgentRuntimeProjectRoot } from "../platform/node/AgentRuntimeEntrypoint";
 
 export class CodexPlatform extends Context.Service<
   CodexPlatform,
@@ -129,13 +130,10 @@ const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig | Ap
             }),
         ),
       );
-      const testRuntimeProjectRoot =
-        config.environment.NODE_ENV === "test"
-          ? config.environment.NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT?.trim()
-          : undefined;
+      const scenarioRuntimeProjectRoot = scenarioAgentRuntimeProjectRoot(config);
       const runtime = yield* resolveCodexRuntimeEffect({
         isPackaged: config.isPackaged,
-        projectRootPath: testRuntimeProjectRoot || config.projectRootPath,
+        projectRootPath: scenarioRuntimeProjectRoot || config.projectRootPath,
         resourcesPath: config.resourcesPath,
       }).pipe(
         Effect.mapError(

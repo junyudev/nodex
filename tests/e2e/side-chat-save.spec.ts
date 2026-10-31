@@ -71,7 +71,7 @@ for (const kind of ["codex", "claude"] as const) {
     const codex = path.join(fixture, "codex");
     fs.writeFileSync(
       codex,
-      `#!${process.execPath}\n${fs.readFileSync("tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs", "utf8").replace(/^#![^\n]*\n/u, "")}`,
+      `#!${process.execPath}\n${fs.readFileSync("scripts/scenarios/runtime/cross-provider-peer.mjs", "utf8").replace(/^#![^\n]*\n/u, "")}`,
       { mode: 0o755 },
     );
     const sourcePrompt =

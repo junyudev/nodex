@@ -35,7 +35,7 @@ const invoke = <Channel extends keyof IpcApi>(
 test("delegates across Codex and Claude through the Session UI and restores child history after restart", async ({}, testInfo) => {
   test.setTimeout(180_000);
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-runtime-cross-provider-"));
-  const source = path.resolve("tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs");
+  const source = path.resolve("scripts/scenarios/runtime/cross-provider-peer.mjs");
   const codex = path.join(fixture, "codex");
   const claude = path.join(fixture, "claude");
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;

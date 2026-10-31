@@ -85,7 +85,7 @@ for (const kind of ["codex", "claude"] as const) {
     };
     const codex = path.join(fixture, "codex");
     const codexPeer = fs
-      .readFileSync("tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs", "utf8")
+      .readFileSync("scripts/scenarios/runtime/cross-provider-peer.mjs", "utf8")
       .replace(/^#![^\n]*\n/u, "");
     fs.writeFileSync(codex, `#!${process.execPath}\n${codexPeer}`, { mode: 0o755 });
     fs.writeFileSync(path.join(fixture, "plan.json"), "{}");

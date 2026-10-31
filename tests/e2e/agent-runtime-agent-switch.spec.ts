@@ -59,7 +59,7 @@ async function withAgentPeers(
   const codex = path.join(home, "codex");
   const claude = path.join(home, "claude");
   const peer = fs
-    .readFileSync(path.resolve("tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs"), "utf8")
+    .readFileSync(path.resolve("scripts/scenarios/runtime/cross-provider-peer.mjs"), "utf8")
     .replace(/^#![^\n]*\n/u, "");
   for (const executable of [codex, claude])
     fs.writeFileSync(executable, `#!${process.execPath}\n${peer}`, { mode: 0o755 });

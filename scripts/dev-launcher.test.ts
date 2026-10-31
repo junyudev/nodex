@@ -30,6 +30,32 @@ const HOME: DevelopmentEnvironmentHome = {
 };
 
 describe("dev launcher", () => {
+  test("selects scripted execution only for the cross-provider seed, including a reopened home", () => {
+    const seed = { id: "agent/cross-provider-delegation", revision: 1 };
+    for (const [arguments_, home] of [
+      [parseDevLauncherArguments(["--seed", seed.id]), HOME],
+      [parseDevLauncherArguments([]), { ...HOME, manifest: { ...HOME.manifest, seed } }],
+    ] as const) {
+      const plan = createDevLaunchPlan({
+        arguments: arguments_,
+        environment: {},
+        home,
+        platform: "darwin",
+      });
+      expect(plan.environment.NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT).toBe(
+        "/tmp/nodex-dev/scripted-agent-runtime",
+      );
+      expect(plan.environment.NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE).toBe(process.execPath);
+      const ordinary = createDevLaunchPlan({
+        arguments: parseDevLauncherArguments([]),
+        environment: plan.environment,
+        home: HOME,
+        platform: "darwin",
+      });
+      expect(ordinary.environment.NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT).toBeUndefined();
+      expect(ordinary.environment.NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE).toBeUndefined();
+    }
+  });
   test("parses the public command contract without requiring a separator", () => {
     expect(
       parseDevLauncherArguments([

@@ -86,7 +86,7 @@ test("fans out, batches completions, times out waits and steers while staying on
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-runtime-pressure-"));
   const codex = path.join(fixture, "codex");
   const body = fs
-    .readFileSync(path.resolve("tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs"), "utf8")
+    .readFileSync(path.resolve("scripts/scenarios/runtime/cross-provider-peer.mjs"), "utf8")
     .replace(/^#![^\n]*\n/u, "");
   fs.writeFileSync(codex, `#!${process.execPath}\n${body}`, { mode: 0o755 });
   fs.writeFileSync(path.join(fixture, "plan.json"), "{}");

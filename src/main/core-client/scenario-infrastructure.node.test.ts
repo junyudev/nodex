@@ -7,8 +7,27 @@ import {
   requireBoardDenseScenarioFacts,
 } from "../../../scripts/scenarios/scenarios/board-dense";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import { CROSS_PROVIDER_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/agent-cross-provider-delegation";
 
 describe("authoritative isolated scenarios over CoreClient", () => {
+  test("creates two empty Lumen Sessions before any Agent execution exists", async () => {
+    await withCoreScenario(
+      { scenarioId: CROSS_PROVIDER_SCENARIO_ID },
+      async ({ manifest, seed, facts }) => {
+        expect(facts.scenarioId).toBe(CROSS_PROVIDER_SCENARIO_ID);
+        for (const key of ["parentSession", "releaseNotesSession"]) {
+          const id = manifest.entityIdsByKey?.[key];
+          if (!id) throw new Error(`Missing ${key}`);
+          const session = await seed.readSession(id);
+          expect(session).toMatchObject({ projectId: manifest.projectId, thread: null });
+          expect(session?.executionRef ?? null).toBeNull();
+        }
+        expect(manifest.entityIdsByKey?.parentSession).not.toBe(
+          manifest.entityIdsByKey?.releaseNotesSession,
+        );
+      },
+    );
+  });
   test("materializes board/dense and commits a later Document mutation without Electron", async () => {
     await withCoreScenario({ scenarioId: BOARD_DENSE_SCENARIO_ID }, async (context) => {
       const facts = requireBoardDenseScenarioFacts(context.facts);

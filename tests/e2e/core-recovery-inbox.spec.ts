@@ -16,7 +16,7 @@ test("recovers Core loss while three Inbox chats run without repeating dispatch 
   test.setTimeout(180_000);
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-core-recovery-"));
   const peer = fs
-    .readFileSync(path.resolve("tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs"), "utf8")
+    .readFileSync(path.resolve("scripts/scenarios/runtime/cross-provider-peer.mjs"), "utf8")
     .replace(/^#![^\n]*\n/u, "");
   for (const name of ["codex", "claude"])
     fs.writeFileSync(path.join(fixture, name), `#!${process.execPath}\n${peer}`, { mode: 0o755 });

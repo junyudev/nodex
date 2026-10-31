@@ -8,11 +8,13 @@ import type { ScenarioManifest } from "../contracts";
 import { waitForCoreRuntimeRemoval } from "../profile/isolated-profile";
 import { materializeScenario } from "../seed/scenario-seed";
 import { materializeSeededSourceFolder } from "../seed/source-folder";
+import { CROSS_PROVIDER_SCENARIO_ID } from "../scenarios/agent-cross-provider-delegation";
 
 export const materializeDevelopmentSeed = async (input: {
   readonly environment?: NodeJS.ProcessEnv;
   readonly scenarioId: string;
   readonly nodexHome: string;
+  readonly runtimeClock?: "manual" | "realtime";
 }): Promise<ScenarioManifest> => {
   let runtime: RustDataAuthorityRuntime | null = null;
   let manifest: ScenarioManifest | null = null;
@@ -57,5 +59,14 @@ export const materializeDevelopmentSeed = async (input: {
     throw new AggregateError(teardownErrors, `Seed ${input.scenarioId} Core teardown failed`);
   }
   if (!manifest) throw new Error(`Seed ${input.scenarioId} produced no manifest`);
+  if (input.scenarioId === CROSS_PROVIDER_SCENARIO_ID) {
+    const { prepareCrossProviderDelegationRuntime } =
+      await import("../runtime/cross-provider-delegation");
+    prepareCrossProviderDelegationRuntime({
+      nodexHome: input.nodexHome,
+      manifest,
+      clock: input.runtimeClock,
+    });
+  }
   return manifest;
 };

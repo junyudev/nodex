@@ -408,6 +408,46 @@ suggestion grouping two related messages, a suggestion that failed, and a messag
 that opens with a Library image before its text. It uses Core operations without starting
 an Agent: `vp run dev --home "$HOME/repo/nodex/runs.local/inbox-suggestion-spend" --seed inbox/suggestion-spend`.
 
+`agent/cross-provider-delegation` creates the fictional `lumen-web` Project with
+two empty chats and credential-free Claude Code, Codex, and OpenCode peers:
+
+```bash
+vp run dev --home "$HOME/repo/nodex/runs.local/cross-harness" --seed agent/cross-provider-delegation
+```
+
+Expand `lumen-web`, open **Passkey sign-in** (Claude Opus 5.5, High), and send
+“Build passkey sign-in for Lumen.” Any first prompt starts the same script.
+Claude delegates WebAuthn routes to GPT-6.1 Sol / Extra High, a credentials
+migration and sign-in tests to GPT-6.1 Sol / High, and passkey documentation to
+OpenCode's GLM-5.3-Flash Free. Open a running child from Subagents, then return
+to the parent to watch its reports arrive. Children settle about 6 seconds
+(migration), 8 seconds (tests fail), 12 seconds (routes), and 20 seconds (docs)
+after their native Runs start. **Release notes** receives a message sent by
+the Claude chat. These native peers exercise production delegation, delivery,
+and projection; their workspace edits are illustrative fixture files, and no
+model calls or credentials are used.
+
+The seed receipt in `dev-home.json` opts this home into scripted execution.
+Only the launcher for this seed sets `NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT`
+and `NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE`; Main admits them only when
+unpackaged. Ordinary homes and packaged applications retain verified runtimes.
+The peers and their isolated configuration live in `<home>/scripted-agent-runtime`.
+Reopening preserves both the chat history and the script's state. Use a fresh
+home for a new take. `scenario-manifest.json` in that directory exposes
+`entityIdsByKey.parentSession` and `releaseNotesSession`; the first prompt
+adds `parentThread` from the public Session read. Initial chat settings use
+the same persisted Composer choice store as the app, without creating a
+Thread or transcript during seeding.
+
+`tests/e2e/agent-cross-provider-delegation.spec.ts` consumes this same seed
+with `runtimeClock: "manual"`. Files under `scripted-agent-runtime/gates/`
+(`webauthn`, `credentials`, `tests`, `docs`) release the corresponding native
+Runs, so assertions do not depend on those development delays:
+
+```bash
+vp run test:e2e tests/e2e/agent-cross-provider-delegation.spec.ts
+```
+
 ### Real Profile snapshots
 
 Some defects and performance cliffs only appear with real document shapes,

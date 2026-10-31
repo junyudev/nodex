@@ -33,7 +33,7 @@ test("opens the chat an Agent created from its row, once, in the chat it started
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-created-chat-"));
   const codex = path.join(fixture, "codex");
   const body = fs
-    .readFileSync(path.resolve("tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs"), "utf8")
+    .readFileSync(path.resolve("scripts/scenarios/runtime/cross-provider-peer.mjs"), "utf8")
     .replace(/^#![^\n]*\n/u, "");
   fs.writeFileSync(codex, `#!${process.execPath}\n${body}`, { mode: 0o755 });
   fs.writeFileSync(path.join(fixture, "plan.json"), "{}");

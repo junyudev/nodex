@@ -1,13 +1,20 @@
 /** Deterministic native HTTP/SSE peer; the production SDK owns its actual wire transport. */
 import { createServer } from "node:http";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 
 if (process.argv.includes("--version")) {
   process.stdout.write("1.15.13\n");
   process.exit(0);
 }
+const fixtureHome = process.env.NODEX_TEST_CROSS_PROVIDER_HOME;
+const scenario = fixtureHome
+  ? JSON.parse(readFileSync(join(fixtureHome, "plan.json"), "utf8"))
+  : null;
+const passkeys = scenario?.scenario === "passkeys";
+const cancelled = new Set();
 const root = join(process.env.XDG_DATA_HOME, "opencode");
 mkdirSync(root, { recursive: true });
 const statePath = join(root, "sessions.json");
@@ -48,6 +55,13 @@ const model = {
   headers: {},
   variants: { low: { reasoningEffort: "low" }, high: { reasoningEffort: "high" } },
 };
+if (passkeys)
+  Object.assign(model, {
+    id: "glm-5.3-flash-free",
+    providerID: "opencode",
+    name: "GLM-5.3-Flash Free",
+    variants: {},
+  });
 const providers = {
   all: [
     {
@@ -62,6 +76,21 @@ const providers = {
   default: { moonshot: "kimi-k3" },
   connected: ["moonshot"],
 };
+if (passkeys)
+  Object.assign(providers, {
+    all: [
+      {
+        id: "opencode",
+        name: "OpenCode",
+        source: "config",
+        env: [],
+        options: {},
+        models: { [model.id]: model },
+      },
+    ],
+    default: { opencode: model.id },
+    connected: ["opencode"],
+  });
 const agents = ["build", "plan"].map((name) => ({
   name,
   description: name === "plan" ? "Plan changes" : "Make changes",
@@ -86,7 +115,7 @@ const createSession = (sessions, permission = [], messages = [], directory = pro
   save(sessions);
   return session;
 };
-const finish = (id, input) => {
+const finish = (id, input, child) => {
   const sessions = state();
   const stored = sessions[id];
   if (!stored) return;
@@ -119,7 +148,9 @@ const finish = (id, input) => {
     tokens: { input: 12, output: 4, reasoning: 1, cache: { read: 0, write: 0 } },
     finish: "stop",
   };
-  const answer = text.includes("OPEN_CODE_OK") ? "OPEN_CODE_OK" : "Scripted OpenCode completed.";
+  const answer =
+    child?.summary ??
+    (text.includes("OPEN_CODE_OK") ? "OPEN_CODE_OK" : "Scripted OpenCode completed.");
   const part = {
     id: `prt_${randomUUID().replaceAll("-", "")}`,
     sessionID: id,
@@ -128,6 +159,34 @@ const finish = (id, input) => {
     text: answer,
     time: { start: Date.now(), end: Date.now() },
   };
+  const activities = [];
+  if (child) {
+    const source = readFileSync(join(stored.session.directory, "README.md"), "utf8");
+    const target = join(stored.session.directory, child.file);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, `# Passkey sign-in\n\n${child.summary}\n`);
+    for (const [tool, input, output] of [
+      ["read", { filePath: "README.md" }, source],
+      ["write", { filePath: target, content: answer }, "File written."],
+    ]) {
+      activities.push({
+        id: `prt_${randomUUID().replaceAll("-", "")}`,
+        sessionID: id,
+        messageID: assistantID,
+        type: "tool",
+        callID: randomUUID(),
+        tool,
+        state: {
+          status: "completed",
+          input,
+          output,
+          title: `${tool} ${input.filePath}`,
+          metadata: {},
+          time: { start: Date.now(), end: Date.now() },
+        },
+      });
+    }
+  }
   stored.messages.push(
     {
       info: user,
@@ -138,11 +197,13 @@ const finish = (id, input) => {
         messageID: input.messageID,
       })),
     },
-    { info: assistant, parts: [part] },
+    { info: assistant, parts: [...activities, part] },
   );
   save(sessions);
   emit({ type: "message.updated", properties: { info: user } });
   emit({ type: "message.updated", properties: { info: assistant } });
+  for (const activity of activities)
+    emit({ type: "message.part.updated", properties: { part: activity } });
   emit({ type: "message.part.updated", properties: { part } });
   emit({ type: "session.status", properties: { sessionID: id, status: { type: "idle" } } });
 };
@@ -180,7 +241,10 @@ const server = createServer(async (request, response) => {
   if (route === "/agent") return json(response, agents);
   if (route === "/command" || route === "/skill") return json(response, []);
   if (route === "/config")
-    return json(response, { model: "moonshot/kimi-k3", default_agent: "build" });
+    return json(response, {
+      model: passkeys ? "opencode/glm-5.3-flash-free" : "moonshot/kimi-k3",
+      default_agent: "build",
+    });
   if (route === "/permission" || route === "/question") return json(response, []);
   if (route === "/session/status") return json(response, {});
   const chunks = [];
@@ -265,6 +329,26 @@ const server = createServer(async (request, response) => {
       .filter((part) => part.type === "text")
       .map((part) => part.text)
       .join("\n");
+    const child = passkeys ? scenario.children.find((entry) => entry.task === text) : null;
+    if (child) {
+      appendFileSync(
+        join(fixtureHome, "native.jsonl"),
+        `${JSON.stringify({ kind: "opencode", event: "child.ready", key: child.key })}\n`,
+      );
+      void (async () => {
+        const started = Date.now();
+        while (
+          scenario.clock === "manual"
+            ? !existsSync(join(fixtureHome, "gates", child.key))
+            : Date.now() - started < child.durationMs
+        ) {
+          if (cancelled.has(id)) return;
+          await delay(25);
+        }
+        if (!cancelled.has(id)) finish(id, body, child);
+      })();
+      return;
+    }
     if (text.includes("WAIT_FOR_CANCEL")) return;
     if (text.includes("APPROVE")) {
       const requestId = `per_${randomUUID().replaceAll("-", "")}`;
@@ -286,6 +370,7 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (segments[2] === "abort") {
+    cancelled.add(id);
     observe({ kind: "abort", sessionId: id });
     json(response, true);
     emit({ type: "session.idle", properties: { sessionID: id } });

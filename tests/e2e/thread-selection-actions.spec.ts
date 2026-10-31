@@ -31,7 +31,7 @@ test("annotates selected replies and reuses a side chat without replacing its dr
   const version = "0.145.0-alpha.15";
   fs.writeFileSync(
     peer,
-    `#!${process.execPath}\n${fs.readFileSync("tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs", "utf8").replace(/^#![^\n]*\n/u, "")}`,
+    `#!${process.execPath}\n${fs.readFileSync("scripts/scenarios/runtime/cross-provider-peer.mjs", "utf8").replace(/^#![^\n]*\n/u, "")}`,
     { mode: 0o755 },
   );
   fs.writeFileSync(path.join(fixture, "plan.json"), "{}");

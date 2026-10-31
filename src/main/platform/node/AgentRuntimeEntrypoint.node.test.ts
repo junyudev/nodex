@@ -1,5 +1,9 @@
 import { expect, it } from "vite-plus/test";
-import { agentRuntimeEntrypoint, agentRuntimeNodeExecutable } from "./AgentRuntimeEntrypoint";
+import {
+  agentRuntimeEntrypoint,
+  agentRuntimeNodeExecutable,
+  scenarioAgentRuntimeProjectRoot,
+} from "./AgentRuntimeEntrypoint";
 
 it("keeps packaged execution outside ASAR and ignores every test executable override", () => {
   expect(
@@ -20,6 +24,41 @@ it("keeps packaged execution outside ASAR and ignores every test executable over
       },
     }),
   ).toBe("/verified/node");
+});
+
+it("admits a scripted development home and keeps packaged and ordinary execution verified", () => {
+  const environment = {
+    NODE_ENV: "development",
+    NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT: "/scenario/scripted-agent-runtime",
+    NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE: process.execPath,
+  };
+  expect(scenarioAgentRuntimeProjectRoot({ isPackaged: false, environment })).toBe(
+    "/scenario/scripted-agent-runtime",
+  );
+  expect(
+    agentRuntimeNodeExecutable({ isPackaged: false, bundledExecutable: null, environment }),
+  ).toBe(process.execPath);
+  expect(scenarioAgentRuntimeProjectRoot({ isPackaged: true, environment })).toBeUndefined();
+  expect(
+    agentRuntimeNodeExecutable({
+      isPackaged: true,
+      bundledExecutable: "/verified/node",
+      environment,
+    }),
+  ).toBe("/verified/node");
+  expect(
+    scenarioAgentRuntimeProjectRoot({
+      isPackaged: false,
+      environment: { NODE_ENV: "development" },
+    }),
+  ).toBeUndefined();
+  expect(() =>
+    agentRuntimeNodeExecutable({
+      isPackaged: false,
+      bundledExecutable: null,
+      environment: { ...environment, NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT: "" },
+    }),
+  ).toThrow("verified Node");
 });
 
 it("admits an explicit absolute Node only inside an identified disposable test runtime", () => {

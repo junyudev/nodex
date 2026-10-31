@@ -40,6 +40,7 @@ import { superviseIsolatedRun, type SupervisedCommandPlan } from "./isolated-run
 import type { IsolatedRunFailure } from "./isolated-run/IsolatedRun";
 import { getScenario } from "./scenarios/registry";
 import { materializeDevelopmentSeed } from "./scenarios/harness/development-seed";
+import { CROSS_PROVIDER_SCENARIO_ID } from "./scenarios/scenarios/agent-cross-provider-delegation";
 import { assertSeededSourceFolder } from "./scenarios/seed/source-folder";
 import { isolatedElectronArguments } from "./isolated-run/electron-arguments";
 import {
@@ -348,6 +349,18 @@ export const createDevLaunchPlan = (input: {
     ...managedDevFallbacks,
     NODEX_HOME: input.home.nodexHome,
     CODEX_HOME: input.home.codexHome,
+    ...((input.arguments.seed ?? input.home.manifest.seed?.id) === CROSS_PROVIDER_SCENARIO_ID
+      ? {
+          NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT: path.join(
+            input.home.root,
+            "scripted-agent-runtime",
+          ),
+          NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE: process.execPath,
+        }
+      : {
+          NODEX_DEV_AGENT_RUNTIME_PROJECT_ROOT: undefined,
+          NODEX_DEV_AGENT_RUNTIME_NODE_EXECUTABLE: undefined,
+        }),
     NODEX_INITIAL_PROJECTS_DIR: input.home.workspace,
     NODEX_REMOTE_DEBUGGING_PORT: remoteDebuggingPort,
     NODEX_SENTRY_ENABLED: usesProfileSnapshot ? "false" : "true",
