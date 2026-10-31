@@ -1,0 +1,39 @@
+src/renderer/components/board/page-stage/properties-section.test.tsx
+  s_8a269fcdcbb297::t_2d6789acc177b7 319-335,351
+  s_8a269fcdcbb297::t_807d484bd94d9f 314-318,336-350,352-365,370-371
+  s_8a269fcdcbb297::t_8160d227cc3b6a 366-369
+src/renderer/lib/page-stage-related-chat-candidates.ts
+  s_8a269fcdcbb297::t_8160d227cc3b6a 55
+  s_8a269fcdcbb297::t_330537f2cecb9d 4-7,13,15-16
+  s_8a269fcdcbb297::t_21cd5dd3770172 28-54
+  s_8a269fcdcbb297::t_1cb0e5ec578ddf 56
+src/renderer/components/board/page-stage/properties-section.tsx
+  s_8a269fcdcbb297::t_4a3535e5103ee3 115-122,130-131,133-138
+  s_8a269fcdcbb297::t_f6b3fd4e38038b 37,193,225-226
+  s_8a269fcdcbb297::t_8160d227cc3b6a 228-230
+src/renderer/lib/page-stage-related-chat-candidates.node.test.ts
+  s_8a269fcdcbb297::t_92b17127c61209 4-7,49-78,84
+  s_8a269fcdcbb297::t_330537f2cecb9d 27,40
+  s_8a269fcdcbb297::t_8160d227cc3b6a 79-83
+  s_8a269fcdcbb297::t_18f3ba995c1294 85
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_8a269fcdcbb297::t_330537f2cecb9d 1511,1513-1518
+docs/product-specs/workbench-shell.md
+  s_8a269fcdcbb297::t_40918c293a8e24 156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a64406eb087ff73210d0b53bd592b481ae60710d",
+  "prompts": {},
+  "sessions": {
+    "s_8a269fcdcbb297": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5303ae91-8c35-4b85-b8df-343523a3e7e4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
