@@ -1,0 +1,38 @@
+packages/landing/src/demos/cursor-target.test.ts
+  s_a6781d7ad2151c::t_66ee3834ad7878 1-32
+packages/landing/src/replica/Inbox.tsx
+  s_a6781d7ad2151c::t_278a135c2e846f 204
+packages/landing/src/demos/inbox-decision-timeline.ts
+  s_a6781d7ad2151c::t_66ee3834ad7878 5-10,12,17-19,21-22,31-35
+  s_a6781d7ad2151c::t_aa9d2418391e29 1-4,11,13-16,20,23-30,36
+packages/landing/src/demos/Cursor.tsx
+  s_a6781d7ad2151c::t_89af5863dc216e 8-9,11-14,26
+  s_a6781d7ad2151c::t_66ee3834ad7878 3,5,36-41,52,62,68,70-71,75-78,89-90
+  s_a6781d7ad2151c::t_19481247bcbc6a 65
+  s_a6781d7ad2151c::t_aa9d2418391e29 61,69,72,79-80
+packages/landing/src/demos/inbox-decision-timeline.test.ts
+  s_a6781d7ad2151c::t_aa9d2418391e29 1-3,5-12,20,22,24-28
+  s_a6781d7ad2151c::t_66ee3834ad7878 4,13-19,21
+  s_a6781d7ad2151c::t_afafbefcc37b35 23
+packages/landing/src/demos/cursor-target.ts
+  s_a6781d7ad2151c::t_66ee3834ad7878 1-27
+packages/landing/src/demos/HeroDemo.tsx
+  s_a6781d7ad2151c::t_aa9d2418391e29 34,111-112,114-116,485,577-582
+  s_a6781d7ad2151c::t_66ee3834ad7878 113,486,566-569
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "900dbed599a247dea28b72e939f5b2ef7b02b9fe",
+  "prompts": {},
+  "sessions": {
+    "s_a6781d7ad2151c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1903b-3503-7b40-80fe-c97b4452918e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
