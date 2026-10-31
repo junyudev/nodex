@@ -1,0 +1,21 @@
+packages/agent-runtime/src/nodex/Rollback.test.ts
+  s_b5c41a13e9511c::t_9edad6220eac72 56,64,401,409
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_b5c41a13e9511c::t_e12a773c55ff44 3218-3220,3270
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "befa0931915e28493582d923713c20466ab47b4f",
+  "prompts": {},
+  "sessions": {
+    "s_b5c41a13e9511c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1919a-f51e-7522-8c2b-1ee25c262243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
