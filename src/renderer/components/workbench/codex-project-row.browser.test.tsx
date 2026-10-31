@@ -7,7 +7,6 @@ import { NodexHoverCardProvider } from "@/components/ui/hover-card";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { TestQueryProvider } from "../../test/query";
-import { createAgentRuntimeActivityStore } from "@/lib/agent-runtime-session-activity";
 import { CodexProjectRow } from "./codex-sidebar";
 import "../../globals.css";
 
@@ -29,14 +28,6 @@ const PROJECT: Project = {
   updated: new Date("2026-08-01T00:00:00.000Z"),
 };
 
-// The hover card shows live Runtime activity; this chrome test runs without the desktop bridge.
-const QUIET_ACTIVITY = createAgentRuntimeActivityStore({
-  read: async () => ({ sequence: 0, items: [], complete: true }),
-  subscribe: () => () => {},
-  readConnection: async () => ({ status: "idle" }),
-  subscribeConnection: () => () => {},
-});
-
 describe("CodexProjectRow interaction chrome in Chromium", () => {
   test("keeps the marker at rest and layers row and disclosure hover states", async () => {
     const view = render(
@@ -53,7 +44,6 @@ describe("CodexProjectRow interaction chrome in Chromium", () => {
             >
               <CodexProjectRow
                 project={PROJECT}
-                activityStore={QUIET_ACTIVITY}
                 active
                 expanded
                 onActivate={() => undefined}
@@ -121,7 +111,6 @@ describe("CodexProjectRow interaction chrome in Chromium", () => {
                   unreadCount: 1,
                   activeCount: 1,
                 }}
-                activityStore={QUIET_ACTIVITY}
                 active={false}
                 expanded={expanded}
                 hoverCardOpen={false}
@@ -170,7 +159,6 @@ describe("CodexProjectRow interaction chrome in Chromium", () => {
             <div className="w-72">
               <CodexProjectRow
                 project={PROJECT}
-                activityStore={QUIET_ACTIVITY}
                 active={false}
                 expanded
                 inboxCount={12}

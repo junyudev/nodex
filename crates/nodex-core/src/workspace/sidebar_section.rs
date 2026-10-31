@@ -6,12 +6,13 @@ use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
 use nodex_core_contracts::workspace::{
-    ProjectLifecycle, ProjectSessionInvalidationScope, ProjectWorkspaceSidebarProjectItem,
-    ProjectWorkspaceSidebarSectionHostLink, ProjectWorkspaceSidebarSectionHostSyncState,
-    ProjectWorkspaceSidebarSectionItem, ProjectWorkspaceSidebarSectionItemPlacement,
-    ProjectWorkspaceSidebarSectionItemRef, ProjectWorkspaceSidebarSectionItemValue,
-    ProjectWorkspaceSidebarSectionKind, ProjectWorkspaceSidebarSectionLifecycle,
-    ProjectWorkspaceSidebarSectionOrderItem, ProjectWorkspaceSidebarSectionSummary,
+    ProjectLifecycle, ProjectSessionInvalidationScope, ProjectWorkspaceSessionSidebarPlacement,
+    ProjectWorkspaceSidebarProjectItem, ProjectWorkspaceSidebarSectionHostLink,
+    ProjectWorkspaceSidebarSectionHostSyncState, ProjectWorkspaceSidebarSectionItem,
+    ProjectWorkspaceSidebarSectionItemPlacement, ProjectWorkspaceSidebarSectionItemRef,
+    ProjectWorkspaceSidebarSectionItemValue, ProjectWorkspaceSidebarSectionKind,
+    ProjectWorkspaceSidebarSectionLifecycle, ProjectWorkspaceSidebarSectionOrderItem,
+    ProjectWorkspaceSidebarSectionSummary,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
@@ -69,6 +70,59 @@ pub(super) fn read_direct_placement(
         .query_row(&sql, params![identity, library_id], |row| row.get(0))
         .optional()
         .map_err(StoreError::from)
+}
+
+/// Resolves the same effective custom membership as `effective_session_ids`: active direct
+/// placement wins over Project placement, and side chats never contribute to Section summaries.
+pub(super) fn read_session_sidebar_placements(
+    connection: &Connection,
+    library_id: &str,
+    session_ids: &[String],
+) -> Result<Vec<ProjectWorkspaceSessionSidebarPlacement>, StoreError> {
+    if session_ids.len() > 500 {
+        return Err(invalid(
+            "Session Sidebar placement request exceeds its 500-item bound",
+        ));
+    }
+    for session_id in session_ids {
+        validate_id("session_id", session_id)?;
+    }
+    if session_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let encoded = serde_json::to_string(session_ids)
+        .map_err(|_| invalid("Session Sidebar placement identities could not be encoded"))?;
+    connection
+        .prepare(
+            "WITH requested(session_id) AS (SELECT DISTINCT value FROM json_each(?2)) \
+             SELECT session.id, session.project_id, session.unread, \
+               CASE WHEN NOT EXISTS (SELECT 1 FROM project_session_side_chats side \
+                 WHERE side.session_id = session.id) THEN COALESCE( \
+                 (SELECT item.section_id FROM workspace_sidebar_section_items item \
+                   JOIN workspace_sidebar_sections section \
+                     ON section.library_id = item.library_id AND section.section_id = item.section_id \
+                   WHERE item.library_id = ?1 AND item.session_id = session.id \
+                     AND section.kind = 'custom' AND section.lifecycle = 'active'), \
+                 (SELECT item.section_id FROM workspace_sidebar_section_items item \
+                   JOIN workspace_sidebar_sections section \
+                     ON section.library_id = item.library_id AND section.section_id = item.section_id \
+                   WHERE item.library_id = ?1 AND item.project_id = session.project_id \
+                     AND section.kind = 'custom' AND section.lifecycle = 'active')) END \
+             FROM requested JOIN project_sessions session ON session.id = requested.session_id \
+             LEFT JOIN projects project ON project.id = session.project_id \
+             WHERE session.archived = 0 AND (session.project_id IS NULL OR project.library_id = ?1) \
+             ORDER BY session.id",
+        )?
+        .query_map(params![library_id, encoded], |row| {
+            Ok(ProjectWorkspaceSessionSidebarPlacement {
+                session_id: row.get(0)?,
+                project_id: row.get(1)?,
+                unread: row.get(2)?,
+                section_id: row.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 pub(super) fn read_section_window(
@@ -1537,6 +1591,188 @@ mod tests {
 
     use super::super::test_support::{apply, create_session_thread, read, seeded_workspace};
     use crate::infrastructure::sqlite::with_immediate_transaction;
+
+    #[test]
+    fn session_sidebar_placements_follow_effective_membership_and_omit_unavailable_sessions() {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        for (id, project_id) in [
+            ("inherited", Some("project:default")),
+            ("override", Some("project:default")),
+            ("direct", None),
+            ("projectless", None),
+            ("archived", Some("project:default")),
+        ] {
+            apply(
+                module,
+                &format!("create-{id}"),
+                ProjectWorkspaceIntent::CreateSession {
+                    session_id: format!("session:{id}"),
+                    project_id: project_id.map(str::to_owned),
+                    title: id.to_owned(),
+                    initial_page_ids: vec![],
+                },
+            );
+        }
+        for (id, initial_item) in [
+            (
+                "project",
+                ProjectWorkspaceSidebarSectionItemRef::Project {
+                    project_id: "project:default".into(),
+                },
+            ),
+            (
+                "direct",
+                ProjectWorkspaceSidebarSectionItemRef::Session {
+                    session_id: "session:direct".into(),
+                },
+            ),
+            (
+                "override",
+                ProjectWorkspaceSidebarSectionItemRef::Session {
+                    session_id: "session:override".into(),
+                },
+            ),
+        ] {
+            apply(
+                module,
+                &format!("section-{id}"),
+                ProjectWorkspaceIntent::CreateSidebarSection {
+                    section_id: format!("section:{id}"),
+                    name: id.to_owned(),
+                    initial_item: Some(initial_item),
+                },
+            );
+        }
+        apply(
+            module,
+            "unread",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "session:override".into(),
+                intent: ProjectSessionIntent::SetUnread { unread: true },
+            },
+        );
+        apply(
+            module,
+            "archive",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "session:archived".into(),
+                intent: ProjectSessionIntent::SetArchived { archived: true },
+            },
+        );
+        apply(
+            module,
+            "side-chat",
+            ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                session_id: "session:side".into(),
+                project_id: Some("project:default".into()),
+                title: "Side".into(),
+                initial_page_ids: vec![],
+                runtime_id: "runtime:test".into(),
+                runtime_thread_id: "thread:side".into(),
+                launch_request_id: "launch:side".into(),
+                side_chat_source_session_id: Some("session:inherited".into()),
+            },
+        );
+        let observe = || {
+            let ProjectWorkspaceReadValue::SessionSidebarPlacements { placements, .. } = read(
+                module,
+                ProjectWorkspaceRead::SessionSidebarPlacements {
+                    session_ids: [
+                        "direct",
+                        "inherited",
+                        "override",
+                        "projectless",
+                        "archived",
+                        "missing",
+                        "side",
+                        "direct",
+                    ]
+                    .map(|id| format!("session:{id}"))
+                    .to_vec(),
+                },
+            ) else {
+                panic!("Session Sidebar placements")
+            };
+            placements
+                .into_iter()
+                .map(|p| (p.session_id, p.project_id, p.section_id, p.unread))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            observe(),
+            vec![
+                (
+                    "session:direct".into(),
+                    None,
+                    Some("section:direct".into()),
+                    false
+                ),
+                (
+                    "session:inherited".into(),
+                    Some("project:default".into()),
+                    Some("section:project".into()),
+                    false
+                ),
+                (
+                    "session:override".into(),
+                    Some("project:default".into()),
+                    Some("section:override".into()),
+                    true
+                ),
+                ("session:projectless".into(), None, None, false),
+                (
+                    "session:side".into(),
+                    Some("project:default".into()),
+                    None,
+                    false
+                ),
+            ]
+        );
+        let revision = sections(module, false)
+            .into_iter()
+            .find(|s| s.section_id == "section:override")
+            .unwrap()
+            .revision;
+        apply(
+            module,
+            "delete-override",
+            ProjectWorkspaceIntent::DeleteSidebarSection {
+                section_id: "section:override".into(),
+                expected_revision: revision,
+            },
+        );
+        assert_eq!(observe()[2].2, Some("section:project".into()));
+    }
+
+    #[test]
+    fn session_sidebar_placements_enforce_the_ingress_bound_and_validate_identities() {
+        use super::super::test_support::context;
+        use nodex_core_contracts::{ModuleReadRequest, PROJECT_WORKSPACE_CONTRACT_VERSION};
+        let workspace = seeded_workspace();
+        let observe = |session_ids| {
+            workspace.module.read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::SessionSidebarPlacements { session_ids },
+                },
+            )
+        };
+        assert!(observe(vec![]).is_ok());
+        assert!(observe((0..500).map(|i| format!("session:{i}")).collect()).is_ok());
+        for ids in [
+            vec!["session:missing".into(); 501],
+            vec!["".into()],
+            vec!["x".repeat(513)],
+        ] {
+            let error = observe(ids).expect_err("invalid placement input");
+            assert_eq!(
+                error.code,
+                nodex_core_contracts::CoreErrorCode::InvalidInput
+            );
+        }
+    }
 
     fn window() -> CollectionWindowRequest {
         CollectionWindowRequest {

@@ -295,6 +295,7 @@ type QueryEndpointPolicy =
   | "file-open-applications"
   | "shell:path-context:get"
   | "sidebar-sections:item:placement"
+  | "sidebar-sections:sessions:placements"
   | "sidebar-sections:items:list"
   | "sidebar-sections:list"
   | "sidebar:builtin-order:list"

@@ -136,6 +136,7 @@ import type {
 import type {
   BuiltinSidebarLane,
   BuiltinSidebarOrderWindow,
+  SessionSidebarPlacement,
   SidebarSectionItemWindow,
   SidebarSectionItemWindowInput,
   SidebarSectionItemRef,
@@ -1148,6 +1149,10 @@ export interface IpcApi
   "sidebar-sections:items:list": {
     args: [sectionId: string, input?: SidebarSectionItemWindowInput];
     result: SidebarSectionItemWindow;
+  };
+  "sidebar-sections:sessions:placements": {
+    args: [sessionIds: readonly string[]];
+    result: readonly SessionSidebarPlacement[];
   };
   "sidebar-sections:item:placement": {
     args: [item: SidebarSectionItemRef];

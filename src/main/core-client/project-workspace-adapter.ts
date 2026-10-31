@@ -18,6 +18,7 @@ import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 import type { DynamicToolCatalogSelection } from "../codex/dynamic-tool-registry";
 import type {
+  SessionSidebarPlacement,
   SidebarSectionItem,
   SidebarSectionItemRef,
   SidebarSectionSummary,
@@ -91,6 +92,18 @@ export const projectAgentBackendBindingToCore = (binding: AgentBackendBinding) =
           agent_definition_id: binding.agentDefinitionId,
           instance_config_id: binding.instanceConfigId,
         };
+
+export const projectWorkspaceSessionSidebarPlacementFromCore = (
+  placement: Extract<
+    ProjectWorkspaceReadSnapshot["value"],
+    { kind: "session_sidebar_placements" }
+  >["placements"][number],
+): SessionSidebarPlacement => ({
+  sessionId: placement.session_id,
+  projectId: placement.project_id ?? null,
+  sectionId: placement.section_id ?? null,
+  unread: placement.unread,
+});
 
 export const projectWorkspaceSidebarSectionSummaryFromCore = (
   section: CoreSidebarSectionSummary,

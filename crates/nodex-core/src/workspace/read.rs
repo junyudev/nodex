@@ -216,6 +216,16 @@ pub(super) fn read(
                 projection_revision: commit_head,
             })
         }
+        ProjectWorkspaceRead::SessionSidebarPlacements { session_ids } => {
+            Ok(ProjectWorkspaceReadValue::SessionSidebarPlacements {
+                placements: super::sidebar_section::read_session_sidebar_placements(
+                    connection,
+                    library_id,
+                    &session_ids,
+                )?,
+                projection_revision: commit_head,
+            })
+        }
         ProjectWorkspaceRead::SessionLinkedPageSummaries { session_ids } => {
             Ok(ProjectWorkspaceReadValue::SessionLinkedPageSummaries {
                 library_id: library_id.to_owned(),

@@ -29,6 +29,13 @@ export interface SidebarSectionSummary {
   readonly hasUnread: boolean;
 }
 
+export interface SessionSidebarPlacement {
+  readonly sessionId: string;
+  readonly projectId: string | null;
+  readonly sectionId: string | null;
+  readonly unread: boolean;
+}
+
 export interface SidebarSectionWindow {
   readonly items: readonly SidebarSectionSummary[];
   readonly nextCursor: string | null;

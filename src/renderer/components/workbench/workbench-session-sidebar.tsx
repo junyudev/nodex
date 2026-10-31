@@ -79,6 +79,7 @@ import {
 } from "@/lib/codex-sidebar-thread-sync";
 import { buildLibraryMoveOperation } from "@/lib/library-operations";
 import { projectActivitySummariesQueryOptions } from "@/lib/query-options";
+import { useSidebarRuntimeGroupActivity } from "@/lib/use-sidebar-runtime-group-activity";
 import { runtimeSessionTarget, sessionExecutionThreadId } from "@/lib/session-execution";
 import {
   listExpandedVisibleProjectGroupIds,
@@ -839,6 +840,7 @@ function SidebarThreadOrganizerSections({
   onLoadMoreProjects?: () => Promise<void>;
 }) {
   const sectionCatalog = useSidebarSectionsCatalog();
+  const runtimeGroupActivity = useSidebarRuntimeGroupActivity();
   const sectionSessionsByProject = useMemo<Record<string, ProjectSession[]>>(
     () =>
       Object.fromEntries(
@@ -1450,18 +1452,12 @@ function SidebarThreadOrganizerSections({
     const projectThreadItems = Array.from(new Set([...pinnedThreadKeys, ...threadKeys]))
       .map((threadKey) => sidebarThreadItemsByKey.get(threadKey))
       .filter((item): item is CodexSidebarThreadItem => item != null);
-    const runtimeSessions = projectThreadItems.flatMap((item) => {
-      const session = resolveSessionForItem(item);
-      return session?.executionRef && !session.archived
-        ? [{ sessionId: session.id, unread: session.unread }]
-        : [];
-    });
 
     return (
       <CodexProjectRow
         key={project.id}
         project={project}
-        runtimeSessions={runtimeSessions}
+        runtimeActivity={runtimeGroupActivity.projects.get(project.id)}
         activity={
           projectActivityQuery.isPending
             ? undefined
@@ -1667,6 +1663,7 @@ function SidebarThreadOrganizerSections({
     <>
       {renderPinnedSection()}
       <SidebarCustomSections
+        runtimeActivities={runtimeGroupActivity.sections}
         catalog={sectionCatalog}
         sessionsByProject={sectionSessionsByProject}
         renderProject={({ controller, item, itemIds, nextItemId, sectionId }) => {

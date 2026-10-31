@@ -64,6 +64,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         ProjectWorkspaceRead::NativeSessionBindings { .. }
         | ProjectWorkspaceRead::ProjectActivitySummaries { .. }
         | ProjectWorkspaceRead::SessionLinkedPageSummaries { .. }
+        | ProjectWorkspaceRead::SessionSidebarPlacements { .. }
         | ProjectWorkspaceRead::PageChatActivitySummaries { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::ManagedWorktreeLifecycleSnapshot => ReadBudgetPolicy::FixedDomain,
         ProjectWorkspaceRead::ProjectBootstrap

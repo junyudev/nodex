@@ -76,6 +76,7 @@ import type {
 import type {
   BuiltinSidebarLane,
   BuiltinSidebarOrderWindow,
+  SessionSidebarPlacement,
   SidebarSectionItemPlacement,
   SidebarSectionItemRef,
   SidebarSectionItemWindow,
@@ -94,6 +95,7 @@ import {
   projectWorkspacePageChatActivitySummaryFromCore,
   projectWorkspaceSessionLinkedPageSummaryFromCore,
   projectWorkspacePageChatItemFromCore,
+  projectWorkspaceSessionSidebarPlacementFromCore,
   projectWorkspaceSidebarSectionItemFromCore,
   projectWorkspaceSidebarSectionItemRefToCore,
   projectWorkspaceSidebarSectionSummaryFromCore,
@@ -245,6 +247,9 @@ export interface ProjectWorkspaceService {
     sectionId: string,
     input?: SidebarSectionItemWindowInput,
   ) => ProjectWorkspaceEffect<SidebarSectionItemWindow>;
+  readonly readSessionSidebarPlacements: (
+    sessionIds: readonly string[],
+  ) => ProjectWorkspaceEffect<readonly SessionSidebarPlacement[]>;
   readonly readSidebarSectionPlacement: (
     item: SidebarSectionItemRef,
   ) => ProjectWorkspaceEffect<string | null>;
@@ -807,6 +812,20 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
             projectionRevision: items.authority.projection_revision,
           } satisfies SidebarSectionItemWindow;
         });
+      },
+    );
+
+    const readSessionSidebarPlacements = Effect.fn("ProjectWorkspace.readSessionSidebarPlacements")(
+      function* (sessionIds: readonly string[]) {
+        const snapshot = yield* read("session.sidebar.placements", {
+          kind: "session_sidebar_placements",
+          session_ids: [...sessionIds],
+        });
+        return yield* evaluate("session.sidebar.placements", () =>
+          expectVariant(snapshot, "session_sidebar_placements").placements.map(
+            projectWorkspaceSessionSidebarPlacementFromCore,
+          ),
+        );
       },
     );
 
@@ -1483,6 +1502,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       prioritizeBuiltinSidebarProjects,
       listSidebarSections,
       listSidebarSectionItems,
+      readSessionSidebarPlacements,
       readSidebarSectionPlacement,
       createSidebarSection,
       renameSidebarSection,

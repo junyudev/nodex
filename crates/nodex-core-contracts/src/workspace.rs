@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 53;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 54;
 
 /// Host-only admission: the model chooses an opaque key, never a clock or operation envelope.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -70,6 +70,10 @@ pub enum ProjectWorkspaceRead {
         project_ids: Vec<String>,
     },
     SessionLinkedPageSummaries {
+        session_ids: Vec<String>,
+    },
+    /// At most 500 Session identities; missing and archived Sessions are omitted.
+    SessionSidebarPlacements {
         session_ids: Vec<String>,
     },
     PageChatActivitySummaries {
@@ -278,6 +282,10 @@ pub enum ProjectWorkspaceReadValue {
         summaries: Vec<ProjectWorkspaceProjectActivitySummary>,
         projection_revision: i64,
     },
+    SessionSidebarPlacements {
+        placements: Vec<ProjectWorkspaceSessionSidebarPlacement>,
+        projection_revision: i64,
+    },
     SessionLinkedPageSummaries {
         library_id: String,
         summaries: Vec<ProjectWorkspaceSessionLinkedPageSummary>,
@@ -457,6 +465,15 @@ pub struct ProjectWorkspaceSidebarSectionSummary {
     pub has_waiting: bool,
     pub has_running: bool,
     pub has_unread: bool,
+}
+
+/// Durable placement for joining bounded live activity without loading Session rows.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionSidebarPlacement {
+    pub session_id: String,
+    pub project_id: Option<String>,
+    pub section_id: Option<String>,
+    pub unread: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

@@ -35828,6 +35828,28 @@
               },
               {
                 "type": "object",
+                "description": "At most 500 Session identities; missing and archived Sessions are omitted.",
+                "required": [
+                  "session_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "session_sidebar_placements"
+                    ]
+                  },
+                  "session_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "page_ids",
                   "kind"
@@ -43727,6 +43749,34 @@
           "identity"
         ]
       },
+      "ProjectWorkspaceSessionSidebarPlacement": {
+        "type": "object",
+        "description": "Durable placement for joining bounded live activity without loading Session rows.",
+        "required": [
+          "session_id",
+          "unread"
+        ],
+        "properties": {
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "section_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "unread": {
+            "type": "boolean"
+          }
+        }
+      },
       "ProjectWorkspaceSessionSummary": {
         "type": "object",
         "required": [
@@ -51513,6 +51563,32 @@
                             "items": {
                               "$ref": "#/components/schemas/ProjectWorkspaceProjectActivitySummary"
                             }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "placements",
+                          "projection_revision",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "session_sidebar_placements"
+                            ]
+                          },
+                          "placements": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/ProjectWorkspaceSessionSidebarPlacement"
+                            }
+                          },
+                          "projection_revision": {
+                            "type": "integer",
+                            "format": "int64"
                           }
                         }
                       },

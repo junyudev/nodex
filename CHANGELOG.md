@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.
 - Editing a sent message in an Agent chat now replaces only that message and what came after it, never earlier messages. Messages that can't be edited that way no longer show Edit.
 - Long chats can recover from context exhaustion with Compact and retry while keeping their history and original request. Delegated results already received by the Agent are no longer sent again after a failed reply.
 - A chat no longer stays marked as waiting after one of its delegated tasks asked a question and finished. A chat now waits only on what needs you: its own questions once the Agent stops working, approvals, and its side chats' questions. A question left at the end of a turn sends one question notification rather than a completion too, and a finished task's unanswered question no longer keeps Nodex's Agent process running.
+- Collapsed Projects and Sections now show when any of their chats is waiting or working, including Agent chats the sidebar has not loaded, and a chat asking for approval or input shows as waiting instead of working.
 - Sending from a Page to a chat that the sidebar has not loaded yet no longer fails with "This chat is no longer available".
 - Add to chat in the Files tree now puts the file into the chat's composer every time, instead of sometimes appearing to do nothing until the chat redrew.
 - Opening a Page with images no longer saves an unintended edit when its images load.

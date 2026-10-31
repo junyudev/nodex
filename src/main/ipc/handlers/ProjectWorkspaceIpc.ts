@@ -365,6 +365,9 @@ export const live: Layer.Layer<
     yield* invokeEffectQuery("sidebar-sections:items:list", (_, sectionId, input) =>
       projects.listSidebarSectionItems(sectionId, input),
     );
+    yield* invokeEffectQuery("sidebar-sections:sessions:placements", (_, sessionIds) =>
+      projects.readSessionSidebarPlacements(sessionIds),
+    );
     yield* invokeEffectQuery("sidebar-sections:item:placement", (_, item) =>
       projects.readSidebarSectionPlacement(item),
     );

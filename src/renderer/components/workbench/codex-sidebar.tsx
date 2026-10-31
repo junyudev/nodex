@@ -109,12 +109,9 @@ import { ProjectEditDialog } from "./project-edit-dialog";
 import { ProjectHoverCard } from "./project-hover-card";
 import {
   mergeRuntimeProjectActivity,
-  type ProjectRuntimeSessionFacts,
-} from "./project-hover-card-model";
-import {
-  useAgentRuntimeActivities,
-  type AgentRuntimeActivityStore,
-} from "@/lib/agent-runtime-session-activity";
+  type SidebarRuntimeGroupActivity,
+} from "@/lib/sidebar-runtime-group-activity";
+import type { AgentRuntimeActivityStore } from "@/lib/agent-runtime-session-activity";
 import { ProjectMarker } from "./project-marker";
 import { ProjectRemoveDialog } from "./project-remove-dialog";
 import {
@@ -835,51 +832,8 @@ export const CodexProjectActionsMenu = forwardRef<
   );
 });
 
-const NO_RUNTIME_SESSIONS: readonly ProjectRuntimeSessionFacts[] = [];
-
 /** One dot or spinner for a collapsed Project: chats to read or answer outrank work in progress. */
 function CollapsedProjectStatus({
-  activity,
-  runtimeSessions,
-  activityStore,
-}: {
-  activity: ProjectActivitySummary | null | undefined;
-  runtimeSessions: readonly ProjectRuntimeSessionFacts[];
-  activityStore?: AgentRuntimeActivityStore;
-}) {
-  // Only Runtime Sessions need live activity; Core already summarizes native chats.
-  return runtimeSessions.length > 0 ? (
-    <RuntimeCollapsedProjectStatus
-      activity={activity}
-      runtimeSessions={runtimeSessions}
-      activityStore={activityStore}
-    />
-  ) : (
-    <CollapsedProjectStatusIndicator activity={activity} />
-  );
-}
-
-function RuntimeCollapsedProjectStatus({
-  activity,
-  runtimeSessions,
-  activityStore,
-}: {
-  activity: ProjectActivitySummary | null | undefined;
-  runtimeSessions: readonly ProjectRuntimeSessionFacts[];
-  activityStore?: AgentRuntimeActivityStore;
-}) {
-  return (
-    <CollapsedProjectStatusIndicator
-      activity={mergeRuntimeProjectActivity(
-        activity,
-        runtimeSessions,
-        useAgentRuntimeActivities(activityStore),
-      )}
-    />
-  );
-}
-
-function CollapsedProjectStatusIndicator({
   activity,
 }: {
   activity: ProjectActivitySummary | null | undefined;
@@ -901,30 +855,19 @@ function CollapsedProjectStatusIndicator({
 
 function CodexProjectHoverCardContent({
   project,
-  activity: coreActivity,
-  runtimeSessions,
+  activity,
   onUpdateProject,
   onArchiveProject,
   onSetProjectPinned,
   onRequestClose,
-  activityStore,
 }: {
   project: Project;
   activity: ProjectActivitySummary | null | undefined;
-  /** Loaded Runtime-bound Sessions of this Project; their live status comes from activity. */
-  runtimeSessions: readonly ProjectRuntimeSessionFacts[];
   onUpdateProject: (projectId: string, updates: ProjectUpdateInput) => Promise<Project | null>;
   onArchiveProject: (projectId: string) => Promise<ProjectLifecycleMutationResult>;
   onSetProjectPinned?: (projectId: string, input: ProjectPinnedInput) => Promise<Project | null>;
   onRequestClose: () => void;
-  activityStore?: AgentRuntimeActivityStore;
 }) {
-  // The hover card mounts only while open, so the aggregate subscription is short-lived.
-  const activity = mergeRuntimeProjectActivity(
-    coreActivity,
-    runtimeSessions,
-    useAgentRuntimeActivities(activityStore),
-  );
   const appHandle = useScopeHandle(appScope);
   const primaryWorkspaceRoot = normalizePrimaryWorkspaceRoot(project);
   const repositoryIdentityQuery = useQuery({
@@ -1046,8 +989,8 @@ export interface CodexProjectRowDndCapability {
 
 export function CodexProjectRow({
   project,
-  activity,
-  runtimeSessions = NO_RUNTIME_SESSIONS,
+  activity: coreActivity,
+  runtimeActivity,
   active,
   expanded,
   animateChildren = true,
@@ -1071,12 +1014,11 @@ export function CodexProjectRow({
   sectionCatalog,
   currentSectionId = null,
   inboxCount = 0,
-  activityStore,
   children,
 }: {
   project: Project;
   activity?: ProjectActivitySummary | null;
-  runtimeSessions?: readonly ProjectRuntimeSessionFacts[];
+  runtimeActivity?: SidebarRuntimeGroupActivity;
   active: boolean;
   expanded: boolean;
   animateChildren?: boolean;
@@ -1101,10 +1043,9 @@ export function CodexProjectRow({
   currentSectionId?: string | null;
   /** Messages waiting in this Project's own Inbox, which is its Home. */
   inboxCount?: number;
-  /** Live Runtime activity for the hover card; the application store by default. */
-  activityStore?: AgentRuntimeActivityStore;
   children?: ReactNode;
 }) {
+  const activity = mergeRuntimeProjectActivity(coreActivity, runtimeActivity);
   const sortableEnabled = dnd !== undefined;
   const primaryWorkspaceRoot = normalizePrimaryWorkspaceRoot(project);
   const queryClient = useQueryClient();
@@ -1259,10 +1200,8 @@ export function CodexProjectRow({
         onOpenChange={setProjectHoverCardOpen}
         hoverCardContent={
           <CodexProjectHoverCardContent
-            activityStore={activityStore}
             project={project}
             activity={activity}
-            runtimeSessions={runtimeSessions}
             onUpdateProject={onUpdateProject}
             onArchiveProject={onArchiveProject}
             onSetProjectPinned={onSetProjectPinned}
@@ -1347,13 +1286,7 @@ export function CodexProjectRow({
                       </span>
                     ) : null}
                     {/* Only a collapsed Project summarizes its chats; an open one shows them. */}
-                    {!expanded ? (
-                      <CollapsedProjectStatus
-                        activity={activity}
-                        runtimeSessions={runtimeSessions}
-                        activityStore={activityStore}
-                      />
-                    ) : null}
+                    {!expanded ? <CollapsedProjectStatus activity={activity} /> : null}
                   </span>
                 ) : null}
                 <div className="col-start-1 row-start-1 flex gap-1">

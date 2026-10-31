@@ -39,7 +39,12 @@ import {
 import { toast } from "@/components/ui/toast";
 import { serializeSortableTranslation } from "@/lib/sortable-transform";
 import { subscribeProjectChanges, subscribeProjectSessionChanges } from "@/lib/api";
-import { listAllSidebarSectionItems, listAllSidebarSections } from "@/lib/sidebar-sections-api";
+import {
+  listAllSidebarSectionItems,
+  listAllSidebarSections,
+  SIDEBAR_SECTIONS_QUERY_KEY,
+} from "@/lib/sidebar-sections-api";
+import type { SidebarRuntimeGroupActivity } from "@/lib/sidebar-runtime-group-activity";
 import { cn } from "@/lib/utils";
 import type { ProjectSession } from "@/lib/types";
 import type { SidebarListExtraPagesState } from "@/lib/sidebar-section-prefs";
@@ -84,7 +89,7 @@ import {
   type SidebarThreadReorderController,
 } from "./sidebar-thread-reorder";
 
-export const SIDEBAR_SECTIONS_QUERY_KEY = ["sidebar-sections"] as const;
+export { SIDEBAR_SECTIONS_QUERY_KEY } from "@/lib/sidebar-sections-api";
 
 const sectionItemsQueryKey = (sectionId: string) => [
   ...SIDEBAR_SECTIONS_QUERY_KEY,
@@ -95,13 +100,15 @@ const sectionItemsQueryKey = (sectionId: string) => [
 /** A collapsed Section summarizes its chats with the same glyphs as a chat row. */
 function CustomSectionStatus({
   section,
+  runtimeActivity,
 }: {
   section: Pick<SidebarSectionSummary, "hasWaiting" | "hasRunning" | "hasUnread">;
+  runtimeActivity: SidebarRuntimeGroupActivity | undefined;
 }) {
   const status = resolveSidebarGroupStatus({
-    needsAttention: section.hasWaiting,
+    needsAttention: section.hasWaiting || (runtimeActivity?.waitingCount ?? 0) > 0,
     unread: section.hasUnread,
-    running: section.hasRunning,
+    running: section.hasRunning || (runtimeActivity?.runningCount ?? 0) > 0,
   });
   if (!status) return null;
   return (
@@ -439,6 +446,7 @@ function SectionActions({
 }
 
 export function SidebarCustomSections({
+  runtimeActivities,
   sessionsByProject,
   renderProject,
   renderSession,
@@ -452,6 +460,7 @@ export function SidebarCustomSections({
   onListExtraPagesChange,
   onSelectSession,
 }: {
+  readonly runtimeActivities: ReadonlyMap<string, SidebarRuntimeGroupActivity>;
   readonly sessionsByProject: Readonly<Record<string, readonly ProjectSession[]>>;
   readonly renderProject: (input: SidebarSectionProjectRowRenderInput) => ReactNode;
   readonly renderSession: (session: ProjectSessionSummary) => ReactNode;
@@ -524,7 +533,12 @@ export function SidebarCustomSections({
                       onMove={(direction) => void reorder(index, direction)}
                       headingButtonRef={headingButtonRef}
                       headingButtonProps={headingButtonProps}
-                      status={<CustomSectionStatus section={section} />}
+                      status={
+                        <CustomSectionStatus
+                          section={section}
+                          runtimeActivity={runtimeActivities.get(section.sectionId)}
+                        />
+                      }
                       actions={
                         <>
                           <CodexSidebarActionButton

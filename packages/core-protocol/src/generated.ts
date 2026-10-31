@@ -8490,6 +8490,10 @@ export interface components {
                 readonly session_ids: readonly string[];
             } | {
                 /** @enum {string} */
+                readonly kind: "session_sidebar_placements";
+                readonly session_ids: readonly string[];
+            } | {
+                /** @enum {string} */
                 readonly kind: "page_chat_activity_summaries";
                 readonly page_ids: readonly string[];
             } | {
@@ -10428,6 +10432,13 @@ export interface components {
         };
         /** @enum {string} */
         readonly ProjectWorkspaceSessionOrder: "conversation" | "identity";
+        /** @description Durable placement for joining bounded live activity without loading Session rows. */
+        readonly ProjectWorkspaceSessionSidebarPlacement: {
+            readonly project_id?: string | null;
+            readonly section_id?: string | null;
+            readonly session_id: string;
+            readonly unread: boolean;
+        };
         readonly ProjectWorkspaceSessionSummary: {
             readonly archived: boolean;
             readonly archived_at?: string | null;
@@ -12041,6 +12052,12 @@ export interface components {
                     /** Format: int64 */
                     readonly projection_revision: number;
                     readonly summaries: readonly components["schemas"]["ProjectWorkspaceProjectActivitySummary"][];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "session_sidebar_placements";
+                    readonly placements: readonly components["schemas"]["ProjectWorkspaceSessionSidebarPlacement"][];
+                    /** Format: int64 */
+                    readonly projection_revision: number;
                 } | {
                     /** @enum {string} */
                     readonly kind: "session_linked_page_summaries";

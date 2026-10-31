@@ -1,6 +1,9 @@
 import { expect, test } from "vite-plus/test";
 
-import { projectWorkspaceSidebarSectionSummaryFromCore } from "./project-workspace-adapter";
+import {
+  projectWorkspaceSessionSidebarPlacementFromCore,
+  projectWorkspaceSidebarSectionSummaryFromCore,
+} from "./project-workspace-adapter";
 
 test.each([
   { has_waiting: true, has_running: false, has_unread: true },
@@ -30,5 +33,22 @@ test.each([
     hasWaiting: activity.has_waiting,
     hasRunning: activity.has_running,
     hasUnread: activity.has_unread,
+  });
+});
+
+test.each([
+  { project_id: "project:work", section_id: "section:direct", unread: true },
+  { project_id: null, section_id: null, unread: false },
+])("preserves nullable Session Sidebar placement coordinates: %j", (placement) => {
+  expect(
+    projectWorkspaceSessionSidebarPlacementFromCore({
+      session_id: "session:live",
+      ...placement,
+    }),
+  ).toEqual({
+    sessionId: "session:live",
+    projectId: placement.project_id,
+    sectionId: placement.section_id,
+    unread: placement.unread,
   });
 });

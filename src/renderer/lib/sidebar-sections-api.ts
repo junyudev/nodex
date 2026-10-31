@@ -5,6 +5,12 @@ import type {
 } from "../../shared/sidebar-sections";
 import { invokeRendererQuery } from "./renderer-command";
 
+export const SIDEBAR_SECTIONS_QUERY_KEY = ["sidebar-sections"] as const;
+
+export function readSessionSidebarPlacements(sessionIds: readonly string[]) {
+  return invokeRendererQuery("sidebar-sections:sessions:placements", sessionIds);
+}
+
 const SIDEBAR_SECTION_PAGE_SIZE = 200;
 const MAX_SIDEBAR_SECTION_PAGES = 500;
 
