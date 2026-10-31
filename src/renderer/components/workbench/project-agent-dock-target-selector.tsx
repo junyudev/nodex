@@ -5,6 +5,8 @@ import {
   SearchIcon,
   TitlebarNewChatIcon,
 } from "@/components/shared/icons";
+import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
+import { CircleAlert } from "@/components/shared/icons/generic-icons";
 import { NodexDropdownButtonTrigger } from "@/components/ui/dropdown";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import {
@@ -38,7 +40,8 @@ function indicatorLabel(indicator: ProjectAgentDockChatIndicator): string | null
   if (indicator === "running") return SESSION_LIVE_INDICATOR_LABELS.running;
   if (indicator === "background") return SESSION_LIVE_INDICATOR_LABELS.background;
   if (indicator === "unread") return "Unread";
-  if (indicator === "needs-attention") return "Needs attention";
+  if (indicator === "waiting") return SESSION_LIVE_INDICATOR_LABELS.waiting;
+  if (indicator === "error") return "Error";
   return null;
 }
 
@@ -83,11 +86,15 @@ function ProjectAgentDockChatIndicatorView({
           )}
           animationDurationMs={indicator === "background" ? 5_000 : 2_000}
         />
+      ) : indicator === "waiting" ? (
+        <ChatWaitingIcon className="icon-2xs" />
+      ) : indicator === "error" ? (
+        <CircleAlert className="icon-2xs shrink-0 text-token-error-foreground" aria-hidden />
       ) : (
         <span
           className={cn(
             "size-1.5 rounded-full",
-            indicator === "unread" || indicator === "needs-attention"
+            indicator === "unread"
               ? "bg-token-charts-blue"
               : "bg-current text-token-description-foreground",
           )}

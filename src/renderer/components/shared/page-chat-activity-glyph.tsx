@@ -1,9 +1,6 @@
-import {
-  ActivitySpinnerIcon,
-  PermissionAskForApprovalIcon,
-  ThreadIcon,
-} from "@/components/shared/icons";
-import { CircleAlert, TextCursorInput } from "@/components/shared/icons/generic-icons";
+import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
+import { ActivitySpinnerIcon, ThreadIcon } from "@/components/shared/icons";
+import { CircleAlert } from "@/components/shared/icons/generic-icons";
 import type { PageChatActivityPresentation } from "@/lib/page-chat-activity-presentation";
 import { cn } from "@/lib/utils";
 
@@ -23,10 +20,8 @@ export function PageChatActivityGlyph({
       <ActivitySpinnerIcon className="size-3 opacity-60" animationDurationMs={5_000} />
     ) : activity.execution === "error" ? (
       <CircleAlert className="size-3" />
-    ) : activity.execution === "approval" ? (
-      <PermissionAskForApprovalIcon className="size-3" />
-    ) : activity.execution === "input" ? (
-      <TextCursorInput className="size-3" />
+    ) : activity.execution === "approval" || activity.execution === "input" ? (
+      <ChatWaitingIcon className="size-3" />
     ) : (
       <ThreadIcon className="size-3" />
     );
@@ -38,9 +33,7 @@ export function PageChatActivityGlyph({
         "relative flex size-5 shrink-0 items-center justify-center",
         activity.execution === "error"
           ? "text-token-error-foreground"
-          : activity.execution === "approval" || activity.execution === "input"
-            ? "text-token-warning-foreground"
-            : "text-token-description-foreground",
+          : "text-token-description-foreground",
         className,
       )}
     >

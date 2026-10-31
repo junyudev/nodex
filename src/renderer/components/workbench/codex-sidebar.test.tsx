@@ -118,6 +118,27 @@ describe("codex sidebar thread hover card", () => {
     expect(dot?.parentElement).toBe(age.parentElement);
   });
 
+  test("repeats a waiting chat's status beside its age, since hovering hides the row's own", async () => {
+    await act(async () => {
+      renderOpenThreadHoverCard(
+        makeThreadItem({
+          unread: true,
+          statusType: "active",
+          statusActiveFlags: ["waitingOnUserInput"],
+        }),
+      );
+    });
+
+    const hoverCard = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    const age = hoverCard.querySelector("time")!;
+    const waiting = hoverCard.querySelector("[data-app-action-sidebar-thread-hover-card-waiting]");
+    expect(waiting?.parentElement).toBe(age.parentElement);
+    // Waiting and unread are separate facts; the card keeps both.
+    expect(
+      hoverCard.querySelector("[data-app-action-sidebar-thread-hover-card-unread]"),
+    ).not.toBeNull();
+  });
+
   test("uses Chat as the projectless fallback label", async () => {
     await act(async () => {
       renderOpenThreadHoverCard(
@@ -288,7 +309,7 @@ describe("codex sidebar thread row", () => {
     const describedRow = () =>
       view.queryByRole("button", {
         name: "X Plan Codex terminal reverse engineer",
-        description: "Needs attention",
+        description: "Waiting for you",
       });
     await waitFor(() =>
       expect(

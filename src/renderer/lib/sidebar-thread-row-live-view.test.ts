@@ -38,6 +38,17 @@ describe("projectSidebarThreadRowLiveView", () => {
     });
   });
 
+  test("shows a native thread asking for approval or input as waiting, not working", () => {
+    const statuses = (["waitingOnApproval", "waitingOnUserInput"] as const).map(
+      (flag) =>
+        projectSidebarThreadRowLiveView(
+          { ...item, statusType: "active", statusActiveFlags: [flag] },
+          null,
+        ).status,
+    );
+    expect(statuses).toEqual(["attention", "attention"]);
+  });
+
   test("shows Runtime running, waiting and background states from Session activity", () => {
     const states = (["running", "waiting", "background", null] as const).map((indicator) => {
       const view = projectSidebarThreadRowLiveView(item, { indicator, location: null });

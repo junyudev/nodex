@@ -83,7 +83,8 @@ import {
 } from "@/lib/session-linked-page";
 import { StatusIcon } from "@/lib/status-presentation";
 import { SidebarStatusIndicator } from "./sidebar-status-indicator";
-import { resolveSidebarGroupStatus } from "@/lib/sidebar-status";
+import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
+import { resolveSidebarGroupStatus, SIDEBAR_GROUP_STATUS_LABELS } from "@/lib/sidebar-status";
 import { cn } from "@/lib/utils";
 import {
   workspaceProjectCommands,
@@ -885,17 +886,15 @@ function CollapsedProjectStatusIndicator({
 }) {
   const status = activity
     ? resolveSidebarGroupStatus({
-        needsReading: activity.waitingCount + activity.unreadCount > 0,
+        needsAttention: activity.waitingCount > 0,
+        unread: activity.unreadCount > 0,
         running: activity.activeCount > 0,
       })
     : null;
   if (!status) return null;
   return (
     <span className="pe-0.5" data-app-action-sidebar-project-status={status}>
-      <SidebarStatusIndicator
-        status={status}
-        label={status === "unread" ? "Unread chats" : undefined}
-      />
+      <SidebarStatusIndicator status={status} label={SIDEBAR_GROUP_STATUS_LABELS[status]} />
     </span>
   );
 }
@@ -1622,6 +1621,7 @@ function CodexSidebarThreadHoverCardLinkedPage({
 
 function CodexSidebarThreadHoverCard({
   item,
+  waiting,
   linkedPage,
   projectLabel,
   branchName,
@@ -1629,6 +1629,8 @@ function CodexSidebarThreadHoverCard({
   onOpenLinkedPage,
 }: {
   item: CodexSidebarThreadItem;
+  /** The chat waits on its person; hovering hides the row's own status glyph. */
+  waiting: boolean;
   linkedPage: SessionLinkedPage | null;
   projectLabel?: string | null;
   branchName?: string | null;
@@ -1678,6 +1680,11 @@ function CodexSidebarThreadHoverCard({
         {recencyAt !== null ? (
           <div className="flex shrink-0 items-center gap-1 text-xs leading-5 text-token-description-foreground">
             <RelativeThreadAge recencyAt={recencyAt} />
+            {waiting ? (
+              <span className="flex" data-app-action-sidebar-thread-hover-card-waiting="">
+                <ChatWaitingIcon className="icon-2xs" />
+              </span>
+            ) : null}
             {item.unread ? (
               <span
                 aria-hidden="true"
@@ -2146,6 +2153,7 @@ function CodexSidebarThreadRowView({
         hoverCardContent={
           <CodexSidebarThreadHoverCard
             item={item}
+            waiting={needsAttention}
             linkedPage={linkedPage}
             projectLabel={hoverCardProjectLabel}
             branchName={resolvedHoverCardBranchName}

@@ -248,7 +248,7 @@ export function runtimeSessionLiveIndicator(
 
 export const SESSION_LIVE_INDICATOR_LABELS: Readonly<Record<SessionLiveIndicator, string>> = {
   running: "Running",
-  waiting: "Needs attention",
+  waiting: "Waiting for you",
   background: "Working in background",
 };
 

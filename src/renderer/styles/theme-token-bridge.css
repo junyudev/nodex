@@ -48,6 +48,8 @@
   --color-token-editor-error-foreground: var(--color-text-danger);
   --color-token-editor-foreground: var(--color-text);
   --color-token-error-foreground: var(--color-text-danger);
+  --color-token-warning-foreground: var(--color-text-warning);
+  --color-token-warning-background: var(--color-background-warning-surface);
   --color-token-git-decoration-added-resource-foreground: var(--color-codex-git-added);
   --color-token-git-decoration-deleted-resource-foreground: var(--color-codex-git-deleted);
   --color-token-icon-foreground: var(--color-codex-icon);

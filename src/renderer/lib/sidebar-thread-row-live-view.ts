@@ -1,7 +1,11 @@
 import type { ThreadExecutionLocationView } from "../../shared/codex-thread-handoff";
 import type { CodexSidebarThreadItem } from "../../shared/types";
 import type { SessionLiveIndicator } from "./session-execution";
-import { resolveSidebarRowStatus, type SidebarRowStatus } from "./sidebar-status";
+import {
+  nativeThreadWaitsOnPerson,
+  resolveSidebarRowStatus,
+  type SidebarRowStatus,
+} from "./sidebar-status";
 
 export interface SidebarThreadRowRuntimeFacts {
   readonly indicator: SessionLiveIndicator | null;
@@ -24,8 +28,9 @@ function withStatus(view: Omit<SidebarThreadRowLiveView, "status">): SidebarThre
 }
 
 /**
- * Native rows keep their Core thread status. Runtime rows read live status from Session activity
- * (idle is absent) and their location from the execution owner, never from a native thread.
+ * Native rows keep their Core thread status, waiting while it asks for approval or input. Runtime
+ * rows read live status from Session activity (idle is absent) and their location from the
+ * execution owner, never from a native thread.
  */
 export function projectSidebarThreadRowLiveView(
   item: CodexSidebarThreadItem,
@@ -36,7 +41,8 @@ export function projectSidebarThreadRowLiveView(
       item,
       running: item.statusType === "active",
       background: false,
-      needsAttention: item.needsAttention === true,
+      needsAttention:
+        item.needsAttention === true || nativeThreadWaitsOnPerson(item.statusActiveFlags),
     });
   const located = runtime.location
     ? {

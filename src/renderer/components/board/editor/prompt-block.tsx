@@ -157,7 +157,6 @@ function PromptSentRecord({
               execution: phase === "working" ? "working" : phase === "waiting" ? "input" : "idle",
               unread: false,
             }}
-            className={presentation.tone === "attention" ? "text-current" : undefined}
           />
           <span className="truncate">{presentation.label}</span>
         </button>

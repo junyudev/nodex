@@ -1,16 +1,17 @@
+import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { SESSION_LIVE_INDICATOR_LABELS } from "@/lib/session-execution";
 import type { SidebarRowStatus } from "@/lib/sidebar-status";
 
 const SLOT_CLASS = "relative flex size-5 shrink-0 items-center justify-center";
 
-/** The unread dot or spinner that fills a sidebar row's 20px trailing status slot. */
+/** The glyph that fills a sidebar row's 20px trailing status slot. */
 export function SidebarStatusIndicator({
   status,
   label,
 }: {
   status: SidebarRowStatus;
-  /** Names the dot when nothing else describes it, such as on a collapsed group. */
+  /** Names the glyph when nothing else describes it, such as on a collapsed group. */
   label?: string;
 }) {
   switch (status) {
@@ -37,12 +38,21 @@ export function SidebarStatusIndicator({
         </span>
       );
     case "attention":
+      return (
+        <span
+          {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": true })}
+          className={SLOT_CLASS}
+          data-sidebar-status="attention"
+        >
+          <ChatWaitingIcon />
+        </span>
+      );
     case "unread":
       return (
         <span
           {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": true })}
           className={SLOT_CLASS}
-          data-sidebar-status={status}
+          data-sidebar-status="unread"
         >
           <span className="icon-xs relative scale-50">
             <span className="absolute inset-0 rounded-full bg-info-solid" />

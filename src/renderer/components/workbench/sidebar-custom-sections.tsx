@@ -69,7 +69,7 @@ import {
 } from "./sidebar-section-root-dnd";
 import { SidebarDropIndicator } from "./sidebar-drop-indicator";
 import { SidebarStatusIndicator } from "./sidebar-status-indicator";
-import { resolveSidebarGroupStatus } from "@/lib/sidebar-status";
+import { resolveSidebarGroupStatus, SIDEBAR_GROUP_STATUS_LABELS } from "@/lib/sidebar-status";
 import { sessionExecutionThreadId } from "@/lib/session-execution";
 import { SidebarSectionNameDialog } from "./sidebar-section-name-dialog";
 import {
@@ -92,23 +92,21 @@ const sectionItemsQueryKey = (sectionId: string) => [
   "items",
 ];
 
-/** A collapsed Section summarizes its chats with the same dot or spinner as a chat row. */
+/** A collapsed Section summarizes its chats with the same glyphs as a chat row. */
 function CustomSectionStatus({
   section,
 }: {
-  section: Pick<SidebarSectionSummary, "hasRunning" | "hasUnread">;
+  section: Pick<SidebarSectionSummary, "hasWaiting" | "hasRunning" | "hasUnread">;
 }) {
   const status = resolveSidebarGroupStatus({
-    needsReading: section.hasUnread,
+    needsAttention: section.hasWaiting,
+    unread: section.hasUnread,
     running: section.hasRunning,
   });
   if (!status) return null;
   return (
     <span className="flex" data-sidebar-section-status={status}>
-      <SidebarStatusIndicator
-        status={status}
-        label={status === "unread" ? "Unread chats" : undefined}
-      />
+      <SidebarStatusIndicator status={status} label={SIDEBAR_GROUP_STATUS_LABELS[status]} />
     </span>
   );
 }

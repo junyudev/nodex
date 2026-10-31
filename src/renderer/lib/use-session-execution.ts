@@ -9,7 +9,11 @@ import {
   type AgentRuntimeActivityStore,
 } from "./agent-runtime-session-activity";
 import { runtimeSessionTarget } from "./session-execution";
-import { resolveSidebarRowStatus, type SidebarRowStatus } from "./sidebar-status";
+import {
+  nativeThreadWaitsOnPerson,
+  resolveSidebarRowStatus,
+  type SidebarRowStatus,
+} from "./sidebar-status";
 import type { ProjectSession } from "./types";
 import { queryKeys } from "./query-keys";
 import { readThreadExecutionLocation } from "./thread-handoff-runtime";
@@ -93,6 +97,8 @@ export function useSessionRowStatus(
     unread: session.unread,
     running: runtime ? indicator === "running" : session.thread?.statusType === "active",
     background: indicator === "background",
-    needsAttention: indicator === "waiting",
+    needsAttention: runtime
+      ? indicator === "waiting"
+      : nativeThreadWaitsOnPerson(session.thread?.statusActiveFlags),
   });
 }

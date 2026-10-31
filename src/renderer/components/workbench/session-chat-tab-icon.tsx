@@ -1,3 +1,4 @@
+import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
 import { ActivitySpinnerIcon, ConversationIcon } from "@/components/shared/icons";
 import { SESSION_LIVE_INDICATOR_LABELS } from "@/lib/session-execution";
 import type { SidebarRowStatus } from "@/lib/sidebar-status";
@@ -12,7 +13,8 @@ export const SESSION_CHAT_TAB_STATUS_LABELS: Readonly<Record<SidebarRowStatus, s
 
 /**
  * The Chat tab's bubble. While content hides the conversation it carries the chat's live status
- * as its sidebar row does: a spinner while it works, a dot for an answer or a question waiting.
+ * as its sidebar row does: a spinner while it works, a question bubble while it waits on its
+ * person, and a dot for an unread answer.
  */
 export function SessionChatTabIcon({ status }: { readonly status: SidebarRowStatus | null }) {
   if (status === "running" || status === "background") {
@@ -27,6 +29,13 @@ export function SessionChatTabIcon({ status }: { readonly status: SidebarRowStat
           )}
           animationDurationMs={status === "running" ? 2_000 : 5_000}
         />
+      </span>
+    );
+  }
+  if (status === "attention") {
+    return (
+      <span data-chat-tab-status={status} className="flex">
+        <ChatWaitingIcon />
       </span>
     );
   }

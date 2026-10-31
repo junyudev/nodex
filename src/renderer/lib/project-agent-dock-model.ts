@@ -3,6 +3,7 @@ import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-workt
 import type { WorkbenchAgentDockState } from "../../shared/workbench-scene";
 import { sortProjectSessionSummariesForSidebar } from "./project-session-query-cache";
 import type { SessionLiveIndicator } from "./session-execution";
+import { nativeThreadWaitsOnPerson } from "./sidebar-status";
 
 export type ProjectAgentDockAttention = "none" | "activity" | "request";
 export type ProjectAgentDockChatIndicator =
@@ -10,7 +11,8 @@ export type ProjectAgentDockChatIndicator =
   | "running"
   | "background"
   | "unread"
-  | "needs-attention";
+  | "waiting"
+  | "error";
 
 export interface ProjectAgentDockTargetRow {
   readonly id: string;
@@ -103,14 +105,8 @@ export function buildProjectAgentDockPendingWorktreeModel(
 }
 
 function indicatorForSession(session: ProjectSessionSummary): ProjectAgentDockChatIndicator {
-  const flags = session.thread?.statusActiveFlags ?? [];
-  if (
-    session.thread?.statusType === "systemError" ||
-    flags.includes("waitingOnApproval") ||
-    flags.includes("waitingOnUserInput")
-  ) {
-    return "needs-attention";
-  }
+  if (session.thread?.statusType === "systemError") return "error";
+  if (nativeThreadWaitsOnPerson(session.thread?.statusActiveFlags)) return "waiting";
   if (session.thread?.statusType === "active") return "running";
   if (session.unread) return "unread";
   return "idle";
@@ -119,7 +115,7 @@ function indicatorForSession(session: ProjectSessionSummary): ProjectAgentDockCh
 export function attentionForIndicator(
   indicator: ProjectAgentDockChatIndicator,
 ): ProjectAgentDockAttention {
-  if (indicator === "needs-attention") return "request";
+  if (indicator === "waiting" || indicator === "error") return "request";
   if (indicator === "running" || indicator === "background" || indicator === "unread")
     return "activity";
   return "none";
@@ -131,7 +127,7 @@ export function resolveProjectAgentDockLiveIndicator(
   live: SessionLiveIndicator | null,
 ): ProjectAgentDockChatIndicator {
   if (!row.runtimeSessionId || !live) return row.indicator;
-  return live === "waiting" ? "needs-attention" : live;
+  return live;
 }
 
 function sessionRow(
@@ -225,7 +221,7 @@ export function buildProjectAgentDockModel({
             },
             selectedSessionId,
           ),
-          indicator: "needs-attention",
+          indicator: "error",
           attention: "request",
         });
   const collectionMessage =

@@ -238,7 +238,7 @@ describe("ProjectAgentDockTargetSelector", () => {
     ).not.toBeNull();
     await push({ type: "upsert", sequence: 2, activity: activity("waiting") });
     expect(
-      await view.findByLabelText("Connected chat: Delegate review, Needs attention"),
+      await view.findByLabelText("Connected chat: Delegate review, Waiting for you"),
     ).not.toBeNull();
     await push({ type: "remove", sequence: 3, sessionId: "runtime" });
     expect(await view.findByLabelText("Connected chat: Delegate review")).not.toBeNull();

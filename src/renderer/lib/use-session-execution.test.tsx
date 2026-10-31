@@ -90,6 +90,11 @@ describe("useSessionRowStatus", () => {
     } as unknown as StatusSession;
     const { status, rerender } = renderStatus(native, store);
     expect(status()).toBe("running");
+    rerender({
+      ...native,
+      thread: { statusType: "active", statusActiveFlags: ["waitingOnApproval"] },
+    } as unknown as StatusSession);
+    expect(status()).toBe("attention");
     rerender(null);
     expect(status()).toBe("none");
   });

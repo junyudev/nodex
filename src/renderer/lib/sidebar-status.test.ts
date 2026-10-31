@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
-import { resolveSidebarGroupStatus, resolveSidebarRowStatus } from "./sidebar-status";
+import {
+  nativeThreadWaitsOnPerson,
+  resolveSidebarGroupStatus,
+  resolveSidebarRowStatus,
+} from "./sidebar-status";
 
 describe("resolveSidebarRowStatus", () => {
   const idle = { unread: false, running: false, background: false, needsAttention: false };
@@ -18,12 +22,24 @@ describe("resolveSidebarRowStatus", () => {
 });
 
 describe("resolveSidebarGroupStatus", () => {
+  const quiet = { needsAttention: false, unread: false, running: false };
+
   test.each([
-    [{ needsReading: false, running: false }, null],
-    [{ needsReading: false, running: true }, "running"],
-    [{ needsReading: true, running: false }, "unread"],
-    [{ needsReading: true, running: true }, "unread"],
+    [{ ...quiet }, null],
+    [{ ...quiet, running: true }, "running"],
+    [{ ...quiet, unread: true, running: true }, "unread"],
+    [{ ...quiet, needsAttention: true, unread: true, running: true }, "attention"],
   ] as const)("%j shows %s", (input, expected) => {
     expect(resolveSidebarGroupStatus(input)).toBe(expected);
+  });
+});
+
+describe("nativeThreadWaitsOnPerson", () => {
+  test.each([
+    [[], false],
+    [["waitingOnApproval"], true],
+    [["waitingOnUserInput"], true],
+  ] as const)("%j waits: %s", (flags, expected) => {
+    expect(nativeThreadWaitsOnPerson(flags)).toBe(expected);
   });
 });

@@ -141,7 +141,7 @@ describe("buildProjectAgentDockModel", () => {
 
     expect(model.rows.map((row) => row.label)).toEqual(["New chat", "approval", "running"]);
     expect(model.trigger.attention).toBe("request");
-    expect(model.trigger.indicator).toBe("needs-attention");
+    expect(model.trigger.indicator).toBe("waiting");
     expect(model.rows[2]?.indicator).toBe("running");
     expect(model.hasMore).toBe(true);
   });
@@ -247,7 +247,7 @@ describe("Project Agent Dock pending worktree projection", () => {
       (["running", "waiting", "background", null] as const).map((live) =>
         resolveProjectAgentDockLiveIndicator(runtimeRow, live),
       ),
-    ).toEqual(["running", "needs-attention", "background", "unread"]);
+    ).toEqual(["running", "waiting", "background", "unread"]);
     // Activity never reaches a Session without a Runtime binding.
     expect(resolveProjectAgentDockLiveIndicator(draftRow, "running")).toBe("idle");
     expect(attentionForIndicator("background")).toBe("activity");
