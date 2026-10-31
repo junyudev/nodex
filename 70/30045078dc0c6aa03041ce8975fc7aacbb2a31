@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_e2f9f3a29b34ef::t_6291f8e8d338aa 29
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_e2f9f3a29b34ef::t_4ebbb722667737 2609-2660
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_e2f9f3a29b34ef::t_1d534d810e5fa4 2208,3559,3624-3640,8083,8093,9713
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7030045078dc0c6aa03041ce8975fc7aacbb2a31",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
