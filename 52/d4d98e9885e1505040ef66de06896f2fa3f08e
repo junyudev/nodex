@@ -1,0 +1,19 @@
+src/renderer/features/inbox/inbox-message.browser.test.tsx
+  s_5a7f25e56b65b1::t_64497249fbee93 52,58,69,119-128,134,143-157,168-171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "52d4d98e9885e1505040ef66de06896f2fa3f08e",
+  "prompts": {},
+  "sessions": {
+    "s_5a7f25e56b65b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19031-18a1-7c02-a1a0-0a42dbc701b3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
