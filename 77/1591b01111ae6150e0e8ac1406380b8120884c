@@ -1,0 +1,119 @@
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_5cd527886c6c64::t_76dac617fc67e3 8882
+  s_fa2a1bb1a9bd0d::t_05d501bcb62279 1-8,271-273,275-277,7813-7821,7842-7848,8870-8880,11641-11650,11783-11794
+  s_b5c41a13e9511c::t_ab741ff7ef375b 274
+  s_5cd527886c6c64::t_57fd76fab969a1 278,715,7822-7823,7849-7850,8641,10595,11651-11652,11795-11796
+  s_5cd527886c6c64::t_9978e82288aff1 8881
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_5cd527886c6c64::t_042c6308c54816 10698
+  s_aba0b408ef9828::t_69945b72ed8562 1-6,10686-10691
+  s_1291aa7602df08::t_48f5fefa307f0d 10692-10694
+CHANGELOG.md
+  s_1291aa7602df08::t_bf7ec3d12d8f5f 36
+docs/product-specs/agent-runtime-behavior.md
+  s_2d7b784dacd638::t_8895ea343f0d8e 325-330
+  s_abb68521e49fa0::t_d53cd39c357b52 331
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_5cd527886c6c64::t_fbfba8a63a1b63 2180,2182,3817
+  s_1291aa7602df08::t_c82c58b2d1a99c 2155-2179
+packages/agent-runtime/package.json
+  s_1291aa7602df08::t_d14b6db75d240f 22-23
+packages/agent-runtime/src/nodex/Rollback.test.ts
+  s_1291aa7602df08::t_4f7aa2cbb51be6 15-16,55-57,63-65,144,204-245,315-317,400-402,408-410,456,462-470,493-520
+packages/agent-runtime/src/nodex/Rollback.ts
+  s_1291aa7602df08::t_631e30f5629676 1-5,14,46-47,49-51,57
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.test.ts
+  s_1291aa7602df08::t_1b8db4bab7caf2 387,389-397,411-412,459-464,498-499,503,579-583,636
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.ts
+  s_1291aa7602df08::t_bba7459907245f 1-5,181-195
+packages/agent-runtime/vendor/shared/package.json
+  s_1291aa7602df08::t_f4c0b27c6f9fd0 79-80
+packages/agent-runtime/vendor/shared/src/orchestrationV2Rewind.test.ts
+  s_1291aa7602df08::t_fa8b4e7b22295f 1-147
+packages/agent-runtime/vendor/shared/src/orchestrationV2Rewind.ts
+  s_1291aa7602df08::t_a2bec0d9c4cdd8 1-188
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_1291aa7602df08::t_1a24f8daff09e2 3111-3288
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_1291aa7602df08::t_4230e6c3f68b36 1-4,1208-1293,1295,1630,1633-1636,2062-2072,2133
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_1291aa7602df08::t_941c1c20851b45 682-688,697-701,706-708,714
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_1291aa7602df08::t_291ebf6cad4715 1934-1968
+src/shared/testing/agent-runtime-snapshot.ts
+  s_1291aa7602df08::t_f6faa8bdf514bd 83
+src/shared/types.ts
+  s_1291aa7602df08::t_074d6e17199b20 4511-4512
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "771591b01111ae6150e0e8ac1406380b8120884c",
+  "prompts": {},
+  "sessions": {
+    "s_1291aa7602df08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "37db4cd4-622c-478e-b114-45dddfc61e3a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_2d7b784dacd638": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1914f-6e55-7af3-9446-f9507906e41f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_aba0b408ef9828": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1916f-ade3-7732-a737-d16b88fecf5d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_abb68521e49fa0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb6fba0e-ddde-45c4-b7f3-cc628f9877c2",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b5c41a13e9511c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1919a-f51e-7522-8c2b-1ee25c262243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fa2a1bb1a9bd0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19159-a559-7f33-a1c4-1abdaf6954c2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
