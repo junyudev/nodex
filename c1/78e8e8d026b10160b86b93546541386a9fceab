@@ -1,0 +1,19 @@
+packages/agent-runtime/src/mcp/TaskResultDelivery.ts
+  s_b5c41a13e9511c::t_0f2769ebf975eb 73-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c178e8e8d026b10160b86b93546541386a9fceab",
+  "prompts": {},
+  "sessions": {
+    "s_b5c41a13e9511c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1919a-f51e-7522-8c2b-1ee25c262243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
