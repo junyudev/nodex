@@ -2,16 +2,21 @@ import {
   NodeId,
   NonNegativeInt,
   OrchestrationV2RunStatus,
+  OrchestrationV2UserInputQuestion,
+  OrchestrationV2DispatchCommandResult,
   OrchestratorMcpCapabilitiesResult,
   OrchestratorMcpDelegatedTaskStatus,
   OrchestratorMcpDelegateTaskInput,
   OrchestratorMcpIdempotencyKey,
   OrchestratorMcpFailure,
+  OrchestratorMcpPendingTaskApproval,
   OrchestratorMcpTerminalDelegatedTaskStatus,
   PositiveInt,
   ProviderInstanceId,
   ProviderInteractionMode,
+  ProviderUserInputAnswers,
   RunId,
+  RuntimeRequestId,
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 import type { AgentTurnItem } from "../../../nodex/Interface.ts";
@@ -60,6 +65,11 @@ export const TaskView = Schema.Struct({
   hasPendingFollowUps: Schema.Boolean.annotate({
     description: "Follow-up turns are queued or running in the task's conversation.",
   }),
+  hasPendingQuestion: Schema.Boolean.annotate({
+    description:
+      "A question blocks the child and ends a wait. Read and answer it with task_question.",
+  }),
+  pendingApproval: OrchestratorMcpPendingTaskApproval,
   waitTimedOut: Schema.Boolean.annotate({
     description:
       "True only on the call whose wait budget elapsed. The task keeps running; read it later.",
@@ -73,6 +83,27 @@ const TaskWaitInput = Schema.Struct({
     Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 60 * 60 * 1_000 })),
   ).annotate({ description: "Wait budget; default 10 minutes. It never cancels the task." }),
 });
+
+export const TaskQuestionInput = Schema.Struct({
+  action: Schema.Literals(["list", "read", "respond"]),
+  taskId: TaskIdentity,
+  requestId: Schema.optional(RuntimeRequestId).annotate({
+    description: "Required for read and respond.",
+  }),
+  answers: Schema.optional(ProviderUserInputAnswers).annotate({
+    description: "Required for respond; maps question ids to answers.",
+  }),
+});
+export type TaskQuestionInput = typeof TaskQuestionInput.Type;
+export const TaskQuestionResult = Schema.Union([
+  Schema.Struct({ requestIds: Schema.Array(RuntimeRequestId) }),
+  Schema.Struct({
+    requestId: RuntimeRequestId,
+    questions: Schema.Array(OrchestrationV2UserInputQuestion),
+  }),
+  OrchestrationV2DispatchCommandResult,
+]);
+export type TaskQuestionResult = typeof TaskQuestionResult.Type;
 
 const TaskCancelInput = Schema.Struct({
   taskId: TaskIdentity,
@@ -216,7 +247,7 @@ const ListAgentModelsTool = Tool.make("list_agent_models", {
 
 const DelegateTaskTool = Tool.make("delegate_task", {
   description:
-    "Start a delegated child task that runs only the supplied prompt, without the parent conversation. Use it for cross-provider work or models your native subagents cannot run; choose models from list_agent_models. Provider, model and options inherit unless target overrides them. Prefer mode='async': the task's completion wakes you, so end your turn instead of polling. mode='wait' blocks up to timeoutMs and never cancels the task.",
+    "Start a delegated child task that runs only the supplied prompt, without the parent conversation. Use it for cross-provider work or models your native subagents cannot run; choose models from list_agent_models. Provider, model and options inherit unless target overrides them. Prefer mode='async': completion or a question wakes you, so end your turn instead of polling. mode='wait' ends on a result, live question, approval or timeoutMs and never cancels the task.",
   parameters: OrchestratorMcpDelegateTaskInput,
   success: TaskView,
   failure: OrchestratorMcpFailure,
@@ -244,7 +275,7 @@ const TaskStatusTool = Tool.make("task_status", {
 
 const TaskWaitTool = Tool.make("task_wait", {
   description:
-    "Wait until a delegated task settles or timeoutMs elapses, then return its status. Use only when this turn needs the result; otherwise end your turn and let completion wake you.",
+    "Wait until a delegated task settles, blocks on a question, needs approval or timeoutMs elapses, then return its status. Use only when this turn needs the result; otherwise end your turn and let completion or a question wake you.",
   parameters: TaskWaitInput,
   success: TaskView,
   failure: OrchestratorMcpFailure,
@@ -267,6 +298,19 @@ const TaskSendTool = Tool.make("task_send", {
 })
   .annotate(Tool.Strict, true)
   .annotate(Tool.Title, "Send to a task")
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.OpenWorld, true);
+
+const TaskQuestionTool = Tool.make("task_question", {
+  description:
+    "Pending questions from a task you delegated. list: their ids; approvals are excluded. read: one by requestId. respond: answer one with answers; this cannot approve a permission request.",
+  parameters: TaskQuestionInput,
+  success: TaskQuestionResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Answer a task question")
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
 
@@ -318,6 +362,7 @@ export const TaskToolkit = Toolkit.make(
   TaskStatusTool,
   TaskWaitTool,
   TaskSendTool,
+  TaskQuestionTool,
   TaskReadTool,
   TaskCancelTool,
   StopWorkflowTool,

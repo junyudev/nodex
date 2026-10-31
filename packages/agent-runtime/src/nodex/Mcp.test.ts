@@ -3,6 +3,7 @@ import { Tool } from "effect/ai";
 import * as Schema from "effect/Schema";
 import { TaskReadResult, TaskToolkit } from "../mcp/toolkits/task/tools.ts";
 import { taskReadView } from "../mcp/TaskHistoryRead.ts";
+import { NODEX_APP_TASK_TOOL_NAMES } from "@t3tools/shared/nodexAppMcp";
 
 const propertyNames = (schema: unknown): ReadonlyArray<string> => {
   if (Array.isArray(schema)) return schema.flatMap(propertyNames);
@@ -22,11 +23,15 @@ it("publishes task tools without Runtime conversation routing fields", () => {
     "list_agent_models",
     "stop_workflow",
     "task_cancel",
+    "task_question",
     "task_read",
     "task_send",
     "task_status",
     "task_wait",
   ]);
+  expect([...NODEX_APP_TASK_TOOL_NAMES].toSorted()).toEqual(
+    tools.map((tool) => tool.name).toSorted(),
+  );
   for (const tool of tools) {
     const fields = [
       ...propertyNames(Tool.getJsonSchema(tool)),

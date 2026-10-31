@@ -1,0 +1,899 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { expect, it } from "@effect/vitest";
+import {
+  CommandId,
+  EnvironmentId,
+  EventId,
+  MessageId,
+  NodeId,
+  type OrchestrationV2DomainEvent,
+  type OrchestrationV2RuntimeRequest,
+  type OrchestrationV2Subagent,
+  ProjectId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ProviderSessionId,
+  RuntimeRequestId,
+  ThreadId,
+  TurnItemId,
+} from "@t3tools/contracts";
+import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
+import { McpSchema, McpServer } from "effect/ai";
+import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
+import * as CommandReceiptStore from "../orchestration-v2/CommandReceiptStore.ts";
+import * as Questions from "../orchestration-v2/DelegatedTaskQuestionReactor.ts";
+import * as EventSink from "../orchestration-v2/EventSink.ts";
+import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
+import * as Replay from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
+import * as Threads from "../orchestration-v2/ThreadManagementService.ts";
+import * as Sqlite from "../persistence/Sqlite.ts";
+import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
+import * as Settings from "../serverSettings.ts";
+import { layerToolkit } from "../nodex/Mcp.ts";
+import * as Invocation from "./McpInvocationContext.ts";
+import * as Tasks from "./OrchestratorMcpService.ts";
+
+const instanceId = ProviderInstanceId.make("codex");
+const modelSelection = { instanceId, model: "gpt-6-luna" };
+const parentId = ThreadId.make("thread:question-parent");
+const providerSessionId = ProviderSessionId.make("session:child-question");
+const adapter = {
+  instanceId,
+  driver: ProviderDriverKind.make("codex"),
+  getCapabilities: () => Effect.succeed(CodexProviderCapabilitiesV2),
+  planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" as const }),
+  openSession: () => Effect.die("Question control tests never launch a provider"),
+} satisfies ProviderAdapter.ProviderAdapterV2["Service"];
+const registry = ProviderAdapterRegistry.layerFromAdapters([adapter]);
+const database = Sqlite.layerMemory;
+const engine = Replay.layerWithRegistry({ name: "task-questions" }, registry, {
+  databaseLayer: database,
+  runEffectWorker: false,
+});
+const threads = Threads.layer.pipe(
+  Layer.provideMerge(engine),
+  Layer.provide(CommandReceiptStore.layer.pipe(Layer.provide(database))),
+  Layer.provide(Settings.layerTest()),
+);
+const layerTest = layerToolkit.pipe(
+  Layer.provideMerge(Tasks.layer),
+  Layer.provideMerge(database),
+  Layer.provideMerge(McpServer.McpServer.layer),
+  Layer.provideMerge(Questions.layer),
+  Layer.provideMerge(threads),
+  Layer.provideMerge(registry),
+  Layer.provideMerge(
+    ProviderRegistryMock.layer([
+      {
+        instanceId,
+        driver: adapter.driver,
+        enabled: true,
+        installed: true,
+        version: "test",
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: "2026-10-31T00:00:00.000Z",
+        models: [
+          {
+            slug: modelSelection.model,
+            name: modelSelection.model,
+            isCustom: false,
+            capabilities: null,
+          },
+        ],
+        slashCommands: [],
+        skills: [],
+      },
+    ]),
+  ),
+  Layer.provideMerge(Settings.layerTest()),
+  Layer.provideMerge(NodeServices.layer),
+);
+const client = McpSchema.McpServerClient.of({
+  clientId: 1,
+  protocolVersion: "2025-06-18",
+  clientCapabilities: {},
+  clientInfo: { name: "task-questions", version: "1" },
+  initializePayload: {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: { name: "task-questions", version: "1" },
+  },
+  getClient: Effect.die("unused"),
+});
+const scope = (threadId = parentId): Invocation.McpInvocationScope => ({
+  environmentId: EnvironmentId.make("environment:task-questions"),
+  requestNamespace: `task-questions:${threadId}`,
+  thread: { threadId, providerInstanceId: instanceId, providerSessionId: "session:parent" },
+  client: undefined,
+  issuedAt: 0,
+  capabilities: new Set(["orchestration"]),
+});
+const questions = [
+  {
+    id: "format",
+    header: "Format",
+    question: "Which format?",
+    options: [],
+    allowCustomAnswer: true,
+  },
+];
+const failure = (result: McpSchema.CallToolResult) => {
+  const content = result.content[0];
+  expect(result.isError).toBe(true);
+  if (content?.type !== "text") throw new Error("Expected a declared tool failure");
+  return JSON.parse(content.text);
+};
+const setup = Effect.fn("TaskQuestions.setup")(function* (
+  completionWake: "always" | "settled_only" = "always",
+) {
+  const orchestrator = yield* Orchestrator.OrchestratorV2;
+  const projections = yield* ProjectionStore.ProjectionStoreV2;
+  const sink = yield* EventSink.EventSinkV2;
+  const reactor = yield* Questions.DelegatedTaskQuestionReactor;
+  const server = yield* McpServer.McpServer;
+  const create = (threadId: ThreadId) =>
+    orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make(`create:${threadId}`),
+      threadId,
+      projectId: ProjectId.make("project:questions"),
+      title: "Question coordinator",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+  yield* create(parentId);
+  yield* orchestrator.dispatch({
+    type: "message.dispatch",
+    commandId: CommandId.make("start:question-parent"),
+    threadId: parentId,
+    messageId: MessageId.make("message:question-parent"),
+    text: "Delegate the research",
+    attachments: [],
+    dispatchMode: { type: "start_immediately" },
+    createdBy: "user",
+    creationSource: "web",
+  });
+  const parentRun = (yield* projections.getThreadRecords(parentId, ["runs"])).runs[0]!;
+  yield* orchestrator.dispatch({
+    type: "delegated_task.request",
+    commandId: CommandId.make("delegate:question-task"),
+    parentThreadId: parentId,
+    parentRunId: parentRun.id,
+    parentNodeId: parentRun.rootNodeId!,
+    task: "Research the sources",
+    completionWake,
+    modelSelection,
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    createdBy: "agent",
+    creationSource: "mcp",
+  });
+  const task = (yield* projections.getThreadRecords(parentId, ["subagents"])).subagents[0]!;
+  const addRequest = Effect.fn("TaskQuestions.addRequest")(function* (
+    id: string,
+    capability: "live" | "message" | "codex_question_reply" = "live",
+    kind: OrchestrationV2RuntimeRequest["kind"] = "user_input",
+    target = task,
+    createdAt?: DateTime.Utc,
+  ) {
+    const threadId = target.childThreadId!;
+    const child = yield* projections.getThreadRecords(threadId, ["runs"]);
+    const run = child.runs.find((run) => run.delegatedTaskId === target.id) ?? child.runs[0]!;
+    const now = createdAt ?? (yield* DateTime.now);
+    const requestId = RuntimeRequestId.make(id);
+    const nodeId = NodeId.make(`node:${id}`);
+    const event = {
+      id: EventId.make(`event:${id}`),
+      type: "runtime-request.updated",
+      threadId,
+      runId: run.id,
+      occurredAt: now,
+      payload: {
+        id: requestId,
+        nodeId,
+        providerTurnId: null,
+        nativeRequestRef: null,
+        kind,
+        status: "pending",
+        responseCapability:
+          capability === "live"
+            ? { type: "live", providerSessionId }
+            : capability === "codex_question_reply"
+              ? { type: "message", replyFormat: "codex_question_reply" }
+              : { type: "message" },
+        createdAt: now,
+        resolvedAt: null,
+      },
+    } satisfies OrchestrationV2DomainEvent;
+    yield* sink.write({
+      events: [
+        {
+          id: EventId.make(`session:${id}`),
+          type: "provider-session.attached",
+          threadId,
+          occurredAt: now,
+          payload: {
+            id: providerSessionId,
+            driver: adapter.driver,
+            providerInstanceId: instanceId,
+            status: "ready",
+            cwd: "/workspace",
+            model: modelSelection.model,
+            capabilities: CodexProviderCapabilitiesV2,
+            createdAt: now,
+            updatedAt: now,
+            lastError: null,
+          },
+        },
+        {
+          id: EventId.make(`node:${id}`),
+          type: "node.updated",
+          threadId,
+          runId: run.id,
+          occurredAt: now,
+          payload: {
+            id: nodeId,
+            threadId,
+            runId: run.id,
+            parentNodeId: run.rootNodeId,
+            rootNodeId: run.rootNodeId!,
+            kind: kind === "user_input" ? "user_input_request" : "approval_request",
+            status: "waiting",
+            countsForRun: false,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            runtimeRequestId: requestId,
+            checkpointScopeId: null,
+            startedAt: now,
+            completedAt: null,
+          },
+        },
+        event,
+        ...(kind !== "user_input"
+          ? []
+          : [
+              {
+                id: EventId.make(`item:${id}`),
+                type: "turn-item.updated" as const,
+                threadId,
+                runId: run.id,
+                occurredAt: now,
+                payload: {
+                  id: TurnItemId.make(`item:${id}`),
+                  threadId,
+                  runId: run.id,
+                  nodeId,
+                  providerThreadId: null,
+                  providerTurnId: null,
+                  nativeItemRef: null,
+                  parentItemId: null,
+                  ordinal: 10,
+                  status: "waiting" as const,
+                  title: null,
+                  startedAt: now,
+                  completedAt: null,
+                  updatedAt: now,
+                  type: "user_input_request" as const,
+                  requestId,
+                  questions,
+                },
+              },
+            ]),
+      ],
+    });
+    return event;
+  });
+  const invoke = (name: string, args: Record<string, unknown>, caller = scope()) =>
+    server
+      .callTool({ name, arguments: args })
+      .pipe(
+        Effect.provideService(Invocation.McpInvocationContext, caller),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+  const question = (args: Record<string, unknown>, caller = scope()) =>
+    invoke("task_question", { taskId: task.id, ...args }, caller);
+  const notifications = () =>
+    projections.getThreadRecords(parentId, ["messages", "runs"]).pipe(
+      Effect.map((parent) => ({
+        ...parent,
+        messages: parent.messages.filter((message) => message.notification !== undefined),
+      })),
+    );
+  const settleParent = Effect.fn("TaskQuestions.settleParent")(function* () {
+    const now = yield* DateTime.now;
+    const event = {
+      id: EventId.make("parent:settled"),
+      type: "run.updated",
+      threadId: parentId,
+      runId: parentRun.id,
+      occurredAt: now,
+      payload: { ...parentRun, status: "completed", completedAt: now },
+    } satisfies OrchestrationV2DomainEvent;
+    yield* sink.write({
+      commandId: CommandId.make("command:runtime-reconcile:question-parent"),
+      events: [event],
+    });
+    return event;
+  });
+  const settleChild = Effect.fn("TaskQuestions.settleChild")(function* () {
+    const child = yield* projections.getThreadRecords(task.childThreadId!, ["runs"]);
+    const childRun = child.runs[0]!;
+    const now = yield* DateTime.now;
+    yield* sink.write({
+      commandId: CommandId.make("command:runtime-reconcile:finished-question-child"),
+      events: [
+        {
+          id: EventId.make("run:finished-child"),
+          type: "run.updated",
+          threadId: task.childThreadId!,
+          occurredAt: now,
+          payload: { ...childRun, status: "completed", completedAt: now },
+        },
+        {
+          id: EventId.make("task:finished-child"),
+          type: "subagent.updated",
+          threadId: parentId,
+          occurredAt: now,
+          payload: {
+            ...task,
+            status: "completed",
+            result: "Research finished",
+            completedAt: now,
+          },
+        },
+      ],
+    });
+  });
+  return {
+    settleChild,
+    orchestrator,
+    projections,
+    sink,
+    reactor,
+    task,
+    parentRun,
+    create,
+    addRequest,
+    invoke,
+    question,
+    notifications,
+    settleParent,
+  };
+});
+
+it.effect.each(["live", "message", "codex_question_reply"] as const)(
+  "lists, reads and answers a delegated %s question",
+  (capability) =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const event = yield* f.addRequest("request:question", capability);
+      expect((yield* f.question({ action: "list" })).structuredContent).toEqual({
+        requestIds: [event.payload.id],
+      });
+      expect(
+        (yield* f.question({ action: "read", requestId: event.payload.id })).structuredContent,
+      ).toEqual({ requestId: event.payload.id, questions });
+      const response = yield* f.question({
+        action: "respond",
+        requestId: event.payload.id,
+        answers: { format: "Markdown" },
+      });
+      expect(response.isError).not.toBe(true);
+      expect(response.structuredContent).toMatchObject({ sequence: expect.any(Number) });
+      const context = yield* f.projections.getRuntimeResponseContext(
+        f.task.childThreadId!,
+        event.payload.id,
+      );
+      expect(context.request).toMatchObject({
+        status: "resolved",
+        answers: { format: "Markdown" },
+      });
+      expect(context.item).toMatchObject({
+        type: "user_input_request",
+        questionAnswer: { answers: { format: "Markdown" } },
+      });
+      if (capability !== "live") {
+        const child = yield* f.projections.getThreadRecords(f.task.childThreadId!, ["messages"]);
+        expect(child.messages.some((message) => message.text.includes("Markdown"))).toBe(true);
+      }
+      expect((yield* f.question({ action: "list" })).structuredContent).toEqual({ requestIds: [] });
+      expect(
+        failure(
+          yield* f.question({
+            action: "respond",
+            requestId: event.payload.id,
+            answers: { format: "PDF" },
+          }),
+        ),
+      ).toMatchObject({
+        code: "invalid_request",
+        message: "The user-input request was already answered.",
+      });
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "excludes approvals, refuses permission responses and validates required action fields",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const approval = yield* f.addRequest("approval:permission", "live", "permission");
+      expect((yield* f.question({ action: "list" })).structuredContent).toEqual({ requestIds: [] });
+      for (const action of ["read", "respond"]) {
+        expect(
+          failure(
+            yield* f.question({
+              action,
+              requestId: approval.payload.id,
+              answers: { decision: "accept" },
+            }),
+          ),
+        ).toMatchObject({
+          code: "invalid_request",
+          message: "The pending user-input request was not found.",
+        });
+      }
+      const request = yield* f.projections.getRuntimeRequest(
+        f.task.childThreadId!,
+        approval.payload.id,
+      );
+      expect(request?.status).toBe("pending");
+      expect(request?.decision).toBeUndefined();
+      const event = yield* f.addRequest("question:required-fields");
+      for (const action of ["read", "respond"]) {
+        expect(failure(yield* f.question({ action }))).toMatchObject({
+          code: "invalid_request",
+          message: "This action needs `requestId`.",
+        });
+      }
+      expect(
+        failure(yield* f.question({ action: "respond", requestId: event.payload.id })),
+      ).toMatchObject({ code: "invalid_request", message: "This action needs `answers`." });
+      expect(failure(yield* f.question({ action: "read", requestId: "missing" }))).toMatchObject({
+        code: "invalid_request",
+      });
+      const cancelled = {
+        ...event,
+        id: EventId.make("question:cancelled"),
+        payload: { ...event.payload, status: "cancelled" as const },
+      };
+      yield* f.sink.write({ events: [cancelled] });
+      expect(
+        failure(yield* f.question({ action: "respond", requestId: event.payload.id, answers: {} })),
+      ).toMatchObject({
+        code: "invalid_request",
+        message: "The user-input request is no longer pending (cancelled).",
+      });
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("restricts task questions and controls to the Agent that delegated the task", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const event = yield* f.addRequest("question:owner");
+    const otherId = ThreadId.make("thread:other-coordinator");
+    yield* f.create(otherId);
+    for (const action of ["list", "read", "respond"]) {
+      expect(
+        failure(
+          yield* f.question(
+            { action, requestId: event.payload.id, answers: { format: "Markdown" } },
+            scope(otherId),
+          ),
+        ),
+      ).toMatchObject({ code: "capability_denied" });
+    }
+    for (const name of ["task_send", "task_cancel", "task_status", "task_wait"]) {
+      expect(
+        failure(
+          yield* f.invoke(
+            name,
+            {
+              taskId: f.task.id,
+              ...(name === "task_send" ? { message: "Take over" } : {}),
+              ...(name === "task_wait" ? { timeoutMs: 1 } : {}),
+            },
+            scope(otherId),
+          ),
+        ),
+      ).toMatchObject({ code: "capability_denied" });
+    }
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, event.payload.id))?.status,
+    ).toBe("pending");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+const watchingTasks = Effect.fn("TaskQuestions.watchingTasks")(function* () {
+  const subscribed = yield* Deferred.make<void>();
+  const threads = yield* Threads.ThreadManagementService;
+  const tasks = yield* Tasks.make.pipe(
+    Effect.provideService(Threads.ThreadManagementService, {
+      ...threads,
+      streamStoredEventsFrom: (input) =>
+        Stream.unwrap(
+          Deferred.succeed(subscribed, undefined).pipe(
+            Effect.as(threads.streamStoredEventsFrom(input)),
+          ),
+        ),
+    }),
+  );
+  return { tasks, subscribed };
+});
+
+it.effect.each(["user_input", "permission"] as const)(
+  "ends task_wait when a child's %s request arrives",
+  (kind) =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const { tasks, subscribed } = yield* watchingTasks();
+      const waiting = yield* tasks.waitTask(scope(), { taskId: f.task.id }).pipe(Effect.forkChild);
+      yield* Deferred.await(subscribed);
+      const event = yield* f.addRequest("request:wait", "live", kind);
+      const expected = {
+        status: "running",
+        hasPendingQuestion: kind === "user_input",
+        pendingApproval:
+          kind === "permission" ? { requestId: event.payload.id, kind, runId: event.runId } : null,
+        waitTimedOut: false,
+      };
+      expect(yield* Fiber.join(waiting)).toMatchObject(expected);
+      expect(
+        (yield* f.invoke("task_status", { taskId: f.task.id })).structuredContent,
+      ).toMatchObject(expected);
+      expect((yield* f.invoke("task_wait", { taskId: f.task.id })).structuredContent).toMatchObject(
+        expected,
+      );
+      expect(
+        (yield* f.projections.getThreadRecords(parentId, ["subagents"])).subagents[0]
+          ?.completionDelivery?.state,
+      ).not.toBe("acknowledged");
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["user_input", "permission"] as const)(
+  "returns a blocking delegation on %s and keeps completion delivery armed",
+  (kind) =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const { tasks, subscribed } = yield* watchingTasks();
+      const waiting = yield* tasks
+        .delegateTask(scope(), {
+          task: "Ask the coordinator",
+          title: "Blocking question",
+          parentRunId: f.parentRun.id,
+          mode: "wait",
+          idempotencyKey: "blocking-question",
+        })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(subscribed);
+      const task = (yield* f.projections.getThreadRecords(parentId, ["subagents"])).subagents.find(
+        (task) => task.title === "Blocking question",
+      )!;
+      const event = yield* f.addRequest("request:blocking", "live", kind, task);
+      expect(yield* Fiber.join(waiting)).toMatchObject({
+        taskId: task.id,
+        status: "running",
+        hasPendingQuestion: kind === "user_input",
+        pendingApproval: kind === "permission" ? { requestId: event.payload.id } : null,
+        waitTimedOut: false,
+      });
+      expect(
+        (yield* f.projections.getThreadRecords(parentId, ["subagents"])).subagents.find(
+          (candidate) => candidate.id === task.id,
+        )?.completionWake,
+      ).toBe("always");
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("reports only the oldest live approval on an unfinished task Run", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const now = yield* DateTime.now;
+    yield* f.addRequest(
+      "approval:newer",
+      "live",
+      "command",
+      f.task,
+      DateTime.add(now, { seconds: 1 }),
+    );
+    const oldest = yield* f.addRequest("approval:oldest", "live", "permission", f.task, now);
+    yield* f.addRequest(
+      "approval:message",
+      "message",
+      "permission",
+      f.task,
+      DateTime.subtract(now, { seconds: 1 }),
+    );
+    expect((yield* f.invoke("task_status", { taskId: f.task.id })).structuredContent).toMatchObject(
+      {
+        pendingApproval: { requestId: oldest.payload.id, kind: "permission", runId: oldest.runId },
+        hasPendingQuestion: false,
+      },
+    );
+    const disposed: OrchestrationV2Subagent = {
+      ...f.task,
+      completionDelivery: { state: "disposed", observedByRunId: null },
+    };
+    yield* f.sink.write({
+      events: [
+        {
+          id: EventId.make("task:disposed"),
+          type: "subagent.updated",
+          threadId: parentId,
+          occurredAt: now,
+          payload: disposed,
+        },
+      ],
+    });
+    expect((yield* f.invoke("task_status", { taskId: f.task.id })).structuredContent).toMatchObject(
+      { pendingApproval: null },
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["live", "message"] as const)(
+  "wakes an async coordinator once for a %s question and cancels its queued wake after an answer",
+  (capability) =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      const event = yield* f.addRequest("question:async-wake", capability);
+      yield* f.reactor.handle(event);
+      yield* f.reactor.handle(event);
+      const parent = yield* f.notifications();
+      expect(parent.messages).toHaveLength(1);
+      expect(parent.messages[0]?.notification).toMatchObject({
+        source: { kind: "delegated_task", taskIds: [f.task.id] },
+        outcome: "updated",
+      });
+      expect(parent.messages[0]?.text).toContain(
+        `taskId ${f.task.id}, and requestId ${event.payload.id}`,
+      );
+      const approval = yield* f.addRequest("approval:no-wake", "live", "permission");
+      yield* f.reactor.handle(approval);
+      expect((yield* f.notifications()).messages).toHaveLength(1);
+      const queued = parent.runs.find((run) => run.userMessageId === parent.messages[0]!.id)!;
+      expect(queued.status).toBe("queued");
+      const response = yield* f.question({
+        action: "respond",
+        requestId: event.payload.id,
+        answers: { format: "Markdown" },
+      });
+      expect(response.isError).not.toBe(true);
+      const request = (yield* f.projections.getRuntimeRequest(
+        f.task.childThreadId!,
+        event.payload.id,
+      ))!;
+      yield* f.reactor.handle({
+        ...event,
+        id: EventId.make("question:resolved-wake"),
+        payload: request,
+      });
+      expect((yield* f.notifications()).runs.find((run) => run.id === queued.id)?.status).toBe(
+        "cancelled",
+      );
+      yield* f.reactor.handle(event);
+      expect((yield* f.notifications()).messages).toHaveLength(1);
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "delivers asynchronous questions during a blocking delegation and catches up live questions when the parent settles",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* setup("settled_only");
+      const live = yield* f.addRequest("question:live-wait");
+      const message = yield* f.addRequest("question:message-wait", "message");
+      yield* f.reactor.handle(live);
+      expect((yield* f.notifications()).messages).toHaveLength(0);
+      yield* f.reactor.handle(message);
+      expect((yield* f.notifications()).messages).toHaveLength(1);
+      const settled = yield* f.settleParent();
+      yield* f.reactor.handle(settled);
+      yield* f.reactor.handle(settled);
+      expect((yield* f.notifications()).messages).toHaveLength(2);
+      const resolved = {
+        ...live,
+        id: EventId.make("question:live-wait-resolved"),
+        payload: { ...live.payload, status: "resolved" as const },
+      };
+      yield* f.sink.write({ events: [resolved] });
+      yield* f.reactor.handle(live);
+      expect((yield* f.notifications()).messages).toHaveLength(2);
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("answers asynchronous questions after the delegated child finishes", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const event = yield* f.addRequest("question:finished-child", "message");
+    const approval = yield* f.addRequest("approval:finished-child", "live", "permission");
+    yield* f.settleChild();
+    expect((yield* f.invoke("task_status", { taskId: f.task.id })).structuredContent).toMatchObject(
+      { status: "completed", hasPendingQuestion: false, pendingApproval: null },
+    );
+    yield* f.reactor.handle(event);
+    expect((yield* f.notifications()).messages).toHaveLength(1);
+    expect(
+      (yield* f.question({ action: "read", requestId: event.payload.id })).structuredContent,
+    ).toEqual({ requestId: event.payload.id, questions });
+    expect(
+      (yield* f.question({
+        action: "respond",
+        requestId: event.payload.id,
+        answers: { format: "Markdown" },
+      })).isError,
+    ).not.toBe(true);
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, event.payload.id))?.status,
+    ).toBe("resolved");
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, approval.payload.id))?.status,
+    ).toBe("pending");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("routes follow-up questions to their current task and leaves older results settled", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    yield* f.addRequest("approval:previous-turn", "live", "permission");
+    yield* f.settleChild();
+    yield* f.orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("question:follow-up-message"),
+      threadId: f.task.childThreadId!,
+      messageId: MessageId.make("message:question-follow-up"),
+      text: "Review the research again",
+      attachments: [],
+      dispatchMode: { type: "start_immediately" },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const followUp = (yield* f.projections.getThreadRecords(parentId, [
+      "subagents",
+    ])).subagents.find(
+      (task) => task.childThreadId === f.task.childThreadId && task.id !== f.task.id,
+    );
+    expect(followUp).toBeDefined();
+    if (followUp === undefined) return yield* Effect.die("Missing follow-up task");
+    const followUpQuestion = yield* f.addRequest(
+      "question:follow-up",
+      "live",
+      "user_input",
+      followUp,
+    );
+    yield* f.reactor.handle(followUpQuestion);
+    expect((yield* f.notifications()).messages.at(-1)?.notification?.source).toMatchObject({
+      kind: "delegated_task",
+      taskIds: [followUp.id],
+    });
+    expect(
+      (yield* f.invoke("task_status", { taskId: followUp.id })).structuredContent,
+    ).toMatchObject({
+      hasPendingQuestion: true,
+      pendingApproval: null,
+    });
+    expect((yield* f.invoke("task_status", { taskId: f.task.id })).structuredContent).toMatchObject(
+      {
+        status: "completed",
+        hasPendingQuestion: false,
+        pendingApproval: null,
+      },
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("accepts partial asynchronous replies until every question is answered", () =>
+  Effect.gen(function* () {
+    const f = yield* setup();
+    const event = yield* f.addRequest("question:partial", "message");
+    const context = yield* f.projections.getRuntimeResponseContext(
+      f.task.childThreadId!,
+      event.payload.id,
+    );
+    if (context.item?.type !== "user_input_request")
+      return yield* Effect.die("Missing question fixture");
+    const now = yield* DateTime.now;
+    yield* f.sink.write({
+      events: [
+        {
+          id: EventId.make("question:partial-items"),
+          type: "turn-item.updated",
+          threadId: f.task.childThreadId!,
+          occurredAt: now,
+          payload: {
+            ...context.item,
+            questions: [
+              ...questions,
+              {
+                id: "delivery",
+                header: "Delivery",
+                question: "Where should it go?",
+                options: [],
+                required: false,
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(
+      (yield* f.question({
+        action: "respond",
+        requestId: event.payload.id,
+        answers: { format: "Markdown" },
+      })).isError,
+    ).not.toBe(true);
+    expect(
+      (yield* f.projections.getRuntimeRequest(f.task.childThreadId!, event.payload.id))?.status,
+    ).toBe("pending");
+    expect((yield* f.question({ action: "list" })).structuredContent).toEqual({
+      requestIds: [event.payload.id],
+    });
+    expect(
+      (yield* f.question({
+        action: "respond",
+        requestId: event.payload.id,
+        answers: { delivery: "The report Page" },
+      })).isError,
+    ).not.toBe(true);
+    expect(
+      yield* f.projections.getRuntimeRequest(f.task.childThreadId!, event.payload.id),
+    ).toMatchObject({
+      status: "resolved",
+      answers: { format: "Markdown", delivery: "The report Page" },
+    });
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["live", "message"] as const)(
+  "starts a settled async coordinator through the %s question event stream",
+  (capability) =>
+    Effect.gen(function* () {
+      const f = yield* setup();
+      yield* f.settleParent();
+      const afterSequence = yield* f.orchestrator.getThreadEventSequence(parentId);
+      const subscribed = yield* Deferred.make<void>();
+      const events = f.sink.stream({ afterSequence }).pipe(
+        Stream.map((stored) => stored.event),
+        Stream.mapError((cause) => new Orchestrator.OrchestratorDomainEventStreamError({ cause })),
+      );
+      const reactor = yield* Questions.make.pipe(
+        Effect.provideService(Orchestrator.OrchestratorV2, {
+          ...f.orchestrator,
+          streamDomainEvents: Stream.unwrap(
+            Deferred.succeed(subscribed, undefined).pipe(Effect.as(events)),
+          ),
+        }),
+      );
+      yield* reactor.start();
+      yield* Deferred.await(subscribed);
+      yield* f.addRequest("question:stream-wake", capability);
+      yield* f.sink.stream({ threadId: parentId, afterSequence, eventType: "run.created" }).pipe(
+        Stream.filter(
+          ({ event }) => event.type === "run.created" && event.payload.id !== f.parentRun.id,
+        ),
+        Stream.runHead,
+      );
+      const parent = yield* f.notifications();
+      expect(parent.messages).toHaveLength(1);
+      expect(parent.runs.find((run) => run.userMessageId === parent.messages[0]!.id)?.status).toBe(
+        "starting",
+      );
+    }).pipe(Effect.provide(layerTest)),
+);

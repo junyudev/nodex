@@ -2,6 +2,7 @@ import { recordTaskResult } from "./TaskResultDelivery.ts";
 import {
   delegatedTaskExecutionState,
   delegatedTaskRun,
+  endsTaskWait,
   isTerminalTaskStatus,
   taskStatusForRun,
 } from "../orchestration-v2/DelegatedTaskState.ts";
@@ -32,6 +33,7 @@ import {
   type ProviderInteractionMode,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
+  ProviderRequestKind,
   type ServerProvider,
   ThreadId,
   TurnItemId,
@@ -60,7 +62,13 @@ import { makeHistoryReadCoverage } from "../nodex/HistoryReadCoverage.ts";
 import { taskHistorySource, taskReadView } from "./TaskHistoryRead.ts";
 import { runtimeHistoryContent } from "../nodex/RuntimeHistoryContent.ts";
 import type { ThreadReadEvidence } from "../nodex/history-contracts.ts";
-import type { TaskReadInput, TaskReadResult } from "./toolkits/task/tools.ts";
+import type {
+  TaskQuestionInput,
+  TaskQuestionResult,
+  TaskReadInput,
+  TaskReadResult,
+} from "./toolkits/task/tools.ts";
+import { dispatchFailure } from "./threadAccess.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { isSnoozed } from "../orchestration-v2/threadSnoozePolicy.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -73,13 +81,13 @@ import {
 
 const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
 const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1_000;
-// Events that can make a delegated task terminal: the parent's task record,
-// and the child's runs, nested tasks, and pending provider background work.
+// Only control events can end a task wait; transcript events never fill its buffers.
 const TASK_WAKE_EVENTS = [
   { thread: "parent", eventType: "subagent.updated" },
   { thread: "child", eventType: "run.updated" },
   { thread: "child", eventType: "subagent.updated" },
   { thread: "child", eventType: "provider-thread.updated" },
+  { thread: "child", eventType: "runtime-request.updated" },
 ] as const;
 const DEFAULT_THREAD_READ_LIMIT = 50;
 const DEFAULT_THREAD_ITEM_MAX_CHARS = 20_000;
@@ -109,7 +117,7 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     taskId: NodeId,
   ) => Effect.Effect<OrchestratorMcpDelegateTaskResult, OrchestratorMcpFailure>;
-  /** Waits for a terminal task, acknowledging a settled result it returns. */
+  /** Waits for a result, question or approval, acknowledging only a settled result. */
   readonly waitTask: (
     scope: McpInvocationScope,
     input: { readonly taskId: NodeId; readonly timeoutMs?: number | undefined },
@@ -123,6 +131,10 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     taskId: NodeId,
   ) => Effect.Effect<ThreadId, OrchestratorMcpFailure>;
+  readonly taskQuestion: (
+    scope: McpInvocationScope,
+    input: TaskQuestionInput,
+  ) => Effect.Effect<TaskQuestionResult, OrchestratorMcpFailure>;
   readonly readThread: (
     scope: McpInvocationScope,
     input: TaskReadInput & { readonly threadId: ThreadId },
@@ -172,6 +184,42 @@ function threadManagementFailure(error: unknown): OrchestratorMcpFailure {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+const isApprovalRequestKind = Schema.is(ProviderRequestKind);
+
+function pendingTaskApproval(
+  child: Pick<OrchestrationV2ThreadProjection, "runs" | "nodes" | "runtimeRequests">,
+  taskId: NodeId,
+  originalRun: OrchestrationV2Run | undefined,
+): OrchestratorMcpDelegateTaskResult["pendingApproval"] {
+  const taskRunIds = new Set(
+    child.runs
+      .filter(
+        (run) =>
+          !ThreadManagementService.isTerminalRunStatus(run.status) &&
+          (run.delegatedTaskId === taskId ||
+            (run.delegatedTaskId === undefined && run.id === originalRun?.id)),
+      )
+      .map((run) => run.id),
+  );
+  let approval: OrchestratorMcpDelegateTaskResult["pendingApproval"] = null;
+  let oldestCreatedAt = Infinity;
+  for (const request of child.runtimeRequests) {
+    if (
+      request.status !== "pending" ||
+      request.responseCapability.type !== "live" ||
+      !isApprovalRequestKind(request.kind)
+    )
+      continue;
+    const runId = child.nodes.find((node) => node.id === request.nodeId)?.runId;
+    if (runId == null || !taskRunIds.has(runId)) continue;
+    const createdAt = DateTime.toEpochMillis(request.createdAt);
+    if (createdAt >= oldestCreatedAt) continue;
+    oldestCreatedAt = createdAt;
+    approval = { requestId: request.id, kind: request.kind, runId };
+  }
+  return approval;
 }
 
 function providerConstraints(
@@ -804,15 +852,40 @@ export const make = Effect.gen(function* () {
       return yield* crypto.randomUUIDv4().pipe(Effect.orDie);
     });
 
-  const taskOwner = (taskId: NodeId) =>
-    threadManagement.getTaskOwner(taskId).pipe(
-      Effect.mapError(threadManagementFailure),
-      Effect.flatMap((owner) =>
-        owner === null
-          ? Effect.fail(failure("task_not_found", `Delegated task ${taskId} was not found.`))
-          : Effect.succeed(owner),
-      ),
+  const taskOwner = Effect.fn("OrchestratorMcpService.taskOwner")(function* (
+    scope: McpInvocationScope,
+    taskId: NodeId,
+  ) {
+    yield* requireCapability(scope);
+    const caller = yield* requireThreadScope(scope, "Task tools");
+    const owner = yield* threadManagement
+      .getTaskOwner(taskId)
+      .pipe(Effect.mapError(threadManagementFailure));
+    if (owner === null)
+      return yield* failure("task_not_found", `Delegated task ${taskId} was not found.`);
+    if (owner !== caller.thread.threadId)
+      return yield* failure(
+        "capability_denied",
+        "Only the Agent that delegated this task can access it.",
+      );
+    return owner;
+  });
+
+  const taskThread = Effect.fn("OrchestratorMcpService.taskThread")(function* (
+    scope: McpInvocationScope,
+    taskId: NodeId,
+  ) {
+    const parentId = yield* taskOwner(scope, taskId);
+    const records = yield* threadManagement
+      .getThreadRecords(parentId, ["subagents"], { subagentIds: [taskId] })
+      .pipe(Effect.mapError(threadManagementFailure));
+    const task = records.subagents.find(
+      (candidate) => candidate.id === taskId && candidate.origin === "app_owned",
     );
+    if (task?.childThreadId == null)
+      return yield* failure("task_not_found", `Delegated task ${taskId} was not found.`);
+    return task.childThreadId;
+  });
 
   const readTask = (
     scope: McpInvocationScope,
@@ -823,8 +896,7 @@ export const make = Effect.gen(function* () {
     observedByRunId?: RunId,
   ): Effect.Effect<OrchestratorMcpDelegateTaskResult, OrchestratorMcpFailure> =>
     Effect.gen(function* () {
-      yield* requireCapability(scope);
-      const parentId = yield* taskOwner(taskId);
+      const parentId = yield* taskOwner(scope, taskId);
       const parentProjection = yield* threadManagement
         .getThreadRecords(parentId, ["subagents"], { subagentIds: [taskId] })
         .pipe(Effect.mapError(threadManagementFailure));
@@ -877,6 +949,23 @@ export const make = Effect.gen(function* () {
             .map((run) => [run.id, run]),
         ).values(),
       ].toSorted((a, b) => a.ordinal - b.ordinal);
+      const { runtimeRequests } = yield* threadManagement
+        .getThreadRecords(task.childThreadId, ["runtimeRequests"])
+        .pipe(Effect.mapError(threadManagementFailure));
+      const approvalNodeIds = runtimeRequests
+        .filter(
+          (request) =>
+            request.status === "pending" &&
+            request.responseCapability.type === "live" &&
+            isApprovalRequestKind(request.kind),
+        )
+        .map((request) => request.nodeId);
+      const { nodes } = yield* threadManagement
+        .getThreadRecords(task.childThreadId, ["nodes"], { nodeIds: approvalNodeIds })
+        .pipe(Effect.mapError(threadManagementFailure));
+      const approvalRuns = yield* runRecords({
+        runIds: nodes.flatMap((node) => (node.runId === null ? [] : [node.runId])),
+      });
       const transfers = yield* threadManagement
         .getThreadRecords(parentId, ["contextTransfers"], {
           contextTransferThreadIds: [task.childThreadId],
@@ -895,6 +984,7 @@ export const make = Effect.gen(function* () {
         messages: [],
         subagents: [],
         providerThreads: [],
+        runtimeRequests,
       };
       const childRun = delegatedTaskRun(childControls, task);
       const terminalRun = latestTerminalResultRun(childControls, childRun);
@@ -969,6 +1059,22 @@ export const make = Effect.gen(function* () {
             : subagentResultForRun(childProjection, terminalRun).text
           : null,
         latestTerminalResultContextTransferId: resultTransferForRun(terminalRun)?.id ?? null,
+        hasPendingQuestion:
+          !isTerminalTaskStatus(status) &&
+          runtimeRequests.some(
+            (request) =>
+              request.kind === "user_input" &&
+              request.status === "pending" &&
+              request.responseCapability.type === "live",
+          ),
+        pendingApproval:
+          isTerminalTaskStatus(status) || task.completionDelivery?.state === "disposed"
+            ? null
+            : pendingTaskApproval(
+                { runtimeRequests, nodes, runs: approvalRuns.runs },
+                task.id,
+                childRun,
+              ),
         waitTimedOut,
       } satisfies OrchestratorMcpDelegateTaskResult;
       if (
@@ -1017,12 +1123,12 @@ export const make = Effect.gen(function* () {
         );
       // Sequences are global, so one cursor taken before the first read
       // replays anything either thread records after it.
-      const parentId = yield* taskOwner(taskId);
+      const parentId = yield* taskOwner(scope, taskId);
       const afterSequence = yield* threadManagement
         .getThreadEventSequence(parentId)
         .pipe(Effect.mapError(streamError));
       const initial = yield* readTask(scope, taskId, false, true);
-      if (isTerminalTaskStatus(initial.status)) return Option.some(initial);
+      if (endsTaskWait(initial)) return Option.some(initial);
       // One stream per event type, so transcript events never fill a buffer.
       return yield* Stream.mergeAll(
         TASK_WAKE_EVENTS.map(({ thread, eventType }) =>
@@ -1036,7 +1142,7 @@ export const make = Effect.gen(function* () {
       ).pipe(
         Stream.mapError(streamError),
         Stream.mapEffect(() => readTask(scope, taskId, false, true)),
-        Stream.filter((result) => isTerminalTaskStatus(result.status)),
+        Stream.filter(endsTaskWait),
         Stream.runHead,
       );
     }).pipe(Effect.timeoutOption(Duration.millis(timeoutMs)), Effect.map(Option.flatten));
@@ -1333,13 +1439,10 @@ export const make = Effect.gen(function* () {
           Math.max(1, input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS),
         );
         const waited = yield* waitForTask(scope, taskId, timeoutMs);
-        if (Option.isSome(waited)) {
+        if (Option.isSome(waited) && isTerminalTaskStatus(waited.value.status)) {
           return waited.value;
         }
-        // The blocking wait timed out, so it no longer owns delivery: upgrade
-        // the task so a later terminal wakes the parent even mid-turn. Best
-        // effort; on failure the settled_only policy still wakes a settled
-        // parent.
+        // An incomplete wait gives up delivery, so later results must wake the coordinator.
         yield* threadManagement
           .dispatch({
             type: "delegated_task.wake-policy",
@@ -1353,7 +1456,7 @@ export const make = Effect.gen(function* () {
             completionWake: "always",
           })
           .pipe(
-            // The tool result is the timed-out task either way, so failures
+            // The tool still returns after a timeout, question or approval, so failures
             // stay warnings. Keep the two shapes apart: a rejected receipt
             // means this exact command id already failed (a replay of a
             // no-op upgrade), while anything else is a fresh dispatch fault.
@@ -1375,7 +1478,7 @@ export const make = Effect.gen(function* () {
               }),
             ),
           );
-        return yield* readTask(scope, taskId, true, true);
+        return yield* readTask(scope, taskId, Option.isNone(waited), true);
       }),
     taskStatus: (callerScope, taskId) =>
       Effect.gen(function* () {
@@ -1391,21 +1494,58 @@ export const make = Effect.gen(function* () {
         const waited = yield* waitForTask(scope, input.taskId, timeoutMs);
         return Option.isSome(waited) ? waited.value : yield* readTask(scope, input.taskId, true);
       }),
-    taskThread: (scope, taskId) =>
-      Effect.gen(function* () {
-        yield* requireCapability(scope);
-        const parentId = yield* taskOwner(taskId);
-        const records = yield* threadManagement
-          .getThreadRecords(parentId, ["subagents"], { subagentIds: [taskId] })
-          .pipe(Effect.mapError(threadManagementFailure));
-        const task = records.subagents.find(
-          (candidate) => candidate.id === taskId && candidate.origin === "app_owned",
+    taskThread,
+    taskQuestion: Effect.fn("OrchestratorMcpService.taskQuestion")(function* (scope, input) {
+      const threadId = yield* taskThread(scope, input.taskId);
+      const projection = yield* threadManagement
+        .getThreadRecords(
+          threadId,
+          input.action === "list" ? ["runtimeRequests"] : ["runtimeRequests", "turnItems"],
+          { turnItemTypes: ["user_input_request"] },
+        )
+        .pipe(Effect.mapError(threadManagementFailure));
+      if (input.action === "list")
+        return {
+          requestIds: projection.runtimeRequests
+            .filter((request) => request.kind === "user_input" && request.status === "pending")
+            .map((request) => request.id),
+        };
+      if (input.requestId === undefined)
+        return yield* failure("invalid_request", "This action needs `requestId`.");
+      const request = projection.runtimeRequests.find(
+        (request) => request.id === input.requestId && request.kind === "user_input",
+      );
+      const item = projection.turnItems.find(
+        (item) => item.type === "user_input_request" && item.requestId === input.requestId,
+      );
+      if (request === undefined || item?.type !== "user_input_request")
+        return yield* failure("invalid_request", "The pending user-input request was not found.");
+      if (request.status !== "pending")
+        return yield* failure(
+          "invalid_request",
+          request.status === "resolved"
+            ? "The user-input request was already answered."
+            : `The user-input request is no longer pending (${request.status}).`,
         );
-        if (task?.childThreadId == null) {
-          return yield* failure("task_not_found", `Delegated task ${taskId} was not found.`);
-        }
-        return task.childThreadId;
-      }),
+      if (input.action === "read") return { requestId: request.id, questions: item.questions };
+      if (input.answers === undefined)
+        return yield* failure("invalid_request", "This action needs `answers`.");
+      const key = yield* requestKey();
+      const result = yield* threadManagement
+        .dispatch({
+          type: "runtime-request.respond",
+          threadId,
+          commandId: stableCommandId({
+            scope,
+            requestKey: key,
+            operation: `task-question:${input.taskId}:${request.id}`,
+          }),
+          requestId: request.id,
+          answers: input.answers,
+        })
+        .pipe(Effect.mapError(dispatchFailure));
+      return { sequence: result.sequence };
+    }),
     cancelTask: (scope, input) =>
       Effect.gen(function* () {
         yield* readTask(scope, input.taskId);
@@ -1413,7 +1553,7 @@ export const make = Effect.gen(function* () {
           input.idempotencyKey === undefined
             ? yield* requestKey()
             : yield* admitToolOperation(scope, "task_cancel", input.idempotencyKey, input);
-        const threadId = yield* taskOwner(input.taskId);
+        const threadId = yield* taskOwner(scope, input.taskId);
         return yield* threadManagement
           .cancelDelegatedTask({
             threadId,

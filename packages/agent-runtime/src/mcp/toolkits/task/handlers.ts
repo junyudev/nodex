@@ -20,6 +20,8 @@ export const taskView = (task: OrchestratorMcpDelegateTaskResult): TaskView => (
       ? null
       : { status: task.latestTerminalStatus, summary: task.latestTerminalSummary },
   hasPendingFollowUps: task.hasPendingChildRuns,
+  hasPendingQuestion: task.hasPendingQuestion,
+  pendingApproval: task.pendingApproval,
   waitTimedOut: task.waitTimedOut,
 });
 
@@ -60,6 +62,9 @@ const handlers = {
         return { taskId: sent.taskId ?? taskId, status: sent.status, delivery: sent.delivery };
       }),
     ),
+  ),
+  task_question: McpToolAccess.writes((input) =>
+    Effect.flatMap(service, ({ scope, tasks }) => tasks.taskQuestion(scope, input)),
   ),
   // Acknowledging a child's result is bookkeeping on the caller's own task, so a read stays a read.
   task_read: McpToolAccess.reads(({ taskId, ...page }) =>

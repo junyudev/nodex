@@ -2,6 +2,7 @@ import type {
   OrchestrationV2Run,
   OrchestrationV2Subagent,
   OrchestrationV2ThreadProjection,
+  OrchestratorMcpDelegateTaskResult,
 } from "@t3tools/contracts";
 
 type TerminalTaskStatus = "completed" | "failed" | "cancelled" | "interrupted";
@@ -59,6 +60,19 @@ export function isTerminalTaskStatus(status: string): status is TerminalTaskStat
     status === "failed" ||
     status === "cancelled" ||
     status === "interrupted"
+  );
+}
+
+export function endsTaskWait(
+  result: Pick<
+    OrchestratorMcpDelegateTaskResult,
+    "status" | "hasPendingQuestion" | "pendingApproval"
+  >,
+): boolean {
+  return (
+    result.hasPendingQuestion ||
+    result.pendingApproval !== null ||
+    isTerminalTaskStatus(result.status)
   );
 }
 

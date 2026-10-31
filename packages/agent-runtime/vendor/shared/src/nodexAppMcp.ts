@@ -56,6 +56,7 @@ export const NODEX_APP_TASK_TOOL_NAMES: ReadonlySet<string> = new Set([
   "task_status",
   "task_wait",
   "task_send",
+  "task_question",
   "task_read",
   "task_cancel",
   "stop_workflow",

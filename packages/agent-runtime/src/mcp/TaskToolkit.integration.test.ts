@@ -658,6 +658,7 @@ describe("task tools", () => {
             "list_agent_models",
             "stop_workflow",
             "task_cancel",
+            "task_question",
             "task_read",
             "task_send",
             "task_status",

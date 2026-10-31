@@ -1,4 +1,5 @@
 import * as Layer from "effect/Layer";
+import * as Effect from "effect/Effect";
 import * as OrchestrationCommandReceipts from "../persistence/OrchestrationCommandReceipts.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
@@ -14,6 +15,7 @@ import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EffectWorker from "./EffectWorker.ts";
+import * as DelegatedTaskQuestionReactor from "./DelegatedTaskQuestionReactor.ts";
 import * as EventSink from "./EventSink.ts";
 import * as EventStore from "./EventStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -311,6 +313,13 @@ const layerProviderContinuationWorkerProvided = ProviderContinuationService.laye
   ),
 );
 
+const layerDelegatedTaskQuestions = Layer.effectDiscard(
+  DelegatedTaskQuestionReactor.DelegatedTaskQuestionReactor.use((reactor) => reactor.start()),
+).pipe(
+  Layer.provide(DelegatedTaskQuestionReactor.layer),
+  Layer.provide(Layer.merge(layerOrchestratorProvided, ProjectionStore.layer)),
+);
+
 /**
  * The one production composition: execution services plus every worker that keeps durable
  * execution state current and bounded. A host supplies platform capabilities and its policy
@@ -326,5 +335,6 @@ export const layerProduction = Layer.mergeAll(
   layerProjectService,
   layerSecretRequestsProvided,
   layerProviderContinuationWorkerProvided,
+  layerDelegatedTaskQuestions,
   EffectOutbox.layerPruneWorker.pipe(Layer.provide(EffectOutbox.layer)),
 ).pipe(Layer.provideMerge(layerEventInfrastructure));

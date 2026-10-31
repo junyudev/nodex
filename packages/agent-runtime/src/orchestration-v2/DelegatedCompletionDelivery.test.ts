@@ -2193,6 +2193,8 @@ it.layer(layerReceipts)("native delegated result receipts", (it) => {
             latestTerminalStatus: "completed",
             latestTerminalSummary: `Result ${index}`,
             latestTerminalResultContextTransferId: handoffs[index]!.transferId!,
+            hasPendingQuestion: false,
+            pendingApproval: null,
             waitTimedOut: false,
           } satisfies import("@t3tools/contracts").OrchestratorMcpDelegateTaskResult;
           const publicResult = taskView(taskResult);

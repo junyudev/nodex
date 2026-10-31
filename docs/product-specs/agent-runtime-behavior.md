@@ -736,7 +736,7 @@ use the canonical Runtime writer and stable command identities.
 Every provider attaches the application tools as one MCP server named `nodex_app`. Session
 tools address product Sessions by sessionId across Projects. The Runtime's task tools
 (`list_agent_models`, `delegate_task`, `task_status`, `task_wait`, `task_send`, `task_read`,
-`task_cancel` and `stop_workflow`) address delegated children by taskId only; canonical
+`task_question`, `task_cancel` and `stop_workflow`) address delegated children by taskId only; canonical
 history retains source Thread provenance and complete typed items without granting target
 selection by those identities. A task resolves through its indexed owner to its
 actual parent, so observation does not scan every Session. `task_read` without a taskId reads
@@ -752,6 +752,26 @@ Runs and process restarts do not replace that identity. Changed arguments fail w
 `idempotency_key_reused`; exact retries reuse execution receipts without another child or
 message. After seven days, reusing the key admits a new operation independently of expired
 receipt cleanup. Omitted keys retain native-call derivation.
+
+The delegating Agent answers its delegated children's information questions through
+`task_question`: `list` returns pending user-question requestIds, `read` returns the
+question set for a requestId, and `respond` submits answers through the Runtime's
+question-response command. Every action requires a taskId owned by the caller;
+permissions and approvals cannot be answered through this tool. Live questions resume
+the waiting provider, while asynchronous questions send answers into the child's conversation.
+Answered or dismissed requests cannot be answered again through the tool.
+
+Task status and wait results report `hasPendingQuestion` for a live question that blocks
+an unfinished task, and `pendingApproval` for its oldest live approval on an active task
+Run (requestId, kind and runId), or null. A blocking delegation or `task_wait` returns
+on a result, live question, approval or timeout; only a timeout sets `waitTimedOut`.
+Returning an unfinished blocking delegation keeps later completion delivery armed.
+An async child's live or asynchronous question wakes its coordinator with the taskId
+and requestId. A live question already delivered by a blocking delegation does not
+also queue a wake while that parent Run is active; if the Run settles first, the
+pending question wakes it. Repeated question events do not create duplicate wakes,
+and answering or dismissing a question cancels its queued wake. Approvals remain
+user decisions and do not queue coordinator question wakes.
 
 `task_read` shares Session history semantics: text messages or complete activity JSON,
 newest-first or oldest-first order, independent page and content cursors, a reusable forward

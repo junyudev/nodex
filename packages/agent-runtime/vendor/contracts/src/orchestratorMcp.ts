@@ -11,6 +11,7 @@ import {
   PositiveInt,
   ProjectId,
   RunId,
+  RuntimeRequestId,
   ScheduledTaskId,
   SecretRef,
   ThreadId,
@@ -22,7 +23,7 @@ import {
   ScheduledTaskSchedule,
   ScheduledTaskUpsertSchedule,
 } from "./scheduledTask.ts";
-import { ProviderInteractionMode, RuntimeMode } from "./providerPolicy.ts";
+import { ProviderInteractionMode, ProviderRequestKind, RuntimeMode } from "./providerPolicy.ts";
 import { ThreadLinkedPullRequest } from "./threadPullRequest.ts";
 import { ThreadTitleRegeneration } from "./threadTitle.ts";
 import {
@@ -191,6 +192,12 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
 });
 export type OrchestratorMcpDelegateTaskInput = typeof OrchestratorMcpDelegateTaskInput.Type;
 
+export const OrchestratorMcpPendingTaskApproval = Schema.NullOr(
+  Schema.Struct({ requestId: RuntimeRequestId, kind: ProviderRequestKind, runId: RunId }),
+).annotate({
+  description: "Oldest pending approval, or null. Ends a wait. Grants no approval rights.",
+});
+
 export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
   taskId: NodeId,
   childThreadId: ThreadId,
@@ -207,6 +214,10 @@ export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
   model: Schema.NullOr(Schema.String),
   summary: Schema.NullOr(Schema.String),
   resultContextTransferId: Schema.NullOr(ContextTransferId),
+  hasPendingQuestion: Schema.Boolean.annotate({
+    description: "A question blocks the child and ends a wait. Read and answer it with task_question.",
+  }),
+  pendingApproval: OrchestratorMcpPendingTaskApproval,
   waitTimedOut: Schema.Boolean.annotate({
     description:
       "True only on the call whose wait budget elapsed. The timeout does not cancel the task.",
