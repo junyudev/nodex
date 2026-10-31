@@ -1,0 +1,67 @@
+src/renderer/components/workbench/pending-worktree-route.test.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 12,22-24
+src/renderer/components/board/inline-image.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 1,41,49,70-89,96,98,100,103,105
+src/renderer/components/message/message-document.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 14-15,68-69,82,88-97,138,148
+docs/product-specs/message-content-behavior.md
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 83-89
+src/renderer/features/local-conversation/view/shared/user-message-collapse.browser.test.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 2-4,10
+  s_6232bdbdc99b0f::t_124eaf439e6a76 11
+src/renderer/components/message/message-document.test.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 4-7,38-44,92-98,113-119,123-153,174-241
+  s_6232bdbdc99b0f::t_a4f40d8fb7648a 154-173
+docs/references/nodex-markdown.md
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 384-387
+src/renderer/components/board/editor/readonly-nfm-blocknote-preview.test.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 9,48-57
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 155,333,554
+CHANGELOG.md
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 20
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 13,47-49
+  s_6232bdbdc99b0f::t_1ed3cbacdea9f8 50
+src/renderer/components/board/editor/readonly-nfm-blocknote-preview.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 36,344
+src/renderer/features/user-attachment-image-editor/adapters/resolved-image-asset.ts
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 4,7
+src/renderer/components/board/nfm-renderer.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 20-25,490-492,499-502,504-505,511,523-539
+  s_6232bdbdc99b0f::t_09d604804e5236 540-542
+src/renderer/lib/assets.ts
+  s_6232bdbdc99b0f::t_0a12bd17ea37bb 83-86,88-97
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 11,87,98-107
+  s_6232bdbdc99b0f::t_8e8c46e20367ad 108
+src/renderer/components/board/markdown-image.ts
+  s_6232bdbdc99b0f::t_0a12bd17ea37bb 4,24-25,27-29,31,34-36
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 1-2,8,11-21,23,30,32-33,37-42
+src/renderer/features/local-conversation/view/shared/user-message-collapse.test.tsx
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 4,23-27
+src/renderer/lib/assets.node.test.ts
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 3-7,54-67
+  s_6232bdbdc99b0f::t_a4f40d8fb7648a 68-77
+src/renderer/components/message/message-document.browser.test.tsx
+  s_6232bdbdc99b0f::t_62e66dc0840542 69
+  s_6232bdbdc99b0f::t_7ab0d29f679b4e 1-2,6,9-10,53-67,70-71
+  s_6232bdbdc99b0f::t_8c1411da74d511 68,72-73
+src/renderer/features/local-conversation/view/realtime-user-content.browser.test.tsx
+  s_6232bdbdc99b0f::t_6f9d45eee3d595 11,50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "225aacfd6414e501d5bf5fef3f4d79a109fde732",
+  "prompts": {},
+  "sessions": {
+    "s_6232bdbdc99b0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "83b3d77d-09d2-4902-95c8-545643ed273c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
