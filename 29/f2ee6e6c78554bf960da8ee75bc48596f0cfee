@@ -1,0 +1,371 @@
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 368-428
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_e2f9f3a29b34ef::t_ab3413c2ea0007 1741,1806
+  s_e2f9f3a29b34ef::t_7d372ade180774 98
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 44,240,244,701-710,875
+  s_e2f9f3a29b34ef::t_b93f9ac9e79c84 241-243
+src/renderer/lib/content-image/use-resolved-image-asset.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-167
+crates/nodex-core/src/workspace/inbox_content.rs
+  s_e2f9f3a29b34ef::t_7d372ade180774 128,130,133,135,232-235
+src/renderer/lib/image-edit-composer-channel.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 2
+src/renderer/features/user-attachment-image-editor/view/read-only-image-surface.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 10-13
+src/renderer/features/user-attachment-image-editor/view/single-image-editor.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 33,36-41,49-50
+src/renderer/lib/assets.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 11
+src/renderer/components/shared/file-link-anchor.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1
+src/renderer/lib/content-image/image-editor-surface.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-253
+src/shared/codex-conversation-state/codex-owner-edit.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-2,30,94-101,112-114,142-225
+  s_e2f9f3a29b34ef::t_a91fd865c8989c 226
+src/shared/codex-conversation-state/codex-owner-edit.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 2-8,19-20,30,37-41,54,71-89,93,98,103-105,120
+src/renderer/lib/content-image/content-image-read.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-96
+src/renderer/features/local-conversation/view/shared/image-view-surface.browser.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 13,78-84,86
+scripts/ci/icon-inline-svg-baseline.json
+  s_e2f9f3a29b34ef::t_7d372ade180774 49
+src/renderer/features/local-conversation/image-edit-composer-target.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1
+src/renderer/lib/content-image/content-image-scope.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-61
+src/renderer/lib/page-prompt-context.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1,18,94,142,144
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 123-125,615-623,630
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 38-39
+src/main/codex-application/CodexMainConversationEdit.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 18,26-66,68-82,84-95,97-232
+CHANGELOG.md
+  s_e2f9f3a29b34ef::t_7d372ade180774 22-23,40-44
+src/main/codex-application/CodexTurnPreparation.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 18,183,197-198
+src/renderer/components/board/nfm-renderer.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 3,16,718-739,760-761
+src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-attachment-row.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 2,7
+src/main/codex-application/CodexInputAssets.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 31,63,146-147,237,249,278,359-361,363-364,391,396
+src/renderer/features/user-attachment-image-editor/adapters/generated-image-collection-store.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1
+src/renderer/features/user-attachment-image-editor/view/generated-image-rail.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 6
+src/renderer/features/user-attachment-image-editor/view/single-image-editor.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 9,11
+src/renderer/features/user-attachment-image-editor/adapters/use-image-edit-submission.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 9-12,15-21
+src/renderer/features/user-attachment-image-editor/view/image-preview-dialog.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 7
+src/renderer/lib/content-image/image-preview-policy.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-106
+tests/e2e/chat-message-images.spec.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-222
+src/renderer/components/message/message-document.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 5,14,16,82,86,88
+src/renderer/features/user-attachment-image-editor/model/types.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1
+src/renderer/lib/content-image/image-editor-analytics.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-83
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 75-76
+src/renderer/lib/content-image/image-source.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-42
+src/renderer/components/conversation-media/conversation-video-lazy.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-179
+src/main/core-client/inbox-suggestion-spend-scenario.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 63
+src/renderer/lib/use-library-navigation.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 24,240-254
+  s_e2f9f3a29b34ef::t_1a13eeb43255c8 255
+src/renderer/lib/workbench-panel-tab-model.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 2
+src/renderer/lib/content-image/use-content-image.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-96
+src/renderer/lib/app-resource-source.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 2
+src/renderer/lib/library-file-resources.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 185-199
+src/shared/markdown/paste.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 7,9,36-77,144,146-147,149-153,163,168-178,183,189-221
+  s_e2f9f3a29b34ef::t_b541d680889f63 222
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 248
+src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-attachment-thumbnail.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 3
+src/main/codex-application/CodexQueuedFollowUps.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 97,192-195,211,790-809
+  s_e2f9f3a29b34ef::t_48c89e220a7953 810
+src/renderer/lib/prompt-file-images.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-132
+src/main/codex-application/CodexMainConversationEdit.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 14-17,44,67-72,101,107
+src/renderer/features/local-conversation/view/composer/image-attachments/use-composer-image-attachments.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 12
+src/renderer/lib/content-image/codex-image-pointers.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-29
+src/renderer/components/message/message-images-input.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 24-25,29,127-130,132-145
+docs/product-specs/composer-image-attachments-behavior.md
+  s_e2f9f3a29b34ef::t_7d372ade180774 40
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 128,137-141,245-251,317-318,400,440-455,464-472,529,1988,1992-2004,2013-2018,2355-2360,2362-2369,2380,2450-2453,2455-2458
+  s_e2f9f3a29b34ef::t_af445fb8ec8372 506,2361,2454
+src/renderer/features/user-attachment-image-editor/model/image-edit-submission.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 9-10
+src/renderer/features/local-conversation/view/shared/markdown/markdown-core.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 13,22,29,67-68
+src/renderer/features/user-attachment-image-editor/model/generated-image-collection.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-2
+src/renderer/components/conversation-media/conversation-media.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-808
+src/renderer/features/local-conversation/view/shared/user-message-attachments.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-12,14-32,39-41,200-254,256-257,261,267,270-319,341-346,348-349,351-353,355,361,364,381-396,398,407-410,414-415,430,434,437,459-503
+src/renderer/lib/composer-image-attachment-channel.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1
+src/renderer/features/local-conversation/view/composer/image-attachments/image-edit-intent-attachments.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1
+src/renderer/lib/content-image/codex-image-pointers.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-142
+src/renderer/components/board/markdown-image.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-3,7,20-22,24,26-39,44,49-55
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 143-145,1248-1249,1252,6966-6972,6983,6991,7013,7032
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 64-65,21576-21683
+  s_e2f9f3a29b34ef::t_9eba174c3ddb8e 21684
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 341,350,365-367
+src/renderer/features/user-attachment-image-editor/view/image-comment-surface.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 11-12
+src/renderer/features/user-attachment-image-editor/index.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 5,17,22
+src/renderer/lib/content-image/image-source.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-68
+src/renderer/lib/content-image/image-actions.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-193
+src/renderer/lib/content-image/types.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-161
+src/renderer/lib/markdown/conversation-token-renderer.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 27
+src/main/inbox-application/inbox-suggestions.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 204,207,249
+src/renderer/features/local-conversation/view/shared/generated-image-gallery.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 9-10,13-14,170-178,188
+src/renderer/components/conversation-media/conversation-video-lazy.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-31
+docs/FRONTEND.md
+  s_e2f9f3a29b34ef::t_7d372ade180774 340-343
+src/renderer/lib/content-image/image-bytes.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-125
+src/renderer/lib/image-edit-composer-channel.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1
+src/renderer/components/board/nfm-renderer.browser.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 5-11
+src/renderer/lib/content-image/use-resolved-image-asset.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-195
+src/shared/markdown/markdown-paste.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 5,121-176
+  s_e2f9f3a29b34ef::t_d2aeeb0d964fd2 177
+src/main/codex-application/CodexQueuedFollowUps.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 37,514
+src/renderer/features/local-conversation/view/shared/tools/tool-output-image.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1,5
+src/renderer/features/user-attachment-image-editor/model/generated-image-canvas-presentation.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1
+src/renderer/lib/query-keys.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 309-310
+src/shared/message-agent-input.test.ts
+  s_e2f9f3a29b34ef::t_968199149aae48 145-152
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-6,8-102,164-223
+  s_e2f9f3a29b34ef::t_55dbfc43075775 7,103-144,153-163
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_e2f9f3a29b34ef::t_7d372ade180774 2362-2363,6494,6498,6681,6802,6805,6907
+src/renderer/features/user-attachment-image-editor/view/image-remove-editor.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 27-28
+src/renderer/components/conversation-media/conversation-media.browser.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-283
+src/renderer/lib/content-image/image-bytes.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-211
+src/shared/codex-thread-follower-request.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 9,42-45
+src/renderer/features/inbox/inbox-message.browser.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 52,58,69,119-128,134,143-157,168-171
+src/renderer/lib/content-image/media-target.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-215
+src/renderer/features/user-attachment-image-editor/view/image-zoom-viewer.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 20-21
+src/renderer/lib/content-image/image-preview-opener.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-24
+src/renderer/lib/content-image/index.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-112
+src/renderer/lib/text-field-paste.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 22-23
+src/shared/file-link-openers.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 115-117
+src/renderer/lib/file-link-workspace.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-25
+src/renderer/features/local-conversation/view/shared/imported-markdown-images.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 6,10-11,48-54,57,83-98
+src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-attachment-row.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 8
+src/renderer/features/local-conversation/view/conversation-image-scope.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-76
+src/renderer/features/user-attachment-image-editor/view/user-attachment-image-editor-surface.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 12
+src/renderer/features/local-conversation/view/local-conversation-timeline-image.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 7,11-13,20,34-40,58
+src/renderer/components/board/nfm-renderer.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 11-23
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 82-88,95,1091-1098,1100-1107,1109-1117,1119-1122,1124-1179,1181-1198,1203-1206
+  s_e2f9f3a29b34ef::t_7c8e182aeec8ce 1207
+src/renderer/components/conversation-media/conversation-image-menu.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-29
+src/renderer/lib/content-image/codex-image-pointers.jsdom.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-137
+src/renderer/features/user-attachment-image-editor/model/image-editor-model.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 7-9
+src/renderer/features/user-attachment-image-editor/view/image-preview-dialog.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 19-21,24-25
+src/renderer/lib/content-image/media-target.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-174
+src/shared/message-agent-input.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-199,201-203,214-241
+  s_e2f9f3a29b34ef::t_1fcf4dc683ee89 200,204-213
+tests/e2e/codex-conversation-media.spec.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 7,134-137
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 22-23
+src/renderer/components/workbench/use-page-chat-send-port.ts
+  s_e2f9f3a29b34ef::t_c2fd9062aefe33 14,75,149,191
+src/renderer/features/local-conversation/view/composer/image-attachments/index.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 19
+src/renderer/features/local-conversation/view/shared/user-message-attachments.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 9,11-12,15-17,24-81,96-102,110,133-135,142,167-173,185,205-211,227,314-322,335,532-538,549
+src/renderer/components/conversation-media/conversation-media.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-980
+src/renderer/lib/content-image/content-image-read.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-361
+src/main/inbox-application/InboxDispatchRuntime.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 86,93
+src/renderer/components/conversation-media/conversation-video-player.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-206
+src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-attachment-model.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-4
+src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-data-transfer.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 6,31-32,188,197-219
+  s_e2f9f3a29b34ef::t_a4b9dfc39429d2 220
+src/renderer/lib/content-image/image-actions.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-166
+src/renderer/features/user-attachment-image-editor/adapters/generated-image-collection-store.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 10
+src/renderer/lib/content-image/image-editor-surface.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-148
+src/main/codex-application/CodexMainConversationActions.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 38,48,62-67,105-129
+src/renderer/lib/query-options.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 387-388,395
+src/renderer/features/local-conversation/conversation-runtime.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 16-21
+src/renderer/features/workspace-files/workspace-file-media-preview.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 7-8
+src/shared/file-link-openers.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 54-80
+src/renderer/features/local-conversation/view/shared/imported-markdown-images.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 3,9,24
+src/renderer/components/conversation-media/conversation-video-player.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-458
+src/shared/image-source.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-78
+src/renderer/features/user-attachment-image-editor/view/user-attachment-image-editor-surface.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 26-34,57-58
+tests/e2e/composer-image-drafts.spec.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 7,36-39
+src/renderer/features/user-attachment-image-editor/adapters/use-image-edit-submission.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 7
+src/shared/markdown/index.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 4,9
+src/renderer/features/local-conversation/view/shared/generated-image-gallery.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 21-26,120,123,216,256
+src/main/codex-application/CodexMainConversationActions.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 83-90,100-102
+src/renderer/lib/content-image/image-editor-analytics.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-90
+docs/product-specs/inbox-behavior.md
+  s_e2f9f3a29b34ef::t_7d372ade180774 314-319
+src/renderer/features/local-conversation/view/local-conversation-thread-body.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 35-38,238,241,272
+docs/product-specs/nfm-page-prompt-image-inputs.md
+  s_e2f9f3a29b34ef::t_6d2e2f11b0295c 108-110,112-113
+  s_e2f9f3a29b34ef::t_7d372ade180774 6,40-41,48,50-51,67,69,134-135,165
+src/renderer/features/user-attachment-image-editor/view/generated-image-playground.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 12-15,20-21
+  s_e2f9f3a29b34ef::t_c8362d0052c740 11
+tests/e2e/paid-agent-smoke.spec.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 879-883
+docs/product-specs/message-content-behavior.md
+  s_e2f9f3a29b34ef::t_7d372ade180774 40-42,63-78,101-110
+src/renderer/features/user-attachment-image-editor/view/generated-image-playground.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 6-7
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 484,488,492,497,532,705,736,748,989,995,1019-1022,1034,1058,1075,1122,1127
+docs/references/nodex-markdown.md
+  s_e2f9f3a29b34ef::t_7d372ade180774 415-417
+src/renderer/lib/use-workbench-panel-lifecycle.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 6
+src/renderer/features/local-conversation/view/composer/image-attachments/image-edit-intent-attachments.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 3
+src/renderer/lib/use-workbench-panel-openers.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 3
+src/renderer/components/board/editor/nfm-file-download-button.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 19
+src/renderer/features/user-attachment-image-editor/view/generated-image-rail.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 4-5
+src/renderer/features/local-conversation/view/conversation-markdown-source.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 15-21,24,338-431
+src/main/codex-application/CodexInputAssets.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 4,15,85-94,184-214,222-230
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 129
+src/renderer/lib/workbench-agent-context.node.test.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 31
+src/renderer/lib/use-workbench-panel-openers.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 23-24
+src/renderer/features/local-conversation/view/composer/composer-written-images.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-64
+src/renderer/features/local-conversation/view/shared/image-view-surface.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 7,30
+src/renderer/components/conversation-media/conversation-media-playback.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-62
+src/renderer/components/message/message-document.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 4,165-167,169,233-235,237
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_e2f9f3a29b34ef::t_7d372ade180774 370
+src/renderer/lib/prompt-file-images.ts
+  s_e2f9f3a29b34ef::t_7d372ade180774 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "29f2ee6e6c78554bf960da8ee75bc48596f0cfee",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
