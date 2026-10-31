@@ -1,0 +1,19 @@
+src/main/app-tools/RuntimeSessionCommands.node.test.ts
+  s_3c10c33b50886f::t_beb88f6708137e 786
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5ac7dc82cb95a521644c4218584cc1633928420e",
+  "prompts": {},
+  "sessions": {
+    "s_3c10c33b50886f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19288-822f-7ae1-bfb0-beeb7d666bcd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
