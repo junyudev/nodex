@@ -1,0 +1,93 @@
+src/shared/usage-meter-settings.ts
+  s_51eca158bd84c4::t_45d388e1f0a1a4 1-20
+  s_51eca158bd84c4::t_5eebbdd8b6691a 21-26
+src/renderer/components/workbench/usage-meter-setting-rows.tsx
+  s_51eca158bd84c4::t_61f0b9d8c59426 1-39
+  s_51eca158bd84c4::t_87677679ee8a36 40-46
+CHANGELOG.md
+  s_51eca158bd84c4::t_6b9d517a868275 9
+docs/product-specs/nodex-account-and-subscription-behavior.md
+  s_51eca158bd84c4::t_ec7f5077b5e3c1 31-33,98-99,146-147
+docs/product-specs/workbench-shell.md
+  s_51eca158bd84c4::t_52d99a36eb85b6 22,213
+src/main/agent-runtime/AgentRuntimeClaudeUsage.node.test.ts
+  s_51eca158bd84c4::t_e2d36c458396df 64,88-89,462-501
+src/main/agent-runtime/AgentRuntimeClaudeUsage.ts
+  s_51eca158bd84c4::t_b11c996860f95e 77-78,127,152,189,193-200,261,284-291,344-355
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_51eca158bd84c4::t_c50e60bd284a73 732-735
+src/main/app/CodexApplicationLive.ts
+  s_51eca158bd84c4::t_501de8383d9d46 26,377-389
+src/main/app/NodexAccountLive.ts
+  s_51eca158bd84c4::t_143ffdfb089e97 1-2,45-57
+src/main/codex-application/CodexAccount.node.test.ts
+  s_51eca158bd84c4::t_06d9bfb6e57e5e 421-509
+src/main/codex-application/CodexAccount.ts
+  s_51eca158bd84c4::t_66eec0fd52529c 35-36,92,95,146,150-152,204,219-220,257-273
+src/main/host-runtime/AppUpdateRuntime.test.ts
+  s_51eca158bd84c4::t_06920bbb93bbc4 108
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_51eca158bd84c4::t_186d50c6d2525a 353
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_51eca158bd84c4::t_16345ac628f22a 161-162,171-188
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_51eca158bd84c4::t_bb19b7690e85d8 1-4,83,187-194,643-661
+src/main/nodex-account/NodexAccount.node.test.ts
+  s_51eca158bd84c4::t_51562921258ae9 1-2,45,54,650-789
+src/main/nodex-account/NodexAccount.ts
+  s_51eca158bd84c4::t_3426579bc426ee 53-60,62-63,127,158-161,178,182,189-196,225-230,252-254,256-265,268-285,287,295-305,319-320
+src/main/platform/node/NodexAccountPlatform.node.test.ts
+  s_51eca158bd84c4::t_4e1ec1d4a216da 248,267
+src/main/settings/ApplicationSettings.test-support.ts
+  s_51eca158bd84c4::t_f824e92f41f271 1,13,20
+src/main/settings/ApplicationSettings.test.ts
+  s_51eca158bd84c4::t_f0969613fa80d6 655-698
+src/main/settings/ApplicationSettings.ts
+  s_51eca158bd84c4::t_b9f28b21958647 1-6,83-84,128,166,182-183,287,351-353,373,394-396,422
+src/main/settings/application-settings-persistence.ts
+  s_51eca158bd84c4::t_f25f7bd337999c 1-5,124,1415-1434
+src/renderer/components/workbench/general-settings-page.tsx
+  s_51eca158bd84c4::t_7cda45a1a23e43 1,72-73
+src/renderer/components/workbench/usage-meter-setting-rows.test.tsx
+  s_51eca158bd84c4::t_ca4d90ee8a4699 1-137
+src/renderer/components/workbench/workbench-rail-account-controls.test.tsx
+  s_51eca158bd84c4::t_541323d47fd921 26-29
+src/renderer/components/workbench/workbench-rail-account-controls.tsx
+  s_51eca158bd84c4::t_8456849608675e 1,262,266,269-273,329,343,390-391,400-405
+src/renderer/features/nodex-account/account-settings-page.tsx
+  s_51eca158bd84c4::t_a5ceb815b781b0 17,28
+src/renderer/features/nodex-account/nodex-credit-meter.tsx
+  s_51eca158bd84c4::t_f7c053a8cc0045 10,192-194
+src/renderer/features/nodex-account/use-nodex-account.test.tsx
+  s_51eca158bd84c4::t_a95e3857fbf508 7-13,293-295,311-337
+src/renderer/features/nodex-account/use-nodex-account.ts
+  s_51eca158bd84c4::t_73e3feb2466270 115-123
+src/renderer/features/usage-meters/usage-meter-settings.ts
+  s_51eca158bd84c4::t_1275733c9af51a 1-123
+src/renderer/lib/electron-renderer-transport.ts
+  s_51eca158bd84c4::t_079c7ec6dcd985 364-371
+src/renderer/lib/renderer-transport.ts
+  s_51eca158bd84c4::t_97fad7c92c0ebd 26-28
+src/shared/ipc-api.ts
+  s_51eca158bd84c4::t_6cc7bc8b64a840 1508-1515,3085
+src/shared/ipc-endpoint-policy.ts
+  s_51eca158bd84c4::t_aba3985fbb960c 290,749
+tests/e2e/nodex-account.spec.ts
+  s_51eca158bd84c4::t_8d3ce9420f01d8 6-10,350-408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e12932f4fda81769dd3214d808c2730c43003045",
+  "prompts": {},
+  "sessions": {
+    "s_51eca158bd84c4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19085-7681-7960-b3f2-aa5ca5fb90a5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
