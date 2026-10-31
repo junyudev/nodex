@@ -1,0 +1,139 @@
+crates/nodex-core/src/workspace/inbox.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 383
+src/shared/library-module-transport.test.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 33-60
+src/shared/block-documents/blocknote-schema-config.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 27-35,147
+src/shared/library-module.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 647
+src/shared/message-agent-input.ts
+  s_e2f9f3a29b34ef::t_acec3b50bfbb93 200,206-213
+  s_e2f9f3a29b34ef::t_0bdb67be10f302 214-215
+crates/nodex-markdown/tests/fixtures/cases.json
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 4-140,2173-2180
+src/shared/block-documents/headless-blocknote-schema.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 18,53-57,60-62,77-80
+crates/nodex-markdown/src/read/syntax.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 670-673
+crates/nodex-core/src/domain/ordinary_block.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 36-42
+src/shared/message-agent-input.test.ts
+  s_e2f9f3a29b34ef::t_acec3b50bfbb93 7,106-164
+  s_e2f9f3a29b34ef::t_b33811d2c8850b 165-166
+crates/nodex-core/src/domain/block_to_page.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 27,299-335
+  s_e2f9f3a29b34ef::t_fcc80c873998f8 336-337
+src/renderer/lib/nfm-turn-into-targets.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 82-86
+  s_e2f9f3a29b34ef::t_6af52666bd7860 81
+crates/nodex-core/src/workspace/inbox_content.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 187,203-219
+src/shared/block-documents/block-children-policy.test.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 42,105
+agent-skills/nodex/references/markdown.md
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 4,11
+src/renderer/lib/nfm-turn-into-targets.test.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 7-8,34
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-materialization.json
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 142-194,455-457,560,563-583,590,597,604,611,618,625,632,639,646,653,660,667,674,681,688,695
+crates/nodex-markdown/src/read/blocks.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 414,465-468
+crates/nodex-markdown/src/read/values.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 294-319
+src/shared/nodex-markdown/agent-guide.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 10,22
+src/renderer/components/board/editor/block-document-schema-parity.test.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 44-51
+src/shared/library-module-transport.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 433
+src/shared/nodex-markdown/nodex-markdown-fixture.test.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 10-16,228-242
+packages/core-protocol/src/generated.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 6340
+  s_e2f9f3a29b34ef::t_0df77213fe4a41 6338-6339
+crates/nodex-markdown/src/write/blocks.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 209-217
+packages/core-protocol/openapi.json
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 26380-26384
+  s_e2f9f3a29b34ef::t_d188a1edf56b71 26371-26379
+src/shared/generated/nodex-markdown-wasm/nodex_markdown.js
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 223-225
+crates/nodex-markdown/Cargo.toml
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 16
+crates/nodex-markdown/tests/prompt.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 1-71
+crates/nodex-markdown/src/text.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 67,104
+crates/nodex-markdown/src/write/portable.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 112-120
+crates/nodex-core/src/domain/block_tree.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 35,842,844-854
+crates/nodex-core-contracts/src/library.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 17,709
+src/renderer/components/board/editor/prompt-block.tsx
+  s_e2f9f3a29b34ef::t_acec3b50bfbb93 1-7
+crates/nodex-core/tests/yjs_yrs_conformance.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 68-82
+crates/nodex-core/tests/fixtures/yjs-yrs/markdown-parser-oracle.json
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 2,143-195,214,231,248,266,282,301,316,332,338,351,420,428,437,445,454
+crates/nodex-core/src/domain/derived_records.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 423-440
+  s_e2f9f3a29b34ef::t_c518a43f5bd547 422
+src/renderer/components/board/editor/nfm-schema.tsx
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 14,46
+crates/nodex-cli/src/agent_interface.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 15
+crates/nodex-core/src/domain/block_materialization.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 23
+docs/product-specs/nfm-editor-block-children-behavior.md
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 20,25-29
+  s_e2f9f3a29b34ef::t_9a418856728607 30
+docs/references/nodex-markdown.md
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 126-153,291
+docs/product-specs/nfm-page-prompt-image-inputs.md
+  s_e2f9f3a29b34ef::t_ae4b8502b19e51 140,161
+src/shared/block-documents/block-semantic-content.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 25
+crates/nodex-core/tests/fixtures/yjs-yrs/manifest.json
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 14,18
+src/renderer/components/board/editor/prompt-block-export.jsdom.test.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 1-24
+crates/nodex-core/src/domain/page_to_block.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 128,154
+crates/nodex-markdown/src/model.rs
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 286-290,325-356,400,415-416,534-551,912,1214-1220
+docs/product-specs/nfm-editor-structural-editing-behavior.md
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 104-105
+src/renderer/components/board/editor/readonly-nfm-blocknote-preview.tsx
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 48,276
+src/shared/block-documents/yjs-yrs-conformance.test.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 9-10,477-486
+  s_e2f9f3a29b34ef::t_629ae4c818d75a 487
+src/shared/block-documents/block-children-policy-v1.json
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 21
+src/shared/block-documents/yjs-yrs-fixture-generator.test.ts
+  s_e2f9f3a29b34ef::t_f724bf927ff3d5 125-137
+  s_e2f9f3a29b34ef::t_8c89ca40cc281d 124
+Cargo.lock
+  s_e2f9f3a29b34ef::t_26197e6edc2096 1246
+crates/nodex-core/tests/fixtures/yjs-yrs/matrix-state-vector.bin
+  s_e2f9f3a29b34ef::t_944ce42a7ebfb2 1
+packages/core-protocol/src/compatibility.generated.ts
+  s_e2f9f3a29b34ef::t_54dba2f0defc43 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "948b6e934c38a304cb420c3a4d1a046f0aac675b",
+  "prompts": {},
+  "sessions": {
+    "s_e2f9f3a29b34ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "611169ac-4329-45e2-9d06-66c1d10bf996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
