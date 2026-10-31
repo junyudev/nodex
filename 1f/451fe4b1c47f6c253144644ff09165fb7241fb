@@ -1,0 +1,19 @@
+src/renderer/lib/app-resource-source.node.test.ts
+  s_6232bdbdc99b0f::t_6cea960f98dd41 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1f451fe4b1c47f6c253144644ff09165fb7241fb",
+  "prompts": {},
+  "sessions": {
+    "s_6232bdbdc99b0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "83b3d77d-09d2-4902-95c8-545643ed273c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
