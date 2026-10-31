@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ClaudeIcon, OpenAIIcon } from "@/components/shared/icons/provider-icons";
+import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
 import { NODEX_BUTTON_COLOR_CLASS } from "@/components/ui/button";
 import { NodexHoverCard } from "@/components/ui/hover-card";
 import {
@@ -70,11 +70,7 @@ function UsageProviderMark({
   readonly provider: UsageProvider;
   readonly className?: string;
 }) {
-  return provider === "codex" ? (
-    <OpenAIIcon className={className} />
-  ) : (
-    <ClaudeIcon className={className} />
-  );
+  return <AgentProviderIcon kind={provider} className={className} />;
 }
 
 /**

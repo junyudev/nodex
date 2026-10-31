@@ -123,6 +123,19 @@ describe("what a suggestion may run chats on", () => {
     ]);
   });
 
+  it.each<Partial<Provider>>([
+    { enabled: false },
+    { installed: false },
+    { status: "error" },
+    { status: "disabled" },
+    { availability: "unavailable" },
+    { models: [] },
+  ])("does not offer an Agent that cannot take a chat: %j", (overrides) => {
+    expect(
+      inboxAgentCandidates([{ ...codex, ...overrides }], { now: NOW, useModelGuide: false }),
+    ).toEqual([]);
+  });
+
   it.each([-1, 0])("leaves out a window that reset %s milliseconds from now", (offset) => {
     const [candidate] = inboxAgentCandidates(
       [

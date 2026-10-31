@@ -2,6 +2,7 @@ import type { CodexThreadActiveFlag, CodexThreadStatusType } from "./types";
 import type { AgentRuntimeLaunch } from "./agent-runtime-api";
 import { agentRuntimeProviderId, applyAgentRuntimeOptionIntent } from "./agent-runtime-provider";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import { inboxModelGuideEntry } from "./inbox-model-guide";
 
 /** User-editable classification. It never authorizes work. */
 export type InboxEntryKind = "note" | "todo" | "question";
@@ -495,6 +496,31 @@ export const isInboxProviderUsable = (provider: InboxProvider): boolean =>
   provider.status !== "error" &&
   provider.status !== "disabled" &&
   provider.availability !== "unavailable";
+
+/** Every Agent the planner may start a chat on or delegate work to. */
+export const isInboxChatCandidate = (provider: InboxProvider): boolean =>
+  isInboxProviderUsable(provider) && provider.installed && provider.models.length > 0;
+
+/** Bounds each Agent's list so a large catalog cannot crowd out the messages themselves. */
+const MAX_INBOX_MODELS_PER_AGENT = 12;
+
+/**
+ * The models a suggestion may choose on one Agent: the catalog default first, then the models
+ * the guide speaks for, then catalog order, at most twelve.
+ */
+export function inboxOfferedModels(
+  provider: InboxProvider,
+  useModelGuide: boolean,
+): readonly InboxProviderModel[] {
+  const fallback = inboxDefaultChatModel(provider);
+  const rank = (model: InboxProviderModel) =>
+    model === fallback ? 0 : useModelGuide && inboxModelGuideEntry(model) ? 1 : 2;
+  return provider.models
+    .map((model, index) => ({ model, index }))
+    .sort((left, right) => rank(left.model) - rank(right.model) || left.index - right.index)
+    .slice(0, MAX_INBOX_MODELS_PER_AGENT)
+    .map(({ model }) => model);
+}
 
 export type InboxModelResolution =
   | {

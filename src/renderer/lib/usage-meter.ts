@@ -1,19 +1,17 @@
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { PlanType } from "@nodex/codex-app-server-protocol";
+import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { ClaudeUsageSnapshot } from "../../shared/agent-runtime-api";
-import {
-  claudeUsageReadAt,
-  hasClaudeSubscriptionLimits,
-  meteredClaudeProviders,
-} from "../../shared/claude-usage";
+import { hasClaudeSubscriptionLimits, meteredClaudeProviders } from "../../shared/claude-usage";
 import type { CodexAccountSnapshot, CodexRateLimitsSnapshot } from "./types";
+import { agentRuntimeProviderBackendKind } from "./agent-runtime-model-selection";
 
 /**
- * One account's subscription usage, normalized across providers so Codex and Claude share one
- * meter. A reading only ever states what a provider reported: windows whose reset has passed
- * since the reading are unknown, never assumed to be full.
+ * One account's subscription usage, normalized across Agent backends for one shared meter.
+ * A reading only ever states what a provider reported: windows whose reset has passed since
+ * the reading are unknown, never assumed to be full.
  */
-export type UsageProvider = "codex" | "claude";
+export type UsageProvider = AgentBackendBinding["kind"];
 
 export interface UsageWindowReading {
   readonly id: string;
@@ -364,11 +362,13 @@ function epochMs(iso: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function claudeReading(provider: RuntimeProvider, readFailed: boolean): UsageReading {
+/** A runtime Agent's catalog usage, retaining only the limits and account identity it reports. */
+export function runtimeUsageReading(provider: RuntimeProvider, readFailed: boolean): UsageReading {
+  const kind = agentRuntimeProviderBackendKind(provider);
   const limits = provider.usageLimits;
   const auth = provider.auth;
   const windows = (limits?.windows ?? []).map((window): UsageWindowReading => {
-    const scope = CLAUDE_ACCOUNT_WINDOWS.has(window.id) ? "account" : "model";
+    const scope = kind !== "claude" || CLAUDE_ACCOUNT_WINDOWS.has(window.id) ? "account" : "model";
     return {
       id: window.id,
       label:
@@ -386,14 +386,16 @@ function claudeReading(provider: RuntimeProvider, readFailed: boolean): UsageRea
       ? `${auth.email ?? ""}|${auth.workspaceId ?? ""}`
       : (limits?.credentialFingerprint ?? `instance:${provider.instanceId}`);
   return {
-    provider: "claude",
-    key: `claude:${identity}`,
-    title: provider.displayName ?? "Claude",
+    provider: kind,
+    key: `${kind}:${identity}`,
+    title: provider.displayName ?? (kind === "claude" ? "Claude" : provider.instanceId),
     account: auth.email ?? null,
     plan: auth.label ?? null,
-    metered: hasClaudeSubscriptionLimits(provider),
+    // Only Claude says when an account has no subscription limits. Another Agent that reports
+    // none, such as an OpenCode server whose credentials Nodex cannot see, is unread, not unmetered.
+    metered: kind !== "claude" || hasClaudeSubscriptionLimits(provider),
     windows,
-    observedAt: claudeUsageReadAt(provider),
+    observedAt: windows.length > 0 ? epochMs(limits?.checkedAt) : null,
     readFailed: readFailed || limits?.unavailable?.reason === "probeFailed",
   };
 }
@@ -414,7 +416,7 @@ export function claudeUsageAccounts(
   const readFailed = snapshot?.status === "unavailable";
   const byAccount = new Map<string, ClaudeUsageAccount>();
   for (const provider of meteredClaudeProviders(snapshot?.providers)) {
-    const reading = claudeReading(provider, readFailed);
+    const reading = runtimeUsageReading(provider, readFailed);
     const existing = byAccount.get(reading.key);
     if (!existing) {
       byAccount.set(reading.key, { reading, instanceIds: [provider.instanceId] });

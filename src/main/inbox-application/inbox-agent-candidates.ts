@@ -1,8 +1,8 @@
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { isAgentRuntimeEffortOption } from "../../shared/agent-runtime-provider";
 import {
-  inboxDefaultChatModel,
-  isInboxProviderUsable,
+  inboxOfferedModels,
+  isInboxChatCandidate,
   resolveInboxModel,
   type InboxChatAgent,
 } from "../../shared/inbox";
@@ -42,8 +42,6 @@ export interface InboxAgentCandidate {
   readonly models: readonly InboxCandidateModel[];
 }
 
-/** Bounds each Agent's list so a large catalog cannot crowd out the messages themselves. */
-const MAX_MODELS_PER_AGENT = 12;
 const HOUR_MS = 3_600_000;
 const round = (value: number) => Math.round(value * 10) / 10;
 
@@ -92,35 +90,20 @@ const candidateModel = (model: ProviderModel, useModelGuide: boolean): InboxCand
   };
 };
 
-/** The catalog default first, then the models the guide speaks for, then catalog order. */
-const listedModels = (provider: Provider, useModelGuide: boolean) => {
-  const fallback = inboxDefaultChatModel(provider);
-  const rank = (model: ProviderModel) =>
-    model === fallback ? 0 : useModelGuide && inboxModelGuideNote(model) ? 1 : 2;
-  return provider.models
-    .map((model, index) => ({ model, index }))
-    .sort((left, right) => rank(left.model) - rank(right.model) || left.index - right.index)
-    .slice(0, MAX_MODELS_PER_AGENT)
-    .map(({ model }) => candidateModel(model, useModelGuide));
-};
-
 /** Every Agent that can take a chat right now, with what each of its models is good at. */
 export function inboxAgentCandidates(
   providers: readonly Provider[],
   options: { readonly now: number; readonly useModelGuide: boolean },
 ): readonly InboxAgentCandidate[] {
-  return providers
-    .filter(
-      (provider) =>
-        isInboxProviderUsable(provider) && provider.installed && provider.models.length > 0,
-    )
-    .map((provider) => ({
-      instance_id: provider.instanceId,
-      agent: provider.displayName ?? provider.instanceId,
-      harness: provider.driver,
-      budget: budgetOf(provider, options.now),
-      models: listedModels(provider, options.useModelGuide),
-    }));
+  return providers.filter(isInboxChatCandidate).map((provider) => ({
+    instance_id: provider.instanceId,
+    agent: provider.displayName ?? provider.instanceId,
+    harness: provider.driver,
+    budget: budgetOf(provider, options.now),
+    models: inboxOfferedModels(provider, options.useModelGuide).map((model) =>
+      candidateModel(model, options.useModelGuide),
+    ),
+  }));
 }
 
 /** The Inbox's own choice as the suggestion reads it, so null visibly means something. */

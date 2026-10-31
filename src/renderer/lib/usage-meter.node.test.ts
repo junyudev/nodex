@@ -17,6 +17,7 @@ import {
   formatUsagePlan,
   getRemainingRateLimitPercent,
   resolveUsageSeverity,
+  runtimeUsageReading,
   type UsageReading,
 } from "./usage-meter";
 
@@ -288,6 +289,102 @@ describe("usage readings", () => {
     const apiKey = codexUsageReading({ ...codexAccount, account: { type: "apiKey" } });
     expect(apiKey?.metered).toBe(false);
     expect(describeUsageMeter(apiKey!, NOW).status).toBe("unmetered");
+  });
+
+  test("a Codex catalog reading gives both account windows to the shared meter", () => {
+    const provider = claudeProvider({
+      instanceId: "codex",
+      driver: "codex",
+      displayName: "Codex",
+      auth: { status: "authenticated", email: "dev@example.com", label: "ChatGPT Plus" },
+      usageLimits: {
+        checkedAt: new Date(NOW).toISOString(),
+        windows: [
+          {
+            id: "primary",
+            kind: "session",
+            label: "Session",
+            usedPercent: 18,
+            resetsAt: new Date(NOW + HOUR).toISOString(),
+            windowDurationMins: 300,
+          },
+          {
+            id: "secondary",
+            kind: "weekly",
+            label: "Weekly",
+            usedPercent: 39,
+            windowDurationMins: 7 * 24 * 60,
+          },
+        ],
+      },
+    });
+    const catalog = runtimeUsageReading(provider, false);
+    const account = codexUsageReading(codexAccount)!;
+    expect(catalog).toEqual({ ...account, key: "codex:dev@example.com|" });
+    expect(describeUsageMeter(catalog, NOW).binding?.id).toBe("secondary");
+    expect(runtimeUsageReading(provider, true)).toEqual({ ...catalog, readFailed: true });
+  });
+
+  test.each([
+    { usageLimits: undefined, status: "unread", readFailed: false },
+    {
+      usageLimits: { checkedAt: new Date(NOW).toISOString(), windows: [] },
+      status: "unread",
+      readFailed: false,
+    },
+    {
+      usageLimits: {
+        checkedAt: new Date(NOW).toISOString(),
+        windows: [],
+        unavailable: { reason: "unsupported" as const },
+      },
+      // Nodex cannot see how the account is billed, so it claims no billing either way.
+      status: "unread",
+      readFailed: false,
+    },
+    {
+      usageLimits: {
+        checkedAt: new Date(NOW).toISOString(),
+        windows: [],
+        unavailable: { reason: "probeFailed" as const },
+      },
+      status: "unread",
+      readFailed: true,
+    },
+  ])("OpenCode without reported windows is $status ($readFailed)", (expected) => {
+    const catalog = runtimeUsageReading(
+      claudeProvider({
+        instanceId: "opencode:work",
+        driver: "opencode",
+        displayName: "OpenCode",
+        auth: { status: "authenticated" },
+        usageLimits: expected.usageLimits,
+      }),
+      false,
+    );
+    expect(catalog).toMatchObject({
+      provider: "opencode",
+      key: "opencode:instance:opencode:work",
+      title: "OpenCode",
+      metered: true,
+      windows: [],
+      observedAt: null,
+      readFailed: expected.readFailed,
+    });
+    const view = describeUsageMeter(catalog, NOW);
+    expect(view.status).toBe(expected.status);
+    expect(view.binding).toBe(null);
+  });
+
+  test.each([
+    ["opencode", "opencode"],
+    ["opencode2", "opencode"],
+    ["acp", "acp"],
+  ] as const)("%s windows are account-wide and use the %s mark", (driver, kind) => {
+    const catalog = runtimeUsageReading(claudeProvider({ driver }), false);
+    expect(catalog.provider).toBe(kind);
+    expect(catalog.windows.every((window) => window.scope === "account")).toBe(true);
+    expect(describeUsageMeter(catalog, NOW).binding?.id).toBe("five_hour");
   });
 
   test("Claude accounts come from the provider snapshot the Agent already published", () => {
