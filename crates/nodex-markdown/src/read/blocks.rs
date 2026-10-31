@@ -411,7 +411,7 @@ impl<'s> Reader<'s> {
             "paragraph" => &["color", "background"],
             "toggle" => &["heading", "color", "background"],
             "callout" => &["icon", "color", "background"],
-            "prompt" => &["sent", "sent-at"],
+            "prompt" => &["sent", "sent-at", "sent-message"],
             _ => &["header", "widths", "color"],
         };
         values::allowed(d, names)?;

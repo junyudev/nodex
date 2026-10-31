@@ -1743,6 +1743,8 @@ export const OrchestrationV2TurnItem = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("assistant_message"),
+    /** Provider commentary stays visible in history but is not a final answer. */
+    responseKind: Schema.optional(Schema.Literals(["commentary", "final"])),
     messageId: MessageId,
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),
@@ -2594,6 +2596,8 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
     type: Schema.Literal("assistant_message"),
+    /** Provider commentary stays visible in history but is not a final answer. */
+    responseKind: Schema.optional(Schema.Literals(["commentary", "final"])),
     messageId: MessageId,
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),

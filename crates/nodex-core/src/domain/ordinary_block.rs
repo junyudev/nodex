@@ -38,6 +38,7 @@ pub fn canonical_ordinary_block_shape(
             BTreeMap::from([
                 ("sentSessionId".to_owned(), Value::String(String::new())),
                 ("sentAt".to_owned(), Value::String(String::new())),
+                ("sentMessageId".to_owned(), Value::String(String::new())),
             ]),
         ),
         LibraryStructuralTurnIntoTarget::Code => {

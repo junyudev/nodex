@@ -201,6 +201,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleQuery("agent-runtime:session:history", (event, value) =>
       handle(event, Inputs.AgentRuntimeHistorySchema, value, application.history),
     );
+    yield* ipc.handleQuery("agent-runtime:session:prompt-turns", (event, value) =>
+      handle(event, Inputs.AgentRuntimePromptTurnsSchema, value, application.promptTurns),
+    );
     yield* ipc.handleQuery("agent-runtime:session:prompt-index", (event, value) =>
       handle(event, Inputs.AgentRuntimeTargetSchema, value, application.promptIndex),
     );

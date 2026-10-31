@@ -208,10 +208,14 @@ fn render(block: &Block, number: u64, mode: Mode) -> Rendered {
         },
         BlockKind::Prompt { text, sent } => {
             let attrs = sent.as_ref().map_or_else(Vec::new, |sent| {
-                vec![
+                let mut attrs = vec![
                     Attribute::value("sent", &crate::links::session_link(&sent.session)),
                     Attribute::value("sent-at", &sent.at),
-                ]
+                ];
+                if !sent.message.is_empty() {
+                    attrs.push(Attribute::value("sent-message", &sent.message));
+                }
+                attrs
             });
             return container(block, "prompt", text, attrs, &block.children, mode);
         }

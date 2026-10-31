@@ -3994,7 +3994,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               yield* emitProviderEvent({
                 type: "turn_item.updated",
                 driver: CODEX_PROVIDER,
-                turnItem: artifacts.turnItem,
+                turnItem: {
+                  ...artifacts.turnItem,
+                  responseKind: finalAnswerItem ? "final" : "commentary",
+                },
               });
               if (finalAnswerItem && update.completed) {
                 yield* Ref.update(completedFinalAnswerTextsByTurn, (current) => {

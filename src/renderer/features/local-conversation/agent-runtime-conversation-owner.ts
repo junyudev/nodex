@@ -540,6 +540,24 @@ export class AgentRuntimeConversationOwner {
     }
     return "applied";
   };
+  /** Makes an exact user message resident, including steers within a Run and old Runs outside the index. */
+  readonly loadHistoryThroughMessage = async (
+    messageId: string,
+    signal: AbortSignal,
+  ): Promise<"applied" | "stale"> => {
+    const generation = this.#generation;
+    const isResident = () => {
+      const itemId = this.#messageItems.get(messageId);
+      return itemId !== undefined && this.#items.get(itemId)?.sourceThreadId === this.threadId;
+    };
+    while (!isResident()) {
+      const boundary = this.#historyBoundary();
+      if (signal.aborted || this.#disposed || generation !== this.#generation || !boundary)
+        return "stale";
+      if ((await this.#loadOlderPage(boundary, messageId)) === "stale") return "stale";
+    }
+    return signal.aborted ? "stale" : "applied";
+  };
   #loadOlderPage(
     boundary: CodexHistoryBoundaryRef,
     throughEntryId?: string,

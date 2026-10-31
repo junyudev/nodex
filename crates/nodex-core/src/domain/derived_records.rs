@@ -426,6 +426,7 @@ mod tests {
             block_type: "prompt".into(),
             props: std::collections::BTreeMap::from([
                 ("sentSessionId".into(), serde_json::json!("deleted-session")),
+                ("sentMessageId".into(), serde_json::json!("prompt-message")),
                 (
                     "sentAt".into(),
                     serde_json::json!("2026-10-31T08:30:00.000Z"),

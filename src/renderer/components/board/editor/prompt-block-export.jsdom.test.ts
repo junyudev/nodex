@@ -8,7 +8,11 @@ test("Prompt HTML export keeps rich first-line content followed by its children"
     initialContent: [
       {
         type: "prompt",
-        props: { sentSessionId: "deleted-session", sentAt: "2026-10-31T08:30:00.000Z" },
+        props: {
+          sentSessionId: "deleted-session",
+          sentMessageId: "prompt-message",
+          sentAt: "2026-10-31T08:30:00.000Z",
+        },
         content: [{ type: "text", text: "Review this change", styles: { bold: true } }],
         children: [{ type: "paragraph", content: "Check boundaries" }],
       },

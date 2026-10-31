@@ -1071,6 +1071,11 @@ export interface ProjectionStoreV2Shape {
   readonly getThreadShell: (
     threadId: ThreadId,
   ) => Effect.Effect<OrchestrationV2ThreadShell | null, ProjectionStoreV2Error>;
+  /** The Run a user message belongs to, including steers and promoted queued messages. */
+  readonly getMessageTurnOutcome: (
+    threadId: ThreadId,
+    messageId: import("@t3tools/contracts").MessageId,
+  ) => Effect.Effect<ProjectionRunOutcome | null, ProjectionStoreV2Error>;
   /** Durable Run result, including rollback settlement; no live provider or body read. */
   readonly getRunOutcome: (
     query: ProjectionRunOutcomeQuery,
@@ -9722,6 +9727,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           (SELECT item.turn_item_id FROM orchestration_v2_projection_turn_items item
             WHERE item.thread_id = run.thread_id AND item.run_id = run.run_id
               AND item.type = 'assistant_message'
+              AND COALESCE(json_extract(item.payload_json, '$.responseKind'), 'final') != 'commentary'
               AND EXISTS (
                 SELECT 1 FROM orchestration_v2_projection_nodes node
                 WHERE node.node_id = item.node_id AND node.thread_id = run.thread_id
@@ -9760,8 +9766,29 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         ),
       );
 
+    const getMessageTurnOutcome: ProjectionStoreV2Shape["getMessageTurnOutcome"] = (
+      threadId,
+      messageId,
+    ) =>
+      sql
+        .withTransaction(
+          Effect.gen(function* () {
+            const rows = yield* sql<{ run_id: string | null }>`
+          SELECT message.run_id FROM orchestration_v2_projection_messages message
+          JOIN orchestration_v2_projection_threads thread ON thread.thread_id = message.thread_id
+          WHERE message.thread_id = ${threadId} AND message.message_id = ${messageId}
+            AND message.role = 'user' AND thread.archived_at IS NULL AND thread.deleted_at IS NULL
+          LIMIT 1`;
+            const runId = rows[0]?.run_id;
+            if (runId == null) return null;
+            return yield* getRunOutcome({ threadId, runId: RunId.make(runId) });
+          }),
+        )
+        .pipe(Effect.mapError(controlReadError(threadId)));
+
     const service = {
       apply,
+      getMessageTurnOutcome,
       getRunOutcome,
       getShellSnapshot,
       readShellSnapshot,
@@ -9871,6 +9898,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         method(...args).pipe(NodeSqliteClient.readOnly);
     return {
       ...service,
+      getMessageTurnOutcome: readOnReader(service.getMessageTurnOutcome),
       getRunOutcome: readOnReader(service.getRunOutcome),
       getShellSnapshot: readOnReader(service.getShellSnapshot),
       readShellSnapshot: readOnReader(service.readShellSnapshot),
@@ -11430,6 +11458,21 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             executionHandoff,
           };
         }),
+      getMessageTurnOutcome: (threadId, messageId) =>
+        Effect.gen(function* () {
+          const projection = (yield* Ref.get(replayState)).projections.get(threadId);
+          if (
+            !projection ||
+            projection.thread.archivedAt !== null ||
+            projection.thread.deletedAt !== null
+          )
+            return null;
+          const message = projection.messages.find(
+            (value) => value.id === messageId && value.role === "user",
+          );
+          if (message?.runId == null) return null;
+          return yield* service.getRunOutcome({ threadId, runId: message.runId });
+        }),
       getRunOutcome: (query) =>
         Ref.get(replayState).pipe(
           Effect.map(({ projections }) => {
@@ -11457,7 +11500,8 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                   item.runId === run.id &&
                   item.nodeId !== null &&
                   replyNodeIds.has(item.nodeId) &&
-                  item.type === "assistant_message",
+                  item.type === "assistant_message" &&
+                  item.responseKind !== "commentary",
               )
               .toSorted(
                 (left, right) => right.ordinal - left.ordinal || right.id.localeCompare(left.id),

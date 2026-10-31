@@ -334,7 +334,9 @@ export function buildThreadUserMessageNavigationItems(
 
     for (const [userIndex, candidate] of userBlocks.entries()) {
       const remainingBlocks = blocks.slice(candidate.blockIndex + 1);
+      const messageId = asRecord(candidate.block.entry.rawItem)?.clientId;
       items.push({
+        ...(typeof messageId === "string" ? { messageId } : {}),
         id: candidate.block.searchUnitKey ?? `${entry.turnId}:user:${userIndex}`,
         turnId: entry.turnId,
         turnKey: entry.turnKey,

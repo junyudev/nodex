@@ -1,3 +1,4 @@
+import { PROMPT_TURN_READ_LIMIT } from "../prompt-turn";
 import { z } from "zod";
 import type { AgentRuntimeLaunch, AgentRuntimeMessage } from "../agent-runtime-api";
 import { AGENT_RUNTIME_CONTROL_EVENT_TYPES } from "../agent-runtime-api";
@@ -10,6 +11,12 @@ const id = z
   .refine((value) => value.trim() === value);
 export const AgentRuntimeTargetSchema = z
   .object({ sessionId: id, threadId: id.optional() })
+  .strict();
+export const AgentRuntimePromptTurnsSchema = z
+  .object({
+    sessionId: id,
+    messageIds: z.array(id).min(1).max(PROMPT_TURN_READ_LIMIT),
+  })
   .strict();
 export const AgentRuntimeControlSchema = AgentRuntimeTargetSchema.extend({
   runId: id.optional(),

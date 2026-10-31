@@ -722,13 +722,13 @@ describe("workbench session shell / library-shell-navigation", () => {
             projectId: string;
             targetSessionId?: string;
             prompt: string;
-          }) => Promise<{ threadId: string; sessionId?: string }>)
+          }) => Promise<{ threadId: string; sessionId?: string; messageId?: string }>)
         | undefined;
       if (!startThread) {
         throw new Error("missing page-stage start-thread callback");
       }
 
-      let result: { threadId: string; sessionId?: string } | null = null;
+      let result: { threadId: string; sessionId?: string; messageId?: string } | null = null;
       await act(async () => {
         result = await startThread({
           projectId: "alpha",
@@ -739,18 +739,18 @@ describe("workbench session shell / library-shell-navigation", () => {
       });
       await settleAsyncRender();
 
-      expect(JSON.stringify(result)).toBe(
-        JSON.stringify({
-          threadId: "engine:session:alpha:card-empty",
-          sessionId: "session:alpha:card-empty",
-        }),
-      );
       expect(agentRuntimeLaunchCalls).toHaveLength(1);
       // Launch links the Page in its binding transaction; a rejected launch leaves no link.
       expect(invokeCalls.some((call) => call[0] === "page-chats:link")).toBe(false);
       const startInput = agentRuntimeLaunchCalls[0]!;
       expect(isUuidV7(startInput.launchId)).toBe(true);
       expect(isUuidV7(startInput.message.messageId)).toBe(true);
+      // The result names the sent message so a Prompt can follow its own Turn.
+      expect(result).toEqual({
+        threadId: "engine:session:alpha:card-empty",
+        sessionId: "session:alpha:card-empty",
+        messageId: startInput.message.messageId,
+      });
       expect(startInput).toMatchObject({
         projectId: "alpha",
         sessionId: "session:alpha:card-empty",

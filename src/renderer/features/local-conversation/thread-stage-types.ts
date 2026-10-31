@@ -1137,6 +1137,7 @@ export interface ThreadUserMessageNavigationOutput {
 }
 
 export interface ThreadUserMessageNavigationItem {
+  readonly messageId?: string;
   id: string;
   turnId: string | null;
   turnKey: string;

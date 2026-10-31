@@ -434,6 +434,10 @@ export interface AgentRuntimeIpcApi {
     args: [input: AgentRuntimeHistoryInput];
     result: AgentHistoryPage;
   };
+  "agent-runtime:session:prompt-turns": {
+    args: [input: import("./prompt-turn").PromptTurnsInput];
+    result: readonly import("./prompt-turn").PromptTurnEntry[];
+  };
   "agent-runtime:session:prompt-index": {
     args: [input: AgentRuntimeSessionTarget];
     result: AgentRuntimePromptIndex;

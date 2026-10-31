@@ -78,6 +78,10 @@ fn registered_schema_matrix_survives_checkpoint_and_history_reconstruction() {
         prompt.content.attributes.get("sentAt"),
         Some(&PortableValue::String("2026-10-31T08:30:00.000Z".into()))
     );
+    assert_eq!(
+        prompt.content.attributes.get("sentMessageId"),
+        Some(&PortableValue::String("prompt-message".into()))
+    );
     assert_eq!(prompt.children[0].content.name, "prompt");
 
     let after = std::fs::read(fixture("matrix-after.bin")).expect("matrix delta exists");

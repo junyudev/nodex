@@ -82,7 +82,7 @@ export const NFM_TURN_INTO_DEFINITIONS = [
     key: "prompt",
     label: "Prompt",
     target: { kind: "prompt" },
-    localPatch: { type: "prompt", props: { sentSessionId: "", sentAt: "" } },
+    localPatch: { type: "prompt", props: { sentSessionId: "", sentAt: "", sentMessageId: "" } },
   },
   {
     key: "code",

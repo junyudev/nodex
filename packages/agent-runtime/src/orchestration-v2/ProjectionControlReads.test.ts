@@ -597,6 +597,7 @@ it.effect.each(storageCases)(
         { id: "child-reply", runId, rootNodeId: NodeId.make("child-root"), ordinal: 3 },
         { id: "next-run-reply", runId: newerRunId, rootNodeId: nodeId, ordinal: 4 },
         { id: "old-attempt-reply", runId, rootNodeId: NodeId.make("old-attempt"), ordinal: 5 },
+        { id: "commentary-after-answer", runId, rootNodeId: nodeId, ordinal: 6 },
       ];
       yield* Effect.forEach(
         replies,
@@ -648,6 +649,7 @@ it.effect.each(storageCases)(
                 completedAt: now,
                 updatedAt: now,
                 type: "assistant_message",
+                responseKind: reply.id === "commentary-after-answer" ? "commentary" : "final",
                 messageId: MessageId.make(`message:${reply.id}`),
                 text: reply.id,
                 streaming: false,
@@ -1241,5 +1243,62 @@ it.effect.each(storageCases)(
           replacement.projection.providerThreads[0]!,
         ),
       );
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it.effect.each(storageCases)(
+  "$storage: delivered message outcomes follow steers and queue promotion without following newer Runs",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      yield* Effect.forEach(events, (event) => store.apply(event), { discard: true });
+      const opening = events.find((event) => event.type === "message.updated")!;
+      assert.ok(opening.type === "message.updated");
+      const steeredId = MessageId.make("message:steer");
+      yield* store.apply({
+        ...opening,
+        id: EventId.make("steer"),
+        payload: { ...opening.payload, id: steeredId },
+      });
+      assert.equal((yield* store.getMessageTurnOutcome(threadId, steeredId))?.runId, runId);
+      assert.isNull(yield* store.getRunOutcome({ threadId, messageId: steeredId }));
+      const run = events.find((event) => event.type === "run.created")!;
+      assert.ok(run.type === "run.created");
+      const queuedId = MessageId.make("message:queued");
+      const queuedRunId = RunId.make("run:queued");
+      yield* store.apply({
+        ...run,
+        id: EventId.make("queued-run"),
+        payload: {
+          ...run.payload,
+          id: queuedRunId,
+          ordinal: 2,
+          userMessageId: queuedId,
+          status: "queued",
+        },
+      });
+      yield* store.apply({
+        ...opening,
+        id: EventId.make("queued-message"),
+        payload: { ...opening.payload, id: queuedId, runId: queuedRunId },
+      });
+      assert.equal((yield* store.getMessageTurnOutcome(threadId, queuedId))?.status, "queued");
+      yield* store.apply({
+        ...opening,
+        id: EventId.make("promote-message"),
+        payload: { ...opening.payload, id: queuedId },
+      });
+      assert.equal((yield* store.getMessageTurnOutcome(threadId, queuedId))?.runId, runId);
+      yield* store.apply({
+        ...run,
+        type: "run.updated",
+        id: EventId.make("finished-original"),
+        payload: { ...run.payload, status: "completed", completedAt: now },
+      });
+      assert.equal((yield* store.getMessageTurnOutcome(threadId, steeredId))?.status, "completed");
+      assert.isNull(yield* store.getMessageTurnOutcome(ThreadId.make("another-thread"), steeredId));
+      assert.isNull(yield* store.getMessageTurnOutcome(threadId, MessageId.make("missing")));
     }).pipe(Effect.provide(storeLayer)),
 );

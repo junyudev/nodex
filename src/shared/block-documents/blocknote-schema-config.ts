@@ -29,6 +29,7 @@ export const promptBlockConfig = {
   propSchema: {
     sentSessionId: { default: "" },
     sentAt: { default: "" },
+    sentMessageId: { default: "" },
   },
   content: "inline",
 } as const satisfies CustomBlockConfig;

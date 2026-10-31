@@ -111,6 +111,7 @@ type QueryEndpointPolicy =
   | "agent-runtime:session:overview"
   | "agent-runtime:session:background-output"
   | "agent-runtime:session:history"
+  | "agent-runtime:session:prompt-turns"
   | "agent-runtime:session:prompt-index"
   | "agent-runtime:session:attachment"
   | "agent-runtime:session:queue-read"

@@ -364,6 +364,13 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     readonly input: { readonly projectId: string };
     readonly output: { readonly closedBindings: number };
   };
+  /** Addressed Run outcome for any user message, including a steer into an existing Run. */
+  readonly "thread.message-turn": {
+    readonly input: { readonly threadId: string; readonly messageId: string };
+    readonly output: AgentWire<
+      import("../orchestration-v2/ProjectionStore.ts").ProjectionRunOutcome
+    > | null;
+  };
   readonly "run.outcome": {
     readonly input: AgentWire<
       import("../orchestration-v2/ProjectionStore.ts").ProjectionRunOutcomeQuery

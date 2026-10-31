@@ -45,7 +45,11 @@ describe("Block Document schema parity", () => {
     expect(nfmSchema.blockSchema.prompt).toEqual({
       type: "prompt",
       content: "inline",
-      propSchema: { sentSessionId: { default: "" }, sentAt: { default: "" } },
+      propSchema: {
+        sentSessionId: { default: "" },
+        sentAt: { default: "" },
+        sentMessageId: { default: "" },
+      },
     });
   });
 

@@ -1,3 +1,4 @@
+import type { PageChatSendResult } from "@/lib/page-chat-send";
 import type { WorkbenchSubmitPresentation } from "../../../../shared/nodex-app-tools/workbench";
 import type { MutableRefObject } from "react";
 import type { PageInput, CodexPromptInput, CodexThreadSummary, PageChatItem } from "@/lib/types";
@@ -119,14 +120,14 @@ export interface PageStageProps {
     promptInput?: CodexPromptInput;
     submittedPresentation?: WorkbenchSubmitPresentation;
     threadName?: string;
-  }) => Promise<{ threadId: string; sessionId?: string }>;
+  }) => Promise<PageChatSendResult>;
   onSendPagePrompt?: (input: {
     projectId: string;
     threadId: string;
     prompt: string;
     promptInput?: CodexPromptInput;
     submittedPresentation?: WorkbenchSubmitPresentation;
-  }) => Promise<void>;
+  }) => Promise<PageChatSendResult>;
   /** Present when the Page is shown beside a chat: appends Page content to that chat's draft. */
   onAddPromptToChatComposer?: (promptInput: CodexPromptInput) => Promise<void>;
   historyPanelActive?: boolean;

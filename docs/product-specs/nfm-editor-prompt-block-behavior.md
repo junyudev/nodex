@@ -56,12 +56,44 @@ Turn; otherwise a chat in a Turn receives it according to the Composer's Queue o
 Steer default. While the chat beside the Page is in a Turn, the send button's
 tooltip adds which of the two will happen.
 
-After the chat accepts the Prompt, Nodex records the receiving Session and the
+After the chat accepts the Prompt, Nodex records the receiving Session, accepted user message ID and the
 send time on the Block and folds a Prompt that has children. Sending again
 replaces the record. Failures leave the Prompt unchanged and report the reason.
 The record is history: it never sends anything by itself, stays editable and
 copyable when that chat is later archived or deleted, and Agents must not write
 one.
+
+## Turn anchors
+
+A Prompt's last send identifies one accepted message, rather than the chat's newest
+work. The renderer exposes `usePromptTurn({ sessionId, messageId })`, returning
+`{ phase, reply, runId }`. `phase` is `queued`, `working`, `waiting`, `done`,
+`failed`, `interrupted`, or `unknown`. Preparation and startup count as working;
+provider cancellation counts as interrupted. Rolled-back work is unknown.
+
+A new or queued message follows its own Run. A steered message follows the Run
+that receives it and shares that Run's final answer. Promoting a queued message
+to steer changes its receiving Run. Later unrelated Runs never change an earlier
+Prompt's phase. A finished Run does not follow background wake Runs or a later
+retry with a different message ID.
+
+`reply` is the complete final assistant Markdown of the receiving Run's current
+attempt, available after the Run completes successfully; commentary, streaming partials, superseded
+attempts and delegated child replies are excluded. It is null for failed or interrupted Runs and when no final
+assistant message exists. Missing message IDs, unavailable or archived/deleted
+chats, and messages removed from retained history resolve to unknown.
+
+The read owner shares one metadata subscription per observed Session, batches up
+to 100 exact message IDs per read, and releases subscriptions and answers when no
+Prompt observes them. Reads use addressed message/Run metadata and at most one
+final answer per Run; they do not hydrate chat history or create transcript owners.
+
+`useOpenChatAtMessage()` supplies an `openChatAtMessage({ sessionId, messageId })`
+command. It opens the chat in its own Project, makes history through that exact
+user message resident, scrolls the real transcript row into view and briefly
+highlights it. Missing messages leave the chat open without a highlight; a missing
+chat cannot be opened. Navigation uses the transcript's existing history owner,
+virtualized list and reduced-motion policy.
 
 ## Creating
 

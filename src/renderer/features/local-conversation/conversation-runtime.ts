@@ -21,6 +21,8 @@ export interface ConversationContentSource {
 
 /** Viewport demand addresses the publishing owner; native read envelopes stay in its Adapter. */
 export interface ConversationHistoryPort {
+  /** Stable for one publishing reader; ordinary transcript updates do not replace it. */
+  readonly sourceIdentity?: string;
   readonly loadBoundary: (boundary: CodexHistoryBoundaryRef) => Promise<"applied" | "stale">;
   /** Present only where individual Turns can also contain unloaded item pages. */
   readonly loadTurnItems?: (
@@ -49,6 +51,11 @@ export interface ConversationPromptRailPort {
     turnId: string,
     signal: AbortSignal,
   ) => Promise<readonly CodexPromptRailPreview[] | null>;
+  /** Makes one exact user message resident; includes steers within an existing Turn. */
+  readonly installMessage?: (
+    messageId: string,
+    signal: AbortSignal,
+  ) => Promise<"applied" | "stale">;
   /** Makes one Turn resident so navigation can reveal its message. */
   readonly install: (turnId: string, signal: AbortSignal) => Promise<"applied" | "stale">;
 }

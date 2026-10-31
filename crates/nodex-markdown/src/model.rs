@@ -327,12 +327,13 @@ pub enum BlockKind {
 pub struct PromptSendRecord {
     pub session: String,
     pub at: String,
+    pub message: String,
 }
 
 impl PromptSendRecord {
     /// Validate syntax only; this record never resolves or retains a Session.
-    pub fn new(session: &str, at: &str) -> Result<Option<Self>, String> {
-        if session.is_empty() && at.is_empty() {
+    pub fn new(session: &str, at: &str, message: &str) -> Result<Option<Self>, String> {
+        if session.is_empty() && at.is_empty() && message.is_empty() {
             return Ok(None);
         }
         if session.is_empty() || at.is_empty() {
@@ -343,6 +344,12 @@ impl PromptSendRecord {
         {
             return Err("prompt send history needs a valid Session id".into());
         }
+        if message.trim() != message || message.chars().any(char::is_control) {
+            return Err(
+                "prompt sent-message must be a trimmed message id without control characters"
+                    .into(),
+            );
+        }
         let at = chrono::DateTime::parse_from_rfc3339(at)
             .map_err(|_| "prompt sent-at must be an RFC 3339 timestamp".to_owned())?
             .with_timezone(&chrono::Utc)
@@ -350,6 +357,7 @@ impl PromptSendRecord {
         Ok(Some(Self {
             session: session.into(),
             at,
+            message: message.into(),
         }))
     }
 }
@@ -532,7 +540,7 @@ fn block_from_json(value: &Value, path: &str) -> Result<Block, ModelError> {
             colors,
         },
         "prompt" => {
-            for name in ["sentSessionId", "sentAt"] {
+            for name in ["sentSessionId", "sentAt", "sentMessageId"] {
                 if props.get(name).is_some_and(|value| !value.is_string()) {
                     return Err(model_error(
                         path,
@@ -545,6 +553,7 @@ fn block_from_json(value: &Value, path: &str) -> Result<Block, ModelError> {
                 sent: PromptSendRecord::new(
                     string_prop(props, "sentSessionId").unwrap_or(""),
                     string_prop(props, "sentAt").unwrap_or(""),
+                    string_prop(props, "sentMessageId").unwrap_or(""),
                 )
                 .map_err(|message| model_error(path, message))?,
             }
@@ -1215,6 +1224,9 @@ fn block_to_json(block: &Block) -> Value {
             if let Some(sent) = sent {
                 props.insert("sentSessionId".into(), json!(sent.session));
                 props.insert("sentAt".into(), json!(sent.at));
+                if !sent.message.is_empty() {
+                    props.insert("sentMessageId".into(), json!(sent.message));
+                }
             }
             ("prompt", inline_to_json(text))
         }

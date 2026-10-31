@@ -18,6 +18,7 @@ import type { CodexPromptInput } from "@/lib/types";
 import { useAgentRuntimeSessionLaunch } from "@/lib/use-agent-runtime-session-launch";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
+import type { PageChatSendResult } from "@/lib/page-chat-send";
 
 export interface PageChatSendPortInput {
   /** The Page's own route; Library File images are read through it. */
@@ -66,7 +67,7 @@ export function usePageChatSendPort({
       promptInput?: CodexPromptInput;
       threadName?: string;
       submittedPresentation?: WorkbenchSubmitPresentation;
-    }) => {
+    }): Promise<PageChatSendResult> => {
       const submittedPresentation =
         input.submittedPresentation ?? readCodexSubmissionPresentation(workbenchOwner);
       const identity = {
@@ -119,7 +120,11 @@ export function usePageChatSendPort({
           phase: "startingTurn",
         });
         await onRefreshSessions(input.projectId);
-        return { threadId: result.threadId, sessionId: result.sessionId };
+        return {
+          threadId: result.threadId,
+          sessionId: result.sessionId,
+          messageId: submission.clientUserMessageId,
+        };
       } catch (cause) {
         sessionFirstSubmissionOwner.fail(submission.launchId, {
           stage: "startingThread",
@@ -150,7 +155,7 @@ export function usePageChatSendPort({
       prompt: string;
       promptInput?: CodexPromptInput;
       submittedPresentation?: WorkbenchSubmitPresentation;
-    }) => {
+    }): Promise<PageChatSendResult> => {
       const submittedPresentation = origin ?? readCodexSubmissionPresentation(workbenchOwner);
       const materializedInput = await materializePromptFileImages(
         routingContext,
@@ -175,11 +180,12 @@ export function usePageChatSendPort({
       const deliver = queueFollowUps
         ? agentRuntimeRuntime.queueMessage
         : agentRuntimeRuntime.message;
+      const messageId = createUuidV7();
       await deliver({
         ...target,
         presentationTicket,
         message: {
-          messageId: createUuidV7(),
+          messageId,
           ...(await prepareAgentMessage(
             prompt,
             materializedInput,
@@ -192,6 +198,7 @@ export function usePageChatSendPort({
             : {}),
         },
       });
+      return { ...target, messageId };
     },
     [
       onLinkPageToChat,

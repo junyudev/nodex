@@ -1,3 +1,5 @@
+import { readPromptTurns } from "./AgentRuntimePromptTurns";
+import { UNKNOWN_PROMPT_TURN, type PromptTurnsInput } from "../../shared/prompt-turn";
 import { AgentRuntimeProcessError } from "../platform/node/AgentRuntimeProcess";
 import type { AcpConversationImportResult } from "../../shared/acp-api";
 import { createHash } from "node:crypto";
@@ -3921,6 +3923,23 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             threadId: loaded.threadId,
           });
         }),
+      ),
+    promptTurns: (input: PromptTurnsInput) =>
+      owned(
+        "prompt-turns",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* readPromptTurns(connection, loaded.threadId, [
+            ...new Set(input.messageIds),
+          ]);
+        }).pipe(
+          Effect.catchCause(() =>
+            Effect.succeed(
+              input.messageIds.map((messageId) => ({ messageId, ...UNKNOWN_PROMPT_TURN })),
+            ),
+          ),
+        ),
       ),
     promptIndex: (input: AgentRuntimeSessionTarget) =>
       owned(

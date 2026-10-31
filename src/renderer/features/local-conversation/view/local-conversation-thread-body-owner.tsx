@@ -1,3 +1,4 @@
+import { useChatMessageReveal } from "./use-chat-message-reveal";
 import { ThreadForkSubmissionContext } from "./shared/thread-fork-state";
 import { CodexThreadNavigationMarker } from "./codex-thread-navigation-marker";
 import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
@@ -1247,6 +1248,12 @@ export function LocalConversationThreadBodyOwner({
     },
     [searchReads],
   );
+  useChatMessageReveal({
+    threadId: threadId ?? body.threadId,
+    history,
+    items: userMessageNavigationItems,
+    reveal: handleRevealUserMessageNavigationItem,
+  });
   const handleRevealInstalledPromptRailTurn = useCallback(
     async (
       turnId: string,

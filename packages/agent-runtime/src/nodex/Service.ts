@@ -399,6 +399,7 @@ const AgentRequest = Schema.Union([
     Schema.Struct({ threadId: ThreadId, cursor: Schema.optional(Schema.String) }),
   ),
   request("thread.queued-preview", Schema.Struct({ threadId: ThreadId, runId: RunId })),
+  request("thread.message-turn", Schema.Struct({ threadId: ThreadId, messageId: MessageId })),
   request("thread.run-message", Schema.Struct({ threadId: ThreadId, runId: RunId })),
   request("thread.opening-request", Schema.Struct({ threadId: ThreadId })),
   request("project.close", Schema.Struct({ projectId: ProjectId })),
@@ -872,6 +873,11 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         } while (cursor !== undefined);
         return { closedBindings };
       }
+      case "thread.message-turn":
+        return yield* projections.getMessageTurnOutcome(
+          input.input.threadId,
+          input.input.messageId,
+        );
       case "run.outcome":
         return yield* projections.getRunOutcome(input.input);
       case "project.activity":
@@ -1567,6 +1573,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "thread.fork-source":
       case "thread.side-chat-save-source":
       case "run.outcome":
+      case "thread.message-turn":
       case "thread.history":
       case "thread.timeline":
       case "thread.progress":

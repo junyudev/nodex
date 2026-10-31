@@ -1,3 +1,4 @@
+import type { PageChatSendResult } from "@/lib/page-chat-send";
 import {
   createPageEditorSelectionObservation,
   readPageEditorSelectedBlockIds,
@@ -251,14 +252,14 @@ interface NfmEditorCommonProps {
     promptInput?: CodexPromptInput;
     submittedPresentation?: WorkbenchSubmitPresentation;
     threadName?: string;
-  }) => Promise<{ threadId: string; sessionId?: string }>;
+  }) => Promise<PageChatSendResult>;
   onSendPagePrompt?: (input: {
     projectId: string;
     threadId: string;
     prompt: string;
     promptInput?: CodexPromptInput;
     submittedPresentation?: WorkbenchSubmitPresentation;
-  }) => Promise<void>;
+  }) => Promise<PageChatSendResult>;
   /** Present when the Page is shown beside a chat: appends Page content to that chat's draft. */
   onAddPromptToChatComposer?: (promptInput: CodexPromptInput) => Promise<void>;
   isActivePanelTab?: boolean;
@@ -1699,12 +1700,12 @@ function NfmEditorInstance({
     ],
   );
 
-  /** Sends a compiled Page prompt to one chat; resolves to the Session that received it. */
+  /** Sends a compiled Page prompt to one chat; resolves to the accepted message. */
   const sendPromptInputToChat = useCallback(
     async (
       target: NfmSendToThreadRequest["target"],
       promptInput: CodexPromptInput,
-    ): Promise<string | null> => {
+    ): Promise<PageChatSendResult> => {
       if (chatSendProjectId === null) {
         throw new Error("Sending Blocks to a chat requires a Project.");
       }
@@ -1712,26 +1713,24 @@ function NfmEditorInstance({
       await surfaceMutationBarrier?.flushAndFence();
       if (target.kind === "thread") {
         if (!onSendPagePrompt) throw new Error("Chat sending is not available.");
-        await onSendPagePrompt({
+        return onSendPagePrompt({
           projectId: chatSendProjectId,
           threadId: target.threadId,
           prompt: promptInput.text,
           promptInput,
           submittedPresentation,
         });
-        return target.sessionId;
       }
       if (!onStartNewSessionThreadFromEditor) {
         throw new Error("New chat creation is not available.");
       }
-      const started = await onStartNewSessionThreadFromEditor({
+      return onStartNewSessionThreadFromEditor({
         projectId: chatSendProjectId,
         targetSessionId: target.sessionId,
         prompt: promptInput.text,
         promptInput,
         submittedPresentation,
       });
-      return started.sessionId ?? target.sessionId ?? null;
     },
     [
       chatSendProjectId,
@@ -1788,17 +1787,18 @@ function NfmEditorInstance({
     chatSendProjectId,
   );
 
-  /** A Prompt keeps where and when it last went; a folded Prompt leaves room for the next. */
+  /** A Prompt keeps its exact last accepted message; a folded Prompt leaves room for the next. */
   const recordPromptSends = useCallback(
     (
       blocks: readonly { id: string; type: string; children?: readonly unknown[] }[],
-      sessionId: string | null,
+      accepted: PageChatSendResult,
     ) => {
-      if (!sessionId) return;
       const sentAt = new Date().toISOString();
       for (const block of blocks) {
         if (block.type !== "prompt" || !editor.getBlock(block.id)) continue;
-        editor.updateBlock(block.id, { props: { sentSessionId: sessionId, sentAt } });
+        editor.updateBlock(block.id, {
+          props: { sentSessionId: accepted.sessionId, sentAt, sentMessageId: accepted.messageId },
+        });
         if ((block.children?.length ?? 0) > 0) writeNfmPromptCollapsed(block.id, true);
       }
     },
@@ -1822,8 +1822,8 @@ function NfmEditorInstance({
         toast.info("This prompt is empty.", { id: "nfm-send-to-thread" });
         return;
       }
-      const sessionId = await sendPromptInputToChat(promptDestinationTarget, promptInput);
-      recordPromptSends([block], sessionId);
+      const accepted = await sendPromptInputToChat(promptDestinationTarget, promptInput);
+      recordPromptSends([block], accepted);
     },
     [editor, promptDestinationTarget, recordPromptSends, sendPromptInputToChat],
   );
@@ -1855,8 +1855,8 @@ function NfmEditorInstance({
     ) => {
       const compiled = compileSendBlocksPrompt(fallbackBlockId, retainedBlockIds);
       if (!compiled) return;
-      const sessionId = await sendPromptInputToChat(request.target, compiled.promptInput);
-      recordPromptSends(compiled.selection.blocks, sessionId);
+      const accepted = await sendPromptInputToChat(request.target, compiled.promptInput);
+      recordPromptSends(compiled.selection.blocks, accepted);
       toast.success(request.target.kind === "thread" ? "Sent to chat" : "Sent to new chat", {
         id: "nfm-send-to-thread",
       });

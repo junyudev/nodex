@@ -7,7 +7,7 @@ use serde_json::json;
 #[test]
 fn prompt_content_is_portable_and_searchable_without_send_history() {
     let blocks = read(
-        ":::prompt[Review **this change**]{sent=\"nodex://sessions/deleted\" sent-at=\"2026-10-31T08:30:00.000Z\"}\n  Focus on correctness.\n\n  :::prompt[Boundary cases]\n    - Check empty inputs\n  :::\n:::",
+        ":::prompt[Review **this change**]{sent=\"nodex://sessions/deleted\" sent-at=\"2026-10-31T08:30:00.000Z\" sent-message=\"message:one\"}\n  Focus on correctness.\n\n  :::prompt[Boundary cases]\n    - Check empty inputs\n  :::\n:::",
         ReadOptions::EXACT,
     ).unwrap();
     let portable = write_portable(&blocks, &PortableOptions::default());
@@ -57,6 +57,10 @@ fn prompt_json_normalizes_send_history_without_resolving_the_session() {
         json!({"sentSessionId":"chat","sentAt":"2026-10-31"}),
         json!({"sentSessionId":3,"sentAt":"2026-10-31T08:30:00Z"}),
         json!({"sentSessionId":"chat","sentAt":null}),
+        json!({"sentMessageId":"message:one"}),
+        json!({"sentSessionId":"chat","sentAt":"2026-10-31T08:30:00Z","sentMessageId":3}),
+        json!({"sentSessionId":"chat","sentAt":"2026-10-31T08:30:00Z","sentMessageId":" message "}),
+        json!({"sentSessionId":"chat","sentAt":"2026-10-31T08:30:00Z","sentMessageId":"message\nnext"}),
     ] {
         assert!(blocks_from_json(&json!([{"type":"prompt","props":props}])).is_err());
     }

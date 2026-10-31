@@ -2529,6 +2529,45 @@ describe("Agent Runtime prompt navigation", () => {
     release();
   });
 
+  test("reveals an exact steered message outside the prompt index and respects cancellation", async () => {
+    const steer = {
+      ...opening("run-1", 2),
+      id: "steer-item",
+      messageId: "steer-message",
+      inputIntent: "steer" as const,
+    };
+    const { owner, wire, release } = await open(
+      withRuns(["run-3"], [opening("run-3", 5)], "older"),
+      [
+        {
+          snapshotSequence: 1,
+          items: [opening("run-1", 1), steer].map(row),
+          nextCursor: null,
+          hasMoreHistory: false,
+        },
+      ],
+    );
+    try {
+      await expect(
+        owner.loadHistoryThroughMessage("steer-message", new AbortController().signal),
+      ).resolves.toBe("applied");
+      expect(wire.port.history).toHaveBeenCalledWith({
+        ...target,
+        cursor: "older",
+        throughEntryId: "steer-message",
+      });
+      expect(wire.port.promptIndex).not.toHaveBeenCalled();
+      const cancelled = new AbortController();
+      cancelled.abort();
+      await expect(owner.loadHistoryThroughMessage("missing", cancelled.signal)).resolves.toBe(
+        "stale",
+      );
+      expect(wire.port.history).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+    }
+  });
+
   test("loads older pages through a Run's opening message until that message is resident", async () => {
     // A bounded snapshot carries only the Run records of its own window.
     const { owner, wire, release } = await open(

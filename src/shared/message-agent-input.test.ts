@@ -107,7 +107,11 @@ describe("a Prompt as a chat receives it", () => {
   const prompt = {
     id: "prompt-root",
     type: "prompt",
-    props: { sentSessionId: "deleted-session", sentAt: "2026-10-31T08:30:00.000Z" },
+    props: {
+      sentSessionId: "deleted-session",
+      sentMessageId: "prompt-message",
+      sentAt: "2026-10-31T08:30:00.000Z",
+    },
     content: [
       { type: "text", text: "Review ", styles: {} },
       { type: "text", text: "this change", styles: { bold: true } },

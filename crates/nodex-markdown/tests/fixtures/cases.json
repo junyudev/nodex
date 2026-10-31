@@ -2,6 +2,11 @@
   "about": "Round-trip contract of Nodex Markdown, docs/references/nodex-markdown.md. Each case's `markdown` is the one exact text of its `blocks`: writing the Blocks gives the text, and reading the text in exact mode gives the Blocks. Blocks are spelled as Nodex stores them, without identities except an owning shell's, props at their defaults, or empty content and children. `gfm` marks text that uses no Nodex extension and that GitHub Flavored Markdown, read as Nodex's Markdown reader reads it today, reads as the same Blocks; `reads` are other GitHub Flavored Markdown spellings that read as them too, checked against today's reader; `nodexReads` are spellings only Nodex Markdown reads as them, such as unindented container bodies, ```math fences, \\(…\\) math and HTML style tags. `rejects` are texts an exact write refuses rather than reading as something else; `boundaryReads` say how such text reads everywhere else, where a container without its closing line still reads as a container so a reply reads while it streams.",
   "cases": [
     {
+      "name": "a prompt anchors its last accepted message",
+      "markdown": ":::prompt[Draft]{sent=\"nodex://sessions/deleted-session\" sent-at=\"2026-10-31T08:30:00.000Z\" sent-message=\"message:one\"}\n:::",
+      "blocks": [{"type":"prompt","props":{"sentSessionId":"deleted-session","sentAt":"2026-10-31T08:30:00.000Z","sentMessageId":"message:one"},"content":[{"type":"text","text":"Draft"}]}]
+    },
+    {
       "name": "a prompt keeps rich first-line content and nested children",
       "markdown": ":::prompt[Review **this change**]{sent=\"nodex://sessions/deleted-session\" sent-at=\"2026-10-31T08:30:00.000Z\"}\n  Focus on correctness.\n\n  - Check boundary cases\n:::",
       "nodexReads": [
@@ -2170,6 +2175,9 @@
     }
   ],
   "rejects": [
+    {"name":"prompt message needs a send record","markdown":":::prompt{sent-message=\"message:one\"}\n:::"},
+    {"name":"prompt message refuses empty ids","markdown":":::prompt{sent=\"nodex://sessions/chat\" sent-at=\"2026-10-31T08:30:00Z\" sent-message=\"\"}\n:::"},
+    {"name":"prompt message refuses surrounding whitespace","markdown":":::prompt{sent=\"nodex://sessions/chat\" sent-at=\"2026-10-31T08:30:00Z\" sent-message=\" message \"}\n:::"},
     {"name": "prompt send history needs a timestamp", "markdown": ":::prompt[Draft]{sent=\"nodex://sessions/s\"}\n:::"},
     {"name": "prompt send history needs a Session", "markdown": ":::prompt[Draft]{sent-at=\"2026-10-31T08:30:00Z\"}\n:::"},
     {"name": "prompt send history refuses a Page link", "markdown": ":::prompt[Draft]{sent=\"nodex://pages/p\" sent-at=\"2026-10-31T08:30:00Z\"}\n:::"},

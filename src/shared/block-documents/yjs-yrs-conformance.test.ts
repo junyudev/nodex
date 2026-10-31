@@ -481,7 +481,11 @@ describe("Yjs/Yrs compatibility", () => {
     }).blockTree.find((block) => block.id === "matrix-prompt");
     expect(prompt).toMatchObject({
       type: "prompt",
-      props: { sentSessionId: "deleted-session", sentAt: "2026-10-31T08:30:00.000Z" },
+      props: {
+        sentSessionId: "deleted-session",
+        sentMessageId: "prompt-message",
+        sentAt: "2026-10-31T08:30:00.000Z",
+      },
       children: [{ type: "prompt", props: { sentSessionId: "", sentAt: "" } }],
     });
 

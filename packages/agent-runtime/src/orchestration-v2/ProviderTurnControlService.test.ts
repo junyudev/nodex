@@ -213,6 +213,7 @@ it.effect(
           apply: () => Effect.void,
           getSideChatThreadIds: Effect.succeed([]),
           getSideChatContext: () => Effect.succeed(null),
+          getMessageTurnOutcome: () => Effect.die("unused message turn"),
           getRunOutcome: () => Effect.succeed(null),
           getExecutionActors: () => Effect.die("unused execution actors"),
           getExecutionHandoffs: () => Effect.die("unused execution handoffs"),

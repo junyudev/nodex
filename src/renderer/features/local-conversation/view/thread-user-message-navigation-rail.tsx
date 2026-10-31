@@ -1,3 +1,4 @@
+import { highlightChatMessage } from "./highlight-chat-message";
 import { useCallback, type ComponentType } from "react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import {
@@ -183,25 +184,7 @@ export function ThreadUserMessageNavigationRail({
 
   const highlightTarget = useCallback(
     (targetElement: HTMLElement) => {
-      const pulseElement =
-        targetElement.querySelector<HTMLElement>(
-          "[data-user-message-bubble='true'],[data-composer-attachment-pill='true']",
-        ) ?? targetElement;
-
-      if (typeof pulseElement.animate !== "function") return;
-      for (const animation of pulseElement.getAnimations?.() ?? []) {
-        animation.cancel();
-      }
-      pulseElement.animate(
-        [
-          { backgroundColor: "color-mix(in srgb, var(--color-token-foreground) 14%, transparent)" },
-          { backgroundColor: "color-mix(in srgb, var(--color-token-foreground) 5%, transparent)" },
-        ],
-        {
-          duration: reducedMotion ? 0 : 1400,
-          easing: "ease-out",
-        },
-      );
+      highlightChatMessage(targetElement, reducedMotion);
     },
     [reducedMotion],
   );

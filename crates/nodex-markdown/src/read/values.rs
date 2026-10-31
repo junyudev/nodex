@@ -298,7 +298,8 @@ pub(super) fn prompt_send(
 ) -> Result<Option<crate::model::PromptSendRecord>, ReadError> {
     let sent = value(&d.attrs, "sent");
     let at = value(&d.attrs, "sent-at");
-    if sent.is_none() && at.is_none() {
+    let message = value(&d.attrs, "sent-message");
+    if sent.is_none() && at.is_none() && message.is_none() {
         return Ok(None);
     }
     let session = sent
@@ -315,5 +316,9 @@ pub(super) fn prompt_send(
             "prompt send history needs both `sent` and `sent-at`",
         )
     })?;
-    crate::model::PromptSendRecord::new(&session, at).map_err(|message| error(d.line, message))
+    if message.is_some_and(str::is_empty) {
+        return Err(error(d.line, "prompt `sent-message` must not be empty"));
+    }
+    crate::model::PromptSendRecord::new(&session, at, message.unwrap_or(""))
+        .map_err(|message| error(d.line, message))
 }

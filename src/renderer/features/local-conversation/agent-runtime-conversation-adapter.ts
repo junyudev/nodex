@@ -212,9 +212,12 @@ export function createAgentRuntimeConversationRuntime(
       const source = owner!.contentSource();
       if (!source) return null;
       return {
+        sourceIdentity: source.identity,
         loadBoundary: (boundary) =>
           source.isCurrent() ? owner!.loadHistoryBoundary(boundary) : Promise.resolve("stale"),
         promptRail: {
+          installMessage: async (messageId, signal) =>
+            source.isCurrent() ? owner!.loadHistoryThroughMessage(messageId, signal) : "stale",
           loadIndex: async () => (source.isCurrent() ? owner!.readPromptIndex() : null),
           install: async (runId) =>
             source.isCurrent() ? owner!.loadHistoryThroughRun(runId) : "stale",
