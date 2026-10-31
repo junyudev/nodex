@@ -1,3 +1,4 @@
+import { useComposerDraftIntent, type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useConversationBodyPresentation } from "../use-conversation-body-presentation";
 import { useConversationReadState } from "../use-conversation-read-state";
 import type { ConversationReadActivityToken } from "../conversation-read-state-observer";
@@ -51,7 +52,6 @@ import type {
   ThreadStageRouteInput,
 } from "../thread-stage-types";
 import {
-  useComposerIntent,
   useConversationBackgroundTerminalRows,
   useConversationCapabilityFlags,
   useConversationChildMemberships,
@@ -131,10 +131,7 @@ export type ConnectedThreadStageInput = Omit<
   | "account"
   | "composerIntent"
   | "primaryRequest"
-> & {
-  /** A surface-owned one-shot draft intent, including an already attached side chat. */
-  readonly composerIntent?: ThreadStageRouteInput["composerIntent"];
-};
+>;
 
 function useRetainedConversation(
   conversationId: string | null,
@@ -479,6 +476,13 @@ function ConnectedThreadStageBody({
       projectId: input.projectId,
       hostId,
       composerScopeIdentity,
+      composerChatKey:
+        input.composerChatKey ??
+        (input.sessionId
+          ? { kind: "session", sessionId: input.sessionId }
+          : activeThreadId
+            ? { kind: "remote-thread", hostId, threadId: activeThreadId }
+            : null),
       sessionId: input.sessionId ?? null,
       threadId: activeThreadId,
       isSideChat: Boolean(input.sideChatContext),
@@ -528,6 +532,7 @@ function ConnectedThreadStageBody({
       input.projectId,
       input.provider?.skills,
       input.sessionId,
+      input.composerChatKey,
       hostId,
       input.projectWorkspacePath,
       conversationSnapshot?.projectlessOutputDirectory,
@@ -614,10 +619,18 @@ export function ConnectedThreadStageFooter({
   const pendingSteers = useConversationPendingSteers(activeThreadId);
   const queuedFollowUps = useConversationQueuedFollowUps(activeThreadId);
   const backgroundTerminalRows = useConversationBackgroundTerminalRows(activeThreadId);
-  const activeThreadComposerIntent = useComposerIntent(activeThreadId);
-  const composerIntent = activeThreadId
-    ? (input.composerIntent ?? activeThreadComposerIntent)
-    : (input.newThreadComposerIntent ?? null);
+  const sessionId = input.sessionId ?? input.newThreadTarget?.sessionId ?? null;
+  const composerChatKey = useMemo<ComposerChatKey | null>(
+    () =>
+      input.composerChatKey ??
+      (sessionId
+        ? { kind: "session", sessionId }
+        : activeThreadId
+          ? { kind: "remote-thread", hostId, threadId: activeThreadId }
+          : null),
+    [input.composerChatKey, sessionId, activeThreadId, hostId],
+  );
+  const composerIntent = useComposerDraftIntent(composerChatKey);
   const primaryRequest = useConversationPrimaryRequest(activeThreadId);
   const liveCollaborationMode = useConversationCollaborationMode(activeThreadId);
   const liveThreadSettings = useConversationThreadSettings(activeThreadId);
@@ -898,7 +911,7 @@ export function ConnectedThreadStageFooter({
       isQueueingEnabled: input.isQueueingEnabled,
       composerEnterBehavior: input.composerEnterBehavior,
       composerIntent,
-      newThreadComposerIntent: input.newThreadComposerIntent ?? null,
+      composerChatKey,
       composerScopeIdentity,
       dictation,
       composerPlugins: runtime.kind === "codex" ? (composerPluginsQuery.data ?? []) : [],
@@ -947,7 +960,7 @@ export function ConnectedThreadStageFooter({
       composerSitesQuery.isPending,
       composerChatGptConversationsQuery.data,
       composerChatGptConversationsQuery.isPending,
-      input.newThreadComposerIntent,
+      composerChatKey,
       dictation,
       composerShell,
       cwd,
@@ -1225,6 +1238,7 @@ function ConnectedThreadStageContent({
           <ConversationRuntimeContext.Provider value={runtime}>
             <ConnectedThreadStage
               {...input}
+              sessionId={null}
               activeThreadId={child.threadId}
               activeThreadSummary={child}
               isNewThreadTab={false}

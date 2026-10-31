@@ -102,7 +102,7 @@ describe("task suggestion Composer handoff", () => {
                 projectName: "Source",
                 sessionId: "draft",
               },
-              newThreadComposerIntent: intent,
+              composerIntent: intent,
               composerShell: {
                 ...base.composerShell,
                 activeRequest: null,

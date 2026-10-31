@@ -1,3 +1,4 @@
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import { ConnectedThreadStage, type ThreadStageActions } from "@/features/local-conversation";
 import { ConversationRuntimeContext } from "@/features/local-conversation/conversation-runtime";
 import { useAgentRuntimeConversationAdapter } from "@/features/local-conversation/agent-runtime-conversation-adapter";
@@ -113,6 +114,12 @@ export function AgentRuntimeChildPanel(input: {
             presentation="panel"
             provider={agent.provider}
             projectId={input.session.projectId}
+            sessionId={input.session.id}
+            composerChatKey={{
+              kind: "session-thread",
+              sessionId: input.session.id,
+              threadId: input.threadId,
+            }}
             composerScopeIdentity={`agent-runtime:${input.session.id}:${input.threadId}`}
             projectWorkspacePath={projectWorkspaceRootOrNull(input.project)}
             isNewThreadTab={false}
@@ -153,7 +160,7 @@ export function AgentRuntimeSideChatPanel(input: {
   readonly title: string;
   readonly onTitleChange?: (title: string) => void;
   readonly project: Project | null;
-  readonly draft: CodexComposerIntent | null;
+  readonly initialPrompt: Pick<CodexComposerIntent, "prompt" | "promptInput"> | null;
   readonly initialSubmission?: FirstSubmissionIdentity & {
     readonly acceptedAt: number;
     readonly presentationTicket?: import("../../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
@@ -170,8 +177,6 @@ export function AgentRuntimeSideChatPanel(input: {
     initialData: input.session,
   });
   const session = sessionQuery.data ?? input.session;
-  const [consumedDraftNonce, setConsumedDraftNonce] = useState<number | null>(null);
-  const draft = input.draft?.focusNonce === consumedDraftNonce ? null : input.draft;
   const agent: ReturnType<typeof useAgentRuntimeConversationAdapter> =
     useAgentRuntimeConversationAdapter({
       sessionId: session.id,
@@ -192,13 +197,15 @@ export function AgentRuntimeSideChatPanel(input: {
   const summary = agent.summary;
   const startedInitialSubmission = useRef<string | null>(null);
   const submitInitialPrompt = useEffectEvent(async () => {
+    const chat = { kind: "session", sessionId: session.id } as const;
+    const pendingIntent = composerDraftIntents.read(chat);
     try {
-      await agent.actions.onSendPrompt?.(input.draft?.prompt ?? "", {
-        promptInput: input.draft?.promptInput,
+      await agent.actions.onSendPrompt?.(input.initialPrompt?.prompt ?? "", {
+        promptInput: input.initialPrompt?.promptInput,
         submissionIdentity: input.initialSubmission,
         presentationTicket: input.initialSubmission?.presentationTicket,
       });
-      if (input.draft) setConsumedDraftNonce(input.draft.focusNonce);
+      if (pendingIntent) composerDraftIntents.consume(chat, pendingIntent.focusNonce);
     } catch (cause) {
       toast.danger(cause instanceof Error ? cause.message : "The side chat could not start.", {
         id: `side-chat-submit:${session.id}`,
@@ -241,7 +248,6 @@ export function AgentRuntimeSideChatPanel(input: {
       onNewThreadStartInEnvironmentChange: () => {},
       onRefreshNewThreadStartInEnvironments: async () => {},
       onOpenNewThreadLocalEnvironmentsSettings: () => {},
-      onConsumeNewThreadComposerIntent: (_sessionId, nonce) => setConsumedDraftNonce(nonce),
       onOpenThread: input.onOpenThread,
     },
     { ...input.hostActions, ...agent.actions },
@@ -257,7 +263,7 @@ export function AgentRuntimeSideChatPanel(input: {
         projectWorkspacePath={projectWorkspaceRootOrNull(input.project)}
         isNewThreadTab={false}
         newThreadTarget={null}
-        composerIntent={draft}
+        sessionId={session.id}
         newThreadProjectSelector={null}
         newThreadStartInSelector={null}
         threadStartProgress={null}
@@ -276,13 +282,7 @@ export function AgentRuntimeSideChatPanel(input: {
         summaryPanelOpen={false}
         summaryPanelHideImmediately={false}
         turnDiffHoverPreviewDisabled={input.turnDiffHoverPreviewDisabled}
-        actions={{
-          ...actions,
-          onConsumeComposerIntent: (threadId, nonce) => {
-            setConsumedDraftNonce(nonce);
-            actions.onConsumeComposerIntent(threadId, nonce);
-          },
-        }}
+        actions={actions}
       />
     </ConversationRuntimeContext>
   );

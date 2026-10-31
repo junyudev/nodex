@@ -1,3 +1,4 @@
+import type { ComposerChatKey } from "@/lib/composer-draft-intents";
 import type { HookStats } from "./projection/hook-stats";
 import type { WorkspaceSearchContext } from "@/lib/workspace-search-context";
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
@@ -410,7 +411,7 @@ export interface ThreadStageRouteInput {
   summaryComputerUsePip?: ThreadSummaryPanelComputerUsePipState | null;
   planSidePanelState?: ThreadPlanSidePanelState | null;
   composerIntent: CodexComposerIntent | null;
-  newThreadComposerIntent?: CodexComposerIntent | null;
+  composerChatKey?: ComposerChatKey | null;
   primaryRequest: CodexConversationLiveRequest | null;
   sideChatContext?: {
     parentThreadId: string;
@@ -590,8 +591,6 @@ export interface ThreadStageActions {
   onOpenTurnDiffFileInSidePanel?: (
     target: ThreadTurnDiffFileSidePanelTarget,
   ) => void | Promise<void>;
-  onConsumeComposerIntent: (threadId: string, focusNonce: number) => void;
-  onConsumeNewThreadComposerIntent?: (sessionId: string, focusNonce: number) => void;
   onOpenThread: (threadId: string, context?: ThreadOpenThreadContext) => void | Promise<void>;
   onRetryThreadAttachment?: (threadId: string) => void | Promise<void>;
   /** Ends the named background terminals, or all of the conversation's when none are named. */
@@ -619,7 +618,6 @@ export type ThreadStageHostActions = Pick<
   | "onRequestRenameThread"
   | "onArchiveThread"
   | "onToggleThreadPin"
-  | "onConsumeNewThreadComposerIntent"
   | "onOpenThread"
   | "onOpenTurnDiffReview"
   | "onOpenTurnDiffFileInSidePanel"
@@ -1247,6 +1245,7 @@ export interface ThreadStageHeaderModel {
 export type ThreadSummaryPanelMode = "hidden" | "pinned" | "popover";
 
 export interface ThreadBodySurfaceModel {
+  composerChatKey?: ComposerChatKey | null;
   readonly skills?: readonly CodexComposerSkill[];
   parentModel?: string | null;
   projectId: string | null;
@@ -1329,7 +1328,7 @@ export interface ThreadFooterModel {
   isQueueingEnabled: boolean;
   composerEnterBehavior: ComposerEnterBehavior;
   composerIntent: CodexComposerIntent | null;
-  newThreadComposerIntent?: CodexComposerIntent | null;
+  composerChatKey?: ComposerChatKey | null;
   composerScopeIdentity?: string | null;
   dictation: CodexDictationStateSnapshot;
   composerPlugins?: CodexComposerPlugin[];

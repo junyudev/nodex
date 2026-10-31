@@ -101,7 +101,6 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onForkFromTurn: async () => {},
     onUnarchiveThread: async () => {},
     onOpenTurnDiffReview: () => {},
-    onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
     onStopBackgroundTerminals: async () => {},
     ...overrides,

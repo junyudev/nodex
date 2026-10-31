@@ -38,7 +38,6 @@ function buildActions(): ThreadStageActions {
     onForkFromTurn: async () => {},
     onUnarchiveThread: async () => {},
     onOpenTurnDiffReview: () => {},
-    onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
     onStopBackgroundTerminals: async () => {},
   };

@@ -1,3 +1,4 @@
+import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useState } from "react";
 import { toast } from "@/components/ui/toast";
 import {
@@ -83,6 +84,7 @@ export interface ImageEditSubmissionController {
  */
 export function useImageEditSubmission(args: {
   composerTarget: ImageEditComposerTarget | null;
+  composerChatKey?: ComposerChatKey | null;
   projectId: string | null;
   threadId: string | null;
 }): ImageEditSubmissionController {
@@ -212,8 +214,9 @@ export function useImageEditSubmission(args: {
       } else {
         await control.startTurn(args.threadId, intent.promptRaw, options, submittedPresentation);
       }
-      if (intent.focusComposerAfterSubmit) {
-        control.setComposerIntent(args.threadId, {
+      const chat = args.composerTarget?.chatKey ?? args.composerChatKey;
+      if (intent.focusComposerAfterSubmit && chat) {
+        composerDraftIntents.set(chat, {
           focusNonce: Date.now(),
           prompt: "",
         });

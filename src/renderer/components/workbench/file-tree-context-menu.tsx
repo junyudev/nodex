@@ -1,3 +1,4 @@
+import { type ComposerChatKey, composerDraftIntents } from "@/lib/composer-draft-intents";
 import { useState, type ReactNode } from "react";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { useQuery } from "@tanstack/react-query";
@@ -11,7 +12,6 @@ import {
   NodexContextMenuSubmenuTrigger,
 } from "@/components/ui/context-menu";
 import { toast } from "@/components/ui/toast";
-import { setLocalConversationComposerIntent } from "@/features/local-conversation";
 import { getFileTreeEventPath } from "@/lib/file-tree-paths";
 import { listAvailableFileLinkOpeners } from "@/lib/file-system-operations";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
@@ -23,11 +23,11 @@ import { FILE_LINK_OPENER_OPTIONS, type FileLinkOpenerId } from "../../../shared
 export function FileTreeContextMenu({
   children,
   resolvePath,
-  threadId,
+  composerChatKey,
 }: {
   readonly children: ReactNode;
   readonly resolvePath: (treePath: string) => string | null;
-  readonly threadId?: string | null;
+  readonly composerChatKey?: ComposerChatKey | null;
 }) {
   const [open, setOpen] = useState(false);
   const [path, setPath] = useState<string | null>(null);
@@ -106,10 +106,10 @@ export function FileTreeContextMenu({
             Copy path
           </NodexContextMenuItem>
           <NodexContextMenuItem
-            disabled={!threadId}
+            disabled={!composerChatKey}
             onSelect={() => {
-              if (!path || !threadId) return;
-              setLocalConversationComposerIntent(threadId, {
+              if (!path || !composerChatKey) return;
+              composerDraftIntents.set(composerChatKey, {
                 prompt: "",
                 focusNonce: Date.now(),
                 attachmentMode: "append",

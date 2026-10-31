@@ -20,8 +20,8 @@ vi.mock("@/lib/file-reference-router", () => ({
 }));
 vi.mock("@/lib/clipboard", () => ({ writeTextToClipboard: calls.copy }));
 vi.mock("@/lib/workspace-file-operations", () => ({ saveWorkspaceFileCopy: calls.save }));
-vi.mock("@/features/local-conversation", () => ({
-  setLocalConversationComposerIntent: calls.append,
+vi.mock("@/lib/composer-draft-intents", () => ({
+  composerDraftIntents: { set: calls.append },
 }));
 
 describe("file tree context actions", () => {
@@ -31,7 +31,7 @@ describe("file tree context actions", () => {
       <QueryClientProvider client={queryClient}>
         <div style={{ width: 320, height: 240 }}>
           <FileTreeContextMenu
-            threadId="thread-1"
+            composerChatKey={{ kind: "session", sessionId: "session-1" }}
             resolvePath={(path) => (path === "src/file.ts" ? "/workspace/src/file.ts" : null)}
           >
             <FileTree
@@ -75,7 +75,7 @@ describe("file tree context actions", () => {
     await openMenu();
     await act(async () => userEvent.click(view.getByRole("menuitem", { name: "Add to chat" })));
     expect(calls.append).toHaveBeenCalledWith(
-      "thread-1",
+      { kind: "session", sessionId: "session-1" },
       expect.objectContaining({
         prompt: "",
         attachmentMode: "append",

@@ -1,5 +1,6 @@
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import "./workbench-testkit/workbench-shell-harness";
-import { expect, test } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { settleAsyncRender } from "@/test/dom";
 import type { ThreadStageActions } from "@/features/local-conversation/thread-stage-types";
@@ -27,7 +28,7 @@ test("Open folder focuses an existing Project draft without replacing its conten
   });
   await waitFor(() => expect(lastStage()?.newThreadTarget).toMatchObject({ projectId: "alpha" }));
   const sessionId = (lastStage()?.newThreadTarget as { sessionId: string }).sessionId;
-  expect(lastStage()?.newThreadComposerIntent).toBeNull();
+  expect(composerDraftIntents.read({ kind: "session", sessionId })).toBeNull();
   const prefill = (await waitForLastThreadStageActions()).onStartNewChatWithPrompt as NonNullable<
     ThreadStageActions["onStartNewChatWithPrompt"]
   >;
@@ -38,6 +39,7 @@ test("Open folder focuses an existing Project draft without replacing its conten
     expect((view.getByLabelText("Prompt") as HTMLTextAreaElement).value).toBe("Keep this draft"),
   );
 
+  const setIntent = vi.spyOn(composerDraftIntents, "set");
   const previousInvoke = mockInvokeImpl;
   setMockInvokeImpl(async (channel, ...args) => {
     if (channel === "workspace:pick-directory") return "/repo/alpha";
@@ -57,12 +59,16 @@ test("Open folder focuses an existing Project draft without replacing its conten
     await Promise.resolve();
   });
   await waitFor(() =>
-    expect(lastStage()?.newThreadComposerIntent).toEqual({
-      prompt: "",
-      attachmentMode: "append",
-      focusNonce: expect.any(Number),
-    }),
+    expect(setIntent).toHaveBeenLastCalledWith(
+      { kind: "session", sessionId },
+      {
+        prompt: "",
+        attachmentMode: "append",
+        focusNonce: expect.any(Number),
+      },
+    ),
   );
+  setIntent.mockRestore();
   expect(lastStage()?.newThreadTarget).toMatchObject({ projectId: "alpha", sessionId });
   expect((view.getByLabelText("Prompt") as HTMLTextAreaElement).value).toBe("Keep this draft");
   expect(invokeCalls.filter(([channel]) => channel === "projects:create")).toHaveLength(0);

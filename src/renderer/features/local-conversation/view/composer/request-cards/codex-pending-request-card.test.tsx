@@ -117,7 +117,6 @@ function createActions(log: string[]): ThreadStageActions {
     onForkFromTurn: async () => {},
     onUnarchiveThread: async () => {},
     onOpenTurnDiffReview: () => {},
-    onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
     onStopBackgroundTerminals: async () => {},
   };

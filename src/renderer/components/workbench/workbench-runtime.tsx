@@ -1,3 +1,4 @@
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import { openWorkbenchSceneFile } from "@/lib/workbench-scene-file-opener";
 import { prepareWorkbenchSceneSurfaceClose } from "@/lib/workbench-scene-command-lifecycle";
 import type { FileReferenceRouterPort } from "@/lib/file-reference-router";
@@ -301,7 +302,6 @@ import {
   type WorkbenchLayoutSnapshot,
 } from "../../../shared/workbench-layout";
 import type {
-  CodexComposerIntent,
   CodexScheduledAutomation,
   PanelId,
   Project,
@@ -1108,9 +1108,6 @@ export function WorkbenchRuntime({
     projectId: string | null;
     configPath: string | null;
   } | null>(null);
-  const [newThreadComposerIntentsBySessionId, setNewThreadComposerIntentsBySessionId] = useState<
-    Record<string, CodexComposerIntent>
-  >({});
   const [processManagerOpen, setProcessManagerOpen] = useState(false);
   const codexAccount = useLocalConversationAccount();
   const codexConnection = useLocalConversationConnection();
@@ -1317,6 +1314,10 @@ export function WorkbenchRuntime({
       readonly draftId: string;
       readonly sessionId: string;
     }) => {
+      composerDraftIntents.materializeProjectDraft(
+        { kind: "project-draft", projectId: input.projectId, draftId: input.draftId },
+        input.sessionId,
+      );
       const owner = { kind: "project", projectId: input.projectId } as const;
       workbenchWindowRef.current.setScene(
         owner,
@@ -2755,7 +2756,6 @@ export function WorkbenchRuntime({
     setCommandPaletteOpenRequest,
     setCommandContentSearchOpenRequest,
     setLocalEnvironmentSettingsInitial,
-    setNewThreadComposerIntentsBySessionId,
     setProcessManagerOpen,
   });
   const pageChatCommands = useMemo<PageChatCommands>(
@@ -2788,7 +2788,6 @@ export function WorkbenchRuntime({
     openProcessManagerOutput,
     openTurnDiffFileInSidePanel,
     openSummaryOutputInSidePanel,
-    consumeNewThreadComposerIntent,
     forkSessionFromTurn,
     forkSessionFromTurnIntoWorktree,
   } = sessionCommands;
@@ -4036,10 +4035,10 @@ export function WorkbenchRuntime({
       const session = await ensureDefaultDraftSessionForProject(targetProjectId);
       setSettingsPath(null);
       setAutomationsPath(null);
-      setNewThreadComposerIntentsBySessionId((current) => ({
-        ...current,
-        [session.id]: buildCancelledPendingWorktreeComposerIntent(entry, Date.now()),
-      }));
+      composerDraftIntents.set(
+        { kind: "session", sessionId: session.id },
+        buildCancelledPendingWorktreeComposerIntent(entry, Date.now()),
+      );
     },
     [ensureDefaultDraftSessionForProject, projects, setAutomationsPath, setSettingsPath],
   );
@@ -5293,9 +5292,6 @@ export function WorkbenchRuntime({
           onEnsureDefaultDraftSessionForProject: ensureDefaultDraftSessionForProject,
           onStartNewChatWithPrompt: startNewChatWithPrompt,
           onOpenPendingWorktree: setPendingWorktreeClientThreadId,
-          newThreadComposerIntent:
-            newThreadComposerIntentsBySessionId[activeRenderSession.id] ?? null,
-          onConsumeNewThreadComposerIntent: consumeNewThreadComposerIntent,
           onRequestProjectPickerOpen,
           onOpenLocalEnvironmentsSettings: openLocalEnvironmentsSettings,
           onOpenHooksSettings: openHooksSettings,

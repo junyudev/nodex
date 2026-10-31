@@ -1,3 +1,4 @@
+import type { ComposerChatKey } from "@/lib/composer-draft-intents";
 import type { OnDiffLineEnterLeaveProps } from "@pierre/diffs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -238,6 +239,7 @@ type TranscriptReviewSource = "selected-turn" | "last-turn";
 type GitReviewLoadStatus = "idle" | "loading" | "loaded" | "load-failed";
 
 interface ReviewDiffPanelProps {
+  composerChatKey?: ComposerChatKey | null;
   conversationProjection: ReviewConversationProjection;
   onStartThreadPrompt: (threadId: string, prompt: string) => Promise<unknown>;
   threadId?: string | null;
@@ -2386,6 +2388,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
 }, areReviewFileRowPropsEqual);
 
 export function ReviewDiffPanel({
+  composerChatKey,
   conversationProjection,
   onStartThreadPrompt,
   threadId,
@@ -3832,7 +3835,7 @@ export function ReviewDiffPanel({
         <div className="sidebar-resize-handle-line pointer-events-none m-auto opacity-0 h-full w-px bg-gradient-to-b from-transparent via-token-foreground/25 to-transparent group-hover:opacity-100 group-active:opacity-100" />
       </div>
       <ReviewFileTree
-        threadId={reviewThreadId}
+        composerChatKey={composerChatKey}
         filterGeneratedFiles={routeState.filterGeneratedFiles}
         onFilterGeneratedFilesChange={
           generatedPathsQuery.data?.hasLinguistGeneratedAttributes

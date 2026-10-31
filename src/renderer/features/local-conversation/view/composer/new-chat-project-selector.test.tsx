@@ -56,7 +56,6 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onForkFromTurn: noopAsync,
     onUnarchiveThread: noopAsync,
     onOpenTurnDiffReview: () => undefined,
-    onConsumeComposerIntent: () => undefined,
     onOpenThread: () => undefined,
     onStopBackgroundTerminals: noopAsync,
     onNewThreadProjectChange: () => undefined,

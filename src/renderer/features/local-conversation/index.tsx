@@ -3,7 +3,6 @@ import { ApplicationSurface } from "@/bootstrap/application-surface";
 
 export {
   __resetLocalConversationStoreForTests,
-  consumeLocalConversationComposerIntent,
   CodexAppServerManager,
   CodexAppServerManagerRegistry,
   hydrateLocalConversationThreadSummaries,
@@ -13,7 +12,6 @@ export {
   requestLocalConversationSnapshot,
   removeLocalConversationPlanImplementationRequest,
   setLocalConversationCollaborationMode,
-  setLocalConversationComposerIntent,
   useCodexAppServerControl,
   useCodexAppServerManagerForConversationId,
   useCodexAppServerRegistry,
@@ -22,7 +20,6 @@ export {
   useDefaultCodexAppServerManager,
   useMaybeCodexAppServerManagerForConversationId,
   useCodexThreadStartProgress,
-  useComposerIntent,
   useConversation,
   useConversationAttachmentState,
   useConversationCollaborationMode,

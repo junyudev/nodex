@@ -1597,7 +1597,11 @@ export function WorkspaceFilesPanel({
                         {treePaths.length > 0 || fileChanges.files.length > 0 ? (
                           <WorkspaceFileTree
                             workspaceRoot={workspaceRoot}
-                            threadId={activeSession?.thread?.threadId}
+                            composerChatKey={
+                              activeSession
+                                ? { kind: "session", sessionId: activeSession.id }
+                                : null
+                            }
                             paths={treePaths}
                             expandedPaths={expandedPaths}
                             selectedPath={selectedTreePath}

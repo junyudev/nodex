@@ -1,3 +1,4 @@
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { AgentRuntimeConversationOwnerSnapshot } from "./agent-runtime-conversation-owner";
 import type { AgentRuntimeRendererTransport } from "../../lib/agent-runtime-runtime";
@@ -583,7 +584,9 @@ describe("Agent Runtime stage commands", () => {
         queuedFollowUps: { entries: [{ followUpId: "run-1", clientUserMessageId: "message-1" }] },
       },
     } as unknown as AgentRuntimeConversationOwnerSnapshot;
+    const chat = { kind: "session-thread", sessionId: "session", threadId: "child" } as const;
     const actions = createAgentRuntimeStageActions({
+      composerChatKey: chat,
       target: () => ({ sessionId: "session", threadId: "child" }),
       owner: () => ({
         getSnapshot: () => state,
@@ -614,6 +617,23 @@ describe("Agent Runtime stage commands", () => {
       } as unknown as AgentRuntimeRendererTransport,
       prepare: async (text) => ({ text }),
     });
+
+    await actions.onEditQueuedFollowUp!({
+      threadId: "child",
+      followUpId: "run-1",
+      prompt: "Compare these",
+      ledgerRevision: 5,
+    });
+    const intent = composerDraftIntents.read(chat);
+    expect(intent).toMatchObject({
+      prompt: "Compare these",
+      queuedFollowUpEdit: {
+        followUpId: "run-1",
+        ledgerRevision: 5,
+        modelSelection: { instanceId: "codex", model: "model" },
+      },
+    });
+    composerDraftIntents.consume(chat, intent!.focusNonce);
 
     await actions.onReplaceQueuedFollowUp!("child", "run-1", 0, "Compare the first two");
 

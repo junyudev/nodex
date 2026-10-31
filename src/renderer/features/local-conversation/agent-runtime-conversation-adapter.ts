@@ -1,3 +1,4 @@
+import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { isNodexProviderId } from "../../../shared/nodex-models";
 import { useNodexAccount } from "../nodex-account/use-nodex-account";
 import { subscribeNodexAccountChanges } from "../../lib/nodex-account-runtime";
@@ -87,10 +88,7 @@ import type { ConversationContentSource, ConversationRuntime } from "./conversat
 import type { ThreadStageActions, ConversationProviderPresentation } from "./thread-stage-types";
 import type { AgentModelPickerEntry } from "../../components/shared/agent-runtime/agent-model-picker";
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
-import {
-  setLocalConversationComposerIntent,
-  setLocalConversationThreadPresented,
-} from "./local-conversation-store";
+import { setLocalConversationThreadPresented } from "./local-conversation-store";
 import { copyAgentRuntimeConversationMarkdown } from "./agent-runtime-markdown-export";
 import {
   agentRuntimeAgentLabels,
@@ -316,6 +314,8 @@ function latestRuntimeRun(runs: readonly AgentRuntimeRun[]): AgentRuntimeRun | u
 
 /** Shared editor controls address the exact Session/Thread/Run observed by the read owner. */
 export function createAgentRuntimeStageActions(input: {
+  /** Child conversations share their root's product Session but have their own draft channel. */
+  readonly composerChatKey?: ComposerChatKey;
   readonly target: () => AgentRuntimeSessionTarget | null;
   readonly owner: () =>
     | (Pick<
@@ -689,7 +689,7 @@ export function createAgentRuntimeStageActions(input: {
       return true;
     },
     onEditQueuedFollowUp: async (request) => {
-      exactTarget(request.threadId);
+      const target = exactTarget(request.threadId);
       const queued = input
         .owner()
         ?.getSnapshot()
@@ -699,16 +699,20 @@ export function createAgentRuntimeStageActions(input: {
       if (!owner) throw new Error("Open the conversation before editing this message");
       const queuedInput = await owner.readQueuedInput(request.followUpId);
       const modelSelection = await readQueuedSelection(request.threadId, request.followUpId);
-      setLocalConversationComposerIntent(request.threadId, {
-        prompt: queuedInput.text,
-        promptInput: { ...request.promptInput, ...queuedInput },
-        queuedFollowUpEdit: {
-          followUpId: request.followUpId,
-          ledgerRevision: request.ledgerRevision ?? 0,
-          modelSelection,
+      composerDraftIntents.set(
+        input.composerChatKey ?? { kind: "session", sessionId: target.sessionId },
+        {
+          prompt: queuedInput.text,
+          attachmentMode: "replace",
+          promptInput: { ...request.promptInput, ...queuedInput },
+          queuedFollowUpEdit: {
+            followUpId: request.followUpId,
+            ledgerRevision: request.ledgerRevision ?? 0,
+            modelSelection,
+          },
+          focusNonce: Date.now(),
         },
-        focusNonce: Date.now(),
-      });
+      );
     },
     onSendQueuedFollowUpNow: async (threadId, runId) => {
       const target = exactTarget(threadId);
@@ -1223,6 +1227,9 @@ export function useAgentRuntimeConversationAdapter(input: {
   const actions: Partial<ThreadStageActions> = {
     onCaptureSubmissionPresentation: () => readCodexSubmissionPresentation(workbenchOwner),
     ...createAgentRuntimeStageActions({
+      composerChatKey: input.threadId
+        ? { kind: "session-thread", sessionId: input.sessionId, threadId: input.threadId }
+        : undefined,
       target: () => target,
       owner: () => owner,
       prepare,

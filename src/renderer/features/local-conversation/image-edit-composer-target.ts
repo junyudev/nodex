@@ -1,3 +1,4 @@
+import type { ComposerChatKey } from "@/lib/composer-draft-intents";
 import type { ImageEditComposerTarget } from "@/lib/content-image";
 
 /**
@@ -7,6 +8,7 @@ import type { ImageEditComposerTarget } from "@/lib/content-image";
  */
 export function resolveImageEditComposerTarget(input: {
   readonly composerScopeIdentity?: string | null;
+  readonly chatKey?: ComposerChatKey | null;
   readonly isSideChat: boolean;
   readonly threadScopePath: string;
 }): ImageEditComposerTarget {
@@ -15,6 +17,7 @@ export function resolveImageEditComposerTarget(input: {
     input.isSideChat || sideIdentity?.startsWith("side-chat:") === true ? "side" : "root";
 
   return {
+    ...(input.chatKey ? { chatKey: input.chatKey } : {}),
     channelId: `${input.threadScopePath}::${
       placement === "root" ? "root" : sideIdentity || "side"
     }`,

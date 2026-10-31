@@ -1,3 +1,4 @@
+import type { ComposerChatKey } from "@/lib/composer-draft-intents";
 import { captureCodexTurnPresentation } from "@/lib/codex-turn-presentation";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { useCallback, useEffect, useEffectEvent, useMemo, useSyncExternalStore } from "react";
@@ -42,6 +43,7 @@ import {
 } from "../../../../shared/codex-file-change";
 
 interface ConnectedReviewDiffPanelProps {
+  composerChatKey?: ComposerChatKey | null;
   threadId: string | null;
   projectWorkspacePath?: string | null;
   searchOpenTick: number;
@@ -234,6 +236,7 @@ function areSelectedTurnDiffTargetsEqual(
 }
 
 export function ConnectedReviewDiffPanel({
+  composerChatKey,
   threadId,
   projectWorkspacePath,
   searchOpenTick,
@@ -323,6 +326,7 @@ export function ConnectedReviewDiffPanel({
 
   return (
     <ReviewDiffPanel
+      composerChatKey={composerChatKey}
       conversationProjection={conversationProjection}
       onStartThreadPrompt={startThreadPrompt}
       threadId={transcriptThreadId}

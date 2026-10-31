@@ -1,9 +1,7 @@
+import { composerDraftIntents } from "./composer-draft-intents";
 import { collectCodexSubagentThreadIds } from "../../shared/codex-subagent-metadata";
 import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
-import {
-  readLocalConversation,
-  setLocalConversationComposerIntent,
-} from "@/features/local-conversation/local-conversation-store";
+import { readLocalConversation } from "@/features/local-conversation/local-conversation-store";
 import {
   useCallback,
   useEffect,
@@ -208,9 +206,6 @@ interface WorkbenchSessionCommandsInput {
       configPath: string | null;
     } | null>
   >;
-  readonly setNewThreadComposerIntentsBySessionId: Dispatch<
-    SetStateAction<Record<string, CodexComposerIntent>>
-  >;
   readonly setProcessManagerOpen: Dispatch<SetStateAction<boolean>>;
 }
 
@@ -251,7 +246,6 @@ export function useWorkbenchSessionCommands({
   setCommandPaletteOpenRequest,
   setCommandContentSearchOpenRequest,
   setLocalEnvironmentSettingsInitial,
-  setNewThreadComposerIntentsBySessionId,
   setProcessManagerOpen,
 }: WorkbenchSessionCommandsInput) {
   const queryClient = useQueryClient();
@@ -563,16 +557,16 @@ export function useWorkbenchSessionCommands({
         },
       });
       if (!options?.focusComposer) return;
-      setNewThreadComposerIntentsBySessionId((current) => ({
-        ...current,
-        [session.id]: {
+      composerDraftIntents.set(
+        { kind: "session", sessionId: session.id },
+        {
           prompt: "",
           attachmentMode: "append",
           focusNonce: Date.now(),
         },
-      }));
+      );
     },
-    [ensureDefaultDraftSessionForProject, setNewThreadComposerIntentsBySessionId],
+    [ensureDefaultDraftSessionForProject],
   );
 
   const prefillNewChat = useCallback(
@@ -586,36 +580,26 @@ export function useWorkbenchSessionCommands({
       selectSession(session);
       setSettingsPath(null);
       setAutomationsPath(null);
-      setNewThreadComposerIntentsBySessionId((current) => ({
-        ...current,
-        [session.id]: {
+      composerDraftIntents.set(
+        { kind: "session", sessionId: session.id },
+        {
           prompt: input.prompt,
           ...(input.prompt.length === 0 ? { clearText: true } : {}),
           focusNonce: Date.now(),
         },
-      }));
+      );
       if (options?.revealComposer)
         panelControllerRef.current.durable.patchPanel(session, "right", {
           size: { ...session.panels.right.size, fullWidth: false },
         });
       return session;
     },
-    [
-      ensureDefaultDraftSessionForProject,
-      selectSession,
-      setAutomationsPath,
-      setNewThreadComposerIntentsBySessionId,
-      setSettingsPath,
-    ],
+    [ensureDefaultDraftSessionForProject, selectSession, setAutomationsPath, setSettingsPath],
   );
 
   /** Appends Page content to one chat's draft and focuses it, whether or not it has started. */
   const addToChatComposer = useCallback(
-    (input: {
-      readonly sessionId: string;
-      readonly threadId: string | null;
-      readonly promptInput: CodexPromptInput;
-    }) => {
+    (input: { readonly sessionId: string; readonly promptInput: CodexPromptInput }) => {
       // Page content arrives as its own paragraphs after any draft, with the caret on a new line
       // below it for the instruction that goes with it.
       const text = input.promptInput.text.trim();
@@ -628,16 +612,9 @@ export function useWorkbenchSessionCommands({
           documentItems: text ? [{ type: "text", text: `${text}\n\n` }] : [],
         },
       };
-      if (input.threadId) {
-        setLocalConversationComposerIntent(input.threadId, intent);
-        return;
-      }
-      setNewThreadComposerIntentsBySessionId((current) => ({
-        ...current,
-        [input.sessionId]: intent,
-      }));
+      composerDraftIntents.set({ kind: "session", sessionId: input.sessionId }, intent);
     },
-    [setNewThreadComposerIntentsBySessionId],
+    [],
   );
 
   const startNewChatWithPrompt = useCallback(
@@ -1423,19 +1400,6 @@ export function useWorkbenchSessionCommands({
     },
     [activeSession, openWorkspaceFileTab],
   );
-  const consumeNewThreadComposerIntent = useCallback(
-    (sessionId: string, focusNonce: number) => {
-      setNewThreadComposerIntentsBySessionId((current) => {
-        const intent = current[sessionId];
-        if (!intent || intent.focusNonce !== focusNonce) return current;
-        const next = { ...current };
-        delete next[sessionId];
-        return next;
-      });
-    },
-    [setNewThreadComposerIntentsBySessionId],
-  );
-
   const forkSessionFromTurn = useCallback(
     async (input: {
       threadId: string;
@@ -1467,9 +1431,10 @@ export function useWorkbenchSessionCommands({
       }
       selectSession(result.session);
       if (result.composerIntent) {
-        if (result.session.executionRef)
-          setLocalConversationComposerIntent(result.threadId, result.composerIntent);
-        else workbenchCodexControl.setComposerIntent(result.threadId, result.composerIntent);
+        composerDraftIntents.set(
+          { kind: "session", sessionId: result.session.id },
+          result.composerIntent,
+        );
       }
       // The selected task owns resume/hydration; it must not extend the source task's fork action.
       if (!result.session.executionRef)
@@ -1565,7 +1530,6 @@ export function useWorkbenchSessionCommands({
     openProcessManagerOutput,
     openTurnDiffFileInSidePanel,
     openSummaryOutputInSidePanel,
-    consumeNewThreadComposerIntent,
     forkSessionFromTurn,
     forkSessionFromTurnIntoWorktree,
   };

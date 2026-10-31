@@ -400,6 +400,7 @@ function EditableImageSurface({
   const skipComposerPublishRevisionRef = useRef<number | null>(null);
   const submission = useImageEditSubmission({
     composerTarget: options.composerTarget,
+    composerChatKey: options.composerChatKey,
     projectId: options.projectId,
     threadId: options.threadId,
   });

@@ -1,3 +1,4 @@
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import type { ThreadReadStateChange } from "../../../../shared/codex-thread-read-state";
 import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2";
 import { buildAgentActivityV2CorpusThread } from "../../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
@@ -547,7 +548,6 @@ function buildActions(): ThreadStageActions {
     onForkFromTurn: noopAsync,
     onUnarchiveThread: noopAsync,
     onOpenTurnDiffReview: () => {},
-    onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
     onStopBackgroundTerminals: noopAsync,
     onNewThreadProjectChange: () => {},
@@ -565,6 +565,7 @@ async function renderStage(
     rightPanelComposerOverlayPlacement?: FloatingComposerPlacement;
     threadBodyVisible?: boolean;
     runtime?: ConversationRuntime;
+    sessionId?: string;
     provider?: ConversationProviderPresentation;
     projectId?: string | null;
     summaryPanelOpen?: boolean;
@@ -584,6 +585,7 @@ async function renderStage(
           <LocalConversationProvider>
             <ConversationRuntimeContext.Provider value={options.runtime ?? null}>
               <ConnectedThreadStage
+                sessionId={options.sessionId}
                 projectId={options.projectId === undefined ? "project_1" : options.projectId}
                 projectWorkspacePath="/tmp/project"
                 isNewThreadTab={false}
@@ -2345,6 +2347,27 @@ describe("ConnectedThreadStage read-state control plane", () => {
     };
     return { runtime, markRead };
   }
+
+  test("a Session intent set before its first thread reaches the Runtime composer after attachment", async () => {
+    const chat = { kind: "session", sessionId: "first-thread-intent-session" } as const;
+    composerDraftIntents.set(chat, {
+      prompt: "From the Page before the first Turn",
+      focusNonce: 701,
+    });
+    const summary = buildThreadSummary(false);
+    const { runtime } = createSessionReadRuntime(summary);
+    const view = await renderStage(summary, {
+      runtime: { ...runtime, sessionId: chat.sessionId },
+      sessionId: chat.sessionId,
+    });
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-codex-composer="true"]')?.textContent).toBe(
+        "From the Page before the first Turn",
+      ),
+    );
+    expect(composerDraftIntents.read(chat)).toBeNull();
+    view.unmount();
+  });
 
   test.each([
     { routeActive: true, threadBodyVisible: true, expectedReads: 1 },

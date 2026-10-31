@@ -42,12 +42,7 @@ import {
 } from "../../../shared/command-keybindings";
 import { buildNewChatProjectSelectorOptions } from "@/lib/new-chat-project-selector";
 import type { ComposerEnterBehavior } from "@/lib/composer-enter-behavior";
-import type {
-  CodexComposerIntent,
-  CodexCollaborationModeKind,
-  Project,
-  CodexThreadSummary,
-} from "@/lib/types";
+import type { CodexCollaborationModeKind, Project, CodexThreadSummary } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import {
   normalizeProjectPrimaryWorkspaceRoot,
@@ -69,8 +64,6 @@ function SharedConnectedSessionThread({
   projects,
   routeActive,
   threadBodyVisible,
-  newThreadComposerIntent,
-  onConsumeNewThreadComposerIntent,
   onRequestProjectPickerOpen,
   onStartNewChatWithPrompt,
   onOpenLocalEnvironmentsSettings,
@@ -149,8 +142,6 @@ function SharedConnectedSessionThread({
   ) => Promise<WorkbenchSessionRenderProjection>;
   onStartNewChatWithPrompt?: NonNullable<ThreadStageActions["onStartNewChatWithPrompt"]>;
   onOpenPendingWorktree: (clientThreadId: string, projectSessionId: string) => void;
-  newThreadComposerIntent?: CodexComposerIntent | null;
-  onConsumeNewThreadComposerIntent?: ThreadStageActions["onConsumeNewThreadComposerIntent"];
   onRequestProjectPickerOpen: () => void;
   onOpenLocalEnvironmentsSettings: (input?: {
     projectId?: string | null;
@@ -434,7 +425,6 @@ function SharedConnectedSessionThread({
       onRequestRenameThread,
       onArchiveThread,
       onToggleThreadPin,
-      onConsumeNewThreadComposerIntent,
       onOpenThread,
       onOpenTurnDiffReview,
       onOpenTurnDiffFileInSidePanel,
@@ -467,6 +457,10 @@ function SharedConnectedSessionThread({
       (summary ? project : selectedNewThreadProject)?.sources.map((source) => source.root) ?? [],
     projectId: effectiveProjectId,
     sessionId: session.id,
+    composerChatKey:
+      projectDraftId && session.projectId
+        ? { kind: "project-draft" as const, projectId: session.projectId, draftId: projectDraftId }
+        : undefined,
     threadPinned: session.pinned ?? false,
     threadActionShortcuts,
     modelPickerShortcut,
@@ -496,7 +490,6 @@ function SharedConnectedSessionThread({
         },
     newThreadStartInSelector: summary ? null : startInSelectorModel,
     newThreadStartBlockedReason: effectiveNewThreadStartBlockedReason,
-    newThreadComposerIntent: summary ? null : (newThreadComposerIntent ?? null),
     threadStartProgress,
     activeThreadId: summary?.threadId ?? null,
     activeThreadSummary: summary,

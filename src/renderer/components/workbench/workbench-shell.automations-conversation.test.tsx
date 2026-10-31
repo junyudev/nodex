@@ -19,7 +19,6 @@ import {
   renderWorkbench,
   rendererCommandPayload,
   requestThreadStreamSnapshotCalls,
-  setComposerIntentCalls,
   agentRuntimeLaunchCalls,
   setMockInvokeImpl,
 } from "./workbench-testkit/workbench-shell-harness";
@@ -622,7 +621,6 @@ describe("workbench session shell / automations-conversation", () => {
       message: { text: "Rewrite the latest prompt" },
     });
     expect(JSON.stringify(requestThreadStreamSnapshotCalls)).toBe(JSON.stringify([]));
-    expect(setComposerIntentCalls.length).toBe(0);
   });
 
   test("session queue actions control canonical Runs without a native Thread writer", async () => {

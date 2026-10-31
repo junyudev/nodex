@@ -1,3 +1,4 @@
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import { expect, it, vi } from "vite-plus/test";
 import { createRemoteCodexStageActions } from "./remote-codex-stage-actions";
 
@@ -129,4 +130,30 @@ it("stops the named remote background terminals, or cleans them all", async () =
   await expect(actions.onStopBackgroundTerminals("foreign-thread")).rejects.toThrow(
     "identity changed",
   );
+});
+
+it("edits a remote queued follow-up through its host-qualified chat channel", async () => {
+  const f = sideChatFixture();
+  await f.actions.onEditQueuedFollowUp({
+    threadId: "remote-thread",
+    followUpId: "queued",
+    prompt: "Revise this",
+    promptInput: { text: "Revise this" },
+    ledgerRevision: 4,
+  });
+  const chat = { kind: "remote-thread", hostId: "ssh:owned", threadId: "remote-thread" } as const;
+  const intent = composerDraftIntents.read(chat);
+  expect(intent).toMatchObject({
+    prompt: "Revise this",
+    queuedFollowUpEdit: { followUpId: "queued", ledgerRevision: 4 },
+  });
+  await expect(
+    f.actions.onEditQueuedFollowUp({
+      threadId: "foreign-thread",
+      followUpId: "queued",
+      prompt: "Foreign",
+    }),
+  ).rejects.toThrow("Remote conversation identity changed");
+  expect(composerDraftIntents.read(chat)).toBe(intent);
+  composerDraftIntents.consume(chat, intent!.focusNonce);
 });

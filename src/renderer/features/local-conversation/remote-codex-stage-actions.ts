@@ -1,3 +1,4 @@
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import type { useCodexAppServerControl } from "./local-conversation-store";
 import { composeNativeThreadStageActions } from "./native-thread-stage-actions";
 import type { ThreadStageActions, ThreadStageHostActions } from "./thread-stage-types";
@@ -133,12 +134,16 @@ export function createRemoteCodexStageActions(input: {
       promptInput,
       ledgerRevision,
     }) => {
-      control.setComposerIntent(requireThread(requested), {
-        prompt,
-        promptInput,
-        queuedFollowUpEdit: { followUpId, ledgerRevision: ledgerRevision ?? 0 },
-        focusNonce: Date.now(),
-      });
+      composerDraftIntents.set(
+        { kind: "remote-thread", hostId: input.hostId, threadId: requireThread(requested) },
+        {
+          prompt,
+          attachmentMode: "replace",
+          promptInput,
+          queuedFollowUpEdit: { followUpId, ledgerRevision: ledgerRevision ?? 0 },
+          focusNonce: Date.now(),
+        },
+      );
     },
     onEditUserTurn: async ({ threadId: requested, turnId, message }) => {
       await control.editUserTurn(requireThread(requested), turnId, message);
@@ -150,7 +155,11 @@ export function createRemoteCodexStageActions(input: {
         message,
       );
       await control.requestThreadStreamSnapshot(result.threadId);
-      if (result.composerIntent) control.setComposerIntent(result.threadId, result.composerIntent);
+      if (result.composerIntent)
+        composerDraftIntents.set(
+          { kind: "remote-thread", hostId: input.hostId, threadId: result.threadId },
+          result.composerIntent,
+        );
       await input.host.onOpenThread(result.threadId, { hostId: input.hostId });
     },
     onCompactThread: async (requested) => {
@@ -164,9 +173,6 @@ export function createRemoteCodexStageActions(input: {
     onUploadFeedback: control.uploadFeedback,
     onUnarchiveThread: async (requested, targetProject) => {
       await control.unarchiveThread(requireThread(requested), targetProject);
-    },
-    onConsumeComposerIntent: (requested, nonce) => {
-      control.consumeComposerIntent(requireThread(requested), nonce);
     },
     onStopBackgroundTerminals: async (requested, processIds) => {
       const thread = requireThread(requested);

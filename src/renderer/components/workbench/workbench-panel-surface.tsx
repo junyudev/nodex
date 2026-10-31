@@ -113,7 +113,6 @@ export function WorkbenchTabProjectionPanel({
   /** Appends Page content to a chat's draft; the chat shown beside the Page receives it. */
   onAddToChatComposer: (input: {
     readonly sessionId: string;
-    readonly threadId: string | null;
     readonly promptInput: CodexPromptInput;
   }) => void;
   onOpenCanvasStage: OpenCanvasStageHandler;
@@ -185,10 +184,6 @@ export function WorkbenchTabProjectionPanel({
             onAddToChatComposer: (promptInput: CodexPromptInput) =>
               onAddToChatComposer({
                 sessionId: activeSession.id,
-                threadId:
-                  besideLibraryChatTarget.kind === "thread"
-                    ? besideLibraryChatTarget.thread.threadId
-                    : null,
                 promptInput,
               }),
           },
@@ -362,7 +357,6 @@ export function WorkbenchTabProjectionPanel({
               onAddToChatComposer: (promptInput: CodexPromptInput) =>
                 onAddToChatComposer({
                   sessionId: activeSession.id,
-                  threadId: sendTarget.kind === "thread" ? sendTarget.thread.threadId : null,
                   promptInput,
                 }),
             }
@@ -425,6 +419,7 @@ export function WorkbenchTabProjectionPanel({
     const project = projects.find((item) => item.id === tab.projectId) ?? null;
     return (
       <ConnectedReviewDiffPanel
+        composerChatKey={{ kind: "session", sessionId: activeSession.id }}
         threadId={activeSession.executionRef?.threadId ?? activeSession.thread?.threadId ?? null}
         runtimeTarget={
           activeSession.executionRef

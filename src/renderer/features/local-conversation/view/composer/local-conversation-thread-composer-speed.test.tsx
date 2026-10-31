@@ -1,3 +1,4 @@
+import { composerDraftIntents, useComposerDraftIntent } from "@/lib/composer-draft-intents";
 import { buildComposerActions as buildActions } from "@/test/composer-actions-fixture";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { useLayoutEffect, useState } from "react";
@@ -5805,4 +5806,81 @@ test("Page mentions stay ordinary text document inputs across prompt preparation
     { type: "text", text: " with " },
     { type: "mention", name: "files", path: "/tmp/files" },
   ]);
+});
+
+test("chat intent delivery survives first-thread attachment and preserves append and replace behavior", async () => {
+  resetStorage();
+  installAsyncRequestAnimationFrame();
+  installComposerWindowApi();
+  const chat = { kind: "session", sessionId: "draft-intent-promotion" } as const;
+  function ChatComposer({ started }: { started: boolean }) {
+    const composerIntent = useComposerDraftIntent(chat);
+    return (
+      <ThreadComposer
+        model={buildModel({
+          threadId: started ? "nodex:thread:promoted" : null,
+          isNewThreadTab: !started,
+          newThreadTarget: started
+            ? null
+            : { projectId: "project_1", projectName: "Project", sessionId: chat.sessionId },
+          composerChatKey: chat,
+          composerIntent,
+        })}
+        actions={buildActions()}
+        errorMessage={null}
+        onErrorMessage={() => {}}
+      />
+    );
+  }
+  const tree = (started: boolean) => (
+    <AppProviders>
+      <TestComposerScopePath>
+        <ChatComposer started={started} />
+      </TestComposerScopePath>
+    </AppProviders>
+  );
+  composerDraftIntents.set(chat, { prompt: "Keep my draft", focusNonce: 9101 });
+  const view = render(tree(false));
+  try {
+    await waitFor(() => expect(readComposerText(view)).toBe("Keep my draft"));
+    expect(composerDraftIntents.read(chat)).toBeNull();
+    await act(async () => {
+      composerDraftIntents.set(chat, {
+        prompt: "",
+        attachmentMode: "append",
+        focusNonce: 9102,
+        promptInput: {
+          text: "",
+          documentItems: [{ type: "text", text: "Page context\n\n" }],
+          addedFiles: [
+            {
+              label: "context.ts",
+              path: "/repo/context.ts",
+              fsPath: "/repo/context.ts",
+              hostId: "local",
+            },
+          ],
+        },
+      });
+      view.rerender(tree(true));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(readComposerText(view)).toBe("Keep my draft\n\nPage context\n\n"));
+    await view.findByText("context.ts");
+    expect(composerDraftIntents.read(chat)).toBeNull();
+    await act(async () => {
+      composerDraftIntents.set(chat, {
+        prompt: "Replacement",
+        attachmentMode: "replace",
+        focusNonce: 9103,
+        queuedFollowUpEdit: { followUpId: "queue-edit", ledgerRevision: 7 },
+      });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(readComposerText(view)).toBe("Replacement"));
+    expect(view.queryByText("context.ts")).toBeNull();
+    expect(composerDraftIntents.read(chat)).toBeNull();
+  } finally {
+    await act(async () => view.unmount());
+  }
 });

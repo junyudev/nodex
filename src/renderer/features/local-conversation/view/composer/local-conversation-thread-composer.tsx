@@ -1,3 +1,4 @@
+import { composerDraftIntents } from "@/lib/composer-draft-intents";
 import type { PageReference } from "../../../../../shared/page-reference";
 import { useComposerPageContext } from "./use-composer-page-context";
 import { ComposerPageContextChips } from "./composer-page-context-chips";
@@ -1160,7 +1161,7 @@ function ControlledThreadComposer(
     CodexComposerIntent["queuedFollowUpEdit"] | null
   >(null);
   const consumedTransferIdRef = useRef<string | null>(null);
-  const intent = model.composerIntent ?? model.newThreadComposerIntent ?? null;
+  const intent = model.composerIntent;
 
   useLayoutEffect(() => {
     if (promptDraft.loadable.status === "loading" || imageDraft.loadable.status === "loading")
@@ -1202,6 +1203,7 @@ function ControlledThreadComposer(
       if (transfer.imageEditDraft) {
         const target = resolveImageEditComposerTarget({
           composerScopeIdentity: model.composerScopeIdentity,
+          chatKey: model.composerChatKey,
           isSideChat: model.conversation?.source?.sideConversation === true,
           threadScopePath,
         });
@@ -1326,19 +1328,12 @@ function ControlledThreadComposer(
       }
       setConsumedIntentNonce(intent.focusNonce);
       setIntentFocusNonce(intent.focusNonce);
-      if (composerThreadId) {
-        actions.onConsumeComposerIntent(composerThreadId, intent.focusNonce);
-      } else if (model.newThreadTarget?.sessionId) {
-        actions.onConsumeNewThreadComposerIntent?.(
-          model.newThreadTarget.sessionId,
-          intent.focusNonce,
-        );
-      }
+      if (model.composerChatKey)
+        composerDraftIntents.consume(model.composerChatKey, intent.focusNonce);
     }
 
     if (!initialized) setInitialized(true);
   }, [
-    actions,
     browserAnnotationConversationId,
     composerThreadId,
     composerHandle,
@@ -1347,7 +1342,6 @@ function ControlledThreadComposer(
     initialized,
     intent,
     model.hostId,
-    model.newThreadTarget?.sessionId,
     onErrorMessage,
     promptDraft,
     setAddedFiles,
@@ -1363,6 +1357,7 @@ function ControlledThreadComposer(
     transfer,
     threadScopePath,
     model.composerScopeIdentity,
+    model.composerChatKey,
     model.conversation?.source?.sideConversation,
   ]);
 
@@ -1572,6 +1567,7 @@ function HydratedThreadComposer({
   );
   const imageEditComposerTarget = resolveImageEditComposerTarget({
     composerScopeIdentity: model.composerScopeIdentity,
+    chatKey: model.composerChatKey,
     isSideChat: model.conversation?.source?.sideConversation === true,
     threadScopePath,
   });

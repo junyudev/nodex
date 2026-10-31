@@ -1,3 +1,4 @@
+import { composerDraftIntents } from "./composer-draft-intents";
 import { agentRuntimeActivityStore } from "./agent-runtime-session-activity";
 import { readLocalConversation } from "@/features/local-conversation/local-conversation-store";
 import { selectReusableSideChat } from "./side-chat-selection";
@@ -283,6 +284,8 @@ export function useWorkbenchPanelOpeners({
       if (!activeSession) return null;
       return normalizeUserAttachmentImageEditorOptions({
         ...options,
+        composerChatKey: options.composerTarget?.chatKey ??
+          options.composerChatKey ?? { kind: "session", sessionId: activeSession.id },
         projectId: options.projectId === undefined ? activeSession.projectId : options.projectId,
         threadId:
           options.threadId === undefined
@@ -439,8 +442,17 @@ export function useWorkbenchPanelOpeners({
             [makeWorkbenchSessionPanelSlotKey(activeSession.id, reusable.panelId, leafId)]:
               reusable.id,
           }));
-          if (reusable.threadId && !reusable.runtimeSession)
-            workbenchCodexControl.setComposerIntent(reusable.threadId, {
+          const composerChat = reusable.runtimeSession
+            ? { kind: "session" as const, sessionId: reusable.runtimeSession.id }
+            : reusable.threadId
+              ? {
+                  kind: "remote-thread" as const,
+                  hostId: activeSession.thread?.executionHostId ?? "local",
+                  threadId: reusable.threadId,
+                }
+              : null;
+          if (composerChat)
+            composerDraftIntents.set(composerChat, {
               prompt: "",
               promptInput: input.promptInput,
               attachmentMode: "append",
@@ -540,6 +552,20 @@ export function useWorkbenchPanelOpeners({
             return;
           }
           const readyId = `sidechat-session:${session.id}`;
+          const pendingTab = workbenchOwner
+            .read()
+            .ephemeralPanels.sideChatTabsBySession[activeSession.id]?.find(
+              (tab) => tab.id === loadingId,
+            );
+          composerDraftIntents.set(
+            { kind: "session", sessionId: session.id },
+            {
+              prompt: pendingTab?.draftPrompt ?? "",
+              promptInput: pendingTab?.draftPromptInput,
+              attachmentMode: pendingTab?.draftAttachmentMode,
+              focusNonce: Date.now(),
+            },
+          );
           panelControllerRef.current.updateSideChatTabsBySession((current) => ({
             ...current,
             [activeSession.id]: (current[activeSession.id] ?? []).map((tab) =>
@@ -657,15 +683,18 @@ export function useWorkbenchPanelOpeners({
           [makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, leafId)]: readyTabId,
         }));
         if (input.kind === "draft" && (draftPrompt.length > 0 || input.promptInput)) {
-          workbenchCodexControl.setComposerIntent(result.threadId, {
-            prompt: draftPrompt,
-            promptInput:
-              panelControllerRef.current.sideChatTabsBySession[activeSession.id]?.find(
-                (tab) => tab.id === loadingTabId || tab.id === readyTabId,
-              )?.draftPromptInput ?? input.promptInput,
-            attachmentMode: request.kind === "selection" ? "append" : undefined,
-            focusNonce: Date.now(),
-          });
+          composerDraftIntents.set(
+            { kind: "remote-thread", hostId: sourceHostId, threadId: result.threadId },
+            {
+              prompt: draftPrompt,
+              promptInput:
+                panelControllerRef.current.sideChatTabsBySession[activeSession.id]?.find(
+                  (tab) => tab.id === loadingTabId || tab.id === readyTabId,
+                )?.draftPromptInput ?? input.promptInput,
+              attachmentMode: request.kind === "selection" ? "append" : undefined,
+              focusNonce: Date.now(),
+            },
+          );
         }
       } catch (error) {
         const errorMessage = describeSideChatOpenFailure(error);

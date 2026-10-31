@@ -517,13 +517,11 @@ export function SideChatSessionTab(props: Parameters<typeof NativeSideChatSessio
       onTitleChange={props.onTitleChange}
       initialSubmission={props.tab.initialSubmission}
       project={props.projects.find((candidate) => candidate.id === session.projectId) ?? null}
-      draft={
-        props.tab.draftPrompt || props.tab.draftPromptInput
+      initialPrompt={
+        props.tab.initialSubmission
           ? {
               prompt: props.tab.draftPrompt ?? "",
               promptInput: props.tab.draftPromptInput,
-              attachmentMode: props.tab.draftAttachmentMode,
-              focusNonce: props.tab.stateKey,
             }
           : null
       }

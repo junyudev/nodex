@@ -1,3 +1,4 @@
+import type { ComposerChatKey } from "../composer-draft-intents";
 export type ImageEditorFeaturePolicy = "disabled" | "image_click" | "edit_button";
 
 export type ImagePreviewEntrypoint =
@@ -17,6 +18,7 @@ export type ImageEditMode = "comment" | "remove" | "remove_background" | "resize
 
 /** Stable, serializable identity for the mounted Composer that owns image edits. */
 export interface ImageEditComposerTarget {
+  readonly chatKey?: ComposerChatKey | null;
   readonly channelId: string;
   readonly placement: "root" | "side";
 }
@@ -64,6 +66,7 @@ export interface GeneratedImageDescriptor extends EditableImageDescriptor {
 }
 
 export interface OpenUserAttachmentImagePreviewOptions {
+  readonly composerChatKey?: ComposerChatKey | null;
   alt: string;
   attachmentSrc: string;
   src: string;
@@ -96,6 +99,7 @@ export interface OpenUserAttachmentImagePreviewOptions {
 
 /** Fully serializable state stored by an ephemeral Workbench image tab. */
 export interface NormalizedUserAttachmentImageEditorOptions {
+  readonly composerChatKey?: ComposerChatKey | null;
   availableImageCount: number;
   composerTarget: ImageEditComposerTarget | null;
   entrypoint: ImagePreviewEntrypoint;

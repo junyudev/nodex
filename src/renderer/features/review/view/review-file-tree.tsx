@@ -1,3 +1,4 @@
+import { type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useMemo } from "react";
 import { FileTreeContextMenu } from "@/components/workbench/file-tree-context-menu";
 import { NodexDropdownMenu, NodexDropdownItem } from "@/components/ui/dropdown";
@@ -29,12 +30,12 @@ export function ReviewFileTree({
   onFilterChange,
   onSelectPath,
   onExpandedPathsChange,
-  threadId,
+  composerChatKey,
   filterGeneratedFiles,
   onFilterGeneratedFilesChange,
 }: {
   readonly entries: readonly ReviewTreeEntry[];
-  readonly threadId?: string | null;
+  readonly composerChatKey?: ComposerChatKey | null;
   readonly filterGeneratedFiles?: boolean;
   readonly onFilterGeneratedFilesChange?: (value: boolean) => void;
   readonly selectedPath: string | null;
@@ -119,7 +120,7 @@ export function ReviewFileTree({
       >
         {paths.length > 0 ? (
           <FileTreeContextMenu
-            threadId={threadId}
+            composerChatKey={composerChatKey}
             resolvePath={(path) => byTreePath.get(path)?.openPath ?? null}
           >
             <FileTree

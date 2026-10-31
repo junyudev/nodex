@@ -28,7 +28,6 @@ export function composeNativeThreadStageActions(
     onRequestRenameThread: host.onRequestRenameThread,
     onArchiveThread: host.onArchiveThread,
     onToggleThreadPin: host.onToggleThreadPin,
-    onConsumeNewThreadComposerIntent: host.onConsumeNewThreadComposerIntent,
     onOpenThread: host.onOpenThread,
     onOpenTurnDiffReview: host.onOpenTurnDiffReview,
     onOpenTurnDiffFileInSidePanel: host.onOpenTurnDiffFileInSidePanel,
@@ -51,7 +50,6 @@ export function composeNativeThreadStageActions(
     onEditUserTurn: unavailable,
     onForkFromTurn: unavailable,
     onUnarchiveThread: unavailable,
-    onConsumeComposerIntent: () => undefined,
     onStopBackgroundTerminals: unavailable,
     ...native,
   };

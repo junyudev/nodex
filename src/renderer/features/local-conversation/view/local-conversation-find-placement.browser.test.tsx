@@ -167,7 +167,6 @@ const actions: ThreadStageActions = {
   onForkFromTurn: async () => {},
   onUnarchiveThread: async () => {},
   onOpenTurnDiffReview: () => {},
-  onConsumeComposerIntent: () => {},
   onOpenThread: () => {},
   onStopBackgroundTerminals: async () => {},
 };

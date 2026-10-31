@@ -641,6 +641,7 @@ Renderer state follows explicit ownership:
 
 - TanStack Query owns bounded, low-frequency server projections.
 - Feature stores own high-frequency or optimistic projections such as Board windows and local conversation state.
+- The renderer-window Composer draft-intent Module owns one-shot draft handoffs by product Session identity, qualified by child Thread identity for subagents that share a Session, or by host-qualified Thread identity for remote auxiliary chats without a Session. Project forms without a Session retain their draft identity through materialization. Execution runtimes and conversation managers do not own these intents; first-Thread attachment does not change a Session's channel.
 - Mounted Document/Canvas sessions own collaborative content and surface lifecycles.
 - The Window Session App aggregate owns live owner-scoped Scenes, navigation, surface descriptors, panel trees, and geometry.
 - React components render these owners; component lifetime is not durable state authority.

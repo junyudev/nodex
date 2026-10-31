@@ -215,6 +215,7 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
   const threadScopePath = useScopeHandle(ThreadScope).path;
   const composerTarget = resolveImageEditComposerTarget({
     composerScopeIdentity: model.composerScopeIdentity,
+    chatKey: model.composerChatKey,
     isSideChat: model.isSideChat,
     threadScopePath,
   });

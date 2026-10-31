@@ -780,10 +780,7 @@ function ThreadGoalResumeConfirmationDialog({
 }
 
 export function LocalConversationComposerShell(props: LocalConversationComposerShellProps) {
-  const requestedFocusNonce =
-    props.model.composerIntent?.focusNonce ??
-    props.model.newThreadComposerIntent?.focusNonce ??
-    null;
+  const requestedFocusNonce = props.model.composerIntent?.focusNonce ?? null;
   const [activeFocusNonce, setActiveFocusNonce] = useScopedAtom(activeComposerFocusNonceAtom);
   const threadHandle = useScopeHandle(ThreadScope);
   useLayoutEffect(() => {

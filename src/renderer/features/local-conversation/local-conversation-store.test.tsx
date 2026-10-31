@@ -2606,58 +2606,6 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("chats without a loaded conversation still observe their composer intent", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    const {
-      __resetLocalConversationStoreForTests,
-      LocalConversationProvider,
-      consumeLocalConversationComposerIntent,
-      setLocalConversationComposerIntent,
-      useComposerIntent,
-    } = await import("./local-conversation-store");
-    const { createMaitaiStore, MaitaiProvider } = await import("../../lib/maitai");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    // An Agent Runtime chat owns its own conversation; this manager never loads one for it.
-    const threadId = "nodex:thread:runtime-chat";
-    function Probe() {
-      return createElement("output", null, useComposerIntent(threadId)?.prompt ?? "none");
-    }
-    const view = render(
-      createElement(MaitaiProvider, {
-        store: createMaitaiStore(),
-        children: createElement(
-          LocalConversationProvider,
-          null,
-          createElement(NativeFixtureRegistration),
-          createElement(Probe),
-        ),
-      }),
-    );
-    try {
-      await settleAsyncRender();
-      expect(view.container.querySelector("output")?.textContent).toBe("none");
-
-      await act(async () => {
-        setLocalConversationComposerIntent(threadId, { prompt: "From the Page", focusNonce: 1 });
-        await Promise.resolve();
-      });
-      expect(view.container.querySelector("output")?.textContent).toBe("From the Page");
-
-      await act(async () => {
-        consumeLocalConversationComposerIntent(threadId, 1);
-        await Promise.resolve();
-      });
-      expect(view.container.querySelector("output")?.textContent).toBe("none");
-    } finally {
-      view.unmount();
-      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-    }
-  });
-
   test("control actions follow the conversation owner host instead of the default manager", async () => {
     invokeCalls = [];
     invokeRecords = [];
@@ -2666,7 +2614,6 @@ describe("local-conversation-store", () => {
     const {
       __resetLocalConversationStoreForTests,
       LocalConversationProvider,
-      setLocalConversationComposerIntent,
       useCodexAppServerControl,
     } = await import("./local-conversation-store");
     const { createMaitaiStore, MaitaiProvider } = await import("../../lib/maitai");
@@ -2675,7 +2622,9 @@ describe("local-conversation-store", () => {
     const controlRef: { current: ReturnType<typeof useCodexAppServerControl> | null } = {
       current: null,
     };
+    const defaultControlRef: typeof controlRef = { current: null };
     function Probe() {
+      defaultControlRef.current = useCodexAppServerControl();
       controlRef.current = useCodexAppServerControl("remote-thread", "remote-host");
       return null;
     }
@@ -2699,17 +2648,27 @@ describe("local-conversation-store", () => {
     try {
       const control = controlRef.current;
       if (!control) throw new Error("Control fixture unavailable");
-      await act(async () => {
-        control.setComposerIntent("remote-thread", {
-          prompt: "Route before hydration",
-          focusNonce: 1,
+      const localSettings = vi
+        .spyOn(localManager, "setThreadSettingsForConversation")
+        .mockResolvedValue({
+          model: "fixture-model",
+          reasoningEffort: null,
+          collaborationMode: null,
+          personality: null,
         });
-        await Promise.resolve();
+      const remoteSettings = vi
+        .spyOn(remoteManager, "setThreadSettingsForConversation")
+        .mockResolvedValue({
+          model: "fixture-model",
+          reasoningEffort: null,
+          collaborationMode: null,
+          personality: null,
+        });
+      await act(async () => {
+        await control.setConversationThreadSettings("remote-thread", { model: "before-hydration" });
       });
-      expect(remoteManager.readComposerIntent("remote-thread")?.prompt).toBe(
-        "Route before hydration",
-      );
-      expect(localManager.readComposerIntent("remote-thread")).toBeNull();
+      expect(remoteSettings).toHaveBeenCalledWith("remote-thread", { model: "before-hydration" });
+      expect(localSettings).not.toHaveBeenCalled();
 
       await flushAsyncWork();
       await act(async () => {
@@ -2732,18 +2691,17 @@ describe("local-conversation-store", () => {
       });
       await settleAsyncRender();
 
+      const defaultControl = defaultControlRef.current;
+      if (!defaultControl) throw new Error("Default control fixture unavailable");
       await act(async () => {
-        setLocalConversationComposerIntent("remote-thread", {
-          prompt: "Route through hydrated ownership",
-          focusNonce: 2,
+        await defaultControl.setConversationThreadSettings("remote-thread", {
+          model: "after-hydration",
         });
-        await Promise.resolve();
       });
-
-      expect(remoteManager.readComposerIntent("remote-thread")?.prompt).toBe(
-        "Route through hydrated ownership",
-      );
-      expect(localManager.readComposerIntent("remote-thread")).toBeNull();
+      expect(remoteSettings).toHaveBeenLastCalledWith("remote-thread", {
+        model: "after-hydration",
+      });
+      expect(localSettings).not.toHaveBeenCalled();
     } finally {
       remoteActivity[Symbol.dispose]();
       view.unmount();

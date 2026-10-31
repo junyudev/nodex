@@ -29,7 +29,6 @@ export function buildComposerActions(overrides?: Partial<ThreadStageActions>): T
     onUploadFeedback: async () => {},
     onUnarchiveThread: async () => {},
     onOpenTurnDiffReview: () => {},
-    onConsumeComposerIntent: () => {},
     onOpenThread: () => {},
     onStopBackgroundTerminals: async () => {},
     ...overrides,

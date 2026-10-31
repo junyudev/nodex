@@ -74,6 +74,7 @@ export function normalizeUserAttachmentImageEditorOptions(
   return {
     availableImageCount: options.availableImageCount ?? 1,
     composerTarget: options.composerTarget ?? null,
+    ...(options.composerChatKey ? { composerChatKey: options.composerChatKey } : {}),
     entrypoint: options.entrypoint ?? "image_click",
     generatedImages,
     imageSource,

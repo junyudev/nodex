@@ -1,3 +1,4 @@
+import { type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useMemo } from "react";
 import type { FileTreeRowDecoration } from "@pierre/trees";
 import { FileTreeContextMenu } from "@/components/workbench/file-tree-context-menu";
@@ -30,7 +31,7 @@ export interface WorkspaceFileTreeState {
 
 export interface WorkspaceFileTreeProps {
   readonly workspaceRoot?: string | null;
-  readonly threadId?: string | null;
+  readonly composerChatKey?: ComposerChatKey | null;
   /** Browse entries, or the file search's matches while `searchQuery` is set. */
   readonly paths: readonly WorkspaceFileTreePath[];
   readonly expandedPaths: ReadonlySet<string>;
@@ -76,7 +77,7 @@ export function WorkspaceFileTree({
   surface,
   initialScrollTop = 0,
   workspaceRoot,
-  threadId,
+  composerChatKey,
   revealSelectedPath = false,
   revealSelectedPathScrollOffset = "nearest",
   className,
@@ -122,7 +123,7 @@ export function WorkspaceFileTree({
 
   return (
     <FileTreeContextMenu
-      threadId={threadId}
+      composerChatKey={composerChatKey}
       resolvePath={(treePath) => {
         const item = resolveFile(treePath);
         return item && workspaceRoot

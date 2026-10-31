@@ -1,3 +1,8 @@
+import {
+  composerDraftIntents,
+  useComposerDraftIntent,
+  type ComposerChatKey,
+} from "@/lib/composer-draft-intents";
 import { afterEach, beforeAll, beforeEach, expect, vi } from "vite-plus/test";
 import { initPrefersReducedMotion } from "motion";
 import { installMotionPreferenceForTest } from "@/test/browser-globals";
@@ -13,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -238,7 +244,6 @@ export let removeQueuedFollowUpCalls: unknown[][] = [];
 export let reorderQueuedFollowUpsCalls: unknown[][] = [];
 export let sendQueuedFollowUpNowCalls: unknown[][] = [];
 export let editUserTurnCalls: unknown[][] = [];
-export let setComposerIntentCalls: unknown[][] = [];
 export let removePlanImplementationRequestCalls: unknown[][] = [];
 export let cleanBackgroundTerminalsCalls: string[] = [];
 export let listBackgroundTerminalsCalls: string[] = [];
@@ -499,10 +504,6 @@ export const mockCodexControl = {
     terminateBackgroundTerminalCalls.push(input);
     return true;
   },
-  setComposerIntent: (threadId: string, composerIntent: unknown) => {
-    setComposerIntentCalls.push([threadId, composerIntent]);
-  },
-  consumeComposerIntent: () => undefined,
   setConversationCollaborationMode: async () => ({
     mode: "default",
     settings: {
@@ -1667,7 +1668,6 @@ vi.mock("@/features/local-conversation", () => ({
             runInEnvironmentPath?: string | null;
             worktreeStartingState?: CodexPendingWorktreeStartingState;
           }) => Promise<void>;
-          onConsumeNewThreadComposerIntent?: (sessionId: string, focusNonce: number) => void;
         }
       | undefined;
     const target = props.newThreadTarget as
@@ -1680,22 +1680,21 @@ vi.mock("@/features/local-conversation", () => ({
         }
       | null
       | undefined;
-    const composerIntent = (props.newThreadComposerIntent ?? props.composerIntent) as
-      | {
-          prompt?: string;
-          clearText?: boolean;
-          focusNonce?: number;
-        }
-      | null
-      | undefined;
+    const chatSessionId =
+      typeof props.sessionId === "string" ? props.sessionId : (target?.sessionId ?? null);
+    const explicitChatKey = props.composerChatKey as ComposerChatKey | undefined;
+    const chatKey = useMemo<ComposerChatKey | null>(
+      () =>
+        explicitChatKey ?? (chatSessionId ? { kind: "session", sessionId: chatSessionId } : null),
+      [explicitChatKey, chatSessionId],
+    );
+    const composerIntent = useComposerDraftIntent(chatKey);
     useEffect(() => {
       if ((!props.isNewThreadTab && !props.sideChatContext) || !composerIntent) return;
-      if (!composerIntent.prompt && !composerIntent.clearText) return;
-      setMockPrompt(composerIntent.clearText ? "" : (composerIntent.prompt ?? ""));
-      if (typeof composerIntent.focusNonce === "number" && target?.sessionId) {
-        actions?.onConsumeNewThreadComposerIntent?.(target.sessionId, composerIntent.focusNonce);
-      }
-    }, [actions, composerIntent, props.isNewThreadTab, props.sideChatContext, target?.sessionId]);
+      if (composerIntent.prompt || composerIntent.clearText)
+        setMockPrompt(composerIntent.clearText ? "" : composerIntent.prompt);
+      if (chatKey) composerDraftIntents.consume(chatKey, composerIntent.focusNonce);
+    }, [chatKey, composerIntent, props.isNewThreadTab, props.sideChatContext]);
     return createElement(
       Fragment,
       null,
@@ -4785,7 +4784,6 @@ beforeEach(() => {
   reorderQueuedFollowUpsCalls = [];
   sendQueuedFollowUpNowCalls = [];
   editUserTurnCalls = [];
-  setComposerIntentCalls = [];
   removePlanImplementationRequestCalls = [];
   cleanBackgroundTerminalsCalls = [];
   listBackgroundTerminalsCalls = [];
@@ -5263,10 +5261,6 @@ export function setSendQueuedFollowUpNowCalls(value: typeof sendQueuedFollowUpNo
 
 export function setEditUserTurnCalls(value: typeof editUserTurnCalls): void {
   editUserTurnCalls = value;
-}
-
-export function setSetComposerIntentCalls(value: typeof setComposerIntentCalls): void {
-  setComposerIntentCalls = value;
 }
 
 export function setRemovePlanImplementationRequestCalls(
