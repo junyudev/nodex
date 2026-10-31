@@ -85,12 +85,15 @@ function UsageProviderMark({
  */
 export function UsageRingGlyph({
   provider,
+  mark,
   track,
   arc,
   alert = false,
   pulse = false,
 }: {
   readonly provider: UsageProvider;
+  /** Replaces the provider mark, as for Nodex's own credit ring. */
+  readonly mark?: ReactNode;
   readonly track: "solid" | "dotted" | "spent" | "open";
   readonly arc?: {
     readonly percent: number;
@@ -149,16 +152,23 @@ export function UsageRingGlyph({
             strokeLinecap="round"
             stroke={SEVERITY_TONE[arc.severity]}
             strokeOpacity={arc.faded ? 0.4 : 1}
-            strokeDasharray={RING_CIRCUMFERENCE.toFixed(3)}
-            strokeDashoffset={(RING_CIRCUMFERENCE * (1 - percent / 100)).toFixed(3)}
+            // A full ring is a plain circle: a dash's round caps would overlap at the top.
+            strokeDasharray={percent < 100 ? RING_CIRCUMFERENCE.toFixed(3) : undefined}
+            strokeDashoffset={
+              percent < 100 ? (RING_CIRCUMFERENCE * (1 - percent / 100)).toFixed(3) : undefined
+            }
             className="transition-[stroke-dashoffset,stroke,stroke-opacity] duration-500 ease-out motion-reduce:transition-none"
           />
         ) : null}
       </svg>
-      <UsageProviderMark
-        provider={provider}
-        className={cn("size-3 fill-current", (track === "dotted" || arc?.faded) && "opacity-60")}
-      />
+      <span
+        className={cn(
+          "inline-flex [&>svg]:size-3",
+          (track === "dotted" || arc?.faded) && "opacity-60",
+        )}
+      >
+        {mark ?? <UsageProviderMark provider={provider} className="fill-current" />}
+      </span>
       {alert ? (
         <span
           aria-hidden="true"

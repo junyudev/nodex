@@ -227,12 +227,12 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
       });
       await page.screencast.showActions({ position: "bottom" });
     }
-    await page.getByRole("button", { name: "Top up", exact: true }).click();
+    // Account settings lays every tier out; there is no menu to open first.
     await expect(
-      page.getByRole("menuitem", { name: "$5 → $35 credit", exact: true }),
+      page.getByRole("button", { name: "Pay $5 for $35 credit", exact: true }),
     ).toBeDisabled();
     if (artifacts) await page.screenshot({ path: path.join(artifacts, "account-top-up.png") });
-    await page.getByRole("menuitem", { name: "$2 → $14 credit", exact: true }).click();
+    await page.getByRole("button", { name: "Pay $2 for $14 credit", exact: true }).click();
     await expect.poll(readHandoffs).toContain("https://checkout.stripe.com/c/pay/synthetic-nodex");
     expect(oauth.evidence().checkouts).toEqual([2]);
     oauth.setBalance(26.5);
@@ -283,25 +283,21 @@ test("offers prepaid Nodex models and credit only for the signed-in account", as
     await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
       "Claude Sonnet 5.5",
     );
-    await page.getByRole("button", { name: "Account and settings", exact: true }).click();
-    await expect(page.getByRole("menu").getByLabel("Remaining credit")).toHaveText("$0.00");
-    await page.getByRole("menuitem", { name: "Top up", exact: true }).click();
-    await page.getByRole("menuitem", { name: "$2 → $14 credit", exact: true }).click();
+    // The rail credit meter shows the balance and leads to Account settings to buy.
+    const creditMeter = page.locator("[data-nodex-credit-meter]");
+    await creditMeter.hover();
+    const creditCard = page.getByRole("dialog", { name: "Nodex credit details" });
+    await expect(creditCard.getByLabel("Remaining credit")).toHaveText("$0.00");
+    await creditCard.getByRole("button", { name: "Top up", exact: true }).click();
+    await page.getByRole("button", { name: "Pay $2 for $14 credit", exact: true }).click();
     await expect.poll(() => oauth.evidence().checkouts).toEqual([2, 2]);
     oauth.setTopUpAvailable(false);
     await refreshNodexAccount(page);
-    await page.getByRole("button", { name: "Account and settings", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Top up", exact: true }).click();
     await expect(page.getByText("Top up is paused.", { exact: true })).toBeVisible();
-    await expect(
-      page.getByRole("menuitem", { name: "$2 → $14 credit", exact: true }),
-    ).toBeDisabled();
     const topUpDisabled = await page
-      .getByRole("menuitem", { name: "$2 → $14 credit", exact: true })
+      .getByRole("button", { name: "Pay $2 for $14 credit", exact: true })
       .isDisabled();
     if (artifacts) await page.screenshot({ path: path.join(artifacts, "final.png") });
-    await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
     if (artifacts) {
       await page.screencast.stop();
       await writeFile(

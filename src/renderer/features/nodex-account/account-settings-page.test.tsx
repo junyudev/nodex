@@ -174,14 +174,22 @@ test("shows prepaid credit and opens Top up through the account command", async 
       imageUrl: null,
     },
     credit: { balance: 12.5, unit: "USD" },
+    modelStatus: {
+      models: [],
+      topUp: {
+        available: true,
+        currency: "USD",
+        tiers: [{ amount: 10, credit: 11, available: true }],
+      },
+    },
   });
   await waitFor(() => expect(screen.getByLabelText("Remaining credit").textContent).toBe("$12.50"));
-  await clickAction("Top up");
-  await waitFor(() => expect(account.invoke).toHaveBeenCalledWith("nodex-account:open-top-up"));
+  fireEvent.click(await screen.findByRole("button", { name: "Pay $10 for $11 credit" }));
+  await waitFor(() => expect(account.invoke).toHaveBeenCalledWith("nodex-account:open-top-up", 10));
   await act(async () => {
     account.emit({ ...signedOut, revision: 1 });
     await Promise.resolve();
   });
   await screen.findByRole("button", { name: "Sign in" });
-  expect(screen.queryByRole("button", { name: "Top up" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Pay $10 for $11 credit" })).toBeNull();
 });

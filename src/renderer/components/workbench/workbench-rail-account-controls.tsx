@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { NodexAccountMenu } from "@/features/nodex-account/nodex-account-menu";
+import { NodexCreditMeter } from "@/features/nodex-account/nodex-credit-meter";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { WORKBENCH_RAIL_BUTTON_CLASS } from "./workbench-app-rail";
@@ -236,7 +237,7 @@ function ClaudeUsageMeter({
 
 /**
  * App-wide controls at the foot of the navigation rail, read from the bottom up: the Nodex
- * Account menu, then the Codex account control (its usage meter when signed in, an open Codex
+ * Account menu, its prepaid credit meter while signed in, then the Codex account control (its usage meter when signed in, an open Codex
  * ring that signs in when signed out, an unread Codex meter while the account is unknown), then
  * one usage meter per Claude subscription account (an unread Claude meter until Main has read
  * any). The slots that always exist sit lowest, so Claude meters coming and going never move
@@ -389,6 +390,10 @@ export function WorkbenchRailAccountControls({
           />
         ) : null}
       </div>
+      <NodexCreditMeter
+        onOpenAccountSettings={onOpenAccountSettings}
+        className={WORKBENCH_RAIL_BUTTON_CLASS}
+      />
       <NodexAccountMenu
         onOpenSettings={onOpenSettings}
         onOpenAccountSettings={onOpenAccountSettings}

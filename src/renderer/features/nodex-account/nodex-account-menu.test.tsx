@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, test, vi } from "vite-plus/test";
+import { describe, expect, it, test, vi } from "vite-plus/test";
 const modelStatusFixture = {
   models: [],
   topUp: {
@@ -18,6 +18,7 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { installWindowApi } from "@/test/browser-globals";
 import { openNodexMenu } from "@/test/dom";
 import { AccountSettingsPage } from "./account-settings-page";
+import { describeCreditGauge, nextCreditGauge } from "./nodex-credit-meter";
 
 const signedOut: NodexAccountSnapshot = {
   revision: 0,
@@ -188,25 +189,68 @@ describe("Nodex account menu", () => {
   });
 });
 
-test("shows compact prepaid credit and dispatches semantic Top up from the menu", async () => {
+test("shows credit in the rail meter and buys tiers from Account settings", async () => {
   const controls = renderAccountControls({
     ...signedIn,
     modelStatus: modelStatusFixture,
     credit: { balance: 7.25, unit: "USD" },
   });
-  await screen.findByText("Nodex Scenario");
-  await openNodexMenu(controls.trigger());
-  expect(within(screen.getByRole("menu")).getByLabelText("Remaining credit").textContent).toBe(
-    "$7.25",
-  );
+  const meter = await screen.findByRole("button", { name: "Nodex credit, $7.25 left" });
   await act(async () => {
-    fireEvent.click(screen.getByRole("menuitem", { name: "Top up" }));
+    fireEvent.focus(meter);
     await Promise.resolve();
   });
-  const unavailable = await screen.findByRole("menuitem", { name: "$5 → $35 credit" });
-  expect(unavailable.getAttribute("aria-disabled")).toBe("true");
-  await selectMenuItem("$2 → $14 credit");
+  const card = await screen.findByRole("dialog", { name: "Nodex credit details" });
+  expect(within(card).getByLabelText("Remaining credit").textContent).toBe("$7.25");
+  fireEvent.click(within(card).getByRole("button", { name: "Top up" }));
+  expect(controls.accountSettings).toHaveBeenCalledTimes(1);
+  // Account settings lays the tiers out: price first, credit second.
+  expect(
+    screen.getByRole("button", { name: "Pay $5 for $35 credit" }).hasAttribute("disabled"),
+  ).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Pay $2 for $14 credit" }));
   await waitFor(() => expect(controls.invoke).toHaveBeenCalledWith("nodex-account:open-top-up", 2));
+  // The account menu keeps identity and settings; credit lives in the meter.
+  await openNodexMenu(controls.trigger());
+  expect(within(screen.getByRole("menu")).queryByText(/credit/u)).toBeNull();
+});
+
+test("meters only accounts that have held credit", async () => {
+  const controls = renderAccountControls({
+    ...signedIn,
+    modelStatus: modelStatusFixture,
+    credit: { balance: 0, unit: "USD" },
+  });
+  await screen.findByRole("button", { name: "Pay $2 for $14 credit" });
+  expect(screen.queryByRole("button", { name: /^Nodex credit/u })).toBeNull();
+  await controls.emit({
+    ...signedIn,
+    revision: 2,
+    modelStatus: modelStatusFixture,
+    credit: { balance: 14, unit: "USD" },
+  });
+  await screen.findByRole("button", { name: "Nodex credit, $14.00 left" });
+  // Spent down to zero, the meter stays to explain why Nodex models stopped.
+  await controls.emit({
+    ...signedIn,
+    revision: 3,
+    modelStatus: modelStatusFixture,
+    credit: { balance: 0, unit: "USD" },
+  });
+  await screen.findByRole("button", { name: "Nodex credit, $0.00 left" });
+});
+
+it("refills the credit gauge on top-up and drains it with spending", () => {
+  const topUp = nextCreditGauge(null, 30);
+  expect(describeCreditGauge(nextCreditGauge(topUp, 24))).toEqual({
+    percent: 80,
+    severity: "normal",
+  });
+  expect(describeCreditGauge(nextCreditGauge(topUp, 6)).severity).toBe("low");
+  expect(describeCreditGauge(nextCreditGauge(topUp, 0.3)).severity).toBe("critical");
+  expect(describeCreditGauge(nextCreditGauge(topUp, 0)).severity).toBe("exhausted");
+  const refilled = nextCreditGauge(nextCreditGauge(topUp, 6), 17);
+  expect(describeCreditGauge(refilled)).toEqual({ percent: 100, severity: "normal" });
 });
 
 test("disables paused top-ups and reflects payment completion while account settings stay open", async () => {
@@ -220,21 +264,20 @@ test("disables paused top-ups and reflects payment completion while account sett
     checkoutPending: true,
   };
   const controls = renderAccountControls(state);
-  await screen.findByRole("status");
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Top up" }));
-    await Promise.resolve();
-  });
   await screen.findByText("Top up is paused.");
   expect(
-    screen.getByRole("menuitem", { name: "$2 → $14 credit" }).getAttribute("aria-disabled"),
-  ).toBe("true");
+    screen.getByRole("button", { name: "Pay $2 for $14 credit" }).hasAttribute("disabled"),
+  ).toBe(true);
   await controls.emit({
     ...state,
     revision: 2,
     checkoutPending: false,
     credit: { balance: 15, unit: "USD" },
   });
-  await waitFor(() => expect(screen.getByLabelText("Remaining credit").textContent).toBe("$15.00"));
+  await waitFor(() =>
+    expect(screen.getAllByLabelText("Remaining credit").map((node) => node.textContent)).toContain(
+      "$15.00",
+    ),
+  );
   expect(screen.queryByText("Waiting for payment…")).toBeNull();
 });

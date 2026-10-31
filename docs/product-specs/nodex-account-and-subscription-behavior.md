@@ -17,10 +17,14 @@ setups remain independent. Automatic defaults never select a prepaid model.
 An unavailable saved choice fails explicitly rather than spending through a
 different account or silently choosing another provider.
 
-Settings → Account and the rail account menu show remaining USD credit and
-Top up. Top up offers server-defined choices such as `$2 → $14 credit` inside
-the app. Unavailable tiers remain visible and disabled; paused supply reads
-“Top up is paused.” Choosing an available tier asks Main to create a Stripe
+The rail shows a Nodex credit meter below the provider usage meters and above
+the account avatar: the Nodex mark inside a ring that empties as credit since the
+last top-up is spent, quiet until credit runs low. Its card shows the balance and
+one Top up action; the meter and that action open Settings → Account. There the
+balance sits above every server-defined tier, laid out without a menu: each tile
+reads price first and credit second (`$10` · `$11 credit +10%`), and choosing one
+starts Checkout. Unavailable tiers stay visible and disabled; paused supply reads
+“Top up is paused.” The account menu keeps identity and settings only. Choosing an available tier asks Main to create a Stripe
 Checkout and open its returned URL in the system browser. Account management
 requires no website or web console.
 

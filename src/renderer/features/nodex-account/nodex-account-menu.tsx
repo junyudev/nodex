@@ -1,4 +1,3 @@
-import { formatNodexCredit } from "../../../shared/nodex-models";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { NODEX_ACCOUNT_ERROR_COPY } from "../../../shared/nodex-account-copy";
 import { ActivitySpinnerIcon, SettingsGeneralIcon } from "@/components/shared/icons";
@@ -6,7 +5,6 @@ import { SignInIcon, SignOutIcon } from "@/components/shared/icons/account-icons
 import { NodexButton } from "@/components/ui/button";
 import {
   NodexDropdownContent,
-  NodexDropdownFlyoutSubmenuItem,
   NodexDropdownItem,
   NodexDropdownMessage,
   NodexDropdownPortal,
@@ -21,7 +19,6 @@ import {
   resolveNodexAccountView,
   type NodexAccountView,
 } from "./nodex-account-identity";
-import { NodexCheckoutNotice, NodexTopUpItems } from "./nodex-top-up";
 import { useNodexAccount } from "./use-nodex-account";
 
 const TRIGGER_LABEL = "Account and settings";
@@ -202,29 +199,6 @@ function AccountMenuActions({
         >
           {view.reauthentication ? "Sign in again" : "Sign in"}
         </AccountMenuItem>
-      ) : null}
-      {view.signedIn ? (
-        <>
-          <NodexDropdownFlyoutSubmenuItem
-            ariaLabel="Top up"
-            disabled={busy}
-            label={
-              <span className="flex w-full items-center justify-between gap-3">
-                <span>Top up</span>
-                <span aria-label="Remaining credit" className="text-tertiary tabular-nums">
-                  {account.snapshot?.credit
-                    ? formatNodexCredit(account.snapshot.credit.balance)
-                    : "—"}
-                </span>
-              </span>
-            }
-          >
-            <NodexTopUpItems account={account} />
-          </NodexDropdownFlyoutSubmenuItem>
-          <div className="px-2 empty:hidden">
-            <NodexCheckoutNotice snapshot={account.snapshot} />
-          </div>
-        </>
       ) : null}
       {view.signedIn || view.reauthentication ? (
         <AccountMenuItem

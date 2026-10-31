@@ -7,7 +7,13 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/settings";
 import { cn } from "@/lib/utils";
 import { NodexAccountAvatar, resolveNodexAccountView } from "./nodex-account-identity";
-import { NodexCheckoutNotice, NodexTopUpButton } from "./nodex-top-up";
+import {
+  CREDIT_SEVERITY_TEXT,
+  NodexCreditBar,
+  describeCreditGauge,
+  useNodexCreditGauge,
+} from "./nodex-credit-meter";
+import { NodexTopUpTiers } from "./nodex-top-up";
 import { useNodexAccount } from "./use-nodex-account";
 
 export function AccountSettingsPage({ open }: { open: boolean }) {
@@ -19,9 +25,10 @@ function AccountSettingsContent() {
   const account = useNodexAccount(true);
   const view = resolveNodexAccountView(account);
   const { refreshModels } = account;
+  // Only a signed-in account has credit and model access to refresh.
   useEffect(() => {
-    refreshModels();
-  }, [refreshModels]);
+    if (view.signedIn) refreshModels();
+  }, [view.signedIn, refreshModels]);
   const [showLoading, setShowLoading] = useState(false);
 
   useEffect(() => {
@@ -180,32 +187,51 @@ function AccountSettingsContent() {
           ) : null}
         </div>
       </NodexSettingsSection>
-      {view.signedIn ? (
-        <NodexSettingsSection>
-          <div className="flex items-center justify-between gap-4 px-4 py-3">
-            <span className="text-sm text-token-text-secondary">Credit</span>
-            <div className="flex items-center gap-3">
-              <span
-                aria-label="Remaining credit"
-                className="text-sm tabular-nums text-token-text-primary"
-              >
-                {account.snapshot?.credit
-                  ? formatNodexCredit(account.snapshot.credit.balance)
-                  : "—"}
-              </span>
-              <NodexTopUpButton account={account} />
-            </div>
-          </div>
-          <div className="px-4 empty:hidden">
-            <NodexCheckoutNotice snapshot={account.snapshot} />
-          </div>
-          {modelNotice ? (
-            <p role="alert" className="px-4 pb-3 text-xs text-danger">
-              {modelNotice}
-            </p>
-          ) : null}
-        </NodexSettingsSection>
-      ) : null}
+      {view.signedIn ? <AccountCredit account={account} modelNotice={modelNotice} /> : null}
     </NodexSettingsPageSurface>
+  );
+}
+
+/** Credit and its tiers, laid out where the person decides to buy; no menu to open first. */
+function AccountCredit({
+  account,
+  modelNotice,
+}: {
+  readonly account: ReturnType<typeof useNodexAccount>;
+  readonly modelNotice: string | null;
+}) {
+  const { gauge } = useNodexCreditGauge(account);
+  const level = gauge ? describeCreditGauge(gauge) : null;
+  return (
+    <>
+      <NodexSettingsSection title="Credit">
+        <div className="flex flex-col gap-3 px-4 pt-3.5 pb-4">
+          <span
+            aria-label="Remaining credit"
+            className={cn(
+              "text-2xl font-medium tracking-tight text-token-text-primary tabular-nums",
+              level && CREDIT_SEVERITY_TEXT[level.severity],
+            )}
+          >
+            {gauge ? formatNodexCredit(gauge.balance) : "—"}
+          </span>
+          <NodexCreditBar gauge={gauge} />
+        </div>
+        {modelNotice ? (
+          <p role="alert" className="px-4 pb-3 text-xs text-danger">
+            {modelNotice}
+          </p>
+        ) : null}
+      </NodexSettingsSection>
+      <section aria-labelledby="nodex-top-up-title" className="flex flex-col">
+        <h2
+          id="nodex-top-up-title"
+          className="min-h-toolbar pb-1.5 text-base font-medium text-token-text-primary"
+        >
+          Top up
+        </h2>
+        <NodexTopUpTiers account={account} />
+      </section>
+    </>
   );
 }
